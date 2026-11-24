@@ -91,6 +91,8 @@ pub async fn resolve_optional(
     let mut rbac_scope = None;
 
     if is_observability_auth_path(request_path.as_str()) {
+        // These tenant-independent observability handlers enforce HostAuthorityContext
+        // themselves. Readiness deliberately falls back to an aggregate-only response.
         if let Some(host_authority) = host_authority {
             parts.extensions.insert(host_authority);
         }
@@ -391,6 +393,28 @@ fn service_forum_boundary_violation(
         return Some("Service credentials require forum_topics:moderate for solution changes");
     }
 
+    // Quote relations mutate the same topic/reply content boundary as direct
+    // edits. Keep service credentials on the moderation-only path rather than
+    // allowing update-only grants to bypass the stricter topic/reply rule.
+    if *method == Method::PUT
+        && segments.len() == 5
+        && segments[0] == "api"
+        && segments[1] == "forum"
+        && uuid::Uuid::parse_str(segments[3]).is_ok()
+        && segments[4] == "quotes"
+    {
+        let required = match segments[2] {
+            "topics" => Some(Permission::FORUM_TOPICS_MODERATE),
+            "replies" => Some(Permission::FORUM_REPLIES_MODERATE),
+            _ => None,
+        };
+        if required.is_some_and(|required| !has_effective_permission(permissions, &required)) {
+            return Some(
+                "Service credentials require explicit forum moderation authority for quote relation changes",
+            );
+        }
+    }
+
     if segments.len() == 4
         && segments[0] == "api"
         && segments[1] == "forum"
@@ -434,6 +458,8 @@ mod tests {
             "/health/ready",
             "/catalog/modules",
             "/v2/catalog/publish",
+            "/.well-known/openid-configuration",
+            "/.well-known/oauth-authorization-server",
             "/api/graphql/ws",
         ] {
             assert!(auth_can_resolve_without_tenant_context(path), "{path}");
@@ -706,6 +732,45 @@ mod tests {
                 &[Permission::FORUM_TOPICS_READ],
             )
             .is_some()
+        );
+    }
+
+    #[test]
+    fn forum_service_quote_updates_require_moderation_authority() {
+        let topic_id = Uuid::new_v4();
+        let reply_id = Uuid::new_v4();
+
+        assert!(
+            service_forum_boundary_violation(
+                &Method::PUT,
+                &format!("/api/forum/topics/{topic_id}/quotes"),
+                &[Permission::FORUM_TOPICS_UPDATE],
+            )
+            .is_some()
+        );
+        assert!(
+            service_forum_boundary_violation(
+                &Method::PUT,
+                &format!("/api/forum/topics/{topic_id}/quotes"),
+                &[Permission::FORUM_TOPICS_MODERATE],
+            )
+            .is_none()
+        );
+        assert!(
+            service_forum_boundary_violation(
+                &Method::PUT,
+                &format!("/api/forum/replies/{reply_id}/quotes"),
+                &[Permission::FORUM_REPLIES_UPDATE],
+            )
+            .is_some()
+        );
+        assert!(
+            service_forum_boundary_violation(
+                &Method::PUT,
+                &format!("/api/forum/replies/{reply_id}/quotes"),
+                &[Permission::FORUM_REPLIES_MODERATE],
+            )
+            .is_none()
         );
     }
 

@@ -57,11 +57,22 @@ Fly remains the only visual document and command authority. Pages owns page iden
 
 ## Current state
 
+### Document receipts and SQLite write admission: source-ready
+
+- Direct document save and revision restore both persist actor-scoped operation receipts in the same transaction as the document mutation and revision journal.
+- Restore retries derive a deterministic key from the expected working-copy revision and immutable revision ID; a committed retry replays before CAS.
+- Page aggregate read-before-write paths use `begin_page_write_transaction` (SQLite `BEGIN IMMEDIATE`; PostgreSQL locks existing page rows through `find_page_for_update`); route-history import uses the equivalent immediate SQLite transaction.
+- The exact metadata Translation adapter uses the same Pages write admission before applying its revision-guarded patch.
+- Independent-pool PostgreSQL save/restore and file-backed SQLite restore regressions are authored but unexecuted. PostgreSQL is the production target; SQLite is retained for integration tests. Mounted host recovery and browser verification remain open.
+- Page creation (including an initial document) now reserves an actor/request-bound receipt before page/slug writes and commits its original response with the page transaction. Unpublish/archive/delete use page-scoped lifecycle receipts; delete receipts survive page-row deletion. Next Admin persists pending keys in tab-scoped `sessionStorage` and sends expected page versions for unpublish/delete.
+- Independent-pool PostgreSQL create/unpublish/delete and SQLite create/lifecycle replay regressions are authored but unexecuted. Create/lifecycle receipt migrations target PostgreSQL production and SQLite integration tests; mounted host recovery and browser verification remain open. See [create/lifecycle receipt ADR](../../../DECISIONS/2026-11-24-page-create-and-lifecycle-operation-receipts.md).
+
 ### Metadata, publication and persistence ownership
 
 - Registered Pages metadata uses the shared consumer-property contribution.
 - The bespoke metadata editor and direct workspace metadata write remain removed.
-- `PageService::save_document` remains the only document-only persistence owner.
+- `PageService` remains the only document persistence owner; `save_document` and
+  `restore_body_revision` are its document-write entrypoints.
 - Published Fly documents remain immutable without an explicit draft lifecycle.
 - Reviewed Page Builder materialization remains the required publish path.
 - Rollback selects a prior immutable manifest without compiling the current draft.

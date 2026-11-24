@@ -73,7 +73,10 @@ impl PageService {
             reviewed.review_hash.as_str(),
         ))?;
 
-        let txn = self.db.begin().await?;
+        // Serialize duplicate rebuild attempts with other writes for this page. The page
+        // lock makes a same-key retry observe the first committed operation receipt.
+        let txn = self.begin_page_write_transaction().await?;
+        let _locked_page = self.find_page_for_update(&txn, tenant_id, page_id).await?;
         if let Some(operation) =
             find_operation_in_tx(&txn, tenant_id, page_id, idempotency_key.as_str()).await?
         {

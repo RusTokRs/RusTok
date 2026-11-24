@@ -93,7 +93,12 @@ pub use entities::{
     PagePublishRebuildSource, PagePublishedLandingArtifact, PageRollbackOperation, PageRouteAlias,
     PageRouteHistoryImport, PageRoutePublication, PageStaticLandingArtifact,
 };
-pub use error::{CANNOT_DELETE_PUBLISHED_ERROR_CODE, PagesError, PagesResult};
+pub use error::{
+    CANNOT_DELETE_PUBLISHED_ERROR_CODE, PAGE_CREATE_IDEMPOTENCY_CONFLICT,
+    PAGE_CREATE_OPERATION_INTEGRITY, PAGE_LIFECYCLE_IDEMPOTENCY_CONFLICT,
+    PAGE_LIFECYCLE_OPERATION_INTEGRITY, PagesError,
+    PagesResult,
+};
 pub use graphql::{PagesMutation, PagesQuery};
 pub use module::PagesModule;
 pub use provider_health_binding::{

@@ -19,7 +19,7 @@ import type {
   AttributeDefinitionResult
 } from './attribute-lifecycle';
 import type {
-  ProductAttributeValuePatch,
+  ProductAttributeValueBatch,
   ProductBrandItem,
   ProductTranslation
 } from './api/types';
@@ -46,7 +46,7 @@ export type ProductSavePayload = {
   initialVariant?: import('./variant-draft').InitialVariantScalars;
   variantAxes?: import('./api/types').VariantAxisDraftInput[];
   initialVariants?: import('./variant-draft').InitialVariantDraft[];
-  attributePatches: ProductAttributeValuePatch[];
+  attributeValueBatches: ProductAttributeValueBatch[];
   activeLocale: string;
 };
 

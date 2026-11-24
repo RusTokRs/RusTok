@@ -243,7 +243,11 @@ enum RegistryOperation {
 impl RegistryOperation {
     fn accepts_method(self, method: &Method) -> bool {
         match self {
-            Self::PublishStatus | Self::ArtifactDownload => method == Method::GET,
+            // Axum's GET handler also serves HEAD and strips only the body.
+            // Authorization must cover both methods before the handler runs.
+            Self::PublishStatus | Self::ArtifactDownload => {
+                method == Method::GET || method == Method::HEAD
+            }
             Self::ArtifactUpload => method == Method::PUT,
             Self::ManageMutation | Self::ReviewMutation => method == Method::POST,
         }
@@ -409,6 +413,22 @@ mod tests {
         }
         assert_eq!(registry_route("/catalog/rpr_1/artifact"), None);
         assert_eq!(registry_route("/v2/catalog/yank"), None);
+    }
+
+    #[test]
+    fn head_requests_are_authorized_like_get_requests() {
+        use axum::http::Method;
+
+        for operation in [
+            RegistryOperation::PublishStatus,
+            RegistryOperation::ArtifactDownload,
+        ] {
+            assert!(operation.accepts_method(&Method::GET));
+            assert!(operation.accepts_method(&Method::HEAD));
+        }
+        assert!(!RegistryOperation::ArtifactUpload.accepts_method(&Method::HEAD));
+        assert!(!RegistryOperation::ManageMutation.accepts_method(&Method::HEAD));
+        assert!(!RegistryOperation::ReviewMutation.accepts_method(&Method::HEAD));
     }
 
     #[test]

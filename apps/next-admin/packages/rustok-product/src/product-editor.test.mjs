@@ -19,6 +19,10 @@ const actions = readFileSync(
   new URL('../../../src/app/dashboard/product/actions.ts', import.meta.url),
   'utf8'
 );
+const productRoute = readFileSync(
+  new URL('../../../src/app/dashboard/product/[productId]/page.tsx', import.meta.url),
+  'utf8'
+);
 const statusHandler = editor.slice(
   editor.indexOf('  const handleStatusChange ='),
   editor.indexOf('  const handleDelete =')
@@ -306,4 +310,15 @@ test('all host editor mounts bind the route resource, and a missing Product expo
   assert.match(missing, /if \(!hasProductRecovery && !hasVariantRecovery\) notFound\(\)/);
   assert.match(missing, /\brecoveryOnly\b/);
   assert.match(missing, /onDeleteProduct=\{deleteProductAction\}/);
+});
+
+test('product editor loads exact-locale EAV values and retains all dirty locale batches', () => {
+  assert.match(editor, /fetchAttributeValues\(initialProduct\.id, locale\)/);
+  assert.match(editor, /dirtyLocalizedAttributeIdsByLocale/);
+  assert.match(editor, /dirtyNonLocalizedAttributeIds/);
+  assert.match(editor, /buildProductAttributeValueBatches/);
+  assert.match(editor, /attributeValuesReady/);
+  assert.match(actions, /export async function fetchProductAttributeValuesAction/);
+  assert.match(productRoute, /fetchAttributeValues=\{fetchProductAttributeValuesAction\}/);
+  assert.match(productRoute, /initialAttributeValuesLoaded=\{attributeValuesLoaded\}/);
 });

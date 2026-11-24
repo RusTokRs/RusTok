@@ -108,6 +108,7 @@ impl OAuthTokenService {
             OAuthTokenProtocolError::server_error("OAuth signing configuration is unavailable")
         })?;
         let db = runtime.runtime_ctx().db();
+        let require_email_verification = runtime.runtime_ctx().settings().features.email_verification;
         let app = resolve_client(db, tenant_id, request).await?;
 
         let response = match request.grant_type.as_str() {
@@ -172,7 +173,14 @@ impl OAuthTokenService {
                 )
                 .await?;
 
-                commit_authorization_code_exchange(db, &app, &authorization, &prepared).await?;
+                commit_authorization_code_exchange(
+                    db,
+                    &app,
+                    &authorization,
+                    &prepared,
+                    require_email_verification,
+                )
+                .await?;
                 prepared.into_response(&scopes)
             }
             REFRESH_TOKEN_GRANT => {
@@ -209,7 +217,14 @@ impl OAuthTokenService {
                 )
                 .await?;
 
-                commit_refresh_rotation(db, &app, &current, &prepared).await?;
+                commit_refresh_rotation(
+                    db,
+                    &app,
+                    &current,
+                    &prepared,
+                    require_email_verification,
+                )
+                .await?;
                 prepared.into_response(&scopes)
             }
             other => {
@@ -915,6 +930,7 @@ async fn lock_active_oauth_subject<C>(
     tenant_id: Uuid,
     user_id: Uuid,
     credential_issued_at: sea_orm::prelude::DateTimeWithTimeZone,
+    require_email_verification: bool,
 ) -> Result<users::Model, OAuthTokenProtocolError>
 where
     C: ConnectionTrait,
@@ -961,9 +977,10 @@ where
         user.ok_or_else(|| OAuthTokenProtocolError::invalid_grant("OAuth subject is unavailable"))?;
     if !user.is_active()
         || user.rejects_delegated_token_issued_at(credential_issued_at.with_timezone(&Utc))
+        || (require_email_verification && !user.is_email_verified())
     {
         return Err(OAuthTokenProtocolError::invalid_grant(
-            "OAuth subject is inactive or its credentials changed",
+            "OAuth subject is inactive, unverified, or its credentials changed",
         ));
     }
     Ok(user)
@@ -1163,6 +1180,7 @@ async fn commit_authorization_code_exchange(
     authenticated_app: &oauth_apps::Model,
     code: &oauth_codes::Model,
     prepared: &PreparedUserTokens,
+    require_email_verification: bool,
 ) -> Result<(), OAuthTokenProtocolError> {
     let tx = db.begin().await.map_err(|_| {
         OAuthTokenProtocolError::server_error("Failed to begin authorization-code exchange")
@@ -1179,7 +1197,14 @@ async fn commit_authorization_code_exchange(
         ));
     }
     validate_scope_subset(&current_app.scopes_list(), &code.scopes_list())?;
-    lock_active_oauth_subject(&tx, code.tenant_id, code.user_id, code.created_at.clone()).await?;
+    lock_active_oauth_subject(
+        &tx,
+        code.tenant_id,
+        code.user_id,
+        code.created_at.clone(),
+        require_email_verification,
+    )
+    .await?;
     validate_locked_oauth_consent(
         &tx,
         &current_app,
@@ -1234,6 +1259,7 @@ async fn commit_refresh_rotation(
     authenticated_app: &oauth_apps::Model,
     current: &oauth_tokens::Model,
     prepared: &PreparedUserTokens,
+    require_email_verification: bool,
 ) -> Result<(), OAuthTokenProtocolError> {
     let tx = db.begin().await.map_err(|_| {
         OAuthTokenProtocolError::server_error("Failed to begin refresh-token rotation")
@@ -1245,7 +1271,14 @@ async fn commit_refresh_rotation(
     let user_id = current.user_id.ok_or_else(|| {
         OAuthTokenProtocolError::invalid_grant("Refresh token has no associated user")
     })?;
-    lock_active_oauth_subject(&tx, current.tenant_id, user_id, current.created_at.clone()).await?;
+    lock_active_oauth_subject(
+        &tx,
+        current.tenant_id,
+        user_id,
+        current.created_at.clone(),
+        require_email_verification,
+    )
+    .await?;
     validate_locked_oauth_consent(
         &tx,
         &current_app,
@@ -1345,8 +1378,8 @@ fn required<'a>(
 mod tests {
     use super::{
         PreparedUserTokens, REFRESH_TOKEN_GRANT, authenticate_client, commit_refresh_rotation,
-        refresh_family_deadline, require_grant, resolve_client, scopes_for_refresh,
-        validate_requested_scopes,
+        lock_active_oauth_subject, refresh_family_deadline, require_grant, resolve_client,
+        scopes_for_refresh, validate_requested_scopes,
     };
     use crate::models::{
         oauth_apps, oauth_authorization_codes as oauth_codes, oauth_consents, oauth_tokens,
@@ -1356,9 +1389,67 @@ mod tests {
     use rustok_auth::TokenRequest;
     use sea_orm::{
         ActiveModelTrait, ConnectionTrait, Database, EntityTrait, PaginatorTrait, Schema, Set,
-        prelude::DateTimeWithTimeZone,
+        TransactionTrait, prelude::DateTimeWithTimeZone,
     };
     use uuid::Uuid;
+
+    #[tokio::test]
+    async fn oauth_subject_lock_requires_verified_email_when_enabled() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("SQLite database");
+        let backend = db.get_database_backend();
+        let schema = Schema::new(backend);
+        db.execute_raw(backend.build(&schema.create_table_from_entity(tenants::Entity)))
+            .await
+            .expect("tenants table");
+        db.execute_raw(backend.build(&schema.create_table_from_entity(users::Entity)))
+            .await
+            .expect("users table");
+
+        let tenant = tenants::ActiveModel::new("Email verification tenant", "email-verification")
+            .insert(&db)
+            .await
+            .expect("tenant");
+        let user = users::ActiveModel::new(tenant.id, "unverified@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("unverified user");
+
+        let tx = db.begin().await.expect("begin unverified subject transaction");
+        let error = lock_active_oauth_subject(
+            &tx,
+            tenant.id,
+            user.id,
+            user.created_at.clone(),
+            true,
+        )
+        .await
+        .expect_err("unverified OAuth subjects must be rejected");
+        assert_eq!(error.error, "invalid_grant");
+        tx.rollback().await.expect("rollback unverified subject transaction");
+
+        users::ActiveModel {
+            id: Set(user.id),
+            email_verified_at: Set(Some(Utc::now().into())),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("verify user");
+
+        let tx = db.begin().await.expect("begin verified subject transaction");
+        lock_active_oauth_subject(
+            &tx,
+            tenant.id,
+            user.id,
+            user.created_at,
+            true,
+        )
+        .await
+        .expect("verified OAuth subject must be accepted");
+        tx.rollback().await.expect("rollback verified subject transaction");
+    }
 
     #[tokio::test]
     async fn first_party_pkce_does_not_require_secret_even_when_ssr_secret_exists() {
@@ -1607,7 +1698,7 @@ mod tests {
         .expect_err("a changed consent epoch must reject in-flight issuance");
         assert_eq!(stale_epoch.error, "invalid_grant");
 
-        let commit_error = super::commit_refresh_rotation(&db, &client, &current, &prepared)
+        let commit_error = super::commit_refresh_rotation(&db, &client, &current, &prepared, false)
             .await
             .expect_err("refresh commit must revalidate consent under app/subject locks");
         assert_eq!(commit_error.error, "invalid_grant");
@@ -2147,10 +2238,10 @@ mod tests {
             expires_in: 900,
         };
 
-        commit_refresh_rotation(&db, &client, &current, &replacement("replacement-1"))
+        commit_refresh_rotation(&db, &client, &current, &replacement("replacement-1"), false)
             .await
             .expect("first rotation");
-        let replay = commit_refresh_rotation(&db, &client, &current, &replacement("replacement-2"))
+        let replay = commit_refresh_rotation(&db, &client, &current, &replacement("replacement-2"), false)
             .await
             .expect_err("refresh token replay must fail");
 
@@ -2203,6 +2294,7 @@ mod tests {
             &client,
             &pre_change,
             &replacement("replacement-after-password-change"),
+            false,
         )
         .await
         .expect_err("refresh issued before password change must fail");

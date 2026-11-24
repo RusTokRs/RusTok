@@ -25,6 +25,22 @@ A consumer provides `PageBuilderAdminHostContext` with an `AdminCanvasController
 canonical responses. The editor owns save-start, save-failure and acknowledgement state, including
 acknowledgement against the exact project hash that was dispatched.
 
+For Dioxus hosts, `DioxusPageBuilderAdminHostContext::on_reload_requested` may be
+provided with the consumer's authoritative refresh action. A peer-tab notice or
+server revision conflict makes the editor read-only and exposes the exact local
+project JSON for copying before reload. The callback must fetch the latest
+server-owned document and replace the controller; it must not silently discard
+the local draft. The editor does not perform an automatic three-way merge.
+Without the callback, the host's own page refresh action remains responsible for
+reloading the latest controller after the local JSON has been copied.
+
+When the Pages facade returns `PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN`, Dioxus
+keeps the draft read-only and offers an exact same-request retry. The Pages
+facade derives its receipt key from the same page revision and canonical project,
+so retrying without changing the payload replays the committed result rather
+than creating a second write. This in-memory retry state is not yet durable
+across a full remount; copy the exposed project JSON before navigating away.
+
 `frames[0].component` data into canonical `pages[].component`, keeps a synchronized frame snapshot
 for the existing JSON fallback, performs optimistic `updated_at` revision checks, and persists
 through the existing Pages transport facade.
@@ -191,47 +207,52 @@ is taken for mutating intents and intents with selection hints; pure read-only h
 hints retain the lightweight path. This adds a state snapshot to mutating browser dispatches;
 profile the cost with large projects before certifying performance.
 
-The controller now offers `mark_save_started_with_id`, `acknowledge_save_for_attempt` and
-`mark_save_failed_for_attempt`, which guard identical-hash retries against stale asynchronous
-completions. Existing hash-only entrypoints remain for legacy clients but are not sufficient to
-correlate retries. Local IDs are transient and are **not** a server idempotency key.
+The controller now creates a `SaveAttempt` containing both a local revision sequence and a
+fresh UUID request ID. Acknowledgement, failure and conflict require the exact active attempt;
+the hash-only acknowledgement path has been removed. The active request ID is transient and
+is **not** a server idempotency key. A restored controller cannot accept a response from an
+attempt that existed before serialization. Known `REVISION_CONFLICT` and
+`PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN` codes survive the Leptos server-function error boundary;
+a stale-revision response retires only its matching attempt and fences the editor read-only.
 
-The Leptos facade runtime captures the unique local save attempt when it dispatches a publish
-request. Publish response handlers now acknowledge or fail only that captured attempt, so a
-late old request cannot corrupt the state of a newer identical retry. This is not a guarantee
-for external callback transports, which need an explicit request/response correlation contract.
+The Leptos facade runtime and callback transport now carry the same `SaveAttempt`. The public
+`PageBuilderCapabilityExecution` callback receives the request and its optional attempt together,
+so external hosts can acknowledge or fail only the request they actually executed. Late
+responses from an older identical retry cannot corrupt the active attempt.
 
-The framework-neutral `EditorSessionState` now also supports attempt-bound save starts,
-publish acknowledgements and failures, so Dioxus and external host adapters can avoid accepting
-late responses to an identical retry. Legacy hash-only `SaveAcknowledged` remains available
-for compatibility, but is not a substitute for the attempt-bound response path.
+The framework-neutral `EditorSessionState` carries `SaveAttempt` through save start,
+acknowledgement and failure actions. There is no hash-only acknowledgement fallback: Dioxus and
+external session adapters must return the exact attempt token.
 
-The Dioxus admin Save toolbar and FlyEditorWorkspace now consume the reducer's request effects
-and execute the supplied consumer facade instead of discarding them. Publish completion is
-attempt-aware, and a missing facade or an invalid response reports an error. Browser previews
-record their scenario/context before sending; active preview and save lifecycle flags are owned
-by the same session. Dioxus iframe/pointer/overlay feature parity still requires implementation.
+The Dioxus admin Save toolbar and FlyEditorWorkspace consume reducer request effects and execute
+the supplied consumer facade. Save completion is attempt-aware; browser previews retain their
+scenario/context and lifecycle flags in the same session. The Page Builder Dioxus host now mounts
+the isolated iframe canvas, forwards geometry/hover/focus/keyboard events, completes palette and
+selected-layer drag/drop, commits bounded resize patches and participates in peer-write fencing.
+The Leptos Rust runtime and JS adapter share a document nonce plus editor-root scope so their
+own confirmed writes advance one baseline; other tabs or editor roots fence stale editors.
+These BroadcastChannel notices are advisory and do not replace server revision CAS or receipts.
+Mounted browser/CSP verification remains outstanding.
 
 Dioxus host-context/prop equality now considers the full draft controller and every relevant
 facade, contribution, runtime and workspace toggle. Previously only page ID and persisted
 revision were compared, so local edits and changes in injected providers could be treated as
 unchanged props and suppress a needed rerender. Regression coverage authored, not run.
 
-The Leptos FlyEditorWorkspace's typed `on_intent` callback now forwards Publish/Preview
-and announcement effects to `AdminEditorRuntime`. Before this change, it discarded all effects
-after the controller mutation: Save/Preview could look interactive but never reach the consumer
-facade. The runtime compares the command sequence and expected project hash before dispatch and
-registers the browser-provided preview context for response correlation.
+The Leptos FlyEditorWorkspace's typed `on_intent` callback forwards Save/Preview and
+announcement effects to `AdminEditorRuntime`. The runtime compares the command sequence and
+submitted project hash before dispatch, captures the exact `SaveAttempt`, and retains the
+browser-provided preview context for response correlation.
 
 Browser intent admission also rejects a supplied document page ID that disagrees with the
 controller's own page ID, including read-only intents. Leptos validates the completed workspace
 result's page, revision, hash and command sequence before dispatching any facade effects. This
 prevents a late/switching-document callback from executing effects against a different draft.
 
-All framework workspace Publish effects now honor the same runtime publish gate as the
-standard toolbar flow. Leptos re-evaluates the gate in `apply_browser_result`, while Dioxus
-checks it before starting a facade save; neither workspace can bypass host runtime readiness
-policy merely by producing a direct browser intent request.
+Working-draft Save is gated by edit permission, not by the runtime release/publish gate. The
+gate remains a separate release-readiness evaluation and must not prevent persistence of a
+working draft. The Pages host maps the Page Builder Save capability to its draft-update
+authorization; actual release remains a distinct host operation.
 
 Dioxus workspace effect handling now rejects a mismatched owning document, server revision,
 project hash, or command sequence before calling a facade. Previously a mismatched effect hash

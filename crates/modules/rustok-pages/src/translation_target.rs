@@ -446,10 +446,9 @@ impl TranslationTargetProvider for PagesMetadataTranslationTargetProvider {
             let target = merged_target(&request, &snapshot)?;
             let transaction = self
                 .service
-                .database()
-                .begin()
+                .begin_page_write_transaction()
                 .await
-                .map_err(pages_database_error_to_port_error)?;
+                .map_err(pages_error_to_port_error)?;
             let applied = self
                 .service
                 .apply_exact_metadata_translation_in_tx(

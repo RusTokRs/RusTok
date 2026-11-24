@@ -457,9 +457,9 @@ fn not_found_metrics_path(path: &str) -> &'static str {
         } else {
             "/"
         }
-    } else if path.starts_with("/api") {
+    } else if (path == "/api" || path.starts_with("/api/")) {
         "/api/:not_found"
-    } else if path.starts_with("/admin") {
+    } else if (path == "/admin" || path.starts_with("/admin/")) {
         "/admin/:not_found"
     } else {
         "/:not_found"
@@ -469,9 +469,9 @@ fn not_found_metrics_path(path: &str) -> &'static str {
 /// Unmatched non-404 responses (SPA fallbacks, method errors, redirects) must
 /// not create a new time series per requested URL.
 fn unmatched_metrics_path(path: &str) -> &'static str {
-    if path.starts_with("/api") {
+    if (path == "/api" || path.starts_with("/api/")) {
         "/api/:unmatched"
-    } else if path.starts_with("/admin") {
+    } else if (path == "/admin" || path.starts_with("/admin/")) {
         "/admin/:unmatched"
     } else {
         "/:unmatched"
@@ -591,6 +591,24 @@ mod tests {
             not_found_metrics_path("/api/unknown/123"),
             "/api/:not_found"
         );
+        assert_eq!(
+            unmatched_metrics_path("/apiary/private"),
+            "/:unmatched"
+        );
+        assert_eq!(
+            unmatched_metrics_path("/administrator/private"),
+            "/:unmatched"
+        );
+        assert_eq!(
+            not_found_metrics_path("/apiary/private"),
+            "/:not_found"
+        );
+        assert_eq!(
+            not_found_metrics_path("/administrator/private"),
+            "/:not_found"
+        );
+        assert_eq!(unmatched_metrics_path("/api"), "/api/:unmatched");
+        assert_eq!(unmatched_metrics_path("/admin"), "/admin/:unmatched");
         assert_eq!(not_found_metrics_path("/health"), "/health");
         assert_eq!(not_found_metrics_path("/metrics"), "/metrics");
         assert_eq!(not_found_metrics_path("/"), "/");

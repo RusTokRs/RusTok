@@ -777,7 +777,7 @@ fn rate_limited_response(exceeded: &RateLimitExceeded) -> Response {
     response
 }
 
-fn rate_limit_backend_unavailable_response(reason: &str) -> Response {
+fn rate_limit_backend_unavailable_response() -> Response {
     let mut response = Json(ErrorBody::new(
         "rate_limit_backend_unavailable",
         "Rate limit backend unavailable",
@@ -785,7 +785,10 @@ fn rate_limit_backend_unavailable_response(reason: &str) -> Response {
     .into_response();
     *response.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
     insert_header_if_valid(response.headers_mut(), "retry-after", "1".to_string());
-    tracing::error!(reason, "Rate limit backend unavailable");
+    tracing::error!(
+        error_code = "rate_limit_backend_unavailable",
+        "Rate limit backend unavailable"
+    );
     response
 }
 
@@ -820,9 +823,9 @@ pub async fn rate_limit_middleware(
             record_rate_limit_exceeded(state.limiter.namespace());
             Err(rate_limited_response(&exceeded))
         }
-        Err(RateLimitCheckError::BackendUnavailable(reason)) => {
+        Err(RateLimitCheckError::BackendUnavailable(_reason)) => {
             record_rate_limit_backend_unavailable(state.limiter.namespace());
-            Err(rate_limit_backend_unavailable_response(&reason))
+            Err(rate_limit_backend_unavailable_response())
         }
     }
 }
@@ -873,9 +876,9 @@ pub async fn rate_limit_for_paths(
             record_rate_limit_exceeded(policy.limiter.namespace());
             Err(rate_limited_response(&exceeded))
         }
-        Err(RateLimitCheckError::BackendUnavailable(reason)) => {
+        Err(RateLimitCheckError::BackendUnavailable(_reason)) => {
             record_rate_limit_backend_unavailable(policy.limiter.namespace());
-            Err(rate_limit_backend_unavailable_response(&reason))
+            Err(rate_limit_backend_unavailable_response())
         }
     }
 }

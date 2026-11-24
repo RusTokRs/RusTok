@@ -74,7 +74,7 @@ pub async fn list_dlq(
 ) -> Result<Json<DlqListResponse>> {
     tracing::debug!(
         tenant_id = %tenant.id,
-        event_type = ?query.event_type,
+        event_type_len = query.event_type.as_deref().map(str::len),
         limit = query.limit,
         "Handling list DLQ events request"
     );

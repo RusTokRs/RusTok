@@ -56,6 +56,8 @@ pub struct StageMcpScaffoldDraftInput {
     pub client_id: Option<Uuid>,
     pub request: ScaffoldModuleRequest,
     pub created_by: Option<Uuid>,
+    pub actor_id: Option<String>,
+    pub actor_type: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -63,6 +65,8 @@ pub struct ApplyMcpScaffoldDraftInput {
     pub workspace_root: String,
     pub confirm: bool,
     pub applied_by: Option<Uuid>,
+    pub actor_id: Option<String>,
+    pub actor_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -603,8 +607,14 @@ impl McpManagementService {
                 tenant_id,
                 client_id: input.client_id,
                 token_id: None,
-                actor_id: input.created_by.map(|value| value.to_string()),
-                actor_type: Some("human_user".to_string()),
+                actor_id: input
+                    .actor_id
+                    .clone()
+                    .or_else(|| input.created_by.map(|value| value.to_string())),
+                actor_type: input
+                    .actor_type
+                    .clone()
+                    .or_else(|| input.created_by.map(|_| "human_user".to_string())),
                 action: "scaffold_draft_staged".to_string(),
                 outcome: "success".to_string(),
                 tool_name: Some("alloy_scaffold_module".to_string()),
@@ -636,12 +646,23 @@ impl McpManagementService {
             ));
         }
 
+        // Enforce the host-owned workspace boundary in the service itself.
+        // Remote MCP tools do not pass through the HTTP scaffold middleware,
+        // so transport-only validation would leave an arbitrary-path write
+        // capability reachable through the MCP bridge.
+        let workspace_root =
+            crate::services::mcp_scaffold_workspace::authorize_mcp_scaffold_workspace(
+                &input.workspace_root,
+            )?;
+
         let draft = Self::claim_scaffold_draft_for_apply(
             db,
             tenant_id,
             draft_id,
             input.applied_by,
-            &input.workspace_root,
+            input.actor_id.clone(),
+            input.actor_type.clone(),
+            &workspace_root,
         )
         .await?;
 
@@ -657,14 +678,16 @@ impl McpManagementService {
                     tenant_id,
                     &draft,
                     input.applied_by,
-                    &input.workspace_root,
+                    input.actor_id.clone(),
+                    input.actor_type.clone(),
+                    &workspace_root,
                     &reason,
                 )
                 .await?;
                 return Err(Error::BadRequest(reason));
             }
         };
-        let apply_result = match apply_staged_scaffold(&staged_draft, &input.workspace_root) {
+        let apply_result = match apply_staged_scaffold(&staged_draft, &workspace_root) {
             Ok(response) => response,
             Err(error) => {
                 let reason = error.to_string();
@@ -673,7 +696,9 @@ impl McpManagementService {
                     tenant_id,
                     &draft,
                     input.applied_by,
-                    &input.workspace_root,
+                    input.actor_id.clone(),
+                    input.actor_type.clone(),
+                    &workspace_root,
                     &reason,
                 )
                 .await?;
@@ -684,7 +709,7 @@ impl McpManagementService {
         let txn = db.begin().await.map_err(map_db_err)?;
         let mut active: mcp_scaffold_drafts::ActiveModel = draft.clone().into();
         active.status = Set(MCP_SCAFFOLD_STATUS_APPLIED.to_string());
-        active.workspace_root = Set(Some(input.workspace_root.clone()));
+        active.workspace_root = Set(Some(workspace_root.clone()));
         active.applied_at = Set(Some(Utc::now().into()));
         active.updated_at = Set(Utc::now().into());
         let updated = active.update(&txn).await.map_err(map_db_err)?;
@@ -695,8 +720,14 @@ impl McpManagementService {
                 tenant_id,
                 client_id: updated.client_id,
                 token_id: None,
-                actor_id: input.applied_by.map(|value| value.to_string()),
-                actor_type: Some("human_user".to_string()),
+                actor_id: input
+                    .actor_id
+                    .clone()
+                    .or_else(|| input.applied_by.map(|value| value.to_string())),
+                actor_type: input
+                    .actor_type
+                    .clone()
+                    .or_else(|| input.applied_by.map(|_| "human_user".to_string())),
                 action: "scaffold_draft_applied".to_string(),
                 outcome: "success".to_string(),
                 tool_name: Some("alloy_apply_module_scaffold".to_string()),
@@ -706,7 +737,7 @@ impl McpManagementService {
                     "draft_id": updated.id,
                     "slug": updated.slug,
                     "crate_name": updated.crate_name,
-                    "workspace_root": input.workspace_root,
+                    "workspace_root": workspace_root,
                 }),
                 created_by: input.applied_by,
             },
@@ -722,6 +753,8 @@ impl McpManagementService {
         tenant_id: Uuid,
         draft_id: Uuid,
         applied_by: Option<Uuid>,
+        actor_id: Option<String>,
+        actor_type: Option<String>,
         workspace_root: &str,
     ) -> Result<mcp_scaffold_drafts::Model> {
         let txn = db.begin().await.map_err(map_db_err)?;
@@ -768,8 +801,12 @@ impl McpManagementService {
                 tenant_id,
                 client_id: claimed.client_id,
                 token_id: None,
-                actor_id: applied_by.map(|value| value.to_string()),
-                actor_type: Some("human_user".to_string()),
+                actor_id: actor_id
+                    .clone()
+                    .or_else(|| applied_by.map(|value| value.to_string())),
+                actor_type: actor_type
+                    .clone()
+                    .or_else(|| applied_by.map(|_| "human_user".to_string())),
                 action: "scaffold_draft_apply_started".to_string(),
                 outcome: "pending".to_string(),
                 tool_name: Some("alloy_apply_module_scaffold".to_string()),
@@ -795,6 +832,8 @@ impl McpManagementService {
         tenant_id: Uuid,
         draft: &mcp_scaffold_drafts::Model,
         applied_by: Option<Uuid>,
+        actor_id: Option<String>,
+        actor_type: Option<String>,
         workspace_root: &str,
         reason: &str,
     ) -> Result<()> {
@@ -811,8 +850,12 @@ impl McpManagementService {
                 tenant_id,
                 client_id: updated.client_id,
                 token_id: None,
-                actor_id: applied_by.map(|value| value.to_string()),
-                actor_type: Some("human_user".to_string()),
+                actor_id: actor_id
+                    .clone()
+                    .or_else(|| applied_by.map(|value| value.to_string())),
+                actor_type: actor_type
+                    .clone()
+                    .or_else(|| applied_by.map(|_| "human_user".to_string())),
                 action: "scaffold_draft_apply_failed".to_string(),
                 outcome: "failure".to_string(),
                 tool_name: Some("alloy_apply_module_scaffold".to_string()),
@@ -1087,6 +1130,33 @@ mod tests {
 
     // Concurrency-sensitive rotation/deactivation paths lock the client row
     // inside their transaction before touching child tokens.
+    #[test]
+    fn scaffold_apply_revalidates_host_workspace_before_claiming_or_writing() {
+        let source = include_str!("mcp_management.rs");
+        let start = source
+            .find("pub async fn apply_scaffold_draft(")
+            .expect("apply_scaffold_draft implementation exists");
+        let end = source[start..]
+            .find("async fn claim_scaffold_draft_for_apply(")
+            .map(|offset| start + offset)
+            .expect("claim helper follows apply_scaffold_draft");
+        let method = &source[start..end];
+
+        let authorize = method
+            .find("authorize_mcp_scaffold_workspace")
+            .expect("service-level workspace authorization exists");
+        let claim = method
+            .find("claim_scaffold_draft_for_apply")
+            .expect("draft claim exists");
+        let apply = method
+            .find("apply_staged_scaffold")
+            .expect("staged filesystem apply exists");
+
+        assert!(authorize < claim, "workspace must be authorized before draft claim");
+        assert!(claim < apply, "draft must be claimed before filesystem apply");
+        assert!(method.contains("apply_staged_scaffold(&staged_draft, &workspace_root)"));
+    }
+
     #[test]
     fn token_preview_does_not_leak_full_secret() {
         let preview = token_preview("mcp_super_secret_token_value");

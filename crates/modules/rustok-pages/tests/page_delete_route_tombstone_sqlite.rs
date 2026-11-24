@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use rustok_core::{MigrationSource, SecurityContext};
+use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
 use rustok_pages::{
     CreatePageInput, PageRouteDisposition, PageRouteService, PageService, PageTranslationInput,
@@ -188,4 +188,147 @@ async fn deleting_a_never_published_draft_does_not_reserve_its_slug() {
             .as_deref(),
         Some("temporary")
     );
+}
+
+#[tokio::test]
+async fn unpublish_receipt_replays_before_a_later_publish_and_cas_check() {
+    let (_db, service, tenant_id) = setup().await;
+    let security = SecurityContext::system();
+    let draft = create_draft(&service, tenant_id, "Lifecycle", "lifecycle").await;
+    let published = service
+        .publish_non_builder_if_current(
+            tenant_id,
+            security.clone(),
+            draft.id,
+            Some(draft.version),
+        )
+        .await
+        .expect("page should publish");
+    let unpublish_key = "unpublish-replay-1".to_string();
+
+    let unpublished = service
+        .unpublish_with_receipt(
+            tenant_id,
+            security.clone(),
+            published.id,
+            Some(published.version),
+            unpublish_key.clone(),
+        )
+        .await
+        .expect("first unpublish should commit");
+    assert_eq!(unpublished.status, rustok_content::entities::node::ContentStatus::Draft);
+
+    let republished = service
+        .publish_non_builder_if_current(
+            tenant_id,
+            security.clone(),
+            published.id,
+            Some(unpublished.version),
+        )
+        .await
+        .expect("a later publish should commit");
+    assert_eq!(
+        republished.status,
+        rustok_content::entities::node::ContentStatus::Published
+    );
+
+    let replayed = service
+        .unpublish_with_receipt(
+            tenant_id,
+            security,
+            published.id,
+            Some(published.version),
+            unpublish_key,
+        )
+        .await
+        .expect("retry must replay before the stale version check");
+    assert_eq!(replayed.version, unpublished.version);
+    assert_eq!(replayed.status, unpublished.status);
+    let current = service
+        .get(tenant_id, SecurityContext::system(), published.id)
+        .await
+        .expect("later published page remains current");
+    assert_eq!(
+        current.status,
+        rustok_content::entities::node::ContentStatus::Published
+    );
+}
+
+#[tokio::test]
+async fn delete_receipt_survives_page_removal_and_replays_for_the_same_actor() {
+    let (_db, service, tenant_id) = setup().await;
+    let security = SecurityContext::system();
+    let draft = create_draft(&service, tenant_id, "Delete receipt", "delete-receipt").await;
+    let key = "delete-replay-1".to_string();
+
+    service
+        .delete_with_receipt(tenant_id, security.clone(), draft.id, Some(draft.version), key.clone())
+        .await
+        .expect("first delete should commit");
+    service
+        .delete_with_receipt(tenant_id, security.clone(), draft.id, Some(draft.version), key.clone())
+        .await
+        .expect("retry should replay even though the page row is gone");
+
+    let conflict = service
+        .delete_with_receipt(
+            tenant_id,
+            SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4())),
+            draft.id,
+            Some(draft.version),
+            key,
+        )
+        .await
+        .expect_err("the same receipt must not be replayed by a different actor");
+    assert!(conflict.to_string().contains("idempotency key"));
+}
+
+#[tokio::test]
+async fn archive_receipt_replays_after_a_later_publish() {
+    let (_db, service, tenant_id) = setup().await;
+    let security = SecurityContext::system();
+    let draft = create_draft(&service, tenant_id, "Archive receipt", "archive-receipt").await;
+    let key = "archive-replay-1".to_string();
+
+    let archived = service
+        .archive_with_receipt(
+            tenant_id,
+            security.clone(),
+            draft.id,
+            Some(draft.version),
+            key.clone(),
+        )
+        .await
+        .expect("archive should commit");
+    assert_eq!(
+        archived.status,
+        rustok_content::entities::node::ContentStatus::Archived
+    );
+
+    let published = service
+        .publish_non_builder_if_current(
+            tenant_id,
+            security.clone(),
+            draft.id,
+            Some(archived.version),
+        )
+        .await
+        .expect("a later publish should commit");
+    assert_eq!(
+        published.status,
+        rustok_content::entities::node::ContentStatus::Published
+    );
+
+    let replayed = service
+        .archive_with_receipt(
+            tenant_id,
+            security,
+            draft.id,
+            Some(draft.version),
+            key,
+        )
+        .await
+        .expect("archive retry should replay before stale CAS");
+    assert_eq!(replayed.version, archived.version);
+    assert_eq!(replayed.status, archived.status);
 }

@@ -44,6 +44,7 @@ import {
   applyVariantDiscountAction,
   listProductMediaAction,
   fetchEffectiveFormAction,
+  fetchProductAttributeValuesAction,
   addProductRelationAction,
   removeProductRelationAction,
   reorderProductRelationsAction,
@@ -128,6 +129,7 @@ export default async function ProductDetailPage({
           onSaveProduct={saveProductAction}
           onChangeStatus={changeProductStatusAction}
           fetchEffectiveForm={fetchEffectiveFormAction}
+          fetchAttributeValues={fetchProductAttributeValuesAction}
         />
       </PageContainer>
     );
@@ -170,6 +172,7 @@ export default async function ProductDetailPage({
   let effectiveForm = null;
   let attributeValues: Awaited<ReturnType<typeof fetchProductAttributeValues>> =
     [];
+  let attributeValuesLoaded = false;
   if (product.primaryCategoryId) {
     try {
       effectiveForm = await getCategoryEffectiveForm(
@@ -184,6 +187,7 @@ export default async function ProductDetailPage({
 
   try {
     attributeValues = await fetchProductAttributeValues(opts, productId, 'en');
+    attributeValuesLoaded = true;
   } catch (err) {
     console.error('Failed to pre-load product attribute values:', err);
   }
@@ -219,6 +223,8 @@ export default async function ProductDetailPage({
         brands={brands}
         initialEffectiveForm={effectiveForm}
         initialAttributeValues={attributeValues}
+        initialAttributeValuesLoaded={attributeValuesLoaded}
+        fetchAttributeValues={fetchProductAttributeValuesAction}
         initialRelations={relations}
         initialBundles={bundles}
         onSaveProduct={saveProductAction}

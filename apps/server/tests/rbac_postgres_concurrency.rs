@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use rustok_core::{UserRole, UserStatus};
+use rustok_cache::CacheService;
 use rustok_migrations::Migrator;
 use rustok_rbac::RbacRoleAssignmentDbWriter;
 use rustok_server::models::_entities::{roles, user_roles};
@@ -36,6 +37,9 @@ async fn concurrent_role_replacement_serializes_one_target_and_advances_two_gene
         let assertion_db = db_a.clone();
         let task_db_a = db_a.clone();
         let task_db_b = db_b.clone();
+        let cache_service = CacheService::from_url(None);
+        let task_cache_a = cache_service.clone();
+        let task_cache_b = cache_service.clone();
         let barrier = Arc::new(Barrier::new(2));
         let barrier_a = Arc::clone(&barrier);
         let barrier_b = Arc::clone(&barrier);
@@ -43,6 +47,7 @@ async fn concurrent_role_replacement_serializes_one_target_and_advances_two_gene
             barrier_a.wait().await;
             RbacService::replace_user_role_committed(
                 &task_db_a,
+                &task_cache_a,
                 &target_user_id,
                 &tenant_id,
                 UserRole::Admin,
@@ -53,6 +58,7 @@ async fn concurrent_role_replacement_serializes_one_target_and_advances_two_gene
             barrier_b.wait().await;
             RbacService::replace_user_role_committed(
                 &task_db_b,
+                &task_cache_b,
                 &target_user_id,
                 &tenant_id,
                 UserRole::Manager,
@@ -125,6 +131,9 @@ async fn concurrent_super_admin_demotions_preserve_one_active_super_admin() {
         let assertion_db = db_a.clone();
         let task_db_a = db_a.clone();
         let task_db_b = db_b.clone();
+        let cache_service = CacheService::from_url(None);
+        let task_cache_a = cache_service.clone();
+        let task_cache_b = cache_service.clone();
         let barrier = Arc::new(Barrier::new(2));
         let barrier_a = Arc::clone(&barrier);
         let barrier_b = Arc::clone(&barrier);
@@ -132,6 +141,7 @@ async fn concurrent_super_admin_demotions_preserve_one_active_super_admin() {
             barrier_a.wait().await;
             RbacService::replace_user_role_committed(
                 &task_db_a,
+                &task_cache_a,
                 &first_user_id,
                 &tenant_id,
                 UserRole::Admin,
@@ -142,6 +152,7 @@ async fn concurrent_super_admin_demotions_preserve_one_active_super_admin() {
             barrier_b.wait().await;
             RbacService::replace_user_role_committed(
                 &task_db_b,
+                &task_cache_b,
                 &second_user_id,
                 &tenant_id,
                 UserRole::Admin,

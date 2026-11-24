@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use rustok_core::events::EventTransport;
 use rustok_events::DomainEvent;
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
@@ -107,6 +107,24 @@ pub struct AcceptedInvite {
     pub role: rustok_core::UserRole,
 }
 
+pub(crate) fn invite_token_hash(token: &str) -> String {
+    hex::encode(Sha256::digest(token.trim().as_bytes()))
+}
+
+fn invite_ledger_matches_claims(
+    issued: &auth_invites::Model,
+    email: &str,
+    token_expires_at: DateTime<Utc>,
+    now: DateTime<Utc>,
+) -> bool {
+    let Ok(issued_email) = normalize_email(&issued.email) else {
+        return false;
+    };
+    let ledger_expires_at = issued.expires_at.with_timezone(&Utc);
+
+    issued_email == email && ledger_expires_at > now && ledger_expires_at <= token_expires_at
+}
+
 impl AuthLifecycleService {
     /// Validate and consume an invitation exactly once while creating the user
     /// in the same database transaction.
@@ -130,6 +148,10 @@ impl AuthLifecycleService {
             return Err(InviteAcceptanceError::InvalidToken);
         }
 
+        // The JWT decoder accepts surrounding whitespace. Hash the same
+        // canonical token representation so copy/pasted tokens remain
+        // consistent with the issuance ledger lookup.
+        let token = token.trim();
         let claims =
             decode_invite_token(config, token).map_err(|_| InviteAcceptanceError::InvalidToken)?;
         // INVARIANT: In-memory verification ensuring the decoded invite token belongs to the target tenant.
@@ -161,9 +183,8 @@ impl AuthLifecycleService {
         let role = claims.role;
         let custom_role_slug = claims.custom_role_slug.clone();
         let ledger_role = custom_role_slug.clone().unwrap_or_else(|| role.to_string());
-        let token_hash = hex::encode(Sha256::digest(token.as_bytes()));
+        let token_hash = invite_token_hash(token);
         let consumption_id = uuid::Uuid::new_v4();
-        let consumed_at = Utc::now();
 
         let tx = ctx
             .db()
@@ -185,7 +206,14 @@ impl AuthLifecycleService {
             Some(invite) if invite.revoked_at.is_none() => invite,
             _ => return Err(InviteAcceptanceError::InvalidToken),
         };
-        if issued.role != ledger_role {
+        // Argon2 preparation and lock acquisition may take time. Recheck
+        // expiration after the invite row is locked; it is checked once more
+        // immediately before the unique consumption reservation below.
+        let now = Utc::now();
+        if expires_at <= now
+            || issued.role != ledger_role
+            || !invite_ledger_matches_claims(&issued, &email, expires_at.clone(), now)
+        {
             return Err(InviteAcceptanceError::InvalidToken);
         }
         let invite_id = issued.id;
@@ -199,15 +227,11 @@ impl AuthLifecycleService {
         let issuer_id = issued
             .issued_by
             .ok_or(InviteAcceptanceError::InvalidToken)?;
-        let issuer = users::Entity::find_by_id(issuer_id)
-            .filter(users::Column::TenantId.eq(tenant_id))
-            .filter(users::Column::Status.eq(rustok_core::UserStatus::Active))
-            .one(&tx)
+        let _issuer = AuthLifecycleService::lock_user_for_mutation(&tx, tenant_id, issuer_id)
             .await
-            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
-        if issuer.is_none() {
-            return Err(InviteAcceptanceError::InvalidToken);
-        }
+            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?
+            .filter(|issuer| issuer.status == rustok_core::UserStatus::Active)
+            .ok_or(InviteAcceptanceError::InvalidToken)?;
         let mut issuer_permissions =
             RbacService::get_user_permissions_authoritative(&tx, &tenant_id, &issuer_id)
                 .await
@@ -273,6 +297,21 @@ impl AuthLifecycleService {
                 role_slug = %ledger_role,
                 "invite role no longer satisfies issuer authority"
             );
+            return Err(InviteAcceptanceError::InvalidToken);
+        }
+
+        // Recheck at the actual consumption boundary after issuer/RBAC reads.
+        // The signed JWT and issuance ledger must both still be live when the
+        // single-use reservation is written.
+        let consumed_at = Utc::now();
+        if expires_at <= consumed_at
+            || !invite_ledger_matches_claims(
+                &issued,
+                &email,
+                expires_at.clone(),
+                consumed_at,
+            )
+        {
             return Err(InviteAcceptanceError::InvalidToken);
         }
 
@@ -565,6 +604,79 @@ mod tests {
         assert!(matches!(error, InviteAcceptanceError::InvalidToken));
     }
 
+    fn invite_ledger(
+        email: &str,
+        expires_at: DateTime<Utc>,
+    ) -> auth_invites::Model {
+        let now = Utc::now();
+        auth_invites::Model {
+            id: uuid::Uuid::new_v4(),
+            tenant_id: uuid::Uuid::new_v4(),
+            token_hash: "invite-digest".to_string(),
+            email: email.to_string(),
+            role: "customer".to_string(),
+            issued_by: None,
+            expires_at: expires_at.into(),
+            revoked_at: None,
+            created_at: now.into(),
+        }
+    }
+
+    #[test]
+    fn invite_acceptance_rechecks_ledger_email_and_expiry() {
+        let now = Utc::now();
+        let token_expiry = now + Duration::hours(1);
+
+        let matching = invite_ledger("INVITEE@example.test", token_expiry.clone());
+        assert!(invite_ledger_matches_claims(
+            &matching,
+            "invitee@example.test",
+            token_expiry.clone(),
+            now.clone(),
+        ));
+
+        let wrong_email = invite_ledger("other@example.test", token_expiry.clone());
+        assert!(!invite_ledger_matches_claims(
+            &wrong_email,
+            "invitee@example.test",
+            token_expiry.clone(),
+            now.clone(),
+        ));
+
+        let expired_ledger = invite_ledger(
+            "invitee@example.test",
+            now.clone() - Duration::seconds(1),
+        );
+        assert!(!invite_ledger_matches_claims(
+            &expired_ledger,
+            "invitee@example.test",
+            token_expiry.clone(),
+            now.clone(),
+        ));
+
+        let ledger_extends_past_signed_token = invite_ledger(
+            "invitee@example.test",
+            token_expiry.clone() + Duration::seconds(1),
+        );
+        assert!(!invite_ledger_matches_claims(
+            &ledger_extends_past_signed_token,
+            "invitee@example.test",
+            token_expiry.clone(),
+            now.clone(),
+        ));
+
+        let shortened_but_live_ledger = invite_ledger(
+            "invitee@example.test",
+            now + Duration::minutes(5),
+        );
+        assert!(invite_ledger_matches_claims(
+            &shortened_but_live_ledger,
+            "invitee@example.test",
+            token_expiry,
+            Utc::now(),
+        ));
+    }
+
     #[test]
     fn invite_digest_is_stable_and_does_not_store_plaintext() {
         let token = "signed.invite.token";
@@ -573,5 +685,6 @@ mod tests {
         assert_eq!(digest.len(), 64);
         assert_ne!(digest, token);
         assert_eq!(digest, hex::encode(Sha256::digest(token.as_bytes())));
+        assert_eq!(invite_token_hash(&format!("  {token}  ")), digest);
     }
 }

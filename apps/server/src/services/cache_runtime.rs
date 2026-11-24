@@ -2,12 +2,10 @@ use rustok_cache::CacheService;
 
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
-/// Return the single process-wide cache service used by listeners, publishers,
-/// middleware and rate limiters.
+/// Return the cache service owned by this `ServerRuntimeContext`.
 ///
-/// Startup has multiple phases and some security-critical initializers run
-/// before the full application runtime is composed. Reusing one instance keeps
-/// the local invalidation bus and Redis client identity stable across phases.
+/// Clones of one context share the same local invalidation bus and Redis
+/// client; independent contexts retain separate cache-service ownership.
 pub fn ensure_cache_service(ctx: &ServerRuntimeContext) -> CacheService {
     if let Some(existing) = ctx.shared_get::<CacheService>() {
         return existing;

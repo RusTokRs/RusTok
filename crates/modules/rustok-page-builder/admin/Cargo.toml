@@ -26,12 +26,12 @@ browser-js = [
   "dep:js-sys",
   "dep:web-sys",
 ]
-wasm-client = ["fly-leptos/wasm-client", "browser-js"]
+wasm-client = ["fly-leptos/wasm-client", "fly-web/wasm-client", "browser-js"]
 csr = ["leptos/csr", "wasm-client", "rustok-grid-leptos/csr"]
 hydrate = ["leptos/hydrate", "wasm-client", "rustok-grid-leptos/hydrate"]
 ssr = ["leptos/ssr", "fly-leptos/ssr", "rustok-grid-leptos/ssr"]
 dioxus-ui = ["dep:dioxus", "dep:fly-dioxus"]
-dioxus-web = ["dioxus-ui", "fly-dioxus/web", "browser-js"]
+dioxus-web = ["dioxus-ui", "fly-dioxus/web", "browser-js", "fly-web/wasm-client"]
 
 [dependencies]
 fly = { path = "../../../ui/fly" }

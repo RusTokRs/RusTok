@@ -723,13 +723,25 @@ fn handle_canvas_message(
             components,
             resource_limit,
         } => {
+            let exceeded_limit = resource_limit.is_some();
             geometry_limit.set(resource_limit);
-            geometry.set(
-                components
-                    .into_iter()
-                    .map(|component| (component.component_id.clone(), component))
-                    .collect(),
-            );
+            if exceeded_limit {
+                // A truncated snapshot is not a safe basis for hit testing: a missing
+                // component could otherwise leave a stale/incorrect drop candidate active.
+                geometry.set(BTreeMap::new());
+                on_ui_intent.call(UiIntent::SetSelectedOverlay(None));
+                on_ui_intent.call(UiIntent::SetHoveredOverlay(None));
+                if session_has_active_drag(session) {
+                    on_ui_intent.call(UiIntent::CancelDrag);
+                }
+            } else {
+                geometry.set(
+                    components
+                        .into_iter()
+                        .map(|component| (component.component_id.clone(), component))
+                        .collect(),
+                );
+            }
         }
         CanvasBridgeMessage::PointerMoved { sample } => {
             pointer.set(Some(format!("{:.0}, {:.0}", sample.position.x, sample.position.y)));
@@ -741,9 +753,25 @@ fn handle_canvas_message(
         }
         CanvasBridgeMessage::DropRequested { position } => {
             pointer.set(Some(format!("{:.0}, {:.0}", position.x, position.y)));
+            if !*ready.read() || geometry.read().is_empty() || geometry_limit.read().is_some() {
+                if session_has_active_drag(session) {
+                    on_ui_intent.call(UiIntent::CancelDrag);
+                }
+                return;
+            }
             if session_has_active_drag(session) {
                 update_drag_candidates(session, geometry, on_ui_intent, position);
-                on_ui_intent.call(UiIntent::Drop);
+                let has_legal_candidate = session.read().controller.ui().state.drag
+                    .as_ref()
+                    .and_then(|drag| drag.active_candidate())
+                    .is_some_and(|candidate| candidate.legal);
+                if has_legal_candidate {
+                    on_ui_intent.call(UiIntent::Drop);
+                } else {
+                    // Pointer-up is terminal. Keep the state machine's retryable Drop
+                    // semantics for explicit callers, but do not strand a pointer-ended drag.
+                    on_ui_intent.call(UiIntent::CancelDrag);
+                }
             }
         }
         CanvasBridgeMessage::KeyStroke { stroke } => {
@@ -760,12 +788,16 @@ fn handle_canvas_message(
             }
         }
         CanvasBridgeMessage::FocusRequested { component_id } => {
-            if !session_has_active_drag(session) {
+            if geometry_limit.read().is_none() && !session_has_active_drag(session) {
                 on_ui_intent.call(UiIntent::Select(component_id));
             }
         }
         CanvasBridgeMessage::HoverRequested { component_id } => {
-            on_ui_intent.call(UiIntent::Hover(component_id));
+            if geometry_limit.read().is_none() {
+                on_ui_intent.call(UiIntent::Hover(component_id));
+            } else {
+                on_ui_intent.call(UiIntent::SetHoveredOverlay(None));
+            }
         }
         CanvasBridgeMessage::Teardown => {
             ready.set(false);

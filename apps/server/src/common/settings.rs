@@ -849,7 +849,7 @@ impl RustokSettings {
 
         parsed
             .tenant
-            .validate_for_environment(is_production_environment())
+            .validate_for_environment(is_production_security_mode())
             .map_err(|error| {
                 serde_json::Error::io(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
@@ -1438,6 +1438,16 @@ pub(crate) fn is_production_environment() -> bool {
         // consumer fails closed into the production security posture.
         Err(_) => true,
     }
+}
+
+/// Whether this binary must enforce production-grade security defaults.
+///
+/// Release binaries are treated as production by host startup even when the
+/// selected runtime environment is named "staging" or is not explicitly set.
+/// Security-sensitive middleware must use this predicate rather than the
+/// environment label alone.
+pub(crate) fn is_production_security_mode() -> bool {
+    is_production_environment() || !cfg!(debug_assertions)
 }
 
 fn email_disabled_production_override_enabled() -> bool {

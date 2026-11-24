@@ -472,10 +472,23 @@ struct RateLimitLayers {
 const AUTH_RATE_LIMIT_PREFIXES: &[&str] = &[
     "/api/auth/login",
     "/api/auth/register",
+    "/api/auth/refresh",
+    "/api/auth/logout",
+    "/api/auth/change-password",
     "/api/auth/session",
     "/api/auth/reset",
     "/api/auth/verify",
     "/api/auth/invite",
+    // The credential is supplied in connection_init, after the HTTP middleware runs.
+    "/api/graphql/ws",
+];
+
+const OAUTH_RATE_LIMIT_PREFIXES: &[&str] = &[
+    "/api/oauth/token",
+    "/api/oauth/revoke",
+    "/api/oauth/authorize",
+    "/api/oauth/consent",
+    "/api/oauth/browser-session",
 ];
 
 fn init_rate_limit_layers(
@@ -528,11 +541,7 @@ fn init_rate_limit_layers(
             policies: Arc::new(vec![
                 PathRateLimitPolicy {
                     limiter: oauth_limiter,
-                    prefixes: Arc::new(vec![
-                        "/api/oauth/token",
-                        "/api/oauth/revoke",
-                        "/api/oauth/authorize",
-                    ]),
+                    prefixes: Arc::new(OAUTH_RATE_LIMIT_PREFIXES.to_vec()),
                 },
                 PathRateLimitPolicy {
                     limiter: auth_limiter,
@@ -1156,7 +1165,18 @@ mod tests {
     }
 
     #[test]
-    fn dedicated_auth_rate_limit_covers_verification_requests() {
+    fn dedicated_auth_rate_limit_covers_sensitive_auth_routes() {
+        for prefix in [
+            "/api/auth/refresh",
+            "/api/auth/logout",
+            "/api/auth/change-password",
+            "/api/graphql/ws",
+        ] {
+            assert!(
+                AUTH_RATE_LIMIT_PREFIXES.contains(&prefix),
+                "missing dedicated auth rate-limit prefix: {prefix}"
+            );
+        }
         assert!(
             AUTH_RATE_LIMIT_PREFIXES
                 .iter()
@@ -1168,6 +1188,22 @@ mod tests {
                 .iter()
                 .any(|prefix| "/api/auth/invite/accept".starts_with(prefix))
         );
+    }
+
+    #[test]
+    fn dedicated_oauth_rate_limit_covers_authorization_mutations() {
+        for prefix in [
+            "/api/oauth/token",
+            "/api/oauth/revoke",
+            "/api/oauth/authorize",
+            "/api/oauth/consent",
+            "/api/oauth/browser-session",
+        ] {
+            assert!(
+                OAUTH_RATE_LIMIT_PREFIXES.contains(&prefix),
+                "missing dedicated OAuth rate-limit prefix: {prefix}"
+            );
+        }
     }
 
     #[tokio::test]

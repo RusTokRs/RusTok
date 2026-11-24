@@ -39,6 +39,9 @@ pub struct DioxusPageBuilderAdminHostContext {
     pub runtime_scenarios: Option<Arc<Vec<RuntimeContextScenario>>>,
     pub runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
     pub adapter_workspace: bool,
+    /// Host-owned refresh action. It must load the latest server document and replace
+    /// the controller; the editor exposes the local draft before invoking this callback.
+    pub on_reload_requested: Option<EventHandler<()>>,
 }
 
 impl DioxusPageBuilderAdminHostContext {
@@ -54,6 +57,7 @@ impl DioxusPageBuilderAdminHostContext {
             runtime_scenarios: None,
             runtime_publish_gate_policy: None,
             adapter_workspace: true,
+            on_reload_requested: None,
         }
     }
 
@@ -61,6 +65,12 @@ impl DioxusPageBuilderAdminHostContext {
     /// explicitly opt out when they need the minimal placeholder shell.
     pub fn with_adapter_workspace(mut self, enabled: bool) -> Self {
         self.adapter_workspace = enabled;
+        self
+    }
+
+    /// Attach the consumer's authoritative reload action for revision conflicts.
+    pub fn on_reload_requested(mut self, handler: EventHandler<()>) -> Self {
+        self.on_reload_requested = Some(handler);
         self
     }
 }
@@ -88,6 +98,7 @@ impl PartialEq for DioxusPageBuilderAdminHostContext {
             && same_optional_arc(&self.runtime_scenarios, &other.runtime_scenarios)
             && same_optional_arc(&self.runtime_publish_gate_policy, &other.runtime_publish_gate_policy)
             && self.adapter_workspace == other.adapter_workspace
+            && self.on_reload_requested == other.on_reload_requested
     }
 }
 
@@ -99,6 +110,7 @@ fn dispatch_facade_effects<F>(
     facade: Option<Arc<dyn PageBuilderAdminFacade>>,
     effects: Vec<EditorSessionEffect>,
     on_publish_confirmed: F,
+    mut save_outcome_unknown: Signal<bool>,
 )
 where
     F: Fn(String, String) + Clone + 'static,
@@ -108,6 +120,7 @@ where
             EditorSessionEffect::Announce(message) => {
                 session.write().announce(message);
             }
+            EditorSessionEffect::SaveAttemptStarted(_) => {}
             EditorSessionEffect::ExecuteRequest {
                 request,
                 expected_hash,
@@ -134,28 +147,14 @@ where
                     state.fail("Server preview is disabled by the consumer provider or health policy");
                     continue;
                 }
-                let save_attempt_id = if capability == BuilderCapabilityKind::Publish {
-                    // Drop the read guard before taking a write guard to
-                    // record the evaluation; temporaries in if-let may live
-                    // through the body.
-                    let gate_evaluation = { session.read().evaluate_runtime_publish_gate() };
-                    if let Some(evaluation) = gate_evaluation {
-                        let allowed = evaluation.allowed;
-                        let message = crate::core::gate_error_message(&evaluation);
-                        let mut state = session.write();
-                        state.runtime_publish_gate_evaluation = Some(evaluation);
-                        if !allowed {
-                            state.fail(message);
-                            continue;
-                        }
-                    }
+                let save_attempt = if capability == BuilderCapabilityKind::Publish {
                     if expected_hash.is_none() {
-                        session.write().fail("Publish request has no submitted project hash");
+                        session.write().fail("Save request has no submitted project hash");
                         continue;
                     }
                     let start = { session.write().mark_save_started_with_id() };
                     match start {
-                        Ok(id) => Some(id),
+                        Ok(attempt) => Some(attempt),
                         Err(error) => {
                             session.write().fail(error);
                             continue;
@@ -199,26 +198,27 @@ where
                         Ok(PageBuilderCapabilityResponse::Publish(response))
                             if capability == BuilderCapabilityKind::Publish =>
                         {
-                            let Some(attempt_id) = save_attempt_id else {
+                            let Some(attempt) = save_attempt.as_ref() else {
                                 return;
                             };
-                            if state.controller.active_save_attempt_id() != Some(attempt_id) {
+                            if state.controller.active_save_attempt().as_ref() != Some(attempt) {
                                 return;
                             }
                             match state.handle_publish_response_for_attempt(
                                 &response.page_id,
                                 &response.revision_id,
                                 expected_hash,
-                                attempt_id,
+                                attempt,
                             ) {
                                 Ok(()) => {
+                                    save_outcome_unknown.set(false);
                                     if let Some(project_hash) = submitted_hash {
                                         confirmed_write =
                                             Some((response.revision_id.clone(), project_hash));
                                     }
                                 }
                                 Err(error) => {
-                                    state.handle_publish_error_for_attempt(attempt_id, error);
+                                    state.handle_publish_error_for_attempt(attempt, error);
                                 }
                             }
                         }
@@ -234,8 +234,10 @@ where
                                 "Page Builder facade returned `{}` for a `{capability}` request",
                                 other.capability()
                             );
-                            if let Some(id) = save_attempt_id {
-                                state.handle_publish_error_for_attempt(id, error);
+                            if let Some(id) = save_attempt {
+                                if state.handle_publish_error_for_attempt(&id, error) {
+                                    save_outcome_unknown.set(false);
+                                }
                             } else {
                                 state.preview_in_progress = false;
                                 state.preview_request = None;
@@ -243,8 +245,30 @@ where
                             }
                         }
                         Err(error) => {
-                            if let Some(id) = save_attempt_id {
-                                state.handle_publish_error_for_attempt(id, error.to_string());
+                            if let Some(id) = save_attempt {
+                                match error.stable_code.as_deref() {
+                                    Some("REVISION_CONFLICT") => {
+                                        if state.handle_publish_conflict_for_attempt(
+                                            &id,
+                                            error.to_string(),
+                                        ) {
+                                            save_outcome_unknown.set(false);
+                                        }
+                                    }
+                                    Some("PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN") => {
+                                        if state.handle_publish_error_for_attempt(
+                                            &id,
+                                            error.to_string(),
+                                        ) {
+                                            save_outcome_unknown.set(true);
+                                        }
+                                    }
+                                    _ => {
+                                        if state.handle_publish_error_for_attempt(&id, error.to_string()) {
+                                            save_outcome_unknown.set(false);
+                                        }
+                                    }
+                                }
                             } else {
                                 state.preview_in_progress = false;
                                 state.preview_request = None;
@@ -296,6 +320,18 @@ fn canvas_instance_id(page_id: &str, revision_id: &str, project_hash: &str) -> S
     format!("fly-canvas-{}-{}-{}", hex(page_id), hex(revision_id), project_hash)
 }
 
+fn write_conflict_active(
+    peer_write_conflict: bool,
+    controller: &AdminCanvasController,
+) -> bool {
+    peer_write_conflict || controller.ui().state.dirty.save_conflict
+}
+
+fn local_recovery_json(controller: &AdminCanvasController) -> String {
+    serde_json::to_string_pretty(controller.editor().document())
+        .unwrap_or_else(|error| format!("Could not serialize local draft: {error}"))
+}
+
 fn peer_conflict_blocks_ui_intent(intent: &UiIntent) -> bool {
     matches!(
         intent,
@@ -309,9 +345,9 @@ fn peer_conflict_blocks_ui_intent(intent: &UiIntent) -> bool {
             | UiIntent::Undo
             | UiIntent::Redo
             | UiIntent::RequestSave
-            | UiIntent::SaveStarted
+            | UiIntent::SaveStarted { .. }
             | UiIntent::SaveSucceeded { .. }
-            | UiIntent::SaveFailed
+            | UiIntent::SaveFailed { .. }
             | UiIntent::SaveConflict { .. }
     )
 }
@@ -325,10 +361,8 @@ pub fn PageBuilderAdmin() -> Element {
 
     match host_context {
         Some(context) => {
-            let session_key = controller_session_key(&context.controller);
             rsx! {
             PageBuilderAdminWithController {
-                key: "{session_key}",
                 controller: context.controller,
                 facade: context.facade,
                 trait_schemas: context.trait_schemas,
@@ -339,6 +373,7 @@ pub fn PageBuilderAdmin() -> Element {
                 runtime_scenarios: context.runtime_scenarios,
                 runtime_publish_gate_policy: context.runtime_publish_gate_policy,
                 adapter_workspace: context.adapter_workspace,
+                on_reload_requested: context.on_reload_requested,
             }
             }
         },
@@ -387,6 +422,8 @@ pub struct PageBuilderAdminWithControllerProps {
     pub runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
     #[props(default = true)]
     pub adapter_workspace: bool,
+    #[props(default)]
+    pub on_reload_requested: Option<EventHandler<()>>,
 }
 
 impl PartialEq for PageBuilderAdminWithControllerProps {
@@ -407,12 +444,27 @@ impl PartialEq for PageBuilderAdminWithControllerProps {
             && same_optional_arc(&self.runtime_scenarios, &other.runtime_scenarios)
             && same_optional_arc(&self.runtime_publish_gate_policy, &other.runtime_publish_gate_policy)
             && self.adapter_workspace == other.adapter_workspace
+            && self.on_reload_requested == other.on_reload_requested
     }
 }
 
 /// Dioxus PageBuilderAdminWithController component.
+///
+/// The inner session is keyed by the incoming controller identity so direct consumers receive
+/// the same page/revision reset semantics as the context-backed PageBuilderAdmin entrypoint.
 #[component]
 pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps) -> Element {
+    let session_key = controller_session_key(&props.controller);
+    rsx! {
+        PageBuilderAdminWithControllerSession {
+            key: "{session_key}",
+            props: props
+        }
+    }
+}
+
+#[component]
+fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerProps) -> Element {
     let route_context = use_context::<Option<UiRouteContext>>().unwrap_or_default();
     let locale = route_context.locale;
     // The workspace renders the project stylesheet inline; without the request nonce the host's
@@ -466,6 +518,13 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
     });
 
     let mut peer_write_conflict = use_signal(|| false);
+    // A timeout with no visible receipt is not a failed save: only an exact retry
+    // or an authoritative refresh can resolve it. Keep the editor read-only meanwhile.
+    let mut save_outcome_unknown = use_signal(|| false);
+    let mut local_draft_copied = use_signal(|| false);
+    // Separate editor roots in the same browser document are independent writers.
+    // The document nonce added by BrowserPeerWriteChannel keeps this ID unique across tabs.
+    let peer_write_scope_id = use_hook(|| uuid::Uuid::new_v4().to_string());
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
     let mut peer_write_channel = use_signal(|| None::<BrowserPeerWriteChannel>);
 
@@ -540,21 +599,28 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
             let on_conflict = move |conflict: BrowserPeerWriteConflict| {
                 conflict_signal.set(true);
                 let mut state = initial_session.write();
-                if state.controller.ui().state.drag.is_some() {
-                    if let Err(error) = state.controller.dispatch(UiIntent::CancelDrag) {
-                        state.fail(format!(
-                            "Another tab saved this page at revision {}. The editor is now read-only; active drag cleanup also failed: {error}",
-                            conflict.revision
-                        ));
-                        return;
-                    }
+                let drag_cleanup_error = if state.controller.ui().state.drag.is_some() {
+                    state.controller.dispatch(UiIntent::CancelDrag).err()
+                } else {
+                    None
+                };
+                // This also retires any in-flight save attempt. A late facade response can no
+                // longer acknowledge an older revision after this peer write is observed.
+                state.handle_peer_write_conflict(conflict.revision.clone());
+                if let Some(error) = drag_cleanup_error {
+                    state.fail(format!(
+                        "Another tab saved this page at revision {}. The editor is read-only; active drag cleanup also failed: {error}",
+                        conflict.revision
+                    ));
                 }
-                state.fail(format!(
-                    "Another tab saved this page at revision {}. This editor is now read-only; reload to continue.",
-                    conflict.revision
-                ));
             };
-            match BrowserPeerWriteChannel::new(page_id, revision_id, project_hash, on_conflict) {
+            match BrowserPeerWriteChannel::new_scoped(
+                page_id,
+                revision_id,
+                project_hash,
+                peer_write_scope_id.clone(),
+                on_conflict,
+            ) {
                 Ok(channel) => peer_write_channel.set(Some(channel)),
                 Err(error) => tracing::warn!(
                     error = ?error,
@@ -623,18 +689,27 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
     );
     let last_error = current.last_error.clone();
     let last_announcement = current.last_announcement.clone();
-    let peer_conflict_active = *peer_write_conflict.read();
+    // A server-side CAS conflict and a BroadcastChannel notice both require the
+    // same recovery path. The former does not set the browser-only peer signal.
+    let peer_conflict_active =
+        write_conflict_active(*peer_write_conflict.read(), &current.controller);
+    let save_outcome_unknown_active = *save_outcome_unknown.read();
+    let local_recovery_json = (peer_conflict_active || save_outcome_unknown_active)
+        .then(|| local_recovery_json(&current.controller));
+    let local_recovery_json_text = local_recovery_json.as_deref().unwrap_or_default();
+    let save_retry_in_progress = current.controller.ui().state.dirty.save_in_progress
+        || current.controller.ui().state.dirty.save_started_request_id.is_some();
     let mut capabilities = current.controller.ui().state.capabilities;
-    if peer_conflict_active {
+    if peer_conflict_active || save_outcome_unknown_active {
         capabilities = CapabilityState::read_only();
     }
     let can_undo = capabilities.history && current.controller.can_undo();
     let can_redo = capabilities.history && current.controller.can_redo();
     let can_save = capabilities.edit
-        && capabilities.publish
         && props.facade.is_some()
         && !peer_conflict_active
         && !current.controller.ui().state.dirty.save_in_progress
+        && current.controller.ui().state.dirty.save_started_request_id.is_none()
         && !current.controller.ui().state.dirty.save_conflict
         && !current.controller.ui().state.has_blocking_diagnostics();
     drop(current);
@@ -658,9 +733,12 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
     });
     let workspace_publish_confirmed = on_publish_confirmed.clone();
     let on_workspace_intent = EventHandler::new(move |envelope: BrowserIntentEnvelope| {
-        if *peer_write_conflict.peek() && envelope.is_mutating() {
+        let write_conflict = *peer_write_conflict.peek()
+            || *save_outcome_unknown.peek()
+            || session.read().controller.ui().state.dirty.save_conflict;
+        if write_conflict && envelope.is_mutating() {
             session.write().fail(
-                "Another tab saved this page. This editor is read-only; reload to continue.",
+                "This editor is read-only until the save result is reconciled.",
             );
             return;
         }
@@ -736,15 +814,19 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
             workspace_facade.clone(),
             effects,
             workspace_publish_confirmed.clone(),
+            save_outcome_unknown,
         );
     });
     #[cfg(feature = "dioxus-web")]
     let canvas_publish_confirmed = on_publish_confirmed.clone();
     #[cfg(feature = "dioxus-web")]
     let on_canvas_ui_intent = EventHandler::new(move |intent: UiIntent| {
-        if *peer_write_conflict.peek() && peer_conflict_blocks_ui_intent(&intent) {
+        let write_conflict = *peer_write_conflict.peek()
+            || *save_outcome_unknown.peek()
+            || session.read().controller.ui().state.dirty.save_conflict;
+        if write_conflict && peer_conflict_blocks_ui_intent(&intent) {
             session.write().fail(
-                "Another tab saved this page. This editor is read-only; reload to continue.",
+                "This editor is read-only until the save result is reconciled.",
             );
             return;
         }
@@ -754,10 +836,29 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
             canvas_facade.clone(),
             effects,
             canvas_publish_confirmed.clone(),
+            save_outcome_unknown,
         );
     });
+    let retry_facade = props.facade.clone();
+    let retry_publish_confirmed = on_publish_confirmed.clone();
+    let on_retry_unknown_save = EventHandler::new(move |_| {
+        if !*save_outcome_unknown.peek() || save_retry_in_progress {
+            return;
+        }
+        let effects = session.write().dispatch(
+            EditorSessionAction::DispatchIntent(UiIntent::RequestSave),
+        );
+        dispatch_facade_effects(
+            session,
+            retry_facade.clone(),
+            effects,
+            retry_publish_confirmed.clone(),
+            save_outcome_unknown,
+        );
+    });
+
     #[cfg(feature = "dioxus-web")]
-    let workspace_canvas: Option<Element> = {
+    let (workspace_canvas, workspace_canvas_interactive): (Option<Element>, bool) = {
         let mut canvas_document = workspace_document.clone();
         let active_page = canvas_document
             .project
@@ -776,38 +877,47 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
                     &workspace_runtime_context,
                     canvas_nonce.as_ref(),
                 ) {
-                    Ok(srcdoc) => Some(rsx! {
-                        DioxusIsolatedCanvas {
-                            srcdoc,
-                            instance_id: workspace_canvas_instance_id.clone(),
-                            intent_instance_id: workspace_page_id.clone(),
-                            can_resize: capabilities.edit && capabilities.styles,
-                            session,
-                            on_intent: on_workspace_intent,
-                            on_ui_intent: on_canvas_ui_intent,
-                            on_error: Some(on_workspace_error),
-                        }
-                    }),
-                    Err(error) => Some(rsx! {
-                        div {
-                            class: "rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm",
-                            role: "alert",
-                            "Canvas rendering failed: {error}"
-                        }
-                    })
+                    Ok(srcdoc) => (
+                        Some(rsx! {
+                            DioxusIsolatedCanvas {
+                                srcdoc,
+                                instance_id: workspace_canvas_instance_id.clone(),
+                                intent_instance_id: workspace_page_id.clone(),
+                                can_resize: capabilities.edit && capabilities.styles,
+                                session,
+                                on_intent: on_workspace_intent,
+                                on_ui_intent: on_canvas_ui_intent,
+                                on_error: Some(on_workspace_error),
+                            }
+                        }),
+                        true,
+                    ),
+                    Err(error) => (
+                        Some(rsx! {
+                            div {
+                                class: "rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm",
+                                role: "alert",
+                                "Canvas rendering failed: {error}"
+                            }
+                        }),
+                        false,
+                    ),
                 }
             }
-            None => Some(rsx! {
-                div {
-                    class: "rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm",
-                    role: "alert",
-                    "The active page is unavailable for isolated canvas rendering."
-                }
-            })
+            None => (
+                Some(rsx! {
+                    div {
+                        class: "rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm",
+                        role: "alert",
+                        "The active page is unavailable for isolated canvas rendering."
+                    }
+                }),
+                false,
+            ),
         }
     };
     #[cfg(not(feature = "dioxus-web"))]
-    let workspace_canvas: Option<Element> = None;
+    let (workspace_canvas, workspace_canvas_interactive): (Option<Element>, bool) = (None, false);
 
     rsx! {
         FlyFullEditor {
@@ -826,7 +936,10 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
                         class: "px-3 py-1.5 text-sm rounded bg-muted hover:bg-muted/80 disabled:opacity-50",
                         disabled: !can_undo,
                         onclick: move |_| {
-                            if *peer_write_conflict.peek() {
+                            if *peer_write_conflict.peek()
+                                || *save_outcome_unknown.peek()
+                                || session.read().controller.ui().state.dirty.save_conflict
+                            {
                                 return;
                             }
                             session.write().dispatch(EditorSessionAction::DispatchIntent(UiIntent::Undo));
@@ -837,7 +950,10 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
                         class: "px-3 py-1.5 text-sm rounded bg-muted hover:bg-muted/80 disabled:opacity-50",
                         disabled: !can_redo,
                         onclick: move |_| {
-                            if *peer_write_conflict.peek() {
+                            if *peer_write_conflict.peek()
+                                || *save_outcome_unknown.peek()
+                                || session.read().controller.ui().state.dirty.save_conflict
+                            {
                                 return;
                             }
                             session.write().dispatch(EditorSessionAction::DispatchIntent(UiIntent::Redo));
@@ -848,7 +964,10 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
                         class: "px-3 py-1.5 text-sm rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50",
                         disabled: !can_save,
                         onclick: move |_| {
-                            if *peer_write_conflict.peek() {
+                            if *peer_write_conflict.peek()
+                                || *save_outcome_unknown.peek()
+                                || session.read().controller.ui().state.dirty.save_conflict
+                            {
                                 return;
                             }
                             let effects = session.write().dispatch(
@@ -859,6 +978,7 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
                                 toolbar_facade.clone(),
                                 effects,
                                 toolbar_publish_confirmed.clone(),
+                                save_outcome_unknown,
                             );
                         },
                         "Save"
@@ -868,9 +988,62 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
 
             if peer_conflict_active {
                 div {
-                    class: "p-3 bg-amber-500/10 text-amber-900 dark:text-amber-200 text-sm border-b border-amber-500/30",
+                    class: "p-3 bg-amber-500/10 text-amber-900 dark:text-amber-200 text-sm border-b border-amber-500/30 space-y-2",
                     role: "alert",
-                    "Another tab saved this page. This editor is now read-only; reload to continue from the latest revision."
+                    p {
+                        "The server has a newer revision. This editor is read-only. Copy your local draft before reloading; it has not been merged automatically."
+                    }
+                    details {
+                        summary { class: "cursor-pointer font-medium", "Show local draft JSON to copy" }
+                        pre {
+                            class: "mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-all rounded border border-amber-500/30 bg-background p-2 text-xs text-foreground",
+                            tabindex: "0",
+                            aria_label: "Local Page Builder draft JSON",
+                            "{local_recovery_json_text}"
+                        }
+                    }
+                    if let Some(reload) = props.on_reload_requested {
+                        button {
+                            class: "rounded border border-amber-600/40 px-3 py-1.5 font-medium hover:bg-amber-500/10 disabled:opacity-50",
+                            disabled: *local_draft_copied.read(),
+                            onclick: move |_| local_draft_copied.set(true),
+                            "I copied the local draft"
+                        }
+                        button {
+                            class: "rounded border border-amber-600/40 px-3 py-1.5 font-medium hover:bg-amber-500/10 disabled:opacity-50",
+                            disabled: !*local_draft_copied.read(),
+                            onclick: move |_| reload.call(()),
+                            "Reload latest revision"
+                        }
+                    } else {
+                        p { "After copying the draft, reload this editor using the host's page refresh action." }
+                    }
+                }
+            } else if save_outcome_unknown_active {
+                div {
+                    class: "p-3 bg-amber-500/10 text-amber-900 dark:text-amber-200 text-sm border-b border-amber-500/30 space-y-2",
+                    role: "alert",
+                    p {
+                        "The save outcome is not yet known. Do not edit this draft or start a different save. Retrying the exact same request is safe: Pages will replay the committed receipt if the first request succeeded."
+                    }
+                    if let Some(err) = last_error.clone() {
+                        p { class: "text-xs opacity-80", "{err}" }
+                    }
+                    details {
+                        summary { class: "cursor-pointer font-medium", "Show local draft JSON to copy" }
+                        pre {
+                            class: "mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-all rounded border border-amber-500/30 bg-background p-2 text-xs text-foreground",
+                            tabindex: "0",
+                            aria_label: "Local Page Builder draft JSON",
+                            "{local_recovery_json_text}"
+                        }
+                    }
+                    button {
+                        class: "rounded border border-amber-600/40 px-3 py-1.5 font-medium hover:bg-amber-500/10 disabled:opacity-50",
+                        disabled: save_retry_in_progress,
+                        onclick: move |_| on_retry_unknown_save.call(()),
+                        "Retry exact same save"
+                    }
                 }
             } else if let Some(err) = last_error {
                 div {
@@ -900,6 +1073,7 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
                             host_can_redo: Some(can_redo),
                             csp_nonce: workspace_csp_nonce.clone(),
                             canvas: workspace_canvas,
+                            canvas_interactive: Some(workspace_canvas_interactive),
                         }
                     },
                     false => rsx! {
@@ -961,6 +1135,60 @@ mod props_regression_tests {
         assert!(!controller.ui().state.capabilities.history);
         assert!(controller.dispatch(UiIntent::RequestSave).is_err());
         assert!(controller.dispatch(UiIntent::Undo).is_err());
+    }
+
+    #[test]
+    fn local_recovery_json_contains_the_current_unsaved_document() {
+        let controller = AdminCanvasController::new(
+            "home",
+            "rev-1",
+            json!({ "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "hero",
+                        "type": "text",
+                        "content": "unsaved local work"
+                    }]
+                }
+            }] }),
+        ).expect("controller");
+        let recovered = local_recovery_json(&controller);
+        assert!(recovered.contains("unsaved local work"));
+        assert!(serde_json::from_str::<Value>(&recovered).is_ok());
+    }
+
+    #[test]
+    fn server_revision_conflict_uses_the_same_local_recovery_banner_as_peer_conflict() {
+        let mut controller = AdminCanvasController::new(
+            "home",
+            "rev-1",
+            json!({ "pages": [{
+                "id": "home",
+                "component": { "id": "root", "type": "wrapper" }
+            }] }),
+        ).expect("controller");
+        controller
+            .mark_save_conflict("rev-1".to_string(), "rev-2".to_string())
+            .expect("mark server conflict");
+        assert!(write_conflict_active(false, &controller));
+        assert!(write_conflict_active(true, &controller));
+    }
+
+    #[test]
+    fn peer_conflict_uses_local_recovery_banner_without_server_conflict_state() {
+        let controller = AdminCanvasController::new(
+            "home",
+            "rev-1",
+            json!({ "pages": [{
+                "id": "home",
+                "component": { "id": "root", "type": "wrapper" }
+            }] }),
+        ).expect("controller");
+        assert!(!write_conflict_active(false, &controller));
+        assert!(write_conflict_active(true, &controller));
     }
 
     #[test]

@@ -146,7 +146,7 @@ pub mod tenant {
                 tracing::warn!(
                     cause,
                     status = ?listener.status,
-                    error = ?listener.last_error,
+                    has_error = listener.last_error.is_some(),
                     "Tenant generation advanced without the canonical local listener"
                 );
                 return Err(crate::error::Error::Cache(

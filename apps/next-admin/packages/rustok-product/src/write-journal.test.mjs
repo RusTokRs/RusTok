@@ -24,7 +24,12 @@ const save = () => ({
   translations: [{ locale: 'en', title: 'Chair' }],
   revision: null,
   tags: [],
-  attributePatches: [{ attributeId: 'material', kind: 'TEXT', text: 'cotton' }],
+  attributeValueBatches: [
+    {
+      locale: 'en',
+      patches: [{ attributeId: 'material', kind: 'TEXT', text: 'cotton' }]
+    }
+  ],
   activeLocale: 'en'
 });
 const requestFor = (operation) =>
@@ -94,6 +99,52 @@ for (const operation of ['save', 'status', 'delete']) {
     assert.equal(calls.length, 1);
   });
 }
+
+test('pending single-locale save snapshots migrate into explicit batches without changing identity', async () => {
+  const storage = state();
+  let originalKey;
+  await new ProductWriteAttempt(memoryJournal('new', storage)).execute(
+    'save',
+    save(),
+    async (_request, key) => {
+      originalKey = key;
+      return unknown;
+    }
+  );
+
+  const legacy = JSON.parse(storage.text);
+  const request = legacy.record.attempt.request;
+  const patches = request.attributeValueBatches[0].patches;
+  delete request.attributeValueBatches;
+  request.attributePatches = patches;
+  storage.text = JSON.stringify(legacy);
+
+  const restored = new ProductWriteAttempt(memoryJournal('new', storage));
+  const record = restored.restore();
+  assert.equal(record.phase, 'pending');
+  assert.equal(record.attempt.key, originalKey);
+  assert.deepEqual(record.attempt.request.attributeValueBatches, [
+    { locale: 'en', patches }
+  ]);
+  assert.equal(record.attempt.request.attributePatches, undefined);
+  assert.ok(
+    JSON.parse(storage.text).record.attempt.request.attributePatches,
+    'the immutable stored request is not rewritten during virtual migration'
+  );
+
+  let replayedKey;
+  await restored.resume({
+    save: async (snapshot, key) => {
+      assert.deepEqual(snapshot.attributeValueBatches, [
+        { locale: 'en', patches }
+      ]);
+      replayedKey = key;
+      return confirmation('save');
+    }
+  });
+  assert.equal(replayedKey, originalKey);
+  assert.equal(JSON.parse(storage.text).record.phase, 'settled');
+});
 
 test('duplicate tabs serialize owner IO and an acknowledged URL cannot become another create', async () => {
   const storage = state();
@@ -278,7 +329,7 @@ test('foreign scope/resource/intent and extra auth fields are not admitted as re
       raw.record.attempt.request.token = 'secret';
     },
     (raw) => {
-      raw.record.attempt.request.attributePatches[0].text = 123;
+      raw.record.attempt.request.attributeValueBatches[0].patches[0].text = 123;
     },
     (raw) => {
       raw.record.attempt.key = 'not-a-key';
@@ -487,7 +538,7 @@ test('JSON must not silently turn invalid integer/boolean/text projections into 
     const storage = state();
     const writer = new ProductWriteAttempt(memoryJournal('new', storage));
     const request = save();
-    Object.assign(request.attributePatches[0], patch);
+    Object.assign(request.attributeValueBatches[0].patches[0], patch);
     let sends = 0;
     const result = await writer.execute('save', request, async () => {
       sends++;

@@ -169,6 +169,10 @@ async fn handle_heartbeat(
     claim_id: &str,
     bytes: &[u8],
 ) -> Response {
+    let claim_id = match normalize_claim_id(claim_id) {
+        Ok(claim_id) => claim_id,
+        Err(response) => return *response,
+    };
     let input = match serde_json::from_slice::<RegistryRunnerHeartbeatRequest>(bytes) {
         Ok(input) => input,
         Err(_) => {
@@ -187,10 +191,10 @@ async fn handle_heartbeat(
         Err(response) => return *response,
     };
 
-    match heartbeat_remote_validation_stage_atomic(ctx.db(), claim_id, &runner_id, lease_ttl_ms)
+    match heartbeat_remote_validation_stage_atomic(ctx.db(), &claim_id, &runner_id, lease_ttl_ms)
         .await
     {
-        Ok(_) => mutation_response(claim_id, "running"),
+        Ok(_) => mutation_response(&claim_id, "running"),
         Err(error) => transition_error_response(error),
     }
 }
@@ -201,6 +205,10 @@ async fn handle_terminal(
     bytes: &[u8],
     outcome: RemoteTerminalOutcome,
 ) -> Response {
+    let claim_id = match normalize_claim_id(claim_id) {
+        Ok(claim_id) => claim_id,
+        Err(response) => return *response,
+    };
     let input = match serde_json::from_slice::<RegistryRunnerCompletionRequest>(bytes) {
         Ok(input) => input,
         Err(_) => {
@@ -221,7 +229,7 @@ async fn handle_terminal(
 
     match finish_remote_validation_stage_atomic(
         ctx.db(),
-        claim_id,
+        &claim_id,
         &runner_id,
         input.expected_request_revision,
         outcome,
@@ -231,7 +239,7 @@ async fn handle_terminal(
     .await
     {
         Ok(_) => mutation_response(
-            claim_id,
+            &claim_id,
             match outcome {
                 RemoteTerminalOutcome::Passed => "passed",
                 RemoteTerminalOutcome::Failed => "failed",
@@ -255,14 +263,32 @@ fn validate_schema_version(schema_version: u32) -> RegistryClaimValidationResult
 
 fn normalize_runner_id(runner_id: &str) -> RegistryClaimValidationResult<String> {
     let runner_id = runner_id.trim();
-    if runner_id.is_empty() {
+    if runner_id.is_empty()
+        || runner_id.len() > 128
+        || !runner_id.bytes().all(|byte| byte.is_ascii_graphic())
+    {
         return Err(Box::new(response(
             StatusCode::BAD_REQUEST,
             "invalid_request",
-            "Runner request requires a non-empty runner_id",
+            "Runner ID must contain 1-128 printable ASCII characters",
         )));
     }
     Ok(runner_id.to_string())
+}
+
+fn normalize_claim_id(claim_id: &str) -> RegistryClaimValidationResult<String> {
+    if claim_id.is_empty()
+        || claim_id.len() > 64
+        || claim_id.trim() != claim_id
+        || !claim_id.bytes().all(|byte| byte.is_ascii_graphic())
+    {
+        return Err(Box::new(response(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "Claim ID must contain 1-64 printable ASCII characters",
+        )));
+    }
+    Ok(claim_id.to_string())
 }
 
 fn claim_error_response(error: ModuleGovernanceError) -> Response {
@@ -524,5 +550,31 @@ mod tests {
             super::normalize_runner_id("  runner-1  ").expect("runner id should be normalized");
         assert_eq!(normalized, "runner-1");
         assert!(super::normalize_runner_id("   ").is_err());
+        assert!(super::normalize_runner_id(&"r".repeat(129)).is_err());
+        assert!(super::normalize_runner_id("runner\n1").is_err());
+        assert!(super::normalize_runner_id("runner id").is_err());
+        assert_eq!(
+            super::normalize_runner_id(&"r".repeat(128))
+                .expect("maximum runner ID length is accepted")
+                .len(),
+            128
+        );
+    }
+
+    #[test]
+    fn claim_id_validation_matches_persisted_column_bounds() {
+        assert_eq!(
+            super::normalize_claim_id("rvc_1").expect("claim ID"),
+            "rvc_1"
+        );
+        assert!(super::normalize_claim_id("").is_err());
+        assert!(super::normalize_claim_id(&"c".repeat(65)).is_err());
+        assert!(super::normalize_claim_id("claim\r\n").is_err());
+        assert_eq!(
+            super::normalize_claim_id(&"c".repeat(64))
+                .expect("maximum claim ID length is accepted")
+                .len(),
+            64
+        );
     }
 }

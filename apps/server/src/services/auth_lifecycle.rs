@@ -191,6 +191,48 @@ const LOGIN_LOCKOUT_MINUTES: i64 = 15;
 const REFRESH_REUSE_GRACE_SECONDS: i64 = 30;
 
 impl AuthLifecycleService {
+    /// Acquire the tenant-scoped user mutation fence before reading the current
+    /// row. PostgreSQL/MySQL use a row lock; SQLite reserves its writer before
+    /// the read so a deferred read-to-write upgrade cannot race another user
+    /// status, role, or credential mutation.
+    pub(crate) async fn lock_user_for_mutation<C>(
+        db: &C,
+        tenant_id: uuid::Uuid,
+        user_id: uuid::Uuid,
+    ) -> Result<Option<users::Model>, sea_orm::DbErr>
+    where
+        C: ConnectionTrait,
+    {
+        let query = || {
+            users::Entity::find_by_id(user_id).filter(users::Column::TenantId.eq(tenant_id))
+        };
+
+        match db.get_database_backend() {
+            DatabaseBackend::Postgres | DatabaseBackend::MySql => query()
+                .lock_exclusive()
+                .one(db)
+                .await,
+            DatabaseBackend::Sqlite => {
+                let result = users::Entity::update_many()
+                    .col_expr(
+                        users::Column::UpdatedAt,
+                        Expr::col(users::Column::UpdatedAt),
+                    )
+                    .filter(users::Column::Id.eq(user_id))
+                    .filter(users::Column::TenantId.eq(tenant_id))
+                    .exec(db)
+                    .await?;
+                if result.rows_affected != 1 {
+                    return Ok(None);
+                }
+                query().one(db).await
+            }
+            _ => Err(sea_orm::DbErr::Custom(
+                "unsupported database backend for user mutation locking".to_string(),
+            )),
+        }
+    }
+
     pub fn metrics_snapshot() -> AuthLifecycleMetricsSnapshot {
         AuthLifecycleMetricsSnapshot {
             password_reset_sessions_revoked_total: AUTH_PASSWORD_RESET_SESSIONS_REVOKED_TOTAL
@@ -534,7 +576,7 @@ impl AuthLifecycleService {
                 // an unknown email takes as long as a wrong password:
                 // without this, login latency enumerates accounts.
                 let dummy_hash =
-                    crate::auth::dummy_password_hash().map_err(AuthLifecycleError::from)?;
+                    crate::auth::dummy_password_hash_async().await.map_err(AuthLifecycleError::from)?;
                 verify_password_async(password.to_string(), dummy_hash)
                     .await
                     .map_err(AuthLifecycleError::from)?;

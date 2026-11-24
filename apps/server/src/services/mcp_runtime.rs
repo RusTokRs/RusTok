@@ -211,7 +211,7 @@ impl McpAuditSink for DbBackedMcpRuntimeBridge {
     async fn record_tool_call(&self, event: McpToolCallAuditEvent) -> McpRuntimeResult<()> {
         let Some(tenant_id) = parse_uuid(event.tenant_id.as_deref()) else {
             tracing::warn!(
-                tool = %event.tool_name,
+                tool_name_len = event.tool_name.len(),
                 "Skipping MCP tool audit persistence because tenant_id is missing"
             );
             return Ok(());
@@ -265,6 +265,7 @@ impl McpScaffoldDraftStore for DbBackedMcpRuntimeBridge {
         let client_id = client_id_from_runtime_context(context)
             .map_err(|e| McpRuntimeError::Message(e.to_string()))?;
         let created_by = actor_user_id_from_runtime_context(context);
+        let (actor_id, actor_type) = actor_identity_from_runtime_context(context);
 
         let draft = McpManagementService::stage_scaffold_draft(
             &self.db,
@@ -273,6 +274,8 @@ impl McpScaffoldDraftStore for DbBackedMcpRuntimeBridge {
                 client_id,
                 request,
                 created_by,
+                actor_id,
+                actor_type,
             },
         )
         .await
@@ -337,6 +340,7 @@ impl McpScaffoldDraftStore for DbBackedMcpRuntimeBridge {
         let tenant_id = tenant_id_from_runtime_context(context)
             .map_err(|e| McpRuntimeError::Message(e.to_string()))?;
         let applied_by = actor_user_id_from_runtime_context(context);
+        let (actor_id, actor_type) = actor_identity_from_runtime_context(context);
         let draft_id = Uuid::parse_str(&request.draft_id)
             .map_err(|error| McpRuntimeError::Message(format!("Invalid draft id: {error}")))?;
 
@@ -348,6 +352,8 @@ impl McpScaffoldDraftStore for DbBackedMcpRuntimeBridge {
                 workspace_root: request.workspace_root,
                 confirm: request.confirm,
                 applied_by,
+                actor_id,
+                actor_type,
             },
         )
         .await
@@ -361,10 +367,10 @@ fn filter_active_module_permissions(
     granted_permissions: &[String],
     availability: Option<&PermissionAvailability>,
 ) -> Vec<String> {
-    let Some(availability) = availability else {
-        return granted_permissions.to_vec();
-    };
-
+    // Always parse and canonicalize persisted grants. When no module registry
+    // is composed, module filtering is intentionally skipped, but returning
+    // raw strings would make whitespace/alias handling differ by runtime
+    // profile because McpAccessContext compares canonical permission strings.
     let mut permissions = Vec::with_capacity(granted_permissions.len());
     for value in granted_permissions {
         match value.parse::<Permission>() {
@@ -377,13 +383,41 @@ fn filter_active_module_permissions(
             }
         }
     }
-    let mut active = availability.active_permissions(&permissions);
+
+    let mut active = match availability {
+        Some(availability) => availability.active_permissions(&permissions),
+        None => permissions,
+    };
     active.sort_by_cached_key(ToString::to_string);
     active.dedup();
     active
         .into_iter()
         .map(|permission| permission.to_string())
         .collect()
+}
+
+#[cfg(test)]
+mod permission_filter_tests {
+    use super::filter_active_module_permissions;
+    use rustok_api::Permission;
+
+    #[test]
+    fn granted_permissions_are_canonicalized_without_a_module_registry() {
+        let padded = format!(" {} ", Permission::MODULES_READ);
+        let filtered = filter_active_module_permissions(&[padded], None);
+
+        assert_eq!(filtered, vec![Permission::MODULES_READ.to_string()]);
+    }
+
+    #[test]
+    fn invalid_grants_are_ignored_without_a_module_registry() {
+        let filtered = filter_active_module_permissions(
+            &["not:a:permission".to_string()],
+            None,
+        );
+
+        assert!(filtered.is_empty());
+    }
 }
 
 fn access_context_for_client(
@@ -455,6 +489,22 @@ fn client_id_from_runtime_context(
         })?)),
         None => Ok(None),
     }
+}
+
+fn actor_identity_from_runtime_context(
+    context: &McpScaffoldDraftRuntimeContext,
+) -> (Option<String>, Option<String>) {
+    context
+        .access_context
+        .as_ref()
+        .and_then(|access| access.identity.as_ref())
+        .map(|identity| {
+            (
+                Some(identity.actor_id.clone()),
+                Some(actor_type_slug(identity.actor_type).to_string()),
+            )
+        })
+        .unwrap_or_default()
 }
 
 fn actor_user_id_from_runtime_context(context: &McpScaffoldDraftRuntimeContext) -> Option<Uuid> {
@@ -553,7 +603,9 @@ fn hash_token(token: &str) -> String {
 }
 
 fn parse_uuid(value: Option<&str>) -> Option<Uuid> {
-    value.and_then(|value| Uuid::parse_str(value).ok())
+    value
+        .and_then(|value| Uuid::parse_str(value).ok())
+        .filter(|value| !value.is_nil())
 }
 
 fn actor_type_slug(actor_type: McpActorType) -> &'static str {
@@ -600,7 +652,7 @@ fn map_runtime_policy_error(
 
 #[cfg(test)]
 mod tests {
-    use super::{filter_active_module_permissions, map_db_err};
+    use super::{filter_active_module_permissions, map_db_err, parse_uuid};
     use axum::{http::StatusCode, response::IntoResponse};
 
     use super::{access_context_for_client, actor_user_id_from_runtime_context, touch_last_used};
@@ -613,6 +665,18 @@ mod tests {
     use rustok_rbac::PermissionAvailability;
     use sea_orm::entity::prelude::Uuid;
     use std::collections::{BTreeMap, BTreeSet};
+
+    #[test]
+    fn mcp_runtime_uuid_parser_rejects_nil_identifiers() {
+        let nil = Uuid::nil().to_string();
+        assert_eq!(parse_uuid(Some(&nil)), None);
+        assert_eq!(parse_uuid(Some("not-a-uuid")), None);
+
+        let valid = Uuid::new_v4();
+        let valid_text = valid.to_string();
+        assert_eq!(parse_uuid(Some(&valid_text)), Some(valid));
+        assert_eq!(parse_uuid(None), None);
+    }
 
     #[test]
     fn disabled_module_grants_are_removed_from_mcp_runtime_context() {

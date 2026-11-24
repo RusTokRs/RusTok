@@ -1,4 +1,4 @@
-use crate::common::is_production_environment;
+use crate::common::is_production_security_mode;
 
 use axum::{
     body::{Body, to_bytes},
@@ -26,7 +26,7 @@ pub async fn require_bearer(request: Request<Body>, next: Next) -> Response {
         path_group = crate::middleware::http_stack::trace_path_family(path),
         "metrics_auth::require_bearer entry"
     );
-    let is_production = is_production_environment();
+    let is_production = is_production_security_mode();
 
     if path == "/health/ready" {
         let reveal_details = request_is_authorized(&request, is_production);

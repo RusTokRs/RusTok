@@ -2,14 +2,13 @@ use crate::editor::{AdminCanvas, AdminShell};
 use crate::i18n::t;
 use crate::{
     AdminCanvasController, AssetProviderPort, PageBuilderAdminFacade,
-    PageBuilderContributionHostContext,
+    PageBuilderCapabilityExecution, PageBuilderContributionHostContext,
 };
 use fly::TraitSchemaRegistry;
 use fly_ui::{
     CapabilityState, ContributionAssemblyResult, EditorCapabilityEvaluation, EditorCapabilityPolicy,
 };
 use leptos::prelude::*;
-use rustok_page_builder::dto::PageBuilderCapabilityRequest;
 use rustok_page_builder::runtime_scenario_release::PageBuilderScenarioBaselineChange;
 use rustok_page_builder::{
     RuntimeContextScenario, RuntimePublishGatePolicy, RuntimeScenarioReleaseBaseline,
@@ -257,7 +256,7 @@ pub fn PageBuilderAdminWithController(
     #[prop(optional_no_strip)] browser_intent_endpoint: Option<String>,
     #[prop(optional_no_strip)] browser_csrf_token: Option<String>,
     #[prop(optional_no_strip)] preview_endpoint: Option<String>,
-    on_request: Option<Callback<PageBuilderCapabilityRequest>>,
+    on_request: Option<Callback<PageBuilderCapabilityExecution>>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale;

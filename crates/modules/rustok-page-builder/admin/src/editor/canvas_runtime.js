@@ -186,9 +186,8 @@
 
   document.addEventListener('click', (event) => {
     const component = componentAt(event.target);
-    document.querySelectorAll('[data-fly-selected]')
-      .forEach((node) => node.removeAttribute('data-fly-selected'));
-    if (component) component.setAttribute('data-fly-selected', 'true');
+    // Selection is owned by the host. A local iframe attribute becomes stale when the
+    // component is selected from the layer tree or another host control.
     send('focus_requested', { component_id: component?.dataset.flyComponentId ?? null });
   });
 

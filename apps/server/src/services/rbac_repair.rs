@@ -1,3 +1,4 @@
+use rustok_cache::CacheService;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait};
 
 use crate::error::{Error, Result};
@@ -24,6 +25,7 @@ impl RbacService {
     /// Existing role grants are tenant-owned database state and are not rewritten.
     pub async fn repair_system_roles_committed(
         db: &DatabaseConnection,
+        cache_service: &CacheService,
         tenant_id: Option<uuid::Uuid>,
     ) -> Result<rustok_rbac::RbacSystemRoleRepairReport> {
         Self::record_system_role_repair_entrypoint("repair_system_roles_committed");
@@ -56,7 +58,7 @@ impl RbacService {
             Self::invalidate_user_rbac_caches(&affected.tenant_id, &affected.user_id).await;
         }
         if let Some(durable_generation) = durable_generation
-            && let Err(error) = publish_all_rbac_invalidation(durable_generation).await
+            && let Err(error) = publish_all_rbac_invalidation(cache_service, durable_generation).await
         {
             tracing::warn!(
                 %error,
@@ -81,6 +83,7 @@ impl RbacService {
 #[cfg(test)]
 mod tests {
     use super::RbacService;
+    use rustok_cache::CacheService;
     use crate::models::{
         _entities::{permissions, role_permissions, roles, user_roles},
         tenants, users,
@@ -225,7 +228,8 @@ mod tests {
             "fixture must leave built-in roles unseeded"
         );
 
-        let report = RbacService::repair_system_roles_committed(&db, Some(tenant_id))
+        let cache_service = CacheService::from_url(None);
+        let report = RbacService::repair_system_roles_committed(&db, &cache_service, Some(tenant_id))
             .await
             .expect("committed repair should succeed");
 

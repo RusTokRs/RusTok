@@ -1922,8 +1922,8 @@ async fn remote_executor_reaper_loop(
                 "Remote executor reaper requeued expired validation stage claims"
             ),
             Ok(_) => {}
-            Err(error) => tracing::error!(
-                error = %error,
+            Err(_error) => tracing::error!(
+                error_code = "remote_executor_reaper_failed",
                 "Remote executor reaper failed to process expired validation stage claims"
             ),
         }
@@ -1957,8 +1957,11 @@ async fn seo_worker_loop(
         &runtime_extensions,
     ) {
         Ok(service) => service,
-        Err(error) => {
-            tracing::error!(error = %error, "Failed to initialize SEO bulk worker registry");
+        Err(_error) => {
+            tracing::error!(
+                error_code = "seo_worker_registry_initialization_failed",
+                "Failed to initialize SEO bulk worker registry"
+            );
             return;
         }
     };
@@ -1979,8 +1982,8 @@ async fn seo_worker_loop(
                     "Executed queued SEO bulk job"
                 ),
                 Ok(None) => {}
-                Err(error) => tracing::error!(
-                    error = %error,
+                Err(_error) => tracing::error!(
+                    error_code = "seo_bulk_job_execution_failed",
                     "SEO bulk worker failed to execute queued job"
                 ),
             }
@@ -2003,8 +2006,8 @@ async fn seo_worker_loop(
                     "Executed queued SEO sitemap job phase"
                 ),
                 Ok(None) => {}
-                Err(error) => tracing::error!(
-                    error = %error,
+                Err(_error) => tracing::error!(
+                    error_code = "seo_sitemap_job_execution_failed",
                     "SEO sitemap worker failed to execute queued job"
                 ),
             }
@@ -2029,8 +2032,8 @@ async fn seo_worker_loop(
                     "Executed queued SEO index repair/replay job"
                 ),
                 Ok(None) => {}
-                Err(error) => tracing::error!(
-                    error = %error,
+                Err(_error) => tracing::error!(
+                    error_code = "seo_index_repair_job_execution_failed",
                     "SEO index repair worker failed to execute queued job"
                 ),
             }
