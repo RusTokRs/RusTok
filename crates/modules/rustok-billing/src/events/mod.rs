@@ -17,6 +17,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+pub use rustok_outbox::TransactionalEventBus;
+
 /// Canonical event topic for all billing domain events.
 pub const BILLING_EVENT_TOPIC: &str = "billing.events";
 

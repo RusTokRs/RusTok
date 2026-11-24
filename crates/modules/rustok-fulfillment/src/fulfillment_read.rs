@@ -681,7 +681,10 @@ mod tests {
         let result = execute_fulfillment_read(
             &context,
             "timeout_test",
-            fulfillment_lifecycle_read_request_facts(None, None, None, None),
+            None,
+            None,
+            None,
+            None,
             std::future::pending::<Result<(), FulfillmentError>>(),
         )
         .await;

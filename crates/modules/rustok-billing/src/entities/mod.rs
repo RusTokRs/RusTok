@@ -9,3 +9,6 @@
  */
 
 //! SeaORM persistence mappings owned by billing.
+
+pub mod billing_record;
+pub use billing_record::Entity as BillingRecord;
