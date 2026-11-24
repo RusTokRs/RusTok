@@ -61,6 +61,10 @@ Local documentation for the main RusToK backend host application. This file capt
   empty operator-mounted `/app/config`; development/test/browser-smoke YAML is
   never copied into the production image. The Linux release archive carries
   only `production.yaml.example` plus setup instructions.
+- RBAC invalidation publishers receive the `CacheService` owned by the same
+  `ServerRuntimeContext` as the listener. Independent runtimes cannot redirect
+  user or namespace-wide invalidations through another runtime's local bus or
+  Redis client via a process-global publisher pointer.
 
 ## Purpose
 
