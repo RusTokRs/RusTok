@@ -82,7 +82,7 @@ pub async fn run() -> Result<()> {
 
     let database_url = std::env::var("DATABASE_URL").ok();
     let database_uri = resolve_database_uri(database_url.as_deref(), &config.database.uri);
-    let production = is_production_environment();
+    let production = crate::common::is_production_security_mode();
     validate_database_deployment(&database_uri, production)?;
     validate_https_deployment(production, hsts_enabled())?;
 
@@ -444,10 +444,6 @@ fn jwt_secret_looks_like_placeholder(secret: &str) -> bool {
             .collect::<std::collections::HashSet<_>>()
             .len()
             < 16
-}
-
-fn is_production_environment() -> bool {
-    crate::common::settings::is_production_environment()
 }
 
 fn application_router(
