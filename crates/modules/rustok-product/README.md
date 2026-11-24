@@ -371,6 +371,9 @@ tenant/locale data before retrying a refused migration.
   atomic price lifecycle operations without direct persistence coupling. Initial channel-scoped
   prices are validated by Pricing against the current tenant's Channel and Variant identities
   inside the same write transaction; duplicate canonical variant/channel/currency seeds are refused.
+- Storefront list-price projections include only prices without price-list, region, or quantity-tier
+  scope. A channel-scoped row is eligible only for its matching public channel slug; channel-ID-only
+  rows are never treated as channel-neutral fallback prices.
 - Depends on `rustok-inventory` for inventory-owned bootstrap and availability
   operations.
 - Depends on `flex` for attached-field validation, locale resolution and the
