@@ -15,6 +15,7 @@ import * as React from 'react';
 import { useTranslations } from '@rustok/next-fluent/client';
 import {
   ProductWriteAttempt,
+  UNKNOWN_PRODUCT_WRITE,
   type ProductAxesWriteRequest,
   type ProductVariantCreateRequest,
   type ProductVariantUpdateRequest,
@@ -490,6 +491,9 @@ export function ProductEditorPage({
   const [variants, setVariants] = React.useState<ProductVariant[]>(
     initialProduct?.variants || []
   );
+  React.useEffect(() => {
+    setVariants(initialProduct?.variants ?? []);
+  }, [initialProduct?.id, initialProduct?.variants]);
   const [initialAxes, setInitialAxes] = React.useState<VariantAxisDraftInput[]>(
     []
   );

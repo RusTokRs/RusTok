@@ -156,8 +156,7 @@ const refusals = new Set([
 const lifecycleRefusals = new Set([
   ...refusals,
   'NO_VARIANTS',
-  'PRODUCT_OPERATION_FAILED',
-  'IDEMPOTENCY_KEY_CONFLICT'
+  'PRODUCT_OPERATION_FAILED'
 ]);
 
 /** Only owner-finalized Product decisions may release a persisted variant attempt. */
