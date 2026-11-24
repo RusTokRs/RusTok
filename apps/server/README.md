@@ -81,6 +81,13 @@ overrides live under `settings.rustok.auth`:
 - `rsa_private_key_env`, `rsa_public_key_env`: preferred production key sources
 - `rsa_private_key_pem`, `rsa_public_key_pem`: development/test fallback values
 
+When the OAuth surface is mounted (`settings.features.oauth_enabled` is true and the host mode is not
+`worker` or `registry_only`), `settings.rustok.auth.issuer` must be an absolute root URL:
+HTTPS in production, or HTTPS / `http://localhost` / `http://127.0.0.1` in
+development. Userinfo, path, query, and fragment components are rejected.
+OAuth discovery advertises this exact JWT issuer; it never derives an issuer
+from request Host or forwarded headers.
+
 When `algorithm` is `RS256`, both RSA keys are required and boot-time config
 assembly must fail instead of silently falling back to `HS256`.
 
@@ -125,20 +132,20 @@ the `Secure` flag is enabled only when trusted proxy context reports HTTPS.
   tenant module-read permissions. The host-global versus tenant visibility
   contract is unresolved and must be decided before changing all transports and
   clients. Build progress is not a durable cross-process stream.
-- Installer HTTP jobs can remain `running` after a process crash or failure to
-  persist the terminal result. Before the executor enters, exhausted claim
-  creation retries attempt a bounded, exact-job/session/submission CAS to
-  close an ambiguous committed `running` job as `failed`; database outages can
-  still prevent this cleanup, and no job whose effects began is reset. HTTP
-  and CLI now use unique host-generated
-  lock-owner values per attempt and enforce a 1–86,400 second lease TTL.
-  Persistence blocks new applies while any unreconciled session has a
-  recorded owner, even after lease expiry; `recovery_required` remains blocking
-  until manual reconciliation. State, tenant association and receipt writes
-  already compare the persisted owner and attempt generation, but this is
-  not a process-crash recovery or a heartbeat/expiry takeover protocol;
-  resumable execution and effect reconciliation remain unimplemented. Do not
-  reset stale jobs based only on lease expiry.
+- Installer HTTP jobs heartbeat every 30 seconds. A five-minute heartbeat gap
+  atomically moves a stale `running` job to `recovery_required`; both states
+  share one database-enforced admission slot, so a stale attempt is never
+  reset to `failed` or silently replaced. The executor marks ambiguous
+  database/schema/session/receipt/state outcomes as requiring recovery, and
+  `FreshInstallCleaned` is no longer used when cleanup did not actually run.
+  Late heartbeats and terminal writes cannot revive or overwrite a quarantined
+  job. The status API exposes the host job even when its target session is not
+  in the runtime database; the receipts API returns an explicit conflict
+  rather than a misleading empty list in that case. The host job ledger and
+  target session/receipts remain separate persistence boundaries: this detects
+  interruption and blocks retries, but does not automatically resume or
+  reconcile remote target effects. Operators must inspect the target database
+  and receipts before retrying. Lease expiry is never permission for takeover.
 - OAuth manifest synchronization is atomic and serialized per tenant. The
   all-tenants bootstrap pass commits one tenant at a time, not as a single
   cross-tenant transaction. Built-in auth email delivery remains best effort.

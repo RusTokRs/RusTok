@@ -14,6 +14,18 @@ pub async fn not_found_fallback(uri: axum::http::Uri) -> impl IntoResponse {
     Error::NotFound
 }
 
+/// Returns whether this host mode actually mounts the OAuth protocol and
+/// discovery surface. Worker and registry-only hosts intentionally omit it.
+pub(crate) fn oauth_surface_enabled(
+    host_mode: RuntimeHostMode,
+    settings: &RustokSettings,
+) -> bool {
+    !matches!(
+        host_mode,
+        RuntimeHostMode::Worker | RuntimeHostMode::RegistryOnly
+    ) && settings.features.oauth_enabled
+}
+
 /// Builds the un-configured global application router matching the host mode
 /// and deployment feature gates.
 ///
@@ -56,7 +68,7 @@ pub fn build_application_router(
         .merge(crate::controllers::installer::router())
         .merge(crate::controllers::mcp::router());
 
-    let router = if settings.features.oauth_enabled {
+    let router = if oauth_surface_enabled(host_mode, settings) {
         router
             .merge(crate::controllers::oauth::router())
             .merge(crate::controllers::oauth_metadata::router())
@@ -89,6 +101,33 @@ mod tests {
         let body: ErrorBody = serde_json::from_slice(&bytes).expect("parse json");
         assert_eq!(body.code, "not_found");
         assert_eq!(body.message, "Not found");
+    }
+
+    #[test]
+    fn oauth_surface_gate_matches_host_mode_and_feature_composition() {
+        let mut settings = RustokSettings::default();
+        settings.features.oauth_enabled = true;
+
+        for host_mode in [
+            RuntimeHostMode::Full,
+            RuntimeHostMode::Api,
+            RuntimeHostMode::AdminSsr,
+            RuntimeHostMode::StorefrontSsr,
+        ] {
+            assert!(
+                oauth_surface_enabled(host_mode, &settings),
+                "OAuth should be mounted for {host_mode:?}"
+            );
+        }
+        for host_mode in [RuntimeHostMode::Worker, RuntimeHostMode::RegistryOnly] {
+            assert!(
+                !oauth_surface_enabled(host_mode, &settings),
+                "OAuth must not be required for {host_mode:?}"
+            );
+        }
+
+        settings.features.oauth_enabled = false;
+        assert!(!oauth_surface_enabled(RuntimeHostMode::Api, &settings));
     }
 
     #[tokio::test]
