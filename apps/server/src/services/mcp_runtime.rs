@@ -553,7 +553,9 @@ fn hash_token(token: &str) -> String {
 }
 
 fn parse_uuid(value: Option<&str>) -> Option<Uuid> {
-    value.and_then(|value| Uuid::parse_str(value).ok())
+    value
+        .and_then(|value| Uuid::parse_str(value).ok())
+        .filter(|value| !value.is_nil())
 }
 
 fn actor_type_slug(actor_type: McpActorType) -> &'static str {
@@ -600,7 +602,7 @@ fn map_runtime_policy_error(
 
 #[cfg(test)]
 mod tests {
-    use super::{filter_active_module_permissions, map_db_err};
+    use super::{filter_active_module_permissions, map_db_err, parse_uuid};
     use axum::{http::StatusCode, response::IntoResponse};
 
     use super::{access_context_for_client, actor_user_id_from_runtime_context, touch_last_used};
@@ -613,6 +615,17 @@ mod tests {
     use rustok_rbac::PermissionAvailability;
     use sea_orm::entity::prelude::Uuid;
     use std::collections::{BTreeMap, BTreeSet};
+
+    #[test]
+    fn mcp_runtime_uuid_parser_rejects_nil_identifiers() {
+        let nil = Uuid::nil().to_string();
+        assert_eq!(parse_uuid(Some(&nil)), None);
+
+        let valid = Uuid::new_v4();
+        let valid_text = valid.to_string();
+        assert_eq!(parse_uuid(Some(&valid_text)), Some(valid));
+        assert_eq!(parse_uuid(None), None);
+    }
 
     #[test]
     fn disabled_module_grants_are_removed_from_mcp_runtime_context() {
