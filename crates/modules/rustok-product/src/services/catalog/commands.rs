@@ -88,6 +88,11 @@ fn validate_variant_prices(prices: &[PriceInput]) -> CommerceResult<()> {
                 price.currency_code
             )));
         }
+        if price.channel_id == Some(Uuid::nil()) {
+            return Err(CommerceError::Validation(
+                "Price channel ID must not be nil".to_owned(),
+            ));
+        }
         if price.amount < rust_decimal::Decimal::ZERO
             || price
                 .compare_at_amount
@@ -3266,6 +3271,18 @@ mod tests {
         let err = validate_variant_prices(&prices).unwrap_err();
         assert!(matches!(err, CommerceError::Validation(_)));
     }
+    #[test]
+    fn validate_variant_prices_rejects_nil_channel_identity() {
+        let prices = vec![PriceInput {
+            currency_code: "USD".to_owned(),
+            channel_id: Some(Uuid::nil()),
+            channel_slug: None,
+            amount: Decimal::new(1000, 2),
+            compare_at_amount: None,
+        }];
+        assert!(validate_variant_prices(&prices).is_err());
+    }
+
     #[test]
     fn validate_variant_prices_rejects_negative_amounts_before_pricing_io() {
         for (amount, compare_at_amount) in [
