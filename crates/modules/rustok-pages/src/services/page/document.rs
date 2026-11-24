@@ -753,7 +753,7 @@ mod idempotency_key_tests {
         assert_eq!(first, retry);
         assert_ne!(first, other_actor);
         assert!(first.starts_with("pages-save-v1:"));
-        assert!(first.len() <= MAX_DOCUMENT_SAVE_KEY_BYTES);
+        assert!(first.len() <= MAX_SAVE_RECEIPT_KEY_BYTES);
     }
 
     #[test]
