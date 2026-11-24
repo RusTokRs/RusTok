@@ -307,9 +307,22 @@ impl AdminEditorRuntime {
         if !self.peer_write_conflicted() {
             return false;
         }
-        self.fail(
-            "Another tab saved this page. Preserve your unsaved changes, then reload the latest version before editing again.",
-        );
+        #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
+        let message = self
+            .peer_write_conflict
+            .get_untracked()
+            .map(|conflict| {
+                format!(
+                    "Another editor saved this page at revision {}. Preserve your unsaved changes, then reload the latest version before editing again.",
+                    conflict.revision
+                )
+            })
+            .unwrap_or_else(|| {
+                "Another editor saved this page. Preserve your unsaved changes, then reload the latest version before editing again.".to_string()
+            });
+        #[cfg(not(all(target_arch = "wasm32", feature = "wasm-client")))]
+        let message = "Another editor saved this page. Preserve your unsaved changes, then reload the latest version before editing again.".to_string();
+        self.last_error.set(Some(message));
         true
     }
 
@@ -616,6 +629,9 @@ impl AdminEditorRuntime {
     }
 
     pub fn fail(&self, message: impl Into<String>) {
+        if self.reject_peer_write_conflict() {
+            return;
+        }
         self.last_error.set(Some(message.into()));
     }
 
