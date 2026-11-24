@@ -112,6 +112,56 @@ const revision = (value: unknown) =>
     (value as number) >= 0 &&
     (value as number) <= 2147483647);
 
+const productAttributeValuePatchValid = (patch: unknown): boolean =>
+  object(patch) &&
+  only(patch, [
+    'attributeId',
+    'kind',
+    'text',
+    'integer',
+    'decimal',
+    'boolean',
+    'date',
+    'datetime',
+    'optionId',
+    'optionIds',
+    'json'
+  ]) &&
+  typeof patch.attributeId === 'string' &&
+  typeof patch.kind === 'string' &&
+  ['text', 'decimal', 'date', 'datetime', 'optionId', 'json'].every(
+    (key) => optionalText(patch[key])
+  ) &&
+  (patch.integer === undefined ||
+    patch.integer === null ||
+    Number.isSafeInteger(patch.integer)) &&
+  (patch.boolean === undefined ||
+    patch.boolean === null ||
+    typeof patch.boolean === 'boolean') &&
+  (patch.optionIds === undefined ||
+    patch.optionIds === null ||
+    strings(patch.optionIds));
+
+const productAttributeValueBatchesValid = (value: unknown): boolean => {
+  if (!Array.isArray(value)) return false;
+  const locales = new Set<string>();
+  return value.every((batch) => {
+    if (
+      !object(batch) ||
+      !only(batch, ['locale', 'patches']) ||
+      typeof batch.locale !== 'string' ||
+      batch.locale.length === 0 ||
+      batch.locale.length > 32 ||
+      locales.has(batch.locale) ||
+      !Array.isArray(batch.patches) ||
+      !batch.patches.every(productAttributeValuePatchValid)
+    )
+      return false;
+    locales.add(batch.locale);
+    return true;
+  });
+};
+
 /** Strictly validate a local projection; corrupt/foreign records are not silently discarded. */
 export class ProductWriteJournal {
   readonly scope: ProductWriteScope;
@@ -248,7 +298,7 @@ export class ProductWriteJournal {
         'initialVariant',
         'variantAxes',
         'initialVariants',
-        'attributePatches',
+        'attributeValueBatches',
         'activeLocale'
       ]) ||
       value.isNew !== (this.resource === 'new') ||
@@ -259,7 +309,7 @@ export class ProductWriteJournal {
       typeof value.activeLocale !== 'string' ||
       !Array.isArray(value.translations) ||
       value.translations.length === 0 ||
-      !Array.isArray(value.attributePatches)
+      !productAttributeValueBatchesValid(value.attributeValueBatches)
     )
       return false;
     if (
@@ -309,40 +359,6 @@ export class ProductWriteJournal {
           ['handle', 'description', 'metaTitle', 'metaDescription'].every(
             (key) => optionalText(tr[key])
           )
-      )
-    )
-      return false;
-    if (
-      !value.attributePatches.every(
-        (patch) =>
-          object(patch) &&
-          only(patch, [
-            'attributeId',
-            'kind',
-            'text',
-            'integer',
-            'decimal',
-            'boolean',
-            'date',
-            'datetime',
-            'optionId',
-            'optionIds',
-            'json'
-          ]) &&
-          typeof patch.attributeId === 'string' &&
-          typeof patch.kind === 'string' &&
-          ['text', 'decimal', 'date', 'datetime', 'optionId', 'json'].every(
-            (key) => optionalText(patch[key])
-          ) &&
-          (patch.integer === undefined ||
-            patch.integer === null ||
-            Number.isSafeInteger(patch.integer)) &&
-          (patch.boolean === undefined ||
-            patch.boolean === null ||
-            typeof patch.boolean === 'boolean') &&
-          (patch.optionIds === undefined ||
-            patch.optionIds === null ||
-            strings(patch.optionIds))
       )
     )
       return false;
@@ -428,6 +444,57 @@ export class ProductWriteJournal {
     )
       return false;
     return true;
+  }
+
+  /**
+   * One-way in-memory migration for pending saves admitted by the previous
+   * single-locale editor. The owner request remains equivalent after mapping
+   * its patches into one explicit locale batch; the stored pending record is
+   * not rewritten until its terminal acknowledgement.
+   */
+  private migrateLegacySaveAttributePatches(raw: unknown): unknown {
+    if (
+      this.resourceKind !== 'product' ||
+      !object(raw) ||
+      !object(raw.record) ||
+      raw.record.phase !== 'pending' ||
+      !object(raw.record.attempt) ||
+      raw.record.attempt.operation !== 'save' ||
+      !object(raw.record.attempt.request)
+    )
+      return raw;
+
+    const oldRequest = raw.record.attempt.request;
+    if (
+      !Array.isArray(oldRequest.attributePatches) ||
+      oldRequest.attributeValueBatches !== undefined
+    )
+      return raw;
+
+    const request: Record<string, unknown> = {
+      ...oldRequest,
+      attributeValueBatches:
+        oldRequest.attributePatches.length === 0
+          ? []
+          : [
+              {
+                locale: oldRequest.activeLocale,
+                patches: oldRequest.attributePatches
+              }
+            ]
+    };
+    delete request.attributePatches;
+
+    return {
+      ...raw,
+      record: {
+        ...raw.record,
+        attempt: {
+          ...raw.record.attempt,
+          request
+        }
+      }
+    };
   }
 
   private validate(raw: unknown): ProductJournalRecord | null {
@@ -566,7 +633,8 @@ export class ProductWriteJournal {
       if (text === null) return null;
       if (text.length > MAX_RECORD_LENGTH)
         throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
-      return this.validate(JSON.parse(text));
+      const raw = JSON.parse(text);
+      return this.validate(this.migrateLegacySaveAttributePatches(raw));
     } catch {
       throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
     }

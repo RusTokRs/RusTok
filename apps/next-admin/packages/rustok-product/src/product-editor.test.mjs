@@ -307,3 +307,11 @@ test('all host editor mounts bind the route resource, and a missing Product expo
   assert.match(missing, /\brecoveryOnly\b/);
   assert.match(missing, /onDeleteProduct=\{deleteProductAction\}/);
 });
+
+test('product editor loads exact-locale EAV values and retains all dirty locale batches', () => {
+  assert.match(editor, /fetchAttributeValues\(initialProduct\.id, locale\)/);
+  assert.match(editor, /dirtyLocalizedAttributeIdsByLocale/);
+  assert.match(editor, /dirtyNonLocalizedAttributeIds/);
+  assert.match(editor, /buildProductAttributeValueBatches/);
+  assert.match(editor, /attributeValuesReady/);
+});
