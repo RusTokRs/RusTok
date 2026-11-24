@@ -77,10 +77,12 @@ impl AsPricingConnection for crate::services::write_transaction::ProductWriteTra
 /// Transactional and projection port for variant prices.
 #[async_trait]
 pub trait ProductPricingPort: Send + Sync {
-    /// Authors initial variant prices in the active product write transaction.
+    /// Validates tenant-owned channel scopes and authors initial prices in the active
+    /// product write transaction.
     async fn create_initial_prices_in_tx(
         &self,
         txn: &DatabaseTransaction,
+        tenant_id: Uuid,
         prices: Vec<InitialPrice>,
     ) -> Result<(), CommerceError>;
 
