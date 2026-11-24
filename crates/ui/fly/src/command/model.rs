@@ -539,7 +539,13 @@ impl RevisionState {
                 "save response does not match the active submitted attempt".to_string(),
             ));
         }
-        self.last_acknowledged_revision = Some(revision.into());
+        let revision = revision.into();
+        if revision.trim().is_empty() || revision.len() > 256 {
+            return Err(FlyError::InvalidSaveState(
+                "save acknowledgement revision is empty or exceeds the size limit".to_string(),
+            ));
+        }
+        self.last_acknowledged_revision = Some(revision);
         self.dirty = self.command_sequence != saving_sequence
             || self.project_hash != submitted_hash;
         self.saving_snapshot = None;
