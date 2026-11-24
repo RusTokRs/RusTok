@@ -117,8 +117,8 @@ mod browser {
     use wasm_bindgen::closure::Closure;
     use web_sys::{BroadcastChannel, MessageEvent};
 
-    fn peer_write_sender_id() -> Result<String, BrowserRuntimeError> {
-        const KEY: &str = "__flyPeerWriteSenderId";
+    fn peer_write_document_id() -> Result<String, BrowserRuntimeError> {
+        const KEY: &str = "__flyPeerWriteDocumentId";
         let global = js_sys::global();
         let key = JsValue::from_str(KEY);
         if let Ok(existing) = js_sys::Reflect::get(&global, &key) {
@@ -163,12 +163,25 @@ mod browser {
             project_hash: impl Into<String>,
             on_conflict: impl FnMut(BrowserPeerWriteConflict) + 'static,
         ) -> Result<Self, BrowserRuntimeError> {
-            let sender_id = peer_write_sender_id()?;
+            let sender_id = peer_write_document_id()?;
             Self::new_with_sender_id(page_id, revision, project_hash, sender_id, on_conflict)
         }
 
-        /// Construct a channel that shares a logical editor identity with another adapter in
-        /// the same DOM root (for example, the Leptos runtime and fly-browser.js).
+        /// Construct a channel whose identity is scoped to one editor root within this document.
+        /// The document nonce keeps identical SSR-generated root IDs distinct across tabs.
+        pub fn new_scoped(
+            page_id: impl Into<String>,
+            revision: impl Into<String>,
+            project_hash: impl Into<String>,
+            scope_id: impl AsRef<str>,
+            on_conflict: impl FnMut(BrowserPeerWriteConflict) + 'static,
+        ) -> Result<Self, BrowserRuntimeError> {
+            let document_id = peer_write_document_id()?;
+            let sender_id = format!("{document_id}:{}", scope_id.as_ref());
+            Self::new_with_sender_id(page_id, revision, project_hash, sender_id, on_conflict)
+        }
+
+        /// Construct a channel that shares a logical editor identity with another adapter.
         pub fn new_with_sender_id(
             page_id: impl Into<String>,
             revision: impl Into<String>,
