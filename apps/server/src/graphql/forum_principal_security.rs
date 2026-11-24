@@ -32,19 +32,33 @@ impl ForumOperationPolicy {
 }
 
 fn field_policy(name: &str) -> ForumOperationPolicy {
-    let human_only = matches!(name, "createForumTopic" | "createForumReply")
-        || (name.contains("Forum")
-            && ["Vote", "Subscription", "Report"]
-                .iter()
-                .any(|part| name.contains(part)));
+    let human_only = matches!(
+        name,
+        "createForumTopic"
+            | "createForumReply"
+            | "createForumTopicWithQuotes"
+            | "createForumReplyWithQuotes"
+    ) || (name.contains("Forum")
+        && ["Vote", "Subscription", "Report"]
+            .iter()
+            .any(|part| name.contains(part)));
     let topic_moderation = matches!(
         name,
         "updateForumTopic"
             | "deleteForumTopic"
+            | "updateForumTopicWithQuotes"
+            | "setForumTopicQuotes"
+            | "setForumTopicQuotes"
             | "markForumTopicSolution"
             | "clearForumTopicSolution"
     );
-    let reply_moderation = matches!(name, "updateForumReply" | "deleteForumReply");
+    let reply_moderation = matches!(
+        name,
+        "updateForumReply"
+            | "deleteForumReply"
+            | "updateForumReplyWithQuotes"
+            | "setForumReplyQuotes"
+    );
 
     ForumOperationPolicy {
         human_only,
@@ -262,6 +276,28 @@ mod tests {
             "#,
         );
         assert!(forum_policy.human_only);
+    }
+
+    #[test]
+    fn quote_aware_content_mutations_keep_human_and_moderation_boundaries() {
+        assert!(policy(r#"mutation { createForumTopicWithQuotes { id } }"#).human_only);
+        assert!(policy(r#"mutation { createForumReplyWithQuotes { id } }"#).human_only);
+
+        let update_topic =
+            policy(r#"mutation { updateForumTopicWithQuotes { id } }"#);
+        assert!(update_topic.topic_moderation);
+        assert!(!update_topic.human_only);
+
+        let set_topic_quotes = policy(r#"mutation { setForumTopicQuotes { id } }"#);
+        assert!(set_topic_quotes.topic_moderation);
+
+        let update_reply =
+            policy(r#"mutation { updateForumReplyWithQuotes { id } }"#);
+        assert!(update_reply.reply_moderation);
+        assert!(!update_reply.human_only);
+
+        let set_reply_quotes = policy(r#"mutation { setForumReplyQuotes { id } }"#);
+        assert!(set_reply_quotes.reply_moderation);
     }
 
     #[test]
