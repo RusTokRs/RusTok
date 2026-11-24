@@ -22,6 +22,7 @@ use rustok_page_builder::{
 use serde_json::{Map, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use uuid::Uuid;
 #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 use fly_web::{BrowserPeerWriteChannel, BrowserPeerWriteConflict};
 
@@ -737,7 +738,7 @@ impl AdminEditorRuntime {
         outcome: Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError>,
     ) {
         if capability == BuilderCapabilityKind::Preview {
-            if self.active_preview_request_id.get_untracked().as_deref() != Some(&request_id) {
+            if self.active_preview_request_id.get_untracked().as_deref() != Some(request_id.as_str()) {
                 return;
             }
             self.active_preview_request_id.set(None);
