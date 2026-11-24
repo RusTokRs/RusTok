@@ -59,3 +59,7 @@ tonic-prost-build = { workspace = true, optional = true }
 [dev-dependencies]
 tokio.workspace = true
 tokio-stream = { version = "0.1", features = ["net"] }
+
+[lints]
+workspace = true
+

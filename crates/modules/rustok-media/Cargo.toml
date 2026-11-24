@@ -63,3 +63,7 @@ reqwest.workspace = true
 tokio-stream = { version = "0.1", features = ["net"] }
 tonic.workspace = true
 rustok-media-ports = { workspace = true, features = ["grpc-client", "grpc-server"] }
+
+[lints]
+workspace = true
+
