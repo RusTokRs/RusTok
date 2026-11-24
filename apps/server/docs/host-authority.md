@@ -70,7 +70,8 @@ logs, issue comments, GraphQL variables, URLs or browser storage.
   `RUSTOK_METRICS_BEARER_TOKEN` variable is a fallback; the standard
   `Authorization: Bearer ...` transport remains supported for existing
   scrapers. Both the observability credential and host `read` authority are
-  required for `/metrics`, `/health/runtime`, and `/health/modules`.
+  required for `/metrics`, `/health/runtime`, and `/health/modules` whenever
+  the observability token is configured (mandatory in release builds).
   `/health/ready` always returns aggregate status; full diagnostics require
   both credentials in release builds. The observability credential is
   consumed by middleware and is not passed to handlers.

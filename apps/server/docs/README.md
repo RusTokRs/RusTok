@@ -530,7 +530,7 @@ OAuth browser-consent forms preserve absent optional `scope` and `state` values
 across GET-to-POST submission, so CSRF-bound data and default requested scopes
 do not diverge. Cookie-authenticated browser authorization GETs never issue a
 code, even for first-party apps or previously consented third-party apps; they
-always render a short-lived HMAC-CSRF confirmation form. The code is issued
+always render a short-lived HMAC-CSRF confirmation form. For cookie-backed flows, the code is issued
 only after the confirmation POST, and consent is written only when the app
 requires it and the current grant does not cover the requested scopes. The
 non-ambient explicit Authorization-header path retains its pre-authorized fast
