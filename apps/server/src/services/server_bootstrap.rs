@@ -38,6 +38,10 @@ pub async fn initialize_server_context(
         database_uri,
         crate::common::is_production_security_mode(),
     )?;
+    // Initialize the Argon2 dummy credential before accepting traffic. The
+    // first unknown-email login must not pay a one-time hash-generation cost
+    // that would itself reveal account existence.
+    crate::auth::dummy_password_hash_async().await?;
     start_rbac_invalidation_generation_watchdog(runtime_ctx).await?;
     let cache = ensure_cache_service(runtime_ctx);
     start_channel_cache_invalidation_listener(runtime_ctx, cache.clone()).await?;
