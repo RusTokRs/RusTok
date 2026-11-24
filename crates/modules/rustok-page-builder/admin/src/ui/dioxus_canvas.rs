@@ -163,7 +163,7 @@ pub fn DioxusIsolatedCanvas(
             );
             on_ui_intent.call(UiIntent::SetSelectedOverlay(None));
             on_ui_intent.call(UiIntent::SetHoveredOverlay(None));
-            if session.read().controller.ui().state.drag.is_some() {
+            if session_has_active_drag(session) {
                 on_ui_intent.call(UiIntent::CancelDrag);
             }
         }
@@ -298,7 +298,7 @@ pub fn DioxusIsolatedCanvas(
                 "pointerup",
                 move |event| {
                     let Some(active) = resize_session.peek().clone() else {
-                        if session.read().controller.ui().state.drag.is_some() {
+                        if session_has_active_drag(session) {
                             on_ui_intent.call(UiIntent::CancelDrag);
                         }
                         return;
@@ -312,12 +312,14 @@ pub fn DioxusIsolatedCanvas(
                     if let Some(result) =
                         result.filter(|result| result.width_changed || result.height_changed)
                     {
+                        let component_id = active.resize.component_id.clone();
+                        let patch = active.resize.component_patch(result);
                         on_intent.call(BrowserIntentEnvelope::new(
                             intent_instance_id.clone(),
                             BrowserIntentKind::PatchSelected,
                             serde_json::json!({
-                                "component_id": active.resize.component_id,
-                                "patch": active.resize.component_patch(result),
+                                "component_id": component_id,
+                                "patch": patch,
                             }),
                         ));
                     }
@@ -391,7 +393,7 @@ pub fn DioxusIsolatedCanvas(
                         true,
                         on_error,
                     );
-                    if session.read().controller.ui().state.drag.is_some() {
+                    if session_has_active_drag(session) {
                         on_ui_intent.call(UiIntent::CancelDrag);
                     }
                 },
@@ -739,7 +741,7 @@ fn handle_canvas_message(
         }
         CanvasBridgeMessage::DropRequested { position } => {
             pointer.set(Some(format!("{:.0}, {:.0}", position.x, position.y)));
-            if session.read().controller.ui().state.drag.is_some() {
+            if session_has_active_drag(session) {
                 update_drag_candidates(session, geometry, on_ui_intent, position);
                 on_ui_intent.call(UiIntent::Drop);
             }
@@ -753,12 +755,12 @@ fn handle_canvas_message(
         }
         CanvasBridgeMessage::CancelDragRequested => {
             pointer.set(None);
-            if session.read().controller.ui().state.drag.is_some() {
+            if session_has_active_drag(session) {
                 on_ui_intent.call(UiIntent::CancelDrag);
             }
         }
         CanvasBridgeMessage::FocusRequested { component_id } => {
-            if session.read().controller.ui().state.drag.is_none() {
+            if !session_has_active_drag(session) {
                 on_ui_intent.call(UiIntent::Select(component_id));
             }
         }
@@ -788,13 +790,18 @@ fn handle_canvas_message(
 }
 
 #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
+fn session_has_active_drag(session: Signal<EditorSessionState>) -> bool {
+    session.read().controller.ui().state.drag.is_some()
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
 fn update_drag_candidates(
     session: Signal<EditorSessionState>,
     geometry: Signal<BTreeMap<String, CanvasComponentGeometry>>,
     on_ui_intent: EventHandler<UiIntent>,
     position: fly_web::BrowserPoint,
 ) {
-    if session.read().controller.ui().state.drag.is_none() {
+    if !session_has_active_drag(session) {
         return;
     }
     let geometries = geometry.read().values().cloned().collect::<Vec<_>>();
