@@ -316,10 +316,8 @@ pub fn PageBuilderAdmin() -> Element {
 
     match host_context {
         Some(context) => {
-            let session_key = controller_session_key(&context.controller);
             rsx! {
             PageBuilderAdminWithController {
-                key: "{session_key}",
                 controller: context.controller,
                 facade: context.facade,
                 trait_schemas: context.trait_schemas,
@@ -402,8 +400,22 @@ impl PartialEq for PageBuilderAdminWithControllerProps {
 }
 
 /// Dioxus PageBuilderAdminWithController component.
+///
+/// The inner session is keyed by the incoming controller identity so direct consumers receive
+/// the same page/revision reset semantics as the context-backed PageBuilderAdmin entrypoint.
 #[component]
 pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps) -> Element {
+    let session_key = controller_session_key(&props.controller);
+    rsx! {
+        PageBuilderAdminWithControllerSession {
+            key: "{session_key}",
+            props: props
+        }
+    }
+}
+
+#[component]
+fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerProps) -> Element {
     let route_context = use_context::<Option<UiRouteContext>>().unwrap_or_default();
     let locale = route_context.locale;
     // The workspace renders the project stylesheet inline; without the request nonce the host's
