@@ -101,6 +101,11 @@ pub fn AdapterWorkspacePanel(
         error_runtime.fail(error);
     });
     let on_intent = Callback::new(move |envelope: BrowserIntentEnvelope| {
+        // This typed callback bypasses fly-browser.js, so enforce the same peer-write fence
+        // before it can mutate the local controller or enqueue a persistence request.
+        if envelope.is_mutating() && intent_runtime.reject_peer_write_conflict() {
+            return;
+        }
         // These are trusted in-process Leptos callbacks, not HTTP payloads. The
         // shared Fly constructors deliberately have no host revision; attach it
         // here before the same server-side mutation gate used by SSR requests.
