@@ -1279,6 +1279,12 @@ impl CatalogService {
     ) -> CommerceResult<()> {
         debug!(product_id = %product_id, "Deleting product");
 
+        // Pricing owns variant price rows. Without its transactional port Product cannot
+        // prove that deleting these variants will not leave orphaned authoritative prices.
+        let pricing_port = self
+            .pricing_port
+            .as_ref()
+            .ok_or_else(pricing_port_unavailable)?;
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         lock_schema_for_product_write(&txn, tenant_id).await?;
 
@@ -1319,12 +1325,9 @@ impl CatalogService {
         self.inventory()
             .delete_records_for_variants_in_tx(&txn, tenant_id, actor_id, &variant_ids)
             .await?;
-        // Pricing is optional in Product-only composition. When attached, cleanup
-        // participates in this transaction; explicit price writes fail closed above.
-        if let Some(port) = &self.pricing_port {
-            port.delete_prices_for_variants_in_tx(&txn, &variant_ids)
-                .await?;
-        }
+        pricing_port
+            .delete_prices_for_variants_in_tx(&txn, &variant_ids)
+            .await?;
 
         entities::variant_translation::Entity::delete_many()
             .filter(
@@ -1901,6 +1904,12 @@ impl CatalogService {
     ) -> CommerceResult<()> {
         debug!("Deleting product variant");
 
+        // Refuse when Pricing cannot participate in the same transaction; otherwise
+        // authoritative price-list/contextual rows could outlive their ProductVariant.
+        let pricing_port = self
+            .pricing_port
+            .as_ref()
+            .ok_or_else(pricing_port_unavailable)?;
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         lock_schema_for_product_write(&txn, tenant_id).await?;
 
@@ -1925,12 +1934,9 @@ impl CatalogService {
         self.inventory()
             .delete_records_for_variants_in_tx(&txn, tenant_id, actor_id, &[variant_id])
             .await?;
-        // Pricing is optional in Product-only composition. When attached, cleanup
-        // participates in this transaction; explicit price writes fail closed above.
-        if let Some(port) = &self.pricing_port {
-            port.delete_prices_for_variants_in_tx(&txn, &[variant_id])
-                .await?;
-        }
+        pricing_port
+            .delete_prices_for_variants_in_tx(&txn, &[variant_id])
+            .await?;
 
         entities::variant_translation::Entity::delete_many()
             .filter(entities::variant_translation::Column::VariantId.eq(variant_id))
