@@ -54,6 +54,10 @@ impl AdminCanvasController {
         let active_page_index = summaries
             .iter()
             .position(|page| page.id.as_deref() == Some(page_id.as_str()))
+            // Pages owns a single outer document ID while a one-page Fly project may
+            // retain its own internal page ID (for example "main"). That case is
+            // unambiguous; never apply the same fallback to a multi-page project.
+            .or_else(|| (summaries.len() == 1).then_some(0))
             .ok_or_else(|| AdminCanvasError::PageNotFound(page_id.clone()))?;
         let active = summaries
             .get(active_page_index)
@@ -708,14 +712,28 @@ mod tests {
     }
 
     #[test]
-    fn controller_rejects_a_project_that_does_not_contain_the_requested_page() {
+    fn controller_rejects_a_multi_page_project_that_does_not_contain_the_requested_page() {
         let error = AdminCanvasController::new(
             "missing",
             "rev-1",
-            json!({"pages": [{"id": "home", "component": {"id": "root", "type": "wrapper"}}]}),
+            json!({"pages": [
+                {"id": "home", "component": {"id": "root", "type": "wrapper"}},
+                {"id": "about", "component": {"id": "about-root", "type": "wrapper"}}
+            ]}),
         )
-        .expect_err("the requested page must be present");
+        .expect_err("the requested page must be present in a multi-page project");
         assert!(matches!(error, AdminCanvasError::PageNotFound(page) if page == "missing"));
+    }
+
+    #[test]
+    fn a_single_page_project_can_keep_its_internal_page_id() {
+        let controller = AdminCanvasController::new(
+            "outer-page-id",
+            "rev-1",
+            json!({"pages": [{"id": "main", "component": {"id": "root", "type": "wrapper"}}]}),
+        )
+        .expect("a single internal page is unambiguous");
+        assert_eq!(controller.ui().state.page.active_page_id.as_deref(), Some("main"));
     }
 
     #[test]
