@@ -126,7 +126,7 @@ pub use dynamic::{
 };
 pub use embed::{
     EMBED_IFRAME_SANDBOX, EmbedProvider, EmbedProviderRegistry, EmbedSpec, FLY_EMBED_FIELD,
-    builtin_embed_providers, decode_embed_spec, validate_embed_url,
+    builtin_embed_providers, decode_embed_spec, decode_embed_spec_with_registry, validate_embed_url,
 };
 pub use error::FlyError;
 pub use fragment::{ProjectFragment, ProviderRequirement, RichTextPayload};
@@ -177,7 +177,8 @@ pub use registry::{
 pub use render::{
     AlternateLocaleLink, PageHead, PageSelection, RenderPolicy, RenderedPage,
     compose_document_html, document_html_stylesheet, document_html_with_style_nonce,
-    escape_css_attribute, render_page, render_page_with_rich_text, resolve_page,
+    escape_css_attribute, render_page, render_page_with_embed_registry,
+    render_page_with_rich_text, render_page_with_rich_text_and_embed_registry, resolve_page,
 };
 pub use rich_text::{
     FLY_RICH_TEXT_FIELD, MAXIMUM_RICH_TEXT_BYTES, MAXIMUM_RICH_TEXT_DEPTH, MAXIMUM_RICH_TEXT_NODES,
@@ -195,7 +196,9 @@ pub use runtime_pipeline::{
 };
 pub use runtime_render::{
     RuntimeRenderResult, render_page_with_runtime_context,
+    render_page_with_runtime_context_with_embed_registry,
     render_page_with_runtime_context_with_providers,
+    render_page_with_runtime_context_with_providers_and_embed_registry,
 };
 pub use runtime_validation::{extend_with_runtime_validation, validate_runtime_extensions};
 pub use snapshot::{ProjectDiffSummary, ProjectSnapshot, SnapshotCatalog, compare_projects};
@@ -229,7 +232,9 @@ pub use translation::{
 pub use validation::{
     DEFAULT_MAXIMUM_DEPTH, DEFAULT_MAXIMUM_NODES, MAXIMUM_IDENTIFIER_LENGTH, ValidationDiagnostic,
     ValidationLimits, ValidationReport, ValidationSeverity, validate_component_public_urls,
-    validate_identifier, validate_patch_incremental, validate_project,
+    validate_identifier, validate_patch_incremental,
+    validate_patch_incremental_with_embed_registry, validate_project,
+    validate_project_with_embed_registry,
 };
 
 pub const GRAPESJS_FORMAT: &str = "grapesjs";

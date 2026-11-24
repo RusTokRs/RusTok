@@ -118,7 +118,7 @@ fn render_page_with_runtime_context_and_providers_and_embeds(
     providers: Option<&dyn FormProviderEndpointResolver>,
     embeds: &EmbedProviderRegistry,
 ) -> FlyResult<RuntimeRenderResult> {
-    crate::ensure_render_component_limits(document)?;
+    crate::render::ensure_render_component_limits(document)?;
     // Definitions must expand before runtime bindings, actions, and conditions
     // materialize, not only at the final HTML render pass.
     let resolved = if crate::document_has_symbol_instances(document) {
@@ -127,7 +127,7 @@ fn render_page_with_runtime_context_and_providers_and_embeds(
         None
     };
     let document = resolved.as_ref().unwrap_or(document);
-    crate::ensure_render_component_limits(document)?;
+    crate::render::ensure_render_component_limits(document)?;
     let RuntimeProjectMaterialization {
         document,
         effective_context: _,
