@@ -239,11 +239,16 @@ async fn initialize_module_work_runtime(
     // to leave an untracked scheduler running. Cancellation releases this guard.
     let initialization = ModuleWorkSchedulerInitializationLock::ensure(ctx);
     let _guard = initialization.0.lock().await;
-    if published_worker_running::<crate::services::app_lifecycle::ModuleWorkSchedulerHandle>(
-        ctx,
-        "Module work scheduler",
-        crate::services::app_lifecycle::ModuleWorkSchedulerHandle::is_finished,
-    )? {
+    // A retained handle must pass the liveness/stop guard. With no handle,
+    // continue to the requirement snapshot and the explicit stopped-host
+    // no-op below rather than treating terminal shutdown as a startup failure.
+    if ctx.shared_contains::<crate::services::app_lifecycle::ModuleWorkSchedulerHandle>()
+        && published_worker_running::<crate::services::app_lifecycle::ModuleWorkSchedulerHandle>(
+            ctx,
+            "Module work scheduler",
+            crate::services::app_lifecycle::ModuleWorkSchedulerHandle::is_finished,
+        )?
+    {
         return Ok(());
     }
 
@@ -431,11 +436,15 @@ async fn init_workflow_runtime(ctx: &ServerRuntimeContext) -> Result<()> {
     // Serialize startup with concurrent bootstraps and shutdown's handle drain.
     let initialization = WorkflowCronSchedulerInitializationLock::ensure(ctx);
     let _guard = initialization.0.lock().await;
-    if published_worker_running::<WorkflowCronSchedulerHandle>(
-        ctx,
-        "Workflow cron scheduler",
-        WorkflowCronSchedulerHandle::is_finished,
-    )? {
+    // As with module work, distinguish a retained task from an already
+    // drained scheduler. Only the former can be reported as running.
+    if ctx.shared_contains::<WorkflowCronSchedulerHandle>()
+        && published_worker_running::<WorkflowCronSchedulerHandle>(
+            ctx,
+            "Workflow cron scheduler",
+            WorkflowCronSchedulerHandle::is_finished,
+        )?
+    {
         return Ok(());
     }
 
@@ -775,7 +784,18 @@ mod tests {
         .await
         .expect_err("a terminated scheduler cannot be treated as initialized");
         assert!(error.to_string().contains("has terminated"));
-        // Preserve the failed worker handle for shutdown accounting.
+        // Preserve the failed worker handle for shutdown accounting, even
+        // if bootstrap is called again after the stop signal.
+        assert!(ctx.shared_contains::<ModuleWorkSchedulerHandle>());
+        crate::services::app_lifecycle::StopHandle::ensure(&ctx).stop().await;
+        let stopped_error = super::initialize_module_work_runtime(
+            &ctx,
+            &ModuleRegistry::new(),
+            &ModuleRuntimeExtensions::default(),
+        )
+        .await
+        .expect_err("a retained scheduler must not report startup success during shutdown");
+        assert!(stopped_error.to_string().contains("during server shutdown"));
         assert!(ctx.shared_contains::<ModuleWorkSchedulerHandle>());
         ctx.shared_take::<ModuleWorkSchedulerHandle>()
             .unwrap()
@@ -1156,6 +1176,12 @@ mod tests {
             .await
             .expect_err("a terminated cron scheduler cannot be treated as initialized");
         assert!(error.to_string().contains("has terminated"));
+        assert!(ctx.shared_contains::<WorkflowCronSchedulerHandle>());
+        crate::services::app_lifecycle::StopHandle::ensure(&ctx).stop().await;
+        let stopped_error = super::init_workflow_runtime(&ctx)
+            .await
+            .expect_err("a retained cron task must not report startup success during shutdown");
+        assert!(stopped_error.to_string().contains("during server shutdown"));
         assert!(ctx.shared_contains::<WorkflowCronSchedulerHandle>());
         ctx.shared_take::<WorkflowCronSchedulerHandle>()
             .unwrap()

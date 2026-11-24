@@ -516,6 +516,13 @@ the driver mapping.
   may acquire the atomic startup claim. A terminated handle must return an
   observable error while remaining owned for shutdown/join accounting. Do
   not blindly spawn another consumer with an unacknowledged offset or effects.
+  A scheduler with a documented stopped-host no-op must distinguish a retained
+  handle from an absent, already drained handle under its startup/shutdown
+  registration lock. In `apps/server/src/services/app_runtime.rs`, both
+  module-work and Workflow cron had invoked the stop-aware liveness guard
+  before the explicit no-op, returning an error even after the handle was
+  drained. The corrected ordering preserves the retained-handle error and
+  the absent-handle stop check; regression coverage is source-only.
 
   ```rust
   if published_worker_running::<WorkerHandle>(

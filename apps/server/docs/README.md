@@ -156,6 +156,18 @@ cross-replica fencing and external side-effect reconciliation remain the
 durable operation owner's responsibility. All added tests are source-only
 and unrun by request; no compilation, formatting or runtime checks were done.
 
+## Scheduler startup after terminal shutdown (2026-11-25)
+
+Module-work and Workflow cron initialization distinguish a retained task
+from an already drained runtime under their respective initialization locks.
+A retained task still passes the shared liveness/stop guard; after shutdown
+it cannot be reported healthy and its handle remains available to the drain.
+When no handle remains, the stopped-host path returns without registering or
+starting work. Module-work still records the composition requirement used
+by readiness. The existing stop-before-start and restart-after-drain
+regressions cover this no-op; the terminated-task regressions also check
+that retained handles are not acknowledged after stop. Tests are unexecuted.
+
 ## Server audit continuation — scheduler startup liveness (2026-11-23)
 
 The module-work and Workflow cron scheduler initializers previously treated a stored
