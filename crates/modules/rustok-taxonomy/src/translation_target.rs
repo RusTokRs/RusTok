@@ -589,7 +589,7 @@ impl TranslationTargetProvider for TaxonomyTranslationTargetProvider {
                 .apply_exact_translation_in_tx(
                     &transaction,
                     tenant_id,
-                    term_id,
+                    &term,
                     ApplyExactTaxonomyTranslationInput {
                         source_locale: request.source_locale.clone(),
                         target_locale: request.target_locale.clone(),

@@ -28,6 +28,8 @@ use crate::entities::{
 use crate::error::{TaxonomyError, TaxonomyResult};
 use crate::module_term_mutation::ModuleTermCreateInput;
 use crate::normalization::{TAXONOMY_ROUTE_KEY_MAX_CHARS, TAXONOMY_SCOPE_VALUE_MAX_CHARS};
+use crate::owner_category_route_sync::category_alias_history_for_slug_in_tx;
+use crate::owner_category_sync::sync_append_only_aliases;
 use crate::route_key_registry::ensure_route_key_available_in_tx;
 use crate::translation_evidence::{TranslationChangeEvidence, record_translation_change_in_tx};
 
@@ -1075,10 +1077,22 @@ impl TaxonomyService {
         &self,
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
-        term_id: Uuid,
+        authorized_term: &taxonomy_term::Model,
         input: ApplyExactTaxonomyTranslationInput,
     ) -> TaxonomyResult<TaxonomyTranslationApplyResult> {
-        let term = self.find_term_in_tx(txn, tenant_id, term_id).await?;
+        let term_id = authorized_term.id;
+        if authorized_term.kind == TaxonomyTermKind::Category {
+            crate::lock_category_hierarchy_writer_in_tx(txn, tenant_id).await?;
+        }
+        let term = taxonomy_term::Entity::find_by_id(term_id)
+            .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_term::Column::Kind.eq(authorized_term.kind))
+            .filter(taxonomy_term::Column::ScopeType.eq(authorized_term.scope_type))
+            .filter(taxonomy_term::Column::ScopeValue.eq(&authorized_term.scope_value))
+            .lock_exclusive()
+            .one(txn)
+            .await?
+            .ok_or(TaxonomyError::TermNotFound(term_id))?;
         if term.revision != input.expected_resource_revision {
             return Err(TaxonomyError::conflict(
                 "taxonomy term resource revision does not match the translation proposal",
@@ -1120,6 +1134,21 @@ impl TaxonomyService {
             .filter(taxonomy_term_translation::Column::Locale.eq(input.target_locale.as_str()))
             .one(txn)
             .await?;
+        let category_aliases = if term.kind == TaxonomyTermKind::Category {
+            Some(
+                category_alias_history_for_slug_in_tx(
+                    txn,
+                    tenant_id,
+                    term_id,
+                    input.target_locale.as_str(),
+                    existing_target.as_ref().map(|copy| copy.slug.as_str()),
+                    &slug,
+                )
+                .await?,
+            )
+        } else {
+            None
+        };
         let now = Utc::now().fixed_offset();
         let target_revision = match existing_target {
             Some(target) => {
@@ -1197,6 +1226,17 @@ impl TaxonomyService {
             }
         };
 
+        if let Some(aliases) = category_aliases {
+            let aliases = aliases.into_iter().collect::<Vec<_>>();
+            sync_append_only_aliases(
+                txn,
+                tenant_id,
+                term_id,
+                input.target_locale.as_str(),
+                &aliases,
+            )
+            .await?;
+        }
         let resource_revision = self
             .update_term_revision_in_tx(txn, &term, Utc::now())
             .await?;
@@ -1233,19 +1273,6 @@ impl TaxonomyService {
         .map_err(|_| {
             TaxonomyError::internal("failed to enqueue Search reindex after global Tag mutation")
         })
-    }
-
-    async fn find_term_in_tx(
-        &self,
-        txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        term_id: Uuid,
-    ) -> TaxonomyResult<taxonomy_term::Model> {
-        taxonomy_term::Entity::find_by_id(term_id)
-            .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
-            .one(txn)
-            .await?
-            .ok_or(TaxonomyError::TermNotFound(term_id))
     }
 
     async fn update_term_revision_in_tx(

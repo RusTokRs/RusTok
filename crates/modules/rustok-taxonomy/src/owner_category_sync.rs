@@ -420,7 +420,7 @@ async fn ensure_parent_identity(
     Ok(())
 }
 
-async fn sync_append_only_aliases(
+pub(crate) async fn sync_append_only_aliases(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     term_id: Uuid,

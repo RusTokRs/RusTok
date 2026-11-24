@@ -114,3 +114,8 @@ on rename and keeps the canonical presentation row and revision intact.
 Historical slugs stay reserved as aliases.
 Product category translation uses this operation. Callers that own an exact
 icon and color snapshot use `sync_module_category_in_tx`.
+
+The `taxonomy/term` target takes the Category hierarchy lock followed by
+the term row lock before checking translation revisions. It uses the same
+route history rules as regular Category editing. Applying an approved slug
+change keeps the previous localized URL as an alias.

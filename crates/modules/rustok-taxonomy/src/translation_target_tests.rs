@@ -670,3 +670,100 @@ async fn module_owned_translation_requires_owner_and_runs_owner_side_effect_hook
         "module-owned Taxonomy changes must not over-invalidate the tenant Search scope"
     );
 }
+
+#[tokio::test]
+async fn exact_category_translation_retains_and_reserves_the_previous_route() {
+    let (db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let category_id = Uuid::new_v4();
+    let txn = db.begin().await.unwrap();
+    for (locale, name, slug) in [("en", "Notes", "notes"), ("fr", "Carnets", "carnets")] {
+        crate::sync_module_category_copy_in_tx(
+            &txn,
+            tenant_id,
+            crate::SyncModuleCategoryInput {
+                category_id,
+                module_scope: "blog".into(),
+                canonical_key: format!("blog-category-{category_id}"),
+                locale: locale.into(),
+                name: name.into(),
+                slug: slug.into(),
+                aliases: Vec::new(),
+                description: None,
+                parent_id: None,
+                position: 0,
+                icon_key: None,
+                color: None,
+            },
+        )
+        .await
+        .unwrap();
+    }
+    txn.commit().await.unwrap();
+
+    let mut owners = TaxonomyModuleTermTranslationOwnerRegistry::default();
+    owners
+        .register(TestModuleTranslationOwner {
+            authorize_calls: Arc::default(),
+            apply_calls: Arc::default(),
+        })
+        .unwrap();
+    let provider = TaxonomyTranslationTargetProvider::with_owner_registry(service.clone(), owners);
+    let request = ReadTranslationResourceRequest {
+        identity: rustok_translation_targets::TranslationResourceIdentity {
+            owner_slug: rustok_translation_targets::OwnerSlug::new("taxonomy").unwrap(),
+            resource_kind: rustok_translation_targets::ResourceKind::new("term").unwrap(),
+            resource_id: rustok_translation_targets::ResourceId::new(category_id.to_string())
+                .unwrap(),
+            subresource_id: None,
+        },
+        source_locale: TenantLocale::new("en").unwrap(),
+        target_locale: TenantLocale::new("fr").unwrap(),
+    };
+    for (slug, is_reserved) in [("journal", false), ("carnets", true)] {
+        let snapshot = provider
+            .read_resource(read_context(tenant_id), request.clone())
+            .await
+            .unwrap();
+        let patch = TranslationPatchRequest {
+            identity: snapshot.summary.identity.clone(),
+            source_locale: snapshot.source_locale.clone(),
+            target_locale: snapshot.target_locale.clone(),
+            expected_resource_revision: snapshot.summary.resource_revision.clone(),
+            expected_source_revision: snapshot.source_revision.clone(),
+            expected_target_revision: snapshot.target_revision.clone(),
+            fields: vec![field_patch(&snapshot, "slug", slug)],
+            proposal_id: format!("category-slug-{slug}"),
+            approval_receipt_id: format!("category-slug-approved-{slug}"),
+        };
+        let result = provider
+            .apply_patch(
+                read_context(tenant_id).with_idempotency_key(format!("category-slug-{slug}")),
+                patch,
+            )
+            .await;
+        if is_reserved {
+            assert_eq!(result.unwrap_err().kind, PortErrorKind::Conflict);
+        } else {
+            result.unwrap();
+        }
+    }
+
+    for (slug, is_alias) in [("journal", false), ("carnets", true)] {
+        let route = service
+            .resolve_term_route_for_module(
+                tenant_id,
+                TaxonomyTermKind::Category,
+                "blog",
+                "fr",
+                None,
+                slug,
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(route.term_id, category_id);
+        assert_eq!(route.matched_locale, "fr");
+        assert_eq!(route.alias_id.is_some(), is_alias);
+    }
+}
