@@ -24,7 +24,7 @@ fn make_peer_write_channel(
     controller: RwSignal<AdminCanvasController>,
     peer_write_conflict: RwSignal<Option<BrowserPeerWriteConflict>>,
     last_error: RwSignal<Option<String>>,
-    sender_id: Option<String>,
+    scope_id: Option<String>,
 ) -> Option<BrowserPeerWriteChannel> {
     let (page_id, revision_id, project_hash) = controller.with_untracked(|controller| {
         (
@@ -55,12 +55,12 @@ fn make_peer_write_channel(
             conflict.revision
         )));
     };
-    let channel = match sender_id {
-        Some(sender_id) => BrowserPeerWriteChannel::new_with_sender_id(
+    let channel = match scope_id {
+        Some(scope_id) => BrowserPeerWriteChannel::new_scoped(
             page_id,
             revision_id,
             project_hash,
-            sender_id,
+            scope_id,
             on_conflict,
         ),
         None => BrowserPeerWriteChannel::new(
@@ -120,7 +120,7 @@ impl AdminEditorRuntime {
         controller: AdminCanvasController,
         facade: Option<Arc<dyn PageBuilderAdminFacade>>,
         on_request: Option<Callback<PageBuilderCapabilityExecution>>,
-        peer_write_sender_id: Option<String>,
+        peer_write_scope_id: Option<String>,
         facade_missing: impl Into<String>,
         save_succeeded: impl Into<String>,
     ) -> Self {
@@ -133,7 +133,7 @@ impl AdminEditorRuntime {
             controller.clone(),
             peer_write_conflict.clone(),
             last_error.clone(),
-            peer_write_sender_id,
+            peer_write_scope_id,
         ));
 
         Self {
