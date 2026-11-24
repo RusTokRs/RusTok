@@ -75,6 +75,13 @@ test('confirmed peer write fences stale tab without losing its local view or sen
   const otherTab = await context.newPage();
   await mountEditor(page, 'same-page', source);
   await mountEditor(otherTab, 'same-page', source);
+  const [firstSender, secondSender] = await Promise.all([
+    page.locator('#fly-root').getAttribute('data-fly-peer-write-sender-id'),
+    otherTab.locator('#fly-root').getAttribute('data-fly-peer-write-sender-id'),
+  ]);
+  expect(firstSender).toBeTruthy();
+  expect(secondSender).toBeTruthy();
+  expect(firstSender).not.toBe(secondSender);
 
   await page.evaluate(async () => {
     await (globalThis as PeerScope).__flyPeerAdapter?.emitIntent('save', {});
@@ -110,6 +117,110 @@ test('confirmed peer write fences stale tab without losing its local view or sen
   await otherTab.evaluate(() => (globalThis as PeerScope).__flyPeerAdapter?.stop());
   await expect(otherTab.locator('#fly-root')).not.toHaveAttribute(
     'data-fly-peer-write-conflict', 'true'
+  );
+});
+
+test('same-document Rust and JS channels advance one baseline without a false conflict', async ({ page }) => {
+  const source = await readFile(adapterPath, 'utf8');
+  await mountEditor(page, 'same-page', source);
+
+  await page.evaluate(() => {
+    const senderId = document.querySelector('#fly-root')
+      ?.getAttribute('data-fly-peer-write-sender-id');
+    const channel = new BroadcastChannel('fly:page-authoring-writes:v1');
+    channel.postMessage({
+      kind: 'confirmed-write',
+      pageId: 'same-page',
+      revision: 'rev-2',
+      hash: 'hash-2',
+      senderId,
+    });
+    channel.close();
+  });
+  await expect.poll(() => page.locator('#fly-root').getAttribute('data-fly-revision'))
+    .toBe('rev-2');
+  await expect(page.locator('#fly-root')).not.toHaveAttribute(
+    'data-fly-peer-write-conflict', 'true'
+  );
+
+  await page.evaluate(() => {
+    const channel = new BroadcastChannel('fly:page-authoring-writes:v1');
+    channel.postMessage({
+      kind: 'confirmed-write',
+      pageId: 'same-page',
+      revision: 'rev-3',
+      hash: 'hash-3',
+      senderId: 'another-document',
+    });
+    channel.close();
+  });
+  await expect(page.locator('#fly-root')).toHaveAttribute(
+    'data-fly-peer-write-conflict', 'true'
+  );
+});
+
+test('server revision conflicts fence the browser editor without BroadcastChannel', async ({ page }) => {
+  const source = await readFile(adapterPath, 'utf8');
+  await mountEditor(page, 'same-page', source);
+
+  await page.locator('#fly-root').evaluate((root) => {
+    root.dispatchEvent(new CustomEvent('fly:browser-intent-response', {
+      bubbles: true,
+      detail: {
+        request: { intent: 'publish' },
+        result: {
+          save_failure: {
+            code: 'REVISION_CONFLICT',
+            message: 'The page revision changed in another session',
+          },
+        },
+      },
+    }));
+  });
+
+  await expect(page.locator('#fly-root')).toHaveAttribute('data-fly-peer-write-conflict', 'true');
+  await expect(page.locator('#fly-root')).toHaveAttribute(
+    'data-fly-browser-problem', 'FLY_PEER_WRITE_CONFLICT'
+  );
+});
+
+test('a fresh server revision clears a persisted revision-conflict fence', async ({ page }) => {
+  const source = await readFile(adapterPath, 'utf8');
+  await mountEditor(page, 'same-page', source);
+
+  await page.locator('#fly-root').evaluate((root) => {
+    root.dispatchEvent(new CustomEvent('fly:browser-intent-response', {
+      bubbles: true,
+      detail: {
+        request: { intent: 'publish' },
+        result: {
+          save_failure: {
+            code: 'REVISION_CONFLICT',
+            message: 'The page revision changed in another session',
+          },
+        },
+      },
+    }));
+  });
+  await expect(page.locator('#fly-root')).toHaveAttribute('data-fly-peer-write-conflict', 'true');
+
+  await page.evaluate(() => {
+    const scope = globalThis as PeerScope;
+    scope.__flyPeerAdapter?.stop();
+    const root = document.querySelector('#fly-root') as HTMLElement | null;
+    if (!root) throw new Error('missing editor root');
+    root.dataset.flyRevision = 'rev-2';
+    scope.__flyPeerAdapter = scope.FlyBrowser?.mount(root, {
+      intentEndpoint: '/fly-intent',
+    });
+    if (!scope.__flyPeerAdapter) throw new Error('adapter did not remount');
+  });
+
+  await expect(page.locator('#fly-root')).not.toHaveAttribute(
+    'data-fly-peer-write-conflict', 'true'
+  );
+  await expect(page.locator('#fly-root')).not.toHaveAttribute(
+    'data-fly-browser-problem', 'FLY_PEER_WRITE_CONFLICT'
   );
 });
 
