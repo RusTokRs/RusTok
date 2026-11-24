@@ -1440,6 +1440,16 @@ pub(crate) fn is_production_environment() -> bool {
     }
 }
 
+/// Whether this binary must enforce production-grade security defaults.
+///
+/// Release binaries are treated as production by host startup even when the
+/// selected runtime environment is named "staging" or is not explicitly set.
+/// Security-sensitive middleware must use this predicate rather than the
+/// environment label alone.
+pub(crate) fn is_production_security_mode() -> bool {
+    is_production_environment() || !cfg!(debug_assertions)
+}
+
 fn email_disabled_production_override_enabled() -> bool {
     std::env::var("RUSTOK_EMAIL_ALLOW_DISABLED_IN_PRODUCTION")
         .map(|value| {
