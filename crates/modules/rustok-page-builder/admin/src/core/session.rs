@@ -428,6 +428,44 @@ impl EditorSessionState {
         }
     }
 
+    /// A sibling editor has committed a newer revision. Retire any in-flight local
+    /// save attempt before its delayed response can acknowledge an obsolete snapshot.
+    pub fn handle_peer_write_conflict(
+        &mut self,
+        actual_revision: impl Into<String>,
+    ) -> bool {
+        let actual = actual_revision.into();
+        let expected = self.controller.revision_id().to_string();
+        let message = format!(
+            "Another tab saved this page at revision {actual}. Preserve your local changes and reload before editing again."
+        );
+        let mark_result = match self.controller.active_save_attempt() {
+            Some(attempt) => self.controller.mark_save_conflict_for_attempt(
+                &attempt,
+                expected,
+                actual,
+            ),
+            None => self
+                .controller
+                .mark_save_conflict(expected, actual)
+                .map(|()| true),
+        };
+        let marked = match mark_result {
+            Ok(marked) => marked,
+            Err(error) => {
+                tracing::warn!(?error, "Failed to record Page Builder peer-write conflict");
+                false
+            }
+        };
+        if let Err(error) = self.controller.dispatch(UiIntent::SetEditableCapabilities(
+            fly_ui::CapabilityState::read_only(),
+        )) {
+            tracing::warn!(?error, "Failed to fence Page Builder after peer write");
+        }
+        self.fail(message);
+        marked
+    }
+
     pub fn dispatch_intent(&mut self, intent: UiIntent) -> Result<Vec<AdminCanvasEffect>, String> {
         if matches!(
             &intent,
@@ -700,6 +738,26 @@ mod tests {
             &attempt,
             "late transport error",
         ));
+    }
+
+    #[test]
+    fn peer_write_conflict_retires_active_save_before_late_acknowledgement() {
+        let controller = sample_controller();
+        let mut session = EditorSessionState::new(controller, "Missing", "Saved");
+        let hash = session.controller.editor().revision().project_hash;
+        let attempt = session.mark_save_started_with_id().expect("save started");
+
+        assert!(session.handle_peer_write_conflict("rev-2"));
+        assert!(session.controller.active_save_attempt().is_none());
+        assert!(session.controller.ui().state.dirty.save_conflict);
+        assert!(!session.controller.ui().state.capabilities.edit);
+        assert!(session.last_error.as_deref().is_some_and(|error| error.contains("Another tab")));
+
+        assert!(session
+            .handle_publish_response_for_attempt("home", "rev-2", Some(hash), &attempt)
+            .is_err());
+        assert!(session.controller.ui().state.dirty.save_conflict);
+        assert!(session.last_error.as_deref().is_some_and(|error| error.contains("Another tab")));
     }
 
     #[test]
