@@ -640,7 +640,10 @@ pub enum AdminCanvasEffect {
 }
 
 fn validate_revision_id(revision_id: &str) -> Result<(), AdminCanvasError> {
-    if revision_id.trim().is_empty() || revision_id.len() > 256 {
+    if revision_id.trim().is_empty()
+        || revision_id.len() > 256
+        || revision_id.chars().any(char::is_control)
+    {
         return Err(AdminCanvasError::InvalidRevisionId);
     }
     Ok(())
