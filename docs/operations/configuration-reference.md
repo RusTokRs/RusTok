@@ -26,6 +26,7 @@ Every non-debug `apps/server` binary enforces production-grade host security gat
 | `server.binding` | `RUSTOK_BINDING` | `127.0.0.1` | Network interface address to bind (`0.0.0.0` in Docker/production). |
 | `server.port` | `PORT`, `RUSTOK_PORT` | `5150` | TCP port for HTTP and GraphQL API listener. |
 | `server.host` | `RUSTOK_HOST`, `RUSTOK_BASE_URL` | `http://127.0.0.1` | Canonical public base URL emitted in redirects and OpenAPI/GraphQL schemas. |
+| Host authority credentials (host-only) | `RUSTOK_HOST_AUTHORITY_CREDENTIALS` | unset | JSON array of host operator credentials (`actor_id`, `authority` set to `read` or `manage`, and a SHA-256 `token_sha256`); present the raw credential in `X-RusTok-Host-Token`. `manage` is required for process-wide MCP scaffold filesystem writes. |
 | `RUSTOK_HTTPS` | `RUSTOK_HTTPS` | `false` | When `true`, enables HSTS and marks session cookies as `Secure`. Mandatory in production. |
 
 ---
