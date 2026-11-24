@@ -613,6 +613,16 @@ async fn accept_invite(
     }))
 }
 
+/// Perform the same password-hash work regardless of whether an account
+/// matches a public recovery/verification lookup. Email delivery itself is
+/// detached, so without this equalization the synchronous preparation path
+/// can become an account-existence timing oracle.
+async fn mask_auth_lookup_timing(candidate: &str) -> Result<()> {
+    let dummy_hash = crate::auth::dummy_password_hash()?;
+    let _ = crate::auth::verify_password_async(candidate.to_string(), dummy_hash).await?;
+    Ok(())
+}
+
 #[utoipa::path(post, path = "/api/auth/reset/request", tag = "auth", request_body = RequestResetParams,
     responses((status = 200, description = "Reset request accepted", body = ResetRequestResponse)))]
 async fn request_reset(
@@ -629,6 +639,7 @@ async fn request_reset(
         .ok_or(Error::InternalServerError)?;
 
     let user = Users::find_by_email(ctx.runtime_ctx().db(), tenant.id, email).await?;
+    mask_auth_lookup_timing(email).await?;
 
     let reset_token = user
         .as_ref()
@@ -721,6 +732,9 @@ async fn request_verification(
     let settings = ctx.runtime_ctx().settings();
 
     let user = Users::find_by_email(ctx.runtime_ctx().db(), tenant.id, email).await?;
+    if settings.features.email_verification {
+        mask_auth_lookup_timing(email).await?;
+    }
 
     let verification = if settings.features.email_verification {
         user.filter(|record| record.email_verified_at.is_none())
@@ -1042,6 +1056,12 @@ fn clamp_session_limit(limit: Option<u64>) -> u64 {
 mod tests {
     use super::{disable_auth_response_caching, ensure_registration_enabled};
     use crate::common::RustokSettings;
+
+    #[tokio::test]
+    async fn public_auth_lookup_timing_mask_uses_the_dummy_password_hash() {
+        assert!(super::mask_auth_lookup_timing("unknown@example.com").await.is_ok());
+        assert!(super::mask_auth_lookup_timing("known@example.com").await.is_ok());
+    }
 
     #[test]
     fn registration_policy_respects_feature_flag() {
