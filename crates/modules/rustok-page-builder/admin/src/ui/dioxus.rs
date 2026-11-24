@@ -470,24 +470,28 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
     let mut peer_write_channel = use_signal(|| None::<BrowserPeerWriteChannel>);
 
     let session_configuration_key = format!(
-        "schemas:{:p}|evaluation:{:p}|context:{}|scenarios:{:p}|policy:{:p}|facade:{}",
-        props.trait_schemas.as_ref().map(Arc::as_ptr).unwrap_or(std::ptr::null()),
+        "schemas:{}|evaluation:{}|context:{}|scenarios:{}|policy:{}|facade:{}",
+        props
+            .trait_schemas
+            .as_ref()
+            .map(|value| format!("{:p}", Arc::as_ptr(value)))
+            .unwrap_or_default(),
         props
             .editor_capability_evaluation
             .as_ref()
-            .map(Arc::as_ptr)
-            .unwrap_or(std::ptr::null()),
+            .map(|value| format!("{:p}", Arc::as_ptr(value)))
+            .unwrap_or_default(),
         serde_json::to_string(&props.runtime_context).unwrap_or_default(),
         props
             .runtime_scenarios
             .as_ref()
-            .map(Arc::as_ptr)
-            .unwrap_or(std::ptr::null()),
+            .map(|value| format!("{:p}", Arc::as_ptr(value)))
+            .unwrap_or_default(),
         props
             .runtime_publish_gate_policy
             .as_ref()
-            .map(Arc::as_ptr)
-            .unwrap_or(std::ptr::null()),
+            .map(|value| format!("{:p}", Arc::as_ptr(value)))
+            .unwrap_or_default(),
         props.facade.is_some(),
     );
     let session_configuration = (
@@ -498,7 +502,7 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
         props.runtime_publish_gate_policy.clone(),
         props.facade.is_some(),
     );
-    use_effect(use_reactive!(|session_configuration_key| {
+    use_effect(use_reactive!(|_session_configuration_key| {
         let (
             trait_schemas,
             editor_capability_evaluation,
