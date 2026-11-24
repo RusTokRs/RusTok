@@ -316,13 +316,13 @@ const missingBatchPriceInsert = copyFixture();
 replaceAllInFixture(
   missingBatchPriceInsert,
   'crates/modules/rustok-product/src/services/catalog/commands.rs',
-  'port.create_initial_prices_in_tx(&txn, initial_prices)',
-  'port.create_initial_prices_one_by_one(&txn, initial_prices)',
+  '.create_initial_prices_in_tx(&txn, tenant_id, initial_prices)',
+  '.create_initial_prices_one_by_one(&txn, tenant_id, initial_prices)',
 );
 const missingBatchPriceInsertResult = run(missingBatchPriceInsert);
 assert(missingBatchPriceInsertResult.status !== 0, 'expected missing batch price insert to fail');
 assert(
-  missingBatchPriceInsertResult.stderr.includes('port.create_initial_prices_in_tx'),
+  missingBatchPriceInsertResult.stderr.includes('.create_initial_prices_in_tx'),
   `expected batch price insert failure, got ${missingBatchPriceInsertResult.stderr}`,
 );
 
