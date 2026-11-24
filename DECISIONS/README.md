@@ -53,6 +53,7 @@ Non-ADR plans and research documents do not belong in this registry.
 
 | ADR | Title | Decision status | Implementation status | Relations |
 | --- | --- | --- | --- | --- |
+| [2026-11-25](./2026-11-25-oauth-browser-authorization-csrf.md) | OAuth browser authorization CSRF boundary | Accepted | Implemented | Extends [OAuth Access-Token Revocation Fence](./2026-11-01-oauth-access-token-revocation-fence.md) |
 | [2026-11-24](./2026-11-24-installer-http-job-crash-quarantine.md) | Installer HTTP job crash quarantine | Accepted | In progress | Extends [Durable side-effect recovery](./2026-11-12-durable-side-effect-recovery.md) and [Module release rollback safety](./2026-08-06-module-release-rollback-safety.md) |
 | [2026-11-23](./2026-11-23-workflow-cron-durable-scheduling-and-recovery.md) | Workflow cron durable scheduling, multi-replica claims and fail-closed recovery | Proposed | In progress | Extends [Durable side-effect recovery](./2026-11-12-durable-side-effect-recovery.md) |
 | [2026-11-25](./2026-11-25-dioxus-draft-recovery-and-multi-tab-reconciliation.md) | Dioxus draft recovery and conflict-safe multi-tab reconciliation | Accepted | In progress | Extends [Fly save-attempt correlation and peer-write fencing](./2026-11-24-fly-save-attempt-correlation-and-peer-write-fencing.md) and [Pages document save receipts](./2026-11-23-page-document-save-receipts.md) |
