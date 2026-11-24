@@ -390,8 +390,8 @@ pub(crate) fn decode_fly_canvas_envelope(
                  let message_handler = on_message;
                  let error_handler = on_error;
                  match fly_web::IframeJsonSubscription::subscribe_by_element_id(
-                     iframe_id.clone(),
-                     expected_origin_for_load.clone(),
+                     &iframe_id,
+                     &expected_origin_for_load,
                      move |payload, last_sequence| {
                          decode_fly_canvas_envelope(payload, &instance, last_sequence)
                      },
