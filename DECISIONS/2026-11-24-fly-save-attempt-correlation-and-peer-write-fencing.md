@@ -25,10 +25,10 @@ uncorrelated save success/failure transitions, allowing a stale response to clea
 save.
 
 The Leptos host has both a typed Rust workspace and the classic `fly-browser.js` adapter. They
-can each own a `BroadcastChannel` listener for the same editor root. Without an editor-scoped
-sender identity, one adapter would interpret the other's local confirmed write as a sibling-tab
-write. The Dioxus host also needs the peer-write protocol while it owns the iframe/canvas lifecycle
-directly.
+can each own a `BroadcastChannel` listener in the same browser document. Both adapters must share
+one document-scoped sender identity or they will interpret each other's local confirmed writes as
+sibling-tab writes. The Dioxus host also needs the peer-write protocol while it owns the iframe/canvas
+lifecycle directly.
 
 Finally, the Page Builder Save action persists a working document. It is not the release/publish
 operation and must not be blocked by a release-readiness policy when the actor has edit permission.
@@ -53,14 +53,14 @@ operation and must not be blocked by a release-readiness policy when the actor h
 4. **Draft-save permission is edit permission.** Page Builder working-draft persistence is gated
    by `edit`. The host's runtime publish/release-readiness policy remains separate and must not
    disable saving a working draft.
-5. **Peer-write notifications are advisory and editor-scoped.** The JS adapter and Rust host use
-   the same `fly:page-authoring-writes:v1` channel. A sender ID combines a per-document nonce
-   with an editor-root scope. Channel instances for the same editor advance their baseline on
-   local confirmed writes; another tab or another editor root is treated as a peer and fences the
-   stale editor into read-only mode. Dioxus uses the document-scoped identity when it owns the
-   only channel in that host. The JS adapter also fences an explicit server revision-conflict
-   response if a BroadcastChannel notification was missed, and clears that parked fence only
-   after a reload observes a different server revision.
+5. **Peer-write notifications are advisory and document-scoped.** The JS adapter and Rust host use
+   the same `fly:page-authoring-writes` channel and share one sender ID per browser document. All
+   adapters in the same document advance their baseline on local confirmed writes; a different
+   browser tab has a different sender ID and fences the stale editor into read-only mode. This
+   deliberately treats multiple editor roots in one tab as one local session; server revision
+   compare-and-swap still protects the document if those roots race. The JS adapter also fences an
+   explicit server revision-conflict response if a BroadcastChannel notification was missed, and
+   clears that parked fence only after a reload observes a different server revision.
 6. **No automatic merge or replay is introduced.** A peer notification asks the user to preserve
    local work and reload. The server's revision compare-and-swap remains authoritative if
    BroadcastChannel is unavailable or a notification is missed.
@@ -84,8 +84,8 @@ operation and must not be blocked by a release-readiness policy when the actor h
 - Callback-backed hosts must call `PageBuilderCapabilityExecution::complete` once with the
   result of the exact asynchronous request; the runtime validates and applies the captured
   `SaveAttempt` before acknowledging or failing it.
-- Leptos Rust and JS adapters can share one logical editor identity without self-conflicting;
-  independent tabs and editor roots remain isolated.
+- Leptos Rust and JS adapters, including multiple roots in one document, share one logical local
+  identity without self-conflicting; independent browser tabs remain isolated.
 - Dioxus and Leptos hosts now use the same local correlation and advisory peer-write semantics.
 - Server receipt persistence, unknown-outcome recovery across remounts/independent sessions,
   durable restore/lifecycle operation IDs and mounted browser evidence remain separate work.
