@@ -523,6 +523,10 @@ flowchart TD
 ### Pattern 3: Lock-Before-Check Concurrency (`P-LOCK-ORDER`)
 * **Category:** Order of Operations & TOCTOU Elimination
 * **Problem:** Checking invariants (such as rate limits, inventory availability, balance thresholds, or slug uniqueness) *before* acquiring the transactional or advisory lock introduces a Time-Of-Check to Time-Of-Use (TOCTOU) race condition.
+  Concurrent Blog tag removals both counted a relation the other transaction
+  had yet to commit deleting. The usage row serialized the upserts only after
+  they had already computed stale counts. Blog enters its tenant tag lock
+  before changing any relation or acquiring a post or term write lock.
 * **Pattern Solution:**
   Always acquire the mutex or advisory lock first, and verify preconditions *inside* the protected critical section:
   ```rust

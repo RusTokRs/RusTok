@@ -13,6 +13,10 @@ in-transaction commands (`create_promoted_post_in_tx`, `load_post_for_demotion_i
 `ensure_blog_slug_unique_in_tx`, `load_post_tag_ids_in_tx`) exposed through `ports`
 and `services::orchestration`, resolving finding L-4 with zero entity leakage.
 
+Content conversions enter `ports::lock_tag_attachments_writer_in_tx` before
+creating, loading for demotion or deleting Blog posts. The same transaction
+must cover Taxonomy tag handling, Blog links, and their usage projection.
+
 ## Public surface
 
 Deliberate public modules/facades:

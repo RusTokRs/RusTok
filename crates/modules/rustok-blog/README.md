@@ -213,6 +213,10 @@ copy must use the canonical Taxonomy owner contract.
   module-local tags visible, and removes zero-use global tags. Taxonomy remains
   canonical for term identity and `canonical_key`; the projection is never an
   independent write source.
+- PostgreSQL tag mutations, tagged-post writes and content conversions take
+  one Blog-owned transaction lock per tenant before changing posts or tags.
+  The lock covers relation changes and the usage recount. SQLite serializes
+  those relation writes through its database writer.
 - Depends on `rustok-core` for module contracts, permissions, and
   `SecurityContext`.
 - Depends on `rustok-api` for shared auth/tenant/request GraphQL+HTTP adapter
@@ -423,6 +427,9 @@ publication/channel/locale pagination scenario passes on both profiles.
 Explicit PostgreSQL scenarios require `RUSTOK_BLOG_TEST_DATABASE_URL`; an ordinary
 run reports them as ignored. Configured tests cover simultaneous edits, atomic
 outbox rollback, duplicate/reordered delivery and connection/process restart.
+Run `cargo test -p rustok-blog --test database_profiles -- --include-ignored`
+to verify embedded Taxonomy category and tag lifecycles on PostgreSQL and
+check the tag usage count after two concurrent removals.
 These scoped results do not certify the full platform migrator or remote FBA.
 
 Leptos Page Builder binds Blog-owned catalog, validation and preview transports.
