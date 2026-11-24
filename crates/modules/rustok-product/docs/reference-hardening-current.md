@@ -45,11 +45,13 @@ canonical large-module reference:
 1. **Public persistence API / crate layout**
    - `src/lib.rs` still exports `pub mod entities`.
      Relations and Bundles have moved to Product's native transactional reference
-     API. Commerce and its integration fixtures still use ORM entities.
+     API. Commerce storefront REST uses Product read ports, including lookup of
+     localized tags through the owner. The GraphQL line-item helper and Commerce
+     integration fixtures still use ORM entities.
    - `ProductModule` and its migration registration now live in `module.rs`.
      Several integration adapters still live at the crate root.
-   - The published DTOs already use `rustok-product-ports::ProductStatus`.
-     Commerce still has GraphQL and OpenAPI conversions targeting the storage enum.
+   - Commerce's GraphQL and OpenAPI catalog contracts use the published
+     `rustok-product-ports::ProductStatus`.
    A bounded ownership/public-API migration is required before other modules copy this layout.
 
 2. **Nullable mutation semantics**

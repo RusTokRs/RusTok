@@ -3,10 +3,7 @@ pub mod checkout;
 #[cfg(test)]
 pub(crate) mod line_item_resolution;
 pub mod orders;
-#[path = "products_owner_list.rs"]
 pub mod products;
-#[path = "products.rs"]
-pub mod products_legacy;
 
 pub use carts::*;
 pub use checkout::*;
@@ -18,7 +15,6 @@ mod tests;
 
 use axum::http::StatusCode;
 use rust_decimal::Decimal;
-use rustok_api::locale_tags_match;
 use rustok_api::{PortActor, PortContext, PortError, RequestContext};
 use rustok_cart::{CartStatus, CartStorefrontPort, CartStorefrontRepriceRequest};
 use rustok_channel::error::ChannelError;
@@ -27,7 +23,6 @@ use rustok_customer::{CustomerUserProjectionRequest, in_process_customer_read_po
 #[cfg(test)]
 use rustok_pricing::PricingReadPort;
 use rustok_pricing::{PriceResolutionContext, in_process_pricing_read_port};
-use rustok_product::entities::product_translation;
 use rustok_web::{HttpError, HttpResult, port_error_to_http_error};
 use sea_orm::DatabaseConnection;
 use serde::de::Deserializer;
@@ -654,24 +649,6 @@ fn store_line_item_pricing_port_context(
         .as_deref()
         .map(|channel| context.clone().with_channel(channel))
         .unwrap_or(context)
-}
-
-pub(crate) fn pick_product_translation<'a>(
-    translations: &'a [product_translation::Model],
-    locale: &str,
-    default_locale: &str,
-) -> Option<&'a product_translation::Model> {
-    translations
-        .iter()
-        .find(|translation| locale_tags_match(&translation.locale, locale))
-        .or_else(|| {
-            (!locale_tags_match(default_locale, locale)).then(|| {
-                translations
-                    .iter()
-                    .find(|translation| locale_tags_match(&translation.locale, default_locale))
-            })?
-        })
-        .or_else(|| translations.first())
 }
 
 pub(crate) fn default_metadata() -> Value {

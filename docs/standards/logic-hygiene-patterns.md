@@ -1045,6 +1045,9 @@ committing the first.
   let rows = transaction.query_all_raw(statement).await?;
   ```
 * **Detection:** Start with `rg -ni '(from|join) (products|product_[a-z_]+|channels|channel_index_[a-z_]+)' crates/modules/rustok-distribution/src`. Review ownership and verify that delayed or deleted owner state is rejected before pagination and exact count.
+* **Commerce example:** The storefront Product list had a compiled ORM handler
+  alongside the owner-port handler. Remove the superseded handler and check that
+  Product counts and pages the same tenant- and channel-filtered SQL query.
 
 ---
 

@@ -44,7 +44,6 @@ pub mod graphql_runtime;
 pub mod migrations;
 pub mod module;
 pub mod openapi;
-mod search;
 pub mod services;
 pub mod state_machine;
 mod storefront_channel;

@@ -62,7 +62,7 @@ export function run() {
   require(publicMapper.includes('crate::error::core_port_error(error)'), 'Public mapper must delegate canonical Core policy');
   const http=read('crates/modules/rustok-commerce/src/controllers/products.rs');
   require(http.includes('rustok_product::error::core_port_error(error)') && http.includes('product_core_http_policy('), 'HTTP admin must preserve nested Core kind and bounded copy');
-  require(read('crates/modules/rustok-commerce/src/controllers/store/products.rs').includes('crate::controllers::products::product_core_http_policy('), 'HTTP storefront must share Core policy');
+  require(read('crates/modules/rustok-commerce/src/controllers/store/products.rs').includes('storefront_product_port_http_policy(&error.kind)'), 'HTTP storefront must present the Product owner port kind');
   const graphql=read('crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs');
   const outcome=between(graphql, 'fn product_command_error_outcome(', 'fn product_command_port_error(');
   require(outcome.includes('rustok_product::product_catalog_command_error_is_terminal') && graphql.includes('"product.conflict"') && graphql.includes('"product.dependency_not_found"'), 'GraphQL definitive outcome must bind known domain classes and codes');

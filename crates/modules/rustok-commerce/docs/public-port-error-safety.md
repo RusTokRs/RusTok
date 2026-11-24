@@ -254,12 +254,11 @@ No verification command above was executed as part of this source wave.
 
 ## Storefront Product HTTP policy continuation (2026-10-19)
 
-Status: **source-only, unintegrated; runtime verification open**.
+Status: **source integrated; runtime verification open**.
 
-The mounted `GET /store/products` owner-list adapter and delegated
-`GET /store/products/{id}` adapter share one Commerce HTTP presentation policy,
-`products_legacy::storefront_product_port_http_policy`. Product remains responsible
-for domain/nested Core classification; Commerce presents the resulting `PortErrorKind`.
+The mounted `GET /store/products` and `GET /store/products/{id}` adapters share
+`storefront_product_port_http_policy` in the storefront Product controller.
+Product classifies domain and Core errors. Commerce presents the resulting `PortErrorKind`.
 No public response or classification is derived from owner code/message text.
 
 | Owner kind | HTTP status | Public code |
