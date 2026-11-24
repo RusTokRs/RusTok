@@ -710,6 +710,24 @@ mod tests {
     }
 
     #[test]
+    fn peer_write_conflict_retires_active_attempt_and_rejects_its_late_success() {
+        let mut controller = controller();
+        let hash = controller.editor().revision().project_hash;
+        let attempt = controller.mark_save_started_with_id().expect("save started");
+
+        assert!(controller
+            .mark_save_conflict_for_attempt(&attempt, "rev-1".into(), "rev-2".into())
+            .expect("peer conflict"));
+        assert!(controller.active_save_attempt().is_none());
+        assert_eq!(controller.revision_id(), "rev-1");
+        assert!(controller.editor().revision().save_conflict);
+        assert!(controller.ui().state.dirty.save_conflict);
+        assert!(controller.acknowledge_save_for_attempt(hash, &attempt, "rev-2").is_err());
+        assert_eq!(controller.revision_id(), "rev-1");
+        assert!(controller.ui().state.dirty.dirty);
+    }
+
+    #[test]
     fn controller_acknowledges_only_submitted_snapshot_and_keeps_newer_edits() {
         let mut controller = controller();
         let patch = |label: &str| UiIntent::execute(EditorCommand::Patch {
