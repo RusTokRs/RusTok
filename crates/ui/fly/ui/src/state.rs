@@ -245,6 +245,10 @@ pub struct DirtyState {
     /// a durable promise that can be resumed after reloading a serialized editor.
     #[serde(skip)]
     pub save_started_sequence: Option<u64>,
+    /// A request-local identity. Restored editor state cannot acknowledge a request
+    /// that no longer exists, even if a later attempt has the same hash and sequence.
+    #[serde(skip)]
+    pub save_started_request_id: Option<String>,
     /// The hash the host had synchronized when the save began; absent for
     /// pure state-machine clients that do not track document hashes.
     #[serde(skip)]
