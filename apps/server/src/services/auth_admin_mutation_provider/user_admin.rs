@@ -736,6 +736,9 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             prepared.localized_values.is_some(),
         );
         let mut active: users::ActiveModel = locked_user.clone().into();
+        if user_row_update_requested {
+            active.updated_at = Set(Utc::now().into());
+        }
         if let Some(email) = normalized_email {
             if email != locked_user.email {
                 // A different address has not proven mailbox control; never
