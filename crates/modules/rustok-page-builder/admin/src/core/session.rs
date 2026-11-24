@@ -25,6 +25,18 @@ fn optional_arc_changed<T>(current: &Option<Arc<T>>, next: &Option<Arc<T>>) -> b
 /// Contains zero framework-specific reactive primitives (no Leptos Signals, no Dioxus Signals).
 /// Can be managed by any reactive wrapper or reducer.
 #[derive(Clone)]
+fn conflict_actual_revision(message: &str) -> Option<String> {
+    for marker in ["found `", "current revision `"] {
+        if let Some((_, tail)) = message.split_once(marker) {
+            let revision = tail.split('`').next()?.trim();
+            if !revision.is_empty() {
+                return Some(revision.to_string());
+            }
+        }
+    }
+    None
+}
+
 pub struct EditorSessionState {
     pub controller: AdminCanvasController,
     pub last_error: Option<String>,
@@ -389,11 +401,14 @@ impl EditorSessionState {
         attempt: &SaveAttempt,
         message: impl Into<String>,
     ) -> bool {
+        let message = message.into();
         let expected = self.controller.revision_id().to_string();
+        let actual = conflict_actual_revision(&message)
+            .unwrap_or_else(|| "newer server revision".to_string());
         match self.controller.mark_save_conflict_for_attempt(
             attempt,
             expected,
-            "newer server revision".to_string(),
+            actual,
         ) {
             Ok(true) => {
                 if let Err(error) = self
@@ -685,6 +700,24 @@ mod tests {
             &attempt,
             "late transport error",
         ));
+    }
+
+    #[test]
+    fn conflict_revision_is_extracted_from_pages_and_receipt_errors() {
+        assert_eq!(
+            conflict_actual_revision(
+                "Page document changed concurrently: expected revision `rev-1`, found `rev-2`"
+            )
+            .as_deref(),
+            Some("rev-2")
+        );
+        assert_eq!(
+            conflict_actual_revision(
+                "Pages document advanced after this save receipt: committed revision `rev-2`, current revision `rev-3`"
+            )
+            .as_deref(),
+            Some("rev-3")
+        );
     }
 
     #[test]
