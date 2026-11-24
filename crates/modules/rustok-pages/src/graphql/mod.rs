@@ -5,7 +5,7 @@ mod mutation;
 mod query;
 mod runtime_data;
 
-pub(super) use mutation::map_pages_error;
+pub(crate) use mutation::map_pages_error;
 mod scenario_baseline;
 mod starters;
 mod symbols;

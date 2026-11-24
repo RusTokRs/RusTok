@@ -140,22 +140,31 @@ impl EditorSessionState {
     ) {
         let runtime_context_configured = runtime_context.is_some();
         let runtime_context = runtime_context.unwrap_or_else(|| Value::Object(Map::new()));
-        let runtime_scenarios = runtime_scenarios.unwrap_or_else(|| Arc::new(Vec::new()));
+        let (trait_schemas_changed, trait_schemas) = match trait_schemas {
+            Some(next) => (!Arc::ptr_eq(&self.trait_schemas, &next), next),
+            None => (false, self.trait_schemas.clone()),
+        };
+        let (runtime_scenarios_changed, runtime_scenarios) = match runtime_scenarios {
+            Some(next) => (self.runtime_scenarios != next, next),
+            None => (
+                !self.runtime_scenarios.is_empty(),
+                Arc::new(Vec::new()),
+            ),
+        };
         let runtime_inputs_changed = self.runtime_context != runtime_context
             || self.runtime_context_configured != runtime_context_configured
-            || optional_arc_changed(&self.trait_schemas, &trait_schemas)
+            || trait_schemas_changed
             || optional_arc_changed(
                 &self.editor_capability_evaluation,
                 &editor_capability_evaluation,
             )
-            || optional_arc_changed(&self.runtime_scenarios, &runtime_scenarios)
+            || runtime_scenarios_changed
             || optional_arc_changed(
                 &self.runtime_publish_gate_policy,
                 &runtime_publish_gate_policy,
             );
 
-        self.trait_schemas =
-            trait_schemas.unwrap_or_else(|| Arc::new(TraitSchemaRegistry::with_builtins()));
+        self.trait_schemas = trait_schemas;
         self.editor_capability_evaluation = editor_capability_evaluation;
         self.runtime_context = runtime_context;
         self.runtime_context_configured = runtime_context_configured;

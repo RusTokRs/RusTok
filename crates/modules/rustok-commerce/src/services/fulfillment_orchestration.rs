@@ -146,6 +146,7 @@ impl FulfillmentOrchestrationService {
                 PortErrorKind::NotFound => FulfillmentOrchestrationError::OrderNotFound(order_id),
                 _ => FulfillmentOrchestrationError::Owner(error),
             })?;
+        // INVARIANT: order port projection must match the requested tenant scope
         if order.tenant_id != tenant_id
             || order.id != order_id
             || order

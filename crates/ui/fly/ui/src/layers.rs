@@ -218,6 +218,7 @@ fn collect_layer_items(
                 depth,
                 child_count: 0,
                 opaque: true,
+                is_locked: false,
                 parent_id,
                 index,
             });
