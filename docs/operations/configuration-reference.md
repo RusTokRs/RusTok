@@ -98,8 +98,8 @@ selector. See [FBA scope](../backend/module-backend-architecture.md#fba-contract
 | `settings.rustok.rate_limit.backend` | `RATE_LIMIT_BACKEND` | `memory` | Rate limit storage backend: `memory` (in-process) or `redis`. |
 | `settings.rustok.rate_limit.requests_per_minute` | — | `60` | General API request quota per tenant/IP window. |
 | `settings.rustok.rate_limit.burst` | — | `10` | Allowable burst capacity for standard requests. |
-| `settings.rustok.rate_limit.auth_requests_per_minute` | — | `20` | Strict quota for login/token issue endpoints. |
-| `settings.rustok.rate_limit.oauth_requests_per_minute` | — | `30` | Quota for OAuth verification and authorization flows. |
+| `settings.rustok.rate_limit.auth_requests_per_minute` | — | `20` | Strict quota for login, registration, refresh/revocation, password-change, verification, reset, invite, and GraphQL WebSocket authentication endpoints. |
+| `settings.rustok.rate_limit.oauth_requests_per_minute` | — | `30` | Quota for OAuth token, authorization, consent, revocation, and browser-session flows. |
 
 ---
 
