@@ -582,7 +582,42 @@ function readSaveFailure(pageId) {
   }
 }
 
+function fencePeerWriteConflict(adapter, details = {}) {
+  if (adapter.peerWriteConflict) return;
+  const revision = nonEmptyString(details.revision);
+  const hash = nonEmptyString(details.hash);
+  const source = details.source === "server" ? "server" : "peer";
+  adapter.peerWriteConflict = { revision, hash, source };
+  adapter.root.dataset.flyPeerWriteConflict = "true";
+  adapter.root.dispatchEvent(new CustomEvent("fly:browser-peer-write", {
+    bubbles: true,
+    detail: {
+      code: PEER_WRITE_CONFLICT_CODE,
+      pageId: adapter.pageId,
+      instanceId: adapter.instanceId,
+      revision,
+      projectHash: hash,
+      source,
+    },
+  }));
+  adapter.reportPeerWriteConflict();
+  adapter.discardQueuedAuthoritativeIntents(
+    details.reason ||
+      (source === "server"
+        ? "because the server rejected a stale revision"
+        : "because another editor saved this page"),
+  );
+}
+
 function reportSaveFailure(adapter, failure, request) {
+  const code = nonEmptyString(failure.code);
+  if (code === "REVISION_CONFLICT" || code === "PAGE_DOCUMENT_REVISION_CONFLICT") {
+    fencePeerWriteConflict(adapter, {
+      source: "server",
+      reason: "because the server rejected a stale revision",
+    });
+    return;
+  }
   reportBrowserProblem(
     adapter,
     {
@@ -1586,27 +1621,22 @@ export class FlyBrowserAdapter {
       hash === this.root.dataset.flyProjectHash
     ) return;
 
-    this.peerWriteConflict = { revision, hash };
-    this.root.dataset.flyPeerWriteConflict = "true";
-    this.root.dispatchEvent(new CustomEvent("fly:browser-peer-write", {
-      bubbles: true,
-      detail: {
-        code: PEER_WRITE_CONFLICT_CODE,
-        pageId: this.pageId,
-        instanceId: this.instanceId,
-        revision,
-        projectHash: hash,
-      },
-    }));
-    this.reportPeerWriteConflict();
-    this.discardQueuedAuthoritativeIntents("because another editor saved this page");
+    fencePeerWriteConflict(this, {
+      revision,
+      hash,
+      source: "peer",
+      reason: "because another editor saved this page",
+    });
   }
 
   reportPeerWriteConflict() {
+    const serverConflict = this.peerWriteConflict?.source === "server";
     reportBrowserProblem(this, {
       result: {
         code: PEER_WRITE_CONFLICT_CODE,
-        error: "Another editor saved this page. Preserve any unsaved changes, then reload the latest document before making further edits.",
+        error: serverConflict
+          ? "The server rejected this save because the page changed in another session. Preserve your unsaved changes, then reload the latest document before editing again."
+          : "Another editor saved this page. Preserve any unsaved changes, then reload the latest document before making further edits.",
       },
     }, PEER_WRITE_CONFLICT_CODE);
   }
