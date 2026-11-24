@@ -26,7 +26,7 @@ browser-js = [
   "dep:js-sys",
   "dep:web-sys",
 ]
-wasm-client = ["fly-leptos/wasm-client", "browser-js"]
+wasm-client = ["fly-leptos/wasm-client", "fly-web/wasm-client", "browser-js"]
 csr = ["leptos/csr", "wasm-client", "rustok-grid-leptos/csr"]
 hydrate = ["leptos/hydrate", "wasm-client", "rustok-grid-leptos/hydrate"]
 ssr = ["leptos/ssr", "fly-leptos/ssr", "rustok-grid-leptos/ssr"]
