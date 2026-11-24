@@ -53,6 +53,23 @@ pub enum UiIntent {
     ReplaceDiagnostics(Vec<ValidationDiagnostic>),
 }
 
+impl UiIntent {
+    /// True when dispatching the intent can change the authored document or submit it.
+    /// View-state intents remain available when a peer tab has fenced this editor.
+    pub fn mutates_document(&self) -> bool {
+        matches!(
+            self,
+            Self::Drop
+                | Self::CutSelection
+                | Self::PasteClipboard
+                | Self::Execute(_)
+                | Self::Undo
+                | Self::Redo
+                | Self::RequestSave
+        )
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum UiEffect {
     None,
