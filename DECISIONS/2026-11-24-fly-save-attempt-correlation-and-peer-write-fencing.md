@@ -40,10 +40,12 @@ operation and must not be blocked by a release-readiness policy when the actor h
    particular asynchronous request, including across controller replacement and sequence reuse.
 2. **All save completions are attempt-bound.** `SaveSucceeded`, `SaveFailed` and
    `SaveConflict` must carry the active request ID. A stale or uncorrelated completion cannot
-   acknowledge, fail or conflict a newer attempt. Host callbacks receive the request and its
-   optional `SaveAttempt` together; facade-backed Leptos and Dioxus paths retain the same token.
+   acknowledge, fail or conflict a newer attempt. Host callbacks receive the request, optional
+   `SaveAttempt` and a completion callback; they must complete the exact request through
+   `PageBuilderCapabilityExecution::complete`, which shares the facade validation path.
    Known `REVISION_CONFLICT` and `PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN` codes survive the Leptos
-   server-function error boundary; a stale-revision response fences only the matching attempt.
+   server-function and GraphQL boundaries; a stale-revision response fences only the matching
+   attempt and retains the actual server revision when it is present.
 3. **An in-flight attempt is not serialized.** The active request ID, save-start sequence and
    snapshot are transient. A restored controller starts without an active request and cannot
    accept a response from the previous controller. The host must use the separate server receipt
