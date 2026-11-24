@@ -25,8 +25,6 @@ use std::{str::FromStr, sync::Arc};
 use uuid::Uuid;
 
 use crate::auth::{AuthConfig, hash_password_async};
-use sha2::{Digest, Sha256};
-
 use crate::models::{auth_invite_consumptions, auth_invites, sessions, users};
 use crate::services::auth_invite::{InviteLookup, invite_token_hash, lock_invite_for_mutation};
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
