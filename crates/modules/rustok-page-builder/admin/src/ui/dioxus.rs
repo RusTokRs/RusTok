@@ -283,6 +283,38 @@ fn controller_session_key(controller: &AdminCanvasController) -> String {
     )
 }
 
+fn canvas_instance_id(page_id: &str, revision_id: &str, project_hash: &str) -> String {
+    fn hex(value: &str) -> String {
+        let mut encoded = String::with_capacity(value.len() * 2);
+        for byte in value.as_bytes() {
+            encoded.push_str(&format!("{byte:02x}"));
+        }
+        encoded
+    }
+
+    format!("fly-canvas-{}-{}-{}", hex(page_id), hex(revision_id), project_hash)
+}
+
+fn peer_conflict_blocks_ui_intent(intent: &UiIntent) -> bool {
+    matches!(
+        intent,
+        UiIntent::BeginDrag(_)
+            | UiIntent::UpdateHitTest(_)
+            | UiIntent::ActivateDropCandidate(_)
+            | UiIntent::Drop
+            | UiIntent::CutSelection
+            | UiIntent::PasteClipboard
+            | UiIntent::Execute(_)
+            | UiIntent::Undo
+            | UiIntent::Redo
+            | UiIntent::RequestSave
+            | UiIntent::SaveStarted
+            | UiIntent::SaveSucceeded { .. }
+            | UiIntent::SaveFailed
+            | UiIntent::SaveConflict { .. }
+    )
+}
+
 /// Dioxus PageBuilderAdmin component.
 #[component]
 pub fn PageBuilderAdmin() -> Element {
@@ -732,6 +764,23 @@ mod props_regression_tests {
         assert!(!controller.ui().state.capabilities.history);
         assert!(controller.dispatch(UiIntent::RequestSave).is_err());
         assert!(controller.dispatch(UiIntent::Undo).is_err());
+    }
+
+    #[test]
+    fn canvas_iframe_identity_tracks_document_revision_and_hash() {
+        let first = canvas_instance_id("home", "rev-1", "hash-1");
+        assert_ne!(first, canvas_instance_id("home", "rev-1", "hash-2"));
+        assert_ne!(first, canvas_instance_id("home", "rev-2", "hash-1"));
+        assert_ne!(first, canvas_instance_id("about", "rev-1", "hash-1"));
+        assert!(first.starts_with("fly-canvas-"));
+    }
+
+    #[test]
+    fn peer_write_fence_blocks_mutations_but_allows_selection_and_cancel() {
+        assert!(peer_conflict_blocks_ui_intent(&UiIntent::Drop));
+        assert!(peer_conflict_blocks_ui_intent(&UiIntent::Undo));
+        assert!(!peer_conflict_blocks_ui_intent(&UiIntent::Select(Some("hero".to_string()))));
+        assert!(!peer_conflict_blocks_ui_intent(&UiIntent::CancelDrag));
     }
 
     #[test]
