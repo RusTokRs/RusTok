@@ -18,7 +18,9 @@ For full public interface and web runtime definitions, see [CRATE_API.md](CRATE_
 - Provide the page-scoped `BrowserPeerWriteChannel` used by the classic JS adapter and Rust
   Leptos/Dioxus hosts. Its sender identity combines a document nonce with an editor-root scope,
   so channels for one editor advance together while other tabs or editor roots are treated as
-  peers. Messages contain revision/hash metadata only, never document content.
+  peers. Messages contain revision/hash metadata only, never document content. The JS adapter
+  also fences explicit server revision-conflict failures when a peer notification was missed,
+  and clears the parked fence only after a reload exposes a different server revision.
 
 ## Known Limitations / Pending Implementation
 
