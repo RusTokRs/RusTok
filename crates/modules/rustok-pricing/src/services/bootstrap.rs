@@ -2,6 +2,7 @@
 
 use rust_decimal::Decimal;
 use sea_orm::{ColumnTrait, Condition, ConnectionTrait, EntityTrait, QueryFilter, Set};
+use std::collections::HashSet;
 use uuid::Uuid;
 
 use crate::entities::price;
@@ -64,6 +65,31 @@ fn validate_initial_price(price: &InitialPrice) -> Result<(), sea_orm::DbErr> {
     Ok(())
 }
 
+fn validate_initial_prices(prices: &[InitialPrice]) -> Result<(), sea_orm::DbErr> {
+    let mut identities = HashSet::new();
+    for price in prices {
+        validate_initial_price(price)?;
+        let channel_slug = price
+            .channel_slug
+            .as_deref()
+            .map(str::trim)
+            .filter(|slug| !slug.is_empty())
+            .map(str::to_ascii_lowercase);
+        let identity = (
+            price.variant_id,
+            price.channel_id,
+            channel_slug,
+            price.currency_code.trim().to_ascii_uppercase(),
+        );
+        if !identities.insert(identity) {
+            return Err(sea_orm::DbErr::Custom(
+                "duplicate initial price for the same variant, channel and currency".into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Pricing-owned transaction-aware operations required by Product lifecycle writes.
 pub struct BootstrapService;
 
@@ -80,9 +106,7 @@ impl BootstrapService {
             return Ok(());
         }
 
-        for price in &prices {
-            validate_initial_price(price)?;
-        }
+        validate_initial_prices(&prices)?;
 
         let models = prices
             .into_iter()
@@ -188,8 +212,9 @@ impl BootstrapService {
                     "Catalog price replacement accepts only this variant's unscoped base prices; use Pricing for contextual prices".into(),
                 ));
             }
-            validate_initial_price(price)?;
         }
+        // Validate every replacement row before deleting the currently authoritative prices.
+        validate_initial_prices(&prices)?;
         price::Entity::delete_many()
             .filter(price::Column::VariantId.eq(variant_id))
             .filter(catalog_base_scope())
@@ -237,6 +262,23 @@ mod tests {
             amount,
             compare_at_amount,
         }
+    }
+
+    #[test]
+    fn initial_prices_reject_duplicate_currency_for_same_variant_and_channel() {
+        let first = initial_price(Decimal::new(1000, 2), None);
+        let mut second = first.clone();
+        second.currency_code = "usd".to_owned();
+        assert!(validate_initial_prices(&[first, second]).is_err());
+    }
+
+    #[test]
+    fn initial_prices_normalize_channel_slug_before_duplicate_detection() {
+        let mut first = initial_price(Decimal::new(1000, 2), None);
+        first.channel_slug = Some("web".to_owned());
+        let mut second = first.clone();
+        second.channel_slug = Some(" WEB ".to_owned());
+        assert!(validate_initial_prices(&[first, second]).is_err());
     }
 
     #[test]
