@@ -424,6 +424,8 @@ fn subscribe_canvas_iframe(
     let mut subscription = use_signal(|| None::<fly_web::IframeJsonSubscription>);
     #[cfg(all(target_arch = "wasm32", feature = "web"))]
     let mut message_port = use_signal(|| None::<fly_web::IframeMessagePort>);
+    #[cfg(all(target_arch = "wasm32", feature = "web"))]
+    let mut port_instance_config = use_signal(|| None::<(String, String)>);
 
     let iframe_id = id.clone();
     let expected_instance = instance_id.clone();
@@ -466,21 +468,34 @@ fn subscribe_canvas_iframe(
         use_effect(use_reactive!(|port_config| {
             let (effect_iframe_id, effect_instance_id, effect_expected_origin) =
                 port_config.clone();
-            // Retire the old source-window subscription before changing instance/origin.
-            // If new port construction fails, stale messages must not remain admissible.
+            // Retire the old source-window subscription before rebinding the element.
+            // Keep the outbound port when only the DOM id changes: its sequence must stay
+            // monotonic for the same child document's lastParentSequence fence.
             subscription.set(None);
-            message_port.set(None);
-            match fly_web::IframeMessagePort::new(
-                effect_instance_id.clone(),
-                effect_expected_origin.clone(),
-            ) {
-                Ok(port) => message_port.set(Some(port)),
-                Err(error) => {
-                    message_port.set(None);
-                    if let Some(handler) = on_error {
-                        handler.call(error.to_string());
+            let existing_config = port_instance_config.read().clone();
+            let needs_new_port = existing_config.as_ref()
+                != Some(&(effect_instance_id.clone(), effect_expected_origin.clone()))
+                || message_port.read().is_none();
+            if needs_new_port {
+                message_port.set(None);
+                port_instance_config.set(None);
+                match fly_web::IframeMessagePort::new(
+                    effect_instance_id.clone(),
+                    effect_expected_origin.clone(),
+                ) {
+                    Ok(port) => {
+                        message_port.set(Some(port));
+                        port_instance_config.set(Some((
+                            effect_instance_id.clone(),
+                            effect_expected_origin.clone(),
+                        )));
                     }
-                    return;
+                    Err(error) => {
+                        if let Some(handler) = on_error {
+                            handler.call(error.to_string());
+                        }
+                        return;
+                    }
                 }
             }
             subscribe_canvas_iframe(
