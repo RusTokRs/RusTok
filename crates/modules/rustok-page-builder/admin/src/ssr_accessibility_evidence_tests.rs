@@ -50,7 +50,10 @@ fn browser_canvas_binds_the_rendered_draft_generation() {
         provide_context(crate::SsrDraftRenderBinding {
             session: Some(("draft-1".to_string(), 42)),
         });
-        provide_context(PageBuilderAdminHostContext::new(controller()));
+        provide_context(
+            PageBuilderAdminHostContext::new(controller())
+                .with_editor_capabilities(CapabilityState::full()),
+        );
         view! { <PageBuilderAdmin /> }.to_html()
     });
     assert!(
