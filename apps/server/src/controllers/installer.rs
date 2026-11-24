@@ -27,7 +27,7 @@ use std::time::Duration;
 use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
-use crate::common::settings::is_production_environment;
+use crate::common::is_production_security_mode;
 use crate::error::{Error, Result, http_error};
 use crate::installer_execution::ServerInstallExecutor;
 use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -876,7 +876,7 @@ async fn bind_host_install_plan(
     ctx: &ServerRuntimeContext,
     mut plan: InstallPlan,
 ) -> Result<InstallPlan> {
-    let host_is_production = is_production_environment();
+    let host_is_production = is_production_security_mode();
     if host_is_production && !plan.environment.is_production() {
         return Err(bad_request_error(
             "production installer hosts accept only production install plans",
@@ -1150,7 +1150,7 @@ fn validate_setup_token_value(provided: Option<&str>, expected: &str) -> bool {
 }
 
 fn require_setup_token(headers: &HeaderMap) -> Result<()> {
-    let production = is_production_environment();
+    let production = is_production_security_mode();
     let expected = std::env::var("RUSTOK_INSTALL_SETUP_TOKEN")
         .ok()
         .filter(|value| !value.trim().is_empty());
