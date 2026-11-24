@@ -159,6 +159,31 @@ test('same-document Rust and JS channels advance one baseline without a false co
   );
 });
 
+test('server revision conflicts fence the browser editor without BroadcastChannel', async ({ page }) => {
+  const source = await readFile(adapterPath, 'utf8');
+  await mountEditor(page, 'same-page', source);
+
+  await page.locator('#fly-root').evaluate((root) => {
+    root.dispatchEvent(new CustomEvent('fly:browser-intent-response', {
+      bubbles: true,
+      detail: {
+        request: { intent: 'publish' },
+        result: {
+          save_failure: {
+            code: 'REVISION_CONFLICT',
+            message: 'The page revision changed in another session',
+          },
+        },
+      },
+    }));
+  });
+
+  await expect(page.locator('#fly-root')).toHaveAttribute('data-fly-peer-write-conflict', 'true');
+  await expect(page.locator('#fly-root')).toHaveAttribute(
+    'data-fly-browser-problem', 'FLY_PEER_WRITE_CONFLICT'
+  );
+});
+
 test('peer write on another page does not fence unrelated editors', async ({ context, page }) => {
   const source = await readFile(adapterPath, 'utf8');
   const otherTab = await context.newPage();
