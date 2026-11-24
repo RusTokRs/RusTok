@@ -227,7 +227,8 @@ mod tests {
             "fixture must leave built-in roles unseeded"
         );
 
-        let report = RbacService::repair_system_roles_committed(&db, Some(tenant_id))
+        let cache_service = CacheService::from_url(None);
+        let report = RbacService::repair_system_roles_committed(&db, &cache_service, Some(tenant_id))
             .await
             .expect("committed repair should succeed");
 
