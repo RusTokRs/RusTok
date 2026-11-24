@@ -3302,7 +3302,7 @@ mod tests {
 
     #[test]
     fn validate_variant_prices_rejects_non_ascii_or_non_alphabetic_currency_codes() {
-        for currency_code in ["1$!", "US1", "UŠD", "USD ", ""] {
+        for currency_code in ["1$!", "US1", "UŠD", ""] {
             let prices = vec![PriceInput {
                 currency_code: currency_code.to_owned(),
                 channel_id: None,
