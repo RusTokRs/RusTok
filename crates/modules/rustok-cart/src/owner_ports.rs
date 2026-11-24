@@ -1,7 +1,11 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
+use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError, PortErrorKind};
+use rustok_cart_ports::{
+    CART_CHECKOUT_IDENTITY_READ_CLAIM, CartCheckoutIdentity, CartCheckoutIdentityReadPort,
+    ReadCartCheckoutIdentityRequest,
+};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
@@ -26,6 +30,12 @@ const UPDATE_STOREFRONT_LINE_ITEM_PRICING_OPERATION: &str = "update_storefront_l
 const REMOVE_STOREFRONT_LINE_ITEM_OPERATION: &str = "remove_storefront_line_item";
 const REPRICE_STOREFRONT_LINE_ITEMS_OPERATION: &str = "reprice_storefront_line_items";
 
+pub fn in_process_cart_checkout_identity_read_port(
+    db: DatabaseConnection,
+) -> Arc<dyn CartCheckoutIdentityReadPort> {
+    Arc::new(OwnerCartPort::new(db))
+}
+
 pub fn owner_cart_storefront_port(db: DatabaseConnection) -> Arc<dyn CartStorefrontPort> {
     Arc::new(OwnerCartPort::new(db))
 }
@@ -43,6 +53,36 @@ impl OwnerCartPort {
         Self {
             service: CartService::new(db),
         }
+    }
+}
+
+#[async_trait]
+impl CartCheckoutIdentityReadPort for OwnerCartPort {
+    async fn read_cart_checkout_identity(
+        &self,
+        context: PortContext,
+        request: ReadCartCheckoutIdentityRequest,
+    ) -> Result<CartCheckoutIdentity, PortError> {
+        const OPERATION: &str = "read_cart_checkout_identity";
+        require_cart_policy(&context, OPERATION, PortCallPolicy::read())?;
+        if !matches!(
+            context.actor.kind,
+            PortActorKind::Service | PortActorKind::System
+        ) || !context
+            .claims
+            .iter()
+            .any(|claim| claim == CART_CHECKOUT_IDENTITY_READ_CLAIM)
+        {
+            return Err(PortError::forbidden(
+                "cart.checkout_identity_forbidden",
+                "the caller is not authorized to read checkout cart identity",
+            ));
+        }
+        let tenant_id = parse_cart_tenant_id(&context, OPERATION)?;
+        self.service
+            .read_checkout_identity(tenant_id, request.cart_id)
+            .await
+            .map_err(|error| cart_error_to_port_error(&context, OPERATION, error))
     }
 }
 

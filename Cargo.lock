@@ -14711,6 +14711,7 @@ dependencies = [
  "chrono",
  "rust_decimal",
  "rustok-api",
+ "rustok-cart-ports",
  "rustok-core",
  "rustok-fulfillment",
  "rustok-region",
@@ -14728,6 +14729,16 @@ dependencies = [
  "utoipa",
  "uuid",
  "validator",
+]
+
+[[package]]
+name = "rustok-cart-ports"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "rustok-api",
+ "serde",
+ "uuid",
 ]
 
 [[package]]
@@ -14972,6 +14983,7 @@ dependencies = [
  "rustok-api",
  "rustok-brand",
  "rustok-cart",
+ "rustok-cart-ports",
  "rustok-channel",
  "rustok-commerce-foundation",
  "rustok-core",

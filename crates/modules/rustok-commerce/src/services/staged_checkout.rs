@@ -1,7 +1,8 @@
 use rustok_api::PortError;
 #[cfg(test)]
 use rustok_api::PortErrorKind;
-use rustok_cart::{AtomicCartCheckoutHandle, CartCheckoutPort};
+use rustok_cart::AtomicCartCheckoutHandle;
+use rustok_cart_ports::CartCheckoutIdentityReadPort;
 use rustok_outbox::TransactionalEventBus;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -83,8 +84,11 @@ impl StagedCheckoutService {
         }
     }
 
-    pub fn with_cart_owner(mut self, cart_owner: Arc<dyn CartCheckoutPort>) -> Self {
-        self.journal = self.journal.with_cart_owner(cart_owner);
+    pub fn with_cart_identity_read_port(
+        mut self,
+        port: Arc<dyn CartCheckoutIdentityReadPort>,
+    ) -> Self {
+        self.journal = self.journal.with_cart_identity_read_port(port);
         self
     }
 

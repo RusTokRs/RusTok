@@ -172,6 +172,18 @@ impl CartService {
         build_response(&self.db, cart).await
     }
 
+    pub(crate) async fn read_checkout_identity(
+        &self,
+        tenant_id: Uuid,
+        cart_id: Uuid,
+    ) -> CartResult<rustok_cart_ports::CartCheckoutIdentity> {
+        let cart = load_cart(&self.db, tenant_id, cart_id).await?;
+        Ok(rustok_cart_ports::CartCheckoutIdentity {
+            tenant_id: cart.tenant_id,
+            cart_id: cart.id,
+        })
+    }
+
     pub async fn add_line_item(
         &self,
         tenant_id: Uuid,

@@ -690,6 +690,8 @@ async fn retry_after_preflight_failure_creates_checkout_artifacts() {
 
 #[tokio::test]
 async fn checkout_operation_admission_uses_the_selected_cart_owner() {
+    use rustok_api::{PortActor, PortContext, PortErrorKind};
+    use rustok_cart_ports::{CART_CHECKOUT_IDENTITY_READ_CLAIM, ReadCartCheckoutIdentityRequest};
     use rustok_commerce::services::{
         BeginCheckoutOperation, CheckoutOperationError, CheckoutOperationJournal,
     };
@@ -719,11 +721,44 @@ async fn checkout_operation_admission_uses_the_selected_cart_owner() {
         request_hash: "0123456789abcdef".to_string(),
         snapshot_hash: None,
     };
+    let port = rustok_cart::in_process_cart_checkout_identity_read_port(db.clone());
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::service("checkout-admission-test"),
+        "en",
+        "cart-identity-test",
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    let request = ReadCartCheckoutIdentityRequest { cart_id: cart.id };
+    let missing_claim = port
+        .read_cart_checkout_identity(context.clone(), request)
+        .await
+        .unwrap_err();
+    assert_eq!(missing_claim.kind, PortErrorKind::Forbidden);
+
+    let mut buyer = context
+        .clone()
+        .with_claim(CART_CHECKOUT_IDENTITY_READ_CLAIM);
+    buyer.actor = PortActor::user(Uuid::new_v4().to_string());
+    let buyer_error = port
+        .read_cart_checkout_identity(buyer, request)
+        .await
+        .unwrap_err();
+    assert_eq!(buyer_error.kind, PortErrorKind::Forbidden);
+
+    let mut foreign_tenant = context.with_claim(CART_CHECKOUT_IDENTITY_READ_CLAIM);
+    foreign_tenant.tenant_id = Uuid::new_v4().to_string();
+    let foreign_error = port
+        .read_cart_checkout_identity(foreign_tenant, request)
+        .await
+        .unwrap_err();
+    assert_eq!(foreign_error.kind, PortErrorKind::NotFound);
+
     let journal = CheckoutOperationJournal::new(db, mock_transactional_event_bus());
     let (owner_db, _, _, _) = setup().await;
-    let selected = journal
-        .clone()
-        .with_cart_owner(rustok_cart::in_process_cart_checkout_port(owner_db));
+    let selected = journal.clone().with_cart_identity_read_port(
+        rustok_cart::in_process_cart_checkout_identity_read_port(owner_db),
+    );
 
     assert!(matches!(
         selected.begin(input.clone()).await,
@@ -740,9 +775,9 @@ async fn checkout_operation_admission_uses_the_selected_cart_owner() {
     let unavailable_db = sea_orm::Database::connect("sqlite::memory:")
         .await
         .expect("unavailable owner fixture");
-    let unavailable = journal
-        .clone()
-        .with_cart_owner(rustok_cart::in_process_cart_checkout_port(unavailable_db));
+    let unavailable = journal.clone().with_cart_identity_read_port(
+        rustok_cart::in_process_cart_checkout_identity_read_port(unavailable_db),
+    );
     assert!(matches!(
         unavailable.begin(input.clone()).await,
         Err(CheckoutOperationError::CartOwnerRead { retryable: true })
