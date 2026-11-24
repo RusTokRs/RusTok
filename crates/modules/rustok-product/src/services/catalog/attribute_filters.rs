@@ -255,6 +255,7 @@ fn localized_text_condition(
                           FROM product_attribute_value_translations requested_any
                           WHERE requested_any.value_id = pav.id
                             AND requested_any.locale = {p3}
+                            AND NULLIF(TRIM(requested_any.value_text), '') IS NOT NULL
                       )
                       AND EXISTS (
                           SELECT 1
@@ -381,6 +382,28 @@ fn custom_condition(
 mod tests {
     use super::*;
     use sea_orm::sea_query::{Alias, Query, SqliteQueryBuilder};
+
+    #[test]
+    fn localized_text_filter_falls_back_when_requested_translation_is_blank() {
+        let sql = Query::select()
+            .column(Alias::new("id"))
+            .from(Alias::new("products"))
+            .cond_where(localized_text_condition(
+                DbBackend::Sqlite,
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                "fr",
+                "en",
+                "rouge",
+            ))
+            .to_string(SqliteQueryBuilder);
+
+        assert!(
+            sql.contains("NULLIF(TRIM(requested_any.value_text), '') IS NOT NULL"),
+            "fallback must be suppressed only by a nonblank requested translation: {sql}"
+        );
+        assert!(sql.contains("fallback_value.locale"), "{sql}");
+    }
 
     #[test]
     fn option_id_and_code_filters_both_enforce_active_same_attribute_dictionary() {
