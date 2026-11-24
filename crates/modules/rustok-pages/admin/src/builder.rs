@@ -1047,7 +1047,10 @@ mod document_gate_tests {
 
 #[cfg(all(test, feature = "ssr"))]
 mod document_save_attempt_key_tests {
-    use super::{document_save_attempt_key, document_save_might_have_committed};
+    use super::{
+        document_save_attempt_key, document_save_might_have_committed,
+        save_receipt_probe_error_code,
+    };
     use rustok_graphql::GraphqlHttpError;
     use serde_json::json;
 
@@ -1078,6 +1081,23 @@ mod document_save_attempt_key_tests {
             document_save_attempt_key("tenant", "actor", "page", "r1", "fr", &document),
         );
         assert!(key.len() <= 128, "ID must fit the Pages receipt key limit");
+    }
+
+    #[test]
+    fn terminal_receipt_probe_errors_keep_their_stable_codes() {
+        assert_eq!(
+            save_receipt_probe_error_code(&GraphqlHttpError::Graphql(
+                "PAGE_DOCUMENT_SAVE_RECEIPT_EXPIRED: tombstone retained".to_string(),
+            )),
+            Some("PAGE_DOCUMENT_SAVE_RECEIPT_EXPIRED"),
+        );
+        assert_eq!(
+            save_receipt_probe_error_code(&GraphqlHttpError::Graphql(
+                "PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT: payload differs".to_string(),
+            )),
+            Some("PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT"),
+        );
+        assert_eq!(save_receipt_probe_error_code(&GraphqlHttpError::Network), None);
     }
 
     #[test]
