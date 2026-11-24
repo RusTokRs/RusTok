@@ -9,7 +9,7 @@ use rustok_product::ports::pricing::{
     CatalogBasePriceSnapshot, InitialPrice, PricingConnection, ProductPricingPort,
 };
 use sea_orm::{ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -32,8 +32,32 @@ impl ProductPricingPort for PricingProductPricingPortAdapter {
     async fn create_initial_prices_in_tx(
         &self,
         txn: &DatabaseTransaction,
+        tenant_id: Uuid,
         prices: Vec<InitialPrice>,
     ) -> Result<(), rustok_product::CommerceError> {
+        let mut identities = HashSet::new();
+        for price in &prices {
+            let channel_id = crate::services::pricing::scope::resolve_channel_id_in_tx(
+                txn,
+                tenant_id,
+                price.channel_id,
+                price.channel_slug.as_deref(),
+            )
+            .await
+            .map_err(rustok_product::CommerceError::from)?;
+            let identity = (
+                price.variant_id,
+                channel_id,
+                price.currency_code.trim().to_ascii_uppercase(),
+            );
+            if !identities.insert(identity) {
+                return Err(rustok_product::CommerceError::Validation(
+                    "Duplicate initial price for the same variant, channel and currency"
+                        .to_owned(),
+                ));
+            }
+        }
+
         BootstrapService::create_initial_prices_in_tx(txn, prices)
             .await
             .map_err(rustok_product::CommerceError::from)
