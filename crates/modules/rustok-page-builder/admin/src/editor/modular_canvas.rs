@@ -13,6 +13,7 @@ use crate::i18n::t;
 use crate::ui::browser_adapter::PageBuilderBrowserAdapter;
 use crate::{
     AdminCanvasController, ConsumerPropertyEditorRuntime, PageBuilderAdminFacade,
+    PageBuilderCapabilityExecution,
     PageBuilderAdminProviderStatus, SsrDraftRenderBinding,
 };
 use fly::TraitSchemaRegistry;
@@ -45,7 +46,7 @@ pub fn AdminCanvas(
     runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
     runtime_scenario_baseline: Option<RuntimeScenarioReleaseBaseline>,
     on_runtime_scenario_baseline: Option<Callback<PageBuilderScenarioBaselineChange>>,
-    on_request: Option<Callback<PageBuilderCapabilityRequest>>,
+    on_request: Option<Callback<PageBuilderCapabilityExecution>>,
     #[prop(optional_no_strip)] browser_intent_endpoint: Option<String>,
     #[prop(optional_no_strip)] browser_csrf_token: Option<String>,
     /// Where the host serves a preview document as its own response, if it serves one.
