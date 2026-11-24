@@ -51,17 +51,15 @@ impl AdminCanvasController {
         let editor = FlyEditor::new(document, registries);
         let mut ui = FlyUiStateMachine::new(Presentation::Full);
         let summaries = editor.document().page_summaries();
+        // The outer Pages document ID may differ from the IDs of its internal Fly pages.
+        // Prefer an exact match when present; otherwise preserve the first-page default.
         let active_page_index = summaries
             .iter()
             .position(|page| page.id.as_deref() == Some(page_id.as_str()))
-            // Pages owns a single outer document ID while a one-page Fly project may
-            // retain its own internal page ID (for example "main"). That case is
-            // unambiguous; never apply the same fallback to a multi-page project.
-            .or_else(|| (summaries.len() == 1).then_some(0))
-            .ok_or_else(|| AdminCanvasError::PageNotFound(page_id.clone()))?;
+            .unwrap_or(0);
         let active = summaries
             .get(active_page_index)
-            .ok_or_else(|| AdminCanvasError::PageNotFound(page_id.clone()))?;
+            .ok_or(AdminCanvasError::NoPages)?;
         ui.state.page.active_page_index = active_page_index;
         ui.state.page.active_page_id = active.id.clone();
         let mut controller = Self {
@@ -654,8 +652,8 @@ pub enum AdminCanvasError {
     InvalidPageId,
     #[error("revision id must not be empty or exceed 256 bytes")]
     InvalidRevisionId,
-    #[error("requested page is missing from the Page Builder project: {0}")]
-    PageNotFound(String),
+    #[error("Page Builder project must contain at least one page")]
+    NoPages,
     #[error("{0}")]
     Authoring(String),
     #[error(transparent)]
@@ -712,17 +710,18 @@ mod tests {
     }
 
     #[test]
-    fn controller_rejects_a_multi_page_project_that_does_not_contain_the_requested_page() {
-        let error = AdminCanvasController::new(
-            "missing",
+    fn an_outer_pages_document_id_defaults_to_the_first_internal_fly_page() {
+        let controller = AdminCanvasController::new(
+            "outer-page-id",
             "rev-1",
             json!({"pages": [
-                {"id": "home", "component": {"id": "root", "type": "wrapper"}},
+                {"id": "main", "component": {"id": "root", "type": "wrapper"}},
                 {"id": "about", "component": {"id": "about-root", "type": "wrapper"}}
             ]}),
         )
-        .expect_err("the requested page must be present in a multi-page project");
-        assert!(matches!(error, AdminCanvasError::PageNotFound(page) if page == "missing"));
+        .expect("the outer Pages ID does not have to match an internal Fly page ID");
+        assert_eq!(controller.ui().state.page.active_page_index, 0);
+        assert_eq!(controller.ui().state.page.active_page_id.as_deref(), Some("main"));
     }
 
     #[test]
