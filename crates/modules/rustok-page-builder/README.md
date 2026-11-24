@@ -97,6 +97,8 @@ The browser never automatically resends an ambiguous mutation. Custom
 or editable Pages SSR rendering fails closed. Receipts are bounded to 2,048
 entries per session and 1 KiB each.
 
-This is the Pages strict SSR path only; direct Next writes, restore/lifecycle
-operations and Dioxus host parity remain separate work. See
-[the save receipt decision](../../../DECISIONS/2026-11-23-page-document-save-receipts.md).
+This is the Pages strict SSR path only; direct Next writes and restore/lifecycle
+operation IDs remain separate work. The Dioxus UI host now has source-level iframe and
+drag/drop/resize integration, but durable SSR operation-receipt parity and mounted browser
+verification remain open. See [the save receipt decision](../../../DECISIONS/2026-11-23-page-document-save-receipts.md)
+and [the Fly save-attempt decision](../../../DECISIONS/2026-11-24-fly-save-attempt-correlation-and-peer-write-fencing.md).
