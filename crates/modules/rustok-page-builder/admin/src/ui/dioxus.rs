@@ -180,6 +180,7 @@ where
                     state.runtime_context = context.clone();
                     state.runtime_context_configured = true;
                     state.active_runtime_scenario = scenario.clone();
+                    state.runtime_publish_gate_evaluation = None;
                     state.preview_request = Some((
                         state.controller.editor().revision().project_hash,
                         state.controller.active_page_index(),
@@ -821,6 +822,9 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
                         class: "px-3 py-1.5 text-sm rounded bg-muted hover:bg-muted/80 disabled:opacity-50",
                         disabled: !can_undo,
                         onclick: move |_| {
+                            if *peer_write_conflict.peek() {
+                                return;
+                            }
                             session.write().dispatch(EditorSessionAction::DispatchIntent(UiIntent::Undo));
                         },
                         "Undo"
@@ -829,6 +833,9 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
                         class: "px-3 py-1.5 text-sm rounded bg-muted hover:bg-muted/80 disabled:opacity-50",
                         disabled: !can_redo,
                         onclick: move |_| {
+                            if *peer_write_conflict.peek() {
+                                return;
+                            }
                             session.write().dispatch(EditorSessionAction::DispatchIntent(UiIntent::Redo));
                         },
                         "Redo"
@@ -837,6 +844,9 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
                         class: "px-3 py-1.5 text-sm rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50",
                         disabled: !can_save,
                         onclick: move |_| {
+                            if *peer_write_conflict.peek() {
+                                return;
+                            }
                             let effects = session.write().dispatch(
                                 EditorSessionAction::DispatchIntent(UiIntent::RequestSave)
                             );
@@ -927,7 +937,7 @@ mod props_regression_tests {
         assert_eq!(original.controller.revision_id(), changed.controller.revision_id());
         assert!(original != changed, "draft edit must trigger prop update");
         let mut workspace = original.clone();
-        workspace.adapter_workspace = true;
+        workspace.adapter_workspace = false;
         assert!(original != workspace, "mount mode must trigger prop update");
     }
 
