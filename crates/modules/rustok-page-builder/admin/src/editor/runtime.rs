@@ -78,8 +78,29 @@ fn make_peer_write_channel(
 
 /// A host callback receives the exact local attempt identity alongside its request.
 /// This keeps callback-backed adapters as safe as the built-in facade path.
+#[cfg(test)]
+mod conflict_revision_tests {
+    use super::*;
+
+    #[test]
+    fn extracts_actual_revision_from_all_page_save_conflict_messages() {
+        assert_eq!(
+            conflict_actual_revision("changed: found `rev-2`"),
+            Some("rev-2".to_string()),
+        );
+        assert_eq!(
+            conflict_actual_revision("current revision `rev-3`"),
+            Some("rev-3".to_string()),
+        );
+        assert_eq!(
+            conflict_actual_revision("current page is `rev-4` (request expected `rev-1`)"),
+            Some("rev-4".to_string()),
+        );
+    }
+}
+
 fn conflict_actual_revision(message: &str) -> Option<String> {
-    for marker in ["found `", "current revision `"] {
+    for marker in ["found `", "current revision `", "current page is `"] {
         if let Some((_, tail)) = message.split_once(marker) {
             let revision = tail.split('`').next()?.trim();
             if !revision.is_empty() {
