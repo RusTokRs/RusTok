@@ -50,7 +50,11 @@ post-commit result drift but does not give cross-session replay.
    page, observed revision, locale and canonical project. A new edit or
    revision generates another key. The former preflight stale-revision check
    cannot precede the server receipt lookup; Pages performs the authoritative
-   CAS and conflict detection.
+   CAS and conflict detection. After a new save or receipt replay, the SSR
+   store re-reads the current page before acknowledging or updating surrounding
+   Pages state. A revision advanced beyond both the request's expected revision
+   and the receipt revision is surfaced as `REVISION_CONFLICT`, never as a
+   successful rebase onto an older receipt.
 8. The browser must not auto-merge unsaved work, equate a missing receipt
    with failure, or automatically retry an ambiguous mutation. A caller with
    its original payload may retry with the same key; alternatively it may
@@ -61,8 +65,10 @@ post-commit result drift but does not give cross-session replay.
    GraphQL business rejections, authorization errors and ordinary HTTP 4xx
    remain definite errors. An absent or unreadable receipt is reported as
    `PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN` (an application-level 503)
-   while retaining the dirty editor draft. This is not an automatic resend
-   and does not imply that an in-flight request has stopped.
+   while retaining the dirty editor draft. A failed post-receipt page re-read
+   is also an unknown reconciliation outcome; the caller must not advance its
+   surrounding Pages state from the older receipt. This is not an automatic
+   resend and does not imply that an in-flight request has stopped.
 10. Source-only test scenarios cover two independent SQLite connections,
     duplicate-key replay, competing distinct CAS writers, and an opt-in
     PostgreSQL two-session test. No database test has been executed.
