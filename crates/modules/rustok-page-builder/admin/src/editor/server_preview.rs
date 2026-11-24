@@ -257,7 +257,7 @@ mod tests {
                 }),
             )
             .expect("preview controller");
-            let runtime = AdminEditorRuntime::new(controller, None, None, "", "");
+            let runtime = AdminEditorRuntime::new(controller, None, None, None, "", "");
             runtime.server_preview_html.set(preview);
             view! {
                 <ServerPreviewPanel

@@ -76,7 +76,7 @@ pub fn AdminCanvas(
     let consumer_property_assembly = contribution_assembly.clone();
     let contribution_property_assembly = contribution_assembly.clone();
     let contribution_preview_assembly = contribution_assembly.clone();
-    let peer_write_scope_id = use_id();
+    let peer_write_scope_id = uuid::Uuid::new_v4().to_string();
     let runtime = AdminEditorRuntime::new(
         controller,
         facade,

@@ -781,7 +781,7 @@ impl AdminEditorRuntime {
                         fly_ui::CapabilityState::read_only(),
                     ))?;
                 }
-                Ok(conflicted)
+                Ok::<_, crate::model::AdminCanvasError>(conflicted)
             })
             .is_some_and(|result| result.unwrap_or(false))
     }

@@ -1,6 +1,6 @@
 use crate::model::{AdminCanvasController, AdminCanvasEffect, SaveAttempt};
 use fly::{GrapesJsCodec, ProjectHash, TraitSchemaRegistry, ValidationSeverity};
-use fly_ui::{EditorCapability, EditorCapabilityEvaluation, UiIntent};
+use fly_ui::{CapabilityState, EditorCapability, EditorCapabilityEvaluation, UiIntent};
 use rustok_page_builder::dto::{
     PageBuilderCapabilityRequest, PageBuilderPreviewRuntime, PreviewPageBuilderInput,
     PreviewPageBuilderResult,
@@ -737,8 +737,8 @@ mod tests {
             "The page changed in another session",
         ));
         assert!(session.controller.active_save_attempt().is_none());
-        assert!(session.controller.ui_state().dirty.save_conflict);
-        assert!(!session.controller.ui_state().capabilities.edit);
+        assert!(session.controller.ui().state.dirty.save_conflict);
+        assert!(!session.controller.ui().state.capabilities.edit);
         assert!(!session.handle_publish_error_for_attempt(
             &attempt,
             "late transport error",
