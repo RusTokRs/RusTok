@@ -849,7 +849,7 @@ impl RustokSettings {
 
         parsed
             .tenant
-            .validate_for_environment(is_production_environment())
+            .validate_for_environment(is_production_security_mode())
             .map_err(|error| {
                 serde_json::Error::io(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
