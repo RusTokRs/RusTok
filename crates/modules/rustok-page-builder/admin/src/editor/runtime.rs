@@ -733,7 +733,9 @@ impl AdminEditorRuntime {
                 }
             }
             Err(error) => {
-                let completed = if error.stable_code.as_deref() == Some("REVISION_CONFLICT") {
+                let completed = if capability == BuilderCapabilityKind::Publish
+                    && error.stable_code.as_deref() == Some("REVISION_CONFLICT")
+                {
                     self.finish_conflicted_request(
                         capability,
                         save_attempt.as_ref(),
