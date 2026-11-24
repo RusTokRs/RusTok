@@ -5,7 +5,7 @@
 - **Status:** ACTIVE
 - **Active Cycle:** Round 1 (Fresh Start from Scratch)
 - **Active Phase:** Phase GN-05 — Social, Community & Communication Modules (15 модулей)
-- **Next Pending Component:** [`crates/modules/rustok-comments`](../../crates/modules/rustok-comments)
+- **Next Pending Component:** [`crates/modules/rustok-reactions`](../../crates/modules/rustok-reactions)
 - **Current main SHA:** `853a20f30f`
 - **Active Branch:** `main`
 
@@ -253,7 +253,7 @@ flowchart TD
 | Компонент / Пакет | Путь в репозитории | В1..В4 | В5..В8 | В9..В12 | В13..В18 |
 |---|---|:---:|:---:|:---:|:---:|
 | `rustok-forum` | `crates/modules/rustok-forum` | [x] | [x] | [x] | [x] |
-| `rustok-comments` | `crates/modules/rustok-comments` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-comments` | `crates/modules/rustok-comments` | [x] | [x] | [x] | [x] |
 | `rustok-reactions` | `crates/modules/rustok-reactions` | [ ] | [ ] | [ ] | [ ] |
 | `rustok-blog` (вкл. `cli`) | `crates/modules/rustok-blog` | [ ] | [ ] | [ ] | [ ] |
 | `rustok-newsletter` | `crates/modules/rustok-newsletter` | [ ] | [ ] | [ ] | [ ] |
