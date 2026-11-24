@@ -3,9 +3,9 @@ use serde_json::Value;
 
 /// Hard ceiling on JSON nesting accepted by the codec.
 ///
-/// Far above anything a real page produces (`ValidationLimits::maximum_depth` defaults to 64) and
-/// far below what would exhaust the stack.
-pub const MAXIMUM_DECODE_DEPTH: usize = 512;
+/// This matches serde_json's default parser recursion ceiling, so byte/string decoding and
+/// already-parsed Value decoding enforce the same bound.
+pub const MAXIMUM_DECODE_DEPTH: usize = 128;
 
 pub struct GrapesJsCodec;
 
@@ -22,12 +22,15 @@ impl GrapesJsCodec {
 
     pub fn decode_value(value: Value) -> FlyResult<ProjectDocument> {
         if !value.is_object() {
+            drop_value_iteratively(value);
             return Err(FlyError::InvalidProjectRoot);
         }
-        // Checked iteratively, before anything recursive touches the payload. Model construction,
-        // traversal, rendering and `Value`'s own `Drop` are all recursive, so a deeply nested
-        // document would abort the process on stack exhaustion rather than return an error.
-        ensure_depth_within_limit(&value, MAXIMUM_DECODE_DEPTH)?;
+        // Check before model construction. On rejection, dismantle the Value iteratively too:
+        // its ordinary destructor follows nested arrays/objects recursively.
+        if let Err(error) = ensure_depth_within_limit(&value, MAXIMUM_DECODE_DEPTH) {
+            drop_value_iteratively(value);
+            return Err(error);
+        }
         let project: GrapesProject =
             serde_json::from_value(value).map_err(|error| FlyError::Decode(error.to_string()))?;
         Ok(ProjectDocument::new(project))
@@ -46,6 +49,27 @@ impl GrapesJsCodec {
     pub fn encode_pretty(document: &ProjectDocument) -> FlyResult<String> {
         serde_json::to_string_pretty(canonical_project(document))
             .map_err(|error| FlyError::Encode(error.to_string()))
+    }
+}
+
+
+/**
+ * Drop an untrusted JSON value without recursively dropping nested arrays or objects.
+ *
+ * serde_json::Value owns nested containers, and its normal destructor follows that
+ * nesting recursively. A value rejected by the depth guard (or root-shape check) must
+ * therefore be dismantled iteratively before returning the error.
+ */
+fn drop_value_iteratively(value: Value) {
+    let mut pending = vec![value];
+    while let Some(value) = pending.pop() {
+        match value {
+            Value::Array(values) => pending.extend(values),
+            Value::Object(entries) => {
+                pending.extend(entries.into_iter().map(|(_, value)| value));
+            }
+            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
+        }
     }
 }
 
@@ -255,4 +279,44 @@ mod tests {
 
         assert!(GrapesJsCodec::decode_value(project).is_ok());
     }
+
+
+    #[test]
+    fn deeply_nested_non_object_roots_are_rejected_without_recursive_drop() {
+        let mut value = serde_json::Value::Null;
+        for _ in 0..50_000 {
+            value = serde_json::Value::Array(vec![value]);
+        }
+        assert!(matches!(
+            GrapesJsCodec::decode_value(value),
+            Err(FlyError::InvalidProjectRoot)
+        ));
+    }
+
+    #[test]
+    fn deeply_nested_object_values_are_rejected_without_recursive_drop() {
+        let mut nested = serde_json::Value::Null;
+        for _ in 0..50_000 {
+            nested = serde_json::Value::Array(vec![nested]);
+        }
+        let project = json!({ "payload": nested });
+        assert!(matches!(
+            GrapesJsCodec::decode_value(project),
+            Err(FlyError::MaximumDepthExceeded {
+                maximum: MAXIMUM_DECODE_DEPTH
+            })
+        ));
+    }
+
+    #[test]
+    fn byte_decoder_obeys_the_same_depth_ceiling() {
+        let depth = MAXIMUM_DECODE_DEPTH + 1;
+        let input = format!("{}0{}", "[".repeat(depth), "]".repeat(depth));
+        assert!(matches!(
+            GrapesJsCodec::decode_slice(input.as_bytes()),
+            Err(FlyError::Decode(_))
+        ));
+    }
+
+
 }

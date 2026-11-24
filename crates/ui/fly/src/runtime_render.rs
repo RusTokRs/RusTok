@@ -1,8 +1,9 @@
 use crate::{
     FlyResult, FormProviderEndpointResolver, PageSelection, ProjectDocument, RenderPolicy,
-    RenderedPage, RuntimeProjectMaterialization, ValidationDiagnostic,
+    EmbedProviderRegistry, RenderedPage, RuntimeProjectMaterialization, ValidationDiagnostic,
     materialize_project_with_runtime_context,
-    materialize_project_with_runtime_context_with_providers, render_page,
+    materialize_project_with_runtime_context_with_providers,
+    render_page_with_embed_registry, render_page_with_rich_text_and_embed_registry,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -49,7 +50,10 @@ pub fn render_page_with_runtime_context(
     policy: &RenderPolicy,
     context: &Value,
 ) -> FlyResult<RuntimeRenderResult> {
-    render_page_with_runtime_context_and_providers(document, selection, policy, context, None)
+    let embeds = EmbedProviderRegistry::with_builtins();
+    render_page_with_runtime_context_and_providers_and_embeds(
+        document, selection, policy, context, None, &embeds,
+    )
 }
 
 /// Renders with the host's provider form endpoints applied during materialization.
@@ -63,22 +67,58 @@ pub fn render_page_with_runtime_context_with_providers(
     context: &Value,
     providers: &dyn FormProviderEndpointResolver,
 ) -> FlyResult<RuntimeRenderResult> {
-    render_page_with_runtime_context_and_providers(
+    let embeds = EmbedProviderRegistry::with_builtins();
+    render_page_with_runtime_context_and_providers_and_embeds(
         document,
         selection,
         policy,
         context,
         Some(providers),
+        &embeds,
     )
 }
 
-fn render_page_with_runtime_context_and_providers(
+/// Render runtime materialization with a host-provided embed catalog.
+pub fn render_page_with_runtime_context_with_embed_registry(
+    document: &ProjectDocument,
+    selection: &PageSelection,
+    policy: &RenderPolicy,
+    context: &Value,
+    embeds: &EmbedProviderRegistry,
+) -> FlyResult<RuntimeRenderResult> {
+    render_page_with_runtime_context_and_providers_and_embeds(
+        document, selection, policy, context, None, embeds,
+    )
+}
+
+/// Render runtime materialization with host form endpoints and a host embed catalog.
+pub fn render_page_with_runtime_context_with_providers_and_embed_registry(
+    document: &ProjectDocument,
+    selection: &PageSelection,
+    policy: &RenderPolicy,
+    context: &Value,
+    providers: &dyn FormProviderEndpointResolver,
+    embeds: &EmbedProviderRegistry,
+) -> FlyResult<RuntimeRenderResult> {
+    render_page_with_runtime_context_and_providers_and_embeds(
+        document,
+        selection,
+        policy,
+        context,
+        Some(providers),
+        embeds,
+    )
+}
+
+fn render_page_with_runtime_context_and_providers_and_embeds(
     document: &ProjectDocument,
     selection: &PageSelection,
     policy: &RenderPolicy,
     context: &Value,
     providers: Option<&dyn FormProviderEndpointResolver>,
+    embeds: &EmbedProviderRegistry,
 ) -> FlyResult<RuntimeRenderResult> {
+    crate::ensure_render_component_limits(document)?;
     // Definitions must expand before runtime bindings, actions, and conditions
     // materialize, not only at the final HTML render pass.
     let resolved = if crate::document_has_symbol_instances(document) {
@@ -87,6 +127,7 @@ fn render_page_with_runtime_context_and_providers(
         None
     };
     let document = resolved.as_ref().unwrap_or(document);
+    crate::ensure_render_component_limits(document)?;
     let RuntimeProjectMaterialization {
         document,
         effective_context: _,
@@ -116,7 +157,16 @@ fn render_page_with_runtime_context_and_providers(
         }
         None => materialize_project_with_runtime_context(document, context),
     };
-    let page = render_page(&document, selection, policy)?;
+    let page = match providers {
+        Some(providers) => render_page_with_rich_text_and_embed_registry(
+            &document,
+            selection,
+            policy,
+            Some(providers),
+            embeds,
+        )?,
+        None => render_page_with_embed_registry(&document, selection, policy, embeds)?,
+    };
     Ok(RuntimeRenderResult {
         page,
         diagnostics,
@@ -274,4 +324,50 @@ mod tests {
         assert!(result.page.html.contains("form=\"contact\""));
         assert!(result.page.html.contains("href=\"/o-nas\""));
     }
+
+
+    #[test]
+    fn runtime_renderer_accepts_the_same_custom_embed_registry() {
+        let mut embed_node = json!({ "id": "player", "type": "wrapper" });
+        embed_node
+            .as_object_mut()
+            .expect("component object")
+            .insert(
+                crate::FLY_EMBED_FIELD.to_string(),
+                json!({
+                    "provider": "custom",
+                    "url": "https://player.example.test/frame/123",
+                    "title": "Player"
+                }),
+            );
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [embed_node]
+                }
+            }]
+        }))
+        .expect("document");
+        let mut embeds = crate::EmbedProviderRegistry::with_builtins();
+        embeds.register(crate::EmbedProvider {
+            id: "custom",
+            label: "Custom",
+            hosts: &["player.example.test"],
+            path_prefixes: &["/frame/"],
+        });
+        let rendered = render_page_with_runtime_context_with_embed_registry(
+            &document,
+            &PageSelection::Id("home".to_string()),
+            &RenderPolicy::default(),
+            &json!({}),
+            &embeds,
+        )
+        .expect("runtime render");
+        assert!(rendered.page.html.contains("<iframe"));
+    }
+
+
 }

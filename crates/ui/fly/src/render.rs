@@ -361,12 +361,70 @@ pub fn render_page(
 /// Render a page with a host rich-text renderer bound (see
 /// [`crate::RichTextHtmlRenderer`]). Components carrying a `flyRichText` payload render
 /// through that port; without one they use Fly's escaped fallback projection.
+/// Fail closed before recursive render helpers inspect an untrusted/programmatically-built tree.
+pub(crate) fn ensure_render_component_limits(document: &ProjectDocument) -> FlyResult<()> {
+    let limits = crate::ValidationLimits::default();
+    let mut pending = Vec::new();
+    for page in &document.project.pages {
+        if let Some(root) = page.component.as_ref() {
+            pending.push((root, 0usize));
+        }
+    }
+
+    let mut node_count = 0usize;
+    while let Some((node, depth)) = pending.pop() {
+        if depth > limits.maximum_depth {
+            return Err(FlyError::MaximumDepthExceeded {
+                maximum: limits.maximum_depth,
+            });
+        }
+        node_count += 1;
+        if node_count > limits.maximum_nodes {
+            return Err(FlyError::MaximumNodesExceeded {
+                maximum: limits.maximum_nodes,
+            });
+        }
+        if let ComponentNode::Object(component) = node {
+            pending.extend(
+                component
+                    .children()
+                    .iter()
+                    .map(|child| (child, depth + 1)),
+            );
+        }
+    }
+    Ok(())
+}
+
 pub fn render_page_with_rich_text(
     document: &ProjectDocument,
     selection: &PageSelection,
     policy: &RenderPolicy,
     rich_text: Option<&dyn crate::RichTextHtmlRenderer>,
 ) -> FlyResult<RenderedPage> {
+    let embeds = crate::EmbedProviderRegistry::with_builtins();
+    render_page_with_rich_text_and_embed_registry(document, selection, policy, rich_text, &embeds)
+}
+
+/// Render a page using a host-provided embed-provider catalog.
+pub fn render_page_with_embed_registry(
+    document: &ProjectDocument,
+    selection: &PageSelection,
+    policy: &RenderPolicy,
+    embeds: &crate::EmbedProviderRegistry,
+) -> FlyResult<RenderedPage> {
+    render_page_with_rich_text_and_embed_registry(document, selection, policy, None, embeds)
+}
+
+/// Render a page with both rich-text and embed-provider host bindings.
+pub fn render_page_with_rich_text_and_embed_registry(
+    document: &ProjectDocument,
+    selection: &PageSelection,
+    policy: &RenderPolicy,
+    rich_text: Option<&dyn crate::RichTextHtmlRenderer>,
+    embeds: &crate::EmbedProviderRegistry,
+) -> FlyResult<RenderedPage> {
+    ensure_render_component_limits(document)?;
     // Resolve references before rendering, including for non-runtime previews.
     // Published materialization has already resolved them; the fast path keeps
     // its document and hash identity untouched.
@@ -376,6 +434,7 @@ pub fn render_page_with_rich_text(
         None
     };
     let document = resolved.as_ref().unwrap_or(document);
+    ensure_render_component_limits(document)?;
     let (page_index, page) = resolve_page(document, selection)?;
     let root = page
         .component
@@ -385,7 +444,7 @@ pub fn render_page_with_rich_text(
     // collide with an authored id or the HTML id a form will receive at materialization.
     let identities = RenderIdentities::new(root, action_target_ids(document));
     let mut html = String::new();
-    render_node(root, None, 0, policy, rich_text, &identities, &mut html);
+    render_node(root, None, 0, policy, rich_text, embeds, &identities, &mut html);
     let metadata = PageMetadata::from_page(page);
     let head = PageHead::from_metadata(&metadata);
     let css = if policy.emit_style_hooks {
@@ -531,12 +590,13 @@ fn render_node(
     index: usize,
     policy: &RenderPolicy,
     rich_text: Option<&dyn crate::RichTextHtmlRenderer>,
+    embeds: &crate::EmbedProviderRegistry,
     identities: &RenderIdentities,
     output: &mut String,
 ) {
     match node {
         ComponentNode::Object(component) => render_component(
-            component, parent_id, index, policy, rich_text, identities, output,
+            component, parent_id, index, policy, rich_text, embeds, identities, output,
         ),
         ComponentNode::Opaque(value) if policy.include_opaque_text_nodes => {
             render_opaque(value, output)
@@ -551,13 +611,14 @@ fn render_component(
     index: usize,
     policy: &RenderPolicy,
     rich_text: Option<&dyn crate::RichTextHtmlRenderer>,
+    embeds: &crate::EmbedProviderRegistry,
     identities: &RenderIdentities,
     output: &mut String,
 ) {
     let component_id = component.id.as_deref();
     if let Some(raw_embed) = component.extensions.get(crate::FLY_EMBED_FIELD) {
         render_embed(
-            component, raw_embed, parent_id, index, policy, identities, output,
+            component, raw_embed, parent_id, index, policy, embeds, identities, output,
         );
         return;
     }
@@ -684,6 +745,7 @@ fn render_component(
                 child_index,
                 policy,
                 rich_text,
+                embeds,
                 identities,
                 output,
             );
@@ -703,6 +765,7 @@ fn render_embed(
     parent_id: Option<&str>,
     index: usize,
     policy: &RenderPolicy,
+    embeds: &crate::EmbedProviderRegistry,
     identities: &RenderIdentities,
     output: &mut String,
 ) {
@@ -730,7 +793,7 @@ fn render_embed(
         }
     }
     write_attribute(output, "class", "fly-embed");
-    match crate::decode_embed_spec(raw_spec) {
+    match crate::decode_embed_spec_with_registry(raw_spec, embeds) {
         Ok(spec) => {
             if let Some(ratio) = spec.aspect_ratio.as_deref() {
                 let ratio = ratio.replace('/', " / ");
@@ -2415,4 +2478,101 @@ mod tests {
             );
         }
     }
+
+
+    #[test]
+    fn renderer_uses_the_host_embed_registry_and_rejects_unknown_provider_by_default() {
+        let mut embed_node = json!({ "id": "player", "type": "wrapper" });
+        embed_node
+            .as_object_mut()
+            .expect("component object")
+            .insert(
+                crate::FLY_EMBED_FIELD.to_string(),
+                json!({
+                    "provider": "custom",
+                    "url": "https://player.example.test/frame/123",
+                    "title": "Player"
+                }),
+            );
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [embed_node]
+                }
+            }]
+        }))
+        .expect("document");
+
+        let default_render =
+            render_page(&document, &PageSelection::First, &RenderPolicy::default())
+                .expect("default render");
+        assert!(!default_render.html.contains("<iframe"));
+
+        let mut embeds = crate::EmbedProviderRegistry::with_builtins();
+        embeds.register(crate::EmbedProvider {
+            id: "custom",
+            label: "Custom",
+            hosts: &["player.example.test"],
+            path_prefixes: &["/frame/"],
+        });
+        let custom_render = render_page_with_embed_registry(
+            &document,
+            &PageSelection::First,
+            &RenderPolicy::default(),
+            &embeds,
+        )
+        .expect("custom render");
+        assert!(custom_render.html.contains("<iframe"));
+        assert!(custom_render.html.contains("https://player.example.test/frame/123"));
+    }
+
+    #[test]
+    fn renderer_rejects_programmatically_built_trees_beyond_depth_limit() {
+        let limits = crate::ValidationLimits::default();
+        let mut component = json!({ "id": "leaf", "type": "text" });
+        for index in 0..=limits.maximum_depth {
+            component = json!({
+                "id": format!("wrapper-{index}"),
+                "type": "wrapper",
+                "components": [component]
+            });
+        }
+        let project: crate::GrapesProject = serde_json::from_value(json!({
+            "pages": [{ "id": "home", "component": component }]
+        }))
+        .expect("typed project");
+        let document = crate::ProjectDocument::new(project);
+        assert!(matches!(
+            render_page(&document, &PageSelection::First, &RenderPolicy::default()),
+            Err(FlyError::MaximumDepthExceeded { maximum }) if maximum == limits.maximum_depth
+        ));
+    }
+
+    #[test]
+    fn renderer_rejects_programmatically_built_trees_beyond_node_limit() {
+        let limits = crate::ValidationLimits::default();
+        let children = (0..limits.maximum_nodes)
+            .map(|index| json!({ "id": format!("child-{index}"), "type": "text" }))
+            .collect::<Vec<_>>();
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": children
+                }
+            }]
+        }))
+        .expect("document");
+        assert!(matches!(
+            render_page(&document, &PageSelection::First, &RenderPolicy::default()),
+            Err(FlyError::MaximumNodesExceeded { maximum }) if maximum == limits.maximum_nodes
+        ));
+    }
+
+
 }

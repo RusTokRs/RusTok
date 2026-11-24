@@ -253,22 +253,25 @@ the owner of the missing half.
   renderer gets the fallback projection — safe, but deliberately not the rich-text capability.
   Browser editing of the payload (Tiptap/ProseMirror) remains host-side preview tooling; the
   save path re-enters through the same payload contract and validation.
-- **The Page Builder admin now integrates both framework workspaces.**
-  `fly-leptos` supplies the SSR/browser authoring surface and optional WASM dispatch; the
-  Dioxus host uses `FlyEditorWorkspace` with an isolated iframe canvas, host-validated
-  geometry, palette and selected-layer drag/drop, and bounded resize patches. Both hosts use
-  the shared controller and save-response correlation. Cross-tab messages fence stale editors
-  but do not merge documents; the server revision check remains authoritative. The source
-  integration is present, while mounted browser/runtime verification remains a release gate.
+- **Leptos is the production Page Builder workspace; Dioxus remains an optional source-level host.**
+  `fly-leptos` supplies the mounted SSR/browser authoring surface and optional WASM dispatch.
+  The Dioxus host source includes `FlyEditorWorkspace`, an isolated iframe canvas,
+  host-validated geometry, palette and selected-layer drag/drop, and bounded resize patches,
+  but the standalone `apps/dioxus-admin` shell is a dormant concept and is not a production
+  integration. Cross-tab messages fence stale editors but do not merge documents; the server
+  revision check remains authoritative. Mounted Dioxus browser/runtime verification is still
+  a release gate.
 - **Session and CSRF posture of the standalone admin.** The intent route authenticates with the
   same-origin session cookie; issuing that session server-side and adding an explicit server-side
   CSRF check are the admin shell's change, tracked as `CLEAN-060` — see `SECURITY.md`.
-- **Embeds exist for allow-listed providers; there is no custom-code block.** The `embed`
-  palette block renders a sandboxed iframe only for the registered providers in `fly::embed`
-  (YouTube, Vimeo, Google Maps; HTTPS, exact hosts, fixed path prefixes) and degrades to a
-  safe link otherwise. Static publishing refuses `fly_embed` explicitly — embeds go through
-  dynamic routes. Arbitrary third-party embeds and custom code stay out by design, while
-  `raw_html` stays escaped (above). Owner: `fly` embed registry.
+- **Embeds use an explicit provider catalog; there is no custom-code block.** Built-in providers
+  cover YouTube, Vimeo and Google Maps. Hosts can extend the catalog with `EmbedProviderRegistry`,
+  configure the same registry on `FlyEditor::with_embed_registry`, and pass it to
+  `render_page_with_embed_registry` or `render_page_with_runtime_context_with_embed_registry`.
+  URLs are parsed as HTTPS, credentials and non-default ports are rejected, and normalized paths
+  must remain within an exact provider path boundary. Static publishing refuses `fly_embed`
+  explicitly — embeds go through dynamic routes. Arbitrary unregistered embeds and custom code
+  stay out by design, while `raw_html` stays escaped (above). Owner: `fly` embed registry.
 - **Design tokens exist with usage checks and reference rewriting.**
   A project carries a `flyTheme` extension (`fly::theme`): validated tokens render as `:root`
   custom properties and style declarations reference them with `var(--name)`. Token mutations

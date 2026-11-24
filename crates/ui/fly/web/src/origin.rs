@@ -20,6 +20,8 @@
 //!   origin has no absolute form. Such targets are addressed with `*`, and the receiving side
 //!   performs the actual origin check.
 
+use url::Url;
+
 /// The origin a sandboxed `srcdoc` iframe reports: opaque, and not addressable as a URL.
 pub const OPAQUE_ORIGIN: &str = "null";
 
@@ -43,7 +45,35 @@ pub fn normalize_expected_origin(origin: &str) -> Option<String> {
     if origin.is_empty() || origin == "*" {
         return None;
     }
-    Some(origin.to_string())
+    if origin == OPAQUE_ORIGIN {
+        return Some(OPAQUE_ORIGIN.to_string());
+    }
+
+    let parsed = Url::parse(origin).ok()?;
+    if !matches!(parsed.scheme(), "http" | "https")
+        || parsed.host_str().is_none()
+        || parsed.path() != "/"
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+    {
+        return None;
+    }
+
+    let authority = origin
+        .split_once("://")
+        .map(|(_, rest)| {
+            rest.split(|character| matches!(character, '/' | '?' | '#'))
+                .next()
+                .unwrap_or_default()
+        })
+        .unwrap_or_default();
+    if authority.contains('@') {
+        return None;
+    }
+
+    Some(parsed.origin().ascii_serialization())
 }
 
 /// The `targetOrigin` to hand to `postMessage` for a configured destination origin.
@@ -135,4 +165,28 @@ mod tests {
         let twice = normalize_expected_origin(&once).expect("valid");
         assert_eq!(once, twice);
     }
+
+
+    #[test]
+    fn concrete_origins_are_canonicalized_and_non_origins_are_rejected() {
+        assert_eq!(
+            normalize_expected_origin("https://ADMIN.example:443/").as_deref(),
+            Some("https://admin.example")
+        );
+        assert_eq!(
+            normalize_expected_origin("http://localhost:3000/").as_deref(),
+            Some("http://localhost:3000")
+        );
+        for origin in [
+            "https://admin.example/path",
+            "https://admin.example?x=1",
+            "https://admin.example#fragment",
+            "https://user@admin.example",
+            "ftp://admin.example",
+        ] {
+            assert_eq!(normalize_expected_origin(origin), None, "accepted {origin}");
+        }
+    }
+
+
 }

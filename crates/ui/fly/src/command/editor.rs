@@ -4,7 +4,6 @@ use crate::{
     UniqueIdGenerator, ValidationLimits, ValidationReport, apply_binding_command,
     apply_context_command, apply_dynamic_command, apply_page_command, apply_style_rule_command,
     apply_symbol_command, apply_translation_command, extend_with_runtime_validation,
-    validate_project,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -21,6 +20,9 @@ pub struct FlyEditor {
     /// has to mutate — and none at all for undo and redo.
     document: Arc<ProjectDocument>,
     registries: RegistrySet,
+    // Host policy is runtime configuration, not part of the persisted project/editor snapshot.
+    #[serde(skip, default = "crate::EmbedProviderRegistry::with_builtins")]
+    embed_registry: crate::EmbedProviderRegistry,
     selection: Option<String>,
     history: History,
     revision: RevisionState,
@@ -41,6 +43,7 @@ impl FlyEditor {
         Self {
             document: Arc::new(document),
             registries,
+            embed_registry: crate::EmbedProviderRegistry::with_builtins(),
             selection: None,
             history: History::new(100),
             revision,
@@ -69,6 +72,20 @@ impl FlyEditor {
         self.validation_limits = limits;
         self.last_report = None;
         self
+    }
+
+    /// Use a host-provided embed catalog for both incremental and full validation.
+    ///
+    /// Pass the same registry to the corresponding render function so validation and rendering
+    /// enforce one provider/host/path policy.
+    pub fn with_embed_registry(mut self, registry: crate::EmbedProviderRegistry) -> Self {
+        self.embed_registry = registry;
+        self.last_report = None;
+        self
+    }
+
+    pub fn embed_registry(&self) -> &crate::EmbedProviderRegistry {
+        &self.embed_registry
     }
 
     pub fn document(&self) -> &ProjectDocument {
@@ -103,7 +120,7 @@ impl FlyEditor {
     pub fn validate(&self) -> ValidationReport {
         extend_with_runtime_validation(
             &self.document,
-            validate_project(&self.document, &self.registries, self.validation_limits),
+            crate::validate_project_with_embed_registry(&self.document, &self.registries, self.validation_limits, &self.embed_registry),
         )
     }
 
@@ -154,12 +171,13 @@ impl FlyEditor {
             let component_id = component_id.clone();
             let mut after = (*self.document).clone();
             Self::apply_to_document(&mut after, &mut command, &mut generator, false)?;
-            if let Some(inc_report) = crate::validate_patch_incremental(
+            if let Some(inc_report) = crate::validate_patch_incremental_with_embed_registry(
                 &after,
                 &component_id,
                 prev_report,
                 &self.registries,
                 self.validation_limits,
+                &self.embed_registry,
             ) {
                 let errors = inc_report.errors().cloned().collect::<Vec<_>>();
                 if !errors.is_empty() {
@@ -205,7 +223,7 @@ impl FlyEditor {
         after.ensure_stable_ids(&mut generator);
         let report = extend_with_runtime_validation(
             &after,
-            validate_project(&after, &self.registries, self.validation_limits),
+            crate::validate_project_with_embed_registry(&after, &self.registries, self.validation_limits, &self.embed_registry),
         );
         let errors = report.errors().cloned().collect::<Vec<_>>();
         if !errors.is_empty() {

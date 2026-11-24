@@ -93,6 +93,8 @@ pub enum FlyError {
     InvalidComponentId { id: String, reason: String },
     #[error("project nesting depth exceeds the maximum of {maximum}")]
     MaximumDepthExceeded { maximum: usize },
+    #[error("project component count exceeds the maximum of {maximum}")]
+    MaximumNodesExceeded { maximum: usize },
     #[error("undo history is empty")]
     UndoHistoryEmpty,
     #[error("redo history is empty")]

@@ -24,7 +24,8 @@ it then trusts for authorisation decisions, Fly cannot help.
 | CSS selectors built from ids | Allow-list escape, not a deny-list, at every writer: the renderer and the selection rule of the `fly-leptos` canvas | `render.rs::escape_css_attribute` (public) |
 | Component and page ids | `[A-Za-z0-9_.:-]`, non-empty, ≤128 bytes | `validation.rs::validate_identifier` |
 | URLs | One policy module; per-slot scheme allow-list with a shared 2048-byte limit, including stored actions | `safe_url.rs` |
-| Decode depth | Bounded, checked iteratively (no recursion) | `codec.rs::MAXIMUM_DECODE_DEPTH` |
+| Decode depth | Bounded to the parser ceiling and checked iteratively; rejected Values are dismantled without recursive Drop | `codec.rs::MAXIMUM_DECODE_DEPTH` |
+| Render traversal | Component depth and node budgets checked iteratively before recursive render helpers | `render.rs::ensure_render_component_limits` |
 | Document size | Bounded node count and nesting depth | `validation.rs::ValidationLimits` |
 | Undo history | Bounded by entry count *and* retained bytes | `command/model.rs::History` |
 | Snapshot / bundle integrity | SHA-256, compared in constant time | `digest.rs::ContentDigest` |
@@ -56,12 +57,16 @@ migration baselines, so its representation cannot change without a data migratio
   the `sandbox="allow-scripts"` attribute it belongs to. Silent fallback to `"null"` would have made
   "never configured" indistinguishable from "intentionally sandboxed", so the missing value is
   treated as the configuration error it is.
-* **`fly` and `fly-ui` are declared but unused by `fly-leptos` / `fly-dioxus`.** This fixes the
-  permitted direction of dependencies ahead of the adapters being implemented, and is enforced by
-  `scripts/verify/verify-fly-dependency-boundaries.mjs`.
+* **The framework adapters deliberately share `fly` and `fly-ui`.** The Leptos and Dioxus
+  adapters use the framework-neutral document/command engine and UI state machine; the dependency
+  guard prevents cross-framework dependencies and keeps browser-specific code out of the core.
 * **`data:` URLs are rejected for stored actions but allowed for image resources.** Action targets
   are stored and later acted upon; an inline image is only ever rendered. See the module docs in
   `safe_url.rs`.
+* **Custom embed registries are host configuration.** Provider URLs are parsed as HTTPS URLs and
+  checked against exact hosts and path boundaries. The embed sandbox retains `allow-same-origin`
+  for provider compatibility, so a host must never register its own application origin as an
+  embed provider.
 
 ## Known gaps
 
@@ -73,8 +78,11 @@ currently mitigated:
   readable by any script that achieves execution on the admin origin. The Fly adapter no longer
   reads or forwards it, but the HttpOnly cookie itself is a server-side change owned by the admin
   shell (`CLEAN-060` in `docs/verification/PLATFORM_HARDENING_IMPLEMENTATION_PLAN.md`).
-* `ComponentNode` uses `#[serde(untagged)]` with an `Opaque(Value)` fallback, so a malformed
-  component degrades silently into opaque JSON instead of reporting a diagnostic.
+* `ComponentNode` uses `#[serde(untagged)]` with an `Opaque(Value)` fallback to preserve unknown
+  provider data losslessly. Validation emits `opaque_component` / `opaque_component_children`
+  diagnostics; these are warnings by default because Fly cannot apply provider-specific rules to
+  an unknown node. Hosts that require a closed component vocabulary should promote those warnings
+  to publish blockers.
 * `cargo deny` / `cargo audit` are not yet part of the Fly CI pipeline.
 
 ## Reporting

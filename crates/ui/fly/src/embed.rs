@@ -11,6 +11,7 @@
 use crate::safe_url::{UrlAttributeKind, UrlPolicy, url_allowed};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use url::Url;
 
 pub const FLY_EMBED_FIELD: &str = "flyEmbed";
 
@@ -38,7 +39,7 @@ pub struct EmbedProvider {
     pub path_prefixes: &'static [&'static str],
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct EmbedProviderRegistry {
     providers: Vec<EmbedProvider>,
 }
@@ -118,25 +119,39 @@ pub fn builtin_embed_providers() -> Vec<EmbedProvider> {
 }
 
 /// Validate one embed URL against a provider registration.
-pub fn validate_embed_url(provider: &EmbedProvider, url: &str) -> Result<(), String> {
-    let url = url.trim();
-    if !url_allowed(url, UrlAttributeKind::Resource, &UrlPolicy::permissive()) {
+pub fn validate_embed_url(provider: &EmbedProvider, raw_url: &str) -> Result<(), String> {
+    let raw_url = raw_url.trim();
+    if !url_allowed(raw_url, UrlAttributeKind::Resource, &UrlPolicy::permissive()) {
         return Err("embed URL is not a safe URL".to_string());
     }
-    let Some((scheme, rest)) = url.split_once("://") else {
-        return Err("embed URL must be an absolute HTTPS URL".to_string());
-    };
-    if !scheme.eq_ignore_ascii_case("https") {
+
+    let parsed = Url::parse(raw_url)
+        .map_err(|_| "embed URL must be a valid absolute HTTPS URL".to_string())?;
+    if parsed.scheme() != "https" {
         return Err("embed URL must use HTTPS".to_string());
     }
-    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
-    let host = authority
-        .rsplit('@')
-        .next()
-        .unwrap_or_default()
-        .split(':')
-        .next()
-        .unwrap_or_default()
+
+    let authority = raw_url
+        .split_once("://")
+        .map(|(_, rest)| {
+            rest.split(|character| matches!(character, '/' | '?' | '#'))
+                .next()
+                .unwrap_or_default()
+        })
+        .unwrap_or_default();
+    if authority.contains('@')
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+    {
+        return Err("embed URL must not contain credentials".to_string());
+    }
+    if parsed.port().is_some() {
+        return Err("embed URL must not use a non-default port".to_string());
+    }
+
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| "embed URL must include a host".to_string())?
         .to_ascii_lowercase();
     if !provider
         .hosts
@@ -148,14 +163,18 @@ pub fn validate_embed_url(provider: &EmbedProvider, url: &str) -> Result<(), Str
             provider.id
         ));
     }
-    let path = rest[authority.len()..]
-        .split(['?', '#'])
-        .next()
-        .unwrap_or_default();
+
+    let path = parsed.path();
+    let lower_path = path.to_ascii_lowercase();
+    if ["%2e", "%2f", "%5c"].iter().any(|encoded| lower_path.contains(encoded))
+        || path.split('/').any(|segment| segment == "." || segment == "..")
+    {
+        return Err("embed URL path must not contain encoded separators or dot segments".to_string());
+    }
     if !provider
         .path_prefixes
         .iter()
-        .any(|prefix| path.starts_with(prefix))
+        .any(|prefix| path_matches_prefix(path, prefix))
     {
         return Err(format!(
             "embed URL path must stay inside the provider embed surface ({})",
@@ -163,6 +182,18 @@ pub fn validate_embed_url(provider: &EmbedProvider, url: &str) -> Result<(), Str
         ));
     }
     Ok(())
+}
+
+fn path_matches_prefix(path: &str, prefix: &str) -> bool {
+    if prefix.ends_with('/') {
+        path.strip_prefix(prefix)
+            .is_some_and(|suffix| !suffix.is_empty() && !suffix.starts_with('/'))
+    } else {
+        path == prefix
+            || path
+                .strip_prefix(prefix)
+                .is_some_and(|suffix| suffix.len() > 1 && suffix.starts_with('/'))
+    }
 }
 
 fn valid_aspect_ratio(value: &str) -> bool {
@@ -177,15 +208,21 @@ fn valid_aspect_ratio(value: &str) -> bool {
     parse_positive(width) && parse_positive(height)
 }
 
-/// Decode and fully validate the `flyEmbed` extension value against the built-in registry.
-///
-/// Hosts with a custom registry call [`EmbedProviderRegistry::validate`] on the decoded
-/// spec instead; decoding itself is registry-independent.
-pub fn decode_embed_spec(raw: &Value) -> Result<EmbedSpec, String> {
-    let spec: EmbedSpec = serde_json::from_value(raw.clone())
+/// Decode and validate the `flyEmbed` extension against a host-supplied provider registry.
+pub fn decode_embed_spec_with_registry(
+    raw: &Value,
+    registry: &EmbedProviderRegistry,
+) -> Result<EmbedSpec, String> {
+    let mut spec: EmbedSpec = serde_json::from_value(raw.clone())
         .map_err(|error| format!("embed specification cannot be decoded: {error}"))?;
-    EmbedProviderRegistry::with_builtins().validate(&spec)?;
+    spec.provider = spec.provider.trim().to_string();
+    registry.validate(&spec)?;
     Ok(spec)
+}
+
+/// Decode and fully validate the `flyEmbed` extension against the built-in registry.
+pub fn decode_embed_spec(raw: &Value) -> Result<EmbedSpec, String> {
+    decode_embed_spec_with_registry(raw, &EmbedProviderRegistry::with_builtins())
 }
 
 #[cfg(test)]
@@ -238,4 +275,55 @@ mod tests {
             "an embed without an accessible title must be rejected"
         );
     }
+
+
+    #[test]
+    fn embeds_reject_credentials_non_default_ports_and_path_escape() {
+        let registry = EmbedProviderRegistry::with_builtins();
+        let youtube = registry.provider("youtube").expect("youtube provider");
+        for url in [
+            "https://attacker@www.youtube.com/embed/abc123",
+            "https://www.youtube.com:8443/embed/abc123",
+            "https://www.youtube.com/embed/../watch?v=abc123",
+            "https://www.youtube.com/embed/%2e%2e/watch?v=abc123",
+            "https://www.youtube.com/embed/%2f..%2fwatch",
+        ] {
+            assert!(
+                validate_embed_url(youtube, url).is_err(),
+                "unsafe embed URL was accepted: {url}"
+            );
+        }
+
+        let custom = EmbedProvider {
+            id: "custom",
+            label: "Custom",
+            hosts: &["player.example.test"],
+            path_prefixes: &["/frame"],
+        };
+        assert!(validate_embed_url(&custom, "https://player.example.test/frame/123").is_ok());
+        assert!(validate_embed_url(&custom, "https://player.example.test/frame.evil/123").is_err());
+    }
+
+    #[test]
+    fn custom_registry_can_decode_a_provider_spec() {
+        let mut registry = EmbedProviderRegistry::default();
+        registry.register(EmbedProvider {
+            id: "custom",
+            label: "Custom",
+            hosts: &["player.example.test"],
+            path_prefixes: &["/frame/"],
+        });
+        let decoded = decode_embed_spec_with_registry(
+            &json!({
+                "provider": " custom ",
+                "url": "https://player.example.test/frame/123",
+                "title": "Player"
+            }),
+            &registry,
+        )
+        .expect("custom embed");
+        assert_eq!(decoded.provider, "custom");
+    }
+
+
 }

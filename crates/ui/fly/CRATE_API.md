@@ -5,7 +5,7 @@ Fly Visual Editor Engine: framework-neutral visual editor engine, AST models, de
 ## 1. Public API Surface
 
 ### Primary Engine & Document Types
-- `FlyEditor`: Command processor and state coordinator managing document revisions, transaction batches, and undo/redo history.
+- `FlyEditor`: Command processor and state coordinator managing document revisions, transaction batches, undo/redo history, and host embed-provider validation (`with_embed_registry`). The embed registry is host runtime policy and is not serialized with the project.
 - `ProjectDocument`: Root document tree containing components, style rules, symbols, and asset registries.
 - `ComponentNode`: Individual component node representing HTML elements, text nodes, or custom blocks with typed and opaque attribute storage.
 - `GrapesJsCodec`: Lossless bidirectional serializer and deserializer for GrapesJS project schemas.
@@ -20,9 +20,11 @@ Fly Visual Editor Engine: framework-neutral visual editor engine, AST models, de
 - `RuntimeBinding`, `BindingCatalog`, `BindingTarget`: Dynamic data binding descriptors and materialization.
 - `RuntimeContextContract`, `RuntimeContextPreflight`: Type-checked context contract validation and dependency analysis.
 - `LocaleResolver`: Pluggable trait for BCP-47 locale identity resolution (`PlatformLocaleResolver` with CLDR support or `BasicLocaleResolver`).
-- `RenderPolicy`, `RenderedPage`, `render_page`: Server-side HTML and CSS renderer generating static markup from document models.
+- `RenderPolicy`, `RenderedPage`, `render_page`, `render_page_with_embed_registry`, `render_page_with_rich_text_and_embed_registry`: Server-side HTML/CSS rendering with built-in or host-provided embed catalogs.
 - `escape_css_attribute`: Allow-list escape of a value written into a double-quoted CSS attribute selector inside a `<style>` element. Used by the renderer and by framework adapters that style a component by its id.
 - `DynamicCatalog`, `RuntimeCondition`, `RuntimeRepeater`: Dynamic condition and iteration rendering with safety bounds.
+- `validate_project_with_embed_registry`, `validate_patch_incremental_with_embed_registry`: Full and incremental validation against the same host provider catalog.
+- `render_page_with_runtime_context_with_embed_registry`, `render_page_with_runtime_context_with_providers_and_embed_registry`: Runtime rendering with the same host embed catalog, optionally alongside provider form endpoints.
 
 ## 2. Invariants & Business Rules
 - **Zero UI Framework Dependencies**: The core engine contains no imports of Leptos, Dioxus, React, or browser-specific globals.
@@ -31,7 +33,7 @@ Fly Visual Editor Engine: framework-neutral visual editor engine, AST models, de
 - **Undo/Redo Integrity**: History retains before/after snapshots for undo and redo, including when an inverse command exists. The budget is a conservative JSON-size proxy, not exact heap accounting; shared `Arc` snapshots can be counted more than once. Eviction retains one oversized entry and preserves a contiguous undo/redo sequence; deserialization rebuilds accounting from the stored entries.
 - **Identity remapping**: Component IDs, authored HTML IDs and provider form IDs have distinct ownership. Recognized action, HTML/ARIA, style and runtime-catalog references are remapped in their own namespaces; opaque provider data, assets and independent symbol definitions are not recursively rewritten. A form ID also names its provider endpoint and is not silently minted. Separate pages may reuse authored HTML IDs; duplicate component or form IDs, duplicate HTML IDs within a page, or a form ID claimed by another HTML node make cloning ambiguous and are rejected.
 - **Action targets**: SSR reserves `data-fly-target-id`, `data-fly-style-id` and editor identity hooks against authored spoofing. It adds a plain HTML ID for an action target only if the ID is unoccupied and the target has no authored HTML ID.
-- **Node & Depth Budgets**: Deeply nested trees exceeding depth limits (`MAXIMUM_DECODE_DEPTH`, `DEFAULT_MAXIMUM_DEPTH`) or pathological payloads are rejected fail-closed without recursion stack overflow.
+- **Node & Depth Budgets**: JSON decoding matches serde_json's 128-level parser ceiling; validation defaults to 64 component levels and 10,000 nodes. Rendering independently checks component depth/node budgets iteratively before recursive helpers.
 - **Iteration Limits**: Repeater operations enforce strict bounds (`DEFAULT_REPEATER_LIMIT`, `MAX_REPEATER_LIMIT`, `MAX_TOTAL_REPEATED_NODES`) to prevent denial-of-service via unbounded expansion.
 
 ## 3. Error Handling & Edge Cases
@@ -41,7 +43,7 @@ Fly Visual Editor Engine: framework-neutral visual editor engine, AST models, de
 - Empty projects, missing templates, and circular symbol references fail closed with descriptive domain errors.
 
 ## 4. Security & Isolation Invariants
-- Safe URL validation (`validate_component_public_urls`, `validate_embed_url`) forbids `javascript:`, data URIs with executable MIME types, and hostile network paths.
+- Safe URL validation (`validate_component_public_urls`, `validate_embed_url`) forbids `javascript:`, executable data URIs, embed credentials/non-default ports, and paths that escape registered provider surfaces.
 - HTML sanitization and safe SSR rendering prevent injection of executable script tags or malicious event handlers.
 - Multi-tenant bundle export/import validates cryptographic SHA-256 digests (`bundle_hash`, `sha256_hex`, `constant_time_eq`) under strict policy enforcement.
 - Strict iframe sandboxing for embedded providers (`EMBED_IFRAME_SANDBOX`).

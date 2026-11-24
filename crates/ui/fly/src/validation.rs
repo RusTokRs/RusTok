@@ -3,7 +3,7 @@ use crate::{
     AssetCatalog, AssetPolicy, PageMetadata, ProjectDocument, RegistrySet, StyleRuleCatalog,
     StyleRuleScope, normalize_slug, validate_runtime_extensions,
 };
-use crate::{ComponentChildren, ComponentIndex, ComponentNode, ComponentObject, FLY_SYMBOLS_FIELD};
+use crate::{ComponentChildren, ComponentIndex, ComponentNode, ComponentObject, EmbedProviderRegistry, FLY_SYMBOLS_FIELD};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -95,13 +95,24 @@ pub fn validate_project(
     registries: &RegistrySet,
     limits: ValidationLimits,
 ) -> ValidationReport {
+    let embeds = EmbedProviderRegistry::with_builtins();
+    validate_project_with_embed_registry(document, registries, limits, &embeds)
+}
+
+/// Validate a project with the host's embed-provider catalog.
+pub fn validate_project_with_embed_registry(
+    document: &ProjectDocument,
+    registries: &RegistrySet,
+    limits: ValidationLimits,
+    embeds: &EmbedProviderRegistry,
+) -> ValidationReport {
     let mut report = ValidationReport::default();
     // Reuses the document-resident index if already built, avoiding a redundant tree walk.
     let index = document.component_index();
     validate_pages(document, &mut report);
     validate_theme_tokens(document, &mut report);
     // Typed checks, opaque checks and URL-attribute checks all happen in this one traversal.
-    validate_components(document, registries, limits, &mut report);
+    validate_components(document, registries, embeds, limits, &mut report);
     validate_assets(document, &mut report);
     validate_style_rules(document, index, &mut report);
     validate_symbols(document, &mut report);
@@ -136,6 +147,26 @@ pub fn validate_patch_incremental(
     previous_report: &ValidationReport,
     registries: &RegistrySet,
     limits: ValidationLimits,
+) -> Option<ValidationReport> {
+    let embeds = EmbedProviderRegistry::with_builtins();
+    validate_patch_incremental_with_embed_registry(
+        document,
+        component_id,
+        previous_report,
+        registries,
+        limits,
+        &embeds,
+    )
+}
+
+/// Incrementally validate a patch using the same host embed catalog as full validation.
+pub fn validate_patch_incremental_with_embed_registry(
+    document: &ProjectDocument,
+    component_id: &str,
+    previous_report: &ValidationReport,
+    registries: &RegistrySet,
+    limits: ValidationLimits,
+    embeds: &EmbedProviderRegistry,
 ) -> Option<ValidationReport> {
     let index = document.component_index();
     let location = index.location(component_id)?;
@@ -220,7 +251,7 @@ pub fn validate_patch_incremental(
         ));
     }
     if let Some(raw) = component.extensions.get(crate::FLY_EMBED_FIELD)
-        && let Err(reason) = crate::decode_embed_spec(raw)
+        && let Err(reason) = crate::decode_embed_spec_with_registry(raw, embeds)
     {
         diagnostics.push(diagnostic(
             ValidationSeverity::Error,
@@ -550,6 +581,7 @@ fn walk_opaque_value(
 fn validate_components(
     document: &ProjectDocument,
     registries: &RegistrySet,
+    embeds: &EmbedProviderRegistry,
     limits: ValidationLimits,
     report: &mut ValidationReport,
 ) {
@@ -565,6 +597,7 @@ fn validate_components(
             0,
             &format!("pages[{page_index}].component"),
             registries,
+            embeds,
             limits,
             document_kind,
             &mut ids,
@@ -599,6 +632,7 @@ fn walk_component(
     depth: usize,
     path: &str,
     registries: &RegistrySet,
+    embeds: &EmbedProviderRegistry,
     limits: ValidationLimits,
     document_kind: crate::DocumentKind,
     ids: &mut BTreeSet<String>,
@@ -621,7 +655,7 @@ fn walk_component(
             ));
             walk_opaque_value(
                 value,
-                depth + 1,
+                depth,
                 path,
                 limits,
                 document_kind,
@@ -739,7 +773,7 @@ fn walk_component(
         ));
     }
     if let Some(raw) = component.extensions.get(crate::FLY_EMBED_FIELD)
-        && let Err(reason) = crate::decode_embed_spec(raw)
+        && let Err(reason) = crate::decode_embed_spec_with_registry(raw, embeds)
     {
         report.diagnostics.push(diagnostic(
             ValidationSeverity::Error,
@@ -793,6 +827,7 @@ fn walk_component(
             depth + 1,
             &format!("{path}.components[{index}]"),
             registries,
+            embeds,
             limits,
             document_kind,
             ids,
@@ -1889,4 +1924,76 @@ mod tests {
                 .any(|d| d.code == "page_content_slot_cannot_have_children")
         );
     }
+
+
+    #[test]
+    fn opaque_component_at_the_depth_limit_is_not_counted_one_level_too_deep() {
+        let limits = ValidationLimits::default();
+        let mut component = json!({ "type": 42 });
+        for index in 0..limits.maximum_depth {
+            component = json!({
+                "id": format!("wrapper-{index}"),
+                "type": "wrapper",
+                "components": [component]
+            });
+        }
+        let project: crate::GrapesProject = serde_json::from_value(json!({
+            "pages": [{ "id": "home", "component": component }]
+        }))
+        .expect("typed project");
+        let document = crate::ProjectDocument::new(project);
+        let report = validate_project(&document, &RegistrySet::with_builtins(), limits);
+        assert_eq!(report.maximum_depth, limits.maximum_depth);
+        assert!(
+            !report.diagnostics.iter().any(|diagnostic| diagnostic.code == "maximum_depth_exceeded"),
+            "opaque children must use their actual component depth"
+        );
+    }
+
+    #[test]
+    fn fly_editor_uses_the_same_custom_embed_registry_for_validation() {
+        let mut embed_node = json!({ "id": "player", "type": "wrapper" });
+        embed_node
+            .as_object_mut()
+            .expect("component object")
+            .insert(
+                crate::FLY_EMBED_FIELD.to_string(),
+                json!({
+                    "provider": "custom",
+                    "url": "https://player.example.test/frame/123",
+                    "title": "Player"
+                }),
+            );
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [embed_node]
+                }
+            }]
+        }))
+        .expect("document");
+        let registries = RegistrySet::with_builtins();
+        let default_report = validate_project(&document, &registries, ValidationLimits::default());
+        assert!(
+            default_report.diagnostics.iter().any(|diagnostic| diagnostic.code == "embed_invalid")
+        );
+
+        let mut embeds = crate::EmbedProviderRegistry::with_builtins();
+        embeds.register(crate::EmbedProvider {
+            id: "custom",
+            label: "Custom",
+            hosts: &["player.example.test"],
+            path_prefixes: &["/frame/"],
+        });
+        let mut editor = crate::FlyEditor::new(document, registries).with_embed_registry(embeds);
+        let custom_report = editor.validate();
+        assert!(
+            !custom_report.diagnostics.iter().any(|diagnostic| diagnostic.code == "embed_invalid")
+        );
+    }
+
+
 }

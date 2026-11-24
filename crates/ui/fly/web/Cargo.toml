@@ -25,6 +25,7 @@ fly = { path = ".." }
 fly-ui = { path = "../ui" }
 serde.workspace = true
 serde_json.workspace = true
+url.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 js-sys = { version = "0.3", optional = true }
