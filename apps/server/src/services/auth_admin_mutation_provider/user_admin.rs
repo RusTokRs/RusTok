@@ -287,42 +287,12 @@ async fn lock_user_for_mutation<C>(
 where
     C: ConnectionTrait,
 {
-    let query = || users::Entity::find_by_id(user_id).filter(users::Column::TenantId.eq(tenant_id));
-
-    let user = match db.get_database_backend() {
-        DbBackend::Postgres | DbBackend::MySql => query()
-            .lock_exclusive()
-            .one(db)
-            .await
-            .map_err(super::internal_admin_error)?,
-        DbBackend::Sqlite => {
-            // The user id is known. Reserve SQLite's writer before reading so
-            // a concurrent status/role/password mutation cannot race a
-            // deferred read-to-write lock upgrade.
-            let result = users::Entity::update_many()
-                .col_expr(
-                    users::Column::UpdatedAt,
-                    Expr::col(users::Column::UpdatedAt),
-                )
-                .filter(users::Column::Id.eq(user_id))
-                .filter(users::Column::TenantId.eq(tenant_id))
-                .exec(db)
-                .await
-                .map_err(super::internal_admin_error)?;
-            if result.rows_affected != 1 {
-                return Err(AuthAdminMutationError::NotFound("user".to_string()));
-            }
-            query().one(db).await.map_err(super::internal_admin_error)?
-        }
-        _ => {
-            return Err(AuthAdminMutationError::Internal(
-                "unsupported SeaORM database backend".to_string(),
-            ));
-        }
-    };
-
-    user.ok_or_else(|| AuthAdminMutationError::NotFound("user".to_string()))
+    AuthLifecycleService::lock_user_for_mutation(db, tenant_id, user_id)
+        .await
+        .map_err(super::internal_admin_error)?
+        .ok_or_else(|| AuthAdminMutationError::NotFound("user".to_string()))
 }
+
 
 async fn revoke_active_sessions<C>(
     db: &C,
