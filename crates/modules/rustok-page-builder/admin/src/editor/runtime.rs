@@ -1,6 +1,5 @@
 #[cfg(not(target_arch = "wasm32"))]
 use crate::capability_access::intent_allowed;
-use crate::core::gate_error_message;
 use crate::{AdminCanvasController, AdminCanvasEffect, PageBuilderAdminFacade, SaveAttempt};
 use fly::{GrapesJsCodec, ProjectHash, TraitSchemaRegistry};
 #[cfg(not(target_arch = "wasm32"))]
