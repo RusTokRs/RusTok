@@ -27,6 +27,43 @@ pub fn catalog_base_scope() -> Condition {
         .add(price::Column::MaxQuantity.is_null())
 }
 
+fn validate_initial_price(price: &InitialPrice) -> Result<(), sea_orm::DbErr> {
+    if price.variant_id.is_nil() {
+        return Err(sea_orm::DbErr::Custom(
+            "variant_id must not be a nil UUID".into(),
+        ));
+    }
+    if price.channel_id == Some(Uuid::nil()) {
+        return Err(sea_orm::DbErr::Custom(
+            "channel_id must not be a nil UUID".into(),
+        ));
+    }
+    if price.amount < Decimal::ZERO {
+        return Err(sea_orm::DbErr::Custom("amount must not be negative".into()));
+    }
+    if let Some(compare_at) = price.compare_at_amount {
+        if compare_at < Decimal::ZERO {
+            return Err(sea_orm::DbErr::Custom(
+                "compare_at_amount must not be negative".into(),
+            ));
+        }
+        if compare_at < price.amount {
+            return Err(sea_orm::DbErr::Custom(
+                "compare_at_amount cannot be lower than amount".into(),
+            ));
+        }
+    }
+    let trimmed_currency = price.currency_code.trim();
+    if trimmed_currency.len() != 3
+        || !trimmed_currency.chars().all(|ch| ch.is_ascii_alphabetic())
+    {
+        return Err(sea_orm::DbErr::Custom(
+            "currency_code must be a 3-letter ASCII alphabetic code".into(),
+        ));
+    }
+    Ok(())
+}
+
 /// Pricing-owned transaction-aware operations required by Product lifecycle writes.
 pub struct BootstrapService;
 
@@ -44,34 +81,7 @@ impl BootstrapService {
         }
 
         for price in &prices {
-            if price.variant_id.is_nil() {
-                return Err(sea_orm::DbErr::Custom(
-                    "variant_id must not be a nil UUID".into(),
-                ));
-            }
-            if price.channel_id == Some(Uuid::nil()) {
-                return Err(sea_orm::DbErr::Custom(
-                    "channel_id must not be a nil UUID".into(),
-                ));
-            }
-            if price.amount < Decimal::ZERO {
-                return Err(sea_orm::DbErr::Custom("amount must not be negative".into()));
-            }
-            if let Some(compare_at) = price.compare_at_amount
-                && compare_at < Decimal::ZERO
-            {
-                return Err(sea_orm::DbErr::Custom(
-                    "compare_at_amount must not be negative".into(),
-                ));
-            }
-            let trimmed_currency = price.currency_code.trim();
-            if trimmed_currency.len() != 3
-                || !trimmed_currency.chars().all(|ch| ch.is_ascii_alphabetic())
-            {
-                return Err(sea_orm::DbErr::Custom(
-                    "currency_code must be a 3-letter ASCII alphabetic code".into(),
-                ));
-            }
+            validate_initial_price(price)?;
         }
 
         let models = prices
@@ -172,7 +182,7 @@ impl BootstrapService {
                     || price.amount < Decimal::ZERO
                     || price
                         .compare_at_amount
-                        .is_some_and(|amount| amount < Decimal::ZERO)
+                        .is_some_and(|amount| amount < Decimal::ZERO || amount < price.amount)
             })
         {
             return Err(sea_orm::DbErr::Custom(
@@ -210,5 +220,35 @@ impl BootstrapService {
             .exec(conn)
             .await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn initial_price(amount: Decimal, compare_at_amount: Option<Decimal>) -> InitialPrice {
+        InitialPrice {
+            variant_id: Uuid::from_u128(1),
+            channel_id: None,
+            channel_slug: None,
+            currency_code: "USD".to_owned(),
+            amount,
+            compare_at_amount,
+        }
+    }
+
+    #[test]
+    fn initial_price_rejects_compare_at_below_base_amount() {
+        let price = initial_price(Decimal::new(1200, 2), Some(Decimal::new(1199, 2)));
+        assert!(validate_initial_price(&price).is_err());
+    }
+
+    #[test]
+    fn initial_price_accepts_equal_or_higher_compare_at_amount() {
+        for compare_at in [Decimal::new(1200, 2), Decimal::new(1500, 2)] {
+            let price = initial_price(Decimal::new(1200, 2), Some(compare_at));
+            assert!(validate_initial_price(&price).is_ok());
+        }
     }
 }
