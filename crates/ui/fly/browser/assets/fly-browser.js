@@ -79,6 +79,30 @@ function nonEmptyString(value) {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
+function getPeerWriteDocumentId() {
+  const existing = nonEmptyString(globalThis.__flyPeerWriteDocumentId);
+  if (existing) return existing;
+  const cryptoApi = globalThis.crypto;
+  const generated = typeof cryptoApi?.randomUUID === "function"
+    ? cryptoApi.randomUUID()
+    : `fly-document-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+  try {
+    globalThis.__flyPeerWriteDocumentId = generated;
+  } catch (_) {
+    // The browser's server-side revision CAS remains authoritative if globals are frozen.
+  }
+  return nonEmptyString(globalThis.__flyPeerWriteDocumentId) || generated;
+}
+
+function getPeerWriteSenderId(root) {
+  const documentId = getPeerWriteDocumentId();
+  // Rust Leptos/Dioxus channel owners share this document-scoped ID through
+  // globalThis.__flyPeerWriteDocumentId. Per-root IDs would make our own writes
+  // look like sibling-tab writes to another adapter in this same document.
+  if (root?.dataset) root.dataset.flyPeerWriteSenderId = documentId;
+  return documentId;
+}
+
 /**
  * Resolve `value` against the current document, returning it only when it stays on this origin.
  *
@@ -551,7 +575,53 @@ function readSaveFailure(pageId) {
   }
 }
 
+function fencePeerWriteConflict(adapter, details = {}) {
+  if (adapter.peerWriteConflict) return;
+  const revision = nonEmptyString(details.revision);
+  const hash = nonEmptyString(details.hash);
+  const source = details.source === "server" ? "server" : "peer";
+  adapter.peerWriteConflict = { revision, hash, source };
+  adapter.root.dataset.flyPeerWriteConflict = "true";
+  adapter.root.dispatchEvent(new CustomEvent("fly:browser-peer-write", {
+    bubbles: true,
+    detail: {
+      code: PEER_WRITE_CONFLICT_CODE,
+      pageId: adapter.pageId,
+      instanceId: adapter.instanceId,
+      revision,
+      projectHash: hash,
+      source,
+    },
+  }));
+  adapter.reportPeerWriteConflict();
+  adapter.discardQueuedAuthoritativeIntents(
+    details.reason ||
+      (source === "server"
+        ? "because the server rejected a stale revision"
+        : "because another editor saved this page"),
+  );
+}
+
 function reportSaveFailure(adapter, failure, request) {
+  adapter.root.dataset.flySaveFailed = "true";
+  const code = nonEmptyString(failure.code);
+  if (code === "REVISION_CONFLICT" || code === "PAGE_DOCUMENT_REVISION_CONFLICT") {
+    const expectedRevision = nonEmptyString(failure.expected_revision);
+    const currentRevision = nonEmptyString(adapter.root.dataset.flyRevision);
+    if (expectedRevision && currentRevision && expectedRevision !== currentRevision) {
+      // A reload has already rendered the newer server revision. Retire the
+      // parked conflict instead of trapping the freshly loaded editor read-only.
+      clearSaveFailure(adapter.pageId);
+      delete adapter.root.dataset.flySaveFailed;
+      clearBrowserProblem(adapter);
+      return;
+    }
+    fencePeerWriteConflict(adapter, {
+      source: "server",
+      reason: "because the server rejected a stale revision",
+    });
+    return;
+  }
   reportBrowserProblem(
     adapter,
     {
@@ -561,7 +631,6 @@ function reportSaveFailure(adapter, failure, request) {
     },
     SAVE_FAILED_CODE,
   );
-  adapter.root.dataset.flySaveFailed = "true";
 }
 
 // Settles the problem region after a successful intent response.
@@ -592,8 +661,16 @@ function settleSaveFailure(adapter, result, request) {
     return;
   }
   if (isObject(result.save_failure)) {
-    writeSaveFailure(adapter.pageId, result.save_failure);
-    reportSaveFailure(adapter, result.save_failure, request);
+    const failure = { ...result.save_failure };
+    const code = nonEmptyString(failure.code);
+    if (
+      (code === "REVISION_CONFLICT" || code === "PAGE_DOCUMENT_REVISION_CONFLICT") &&
+      !nonEmptyString(failure.expected_revision)
+    ) {
+      failure.expected_revision = nonEmptyString(adapter.root.dataset.flyRevision);
+    }
+    writeSaveFailure(adapter.pageId, failure);
+    reportSaveFailure(adapter, failure, request);
     return;
   }
   const state = isObject(result.result) ? result.result : result;
@@ -816,6 +893,7 @@ export class FlyBrowserAdapter {
     this.authoritativeInFlight = false;
     this.queuedAuthoritativeIntents = [];
     this.peerWriteConflict = null;
+    this.peerWriteSenderId = getPeerWriteSenderId(this.root);
     this.peerWriteChannel = null;
     this.lastSequence = null;
     this.geometry = new Map();
@@ -1542,32 +1620,34 @@ export class FlyBrowserAdapter {
     const hash = nonEmptyString(message.hash);
     if (!revision || !hash || revision.length > 256 || hash.length > 256 ||
         this.peerWriteConflict) return;
+    if (nonEmptyString(message.senderId) === this.peerWriteSenderId) {
+      // The Leptos/Rust and classic JS adapters may each own a channel in this
+      // document. Their own confirmed writes advance the shared baseline.
+      this.root.dataset.flyRevision = revision;
+      this.root.dataset.flyProjectHash = hash;
+      return;
+    }
     if (
       revision === this.root.dataset.flyRevision &&
       hash === this.root.dataset.flyProjectHash
     ) return;
 
-    this.peerWriteConflict = { revision, hash };
-    this.root.dataset.flyPeerWriteConflict = "true";
-    this.root.dispatchEvent(new CustomEvent("fly:browser-peer-write", {
-      bubbles: true,
-      detail: {
-        code: PEER_WRITE_CONFLICT_CODE,
-        pageId: this.pageId,
-        instanceId: this.instanceId,
-        revision,
-        projectHash: hash,
-      },
-    }));
-    this.reportPeerWriteConflict();
-    this.discardQueuedAuthoritativeIntents("because another editor saved this page");
+    fencePeerWriteConflict(this, {
+      revision,
+      hash,
+      source: "peer",
+      reason: "because another editor saved this page",
+    });
   }
 
   reportPeerWriteConflict() {
+    const serverConflict = this.peerWriteConflict?.source === "server";
     reportBrowserProblem(this, {
       result: {
         code: PEER_WRITE_CONFLICT_CODE,
-        error: "Another editor saved this page. Preserve any unsaved changes, then reload the latest document before making further edits.",
+        error: serverConflict
+          ? "The server rejected this save because the page changed in another session. Preserve your unsaved changes, then reload the latest document before editing again."
+          : "Another editor saved this page. Preserve any unsaved changes, then reload the latest document before making further edits.",
       },
     }, PEER_WRITE_CONFLICT_CODE);
   }
@@ -1957,6 +2037,7 @@ export class FlyBrowserAdapter {
               pageId: this.pageId,
               revision: state.revision_id,
               hash: state.project_hash,
+              senderId: this.peerWriteSenderId,
             });
           } catch (_) {
             // Optional peer notification failure never changes save outcome.
