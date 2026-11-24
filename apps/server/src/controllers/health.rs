@@ -708,7 +708,12 @@ async fn check_storage_backend(ctx: &ServerRuntimeContext) -> std::result::Resul
             // A backend may report an ambiguous write failure after creating
             // the object. Cleanup is best-effort; the next probe reuses this
             // runtime-scoped key and retries cleanup.
-            let _ = storage.objects.delete(&probe).await;
+            if storage.objects.delete(&probe).await.is_err() {
+                tracing::warn!(
+                    error_code = "storage_health_probe_ambiguous_write_cleanup_failed",
+                    "Storage health probe cleanup after an ambiguous write failure did not complete"
+                );
+            }
             return Err("storage health probe write failed".to_string());
         }
         storage
