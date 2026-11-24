@@ -231,10 +231,12 @@
 
   document.addEventListener('dragover', (event) => {
     event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
     scheduleDragPoint(point(event));
   });
   document.addEventListener('drop', (event) => {
     event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
     finishDrag(point(event));
   });
   document.addEventListener('keydown', (event) => {

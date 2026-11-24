@@ -1,4 +1,7 @@
 use crate::core::session::{EditorSessionAction, EditorSessionEffect, EditorSessionState};
+use super::dioxus_recovery::{
+    initialize_draft_recovery, DraftRecoveryBase, DraftRecoveryStatus,
+};
 #[cfg(feature = "dioxus-web")]
 use super::dioxus_canvas::DioxusIsolatedCanvas;
 #[cfg(feature = "dioxus-web")]
@@ -8,7 +11,7 @@ use crate::model::AdminCanvasController;
 use crate::BrowserIntentEffect;
 use crate::transport::PageBuilderAdminFacade;
 use dioxus::prelude::*;
-use fly::TraitSchemaRegistry;
+use fly::{GrapesJsCodec, TraitSchemaRegistry};
 use fly_browser::BrowserIntentEnvelope;
 use fly_dioxus::{FlyEditorWorkspace, FlyFullEditor};
 use fly_ui::{
@@ -42,6 +45,9 @@ pub struct DioxusPageBuilderAdminHostContext {
     /// Host-owned refresh action. It must load the latest server document and replace
     /// the controller; the editor exposes the local draft before invoking this callback.
     pub on_reload_requested: Option<EventHandler<()>>,
+    /// Stable opaque tenant/user scope used to isolate browser-local draft recovery.
+    /// Do not pass an email address or other directly identifying value.
+    pub draft_recovery_scope: Option<String>,
 }
 
 impl DioxusPageBuilderAdminHostContext {
@@ -58,6 +64,7 @@ impl DioxusPageBuilderAdminHostContext {
             runtime_publish_gate_policy: None,
             adapter_workspace: true,
             on_reload_requested: None,
+            draft_recovery_scope: None,
         }
     }
 
@@ -71,6 +78,13 @@ impl DioxusPageBuilderAdminHostContext {
     /// Attach the consumer's authoritative reload action for revision conflicts.
     pub fn on_reload_requested(mut self, handler: EventHandler<()>) -> Self {
         self.on_reload_requested = Some(handler);
+        self
+    }
+
+    /// Configure an opaque, stable scope for the authenticated tenant and actor.
+    /// A different value is required after account or tenant changes.
+    pub fn with_draft_recovery_scope(mut self, scope: impl Into<String>) -> Self {
+        self.draft_recovery_scope = Some(scope.into());
         self
     }
 }
@@ -99,6 +113,7 @@ impl PartialEq for DioxusPageBuilderAdminHostContext {
             && same_optional_arc(&self.runtime_publish_gate_policy, &other.runtime_publish_gate_policy)
             && self.adapter_workspace == other.adapter_workspace
             && self.on_reload_requested == other.on_reload_requested
+            && self.draft_recovery_scope == other.draft_recovery_scope
     }
 }
 
@@ -113,7 +128,7 @@ fn dispatch_facade_effects<F>(
     mut save_outcome_unknown: Signal<bool>,
 )
 where
-    F: Fn(String, String) + Clone + 'static,
+    F: Fn(String, String, Value) + Clone + 'static,
 {
     for effect in effects {
         match effect {
@@ -137,6 +152,12 @@ where
                     continue;
                 };
                 let capability = request.capability();
+                let submitted_project_data = match &request {
+                    PageBuilderCapabilityRequest::Publish(input) => {
+                        Some(input.project_data.clone())
+                    }
+                    _ => None,
+                };
                 if capability == BuilderCapabilityKind::Preview
                     && facade.provider_status()
                         .is_some_and(|status| !status.preview_enabled())
@@ -192,7 +213,7 @@ where
                 let submitted_hash = expected_hash.as_ref().map(|hash| hash.hex());
                 let _task = spawn(async move {
                     let outcome = facade.execute(request).await;
-                    let mut confirmed_write = None;
+                    let mut confirmed_write: Option<(String, String, Value)> = None;
                     let mut state = session.write();
                     match outcome {
                         Ok(PageBuilderCapabilityResponse::Publish(response))
@@ -212,9 +233,14 @@ where
                             ) {
                                 Ok(()) => {
                                     save_outcome_unknown.set(false);
-                                    if let Some(project_hash) = submitted_hash {
-                                        confirmed_write =
-                                            Some((response.revision_id.clone(), project_hash));
+                                    if let (Some(project_hash), Some(project_data)) =
+                                        (submitted_hash, submitted_project_data)
+                                    {
+                                        confirmed_write = Some((
+                                            response.revision_id.clone(),
+                                            project_hash,
+                                            project_data,
+                                        ));
                                     }
                                 }
                                 Err(error) => {
@@ -277,8 +303,8 @@ where
                         }
                     }
                     drop(state);
-                    if let Some((revision, project_hash)) = confirmed_write {
-                        on_publish_confirmed(revision, project_hash);
+                    if let Some((revision, project_hash, project_data)) = confirmed_write {
+                        on_publish_confirmed(revision, project_hash, project_data);
                     }
                 });
             }
@@ -374,6 +400,7 @@ pub fn PageBuilderAdmin() -> Element {
                 runtime_publish_gate_policy: context.runtime_publish_gate_policy,
                 adapter_workspace: context.adapter_workspace,
                 on_reload_requested: context.on_reload_requested,
+                draft_recovery_scope: context.draft_recovery_scope,
             }
             }
         },
@@ -424,6 +451,8 @@ pub struct PageBuilderAdminWithControllerProps {
     pub adapter_workspace: bool,
     #[props(default)]
     pub on_reload_requested: Option<EventHandler<()>>,
+    #[props(default)]
+    pub draft_recovery_scope: Option<String>,
 }
 
 impl PartialEq for PageBuilderAdminWithControllerProps {
@@ -445,6 +474,7 @@ impl PartialEq for PageBuilderAdminWithControllerProps {
             && same_optional_arc(&self.runtime_publish_gate_policy, &other.runtime_publish_gate_policy)
             && self.adapter_workspace == other.adapter_workspace
             && self.on_reload_requested == other.on_reload_requested
+            && self.draft_recovery_scope == other.draft_recovery_scope
     }
 }
 
@@ -454,7 +484,16 @@ impl PartialEq for PageBuilderAdminWithControllerProps {
 /// the same page/revision reset semantics as the context-backed PageBuilderAdmin entrypoint.
 #[component]
 pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps) -> Element {
-    let session_key = controller_session_key(&props.controller);
+    let scope_key = props
+        .draft_recovery_scope
+        .as_deref()
+        .map(|scope| fly::sha256_hex(scope.as_bytes()))
+        .unwrap_or_else(|| "recovery-disabled".to_string());
+    let session_key = format!(
+        "{}|scope:{}",
+        controller_session_key(&props.controller),
+        scope_key
+    );
     rsx! {
         PageBuilderAdminWithControllerSession {
             key: "{session_key}",
@@ -486,7 +525,15 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
         .unwrap_or(base_capabilities)
         .normalized();
 
-    let mut session = use_signal(|| {
+    let recovery_bootstrap = use_hook(|| {
+        initialize_draft_recovery(
+            props.draft_recovery_scope.as_deref(),
+            &props.controller,
+        )
+    });
+    let mut initial_recovery_status = recovery_bootstrap.status.clone();
+    let mut initial_recovery_conflict_json = recovery_bootstrap.conflict_json.clone();
+    let initial_session = {
         let mut s = EditorSessionState::new(
             props.controller.clone(),
             "Page Builder facade is missing",
@@ -514,8 +561,26 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
         if let Some(policy) = props.runtime_publish_gate_policy.clone() {
             s = s.with_runtime_publish_gate_policy(policy);
         }
+        if let Some(merged_document) = recovery_bootstrap.merged_document.clone() {
+            let preserved_local_document = merged_document.clone();
+            if let Err(error) = s.controller.apply_recovered_merge(merged_document) {
+                initial_recovery_conflict_json =
+                    serde_json::to_string_pretty(&preserved_local_document).ok();
+                initial_recovery_status = DraftRecoveryStatus::Error(format!(
+                    "Could not apply the recovered draft merge: {error}"
+                ));
+                s.fail(format!("Could not apply the recovered draft merge: {error}"));
+            }
+        }
         s
-    });
+    };
+    let mut recovery_status = use_signal(|| initial_recovery_status.clone());
+    let mut recovery_conflict_json = use_signal(|| initial_recovery_conflict_json.clone());
+    let recovery_base = use_signal(|| recovery_bootstrap.base.clone());
+    let recovery_store = recovery_bootstrap.store.clone();
+    let recovery_consumed_records = recovery_bootstrap.consumed_records.clone();
+    let mut recovery_persisted = use_signal(|| recovery_bootstrap.persisted);
+    let mut session = use_signal(move || initial_session);
 
     let mut peer_write_conflict = use_signal(|| false);
     // A timeout with no visible receipt is not a failed save: only an exact retry
@@ -529,7 +594,7 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
     let mut peer_write_channel = use_signal(|| None::<BrowserPeerWriteChannel>);
 
     let session_configuration_key = format!(
-        "schemas:{}|evaluation:{}|context:{}|scenarios:{}|policy:{}|facade:{}",
+        "schemas:{}|evaluation:{}|context:{}|scenarios:{}|policy:{}|facade:{}|recovery_scope:{}",
         props
             .trait_schemas
             .as_ref()
@@ -552,6 +617,11 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
             .map(|value| format!("{:p}", Arc::as_ptr(value)))
             .unwrap_or_default(),
         props.facade.is_some(),
+        props
+            .draft_recovery_scope
+            .as_deref()
+            .map(|scope| fly::sha256_hex(scope.as_bytes()))
+            .unwrap_or_default(),
     );
     let session_configuration = (
         props.trait_schemas.clone(),
@@ -560,6 +630,7 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
         props.runtime_scenarios.clone(),
         props.runtime_publish_gate_policy.clone(),
         props.facade.is_some(),
+        props.draft_recovery_scope.clone(),
     );
     use_effect(use_reactive!(|_session_configuration_key| {
         let (
@@ -569,6 +640,7 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
             runtime_scenarios,
             runtime_publish_gate_policy,
             facade_available,
+            _draft_recovery_scope,
         ) = session_configuration.clone();
         session.write().update_host_configuration(
             trait_schemas,
@@ -580,9 +652,75 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
         );
     }));
 
+
+    {
+        let persistence_store = recovery_store.clone();
+        let persistence_base = recovery_base;
+        let mut persistence_status = recovery_status;
+        let mut persistence_ready = recovery_persisted;
+        use_effect(move || {
+            let Some(store) = persistence_store.as_ref() else {
+                persistence_ready.set(false);
+                return;
+            };
+            let (dirty, project_data) = {
+                let state = session.read();
+                let dirty = state.controller.editor().revision().dirty;
+                let project_data = if dirty {
+                    GrapesJsCodec::encode_value(state.controller.editor().document()).ok()
+                } else {
+                    None
+                };
+                (dirty, project_data)
+            };
+            persistence_ready.set(false);
+            if !dirty {
+                match store.clear_current() {
+                    Ok(()) => {
+                        persistence_ready.set(true);
+                        if matches!(
+                            &*persistence_status.peek(),
+                            DraftRecoveryStatus::Restored { .. }
+                                | DraftRecoveryStatus::Merged { .. }
+                        ) {
+                            persistence_status.set(DraftRecoveryStatus::Ready);
+                        }
+                    }
+                    Err(error) => {
+                        persistence_status.set(DraftRecoveryStatus::Error(error));
+                    }
+                }
+                return;
+            }
+
+            let Some(project_data) = project_data else {
+                persistence_status.set(DraftRecoveryStatus::Error(
+                    "Could not serialize the current draft for local recovery.".to_string(),
+                ));
+                return;
+            };
+            let base = (*persistence_base.read()).clone();
+            match store.save(&base, project_data) {
+                Ok(()) => {
+                    persistence_ready.set(true);
+                    if matches!(
+                        &*persistence_status.peek(),
+                        DraftRecoveryStatus::Error(_)
+                    ) {
+                        persistence_status.set(DraftRecoveryStatus::Ready);
+                    }
+                }
+                Err(error) => {
+                    persistence_status.set(DraftRecoveryStatus::Error(error));
+                }
+            }
+        });
+    }
+
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
     {
         let initial_session = session;
+        let initial_recovery_base = recovery_base;
         let mut conflict_signal = peer_write_conflict;
         use_effect(move || {
             if peer_write_channel.peek().is_some() {
@@ -590,10 +728,14 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
             }
             let (page_id, revision_id, project_hash) = {
                 let current = initial_session.peek();
+                let base = initial_recovery_base.peek();
+                let base_hash = GrapesJsCodec::decode_value(base.project_data.clone())
+                    .map(|document| document.hash().hex())
+                    .unwrap_or_else(|_| current.controller.editor().revision().project_hash.hex());
                 (
                     current.controller.page_id().to_string(),
-                    current.controller.revision_id().to_string(),
-                    current.controller.editor().revision().project_hash.hex(),
+                    base.revision_id.clone(),
+                    base_hash,
                 )
             };
             let on_conflict = move |conflict: BrowserPeerWriteConflict| {
@@ -634,22 +776,61 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
     let on_publish_confirmed = {
         let channel = peer_write_channel;
         let conflict = peer_write_conflict;
-        move |revision: String, project_hash: String| {
-            if *conflict.peek() {
-                return;
+        let mut base = recovery_base;
+        let store = recovery_store.clone();
+        let consumed_records = recovery_consumed_records.clone();
+        let mut status = recovery_status;
+        let mut persisted = recovery_persisted;
+        let current_session = session;
+        move |revision: String, project_hash: String, submitted_project_data: Value| {
+            base.set(DraftRecoveryBase {
+                revision_id: revision.clone(),
+                project_data: submitted_project_data,
+            });
+            if let Some(store) = store.as_ref() {
+                let mut cleanup_error = store
+                    .clear_if_unchanged(&consumed_records)
+                    .err();
+                if !current_session.read().controller.editor().revision().dirty {
+                    if let Err(error) = store.clear_current() {
+                        cleanup_error.get_or_insert(error);
+                    }
+                    if let Some(error) = cleanup_error {
+                        status.set(DraftRecoveryStatus::Error(error));
+                        persisted.set(false);
+                    } else {
+                        status.set(DraftRecoveryStatus::Ready);
+                        persisted.set(true);
+                    }
+                } else {
+                    if let Some(error) = cleanup_error {
+                        status.set(DraftRecoveryStatus::Error(error));
+                    }
+                    persisted.set(false);
+                }
             }
-            if let Some(channel) = channel.peek().as_ref() {
-                if let Err(error) = channel.post_confirmed_write(&revision, &project_hash) {
-                    tracing::warn!(
-                        error = ?error,
-                        "Fly save succeeded but cross-tab notification could not be broadcast"
-                    );
+            if !*conflict.peek() {
+                if let Some(channel) = channel.peek().as_ref() {
+                    if let Err(error) = channel.post_confirmed_write(&revision, &project_hash) {
+                        tracing::warn!(
+                            error = ?error,
+                            "Fly save succeeded but cross-tab notification could not be broadcast"
+                        );
+                    }
                 }
             }
         }
     };
     #[cfg(not(all(target_arch = "wasm32", feature = "dioxus-web")))]
-    let on_publish_confirmed = |_revision: String, _project_hash: String| {};
+    let on_publish_confirmed = {
+        let mut base = recovery_base;
+        move |revision: String, _project_hash: String, submitted_project_data: Value| {
+            base.set(DraftRecoveryBase {
+                revision_id: revision,
+                project_data: submitted_project_data,
+            });
+        }
+    };
 
     // A host may revoke or restore permissions without navigating or saving.
     // Dioxus preserves use_signal state across prop rerenders, so mirror any
@@ -693,14 +874,26 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
     // same recovery path. The former does not set the browser-only peer signal.
     let peer_conflict_active =
         write_conflict_active(*peer_write_conflict.read(), &current.controller);
+    let recovery_status_value = (*recovery_status.read()).clone();
+    let recovery_conflict_active =
+        matches!(&recovery_status_value, DraftRecoveryStatus::Conflict { .. });
+    let recovery_storage_unavailable = matches!(
+        &recovery_status_value,
+        DraftRecoveryStatus::Disabled(_) | DraftRecoveryStatus::Error(_)
+    );
     let save_outcome_unknown_active = *save_outcome_unknown.read();
-    let local_recovery_json = (peer_conflict_active || save_outcome_unknown_active)
+    let local_recovery_json = (
+        peer_conflict_active || save_outcome_unknown_active || recovery_storage_unavailable
+    )
         .then(|| local_recovery_json(&current.controller));
     let local_recovery_json_text = local_recovery_json.as_deref().unwrap_or_default();
+    let recovery_conflict_json_text = (*recovery_conflict_json.read())
+        .clone()
+        .unwrap_or_default();
     let save_retry_in_progress = current.controller.ui().state.dirty.save_in_progress
         || current.controller.ui().state.dirty.save_started_request_id.is_some();
     let mut capabilities = current.controller.ui().state.capabilities;
-    if peer_conflict_active || save_outcome_unknown_active {
+    if peer_conflict_active || save_outcome_unknown_active || recovery_conflict_active {
         capabilities = CapabilityState::read_only();
     }
     let can_undo = capabilities.history && current.controller.can_undo();
@@ -708,6 +901,7 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
     let can_save = capabilities.edit
         && props.facade.is_some()
         && !peer_conflict_active
+        && !recovery_conflict_active
         && !current.controller.ui().state.dirty.save_in_progress
         && current.controller.ui().state.dirty.save_started_request_id.is_none()
         && !current.controller.ui().state.dirty.save_conflict
@@ -735,12 +929,16 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
     let on_workspace_intent = EventHandler::new(move |envelope: BrowserIntentEnvelope| {
         let write_conflict = *peer_write_conflict.peek()
             || *save_outcome_unknown.peek()
+            || matches!(&*recovery_status.peek(), DraftRecoveryStatus::Conflict { .. })
             || session.read().controller.ui().state.dirty.save_conflict;
         if write_conflict && envelope.is_mutating() {
             session.write().fail(
                 "This editor is read-only until the save result is reconciled.",
             );
             return;
+        }
+        if envelope.is_mutating() {
+            recovery_persisted.set(false);
         }
         let effects = {
             let mut state = session.write();
@@ -823,13 +1021,30 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
     let on_canvas_ui_intent = EventHandler::new(move |intent: UiIntent| {
         let write_conflict = *peer_write_conflict.peek()
             || *save_outcome_unknown.peek()
+            || matches!(&*recovery_status.peek(), DraftRecoveryStatus::Conflict { .. })
             || session.read().controller.ui().state.dirty.save_conflict;
         if write_conflict && peer_conflict_blocks_ui_intent(&intent) {
+            if matches!(&intent, UiIntent::Drop) {
+                let cancel_effects = session
+                    .write()
+                    .dispatch(EditorSessionAction::DispatchIntent(UiIntent::CancelDrag));
+                dispatch_facade_effects(
+                    session,
+                    canvas_facade.clone(),
+                    cancel_effects,
+                    canvas_publish_confirmed.clone(),
+                    save_outcome_unknown,
+                );
+            }
             session.write().fail(
                 "This editor is read-only until the save result is reconciled.",
             );
             return;
         }
+        if peer_conflict_blocks_ui_intent(&intent) {
+            recovery_persisted.set(false);
+        }
+        let is_drop = matches!(&intent, UiIntent::Drop);
         let effects = session.write().dispatch(EditorSessionAction::DispatchIntent(intent));
         dispatch_facade_effects(
             session,
@@ -838,11 +1053,46 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
             canvas_publish_confirmed.clone(),
             save_outcome_unknown,
         );
+        if is_drop && session.read().controller.ui().state.drag.is_some() {
+            // Fly Core intentionally keeps a rejected drop retryable. The browser drag source
+            // has completed, so retire that drag session after the failed drop.
+            let cancel_effects = session
+                .write()
+                .dispatch(EditorSessionAction::DispatchIntent(UiIntent::CancelDrag));
+            dispatch_facade_effects(
+                session,
+                canvas_facade.clone(),
+                cancel_effects,
+                canvas_publish_confirmed.clone(),
+                save_outcome_unknown,
+            );
+        }
     });
+
+    let discard_store = recovery_store.clone();
+    let mut discard_status = recovery_status;
+    let mut discard_json = recovery_conflict_json;
+    let mut discard_persisted = recovery_persisted;
+    let on_discard_recovery = EventHandler::new(move |_| {
+        if let Some(store) = discard_store.as_ref() {
+            match store.clear_all() {
+                Ok(()) => {
+                    discard_status.set(DraftRecoveryStatus::Ready);
+                    discard_json.set(None);
+                    discard_persisted.set(true);
+                }
+                Err(error) => discard_status.set(DraftRecoveryStatus::Error(error)),
+            }
+        }
+    });
+
     let retry_facade = props.facade.clone();
     let retry_publish_confirmed = on_publish_confirmed.clone();
     let on_retry_unknown_save = EventHandler::new(move |_| {
-        if !*save_outcome_unknown.peek() || save_retry_in_progress {
+        if !*save_outcome_unknown.peek()
+            || save_retry_in_progress
+            || matches!(&*recovery_status.peek(), DraftRecoveryStatus::Conflict { .. })
+        {
             return;
         }
         let effects = session.write().dispatch(
@@ -938,10 +1188,12 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                         onclick: move |_| {
                             if *peer_write_conflict.peek()
                                 || *save_outcome_unknown.peek()
+                                || recovery_conflict_active
                                 || session.read().controller.ui().state.dirty.save_conflict
                             {
                                 return;
                             }
+                            recovery_persisted.set(false);
                             session.write().dispatch(EditorSessionAction::DispatchIntent(UiIntent::Undo));
                         },
                         "Undo"
@@ -952,10 +1204,12 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                         onclick: move |_| {
                             if *peer_write_conflict.peek()
                                 || *save_outcome_unknown.peek()
+                                || recovery_conflict_active
                                 || session.read().controller.ui().state.dirty.save_conflict
                             {
                                 return;
                             }
+                            recovery_persisted.set(false);
                             session.write().dispatch(EditorSessionAction::DispatchIntent(UiIntent::Redo));
                         },
                         "Redo"
@@ -966,6 +1220,7 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                         onclick: move |_| {
                             if *peer_write_conflict.peek()
                                 || *save_outcome_unknown.peek()
+                                || recovery_conflict_active
                                 || session.read().controller.ui().state.dirty.save_conflict
                             {
                                 return;
@@ -986,12 +1241,117 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                 }
             }
 
-            if peer_conflict_active {
+
+            if let DraftRecoveryStatus::Restored { draft_count } = recovery_status_value.clone() {
+                div {
+                    class: "p-3 bg-sky-500/10 text-sky-900 dark:text-sky-200 text-sm border-b border-sky-500/30",
+                    role: "status",
+                    "Recovered {draft_count} local draft. Review the document and save it to persist the recovery."
+                }
+            }
+            if let DraftRecoveryStatus::Merged { draft_count } = recovery_status_value.clone() {
+                div {
+                    class: "p-3 bg-sky-500/10 text-sky-900 dark:text-sky-200 text-sm border-b border-sky-500/30",
+                    role: "status",
+                    "Merged {draft_count} local drafts with the latest server revision. Review the result and save it to persist the merge."
+                }
+            }
+            if let DraftRecoveryStatus::Disabled(reason) = recovery_status_value.clone() {
+                if !reason.contains("Dioxus web build") {
+                    div {
+                        class: "p-3 bg-amber-500/10 text-amber-900 dark:text-amber-200 text-sm border-b border-amber-500/30",
+                        role: "status",
+                        "Local draft recovery is disabled: {reason}"
+                        if !local_recovery_json_text.is_empty() {
+                            details {
+                                summary { class: "cursor-pointer font-medium", "Show current draft JSON to copy" }
+                                pre {
+                                    class: "mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-all rounded border border-amber-500/30 bg-background p-2 text-xs text-foreground",
+                                    tabindex: "0",
+                                    aria_label: "Current local Page Builder draft JSON",
+                                    "{local_recovery_json_text}"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if let DraftRecoveryStatus::Error(message) = recovery_status_value.clone() {
                 div {
                     class: "p-3 bg-amber-500/10 text-amber-900 dark:text-amber-200 text-sm border-b border-amber-500/30 space-y-2",
                     role: "alert",
+                    "Local draft recovery could not complete: {message}. Copy the draft JSON before reloading."
+                    if !recovery_conflict_json_text.is_empty() {
+                        details {
+                            summary { class: "cursor-pointer font-medium", "Show preserved recovery draft JSON" }
+                            pre {
+                                class: "mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-all rounded border border-amber-500/30 bg-background p-2 text-xs text-foreground",
+                                tabindex: "0",
+                                aria_label: "Preserved local Page Builder recovery JSON",
+                                "{recovery_conflict_json_text}"
+                            }
+                        }
+                    } else if !local_recovery_json_text.is_empty() {
+                        details {
+                            summary { class: "cursor-pointer font-medium", "Show current draft JSON to copy" }
+                            pre {
+                                class: "mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-all rounded border border-amber-500/30 bg-background p-2 text-xs text-foreground",
+                                tabindex: "0",
+                                aria_label: "Current local Page Builder draft JSON",
+                                "{local_recovery_json_text}"
+                            }
+                        }
+                    }
+                }
+            }
+            if let DraftRecoveryStatus::Conflict { paths } = recovery_status_value.clone() {
+                div {
+                    class: "p-3 bg-destructive/10 text-destructive text-sm border-b border-destructive/30 space-y-2",
+                    role: "alert",
                     p {
-                        "The server has a newer revision. This editor is read-only. Copy your local draft before reloading; it has not been merged automatically."
+                        "The local draft could not be safely reconciled with the current server document. Nothing was overwritten. Editing and saving are paused until you preserve the local copy or explicitly discard it."
+                    }
+                    ul {
+                        class: "list-disc pl-5 text-xs space-y-1",
+                        for path in paths {
+                            li { "{path}" }
+                        }
+                    }
+                    if !recovery_conflict_json_text.is_empty() {
+                        details {
+                            summary { class: "cursor-pointer font-medium", "Show preserved local draft JSON" }
+                            pre {
+                                class: "mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-all rounded border border-destructive/30 bg-background p-2 text-xs text-foreground",
+                                tabindex: "0",
+                                aria_label: "Preserved local recovery draft JSON",
+                                "{recovery_conflict_json_text}"
+                            }
+                        }
+                    }
+                    button {
+                        class: "rounded border border-destructive/40 px-3 py-1.5 font-medium hover:bg-destructive/10",
+                        onclick: move |_| on_discard_recovery.call(()),
+                        "Discard local copies and continue with server version"
+                    }
+                    p {
+                        class: "text-xs opacity-80",
+                        "This removes local recovery records for this page in this browser. Copy the JSON above first if you need to keep it."
+                    }
+                }
+            }
+
+            if peer_conflict_active && !recovery_conflict_active {
+                div {
+                    class: "p-3 bg-amber-500/10 text-amber-900 dark:text-amber-200 text-sm border-b border-amber-500/30 space-y-2",
+                    role: "alert",
+                    if *recovery_persisted.read() {
+                        p {
+                            "The server has a newer revision. This editor is read-only. Your local draft is saved in browser recovery storage; reload to merge it with the latest server version."
+                        }
+                    } else {
+                        p {
+                            "The server has a newer revision. This editor is read-only. Browser recovery storage is not confirmed, so copy your local draft before reloading."
+                        }
                     }
                     details {
                         summary { class: "cursor-pointer font-medium", "Show local draft JSON to copy" }
@@ -1011,15 +1371,19 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                         }
                         button {
                             class: "rounded border border-amber-600/40 px-3 py-1.5 font-medium hover:bg-amber-500/10 disabled:opacity-50",
-                            disabled: !*local_draft_copied.read(),
+                            disabled: !(*local_draft_copied.read() || *recovery_persisted.read()),
                             onclick: move |_| reload.call(()),
                             "Reload latest revision"
                         }
                     } else {
-                        p { "After copying the draft, reload this editor using the host's page refresh action." }
+                        if *recovery_persisted.read() {
+                            p { "The local draft is stored in browser recovery storage. Reload this editor using the host's page refresh action." }
+                        } else {
+                            p { "After copying the draft, reload this editor using the host's page refresh action." }
+                        }
                     }
                 }
-            } else if save_outcome_unknown_active {
+            } else if save_outcome_unknown_active && !recovery_conflict_active {
                 div {
                     class: "p-3 bg-amber-500/10 text-amber-900 dark:text-amber-200 text-sm border-b border-amber-500/30 space-y-2",
                     role: "alert",
@@ -1117,6 +1481,13 @@ mod props_regression_tests {
         let mut workspace = original.clone();
         workspace.adapter_workspace = false;
         assert!(original != workspace, "mount mode must trigger prop update");
+
+        let mut recovery_scope = original.clone();
+        recovery_scope.draft_recovery_scope = Some("tenant-actor-scope".to_string());
+        assert!(
+            original != recovery_scope,
+            "recovery scope changes must remount the isolated local recovery store"
+        );
     }
 
     #[test]

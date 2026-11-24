@@ -6,7 +6,7 @@ For full public interface and component definitions, see [CRATE_API.md](CRATE_AP
 element and accept `csp_nonce`. Under a nonce policy (`style-src 'self' {nonce}`) the browser drops
 that element unless it carries the request nonce, and the canvas renders unstyled.
 
-> **Status (2026-11-24): host integration in source; runtime verification pending.** The Dioxus adapter provides modular panels (`FlyContributionSummary`, `FlyPalette`, `FlyLayerTree`, `FlyThemeTokens`, `FlyThemeTokenEditor`, `FlyCanvasPreview`) and `FlyEditorWorkspace` with typed intent and local command execution. The Page Builder Dioxus host now mounts the isolated iframe canvas, routes pointer/drag/drop/resize through the shared controller, correlates save responses with unique attempt IDs, and fences sibling-tab writes. No build, Rust test or Playwright run is claimed for this change.
+> **Status (2026-11-25): source integration; runtime verification pending.** The Dioxus adapter provides modular panels (`FlyContributionSummary`, `FlyPalette`, `FlyLayerTree`, `FlyThemeTokens`, `FlyThemeTokenEditor`, `FlyCanvasPreview`) and `FlyEditorWorkspace` with typed intent and local command execution. Palette and layer controls now use native HTML5 drag events with explicit drag cancellation; the Page Builder Dioxus host routes iframe drag/drop and bounded resize through the shared controller, persists per-tab recovery records in browser storage, and conservatively merges them against the latest server revision after reload. Conflicts remain read-only and preserve the local JSON. No build, Rust test or Playwright run is claimed for this change.
 
 
 `fly-dioxus` is the Dioxus 0.7 component adapter for Fly visual editors.
@@ -14,7 +14,7 @@ that element unless it carries the request nonce, and the canvas renders unstyle
 ## Responsibilities
 
 - Render top-level editor shell components (`FlyFullEditor`, `FlyInlineEditor`, `FlyPreview`, `FlyReadOnly`) using Dioxus `rsx!`.
-- Provide `FlyEditorWorkspace`: palette (with contribution-access filtering when the host passes a contribution assembly), layer tree, canvas preview, design-token editor, and undo/redo bound to a `FlyEditor`, with host-resolved `EditorMessages` panel labels; with `on_intent` the workspace instead emits typed `BrowserIntentEnvelope`s (insert, begin palette drag, select, undo, redo, set and remove theme token) for the host's SSR intent endpoint, on the shared `fly-ui` view-models (the parallel twin of the `fly-leptos` workspace). The palette item, its insert and drag controls and the layer row carry the `data-fly-*` attributes of the SSR control contract (`DECISIONS/2026-11-11-fly-ssr-control-contract-and-route-view-state.md`); the drag control renders in intent mode only.
+- Provide `FlyEditorWorkspace`: palette (with contribution-access filtering when the host passes a contribution assembly), layer tree, canvas preview, design-token editor, and undo/redo bound to a `FlyEditor`, with host-resolved `EditorMessages` panel labels; with `on_intent` the workspace instead emits typed `BrowserIntentEnvelope`s (insert, begin palette drag, select, undo, redo, set and remove theme token) for the host's SSR intent endpoint, on the shared `fly-ui` view-models (the parallel twin of the `fly-leptos` workspace). The palette item, its insert and drag controls and the layer row carry the `data-fly-*` attributes of the SSR control contract (`DECISIONS/2026-11-11-fly-ssr-control-contract-and-route-view-state.md`); the drag control renders in intent mode only when both begin and cancel handlers are supplied; layer move controls use the same native drag transport.
 - Re-export the framework-neutral browser runtime, geometry, and iframe contracts from `fly-web`.
 
 ## Known Limitations / Pending Implementation
@@ -27,8 +27,11 @@ forwards geometry and hover/focus/keyboard messages, updates drag hit candidates
 palette and selected-layer moves, and commits bounded resize patches through the shared editor
 controller. The host also owns save-attempt correlation, persistence, and peer-write fencing.
 The reusable workspace remains host-neutral: it does not decide domain drop legality or merge
-concurrent documents. Cross-tab notifications are advisory; server revision checks remain
-authoritative. Dioxus `web`/`desktop` renderers remain opt-in features.
+concurrent documents. The Page Builder Dioxus host owns browser-local recovery and a conservative
+three-way merge; object fields merge recursively, identified component arrays merge by stable id,
+and overlapping/ambiguous changes stop in a read-only conflict state. Cross-tab notifications are
+advisory; server revision checks remain authoritative. Dioxus `web`/`desktop` renderers remain
+opt-in features.
 
 ## Architecture
 
