@@ -37,6 +37,7 @@ without evidence of a failure is recorded separately below.
 | `P-REGISTRY-PUBLISH-GUARD-PARITY` | The outer atomic registry route interceptor only delegated an exact publish path, although its classification/auth policy accepted trailing slash aliases. The outer boundary now uses the same owner path recognizer and the body rewrite drops stale HTTP framing headers; focused tests were authored but not executed. | [Registry route interception](../../apps/server/src/middleware/registry_remote_claim.rs), [Publish policy](../../apps/server/src/middleware/registry_publish_policy.rs) |
 | `P-CORS-IMPLICIT-LOOPBACK` | Credentialed production CORS previously trusted a synthesized localhost origin with an empty/invalid allow-list, and mapped a wildcard bind host to the same trusted origin. Production now allows only explicit valid HTTP(S) browser origins; developer bind-host fallback remains local-only. Source/regressions are authored but unrun. | [CORS middleware](../../apps/server/src/middleware/cors.rs), [Router composition](../../apps/server/src/services/app_router.rs), [Server docs](../../apps/server/docs/README.md) |
 | `P-RELEASE-SECURITY-MODE-DRIFT` | Host startup enforced production checks for release binaries, but downstream gates trusted only the `RUSTOK_ENV` label. An explicit `staging`/`development` label could therefore weaken HTTPS/JWT/database validation, tenant isolation, cookies, CORS/WebSocket policy, observability, or installer authentication. Centralize the production-security predicate and use it at every security-sensitive host boundary; retain label-only checks only for non-security environment behavior. | [Host validation](../../apps/server/src/host.rs), [Security mode](../../apps/server/src/common/settings.rs), [Request trust](../../apps/server/src/common/request_trust.rs), [Installer](../../apps/server/src/controllers/installer.rs), [CORS](../../apps/server/src/middleware/cors.rs), [Metrics](../../apps/server/src/middleware/metrics_auth.rs) |
+| `P-TENANT-AUTHORITY-TO-HOST-WRITE` | Tenant-scoped `mcp:manage` previously authorized scaffold apply even though the destination was one process-wide host workspace. Tenant/client binding cannot authorize a host filesystem mutation; require independent `HostAuthority::Manage` at the canonical service boundary and record the host operator separately in the audit event. | [Workspace guard](../../apps/server/src/services/mcp_scaffold_workspace.rs), [MCP management](../../apps/server/src/services/mcp_management.rs), [Host authority](../../apps/server/src/host_authority.rs) |
 | `P-DISPATCHER-SHUTDOWN-REGISTRATION-RACE` | A direct module dispatcher or its startup-owned paid-order/marketplace/payment/product-media workers could publish their handles after shutdown had taken the task snapshot. All five paths now share one registration lock and check stop under it; product-media also has drop-safe reservation. Concurrent tests authored but unrun. | [Dispatcher](../../apps/server/src/services/module_event_dispatcher.rs), [Shutdown](../../apps/server/src/services/app_lifecycle.rs) |
 | `P-EVENT-TRANSPORT-LOSING-INSERT` | Transactional EventBus fallback ignored a failed `shared_insert_if_absent` and returned a private `OutboxTransport`, diverging from the registered runtime transport. Both forwarder and transactional publishers now use the same atomic singleton resolver; tests cover contention and configured transport identity but are unrun. | [EventBus transport](../../apps/server/src/services/event_bus.rs), [Runtime singleton](../../apps/server/src/services/server_runtime_context.rs) |
 | `P-TENANT-ERROR-INPUT-REFLECTION` | Tenant resolution mapped typed errors to public HTTP messages through Display, interpolating raw Host, slug, header names and validator details. Public messages now use fixed bounded text while keeping HTTP status and machine code; a response-level regression is authored but not run. | [Tenant error mapping](../../apps/server/src/middleware/tenant_resolution.rs), [Tenant middleware](../../apps/server/src/middleware/tenant.rs) |
@@ -704,6 +705,19 @@ flowchart TD
 
 ---
 
+### P-TENANT-AUTHORITY-TO-HOST-WRITE — tenant grants must not authorize host-global side effects
+
+* **Category:** Authorization scope and cross-tenant isolation.
+* **Problem:** A tenant-scoped `mcp:manage` grant authorized scaffold apply even though the destination was the process-wide host workspace. A tenant administrator could therefore write source files into a workspace shared by other tenants. Tenant/client binding proves which tenant owns the MCP draft; it does not prove authority to mutate host-global state.
+* **Pattern Solution:** Keep tenant `mcp:manage` for tenant-owned client and draft operations, but require an independent `HostAuthority::Manage` credential for host-wide filesystem writes. Enforce the host check in the canonical service boundary as well as the HTTP middleware, and record the host operator actor separately from the tenant/client actor in the durable audit event.
+* **Anti-Pattern (Forbidden):**
+  * Treating a tenant-scoped permission or tenant/client binding as authorization for a process-global filesystem mutation.
+  * Relying only on HTTP middleware when remote MCP, GraphQL, or in-process transports can reach the same service port.
+* **Verification:** Missing and read-only host authority must be denied; host `manage` authority must be accepted only when the tenant-level MCP operation is also authorized. Verify both direct apply and remote MCP tool paths, and assert that the audit record contains the host operator actor.
+* **Detection:** `rg -n 'apply_scaffold_draft|workspace_root|MCP_MANAGE|HostAuthority' apps/server/src/services apps/server/src/middleware apps/server/src/controllers` and classify every process-global side effect by its authorization scope.
+
+---
+
 ### Shared checkpoint scope (`P-SHARED-CHECKPOINT-SCOPE`)
 
 **Category** — State transition integrity and authorization.
@@ -1335,6 +1349,7 @@ The evidence column describes how to verify the invariant at its owner. “Manua
 | `P-LOCK-ORDER` | Concurrency | Competing writers cannot invalidate a checked precondition | Manual |
 | `P-FAIL-CLOSED` | Authorization | Missing scope is denied even for an otherwise public resource | Heuristic: explicit success for absent scope |
 | `P-RELEASE-SECURITY-MODE-DRIFT` | Deployment security | Release binaries retain production security gates regardless of environment label | Manual: audit every environment predicate |
+| `P-TENANT-AUTHORITY-TO-HOST-WRITE` | Authorization scope | Tenant grants cannot authorize host-global filesystem mutations | Manual: inspect host-wide side effects |
 | `P-ID-ENTROPY` | Calculation | Effective entropy, uniqueness scope, and collision handling | Heuristic: named widths, UUID compaction, short-ID schema |
 | `P-ANTI-SWALLOW` | Failure paths | Required failures propagate or are handled and observable | Heuristic: discarded call or `black_box` |
 | `P-ZERO-INCLUDE` | Module structure | Handwritten Rust is wired with explicit modules | High: direct literal Rust inclusion outside recognized exemptions |
