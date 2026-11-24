@@ -86,6 +86,18 @@ fn make_peer_write_channel(
 
 /// A host callback receives the exact local attempt identity alongside its request.
 /// This keeps callback-backed adapters as safe as the built-in facade path.
+fn conflict_actual_revision(message: &str) -> Option<String> {
+    for marker in ["found `", "current revision `"] {
+        if let Some((_, tail)) = message.split_once(marker) {
+            let revision = tail.split('`').next()?.trim();
+            if !revision.is_empty() {
+                return Some(revision.to_string());
+            }
+        }
+    }
+    None
+}
+
 #[derive(Clone)]
 pub struct PageBuilderCapabilityExecution {
     pub request: PageBuilderCapabilityRequest,
@@ -722,7 +734,11 @@ impl AdminEditorRuntime {
             }
             Err(error) => {
                 let completed = if error.stable_code.as_deref() == Some("REVISION_CONFLICT") {
-                    self.finish_conflicted_request(capability, save_attempt.as_ref())
+                    self.finish_conflicted_request(
+                        capability,
+                        save_attempt.as_ref(),
+                        &error.message,
+                    )
                 } else {
                     self.finish_failed_request(capability, save_attempt.as_ref())
                 };
@@ -737,6 +753,7 @@ impl AdminEditorRuntime {
         &self,
         capability: BuilderCapabilityKind,
         attempt: Option<&SaveAttempt>,
+        message: &str,
     ) -> bool {
         if capability != BuilderCapabilityKind::Publish {
             return false;
@@ -747,12 +764,14 @@ impl AdminEditorRuntime {
         let expected = self.controller.with_untracked(|controller| {
             controller.revision_id().to_string()
         });
+        let actual = conflict_actual_revision(message)
+            .unwrap_or_else(|| "newer server revision".to_string());
         self.controller
             .try_update(|controller| {
                 let conflicted = controller.mark_save_conflict_for_attempt(
                     attempt,
                     expected,
-                    "newer server revision".to_string(),
+                    actual,
                 )?;
                 if conflicted {
                     controller.dispatch(UiIntent::SetEditableCapabilities(
