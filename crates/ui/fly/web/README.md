@@ -15,6 +15,10 @@ For full public interface and web runtime definitions, see [CRATE_API.md](CRATE_
 - Implement authenticated real-DOM inline edit grants and request validation, including the
   client-side half of the commit contract: only a changed element emits a request, and the
   value is normalized to the plain text the grant accepts before it is bound.
+- Provide the page-scoped `BrowserPeerWriteChannel` used by the classic JS adapter and Rust
+  Leptos/Dioxus hosts. Its sender identity combines a document nonce with an editor-root scope,
+  so channels for one editor advance together while other tabs or editor roots are treated as
+  peers. Messages contain revision/hash metadata only, never document content.
 
 ## Known Limitations / Pending Implementation
 
@@ -25,6 +29,10 @@ For full public interface and web runtime definitions, see [CRATE_API.md](CRATE_
   opaque destination — a `sandbox="allow-scripts"` `srcdoc` frame — through `outbound_target_origin`,
   which is what makes the port deliver at all: it used to pass `"null"`, a `postMessage` target the
   platform rejects.
+- **Peer-write notifications are advisory, not collaboration or idempotency.** They fence a
+  stale editor after another tab confirms a write, but do not merge operations, recover an
+  unknown network outcome, or replace the server's revision compare-and-swap and save receipt.
+  If BroadcastChannel is unavailable, server revision checks remain the final protection.
 - **The wasm-only surface is type-checked, not executed, in CI.** `browser_interaction`,
   `browser_runtime`, and `real_dom_inline`'s editor mounting are gated by
   `cfg(target_arch = "wasm32")` plus the `wasm-client` feature, so the `Check Fly browser runtime on
