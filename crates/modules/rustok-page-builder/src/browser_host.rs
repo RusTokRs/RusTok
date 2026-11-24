@@ -127,8 +127,40 @@ const __flyBindSsrAdapter = (adapter) => {
     const rawGeneration = adapter.root.dataset.flyRenderedDraftGeneration;
     const generation = typeof rawGeneration === "string" && /^[1-9][0-9]*$/.test(rawGeneration)
       ? Number(rawGeneration) : NaN;
+    const pendingToken = adapter.pendingOperation?.request?.draft_token;
+    if (
+      rendered &&
+      routeDraft === null &&
+      adapter.pendingOperation?.request?.page_id === pageId &&
+      typeof pendingToken === "string" &&
+      pendingToken &&
+      pendingToken !== rendered
+    ) {
+      // The route token may have been removed after an uncertain write. Restore
+      // the exact owner-bound session from the persisted request before probing;
+      // querying the newly-created empty session would falsely report "unknown".
+      if (!__flyWriteDraftRoute(pendingToken)) {
+        __flyStopForDraftRecovery(adapter, pendingToken);
+        return adapter;
+      }
+      globalThis.location.reload();
+      return adapter;
+    }
     if (rendered) {
-      if (routeDraft !== rendered || !Number.isSafeInteger(generation)) {
+      if (!Number.isSafeInteger(generation)) {
+        __flyStopForDraftRecovery(adapter, rendered);
+        return adapter;
+      }
+      // The first editable SSR render already owns a durable draft session.
+      // Bind it into the route before checking ownership so a lost first
+      // mutation response can still be reconciled after a reload.
+      if (routeDraft === null) {
+        if (!__flyWriteDraftRoute(rendered)) {
+          __flyStopForDraftRecovery(adapter, rendered);
+          return adapter;
+        }
+        boundDraft = rendered;
+      } else if (routeDraft !== rendered) {
         __flyStopForDraftRecovery(adapter, rendered);
         return adapter;
       }
@@ -278,6 +310,9 @@ const __flyBindSsrAdapter = (adapter) => {
     __flyLifecycleOptions,
   );
   __flySsrControlState.adapters.add(adapter);
+  if (adapter.pendingOperation) {
+    queueMicrotask(() => void adapter.resolvePendingOperation());
+  }
   return adapter;
 };
 __flySsrControlState.bind = __flyBindSsrAdapter;
@@ -382,6 +417,18 @@ mod tests {
         let write = binding.find("frame.srcdoc = html").expect("write");
         assert!(guard < write, "{binding}");
         assert!(binding.contains("frame.hidden = false"), "{binding}");
+    }
+
+    #[test]
+    fn initial_ssr_draft_token_is_bound_to_route_before_pending_operation_recovery() {
+        let source = PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS;
+        assert!(source.contains("if (routeDraft === null)"));
+        assert!(source.contains("__flyWriteDraftRoute(rendered)"));
+        assert!(source.contains("boundDraft = rendered"));
+        assert!(source.contains("adapter.pendingOperation?.request?.page_id === pageId"));
+        assert!(source.contains("__flyWriteDraftRoute(pendingToken)"));
+        assert!(source.contains("if (adapter.pendingOperation)"));
+        assert!(source.contains("adapter.resolvePendingOperation()"));
     }
 
     #[test]

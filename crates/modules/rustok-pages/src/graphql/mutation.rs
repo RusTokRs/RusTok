@@ -123,7 +123,7 @@ impl PagesMutation {
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
         PageService::new(db.clone(), event_bus.clone())
-            .save_document(
+            .save_document_with_receipt(
                 tenant_id,
                 page_security(&auth),
                 id,
@@ -131,6 +131,7 @@ impl PagesMutation {
                     expected_revision: input.expected_revision,
                     body: page_body_input(input.body),
                 },
+                input.idempotency_key,
             )
             .await
             .map(Into::into)

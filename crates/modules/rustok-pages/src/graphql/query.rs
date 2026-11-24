@@ -81,6 +81,37 @@ impl PagesQuery {
         Ok(Some(page.into()))
     }
 
+
+    /// Resolve a lost save acknowledgement without submitting a second write.
+    /// A missing receipt means unknown, not "the request definitely failed".
+    async fn page_document_save_receipt(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        idempotency_key: String,
+        tenant_id: Option<Uuid>,
+    ) -> Result<Option<GqlPage>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = query_tenant_id(
+            tenant,
+            ctx.data_opt::<AuthContext>().map(|auth| auth.tenant_id),
+            tenant_id,
+        )?;
+        PageService::new(db.clone(), event_bus.clone())
+            .document_save_receipt(
+                tenant_id,
+                request_security_context(ctx),
+                id,
+                &idempotency_key,
+            )
+            .await
+            .map(|result| result.map(Into::into))
+            .map_err(|error| async_graphql::Error::new(error.to_string()))
+    }
+
     async fn page_by_slug(
         &self,
         ctx: &Context<'_>,

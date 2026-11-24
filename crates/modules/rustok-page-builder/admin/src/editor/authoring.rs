@@ -15,7 +15,7 @@ pub struct CanvasComponentGeometry {
     pub component_id: String,
     pub parent_component_id: Option<String>,
     pub index: usize,
-    pub rect: fly_leptos::BrowserRect,
+    pub rect: fly_web::BrowserRect,
 }
 
 #[derive(Debug, Clone, PartialEq)]

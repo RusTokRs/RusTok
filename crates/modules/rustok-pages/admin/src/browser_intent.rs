@@ -15,9 +15,11 @@ use rustok_page_builder::runtime_context::{
 use rustok_page_builder_admin::{
     AdminCanvasController, BrowserIntentDispatchError, BrowserIntentDispatchResult,
     BrowserIntentEffect, DurableSsrDraftSessionStore, PageBuilderAdminFacade,
-    PageBuilderAdminFacadeError, SsrDraftSessionError, SsrDraftSessionStore,
-    dispatch_browser_intent, validate_browser_capability_access,
+    PageBuilderAdminFacadeError, SsrDraftOperationCommit, SsrDraftSessionError,
+    SsrDraftSessionSnapshot, SsrDraftSessionStore, dispatch_browser_intent,
+    validate_browser_capability_access,
 };
+use sha2::{Digest, Sha256};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::collections::{HashMap, hash_map::DefaultHasher};
@@ -129,6 +131,12 @@ pub struct PagesBrowserIntentResponse {
     pub draft_token: String,
     pub draft_generation: u64,
     pub runtime_context: Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation_status: Option<String>,
+    #[serde(default)]
+    pub operation_replayed: bool,
 }
 
 /// Registers a custom or distributed SSR draft session store (e.g. backed by Redis or database KV).
@@ -186,6 +194,32 @@ pub async fn dispatch_pages_browser_intent_with_store(
         });
     }
 
+    // Receipt resolution is read-only. It never resubmits the original command:
+    // a missing receipt remains an unknown outcome until the user explicitly retries.
+    if envelope.intent == "resolve_operation" {
+        let operation_id = envelope.operation_id.as_deref()
+            .ok_or(SsrDraftSessionError::InvalidOperationId)?;
+        let token = envelope.draft_token.as_deref()
+            .ok_or(SsrDraftSessionError::OperationReceiptRequiresSession)?;
+        let session = draft_store.load(token, &snapshot.page_id, snapshot.owner.as_ref())?
+            .ok_or(PagesBrowserIntentError::DraftUnavailable)?;
+        let receipt = draft_store.lookup_operation_receipt(
+            token, &snapshot.page_id, snapshot.owner.as_ref(), operation_id, None,
+        )?;
+        return operation_response_from_receipt(
+            &session, operation_id, receipt.as_ref(), receipt.is_some(),
+        );
+    }
+
+    let operation_hash = envelope.operation_id.as_deref()
+        .map(|_| browser_operation_request_hash(&envelope))
+        .transpose()?;
+    if envelope.operation_id.is_some()
+        && (envelope.draft_token.is_none() || envelope.draft_generation.is_none())
+    {
+        return Err(SsrDraftSessionError::OperationReceiptRequiresSession.into());
+    }
+
     // Load the draft session before any page fetch: a session already in
     // sync with the cached persisted revision lets the dispatch skip the
     // fetch entirely (audit §5.1). The page document is only needed to seed
@@ -198,6 +232,24 @@ pub async fn dispatch_pages_browser_intent_with_store(
         ),
         None => None,
     };
+    if let (Some(operation_id), Some(request_hash), Some(session)) = (
+        envelope.operation_id.as_deref(),
+        operation_hash.as_deref(),
+        loaded_session.as_ref(),
+    ) {
+        let receipt = draft_store.lookup_operation_receipt(
+            &session.token,
+            &snapshot.page_id,
+            snapshot.owner.as_ref(),
+            operation_id,
+            Some(request_hash),
+        )?;
+        if let Some(receipt) = receipt {
+            return operation_response_from_receipt(
+                session, operation_id, Some(&receipt), true,
+            );
+        }
+    }
     if let (Some(expected), Some(session)) = (envelope.draft_generation, loaded_session.as_ref())
         && expected != session.generation
     {
@@ -329,6 +381,7 @@ pub async fn dispatch_pages_browser_intent_with_store(
             project_hash: Some(controller.editor().revision().project_hash.hex()),
             draft_token: session_token.clone(),
             draft_generation: session_generation,
+            operation_id: None,
         };
         // The synthesized autosave is a draft save and must clear the same
         // capability gate as an explicit save. Callers without the save
@@ -407,40 +460,75 @@ pub async fn dispatch_pages_browser_intent_with_store(
     // nothing and is not sent into a reload that would show the page it came from.
     let page_switched = capabilities.edit && open_page_before != open_page(&controller);
 
-    let (draft_token, draft_generation) = if capabilities.edit {
+    let reload = reloads_render(
+        context_update,
+        page_switched,
+        envelope.is_mutating(),
+        persistence.as_ref(),
+        save_failure.is_some(),
+    );
+    let mut response = PagesBrowserIntentResponse {
+        reload,
+        result,
+        persistence,
+        save_failure,
+        draft_token: session_token.clone().unwrap_or_default(),
+        draft_generation: session_generation.unwrap_or(0),
+        runtime_context: runtime_context.clone(),
+        operation_id: envelope.operation_id.clone(),
+        operation_status: envelope.operation_id.as_ref().map(|_| "committed".to_string()),
+        operation_replayed: false,
+    };
+
+    if let (Some(operation_id), Some(request_hash)) = (
+        envelope.operation_id.as_deref(),
+        operation_hash.as_deref(),
+    ) {
+        if !capabilities.edit {
+            return Err(SsrDraftSessionError::OperationReceiptRequiresSession.into());
+        }
+        let token = session_token.as_deref()
+            .ok_or(SsrDraftSessionError::OperationReceiptRequiresSession)?;
+        let generation = session_generation
+            .ok_or(SsrDraftSessionError::OperationReceiptRequiresSession)?;
+        let receipt = compact_operation_receipt(&response)?;
+        match draft_store.commit_with_operation_receipt(
+            token,
+            generation,
+            controller,
+            runtime_context,
+            snapshot.owner.as_ref(),
+            operation_id,
+            request_hash,
+            receipt,
+        )? {
+            SsrDraftOperationCommit::Committed(committed) => {
+                response.draft_token = committed.token;
+                response.draft_generation = committed.generation;
+                Ok(response)
+            }
+            SsrDraftOperationCommit::Replayed(receipt) => {
+                let session = draft_store
+                    .load(token, &snapshot.page_id, snapshot.owner.as_ref())?
+                    .ok_or(PagesBrowserIntentError::DraftUnavailable)?;
+                operation_response_from_receipt(&session, operation_id, Some(&receipt), true)
+            }
+        }
+    } else if capabilities.edit {
         let committed = draft_store.commit_with_context(
             session_token.as_deref(),
             session_generation,
             controller,
-            runtime_context.clone(),
+            runtime_context,
             snapshot.owner.as_ref(),
         )?;
-        (committed.token, committed.generation)
+        response.draft_token = committed.token;
+        response.draft_generation = committed.generation;
+        Ok(response)
     } else {
-        // Read-only callers never touch the draft store (audit §2.5): a
-        // customer's `select` must not spawn or bump a session, so the
-        // response echoes the loaded token (if any) instead of committing.
-        (
-            session_token.unwrap_or_default(),
-            session_generation.unwrap_or(0),
-        )
-    };
-
-    Ok(PagesBrowserIntentResponse {
-        reload: reloads_render(
-            context_update,
-            page_switched,
-            envelope.is_mutating(),
-            persistence.as_ref(),
-            save_failure.is_some(),
-        ),
-        result,
-        persistence,
-        save_failure,
-        draft_token,
-        draft_generation,
-        runtime_context,
-    })
+        // Read-only callers never touch the draft store (audit §2.5).
+        Ok(response)
+    }
 }
 
 /// Index and id of the page of the document the editor is on, which is the page the server
@@ -590,6 +678,87 @@ fn locale_sources(value: &Value) -> Vec<String> {
     }
 }
 
+fn browser_operation_request_hash(
+    envelope: &BrowserIntentEnvelope,
+) -> Result<String, PagesBrowserIntentError> {
+    let mut request = envelope.clone();
+    request.operation_id = None;
+    let bytes = serde_json::to_vec(&request)
+        .map_err(|error| PagesBrowserIntentError::OperationFingerprint(error.to_string()))?;
+    let digest = Sha256::digest(bytes);
+    Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+/// Store only the compact acknowledgement. The current controller is the
+/// source of truth for document state; replay reloads that current snapshot.
+fn compact_operation_receipt(
+    response: &PagesBrowserIntentResponse,
+) -> Result<Value, PagesBrowserIntentError> {
+    let save_failure = response.save_failure.as_ref()
+        .map(serde_json::to_value)
+        .transpose()
+        .map_err(|error| PagesBrowserIntentError::OperationFingerprint(error.to_string()))?;
+    let bounded_error = save_failure.as_ref()
+        .and_then(Value::as_object)
+        .and_then(|failure| failure.get("error"))
+        .and_then(Value::as_str)
+        .map(|error| error.chars().take(96).collect::<String>());
+    let save_failure = match (save_failure, bounded_error) {
+        (Some(mut value), Some(error)) => {
+            if let Some(failure) = value.as_object_mut() {
+                failure.insert("error".to_string(), Value::String(error));
+            }
+            Some(value)
+        }
+        (value, _) => value,
+    };
+    // The current draft session is the source of truth for revision and UI state.
+    // A receipt only needs to remember whether this committed operation left a
+    // persistence failure that must still be surfaced after a reload.
+    Ok(json!({ "save_failure": save_failure }))
+}
+
+fn operation_response_from_receipt(
+    session: &SsrDraftSessionSnapshot,
+    operation_id: &str,
+    receipt: Option<&Value>,
+    replayed: bool,
+) -> Result<PagesBrowserIntentResponse, PagesBrowserIntentError> {
+    let revision = session.controller.editor().revision();
+    let result = BrowserIntentDispatchResult {
+        page_id: session.controller.page_id().to_string(),
+        revision_id: session.controller.revision_id().to_string(),
+        project_hash: revision.project_hash.hex(),
+        command_sequence: revision.command_sequence,
+        dirty: revision.dirty,
+        selected_component_id: session.controller.ui().state.selection.component_id.clone(),
+        project_data: None,
+        effects: Vec::new(),
+    };
+    let mut save_failure = match receipt.and_then(|value| value.get("save_failure")) {
+        Some(value) if !value.is_null() => Some(
+            serde_json::from_value(value.clone())
+                .map_err(|error| PagesBrowserIntentError::OperationFingerprint(error.to_string()))?,
+        ),
+        _ => None,
+    };
+    if !result.dirty {
+        save_failure = None;
+    }
+    Ok(PagesBrowserIntentResponse {
+        result,
+        persistence: None,
+        save_failure,
+        reload: replayed,
+        draft_token: session.token.clone(),
+        draft_generation: session.generation,
+        runtime_context: session.runtime_context.clone(),
+        operation_id: Some(operation_id.to_string()),
+        operation_status: Some(if replayed { "committed" } else { "unknown" }.to_string()),
+        operation_replayed: replayed,
+    })
+}
+
 fn controller_snapshot(
     controller: &AdminCanvasController,
 ) -> Result<BrowserIntentDispatchResult, PagesBrowserIntentError> {
@@ -706,6 +875,8 @@ pub enum PagesBrowserIntentError {
     DocumentUnavailable,
     #[error("Page Builder browser request targets `{actual}`, but endpoint owns `{expected}`")]
     PageMismatch { expected: String, actual: String },
+    #[error("Could not fingerprint the browser operation: {0}")]
+    OperationFingerprint(String),
     #[error("invalid runtime preview context: {0}")]
     RuntimeContext(String),
     #[error("server preview failed: {0}")]
@@ -843,6 +1014,8 @@ mod tests {
             project_hash: None,
             draft_token: None,
             draft_generation: None,
+
+            operation_id: None,
         }
     }
 
@@ -1073,6 +1246,106 @@ mod tests {
     }
 
     #[test]
+    fn receipt_replay_precedes_generation_conflict_and_resolution_never_dispatches() {
+        let source = include_str!("browser_intent.rs");
+        let resolution = source
+            .find("if envelope.intent == \"resolve_operation\"")
+            .expect("read-only receipt resolution");
+        let dispatch = source
+            .find("dispatch_browser_intent(")
+            .expect("normal intent dispatch");
+        assert!(resolution < dispatch, "receipt resolution must not execute the command");
+
+        let receipt_lookup = source
+            .find("if let (Some(operation_id), Some(request_hash), Some(session))")
+            .expect("same-request receipt lookup");
+        let generation_check = source
+            .find("if let (Some(expected), Some(session))")
+            .expect("draft generation check");
+        assert!(
+            receipt_lookup < generation_check,
+            "a committed request must replay even when its original generation is now stale"
+        );
+    }
+
+    #[test]
+    fn operation_fingerprint_ignores_identity_but_binds_the_exact_command() {
+        let mut envelope = form_envelope("insert_block", json!({ "block_id": "hero" }));
+        envelope.draft_token = Some("draft-token".to_string());
+        envelope.draft_generation = Some(4);
+        envelope.operation_id = Some("operation-a".to_string());
+        let first = browser_operation_request_hash(&envelope).expect("fingerprint");
+
+        envelope.operation_id = Some("operation-b".to_string());
+        assert_eq!(
+            first,
+            browser_operation_request_hash(&envelope).expect("same command fingerprint"),
+            "the id is a lookup key, not part of the request fingerprint"
+        );
+
+        envelope.payload = json!({ "block_id": "footer" });
+        assert_ne!(
+            first,
+            browser_operation_request_hash(&envelope).expect("changed command fingerprint")
+        );
+    }
+
+    #[test]
+    fn operation_receipt_projection_is_compact_and_replay_uses_current_session() {
+        let response = PagesBrowserIntentResponse {
+            reload: false,
+            result: BrowserIntentDispatchResult {
+                page_id: "home".to_string(),
+                revision_id: "rev-2".to_string(),
+                project_hash: "hash-2".to_string(),
+                command_sequence: 7,
+                dirty: true,
+                selected_component_id: Some("hero".to_string()),
+                project_data: Some(json!({ "pages": [{ "component": { "content": "large" } }] })),
+                effects: Vec::new(),
+            },
+            persistence: None,
+            save_failure: None,
+            draft_token: "draft-token".to_string(),
+            draft_generation: 4,
+            runtime_context: json!({ "preview": { "large": "context" } }),
+            operation_id: Some("operation-a".to_string()),
+            operation_status: Some("committed".to_string()),
+            operation_replayed: false,
+        };
+        let compact = compact_operation_receipt(&response).expect("compact receipt");
+        assert!(compact.get("result").is_none());
+        assert!(compact.get("runtime_context").is_none());
+        assert!(compact.get("persistence").is_none());
+        assert_eq!(compact["save_failure"], Value::Null);
+
+        let session = SsrDraftSessionSnapshot {
+            token: "draft-token".to_string(),
+            generation: 9,
+            controller: controller("home"),
+            runtime_context: json!({ "latest": true }),
+            owner: None,
+        };
+        let unknown = operation_response_from_receipt(&session, "operation-a", None, false)
+            .expect("unknown operation response");
+        assert_eq!(unknown.operation_status.as_deref(), Some("unknown"));
+        assert!(!unknown.reload);
+        assert_eq!(unknown.draft_generation, 9);
+        assert!(unknown.result.project_data.is_none());
+
+        let replay = operation_response_from_receipt(
+            &session,
+            "operation-a",
+            Some(&compact),
+            true,
+        ).expect("replayed operation response");
+        assert_eq!(replay.operation_status.as_deref(), Some("committed"));
+        assert!(replay.operation_replayed);
+        assert!(replay.reload);
+        assert_eq!(replay.draft_generation, 9);
+    }
+
+    #[test]
     fn save_failure_is_serialized_only_when_present() {
         let response = |save_failure: Option<PagesBrowserIntentProblem>| {
             let controller = dirty_controller();
@@ -1084,6 +1357,9 @@ mod tests {
                 draft_token: "token".to_string(),
                 draft_generation: 2,
                 runtime_context: json!({}),
+                operation_id: None,
+                operation_status: None,
+                operation_replayed: false,
             })
             .expect("serialize")
         };

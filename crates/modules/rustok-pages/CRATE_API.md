@@ -131,6 +131,45 @@ layout is copied by key and is not checked for locale availability.
 - Menu location is descriptive until a dedicated active-location identity is
   enforced. Adapters must not choose an arbitrary first menu by location.
 
+## Document acknowledgement and concurrency
+
+`PageService::save_document` and `restore_body_revision` compare the observed
+working-copy token in the Pages write transaction, generate a microsecond revision
+strictly newer than the current stored revision, append the body journal, and
+build their `PageResponse` inside the same transaction (including site symbols).
+The accepted write cannot be acknowledged with a subsequent writer's revision.
+
+Callers may use `PageService::save_document_with_receipt` and supply an ASCII
+idempotency key (1..128 characters from `A-Za-z0-9-_.:`). Pages binds it to the
+actor and a hash of the normalized, layout-stripped command. An exact repeat
+returns the **original** response, even after later saves; different content
+or actor with the same key fails with
+`PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT`. The read-only
+`PageService::document_save_receipt` and GraphQL
+`pageDocumentSaveReceipt(id, idempotencyKey, tenantId)` return a stored
+acknowledgement with current write authorization checked, without re-executing.
+Missing receipts do not establish failure for an in-flight request.
+The latest 64 full responses per page are replayable; older hash/key
+tombstones produce `PAGE_DOCUMENT_SAVE_RECEIPT_EXPIRED` instead of replaying
+or re-executing an uncertain operation.
+
+The GraphQL `SaveGqlPageDocumentInput.idempotencyKey` is optional, preserving
+legacy CAS-only clients. The Leptos SSR Fly adapter derives a stable key from
+tenant, actor, page, expected revision, locale and canonical project.
+See the [save receipts ADR](../../../DECISIONS/2026-11-23-page-document-save-receipts.md).
+Restore/lifecycle commands do not yet have this save receipt contract.
+PostgreSQL/MySQL use the page lock; SQLite may return busy/locked errors.
+The new migration supports PostgreSQL/SQLite, not MySQL. The SSR Page Builder
+adapter performs one receipt query after ambiguous network/HTTP 408, 429 or 5xx
+save errors and accepts only a stored acknowledgement for that request. When
+the receipt is absent or cannot be read, it returns stable
+`PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN` and preserves the unsaved draft; this
+maps to an application-level 503 problem, not a 422 validation rejection.
+GraphQL/auth/ordinary HTTP 4xx failures are never silently reconciled. The
+query is not an automatic retry or proof of a failed operation. Independent
+SQLite-connection and opt-in PostgreSQL race tests are authored, but remain
+unexecuted; production release sign-off is pending.
+
 ## Events
 
 Page lifecycle events are published through `TransactionalEventBus` in the same
@@ -185,3 +224,22 @@ feature-disabled, integrity and not-found outcomes must retain their semantics.
 
 - `PagesError` variants: `Validation`, `NotFound`, `Forbidden`, `Conflict`, `Database`, `Internal`.
 - Typed error codes (e.g. `CANNOT_DELETE_PUBLISHED_ERROR_CODE`) are mapped to consistent client status codes.
+
+## SSR browser operation receipt contract
+
+The Pages SSR Fly browser-intent envelope accepts optional `operation_id`.
+Strict editable SSR hosts create an owner-bound draft session before rendering
+and require a session token/generation for each mutating operation. The server
+fingerprints the envelope without its operation ID and atomically stores a
+bounded acknowledgement with the session generation. The same ID and
+fingerprint replay the stored acknowledgement before optimistic generation
+validation; a different fingerprint returns an operation-ID conflict.
+
+The read-only `resolve_operation` intent returns either `committed` or
+`unknown`. Unknown is not failure and does not trigger a mutation retry.
+Clients must preserve the original request and only retry it explicitly with
+the same ID. Browser storage is tab-scoped. Custom
+`SsrDraftSessionStore` implementations must advertise atomic receipt support;
+unsupported stores fail closed for editable SSR rendering. This contract does
+not cover all direct-write clients, restore/lifecycle operations, or Dioxus
+host parity.

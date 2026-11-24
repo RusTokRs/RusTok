@@ -106,16 +106,32 @@ compatibility or drop migration is retained.
 Recorded by earlier page-subsystem audits.
 These are gaps in what the runtime actually does, not accepted design:
 
-- **Document CAS and save receipts need hardening before multi-writer use.** Working-copy
-  revision tokens are `updated_at` timestamps truncated to microseconds, not monotonic unique
-  revisions; a repeated timestamp or clock rollback can reuse a token. On PostgreSQL/MySQL the
-  save and restore paths take the page row lock before checking the working body; SQLite's
-  `find_page_for_update` is a read, so a competing writer may instead fail with a database lock
-  error. The mutation commits before it reads its `PageResponse`: a subsequent writer can change
-  the body before that read, causing the response to carry a different writer's revision. A
-  builder may then associate that later revision with its own local project. Replace the token
-  and receipt protocol, and verify concurrent save/restore/lifecycle operations on each supported
-  backend, before relying on these guards to prevent lost writes.
+- **Document CAS and receipt recovery (source only, awaiting runtime verification).**
+  Save/restore use monotonically advancing microsecond working-copy tokens and
+  construct the response inside their transaction. New optional save idempotency
+  keys bind the actor and normalized request to the original `PageResponse`,
+  committed with the body, revision journal and symbol catalog. GraphQL
+  `savePageDocument` accepts `idempotencyKey` and
+  `pageDocumentSaveReceipt` reads a committed acknowledgement without mutation.
+  The Fly Leptos SSR store derives stable per-request keys. Only the newest 64
+  responses per page are replayable; older keys remain permanent tombstones to
+  prevent duplicate execution. Legacy clients without keys retain CAS-only
+  behavior. Cross-tab merge, restore/lifecycle request IDs and mounted Dioxus
+  parity remain pending. PostgreSQL/MySQL use the page row lock; contended
+  SQLite writers may fail with busy/locked errors. The new receipt migration
+  currently supports PostgreSQL and SQLite, not MySQL. Cross-database writer,
+  GraphQL, SSR/CSR and browser E2E verification are still required. See
+  [Pages save receipt ADR](../../../DECISIONS/2026-11-23-page-document-save-receipts.md).
+
+  After an uncertain HTTP result (`Network`, 408, 429, or 5xx), the SSR
+  Page Builder store performs one read-only lookup of the same receipt ID.
+  It acknowledges the save only when that lookup returns the original stored
+  response; a missing or failed lookup yields stable
+  `PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN`, maps to an unsaved draft and is
+  represented as 503 rather than a client-validation failure. Deterministic
+  GraphQL rejections, authentication failures and ordinary HTTP 4xx are
+  **not** converted into apparent successes. A missing receipt still cannot
+  prove an in-flight request will not commit.
 
 - **Wave 2 scheduled publishing (G-3 of the 2026-10-09 audit) is implemented**: editors
   schedule/cancel a publication (`pagePublishSchedule`, `schedulePagePublish`,
@@ -264,3 +280,18 @@ These are gaps in what the runtime actually does, not accepted design:
 - [Implementation plan](./docs/implementation-plan.md)
 - [Platform docs index](../../../docs/index.md)
 
+## SSR Fly browser intent receipts
+
+The Pages SSR Fly host creates an authenticated draft session before exposing
+an editable canvas. Mutating browser intents carry a stable operation ID and
+are acknowledged atomically with the draft-session generation. A retry with
+the same ID and same request fingerprint returns the stored acknowledgement;
+a different request under that ID conflicts. The browser persists the exact
+request per tab and uses a read-only receipt lookup after an uncertain response
+or reload. A missing receipt is not treated as failure and is never followed by
+an automatic mutation resend; the editor pauses and offers explicit recovery.
+
+This contract applies to the strict Pages SSR host, not every direct writer or
+Dioxus/Next integration. Custom draft stores must implement atomic operation
+receipt support to enable editing. See the
+[Pages save receipt decision](../../../DECISIONS/2026-11-23-page-document-save-receipts.md).

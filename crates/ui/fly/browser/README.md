@@ -57,8 +57,17 @@ Authoritative writes from the same mounted browser adapter are now sent in seque
 bounded queue under `maxPendingIntentRequests`; the next request takes its revision, hash and
 draft generation from the preceding response while retaining the original clicked target.
 Stopping the adapter resolves queued promises without sending them and suppresses late error
-reports. This serializes one adapter instance only; cross-tab conflicts and unconfirmed transport
-outcomes remain under the server's revision/failure handling and require host-level evidence.
+reports. This serializes one adapter instance only. With `BroadcastChannel` available,
+another confirmed same-origin write for the same page marks the mounted editor stale,
+emits `fly:browser-peer-write` and a visible `FLY_PEER_WRITE_CONFLICT` problem, rejects
+subsequent mutations before DOM intent emission or POST and discards unsent queued writes with the existing
+`fly:browser-intents-discarded` notice. The warning survives read-only responses
+until remount/reload; the adapter never reloads automatically or silently merges
+unsaved changes. The channel carries only page ID, confirmed revision and hash.
+Browsers without cross-tab messaging still rely on server-side CAS. This is a
+conservative page-level guard (including editors on different locales), not
+cross-tab ordering, server-recognized idempotency or recovery for an aborted
+request: those remain unimplemented.
 
 The serialized writer queue fails closed on HTTP errors, timeouts/aborts, redirected
 responses, application-level save failures, navigation responses, or HTTP successes without a
@@ -78,3 +87,15 @@ When an unconfirmed write causes the adapter to abandon queued mutations, it emi
 `data-fly-queued-intents-discarded`, and adds an accessible status message without hiding the
 original revision/transport error. The queue is never quietly treated as saved. The marker is
 cleared by a confirmed later write or adapter stop.
+
+## Strict SSR operation recovery
+
+When the host advertises the rendered draft contract, the adapter persists each
+mutating envelope and its operation ID in tab-scoped `sessionStorage` before
+sending it. A reload or ambiguous response triggers a read-only receipt lookup.
+The adapter blocks new mutations while the outcome is unknown and exposes
+explicit status-check and same-request retry controls; it never automatically
+retries the mutation. The host must render an owner-bound draft token before
+enabling edits and bind that token into the route. This protocol is currently
+implemented by the Pages SSR host; other hosts must not opt into the strict
+contract without matching server-side atomic receipts.

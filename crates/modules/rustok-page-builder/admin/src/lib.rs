@@ -81,8 +81,10 @@ pub use core::{EditorSessionAction, EditorSessionEffect, EditorSessionState, gat
 pub use draft_session::{
     DRAFT_SESSION_DIR_ENV, DRAFT_SESSION_RECORD_FORMAT, DraftSessionKvDriver, DraftSessionOwner,
     DurableSsrDraftSessionStore, ExternalKvDraftSessionBackend, FileSsrDraftSessionStore,
-    InMemorySsrDraftSessionStore, MAX_DRAFT_SESSION_RECORD_BYTES, MAX_DRAFT_SESSIONS_PER_OWNER,
-    MemoryKvDriver, PersistentDraftSessionBackend, PersistentDraftSessionRecord,
+    InMemorySsrDraftSessionStore, MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION,
+    MAX_DRAFT_OPERATION_RECEIPT_BYTES, MAX_DRAFT_SESSION_RECORD_BYTES,
+    MAX_DRAFT_SESSIONS_PER_OWNER, MemoryKvDriver, PersistentDraftSessionBackend,
+    PersistentDraftSessionRecord, SsrDraftOperationCommit, SsrDraftOperationReceipt,
     SsrDraftRenderBinding, SsrDraftSessionError, SsrDraftSessionSnapshot, SsrDraftSessionStore,
 };
 pub use editor::ConsumerPropertiesPanel;
