@@ -168,8 +168,8 @@ requireText(
 );
 
 requireText(native, "product_admin_catalog_search_options_native(locale)", `${paths.native}: native options endpoint`);
-requireText(native, "ensure_product_module_enabled(runtime_ctx.db(), tenant.id).await?", `${paths.native}: native tenant module gate`);
-requireText(native, 'is_tenant_module_enabled(db, tenant_id, "product")', `${paths.native}: Product module gate implementation`);
+requireText(native, "ensure_product_module_enabled(&runtime_ctx, tenant.id).await?", `${paths.native}: native tenant module gate`);
+requireText(native, 'is_tenant_module_enabled(runtime.db(), tenant_id, "product")', `${paths.native}: Product module gate implementation`);
 requireText(graphql, "PRODUCT_ATTRIBUTES_QUERY", `${paths.graphql}: GraphQL attribute query`);
 requireText(graphql, "scope", `${paths.graphql}: GraphQL attribute scope projection`);
 requireText(graphql, "isFilterable", `${paths.graphql}: GraphQL filterable attribute projection`);

@@ -6,7 +6,7 @@ use rustok_ui_core::normalize_optional_ui_text;
 
 use crate::i18n::t;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ProductAdminListInput {
     pub search: Option<String>,
     pub status: Option<String>,
