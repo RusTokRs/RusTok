@@ -108,6 +108,7 @@ where
             EditorSessionEffect::Announce(message) => {
                 session.write().announce(message);
             }
+            EditorSessionEffect::SaveAttemptStarted(_) => {}
             EditorSessionEffect::ExecuteRequest {
                 request,
                 expected_hash,
