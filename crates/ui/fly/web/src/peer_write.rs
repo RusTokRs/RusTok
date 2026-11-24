@@ -319,6 +319,7 @@ mod tests {
                 page_id: "page-2".to_string(),
                 revision: "revision-2".to_string(),
                 hash: "hash-2".to_string(),
+                sender_id: "document-b".to_string(),
             })
             .is_none()
         );
@@ -328,6 +329,7 @@ mod tests {
                 page_id: "page-1".to_string(),
                 revision: "revision-1".to_string(),
                 hash: "hash-1".to_string(),
+                sender_id: "document-b".to_string(),
             })
             .is_none()
         );
@@ -360,6 +362,7 @@ mod tests {
                 page_id: "page-1".to_string(),
                 revision: "revision-2".to_string(),
                 hash: "hash-2".to_string(),
+                sender_id: "document-b".to_string(),
             })
             .expect("new revision must fence the stale editor");
         assert_eq!(conflict.revision, "revision-2");
@@ -370,6 +373,7 @@ mod tests {
                 page_id: "page-1".to_string(),
                 revision: "revision-3".to_string(),
                 hash: "hash-3".to_string(),
+                sender_id: "document-b".to_string(),
             })
             .is_none()
         );
@@ -390,6 +394,7 @@ mod tests {
                 page_id: "page-1".to_string(),
                 revision: String::new(),
                 hash: "hash-2".to_string(),
+                sender_id: "document-b".to_string(),
             })
             .is_none()
         );
