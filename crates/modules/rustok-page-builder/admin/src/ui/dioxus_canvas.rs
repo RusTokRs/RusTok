@@ -8,14 +8,14 @@ use fly_ui::{
     CanvasRect, ResizeHandle, ResizeResult, UiIntent, ViewportState,
 };
 
-use crate::core::EditorSessionState;
+use crate::core::session::EditorSessionState;
 use crate::editor::CanvasComponentGeometry;
 
 #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
 use crate::editor::{CanvasBridgeMessage, decode_canvas_message};
 #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
 use fly_web::{
-    BrowserResizeSession, EventListenerHandle, OPAQUE_ORIGIN, release_pointer_capture,
+    BrowserResizeSession, EventListenerHandle, release_pointer_capture,
     set_pointer_capture,
 };
 #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
@@ -43,7 +43,7 @@ pub fn DioxusIsolatedCanvas(
     on_ui_intent: EventHandler<UiIntent>,
     on_error: Option<EventHandler<String>>,
 ) -> Element {
-    let geometry = use_signal(BTreeMap::<String, CanvasComponentGeometry>::new);
+    let geometry = use_signal(|| BTreeMap::<String, CanvasComponentGeometry>::new());
     let ready = use_signal(|| false);
     let resize_preview = use_signal(|| None::<ResizeResult>);
 
@@ -90,7 +90,7 @@ pub fn DioxusIsolatedCanvas(
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
     let resize_context = use_signal(|| None::<(String, CanvasRect, f64)>);
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
-    let listener_handles = use_signal(Vec::<EventListenerHandle>::new);
+    let listener_handles = use_signal(|| Vec::<EventListenerHandle>::new());
 
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
     resize_context.set(
@@ -128,7 +128,10 @@ pub fn DioxusIsolatedCanvas(
                 );
             }
             #[cfg(not(all(target_arch = "wasm32", feature = "dioxus-web")))]
-            let _ = payload;
+            {
+                let _ = payload;
+                let _ = &expected_instance;
+            }
         }
     };
     let on_message = EventHandler::new(message_handler);
