@@ -176,6 +176,8 @@ mod browser {
             scope_id: impl AsRef<str>,
             on_conflict: impl FnMut(BrowserPeerWriteConflict) + 'static,
         ) -> Result<Self, BrowserRuntimeError> {
+            validate_field("editor scope id", scope_id.as_ref())
+                .map_err(BrowserRuntimeError::Serialization)?;
             let document_id = peer_write_document_id()?;
             let sender_id = format!("{document_id}:{}", scope_id.as_ref());
             Self::new_with_sender_id(page_id, revision, project_hash, sender_id, on_conflict)
