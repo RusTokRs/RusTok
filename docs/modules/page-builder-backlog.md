@@ -23,8 +23,9 @@ UI state machine, Leptos facade runtime, Dioxus session and callback-host transp
 failure and conflict responses must match that exact attempt; transient request identity is
 not serialized, so a response from a pre-rehydration controller cannot acknowledge a retry
 whose local sequence and hash happen to repeat. Known server revision-conflict codes survive
-the Leptos server-function boundary and fence only the matching attempt read-only. Draft save
-is edit-gated rather than blocked
+the Leptos server-function boundary and fence only the matching attempt read-only; the classic
+JS adapter also fences server conflicts when BroadcastChannel misses a peer notification and
+clears the parked fence after a newer revision is reloaded. Draft save is edit-gated rather than blocked
 by the separate release/publish gate. Leptos Rust and JS adapters share a document nonce plus
 editor-root scope on the peer-write channel, avoiding same-editor false conflicts while fencing
 other tabs and editor roots; the Dioxus host also participates. The Dioxus Page Builder host now
