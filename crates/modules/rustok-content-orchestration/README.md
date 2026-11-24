@@ -17,6 +17,9 @@
 - Adapt Blog's embedded taxonomy port to Taxonomy owner operations on the caller's
   database transaction. Category deletion preserves Blog cleanup errors and
   runs Blog and Flex cleanup in Taxonomy's delete transaction.
+- Pass the caller's effective permissions to Blog when promoting Forum tags.
+  Blog owns tag validation, creation admission, attachment and usage refresh.
+  Demotion reads and detaches Blog tags through the same embedded provider.
 - Register the Blog owner of module-scoped Taxonomy translations. The bridge
   delegates permissions, field limits and transactional apply effects to Blog.
 

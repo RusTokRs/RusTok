@@ -27,7 +27,6 @@ fn crate_api_defines_minimal_contract_sections() {
     feature = "mod-comments"
 ))]
 mod full_contract_tests {
-    use super::*;
     use crate::bridge::helpers::{locales_from_strs, normalize_slug};
     use crate::bridge::merge::unique_source_ids;
     use crate::graphql::{

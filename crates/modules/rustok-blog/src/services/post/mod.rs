@@ -289,7 +289,7 @@ fn validate_optional_title(title: Option<&str>) -> BlogResult<()> {
     Ok(())
 }
 
-fn validate_tags(tags: &[String]) -> BlogResult<()> {
+pub(super) fn validate_tags(tags: &[String]) -> BlogResult<()> {
     if tags.len() > 20 {
         return Err(BlogError::validation("Cannot have more than 20 tags"));
     }

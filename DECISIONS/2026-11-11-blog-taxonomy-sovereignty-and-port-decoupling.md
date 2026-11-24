@@ -110,6 +110,10 @@ Apply the Ports & Adapters (Hexagonal / FBA) architecture pattern to decouple `r
 - Locale: `load_scoped_categories`, `load_tags_by_ids` and `load_category_locale_copy_in_tx` carry a locale, and a snapshot states the locale it was asked for and the locale it returned so Blog can reject a mismatched copy instead of substituting one.
 - Channel: Blog's channel gating stays in Blog; the port carries no channel dimension.
 - Actor: the command operations of `CategoryCommandService` carry the caller's `SecurityContext` and enforce the Blog scope before the port is called.
+- Forum-to-Blog promotion carries the caller's effective permissions to
+  Blog's tag command. It can attach an existing visible term, while creation
+  of a missing Blog tag requires `tags:create`. Blog-to-Forum demotion uses
+  the same Blog port to read localized tag names and update usage.
 
 ## Events and projections
 

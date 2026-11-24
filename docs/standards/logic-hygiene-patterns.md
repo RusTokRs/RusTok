@@ -1925,6 +1925,13 @@ let posts = PostService::new(db, event_bus).with_taxonomy_port(taxonomy_port);
 Trace the constructors from each entry point with
 `rg -n 'PostService::new\(|with_taxonomy_port\(' crates/modules/rustok-blog`.
 
+The Blog/Forum conversion bridge took a separate path to Taxonomy and then
+called a Blog relation writer without its port. Promotion could create Blog
+tags without the caller's permission, and the usage projection lost its
+canonical tag key or retained unused global tags. Both conversion directions
+now use the Blog port and owner commands. Exercise a promotion with and
+without the creation grant, then verify tag usage after demotion.
+
 ## P-ORPHAN-SPAWN — Supervise background tasks and retain JoinHandles
 
 - **Category:** Concurrency, task supervision, and lifecycle shutdown.

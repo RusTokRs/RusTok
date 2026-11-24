@@ -1,10 +1,13 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
-use rustok_blog::BlogPostRouteOwner;
+use rustok_blog::{BlogPostRouteOwner, ports::BlogTaxonomyPort};
 use rustok_content::{
     ContentOrchestrationBridge, ContentResult, DemotePostToTopicInput, DemotePostToTopicOutput,
     MergeTopicsInput, MergeTopicsOutput, PromoteTopicToPostInput, PromoteTopicToPostOutput,
     SplitTopicInput, SplitTopicOutput,
 };
+use rustok_core::SecurityContext;
 use rustok_forum::services::topic_routes::ForumTopicRouteOwner;
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::TaxonomyService;
@@ -27,6 +30,7 @@ pub(crate) struct OwnerRoutes {
 
 pub struct ServerContentOrchestrationBridge {
     taxonomy: TaxonomyService,
+    blog_taxonomy: Arc<dyn BlogTaxonomyPort>,
     routes: OwnerRoutes,
 }
 
@@ -39,6 +43,7 @@ impl std::fmt::Debug for ServerContentOrchestrationBridge {
 impl ServerContentOrchestrationBridge {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
+            blog_taxonomy: crate::in_process_blog_taxonomy_port(db.clone()),
             taxonomy: TaxonomyService::new(db),
             routes: OwnerRoutes {
                 blog: BlogPostRouteOwner::new(event_bus.clone()),
@@ -54,15 +59,15 @@ impl ContentOrchestrationBridge for ServerContentOrchestrationBridge {
         &self,
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
-        actor_id: Option<Uuid>,
+        security: &SecurityContext,
         input: &PromoteTopicToPostInput,
     ) -> ContentResult<PromoteTopicToPostOutput> {
         promote::promote_topic_to_post(
-            &self.taxonomy,
+            self.blog_taxonomy.as_ref(),
             &self.routes,
             txn,
             tenant_id,
-            actor_id,
+            security,
             input,
         )
         .await
@@ -77,6 +82,7 @@ impl ContentOrchestrationBridge for ServerContentOrchestrationBridge {
     ) -> ContentResult<DemotePostToTopicOutput> {
         demote::demote_post_to_topic(
             &self.taxonomy,
+            self.blog_taxonomy.as_ref(),
             &self.routes,
             txn,
             tenant_id,

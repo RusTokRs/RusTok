@@ -10,12 +10,17 @@ Persistence entities are **not** public API. Consumers use owner DTOs, services,
 transport roots, or explicit ports. The orchestration bridge executes via typed owner
 in-transaction commands (`create_promoted_post_in_tx`, `load_post_for_demotion_in_tx`,
 `delete_demoted_post_in_tx`, `ensure_blog_category_exists_in_tx`,
-`ensure_blog_slug_unique_in_tx`, `load_post_tag_ids_in_tx`) exposed through `ports`
+`ensure_blog_slug_unique_in_tx`, `load_post_tag_names_in_tx`,
+`sync_promoted_post_tags_in_tx`) exposed through `ports`
 and `services::orchestration`, resolving finding L-4 with zero entity leakage.
 
 Content conversions enter `ports::lock_tag_attachments_writer_in_tx` before
 creating, loading for demotion or deleting Blog posts. The same transaction
 must cover Taxonomy tag handling, Blog links, and their usage projection.
+Promotion resolves tags through the same Blog policy as post creation and
+requires `tags:create` when a label needs a new Blog term. Demotion reads and
+removes tags through the Blog provider and refreshes usage in the owner
+transaction.
 
 ## Public surface
 

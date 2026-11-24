@@ -1,4 +1,5 @@
 use chrono::Utc;
+use rustok_blog::ports::{BlogTaxonomyPort, sync_promoted_post_tags_in_tx};
 use rustok_blog::{
     CreatePromotedPostInput, PromotedPostTranslationInput, create_promoted_post_in_tx,
     ensure_blog_category_exists_in_tx, ensure_blog_slug_unique_in_tx,
@@ -6,9 +7,9 @@ use rustok_blog::{
 use rustok_content::{
     ContentError, ContentResult, PromoteTopicToPostInput, PromoteTopicToPostOutput,
 };
+use rustok_core::SecurityContext;
 use rustok_forum::services::topic_routes::forum_topic_route;
 use rustok_forum::{TopicStatus, forum_topic};
-use rustok_taxonomy::TaxonomyService;
 use sea_orm::{ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
@@ -18,16 +19,17 @@ use crate::bridge::helpers::{
     load_forum_reply_records_in_tx, load_topic_translations_in_tx, locales_from_topic_translations,
     normalize_locale, normalize_slug, resolve_topic_translation,
 };
-use crate::bridge::tags::{load_forum_tag_names_for_topic_in_tx, sync_blog_tags_for_post_in_tx};
+use crate::bridge::tags::load_forum_tag_names_for_topic_in_tx;
 
 pub(crate) async fn promote_topic_to_post(
-    taxonomy: &TaxonomyService,
+    taxonomy: &dyn BlogTaxonomyPort,
     routes: &OwnerRoutes,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
-    actor_id: Option<Uuid>,
+    security: &SecurityContext,
     input: &PromoteTopicToPostInput,
 ) -> ContentResult<PromoteTopicToPostOutput> {
+    let actor_id = security.user_id;
     if tenant_id.is_nil() {
         return Err(ContentError::validation("tenant_id must not be nil"));
     }
@@ -161,15 +163,17 @@ pub(crate) async fn promote_topic_to_post(
         None,
     )
     .await?;
-    sync_blog_tags_for_post_in_tx(
+    sync_promoted_post_tags_in_tx(
         taxonomy,
         txn,
         tenant_id,
         post_id,
         &tags,
         &resolved.effective_locale,
+        security,
     )
-    .await?;
+    .await
+    .map_err(crate::errors::blog_error_to_content_error)?;
 
     forum_topic::Entity::delete_many()
         .filter(forum_topic::Column::TenantId.eq(tenant_id))

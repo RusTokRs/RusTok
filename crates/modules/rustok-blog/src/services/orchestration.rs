@@ -19,15 +19,19 @@ use super::{
         CATEGORY_DESCRIPTION_MAX_CHARS, CATEGORY_NAME_MAX_CHARS, CATEGORY_SLUG_MAX_CHARS,
         record_category_copy_change_in_tx,
     },
-    post::MAX_TAG_NAME_CHARS,
+    post::{MAX_TAG_NAME_CHARS, validate_tags},
     rbac::enforce_scope,
-    tag::{TAG_SLUG_MAX_CHARS, publish_blog_reindex_in_tx},
+    tag::{
+        TAG_SLUG_MAX_CHARS, publish_blog_reindex_in_tx, remove_post_tag_links_with_port_in_tx,
+        sync_post_tags_in_tx,
+    },
 };
 use crate::entities::{
     blog_category, blog_comment_projection_delivery, blog_post, blog_post_channel_visibility,
     blog_post_tag, blog_post_translation,
 };
 use crate::error::{BlogError, BlogResult};
+use crate::ports::taxonomy::BlogTaxonomyPort;
 
 #[derive(Clone, Copy)]
 pub enum BlogTaxonomyTranslationKind {
@@ -245,10 +249,60 @@ pub async fn load_post_tag_ids_in_tx(
         .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
         .filter(blog_post_tag::Column::PostId.eq(post_id))
         .order_by_asc(blog_post_tag::Column::CreatedAt)
+        .order_by_asc(blog_post_tag::Column::TagId)
         .all(txn)
         .await
         .map_err(BlogError::from)?;
     Ok(relations.into_iter().map(|item| item.tag_id).collect())
+}
+
+/// Transfer the tags through the same owner policy and projection as a post edit.
+pub async fn sync_promoted_post_tags_in_tx(
+    taxonomy: &dyn BlogTaxonomyPort,
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    post_id: Uuid,
+    tags: &[String],
+    locale: &str,
+    security: &SecurityContext,
+) -> BlogResult<()> {
+    validate_tags(tags)?;
+    let allow_create =
+        security.get_scope(Resource::Tags, Action::Create) != rustok_core::PermissionScope::None;
+    sync_post_tags_in_tx(
+        taxonomy,
+        txn,
+        tenant_id,
+        post_id,
+        tags,
+        locale,
+        allow_create,
+    )
+    .await
+}
+
+/// Read localized tag names for a conversion through the selected Blog provider.
+pub async fn load_post_tag_names_in_tx(
+    taxonomy: &dyn BlogTaxonomyPort,
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    post_id: Uuid,
+    locale: &str,
+) -> BlogResult<Vec<String>> {
+    let ids = load_post_tag_ids_in_tx(txn, tenant_id, post_id).await?;
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut tags = taxonomy
+        .load_tags_by_ids(txn.into(), tenant_id, &ids, locale, None)
+        .await?;
+    ids.into_iter()
+        .map(|id| {
+            tags.remove(&id)
+                .map(|tag| tag.name)
+                .ok_or(BlogError::TaxonomyTermNotFound(id))
+        })
+        .collect()
 }
 
 /// A translation record loaded for demoting a blog post to a forum topic.
@@ -322,8 +376,9 @@ pub async fn load_post_for_demotion_in_tx(
 }
 
 /// Deletes a demoted blog post, its translations, and cleans up its tag usage within the transaction.
-#[instrument(skip(txn), fields(tenant_id = %tenant_id, post_id = %post_id))]
+#[instrument(skip(txn, taxonomy), fields(tenant_id = %tenant_id, post_id = %post_id))]
 pub async fn delete_demoted_post_in_tx(
+    taxonomy: &dyn BlogTaxonomyPort,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     post_id: Uuid,
@@ -342,7 +397,7 @@ pub async fn delete_demoted_post_in_tx(
         .ok_or(BlogError::PostNotFound(post_id))?;
 
     // Remove tags and refresh usage projection
-    crate::services::remove_post_tag_links_in_tx(txn, tenant_id, post_id).await?;
+    remove_post_tag_links_with_port_in_tx(Some(taxonomy), txn, tenant_id, post_id).await?;
 
     // Delete comment projection delivery records
     blog_comment_projection_delivery::Entity::delete_many()

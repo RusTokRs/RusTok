@@ -1,17 +1,21 @@
 use std::sync::Arc;
 
-use rustok_api::RichTextDocument;
-use rustok_blog::PostService;
-use rustok_comments::{comment, comment_thread};
+use rustok_api::{Action, Permission, Resource, RichTextDocument};
+use rustok_blog::{PostService, TagService, dto::ListTagsFilter};
 use rustok_content::{
-    CanonicalRouteResolver, ContentOrchestrationService, PromoteTopicToPostInput,
+    CanonicalRouteResolver, ContentError, ContentOrchestrationService, DemotePostToTopicInput,
+    PromoteTopicToPostInput,
 };
+use rustok_core::{SecurityContext, UserRole};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput, ReplyService,
-    TopicService, forum_category, forum_topic,
+    TopicService, forum_topic,
 };
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use rustok_taxonomy::{
+    CreateTaxonomyTermInput, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
+};
+use sea_orm::{EntityTrait, TransactionTrait};
 use uuid::Uuid;
 
 use crate::OwnerCanonicalRouteResolver;
@@ -22,7 +26,205 @@ use crate::tests::helpers::{
 };
 
 #[tokio::test]
-async fn promote_topic_to_post_moves_replies_and_registers_redirects() {
+async fn conversion_preserves_blog_tag_permissions_and_usage() {
+    let db = setup_conversion_test_db().await;
+    ensure_conversion_schema(&db).await;
+    let events = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+    let tenant_id = Uuid::new_v4();
+    let admin = admin_security();
+    insert_test_actor(&db, tenant_id, &admin).await;
+    let category = CategoryService::new(db.clone())
+        .create(
+            tenant_id,
+            admin.clone(),
+            CreateCategoryInput {
+                locale: "en".into(),
+                name: "General".into(),
+                slug: "general".into(),
+                description: None,
+                icon: None,
+                color: None,
+                parent_id: None,
+                position: Some(0),
+                moderated: false,
+            },
+        )
+        .await
+        .unwrap();
+    let topic = TopicService::new(db.clone(), events.clone())
+        .with_settings_providers(zero_cooldown_providers())
+        .create(
+            tenant_id,
+            admin.clone(),
+            CreateTopicInput {
+                locale: "en".into(),
+                category_id: category.id,
+                title: "Release Notes".into(),
+                slug: Some("release-notes".into()),
+                body: RichTextDocument::single_paragraph("Release notes body"),
+                metadata: serde_json::json!({}),
+                tags: Vec::new(),
+                channel_slugs: None,
+            },
+        )
+        .await
+        .unwrap();
+    let taxonomy = TaxonomyService::new(db.clone());
+    let shared_tag = taxonomy
+        .create_term(
+            tenant_id,
+            admin.clone(),
+            CreateTaxonomyTermInput {
+                kind: TaxonomyTermKind::Tag,
+                scope_type: TaxonomyScopeType::Global,
+                scope_value: None,
+                locale: "en".into(),
+                name: "Shared".into(),
+                canonical_key: None,
+                slug: None,
+                description: None,
+                aliases: Vec::new(),
+            },
+        )
+        .await
+        .unwrap();
+    let txn = db.begin().await.unwrap();
+    crate::bridge::tags::sync_forum_tags_for_topic_in_tx(
+        &taxonomy,
+        &txn,
+        tenant_id,
+        topic.id,
+        &["Shared".into(), "Release".into()],
+        "en",
+    )
+    .await
+    .unwrap();
+    txn.commit().await.unwrap();
+
+    let service = ContentOrchestrationService::new(
+        db.clone(),
+        events.clone(),
+        Arc::new(ServerContentOrchestrationBridge::new(
+            db.clone(),
+            events.clone(),
+        )),
+    );
+    let input = PromoteTopicToPostInput {
+        topic_id: topic.id,
+        locale: "en".into(),
+        blog_category_id: None,
+        reason: None,
+        idempotency_key: "promote-with-tags".into(),
+    };
+    let restricted = SecurityContext::from_permissions(
+        UserRole::Admin,
+        admin.user_id,
+        [
+            Permission::new(Resource::ForumTopics, Action::Moderate),
+            Permission::new(Resource::BlogPosts, Action::Create),
+        ],
+    );
+    let error = service
+        .promote_topic_to_post(tenant_id, restricted, input.clone())
+        .await
+        .unwrap_err();
+    assert!(matches!(error, ContentError::Forbidden(_)));
+    assert!(
+        forum_topic::Entity::find_by_id(topic.id)
+            .one(&db)
+            .await
+            .unwrap()
+            .is_some()
+    );
+
+    let promoted = service
+        .promote_topic_to_post(tenant_id, admin.clone(), input.clone())
+        .await
+        .unwrap();
+    let replay = service
+        .promote_topic_to_post(tenant_id, admin.clone(), input)
+        .await
+        .unwrap();
+    assert_eq!(replay.target_id, promoted.target_id);
+    let routes = OwnerCanonicalRouteResolver::new(db.clone());
+    let promoted_route = routes
+        .resolve_route(
+            tenant_id,
+            "en",
+            &format!("/modules/forum?topic={}", topic.id),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(promoted_route.redirect_required);
+    assert_eq!(promoted_route.target_id, promoted.target_id);
+    let blog_taxonomy = crate::in_process_blog_taxonomy_port(db.clone());
+    let posts = PostService::new(db.clone(), events).with_taxonomy_port(blog_taxonomy.clone());
+    let tags = TagService::new(db.clone()).with_taxonomy_port(blog_taxonomy);
+    let post = posts
+        .get_post(tenant_id, admin.clone(), promoted.target_id, "en")
+        .await
+        .unwrap();
+    assert_eq!(post.tags.len(), 2);
+    assert_eq!(
+        tags.get_tag(tenant_id, admin.clone(), shared_tag, "en")
+            .await
+            .unwrap()
+            .use_count,
+        1
+    );
+    let demoted = service
+        .demote_post_to_topic(
+            tenant_id,
+            admin.clone(),
+            DemotePostToTopicInput {
+                post_id: promoted.target_id,
+                locale: "en".into(),
+                forum_category_id: category.id,
+                reason: None,
+                idempotency_key: "demote-with-tags".into(),
+            },
+        )
+        .await
+        .unwrap();
+    let remaining_global_usage = tags
+        .get_tag(tenant_id, admin.clone(), shared_tag, "en")
+        .await
+        .unwrap();
+    assert_eq!(remaining_global_usage.use_count, 0);
+    let (remaining, total) = tags
+        .list_tags(tenant_id, admin, ListTagsFilter::default())
+        .await
+        .unwrap();
+    assert_eq!(total, 1);
+    assert_eq!(remaining[0].slug, "release");
+    assert_eq!(remaining[0].use_count, 0);
+    let demoted_route = routes
+        .resolve_route(tenant_id, "en", "/modules/blog?slug=release-notes")
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(demoted_route.redirect_required);
+    assert_eq!(demoted_route.target_id, demoted.target_id);
+    let txn = db.begin().await.unwrap();
+    let mut names = crate::bridge::tags::load_forum_tag_names_for_topic_in_tx(
+        &txn,
+        tenant_id,
+        demoted.target_id,
+        "en",
+        None,
+    )
+    .await
+    .unwrap();
+    names
+        .iter_mut()
+        .for_each(|name| name.make_ascii_lowercase());
+    names.sort();
+    assert_eq!(names, ["release", "shared"]);
+}
+
+#[tokio::test]
+async fn promotion_rejects_topics_with_replies_and_preserves_the_source() {
     let db = setup_conversion_test_db().await;
     ensure_conversion_schema(&db).await;
 
@@ -62,7 +264,7 @@ async fn promote_topic_to_post_moves_replies_and_registers_redirects() {
                 slug: Some("forum-thread".to_string()),
                 body: RichTextDocument::single_paragraph("Original forum body"),
                 metadata: serde_json::json!({}),
-                tags: vec!["release".to_string(), "notes".to_string()],
+                tags: Vec::new(),
                 channel_slugs: None,
             },
         )
@@ -106,143 +308,29 @@ async fn promote_topic_to_post_moves_replies_and_registers_redirects() {
             events.clone(),
         )),
     );
-    let promoted = match orchestration
+    let error = orchestration
         .promote_topic_to_post(
             tenant_id,
-            security.clone(),
+            security,
             PromoteTopicToPostInput {
                 topic_id: topic.id,
-                locale: "en".to_string(),
+                locale: "en".into(),
                 blog_category_id: None,
-                reason: Some("promote discussion".to_string()),
-                idempotency_key: "topic-to-post-e2e".to_string(),
+                reason: None,
+                idempotency_key: "topic-with-replies".into(),
             },
         )
         .await
-    {
-        Ok(output) => output,
-        Err(error) => {
-            assert!(
-                error
-                    .to_string()
-                    .contains("until Forum uses the canonical richtext contract")
-            );
-            assert!(
-                forum_topic::Entity::find_by_id(topic.id)
-                    .one(&db)
-                    .await
-                    .expect("forum topic lookup should succeed")
-                    .is_some()
-            );
-            return;
-        }
-    };
-
-    assert!(
-        forum_topic::Entity::find_by_id(topic.id)
-            .one(&db)
-            .await
-            .expect("forum topic lookup should succeed")
-            .is_none(),
-        "source forum topic should be deleted after promotion"
-    );
-
-    let post = PostService::new(db.clone(), events.clone())
-        .get_post(tenant_id, security.clone(), promoted.target_id, "en")
-        .await
-        .expect("promoted blog post should exist");
-    assert_eq!(post.slug, "forum-thread");
-    assert_eq!(post.comment_count, 2);
-    assert_eq!(post.title, "Forum thread");
-    assert!(post.content_plain_text.contains("Original forum body"));
-
-    let thread = comment_thread::Entity::find()
-        .filter(comment_thread::Column::TargetType.eq("blog_post"))
-        .filter(comment_thread::Column::TargetId.eq(promoted.target_id))
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        ContentError::Validation(message)
+            if message.contains("until Forum uses the canonical richtext contract")
+    ));
+    let source = forum_topic::Entity::find_by_id(topic.id)
         .one(&db)
         .await
-        .expect("comment thread lookup should succeed")
-        .expect("destination comment thread should exist");
-    let comments = comment::Entity::find()
-        .filter(comment::Column::ThreadId.eq(thread.id))
-        .all(&db)
-        .await
-        .expect("comments lookup should succeed");
-    assert_eq!(comments.len(), 2);
-    let comment_bodies = rustok_comments::comment_body::Entity::find()
-        .filter(
-            rustok_comments::comment_body::Column::CommentId
-                .is_in(comments.iter().map(|c| c.id).collect::<Vec<_>>()),
-        )
-        .all(&db)
-        .await
-        .expect("comment bodies lookup should succeed");
-    assert_eq!(comment_bodies.len(), 2);
-    assert!(comment_bodies.iter().any(|b| b.body == "First reply"));
-    assert!(comment_bodies.iter().any(|b| b.body == "Second reply"));
-
-    assert_eq!(post.tags.len(), 2);
-
-    let category = forum_category::Entity::find_by_id(category.id)
-        .one(&db)
-        .await
-        .expect("forum category lookup should succeed")
-        .expect("forum category should exist");
-    assert_eq!(category.topic_count, 0);
-    assert_eq!(category.reply_count, 0);
-
-    let canonical = OwnerCanonicalRouteResolver::new(db.clone());
-    let alias_resolution = canonical
-        .resolve_route(
-            tenant_id,
-            "en",
-            format!("/modules/forum?topic={}", topic.id).as_str(),
-        )
-        .await
-        .expect("legacy forum route should resolve")
-        .expect("legacy forum route should exist as alias");
-    assert!(alias_resolution.redirect_required);
-    assert_eq!(alias_resolution.target_kind, "blog_post");
-    assert_eq!(alias_resolution.target_id, promoted.target_id);
-    assert_eq!(
-        alias_resolution.canonical_url,
-        "/modules/blog?slug=forum-thread"
-    );
-
-    let canonical_resolution = canonical
-        .resolve_route(tenant_id, "en", "/modules/blog?slug=forum-thread")
-        .await
-        .expect("canonical blog route should resolve")
-        .expect("canonical blog route should exist");
-    assert!(!canonical_resolution.redirect_required);
-    assert_eq!(canonical_resolution.target_kind, "blog_post");
-    assert_eq!(canonical_resolution.target_id, promoted.target_id);
-
-    let promoted_retry = orchestration
-        .promote_topic_to_post(
-            tenant_id,
-            security.clone(),
-            PromoteTopicToPostInput {
-                topic_id: topic.id,
-                locale: "EN".to_string(),
-                blog_category_id: None,
-                reason: Some("promote discussion".to_string()),
-                idempotency_key: "topic-to-post-e2e".to_string(),
-            },
-        )
-        .await
-        .expect("idempotent promotion retry should succeed");
-    assert_eq!(promoted_retry.target_id, promoted.target_id);
-    assert_eq!(promoted_retry.moved_comments, promoted.moved_comments);
-
-    let post_after_retry = PostService::new(db.clone(), events.clone())
-        .get_post(tenant_id, security.clone(), promoted.target_id, "en")
-        .await
-        .expect("blog post after retry should exist");
-    let comments_after_retry = comment::Entity::find()
-        .all(&db)
-        .await
-        .expect("stored comments after retry query should succeed");
-    assert_eq!(post_after_retry.tags.len(), 2);
-    assert_eq!(comments_after_retry.len(), 2);
+        .unwrap()
+        .unwrap();
+    assert_eq!(source.reply_count, 2);
 }

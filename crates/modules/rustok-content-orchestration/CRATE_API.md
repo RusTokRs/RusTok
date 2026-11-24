@@ -52,6 +52,9 @@
 - **Multi-Tenant Isolation**: Every database read, mutation, and delete statement explicitly enforces `tenant_id` equality (`Column::TenantId.eq(tenant_id)`).
 - **Non-Nil UUID Guards**: All tenant IDs, topic IDs, post IDs, category IDs, and reply IDs are validated against `is_nil()` before database operations.
 - **Atomic Cross-Module Transformations**: Moving entities between Blog and Forum must be transactionally safe within a single database transaction or fail closed.
+- **Blog tags**: Promotion uses the caller's Blog tag creation grant and Blog's
+  tag validation and usage projection. Demotion resolves and detaches Blog
+  tags through the same provider.
 - **Canonical URL Preservation**: Redirects are registered in owner tables (`blog_post_routes`, `forum_topic_routes`) on transformation, and obsolete routes are purged.
 - **Incompatible Content Safety**: Blog-to-Forum or Forum-to-Blog conversion is rejected when comments/replies cannot be losslessly translated until universal richtext adoption is complete.
 - **Unique Reply IDs**: Splitting topics validates that all reply IDs are unique, non-empty, and belong to the source topic.
