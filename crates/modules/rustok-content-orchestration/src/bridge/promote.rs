@@ -45,6 +45,9 @@ pub(crate) async fn promote_topic_to_post(
         return Err(ContentError::validation("actor_id must not be nil"));
     }
     let requested_locale = normalize_locale(&input.locale)?;
+    rustok_blog::ports::lock_tag_attachments_writer_in_tx(txn, tenant_id)
+        .await
+        .map_err(crate::errors::blog_error_to_content_error)?;
     let topic = find_topic_in_tx(txn, tenant_id, input.topic_id).await?;
     let translations = load_topic_translations_in_tx(txn, tenant_id, topic.id).await?;
     let resolved = resolve_topic_translation(&translations, &requested_locale)?;

@@ -10,6 +10,25 @@
 
 use super::*;
 use crate::ports::taxonomy::BlogTaxonomyPort;
+use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+
+/// Enter Blog's tag write transaction before locking a post or Taxonomy term.
+/// Replacing relations and recounting usage take place under the same lock.
+pub async fn lock_tag_attachments_writer_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+) -> BlogResult<()> {
+    if txn.get_database_backend() == DatabaseBackend::Postgres {
+        txn.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+            [format!("blog-tag-attachments:{tenant_id}").into()],
+        ))
+        .await?;
+    }
+    // SQLite serializes relation writes before the projection is recounted.
+    Ok(())
+}
 
 pub(super) async fn bump_posts_for_tag_relation_removal_in_tx(
     txn: &DatabaseTransaction,

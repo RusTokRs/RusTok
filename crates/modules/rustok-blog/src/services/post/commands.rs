@@ -157,6 +157,9 @@ impl PostService {
         let next_schedule =
             validate_schedule_for_update(&scheduled_at, storage_to_status(&post.status)?, now)?;
         let txn = self.db.begin().await.map_err(BlogError::from)?;
+        if tags.is_some() {
+            lock_tag_attachments_writer_in_tx(&txn, tenant_id).await?;
+        }
 
         if let Some(ref slug) = normalized_slug {
             self.ensure_slug_unique_in_tx(&txn, tenant_id, slug, Some(post_id))
@@ -609,6 +612,7 @@ impl PostService {
         }
 
         let txn = self.db.begin().await.map_err(BlogError::from)?;
+        lock_tag_attachments_writer_in_tx(&txn, tenant_id).await?;
         remove_post_tag_links_with_port_in_tx(Some(&*self.taxonomy_port), &txn, tenant_id, post_id)
             .await?;
         // The comment projection ledger of a deleted post is terminal state:

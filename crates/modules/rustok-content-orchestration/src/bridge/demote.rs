@@ -48,6 +48,9 @@ pub(crate) async fn demote_post_to_topic(
         return Err(ContentError::validation("actor_id must not be nil"));
     }
     let requested_locale = normalize_locale(&input.locale)?;
+    rustok_blog::ports::lock_tag_attachments_writer_in_tx(txn, tenant_id)
+        .await
+        .map_err(crate::errors::blog_error_to_content_error)?;
     ensure_forum_category_exists_in_tx(txn, tenant_id, input.forum_category_id).await?;
     let post = load_post_for_demotion_in_tx(txn, tenant_id, input.post_id)
         .await
