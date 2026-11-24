@@ -13,8 +13,10 @@
   let dragFrame = null;
   let dragEpoch = 0;
   let lastDragPoint = null;
+  let pageHidden = false;
 
   const send = (type, payload = {}) => {
+    if (pageHidden) return;
     parent.postMessage(JSON.stringify({
       protocol,
       instance_id: instanceId,
@@ -261,6 +263,18 @@
   document.addEventListener('scroll', scheduleMeasure, { capture: true, passive: true });
   window.addEventListener('resize', () => { reportViewport(); scheduleMeasure(); }, { passive: true });
   window.addEventListener('scroll', () => { reportViewport(); scheduleMeasure(); }, { passive: true });
+
+  window.addEventListener('pagehide', () => {
+    cancelScheduledDrag();
+    send('teardown');
+    pageHidden = true;
+  });
+  window.addEventListener('pageshow', (event) => {
+    if (!event.persisted) return;
+    pageHidden = false;
+    announce();
+    scheduleMeasure();
+  });
 
   announce();
   setTimeout(announce, 0);
