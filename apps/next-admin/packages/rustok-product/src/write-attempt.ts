@@ -3,7 +3,11 @@
  * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
  * See the LICENSE file in the project root for full license terms.
  */
-import { isVariantCreateRefusalCode, isVariantId } from './variant-create.ts';
+import {
+  isVariantCreateRefusalCode,
+  isVariantId,
+  isVariantLifecycleRefusalCode
+} from './variant-create.ts';
 import { isAxesDurableRefusalCode } from './axis-reconfiguration.ts';
 import {
   isAttributeDefinitionResult,
