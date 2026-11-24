@@ -159,6 +159,7 @@ jobs:
           run_checked flex-outbox-tests cargo test --locked -p flex --test generic_attached_definitions || failed=1
           run_checked modules-ssr cargo check --locked --lib -p rustok-cart-storefront -p rustok-product-storefront --features ssr || failed=1
           run_checked admission-test cargo test --locked --lib -p rustok-commerce buyer_admission_checks_both_owners_and_the_selected_channel || failed=1
+          run_checked cart-line-metadata-tests cargo test --locked --lib -p rustok-commerce storefront_cart_runtime::tests || failed=1
           run_checked graphql-admission-test cargo test --locked -p rustok-commerce --test graphql_runtime_parity_test storefront_cart_admission_requires_both_owners_without_hiding_product_catalog || failed=1
           run_checked admin-auth-host-tests cargo test --locked --lib -p rustok-admin app::auth_ssr::tests || failed=1
           run_checked host cargo check --locked --lib -p rustok-storefront || failed=1

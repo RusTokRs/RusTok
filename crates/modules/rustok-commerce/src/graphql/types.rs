@@ -32,30 +32,6 @@ impl From<GqlProductStatus> for ProductStatus {
     }
 }
 
-impl From<rustok_product::entities::product::ProductStatus> for GqlProductStatus {
-    fn from(status: rustok_product::entities::product::ProductStatus) -> Self {
-        match status {
-            rustok_product::entities::product::ProductStatus::Draft => GqlProductStatus::Draft,
-            rustok_product::entities::product::ProductStatus::Active => GqlProductStatus::Active,
-            rustok_product::entities::product::ProductStatus::Archived => {
-                GqlProductStatus::Archived
-            }
-        }
-    }
-}
-
-impl From<GqlProductStatus> for rustok_product::entities::product::ProductStatus {
-    fn from(status: GqlProductStatus) -> Self {
-        match status {
-            GqlProductStatus::Draft => rustok_product::entities::product::ProductStatus::Draft,
-            GqlProductStatus::Active => rustok_product::entities::product::ProductStatus::Active,
-            GqlProductStatus::Archived => {
-                rustok_product::entities::product::ProductStatus::Archived
-            }
-        }
-    }
-}
-
 /// Catalog-authoritative product detail.
 ///
 /// For pricing-authoritative reads with explicit currency/region/price-list/channel

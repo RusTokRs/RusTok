@@ -65,7 +65,7 @@ const listHandler = between(
   controller,
   'pub async fn list_products(',
   '/// Show published storefront product',
-  'storefront Product list compatibility path',
+  'storefront Product list',
 );
 
 for (const [value, label] of [
@@ -141,10 +141,10 @@ for (const [value, label] of [
   ['apply_public_channel_inventory_to_product(', 'owner public inventory projection'],
 ]) requireText(productQueries, value, label);
 
-for (const [value, label] of [
-  ['CatalogService::new(runtime.db_clone(), runtime.event_bus())', 'legacy list concrete Product service remains explicit'],
-  ['product_translation_title_search_condition(', 'legacy REST localized search remains explicit'],
-]) requireText(listHandler, value, label);
+requireText(listHandler, '.list_legacy_storefront_http_products(', 'list uses the Product owner port');
+for (const value of ['CatalogService::new(', 'product_translation_title_search_condition(']) {
+  forbidText(listHandler, value, 'list must not restore the old database path');
+}
 
 requireText(
   plan,

@@ -623,7 +623,7 @@ requireAll(storefrontProductsLegacy, [
   '"validation",',
   '"not_found",',
   '"unexpected_owner_error",',
-  '"storefront product operation failed with bounded diagnostics"',
+  '"storefront product owner read failed with bounded diagnostics"',
   '"storefront shipping-option owner read failed with bounded diagnostics"',
 ], 'storefront auxiliary bounded diagnostics');
 

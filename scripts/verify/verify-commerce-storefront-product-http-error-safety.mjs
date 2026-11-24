@@ -23,8 +23,7 @@ const read = (relativePath) => {
 };
 
 const router = read('crates/modules/rustok-commerce/src/controllers/store/mod.rs');
-const mountedList = read('crates/modules/rustok-commerce/src/controllers/store/products_owner_list.rs');
-const legacyProducts = read('crates/modules/rustok-commerce/src/controllers/store/products.rs');
+const controller = read('crates/modules/rustok-commerce/src/controllers/store/products.rs');
 const ownerHttp = read('crates/modules/rustok-product/src/storefront_http_read_port.rs');
 const productPorts = read('crates/modules/rustok-product/src/ports.rs');
 const productQueries = read('crates/modules/rustok-product/src/services/catalog/queries.rs');
@@ -46,31 +45,27 @@ const between = (content, start, end, label) => {
   return content.slice(startIndex, endIndex);
 };
 
-const listStart = mountedList.indexOf('pub async fn list_products(');
-const listHandler = listStart < 0 ? '' : mountedList.slice(listStart);
-if (listStart < 0) failures.push('mounted storefront Product list: unable to isolate source block');
-const listMapper = between(
-  mountedList,
-  'fn map_storefront_product_list_port_error(',
-  '/// List published storefront products through the Product-owned legacy HTTP projection.',
-  'mounted storefront Product list mapper',
+const listHandler = between(
+  controller,
+  'pub async fn list_products(',
+  '/// Show published storefront product',
+  'mounted storefront Product list',
 );
 const detailHandler = between(
-  legacyProducts,
+  controller,
   'pub async fn show_product(',
   '/// List available storefront regions',
   'mounted storefront Product detail implementation',
 );
-const detailMapper = between(
-  legacyProducts,
+const productMapper = between(
+  controller,
   'fn map_storefront_product_port_error(',
-  'fn map_storefront_auxiliary_port_error(',
-  'storefront Product detail mapper',
+  'fn storefront_port_error_kind(',
+  'storefront Product owner mapper',
 );
 
 for (const [value, label] of [
-  ['#[path = "products.rs"]\npub mod products_legacy;', 'legacy Product source alias'],
-  ['#[path = "products_owner_list.rs"]\npub mod products;', 'mounted Product module alias'],
+  ['pub mod products;', 'mounted Product controller'],
   ['.route("/products", axum::routing::get(products::list_products))', 'mounted list route'],
   ['.route("/products/{id}", axum::routing::get(products::show_product))', 'mounted detail route'],
 ]) requireText(router, value, label);
@@ -95,7 +90,7 @@ for (const value of [
   'product_translation_title_search_condition(',
 ]) forbidText(listHandler, value, 'mounted list foreign Product storage/service access');
 
-const portPolicy = between(legacyProducts,
+const portPolicy = between(controller,
   'pub(super) fn storefront_product_port_http_policy(',
   'fn map_storefront_product_port_error(', 'shared Product port HTTP policy');
 for (const marker of [
@@ -113,23 +108,22 @@ for (const [kind, status, code] of [
 ]) requireText(portPolicy.replace(/\s/g, ''), `PortErrorKind::${kind}=>(StatusCode::${status},"${code}",`, 'typed refusal must retain its correct HTTP status/code');
 forbidText(portPolicy, 'PortErrorKind::Conflict | PortErrorKind::Forbidden', 'domain refusal must not collapse to invariant');
 forbidText(portPolicy, '_ =>', 'HTTP policy must remain exhaustive');
-for (const [mapper, prefix] of [[listMapper, 'list'], [detailMapper, 'detail']]) {
-  for (const marker of [
-    'storefront_product_port_http_policy(&error.kind)',
-    'owner_error_kind = ?error.kind', 'owner_code_length = error.code.chars().count()',
-    'retryable = error.retryable', 'correlation_id_length = context.correlation_id.chars().count()',
-    'HttpError::new(status, code, message)',
-  ]) requireText(mapper, marker, `${prefix}: shared policy and bounded diagnostics`);
-  for (const value of ['match &error.kind', 'error = ?error', 'error.message', 'error.to_string()',
-    'err.to_string()', 'correlation_id = %context.correlation_id']) {
-    forbidText(mapper, value, `${prefix}: raw payload or parallel classifier`);
-  }
+for (const marker of [
+  'storefront_product_port_http_policy(&error.kind)',
+  'owner_error_kind = ?error.kind', 'owner_code_length = error.code.chars().count()',
+  'retryable = error.retryable', 'correlation_id_length = context.correlation_id.chars().count()',
+  'HttpError::new(status, code, message).with_retryable(error.retryable)',
+]) requireText(productMapper, marker, 'shared policy and bounded diagnostics');
+for (const value of ['match &error.kind', 'error = ?error', 'error.message', 'error.to_string()',
+  'err.to_string()', 'correlation_id = %context.correlation_id']) {
+  forbidText(productMapper, value, 'raw payload or parallel classifier');
 }
-const listContext = between(mountedList, 'fn storefront_product_list_port_context(', 'fn storefront_product_list_unavailable(', 'list context factory');
-const detailContext = between(legacyProducts, 'fn storefront_product_port_context(', 'pub(super) fn storefront_product_port_http_policy(', 'detail context factory');
-for (const [source, label] of [[listContext, 'list'], [detailContext, 'detail']]) {
-  requireText(source, 'Uuid::new_v4().to_string()', `${label}: fresh opaque owner correlation`);
-  forbidText(source, 'format!(', `${label}: do not encode page/resource identity in correlation`);
+const context = between(controller, 'fn storefront_product_port_context(', 'pub(super) fn storefront_product_port_http_policy(', 'shared context factory');
+requireText(context, 'Uuid::new_v4().to_string()', 'fresh opaque owner correlation');
+forbidText(context, 'format!(', 'correlation must not encode page or resource identity');
+for (const [source, label] of [[listHandler, 'list'], [detailHandler, 'detail']]) {
+  requireText(source, 'storefront_product_port_context(', `${label}: shared context factory`);
+  requireText(source, 'map_storefront_product_port_error(', `${label}: shared error mapper`);
 }
 forbidText(detailHandler, 'tenant_id = %tenant.id', 'bounded mounted detail diagnostic');
 forbidText(detailHandler, 'product_id = %id', 'bounded mounted detail diagnostic');
@@ -155,11 +149,11 @@ for (const [value, label] of [
   ['MAX_LEGACY_STOREFRONT_HTTP_PRODUCTS_PER_PAGE: u64 = 100', 'REST page-size compatibility'],
   ['product::Column::Status.eq(product::ProductStatus::Active)', 'owner active filter'],
   ['product::Column::PublishedAt.is_not_null()', 'owner published filter'],
-  ['crate::services::catalog::helpers::is_metadata_visible_for_public_channel(', 'owner channel visibility'],
-  ['let total = visible_products.len() as u64;', 'owner visible total'],
-  ['usize::try_from(offset)', 'owner checked pagination offset conversion'],
-  ['.skip(offset_usize)', 'owner pagination offset'],
-  ['.take(per_page as usize)', 'owner pagination limit'],
+  ['product_channel_visibility_condition(', 'owner SQL channel visibility'],
+  ['let total = query.clone().count(db).await?;', 'owner visible total'],
+  ['.checked_mul(per_page)', 'owner checked pagination offset'],
+  ['.offset(offset)', 'owner pagination offset'],
+  ['.limit(per_page)', 'owner pagination limit'],
   ['.unwrap_or_default()', 'owner empty missing translation'],
   ['shipping_profile_slug_from_metadata(&product.metadata)', 'owner metadata-only shipping profile'],
   ['.load_product_tag_map(tenant_id, &products, locale, Some(fallback_locale))', 'owner tag projection'],
@@ -177,17 +171,9 @@ for (const [value, label] of [
   ['apply_public_channel_inventory_to_product(', 'detail public inventory'],
 ]) requireText(productQueries, value, label);
 
-for (const [value, label] of [
-  ['super::products_legacy::show_product(', 'detail wrapper delegation'],
-  ['super::products_legacy::list_regions(', 'region wrapper delegation'],
-  ['super::products_legacy::list_shipping_options(', 'shipping-options wrapper delegation'],
-]) requireText(mountedList, value, label);
-requireText(legacyProducts, 'pub async fn list_regions(', 'legacy region handler retained');
-requireText(
-  legacyProducts,
-  'pub async fn list_shipping_options(',
-  'legacy shipping-options handler retained',
-);
+requireText(controller, 'pub async fn list_regions(', 'mounted region handler');
+requireText(controller, 'pub async fn list_shipping_options(', 'mounted shipping-options handler');
+forbidText(router, 'mod products_legacy', 'obsolete Product controller');
 
 if (failures.length > 0) {
   console.error('Commerce storefront Product HTTP error-safety verification failed:');

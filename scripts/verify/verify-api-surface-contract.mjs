@@ -378,12 +378,6 @@ const httpOwnerForwarders = [
     1,
   ],
   [
-    "crates/modules/rustok-commerce/src/controllers/store/products_owner_list.rs",
-    "map_storefront_product_list_port_error",
-    "error.retryable",
-    1,
-  ],
-  [
     "crates/modules/rustok-commerce/src/controllers/store/carts/shipping_owner_reads.rs",
     "map_shipping_port_error",
     "error.retryable",
@@ -463,7 +457,6 @@ for (const relativePath of [
   "crates/modules/rustok-commerce/src/controllers/store/carts.rs",
   "crates/modules/rustok-commerce/src/controllers/store/checkout.rs",
   "crates/modules/rustok-commerce/src/controllers/store/products.rs",
-  "crates/modules/rustok-commerce/src/controllers/store/products_owner_list.rs",
 ]) {
   requireCode(
     relativePath,

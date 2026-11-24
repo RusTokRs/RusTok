@@ -12,7 +12,7 @@ use crate::{entities, error::CommerceResult, ports::AsTaxonomyConnection};
 use crate::entities::product_tag;
 
 impl CatalogService {
-    pub async fn load_product_tag_map(
+    pub(crate) async fn load_product_tag_map(
         &self,
         tenant_id: Uuid,
         products: &[entities::product::Model],

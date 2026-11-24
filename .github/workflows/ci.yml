@@ -376,6 +376,9 @@ jobs:
       - name: Install dependencies
         working-directory: ${{ matrix.app }}
         run: npm ci
+      - name: Product package tests
+        working-directory: ${{ matrix.app }}
+        run: npm run test:product
       - name: Format
         working-directory: ${{ matrix.app }}
         run: npm run format:check --if-present

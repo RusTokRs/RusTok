@@ -20,6 +20,7 @@ import type {
 } from './attribute-lifecycle';
 import type {
   ProductAttributeValuePatch,
+  ProductBrandItem,
   ProductTranslation
 } from './api/types';
 import type { UpdateVariantInput } from './api/products';
@@ -38,7 +39,7 @@ export type ProductSavePayload = {
   primaryCategoryId?: string | null;
   tags: string[];
   /** Full brand-binding replacement for existing products; omit to keep. */
-  brands?: import('./api/types').ProductBrandItem[];
+  brands?: Omit<ProductBrandItem, 'brand'>[];
   status?: string;
   revision?: number | null;
   /** Persisted pre-axis editor requests remain replayable without changing their payload. */

@@ -110,7 +110,7 @@ mod marketplace_financial;
             rustok_product::dto::ProductTranslationResponse,
             rustok_product::dto::ProductImageResponse,
             rustok_product::dto::PriceResponse,
-            rustok_product::entities::product::ProductStatus,
+            rustok_product::dto::ProductStatus,
             crate::controllers::products::ListProductsParams,
             crate::controllers::store::StoreListProductsParams,
             crate::controllers::store::StoreContextQuery,

@@ -51,7 +51,7 @@ for (const forbidden of [
 
 const ownerTagsPath = 'crates/modules/rustok-product/src/services/catalog/tags.rs';
 const ownerTags = requireMarkers(ownerTagsPath, [
-  'pub async fn load_product_tag_map(',
+  'pub(crate) async fn load_product_tag_map(',
   'product_tag::Column::TenantId.eq(tenant_id)',
   'product_tag::Column::ProductId.is_in(product_ids.clone())',
   // Term hydration goes through the injected ProductTaxonomyPort; the caller
@@ -93,8 +93,8 @@ const migrationPath = 'crates/modules/rustok-product/src/migrations/m20260813_00
 requireMarkers(migrationPath, [
   'backfill_legacy_metadata_tags(&txn).await?',
   'normalize_term_route_key',
-  'TaxonomyScopeType::Module, PRODUCT_SCOPE_VALUE',
-  'TaxonomyScopeType::Global, ""',
+  '("module", PRODUCT_SCOPE_VALUE)',
+  '("global", "")',
   'FROM taxonomy_term_route_keys',
   'INSERT INTO taxonomy_term_translations (',
   'INSERT INTO translation_changes (',

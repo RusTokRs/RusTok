@@ -11,8 +11,7 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
 const router = read('crates/modules/rustok-commerce/src/controllers/store/mod.rs');
-const mounted = read('crates/modules/rustok-commerce/src/controllers/store/products_owner_list.rs');
-const legacy = read('crates/modules/rustok-commerce/src/controllers/store/products.rs');
+const mounted = read('crates/modules/rustok-commerce/src/controllers/store/products.rs');
 const owner = read('crates/modules/rustok-product/src/storefront_http_read_port.rs');
 const runtime = read('crates/modules/rustok-product/src/runtime.rs');
 const commerceRuntime = read('crates/modules/rustok-commerce/src/controllers/mod.rs');
@@ -29,8 +28,7 @@ const forbidText = (content, value, label) => {
 };
 
 for (const [value, label] of [
-  ['#[path = "products.rs"]\npub mod products_legacy;', 'legacy Product compatibility module'],
-  ['#[path = "products_owner_list.rs"]\npub mod products;', 'mounted Product owner-list module'],
+  ['pub mod products;', 'mounted Product controller'],
   ['.route("/products", axum::routing::get(products::list_products))', 'mounted list route'],
   ['.route("/products/{id}", axum::routing::get(products::show_product))', 'preserved detail route'],
 ]) requireText(router, value, label);
@@ -57,30 +55,32 @@ for (const [value, label] of [
   ['shipping_profile_slug: Some(item.shipping_profile_slug)', 'shipping-profile projection'],
   ['PaginationMeta::new(list.page, list.per_page, list.total)', 'pagination metadata'],
   ['path = "/store/products/{id}"', 'detail OpenAPI wrapper'],
-  ['super::products_legacy::show_product(', 'detail wrapper delegation'],
   ['path = "/store/regions"', 'regions OpenAPI wrapper'],
-  ['super::products_legacy::list_regions(', 'regions wrapper delegation'],
   ['path = "/store/shipping-options"', 'shipping-options OpenAPI wrapper'],
-  ['super::products_legacy::list_shipping_options(', 'shipping-options wrapper delegation'],
 ]) requireText(mounted, value, label);
 
 for (const value of [
   'CatalogService::new(',
+  'entities::{product',
   'product::Entity::find()',
   'product_translation::Entity::find()',
   'product_translation_title_search_condition(',
   'load_product_tag_map(',
-  'is_metadata_visible_for_public_channel(',
   'error = ?error',
   'error.message',
   'error.to_string()',
 ]) forbidText(mounted, value, 'mounted Product module must not own Product storage/backend details');
 
-const policyStart = legacy.indexOf('pub(super) fn storefront_product_port_http_policy(');
-const policyEnd = legacy.indexOf('fn map_storefront_product_port_error(', policyStart);
+const policyStart = mounted.indexOf('pub(super) fn storefront_product_port_http_policy(');
+const policyEnd = mounted.indexOf('fn map_storefront_product_port_error(', policyStart);
 if (policyStart < 0 || policyEnd < 0) failures.push('shared Product HTTP policy is missing');
-const sharedPolicy = legacy.slice(policyStart, policyEnd);
-requireText(mounted, 'super::products_legacy::storefront_product_port_http_policy(&error.kind)', 'mounted list delegates public policy');
+const sharedPolicy = mounted.slice(policyStart, policyEnd);
+const listStart = mounted.indexOf('pub async fn list_products(');
+const listEnd = mounted.indexOf('/// Show published storefront product', listStart);
+if (listStart < 0 || listEnd < 0) failures.push('unable to isolate mounted list handler');
+requireText(mounted.slice(listStart, listEnd), 'map_storefront_product_port_error(', 'mounted list delegates the shared mapper');
+forbidText(mounted.slice(listStart, listEnd), 'is_metadata_visible_for_public_channel(', 'Product owner applies list visibility');
+requireText(mounted, 'storefront_product_port_http_policy(&error.kind)', 'shared mapper delegates public policy');
 for (const [value, label] of [
   ['StatusCode::BAD_REQUEST', 'validation status'],
   ['StatusCode::NOT_FOUND', 'not-found status'],
@@ -112,21 +112,26 @@ for (const [value, label] of [
   ['product_title_search_condition(', 'raw title search'],
   ['.order_by_desc(product::Column::PublishedAt)', 'published ordering'],
   ['.order_by_desc(product::Column::CreatedAt)', 'created ordering'],
-  ['.all(db)', 'pre-visibility materialization'],
-  ['crate::services::catalog::helpers::is_metadata_visible_for_public_channel(', 'owner channel visibility'],
-  ['let total = visible_products.len() as u64;', 'post-visibility total'],
-  ['.skip(offset_usize)', 'post-visibility page offset'],
-  ['.take(per_page as usize)', 'post-visibility page size'],
+  ['product_channel_visibility_condition(', 'owner SQL channel visibility'],
+  ['let total = query.clone().count(db).await?;', 'count the same filtered query'],
+  ['.order_by_desc(product::Column::Id)', 'deterministic page ordering'],
+  ['.offset(offset)', 'database page offset'],
+  ['.limit(per_page)', 'database page limit'],
   ['pick_product_translation(items.as_slice(), locale, fallback_locale)', 'locale fallback projection'],
   ['.unwrap_or_default()', 'empty missing translation projection'],
   ['shipping_profile_slug_from_metadata(&product.metadata)', 'metadata-only shipping profile'],
   ['.load_product_tag_map(tenant_id, &products, locale, Some(fallback_locale))', 'owner tag projection'],
 ]) requireText(owner, value, label);
 
-const visibilityIndex = owner.indexOf('crate::services::catalog::helpers::is_metadata_visible_for_public_channel(');
-const skipIndex = owner.indexOf('.skip(offset_usize)');
-if (visibilityIndex < 0 || skipIndex < 0 || visibilityIndex > skipIndex) {
-  failures.push('owner REST compatibility projection must apply channel visibility before pagination');
+const queryStart = owner.indexOf('fn legacy_storefront_http_products_query(');
+const projection = owner.indexOf('\nasync fn list_legacy_storefront_http_products(', queryStart);
+requireText(owner.slice(queryStart, projection), 'product_channel_visibility_condition(', 'visibility is part of the owner SQL query');
+const ownerList = owner.slice(projection);
+const filteredQuery = ownerList.indexOf('let query = legacy_storefront_http_products_query(');
+const count = ownerList.indexOf('let total = query.clone().count(db).await?;');
+const page = ownerList.indexOf('.offset(offset)');
+if (queryStart < 0 || projection < 0 || filteredQuery < 0 || count <= filteredQuery || page <= count) {
+  failures.push('owner REST projection must count and page the same visible SQL query');
 }
 
 for (const [value, label] of [
@@ -159,10 +164,10 @@ if (externalStart < 0 || httpBuilderStart < 0 || externalStart > httpBuilderStar
   );
 }
 
-for (const [value, label] of [
-  ['CatalogService::new(runtime.db_clone(), runtime.event_bus())', 'legacy concrete list compatibility source'],
-  ['product_translation_title_search_condition(', 'legacy raw search compatibility source'],
-]) requireText(legacy, value, label);
+forbidText(router, 'mod products_legacy', 'obsolete Product controller');
+if ((mounted.match(/pub async fn list_products\(/g) ?? []).length !== 1) {
+  failures.push('storefront Product must declare one list handler');
+}
 
 requireText(
   plan,

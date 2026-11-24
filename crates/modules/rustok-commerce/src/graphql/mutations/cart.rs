@@ -126,14 +126,7 @@ impl CommerceCartMutation {
             );
         let runtime = crate::storefront_cart_runtime::StorefrontCartRuntime::new(
             product_runtime.read_port(),
-            in_process_pricing_read_port(
-                db.clone(),
-                event_bus.clone(),
-                crate::graphql_runtime::product_catalog_read_runtime_for_current_graphql_scope(
-                    db.clone(),
-                    event_bus.clone(),
-                ),
-            ),
+            in_process_pricing_read_port(db.clone(), event_bus.clone(), product_runtime),
             in_process_cart_storefront_port(db.clone()),
             rustok_inventory::in_process_inventory_reservation_port(db.clone(), event_bus.clone()),
         );
@@ -461,4 +454,3 @@ impl CommerceCartMutation {
         .into())
     }
 }
-

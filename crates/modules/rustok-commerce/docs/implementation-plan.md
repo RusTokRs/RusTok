@@ -585,12 +585,11 @@ Last reviewed: 2026-09-25
       diagnostic contract and explicitly forbid the removed raw payload patterns.
 - [ ] Continue the mounted Store/Admin non-PortError envelope audit across remaining controllers.
 
-- [x] Restore `crates/modules/rustok-commerce/src/controllers/store/products.rs` to its
-      explicit legacy compatibility source; the mounted route remains `products_owner_list.rs`.
-- [x] Add the missing `CommerceHttpRuntime::product_storefront_http_read_port()` delegation
-      required by the already-mounted Product owner-list handler.
-- [x] Extend the Product REST owner-read verifier to require the Commerce runtime accessor
-      so this source-integrity blocker cannot recur while legacy compatibility source remains intact.
+- [x] Mount the Product owner list and detail handlers in
+      `crates/modules/rustok-commerce/src/controllers/store/products.rs`. Both share a
+      request context builder and a typed HTTP error mapper.
+- [x] Route list reads through `CommerceHttpRuntime::product_storefront_http_read_port()`.
+      Source verifiers require that accessor, the owner query and a single storefront list handler.
 - [ ] Continue the mounted Commerce route audit for any remaining foreign owner construction.
 
 - [x] Replace the mounted `show_order` PaymentService/FulfillmentService direct constructions

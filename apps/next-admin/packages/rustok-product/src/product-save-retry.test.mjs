@@ -43,7 +43,7 @@ const GraphqlError = vm.runInNewContext(
 const productWriteOutcome = vm.runInNewContext(
   stripTypeScriptTypes(
     outcomes.slice(outcomes.indexOf('const definitiveRefusals:'))
-  ).replace('export async function', 'async function') +
+  ).replace(/^export /gm, '') +
     '\nproductWriteOutcome;',
   { GraphqlError, UNKNOWN_PRODUCT_WRITE }
 );
@@ -66,6 +66,9 @@ function saveHandler(send) {
   const state = { errors: [], pending: null, dirtyCleared: 0, paths: [] };
   const context = {
     recoveryReady: true,
+    variantRecoveryReady: true,
+    variantRecoveryError: null,
+    pendingVariantOperation: null,
     PRODUCT_RECOVERY_UNAVAILABLE,
     setRecoveryReady: () => {},
     setRecoveryError: () => {},
@@ -91,6 +94,7 @@ function saveHandler(send) {
     },
     initialAxes: [],
     tags: [],
+    productBrands: [],
     status: 'ACTIVE',
     documentRevision: 7,
     dirtyAttributeIds: new Set(['material']),
@@ -215,6 +219,37 @@ test('actual save handler admits only one create during a double click', async (
   assert.equal(count, 1);
   resolve(confirmed);
   await first;
+});
+
+test('the document editor retries the original brand bindings without display data', async () => {
+  const id = 'product';
+  const brands = [
+    {
+      brandId: '00000000-0000-4000-8000-000000000123',
+      isPrimary: true,
+      role: 'manufacturer',
+      position: 0
+    }
+  ];
+  const calls = [];
+  const { run, context, state } = saveHandler(async (request, key) => {
+    calls.push({ request, key });
+    if (calls.length === 1) throw new Error('Lost response');
+    return { status: 'confirmed', value: { id, revision: 8 } };
+  });
+  context.isNew = false;
+  context.initialProduct = { id };
+  context.writeAttempt.current = new ProductWriteAttempt(memoryJournal(id));
+  context.productBrands = [{ ...brands[0], brand: { name: 'Displayed brand' } }];
+
+  await run();
+  assert.equal(state.pending, 'save');
+  assert.deepEqual(calls[0].request.brands, brands);
+  context.productBrands = [];
+  await run();
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[1], calls[0]);
+  assert.equal(state.settled.phase, 'settled');
 });
 
 test('only bounded nonretryable request refusals release an attempt', async () => {
@@ -405,7 +440,10 @@ test('portal/child mutation guard observes the current pending attempt, not stal
       '\nassertEditorialWriteResolved;',
     {
       recoveryReady: true,
+      variantRecoveryReady: true,
+      variantRecoveryError: null,
       writeAttempt: { current: attempt },
+      variantWriteAttempt: { current: null },
       deletedProduct: { current: false },
       Error
     }
