@@ -96,11 +96,16 @@ function getPeerWriteDocumentId() {
 
 function getPeerWriteSenderId(root) {
   const documentId = getPeerWriteDocumentId();
-  // Rust Leptos/Dioxus channel owners share this document-scoped ID through
-  // globalThis.__flyPeerWriteDocumentId. Per-root IDs would make our own writes
-  // look like sibling-tab writes to another adapter in this same document.
-  if (root?.dataset) root.dataset.flyPeerWriteSenderId = documentId;
-  return documentId;
+  // Rust Leptos uses the same document nonce and editor-root scope. Channel
+  // instances for one root therefore advance each other's baseline, while a
+  // second editor in this document remains a peer and is fenced on write.
+  const scopeId = nonEmptyString(root?.dataset?.flyPeerWriteScopeId);
+  const senderId = scopeId ? `${documentId}:${scopeId}` : documentId;
+  if (senderId.length > 256) {
+    throw new TypeError("Fly peer-write sender identity exceeds the size limit");
+  }
+  if (root?.dataset) root.dataset.flyPeerWriteSenderId = senderId;
+  return senderId;
 }
 
 /**
