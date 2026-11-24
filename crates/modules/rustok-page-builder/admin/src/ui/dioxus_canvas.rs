@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 
 use dioxus::prelude::*;
-use fly::EditorCommand;
 use fly_browser::{BrowserIntentEnvelope, BrowserIntentKind};
 use fly_dioxus::FlyCanvasIframe;
 use fly_ui::{
@@ -91,6 +90,8 @@ pub fn DioxusIsolatedCanvas(
     let resize_context = use_signal(|| None::<(String, CanvasRect, f64)>);
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
     let listener_handles = use_signal(|| Vec::<EventListenerHandle>::new());
+    #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
+    let resize_instance_id = instance_id.clone();
 
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
     resize_context.set(
@@ -250,10 +251,13 @@ pub fn DioxusIsolatedCanvas(
                     if let Some(result) = active.update(&event)
                         && (result.width_changed || result.height_changed)
                     {
-                        on_ui_intent.call(UiIntent::execute(EditorCommand::Patch {
-                            component_id: active.resize.component_id.clone(),
-                            patch: active.resize.component_patch(result),
-                        }));
+                        on_intent.call(BrowserIntentEnvelope::new(
+                            resize_instance_id.clone(),
+                            BrowserIntentKind::PatchSelected,
+                            serde_json::json!({
+                                "patch": active.resize.component_patch(result),
+                            }),
+                        ));
                     }
                     if let Some(element) = captured_element.read().as_ref() {
                         let _ = release_pointer_capture(element, active.pointer_id);

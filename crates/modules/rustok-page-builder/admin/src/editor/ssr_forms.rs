@@ -188,6 +188,12 @@ impl AdminCanvasController {
         if location.page_index != self.active_page_index() {
             return Err("selected component is outside the active page".to_string());
         }
+        if self
+            .selected_component_view()
+            .is_none_or(|selected| selected.is_root)
+        {
+            return Err("the root component cannot be resized".to_string());
+        }
         ensure_component_editable(self, component_id)?;
 
         // Browser resize is intentionally narrower than a general ComponentPatch:
