@@ -770,7 +770,7 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
         );
     });
     #[cfg(feature = "dioxus-web")]
-    let workspace_canvas: Option<Element> = {
+    let (workspace_canvas, workspace_canvas_interactive): (Option<Element>, bool) = {
         let mut canvas_document = workspace_document.clone();
         let active_page = canvas_document
             .project
@@ -789,38 +789,47 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                     &workspace_runtime_context,
                     canvas_nonce.as_ref(),
                 ) {
-                    Ok(srcdoc) => Some(rsx! {
-                        DioxusIsolatedCanvas {
-                            srcdoc,
-                            instance_id: workspace_canvas_instance_id.clone(),
-                            intent_instance_id: workspace_page_id.clone(),
-                            can_resize: capabilities.edit && capabilities.styles,
-                            session,
-                            on_intent: on_workspace_intent,
-                            on_ui_intent: on_canvas_ui_intent,
-                            on_error: Some(on_workspace_error),
-                        }
-                    }),
-                    Err(error) => Some(rsx! {
-                        div {
-                            class: "rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm",
-                            role: "alert",
-                            "Canvas rendering failed: {error}"
-                        }
-                    })
+                    Ok(srcdoc) => (
+                        Some(rsx! {
+                            DioxusIsolatedCanvas {
+                                srcdoc,
+                                instance_id: workspace_canvas_instance_id.clone(),
+                                intent_instance_id: workspace_page_id.clone(),
+                                can_resize: capabilities.edit && capabilities.styles,
+                                session,
+                                on_intent: on_workspace_intent,
+                                on_ui_intent: on_canvas_ui_intent,
+                                on_error: Some(on_workspace_error),
+                            }
+                        }),
+                        true,
+                    ),
+                    Err(error) => (
+                        Some(rsx! {
+                            div {
+                                class: "rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm",
+                                role: "alert",
+                                "Canvas rendering failed: {error}"
+                            }
+                        }),
+                        false,
+                    ),
                 }
             }
-            None => Some(rsx! {
-                div {
-                    class: "rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm",
-                    role: "alert",
-                    "The active page is unavailable for isolated canvas rendering."
-                }
-            })
+            None => (
+                Some(rsx! {
+                    div {
+                        class: "rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm",
+                        role: "alert",
+                        "The active page is unavailable for isolated canvas rendering."
+                    }
+                }),
+                false,
+            ),
         }
     };
     #[cfg(not(feature = "dioxus-web"))]
-    let workspace_canvas: Option<Element> = None;
+    let (workspace_canvas, workspace_canvas_interactive): (Option<Element>, bool) = (None, false);
 
     rsx! {
         FlyFullEditor {
@@ -913,6 +922,7 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                             host_can_redo: Some(can_redo),
                             csp_nonce: workspace_csp_nonce.clone(),
                             canvas: workspace_canvas,
+                            canvas_interactive: Some(workspace_canvas_interactive),
                         }
                     },
                     false => rsx! {
