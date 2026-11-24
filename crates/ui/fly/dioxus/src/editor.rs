@@ -163,14 +163,18 @@ pub fn FlyLayerTree(
     selected: Option<String>,
     on_select: EventHandler<String>,
     messages: Option<EditorMessages>,
+    on_begin_move: Option<EventHandler<String>>,
 ) -> Element {
-    let layers_label = messages.unwrap_or_default().layers;
+    let messages = messages.unwrap_or_default();
+    let layers_label = messages.layers.clone();
+    let move_label = messages.drag_block.clone();
 
     rsx! {
         ol { class: "fly-layers", aria_label: "{layers_label}",
             for item in layers.into_iter() {
                 {
                     let item_id = item.id.clone();
+                    let move_id = item.id.clone();
                     let selectable = !item.opaque && !item.id.is_empty();
                     let browser_component_id = selectable.then(|| item.id.clone());
                     let browser_action = selectable.then_some("select-component");
@@ -192,6 +196,16 @@ pub fn FlyLayerTree(
                                 disabled: !selectable,
                                 onclick: move |_| on_select.call(item_id.clone()),
                                 "{item.label}"
+                            }
+                            if let Some(on_begin_move) = on_begin_move {
+                                button {
+                                    r#type: "button",
+                                    class: "fly-layers__move",
+                                    aria_label: format!("{} {}", move_label, move_id),
+                                    disabled: !selectable,
+                                    onclick: move |_| on_begin_move.call(move_id.clone()),
+                                    "{move_label}"
+                                }
                             }
                         }
                     }
@@ -517,6 +531,21 @@ pub fn FlyEditorWorkspace(
         }
     });
     let on_begin_drag = intent_mode.then_some(begin_palette_drag);
+    let begin_selected_move = use_callback({
+        let instance = intent_instance.clone();
+        move |component_id: String| {
+            if let Some(handler) = on_intent {
+                handler.call(BrowserIntentEnvelope::select(&instance, Some(&component_id)));
+                handler.call(BrowserIntentEnvelope::new(
+                    &instance,
+                    BrowserIntentKind::BeginSelectedMove,
+                    serde_json::json!({}),
+                ));
+            }
+        }
+    });
+    let can_drag_components = capabilities.is_none_or(|profile| profile.drag_drop);
+    let on_begin_move = (intent_mode && can_drag_components).then_some(begin_selected_move);
 
     let active_page_index = initial_page.unwrap_or(0);
     let page_selection = PageSelection::Index(active_page_index);
@@ -770,6 +799,7 @@ pub fn FlyEditorWorkspace(
                         }
                     },
                     messages: Some(messages),
+                    on_begin_move,
                 }
                 if let Some(canvas) = canvas {
                     {canvas}
