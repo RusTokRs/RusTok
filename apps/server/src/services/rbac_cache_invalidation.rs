@@ -725,13 +725,43 @@ mod tests {
         RBAC_PERMISSION_INVALIDATE_ALL_KEY, RBAC_PERMISSION_INVALIDATION_CHANNEL,
         RbacCacheInvalidationListener, RbacCacheInvalidationListenerHandle, RbacInvalidationTarget,
         acknowledge_rbac_applied_generation, acknowledge_rbac_recovery,
-        parse_rbac_invalidation_key, parse_rbac_invalidation_target, rbac_invalidation_key,
-        supervise_rbac_invalidation_worker,
+        parse_rbac_invalidation_key, parse_rbac_invalidation_target, publish_user_rbac_invalidation,
+        rbac_invalidation_key, supervise_rbac_invalidation_worker,
     };
     use crate::services::rbac_invalidation_generation::RbacInvalidationGenerationState;
-    use rustok_cache::{BoundedCacheInvalidationGapTracker, VersionedCacheInvalidation};
+    use rustok_cache::{BoundedCacheInvalidationGapTracker, CacheService, VersionedCacheInvalidation};
     use sea_orm::Database;
     use uuid::Uuid;
+
+    #[tokio::test]
+    async fn invalidation_publisher_targets_the_supplied_cache_owner() {
+        let first_cache = CacheService::from_url(None);
+        let second_cache = CacheService::from_url(None);
+        let mut first_receiver = first_cache
+            .invalidations()
+            .subscribe_local_channel(RBAC_PERMISSION_INVALIDATION_CHANNEL);
+        let mut second_receiver = second_cache
+            .invalidations()
+            .subscribe_local_channel(RBAC_PERMISSION_INVALIDATION_CHANNEL);
+        let tenant_id = Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+
+        publish_user_rbac_invalidation(&first_cache, &tenant_id, &user_id, 7)
+            .await
+            .expect("publish through the explicitly supplied cache owner");
+
+        let message = tokio::time::timeout(Duration::from_secs(1), first_receiver.recv())
+            .await
+            .expect("the selected cache owner should receive the invalidation")
+            .expect("the selected cache receiver should remain open");
+        assert_eq!(message.key, rbac_invalidation_key(tenant_id, user_id));
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), second_receiver.recv())
+                .await
+                .is_err(),
+            "an independent cache owner must not receive another runtime's invalidation"
+        );
+    }
 
     #[test]
     fn rbac_invalidation_key_round_trips() {
