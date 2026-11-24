@@ -531,14 +531,16 @@ impl AdminEditorRuntime {
             && result.revision_id == current.1
             && result.project_hash == current.2.hex()
             && result.command_sequence == current.3;
+        let preview_is_stale = self.preview_request.get_untracked().is_some_and(|expected| {
+            expected.0 != current.2 || expected.1 != current.4
+        });
+        if preview_is_stale {
+            self.cancel_preview_request();
+            self.server_preview_html.set(None);
+        }
         if !in_scope {
             self.fail("Browser workspace response no longer matches the active document");
             return;
-        }
-        if self.preview_request.get_untracked().is_some_and(|expected| {
-            expected.0 != current.2 || expected.1 != current.4
-        }) {
-            self.cancel_preview_request();
         }
         self.clear_error_or_reassert_peer_write_conflict();
         for effect in result.effects {
