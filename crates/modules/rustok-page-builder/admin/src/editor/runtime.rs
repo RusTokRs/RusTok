@@ -344,17 +344,9 @@ impl AdminEditorRuntime {
             self.runtime_publish_gate_evaluation.set(None);
             self.server_preview_html.set(None);
         }
-        if matches!(&intent, UiIntent::RequestSave) {
-            let evaluation = self.evaluate_runtime_publish_gate();
-            if let Some(evaluation) = evaluation {
-                let allowed = evaluation.allowed;
-                let message = gate_error_message(&evaluation);
-                self.runtime_publish_gate_evaluation.set(Some(evaluation));
-                if !allowed {
-                    self.fail(message);
-                    return;
-                }
-            }
+        if self.peer_write_conflicted() && intent.mutates_document() {
+            self.reject_peer_write_conflict();
+            return;
         }
 
         let result = self
@@ -422,16 +414,10 @@ impl AdminEditorRuntime {
                         }
                         None => None,
                     };
-                    if request.capability() == BuilderCapabilityKind::Publish {
-                        if let Some(evaluation) = self.evaluate_runtime_publish_gate() {
-                            let allowed = evaluation.allowed;
-                            let message = gate_error_message(&evaluation);
-                            self.runtime_publish_gate_evaluation.set(Some(evaluation));
-                            if !allowed {
-                                self.fail(message);
-                                continue;
-                            }
-                        }
+                    if request.capability() == BuilderCapabilityKind::Publish
+                        && self.reject_peer_write_conflict()
+                    {
+                        continue;
                     }
                     if let PageBuilderCapabilityRequest::Preview(preview) = &request {
                         if self.preview_in_progress.get_untracked() {
@@ -491,6 +477,9 @@ impl AdminEditorRuntime {
         expected_hash: Option<ProjectHash>,
     ) {
         let capability = request.capability();
+        if capability == BuilderCapabilityKind::Publish && self.reject_peer_write_conflict() {
+            return;
+        }
         if capability == BuilderCapabilityKind::Preview
             && self.facade
                 .as_ref()
@@ -502,7 +491,7 @@ impl AdminEditorRuntime {
             self.fail("Server preview is disabled by the consumer provider or health policy");
             return;
         }
-        let save_attempt_id = if capability == BuilderCapabilityKind::Publish {
+        let save_attempt = if capability == BuilderCapabilityKind::Publish {
             if expected_hash.is_none() {
                 self.fail("Publish request has no submitted project hash");
                 return;
@@ -605,13 +594,13 @@ impl AdminEditorRuntime {
                             let Some(expected_hash) = expected_hash else {
                                 return Err("Publish request has no submitted project hash".to_string());
                             };
-                            let Some(attempt_id) = save_attempt_id else {
+                            let Some(attempt) = save_attempt.as_ref() else {
                                 return Err("Publish request has no tracked attempt".to_string());
                             };
                             controller
                                 .acknowledge_save_for_attempt(
                                     expected_hash,
-                                    attempt_id,
+                                    attempt,
                                     response.revision_id.clone(),
                                 )
                                 .map_err(|error| error.to_string())
@@ -619,10 +608,11 @@ impl AdminEditorRuntime {
                         match result {
                             Some(Ok(())) => {
                                 runtime.last_error.set(None);
+                                runtime.broadcast_confirmed_write(&response.revision_id, expected_hash);
                                 runtime.announce(runtime.save_succeeded.clone());
                             }
                             Some(Err(error)) => {
-                                if runtime.finish_failed_request(capability, save_attempt_id) {
+                                if runtime.finish_failed_request(capability, save_attempt.as_ref()) {
                                     runtime.fail(error);
                                 }
                             }
@@ -632,7 +622,7 @@ impl AdminEditorRuntime {
                         }
                     }
                     Ok(response) => {
-                        if runtime.finish_failed_request(capability, save_attempt_id) {
+                        if runtime.finish_failed_request(capability, save_attempt.as_ref()) {
                             runtime.fail(format!(
                                 "Page Builder facade returned `{}` for a `{capability}` request",
                                 response.capability()
@@ -640,7 +630,7 @@ impl AdminEditorRuntime {
                         }
                     }
                     Err(error) => {
-                        if runtime.finish_failed_request(capability, save_attempt_id) {
+                        if runtime.finish_failed_request(capability, save_attempt.as_ref()) {
                             runtime.fail(error.to_string());
                         }
                     }
@@ -662,15 +652,15 @@ impl AdminEditorRuntime {
     fn finish_failed_request(
         &self,
         capability: BuilderCapabilityKind,
-        attempt_id: Option<u64>,
+        attempt: Option<&SaveAttempt>,
     ) -> bool {
         match capability {
             BuilderCapabilityKind::Publish => {
-                let Some(attempt_id) = attempt_id else {
+                let Some(attempt) = attempt else {
                     return false;
                 };
                 self.controller
-                    .try_update(|controller| controller.mark_save_failed_for_attempt(attempt_id))
+                    .try_update(|controller| controller.mark_save_failed_for_attempt(attempt))
                     .is_some_and(|result| result.unwrap_or(false))
             }
             BuilderCapabilityKind::Preview => {
