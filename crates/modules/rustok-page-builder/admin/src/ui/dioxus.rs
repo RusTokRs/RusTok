@@ -469,6 +469,9 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
     });
 
     let mut peer_write_conflict = use_signal(|| false);
+    // Separate editor roots in the same browser document are independent writers.
+    // The document nonce added by BrowserPeerWriteChannel keeps this ID unique across tabs.
+    let peer_write_scope_id = use_hook(|| uuid::Uuid::new_v4().to_string());
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
     let mut peer_write_channel = use_signal(|| None::<BrowserPeerWriteChannel>);
 
@@ -558,7 +561,13 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                     ));
                 }
             };
-            match BrowserPeerWriteChannel::new(page_id, revision_id, project_hash, on_conflict) {
+            match BrowserPeerWriteChannel::new_scoped(
+                page_id,
+                revision_id,
+                project_hash,
+                peer_write_scope_id.clone(),
+                on_conflict,
+            ) {
                 Ok(channel) => peer_write_channel.set(Some(channel)),
                 Err(error) => tracing::warn!(
                     error = ?error,
