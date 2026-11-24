@@ -1,6 +1,6 @@
 #[cfg(target_arch = "wasm32")]
 use crate::editor::decode_canvas_message;
-use crate::editor::{AdminEditorRuntime, ResizeHandles, render_canvas_srcdoc_with_context};
+use crate::editor::{AdminEditorRuntime, CanvasResourceLimit, ResizeHandles, render_canvas_srcdoc_with_context};
 #[cfg(target_arch = "wasm32")]
 use crate::editor::{CanvasBridgeMessage, CanvasComponentGeometry, dispatch_shortcut};
 #[cfg(target_arch = "wasm32")]
@@ -35,6 +35,7 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
     let iframe_id = format!("{instance_id}-frame");
     #[cfg(target_arch = "wasm32")]
     let geometry = RwSignal::new(BTreeMap::<String, CanvasComponentGeometry>::new());
+    let geometry_limit = RwSignal::new(None::<CanvasResourceLimit>);
     let ready = RwSignal::new(false);
     let pointer = RwSignal::new(None::<String>);
 
@@ -74,9 +75,19 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
         let expected_instance_id = instance_id.clone();
         move |_| {
             ready.set(false);
+            pointer.set(None);
+            geometry_limit.set(None);
             #[cfg(target_arch = "wasm32")]
             {
                 geometry.set(BTreeMap::new());
+                runtime.dispatch(UiIntent::SetSelectedOverlay(None));
+                runtime.dispatch(UiIntent::SetHoveredOverlay(None));
+                if runtime
+                    .controller
+                    .with(|controller| controller.ui().state.drag.is_some())
+                {
+                    runtime.dispatch(UiIntent::CancelDrag);
+                }
                 bridge_subscription.set_value(None);
                 let decoder_instance = expected_instance_id.clone();
                 let message_runtime = runtime.clone();
@@ -90,7 +101,14 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
                         decode_canvas_message(payload, &decoder_instance, last_sequence)
                     },
                     move |message| {
-                        handle_canvas_message(&message_runtime, geometry, ready, pointer, message)
+                        handle_canvas_message(
+                            &message_runtime,
+                            geometry,
+                            geometry_limit,
+                            ready,
+                            pointer,
+                            message,
+                        )
                     },
                 ) {
                     Ok(subscription) => bridge_subscription.set_value(Some(subscription)),
@@ -121,6 +139,18 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
                 <span>{move || if ready.get() { "Canvas connected" } else { "Connecting canvas" }}</span>
                 <span>{move || pointer.get().unwrap_or_default()}</span>
             </div>
+            {move || geometry_limit.get().map(|limit| {
+                let message = format!(
+                    "Canvas geometry limit reached: {} components observed, limit {}. Selection and drag/drop overlays are unavailable until the page is simplified.",
+                    limit.observed,
+                    limit.limit,
+                );
+                view! {
+                    <p class="mb-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm" role="alert">
+                        {message}
+                    </p>
+                }
+            })}
             <div class="relative mx-auto w-fit overflow-hidden bg-white shadow-lg">
                 <svg
                     class="block overflow-visible"
@@ -221,6 +251,7 @@ fn OverlayLayer(runtime: AdminEditorRuntime, kind: OverlayKind) -> impl IntoView
 fn handle_canvas_message(
     runtime: &AdminEditorRuntime,
     geometry: RwSignal<BTreeMap<String, CanvasComponentGeometry>>,
+    geometry_limit: RwSignal<Option<CanvasResourceLimit>>,
     ready: RwSignal<bool>,
     pointer: RwSignal<Option<String>>,
     message: CanvasBridgeMessage,
@@ -246,7 +277,11 @@ fn handle_canvas_message(
             }));
             synchronize_overlays(runtime, geometry);
         }
-        CanvasBridgeMessage::GeometrySnapshot { components } => {
+        CanvasBridgeMessage::GeometrySnapshot {
+            components,
+            resource_limit,
+        } => {
+            geometry_limit.set(resource_limit);
             geometry.set(
                 components
                     .into_iter()
@@ -302,6 +337,8 @@ fn handle_canvas_message(
         }
         CanvasBridgeMessage::Teardown => {
             ready.set(false);
+            pointer.set(None);
+            geometry_limit.set(None);
             geometry.set(BTreeMap::new());
             runtime.dispatch(UiIntent::SetSelectedOverlay(None));
             runtime.dispatch(UiIntent::SetHoveredOverlay(None));
