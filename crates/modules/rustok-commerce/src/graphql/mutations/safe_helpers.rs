@@ -4,10 +4,8 @@ use rustok_api::{
 };
 use rustok_cart::CartStorefrontPort;
 use rustok_customer::{CustomerUserProjectionRequest, in_process_customer_read_port};
-use rustok_pricing::{PriceResolutionContext, PricingReadPort};
 use uuid::Uuid;
 
-use super::super::types::AddStorefrontCartLineItemInput;
 pub(crate) use super::legacy_helpers::*;
 
 const STOREFRONT_CART_HELPER_BOUNDARY: &str = "commerce_graphql_storefront_cart_helper";
@@ -445,32 +443,6 @@ pub(crate) async fn validate_selected_shipping_option(
             false,
         )
     })
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) async fn resolve_storefront_line_item_input(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: Uuid,
-    pricing_read_port: &dyn PricingReadPort,
-    pricing_port_context: PortContext,
-    pricing_context: &PriceResolutionContext,
-    locale: &str,
-    default_locale: &str,
-    public_channel_slug: Option<&str>,
-    input: AddStorefrontCartLineItemInput,
-) -> Result<ResolvedStorefrontLineItemInput> {
-    super::typed_line_item_helpers::resolve_storefront_line_item_input(
-        db,
-        tenant_id,
-        pricing_read_port,
-        pricing_port_context,
-        pricing_context,
-        locale,
-        default_locale,
-        public_channel_slug,
-        input,
-    )
-    .await
 }
 
 pub(crate) async fn reprice_storefront_cart_line_items(

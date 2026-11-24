@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { forbidRawContextLogging } from "./lib/bounded-diagnostics.mjs";
+
 const configuredRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim();
 const root = configuredRoot
   ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
@@ -16,8 +18,8 @@ const moduleSource = read(
 const facadeSource = read(
   "crates/modules/rustok-commerce/src/graphql/mutations/safe_helpers.rs",
 );
-const typedSource = read(
-  "crates/modules/rustok-commerce/src/graphql/mutations/typed_line_item_helpers.rs",
+const legacySource = read(
+  "crates/modules/rustok-commerce/src/graphql/mutations/helpers.rs",
 );
 const layeredSource = read(
   "crates/modules/rustok-commerce/src/graphql/mutations/layered_order_helpers.rs",
@@ -64,27 +66,16 @@ const legacyMapper = between(
   "pub(crate) async fn enrich_storefront_cart(",
   "legacy GraphQL mapper",
 );
-const typedPolicy = between(
-  typedSource,
-  "fn storefront_line_item_public_policy(",
-  "fn uuid_shape(",
-  "typed line item public policy",
+const dependencyMapper = between(
+  workflowSource,
+  "fn dependency_error(",
+  "#[cfg(test)]",
+  "shared line-item dependency mapper",
 );
-const typedMapper = between(
-  typedSource,
-  "fn storefront_line_item_graphql_error(",
-  "fn parse_line_item_metadata(",
-  "typed line item GraphQL mapper",
-);
-
 for (const [value, label] of [
   [
     '#[path = "safe_helpers.rs"]\nmod cart_safe_helpers;',
     "private cart safe facade routing",
-  ],
-  [
-    '#[path = "typed_line_item_helpers.rs"]\nmod typed_line_item_helpers;',
-    "private typed line item routing",
   ],
   [
     '#[path = "safe_order_helpers.rs"]\nmod safe_order_helpers_impl;',
@@ -101,10 +92,6 @@ for (const [value, label] of [
   [
     "pub(crate) use super::safe_order_helpers_impl::*;",
     "preserved helper symbol parity",
-  ],
-  [
-    "pub(crate) use super::typed_line_item_helpers::resolve_storefront_line_item_input;",
-    "explicit typed line item overrides",
   ],
 ]) {
   requireText(`${moduleSource}\n${layeredSource}`, value, label);
@@ -230,10 +217,6 @@ for (const [value, label] of [
   ['"Selected shipping option is invalid"', "shipping selection message"],
   ['"Cart pricing could not be refreshed"', "reprice fallback message"],
   ['extensions.set("retryable", retryable)', "retryability extension"],
-  [
-    "super::typed_line_item_helpers::resolve_storefront_line_item_input(",
-    "compatibility resolve cutover",
-  ],
 ]) {
   requireText(facadeSource, value, label);
 }
@@ -494,202 +477,6 @@ if ((legacyMapper.match(/error = \?error/g) ?? []).length !== 1) {
   failures.push("expected one redacted legacy GraphQL error field");
 }
 
-for (const [value, label] of [
-  ["enum StorefrontLineItemFailureKind {", "typed failure kind"],
-  ["ProductUnavailable,", "typed product outcome"],
-  ["InventoryInsufficient,", "typed inventory outcome"],
-  ["InputInvalid,", "typed input outcome"],
-  ["DependencyUnavailable,", "typed dependency outcome"],
-  ["enum StorefrontLineItemFailureSource {", "typed source cause"],
-  ["Database(sea_orm::DbErr)", "typed database cause"],
-  ["Pricing(PortError)", "typed pricing cause"],
-  ["Inventory(CommerceError)", "typed inventory cause"],
-  ["Metadata(serde_json::Error)", "typed metadata cause"],
-  ["struct StorefrontLineItemDiagnosticSource;", "redacted typed source token"],
-  [
-    "impl From<StorefrontLineItemFailureSource> for StorefrontLineItemDiagnosticSource",
-    "typed source consumption",
-  ],
-  [
-    "impl std::fmt::Debug for StorefrontLineItemDiagnosticSource",
-    "typed source Debug",
-  ],
-  ['formatter.write_str("redacted")', "typed source redaction"],
-  ["fn uuid_shape(value: Uuid)", "typed UUID shape helper"],
-  [
-    "fn optional_uuid_shape(value: Option<Uuid>)",
-    "typed optional UUID shape helper",
-  ],
-  [
-    "fn optional_text_shape(value: Option<&str>)",
-    "typed optional text shape helper",
-  ],
-  ["fn storefront_line_item_public_policy(", "typed public policy"],
-  ["fn storefront_line_item_graphql_error(", "typed GraphQL mapper"],
-  ["async fn resolve_typed_storefront_line_item_input(", "typed resolver"],
-  [
-    "async fn validate_typed_storefront_variant_inventory(",
-    "typed inventory validator",
-  ],
-  [
-    'StorefrontLineItemFailure::database("load_variant", error)',
-    "variant database mapping",
-  ],
-  [
-    "StorefrontLineItemFailure::pricing(product_model.id, error)",
-    "pricing mapping",
-  ],
-  [
-    "StorefrontLineItemFailure::inventory(variant.product_id, error)",
-    "inventory mapping",
-  ],
-  [
-    "StorefrontLineItemFailure::invalid_metadata(product_id, error)",
-    "metadata mapping",
-  ],
-  [
-    "StorefrontLineItemFailure::inventory_insufficient(",
-    "inventory insufficiency mapping",
-  ],
-  [
-    "resolve_typed_storefront_line_item_input(",
-    "mounted typed resolver delegation",
-  ],
-]) {
-  requireText(typedSource, value, label);
-}
-
-for (const [value, label] of [
-  ['"Product is not available"', "product public message"],
-  ['"CART_PRODUCT_UNAVAILABLE"', "product public code"],
-  ['"Requested quantity is not available"', "inventory public message"],
-  ['"CART_INVENTORY_INSUFFICIENT"', "inventory public code"],
-  ['"Cart line item input is invalid"', "input public message"],
-  ['"CART_LINE_ITEM_INVALID"', "input public code"],
-  ['"Cart line item could not be resolved"', "resolver fallback message"],
-  ['"CART_LINE_ITEM_RESOLUTION_FAILED"', "resolver fallback code"],
-]) {
-  requireText(typedPolicy, value, label);
-}
-
-for (const [value, label] of [
-  ["let StorefrontLineItemFailure {", "typed failure destructuring"],
-  ["let source_kind = source.kind();", "typed source-kind projection"],
-  [
-    "let source = StorefrontLineItemDiagnosticSource::from(source);",
-    "typed source consuming shadow",
-  ],
-  [
-    "let correlation_id_shape = optional_text_shape(correlation_id);",
-    "correlation shape projection",
-  ],
-  ["let tenant_id_shape = uuid_shape(tenant_id);", "tenant shape projection"],
-  [
-    "let variant_id_shape = uuid_shape(variant_id);",
-    "variant shape projection",
-  ],
-  [
-    "let product_id_shape = optional_uuid_shape(product_id);",
-    "product shape projection",
-  ],
-  ["source = ?source", "redacted typed source diagnostics"],
-  ["source_kind,", "typed source-kind diagnostics"],
-  ["owner = source_owner", "truthful source owner"],
-  ["owner_operation = source_operation", "truthful source operation"],
-  ["consumer_operation = consumer_operation.name()", "consumer operation"],
-  ["correlation_id_shape,", "bounded correlation fact"],
-  ["tenant_id_shape,", "bounded tenant fact"],
-  ["variant_id_shape,", "bounded variant fact"],
-  ["product_id_shape,", "bounded product fact"],
-  ["requested_quantity,", "quantity context"],
-  ["channel_slug_length = ?channel_slug_length", "bounded channel fact"],
-  ["locale_length = ?locale_length", "bounded locale fact"],
-  ["public_code = code", "public code diagnostics"],
-  ["public_retryable = retryable", "public retryability diagnostics"],
-  [
-    "boundary = STOREFRONT_LINE_ITEM_GRAPHQL_BOUNDARY",
-    "typed line item boundary",
-  ],
-  ["tracing::error!(", "dependency error severity"],
-  ["tracing::warn!(", "ordinary rejection severity"],
-  ["public_graphql_error(message, code, retryable)", "stable public envelope"],
-]) {
-  requireText(typedMapper, value, label);
-}
-
-for (const value of [
-  "use std::fmt::Debug;",
-  "fn detail(&self)",
-  "-> &dyn Debug",
-  ".detail()",
-  'format!("{error:?}")',
-  "detail.contains(",
-  "async_graphql::Error::new(error.to_string())",
-  'async_graphql::Error::new(format!("{error}"))',
-  "error.message",
-  "correlation_id = ?correlation_id",
-  "correlation_id = %correlation_id",
-  "tenant_id = %tenant_id",
-  "tenant_id = ?tenant_id",
-  "variant_id = %variant_id",
-  "variant_id = ?variant_id",
-  "product_id = ?failure.product_id",
-  "product_id = %product_id",
-  "public_channel_slug = ?public_channel_slug",
-  "locale = ?locale",
-  "metadata = ?input.metadata",
-  "sku = %",
-  "sku = ?",
-  "title = %",
-  "title = ?",
-]) {
-  forbidText(typedSource, value, "typed storefront line item boundary");
-}
-
-const typedPolicyIndex = typedMapper.indexOf(
-  "storefront_line_item_public_policy(consumer_operation, failure.kind)",
-);
-const typedDestructureIndex = typedMapper.indexOf(
-  "let StorefrontLineItemFailure {",
-);
-const typedKindIndex = typedMapper.indexOf("let source_kind = source.kind();");
-const typedShadowIndex = typedMapper.indexOf(
-  "let source = StorefrontLineItemDiagnosticSource::from(source);",
-);
-const typedProjectionIndex = typedMapper.indexOf(
-  "let correlation_id_shape = optional_text_shape(correlation_id);",
-);
-const typedEventIndex = typedMapper.indexOf("tracing::error!(");
-const typedReturnIndex = typedMapper.lastIndexOf(
-  "public_graphql_error(message, code, retryable)",
-);
-if (
-  !(
-    typedPolicyIndex >= 0 &&
-    typedPolicyIndex < typedDestructureIndex &&
-    typedDestructureIndex < typedKindIndex &&
-    typedKindIndex < typedShadowIndex &&
-    typedShadowIndex < typedProjectionIndex &&
-    typedProjectionIndex < typedEventIndex &&
-    typedEventIndex < typedReturnIndex
-  )
-) {
-  failures.push(
-    "typed line-item error must map policy, destructure, classify, consume, project, diagnose, and return in order",
-  );
-}
-if (
-  (
-    typedMapper.match(/StorefrontLineItemDiagnosticSource::from\(source\)/g) ??
-    []
-  ).length !== 1
-) {
-  failures.push("expected one typed source-consuming shadow");
-}
-if ((typedMapper.match(/source = \?source/g) ?? []).length !== 2) {
-  failures.push("expected two redacted typed source fields");
-}
-
 for (const operation of [
   "resolve_optional_storefront_customer_id",
   "enrich_storefront_cart",
@@ -702,14 +489,6 @@ for (const operation of [
     `${operation} compatibility operation mapping`,
   );
 }
-for (const operation of ["resolve_storefront_line_item_input"]) {
-  requireText(
-    typedSource,
-    `"${operation}"`,
-    `${operation} typed operation mapping`,
-  );
-}
-
 const legacyCalls =
   facadeSource.match(/super::legacy_helpers::[a-z_]+\(/g) ?? [];
 if (legacyCalls.length !== 2) {
@@ -717,54 +496,52 @@ if (legacyCalls.length !== 2) {
     `expected 2 remaining compatibility legacy helper calls, found ${legacyCalls.length}`,
   );
 }
-const typedCompatibilityCalls =
-  facadeSource.match(
-    /super::typed_line_item_helpers::(?:resolve_storefront_line_item_input|validate_storefront_line_item_quantity)\(/g,
-  ) ?? [];
-if (typedCompatibilityCalls.length !== 1) {
-  failures.push(
-    `expected 1 typed compatibility helper call, found ${typedCompatibilityCalls.length}`,
-  );
-}
-const typedExports =
-  layeredSource.match(
-    /resolve_storefront_line_item_input|validate_storefront_line_item_quantity/g,
-  ) ?? [];
-if (typedExports.length !== 1) {
-  failures.push(
-    `expected 1 explicit typed helper export, found ${typedExports.length}`,
-  );
+
+for (const source of [moduleSource, facadeSource, legacySource, layeredSource, mountedSource, workflowSource]) {
+  for (const retired of [
+    "typed_line_item_helpers",
+    "resolve_storefront_line_item_input",
+    "validate_storefront_line_item_quantity",
+    "rustok_product::entities",
+  ]) {
+    forbidText(source, retired, "retired cart line-item path");
+  }
 }
 
-// Quantity is no longer a compatibility validator plus an unquoted write. Its one live
-// workflow verifies selected owner quotes/stock and sends the original Cart observation.
-for (const source of [
-  facadeSource,
-  layeredSource,
-  typedSource,
-  mountedSource,
+for (const [resolver, nextResolver, operation] of [
+  ["add_storefront_cart_line_item", "update_storefront_cart_context", "add_line_item"],
+  ["update_storefront_cart_line_item", "remove_storefront_cart_line_item", "update_line_item_quantity"],
 ]) {
-  forbidText(
-    source,
-    "validate_storefront_line_item_quantity",
-    "retired unquoted quantity path",
-  );
+  const body = between(mountedSource, `async fn ${resolver}(`, `async fn ${nextResolver}(`, resolver);
+  requireText(body, `.${operation}(`, resolver);
+  requireText(body, ".map_err(cart_port_error)?", resolver);
 }
-requireText(
-  mountedSource,
-  ".update_line_item_quantity(",
-  "mounted canonical quantity workflow",
-);
-requireText(
-  workflowSource,
-  "crate::read_storefront_cart_line_quote(",
-  "canonical quantity pricing observation",
-);
-requireText(
-  workflowSource,
-  "pricing_context,",
-  "original quantity adoption observation",
-);
+
+for (const [start, end, markers] of [
+  ["pub async fn add_line_item(", "pub async fn update_line_item_quantity(", [
+    ".resolve_product_price(", ".add_storefront_line_item(",
+  ]],
+  ["pub async fn update_line_item_quantity(", "fn require_active_cart(", [
+    "crate::read_storefront_cart_line_quote(", "pricing_context,", "CartStorefrontLineItemPricingRequest",
+  ]],
+]) {
+  const body = between(workflowSource, start, end, "shared cart workflow");
+  for (const marker of [".read_storefront_variant_product_projection(", "require_cart_inventory(", ...markers]) {
+    requireText(body, marker, start);
+  }
+}
+
+for (const owner of ["cart", "pricing", "product", "inventory"]) {
+  requireText(workflowSource, `dependency_error("${owner}", error)`, "typed owner failure");
+}
+for (const value of ["kind = ?error.kind", "retryable = error.retryable", "code_length = error.code.len()", 'format!("commerce.cart_{owner}_refused")', "error.retryable,"]) {
+  requireText(dependencyMapper, value, "bounded line-item dependency mapper");
+}
+for (const value of ["error.message", "error.to_string(", "?error,", "%error,", "%error.code", "?error.code"]) {
+  forbidText(dependencyMapper, value, "bounded line-item dependency mapper");
+}
+forbidRawContextLogging(failures, dependencyMapper, "shared line-item dependency mapper");
+
 if (failures.length > 0) {
   console.error(
     "Commerce GraphQL storefront cart helper error safety verification failed:",
@@ -774,5 +551,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ Commerce GraphQL storefront cart helpers keep stable envelopes, bounded diagnostics, typed line-item compatibility delegation, typed outcomes, and private layered routing",
+  "✔ Commerce GraphQL storefront cart helpers keep stable envelopes, bounded diagnostics, typed line-item outcomes, and private layered routing",
 );

@@ -52,6 +52,8 @@ jobs:
         run: node scripts/verify/verify-commerce-graphql-order-change-apply-owner-port-cutover.mjs
       - name: Verify GraphQL shipping-option owner port
         run: node scripts/verify/verify-commerce-graphql-cart-shipping-option-context.mjs
+      - name: Verify shared storefront cart line-item boundary
+        run: node scripts/verify/verify-commerce-graphql-cart-helper-error-safety.mjs
       - name: Verify ecommerce public port errors
         run: npm run verify:ecommerce:public-port-errors
       - name: Run public error negative fixtures
