@@ -25,7 +25,7 @@ fn optional_arc_changed<T>(current: &Option<Arc<T>>, next: &Option<Arc<T>>) -> b
 /// Contains zero framework-specific reactive primitives (no Leptos Signals, no Dioxus Signals).
 /// Can be managed by any reactive wrapper or reducer.
 fn conflict_actual_revision(message: &str) -> Option<String> {
-    for marker in ["found `", "current revision `"] {
+    for marker in ["found `", "current revision `", "current page is `"] {
         if let Some((_, tail)) = message.split_once(marker) {
             let revision = tail.split('`').next()?.trim();
             if !revision.is_empty() {
@@ -714,6 +714,17 @@ mod tests {
         assert_eq!(
             conflict_actual_revision(
                 "Pages document advanced after this save receipt: committed revision `rev-2`, current revision `rev-3`"
+            )
+            .as_deref(),
+            Some("rev-3")
+        );
+    }
+
+    #[test]
+    fn conflict_revision_is_extracted_from_superseded_receipt_errors() {
+        assert_eq!(
+            conflict_actual_revision(
+                "REVISION_CONFLICT: save receipt committed revision `rev-2`, but the current page is `rev-3`"
             )
             .as_deref(),
             Some("rev-3")
