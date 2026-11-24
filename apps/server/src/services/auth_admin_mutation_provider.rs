@@ -8,6 +8,7 @@ use rustok_auth::{
     UpdateOAuthAppCommand, UserMutationRecord,
 };
 use rustok_core::UserRole;
+use rustok_cache::CacheService;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
     QueryOrder, QuerySelect,
@@ -128,11 +129,20 @@ where
 pub struct ServerAuthAdminMutationProvider {
     db: DatabaseConnection,
     auth_config: crate::auth::AuthConfig,
+    cache_service: CacheService,
 }
 
 impl ServerAuthAdminMutationProvider {
-    pub fn new(db: DatabaseConnection, auth_config: crate::auth::AuthConfig) -> Self {
-        Self { db, auth_config }
+    pub fn new(
+        db: DatabaseConnection,
+        auth_config: crate::auth::AuthConfig,
+        cache_service: CacheService,
+    ) -> Self {
+        Self {
+            db,
+            auth_config,
+            cache_service,
+        }
     }
 
     fn request_permissions(

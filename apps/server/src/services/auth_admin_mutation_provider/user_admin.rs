@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use rustok_api::Permission;
+use rustok_cache::CacheService;
 use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, IssueUserInviteCommand,
     IssuedUserInviteResult, UpdateUserCommand, UserAdminMutationPort, UserInviteRecord,
@@ -350,13 +351,14 @@ where
 }
 
 async fn publish_committed_user_invalidation(
+    cache_service: &CacheService,
     tenant_id: Uuid,
     user_id: Uuid,
     durable_generation: u64,
 ) {
     RbacService::invalidate_user_rbac_caches(&tenant_id, &user_id).await;
     if let Err(error) =
-        publish_user_rbac_invalidation(&tenant_id, &user_id, durable_generation).await
+        publish_user_rbac_invalidation(cache_service, &tenant_id, &user_id, durable_generation).await
     {
         tracing::warn!(
             %error,
@@ -911,7 +913,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         };
         tx.commit().await.map_err(super::internal_admin_error)?;
         if let Some(durable_generation) = durable_generation {
-            publish_committed_user_invalidation(context.tenant_id, user.id, durable_generation)
+            publish_committed_user_invalidation(&self.cache_service, context.tenant_id, user.id, durable_generation)
                 .await;
         }
         Ok(ServerAuthAdminMutationProvider::user_record(
@@ -980,7 +982,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             ));
         }
         tx.commit().await.map_err(super::internal_admin_error)?;
-        publish_committed_user_invalidation(context.tenant_id, user.id, durable_generation).await;
+        publish_committed_user_invalidation(&self.cache_service, context.tenant_id, user.id, durable_generation).await;
         Ok(())
     }
 

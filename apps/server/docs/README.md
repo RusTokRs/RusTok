@@ -44,6 +44,27 @@ Local documentation for the main RusToK backend host application. This file capt
   than keyed globally across all hosts in the process. A dependency failure
   in one runtime no longer prevents another runtime from testing its own
   healthy dependency. Clones of the same runtime still share the breaker.
+- HTTP readiness and GraphQL `systemHealth` use one shared storage-probe service.
+  Its non-nil object identity and operation lock are scoped to the
+  `ServerRuntimeContext`, so concurrent probes cannot overwrite or delete
+  each other's staging object; ambiguous writes are cleaned up and retried
+  through the same stable key.
+- Server build code generation watches optional module manifests and both
+  fallback GraphQL entrypoint paths even before those files exist, so adding
+  a package manifest or GraphQL entrypoint cannot leave generated wiring stale
+  until a clean build.
+- The in-process artifact executor fingerprints the running server binary on
+  Tokio's blocking pool; hashing a large executable no longer occupies an async
+  worker thread during runtime composition.
+- The release image sets the production environment, config directory and
+  HTTPS/HSTS declaration explicitly. It contains only the server binary and an
+  empty operator-mounted `/app/config`; development/test/browser-smoke YAML is
+  never copied into the production image. The Linux release archive carries
+  only `production.yaml.example` plus setup instructions.
+- RBAC invalidation publishers receive the `CacheService` owned by the same
+  `ServerRuntimeContext` as the listener. Independent runtimes cannot redirect
+  user or namespace-wide invalidations through another runtime's local bus or
+  Redis client via a process-global publisher pointer.
 
 ## Purpose
 
