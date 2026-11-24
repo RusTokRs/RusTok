@@ -28,7 +28,7 @@ use crate::auth::{AuthConfig, hash_password_async};
 use sha2::{Digest, Sha256};
 
 use crate::models::{auth_invite_consumptions, auth_invites, sessions, users};
-use crate::services::auth_invite::{InviteLookup, lock_invite_for_mutation};
+use crate::services::auth_invite::{InviteLookup, invite_token_hash, lock_invite_for_mutation};
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::flex_attached_values::FlexAttachedValuesService;
 use crate::services::rbac_cache_invalidation::publish_user_rbac_invalidation;
@@ -1058,7 +1058,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         let invite = auth_invites::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(context.tenant_id),
-            token_hash: Set(hex::encode(Sha256::digest(token.as_bytes()))),
+            token_hash: Set(invite_token_hash(&token)),
             email: Set(email),
             role: Set(ledger_role),
             issued_by: Set(Some(context.actor_id)),
