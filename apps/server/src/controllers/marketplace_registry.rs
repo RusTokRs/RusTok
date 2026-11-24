@@ -1964,7 +1964,7 @@ async fn claim_remote_validation_stage(
     headers: HeaderMap,
     Json(request): Json<RegistryRunnerClaimRequest>,
 ) -> Result<impl IntoResponse, Error> {
-    tracing::debug!(runner_id = %request.runner_id, "Handling remote runner stage claim request");
+    tracing::debug!(runner_id_len = request.runner_id.len(), "Handling remote runner stage claim request");
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let runner_id = validate_runner_id(&request.runner_id)?;
