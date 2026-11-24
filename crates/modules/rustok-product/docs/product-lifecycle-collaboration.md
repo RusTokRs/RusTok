@@ -169,9 +169,13 @@ Both real Product deletion callers pass the current tenant and propagate failure
 deletion probes 257 child identities, refuses overflow/empty/foreign graphs and checks exact
 final row counts. Publication/default-SKU/sparse-tuple rules and stable IDs remain unchanged.
 Inventory cleanup means only proved-empty levels/items, never reservation/proof/receipt purge.
-A later exact-effect failure rolls back prior levels, prices, Product state and event writes in
-the same transaction. There is no helper commit, stock adjustment, new Inventory event or
-counterfeit tombstone/revision.
+Before deleting Variant rows, Product also requires its Pricing transactional collaborator and
+calls `delete_prices_for_variants_in_tx` for the exact target IDs. That owner operation removes
+all Pricing rows for those stable Variant identities; a missing Pricing collaborator is not
+treated as proof that no prices exist and deletion fails closed. A later exact-effect failure
+rolls back prior Inventory levels, all Pricing rows, Product state and event writes in the same
+transaction. There is no helper commit, stock adjustment, new Inventory event or counterfeit
+tombstone/revision.
 
 Eight typed blockers feed one Product policy: invalid/limit are Validation, history/stock/changed
 are Conflict, and identity/state/isolation uncertainty is InvariantViolation. HTTP maps these to
