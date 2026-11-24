@@ -334,7 +334,9 @@ impl FlyUiStateMachine {
                         "save blocked by unresolved revision conflict".to_string(),
                     ));
                 }
-                if self.state.dirty.save_in_progress {
+                if self.state.dirty.save_in_progress
+                    || self.state.dirty.save_started_request_id.is_some()
+                {
                     return Err(UiError::CapabilityUnavailable(
                         "save already in progress".to_string(),
                     ));
