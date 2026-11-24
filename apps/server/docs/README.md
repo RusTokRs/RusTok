@@ -502,6 +502,15 @@ refresh-session lifetime for cookie Max-Age. The absolute 90-day lineage cap
 is not extended when a session is rotated, and unrepresentable persisted
 timestamps fail closed rather than panicking.
 
+When `settings.rustok.features.email_verification` is enabled, an unverified
+user cannot use a previously issued direct or delegated access token. The
+authentication boundary rechecks the persisted user verification state for
+every access-token resolution; OAuth authorization-code exchange and refresh
+also recheck it while holding the subject mutation fence. Service
+client-credentials tokens are unaffected. Registration may return an initial
+token bundle, but those user credentials remain unusable until the address is
+verified; after verification, a still-live registration session can be used.
+
 Cookie-session logout treats a missing, expired, or already-revoked refresh
 token idempotently, but returns a failure when revocation persistence or
 transactional event publication fails. The server must not claim logout
