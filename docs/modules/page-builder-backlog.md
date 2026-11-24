@@ -1274,3 +1274,19 @@ identity and cross-session recovery, and mounted Dioxus iframe/drag/drop/resize
 verification. The Dioxus source path is connected to the shared controller and has
 local attempt correlation, but that is not a durable receipt identity; browser evidence
 is still outstanding.
+
+2026-11-24 save-race and isolated-canvas hardening (source only; not executed):
+- A peer-write notification now retires the matching in-flight SaveAttempt in both Leptos and
+  Dioxus before the delayed host response can acknowledge an older revision. Stale completions
+  remain ignored; the local draft stays dirty and the editor stays read-only.
+- The SSR Pages receipt path now re-reads the page after resolving a receipt and accepts the
+  acknowledgement only when the fresh page revision exactly matches the receipt revision. The
+  submitted pre-save revision is no longer sufficient evidence of currentness.
+- Dioxus and Leptos isolated canvases clear geometry, overlays and active drags when a geometry
+  resource limit is reached; truncated snapshots cannot be used for hit testing or drops.
+- Dioxus iframe subscriptions are retired before bridge reconfiguration and rebound when the
+  iframe element ID changes. The Dioxus web feature explicitly enables the Fly Web bridge, and
+  each Dioxus editor root receives its own peer-write scope.
+- Added regression coverage for in-flight peer conflict retirement and iframe protocol/sequence
+  fencing. No Cargo build, Rust tests, formatting, lint or Playwright run was performed; all
+  checks remain for the maintainer's final pass.
