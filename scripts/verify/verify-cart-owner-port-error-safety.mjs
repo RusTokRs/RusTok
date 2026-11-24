@@ -45,6 +45,10 @@ requireText(
 );
 
 for (const [value, label] of [
+  ['impl CartCheckoutIdentityReadPort for OwnerCartPort', 'checkout identity owner implementation'],
+  ['PortActorKind::Service | PortActorKind::System', 'internal checkout identity principals'],
+  ['claim == CART_CHECKOUT_IDENTITY_READ_CLAIM', 'checkout identity capability'],
+  ['"cart.checkout_identity_forbidden"', 'checkout identity authorization code'],
   ['const READ_CART_CHECKOUT_SNAPSHOT_OPERATION', 'checkout snapshot operation'],
   ['const UPDATE_CART_CHECKOUT_CONTEXT_OPERATION', 'checkout context operation'],
   ['const BEGIN_CART_CHECKOUT_OPERATION', 'checkout begin operation'],
@@ -54,10 +58,6 @@ for (const [value, label] of [
   ['const CREATE_STOREFRONT_CART_OPERATION', 'storefront create operation'],
   ['const ADD_STOREFRONT_LINE_ITEM_OPERATION', 'storefront add-line operation'],
   ['const UPDATE_STOREFRONT_CONTEXT_OPERATION', 'storefront context operation'],
-  [
-    'const UPDATE_STOREFRONT_LINE_ITEM_QUANTITY_OPERATION',
-    'storefront quantity operation',
-  ],
   [
     'const UPDATE_STOREFRONT_LINE_ITEM_PRICING_OPERATION',
     'storefront pricing operation',
@@ -78,7 +78,7 @@ for (const [value, label] of [
     'stable lifecycle message',
   ],
   ['"cart storage is temporarily unavailable"', 'stable storage message'],
-  ['"cart tax recalculation failed"', 'stable tax-boundary message'],
+  ['"cart boundary operation failed"', 'stable tax and shipping failure message'],
   [
     'cart_error_to_port_error(&context, owner_operation, error)',
     'context-aware owner error mapping',

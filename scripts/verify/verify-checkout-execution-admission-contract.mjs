@@ -57,6 +57,13 @@ const journal = read('crates/modules/rustok-commerce/src/services/checkout_opera
 requireText(journal, 'pub enum CheckoutExecutionAdmission {', 'typed admission level');
 requireText(
   journal,
+  '.read_cart_checkout_identity(context, ReadCartCheckoutIdentityRequest { cart_id })',
+  'initial checkout binding uses the tenant-scoped Cart owner identity',
+);
+forbidText(journal, 'rustok_cart::entities::', 'checkout journal cannot query Cart persistence');
+forbidText(journal, '.read_cart_checkout_snapshot(', 'checkout admission cannot require a buyer projection');
+requireText(
+  journal,
   'Self::Open => CHECKOUT_OPERATION_ADMISSION_OPEN,',
   'open level from the event vocabulary',
 );

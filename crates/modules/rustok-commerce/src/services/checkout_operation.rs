@@ -12,7 +12,11 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortErrorKind};
-use rustok_cart::{CartCheckoutPort, CartCheckoutSnapshotRequest, in_process_cart_checkout_port};
+use rustok_cart::in_process_cart_checkout_identity_read_port;
+use rustok_cart_ports::{
+    CART_CHECKOUT_IDENTITY_READ_CLAIM, CartCheckoutIdentityReadPort,
+    ReadCartCheckoutIdentityRequest,
+};
 use rustok_core::generate_id;
 use rustok_events::{
     CHECKOUT_OPERATION_ADMISSION_CLOSED, CHECKOUT_OPERATION_ADMISSION_OPEN,
@@ -391,7 +395,7 @@ pub struct CheckoutOperationCheckpoint {
 pub struct CheckoutOperationJournal {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
-    cart_owner: Arc<dyn CartCheckoutPort>,
+    cart_identity_reads: Arc<dyn CartCheckoutIdentityReadPort>,
     payment_operations: PaymentProviderOperationJournal,
 }
 
@@ -507,15 +511,18 @@ fn allowed_transition_targets(status: CheckoutOperationStatus) -> String {
 impl CheckoutOperationJournal {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
-            cart_owner: in_process_cart_checkout_port(db.clone()),
+            cart_identity_reads: in_process_cart_checkout_identity_read_port(db.clone()),
             payment_operations: PaymentProviderOperationJournal::new(db.clone()),
             db,
             event_bus,
         }
     }
 
-    pub fn with_cart_owner(mut self, cart_owner: Arc<dyn CartCheckoutPort>) -> Self {
-        self.cart_owner = cart_owner;
+    pub fn with_cart_identity_read_port(
+        mut self,
+        port: Arc<dyn CartCheckoutIdentityReadPort>,
+    ) -> Self {
+        self.cart_identity_reads = port;
         self
     }
 
@@ -530,19 +537,14 @@ impl CheckoutOperationJournal {
             PLATFORM_FALLBACK_LOCALE,
             format!("checkout-journal:begin:{cart_id}"),
         )
+        .with_claim(CART_CHECKOUT_IDENTITY_READ_CLAIM)
         .with_deadline(std::time::Duration::from_secs(2));
         let result = self
-            .cart_owner
-            .read_cart_checkout_snapshot(
-                context,
-                CartCheckoutSnapshotRequest {
-                    cart_id,
-                    locale: None,
-                },
-            )
+            .cart_identity_reads
+            .read_cart_checkout_identity(context, ReadCartCheckoutIdentityRequest { cart_id })
             .await;
         match result {
-            Ok(cart) if cart.tenant_id == tenant_id && cart.id == cart_id => Ok(()),
+            Ok(cart) if cart.tenant_id == tenant_id && cart.cart_id == cart_id => Ok(()),
             Ok(_) => Err(CheckoutOperationError::CartOwnerRead { retryable: false }),
             Err(error) if error.kind == PortErrorKind::NotFound => {
                 Err(CheckoutOperationError::Validation(format!(
@@ -552,7 +554,7 @@ impl CheckoutOperationJournal {
             Err(error) => {
                 tracing::warn!(
                     owner = "rustok_cart",
-                    operation = "read_cart_checkout_snapshot",
+                    operation = "read_cart_checkout_identity",
                     boundary = "commerce_checkout_journal",
                     error_kind = ?error.kind,
                     retryable = error.retryable,

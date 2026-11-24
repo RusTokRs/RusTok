@@ -11,6 +11,10 @@
 'use client';
 
 import type { CreateVariantInput, UpdateVariantInput } from '../api/products';
+import {
+  buildProductAttributeValueBatches,
+  toProductAttributeValueMap
+} from '../attribute-value-state';
 import * as React from 'react';
 import { useTranslations } from '@rustok/next-fluent/client';
 import {
@@ -97,6 +101,11 @@ export interface ProductEditorPageProps {
   brands?: BrandSummary[];
   initialEffectiveForm?: ProductEffectiveForm | null;
   initialAttributeValues?: ProductAttributeValueItem[];
+  initialAttributeValuesLoaded?: boolean;
+  fetchAttributeValues?: (
+    productId: string,
+    locale: string
+  ) => Promise<ProductAttributeValueItem[]>;
   initialRelations?: ProductRelation[];
   isNew?: boolean;
   onSaveProduct: (
@@ -215,6 +224,7 @@ export function ProductEditorPage({
   brands = [],
   initialEffectiveForm = null,
   initialAttributeValues = [],
+  initialAttributeValuesLoaded = false,
   initialRelations = EMPTY_RELATIONS,
   initialBundles = EMPTY_BUNDLES,
   isNew = false,
@@ -240,6 +250,7 @@ export function ProductEditorPage({
   onReorderRelations,
   onSearchProducts,
   fetchEffectiveForm,
+  fetchAttributeValues,
   onCreateBundle,
   onUpdateBundle,
   onAddBundleItem,
@@ -461,31 +472,37 @@ export function ProductEditorPage({
     React.useState<ProductEffectiveForm | null>(initialEffectiveForm);
   const [isLoadingForm, setIsLoadingForm] = React.useState(false);
 
-  // Attribute Values State
-  const [attributeValues, setAttributeValues] = React.useState<
-    Record<string, ProductAttributeValuePatch>
-  >(() => {
-    const map: Record<string, ProductAttributeValuePatch> = {};
-    for (const v of initialAttributeValues) {
-      map[v.attributeId] = {
-        attributeId: v.attributeId,
-        kind: v.kind,
-        text: v.text,
-        integer: v.integer,
-        decimal: v.decimal,
-        boolean: v.boolean,
-        date: v.date,
-        datetime: v.datetime,
-        optionId: v.optionId,
-        optionIds: v.optionIds,
-        json: v.json
-      };
-    }
-    return map;
-  });
-  const [dirtyAttributeIds, setDirtyAttributeIds] = React.useState<Set<string>>(
-    new Set()
-  );
+  // Localized attribute drafts are independent per locale. Nonlocalized
+  // values are shared so switching locale cannot fork a global field.
+  const [attributeValuesByLocale, setAttributeValuesByLocale] = React.useState<
+    Record<string, Record<string, ProductAttributeValuePatch>>
+  >(() => ({ en: toProductAttributeValueMap(initialAttributeValues) }));
+  const [loadedAttributeLocales, setLoadedAttributeLocales] = React.useState<
+    Set<string>
+  >(() => new Set(initialAttributeValuesLoaded ? ['en'] : []));
+  const [loadingAttributeLocale, setLoadingAttributeLocale] =
+    React.useState<string | null>(null);
+  const [attributeValuesLoadErrors, setAttributeValuesLoadErrors] =
+    React.useState<Record<string, string>>({});
+  const [attributeValuesRetryVersion, setAttributeValuesRetryVersion] =
+    React.useState(0);
+  const [nonLocalizedAttributeValues, setNonLocalizedAttributeValues] =
+    React.useState<Record<string, ProductAttributeValuePatch>>({});
+  const [
+    dirtyLocalizedAttributeIdsByLocale,
+    setDirtyLocalizedAttributeIdsByLocale
+  ] = React.useState<Record<string, Set<string>>>({});
+  const [dirtyNonLocalizedAttributeIds, setDirtyNonLocalizedAttributeIds] =
+    React.useState<Set<string>>(new Set());
+  const attributeValues = {
+    ...(attributeValuesByLocale[activeLocale] ?? {}),
+    ...nonLocalizedAttributeValues
+  };
+  const attributeValuesReady =
+    !initialProduct?.id || loadedAttributeLocales.has(activeLocale);
+  const isLoadingAttributeValues = loadingAttributeLocale === activeLocale;
+  const attributeValuesLoadError =
+    attributeValuesLoadErrors[activeLocale] ?? null;
 
   // Variants & Media State
   const [variants, setVariants] = React.useState<ProductVariant[]>(
@@ -571,6 +588,82 @@ export function ProductEditorPage({
     };
   }, [selectedCategoryId, activeLocale, fetchEffectiveForm]);
 
+  // Attribute values are fetched for the selected locale independently of the
+  // effective form. A late response for a previous locale must never replace
+  // the currently selected locale's draft.
+  React.useEffect(() => {
+    if (!initialProduct?.id) {
+      setLoadingAttributeLocale(null);
+      return;
+    }
+
+    const locale = activeLocale;
+    if (loadedAttributeLocales.has(locale)) {
+      setLoadingAttributeLocale(null);
+      return;
+    }
+
+    if (!fetchAttributeValues) {
+      setAttributeValuesLoadErrors((prev) => ({
+        ...prev,
+        [locale]: 'Product attribute values cannot be loaded for this locale.'
+      }));
+      setLoadingAttributeLocale(null);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingAttributeLocale(locale);
+    setAttributeValuesLoadErrors((prev) => {
+      if (!prev[locale]) return prev;
+      const next = { ...prev };
+      delete next[locale];
+      return next;
+    });
+
+    void fetchAttributeValues(initialProduct.id, locale)
+      .then((values) => {
+        if (cancelled) return;
+        setAttributeValuesByLocale((prev) => ({
+          ...prev,
+          [locale]: toProductAttributeValueMap(values)
+        }));
+        setLoadedAttributeLocales((prev) => {
+          const next = new Set(prev);
+          next.add(locale);
+          return next;
+        });
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setAttributeValuesLoadErrors((prev) => ({
+            ...prev,
+            [locale]:
+              error instanceof Error
+                ? error.message
+                : 'Failed to load product attribute values.'
+          }));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingAttributeLocale((current) =>
+            current === locale ? null : current
+          );
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    initialProduct?.id,
+    activeLocale,
+    fetchAttributeValues,
+    loadedAttributeLocales,
+    attributeValuesRetryVersion
+  ]);
+
   const handleSelectCategory = (categoryId: string) => {
     setSelectedCategoryId(categoryId);
     setEffectiveForm(null);
@@ -624,14 +717,36 @@ export function ProductEditorPage({
     attributeId: string,
     patch: Partial<ProductAttributeValuePatch>
   ) => {
-    setAttributeValues((prev) => ({
+    const nextValue = {
+      ...(attributeValues[attributeId] || { attributeId, kind: 'TEXT' }),
+      ...patch
+    };
+    const definition = effectiveForm?.attributes.find(
+      (attribute) => attribute.attributeId === attributeId
+    );
+
+    if (definition?.isLocalized) {
+      setAttributeValuesByLocale((prev) => ({
+        ...prev,
+        [activeLocale]: {
+          ...(prev[activeLocale] ?? {}),
+          [attributeId]: nextValue
+        }
+      }));
+      setDirtyLocalizedAttributeIdsByLocale((prev) => ({
+        ...prev,
+        [activeLocale]: new Set(prev[activeLocale] ?? []).add(attributeId)
+      }));
+      return;
+    }
+
+    setNonLocalizedAttributeValues((prev) => ({
       ...prev,
-      [attributeId]: {
-        ...(prev[attributeId] || { attributeId, kind: 'TEXT' }),
-        ...patch
-      }
+      [attributeId]: nextValue
     }));
-    setDirtyAttributeIds((prev) => new Set(prev).add(attributeId));
+    setDirtyNonLocalizedAttributeIds((prev) =>
+      new Set(prev).add(attributeId)
+    );
   };
 
   const syncVariantRecoveryState = () => {
@@ -950,6 +1065,8 @@ export function ProductEditorPage({
       pendingVariantOperation !== null ||
       !writeAttempt.current ||
       (isLoadingForm && !writeAttempt.current.pendingOperation) ||
+      ((isLoadingAttributeValues || !attributeValuesReady) &&
+        !writeAttempt.current.pendingOperation) ||
       isSaving ||
       writeAttempt.current.isBusy
     )
@@ -1000,12 +1117,14 @@ export function ProductEditorPage({
         (t) => t.title.trim().length > 0
       );
 
-      // Collect only dirty attribute patches
-      const patches: ProductAttributeValuePatch[] = Array.from(
-        dirtyAttributeIds
-      )
-        .map((id) => attributeValues[id])
-        .filter(Boolean);
+      // Preserve every edited locale and emit shared fields only once.
+      const attributeValueBatches = buildProductAttributeValueBatches({
+        activeLocale,
+        valuesByLocale: attributeValuesByLocale,
+        nonLocalizedValues: nonLocalizedAttributeValues,
+        dirtyLocalizedAttributeIdsByLocale,
+        dirtyNonLocalizedAttributeIds
+      });
 
       const attempt = await writeAttempt.current.execute(
         'save',
@@ -1035,7 +1154,7 @@ export function ProductEditorPage({
           ...(isNew
             ? { variantAxes: initialAxes, initialVariants: normalizedVariants }
             : {}),
-          attributePatches: patches,
+          attributeValueBatches,
           activeLocale
         },
         onSaveProduct
@@ -1051,7 +1170,8 @@ export function ProductEditorPage({
         setDocumentRevision(res.revision);
       }
 
-      setDirtyAttributeIds(new Set());
+      setDirtyLocalizedAttributeIdsByLocale({});
+      setDirtyNonLocalizedAttributeIds(new Set());
       setSuccessMessage(
         isNew ? 'Product created successfully!' : 'Changes saved successfully.'
       );
@@ -1393,7 +1513,9 @@ export function ProductEditorPage({
               !!variantRecoveryError ||
               !!pendingOperation ||
               pendingVariantOperation !== null ||
-              !!settledWrite
+              !!settledWrite ||
+              isLoadingAttributeValues ||
+              !attributeValuesReady
             }
             onSave={handleSave}
             onStatusChange={
@@ -1403,6 +1525,24 @@ export function ProductEditorPage({
             }
             onDelete={!pendingOperation ? handleDelete : undefined}
           />
+
+          {attributeValuesLoadError && (
+            <Alert className='border-destructive/40'>
+              <AlertCircle className='h-4 w-4' />
+              <AlertDescription className='flex items-center justify-between gap-3'>
+                <span>{attributeValuesLoadError}</span>
+                <button
+                  type='button'
+                  className='shrink-0 text-sm underline'
+                  onClick={() =>
+                    setAttributeValuesRetryVersion((version) => version + 1)
+                  }
+                >
+                  Retry
+                </button>
+              </AlertDescription>
+            </Alert>
+          )}
 
           <fieldset
             disabled={
@@ -1451,10 +1591,15 @@ export function ProductEditorPage({
                   selectedCategoryId={selectedCategoryId}
                   onSelectCategory={handleSelectCategory}
                   effectiveForm={effectiveForm}
-                  isLoadingForm={isLoadingForm}
+                  isLoadingForm={isLoadingForm || isLoadingAttributeValues}
                   attributeValues={attributeValues}
                   onAttributeValueChange={handleAttributeValueChange}
-                  disabled={isSaving || pendingOperation !== null}
+                  disabled={
+                    isSaving ||
+                    pendingOperation !== null ||
+                    isLoadingAttributeValues ||
+                    !attributeValuesReady
+                  }
                 />
 
                 {initialProduct &&

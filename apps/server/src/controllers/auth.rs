@@ -698,34 +698,34 @@ async fn request_verification(
 ) -> Result<Response> {
     let email = params.email.trim();
     tracing::debug!("auth::request_verification entry");
+    let settings = ctx.runtime_ctx().settings();
+    if !settings.features.email_verification {
+        return Ok(json_response(VerificationRequestResponse { status: "ok" }));
+    }
+
     let config = ctx
         .auth_config()
         .cloned()
         .ok_or(Error::InternalServerError)?;
-    let settings = ctx.runtime_ctx().settings();
-
     let user = Users::find_by_email(ctx.runtime_ctx().db(), tenant.id, email).await?;
     if settings.features.email_verification {
         crate::auth::mask_auth_lookup_timing().await?;
     }
 
-    let verification = if settings.features.email_verification {
-        user.filter(|record| record.email_verified_at.is_none())
-            .map(|record| {
-                let recipient = record.email;
-                let token = encode_email_verification_token(
-                    &config,
-                    tenant.id,
-                    record.id,
-                    &recipient,
-                    EMAIL_VERIFICATION_TOKEN_TTL_SECS,
-                )?;
-                Ok::<_, Error>((recipient, token))
-            })
-            .transpose()?
-    } else {
-        None
-    };
+    let verification = user
+        .filter(|record| record.email_verified_at.is_none())
+        .map(|record| {
+            let recipient = record.email;
+            let token = encode_email_verification_token(
+                &config,
+                tenant.id,
+                record.id,
+                &recipient,
+                EMAIL_VERIFICATION_TOKEN_TTL_SECS,
+            )?;
+            Ok::<_, Error>((recipient, token))
+        })
+        .transpose()?;
 
     if let Some((recipient, verification_token_value)) = verification {
         let runtime_ctx = ctx.runtime_ctx();

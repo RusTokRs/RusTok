@@ -2273,8 +2273,10 @@ The mounted storefront wrapper still constructs local Cart, Inventory, Region an
 providers. Cart preparation uses a native atomic handle with a pricing callback. Commerce must
 define how preparation, retries and compensation work across independent storage before
 switching that stage to RPC. The checkout journal verifies new Cart bindings through
-`CartCheckoutPort`. A retained operation replays by key and request hash before consulting
-the Cart owner. The mounted runtime supplies the current in-process Cart provider. Order
+`CartCheckoutIdentityReadPort`. It reads only the tenant-scoped identity, with an internal
+capability claim. The storefront still authorizes the buyer before checkout. A retained
+operation replays by key and request hash before consulting the Cart owner. The mounted
+runtime supplies the current in-process Cart provider. Order
 and Payment checkpoint checks still read the shared database, and the journal has foreign
 keys into all three owner tables. Remote participation requires a storage migration and
 tenant-scoped owner evidence that retains the write-once Payment binding. The paid-order
@@ -2296,3 +2298,8 @@ The same 11 cases failed on clean `ed99a87e77` with the same Product, Inventory,
 and Fulfillment setup or error expectations. The focused owner-boundary tests are the
 runtime evidence for this change. A full remote checkout profile still needs its own
 runtime validation.
+
+The Cart identity continuation passed both focused checkout operation tests. The full
+checkout service suite passed 24 of 35 scenarios, with the same 11 failing case names
+as the prior clean baseline. The new admission test covers tenant and capability
+rejection, an unavailable Cart owner and replay from the journal.

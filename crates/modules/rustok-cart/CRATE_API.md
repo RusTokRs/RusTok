@@ -13,6 +13,12 @@
 - **Atomic Checkout Capabilities**:
   - `AtomicCartCheckoutPort`: Atomically binds and locks an active cart during checkout execution, preventing concurrent checkouts.
   - `in_process_atomic_cart_checkout_port` & `bind_in_process_atomic_cart_checkout`: In-process composition hooks for checkout runtimes.
+- **Checkout Identity Read**
+  - `rustok_cart_ports::CartCheckoutIdentityReadPort` confirms a retained cart ID in the
+    tenant from `PortContext`. Authorized services use the `cart.checkout_identity.read`
+    claim. The response contains the tenant and cart IDs.
+  - `rustok_cart::in_process_cart_checkout_identity_read_port` builds the embedded
+    implementation. Compose it in trusted checkout runtimes.
 - **Guest Access Utilities**:
   - `verify_guest_cart_token`, `verify_current_guest_cart_access`: Secure token verification for unauthenticated guest carts via headers or cookies.
 
@@ -51,6 +57,7 @@
 
 - `rustok-core`
 - `rustok-api`
+- `rustok-cart-ports`
 - `rustok-region`
 - `rustok-fulfillment`
 - `rustok-tax`

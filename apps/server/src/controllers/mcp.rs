@@ -947,6 +947,24 @@ async fn get_scaffold_draft(
     Ok(Json(map_scaffold_draft(draft)))
 }
 
+fn mcp_management_audit_actor(
+    user: &crate::extractors::auth::CurrentUser,
+) -> (Option<String>, Option<String>, Option<Uuid>) {
+    if matches!(&user.principal_kind, &rustok_api::AuthPrincipalKind::Service) {
+        (
+            Some(user.client_id.unwrap_or(user.user.id).to_string()),
+            Some("service_client".to_string()),
+            None,
+        )
+    } else {
+        (
+            Some(user.user.id.to_string()),
+            Some("human_user".to_string()),
+            Some(user.user.id),
+        )
+    }
+}
+
 async fn stage_scaffold_draft(
     State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
@@ -959,6 +977,7 @@ async fn stage_scaffold_draft(
         name_len = input.name.len(),
         "Handling stage MCP scaffold draft request"
     );
+    let (actor_id, actor_type, created_by) = mcp_management_audit_actor(&user);
     let draft = McpManagementService::stage_scaffold_draft(
         ctx.db(),
         tenant.id,
@@ -973,7 +992,9 @@ async fn stage_scaffold_draft(
                 with_rest: input.with_rest.unwrap_or(true),
                 write_files: false,
             },
-            created_by: Some(user.user.id),
+            created_by,
+            actor_id,
+            actor_type,
         },
     )
     .await?;
@@ -994,6 +1015,7 @@ async fn apply_scaffold_draft(
         confirm = input.confirm,
         "Handling apply MCP scaffold draft request"
     );
+    let (actor_id, actor_type, applied_by) = mcp_management_audit_actor(&user);
     let (draft, _) = McpManagementService::apply_scaffold_draft(
         ctx.db(),
         tenant.id,
@@ -1001,7 +1023,9 @@ async fn apply_scaffold_draft(
         ApplyMcpScaffoldDraftInput {
             workspace_root: input.workspace_root,
             confirm: input.confirm,
-            applied_by: Some(user.user.id),
+            applied_by,
+            actor_id,
+            actor_type,
         },
     )
     .await?;

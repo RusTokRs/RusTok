@@ -22,6 +22,9 @@
 - Prepare a stable handoff point for later checkout and order placement flows.
 - Publish an owner-managed in-process `CartCheckoutPort` factory for explicit
   checkout and cart-read consumers.
+- Publish `CartCheckoutIdentityReadPort` in `rustok-cart-ports`. It confirms a cart ID
+  in the requested tenant for internal checkout bindings. The port requires an internal
+  service or system principal with `cart.checkout_identity.read` and returns the two IDs.
 - Publish an owner-managed `CartStorefrontPort` for storefront cart reads,
   mutations, and repricing without exposing `CartService` to consumers.
 - Publish an owner-managed `CartPromotionPort` for cart and shipping promotion

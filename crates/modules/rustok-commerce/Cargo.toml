@@ -34,6 +34,7 @@ rustok-outbox.workspace = true
 rustok-translation-targets.workspace = true
 rustok-commerce-foundation.workspace = true
 rustok-cart.workspace = true
+rustok-cart-ports.workspace = true
 rustok-customer.workspace = true
 rustok-product.workspace = true
 rustok-product-relations.workspace = true

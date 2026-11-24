@@ -56,6 +56,8 @@ pub struct StageMcpScaffoldDraftInput {
     pub client_id: Option<Uuid>,
     pub request: ScaffoldModuleRequest,
     pub created_by: Option<Uuid>,
+    pub actor_id: Option<String>,
+    pub actor_type: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -63,6 +65,8 @@ pub struct ApplyMcpScaffoldDraftInput {
     pub workspace_root: String,
     pub confirm: bool,
     pub applied_by: Option<Uuid>,
+    pub actor_id: Option<String>,
+    pub actor_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -603,8 +607,14 @@ impl McpManagementService {
                 tenant_id,
                 client_id: input.client_id,
                 token_id: None,
-                actor_id: input.created_by.map(|value| value.to_string()),
-                actor_type: Some("human_user".to_string()),
+                actor_id: input
+                    .actor_id
+                    .clone()
+                    .or_else(|| input.created_by.map(|value| value.to_string())),
+                actor_type: input
+                    .actor_type
+                    .clone()
+                    .or_else(|| input.created_by.map(|_| "human_user".to_string())),
                 action: "scaffold_draft_staged".to_string(),
                 outcome: "success".to_string(),
                 tool_name: Some("alloy_scaffold_module".to_string()),
@@ -650,6 +660,8 @@ impl McpManagementService {
             tenant_id,
             draft_id,
             input.applied_by,
+            input.actor_id.clone(),
+            input.actor_type.clone(),
             &workspace_root,
         )
         .await?;
@@ -666,6 +678,8 @@ impl McpManagementService {
                     tenant_id,
                     &draft,
                     input.applied_by,
+                    input.actor_id.clone(),
+                    input.actor_type.clone(),
                     &workspace_root,
                     &reason,
                 )
@@ -682,6 +696,8 @@ impl McpManagementService {
                     tenant_id,
                     &draft,
                     input.applied_by,
+                    input.actor_id.clone(),
+                    input.actor_type.clone(),
                     &workspace_root,
                     &reason,
                 )
@@ -704,8 +720,14 @@ impl McpManagementService {
                 tenant_id,
                 client_id: updated.client_id,
                 token_id: None,
-                actor_id: input.applied_by.map(|value| value.to_string()),
-                actor_type: Some("human_user".to_string()),
+                actor_id: input
+                    .actor_id
+                    .clone()
+                    .or_else(|| input.applied_by.map(|value| value.to_string())),
+                actor_type: input
+                    .actor_type
+                    .clone()
+                    .or_else(|| input.applied_by.map(|_| "human_user".to_string())),
                 action: "scaffold_draft_applied".to_string(),
                 outcome: "success".to_string(),
                 tool_name: Some("alloy_apply_module_scaffold".to_string()),
@@ -731,6 +753,8 @@ impl McpManagementService {
         tenant_id: Uuid,
         draft_id: Uuid,
         applied_by: Option<Uuid>,
+        actor_id: Option<String>,
+        actor_type: Option<String>,
         workspace_root: &str,
     ) -> Result<mcp_scaffold_drafts::Model> {
         let txn = db.begin().await.map_err(map_db_err)?;
@@ -777,8 +801,12 @@ impl McpManagementService {
                 tenant_id,
                 client_id: claimed.client_id,
                 token_id: None,
-                actor_id: applied_by.map(|value| value.to_string()),
-                actor_type: Some("human_user".to_string()),
+                actor_id: actor_id
+                    .clone()
+                    .or_else(|| applied_by.map(|value| value.to_string())),
+                actor_type: actor_type
+                    .clone()
+                    .or_else(|| applied_by.map(|_| "human_user".to_string())),
                 action: "scaffold_draft_apply_started".to_string(),
                 outcome: "pending".to_string(),
                 tool_name: Some("alloy_apply_module_scaffold".to_string()),
@@ -804,6 +832,8 @@ impl McpManagementService {
         tenant_id: Uuid,
         draft: &mcp_scaffold_drafts::Model,
         applied_by: Option<Uuid>,
+        actor_id: Option<String>,
+        actor_type: Option<String>,
         workspace_root: &str,
         reason: &str,
     ) -> Result<()> {
@@ -820,8 +850,12 @@ impl McpManagementService {
                 tenant_id,
                 client_id: updated.client_id,
                 token_id: None,
-                actor_id: applied_by.map(|value| value.to_string()),
-                actor_type: Some("human_user".to_string()),
+                actor_id: actor_id
+                    .clone()
+                    .or_else(|| applied_by.map(|value| value.to_string())),
+                actor_type: actor_type
+                    .clone()
+                    .or_else(|| applied_by.map(|_| "human_user".to_string())),
                 action: "scaffold_draft_apply_failed".to_string(),
                 outcome: "failure".to_string(),
                 tool_name: Some("alloy_apply_module_scaffold".to_string()),

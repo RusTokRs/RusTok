@@ -318,7 +318,7 @@ pub async fn complete_storefront_checkout_input_with_product_runtime(
             .with_marketplace_ledger_port(ledger_port)
     };
     let pipeline = pipeline.with_payment_provider_registry(payment_provider_registry.clone());
-    let cart_checkout_port = in_process_cart_checkout_port(runtime.db_clone());
+
     let staged = crate::StagedCheckoutService::new(
         plan_builder,
         pipeline,
@@ -326,12 +326,14 @@ pub async fn complete_storefront_checkout_input_with_product_runtime(
         runtime.db_clone(),
         event_bus.clone(),
     )
-    .with_cart_owner(cart_checkout_port.clone());
+    .with_cart_identity_read_port(rustok_cart::in_process_cart_checkout_identity_read_port(
+        runtime.db_clone(),
+    ));
     let compensation = crate::CheckoutCompensationService::new(
         runtime.db_clone(),
         event_bus,
         reservation_port,
-        cart_checkout_port,
+        in_process_cart_checkout_port(runtime.db_clone()),
     )
     .with_payment_provider_registry(payment_provider_registry);
 

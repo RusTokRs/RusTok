@@ -69,6 +69,7 @@ pub use marketplace_snapshot::{
     in_process_marketplace_cart_snapshot_read_port,
 };
 pub use module::CartModule;
+pub use owner_ports::in_process_cart_checkout_identity_read_port;
 pub use ports::{
     CartCheckoutLifecycleRequest, CartCheckoutPort, CartCheckoutSnapshotRequest,
     CartContextUpdateRequest, CartPromotionKindRequest, CartPromotionPort, CartPromotionRequest,

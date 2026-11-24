@@ -38,6 +38,7 @@ import {
   setVariantAxes,
   previewVariantAxes,
   getCategoryEffectiveForm,
+  fetchProductAttributeValues,
   fetchProductRelations,
   addProductRelation,
   removeProductRelation,
@@ -149,14 +150,7 @@ export async function saveProductAction(
           priceAmount: payload.initialVariant?.priceAmount,
           currencyCode: payload.initialVariant?.currencyCode,
           inventoryQuantity: payload.initialVariant?.inventoryQuantity,
-          attributeValues: payload.attributePatches.length
-            ? [
-                {
-                  locale: payload.activeLocale,
-                  patches: payload.attributePatches
-                }
-              ]
-            : [],
+          attributeValues: payload.attributeValueBatches,
           publish: payload.status === 'ACTIVE'
         },
         idempotencyKey
@@ -169,14 +163,7 @@ export async function saveProductAction(
       }
 
       const updateInput: UpdateProductInput = {
-        attributeValues: payload.attributePatches.length
-          ? [
-              {
-                locale: payload.activeLocale,
-                patches: payload.attributePatches
-              }
-            ]
-          : [],
+        attributeValues: payload.attributeValueBatches,
         translations: payload.translations.map((t) => ({
           locale: t.locale,
           title: t.title,
@@ -442,6 +429,14 @@ export async function fetchEffectiveFormAction(
 ) {
   const opts = await getAuthOpts();
   return getCategoryEffectiveForm(opts, categoryId, locale);
+}
+
+export async function fetchProductAttributeValuesAction(
+  productId: string,
+  locale: string
+) {
+  const opts = await getAuthOpts();
+  return fetchProductAttributeValues(opts, productId, locale);
 }
 
 export async function addProductRelationAction(

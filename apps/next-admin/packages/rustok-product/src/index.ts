@@ -50,6 +50,7 @@ export {
 } from './product-list-pagination';
 import { normalizeProductAdminPagination } from './product-list-pagination';
 export * from './api/types';
+export * from './attribute-value-state';
 export * from './api/categories';
 export * from './api/brands';
 export { BrandsPage } from './pages/brands-page';

@@ -265,6 +265,7 @@ impl McpScaffoldDraftStore for DbBackedMcpRuntimeBridge {
         let client_id = client_id_from_runtime_context(context)
             .map_err(|e| McpRuntimeError::Message(e.to_string()))?;
         let created_by = actor_user_id_from_runtime_context(context);
+        let (actor_id, actor_type) = actor_identity_from_runtime_context(context);
 
         let draft = McpManagementService::stage_scaffold_draft(
             &self.db,
@@ -273,6 +274,8 @@ impl McpScaffoldDraftStore for DbBackedMcpRuntimeBridge {
                 client_id,
                 request,
                 created_by,
+                actor_id,
+                actor_type,
             },
         )
         .await
@@ -337,6 +340,7 @@ impl McpScaffoldDraftStore for DbBackedMcpRuntimeBridge {
         let tenant_id = tenant_id_from_runtime_context(context)
             .map_err(|e| McpRuntimeError::Message(e.to_string()))?;
         let applied_by = actor_user_id_from_runtime_context(context);
+        let (actor_id, actor_type) = actor_identity_from_runtime_context(context);
         let draft_id = Uuid::parse_str(&request.draft_id)
             .map_err(|error| McpRuntimeError::Message(format!("Invalid draft id: {error}")))?;
 
@@ -348,6 +352,8 @@ impl McpScaffoldDraftStore for DbBackedMcpRuntimeBridge {
                 workspace_root: request.workspace_root,
                 confirm: request.confirm,
                 applied_by,
+                actor_id,
+                actor_type,
             },
         )
         .await
@@ -483,6 +489,22 @@ fn client_id_from_runtime_context(
         })?)),
         None => Ok(None),
     }
+}
+
+fn actor_identity_from_runtime_context(
+    context: &McpScaffoldDraftRuntimeContext,
+) -> (Option<String>, Option<String>) {
+    context
+        .access_context
+        .as_ref()
+        .and_then(|access| access.identity.as_ref())
+        .map(|identity| {
+            (
+                Some(identity.actor_id.clone()),
+                Some(actor_type_slug(identity.actor_type).to_string()),
+            )
+        })
+        .unwrap_or_default()
 }
 
 fn actor_user_id_from_runtime_context(context: &McpScaffoldDraftRuntimeContext) -> Option<Uuid> {
