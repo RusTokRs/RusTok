@@ -5,6 +5,7 @@ use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, UpdateUserCommand, UserAdminMutationRuntime,
 };
 use rustok_core::{ModuleRuntimeExtensions, UserRole};
+use rustok_cache::CacheService;
 use rustok_rbac::graphql::{
     RbacGraphqlRoleWriteError, RbacGraphqlRoleWriter, RbacGraphqlRoleWriterHandle,
 };
@@ -15,6 +16,7 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 struct ServerRbacGraphqlRoleWriter {
     runtime: UserAdminMutationRuntime,
     db: sea_orm::DatabaseConnection,
+    cache_service: CacheService,
 }
 
 #[async_trait]
@@ -102,7 +104,7 @@ impl RbacGraphqlRoleWriter for ServerRbacGraphqlRoleWriter {
         // Clear locally and expire the caller's scope before any fallible fan-out.
         // The committed global watermark remains available to all watchdogs.
         crate::services::rbac_runtime::invalidate_all_user_permissions_cache().await;
-        crate::services::rbac_cache_invalidation::publish_all_rbac_invalidation(generation)
+        crate::services::rbac_cache_invalidation::publish_all_rbac_invalidation(&self.cache_service, generation)
             .await
             .map_err(|error| RbacGraphqlRoleWriteError::Internal(error.to_string()))
     }
@@ -192,6 +194,7 @@ pub fn rbac_graphql_role_writer_from_context(
     RbacGraphqlRoleWriterHandle(Arc::new(ServerRbacGraphqlRoleWriter {
         runtime,
         db: ctx.db().clone(),
+        cache_service: crate::services::cache_runtime::ensure_cache_service(ctx),
     }))
 }
 
