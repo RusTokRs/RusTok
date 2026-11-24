@@ -26,8 +26,9 @@ struct ViewportSvgGeometry {
 pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
     let instance_seed = runtime.controller.with(|controller| {
         format!(
-            "{}-{}",
+            "{}-{}-{}",
             dom_id(controller.page_id()),
+            dom_id(controller.revision_id()),
             controller.editor().revision().project_hash.hex()
         )
     });
