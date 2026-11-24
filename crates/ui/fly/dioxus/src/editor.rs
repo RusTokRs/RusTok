@@ -931,6 +931,27 @@ mod controlled_workspace_regression_tests {
     }
 
     #[test]
+    fn iframe_envelope_rejects_wrong_instance_protocol_and_replayed_sequences() {
+        let payload = serde_json::json!({
+            "protocol": fly_web::FLY_IFRAME_PROTOCOL,
+            "instance_id": "canvas-a",
+            "sequence": 7,
+            "message": { "type": "ready" }
+        })
+        .to_string();
+
+        assert_eq!(
+            decode_fly_canvas_envelope(&payload, "canvas-a", Some(6)),
+            Some((7, payload.clone()))
+        );
+        assert!(decode_fly_canvas_envelope(&payload, "canvas-a", Some(7)).is_none());
+        assert!(decode_fly_canvas_envelope(&payload, "canvas-b", None).is_none());
+
+        let wrong_protocol = payload.replace(fly_web::FLY_IFRAME_PROTOCOL, "fly/other");
+        assert!(decode_fly_canvas_envelope(&wrong_protocol, "canvas-a", None).is_none());
+    }
+
+    #[test]
     fn layer_rows_are_scoped_to_the_rendered_page() {
         let project = GrapesJsCodec::decode_value(json!({
             "pages": [
