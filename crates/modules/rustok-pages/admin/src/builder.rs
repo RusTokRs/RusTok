@@ -790,7 +790,10 @@ fn ensure_receipt_not_superseded(
     observed_revision: &str,
     receipt_revision: &str,
 ) -> PageBuilderServiceResult<()> {
-    if observed_revision == expected_revision || observed_revision == receipt_revision {
+    // This check runs after a fresh page read. Only the exact committed revision
+    // proves that the receipt still describes the current document; seeing the old
+    // expected revision is either a stale read or a superseded/uncertain save.
+    if observed_revision == receipt_revision {
         return Ok(());
     }
     Err(PageBuilderServiceError::Runtime(format!(
@@ -806,9 +809,12 @@ mod ssr_save_receipt_revision_tests {
     use super::*;
 
     #[test]
-    fn a_receipt_is_current_when_the_page_is_still_at_the_submitted_or_committed_revision() {
-        assert!(ensure_receipt_not_superseded("rev-1", "rev-1", "rev-2").is_ok());
+    fn a_receipt_is_current_only_when_the_fresh_page_read_matches_its_committed_revision() {
         assert!(ensure_receipt_not_superseded("rev-1", "rev-2", "rev-2").is_ok());
+
+        let stale = ensure_receipt_not_superseded("rev-1", "rev-1", "rev-2")
+            .expect_err("the submitted revision cannot prove that a committed receipt is current");
+        assert!(stale.to_string().contains(REVISION_CONFLICT));
     }
 
     #[test]
