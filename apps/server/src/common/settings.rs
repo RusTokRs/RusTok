@@ -1447,7 +1447,11 @@ pub(crate) fn is_production_environment() -> bool {
 /// Security-sensitive middleware must use this predicate rather than the
 /// environment label alone.
 pub(crate) fn is_production_security_mode() -> bool {
-    is_production_environment() || !cfg!(debug_assertions)
+    production_security_mode_for(is_production_environment(), cfg!(debug_assertions))
+}
+
+fn production_security_mode_for(environment_is_production: bool, debug_assertions: bool) -> bool {
+    environment_is_production || !debug_assertions
 }
 
 fn email_disabled_production_override_enabled() -> bool {
@@ -2327,6 +2331,14 @@ mod tests {
         ])
         .expect_err("path-like environment names must fail");
         assert!(error.contains("simple environment name"));
+    }
+
+    #[test]
+    fn release_builds_keep_production_security_gates_even_with_nonproduction_labels() {
+        assert!(!super::production_security_mode_for(false, true));
+        assert!(super::production_security_mode_for(false, false));
+        assert!(super::production_security_mode_for(true, true));
+        assert!(super::production_security_mode_for(true, false));
     }
 
     #[test]
