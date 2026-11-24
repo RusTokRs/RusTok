@@ -191,10 +191,10 @@ async fn handle_heartbeat(
         Err(response) => return *response,
     };
 
-    match heartbeat_remote_validation_stage_atomic(ctx.db(), claim_id, &runner_id, lease_ttl_ms)
+    match heartbeat_remote_validation_stage_atomic(ctx.db(), &claim_id, &runner_id, lease_ttl_ms)
         .await
     {
-        Ok(_) => mutation_response(claim_id, "running"),
+        Ok(_) => mutation_response(&claim_id, "running"),
         Err(error) => transition_error_response(error),
     }
 }
@@ -229,7 +229,7 @@ async fn handle_terminal(
 
     match finish_remote_validation_stage_atomic(
         ctx.db(),
-        claim_id,
+        &claim_id,
         &runner_id,
         input.expected_request_revision,
         outcome,
@@ -239,7 +239,7 @@ async fn handle_terminal(
     .await
     {
         Ok(_) => mutation_response(
-            claim_id,
+            &claim_id,
             match outcome {
                 RemoteTerminalOutcome::Passed => "passed",
                 RemoteTerminalOutcome::Failed => "failed",
