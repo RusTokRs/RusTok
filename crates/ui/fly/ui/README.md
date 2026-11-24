@@ -52,17 +52,20 @@ mutation always returns to `fly::EditorCommand` and `FlyEditor` history/revision
 
 The state machine validates a drop before consuming the active drag, so an invalid candidate or
 unsupported clipboard source can be retried or cancelled without losing its overlay. Save starts
-capture the command sequence; acknowledgement of an earlier snapshot leaves subsequent edits
-dirty and does not overwrite their project hash. Concurrent save requests and retries after an
-unresolved revision conflict are rejected by `RequestSave`. Resolving a conflict requires the
-host to reload/rebase the draft or explicitly acknowledge an actual successful save; Fly does
-not implement automatic merge. Hosts remain responsible for correlating transport responses
-with the saves they initiate.
+capture both the command sequence and a unique request ID. Success, failure and conflict
+transitions must carry the active request ID; a stale response cannot acknowledge or fail a newer
+attempt even when its sequence and project hash repeat after controller rehydration. Acknowledging
+an earlier snapshot leaves subsequent edits dirty and does not overwrite their project hash.
+Concurrent save requests and retries after an unresolved revision conflict are rejected by
+`RequestSave`. Resolving a conflict requires the host to reload/rebase the draft; Fly does not
+implement automatic merge. Host transports must carry the `SaveAttempt` end-to-end. The local
+request ID is not a server idempotency key.
 Drop rechecks the current presentation and drag capability at commit time, including when
 restored state contains a drag started under a different policy.
 
-A save success is accepted only during an active `SaveStarted` transition. A stale success,
-failed request or unrelated operation never implicitly clears a standing revision conflict.
+A save success is accepted only during an active `SaveStarted` transition and only when its
+request ID matches the active attempt. A stale success or failure, uncorrelated failure, or
+unrelated operation never implicitly clears a standing revision conflict.
 
 Viewport dimensions and zoom are normalized at the intent boundary using the same limits as
 custom preview presets; invalid scroll offsets become zero. Non-finite overlay/drop geometry is
@@ -70,8 +73,9 @@ rejected without changing editor state, and a resize event with malformed or ove
 coordinates never emits non-finite CSS dimensions.
 
 SaveStarted also checks current edit permission and unresolved conflicts. If the host has
-synchronized a hash, SaveSucceeded must match the submitted hash rather than merely the latest
-server revision; a mismatched acknowledgement leaves the active save untouched.
+synchronized a hash, SaveSucceeded must match both the submitted hash and request ID rather than
+merely the latest server revision; a mismatched acknowledgement leaves the active save untouched.
+The request ID and active sequence are transient and are not restored from serialized UI state.
 
 Pointer movement over one million CSS pixels is rejected as malformed input at the resize
 boundary, preventing otherwise finite but impractically huge CSS sizes. Viewport preset
