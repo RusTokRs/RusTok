@@ -292,24 +292,6 @@ fn session_cookie_is_secure_for_environment(
     )
 }
 
-fn session_cookie_is_secure_for_environment(
-    headers: &axum::http::HeaderMap,
-    peer_ip: std::net::IpAddr,
-    settings: &RustokSettings,
-    is_production: bool,
-) -> bool {
-    // A refresh token must never be issued as a non-Secure cookie in
-    // production, even when an ingress proxy omits forwarding headers or
-    // forwarded header trust is intentionally disabled.
-    is_production
-        || crate::common::extract_effective_proto(
-            headers,
-            Some(peer_ip),
-            &settings.runtime.request_trust,
-        )
-        .is_some_and(|value| value.eq_ignore_ascii_case("https"))
-}
-
 fn build_session_cookie(refresh_token: &str, max_age_secs: u64, secure: bool) -> String {
     let mut cookie = format!(
         "{SESSION_COOKIE_NAME}={refresh_token}; Path={SESSION_COOKIE_PATH}; HttpOnly; SameSite=Lax; Max-Age={max_age_secs}"
