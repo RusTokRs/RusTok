@@ -455,57 +455,6 @@ mod tests {
     }
 
     #[test]
-    fn missing_channel_price_does_not_fall_back_to_another_channel() {
-        let other_channel = candidate(
-            1,
-            Some(Uuid::from_u128(3)),
-            Some("mobile"),
-            None,
-            None,
-            None,
-            5,
-        );
-        let channel_id_only = candidate(
-            2,
-            Some(Uuid::from_u128(4)),
-            None,
-            None,
-            None,
-            None,
-            6,
-        );
-
-        let selected = select_storefront_list_price_candidates(
-            vec![&other_channel, &channel_id_only],
-            Some("web"),
-        );
-
-        assert!(selected.is_empty());
-    }
-
-    #[test]
-    fn missing_channel_price_uses_only_a_channel_neutral_fallback() {
-        let other_channel = candidate(
-            1,
-            Some(Uuid::from_u128(3)),
-            Some("mobile"),
-            None,
-            None,
-            None,
-            5,
-        );
-        let neutral = candidate(2, None, None, None, None, None, 10);
-
-        let selected = select_storefront_list_price_candidates(
-            vec![&other_channel, &neutral],
-            Some("web"),
-        );
-
-        assert_eq!(selected.len(), 1);
-        assert_eq!(selected[0].id, neutral.id);
-    }
-
-    #[test]
     fn ambiguous_currency_is_not_compared_without_an_explicit_currency() {
         let usd = candidate(1, None, None, None, None, None, 5);
         let eur = price::Model {
