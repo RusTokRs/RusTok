@@ -80,8 +80,8 @@ async fn process_request(
     bytes: &[u8],
 ) -> MiddlewareResult<Vec<u8>> {
     match mode {
-        RequestMode::DirectApply => normalize_direct_apply(bytes),
-        RequestMode::RemoteTool => normalize_remote_tool(bytes),
+        RequestMode::DirectApply => normalize_direct_apply(bytes).await,
+        RequestMode::RemoteTool => normalize_remote_tool(bytes).await,
         RequestMode::CreateClient => {
             validate_create_client(ctx, parts, bytes).await?;
             Ok(bytes.to_vec())
@@ -198,7 +198,7 @@ fn authority_error_response(error: McpManagementAuthorityError) -> Response {
     }
 }
 
-fn normalize_direct_apply(bytes: &[u8]) -> MiddlewareResult<Vec<u8>> {
+async fn normalize_direct_apply(bytes: &[u8]) -> MiddlewareResult<Vec<u8>> {
     let mut input =
         serde_json::from_slice::<ApplyMcpModuleScaffoldDraftRequest>(bytes).map_err(|_| {
             Box::new(invalid_request(
@@ -206,6 +206,7 @@ fn normalize_direct_apply(bytes: &[u8]) -> MiddlewareResult<Vec<u8>> {
             ))
         })?;
     input.workspace_root = authorize_mcp_scaffold_workspace(&input.workspace_root)
+        .await
         .map_err(|error| Box::new(error.into_response()))?;
 
     serde_json::to_vec(&serde_json::json!({
@@ -219,7 +220,7 @@ fn normalize_direct_apply(bytes: &[u8]) -> MiddlewareResult<Vec<u8>> {
     })
 }
 
-fn normalize_remote_tool(bytes: &[u8]) -> MiddlewareResult<Vec<u8>> {
+async fn normalize_remote_tool(bytes: &[u8]) -> MiddlewareResult<Vec<u8>> {
     let mut input = serde_json::from_slice::<McpRemoteToolCallRequest>(bytes)
         .map_err(|_| Box::new(invalid_request("MCP remote tool body must be valid JSON")))?;
 
@@ -232,6 +233,7 @@ fn normalize_remote_tool(bytes: &[u8]) -> MiddlewareResult<Vec<u8>> {
         let mut apply = serde_json::from_value::<ApplyModuleScaffoldRequest>(arguments)
             .map_err(|_| Box::new(invalid_request("Scaffold apply tool arguments are invalid")))?;
         apply.workspace_root = authorize_mcp_scaffold_workspace(&apply.workspace_root)
+            .await
             .map_err(|error| Box::new(error.into_response()))?;
         input.arguments = Some(serde_json::to_value(apply).map_err(|_| {
             Box::new(invalid_request(
