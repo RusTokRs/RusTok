@@ -23,6 +23,9 @@ use rustok_ui_core::{UiCspNonce, UiRouteContext};
 use serde_json::Value;
 use std::sync::Arc;
 
+#[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
+use fly_web::{BrowserPeerWriteChannel, BrowserPeerWriteConflict};
+
 /// Host context for Dioxus Page Builder admin.
 #[derive(Clone)]
 pub struct DioxusPageBuilderAdminHostContext {
@@ -50,13 +53,12 @@ impl DioxusPageBuilderAdminHostContext {
             runtime_context: None,
             runtime_scenarios: None,
             runtime_publish_gate_policy: None,
-            adapter_workspace: false,
+            adapter_workspace: true,
         }
     }
 
-    /// Mounts the shared adapter workspace (`fly-dioxus`) instead of the canvas
-    /// placeholder. Off by default; hosts opt in while the admin migration
-    /// (P0-1) proceeds surface by surface.
+    /// Mounts the shared Fly adapter workspace. Enabled by default; hosts may
+    /// explicitly opt out when they need the minimal placeholder shell.
     pub fn with_adapter_workspace(mut self, enabled: bool) -> Self {
         self.adapter_workspace = enabled;
         self
@@ -92,11 +94,15 @@ impl PartialEq for DioxusPageBuilderAdminHostContext {
 /// Deliver the command effects the shared editor reducer emits. Previously the
 /// Dioxus toolbar and workspace discarded Publish/Preview effects, so Save
 /// visibly did nothing even when a consumer supplied a working facade.
-fn dispatch_facade_effects(
+fn dispatch_facade_effects<F>(
     mut session: Signal<EditorSessionState>,
     facade: Option<Arc<dyn PageBuilderAdminFacade>>,
     effects: Vec<EditorSessionEffect>,
-) {
+    on_publish_confirmed: F,
+)
+where
+    F: Fn(String, String) + Clone + 'static,
+{
     for effect in effects {
         match effect {
             EditorSessionEffect::Announce(message) => {
@@ -182,8 +188,11 @@ fn dispatch_facade_effects(
                     ));
                     state.preview_in_progress = true;
                 }
+                let on_publish_confirmed = on_publish_confirmed.clone();
+                let submitted_hash = expected_hash.as_ref().map(|hash| hash.hex());
                 let _task = spawn(async move {
                     let outcome = facade.execute(request).await;
+                    let mut confirmed_write = None;
                     let mut state = session.write();
                     match outcome {
                         Ok(PageBuilderCapabilityResponse::Publish(response))
@@ -195,13 +204,21 @@ fn dispatch_facade_effects(
                             if state.controller.active_save_attempt_id() != Some(attempt_id) {
                                 return;
                             }
-                            if let Err(error) = state.handle_publish_response_for_attempt(
+                            match state.handle_publish_response_for_attempt(
                                 &response.page_id,
                                 &response.revision_id,
                                 expected_hash,
                                 attempt_id,
                             ) {
-                                state.handle_publish_error_for_attempt(attempt_id, error);
+                                Ok(()) => {
+                                    if let Some(project_hash) = submitted_hash {
+                                        confirmed_write =
+                                            Some((response.revision_id.clone(), project_hash));
+                                    }
+                                }
+                                Err(error) => {
+                                    state.handle_publish_error_for_attempt(attempt_id, error);
+                                }
                             }
                         }
                         Ok(PageBuilderCapabilityResponse::Preview(response))
@@ -233,6 +250,10 @@ fn dispatch_facade_effects(
                                 state.fail(error.to_string());
                             }
                         }
+                    }
+                    drop(state);
+                    if let Some((revision, project_hash)) = confirmed_write {
+                        on_publish_confirmed(revision, project_hash);
                     }
                 });
             }
@@ -331,7 +352,7 @@ pub struct PageBuilderAdminWithControllerProps {
     pub runtime_scenarios: Option<Arc<Vec<RuntimeContextScenario>>>,
     #[props(default)]
     pub runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
-    #[props(default)]
+    #[props(default = true)]
     pub adapter_workspace: bool,
 }
 
