@@ -511,9 +511,7 @@ impl AdminEditorRuntime {
             .controller
             .try_update(|controller| controller.dispatch(intent));
         let Some(result) = result else {
-            self.last_error.set(Some(
-                "Page Builder controller is no longer available".to_string(),
-            ));
+            self.fail("Page Builder controller is no longer available");
             return;
         };
         match result {
@@ -523,7 +521,7 @@ impl AdminEditorRuntime {
                     self.apply_effect(effect);
                 }
             }
-            Err(error) => self.last_error.set(Some(error.to_string())),
+            Err(error) => self.fail(error.to_string()),
         }
     }
 
@@ -620,7 +618,7 @@ impl AdminEditorRuntime {
     pub fn dispatch_result(&self, intent: Result<UiIntent, String>) {
         match intent {
             Ok(intent) => self.dispatch(intent),
-            Err(error) => self.last_error.set(Some(error)),
+            Err(error) => self.fail(error),
         }
     }
 
@@ -985,5 +983,6 @@ impl AdminEditorRuntime {
             .set(state.runtime_publish_gate_evaluation.clone());
         self.preview_request.set(None);
         self.active_preview_request_id.set(None);
+        self.clear_error_or_reassert_peer_write_conflict();
     }
 }
