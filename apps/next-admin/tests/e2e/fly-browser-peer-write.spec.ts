@@ -12,6 +12,7 @@ type PeerScope = typeof globalThis & {
   __FLY_BROWSER_CONFIG__?: Record<string, unknown>;
   __flyPeerRequests?: string[];
   __flyPeerEmitted?: string[];
+  __flyPeerResolveIntent?: () => void;
   __flyPeerAdapter?: {
     emitIntent: (intent: string, payload: Record<string, unknown>) => Promise<unknown>;
     stop: () => void;
@@ -22,15 +23,32 @@ type PeerScope = typeof globalThis & {
   };
 };
 
-async function mountEditor(page: Page, documentId: string, source: string) {
+type MountOptions = {
+  initialRevision?: string;
+  initialHash?: string;
+  responseRevision?: string;
+  responseHash?: string;
+  deferSaveResponse?: boolean;
+};
+
+async function mountEditor(
+  page: Page,
+  documentId: string,
+  source: string,
+  options: MountOptions = {}
+) {
   await openBlankDocument(page);
-  await page.evaluate(async ({ documentId, source }) => {
+  await page.evaluate(async ({ documentId, source, options }) => {
+    const initialRevision = options.initialRevision ?? 'rev-1';
+    const initialHash = options.initialHash ?? 'hash-1';
+    const responseRevision = options.responseRevision ?? 'rev-2';
+    const responseHash = options.responseHash ?? 'hash-2';
     document.body.innerHTML = `
       <div id="fly-root" data-fly-browser-root
         data-fly-page-id="${documentId}"
         data-fly-expected-origin="null"
-        data-fly-revision="rev-1"
-        data-fly-project-hash="hash-1"
+        data-fly-revision="${initialRevision}"
+        data-fly-project-hash="${initialHash}"
         data-fly-intent-endpoint="/fly-intent">
         <iframe id="fly-frame" title="Peer-write canvas" data-fly-iframe-canvas></iframe>
       </div>`;
@@ -38,6 +56,7 @@ async function mountEditor(page: Page, documentId: string, source: string) {
     scope.__FLY_BROWSER_CONFIG__ = { autoMount: false };
     scope.__flyPeerRequests = [];
     scope.__flyPeerEmitted = [];
+    scope.__flyPeerResolveIntent = undefined;
     document.querySelector('#fly-root')?.addEventListener('fly:browser-intent', (event) => {
       scope.__flyPeerEmitted?.push((event as CustomEvent<{ intent: string }>).detail.intent);
     });
@@ -47,13 +66,19 @@ async function mountEditor(page: Page, documentId: string, source: string) {
       if (!url.includes('/fly-intent')) return originalFetch(input, init);
       const request = JSON.parse(String(init?.body)) as { intent: string };
       scope.__flyPeerRequests?.push(request.intent);
-      return Promise.resolve(new Response(JSON.stringify({
+      const response = () => new Response(JSON.stringify({
         result: {
-          revision_id: 'rev-2',
-          project_hash: 'hash-2',
+          revision_id: responseRevision,
+          project_hash: responseHash,
           dirty: false
         }
-      }), { status: 200, headers: { 'content-type': 'application/json' } }));
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+      if (options.deferSaveResponse && request.intent === 'save') {
+        return new Promise<Response>((resolve) => {
+          scope.__flyPeerResolveIntent = () => resolve(response());
+        });
+      }
+      return Promise.resolve(response());
     };
     const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
     try {
@@ -67,7 +92,7 @@ async function mountEditor(page: Page, documentId: string, source: string) {
       intentEndpoint: '/fly-intent'
     });
     if (!scope.__flyPeerAdapter) throw new Error('adapter did not mount');
-  }, { documentId, source });
+  }, { documentId, source, options });
 }
 
 test('confirmed peer write fences stale tab without losing its local view or sending writes', async ({ context, page }) => {
@@ -116,6 +141,49 @@ test('confirmed peer write fences stale tab without losing its local view or sen
   });
   await otherTab.evaluate(() => (globalThis as PeerScope).__flyPeerAdapter?.stop());
   await expect(otherTab.locator('#fly-root')).not.toHaveAttribute(
+    'data-fly-peer-write-conflict', 'true'
+  );
+});
+
+test('a fenced in-flight save does not broadcast an older revision to the winning tab', async ({ context, page }) => {
+  const source = await readFile(adapterPath, 'utf8');
+  const winningTab = await context.newPage();
+  await mountEditor(page, 'same-page', source, {
+    initialRevision: 'rev-1',
+    initialHash: 'hash-1',
+    responseRevision: 'rev-2',
+    responseHash: 'hash-2',
+    deferSaveResponse: true,
+  });
+  await mountEditor(winningTab, 'same-page', source, {
+    initialRevision: 'rev-2',
+    initialHash: 'hash-2',
+    responseRevision: 'rev-3',
+    responseHash: 'hash-3',
+  });
+
+  const pendingSave = page.evaluate(async () => {
+    await (globalThis as PeerScope).__flyPeerAdapter?.emitIntent('save', {});
+  });
+  await expect.poll(() => page.evaluate(
+    () => Boolean((globalThis as PeerScope).__flyPeerResolveIntent)
+  )).toBe(true);
+
+  await winningTab.evaluate(async () => {
+    await (globalThis as PeerScope).__flyPeerAdapter?.emitIntent('save', {});
+  });
+  await expect(page.locator('#fly-root')).toHaveAttribute(
+    'data-fly-peer-write-conflict', 'true'
+  );
+
+  await page.evaluate(() => {
+    const scope = globalThis as PeerScope;
+    scope.__flyPeerResolveIntent?.();
+    scope.__flyPeerResolveIntent = undefined;
+  });
+  await pendingSave;
+
+  await expect(winningTab.locator('#fly-root')).not.toHaveAttribute(
     'data-fly-peer-write-conflict', 'true'
   );
 });
