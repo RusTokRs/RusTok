@@ -462,10 +462,10 @@ fn subscribe_canvas_iframe(
 
     #[cfg(all(target_arch = "wasm32", feature = "web"))]
     {
-        let port_config = (instance_id.clone(), expected_origin.clone());
-        let effect_iframe_id = id.clone();
+        let port_config = (id.clone(), instance_id.clone(), expected_origin.clone());
         use_effect(use_reactive!(|port_config| {
-            let (effect_instance_id, effect_expected_origin) = port_config.clone();
+            let (effect_iframe_id, effect_instance_id, effect_expected_origin) =
+                port_config.clone();
             // Retire the old source-window subscription before changing instance/origin.
             // If new port construction fails, stale messages must not remain admissible.
             subscription.set(None);
