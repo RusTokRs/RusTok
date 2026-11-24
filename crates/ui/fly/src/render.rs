@@ -358,14 +358,28 @@ pub fn render_page(
     render_page_with_rich_text(document, selection, policy, None)
 }
 
-/// Render a page with a host rich-text renderer bound (see
-/// [`crate::RichTextHtmlRenderer`]). Components carrying a `flyRichText` payload render
-/// through that port; without one they use Fly's escaped fallback projection.
 /// Fail closed before recursive render helpers inspect an untrusted/programmatically-built tree.
 pub(crate) fn ensure_render_component_limits(document: &ProjectDocument) -> FlyResult<()> {
     let limits = crate::ValidationLimits::default();
     let mut pending = Vec::new();
+
+    for value in document
+        .project
+        .extensions
+        .values()
+        .chain(document.project.styles.iter())
+        .chain(document.project.assets.iter())
+    {
+        crate::codec::ensure_depth_within_limit(value, crate::MAXIMUM_DECODE_DEPTH)?;
+    }
+
     for page in &document.project.pages {
+        if let Some(frames) = page.frames.as_ref() {
+            crate::codec::ensure_depth_within_limit(frames, crate::MAXIMUM_DECODE_DEPTH)?;
+        }
+        for value in page.extensions.values() {
+            crate::codec::ensure_depth_within_limit(value, crate::MAXIMUM_DECODE_DEPTH)?;
+        }
         if let Some(root) = page.component.as_ref() {
             pending.push((root, 0usize));
         }
@@ -384,18 +398,35 @@ pub(crate) fn ensure_render_component_limits(document: &ProjectDocument) -> FlyR
                 maximum: limits.maximum_nodes,
             });
         }
-        if let ComponentNode::Object(component) = node {
-            pending.extend(
-                component
-                    .children()
-                    .iter()
-                    .map(|child| (child, depth + 1)),
-            );
+        match node {
+            ComponentNode::Object(component) => {
+                for value in component
+                    .attributes
+                    .values()
+                    .chain(component.extensions.values())
+                    .chain(component.style.iter())
+                    .chain(component.traits.iter())
+                {
+                    crate::codec::ensure_depth_within_limit(value, crate::MAXIMUM_DECODE_DEPTH)?;
+                }
+                pending.extend(
+                    component
+                        .children()
+                        .iter()
+                        .map(|child| (child, depth + 1)),
+                );
+            }
+            ComponentNode::Opaque(value) => {
+                crate::codec::ensure_depth_within_limit(value, crate::MAXIMUM_DECODE_DEPTH)?;
+            }
         }
     }
     Ok(())
 }
 
+/// Render a page with a host rich-text renderer bound (see
+/// [`crate::RichTextHtmlRenderer`]). Components carrying a `flyRichText` payload render
+/// through that port; without one they use Fly's escaped fallback projection.
 pub fn render_page_with_rich_text(
     document: &ProjectDocument,
     selection: &PageSelection,
@@ -2571,6 +2602,33 @@ mod tests {
         assert!(matches!(
             render_page(&document, &PageSelection::First, &RenderPolicy::default()),
             Err(FlyError::MaximumNodesExceeded { maximum }) if maximum == limits.maximum_nodes
+        ));
+    }
+
+
+
+
+    #[test]
+    fn renderer_rejects_deep_raw_project_extensions_before_symbol_resolution() {
+        let mut nested = serde_json::Value::Null;
+        for _ in 0..=crate::MAXIMUM_DECODE_DEPTH {
+            nested = serde_json::Value::Array(vec![nested]);
+        }
+        let mut project: crate::GrapesProject = serde_json::from_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": { "id": "root", "type": "wrapper" }
+            }]
+        }))
+        .expect("project");
+        project
+            .extensions
+            .insert(crate::FLY_SYMBOLS_FIELD.to_string(), nested);
+        let document = crate::ProjectDocument::new(project);
+        assert!(matches!(
+            render_page(&document, &PageSelection::First, &RenderPolicy::default()),
+            Err(FlyError::MaximumDepthExceeded { maximum })
+                if maximum == crate::MAXIMUM_DECODE_DEPTH
         ));
     }
 

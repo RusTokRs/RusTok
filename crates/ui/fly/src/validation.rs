@@ -1114,6 +1114,17 @@ fn diagnostic(
 }
 
 fn validate_symbols(document: &ProjectDocument, report: &mut ValidationReport) {
+    if let Some(block) = document.project.extensions.get(FLY_SYMBOLS_FIELD)
+        && let Err(error) = crate::codec::ensure_depth_within_limit(block, crate::MAXIMUM_DECODE_DEPTH)
+    {
+        report.diagnostics.push(diagnostic(
+            ValidationSeverity::Error,
+            "symbol_catalog_depth_exceeded",
+            FLY_SYMBOLS_FIELD,
+            format!("symbol catalog exceeds safe JSON depth: {error}"),
+        ));
+        return;
+    }
     if document
         .project
         .extensions
@@ -1993,6 +2004,30 @@ mod tests {
         assert!(
             !custom_report.diagnostics.iter().any(|diagnostic| diagnostic.code == "embed_invalid")
         );
+    }
+
+
+
+
+    #[test]
+    fn validation_reports_deep_symbol_catalogs_without_cloning_them() {
+        let mut nested = serde_json::Value::Null;
+        for _ in 0..=crate::MAXIMUM_DECODE_DEPTH {
+            nested = serde_json::Value::Array(vec![nested]);
+        }
+        let mut project = crate::GrapesProject::default();
+        project
+            .extensions
+            .insert(crate::FLY_SYMBOLS_FIELD.to_string(), nested);
+        let document = crate::ProjectDocument::new(project);
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
+        assert!(report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "symbol_catalog_depth_exceeded"
+        }));
     }
 
 

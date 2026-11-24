@@ -74,7 +74,7 @@ fn drop_value_iteratively(value: Value) {
 }
 
 /// Reject a JSON value nested deeper than `maximum`, without recursing.
-fn ensure_depth_within_limit(value: &Value, maximum: usize) -> FlyResult<()> {
+pub(crate) fn ensure_depth_within_limit(value: &Value, maximum: usize) -> FlyResult<()> {
     let mut pending = vec![(value, 1usize)];
     while let Some((value, depth)) = pending.pop() {
         if depth > maximum {

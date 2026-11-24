@@ -213,6 +213,8 @@ pub fn decode_embed_spec_with_registry(
     raw: &Value,
     registry: &EmbedProviderRegistry,
 ) -> Result<EmbedSpec, String> {
+    crate::codec::ensure_depth_within_limit(raw, crate::MAXIMUM_DECODE_DEPTH)
+        .map_err(|error| format!("embed specification exceeds safe JSON depth: {error}"))?;
     let mut spec: EmbedSpec = serde_json::from_value(raw.clone())
         .map_err(|error| format!("embed specification cannot be decoded: {error}"))?;
     spec.provider = spec.provider.trim().to_string();
@@ -323,6 +325,23 @@ mod tests {
         )
         .expect("custom embed");
         assert_eq!(decoded.provider, "custom");
+    }
+
+
+
+
+    #[test]
+    fn deeply_nested_embed_specs_are_rejected_before_deserialization() {
+        let registry = EmbedProviderRegistry::with_builtins();
+        let mut raw = json!({
+            "provider": "youtube",
+            "url": "https://www.youtube.com/embed/abc123",
+            "title": "Video"
+        });
+        for _ in 0..=crate::MAXIMUM_DECODE_DEPTH {
+            raw = json!({ "nested": raw });
+        }
+        assert!(decode_embed_spec_with_registry(&raw, &registry).is_err());
     }
 
 

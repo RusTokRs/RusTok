@@ -52,6 +52,8 @@ where
 /// ProseMirror/Tiptap root document. Profiles (which node/mark types exist) are the host
 /// capability's business; this gate only guarantees the shape is safe to walk.
 pub fn decode_rich_text_payload(raw: &Value) -> Result<RichTextPayload, String> {
+    crate::codec::ensure_depth_within_limit(raw, crate::MAXIMUM_DECODE_DEPTH)
+        .map_err(|error| format!("rich text payload exceeds safe JSON depth: {error}"))?;
     let payload: RichTextPayload = serde_json::from_value(raw.clone())
         .map_err(|error| format!("rich text payload cannot be decoded: {error}"))?;
     validate_rich_text_payload(&payload)?;
@@ -61,6 +63,8 @@ pub fn decode_rich_text_payload(raw: &Value) -> Result<RichTextPayload, String> 
 /// Structural validation of an already-decoded payload (see [`decode_rich_text_payload`]).
 pub fn validate_rich_text_payload(payload: &RichTextPayload) -> Result<(), String> {
     let document = &payload.payload;
+    crate::codec::ensure_depth_within_limit(document, crate::MAXIMUM_DECODE_DEPTH)
+        .map_err(|error| format!("rich text payload exceeds safe JSON depth: {error}"))?;
     let serialized_bytes = serde_json::to_vec(document).map_or(usize::MAX, |bytes| bytes.len());
     if serialized_bytes > MAXIMUM_RICH_TEXT_BYTES {
         return Err(format!(
@@ -334,4 +338,20 @@ mod tests {
         }));
         assert!(validate_rich_text_payload(&valid).is_ok());
     }
+
+
+    #[test]
+    fn deeply_nested_rich_text_is_rejected_before_deserialization() {
+        let mut nested = json!({ "type": "doc", "content": [] });
+        for _ in 0..=crate::MAXIMUM_DECODE_DEPTH {
+            nested = json!({ "nested": nested });
+        }
+        let raw = json!({
+            "capability": RICH_TEXT_CAPABILITY,
+            "payload": nested
+        });
+        assert!(decode_rich_text_payload(&raw).is_err());
+    }
+
+
 }

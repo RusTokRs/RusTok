@@ -40,6 +40,7 @@ pub struct SymbolDescriptor {
 
 impl SymbolDescriptor {
     pub fn from_value(raw: &Value) -> Option<Self> {
+        crate::codec::ensure_depth_within_limit(raw, crate::MAXIMUM_DECODE_DEPTH).ok()?;
         serde_json::from_value(raw.clone())
             .ok()
             .and_then(|descriptor: Self| (!descriptor.id.is_empty()).then_some(descriptor))
@@ -51,7 +52,13 @@ impl SymbolDescriptor {
 
     /// Raw definition entries in document order with their `flySymbols` path.
     pub fn entries_from_document(document: &ProjectDocument) -> Vec<(String, Value)> {
-        let Some(Value::Array(entries)) = document.project.extensions.get(FLY_SYMBOLS_FIELD) else {
+        let Some(block) = document.project.extensions.get(FLY_SYMBOLS_FIELD) else {
+            return Vec::new();
+        };
+        if crate::codec::ensure_depth_within_limit(block, crate::MAXIMUM_DECODE_DEPTH).is_err() {
+            return Vec::new();
+        }
+        let Value::Array(entries) = block else {
             return Vec::new();
         };
         entries
@@ -94,6 +101,13 @@ pub fn apply_symbol_command(
     command: &crate::SymbolCommand,
 ) -> FlyResult<()> {
     use crate::SymbolCommand;
+
+    if let Some(block) = document.project.extensions.get(FLY_SYMBOLS_FIELD) {
+        crate::codec::ensure_depth_within_limit(block, crate::MAXIMUM_DECODE_DEPTH)
+            .map_err(|error| FlyError::InvalidSymbolReference(format!(
+                "symbol catalog exceeds safe JSON depth: {error}"
+            )))?;
+    }
 
     match command {
         SymbolCommand::Upsert { symbol } => {
@@ -387,6 +401,12 @@ pub fn document_has_symbol_instances(document: &ProjectDocument) -> bool {
 }
 
 fn strict_catalog(document: &ProjectDocument) -> FlyResult<BTreeMap<String, SymbolDescriptor>> {
+    if let Some(block) = document.project.extensions.get(FLY_SYMBOLS_FIELD) {
+        crate::codec::ensure_depth_within_limit(block, crate::MAXIMUM_DECODE_DEPTH)
+            .map_err(|error| FlyError::InvalidSymbolReference(format!(
+                "symbol catalog exceeds safe JSON depth: {error}"
+            )))?;
+    }
     if document
         .project
         .extensions
@@ -1275,4 +1295,16 @@ mod tests {
         assert!(codes.contains(&"symbol_reference_missing"));
         assert!(codes.contains(&"symbol_instance_with_children"));
     }
+
+
+    #[test]
+    fn deeply_nested_symbol_values_are_rejected_before_deserialization() {
+        let mut raw = json!({ "id": "deep", "components": [] });
+        for _ in 0..=crate::MAXIMUM_DECODE_DEPTH {
+            raw = json!({ "nested": raw });
+        }
+        assert!(SymbolDescriptor::from_value(&raw).is_none());
+    }
+
+
 }
