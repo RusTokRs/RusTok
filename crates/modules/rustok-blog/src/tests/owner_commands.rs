@@ -693,7 +693,9 @@ async fn tag_usage_projection_is_recomputed_from_relations() {
 async fn updating_a_tag_rederives_its_usage_projection_row() {
     let (db, events) = setup_hardening_schema().await;
     let tenant_id = Uuid::new_v4();
-    let tags = TagService::new(db.clone());
+    let tags = TagService::new(db.clone()).with_taxonomy_port(
+        rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()),
+    );
     let posts = post_service(&db, &events);
 
     let tag_id = tags
