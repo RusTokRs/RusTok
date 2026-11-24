@@ -669,6 +669,25 @@ mod tests {
     }
 
     #[test]
+    fn server_revision_conflict_retires_only_the_matching_attempt_and_fences_edits() {
+        let controller = sample_controller();
+        let mut session = EditorSessionState::new(controller, "Missing", "Saved");
+        let attempt = session.mark_save_started_with_id().expect("save started");
+
+        assert!(session.handle_publish_conflict_for_attempt(
+            &attempt,
+            "The page changed in another session",
+        ));
+        assert!(session.controller.active_save_attempt().is_none());
+        assert!(session.controller.ui_state().dirty.save_conflict);
+        assert!(!session.controller.ui_state().capabilities.edit);
+        assert!(!session.handle_publish_error_for_attempt(
+            &attempt,
+            "late transport error",
+        ));
+    }
+
+    #[test]
     fn editor_session_initializes_with_clean_defaults() {
         let controller = sample_controller();
         let session = EditorSessionState::new(controller, "Missing facade", "Save succeeded");
