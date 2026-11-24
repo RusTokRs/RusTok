@@ -2236,6 +2236,7 @@ mod tests {
             &client,
             &pre_change,
             &replacement("replacement-after-password-change"),
+            false,
         )
         .await
         .expect_err("refresh issued before password change must fail");
