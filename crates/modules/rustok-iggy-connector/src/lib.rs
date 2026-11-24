@@ -964,7 +964,6 @@ impl IggyConnector for ExternalConnector {
             let mut consumer = client
                 .consumer_group(group_name, stream, topic)
                 .map_err(|error: IggyError| ConnectorError::Subscribe(error.to_string()))?
-                .auto_commit(iggy::prelude::AutoCommit::Disabled)
                 .build();
             consumer
                 .init()

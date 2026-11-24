@@ -127,6 +127,32 @@ fn workflow_error_to_port_error(error: WorkflowError) -> PortError {
             format!("workflow template not found: {template_id}"),
             false,
         ),
+        WorkflowError::WorkflowDeletionBlocked(id) => PortError::new(
+            PortErrorKind::Conflict,
+            "workflow.deletion_blocked",
+            format!("workflow has running executions and cannot be deleted: {id}"),
+            false,
+        ),
+        WorkflowError::ExecutionOutcomeUncertain(id) => PortError::new(
+            PortErrorKind::Conflict,
+            "workflow.execution_outcome_uncertain",
+            format!("workflow execution outcome is uncertain: {id}"),
+            false,
+        ),
+        WorkflowError::CronReconciliationConflict(id) => PortError::new(
+            PortErrorKind::Conflict,
+            "workflow.cron_reconciliation_conflict",
+            format!("workflow cron firing requires reconciliation: {id}"),
+            false,
+        ),
+        WorkflowError::InvalidCronReconciliationEvidence => PortError::validation(
+            "workflow.invalid_reconciliation_evidence",
+            "workflow cron reconciliation evidence is missing or invalid",
+        ),
+        WorkflowError::StepTimedOut { step_id, timeout_ms } => PortError::timeout(
+            "workflow.step_timed_out",
+            format!("workflow step timed out: step_id={step_id}, timeout_ms={timeout_ms}"),
+        ),
         WorkflowError::Database(message) => PortError::unavailable(
             "workflow.database_unavailable",
             format!("workflow database error: {message}"),

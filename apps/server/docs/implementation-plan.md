@@ -3232,3 +3232,38 @@ continue to share dedupe, and independent services do not. A regression for
 zero value-backend constructions and a concurrent two-port regression were
 authored, but not executed. The owner API is documented in
 `crates/modules/rustok-cache/CRATE_API.md`.
+
+
+## Server audit continuation — installer HTTP crash quarantine (2026-11-24)
+
+The HTTP adapter now heartbeats the host-runtime job row every 30 seconds and
+atomically quarantines a five-minute stale `running` row as
+`recovery_required`. The new unique expression index enforces one unresolved
+job across both `running` and `recovery_required`; migration ordering keeps
+the previous running-only guard installed if legacy duplicate unresolved rows
+prevent the stricter index from being created. Heartbeat, stale reconciliation
+and terminal transitions are conditional so a late worker cannot revive or
+overwrite the quarantine.
+
+Execution errors now carry a typed recovery classification across the server
+executor adapter. Failures after filesystem/database preparation, owner-schema
+work, session creation/claim, receipt persistence, state transitions, or other
+ambiguous effects are quarantined. The installer state machine also closes
+the direct `AdminProvisioned -> Verified` deployment bypass and disallows new
+transitions into legacy `failed`; errors are not mislabeled
+`fresh_install_cleaned` without actual cleanup. Global status projects the
+host job when the target session is not in the runtime database, and receipts
+return an explicit conflict when the target session is remote.
+
+This remains interruption detection and fail-closed admission, not automatic
+resume or target-side reconciliation. The host job ledger and target session/
+receipt database can be different, and the host does not retain a safe
+reconnectable target-secret reference. Therefore a quarantined job must be
+reconciled by an operator against the actual target database before retrying.
+No stale job is reset merely because its lease or heartbeat expired.
+
+Source regression coverage was added for state transitions, error
+classification, heartbeat CAS, stale-job quarantine, public status mapping,
+recovery finalization, and the migration's cross-status single-slot invariant.
+No tests, compilation, formatting, migration execution, or multi-replica
+exercise were run at the user's request.

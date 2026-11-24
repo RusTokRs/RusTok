@@ -1,6 +1,8 @@
 //! Typed input and output contracts for an install-apply executor.
 
 use chrono::{DateTime, Utc};
+#[cfg(feature = "host-runtime")]
+use std::future::Future;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
@@ -319,7 +321,7 @@ where
     let layout = crate::InstanceLayout::resolve(plan.placement.clone(), invocation_dir)
         .map_err(|error| InstallExecutionError::new(error.to_string()))?;
     let layout_preparation = crate::prepare_instance_layout(&layout)
-        .map_err(|error| InstallExecutionError::new(error.to_string()))?;
+        .map_err(|error| InstallExecutionError::requiring_recovery(error.to_string()))?;
     let session_id = options.session_id.unwrap_or_else(Uuid::new_v4);
     if session_id.is_nil() {
         return Err(InstallExecutionError::new(
@@ -330,12 +332,17 @@ where
         .map_err(|error| InstallExecutionError::new(error.to_string()))?;
     let database = ports
         .prepare_database(&plan, &database_url, &options)
-        .await?;
-    ports.apply_owner_schema(&database.runtime).await?;
+        .await
+        .map_err(InstallExecutionError::mark_recovery_required)?;
+    ports
+        .apply_owner_schema(&database.runtime)
+        .await
+        .map_err(InstallExecutionError::mark_recovery_required)?;
     let snapshot = crate::redact_install_plan(&plan);
     let mut session = ports
         .create_session(&database.runtime, session_id, &plan)
-        .await?;
+        .await
+        .map_err(InstallExecutionError::mark_recovery_required)?;
     session = ports
         .acquire_lock(
             &database.runtime,
@@ -343,7 +350,8 @@ where
             &options.lock_owner,
             options.lock_ttl_secs,
         )
-        .await?;
+        .await
+        .map_err(InstallExecutionError::mark_recovery_required)?;
     let bootstrap_import = match ports
         .import_base_distribution(
             &database.runtime,
@@ -359,7 +367,7 @@ where
                     ports,
                     &database.runtime,
                     &session,
-                    InstallState::FreshInstallCleaned,
+                    InstallState::RecoveryRequired,
                     error,
                 )
                 .await,
@@ -372,121 +380,162 @@ where
                 ports,
                 &database.runtime,
                 &session,
-                InstallState::FreshInstallCleaned,
+                InstallState::RecoveryRequired,
                 error,
             )
             .await,
         );
     }
 
-    let preflight = record_success(
+    let preflight = recoverable_stage(
         ports,
         &database.runtime,
         &session,
-        InstallStep::Preflight,
-        &snapshot,
-        serde_json::json!({
-            "report": report,
-            "mode": "apply",
-            "note": "preflight receipt recorded after owner-schema bootstrap and base-distribution import",
-            "base_distribution_import": bootstrap_import
-        }),
+        record_success(
+            ports,
+            &database.runtime,
+            &session,
+            InstallStep::Preflight,
+            &snapshot,
+            serde_json::json!({
+                "report": report,
+                "mode": "apply",
+                "note": "preflight receipt recorded after owner-schema bootstrap and base-distribution import",
+                "base_distribution_import": bootstrap_import
+            }),
+        ),
     )
     .await?;
-    session = ports
-        .set_state(&database.runtime, &session, InstallState::PreflightPassed)
-        .await?;
-    let config = record_success(
+    session = recoverable_stage(
         ports,
         &database.runtime,
         &session,
-        InstallStep::Config,
-        &snapshot,
-        serde_json::json!({
-            "source": "installer",
-            "secrets_mode": plan.secrets_mode,
-            "redacted": true,
-            "instance_layout": layout_preparation
-        }),
+        ports.set_state(&database.runtime, &session, InstallState::PreflightPassed),
     )
     .await?;
-    session = ports
-        .set_state(&database.runtime, &session, InstallState::ConfigPrepared)
-        .await?;
-    let database_receipt = record_success(
+    let config = recoverable_stage(
         ports,
         &database.runtime,
         &session,
-        InstallStep::Database,
-        &snapshot,
-        serde_json::json!({
-            "database_engine": plan.database.engine,
-            "database_name": database.database_name,
-            "create_if_missing": plan.database.create_if_missing,
-            "created_database": database.created_database,
-            "checked": true
-        }),
+        record_success(
+            ports,
+            &database.runtime,
+            &session,
+            InstallStep::Config,
+            &snapshot,
+            serde_json::json!({
+                "source": "installer",
+                "secrets_mode": plan.secrets_mode,
+                "redacted": true,
+                "instance_layout": layout_preparation
+            }),
+        ),
     )
     .await?;
-    session = ports
-        .set_state(&database.runtime, &session, InstallState::DatabaseReady)
-        .await?;
-    let migrate = record_success(
+    session = recoverable_stage(
         ports,
         &database.runtime,
         &session,
-        InstallStep::Migrate,
-        &snapshot,
-        serde_json::json!({
-            "migrator": "rustok-migrations::Migrator",
-            "limit": null,
-            "applied": "owner_schema_then_base_distribution_import_then_remaining_schema"
-        }),
+        ports.set_state(&database.runtime, &session, InstallState::ConfigPrepared),
     )
     .await?;
-    session = ports
-        .set_state(&database.runtime, &session, InstallState::SchemaApplied)
-        .await?;
+    let database_receipt = recoverable_stage(
+        ports,
+        &database.runtime,
+        &session,
+        record_success(
+            ports,
+            &database.runtime,
+            &session,
+            InstallStep::Database,
+            &snapshot,
+            serde_json::json!({
+                "database_engine": plan.database.engine,
+                "database_name": database.database_name,
+                "create_if_missing": plan.database.create_if_missing,
+                "created_database": database.created_database,
+                "checked": true
+            }),
+        ),
+    )
+    .await?;
+    session = recoverable_stage(
+        ports,
+        &database.runtime,
+        &session,
+        ports.set_state(&database.runtime, &session, InstallState::DatabaseReady),
+    )
+    .await?;
+    let migrate = recoverable_stage(
+        ports,
+        &database.runtime,
+        &session,
+        record_success(
+            ports,
+            &database.runtime,
+            &session,
+            InstallStep::Migrate,
+            &snapshot,
+            serde_json::json!({
+                "migrator": "rustok-migrations::Migrator",
+                "limit": null,
+                "applied": "owner_schema_then_base_distribution_import_then_remaining_schema"
+            }),
+        ),
+    )
+    .await?;
+    session = recoverable_stage(
+        ports,
+        &database.runtime,
+        &session,
+        ports.set_state(&database.runtime, &session, InstallState::SchemaApplied),
+    )
+    .await?;
 
     // --- Post-Schema Durable Boundary: Failures require recovery rather than fresh-install cleanup ---
-    let seed_outcome = match ports.apply_seed(&database.runtime, &plan).await {
-        Ok(outcome) => outcome,
-        Err(error) => {
-            return Err(
-                persist_failure_state(
-                    ports,
-                    &database.runtime,
-                    &session,
-                    InstallState::RecoveryRequired,
-                    error,
-                )
-                .await,
-            );
-        }
-    };
-    session = ports
-        .set_tenant_id(&database.runtime, &session, seed_outcome.tenant_id)
-        .await?;
-    let seed = record_success(
+    let seed_outcome = recoverable_stage(
         ports,
         &database.runtime,
         &session,
-        InstallStep::Seed,
-        &snapshot,
-        serde_json::json!({
-            "seed_profile": plan.seed_profile,
-            "tenant_id": seed_outcome.tenant_id,
-            "tenant_slug": seed_outcome.tenant_slug,
-            "tenant_created": seed_outcome.tenant_created,
-            "enabled_modules": seed_outcome.enabled_modules,
-            "disabled_modules": seed_outcome.disabled_modules,
-            "demo_customer_created": seed_outcome.demo_customer_created
-        }),
+        ports.apply_seed(&database.runtime, &plan),
     )
     .await?;
-    session = ports
-        .set_state(&database.runtime, &session, InstallState::SeedApplied)
-        .await?;
+    session = recoverable_stage(
+        ports,
+        &database.runtime,
+        &session,
+        ports.set_tenant_id(&database.runtime, &session, seed_outcome.tenant_id),
+    )
+    .await?;
+    let seed = recoverable_stage(
+        ports,
+        &database.runtime,
+        &session,
+        record_success(
+            ports,
+            &database.runtime,
+            &session,
+            InstallStep::Seed,
+            &snapshot,
+            serde_json::json!({
+                "seed_profile": plan.seed_profile,
+                "tenant_id": seed_outcome.tenant_id,
+                "tenant_slug": seed_outcome.tenant_slug,
+                "tenant_created": seed_outcome.tenant_created,
+                "enabled_modules": seed_outcome.enabled_modules,
+                "disabled_modules": seed_outcome.disabled_modules,
+                "demo_customer_created": seed_outcome.demo_customer_created
+            }),
+        ),
+    )
+    .await?;
+    session = recoverable_stage(
+        ports,
+        &database.runtime,
+        &session,
+        ports.set_state(&database.runtime, &session, InstallState::SeedApplied),
+    )
+    .await?;
     let password = match crate::resolve_local_secret_value(&plan.admin.password, "admin password") {
         Ok(pw) => pw,
         Err(error) => {
@@ -520,28 +569,37 @@ where
             );
         }
     };
-    let admin = record_success(
+    let admin = recoverable_stage(
         ports,
         &database.runtime,
         &session,
-        InstallStep::Admin,
-        &snapshot,
-        serde_json::json!({
-            "tenant_id": seed_outcome.tenant_id,
-            "admin_email": admin_outcome.email,
-            "admin_user_id": admin_outcome.user_id,
-            "admin_created": admin_outcome.created,
-            "role": "super_admin"
-        }),
+        record_success(
+            ports,
+            &database.runtime,
+            &session,
+            InstallStep::Admin,
+            &snapshot,
+            serde_json::json!({
+                "tenant_id": seed_outcome.tenant_id,
+                "admin_email": admin_outcome.email,
+                "admin_user_id": admin_outcome.user_id,
+                "admin_created": admin_outcome.created,
+                "role": "super_admin"
+            }),
+        ),
     )
     .await?;
-    session = ports
-        .set_state(
+    session = recoverable_stage(
+        ports,
+        &database.runtime,
+        &session,
+        ports.set_state(
             &database.runtime,
             &session,
             InstallState::AdminProvisioned,
-        )
-        .await?;
+        ),
+    )
+    .await?;
     let output = match crate::execute_distribution_deployment(
         ports,
         &database.runtime,
@@ -585,23 +643,32 @@ where
             );
         }
     };
-    let verify = record_success(
+    let verify = recoverable_stage(
         ports,
         &database.runtime,
         &session,
-        InstallStep::Verify,
-        &snapshot,
-        serde_json::json!({
-            "tenant_id": verify_outcome.tenant_id,
-            "tenant_slug": verify_outcome.tenant_slug,
-            "admin_user_id": verify_outcome.admin_user_id,
-            "enabled_modules": verify_outcome.enabled_modules
-        }),
+        record_success(
+            ports,
+            &database.runtime,
+            &session,
+            InstallStep::Verify,
+            &snapshot,
+            serde_json::json!({
+                "tenant_id": verify_outcome.tenant_id,
+                "tenant_slug": verify_outcome.tenant_slug,
+                "admin_user_id": verify_outcome.admin_user_id,
+                "enabled_modules": verify_outcome.enabled_modules
+            }),
+        ),
     )
     .await?;
-    session = ports
-        .set_state(&database.runtime, &session, InstallState::Verified)
-        .await?;
+    session = recoverable_stage(
+        ports,
+        &database.runtime,
+        &session,
+        ports.set_state(&database.runtime, &session, InstallState::Verified),
+    )
+    .await?;
     let finalize = match record_success(
         ports,
         &database.runtime,
@@ -630,9 +697,13 @@ where
             );
         }
     };
-    session = ports
-        .set_state(&database.runtime, &session, InstallState::Completed)
-        .await?;
+    session = recoverable_stage(
+        ports,
+        &database.runtime,
+        &session,
+        ports.set_state(&database.runtime, &session, InstallState::Completed),
+    )
+    .await?;
 
     Ok(InstallApplyOutput {
         status: "completed".to_string(),
@@ -674,11 +745,38 @@ where
     R: Send + Sync,
 {
     match ports.set_state(runtime, session, target).await {
-        Ok(_) => cause,
-        Err(persistence_error) => InstallExecutionError::new(format!(
+        Ok(_) => cause.mark_recovery_required(),
+        Err(persistence_error) => InstallExecutionError::requiring_recovery(format!(
             "{cause}; failed to persist installer state {target:?} for attempt generation {}: {persistence_error}",
             session.attempt_generation
         )),
+    }
+}
+
+#[cfg(feature = "host-runtime")]
+async fn recoverable_stage<P, R, T, F>(
+    ports: &P,
+    runtime: &R,
+    session: &InstallSessionRecord,
+    stage: F,
+) -> Result<T, InstallExecutionError>
+where
+    P: InstallPersistencePort<R>,
+    R: Send + Sync,
+    F: Future<Output = Result<T, InstallExecutionError>>,
+{
+    match stage.await {
+        Ok(value) => Ok(value),
+        Err(error) => Err(
+            persist_failure_state(
+                ports,
+                runtime,
+                session,
+                InstallState::RecoveryRequired,
+                error,
+            )
+            .await,
+        ),
     }
 }
 
@@ -703,12 +801,47 @@ where
 #[error("install execution failed: {message}")]
 pub struct InstallExecutionError {
     message: String,
+    requires_recovery: bool,
 }
 
 impl InstallExecutionError {
     pub fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
+            requires_recovery: false,
         }
+    }
+
+    pub fn requiring_recovery(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            requires_recovery: true,
+        }
+    }
+
+    pub fn mark_recovery_required(mut self) -> Self {
+        self.requires_recovery = true;
+        self
+    }
+
+    pub fn requires_recovery(&self) -> bool {
+        self.requires_recovery
+    }
+}
+
+#[cfg(test)]
+mod recovery_classification_tests {
+    use super::InstallExecutionError;
+
+    #[test]
+    fn ambiguous_effects_are_distinguished_from_preflight_failures() {
+        assert!(!InstallExecutionError::new("preflight rejected").requires_recovery());
+        assert!(
+            InstallExecutionError::new("database commit response was lost")
+                .mark_recovery_required()
+                .requires_recovery()
+        );
+        assert!(InstallExecutionError::requiring_recovery("owner schema outcome is ambiguous")
+            .requires_recovery());
     }
 }

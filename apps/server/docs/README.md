@@ -1473,3 +1473,35 @@ broker/restart/operator-client evidence remain open. No tests/build/SQL/runtime 
 - [Index drift source page GraphQL transport](./index-drift-source-page-graphql-transport.md)
 - [Index replay GraphQL transport](./index-replay-graphql-transport.md)
 - [Index replay GraphQL shutdown evidence](./index-replay-graphql-shutdown-evidence.md)
+
+
+## Server audit continuation — installer HTTP job quarantine (2026-11-24)
+
+HTTP installer jobs now refresh their host-runtime `updated_at` heartbeat
+every 30 seconds. An atomic compare-and-set quarantines a `running` job whose
+heartbeat is older than five minutes as `recovery_required`. A unique
+expression index maps both unresolved states to the same admission key, so a
+recovery-required job continues to block a second HTTP apply. The migration
+creates the stricter index before dropping the old running-only guard; if
+legacy unresolved duplicates exist, migration fails without removing the
+previous guard.
+
+The executor now preserves a typed `requires_recovery` classification through
+the HTTP adapter. Ambiguous database preparation, owner-schema application,
+session creation/claim, receipt persistence, state transitions and post-schema
+effects are quarantined instead of being reported as clean failures. The
+installer state machine no longer permits skipping `Deploying` or creating
+new `failed` transitions, and it does not claim `fresh_install_cleaned` when
+no cleanup ran. The global status endpoint projects the durable host job when
+the target session is not present in the runtime database; the receipts route
+returns a conflict rather than an empty receipt list in that topology.
+
+This is deliberately **not** automatic replay or target-effect reconciliation.
+The host job ledger is in the server runtime database while install sessions
+and step receipts may live in a separate target database. The HTTP host does
+not persist a recoverable target credential/reference, so it cannot safely
+open an arbitrary target after process loss. A stale job remains
+`recovery_required` until an operator reconciles the target database and
+receipts; lease expiry never transfers ownership. Source regressions were
+authored, but tests, compilation and formatting were not run at the
+maintainer's request.

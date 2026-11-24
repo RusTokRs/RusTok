@@ -25,14 +25,12 @@ pub async fn apply_plan(
     plan: InstallPlan,
     options: InstallApplyOptions,
     registry: rustok_core::ModuleRegistry,
-) -> Result<InstallApplyOutput> {
+) -> std::result::Result<InstallApplyOutput, InstallExecutionError> {
     let ports = ServerInstallerPorts {
         registry,
         deployment: ServerInstallerDeploymentAdapter,
     };
-    rustok_installer::execute_install_apply(&ports, plan, options)
-        .await
-        .map_err(|error| eyre!(error.to_string()))
+    rustok_installer::execute_install_apply(&ports, plan, options).await
 }
 
 /// HTTP-host adapter for the portable installer executor contract.
@@ -54,9 +52,7 @@ impl InstallExecutor for ServerInstallExecutor {
         plan: InstallPlan,
         options: InstallApplyOptions,
     ) -> std::result::Result<InstallApplyOutput, InstallExecutionError> {
-        apply_plan(plan, options, self.registry.clone())
-            .await
-            .map_err(|error| InstallExecutionError::new(error.to_string()))
+        apply_plan(plan, options, self.registry.clone()).await
     }
 }
 

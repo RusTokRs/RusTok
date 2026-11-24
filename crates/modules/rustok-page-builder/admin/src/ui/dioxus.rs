@@ -178,7 +178,7 @@ fn dispatch_facade_effects(
                     ));
                     state.preview_in_progress = true;
                 }
-                spawn(async move {
+                let _task = spawn(async move {
                     let outcome = facade.execute(request).await;
                     let mut state = session.write();
                     match outcome {
@@ -191,17 +191,21 @@ fn dispatch_facade_effects(
                             if state.controller.active_save_attempt_id() != Some(attempt_id) {
                                 return;
                             }
-                            let _ = state.handle_publish_response_for_attempt(
+                            if let Err(error) = state.handle_publish_response_for_attempt(
                                 &response.page_id,
                                 &response.revision_id,
                                 expected_hash,
                                 attempt_id,
-                            );
+                            ) {
+                                state.handle_publish_error_for_attempt(attempt_id, error);
+                            }
                         }
                         Ok(PageBuilderCapabilityResponse::Preview(response))
                             if capability == BuilderCapabilityKind::Preview =>
                         {
-                            let _ = state.handle_preview_response(&response);
+                            if let Err(error) = state.handle_preview_response(&response) {
+                                state.fail(error);
+                            }
                         }
                         Ok(other) => {
                             let error = format!(

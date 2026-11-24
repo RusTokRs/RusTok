@@ -34,6 +34,7 @@ Component-local documents live in `apps/*/docs/`, `crates/{libs,modules,ui,utils
 - [Architecture Quick Reference](../ARCHITECTURE.md)
 - [ADR Registry](../DECISIONS/README.md)
 - [Proposed ADR: Workflow cron durable scheduling and recovery](../DECISIONS/2026-11-23-workflow-cron-durable-scheduling-and-recovery.md) — workflow-owned schedule cursors, per-firing claims, conservative recovery and operator evidence.
+- [ADR: Installer HTTP job crash quarantine](../DECISIONS/2026-11-24-installer-http-job-crash-quarantine.md) — heartbeat-based interruption detection, fail-closed recovery status, and no automatic lease takeover or target replay.
 - [Platform Overview](./architecture/overview.md)
 - [Architecture Principles](./architecture/principles.md)
 - [API and Surface Contracts](./architecture/api.md)

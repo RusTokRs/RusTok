@@ -20,7 +20,12 @@
   - `new(db: DatabaseConnection) -> Self`
   - `create_http_job(job_id: Uuid, session_id: Uuid, submitted_at: DateTime<Utc>) -> Result<install_http_job::Model, DbErr>`
   - `get_http_job(job_id: Uuid) -> Result<Option<install_http_job::Model>, DbErr>`
-  - `has_running_http_job() -> Result<bool, DbErr>`
+  - `latest_http_job() -> Result<Option<install_http_job::Model>, DbErr>`
+  - `has_running_http_job() -> Result<bool, DbErr>` (legacy narrow query)
+  - `has_unresolved_http_job() -> Result<bool, DbErr>` (running or recovery-required)
+  - `heartbeat_http_job(job_id: Uuid) -> Result<bool, DbErr>`
+  - `reconcile_stale_http_jobs(stale_before) -> Result<u64, DbErr>`
+  - `finish_http_job_recovery_required(job_id: Uuid) -> Result<install_http_job::Model, DbErr>`
   - `finish_http_job_succeeded(...) -> Result<install_http_job::Model, DbErr>` (compare-and-set on `status = running`)
   - `finish_http_job_failed(...) -> Result<install_http_job::Model, DbErr>` (compare-and-set with bounded error message)
   - `finish_unstarted_http_job_failed(job_id, session_id, submitted_at) -> Result<bool, DbErr>` (exact identity + `running` CAS, for a host that has not entered execution)
@@ -69,7 +74,8 @@
 
 ## 4. Concurrency & Concurrency Models
 
-- **Compare-and-Set Job Terminal State:** `finish_http_job_succeeded` and `finish_http_job_failed` filter on `status = running`, guaranteeing that once a terminal status is written, concurrent transitions fail.
+- **Compare-and-Set Job State:** success, failure, and `recovery_required` transitions only update a `running` row. Heartbeats also update only `running`; late heartbeats and terminal writes cannot revive or overwrite a quarantined job.
+- **HTTP Job Liveness:** the host refreshes `updated_at` every 30 seconds. A compare-and-set reconciliation moves rows older than five minutes from `running` to `recovery_required`; the unique expression index gives both statuses the same admission key.
 - **Serializable Lock Acquisition:** PostgreSQL and MySQL begin lock acquisition in a `Serializable` transaction. SQLite uses the conditional session-claim update as its write fence.
 - **Fail-Closed Global Admission:** A session is claimed only from `draft` with `lock_owner IS NULL`, and cannot be claimed twice. Any other unreconciled session with a recorded owner blocks a new apply even after its lease expires. `recovery_required` blocks admission even if its owner has been cleared; completed, safely failed, and freshly cleaned sessions release the gate.
 - **No Lease-Expiry Takeover:** Expiry is not proof that the old process stopped. Stale sessions require explicit reconciliation before another apply can start.
@@ -81,6 +87,13 @@
 
 ## 5. Audit History & Verification Evidence
 
+- **Installer HTTP job quarantine (2026-11-24):**
+  - Added a 30-second host-job heartbeat and a five-minute stale threshold.
+  - Stale jobs become `recovery_required`; an expression index enforces one
+    unresolved job across `running` and `recovery_required`.
+  - Recovery is fail-closed only; no automatic resume, lease takeover, or
+    remote target-effect reconciliation is claimed.
+  - Verification was not run at the user's request.
 - **Installer lease hardening (2026-11-18):**
   - Added one-time draft-session claims and a fail-closed global admission gate that
     retains unfinished and `recovery_required` sessions after lease expiry.

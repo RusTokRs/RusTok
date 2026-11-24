@@ -53,6 +53,7 @@ Non-ADR plans and research documents do not belong in this registry.
 
 | ADR | Title | Decision status | Implementation status | Relations |
 | --- | --- | --- | --- | --- |
+| [2026-11-24](./2026-11-24-installer-http-job-crash-quarantine.md) | Installer HTTP job crash quarantine | Accepted | In progress | Extends [Durable side-effect recovery](./2026-11-12-durable-side-effect-recovery.md) and [Module release rollback safety](./2026-08-06-module-release-rollback-safety.md) |
 | [2026-11-23](./2026-11-23-workflow-cron-durable-scheduling-and-recovery.md) | Workflow cron durable scheduling, multi-replica claims and fail-closed recovery | Proposed | In progress | Extends [Durable side-effect recovery](./2026-11-12-durable-side-effect-recovery.md) |
 | [2026-11-18](./2026-11-18-outbox-consumer-retention-acknowledgements.md) | Outbox retention honors registered durable consumers | Accepted | In progress | Extends [Outbox runtime](./2026-03-11-queue-runtime-source-of-truth-outbox.md) and [Acknowledged local root-event delivery](./2026-11-18-acknowledged-root-event-delivery.md) |
 | [2026-11-18](./2026-11-18-acknowledged-root-event-delivery.md) | Acknowledged local root-event delivery | Accepted | In progress | Extends [Sealed typed event families](./2026-07-17-sealed-typed-event-families.md) |

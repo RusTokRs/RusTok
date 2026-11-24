@@ -90,15 +90,17 @@ impl InstallState {
                 | (DatabaseReady, SchemaApplied)
                 | (SchemaApplied, SeedApplied)
                 | (SeedApplied, AdminProvisioned)
-                | (AdminProvisioned, Verified)
                 | (AdminProvisioned, Deploying)
                 | (Deploying, Verified)
                 | (Verified, Completed)
-                | (_, Failed)
                 | (Draft, FreshInstallCleaned)
                 | (PreflightPassed, FreshInstallCleaned)
                 | (ConfigPrepared, FreshInstallCleaned)
                 | (DatabaseReady, FreshInstallCleaned)
+                | (Draft, RecoveryRequired)
+                | (PreflightPassed, RecoveryRequired)
+                | (ConfigPrepared, RecoveryRequired)
+                | (DatabaseReady, RecoveryRequired)
                 | (SchemaApplied, RecoveryRequired)
                 | (SeedApplied, RecoveryRequired)
                 | (AdminProvisioned, RecoveryRequired)
@@ -135,6 +137,8 @@ mod tests {
             .unwrap()
             .transition_to(InstallState::AdminProvisioned)
             .unwrap()
+            .transition_to(InstallState::Deploying)
+            .unwrap()
             .transition_to(InstallState::Verified)
             .unwrap()
             .transition_to(InstallState::Completed)
@@ -154,12 +158,41 @@ mod tests {
     }
 
     #[test]
-    fn schema_applied_requires_recovery_instead_of_claiming_rollback() {
-        assert!(
-            InstallState::SchemaApplied
-                .transition_to(InstallState::RecoveryRequired)
-                .is_ok()
-        );
+    fn ambiguous_effects_require_recovery_from_every_nonterminal_stage() {
+        for state in [
+            InstallState::Draft,
+            InstallState::PreflightPassed,
+            InstallState::ConfigPrepared,
+            InstallState::DatabaseReady,
+            InstallState::SchemaApplied,
+            InstallState::SeedApplied,
+            InstallState::AdminProvisioned,
+            InstallState::Deploying,
+            InstallState::Verified,
+        ] {
+            assert!(
+                state.can_transition_to(InstallState::RecoveryRequired),
+                "{state:?} must be quarantinable after an ambiguous effect"
+            );
+        }
+        assert!(!InstallState::Completed.can_transition_to(InstallState::RecoveryRequired));
+        assert!(!InstallState::FreshInstallCleaned.can_transition_to(InstallState::RecoveryRequired));
+    }
+
+    #[test]
+    fn failed_is_legacy_only_and_cannot_release_a_new_attempt() {
+        for state in [
+            InstallState::Draft,
+            InstallState::SchemaApplied,
+            InstallState::Deploying,
+            InstallState::Completed,
+            InstallState::RecoveryRequired,
+        ] {
+            assert!(
+                !state.can_transition_to(InstallState::Failed),
+                "{state:?} must not be newly rewritten as failed"
+            );
+        }
     }
 
     #[test]
