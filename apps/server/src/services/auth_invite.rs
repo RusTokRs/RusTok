@@ -225,7 +225,7 @@ impl AuthLifecycleService {
         let issuer_id = issued
             .issued_by
             .ok_or(InviteAcceptanceError::InvalidToken)?;
-        let issuer = AuthLifecycleService::lock_user_for_mutation(&tx, tenant_id, issuer_id)
+        let _issuer = AuthLifecycleService::lock_user_for_mutation(&tx, tenant_id, issuer_id)
             .await
             .map_err(|error| InviteAcceptanceError::Internal(error.into()))?
             .filter(|issuer| issuer.status == rustok_core::UserStatus::Active)
