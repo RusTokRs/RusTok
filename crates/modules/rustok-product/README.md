@@ -93,8 +93,10 @@ The command service is registered only when both command variables are set:
 `RUSTOK_PRODUCT_CATALOG_COMMAND_GRPC_BEARER_TOKEN` and
 `RUSTOK_PRODUCT_CATALOG_COMMAND_ACTOR_ID` (a non-nil UUID).
 The command credential must differ from the read credential. Product and SKU
-deletion fail with `product.inventory_deletion_state_unverified` when Inventory
-is not wired, including in this standalone profile.
+deletion fail closed unless both Inventory and Pricing transactional collaborators
+are wired. Inventory must prove stock/history cleanup; Pricing must remove every
+authoritative price row in the same owner transaction. The standalone profile
+does not currently expose these deletion operations without those collaborators.
 Catalog reads that must resolve stored tag relations report an unavailable
 dependency when Taxonomy is not wired.
 
