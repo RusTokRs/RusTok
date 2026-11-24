@@ -282,14 +282,30 @@ fn handle_canvas_message(
             components,
             resource_limit,
         } => {
+            let exceeded_limit = resource_limit.is_some();
             geometry_limit.set(resource_limit);
-            geometry.set(
-                components
-                    .into_iter()
-                    .map(|component| (component.component_id.clone(), component))
-                    .collect(),
-            );
-            synchronize_overlays(runtime, geometry);
+            if exceeded_limit {
+                // Never hit-test a truncated component list: missing geometry could
+                // otherwise leave a stale or incorrect drop target active.
+                geometry.set(BTreeMap::new());
+                runtime.dispatch(UiIntent::UpdateHitTest(Vec::new()));
+                runtime.dispatch(UiIntent::SetSelectedOverlay(None));
+                runtime.dispatch(UiIntent::SetHoveredOverlay(None));
+                if runtime
+                    .controller
+                    .with(|controller| controller.ui().state.drag.is_some())
+                {
+                    runtime.dispatch(UiIntent::CancelDrag);
+                }
+            } else {
+                geometry.set(
+                    components
+                        .into_iter()
+                        .map(|component| (component.component_id.clone(), component))
+                        .collect(),
+                );
+                synchronize_overlays(runtime, geometry);
+            }
         }
         CanvasBridgeMessage::PointerMoved { sample } => {
             pointer.set(Some(format!(
@@ -302,6 +318,15 @@ fn handle_canvas_message(
             update_drag_candidates(runtime, geometry, position)
         }
         CanvasBridgeMessage::DropRequested { position } => {
+            if geometry_limit.with(|limit| limit.is_some()) {
+                if runtime
+                    .controller
+                    .with(|controller| controller.ui().state.drag.is_some())
+                {
+                    runtime.dispatch(UiIntent::CancelDrag);
+                }
+                return;
+            }
             if runtime
                 .controller
                 .with(|controller| controller.ui().state.drag.is_some())
@@ -324,17 +349,22 @@ fn handle_canvas_message(
             }
         }
         CanvasBridgeMessage::FocusRequested { component_id } => {
-            if runtime
-                .controller
-                .with(|controller| controller.ui().state.drag.is_none())
+            if geometry_limit.with(|limit| limit.is_none())
+                && runtime
+                    .controller
+                    .with(|controller| controller.ui().state.drag.is_none())
             {
                 runtime.dispatch(UiIntent::Select(component_id));
                 synchronize_overlays(runtime, geometry);
             }
         }
         CanvasBridgeMessage::HoverRequested { component_id } => {
-            runtime.dispatch(UiIntent::Hover(component_id));
-            synchronize_overlays(runtime, geometry);
+            if geometry_limit.with(|limit| limit.is_none()) {
+                runtime.dispatch(UiIntent::Hover(component_id));
+                synchronize_overlays(runtime, geometry);
+            } else {
+                runtime.dispatch(UiIntent::SetHoveredOverlay(None));
+            }
         }
         CanvasBridgeMessage::Teardown => {
             ready.set(false);
