@@ -433,6 +433,13 @@ async fn dispatch_pages_page_builder_capability(
                     "Pages document was not found after Page Builder publish",
                 )
             })?;
+        let PageBuilderCapabilityResponse::Publish(result) = &response else {
+            return Err(PageBuilderAdminFacadeError::new(
+                "Pages save endpoint returned a non-publish response for a publish request",
+            ));
+        };
+        let current_revision = persisted_revision(&saved_page)?;
+        ensure_publish_receipt_is_current(&result.revision_id, &current_revision)?;
         on_saved(PageMutationResult::from(&saved_page), project_data);
     }
     Ok(response)
@@ -448,6 +455,23 @@ fn page_locale(page: &PageDetail, default_locale: String) -> String {
                 .map(|translation| translation.locale.clone())
         })
         .unwrap_or(default_locale)
+}
+
+/// A receipt acknowledges the revision produced by that exact request, not whichever
+/// revision happens to be current when the browser refreshes its surrounding page state.
+fn ensure_publish_receipt_is_current(
+    receipt_revision: &str,
+    current_revision: &str,
+) -> Result<(), PageBuilderAdminFacadeError> {
+    if receipt_revision == current_revision {
+        return Ok(());
+    }
+    Err(PageBuilderAdminFacadeError::with_stable_code(
+        format!(
+            "Pages document advanced after this save receipt: committed revision `{receipt_revision}`, current revision `{current_revision}`; reload the latest document before editing again"
+        ),
+        REVISION_CONFLICT,
+    ))
 }
 
 fn persisted_revision(page: &PageDetail) -> Result<String, PageBuilderAdminFacadeError> {
@@ -676,11 +700,16 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
                 return Err(PageBuilderServiceError::Runtime(error.to_string()));
             }
         };
-        let revision_id = persisted_revision(&saved_page)
+        let saved_revision = persisted_revision(&saved_page)
             .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))?;
+        ensure_receipt_not_superseded(
+            revision_id,
+            &page_revision(&current_page),
+            &saved_revision,
+        )?;
         let result = PageBuilderProjectSaveResult {
             page_id: saved_page.id.clone(),
-            revision_id,
+            revision_id: saved_revision,
             published: saved_page.status.eq_ignore_ascii_case("published"),
         };
         (self.on_saved)(PageMutationResult::from(&saved_page), project_data);
@@ -737,9 +766,60 @@ impl PageBuilderPreviewRenderingPort for PagesPageBuilderRenderer {
 }
 
 
+/// A retry may replay an older successful receipt after a later session has saved.
+/// Do not present that old acknowledgement as the current document revision.
+#[cfg(feature = "ssr")]
+fn ensure_receipt_not_superseded(
+    expected_revision: &str,
+    observed_revision: &str,
+    receipt_revision: &str,
+) -> PageBuilderServiceResult<()> {
+    if observed_revision == expected_revision || observed_revision == receipt_revision {
+        return Ok(());
+    }
+    Err(PageBuilderServiceError::Runtime(format!(
+        "{REVISION_CONFLICT}: save receipt committed revision `{receipt_revision}`, but the current page is `{observed_revision}` (request expected `{expected_revision}`)"
+    )))
+}
+
 /// Whether the transport error might have happened after the server commit.
 /// GraphQL business rejections and authorization errors are final, not receipt
 /// recovery candidates; HTTP 408/429/5xx and network failures may be ambiguous.
+#[cfg(all(test, feature = "ssr"))]
+mod ssr_save_receipt_revision_tests {
+    use super::*;
+
+    #[test]
+    fn a_receipt_is_current_when_the_page_is_still_at_the_submitted_or_committed_revision() {
+        assert!(ensure_receipt_not_superseded("rev-1", "rev-1", "rev-2").is_ok());
+        assert!(ensure_receipt_not_superseded("rev-1", "rev-2", "rev-2").is_ok());
+    }
+
+    #[test]
+    fn a_replayed_receipt_is_rejected_after_a_later_session_commits() {
+        let error = ensure_receipt_not_superseded("rev-1", "rev-3", "rev-2")
+            .expect_err("a superseded receipt must not acknowledge the stale editor");
+        assert!(error.to_string().contains(REVISION_CONFLICT));
+        assert!(error.to_string().contains("rev-3"));
+    }
+}
+
+#[cfg(test)]
+mod save_receipt_revision_tests {
+    use super::*;
+
+    #[test]
+    fn replayed_receipt_is_not_acknowledged_as_a_newer_page_revision() {
+        assert!(ensure_publish_receipt_is_current("rev-2", "rev-2").is_ok());
+
+        let error = ensure_publish_receipt_is_current("rev-2", "rev-3")
+            .expect_err("a later page revision must fence the stale save receipt");
+        assert_eq!(error.stable_code.as_deref(), Some(REVISION_CONFLICT));
+        assert!(error.message.contains("rev-2"));
+        assert!(error.message.contains("rev-3"));
+    }
+}
+
 #[cfg(feature = "ssr")]
 fn document_save_might_have_committed(error: &GraphqlHttpError) -> bool {
     match error {
