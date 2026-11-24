@@ -4,23 +4,22 @@ use dioxus::prelude::*;
 use fly_browser::{BrowserIntentEnvelope, BrowserIntentKind};
 use fly_dioxus::FlyCanvasIframe;
 use fly_ui::{
-    CanvasRect, ResizeHandle, ResizeResult, UiIntent, ViewportState,
+    CanvasRect, ResizeHandle, ResizePolicy, ResizeResult, ResizeSession, UiIntent, ViewportState,
 };
 
 use crate::core::session::EditorSessionState;
-use crate::editor::CanvasComponentGeometry;
+use crate::editor::{CanvasComponentGeometry, CanvasResourceLimit};
 
 #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
 use crate::editor::{CanvasBridgeMessage, decode_canvas_message};
 #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
 use fly_web::{
-    BrowserResizeSession, EventListenerHandle, release_pointer_capture,
-    set_pointer_capture,
+    BrowserResizeSession, EventListenerHandle, release_pointer_capture, set_pointer_capture,
 };
 #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
 use wasm_bindgen::JsCast;
 #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
-use web_sys::{Element, EventTarget, PointerEvent};
+use web_sys::{Element, Event, EventTarget, PointerEvent};
 
 const RESIZE_HANDLES: [ResizeHandle; 8] = [
     ResizeHandle::NorthWest,
@@ -36,27 +35,34 @@ const RESIZE_HANDLES: [ResizeHandle; 8] = [
 #[component]
 pub fn DioxusIsolatedCanvas(
     srcdoc: String,
+    /// Per-document iframe identity. It changes whenever the document or its revision changes.
     instance_id: String,
+    /// Stable page identity used for server-side browser intents.
+    intent_instance_id: String,
+    can_resize: bool,
     session: Signal<EditorSessionState>,
     on_intent: EventHandler<BrowserIntentEnvelope>,
     on_ui_intent: EventHandler<UiIntent>,
     on_error: Option<EventHandler<String>>,
 ) -> Element {
     let mut geometry = use_signal(|| BTreeMap::<String, CanvasComponentGeometry>::new());
+    let mut geometry_limit = use_signal(|| None::<CanvasResourceLimit>);
     let mut ready = use_signal(|| false);
+    let mut pointer = use_signal(|| None::<String>);
     let mut resize_preview = use_signal(|| None::<ResizeResult>);
 
-    let (viewport, selected_id, hovered_id, insertion_rect, selected_is_root) = {
+    let (viewport, selected_id, hovered_id, insertion_rect, selected_can_resize) = {
         let current = session.read();
+        let selected = current.controller.selected_component_view();
         (
             current.controller.ui().state.viewport,
             current.controller.ui().state.selection.component_id.clone(),
             current.controller.ui().state.selection.hovered_component_id.clone(),
             current.controller.ui().state.overlays.insertion,
-            current
-                .controller
-                .selected_component_view()
-                .is_none_or(|selected| selected.is_root),
+            can_resize
+                && selected
+                    .as_ref()
+                    .is_some_and(|selected| !selected.is_root && !selected.is_locked),
         )
     };
     let geometry_snapshot = geometry.read().clone();
@@ -91,69 +97,126 @@ pub fn DioxusIsolatedCanvas(
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
     let mut listener_handles = use_signal(|| Vec::<EventListenerHandle>::new());
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
-    let resize_instance_id = instance_id.clone();
+    let mut listener_root_id = use_signal(|| None::<String>);
 
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
-    let next_resize_context = (!selected_is_root)
+    let next_resize_context = selected_can_resize
         .then(|| selected_id.clone().zip(selected_rect))
         .flatten()
         .map(|(component_id, rect)| (component_id, rect, zoom));
 
+    #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
+    let resize_effect_inputs = (resize_root_id.clone(), next_resize_context.clone());
+
     let message_handler = {
         let expected_instance = instance_id.clone();
+        let intent_instance = intent_instance_id.clone();
         move |payload: String| {
             #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
             if let Some((_, message)) =
                 decode_canvas_message(&payload, &expected_instance, None)
             {
-                if matches!(message, CanvasBridgeMessage::Teardown) {
-                    if let Some(active) = resize_session.read().as_ref().cloned() {
-                        if let Some(element) = captured_element.read().as_ref() {
-                            let _ = release_pointer_capture(element, active.pointer_id);
-                        }
-                    }
-                    resize_session.set(None);
-                    resize_preview.set(None);
-                    captured_element.set(None);
-                }
                 handle_canvas_message(
                     message,
                     session,
                     geometry,
+                    geometry_limit,
                     ready,
+                    pointer,
+                    resize_session,
+                    resize_preview,
+                    captured_element,
                     on_ui_intent,
                     on_intent,
-                    &expected_instance,
+                    &intent_instance,
+                    on_error,
                 );
             }
             #[cfg(not(all(target_arch = "wasm32", feature = "dioxus-web")))]
             {
                 let _ = payload;
                 let _ = &expected_instance;
+                let _ = &intent_instance;
             }
         }
     };
     let on_message = EventHandler::new(message_handler);
 
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
-    {
-        let root_id = resize_root_id.clone();
-        use_effect(move || {
-            if *resize_context.read() != next_resize_context {
-                resize_context.set(next_resize_context.clone());
+    let on_iframe_load = {
+        let mut geometry = geometry;
+        let mut geometry_limit = geometry_limit;
+        let mut ready = ready;
+        let mut pointer = pointer;
+        move |_| {
+            ready.set(false);
+            geometry.set(BTreeMap::new());
+            geometry_limit.set(None);
+            pointer.set(None);
+            cancel_resize_session(
+                resize_session,
+                resize_preview,
+                captured_element,
+                None,
+                true,
+                on_error,
+            );
+            on_ui_intent.call(UiIntent::SetSelectedOverlay(None));
+            on_ui_intent.call(UiIntent::SetHoveredOverlay(None));
+            if session.read().controller.ui().state.drag.is_some() {
+                on_ui_intent.call(UiIntent::CancelDrag);
             }
-            if !listener_handles.read().is_empty() {
+        }
+    };
+    #[cfg(not(all(target_arch = "wasm32", feature = "dioxus-web")))]
+    let on_iframe_load: Option<EventHandler<()>> = None;
+
+    #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
+    {
+        use_effect(use_reactive!(|resize_effect_inputs| {
+            let (root_id, next_context) = resize_effect_inputs.clone();
+
+            if listener_root_id.peek().as_ref() != Some(&root_id) {
+                // Dropping the old handles unregisters listeners attached to the old SVG.
+                listener_handles.set(Vec::new());
+                listener_root_id.set(Some(root_id.clone()));
+            }
+
+            let current_context = resize_context.peek().clone();
+            if current_context != next_context {
+                if resize_session.peek().is_some() {
+                    cancel_resize_session(
+                        resize_session,
+                        resize_preview,
+                        captured_element,
+                        None,
+                        true,
+                        on_error,
+                    );
+                }
+                resize_context.set(next_context);
+            }
+
+            if !listener_handles.peek().is_empty() {
                 return;
             }
+
             let Some(window) = web_sys::window() else {
+                if let Some(handler) = on_error {
+                    handler.call("browser window is unavailable for resize handles".to_string());
+                }
                 return;
             };
             let Some(document) = window.document() else {
+                if let Some(handler) = on_error {
+                    handler.call("browser document is unavailable for resize handles".to_string());
+                }
                 return;
             };
             let Some(root) = document.get_element_by_id(&root_id) else {
                 return;
             };
+
             let root_target: EventTarget = root.unchecked_into();
             let window_target: EventTarget = window.clone().unchecked_into();
             let mut handles = Vec::new();
@@ -162,6 +225,9 @@ pub fn DioxusIsolatedCanvas(
                 &root_target,
                 "pointerdown",
                 move |event| {
+                    if event.button() != 0 || !event.is_primary() {
+                        return;
+                    }
                     let Some(target) = event
                         .target()
                         .and_then(|target| target.dyn_into::<Element>().ok())
@@ -182,16 +248,20 @@ pub fn DioxusIsolatedCanvas(
                         return;
                     };
                     let Some((component_id, rect, coordinate_scale)) =
-                        resize_context.read().clone()
+                        resize_context.peek().clone()
                     else {
                         return;
+                    };
+                    let policy = ResizePolicy {
+                        grid_size: Some(4.0),
+                        ..ResizePolicy::default()
                     };
                     let active = BrowserResizeSession::begin_scaled(
                         component_id,
                         handle,
                         rect,
                         &event,
-                        fly_ui::ResizePolicy::default(),
+                        policy,
                         coordinate_scale,
                     );
                     if let Err(error) =
@@ -209,51 +279,41 @@ pub fn DioxusIsolatedCanvas(
                     event.stop_propagation();
                 },
             );
-            match pointer_down {
-                Ok(handle) => handles.push(handle),
-                Err(error) => {
-                    if let Some(handler) = on_error {
-                        handler.call(error.to_string());
-                    }
-                }
-            }
 
             let pointer_move = EventListenerHandle::new::<PointerEvent>(
                 &window_target,
                 "pointermove",
                 move |event| {
-                    let active = resize_session.read().as_ref().cloned();
-                    if let Some(active) = active
-                        && let Some(result) = active.update(&event)
-                    {
-                        resize_preview.set(Some(result));
+                    let Some(active) = resize_session.peek().clone() else {
+                        return;
+                    };
+                    if active.accepts(&event) {
+                        resize_preview.set(active.update(&event));
                     }
                 },
             );
-            match pointer_move {
-                Ok(handle) => handles.push(handle),
-                Err(error) => {
-                    if let Some(handler) = on_error {
-                        handler.call(error.to_string());
-                    }
-                }
-            }
 
             let pointer_up = EventListenerHandle::new::<PointerEvent>(
                 &window_target,
                 "pointerup",
                 move |event| {
-                    let Some(active) = resize_session.read().as_ref().cloned() else {
+                    let Some(active) = resize_session.peek().clone() else {
+                        if session.read().controller.ui().state.drag.is_some() {
+                            on_ui_intent.call(UiIntent::CancelDrag);
+                        }
                         return;
                     };
                     if !active.accepts(&event) {
                         return;
                     }
-                    if let Some(result) = active.update(&event)
-                        && (result.width_changed || result.height_changed)
+                    let result = active
+                        .update(&event)
+                        .or_else(|| resize_preview.peek().clone());
+                    if let Some(result) =
+                        result.filter(|result| result.width_changed || result.height_changed)
                     {
                         on_intent.call(BrowserIntentEnvelope::new(
-                            resize_instance_id.clone(),
+                            intent_instance_id.clone(),
                             BrowserIntentKind::PatchSelected,
                             serde_json::json!({
                                 "component_id": active.resize.component_id,
@@ -261,56 +321,113 @@ pub fn DioxusIsolatedCanvas(
                             }),
                         ));
                     }
-                    if let Some(element) = captured_element.read().as_ref() {
-                        let _ = release_pointer_capture(element, active.pointer_id);
+                    if let Some(element) = captured_element.peek().clone() {
+                        if let Err(error) =
+                            release_pointer_capture(&element, active.pointer_id)
+                        {
+                            if let Some(handler) = on_error {
+                                handler.call(error.to_string());
+                            }
+                        }
                     }
                     captured_element.set(None);
                     resize_session.set(None);
                     resize_preview.set(None);
                 },
             );
-            match pointer_up {
-                Ok(handle) => handles.push(handle),
-                Err(error) => {
-                    if let Some(handler) = on_error {
-                        handler.call(error.to_string());
-                    }
-                }
-            }
 
             let pointer_cancel = EventListenerHandle::new::<PointerEvent>(
                 &window_target,
                 "pointercancel",
                 move |event| {
-                    let Some(active) = resize_session.read().as_ref().cloned() else {
+                    let Some(active) = resize_session.peek().clone() else {
+                        if session.read().controller.ui().state.drag.is_some() {
+                            on_ui_intent.call(UiIntent::CancelDrag);
+                        }
                         return;
                     };
-                    if !active.accepts(&event) {
-                        return;
+                    if active.accepts(&event) {
+                        cancel_resize_session(
+                            resize_session,
+                            resize_preview,
+                            captured_element,
+                            Some(event.pointer_id()),
+                            true,
+                            on_error,
+                        );
                     }
-                    if let Some(element) = captured_element.read().as_ref() {
-                        let _ = release_pointer_capture(element, active.pointer_id);
-                    }
-                    captured_element.set(None);
-                    resize_session.set(None);
-                    resize_preview.set(None);
                 },
             );
-            match pointer_cancel {
-                Ok(handle) => handles.push(handle),
+
+            let lost_pointer_capture = EventListenerHandle::new::<PointerEvent>(
+                &window_target,
+                "lostpointercapture",
+                move |event| {
+                    let Some(active) = resize_session.peek().clone() else {
+                        return;
+                    };
+                    if active.accepts(&event) {
+                        cancel_resize_session(
+                            resize_session,
+                            resize_preview,
+                            captured_element,
+                            Some(event.pointer_id()),
+                            false,
+                            on_error,
+                        );
+                    }
+                },
+            );
+
+            let window_blur = EventListenerHandle::new::<Event>(
+                &window_target,
+                "blur",
+                move |_| {
+                    cancel_resize_session(
+                        resize_session,
+                        resize_preview,
+                        captured_element,
+                        None,
+                        true,
+                        on_error,
+                    );
+                    if session.read().controller.ui().state.drag.is_some() {
+                        on_ui_intent.call(UiIntent::CancelDrag);
+                    }
+                },
+            );
+
+            let registration = (|| {
+                handles.push(pointer_down?);
+                handles.push(pointer_move?);
+                handles.push(pointer_up?);
+                handles.push(pointer_cancel?);
+                handles.push(lost_pointer_capture?);
+                handles.push(window_blur?);
+                Ok::<(), fly_web::BrowserRuntimeError>(())
+            })();
+
+            match registration {
+                Ok(()) => listener_handles.set(handles),
                 Err(error) => {
+                    drop(handles);
                     if let Some(handler) = on_error {
                         handler.call(error.to_string());
                     }
                 }
             }
-
-            listener_handles.set(handles);
-        });
+        }));
     }
 
     let class = "absolute inset-0 border-0 bg-white";
     let expected_origin = fly_web::OPAQUE_ORIGIN.to_string();
+    let pointer_label = pointer.read().clone().unwrap_or_default();
+    let geometry_limit_message = geometry_limit.read().as_ref().map(|limit| {
+        format!(
+            "Canvas geometry limit reached: {} components observed, limit {}. Selection and drag/drop overlays are unavailable until the page is simplified.",
+            limit.observed, limit.limit
+        )
+    });
 
     rsx! {
         div {
@@ -319,6 +436,13 @@ pub fn DioxusIsolatedCanvas(
                 "width:{}px;height:{}px;position:relative;overflow:hidden",
                 rendered_width, rendered_height
             ),
+            if let Some(message) = geometry_limit_message {
+                div {
+                    class: "absolute left-2 right-2 top-2 z-20 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm",
+                    role: "alert",
+                    "{message}"
+                }
+            }
             div {
                 class: "fly-canvas__stage relative",
                 style: format!(
@@ -332,6 +456,7 @@ pub fn DioxusIsolatedCanvas(
                     expected_origin,
                     on_message,
                     on_error,
+                    on_load: on_iframe_load,
                     title: Some("Page Builder canvas".to_string()),
                     width: Some(viewport.width),
                     height: Some(viewport.height),
@@ -370,12 +495,18 @@ pub fn DioxusIsolatedCanvas(
                             class: "fill-emerald-500/10 stroke-emerald-500 stroke-2 stroke-dasharray-4",
                         }
                     }
-                    if preview_rect.is_some() && !selected_is_root {
+                    if preview_rect.is_some() && selected_can_resize {
                         for handle in RESIZE_HANDLES {
                             {
-                                let (x, y) = resize_handle_position(preview_rect.unwrap(), handle);
+                                let rect = preview_rect.expect("resize handles require a selected rect");
+                                let (x, y) = resize_handle_position(rect, handle);
                                 let name = resize_handle_name(handle);
                                 let cursor = resize_handle_cursor(handle);
+                                let keyboard_resize_context = resize_context_for_keyboard(
+                                    selected_id.clone(),
+                                    selected_rect,
+                                    zoom,
+                                );
                                 rsx! {
                                     circle {
                                         cx: "{x}",
@@ -385,10 +516,49 @@ pub fn DioxusIsolatedCanvas(
                                         role: "button",
                                         tabindex: "0",
                                         aria_label: "Resize {name}",
+                                        aria_keyshortcuts: "ArrowUp ArrowDown ArrowLeft ArrowRight Shift+ArrowUp Shift+ArrowDown Shift+ArrowLeft Shift+ArrowRight",
                                         class: format!(
                                             "pointer-events-auto fill-white stroke-violet-700 stroke-2 {}",
                                             cursor
                                         ),
+                                        onkeydown: {
+                                            let intent_instance_id = intent_instance_id.clone();
+                                            move |event| {
+                                                let Some((component_id, rect, _zoom)) =
+                                                    keyboard_resize_context.clone()
+                                                else {
+                                                    return;
+                                                };
+                                                let resize = ResizeSession {
+                                                    component_id: component_id.clone(),
+                                                    handle,
+                                                    start_rect: rect,
+                                                    start_x: 0.0,
+                                                    start_y: 0.0,
+                                                    policy: ResizePolicy {
+                                                        grid_size: Some(4.0),
+                                                        ..ResizePolicy::default()
+                                                    },
+                                                };
+                                                let Some(result) = resize
+                                                    .update_by_arrow_key(&event.key(), event.shift_key())
+                                                else {
+                                                    return;
+                                                };
+                                                if !result.width_changed && !result.height_changed {
+                                                    return;
+                                                }
+                                                event.prevent_default();
+                                                on_intent.call(BrowserIntentEnvelope::new(
+                                                    intent_instance_id.clone(),
+                                                    BrowserIntentKind::PatchSelected,
+                                                    serde_json::json!({
+                                                        "component_id": component_id,
+                                                        "patch": resize.component_patch(result),
+                                                    }),
+                                                ));
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -402,9 +572,23 @@ pub fn DioxusIsolatedCanvas(
                         "Loading isolated canvas…"
                     }
                 }
+                if !pointer_label.is_empty() {
+                    div {
+                        class: "absolute bottom-2 right-2 rounded bg-background/80 px-2 py-1 text-xs text-muted-foreground pointer-events-none",
+                        "{pointer_label}"
+                    }
+                }
             }
         }
     }
+}
+
+fn resize_context_for_keyboard(
+    selected_id: Option<String>,
+    selected_rect: Option<CanvasRect>,
+    zoom: f64,
+) -> Option<(String, CanvasRect, f64)> {
+    selected_id.zip(selected_rect).map(|(id, rect)| (id, rect, zoom))
 }
 
 fn canvas_rect(rect: fly_web::BrowserRect) -> CanvasRect {
@@ -471,14 +655,49 @@ fn parse_resize_handle(value: &str) -> Option<ResizeHandle> {
 }
 
 #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
+fn cancel_resize_session(
+    mut resize_session: Signal<Option<BrowserResizeSession>>,
+    mut resize_preview: Signal<Option<ResizeResult>>,
+    mut captured_element: Signal<Option<Element>>,
+    pointer_id: Option<i32>,
+    release_capture: bool,
+    on_error: Option<EventHandler<String>>,
+) {
+    let Some(active) = resize_session.peek().clone() else {
+        return;
+    };
+    if pointer_id.is_some_and(|pointer_id| pointer_id != active.pointer_id) {
+        return;
+    }
+    if release_capture {
+        if let Some(element) = captured_element.peek().clone() {
+            if let Err(error) = release_pointer_capture(&element, active.pointer_id) {
+                if let Some(handler) = on_error {
+                    handler.call(error.to_string());
+                }
+            }
+        }
+    }
+    captured_element.set(None);
+    resize_session.set(None);
+    resize_preview.set(None);
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
 fn handle_canvas_message(
     message: CanvasBridgeMessage,
     session: Signal<EditorSessionState>,
     mut geometry: Signal<BTreeMap<String, CanvasComponentGeometry>>,
+    mut geometry_limit: Signal<Option<CanvasResourceLimit>>,
     mut ready: Signal<bool>,
+    mut pointer: Signal<Option<String>>,
+    resize_session: Signal<Option<BrowserResizeSession>>,
+    resize_preview: Signal<Option<ResizeResult>>,
+    captured_element: Signal<Option<Element>>,
     on_ui_intent: EventHandler<UiIntent>,
     on_intent: EventHandler<BrowserIntentEnvelope>,
-    instance_id: &str,
+    intent_instance_id: &str,
+    on_error: Option<EventHandler<String>>,
 ) {
     match message {
         CanvasBridgeMessage::Ready => ready.set(true),
@@ -498,7 +717,11 @@ fn handle_canvas_message(
                 scroll_y,
             }));
         }
-        CanvasBridgeMessage::GeometrySnapshot { components } => {
+        CanvasBridgeMessage::GeometrySnapshot {
+            components,
+            resource_limit,
+        } => {
+            geometry_limit.set(resource_limit);
             geometry.set(
                 components
                     .into_iter()
@@ -507,12 +730,15 @@ fn handle_canvas_message(
             );
         }
         CanvasBridgeMessage::PointerMoved { sample } => {
+            pointer.set(Some(format!("{:.0}, {:.0}", sample.position.x, sample.position.y)));
             update_drag_candidates(session, geometry, on_ui_intent, sample.position);
         }
         CanvasBridgeMessage::DragMoved { position } => {
+            pointer.set(Some(format!("{:.0}, {:.0}", position.x, position.y)));
             update_drag_candidates(session, geometry, on_ui_intent, position);
         }
         CanvasBridgeMessage::DropRequested { position } => {
+            pointer.set(Some(format!("{:.0}, {:.0}", position.x, position.y)));
             if session.read().controller.ui().state.drag.is_some() {
                 update_drag_candidates(session, geometry, on_ui_intent, position);
                 on_ui_intent.call(UiIntent::Drop);
@@ -520,12 +746,13 @@ fn handle_canvas_message(
         }
         CanvasBridgeMessage::KeyStroke { stroke } => {
             on_intent.call(BrowserIntentEnvelope::new(
-                instance_id.to_string(),
+                intent_instance_id.to_string(),
                 BrowserIntentKind::KeyStroke,
                 serde_json::json!({ "stroke": stroke }),
             ));
         }
         CanvasBridgeMessage::CancelDragRequested => {
+            pointer.set(None);
             if session.read().controller.ui().state.drag.is_some() {
                 on_ui_intent.call(UiIntent::CancelDrag);
             }
@@ -541,6 +768,16 @@ fn handle_canvas_message(
         CanvasBridgeMessage::Teardown => {
             ready.set(false);
             geometry.set(BTreeMap::new());
+            geometry_limit.set(None);
+            pointer.set(None);
+            cancel_resize_session(
+                resize_session,
+                resize_preview,
+                captured_element,
+                None,
+                true,
+                on_error,
+            );
             on_ui_intent.call(UiIntent::SetSelectedOverlay(None));
             on_ui_intent.call(UiIntent::SetHoveredOverlay(None));
             if session.read().controller.ui().state.drag.is_some() {
