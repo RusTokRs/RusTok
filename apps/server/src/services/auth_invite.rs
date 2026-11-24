@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use rustok_core::events::EventTransport;
 use rustok_events::DomainEvent;
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
@@ -107,6 +107,20 @@ pub struct AcceptedInvite {
     pub role: rustok_core::UserRole,
 }
 
+fn invite_ledger_matches_claims(
+    issued: &auth_invites::Model,
+    email: &str,
+    token_expires_at: DateTime<Utc>,
+    now: DateTime<Utc>,
+) -> bool {
+    let Ok(issued_email) = normalize_email(&issued.email) else {
+        return false;
+    };
+    let ledger_expires_at = issued.expires_at.with_timezone(&Utc);
+
+    issued_email == email && ledger_expires_at > now && ledger_expires_at <= token_expires_at
+}
+
 impl AuthLifecycleService {
     /// Validate and consume an invitation exactly once while creating the user
     /// in the same database transaction.
@@ -139,7 +153,8 @@ impl AuthLifecycleService {
 
         let expires_at = DateTime::<Utc>::from_timestamp(claims.exp as i64, 0)
             .ok_or(InviteAcceptanceError::InvalidToken)?;
-        if expires_at <= Utc::now() {
+        let now = Utc::now();
+        if expires_at <= now {
             return Err(InviteAcceptanceError::InvalidToken);
         }
 
@@ -185,7 +200,14 @@ impl AuthLifecycleService {
             Some(invite) if invite.revoked_at.is_none() => invite,
             _ => return Err(InviteAcceptanceError::InvalidToken),
         };
-        if issued.role != ledger_role {
+        if issued.role != ledger_role
+            || !invite_ledger_matches_claims(
+                &issued,
+                &email,
+                expires_at.clone(),
+                now.clone(),
+            )
+        {
             return Err(InviteAcceptanceError::InvalidToken);
         }
         let invite_id = issued.id;
@@ -563,6 +585,79 @@ mod tests {
         .expect_err("disabled invites must reject");
 
         assert!(matches!(error, InviteAcceptanceError::InvalidToken));
+    }
+
+    fn invite_ledger(
+        email: &str,
+        expires_at: DateTime<Utc>,
+    ) -> auth_invites::Model {
+        let now = Utc::now();
+        auth_invites::Model {
+            id: uuid::Uuid::new_v4(),
+            tenant_id: uuid::Uuid::new_v4(),
+            token_hash: "invite-digest".to_string(),
+            email: email.to_string(),
+            role: "customer".to_string(),
+            issued_by: None,
+            expires_at: expires_at.into(),
+            revoked_at: None,
+            created_at: now.into(),
+        }
+    }
+
+    #[test]
+    fn invite_acceptance_rechecks_ledger_email_and_expiry() {
+        let now = Utc::now();
+        let token_expiry = now + Duration::hours(1);
+
+        let matching = invite_ledger("INVITEE@example.test", token_expiry.clone());
+        assert!(invite_ledger_matches_claims(
+            &matching,
+            "invitee@example.test",
+            token_expiry.clone(),
+            now.clone(),
+        ));
+
+        let wrong_email = invite_ledger("other@example.test", token_expiry.clone());
+        assert!(!invite_ledger_matches_claims(
+            &wrong_email,
+            "invitee@example.test",
+            token_expiry.clone(),
+            now.clone(),
+        ));
+
+        let expired_ledger = invite_ledger(
+            "invitee@example.test",
+            now.clone() - Duration::seconds(1),
+        );
+        assert!(!invite_ledger_matches_claims(
+            &expired_ledger,
+            "invitee@example.test",
+            token_expiry.clone(),
+            now.clone(),
+        ));
+
+        let ledger_extends_past_signed_token = invite_ledger(
+            "invitee@example.test",
+            token_expiry.clone() + Duration::seconds(1),
+        );
+        assert!(!invite_ledger_matches_claims(
+            &ledger_extends_past_signed_token,
+            "invitee@example.test",
+            token_expiry.clone(),
+            now.clone(),
+        ));
+
+        let shortened_but_live_ledger = invite_ledger(
+            "invitee@example.test",
+            now + Duration::minutes(5),
+        );
+        assert!(invite_ledger_matches_claims(
+            &shortened_but_live_ledger,
+            "invitee@example.test",
+            token_expiry,
+            Utc::now(),
+        ));
     }
 
     #[test]
