@@ -278,6 +278,11 @@ this promotes the module or checkout to production-ready. Draft KV driver, reten
    admin profile stay at this parity snapshot and receive no new feature work;
    all editor development proceeds on the Leptos branch until the code is
    stabilized, then the second adapter is brought back to parity in one pass.
+   **Superseding update (2026-11-24):** the Dioxus pause is lifted for the Page Builder
+   admin host. The Dioxus host now connects the isolated iframe canvas, pointer/hover/
+   keyboard geometry, palette and selected-layer drag/drop, bounded resize, save-attempt
+   correlation and peer-write fencing to the shared controller. This supersedes the parked
+   scope for host integration; mounted visual/CSP/browser verification remains open.
    Next (Leptos): enable it
    in the Pages composition, verify visually, then replace
    `PaletteLayersPanel`/canvas with the workspace and delete the duplicates.
@@ -301,7 +306,7 @@ this promotes the module or checkout to production-ready. Draft KV driver, reten
    under items 4–5 follow-ups, not this migration. Media-library *browsing*
    (host provider port) likewise stays host-side (SSR asset panel). Remaining
    for P0-1 closure: visual verification of the enabled surface by the
-   maintainer, then the Dioxus parity pass once Leptos stabilizes.
+   maintainer, including mounted Dioxus iframe, drag/drop and resize behavior.
    **Workspace hardening followed (2026-10-14).** Undo/redo buttons now carry
    reactive disabled states from `History::can_undo`/`can_redo` (local mode
    only; intent mode keeps them enabled because history lives server-side),
