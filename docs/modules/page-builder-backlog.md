@@ -1266,6 +1266,8 @@ requests across reloads, probes receipts without resending, blocks new edits
 while the result is unknown, and offers explicit same-request retry. Initial
 owner-bound draft sessions are created before the first edit. Still open:
 direct Next/other writer parity, restore/lifecycle operation IDs, MySQL schema,
-receipt expiry/observability, deployment verification and mounted Dioxus iframe,
-drag/drop and resize verification. The Dioxus source path is now connected to the
-shared controller; browser evidence is still outstanding.
+receipt expiry/observability, deployment verification, durable Dioxus host operation
+identity and cross-session recovery, and mounted Dioxus iframe/drag/drop/resize
+verification. The Dioxus source path is connected to the shared controller and has
+local attempt correlation, but that is not a durable receipt identity; browser evidence
+is still outstanding.
