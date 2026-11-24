@@ -24,6 +24,9 @@ struct PeerWriteMessage {
     page_id: String,
     revision: String,
     hash: String,
+    /// Shared by every channel instance in one document, but unique across tabs.
+    #[serde(default)]
+    sender_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,18 +34,26 @@ struct PeerWriteBase {
     page_id: String,
     revision: String,
     project_hash: String,
+    sender_id: String,
     conflicted: bool,
 }
 
 impl PeerWriteBase {
-    fn new(page_id: String, revision: String, project_hash: String) -> Result<Self, String> {
+    fn new(
+        page_id: String,
+        revision: String,
+        project_hash: String,
+        sender_id: String,
+    ) -> Result<Self, String> {
         validate_field("page id", &page_id)?;
         validate_field("revision", &revision)?;
         validate_field("project hash", &project_hash)?;
+        validate_field("sender id", &sender_id)?;
         Ok(Self {
             page_id,
             revision,
             project_hash,
+            sender_id,
             conflicted: false,
         })
     }
@@ -53,8 +64,19 @@ impl PeerWriteBase {
             || self.conflicted
             || validate_field("revision", &message.revision).is_err()
             || validate_field("project hash", &message.hash).is_err()
-            || (message.revision == self.revision && message.hash == self.project_hash)
         {
+            return None;
+        }
+
+        if message.sender_id == self.sender_id {
+            // The JS adapter and Rust Leptos runtime may each own a BroadcastChannel
+            // in the same document. A local confirmed write advances both baselines.
+            self.revision = message.revision;
+            self.project_hash = message.hash;
+            return None;
+        }
+
+        if message.revision == self.revision && message.hash == self.project_hash {
             return None;
         }
 
@@ -91,9 +113,40 @@ mod browser {
     use crate::BrowserRuntimeError;
     use std::cell::RefCell;
     use std::rc::Rc;
-    use wasm_bindgen::JsCast;
+    use wasm_bindgen::{JsCast, JsValue};
     use wasm_bindgen::closure::Closure;
     use web_sys::{BroadcastChannel, MessageEvent};
+
+    fn peer_write_document_id() -> Result<String, BrowserRuntimeError> {
+        const KEY: &str = "__flyPeerWriteDocumentId";
+        let global = js_sys::global();
+        let key = JsValue::from_str(KEY);
+        if let Ok(existing) = js_sys::Reflect::get(&global, &key) {
+            if let Some(existing) = existing.as_string() {
+                if !existing.trim().is_empty() {
+                    return Ok(existing);
+                }
+            }
+        }
+
+        let generated = format!(
+            "fly-document-{}-{}",
+            js_sys::Math::random(),
+            js_sys::Math::random()
+        );
+        let stored = js_sys::Reflect::set(&global, &key, &JsValue::from_str(&generated))
+            .map_err(|error| {
+                BrowserRuntimeError::Browser(format!(
+                    "cannot establish shared Fly document identity: {error:?}"
+                ))
+            })?;
+        if !stored {
+            return Err(BrowserRuntimeError::Browser(
+                "cannot establish shared Fly document identity".to_string(),
+            ));
+        }
+        Ok(generated)
+    }
 
     /// A page-scoped advisory channel that fences this tab after another tab confirms a write.
     pub struct BrowserPeerWriteChannel {
@@ -108,11 +161,44 @@ mod browser {
             page_id: impl Into<String>,
             revision: impl Into<String>,
             project_hash: impl Into<String>,
+            on_conflict: impl FnMut(BrowserPeerWriteConflict) + 'static,
+        ) -> Result<Self, BrowserRuntimeError> {
+            let sender_id = peer_write_document_id()?;
+            Self::new_with_sender_id(page_id, revision, project_hash, sender_id, on_conflict)
+        }
+
+        /// Construct a channel whose identity is scoped to one editor root within this document.
+        /// The document nonce keeps identical SSR-generated root IDs distinct across tabs.
+        pub fn new_scoped(
+            page_id: impl Into<String>,
+            revision: impl Into<String>,
+            project_hash: impl Into<String>,
+            scope_id: impl AsRef<str>,
+            on_conflict: impl FnMut(BrowserPeerWriteConflict) + 'static,
+        ) -> Result<Self, BrowserRuntimeError> {
+            validate_field("editor scope id", scope_id.as_ref())
+                .map_err(BrowserRuntimeError::Serialization)?;
+            let document_id = peer_write_document_id()?;
+            let sender_id = format!("{document_id}:{}", scope_id.as_ref());
+            Self::new_with_sender_id(page_id, revision, project_hash, sender_id, on_conflict)
+        }
+
+        /// Construct a channel that shares a logical editor identity with another adapter.
+        pub fn new_with_sender_id(
+            page_id: impl Into<String>,
+            revision: impl Into<String>,
+            project_hash: impl Into<String>,
+            sender_id: impl Into<String>,
             mut on_conflict: impl FnMut(BrowserPeerWriteConflict) + 'static,
         ) -> Result<Self, BrowserRuntimeError> {
             let base = Rc::new(RefCell::new(
-                PeerWriteBase::new(page_id.into(), revision.into(), project_hash.into())
-                    .map_err(BrowserRuntimeError::Serialization)?,
+                PeerWriteBase::new(
+                    page_id.into(),
+                    revision.into(),
+                    project_hash.into(),
+                    sender_id.into(),
+                )
+                .map_err(BrowserRuntimeError::Serialization)?,
             ));
             let channel = BroadcastChannel::new(FLY_PEER_WRITE_CHANNEL).map_err(|error| {
                 BrowserRuntimeError::Browser(format!(
@@ -176,6 +262,7 @@ mod browser {
                     page_id: base.page_id.clone(),
                     revision: revision.to_string(),
                     hash: project_hash.to_string(),
+                    sender_id: base.sender_id.clone(),
                 }
             };
 
@@ -224,6 +311,7 @@ mod tests {
             "page-1".to_string(),
             "revision-1".to_string(),
             "hash-1".to_string(),
+            "document-a".to_string(),
         )
         .expect("valid base")
     }
@@ -235,6 +323,7 @@ mod tests {
             page_id: "page-1".to_string(),
             revision: "revision-2".to_string(),
             hash: "hash-2".to_string(),
+            sender_id: "document-a".to_string(),
         };
         assert_eq!(
             serde_json::to_value(message).expect("serialize message"),
@@ -242,7 +331,8 @@ mod tests {
                 "kind": "confirmed-write",
                 "pageId": "page-1",
                 "revision": "revision-2",
-                "hash": "hash-2"
+                "hash": "hash-2",
+                "senderId": "document-a"
             })
         );
     }
@@ -256,6 +346,7 @@ mod tests {
                 page_id: "page-2".to_string(),
                 revision: "revision-2".to_string(),
                 hash: "hash-2".to_string(),
+                sender_id: "document-b".to_string(),
             })
             .is_none()
         );
@@ -265,10 +356,49 @@ mod tests {
                 page_id: "page-1".to_string(),
                 revision: "revision-1".to_string(),
                 hash: "hash-1".to_string(),
+                sender_id: "document-b".to_string(),
             })
             .is_none()
         );
         assert!(!base.conflicted);
+    }
+
+    #[test]
+    fn same_document_channel_advances_baseline_without_fencing() {
+        let mut base = base();
+        assert!(base
+            .observe(PeerWriteMessage {
+                kind: "confirmed-write".to_string(),
+                page_id: "page-1".to_string(),
+                revision: "revision-2".to_string(),
+                hash: "hash-2".to_string(),
+                sender_id: "document-a".to_string(),
+            })
+            .is_none());
+        assert_eq!(base.revision, "revision-2");
+        assert_eq!(base.project_hash, "hash-2");
+        assert!(!base.conflicted);
+    }
+
+    #[test]
+    fn another_editor_root_in_the_same_document_is_still_a_peer() {
+        let mut base = PeerWriteBase::new(
+            "page-1".to_string(),
+            "revision-1".to_string(),
+            "hash-1".to_string(),
+            "document-a:root-1".to_string(),
+        )
+        .expect("valid base");
+        let conflict = base
+            .observe(PeerWriteMessage {
+                kind: "confirmed-write".to_string(),
+                page_id: "page-1".to_string(),
+                revision: "revision-2".to_string(),
+                hash: "hash-2".to_string(),
+                sender_id: "document-a:root-2".to_string(),
+            })
+            .expect("different editor root must be fenced");
+        assert_eq!(conflict.revision, "revision-2");
     }
 
     #[test]
@@ -280,6 +410,7 @@ mod tests {
                 page_id: "page-1".to_string(),
                 revision: "revision-2".to_string(),
                 hash: "hash-2".to_string(),
+                sender_id: "document-b".to_string(),
             })
             .expect("new revision must fence the stale editor");
         assert_eq!(conflict.revision, "revision-2");
@@ -290,6 +421,7 @@ mod tests {
                 page_id: "page-1".to_string(),
                 revision: "revision-3".to_string(),
                 hash: "hash-3".to_string(),
+                sender_id: "document-b".to_string(),
             })
             .is_none()
         );
@@ -297,7 +429,12 @@ mod tests {
 
     #[test]
     fn rejects_invalid_baselines_and_messages() {
-        assert!(PeerWriteBase::new("".to_string(), "r".to_string(), "h".to_string()).is_err());
+        assert!(PeerWriteBase::new(
+            "".to_string(),
+            "r".to_string(),
+            "h".to_string(),
+            "document-a".to_string(),
+        ).is_err());
         let mut base = base();
         assert!(
             base.observe(PeerWriteMessage {
@@ -305,6 +442,7 @@ mod tests {
                 page_id: "page-1".to_string(),
                 revision: String::new(),
                 hash: "hash-2".to_string(),
+                sender_id: "document-b".to_string(),
             })
             .is_none()
         );
