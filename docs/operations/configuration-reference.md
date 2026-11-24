@@ -158,6 +158,7 @@ selector. See [FBA scope](../backend/module-backend-architecture.md#fba-contract
 | `otel.exporter_otlp_endpoint` | `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4317` | gRPC/HTTP endpoint for OpenTelemetry collector. |
 | `otel.service_name` | `OTEL_SERVICE_NAME` | `rustok-server` | Service identifier reported to tracing backends. |
 | `otel.sampling_rate` | `OTEL_SAMPLING_RATE` | `1.0` | Head-based trace sampling ratio (0.0 to 1.0). |
+| — | `RUSTOK_OBSERVABILITY_BEARER_TOKEN` | *none* | Dedicated monitoring credential. Send its raw value in `X-RusTok-Observability-Token`; required in release builds for `/metrics`, detailed health endpoints and full readiness diagnostics. The legacy `RUSTOK_METRICS_BEARER_TOKEN` is a fallback. Host-global endpoints also require the separate `RUSTOK_HOST_AUTHORITY_CREDENTIALS` read credential. |
 
 ---
 

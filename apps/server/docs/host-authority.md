@@ -63,6 +63,17 @@ logs, issue comments, GraphQL variables, URLs or browser storage.
 - `read` can inspect System health/cache/events and global delivery/Iggy
   configuration; `manage` includes reads and can update global delivery/Iggy
   configuration.
+- Prometheus and detailed health endpoints have an additional independent
+  observability gate in release builds. Configure
+  `RUSTOK_OBSERVABILITY_BEARER_TOKEN` and send the raw value in
+  `X-RusTok-Observability-Token`. The legacy
+  `RUSTOK_METRICS_BEARER_TOKEN` variable is a fallback; the standard
+  `Authorization: Bearer ...` transport remains supported for existing
+  scrapers. Both the observability credential and host `read` authority are
+  required for `/metrics`, `/health/runtime`, and `/health/modules`.
+  `/health/ready` always returns aggregate status; full diagnostics require
+  both credentials in release builds. The observability credential is
+  consumed by middleware and is not passed to handlers.
 - Iggy connector mutation also requires ordinary authenticated tenant context
   matching the routed tenant because encrypted connector secrets are still
   stored under that tenant owner. The mutation audit actor remains the host

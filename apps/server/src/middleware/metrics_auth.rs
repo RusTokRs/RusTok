@@ -10,6 +10,7 @@ use subtle::ConstantTimeEq;
 
 const OBSERVABILITY_TOKEN_ENV: &str = "RUSTOK_OBSERVABILITY_BEARER_TOKEN";
 const LEGACY_METRICS_TOKEN_ENV: &str = "RUSTOK_METRICS_BEARER_TOKEN";
+const OBSERVABILITY_TOKEN_HEADER: &str = "x-rustok-observability-token";
 const MAX_READINESS_BODY_BYTES: usize = 256 * 1024;
 
 /// Protect Prometheus and detailed operational diagnostics without coupling
@@ -20,7 +21,7 @@ const MAX_READINESS_BODY_BYTES: usize = 256 * 1024;
 /// A valid observability bearer token receives the full dependency diagnostic
 /// body. Production is fail-closed for metrics/runtime/module diagnostics when
 /// no host token is configured.
-pub async fn require_bearer(request: Request<Body>, next: Next) -> Response {
+pub async fn require_bearer(mut request: Request<Body>, next: Next) -> Response {
     let path = request.uri().path();
     tracing::debug!(
         path_group = crate::middleware::http_stack::trace_path_family(path),
@@ -30,16 +31,21 @@ pub async fn require_bearer(request: Request<Body>, next: Next) -> Response {
 
     if path == "/health/ready" {
         let reveal_details = request_is_authorized(&request, is_production);
+        strip_observability_credentials(request.headers_mut());
         let response = next.run(request).await;
         return normalize_readiness_response(response, reveal_details).await;
     }
 
     if !is_protected_observability_path(path) {
+        // This header is reserved for observability and must never be passed
+        // to unrelated application handlers.
+        request.headers_mut().remove(OBSERVABILITY_TOKEN_HEADER);
         return next.run(request).await;
     }
 
     let Some(expected) = configured_token() else {
         if allow_unauthenticated_without_token(is_production) {
+            strip_observability_credentials(request.headers_mut());
             return next.run(request).await;
         }
         if path.starts_with("/health") || path.starts_with("/api/") {
@@ -62,6 +68,7 @@ pub async fn require_bearer(request: Request<Body>, next: Next) -> Response {
     };
 
     if supplied_token(&request).is_some_and(|supplied| constant_time_eq(supplied, &expected)) {
+        strip_observability_credentials(request.headers_mut());
         return next.run(request).await;
     }
 
@@ -103,16 +110,42 @@ fn allow_unauthenticated_without_token(is_production: bool) -> bool {
 }
 
 fn supplied_token(request: &Request<Body>) -> Option<&str> {
+    let mut observability_values = request
+        .headers()
+        .get_all(OBSERVABILITY_TOKEN_HEADER)
+        .iter();
+    if let Some(first) = observability_values.next() {
+        // The dedicated header carries the raw observability secret. Reject
+        // duplicates and mixed credential transports rather than selecting
+        // whichever value an intermediary happens to expose first.
+        if observability_values.next().is_some()
+            || request.headers().contains_key(header::AUTHORIZATION)
+        {
+            tracing::warn!("Ambiguous observability credentials on request");
+            return None;
+        }
+        return first
+            .to_str()
+            .ok()
+            .map(str::trim)
+            .filter(|token| !token.is_empty());
+    }
+
+    // Authorization: Bearer remains a compatibility transport for existing
+    // scrapers. It is consumed before the handler and never becomes user auth:
+    // auth_context deliberately skips JWT resolution on observability paths.
     let mut values = request.headers().get_all(header::AUTHORIZATION).iter();
     let first = values.next()?;
-    // Even identical duplicate Authorization fields are ambiguous across
-    // intermediaries. Match the fail-closed token extraction used by the
-    // ordinary authentication endpoints.
     if values.next().is_some() {
         tracing::warn!("Duplicate Authorization headers on observability request");
         return None;
     }
     first.to_str().ok().and_then(parse_bearer_token)
+}
+
+fn strip_observability_credentials(headers: &mut axum::http::HeaderMap) {
+    headers.remove(OBSERVABILITY_TOKEN_HEADER);
+    headers.remove(header::AUTHORIZATION);
 }
 
 async fn normalize_readiness_response(response: Response, reveal_details: bool) -> Response {
@@ -202,7 +235,8 @@ fn constant_time_eq(left: &str, right: &str) -> bool {
 mod tests {
     use super::{
         allow_unauthenticated_without_token, constant_time_eq, is_protected_observability_path,
-        parse_bearer_token, readiness_http_status, sanitize_token, supplied_token,
+        parse_bearer_token, readiness_http_status, sanitize_token,
+        strip_observability_credentials, supplied_token, OBSERVABILITY_TOKEN_HEADER,
     };
     use axum::{
         body::Body,
@@ -304,5 +338,51 @@ mod tests {
         req2.headers_mut()
             .append(header::AUTHORIZATION, "Bearer tok2".parse().unwrap());
         assert_eq!(supplied_token(&req2), None);
+    }
+
+    #[test]
+    fn dedicated_observability_header_is_supported_and_ambiguous_transports_fail_closed() {
+        let mut dedicated = Request::builder()
+            .uri("/metrics")
+            .body(Body::empty())
+            .unwrap();
+        dedicated
+            .headers_mut()
+            .insert(OBSERVABILITY_TOKEN_HEADER, "secret".parse().unwrap());
+        assert_eq!(supplied_token(&dedicated), Some("secret"));
+
+        let mut duplicate = Request::builder()
+            .uri("/metrics")
+            .body(Body::empty())
+            .unwrap();
+        duplicate
+            .headers_mut()
+            .append(OBSERVABILITY_TOKEN_HEADER, "secret".parse().unwrap());
+        duplicate
+            .headers_mut()
+            .append(OBSERVABILITY_TOKEN_HEADER, "secret".parse().unwrap());
+        assert_eq!(supplied_token(&duplicate), None);
+
+        let mut mixed = Request::builder()
+            .uri("/metrics")
+            .body(Body::empty())
+            .unwrap();
+        mixed
+            .headers_mut()
+            .insert(OBSERVABILITY_TOKEN_HEADER, "secret".parse().unwrap());
+        mixed
+            .headers_mut()
+            .insert(header::AUTHORIZATION, "Bearer secret".parse().unwrap());
+        assert_eq!(supplied_token(&mixed), None);
+    }
+
+    #[test]
+    fn observability_credentials_are_removed_before_handlers_run() {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(OBSERVABILITY_TOKEN_HEADER, "secret".parse().unwrap());
+        headers.insert(header::AUTHORIZATION, "Bearer secret".parse().unwrap());
+        strip_observability_credentials(&mut headers);
+        assert!(!headers.contains_key(OBSERVABILITY_TOKEN_HEADER));
+        assert!(!headers.contains_key(header::AUTHORIZATION));
     }
 }

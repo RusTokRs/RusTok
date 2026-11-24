@@ -16,6 +16,26 @@ This document describes the behavior of health endpoints in `apps/server/src/con
 - `GET /health/runtime` — operator-facing snapshot runtime guardrails.
 - `GET /health/modules` — health only for registered modules.
 
+## Authentication
+
+- `/health` and `/health/live` remain public.
+- `/health/ready` always exposes the aggregate status. Its detailed checks
+  and module diagnostics require both host `read` authority
+  (`X-RusTok-Host-Token`) and the observability bearer credential in release
+  builds.
+- `/health/runtime`, `/health/modules` and `/metrics` require both the
+  observability bearer credential and host `read` authority. The host token
+  alone does not bypass the separate monitoring gate.
+- Configure `RUSTOK_OBSERVABILITY_BEARER_TOKEN` and send its raw value in
+  `X-RusTok-Observability-Token`. The legacy
+  `RUSTOK_METRICS_BEARER_TOKEN` environment variable remains a fallback, and
+  `Authorization: Bearer ...` remains a compatibility header. If both header
+  transports are supplied, the request is rejected as ambiguous.
+- In release/production-security mode, the observability bearer must be
+  configured; otherwise the protected endpoints fail closed. In non-release
+  mode it is optional only when neither token environment variable is set.
+  Host authority remains required for operator details in every mode.
+
 If `apps/server` is running in `settings.rustok.runtime.host_mode = "registry_only"`, the health/observability surface
 works as a read-only catalog host, not as a full monolith.
 
