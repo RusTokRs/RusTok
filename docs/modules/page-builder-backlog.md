@@ -1284,9 +1284,10 @@ is still outstanding.
   submitted pre-save revision is no longer sufficient evidence of currentness.
 - Dioxus and Leptos isolated canvases clear geometry, overlays and active drags when a geometry
   resource limit is reached; truncated snapshots cannot be used for hit testing or drops.
-- Dioxus iframe subscriptions are retired before bridge reconfiguration and rebound when the
-  iframe element ID changes, while the outbound message sequence is preserved for the same child
-  document. Canvas selection is host-owned (no stale iframe-local highlight); Dioxus inline
+- Dioxus iframe subscriptions are retired before instance/origin reconfiguration and rebound
+  on iframe load/replacement, while the outbound message sequence is preserved when the same
+  child document is rebound. Canvas selection is host-owned (no stale iframe-local highlight);
+  Dioxus inline
   previews and render-error fallbacks do not expose nonfunctional drag controls.
 - Drops are rejected until a complete geometry snapshot is ready, and pointer-ended drags with no
   legal target are cancelled rather than stranded. The Dioxus web feature explicitly enables the
