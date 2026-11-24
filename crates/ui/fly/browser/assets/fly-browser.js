@@ -95,12 +95,21 @@ function getPeerWriteDocumentId() {
 }
 
 function getPeerWriteSenderId(root) {
+  if (!root?.dataset) return getPeerWriteDocumentId();
   const documentId = getPeerWriteDocumentId();
-  // Rust Leptos/Dioxus channel owners share this document-scoped ID through
-  // globalThis.__flyPeerWriteDocumentId. Per-root IDs would make our own writes
-  // look like sibling-tab writes to another adapter in this same document.
-  if (root?.dataset) root.dataset.flyPeerWriteSenderId = documentId;
-  return documentId;
+  let scopeId = nonEmptyString(root.dataset.flyPeerWriteScopeId);
+  if (!scopeId) {
+    const cryptoApi = globalThis.crypto;
+    scopeId = typeof cryptoApi?.randomUUID === "function"
+      ? cryptoApi.randomUUID()
+      : `fly-root-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+    root.dataset.flyPeerWriteScopeId = scopeId;
+  }
+  // Leptos receives this same SSR scope ID and uses new_scoped(), so its
+  // channel and the classic JS adapter represent one logical editor root.
+  const senderId = `${documentId}:${scopeId}`;
+  root.dataset.flyPeerWriteSenderId = senderId;
+  return senderId;
 }
 
 /**
