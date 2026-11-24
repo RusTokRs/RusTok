@@ -600,7 +600,7 @@ async fn accept_invite(
 /// detached, so without this equalization the synchronous preparation path
 /// can become an account-existence timing oracle.
 async fn mask_auth_lookup_timing(candidate: &str) -> Result<()> {
-    let dummy_hash = crate::auth::dummy_password_hash()?;
+    let dummy_hash = crate::auth::dummy_password_hash_async().await?;
     let _ = crate::auth::verify_password_async(candidate.to_string(), dummy_hash).await?;
     Ok(())
 }
