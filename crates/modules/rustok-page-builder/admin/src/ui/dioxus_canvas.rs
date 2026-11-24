@@ -94,12 +94,10 @@ pub fn DioxusIsolatedCanvas(
     let resize_instance_id = instance_id.clone();
 
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
-    resize_context.set(
-        (!selected_is_root)
-            .then(|| selected_id.clone().zip(selected_rect))
-            .flatten()
-            .map(|(component_id, rect)| (component_id, rect, zoom)),
-    );
+    let next_resize_context = (!selected_is_root)
+        .then(|| selected_id.clone().zip(selected_rect))
+        .flatten()
+        .map(|(component_id, rect)| (component_id, rect, zoom));
 
     let message_handler = {
         let expected_instance = instance_id.clone();
@@ -141,6 +139,9 @@ pub fn DioxusIsolatedCanvas(
     {
         let root_id = resize_root_id.clone();
         use_effect(move || {
+            if *resize_context.read() != next_resize_context {
+                resize_context.set(next_resize_context.clone());
+            }
             if !listener_handles.read().is_empty() {
                 return;
             }
