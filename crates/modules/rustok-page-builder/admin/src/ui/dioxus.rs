@@ -134,28 +134,14 @@ where
                     state.fail("Server preview is disabled by the consumer provider or health policy");
                     continue;
                 }
-                let save_attempt_id = if capability == BuilderCapabilityKind::Publish {
-                    // Drop the read guard before taking a write guard to
-                    // record the evaluation; temporaries in if-let may live
-                    // through the body.
-                    let gate_evaluation = { session.read().evaluate_runtime_publish_gate() };
-                    if let Some(evaluation) = gate_evaluation {
-                        let allowed = evaluation.allowed;
-                        let message = crate::core::gate_error_message(&evaluation);
-                        let mut state = session.write();
-                        state.runtime_publish_gate_evaluation = Some(evaluation);
-                        if !allowed {
-                            state.fail(message);
-                            continue;
-                        }
-                    }
+                let save_attempt = if capability == BuilderCapabilityKind::Publish {
                     if expected_hash.is_none() {
-                        session.write().fail("Publish request has no submitted project hash");
+                        session.write().fail("Save request has no submitted project hash");
                         continue;
                     }
                     let start = { session.write().mark_save_started_with_id() };
                     match start {
-                        Ok(id) => Some(id),
+                        Ok(attempt) => Some(attempt),
                         Err(error) => {
                             session.write().fail(error);
                             continue;
@@ -199,17 +185,17 @@ where
                         Ok(PageBuilderCapabilityResponse::Publish(response))
                             if capability == BuilderCapabilityKind::Publish =>
                         {
-                            let Some(attempt_id) = save_attempt_id else {
+                            let Some(attempt) = save_attempt.as_ref() else {
                                 return;
                             };
-                            if state.controller.active_save_attempt_id() != Some(attempt_id) {
+                            if state.controller.active_save_attempt().as_ref() != Some(attempt) {
                                 return;
                             }
                             match state.handle_publish_response_for_attempt(
                                 &response.page_id,
                                 &response.revision_id,
                                 expected_hash,
-                                attempt_id,
+                                attempt,
                             ) {
                                 Ok(()) => {
                                     if let Some(project_hash) = submitted_hash {
@@ -218,7 +204,7 @@ where
                                     }
                                 }
                                 Err(error) => {
-                                    state.handle_publish_error_for_attempt(attempt_id, error);
+                                    state.handle_publish_error_for_attempt(attempt, error);
                                 }
                             }
                         }
@@ -234,8 +220,8 @@ where
                                 "Page Builder facade returned `{}` for a `{capability}` request",
                                 other.capability()
                             );
-                            if let Some(id) = save_attempt_id {
-                                state.handle_publish_error_for_attempt(id, error);
+                            if let Some(id) = save_attempt {
+                                state.handle_publish_error_for_attempt(&id, error);
                             } else {
                                 state.preview_in_progress = false;
                                 state.preview_request = None;
@@ -243,8 +229,8 @@ where
                             }
                         }
                         Err(error) => {
-                            if let Some(id) = save_attempt_id {
-                                state.handle_publish_error_for_attempt(id, error.to_string());
+                            if let Some(id) = save_attempt {
+                                state.handle_publish_error_for_attempt(&id, error.to_string());
                             } else {
                                 state.preview_in_progress = false;
                                 state.preview_request = None;
@@ -309,9 +295,9 @@ fn peer_conflict_blocks_ui_intent(intent: &UiIntent) -> bool {
             | UiIntent::Undo
             | UiIntent::Redo
             | UiIntent::RequestSave
-            | UiIntent::SaveStarted
+            | UiIntent::SaveStarted { .. }
             | UiIntent::SaveSucceeded { .. }
-            | UiIntent::SaveFailed
+            | UiIntent::SaveFailed { .. }
             | UiIntent::SaveConflict { .. }
     )
 }
@@ -631,7 +617,6 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
     let can_undo = capabilities.history && current.controller.can_undo();
     let can_redo = capabilities.history && current.controller.can_redo();
     let can_save = capabilities.edit
-        && capabilities.publish
         && props.facade.is_some()
         && !peer_conflict_active
         && !current.controller.ui().state.dirty.save_in_progress
