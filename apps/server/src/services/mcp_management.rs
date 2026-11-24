@@ -202,14 +202,8 @@ impl McpManagementService {
                 tenant_id,
                 client_id: Some(client.id),
                 token_id: Some(token.id),
-                actor_id: input
-                    .actor_id
-                    .clone()
-                    .or_else(|| input.created_by.map(|value| value.to_string())),
-                actor_type: input
-                    .actor_type
-                    .clone()
-                    .or_else(|| Some("human_user".to_string())),
+                actor_id: input.created_by.map(|value| value.to_string()),
+                actor_type: Some("human_user".to_string()),
                 action: "client_created".to_string(),
                 outcome: "success".to_string(),
                 tool_name: None,
@@ -613,8 +607,14 @@ impl McpManagementService {
                 tenant_id,
                 client_id: input.client_id,
                 token_id: None,
-                actor_id: input.created_by.map(|value| value.to_string()),
-                actor_type: Some("human_user".to_string()),
+                actor_id: input
+                    .actor_id
+                    .clone()
+                    .or_else(|| input.created_by.map(|value| value.to_string())),
+                actor_type: input
+                    .actor_type
+                    .clone()
+                    .or_else(|| Some("human_user".to_string())),
                 action: "scaffold_draft_staged".to_string(),
                 outcome: "success".to_string(),
                 tool_name: Some("alloy_scaffold_module".to_string()),
