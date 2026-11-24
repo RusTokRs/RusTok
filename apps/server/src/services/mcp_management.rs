@@ -614,7 +614,7 @@ impl McpManagementService {
                 actor_type: input
                     .actor_type
                     .clone()
-                    .or_else(|| Some("human_user".to_string())),
+                    .or_else(|| input.created_by.map(|_| "human_user".to_string())),
                 action: "scaffold_draft_staged".to_string(),
                 outcome: "success".to_string(),
                 tool_name: Some("alloy_scaffold_module".to_string()),
@@ -727,7 +727,7 @@ impl McpManagementService {
                 actor_type: input
                     .actor_type
                     .clone()
-                    .or_else(|| Some("human_user".to_string())),
+                    .or_else(|| input.applied_by.map(|_| "human_user".to_string())),
                 action: "scaffold_draft_applied".to_string(),
                 outcome: "success".to_string(),
                 tool_name: Some("alloy_apply_module_scaffold".to_string()),
@@ -806,7 +806,7 @@ impl McpManagementService {
                     .or_else(|| applied_by.map(|value| value.to_string())),
                 actor_type: actor_type
                     .clone()
-                    .or_else(|| Some("human_user".to_string())),
+                    .or_else(|| applied_by.map(|_| "human_user".to_string())),
                 action: "scaffold_draft_apply_started".to_string(),
                 outcome: "pending".to_string(),
                 tool_name: Some("alloy_apply_module_scaffold".to_string()),
@@ -855,7 +855,7 @@ impl McpManagementService {
                     .or_else(|| applied_by.map(|value| value.to_string())),
                 actor_type: actor_type
                     .clone()
-                    .or_else(|| Some("human_user".to_string())),
+                    .or_else(|| applied_by.map(|_| "human_user".to_string())),
                 action: "scaffold_draft_apply_failed".to_string(),
                 outcome: "failure".to_string(),
                 tool_name: Some("alloy_apply_module_scaffold".to_string()),
