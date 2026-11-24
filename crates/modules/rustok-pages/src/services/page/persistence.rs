@@ -40,6 +40,9 @@ impl PageService {
             .await?)
     }
 
+    /// Read the page revision under the write reservation/row lock established by
+    /// `begin_page_write_transaction`. SQLite cannot express `FOR UPDATE`, so the
+    /// transaction must already be `BEGIN IMMEDIATE` before this query runs.
     pub(super) async fn find_page_for_update(
         &self,
         txn: &DatabaseTransaction,
