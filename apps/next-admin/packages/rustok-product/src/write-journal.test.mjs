@@ -100,7 +100,6 @@ for (const operation of ['save', 'status', 'delete']) {
   });
 }
 
-
 test('pending single-locale save snapshots migrate into explicit batches without changing identity', async () => {
   const storage = state();
   let originalKey;
