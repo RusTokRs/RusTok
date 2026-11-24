@@ -2,17 +2,17 @@ use std::collections::HashSet;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use tracing::instrument;
 use rustok_api::{
     PLATFORM_FALLBACK_LOCALE, build_locale_candidates, locale_tags_match, normalize_locale_tag,
 };
-use rustok_product::entities::{product, product_variant};
+use rustok_product::services::catalog_references::{product_exists_in_tx, variant_parent_in_tx};
 use sea_orm::prelude::Decimal;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
     DatabaseTransaction, DbErr, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
     Set, Statement, TransactionTrait,
 };
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::dto::{
@@ -62,12 +62,7 @@ async fn validate_product_ref_in_tx(
     tenant_id: Uuid,
     product_id: Uuid,
 ) -> BundleResult<()> {
-    let exists = product::Entity::find_by_id(product_id)
-        .filter(product::Column::TenantId.eq(tenant_id))
-        .one(txn)
-        .await?
-        .is_some();
-    if !exists {
+    if !product_exists_in_tx(txn, tenant_id, product_id).await? {
         return Err(BundleError::InvalidInput(
             "Bundle item product does not belong to the current tenant".into(),
         ));
@@ -81,16 +76,14 @@ async fn validate_variant_ref_in_tx(
     product_id: Uuid,
     variant_id: Uuid,
 ) -> BundleResult<()> {
-    let variant = product_variant::Entity::find_by_id(variant_id)
-        .filter(product_variant::Column::TenantId.eq(tenant_id))
-        .one(txn)
+    let variant_parent = variant_parent_in_tx(txn, tenant_id, variant_id)
         .await?
         .ok_or_else(|| {
             BundleError::InvalidInput(
                 "Bundle item variant does not belong to the current tenant".into(),
             )
         })?;
-    if variant.product_id != product_id {
+    if variant_parent != product_id {
         return Err(BundleError::InvalidInput(
             "Bundle item variant does not belong to the selected product".into(),
         ));

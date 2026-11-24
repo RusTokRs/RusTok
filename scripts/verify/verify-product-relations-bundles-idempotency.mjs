@@ -376,8 +376,8 @@ for (const marker of [
   need(productWriteTransaction, marker, "product owner receipt completion");
 }
 for (const marker of [
-  "let _ = PRODUCT_OPERATION_RECEIPT.try_with(|receipt| {",
-  "let response_json = serde_json::to_value(value).map_err(|error| error.to_string());",
+  "PRODUCT_OPERATION_RECEIPT.try_with(|receipt| {",
+  "let response_json = serde_json::to_value(value);",
   "*slot = Some(response_json);",
   "poisoned.into_inner()",
 ]) {
@@ -574,6 +574,7 @@ if (
 
 for (const marker of [
   "async fn lock_relation_for_mutation(",
+  "lock_product_reference_in_tx(txn, tenant_id, product_id).await?",
   "lock_product_for_update(txn, tenant_id, relation.product_id).await?;",
   "let relation = lock_relation_for_mutation(txn, tenant_id, relation_id).await?;",
   "let model = lock_relation_for_mutation(txn, tenant_id, relation_id).await?;",
@@ -581,6 +582,20 @@ for (const marker of [
 ]) {
   need(relationsService, marker, "relation mutation lock and delete result");
 }
+for (const [start, end] of [
+  ["pub(crate) async fn create_relation_in_tx(", "/// Updates one relation"],
+  ["pub(crate) async fn reorder_relations_in_tx(", "impl From<"],
+]) {
+  const mutation = slice(relationsService, start, end);
+  const lock = mutation.indexOf("lock_product_for_update(txn, tenant_id, product_id).await?;");
+  const group = mutation.indexOf("relation_group_in_tx(");
+  if (lock < 0 || group < 0 || lock > group) {
+    failures.push(`${start} must lock the source Product before reading the relation group`);
+  }
+}
+forbid(relationsService, "rustok_product::entities", "relations catalog reference ownership");
+forbid(relationsService, "UPDATE products", "relations catalog reference ownership");
+forbid(bundlesService, "rustok_product::entities", "bundles catalog reference ownership");
 const relationReceiptCommands = [
   [
     "create_relation_idempotent",

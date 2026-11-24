@@ -3,6 +3,7 @@ mod variant;
 mod variant_translation;
 
 use super::*;
+use crate::services::catalog_references::lock_sqlite_product_in_tx;
 use crate::services::write_transaction::record_product_operation_result;
 use rustok_api::TenantLocale;
 use sea_orm::{ColumnTrait, ConnectionTrait};
@@ -20,12 +21,9 @@ async fn lock_product_for_update_in_tx(
             query.lock_exclusive().one(txn).await?
         }
         DatabaseBackend::Sqlite => {
-            let statement = Statement::from_sql_and_values(
-                DatabaseBackend::Sqlite,
-                "UPDATE products SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
-                [tenant_id.into(), product_id.into()],
-            );
-            txn.execute_raw(statement).await?;
+            if !lock_sqlite_product_in_tx(txn, tenant_id, product_id).await? {
+                return Err(CommerceError::ProductNotFound(product_id));
+            }
             query.one(txn).await?
         }
         _ => query.one(txn).await?,

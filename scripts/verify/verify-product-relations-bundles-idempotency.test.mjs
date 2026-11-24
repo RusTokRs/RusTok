@@ -94,6 +94,8 @@ const runVerifier = (fixtureRoot) => {
     return { status: 0, output: stdout };
   } catch (error) {
     return { status: error.status ?? 1, output: `${error.stdout ?? ""}${error.stderr ?? ""}` };
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
   }
 };
 
@@ -102,6 +104,20 @@ test("canonical receipt-bound relations and bundles pass", () => {
   const result = runVerifier(fixtureRoot);
   assert.equal(result.status, 0, result.output);
   assert.match(result.output, /complete tenant-scoped owner receipts/);
+});
+
+test("rejects a create that skips the source Product lock", () => {
+  const relative = "crates/modules/rustok-product-relations/src/services/relation_service.rs";
+  const fixtureRoot = writeFixture({
+    [relative]: replaceRequired(
+      relative,
+      "lock_product_for_update(txn, tenant_id, product_id).await?;\n    if !product_exists_in_tx",
+      "if !product_exists_in_tx",
+    ),
+  });
+  const result = runVerifier(fixtureRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(result.output, /create_relation_in_tx\( must lock the source Product/);
 });
 
 test("a receipt that is never completed fails the contract", () => {
