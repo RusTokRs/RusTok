@@ -620,6 +620,7 @@ mod tests {
     fn mcp_runtime_uuid_parser_rejects_nil_identifiers() {
         let nil = Uuid::nil().to_string();
         assert_eq!(parse_uuid(Some(&nil)), None);
+        assert_eq!(parse_uuid(Some("not-a-uuid")), None);
 
         let valid = Uuid::new_v4();
         let valid_text = valid.to_string();
