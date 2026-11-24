@@ -85,8 +85,9 @@ operation and must not be blocked by a release-readiness policy when the actor h
 - Callback-backed hosts must call `PageBuilderCapabilityExecution::complete` once with the
   result of the exact asynchronous request; duplicate completions are ignored and dropping an
   incomplete execution fails the matching attempt instead of leaving the editor stuck in
-  `save_in_progress`. The runtime validates and applies the captured `SaveAttempt` before
-  acknowledging or failing it.
+  `save_in_progress`. Preview callbacks also carry a request identity, so a late or abandoned
+  preview cannot clear or replace a newer preview. The runtime validates and applies the captured
+  `SaveAttempt` before acknowledging or failing a save.
 - Leptos Rust and JS adapters can share one logical editor identity without self-conflicting;
   independent tabs and editor roots remain isolated.
 - Dioxus and Leptos hosts now use the same local correlation and advisory peer-write semantics.
