@@ -42,9 +42,9 @@ pub fn DioxusIsolatedCanvas(
     on_ui_intent: EventHandler<UiIntent>,
     on_error: Option<EventHandler<String>>,
 ) -> Element {
-    let geometry = use_signal(|| BTreeMap::<String, CanvasComponentGeometry>::new());
-    let ready = use_signal(|| false);
-    let resize_preview = use_signal(|| None::<ResizeResult>);
+    let mut geometry = use_signal(|| BTreeMap::<String, CanvasComponentGeometry>::new());
+    let mut ready = use_signal(|| false);
+    let mut resize_preview = use_signal(|| None::<ResizeResult>);
 
     let (viewport, selected_id, hovered_id, insertion_rect, selected_is_root) = {
         let current = session.read();
@@ -83,13 +83,13 @@ pub fn DioxusIsolatedCanvas(
     let resize_root_id = format!("{instance_id}-resize-overlay");
 
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
-    let resize_session = use_signal(|| None::<BrowserResizeSession>);
+    let mut resize_session = use_signal(|| None::<BrowserResizeSession>);
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
-    let captured_element = use_signal(|| None::<Element>);
+    let mut captured_element = use_signal(|| None::<Element>);
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
-    let resize_context = use_signal(|| None::<(String, CanvasRect, f64)>);
+    let mut resize_context = use_signal(|| None::<(String, CanvasRect, f64)>);
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
-    let listener_handles = use_signal(|| Vec::<EventListenerHandle>::new());
+    let mut listener_handles = use_signal(|| Vec::<EventListenerHandle>::new());
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
     let resize_instance_id = instance_id.clone();
 
@@ -472,8 +472,8 @@ fn parse_resize_handle(value: &str) -> Option<ResizeHandle> {
 fn handle_canvas_message(
     message: CanvasBridgeMessage,
     session: Signal<EditorSessionState>,
-    geometry: Signal<BTreeMap<String, CanvasComponentGeometry>>,
-    ready: Signal<bool>,
+    mut geometry: Signal<BTreeMap<String, CanvasComponentGeometry>>,
+    mut ready: Signal<bool>,
     on_ui_intent: EventHandler<UiIntent>,
     on_intent: EventHandler<BrowserIntentEnvelope>,
     instance_id: &str,
