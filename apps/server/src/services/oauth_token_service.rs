@@ -108,6 +108,7 @@ impl OAuthTokenService {
             OAuthTokenProtocolError::server_error("OAuth signing configuration is unavailable")
         })?;
         let db = runtime.runtime_ctx().db();
+        let require_email_verification = runtime.runtime_ctx().settings().features.email_verification;
         let app = resolve_client(db, tenant_id, request).await?;
 
         let response = match request.grant_type.as_str() {
@@ -172,7 +173,14 @@ impl OAuthTokenService {
                 )
                 .await?;
 
-                commit_authorization_code_exchange(db, &app, &authorization, &prepared).await?;
+                commit_authorization_code_exchange(
+                    db,
+                    &app,
+                    &authorization,
+                    &prepared,
+                    require_email_verification,
+                )
+                .await?;
                 prepared.into_response(&scopes)
             }
             REFRESH_TOKEN_GRANT => {
@@ -209,7 +217,14 @@ impl OAuthTokenService {
                 )
                 .await?;
 
-                commit_refresh_rotation(db, &app, &current, &prepared).await?;
+                commit_refresh_rotation(
+                    db,
+                    &app,
+                    &current,
+                    &prepared,
+                    require_email_verification,
+                )
+                .await?;
                 prepared.into_response(&scopes)
             }
             other => {
@@ -915,6 +930,7 @@ async fn lock_active_oauth_subject<C>(
     tenant_id: Uuid,
     user_id: Uuid,
     credential_issued_at: sea_orm::prelude::DateTimeWithTimeZone,
+    require_email_verification: bool,
 ) -> Result<users::Model, OAuthTokenProtocolError>
 where
     C: ConnectionTrait,
@@ -961,9 +977,10 @@ where
         user.ok_or_else(|| OAuthTokenProtocolError::invalid_grant("OAuth subject is unavailable"))?;
     if !user.is_active()
         || user.rejects_delegated_token_issued_at(credential_issued_at.with_timezone(&Utc))
+        || (require_email_verification && !user.is_email_verified())
     {
         return Err(OAuthTokenProtocolError::invalid_grant(
-            "OAuth subject is inactive or its credentials changed",
+            "OAuth subject is inactive, unverified, or its credentials changed",
         ));
     }
     Ok(user)
@@ -1163,6 +1180,7 @@ async fn commit_authorization_code_exchange(
     authenticated_app: &oauth_apps::Model,
     code: &oauth_codes::Model,
     prepared: &PreparedUserTokens,
+    require_email_verification: bool,
 ) -> Result<(), OAuthTokenProtocolError> {
     let tx = db.begin().await.map_err(|_| {
         OAuthTokenProtocolError::server_error("Failed to begin authorization-code exchange")
@@ -1179,7 +1197,14 @@ async fn commit_authorization_code_exchange(
         ));
     }
     validate_scope_subset(&current_app.scopes_list(), &code.scopes_list())?;
-    lock_active_oauth_subject(&tx, code.tenant_id, code.user_id, code.created_at.clone()).await?;
+    lock_active_oauth_subject(
+        &tx,
+        code.tenant_id,
+        code.user_id,
+        code.created_at.clone(),
+        require_email_verification,
+    )
+    .await?;
     validate_locked_oauth_consent(
         &tx,
         &current_app,
@@ -1234,6 +1259,7 @@ async fn commit_refresh_rotation(
     authenticated_app: &oauth_apps::Model,
     current: &oauth_tokens::Model,
     prepared: &PreparedUserTokens,
+    require_email_verification: bool,
 ) -> Result<(), OAuthTokenProtocolError> {
     let tx = db.begin().await.map_err(|_| {
         OAuthTokenProtocolError::server_error("Failed to begin refresh-token rotation")
@@ -1245,7 +1271,14 @@ async fn commit_refresh_rotation(
     let user_id = current.user_id.ok_or_else(|| {
         OAuthTokenProtocolError::invalid_grant("Refresh token has no associated user")
     })?;
-    lock_active_oauth_subject(&tx, current.tenant_id, user_id, current.created_at.clone()).await?;
+    lock_active_oauth_subject(
+        &tx,
+        current.tenant_id,
+        user_id,
+        current.created_at.clone(),
+        require_email_verification,
+    )
+    .await?;
     validate_locked_oauth_consent(
         &tx,
         &current_app,
@@ -1607,7 +1640,7 @@ mod tests {
         .expect_err("a changed consent epoch must reject in-flight issuance");
         assert_eq!(stale_epoch.error, "invalid_grant");
 
-        let commit_error = super::commit_refresh_rotation(&db, &client, &current, &prepared)
+        let commit_error = super::commit_refresh_rotation(&db, &client, &current, &prepared, false)
             .await
             .expect_err("refresh commit must revalidate consent under app/subject locks");
         assert_eq!(commit_error.error, "invalid_grant");
@@ -2147,10 +2180,10 @@ mod tests {
             expires_in: 900,
         };
 
-        commit_refresh_rotation(&db, &client, &current, &replacement("replacement-1"))
+        commit_refresh_rotation(&db, &client, &current, &replacement("replacement-1"), false)
             .await
             .expect("first rotation");
-        let replay = commit_refresh_rotation(&db, &client, &current, &replacement("replacement-2"))
+        let replay = commit_refresh_rotation(&db, &client, &current, &replacement("replacement-2"), false)
             .await
             .expect_err("refresh token replay must fail");
 
