@@ -79,19 +79,15 @@ function nonEmptyString(value) {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
-function getPeerWriteSenderId() {
-  const existing = nonEmptyString(globalThis.__flyPeerWriteSenderId);
+function getPeerWriteSenderId(root) {
+  const existing = nonEmptyString(root?.dataset?.flyPeerWriteSenderId);
   if (existing) return existing;
   const cryptoApi = globalThis.crypto;
   const generated = typeof cryptoApi?.randomUUID === "function"
     ? cryptoApi.randomUUID()
     : `fly-document-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
-  try {
-    globalThis.__flyPeerWriteSenderId = generated;
-  } catch (_) {
-    // A frozen global object is unusual; the server-side revision CAS remains authoritative.
-  }
-  return nonEmptyString(globalThis.__flyPeerWriteSenderId) || generated;
+  if (root?.dataset) root.dataset.flyPeerWriteSenderId = generated;
+  return nonEmptyString(root?.dataset?.flyPeerWriteSenderId) || generated;
 }
 
 /**
@@ -831,7 +827,7 @@ export class FlyBrowserAdapter {
     this.authoritativeInFlight = false;
     this.queuedAuthoritativeIntents = [];
     this.peerWriteConflict = null;
-    this.peerWriteSenderId = getPeerWriteSenderId();
+    this.peerWriteSenderId = getPeerWriteSenderId(this.root);
     this.peerWriteChannel = null;
     this.lastSequence = null;
     this.geometry = new Map();
