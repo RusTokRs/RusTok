@@ -434,6 +434,11 @@ listeners, not browser-authorized origins.
 This changes only cross-origin browser permission; it is not an HTTP
 authorization or same-origin request gate.
 
+These host security gates use the shared production-security mode: every release
+binary remains fail-closed even if `RUSTOK_ENV` names `staging`; only debug
+builds may use development fallbacks. Host startup applies the same predicate
+to database, HTTPS/HSTS, JWT, and tenant-profile validation.
+
 The module event dispatcher and its four startup-owned recovery workers
 (paid-order labels, marketplace financial, payment-provider events and
 product-media release) now share one per-runtime synchronous registration
@@ -613,6 +618,7 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   not through framework-owned application context.
 - Auth lifecycle and OAuth GraphQL query/mutation/types belong to `rustok-auth`; auth, OAuth and users REST request/response DTOs and OpenAPI schema derives also belong to `rustok-auth::rest`. The server implements only `AuthLifecyclePort`/`OAuthAdminPort` on top of persisted lifecycle/OAuth/email services, registers the corresponding runtimes in shared runtime extensions, and keeps auth/OAuth/users HTTP controllers as route/extractor/response adapters that re-export or import owner DTOs for Swagger and route compatibility. `AuthLifecycleService` accepts only `ServerRuntimeContext` and an explicit `AuthConfig`. `ServerAuthLifecycleProvider` receives explicit `ServerRuntimeContext`, `AuthConfig`, and mailer handle; `CurrentUser`/`OptionalCurrentUser`, `auth_context` middleware, and RBAC permission extractors use a narrow `ServerAuthRuntime`.
   Auth lifecycle GraphQL/native self-service operations consume the canonical `AuthPrincipalKind`; direct-session operations fail closed for delegated OAuth and service principals instead of inferring direct-user status from `session_id` presence.
+  REST password-reset and (when enabled) email-verification requests, plus GraphQL `forgotPassword`, keep generic responses and run the shared fixed-cost Argon2 lookup mask regardless of account existence. The dummy hash is prewarmed on the blocking pool during host initialization before requests are served; new recovery transports must reuse this helper.
 - With `mod-ai`, the server composes the AI query, mutation, subscription, and schema data factory
   from the AI package manifest. AI is a required runtime extension in distributions that include
   it. Its runtime registration stays with the distribution. The schema data factory builds the
@@ -1276,8 +1282,9 @@ preflight`, `install apply`, `install status`, and `seed apply`; apply uses
   check still requires operator reconciliation of any interrupted effects. Mutating HTTP install
   requests support a setup-token guard via
   `RUSTOK_INSTALL_SETUP_TOKEN` and header `x-rustok-setup-token` or
-  `Authorization: Bearer <token>`; production HTTP apply without a setup token
-  is rejected. These are mutually exclusive ways to present the setup
+  `Authorization: Bearer <token>`; production-security-mode HTTP apply
+  without a setup token is rejected, including in release builds whose
+  `RUSTOK_ENV` label is `staging`. These are mutually exclusive ways to present the setup
   credential: requests containing both headers are rejected rather than
   selecting one source and ignoring the other. `/api/install/*` intentionally bypasses the tenant resolution middleware,
   because the first install runs before a tenant context is created. The CLI remains
