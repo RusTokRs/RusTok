@@ -15,16 +15,22 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
 
 ## Storefront and identity continuation (2026-11-13) — OPEN
 
-Fly editor hardening (2026-11-23, source/regressions only): the core style patch builder
-now preserves ordered merge/replace/remove semantics and rejects invalid reserved-field
-types; `fly-ui` preserves a failed drop and keeps edits after an in-flight save dirty;
-`fly-browser` blocks intents after stop, refuses fetch redirects and preserves lost-save
-warnings unless the host confirms `dirty: false`. **Still OPEN:** the current
-`UiIntent::SaveSucceeded` envelope has no unique request identity and hosts can acknowledge
-outside an active `SaveStarted` transition. Correlating out-of-order responses with a
-request token across core/UI/transports, proving hosted runtime behavior under CSP,
-and parity for the foundation-only Dioxus workspace require a separately coordinated
-contract/host migration. No local test or mounted-host verification is claimed for this pass.
+Fly editor hardening (2026-11-24, source-only): the core style patch builder preserves
+ordered merge/replace/remove semantics and rejects invalid reserved-field types; `fly-ui`
+preserves failed drops and in-flight edits; `fly-browser` fences stopped adapters and refuses
+fetch redirects. Save starts now carry a UUID-backed `SaveAttempt` through the controller,
+UI state machine, Leptos facade runtime, Dioxus session and callback-host transport. Success,
+failure and conflict responses must match that exact attempt; transient request identity is
+not serialized, so a response from a pre-rehydration controller cannot acknowledge a retry
+whose local sequence and hash happen to repeat. Draft save is edit-gated rather than blocked
+by the separate release/publish gate. Leptos Rust and JS adapters share a document nonce plus
+editor-root scope on the peer-write channel, avoiding same-editor false conflicts while fencing
+other tabs and editor roots; the Dioxus host also participates. The Dioxus Page Builder host now
+has source integration for the isolated iframe, pointer/drag/drop and bounded resize path.
+**Still OPEN:** durable server-side idempotency and unknown-outcome reconciliation across
+independent sessions, mounted CSP/browser verification, and final integration audit. Peer
+notifications remain advisory; server revision checks are authoritative. No build, Rust test,
+lint or Playwright run is claimed for this pass.
 
 Reduced-motion follow-up: the shared Fly browser asset now uses instant scrolling for
 `scroll_to` when the target document requests reduced motion, including in the presence of
@@ -1181,13 +1187,15 @@ replace mounted browser geometry, accessibility, or host integration evidence.
 
 Browser write queue hardening (source only): a per-instance queued write is dispatched only
 after a confirmed prior response with a nonempty revision and hash; ambiguous/failed saves drain
-pending commands without replay, including on timeout and stop. Cross-tab request coordination
-and true server-side idempotency are still outstanding; browser transport cannot infer whether a
-failed network request committed remotely.
+pending commands without replay, including on timeout and stop. Cross-tab notifications now
+coordinate the JS adapter with Leptos and Dioxus Rust hosts using document/editor-scoped sender
+identities. This remains advisory; the browser transport cannot infer whether a failed network
+request committed remotely.
 
-The Leptos admin facade's publish completion now uses the attempt-aware controller entrypoints
-for success and failure. Delayed completions of an older identical-hash retry are ignored rather
-than failing the active new save. Host callback/session transport IDs are still an open migration.
+The Leptos admin facade, Dioxus session and callback-host transport now carry the same
+UUID-backed `SaveAttempt` through start, success and failure. Delayed completions from an older
+identical-hash retry are ignored rather than acknowledging or failing the active new save.
+The request identity is intentionally transient and is not a durable server idempotency key.
 
 Dioxus functional gap addressed in source: Page Builder Dioxus Save and workspace request effects
 previously stopped at the UI reducer without executing `PageBuilderAdminFacade`. Those effects
@@ -1195,14 +1203,16 @@ now reach the facade and return attempt-safe publish completions or errors. Moun
 facade/preview behavior still needs maintainer runtime evidence after the implementation phase.
 
 Leptos adapter functional gap addressed in source: typed `FlyEditorWorkspace` callback now
-consumes the returned browser intent effects, dispatching Publish/Preview to the consumer facade
-and preserving the request's hash/sequence and preview context. Previously those effects were
-ignored. Live Leptos SSR/CSR rendering and persistence remain for the maintainer's end checks.
+consumes returned browser intent effects, dispatching Save/Preview to the consumer facade and
+preserving the exact `SaveAttempt`, submitted hash and preview context. The callback fallback
+also receives the attempt identity instead of only the request. Live Leptos SSR/CSR rendering
+and persistence remain for the maintainer's end checks.
 
-Runtime publish-gate convergence (source only): Leptos and Dioxus adapter-generated Publish
-requests now check the host runtime publish policy before reaching the facade, matching the
-standard toolbar. Framework-mounted gate parity and denied-save UX remain for final integration
-checks.
+Draft-save authorization correction (source only): Page Builder's Save action persists the
+working document and is gated by edit permission, not by the separate release/publish policy.
+The runtime publish-gate evaluation remains a release-readiness signal and must not prevent
+saving a working draft. Mounted Leptos/Dioxus gate presentation and denied-edit UX remain for
+final integration checks.
 
 2026-11-23 Pages durable save receipts follow-up (source only, not executed):
 - Pages accepts an optional stable save `idempotencyKey`, binds it to tenant,
@@ -1226,7 +1236,9 @@ checks.
   independent sessions, retention observability, restore/lifecycle idempotency
   and direct Next editor parity, MySQL schema support, concurrent PostgreSQL/
   SQLite transactions with real independent connections, mounted SSR/CSR/
-  Dioxus, CSP, rich-text, drag/drop/resize, and all maintainer verification.
+  Dioxus, CSP, rich-text, and all maintainer verification. Dioxus iframe,
+  drag/drop and bounded resize are now connected in source but still require
+  mounted browser evidence.
   Draft PR #4788 must not be merged until these checks are complete.
 
 2026-11-23 follow-up on ambiguous result and concurrent database access
@@ -1244,5 +1256,6 @@ requests across reloads, probes receipts without resending, blocks new edits
 while the result is unknown, and offers explicit same-request retry. Initial
 owner-bound draft sessions are created before the first edit. Still open:
 direct Next/other writer parity, restore/lifecycle operation IDs, MySQL schema,
-receipt expiry/observability, deployment verification and full Dioxus iframe,
-drag/drop and resize integration.
+receipt expiry/observability, deployment verification and mounted Dioxus iframe,
+drag/drop and resize verification. The Dioxus source path is now connected to the
+shared controller; browser evidence is still outstanding.
