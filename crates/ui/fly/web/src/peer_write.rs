@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-pub const FLY_PEER_WRITE_CHANNEL: &str = "fly:page-authoring-writes:v1";
+pub const FLY_PEER_WRITE_CHANNEL: &str = "fly:page-authoring-writes";
 pub const FLY_PEER_WRITE_CONFLICT_CODE: &str = "FLY_PEER_WRITE_CONFLICT";
 const MAX_PEER_WRITE_FIELD_BYTES: usize = 256;
 const MAX_PEER_WRITE_MESSAGE_BYTES: usize = 1024;
@@ -164,22 +164,6 @@ mod browser {
             on_conflict: impl FnMut(BrowserPeerWriteConflict) + 'static,
         ) -> Result<Self, BrowserRuntimeError> {
             let sender_id = peer_write_document_id()?;
-            Self::new_with_sender_id(page_id, revision, project_hash, sender_id, on_conflict)
-        }
-
-        /// Construct a channel whose identity is scoped to one editor root within this document.
-        /// The document nonce keeps identical SSR-generated root IDs distinct across tabs.
-        pub fn new_scoped(
-            page_id: impl Into<String>,
-            revision: impl Into<String>,
-            project_hash: impl Into<String>,
-            scope_id: impl AsRef<str>,
-            on_conflict: impl FnMut(BrowserPeerWriteConflict) + 'static,
-        ) -> Result<Self, BrowserRuntimeError> {
-            validate_field("editor scope id", scope_id.as_ref())
-                .map_err(BrowserRuntimeError::Serialization)?;
-            let document_id = peer_write_document_id()?;
-            let sender_id = format!("{document_id}:{}", scope_id.as_ref());
             Self::new_with_sender_id(page_id, revision, project_hash, sender_id, on_conflict)
         }
 
@@ -378,27 +362,6 @@ mod tests {
         assert_eq!(base.revision, "revision-2");
         assert_eq!(base.project_hash, "hash-2");
         assert!(!base.conflicted);
-    }
-
-    #[test]
-    fn another_editor_root_in_the_same_document_is_still_a_peer() {
-        let mut base = PeerWriteBase::new(
-            "page-1".to_string(),
-            "revision-1".to_string(),
-            "hash-1".to_string(),
-            "document-a:root-1".to_string(),
-        )
-        .expect("valid base");
-        let conflict = base
-            .observe(PeerWriteMessage {
-                kind: "confirmed-write".to_string(),
-                page_id: "page-1".to_string(),
-                revision: "revision-2".to_string(),
-                hash: "hash-2".to_string(),
-                sender_id: "document-a:root-2".to_string(),
-            })
-            .expect("different editor root must be fenced");
-        assert_eq!(conflict.revision, "revision-2");
     }
 
     #[test]
