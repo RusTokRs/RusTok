@@ -33,7 +33,7 @@ fn validate_initial_price(price: &InitialPrice) -> Result<(), sea_orm::DbErr> {
             "variant_id must not be a nil UUID".into(),
         ));
     }
-    if price.channel_id == Some(Uuid::nil()) {
+    if price.channel_id.is_some_and(|channel_id| channel_id.is_nil()) {
         return Err(sea_orm::DbErr::Custom(
             "channel_id must not be a nil UUID".into(),
         ));
@@ -174,20 +174,21 @@ impl BootstrapService {
     where
         C: ConnectionTrait,
     {
-        if variant_id.is_nil()
-            || prices.iter().any(|price| {
-                price.variant_id != variant_id
-                    || price.channel_id.is_some()
-                    || price.channel_slug.is_some()
-                    || price.amount < Decimal::ZERO
-                    || price
-                        .compare_at_amount
-                        .is_some_and(|amount| amount < Decimal::ZERO || amount < price.amount)
-            })
-        {
+        if variant_id.is_nil() {
             return Err(sea_orm::DbErr::Custom(
-                "Catalog price replacement accepts only this variant's unscoped base prices; use Pricing for contextual prices".into(),
+                "variant_id must not be a nil UUID".into(),
             ));
+        }
+        for price in &prices {
+            if price.variant_id != variant_id
+                || price.channel_id.is_some()
+                || price.channel_slug.is_some()
+            {
+                return Err(sea_orm::DbErr::Custom(
+                    "Catalog price replacement accepts only this variant's unscoped base prices; use Pricing for contextual prices".into(),
+                ));
+            }
+            validate_initial_price(price)?;
         }
         price::Entity::delete_many()
             .filter(price::Column::VariantId.eq(variant_id))
