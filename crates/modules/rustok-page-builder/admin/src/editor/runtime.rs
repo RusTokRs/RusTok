@@ -106,6 +106,8 @@ fn conflict_actual_revision(message: &str) -> Option<String> {
 #[must_use = "dropping an incomplete Page Builder execution fails its request"]
 pub struct PageBuilderCapabilityExecution {
     pub request: PageBuilderCapabilityRequest,
+    /// Unique identity for this asynchronous capability request. Publish reuses its save UUID.
+    pub request_id: String,
     pub save_attempt: Option<SaveAttempt>,
     on_complete: Callback<Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError>>,
     completed: Arc<AtomicBool>,
@@ -148,6 +150,7 @@ mod execution_completion_tests {
             request: PageBuilderCapabilityRequest::Preview(
                 PreviewPageBuilderInput::new("page", Value::Null),
             ),
+            request_id: "preview-request".to_string(),
             save_attempt: None,
             on_complete,
             completed: Arc::new(AtomicBool::new(false)),
@@ -196,6 +199,8 @@ pub struct AdminEditorRuntime {
     pub runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
     pub runtime_publish_gate_evaluation: RwSignal<Option<RuntimePublishGateEvaluation>>,
     preview_request: RwSignal<Option<(ProjectHash, usize, Value, Option<String>)>>,
+    /// In-flight preview identities are process-local and must never survive rehydration.
+    active_preview_request_id: RwSignal<Option<String>>,
     facade: Option<Arc<dyn PageBuilderAdminFacade>>,
     on_request: Option<Callback<PageBuilderCapabilityExecution>>,
     facade_missing: String,
@@ -246,6 +251,7 @@ impl AdminEditorRuntime {
             runtime_publish_gate_policy: None,
             runtime_publish_gate_evaluation: RwSignal::new(None),
             preview_request: RwSignal::new(None),
+            active_preview_request_id: RwSignal::new(None),
             facade,
             on_request,
             facade_missing: facade_missing.into(),
@@ -280,6 +286,12 @@ impl AdminEditorRuntime {
         {
             false
         }
+    }
+
+    fn cancel_preview_request(&self) {
+        self.active_preview_request_id.set(None);
+        self.preview_in_progress.set(false);
+        self.preview_request.set(None);
     }
 
     fn clear_error_or_reassert_peer_write_conflict(&self) {
@@ -386,6 +398,7 @@ impl AdminEditorRuntime {
         self.active_runtime_scenario.set(Some(scenario.id.clone()));
         self.runtime_publish_gate_evaluation.set(None);
         self.server_preview_html.set(None);
+        self.cancel_preview_request();
         self.clear_error_or_reassert_peer_write_conflict();
         self.announce(format!("Preview scenario applied: {}", scenario.label));
         true
@@ -397,6 +410,7 @@ impl AdminEditorRuntime {
         self.active_runtime_scenario.set(None);
         self.runtime_publish_gate_evaluation.set(None);
         self.server_preview_html.set(None);
+        self.cancel_preview_request();
     }
 
     pub fn evaluate_runtime_publish_gate(&self) -> Option<RuntimePublishGateEvaluation> {
@@ -472,6 +486,7 @@ impl AdminEditorRuntime {
         ) {
             self.runtime_publish_gate_evaluation.set(None);
             self.server_preview_html.set(None);
+            self.cancel_preview_request();
         }
         if self.peer_write_conflicted() && intent.mutates_document() {
             self.reject_peer_write_conflict();
@@ -502,15 +517,27 @@ impl AdminEditorRuntime {
     /// the same consumer facade as toolbar commands. Merely dispatching the
     /// intent changed local state but silently dropped Publish/Preview before.
     pub fn apply_browser_result(&self, result: crate::BrowserIntentDispatchResult) {
-        let in_scope = self.controller.with(|controller| {
-            result.page_id == controller.page_id()
-                && result.revision_id == controller.revision_id()
-                && result.project_hash == controller.editor().revision().project_hash.hex()
-                && result.command_sequence == controller.editor().revision().command_sequence
+        let current = self.controller.with(|controller| {
+            (
+                controller.page_id().to_string(),
+                controller.revision_id().to_string(),
+                controller.editor().revision().project_hash,
+                controller.editor().revision().command_sequence,
+                controller.active_page_index(),
+            )
         });
+        let in_scope = result.page_id == current.0
+            && result.revision_id == current.1
+            && result.project_hash == current.2.hex()
+            && result.command_sequence == current.3;
         if !in_scope {
             self.fail("Browser workspace response no longer matches the active document");
             return;
+        }
+        if self.preview_request.get_untracked().is_some_and(|expected| {
+            expected.0 != current.2 || expected.1 != current.4
+        }) {
+            self.cancel_preview_request();
         }
         self.clear_error_or_reassert_peer_write_conflict();
         for effect in result.effects {
@@ -615,8 +642,7 @@ impl AdminEditorRuntime {
                 .and_then(|facade| facade.provider_status())
                 .is_some_and(|status| !status.preview_enabled())
         {
-            self.preview_in_progress.set(false);
-            self.preview_request.set(None);
+            self.cancel_preview_request();
             self.fail("Server preview is disabled by the consumer provider or health policy");
             return;
         }
@@ -646,7 +672,12 @@ impl AdminEditorRuntime {
         } else {
             None
         };
+        let request_id = save_attempt
+            .as_ref()
+            .map(|attempt| attempt.request_id.clone())
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
         if capability == BuilderCapabilityKind::Preview {
+            self.active_preview_request_id.set(Some(request_id.clone()));
             self.preview_in_progress.set(true);
         }
 
@@ -657,6 +688,7 @@ impl AdminEditorRuntime {
                 let outcome = facade.execute(request).await;
                 runtime.complete_capability_request(
                     capability,
+                    request_id,
                     expected_hash,
                     save_attempt,
                     outcome,
@@ -669,9 +701,11 @@ impl AdminEditorRuntime {
             let runtime = self.clone();
             let completion_hash = expected_hash.clone();
             let completion_attempt = save_attempt.clone();
+            let completion_request_id = request_id.clone();
             let on_complete = Callback::new(move |outcome| {
                 runtime.complete_capability_request(
                     capability,
+                    completion_request_id.clone(),
                     completion_hash.clone(),
                     completion_attempt.clone(),
                     outcome,
@@ -679,13 +713,13 @@ impl AdminEditorRuntime {
             });
             callback.run(PageBuilderCapabilityExecution {
                 request,
+                request_id,
                 save_attempt,
                 on_complete,
                 completed: Arc::new(AtomicBool::new(false)),
             });
         } else {
-            self.preview_in_progress.set(false);
-            self.preview_request.set(None);
+            self.cancel_preview_request();
             // SaveStarted is emitted before the host callback is selected. If neither a facade
             // nor a callback exists, retire that exact attempt instead of leaving the editor
             // permanently stuck in save_in_progress.
@@ -697,17 +731,23 @@ impl AdminEditorRuntime {
     fn complete_capability_request(
         &self,
         capability: BuilderCapabilityKind,
+        request_id: String,
         expected_hash: Option<ProjectHash>,
         save_attempt: Option<SaveAttempt>,
         outcome: Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError>,
     ) {
+        if capability == BuilderCapabilityKind::Preview {
+            if self.active_preview_request_id.get_untracked().as_deref() != Some(&request_id) {
+                return;
+            }
+            self.active_preview_request_id.set(None);
+        }
         match outcome {
             Ok(PageBuilderCapabilityResponse::Preview(response))
                 if capability == BuilderCapabilityKind::Preview =>
             {
                 let preview_request = self.preview_request.get_untracked();
-                self.preview_request.set(None);
-                self.preview_in_progress.set(false);
+                self.cancel_preview_request();
                 let current_runtime_context =
                     if self.runtime_context_configured.get_untracked() {
                         self.runtime_context.get_untracked()
@@ -881,8 +921,7 @@ impl AdminEditorRuntime {
                     .is_some_and(|result| result.unwrap_or(false))
             }
             BuilderCapabilityKind::Preview => {
-                self.preview_in_progress.set(false);
-                self.preview_request.set(None);
+                self.cancel_preview_request();
                 true
             }
             BuilderCapabilityKind::Tree | BuilderCapabilityKind::Properties => true,
@@ -895,7 +934,8 @@ impl AdminEditorRuntime {
             last_error: self.last_error.get_untracked(),
             last_announcement: self.last_announcement.get_untracked(),
             server_preview_html: self.server_preview_html.get_untracked(),
-            preview_in_progress: self.preview_in_progress.get_untracked(),
+            // An in-flight preview callback cannot survive session transfer.
+            preview_in_progress: false,
             trait_schemas: Arc::clone(&self.trait_schemas),
             editor_capability_evaluation: self.editor_capability_evaluation.clone(),
             runtime_context: self.runtime_context.get_untracked(),
@@ -904,7 +944,7 @@ impl AdminEditorRuntime {
             active_runtime_scenario: self.active_runtime_scenario.get_untracked(),
             runtime_publish_gate_policy: self.runtime_publish_gate_policy.clone(),
             runtime_publish_gate_evaluation: self.runtime_publish_gate_evaluation.get_untracked(),
-            preview_request: self.preview_request.get_untracked(),
+            preview_request: None,
             facade_missing: self.facade_missing.clone(),
             save_succeeded: self.save_succeeded.clone(),
         }
@@ -916,7 +956,7 @@ impl AdminEditorRuntime {
         self.last_announcement.set(state.last_announcement.clone());
         self.server_preview_html
             .set(state.server_preview_html.clone());
-        self.preview_in_progress.set(state.preview_in_progress);
+        self.preview_in_progress.set(false);
         self.runtime_context.set(state.runtime_context.clone());
         self.runtime_context_configured
             .set(state.runtime_context_configured);
@@ -924,6 +964,7 @@ impl AdminEditorRuntime {
             .set(state.active_runtime_scenario.clone());
         self.runtime_publish_gate_evaluation
             .set(state.runtime_publish_gate_evaluation.clone());
-        self.preview_request.set(state.preview_request.clone());
+        self.preview_request.set(None);
+        self.active_preview_request_id.set(None);
     }
 }
