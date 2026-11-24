@@ -32,15 +32,21 @@ pub enum UiIntent {
     Undo,
     Redo,
     RequestSave,
-    SaveStarted,
+    SaveStarted {
+        request_id: String,
+    },
     SaveSucceeded {
+        request_id: String,
         revision: String,
         project_hash: ProjectHash,
     },
-    SaveFailed,
+    SaveFailed {
+        request_id: Option<String>,
+    },
     /// The server rejected the save because the document changed elsewhere. Carries the
     /// expected and actual revision/hash labels for the user-facing explanation.
     SaveConflict {
+        request_id: Option<String>,
         expected: String,
         actual: String,
     },
@@ -321,18 +327,26 @@ impl FlyUiStateMachine {
                     command_sequence: self.state.dirty.command_sequence,
                 }]
             }
-            UiIntent::SaveStarted => {
+            UiIntent::SaveStarted { request_id } => {
                 self.require_edit_capability("edit", self.state.capabilities.edit)?;
+                if request_id.trim().is_empty() || request_id.len() > 128 {
+                    return Err(UiError::CapabilityUnavailable(
+                        "save request identity is missing or invalid".to_string(),
+                    ));
+                }
                 if self.state.dirty.save_conflict {
                     return Err(UiError::CapabilityUnavailable(
                         "save blocked by unresolved revision conflict".to_string(),
                     ));
                 }
-                if self.state.dirty.save_in_progress {
+                if self.state.dirty.save_in_progress
+                    || self.state.dirty.save_started_request_id.is_some()
+                {
                     return Err(UiError::CapabilityUnavailable(
                         "save already in progress".to_string(),
                     ));
                 }
+                self.state.dirty.save_started_request_id = Some(request_id);
                 self.state.dirty.save_started_sequence =
                     Some(self.state.dirty.command_sequence);
                 self.state.dirty.save_started_hash = self.state.dirty.project_hash;
@@ -341,14 +355,17 @@ impl FlyUiStateMachine {
                 vec![UiEffect::None]
             }
             UiIntent::SaveSucceeded {
+                request_id,
                 revision,
                 project_hash,
             } => {
                 if !self.state.dirty.save_in_progress
                     || self.state.dirty.save_started_sequence.is_none()
+                    || self.state.dirty.save_started_request_id.as_deref()
+                        != Some(request_id.as_str())
                 {
                     return Err(UiError::CapabilityUnavailable(
-                        "no active save to acknowledge".to_string(),
+                        "save response does not match the active request".to_string(),
                     ));
                 }
                 if self.state.dirty.save_started_hash.is_some_and(|hash| hash != project_hash) {
@@ -357,6 +374,7 @@ impl FlyUiStateMachine {
                     ));
                 }
                 self.state.dirty.save_started_hash = None;
+                self.state.dirty.save_started_request_id = None;
                 // The server acknowledged the snapshot that existed at SaveStarted, not
                 // edits made while the request was in flight. Never advertise those edits
                 // as saved or replace their local hash with the older snapshot's hash.
@@ -380,7 +398,21 @@ impl FlyUiStateMachine {
                     "Project saved".to_string()
                 })]
             }
-            UiIntent::SaveFailed => {
+            UiIntent::SaveFailed { request_id } => {
+                match (
+                    self.state.dirty.save_started_request_id.as_deref(),
+                    request_id.as_deref(),
+                    self.state.dirty.save_in_progress,
+                ) {
+                    (Some(active), Some(received), true) if active == received => {}
+                    (None, None, false) => {}
+                    _ => {
+                        return Err(UiError::CapabilityUnavailable(
+                            "save failure does not match the active request".to_string(),
+                        ));
+                    }
+                }
+                self.state.dirty.save_started_request_id = None;
                 self.state.dirty.save_started_hash = None;
                 self.state.dirty.save_started_sequence = None;
                 self.state.dirty.save_in_progress = false;
@@ -388,10 +420,28 @@ impl FlyUiStateMachine {
                 // Do not silently clear an unresolved revision conflict.
                 vec![UiEffect::Announce("Project save failed".to_string())]
             }
-            UiIntent::SaveConflict { expected, actual } => {
+            UiIntent::SaveConflict {
+                request_id,
+                expected,
+                actual,
+            } => {
+                match (
+                    self.state.dirty.save_started_request_id.as_deref(),
+                    request_id.as_deref(),
+                    self.state.dirty.save_in_progress,
+                ) {
+                    (Some(active), Some(received), true) if active == received => {}
+                    (None, None, false) => {}
+                    _ => {
+                        return Err(UiError::CapabilityUnavailable(
+                            "save conflict does not match the active request".to_string(),
+                        ));
+                    }
+                }
                 // A lost update is not a generic failure: the local changes are still
                 // unsaved (`dirty` stays set) and retrying against the same revision
                 // will conflict again, so the announcement tells the user to preserve their work.
+                self.state.dirty.save_started_request_id = None;
                 self.state.dirty.save_started_hash = None;
                 self.state.dirty.save_started_sequence = None;
                 self.state.dirty.dirty = true;
