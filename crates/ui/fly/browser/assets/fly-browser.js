@@ -1417,7 +1417,7 @@ export class FlyBrowserAdapter {
     if (
       this.requiresOperationReceipts &&
       this.pendingOperationUnresolved &&
-      request.intent !== "resolve_operation"
+      !READ_ONLY_INTENTS.has(request.intent)
     ) {
       return Promise.resolve(this.rejectPendingOperation(request));
     }
