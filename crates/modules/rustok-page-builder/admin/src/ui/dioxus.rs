@@ -468,6 +468,27 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
     let mut peer_write_channel = use_signal(|| None::<BrowserPeerWriteChannel>);
 
+    let session_configuration_key = format!(
+        "schemas:{:p}|evaluation:{:p}|context:{}|scenarios:{:p}|policy:{:p}|facade:{}",
+        props.trait_schemas.as_ref().map(Arc::as_ptr).unwrap_or(std::ptr::null()),
+        props
+            .editor_capability_evaluation
+            .as_ref()
+            .map(Arc::as_ptr)
+            .unwrap_or(std::ptr::null()),
+        serde_json::to_string(&props.runtime_context).unwrap_or_default(),
+        props
+            .runtime_scenarios
+            .as_ref()
+            .map(Arc::as_ptr)
+            .unwrap_or(std::ptr::null()),
+        props
+            .runtime_publish_gate_policy
+            .as_ref()
+            .map(Arc::as_ptr)
+            .unwrap_or(std::ptr::null()),
+        props.facade.is_some(),
+    );
     let session_configuration = (
         props.trait_schemas.clone(),
         props.editor_capability_evaluation.clone(),
@@ -476,7 +497,7 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
         props.runtime_publish_gate_policy.clone(),
         props.facade.is_some(),
     );
-    use_effect(use_reactive!(|session_configuration| {
+    use_effect(use_reactive!(|session_configuration_key| {
         let (
             trait_schemas,
             editor_capability_evaluation,
