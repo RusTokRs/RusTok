@@ -74,6 +74,7 @@ package_once() (
   local package_name="rustok-server-${release_version}-linux-x86_64"
   local package_root="$stage/$package_name"
   mkdir -p "$package_root/config"
+  chmod 0755 "$package_root" "$package_root/config"
   install -m 0755 "$source_binary" "$package_root/rustok-server"
   install -m 0644 "$source_license" "$package_root/LICENSE"
   install -m 0644 "$source_config/production.redis.example.yaml" "$package_root/config/production.yaml.example"
@@ -93,6 +94,7 @@ Development, test and browser-smoke configurations are not shipped.
 The production template contains placeholders and is rejected by production
 secret validation until it has been configured with deployment-specific values.
 README
+  chmod 0644 "$package_root/README.md"
   find "$package_root/config" -type f -exec chmod 0644 {} +
   find "$package_root/config" -type d -exec chmod 0755 {} +
 
@@ -127,7 +129,10 @@ if [[ $self_test -eq 1 ]]; then
   package_root="rustok-server-1.2.3-linux-x86_64"
   tar -tzf "$first" | grep -Fqx "$package_root/config/production.yaml.example" || fail "production config template is missing from archive"
   tar -tzf "$first" | grep -Fqx "$package_root/README.md" || fail "release package README is missing from archive"
-  if tar -tzf "$first" | grep -Eq '/(development|test|browser-smoke)\.yaml
+  if tar -tzf "$first" | grep -Eq '/(development|test|browser-smoke)[.]yaml$'; then
+    fail "development/test/browser-smoke config leaked into release archive"
+  fi
+  first_digest=$(sha256sum "$first" | awk '{print $1}')
   second_digest=$(sha256sum "$second" | awk '{print $1}')
   [[ "$first_digest" == "$second_digest" ]] || fail "deterministic package self-test produced different digests"
   echo "✔ deterministic server packaging self-test passed"

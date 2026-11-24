@@ -126,6 +126,9 @@ requireMarkers(packageScript, packageScriptPath, [
   'install -m 0644 "$source_config/production.redis.example.yaml" "$package_root/config/production.yaml.example"',
   "production.yaml.example",
   "RUSTOK_HTTPS=true",
+  "development/test/browser-smoke config leaked into release archive",
+  'if tar -tzf "$first" | grep -Eq \'/(development|test|browser-smoke)[.]yaml$\'; then',
+  'first_digest=$(sha256sum "$first"',
 ]);
 forbidMarkers(packageScript, packageScriptPath, [
   'cp -R "$source_config"/. "$package_root/config/"',
