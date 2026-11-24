@@ -24,7 +24,6 @@ fn optional_arc_changed<T>(current: &Option<Arc<T>>, next: &Option<Arc<T>>) -> b
 ///
 /// Contains zero framework-specific reactive primitives (no Leptos Signals, no Dioxus Signals).
 /// Can be managed by any reactive wrapper or reducer.
-#[derive(Clone)]
 fn conflict_actual_revision(message: &str) -> Option<String> {
     for marker in ["found `", "current revision `"] {
         if let Some((_, tail)) = message.split_once(marker) {
@@ -37,6 +36,7 @@ fn conflict_actual_revision(message: &str) -> Option<String> {
     None
 }
 
+#[derive(Clone)]
 pub struct EditorSessionState {
     pub controller: AdminCanvasController,
     pub last_error: Option<String>,
