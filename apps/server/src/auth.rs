@@ -246,17 +246,31 @@ pub fn hash_refresh_token(token: &str) -> String {
     rustok_auth::hash_refresh_token(token)
 }
 
+static DUMMY_PASSWORD_HASH: once_cell::sync::OnceCell<String> =
+    once_cell::sync::OnceCell::new();
+
 /// A valid Argon2id hash of a non-credential constant, generated once per
 /// process. Verifying a candidate password against it costs the same as
 /// verifying against a real stored hash, which keeps unknown-email logins
 /// indistinguishable by latency from wrong-password logins.
 pub fn dummy_password_hash() -> Result<String> {
-    static DUMMY: once_cell::sync::OnceCell<String> = once_cell::sync::OnceCell::new();
-    DUMMY
+    DUMMY_PASSWORD_HASH
         .get_or_try_init(|| {
             rustok_auth::hash_password("rustok-timing-equalization-dummy").map_err(auth_err)
         })
         .cloned()
+}
+
+/// Async callers must not perform the one-time Argon2 hash generation on a
+/// Tokio worker. The blocking pool also serializes initialization through the
+/// shared OnceCell when several first-time requests arrive concurrently.
+pub async fn dummy_password_hash_async() -> Result<String> {
+    if let Some(hash) = DUMMY_PASSWORD_HASH.get() {
+        return Ok(hash.clone());
+    }
+    tokio::task::spawn_blocking(dummy_password_hash)
+        .await
+        .map_err(|error| Error::Message(format!("dummy_password_hash_async spawn_blocking: {error}")))?
 }
 
 // ─── Error conversion ────────────────────────────────────────────────

@@ -224,6 +224,36 @@ pub fn extract_effective_client_ip(
     peer_ip
 }
 
+/// Whether a credential-bearing cookie must carry the Secure attribute.
+///
+/// Release builds share the host startup's production security posture even if
+/// an operator selected a non-production environment name. In debug builds,
+/// trusted forwarded HTTPS remains sufficient for local reverse-proxy setups.
+pub fn secure_cookie_required(
+    headers: &HeaderMap,
+    peer_ip: Option<IpAddr>,
+    settings: &RequestTrustSettings,
+) -> bool {
+    secure_cookie_required_for_environment(
+        headers,
+        peer_ip,
+        settings,
+        super::settings::is_production_security_mode(),
+    )
+}
+
+/// Testable policy boundary used by secure_cookie_required.
+pub fn secure_cookie_required_for_environment(
+    headers: &HeaderMap,
+    peer_ip: Option<IpAddr>,
+    settings: &RequestTrustSettings,
+    production_mode: bool,
+) -> bool {
+    production_mode
+        || extract_effective_proto(headers, peer_ip, settings)
+            .is_some_and(|value| value.eq_ignore_ascii_case("https"))
+}
+
 pub fn extract_effective_proto(
     headers: &HeaderMap,
     peer_ip: Option<IpAddr>,
@@ -256,6 +286,31 @@ mod tests {
             forwarded_headers_mode: ForwardedHeadersMode::TrustedOnly,
             trusted_proxy_cidrs: vec!["10.0.0.0/8".to_string()],
         }
+    }
+
+    #[test]
+    fn production_cookie_policy_forces_secure_without_forwarded_headers() {
+        let headers = HeaderMap::new();
+        let peer = Some(IpAddr::from([192, 0, 2, 4]));
+        let settings = RequestTrustSettings::default();
+
+        assert!(secure_cookie_required_for_environment(
+            &headers, peer, &settings, true,
+        ));
+        assert!(!secure_cookie_required_for_environment(
+            &headers, peer, &settings, false,
+        ));
+    }
+
+    #[test]
+    fn release_cookie_policy_is_aligned_with_production_startup_mode() {
+        let headers = HeaderMap::new();
+        let peer = Some(IpAddr::from([192, 0, 2, 4]));
+        let settings = RequestTrustSettings::default();
+        assert_eq!(
+            secure_cookie_required(&headers, peer, &settings),
+            super::settings::is_production_security_mode(),
+        );
     }
 
     #[test]

@@ -636,12 +636,21 @@ impl McpManagementService {
             ));
         }
 
+        // Enforce the host-owned workspace boundary in the service itself.
+        // Remote MCP tools do not pass through the HTTP scaffold middleware,
+        // so transport-only validation would leave an arbitrary-path write
+        // capability reachable through the MCP bridge.
+        let workspace_root =
+            crate::services::mcp_scaffold_workspace::authorize_mcp_scaffold_workspace(
+                &input.workspace_root,
+            )?;
+
         let draft = Self::claim_scaffold_draft_for_apply(
             db,
             tenant_id,
             draft_id,
             input.applied_by,
-            &input.workspace_root,
+            &workspace_root,
         )
         .await?;
 
@@ -657,14 +666,14 @@ impl McpManagementService {
                     tenant_id,
                     &draft,
                     input.applied_by,
-                    &input.workspace_root,
+                    &workspace_root,
                     &reason,
                 )
                 .await?;
                 return Err(Error::BadRequest(reason));
             }
         };
-        let apply_result = match apply_staged_scaffold(&staged_draft, &input.workspace_root) {
+        let apply_result = match apply_staged_scaffold(&staged_draft, &workspace_root) {
             Ok(response) => response,
             Err(error) => {
                 let reason = error.to_string();
@@ -673,7 +682,7 @@ impl McpManagementService {
                     tenant_id,
                     &draft,
                     input.applied_by,
-                    &input.workspace_root,
+                    &workspace_root,
                     &reason,
                 )
                 .await?;
@@ -684,7 +693,7 @@ impl McpManagementService {
         let txn = db.begin().await.map_err(map_db_err)?;
         let mut active: mcp_scaffold_drafts::ActiveModel = draft.clone().into();
         active.status = Set(MCP_SCAFFOLD_STATUS_APPLIED.to_string());
-        active.workspace_root = Set(Some(input.workspace_root.clone()));
+        active.workspace_root = Set(Some(workspace_root.clone()));
         active.applied_at = Set(Some(Utc::now().into()));
         active.updated_at = Set(Utc::now().into());
         let updated = active.update(&txn).await.map_err(map_db_err)?;
@@ -706,7 +715,7 @@ impl McpManagementService {
                     "draft_id": updated.id,
                     "slug": updated.slug,
                     "crate_name": updated.crate_name,
-                    "workspace_root": input.workspace_root,
+                    "workspace_root": workspace_root,
                 }),
                 created_by: input.applied_by,
             },
@@ -1087,6 +1096,33 @@ mod tests {
 
     // Concurrency-sensitive rotation/deactivation paths lock the client row
     // inside their transaction before touching child tokens.
+    #[test]
+    fn scaffold_apply_revalidates_host_workspace_before_claiming_or_writing() {
+        let source = include_str!("mcp_management.rs");
+        let start = source
+            .find("pub async fn apply_scaffold_draft(")
+            .expect("apply_scaffold_draft implementation exists");
+        let end = source[start..]
+            .find("async fn claim_scaffold_draft_for_apply(")
+            .map(|offset| start + offset)
+            .expect("claim helper follows apply_scaffold_draft");
+        let method = &source[start..end];
+
+        let authorize = method
+            .find("authorize_mcp_scaffold_workspace")
+            .expect("service-level workspace authorization exists");
+        let claim = method
+            .find("claim_scaffold_draft_for_apply")
+            .expect("draft claim exists");
+        let apply = method
+            .find("apply_staged_scaffold")
+            .expect("staged filesystem apply exists");
+
+        assert!(authorize < claim, "workspace must be authorized before draft claim");
+        assert!(claim < apply, "draft must be claimed before filesystem apply");
+        assert!(method.contains("apply_staged_scaffold(&staged_draft, &workspace_root)"));
+    }
+
     #[test]
     fn token_preview_does_not_leak_full_secret() {
         let preview = token_preview("mcp_super_secret_token_value");
