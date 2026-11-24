@@ -18,7 +18,7 @@ use rustok_rbac::{
     validate_persisted_role_grant_on,
 };
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter,
     QueryOrder, QuerySelect, Set, TransactionTrait, sea_query::Expr,
 };
 use std::{str::FromStr, sync::Arc};
