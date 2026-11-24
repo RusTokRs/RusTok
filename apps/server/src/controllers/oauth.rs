@@ -68,11 +68,13 @@ fn direct_user_required_error() -> TokenErrorResponse {
     }
 }
 
-/// The consent form is authenticated by the browser-session cookie, so
-/// it needs CSRF defense beyond `SameSite=Lax`: a short-lived keyed MAC
-/// binding the rendered form to the signed-in user and the exact
-/// authorization parameters. A forged cross-site submission (including
-/// from a same-site subdomain) cannot produce a valid value.
+/// Hosted browser authorization can rely on an ambient `SameSite=Lax`
+/// session cookie, which is still sent on cross-site top-level GET navigation.
+/// Therefore cookie-authenticated GET requests must render a confirmation
+/// form and never issue a code directly. The form is protected by a short-lived
+/// keyed MAC bound to the signed-in user and exact authorization parameters;
+/// a forged cross-site submission (including from a same-site subdomain)
+/// cannot produce a valid value.
 const CONSENT_CSRF_TTL_SECS: i64 = 10 * 60;
 
 #[allow(clippy::too_many_arguments)]
@@ -488,47 +490,40 @@ pub(crate) async fn authorize_browser_handler(
             .into_response();
     }
 
-    if !validated.app.requires_user_consent() {
-        return match issue_authorization_code(
-            runtime_ctx,
-            tenant_ctx.id,
-            &validated,
+    // An Authorization header is an explicit, non-ambient credential: a
+    // cross-site navigation cannot attach it. Preserve the existing fast path
+    // only for that transport when no consent is required or the requested
+    // scopes are already covered. Cookie-backed requests always require the
+    // CSRF-bound POST confirmation, even when consent is already active.
+    let explicit_bearer = headers.contains_key(AUTHORIZATION);
+    let requires_user_consent = validated.app.requires_user_consent();
+    let has_consent = if explicit_bearer && requires_user_consent {
+        match OAuthAppService::get_active_consent(
+            runtime_ctx.db(),
+            validated.app.id,
             current_user.user.id,
+            tenant_ctx.id,
+            &validated.requested_scopes,
         )
         .await
         {
-            Ok(code) => redirect_with_code(
-                &validated.redirect_uri,
-                &code,
-                validated.state.as_deref(),
-                &headers,
-                addr.ip(),
-                runtime_ctx.settings(),
-            )
-            .into_response(),
-            Err(error) => oauth_error_response(error),
-        };
-    }
-
-    let has_consent = match OAuthAppService::get_active_consent(
-        runtime_ctx.db(),
-        validated.app.id,
-        current_user.user.id,
-        tenant_ctx.id,
-        &validated.requested_scopes,
-    )
-    .await
-    {
-        Ok(has_consent) => has_consent,
-        Err(_) => {
-            return oauth_error_response(TokenErrorResponse {
-                error: "server_error".to_string(),
-                error_description: "Failed to verify consent".to_string(),
-            });
+            Ok(has_consent) => has_consent,
+            Err(_) => {
+                return oauth_error_response(TokenErrorResponse {
+                    error: "server_error".to_string(),
+                    error_description: "Failed to verify consent".to_string(),
+                });
+            }
         }
+    } else {
+        false
     };
 
-    if has_consent {
+    if may_skip_browser_authorization_confirmation(
+        explicit_bearer,
+        requires_user_consent,
+        has_consent,
+    ) {
         return match issue_authorization_code(
             runtime_ctx,
             tenant_ctx.id,
@@ -657,7 +652,7 @@ pub(crate) async fn consent_handler(
     if !csrf_valid {
         return oauth_error_response(TokenErrorResponse {
             error: "invalid_request".to_string(),
-            error_description: "Invalid or expired consent form; restart the authorization flow"
+            error_description: "Invalid or expired authorization confirmation; restart the authorization flow"
                 .to_string(),
         });
     }
@@ -682,20 +677,44 @@ pub(crate) async fn consent_handler(
         });
     }
 
-    if OAuthAppService::grant_consent_strict(
-        runtime_ctx.db(),
-        validated.app.id,
-        current_user.user.id,
-        tenant_ctx.id,
-        validated.requested_scopes.clone(),
-    )
-    .await
-    .is_err()
-    {
-        return oauth_error_response(TokenErrorResponse {
-            error: "server_error".to_string(),
-            error_description: "Failed to grant consent".to_string(),
-        });
+    // A confirmation is required for every cookie-backed browser flow, but
+    // consent itself is only persisted for app types that require it. Recheck
+    // coverage at POST time so an existing grant is not needlessly rewritten
+    // and a revoked/insufficient grant cannot authorize this code.
+    if validated.app.requires_user_consent() {
+        let has_consent = match OAuthAppService::get_active_consent(
+            runtime_ctx.db(),
+            validated.app.id,
+            current_user.user.id,
+            tenant_ctx.id,
+            &validated.requested_scopes,
+        )
+        .await
+        {
+            Ok(has_consent) => has_consent,
+            Err(_) => {
+                return oauth_error_response(TokenErrorResponse {
+                    error: "server_error".to_string(),
+                    error_description: "Failed to verify consent".to_string(),
+                });
+            }
+        };
+        if !has_consent
+            && OAuthAppService::grant_consent_strict(
+                runtime_ctx.db(),
+                validated.app.id,
+                current_user.user.id,
+                tenant_ctx.id,
+                validated.requested_scopes.clone(),
+            )
+            .await
+            .is_err()
+        {
+            return oauth_error_response(TokenErrorResponse {
+                error: "server_error".to_string(),
+                error_description: "Failed to grant consent".to_string(),
+            });
+        }
     }
 
     match issue_authorization_code(runtime_ctx, tenant_ctx.id, &validated, current_user.user.id)
@@ -772,6 +791,14 @@ pub(crate) async fn clear_browser_session_handler(
         )],
     )
         .into_response()
+}
+
+fn may_skip_browser_authorization_confirmation(
+    explicit_bearer: bool,
+    requires_user_consent: bool,
+    has_consent: bool,
+) -> bool {
+    explicit_bearer && (!requires_user_consent || has_consent)
 }
 
 fn is_valid_s256_challenge(challenge: &str) -> bool {
@@ -1942,6 +1969,26 @@ mod tests {
     fn consent_requirement_depends_on_app_type() {
         assert!(validated_request("third_party").app.requires_user_consent());
         assert!(!validated_request("first_party").app.requires_user_consent());
+    }
+
+    #[test]
+    fn cookie_browser_authorization_never_skips_confirmation() {
+        for (requires_consent, has_consent) in
+            [(false, false), (false, true), (true, false), (true, true)]
+        {
+            assert!(
+                !may_skip_browser_authorization_confirmation(
+                    false,
+                    requires_consent,
+                    has_consent,
+                ),
+                "cookie-authenticated GET must always require POST confirmation"
+            );
+        }
+
+        assert!(may_skip_browser_authorization_confirmation(true, false, false));
+        assert!(may_skip_browser_authorization_confirmation(true, true, true));
+        assert!(!may_skip_browser_authorization_confirmation(true, true, false));
     }
 
     #[tokio::test]
