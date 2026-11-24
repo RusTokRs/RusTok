@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use rustok_api::Permission;
 use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, IssueUserInviteCommand,
@@ -24,7 +24,7 @@ use sea_orm::{
 use std::{str::FromStr, sync::Arc};
 use uuid::Uuid;
 
-use crate::auth::hash_password_async;
+use crate::auth::{AuthConfig, hash_password_async};
 use sha2::{Digest, Sha256};
 
 use crate::models::{auth_invite_consumptions, auth_invites, sessions, users};
@@ -43,6 +43,21 @@ use super::{
 /// Invite tokens stay valid for a week: long enough for out-of-band
 /// delivery by an administrator, short enough to bound exposure.
 const INVITE_TOKEN_TTL_SECS: u64 = 7 * 24 * 60 * 60;
+
+fn invite_expiration_from_token(
+    config: &AuthConfig,
+    token: &str,
+) -> Result<DateTime<Utc>, AuthAdminMutationError> {
+    let claims =
+        crate::auth::decode_invite_token(config, token).map_err(super::internal_admin_error)?;
+    let timestamp = i64::try_from(claims.exp).map_err(|_| {
+        AuthAdminMutationError::Internal("invite token expiration is out of range".to_string())
+    })?;
+
+    DateTime::<Utc>::from_timestamp(timestamp, 0).ok_or_else(|| {
+        AuthAdminMutationError::Internal("invite token expiration is invalid".to_string())
+    })
+}
 
 fn invite_record(invite: auth_invites::Model) -> UserInviteRecord {
     UserInviteRecord {
@@ -991,6 +1006,10 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             INVITE_TOKEN_TTL_SECS,
         )
         .map_err(super::internal_admin_error)?;
+        // JWT expiration is serialized at whole-second precision. Persist that
+        // exact signed deadline so ledger validation cannot reject an invite
+        // because a second clock read added a fractional second.
+        let expires_at = invite_expiration_from_token(&self.auth_config, &token)?;
 
         let now = Utc::now();
         let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
@@ -1043,7 +1062,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             email: Set(email),
             role: Set(ledger_role),
             issued_by: Set(Some(context.actor_id)),
-            expires_at: Set((now + chrono::Duration::seconds(INVITE_TOKEN_TTL_SECS as i64)).into()),
+            expires_at: Set(expires_at.into()),
             revoked_at: Set(None),
             created_at: Set(now.into()),
         }
@@ -1160,12 +1179,35 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
 #[cfg(test)]
 mod tests {
     use super::{
-        ensure_custom_field_snapshot_is_current, map_role_mutation_policy_error, parse_user_role,
-        parse_user_status, status_change_requested,
+        ensure_custom_field_snapshot_is_current, invite_expiration_from_token,
+        map_role_mutation_policy_error, parse_user_role, parse_user_status,
+        status_change_requested, INVITE_TOKEN_TTL_SECS,
     };
     use rustok_auth::AuthAdminMutationError;
     use rustok_core::{UserRole, UserStatus};
     use rustok_rbac::RbacRoleMutationPolicyError;
+
+    #[test]
+    fn invite_ledger_expiration_matches_signed_jwt_second_precision() {
+        let config = AuthConfig::new("aB3!zY7@qW8#eR2$".repeat(4));
+        let token = crate::auth::encode_invite_token(
+            &config,
+            Uuid::new_v4(),
+            "invitee@example.test",
+            UserRole::Customer,
+            None,
+            INVITE_TOKEN_TTL_SECS,
+        )
+        .expect("encode invite token");
+        let claims =
+            crate::auth::decode_invite_token(&config, &token).expect("decode issued invite token");
+
+        let ledger_expiry =
+            invite_expiration_from_token(&config, &token).expect("resolve signed expiry");
+
+        assert_eq!(ledger_expiry.timestamp(), claims.exp as i64);
+        assert_eq!(ledger_expiry.timestamp_subsec_nanos(), 0);
+    }
 
     #[test]
     fn parses_admin_user_enums_case_insensitively() {
