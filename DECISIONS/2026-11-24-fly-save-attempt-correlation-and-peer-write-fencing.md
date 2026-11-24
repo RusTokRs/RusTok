@@ -43,9 +43,10 @@ operation and must not be blocked by a release-readiness policy when the actor h
    acknowledge, fail or conflict a newer attempt. Host callbacks receive the request, optional
    `SaveAttempt` and a completion callback; they must complete the exact request through
    `PageBuilderCapabilityExecution::complete`, which shares the facade validation path.
-   Known `REVISION_CONFLICT` and `PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN` codes survive the Leptos
-   server-function and GraphQL boundaries; a stale-revision response fences only the matching
-   attempt and retains the actual server revision when it is present.
+   Known `REVISION_CONFLICT`, `PAGE_DOCUMENT_SAVE_RECEIPT_EXPIRED` and
+   `PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN` codes survive the Leptos server-function and GraphQL
+   boundaries. A stale-revision or expired-receipt response fences only the matching attempt;
+   expired receipts are a known committed outcome requiring reload, not an unknown network result.
 3. **An in-flight attempt is not serialized.** The active request ID, save-start sequence and
    snapshot are transient. A restored controller starts without an active request and cannot
    accept a response from the previous controller. The host must use the separate server receipt
@@ -82,8 +83,10 @@ operation and must not be blocked by a release-readiness policy when the actor h
 
 - `UiIntent` save transitions and the public host callback context carry request identity.
 - Callback-backed hosts must call `PageBuilderCapabilityExecution::complete` once with the
-  result of the exact asynchronous request; the runtime validates and applies the captured
-  `SaveAttempt` before acknowledging or failing it.
+  result of the exact asynchronous request; duplicate completions are ignored and dropping an
+  incomplete execution fails the matching attempt instead of leaving the editor stuck in
+  `save_in_progress`. The runtime validates and applies the captured `SaveAttempt` before
+  acknowledging or failing it.
 - Leptos Rust and JS adapters can share one logical editor identity without self-conflicting;
   independent tabs and editor roots remain isolated.
 - Dioxus and Leptos hosts now use the same local correlation and advisory peer-write semantics.
