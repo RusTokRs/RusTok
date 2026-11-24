@@ -447,7 +447,7 @@ impl BlogTaxonomyPort for NoopBlogTaxonomyPort {
             let find_stmt = match backend {
                 DbBackend::Sqlite => Statement::from_sql_and_values(
                     backend,
-                    "SELECT canonical_key FROM taxonomy_terms WHERE tenant_id = ? AND id = ?",
+                    "SELECT canonical_key FROM taxonomy_terms WHERE tenant_id = ?1 AND id = ?2",
                     [tenant_id.into(), id.into()],
                 ),
                 _ => Statement::from_sql_and_values(
@@ -465,7 +465,7 @@ impl BlogTaxonomyPort for NoopBlogTaxonomyPort {
                 }
             };
             let canonical_key = row_opt
-                .and_then(|r| r.try_get::<String>("", "canonical_key").ok())
+                .and_then(|r| r.try_get_by_index::<String>(0).ok())
                 .unwrap_or_else(|| id.to_string());
             map.insert(
                 id,
@@ -549,7 +549,7 @@ impl BlogTaxonomyPort for NoopBlogTaxonomyPort {
             let find_stmt = match backend {
                 DbBackend::Sqlite => Statement::from_sql_and_values(
                     backend,
-                    "SELECT id FROM taxonomy_terms WHERE tenant_id = ? AND canonical_key = ?",
+                    "SELECT id FROM taxonomy_terms WHERE tenant_id = ?1 AND canonical_key = ?2",
                     [tenant_id.into(), key.clone().into()],
                 ),
                 _ => Statement::from_sql_and_values(
@@ -559,7 +559,7 @@ impl BlogTaxonomyPort for NoopBlogTaxonomyPort {
                 ),
             };
             if let Ok(Some(row)) = txn.query_one_raw(find_stmt).await {
-                if let Ok(existing_id) = row.try_get::<Uuid>("", "id") {
+                if let Ok(existing_id) = row.try_get_by_index::<Uuid>(0) {
                     ids.push(existing_id);
                     continue;
                 }
@@ -568,12 +568,12 @@ impl BlogTaxonomyPort for NoopBlogTaxonomyPort {
             let insert_stmt = match backend {
                 DbBackend::Sqlite => Statement::from_sql_and_values(
                     backend,
-                    "INSERT OR IGNORE INTO taxonomy_terms (id, tenant_id, kind, scope_type, scope_value, canonical_key, revision, created_at, updated_at) VALUES (?, ?, 'tag', 'module', 'blog', ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                    "INSERT OR IGNORE INTO taxonomy_terms (id, tenant_id, kind, scope_type, scope_value, canonical_key, created_at, updated_at) VALUES (?1, ?2, 'tag', 'module', 'blog', ?3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
                     [id.into(), tenant_id.into(), key.into()],
                 ),
                 _ => Statement::from_sql_and_values(
                     backend,
-                    "INSERT INTO taxonomy_terms (id, tenant_id, kind, scope_type, scope_value, canonical_key, revision, created_at, updated_at) VALUES ($1, $2, 'tag', 'module', 'blog', $3, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT DO NOTHING",
+                    "INSERT INTO taxonomy_terms (id, tenant_id, kind, scope_type, scope_value, canonical_key, created_at, updated_at) VALUES ($1, $2, 'tag', 'module', 'blog', $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT DO NOTHING",
                     [id.into(), tenant_id.into(), key.into()],
                 ),
             };
@@ -598,12 +598,12 @@ impl BlogTaxonomyPort for NoopBlogTaxonomyPort {
         let insert_stmt = match backend {
             DbBackend::Sqlite => Statement::from_sql_and_values(
                 backend,
-                "INSERT OR IGNORE INTO taxonomy_terms (id, tenant_id, kind, scope_type, scope_value, canonical_key, revision, created_at, updated_at) VALUES (?, ?, 'tag', 'module', 'blog', ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                "INSERT OR IGNORE INTO taxonomy_terms (id, tenant_id, kind, scope_type, scope_value, canonical_key, created_at, updated_at) VALUES (?1, ?2, 'tag', 'module', 'blog', ?3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
                 [id.into(), tenant_id.into(), canonical_key.clone().into()],
             ),
             _ => Statement::from_sql_and_values(
                 backend,
-                "INSERT INTO taxonomy_terms (id, tenant_id, kind, scope_type, scope_value, canonical_key, revision, created_at, updated_at) VALUES ($1, $2, 'tag', 'module', 'blog', $3, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT DO NOTHING",
+                "INSERT INTO taxonomy_terms (id, tenant_id, kind, scope_type, scope_value, canonical_key, created_at, updated_at) VALUES ($1, $2, 'tag', 'module', 'blog', $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT DO NOTHING",
                 [id.into(), tenant_id.into(), canonical_key.clone().into()],
             ),
         };
@@ -619,27 +619,48 @@ impl BlogTaxonomyPort for NoopBlogTaxonomyPort {
         _security: &SecurityContext,
         input: BlogTaxonomyUpdateTagInput,
     ) -> Result<BlogTaxonomyTagSnapshot, BlogError> {
-        let canonical_key = input.slug.clone().unwrap_or_else(|| tag_id.to_string());
         let backend = txn.get_database_backend();
-        let update_stmt = match backend {
-            DbBackend::Sqlite => Statement::from_sql_and_values(
-                backend,
-                "UPDATE taxonomy_terms SET canonical_key = ?, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = ? AND id = ?",
-                [canonical_key.clone().into(), tenant_id.into(), tag_id.into()],
-            ),
-            _ => Statement::from_sql_and_values(
-                backend,
-                "UPDATE taxonomy_terms SET canonical_key = $1, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = $2 AND id = $3",
-                [canonical_key.clone().into(), tenant_id.into(), tag_id.into()],
-            ),
+        let canonical_key = if let Some(slug) = input.slug {
+            let update_stmt = match backend {
+                DbBackend::Sqlite => Statement::from_sql_and_values(
+                    backend,
+                    "UPDATE taxonomy_terms SET canonical_key = ?1, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = ?2 AND id = ?3",
+                    [slug.clone().into(), tenant_id.into(), tag_id.into()],
+                ),
+                _ => Statement::from_sql_and_values(
+                    backend,
+                    "UPDATE taxonomy_terms SET canonical_key = $1, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = $2 AND id = $3",
+                    [slug.clone().into(), tenant_id.into(), tag_id.into()],
+                ),
+            };
+            let _ = txn.execute_raw(update_stmt).await;
+            slug
+        } else {
+            let find_stmt = match backend {
+                DbBackend::Sqlite => Statement::from_sql_and_values(
+                    backend,
+                    "SELECT canonical_key FROM taxonomy_terms WHERE tenant_id = ?1 AND id = ?2",
+                    [tenant_id.into(), tag_id.into()],
+                ),
+                _ => Statement::from_sql_and_values(
+                    backend,
+                    "SELECT canonical_key FROM taxonomy_terms WHERE tenant_id = $1 AND id = $2",
+                    [tenant_id.into(), tag_id.into()],
+                ),
+            };
+            txn.query_one_raw(find_stmt)
+                .await
+                .ok()
+                .flatten()
+                .and_then(|r| r.try_get_by_index::<String>(0).ok())
+                .unwrap_or_else(|| tag_id.to_string())
         };
-        let _ = txn.execute_raw(update_stmt).await;
         Ok(BlogTaxonomyTagSnapshot {
             id: tag_id,
             tenant_id,
-            canonical_key,
-            name: input.name.unwrap_or_default(),
-            slug: input.slug.unwrap_or_default(),
+            canonical_key: canonical_key.clone(),
+            name: input.name.unwrap_or_else(|| canonical_key.clone()),
+            slug: canonical_key,
             scope_type: "module".to_string(),
             scope_value: Some("blog".to_string()),
             locale: input.locale.clone(),
