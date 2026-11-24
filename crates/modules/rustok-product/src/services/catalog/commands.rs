@@ -88,6 +88,15 @@ fn validate_variant_prices(prices: &[PriceInput]) -> CommerceResult<()> {
                 price.currency_code
             )));
         }
+        if price.amount < rust_decimal::Decimal::ZERO
+            || price
+                .compare_at_amount
+                .is_some_and(|amount| amount < rust_decimal::Decimal::ZERO)
+        {
+            return Err(CommerceError::Validation(
+                "Variant prices and compare-at amounts cannot be negative".to_owned(),
+            ));
+        }
         let channel_slug = normalize_public_channel_slug(price.channel_slug.as_deref());
         let key = (price.channel_id, channel_slug, currency);
         if !seen.insert(key) {
@@ -3257,6 +3266,23 @@ mod tests {
         let err = validate_variant_prices(&prices).unwrap_err();
         assert!(matches!(err, CommerceError::Validation(_)));
     }
+    #[test]
+    fn validate_variant_prices_rejects_negative_amounts_before_pricing_io() {
+        for (amount, compare_at_amount) in [
+            (Decimal::new(-1, 0), None),
+            (Decimal::ZERO, Some(Decimal::new(-1, 0))),
+        ] {
+            let prices = vec![PriceInput {
+                currency_code: "USD".to_owned(),
+                channel_id: None,
+                channel_slug: None,
+                amount,
+                compare_at_amount,
+            }];
+            assert!(validate_variant_prices(&prices).is_err());
+        }
+    }
+
     #[test]
     fn validate_variant_prices_rejects_non_ascii_or_non_alphabetic_currency_codes() {
         for currency_code in ["1$!", "US1", "UŠD", "USD ", ""] {
