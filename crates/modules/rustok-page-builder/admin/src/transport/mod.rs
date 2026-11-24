@@ -72,10 +72,25 @@ pub struct PageBuilderAdminFacadeError {
 }
 
 impl PageBuilderAdminFacadeError {
+    /// Rehydrates stable save codes from server-function suffixes and GraphQL business errors.
     pub fn new(message: impl Into<String>) -> Self {
+        let message = message.into();
+        let stable_code = if message.contains("PAGE_DOCUMENT_REVISION_CONFLICT") {
+            Some("REVISION_CONFLICT")
+        } else if message.contains("PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN") {
+            Some("PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN")
+        } else if message.ends_with(" (REVISION_CONFLICT)") {
+            Some("REVISION_CONFLICT")
+        } else {
+            None
+        };
+        let message = stable_code
+            .and_then(|code| message.strip_suffix(&format!(" ({code})")))
+            .unwrap_or(&message)
+            .to_string();
         Self {
-            message: message.into(),
-            stable_code: None,
+            message,
+            stable_code: stable_code.map(str::to_string),
         }
     }
 
@@ -93,6 +108,56 @@ impl std::fmt::Display for PageBuilderAdminFacadeError {
             Some(code) => write!(formatter, "{} ({code})", self.message),
             None => formatter.write_str(&self.message),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn server_function_error_round_trip_preserves_stable_save_codes() {
+        for code in ["REVISION_CONFLICT", "PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN"] {
+            let server_error = PageBuilderAdminFacadeError::with_stable_code(
+                "Page Builder save failed",
+                code,
+            )
+            .to_string();
+            let client_error = PageBuilderAdminFacadeError::new(format!(
+                "Server function error: {server_error}"
+            ));
+            assert_eq!(client_error.stable_code.as_deref(), Some(code));
+            assert_eq!(
+                client_error.message,
+                "Server function error: Page Builder save failed"
+            );
+        }
+    }
+
+    #[test]
+    fn graphql_revision_conflict_code_is_normalized_for_both_hosts() {
+        let error = PageBuilderAdminFacadeError::new(
+            "GraphQL error: Page document changed concurrently (PAGE_DOCUMENT_REVISION_CONFLICT): stale revision",
+        );
+        assert_eq!(error.stable_code.as_deref(), Some("REVISION_CONFLICT"));
+    }
+
+    #[test]
+    fn unknown_save_outcome_code_survives_graphql_and_server_function_wrappers() {
+        let error = PageBuilderAdminFacadeError::new(
+            "GraphQL error: PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN: preserve the draft",
+        );
+        assert_eq!(
+            error.stable_code.as_deref(),
+            Some("PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN")
+        );
+    }
+
+    #[test]
+    fn unknown_parenthesized_messages_are_not_misclassified() {
+        let error = PageBuilderAdminFacadeError::new("provider returned (CUSTOM_CODE)");
+        assert_eq!(error.stable_code, None);
+        assert_eq!(error.message, "provider returned (CUSTOM_CODE)");
     }
 }
 
