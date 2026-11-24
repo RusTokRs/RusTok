@@ -1378,8 +1378,8 @@ fn required<'a>(
 mod tests {
     use super::{
         PreparedUserTokens, REFRESH_TOKEN_GRANT, authenticate_client, commit_refresh_rotation,
-        refresh_family_deadline, require_grant, resolve_client, scopes_for_refresh,
-        validate_requested_scopes,
+        lock_active_oauth_subject, refresh_family_deadline, require_grant, resolve_client,
+        scopes_for_refresh, validate_requested_scopes,
     };
     use crate::models::{
         oauth_apps, oauth_authorization_codes as oauth_codes, oauth_consents, oauth_tokens,
@@ -1389,9 +1389,67 @@ mod tests {
     use rustok_auth::TokenRequest;
     use sea_orm::{
         ActiveModelTrait, ConnectionTrait, Database, EntityTrait, PaginatorTrait, Schema, Set,
-        prelude::DateTimeWithTimeZone,
+        TransactionTrait, prelude::DateTimeWithTimeZone,
     };
     use uuid::Uuid;
+
+    #[tokio::test]
+    async fn oauth_subject_lock_requires_verified_email_when_enabled() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("SQLite database");
+        let backend = db.get_database_backend();
+        let schema = Schema::new(backend);
+        db.execute_raw(backend.build(&schema.create_table_from_entity(tenants::Entity)))
+            .await
+            .expect("tenants table");
+        db.execute_raw(backend.build(&schema.create_table_from_entity(users::Entity)))
+            .await
+            .expect("users table");
+
+        let tenant = tenants::ActiveModel::new("Email verification tenant", "email-verification")
+            .insert(&db)
+            .await
+            .expect("tenant");
+        let user = users::ActiveModel::new(tenant.id, "unverified@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("unverified user");
+
+        let tx = db.begin().await.expect("begin unverified subject transaction");
+        let error = lock_active_oauth_subject(
+            &tx,
+            tenant.id,
+            user.id,
+            user.created_at.clone(),
+            true,
+        )
+        .await
+        .expect_err("unverified OAuth subjects must be rejected");
+        assert_eq!(error.error, "invalid_grant");
+        tx.rollback().await.expect("rollback unverified subject transaction");
+
+        users::ActiveModel {
+            id: Set(user.id),
+            email_verified_at: Set(Some(Utc::now().into())),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("verify user");
+
+        let tx = db.begin().await.expect("begin verified subject transaction");
+        lock_active_oauth_subject(
+            &tx,
+            tenant.id,
+            user.id,
+            user.created_at,
+            true,
+        )
+        .await
+        .expect("verified OAuth subject must be accepted");
+        tx.rollback().await.expect("rollback verified subject transaction");
+    }
 
     #[tokio::test]
     async fn first_party_pkce_does_not_require_secret_even_when_ssr_secret_exists() {
