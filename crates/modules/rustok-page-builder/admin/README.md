@@ -214,7 +214,8 @@ scenario/context and lifecycle flags in the same session. The Page Builder Dioxu
 the isolated iframe canvas, forwards geometry/hover/focus/keyboard events, completes palette and
 selected-layer drag/drop, commits bounded resize patches and participates in peer-write fencing.
 The Leptos Rust runtime and JS adapter share a document nonce plus editor-root scope so their
-own confirmed writes advance one baseline; other tabs or editor roots fence stale editors.
+own confirmed writes advance one document baseline; independent tabs fence stale editors, while
+multiple roots in one tab share that baseline and remain protected by server revision checks.
 These BroadcastChannel notices are advisory and do not replace server revision CAS or receipts.
 Mounted browser/CSP verification remains outstanding.
 
