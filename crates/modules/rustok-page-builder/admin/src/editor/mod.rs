@@ -67,6 +67,7 @@ pub use modular_canvas::AdminCanvas;
 pub(crate) use publish_scenario_selector::PublishScenarioSelectorPanel;
 pub(crate) use resize_handles::ResizeHandles;
 pub(crate) use runtime::AdminEditorRuntime;
+pub use runtime::PageBuilderCapabilityExecution;
 pub(crate) use runtime_publish_gate::RuntimePublishGatePanel;
 pub(crate) use runtime_scenario_matrix::RuntimeScenarioMatrixPanel;
 pub(crate) use runtime_scenario_regression::RuntimeScenarioRegressionPanel;
