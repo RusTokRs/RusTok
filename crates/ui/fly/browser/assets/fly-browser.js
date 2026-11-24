@@ -613,6 +613,15 @@ function reportSaveFailure(adapter, failure, request) {
   adapter.root.dataset.flySaveFailed = "true";
   const code = nonEmptyString(failure.code);
   if (code === "REVISION_CONFLICT" || code === "PAGE_DOCUMENT_REVISION_CONFLICT") {
+    const expectedRevision = nonEmptyString(failure.expected_revision);
+    const currentRevision = nonEmptyString(adapter.root.dataset.flyRevision);
+    if (expectedRevision && currentRevision && expectedRevision !== currentRevision) {
+      // A reload has already rendered the newer server revision. Retire the
+      // parked conflict instead of trapping the freshly loaded editor read-only.
+      clearSaveFailure(adapter.pageId);
+      delete adapter.root.dataset.flySaveFailed;
+      return;
+    }
     fencePeerWriteConflict(adapter, {
       source: "server",
       reason: "because the server rejected a stale revision",
@@ -658,8 +667,16 @@ function settleSaveFailure(adapter, result, request) {
     return;
   }
   if (isObject(result.save_failure)) {
-    writeSaveFailure(adapter.pageId, result.save_failure);
-    reportSaveFailure(adapter, result.save_failure, request);
+    const failure = { ...result.save_failure };
+    const code = nonEmptyString(failure.code);
+    if (
+      (code === "REVISION_CONFLICT" || code === "PAGE_DOCUMENT_REVISION_CONFLICT") &&
+      !nonEmptyString(failure.expected_revision)
+    ) {
+      failure.expected_revision = nonEmptyString(adapter.root.dataset.flyRevision);
+    }
+    writeSaveFailure(adapter.pageId, failure);
+    reportSaveFailure(adapter, failure, request);
     return;
   }
   const state = isObject(result.result) ? result.result : result;
