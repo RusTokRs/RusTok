@@ -29,10 +29,13 @@ by the separate release/publish gate. Leptos Rust and JS adapters share a docume
 editor-root scope on the peer-write channel, avoiding same-editor false conflicts while fencing
 other tabs and editor roots; the Dioxus host also participates. The Dioxus Page Builder host now
 has source integration for the isolated iframe, pointer/drag/drop and bounded resize path.
-**Still OPEN:** durable server-side idempotency and unknown-outcome reconciliation across
-independent sessions, mounted CSP/browser verification, and final integration audit. Peer
-notifications remain advisory; server revision checks are authoritative. No build, Rust test,
-lint or Playwright run is claimed for this pass.
+**Still OPEN:** complete idempotency/recovery coverage for every direct writer (including
+Next, Dioxus and restore/lifecycle paths), durable client reconciliation after remount, and
+multi-connection database evidence. The Pages PageService receipt and Leptos SSR replay path
+are implemented in source, but this does not prove every host uses them. Mounted CSP/browser
+verification and the final integration audit also remain. Peer notifications are advisory;
+server revision checks and receipts are authoritative. No build, Rust test, lint or Playwright
+run is claimed for this pass.
 
 Reduced-motion follow-up: the shared Fly browser asset now uses instant scrolling for
 `scroll_to` when the target document requests reduced motion, including in the presence of
