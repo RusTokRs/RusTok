@@ -29,3 +29,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 uuid.workspace = true
 rustok-ui-i18n.workspace = true
+
+[lints]
+workspace = true
+
