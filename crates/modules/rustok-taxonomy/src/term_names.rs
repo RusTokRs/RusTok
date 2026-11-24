@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use async_trait::async_trait;
 use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError};
 use rustok_taxonomy_ports::{
-    MAX_TAXONOMY_TERM_NAMES_PER_CALL, ReadTaxonomyTermNamesRequest,
-    TAXONOMY_TERM_NAMES_READ_CLAIM, TaxonomyTermNamesReadPort,
+    MAX_TAXONOMY_TERM_NAMES_PER_CALL, ReadTaxonomyTermNamesRequest, TAXONOMY_TERM_NAMES_READ_CLAIM,
+    TaxonomyTermNamesReadPort,
 };
 use uuid::Uuid;
 
@@ -19,7 +19,10 @@ impl TaxonomyTermNamesReadPort for TaxonomyService {
     ) -> Result<BTreeMap<Uuid, String>, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         if context.actor.kind == PortActorKind::User
-            || !context.claims.iter().any(|claim| claim == TAXONOMY_TERM_NAMES_READ_CLAIM)
+            || !context
+                .claims
+                .iter()
+                .any(|claim| claim == TAXONOMY_TERM_NAMES_READ_CLAIM)
         {
             return Err(PortError::forbidden(
                 "taxonomy.term_names_forbidden",
@@ -29,10 +32,12 @@ impl TaxonomyTermNamesReadPort for TaxonomyService {
         let tenant_id = Uuid::parse_str(&context.tenant_id)
             .ok()
             .filter(|tenant_id| !tenant_id.is_nil())
-            .ok_or_else(|| PortError::validation(
-                "taxonomy.tenant_id_invalid",
-                "Taxonomy tenant identity is invalid",
-            ))?;
+            .ok_or_else(|| {
+                PortError::validation(
+                    "taxonomy.tenant_id_invalid",
+                    "Taxonomy tenant identity is invalid",
+                )
+            })?;
         if request.term_ids.len() > MAX_TAXONOMY_TERM_NAMES_PER_CALL
             || request.term_ids.iter().any(Uuid::is_nil)
         {

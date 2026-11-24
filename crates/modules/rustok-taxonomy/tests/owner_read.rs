@@ -294,3 +294,78 @@ async fn owner_reads_resolve_uncommitted_terms_on_the_caller_transaction() {
         .unwrap();
     assert!(after.is_empty());
 }
+
+#[tokio::test]
+async fn published_term_names_port_enforces_tenant_capability_and_bounds() {
+    use rustok_api::{PortActor, PortContext, PortErrorKind};
+    use rustok_taxonomy_ports::{
+        MAX_TAXONOMY_TERM_NAMES_PER_CALL, ReadTaxonomyTermNamesRequest,
+        TAXONOMY_TERM_NAMES_READ_CLAIM, TaxonomyTermNamesReadPort,
+    };
+
+    let (_, service) = setup().await;
+    let tenant = Uuid::new_v4();
+    let term = create_term(
+        &service,
+        tenant,
+        TaxonomyScopeType::Module,
+        Some("product"),
+        "Shoes",
+        "shoes",
+    )
+    .await;
+    let other = create_term(
+        &service,
+        Uuid::new_v4(),
+        TaxonomyScopeType::Global,
+        None,
+        "Hidden",
+        "hidden",
+    )
+    .await;
+    let request = ReadTaxonomyTermNamesRequest {
+        term_ids: vec![term, other, Uuid::new_v4()],
+        fallback_locale: Some("en".into()),
+    };
+    let context = PortContext::new(
+        tenant.to_string(),
+        PortActor::service("product"),
+        "de",
+        "term-names-test",
+    );
+    let error = service
+        .read_term_names(context.clone(), request.clone())
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, "port.deadline_required");
+    let context = context.with_deadline(std::time::Duration::from_secs(2));
+    let error = service
+        .read_term_names(context.clone(), request.clone())
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, PortErrorKind::Forbidden);
+    let context = context.with_claim(TAXONOMY_TERM_NAMES_READ_CLAIM);
+    let names = service
+        .read_term_names(context.clone(), request.clone())
+        .await
+        .unwrap();
+    assert_eq!(names, [(term, String::from("Shoes"))].into_iter().collect());
+
+    let mut user_context = context.clone();
+    user_context.actor = PortActor::user(Uuid::new_v4().to_string());
+    let error = service
+        .read_term_names(user_context, request)
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, PortErrorKind::Forbidden);
+
+    let oversized = ReadTaxonomyTermNamesRequest {
+        term_ids: vec![term; MAX_TAXONOMY_TERM_NAMES_PER_CALL + 1],
+        fallback_locale: None,
+    };
+    let error = service
+        .read_term_names(context, oversized)
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, "taxonomy.term_name_ids_invalid");
+}

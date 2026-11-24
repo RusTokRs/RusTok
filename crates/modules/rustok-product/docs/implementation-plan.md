@@ -556,7 +556,14 @@ retain their own page limits and projection rules. The standalone Product
 process still needs a Taxonomy binding to serve pages with tagged products.
 If a selected page requires tag names, both RPCs return the existing typed
 unavailable error. The next deployment gate for these lists is an outgoing
-Taxonomy read adapter and mounted Commerce verification.
+Taxonomy gRPC adapter and mounted Commerce verification.
+
+Product now reads term names through Taxonomy's published
+`TaxonomyTermNamesReadPort`. The embedded provider uses Taxonomy's existing
+tenant-scoped locale resolution. Product uses it for list, detail and Index tag
+projections, with bounded requests and no fallback after a bound provider fails.
+Product write responses still resolve names on the same native transaction as
+the uncommitted tag links and terms.
 
 The PostgreSQL 16 `flex_schema_projection` fixture ran both lists against the
 standalone binary and the embedded Product owner. It verified tenant and channel

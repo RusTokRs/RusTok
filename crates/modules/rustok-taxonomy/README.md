@@ -39,6 +39,10 @@ See [CRATE_API.md](CRATE_API.md) for the verified public crate API specification
 - Is the shared vocabulary layer for `blog`, `forum`, `product`, `profiles`, and future modules
   while leaving entity-term relation tables module-owned.
 
+The `rustok-taxonomy-ports` package publishes the tenant-scoped name read port
+used by Product for catalog projections. The in-process provider uses the
+canonical Taxonomy locale resolution.
+
 ## Entry points
 
 - `TaxonomyModule`

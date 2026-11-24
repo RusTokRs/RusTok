@@ -151,7 +151,8 @@ pub struct CatalogService {
     pub(crate) pricing_port: Option<std::sync::Arc<dyn ProductPricingPort>>,
     pub(crate) inventory_port: Option<std::sync::Arc<dyn crate::ports::ProductInventoryPort>>,
     pub(crate) taxonomy_port: Option<std::sync::Arc<dyn crate::ports::ProductTaxonomyPort>>,
-    taxonomy_term_names_port: Option<std::sync::Arc<dyn rustok_taxonomy_ports::TaxonomyTermNamesReadPort>>,
+    taxonomy_term_names_port:
+        Option<std::sync::Arc<dyn rustok_taxonomy_ports::TaxonomyTermNamesReadPort>>,
     flex_schema_read_port: Option<std::sync::Arc<dyn flex_ports::FlexAttachedSchemaReadPort>>,
     flex_schema_source: ProductFlexSchemaSource,
 }
@@ -214,6 +215,7 @@ impl CatalogService {
         self
     }
 
+    /// Selects the provider for reads outside the Product write transaction.
     pub fn with_taxonomy_term_names_port(
         mut self,
         port: std::sync::Arc<dyn rustok_taxonomy_ports::TaxonomyTermNamesReadPort>,

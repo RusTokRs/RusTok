@@ -33,6 +33,14 @@ Translation providers after their cutovers.
 - FBA status: `boundary_ready`
 - Structural shape: `no_ui_boundary`
 
+`rustok-taxonomy-ports` publishes `TaxonomyTermNamesReadPort` for Product
+catalog projections. The embedded provider requires a service or system actor,
+the term-name read claim and a deadline. It resolves up to 256 tenant-scoped IDs
+per request using the same locale fallback as native Taxonomy reads. Missing
+and foreign-tenant terms are omitted. Product retains its native transaction
+seam for reading names of terms written in the same transaction. Network
+binding and separate-process verification remain open.
+
 ## Category ownership contract
 
 Taxonomy-owned Category data includes:

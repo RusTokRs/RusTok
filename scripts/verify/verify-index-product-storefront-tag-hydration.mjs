@@ -112,6 +112,17 @@ requireMarkers(migrationsPath, [
   'vec!["m20260812_000008_add_route_key_registry"]',
 ]);
 
+requireMarkers('crates/modules/rustok-taxonomy/ports/src/lib.rs', [
+  'pub trait TaxonomyTermNamesReadPort',
+  'MAX_TAXONOMY_TERM_NAMES_PER_CALL',
+]);
+requireMarkers('crates/modules/rustok-taxonomy/src/term_names.rs', [
+  'impl TaxonomyTermNamesReadPort for TaxonomyService',
+  'context.require_policy(PortCallPolicy::read())?',
+  'TAXONOMY_TERM_NAMES_READ_CLAIM',
+  '.resolve_term_names(',
+]);
+
 const taxonomyPath = 'crates/modules/rustok-taxonomy/src/services.rs';
 requireMarkers(taxonomyPath, [
   'pub async fn resolve_term_names(',
