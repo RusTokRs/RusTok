@@ -122,9 +122,14 @@ mod tests {
                 code,
             )
             .to_string();
-            let client_error = PageBuilderAdminFacadeError::new(server_error);
+            let client_error = PageBuilderAdminFacadeError::new(format!(
+                "Server function error: {server_error}"
+            ));
             assert_eq!(client_error.stable_code.as_deref(), Some(code));
-            assert_eq!(client_error.message, "Page Builder save failed");
+            assert_eq!(
+                client_error.message,
+                "Server function error: Page Builder save failed"
+            );
         }
     }
 
