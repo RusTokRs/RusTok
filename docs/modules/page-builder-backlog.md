@@ -26,9 +26,10 @@ whose local sequence and hash happen to repeat. Known server revision-conflict c
 the Leptos server-function boundary and fence only the matching attempt read-only; the classic
 JS adapter also fences server conflicts when BroadcastChannel misses a peer notification and
 clears the parked fence after a newer revision is reloaded. Draft save is edit-gated rather than blocked
-by the separate release/publish gate. Leptos Rust and JS adapters share a document nonce plus
-editor-root scope on the peer-write channel, avoiding same-editor false conflicts while fencing
-other tabs and editor roots; the Dioxus host also participates. The Dioxus Page Builder host now
+by the separate release/publish gate. Leptos Rust and JS adapters share one document-scoped
+sender identity on the peer-write channel, avoiding same-tab false conflicts while fencing
+independent tabs; the Dioxus host also participates. Multiple roots in one tab share the advisory
+baseline and remain protected by server revision checks. The Dioxus Page Builder host now
 has source integration for the isolated iframe, pointer/drag/drop and bounded resize path.
 **Still OPEN:** complete idempotency/recovery coverage for every direct writer (including
 Next, Dioxus and restore/lifecycle paths), durable client reconciliation after remount, and
@@ -1199,8 +1200,8 @@ replace mounted browser geometry, accessibility, or host integration evidence.
 Browser write queue hardening (source only): a per-instance queued write is dispatched only
 after a confirmed prior response with a nonempty revision and hash; ambiguous/failed saves drain
 pending commands without replay, including on timeout and stop. Cross-tab notifications now
-coordinate the JS adapter with Leptos and Dioxus Rust hosts using document/editor-scoped sender
-identities. This remains advisory; the browser transport cannot infer whether a failed network
+coordinate the JS adapter with Leptos and Dioxus Rust hosts using one document-scoped sender
+identity. This remains advisory; the browser transport cannot infer whether a failed network
 request committed remotely.
 
 The Leptos admin facade, Dioxus session and callback-host transport now carry the same
