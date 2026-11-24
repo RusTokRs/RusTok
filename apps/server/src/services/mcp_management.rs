@@ -646,14 +646,17 @@ impl McpManagementService {
             ));
         }
 
-        // Enforce the host-owned workspace boundary in the service itself.
-        // Remote MCP tools do not pass through the HTTP scaffold middleware,
-        // so transport-only validation would leave an arbitrary-path write
-        // capability reachable through the MCP bridge.
+        // Enforce host-global manage authority and the host-owned workspace
+        // boundary in the service itself. HTTP normalization is defense in
+        // depth; remote MCP and other transports can reach this service port
+        // without the direct apply request path, so transport-only validation
+        // would leave a host filesystem write capability reachable by any
+        // tenant-scoped MCP manager.
         let workspace_root =
             crate::services::mcp_scaffold_workspace::authorize_mcp_scaffold_workspace(
                 &input.workspace_root,
-            )?;
+            )
+            .await?;
 
         let draft = Self::claim_scaffold_draft_for_apply(
             db,
@@ -714,6 +717,8 @@ impl McpManagementService {
         active.updated_at = Set(Utc::now().into());
         let updated = active.update(&txn).await.map_err(map_db_err)?;
 
+        let host_authority_actor_id = crate::host_authority::current_host_authority()
+            .map(|authority| authority.actor_id());
         Self::record_audit_event_txn(
             &txn,
             RecordMcpAuditEventInput {
@@ -738,6 +743,8 @@ impl McpManagementService {
                     "slug": updated.slug,
                     "crate_name": updated.crate_name,
                     "workspace_root": workspace_root,
+                    "host_authority_actor_id": host_authority_actor_id,
+                    "host_authority": "manage",
                 }),
                 created_by: input.applied_by,
             },
