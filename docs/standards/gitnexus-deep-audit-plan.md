@@ -4,8 +4,8 @@
 
 - **Status:** ACTIVE
 - **Active Cycle:** Round 1 (Fresh Start from Scratch)
-- **Active Phase:** Phase GN-03 — Commerce, Financial & Marketplace Modules (20 модулей)
-- **Next Pending Component:** [`crates/modules/rustok-marketplace-allocation`](../../crates/modules/rustok-marketplace-allocation)
+- **Active Phase:** Phase GN-04 — Catalog, Media, Content & CMS Modules (14 модулей)
+- **Next Pending Component:** [`crates/modules/rustok-product`](../../crates/modules/rustok-product)
 - **Current main SHA:** `853a20f30f`
 - **Active Branch:** `main`
 
@@ -229,7 +229,7 @@ flowchart TD
 | `rustok-marketplace-commission` | `crates/modules/rustok-marketplace-commission` | [x] | [x] | [x] | [x] |
 | `rustok-marketplace-balance` | `crates/modules/rustok-marketplace-balance` | [x] | [x] | [x] | [x] |
 | `rustok-marketplace-payout` | `crates/modules/rustok-marketplace-payout` | [x] | [x] | [x] | [x] |
-| `rustok-marketplace-allocation` | `crates/modules/rustok-marketplace-allocation` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-marketplace-allocation` | `crates/modules/rustok-marketplace-allocation` | [x] | [x] | [x] | [x] |
 
 ### Phase GN-04 — Catalog, Media, Content & CMS Modules (14 модулей)
 | Компонент / Пакет | Путь в репозитории | В1..В4 | В5..В8 | В9..В12 | В13..В18 |
