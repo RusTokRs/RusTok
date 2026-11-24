@@ -11,10 +11,13 @@
 //! UI components, shared DataGrid, and search integration for B2B Billing & Settlements admin.
 
 use leptos::prelude::*;
+use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_grid::column::GridColumnDef;
 use rustok_grid::filter::GridFilterType;
 use rustok_grid::pagination::GridPagination;
 use rustok_grid_leptos::prelude::*;
+use rustok_ui_leptos::{Badge, BadgeVariant};
 
 use crate::core::{BillingAdminTableRow, filter_rows};
 use crate::i18n::t;
@@ -23,7 +26,13 @@ pub use BillingAdminPage as BillingAdmin;
 
 #[component]
 pub fn BillingAdminPage() -> impl IntoView {
-    let (search_query, set_search_query) = signal(String::new());
+    let query_param = use_route_query_value("q");
+    let query_writer = use_route_query_writer();
+    let _tenant = use_tenant();
+    let _token = use_token();
+
+    let initial_query = query_param.get().unwrap_or_default();
+    let (search_query, set_search_query) = signal(initial_query);
     let pagination = RwSignal::new(GridPagination::default());
 
     // Sample/initial data rows — in production, loaded via transport facade
@@ -71,11 +80,19 @@ pub fn BillingAdminPage() -> impl IntoView {
             "title" => view! {
                 <span class="font-medium text-foreground">{row.title}</span>
             }.into_any(),
-            "status" => view! {
-                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-secondary text-secondary-foreground">
-                    {row.status}
-                </span>
-            }.into_any(),
+            "status" => {
+                let variant = match row.status.as_str() {
+                    "active" => BadgeVariant::Success,
+                    "draft" => BadgeVariant::Secondary,
+                    "archived" => BadgeVariant::Outline,
+                    _ => BadgeVariant::Default,
+                };
+                view! {
+                    <Badge variant=variant>
+                        {row.status}
+                    </Badge>
+                }.into_any()
+            }
             "created_at" => view! {
                 <span class="text-xs text-muted-foreground">{row.created_at}</span>
             }.into_any(),
@@ -112,6 +129,16 @@ pub fn BillingAdminPage() -> impl IntoView {
         }
     });
 
+    let on_search_input = move |ev| {
+        let val = event_target_value(&ev);
+        if val.trim().is_empty() {
+            query_writer.clear_key("q");
+        } else {
+            query_writer.replace_value("q", val.clone());
+        }
+        set_search_query.set(val);
+    };
+
     view! {
         <div class="p-6 space-y-6">
             // Header with RBAC create button & title
@@ -140,7 +167,7 @@ pub fn BillingAdminPage() -> impl IntoView {
                         type="text"
                         placeholder={t(None, "billing-search-placeholder", "Search records...")}
                         prop:value=move || search_query.get()
-                        on:input=move |ev| set_search_query.set(event_target_value(&ev))
+                        on:input=on_search_input
                         class="w-full text-xs rounded-lg border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary transition-all"
                     />
                 </div>
