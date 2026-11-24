@@ -77,6 +77,10 @@ impl PageBuilderAdminFacadeError {
         let message = message.into();
         let stable_code = if message.contains("PAGE_DOCUMENT_REVISION_CONFLICT") {
             Some("REVISION_CONFLICT")
+        } else if message.contains("PAGE_DOCUMENT_SAVE_RECEIPT_EXPIRED") {
+            Some("SAVE_RECEIPT_EXPIRED")
+        } else if message.contains("PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT") {
+            Some("SAVE_IDEMPOTENCY_CONFLICT")
         } else if message.contains("PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN") {
             Some("PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN")
         } else if message.ends_with(" (REVISION_CONFLICT)") {
@@ -151,6 +155,19 @@ mod tests {
             error.stable_code.as_deref(),
             Some("PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN")
         );
+    }
+
+    #[test]
+    fn expired_and_reused_save_receipts_keep_their_terminal_codes() {
+        let expired = PageBuilderAdminFacadeError::new(
+            "GraphQL error: PAGE_DOCUMENT_SAVE_RECEIPT_EXPIRED: reload the current document",
+        );
+        assert_eq!(expired.stable_code.as_deref(), Some("SAVE_RECEIPT_EXPIRED"));
+
+        let reused = PageBuilderAdminFacadeError::new(
+            "GraphQL error: PAGE_DOCUMENT_SAVE_IDEMPOTENCY_CONFLICT: key belongs to another request",
+        );
+        assert_eq!(reused.stable_code.as_deref(), Some("SAVE_IDEMPOTENCY_CONFLICT"));
     }
 
     #[test]
