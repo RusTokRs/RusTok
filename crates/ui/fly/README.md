@@ -12,12 +12,12 @@ rendering, with zero UI-framework coupling.
 |---|---|---|---|
 | `fly` | `.` | **Stable** | Project model, lossless GrapesJS codec, commands, history, registries, validation, SSR renderer, dynamic/binding/context runtime |
 | `fly-ui` | `ui/` | **Stable** | `FlyUiStateMachine`, intents/effects, keymaps, capability policy, contribution model |
-| `fly-web` | `web/` | **Stable** | Geometry, hit-testing, coordinate transforms, iframe origin validation, real-DOM inline grants, cleanup registry |
+| `fly-web` | `web/` | **Stable** | Geometry, hit-testing, iframe origin validation, real-DOM inline grants, cleanup registry, cross-tab confirmed-write fencing with editor-scoped sender IDs |
 | `fly-browser` | `browser/` | **Stable** | SSR JS bridge (`assets/fly-browser.js`, `assets/fly-actions.js`), CSRF derivation, `BrowserIntentEnvelope` contract |
 | `fly-leptos` | `leptos/` | **Stable** | `FlyEditorWorkspace`, full authoring panels (`FlyPalette`, `FlyLayerTree`, `FlyCanvasPreview`, `FlyPageProperties`, `FlyComponentProperties`, `FlyStyleRules`, `FlyAssets`, `FlyThemeTokens`), dual runtime support (`ssr + browser-js` default, opt-in `wasm-client`) |
-| `fly-dioxus` | `dioxus/` | **Workspace foundation** | Layout shells and an editor workspace for palette/layers/preview/tokens/history; iframe orchestration, overlays, pointer capture, resizing and complete drop handling are not yet implemented. |
+| `fly-dioxus` | `dioxus/` | **Active** | Dioxus 0.7 workspace plus Page Builder host integration for an isolated iframe canvas, pointer/hover/focus/keyboard messages, palette and layer drag/drop, bounded resize and cross-tab write fencing; mounted browser verification remains pending. |
 
-Authoring surfaces in RusToK Admin (`crates/modules/rustok-page-builder/admin`) leverage `fly-leptos` and `fly-browser` in the canonical `ssr + browser-js` runtime.
+RusToK Page Builder admin integrates both `fly-leptos` and `fly-dioxus`: Leptos uses the canonical `ssr + browser-js` runtime with optional WASM dispatch, while the Dioxus host supplies an isolated iframe canvas and routes geometry, drag/drop and resize through the shared controller. Cross-tab notifications are advisory; server revision checks remain authoritative.
 
 ### Extraction readiness
 
@@ -89,11 +89,11 @@ crates/ui/fly/
 │   ├── assets/
 │   └── src/
 │
-├── leptos/                     <-- `fly-leptos`: layout shells for Leptos 0.8 (foundation only)
+├── leptos/                     <-- `fly-leptos`: full Leptos 0.8 authoring workspace
 │   ├── Cargo.toml
 │   └── src/
 │
-└── dioxus/                     <-- `fly-dioxus`: layout shells for Dioxus 0.7 (foundation only)
+└── dioxus/                     <-- `fly-dioxus`: Dioxus 0.7 workspace and web/desktop adapter
     ├── Cargo.toml
     └── src/
 ```
@@ -106,7 +106,7 @@ crates/ui/fly/
 ┌─────────────────────────────────────────────────────────────┐
 │                     UI Adapters Layer                       │
 │     fly-leptos (Leptos 0.8)       fly-dioxus (Dioxus 0.7)   │
-│     foundation only               foundation only          │
+│     workspace + SSR/browser       workspace + web/desktop  │
 │     - FlyFullEditor  (shell)      - FlyFullEditor  (shell)  │
 │     - FlyInlineEditor (shell)     - FlyInlineEditor (shell) │
 │     - FlyPreview     (shell)      - FlyPreview     (shell)  │
@@ -145,10 +145,10 @@ crates/ui/fly/
 |---|---|---|---|
 | `fly` | `.` | Core AST, GrapesJS codec, document model, revision tree | Pure Rust |
 | `fly-ui` | `ui/` | Presentation-neutral state machine, intents, shortcuts, capabilities | `fly` |
-| `fly-web` | `web/` | Browser geometry, hit-testing, iframe bridge, real DOM inline | `fly`, `fly-ui`, `web-sys` (WASM) |
+| `fly-web` | `web/` | Browser geometry, hit-testing, iframe bridge, peer-write channel, real DOM inline | `fly`, `fly-ui`, `web-sys` (WASM) |
 | `fly-browser` | `browser/` | Standalone JS bridge asset for classic SSR | Pure Rust |
-| `fly-leptos` | `leptos/` | Leptos 0.8 layout shells (foundation only) | `fly-web`, `leptos` |
-| `fly-dioxus` | `dioxus/` | Dioxus 0.7 layout shells (foundation only) | `fly-web`, `dioxus` |
+| `fly-leptos` | `leptos/` | Leptos 0.8 authoring workspace and SSR/browser adapter | `fly-web`, `leptos` |
+| `fly-dioxus` | `dioxus/` | Dioxus 0.7 workspace and web/desktop adapter | `fly-web`, `dioxus` |
 
 ---
 
@@ -253,13 +253,13 @@ the owner of the missing half.
   renderer gets the fallback projection — safe, but deliberately not the rich-text capability.
   Browser editing of the payload (Tiptap/ProseMirror) remains host-side preview tooling; the
   save path re-enters through the same payload contract and validation.
-- **The framework adapters have workspaces; the page-builder admin has not migrated yet.**
-  `fly-leptos` and `fly-dioxus` ship a real `FlyEditorWorkspace` (palette, layer tree, canvas
-  preview, undo/redo) on the shared `fly`/`fly-ui` contracts, alongside the original section
-  shells. The RusTok page-builder admin still runs its own SSR/WASM editor panels (audit P0-2);
-  converging it onto the adapter workspaces is planned follow-up work, not done. Pointer
-  geometry and drag & drop remain `fly-web` (wasm) concerns layered on top of these
-  workspaces.
+- **The Page Builder admin now integrates both framework workspaces.**
+  `fly-leptos` supplies the SSR/browser authoring surface and optional WASM dispatch; the
+  Dioxus host uses `FlyEditorWorkspace` with an isolated iframe canvas, host-validated
+  geometry, palette and selected-layer drag/drop, and bounded resize patches. Both hosts use
+  the shared controller and save-response correlation. Cross-tab messages fence stale editors
+  but do not merge documents; the server revision check remains authoritative. The source
+  integration is present, while mounted browser/runtime verification remains a release gate.
 - **Session and CSRF posture of the standalone admin.** The intent route authenticates with the
   same-origin session cookie; issuing that session server-side and adding an explicit server-side
   CSRF check are the admin shell's change, tracked as `CLEAN-060` — see `SECURITY.md`.

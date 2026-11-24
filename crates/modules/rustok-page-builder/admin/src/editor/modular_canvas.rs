@@ -13,6 +13,7 @@ use crate::i18n::t;
 use crate::ui::browser_adapter::PageBuilderBrowserAdapter;
 use crate::{
     AdminCanvasController, ConsumerPropertyEditorRuntime, PageBuilderAdminFacade,
+    PageBuilderCapabilityExecution,
     PageBuilderAdminProviderStatus, SsrDraftRenderBinding,
 };
 use fly::TraitSchemaRegistry;
@@ -21,7 +22,6 @@ use fly_ui::{
     UiIntent,
 };
 use leptos::prelude::*;
-use rustok_page_builder::dto::PageBuilderCapabilityRequest;
 use rustok_page_builder::runtime_scenario_release::PageBuilderScenarioBaselineChange;
 use rustok_page_builder::{
     RuntimeContextScenario, RuntimePublishGatePolicy, RuntimeScenarioReleaseBaseline,
@@ -45,7 +45,7 @@ pub fn AdminCanvas(
     runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
     runtime_scenario_baseline: Option<RuntimeScenarioReleaseBaseline>,
     on_runtime_scenario_baseline: Option<Callback<PageBuilderScenarioBaselineChange>>,
-    on_request: Option<Callback<PageBuilderCapabilityRequest>>,
+    on_request: Option<Callback<PageBuilderCapabilityExecution>>,
     #[prop(optional_no_strip)] browser_intent_endpoint: Option<String>,
     #[prop(optional_no_strip)] browser_csrf_token: Option<String>,
     /// Where the host serves a preview document as its own response, if it serves one.
@@ -76,10 +76,12 @@ pub fn AdminCanvas(
     let consumer_property_assembly = contribution_assembly.clone();
     let contribution_property_assembly = contribution_assembly.clone();
     let contribution_preview_assembly = contribution_assembly.clone();
+    let peer_write_scope_id = use_id();
     let runtime = AdminEditorRuntime::new(
         controller,
         facade,
         on_request,
+        Some(peer_write_scope_id.clone()),
         facade_missing,
         save_succeeded,
     );
@@ -209,6 +211,7 @@ pub fn AdminCanvas(
             class="rustok-page-builder-admin__workspace space-y-3"
             data-fly-browser-root="true"
             data-fly-runtime="ssr"
+            data-fly-peer-write-scope-id=peer_write_scope_id
             data-fly-page-id=browser_page_id
             data-fly-revision=browser_revision
             data-fly-project-hash=browser_project_hash

@@ -138,7 +138,7 @@ impl PageService {
             )
             .await;
 
-        let txn = self.db.begin().await?;
+        let txn = self.begin_page_write_transaction().await?;
         let existing_page = self.find_page_for_update(&txn, tenant_id, page_id).await?;
         enforce_owned_scope(
             &security,

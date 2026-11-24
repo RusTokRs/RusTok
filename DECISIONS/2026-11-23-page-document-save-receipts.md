@@ -151,6 +151,13 @@ A missing receipt leaves the save outcome unknown. A different actor or
 payload conflicts, and a retained tombstone reports expiry. The browser
 preserves its pending request until the operator resolves uncertainty.
 
+A replay is not treated as the current page if a later session has already
+advanced the document: the SSR store compares the observed page revision
+with the receipt revision, and the browser host compares the refreshed page
+revision before updating its surrounding Pages state. A superseded receipt
+is surfaced as `REVISION_CONFLICT` so the stale editor is fenced rather
+than being presented as current.
+
 ## Migration and cutover
 
 Apply the additive `page_document_save_receipts` migration to PostgreSQL or

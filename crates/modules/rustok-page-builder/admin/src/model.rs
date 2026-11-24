@@ -6,6 +6,16 @@ use fly_ui::{FlyUiStateMachine, Presentation, UiEffect, UiIntent};
 use rustok_page_builder::dto::{PageBuilderCapabilityRequest, PublishPageBuilderInput};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use uuid::Uuid;
+
+/// Identity carried from a local save start through the asynchronous host response.
+/// The sequence protects the in-memory Fly revision snapshot; the request ID remains unique
+/// across controller replacement and rehydration, where the local sequence restarts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SaveAttempt {
+    pub sequence: u64,
+    pub request_id: String,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AdminCanvasController {
@@ -14,6 +24,9 @@ pub struct AdminCanvasController {
     editor: FlyEditor,
     ui: FlyUiStateMachine,
     clipboard: Option<ProjectFragment>,
+    /// A request cannot be resumed after deserialization. Do not persist its identity.
+    #[serde(skip)]
+    active_save_request_id: Option<String>,
 }
 
 impl AdminCanvasController {
@@ -50,6 +63,7 @@ impl AdminCanvasController {
             editor,
             ui,
             clipboard: None,
+            active_save_request_id: None,
         };
         let report = controller.editor.validate();
         controller.synchronize(report);
@@ -152,100 +166,172 @@ impl AdminCanvasController {
         self.mark_save_started_with_id().map(|_| ())
     }
 
-    pub fn mark_save_started_with_id(&mut self) -> Result<u64, AdminCanvasError> {
-        let previous_ui = self.ui.clone();
-        self.ui.dispatch(UiIntent::SaveStarted)?;
-        let attempt_id = match self.editor.revision_mut().begin_save_with_id() {
-            Ok(id) => id,
-            Err(error) => {
-                self.ui = previous_ui;
-                return Err(error.into());
-            }
-        };
+    pub fn mark_save_started_with_id(&mut self) -> Result<SaveAttempt, AdminCanvasError> {
+        let before = self.clone();
+        let sequence = self.editor.revision_mut().begin_save_with_id()?;
+        let request_id = Uuid::new_v4().to_string();
+        if let Err(error) = self.ui.dispatch(UiIntent::SaveStarted {
+            request_id: request_id.clone(),
+        }) {
+            *self = before;
+            return Err(error.into());
+        }
+        self.active_save_request_id = Some(request_id.clone());
         self.synchronize_revision();
-        Ok(attempt_id)
+        Ok(SaveAttempt {
+            sequence,
+            request_id,
+        })
     }
 
+    /// The local sequence is useful for diagnostics, but is not sufficient to identify a
+    /// request after this controller has been replaced or restored from serialized state.
     pub fn active_save_attempt_id(&self) -> Option<u64> {
         self.editor.revision().active_save_attempt_id()
     }
 
-    /// A late error from an old attempt must not fail a newer save.
+    pub fn active_save_attempt(&self) -> Option<SaveAttempt> {
+        Some(SaveAttempt {
+            sequence: self.editor.revision().active_save_attempt_id()?,
+            request_id: self.active_save_request_id.clone()?,
+        })
+    }
+
+    /// A late error from an old attempt must not fail a newer save, including after rehydration
+    /// when the per-controller sequence can be reused.
     pub fn mark_save_failed_for_attempt(
         &mut self,
-        attempt_id: u64,
+        attempt: &SaveAttempt,
     ) -> Result<bool, AdminCanvasError> {
-        if self.active_save_attempt_id() != Some(attempt_id) {
+        if self.active_save_attempt().as_ref() != Some(attempt) {
             return Ok(false);
         }
-        self.mark_save_failed()?;
+        let before = self.clone();
+        self.editor.revision_mut().fail_save();
+        if let Err(error) = self.ui.dispatch(UiIntent::SaveFailed {
+            request_id: Some(attempt.request_id.clone()),
+        }) {
+            *self = before;
+            return Err(error.into());
+        }
+        self.active_save_request_id = None;
+        self.synchronize_revision();
         Ok(true)
     }
 
+    /// Uncorrelated failures may update an idle controller, but can never retire an active save.
     pub fn mark_save_failed(&mut self) -> Result<(), AdminCanvasError> {
+        if self.active_save_attempt().is_some() {
+            return Err(AdminCanvasError::Authoring(
+                "an active save failure must identify its request".to_string(),
+            ));
+        }
+        let before = self.clone();
         self.editor.revision_mut().fail_save();
-        self.ui.dispatch(UiIntent::SaveFailed)?;
+        if let Err(error) = self.ui.dispatch(UiIntent::SaveFailed { request_id: None }) {
+            *self = before;
+            return Err(error.into());
+        }
+        self.active_save_request_id = None;
         self.synchronize_revision();
         Ok(())
     }
 
-    /// Record a lost update explicitly (distinct from a generic save failure): the
-    /// local changes are not on the server and the user must reload before saving.
+    /// Record a lost update when no local save is in flight (for example, a peer-tab notice).
+    /// Server responses must use mark_save_conflict_for_attempt.
+    /// A peer-tab notification is not tied to a particular local request. Fence whichever
+    /// attempt is active now, so a delayed response from it cannot acknowledge an older draft.
+    pub fn mark_peer_write_conflict(
+        &mut self,
+        expected: String,
+        actual: String,
+    ) -> Result<(), AdminCanvasError> {
+        let before = self.clone();
+        self.editor.revision_mut().mark_save_conflict();
+        if let Err(error) = self.ui.dispatch(UiIntent::SaveConflict {
+            request_id: self.active_save_request_id.clone(),
+            expected,
+            actual,
+        }) {
+            *self = before;
+            return Err(error.into());
+        }
+        self.active_save_request_id = None;
+        self.synchronize_revision();
+        Ok(())
+    }
+
     pub fn mark_save_conflict(
         &mut self,
         expected: String,
         actual: String,
     ) -> Result<(), AdminCanvasError> {
+        if self.active_save_attempt().is_some() {
+            return Err(AdminCanvasError::Authoring(
+                "an active save conflict must identify its request".to_string(),
+            ));
+        }
+        let before = self.clone();
         self.editor.revision_mut().mark_save_conflict();
-        self.ui
-            .dispatch(UiIntent::SaveConflict { expected, actual })?;
+        if let Err(error) = self.ui.dispatch(UiIntent::SaveConflict {
+            request_id: None,
+            expected,
+            actual,
+        }) {
+            *self = before;
+            return Err(error.into());
+        }
+        self.active_save_request_id = None;
         self.synchronize_revision();
         Ok(())
     }
 
-    pub fn acknowledge_save(
+    pub fn mark_save_conflict_for_attempt(
         &mut self,
-        revision_id: impl Into<String>,
-    ) -> Result<(), AdminCanvasError> {
-        let project_hash = self.editor.revision().project_hash;
-        self.acknowledge_save_for_hash(project_hash, revision_id)
+        attempt: &SaveAttempt,
+        expected: String,
+        actual: String,
+    ) -> Result<bool, AdminCanvasError> {
+        if self.active_save_attempt().as_ref() != Some(attempt) {
+            return Ok(false);
+        }
+        let before = self.clone();
+        self.editor.revision_mut().mark_save_conflict();
+        if let Err(error) = self.ui.dispatch(UiIntent::SaveConflict {
+            request_id: Some(attempt.request_id.clone()),
+            expected,
+            actual,
+        }) {
+            *self = before;
+            return Err(error.into());
+        }
+        self.active_save_request_id = None;
+        self.synchronize_revision();
+        Ok(true)
     }
 
-    pub fn acknowledge_save_for_hash(
-        &mut self,
-        expected_hash: ProjectHash,
-        revision_id: impl Into<String>,
-    ) -> Result<(), AdminCanvasError> {
-        self.acknowledge_save_impl(expected_hash, None, revision_id.into())
-    }
-
-    /// Asynchronous consumers should use this attempt-bound acknowledgement.
+    /// Acknowledge only the exact attempt that produced the response. A matching hash or local
+    /// sequence alone is not enough: both can repeat after controller rehydration.
     pub fn acknowledge_save_for_attempt(
         &mut self,
         expected_hash: ProjectHash,
-        attempt_id: u64,
+        attempt: &SaveAttempt,
         revision_id: impl Into<String>,
     ) -> Result<(), AdminCanvasError> {
-        self.acknowledge_save_impl(expected_hash, Some(attempt_id), revision_id.into())
-    }
-
-    fn acknowledge_save_impl(
-        &mut self,
-        expected_hash: ProjectHash,
-        attempt_id: Option<u64>,
-        revision_id: String,
-    ) -> Result<(), AdminCanvasError> {
         let before = self.clone();
-        if let Some(attempt_id) = attempt_id {
-            self.editor.revision_mut().acknowledge_submitted_attempt(
-                expected_hash, attempt_id, revision_id.clone(),
-            )?;
-        } else {
-            self.editor.revision_mut().acknowledge_submitted(
-                expected_hash, revision_id.clone(),
-            )?;
+        if self.active_save_attempt().as_ref() != Some(attempt) {
+            return Err(AdminCanvasError::Authoring(
+                "save response does not match the active request".to_string(),
+            ));
         }
+        let revision_id = revision_id.into();
+        self.editor.revision_mut().acknowledge_submitted_attempt(
+            expected_hash,
+            attempt.sequence,
+            revision_id.clone(),
+        )?;
         if let Err(error) = self.ui.dispatch(UiIntent::SaveSucceeded {
+            request_id: attempt.request_id.clone(),
             revision: revision_id.clone(),
             project_hash: expected_hash,
         }) {
@@ -253,6 +339,7 @@ impl AdminCanvasController {
             return Err(error.into());
         }
         self.revision_id = revision_id;
+        self.active_save_request_id = None;
         self.synchronize_revision();
         Ok(())
     }
@@ -552,6 +639,7 @@ impl AdminCanvasController {
             revision.last_acknowledged_revision.clone();
         self.ui.state.dirty.project_hash = Some(revision.project_hash);
         self.ui.state.dirty.save_in_progress = revision.save_in_progress;
+        self.ui.state.dirty.save_started_request_id = self.active_save_request_id.clone();
         self.ui.state.dirty.save_failed = revision.save_failed;
         self.ui.state.dirty.save_conflict = revision.save_conflict;
     }
@@ -631,16 +719,46 @@ mod tests {
         let mut controller = controller();
         let hash = controller.editor().revision().project_hash;
         let first = controller.mark_save_started_with_id().expect("first save");
-        assert!(controller.mark_save_failed_for_attempt(first).expect("failed"));
+        assert!(controller.mark_save_failed_for_attempt(&first).expect("failed"));
         let retry = controller.mark_save_started_with_id().expect("retry");
         assert_ne!(first, retry);
-        assert!(!controller.mark_save_failed_for_attempt(first).expect("stale failure"));
-        assert!(controller.acknowledge_save_for_attempt(hash, first, "stale").is_err());
-        assert_eq!(controller.active_save_attempt_id(), Some(retry));
+        assert!(!controller.mark_save_failed_for_attempt(&first).expect("stale failure"));
+        assert!(controller.acknowledge_save_for_attempt(hash, &first, "stale").is_err());
+        assert_eq!(controller.active_save_attempt().as_ref(), Some(&retry));
         assert_eq!(controller.revision_id(), "rev-1");
-        controller.acknowledge_save_for_attempt(hash, retry, "rev-2")
+        controller.acknowledge_save_for_attempt(hash, &retry, "rev-2")
             .expect("current response");
         assert_eq!(controller.revision_id(), "rev-2");
+    }
+
+    #[test]
+    fn peer_write_conflict_fences_an_idle_controller_too() {
+        let mut controller = controller();
+        controller
+            .mark_peer_write_conflict("rev-1".into(), "rev-2".into())
+            .expect("peer conflict");
+        assert!(controller.active_save_attempt().is_none());
+        assert!(controller.ui().state.dirty.save_conflict);
+        assert!(controller.ui().state.dirty.dirty);
+        assert_eq!(controller.revision_id(), "rev-1");
+    }
+
+    #[test]
+    fn peer_write_conflict_retires_active_attempt_and_rejects_its_late_success() {
+        let mut controller = controller();
+        let hash = controller.editor().revision().project_hash;
+        let attempt = controller.mark_save_started_with_id().expect("save started");
+
+        controller
+            .mark_peer_write_conflict("rev-1".into(), "rev-2".into())
+            .expect("peer conflict");
+        assert!(controller.active_save_attempt().is_none());
+        assert_eq!(controller.revision_id(), "rev-1");
+        assert!(controller.editor().revision().save_conflict);
+        assert!(controller.ui().state.dirty.save_conflict);
+        assert!(controller.acknowledge_save_for_attempt(hash, &attempt, "rev-2").is_err());
+        assert_eq!(controller.revision_id(), "rev-1");
+        assert!(controller.ui().state.dirty.dirty);
     }
 
     #[test]
@@ -653,12 +771,12 @@ mod tests {
         });
         controller.dispatch(patch("first")).expect("first edit");
         let submitted_hash = controller.editor().revision().project_hash;
-        controller.mark_save_started().expect("begin");
+        let first_attempt = controller.mark_save_started_with_id().expect("begin");
         assert!(controller.mark_save_started().is_err());
         controller.dispatch(patch("second")).expect("edit in flight");
         let working_hash = controller.editor().revision().project_hash;
         assert_ne!(submitted_hash, working_hash);
-        controller.acknowledge_save_for_hash(submitted_hash, "rev-2")
+        controller.acknowledge_save_for_attempt(submitted_hash, &first_attempt, "rev-2")
             .expect("persisted earlier snapshot");
         assert!(controller.editor().revision().dirty);
         assert!(controller.ui().state.dirty.dirty);
@@ -666,18 +784,46 @@ mod tests {
         assert_eq!(controller.editor().revision().project_hash, working_hash);
         assert!(!controller.editor().revision().save_conflict);
         assert!(controller
-            .acknowledge_save_for_hash(submitted_hash, "rev-3")
+            .acknowledge_save_for_attempt(submitted_hash, &first_attempt, "rev-3")
             .is_err());
-        controller.mark_save_started().expect("save newest");
-        controller.acknowledge_save_for_hash(working_hash, "rev-3")
+        let latest_attempt = controller.mark_save_started_with_id().expect("save newest");
+        controller.acknowledge_save_for_attempt(working_hash, &latest_attempt, "rev-3")
             .expect("persisted current snapshot");
         assert!(!controller.ui().state.dirty.dirty);
     }
 
     #[test]
+    fn controller_request_identity_survives_attempt_sequence_reuse_after_rehydration() {
+        let mut original = controller();
+        let hash = original.editor().revision().project_hash;
+        let old_attempt = original.mark_save_started_with_id().expect("old save");
+
+        let serialized = serde_json::to_value(&original).expect("serialize active save");
+        let mut restored: AdminCanvasController =
+            serde_json::from_value(serialized).expect("restore controller");
+        let new_attempt = restored.mark_save_started_with_id().expect("new save");
+        assert_eq!(old_attempt.sequence, new_attempt.sequence);
+        assert_ne!(old_attempt.request_id, new_attempt.request_id);
+        assert!(restored
+            .acknowledge_save_for_attempt(hash, &old_attempt, "stale-revision")
+            .is_err());
+        assert_eq!(restored.active_save_attempt().as_ref(), Some(&new_attempt));
+        restored
+            .acknowledge_save_for_attempt(hash, &new_attempt, "current-revision")
+            .expect("current request remains acknowledgeable");
+    }
+
+    #[test]
     fn controller_failed_commands_do_not_leave_partial_save_state() {
         let mut controller = controller();
-        assert!(controller.acknowledge_save("rev-2").is_err());
+        let hash = controller.editor().revision().project_hash;
+        let stale_attempt = SaveAttempt {
+            sequence: 1,
+            request_id: "stale-request".to_string(),
+        };
+        assert!(controller
+            .acknowledge_save_for_attempt(hash, &stale_attempt, "rev-2")
+            .is_err());
         assert_eq!(controller.revision_id(), "rev-1");
         controller.mark_save_conflict("rev-1".into(), "rev-2".into())
             .expect("conflict");
@@ -772,8 +918,13 @@ mod tests {
                 },
             }))
             .expect("add page");
-        controller.mark_save_started().expect("save started");
-        controller.acknowledge_save("rev-2").expect("acknowledge");
+        let submitted_hash = controller.editor().revision().project_hash;
+        let attempt = controller
+            .mark_save_started_with_id()
+            .expect("save started");
+        controller
+            .acknowledge_save_for_attempt(submitted_hash, &attempt, "rev-2")
+            .expect("acknowledge");
         controller
             .dispatch(UiIntent::ActivatePage {
                 page_id: Some("about".to_string()),

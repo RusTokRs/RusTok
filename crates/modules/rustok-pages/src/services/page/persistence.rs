@@ -1,7 +1,8 @@
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseTransaction,
-    DbBackend, EntityTrait, QueryFilter, QueryOrder, QuerySelect, prelude::DateTimeWithTimeZone,
+    DbBackend, EntityTrait, QueryFilter, QueryOrder, QuerySelect, SqliteTransactionMode,
+    TransactionOptions, TransactionTrait, prelude::DateTimeWithTimeZone,
 };
 use uuid::Uuid;
 
@@ -22,6 +23,26 @@ use super::{PageService, PreparedPageBody, WorkingBody};
 pub const MAX_PAGE_BODY_REVISIONS_PER_BODY: usize = 50;
 
 impl PageService {
+    /// Start a write transaction that serializes SQLite writers before their first read.
+    ///
+    /// PostgreSQL/MySQL use their normal transaction mode and row-level `FOR UPDATE` lock;
+    /// SQLite has no row-level lock, so `BEGIN IMMEDIATE` acquires the write reservation
+    /// before the revision snapshot is read.
+    pub(super) async fn begin_page_write_transaction(
+        &self,
+    ) -> PagesResult<DatabaseTransaction> {
+        Ok(self
+            .db
+            .begin_with_options(TransactionOptions {
+                sqlite_transaction_mode: Some(SqliteTransactionMode::Immediate),
+                ..Default::default()
+            })
+            .await?)
+    }
+
+    /// Read the page revision under the write reservation/row lock established by
+    /// `begin_page_write_transaction`. SQLite cannot express `FOR UPDATE`, so the
+    /// transaction must already be `BEGIN IMMEDIATE` before this query runs.
     pub(super) async fn find_page_for_update(
         &self,
         txn: &DatabaseTransaction,
