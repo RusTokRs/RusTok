@@ -239,6 +239,28 @@ impl AdminCanvasController {
 
     /// Record a lost update when no local save is in flight (for example, a peer-tab notice).
     /// Server responses must use mark_save_conflict_for_attempt.
+    /// A peer-tab notification is not tied to a particular local request. Fence whichever
+    /// attempt is active now, so a delayed response from it cannot acknowledge an older draft.
+    pub fn mark_peer_write_conflict(
+        &mut self,
+        expected: String,
+        actual: String,
+    ) -> Result<(), AdminCanvasError> {
+        let before = self.clone();
+        self.editor.revision_mut().mark_save_conflict();
+        if let Err(error) = self.ui.dispatch(UiIntent::SaveConflict {
+            request_id: self.active_save_request_id.clone(),
+            expected,
+            actual,
+        }) {
+            *self = before;
+            return Err(error.into());
+        }
+        self.active_save_request_id = None;
+        self.synchronize_revision();
+        Ok(())
+    }
+
     pub fn mark_save_conflict(
         &mut self,
         expected: String,
@@ -715,9 +737,9 @@ mod tests {
         let hash = controller.editor().revision().project_hash;
         let attempt = controller.mark_save_started_with_id().expect("save started");
 
-        assert!(controller
-            .mark_save_conflict_for_attempt(&attempt, "rev-1".into(), "rev-2".into())
-            .expect("peer conflict"));
+        controller
+            .mark_peer_write_conflict("rev-1".into(), "rev-2".into())
+            .expect("peer conflict");
         assert!(controller.active_save_attempt().is_none());
         assert_eq!(controller.revision_id(), "rev-1");
         assert!(controller.editor().revision().save_conflict);
