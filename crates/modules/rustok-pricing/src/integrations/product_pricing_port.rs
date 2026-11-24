@@ -475,6 +475,17 @@ mod tests {
     }
 
     #[test]
+    fn one_currency_can_be_minimized_without_an_explicit_currency() {
+        let higher = candidate(1, None, None, None, None, None, 12);
+        let lower = candidate(2, None, None, None, None, None, 8);
+
+        let selected = select_storefront_list_price(vec![&higher, &lower], None, None)
+            .expect("one-currency list price");
+
+        assert_eq!(selected.id, lower.id);
+    }
+
+    #[test]
     fn region_and_quantity_tiers_are_not_list_price_candidates_without_context() {
         let base = candidate(1, None, None, None, None, None, 10);
         let regional = candidate(
