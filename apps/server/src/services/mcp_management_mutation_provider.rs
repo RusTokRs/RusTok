@@ -260,6 +260,7 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
             ApplyMcpScaffoldDraftInput {
                 workspace_root: command.workspace_root,
                 confirm: command.confirm,
+                expected_client_id: None,
                 applied_by: Some(context.actor_id),
                 actor_id: None,
                 actor_type: None,

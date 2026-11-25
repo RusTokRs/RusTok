@@ -65,6 +65,9 @@ pub struct StageMcpScaffoldDraftInput {
 pub struct ApplyMcpScaffoldDraftInput {
     pub workspace_root: String,
     pub confirm: bool,
+    /// When supplied by remote MCP, the draft must belong to this exact client.
+    /// Tenant-level admin management leaves this unset.
+    pub expected_client_id: Option<Uuid>,
     pub applied_by: Option<Uuid>,
     pub actor_id: Option<String>,
     pub actor_type: Option<String>,
@@ -570,6 +573,20 @@ impl McpManagementService {
             .map_err(map_db_err)
     }
 
+    pub async fn get_scaffold_draft_for_client(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        client_id: Uuid,
+        draft_id: Uuid,
+    ) -> Result<Option<mcp_scaffold_drafts::Model>> {
+        mcp_scaffold_drafts::Entity::find_by_id(draft_id)
+            .filter(mcp_scaffold_drafts::Column::TenantId.eq(tenant_id))
+            .filter(mcp_scaffold_drafts::Column::ClientId.eq(Some(client_id)))
+            .one(db)
+            .await
+            .map_err(map_db_err)
+    }
+
     pub async fn stage_scaffold_draft(
         db: &DatabaseConnection,
         tenant_id: Uuid,
@@ -680,6 +697,7 @@ impl McpManagementService {
             input.applied_by,
             input.actor_id.clone(),
             input.actor_type.clone(),
+            input.expected_client_id,
             &workspace_root,
         )
         .await?;
@@ -957,13 +975,18 @@ impl McpManagementService {
         applied_by: Option<Uuid>,
         actor_id: Option<String>,
         actor_type: Option<String>,
+        expected_client_id: Option<Uuid>,
         workspace_root: &str,
     ) -> Result<mcp_scaffold_drafts::Model> {
         let txn = db.begin().await.map_err(map_db_err)?;
-        let result = mcp_scaffold_drafts::Entity::update_many()
+        let mut claim = mcp_scaffold_drafts::Entity::update_many()
             .filter(mcp_scaffold_drafts::Column::Id.eq(draft_id))
             .filter(mcp_scaffold_drafts::Column::TenantId.eq(tenant_id))
-            .filter(mcp_scaffold_drafts::Column::Status.eq(MCP_SCAFFOLD_STATUS_STAGED))
+            .filter(mcp_scaffold_drafts::Column::Status.eq(MCP_SCAFFOLD_STATUS_STAGED));
+        if let Some(client_id) = expected_client_id {
+            claim = claim.filter(mcp_scaffold_drafts::Column::ClientId.eq(Some(client_id)));
+        }
+        let result = claim
             .col_expr(
                 mcp_scaffold_drafts::Column::Status,
                 Expr::value(MCP_SCAFFOLD_STATUS_APPLYING),
@@ -981,8 +1004,13 @@ impl McpManagementService {
             .map_err(map_db_err)?;
 
         if result.rows_affected == 0 {
-            let existing = mcp_scaffold_drafts::Entity::find_by_id(draft_id)
-                .filter(mcp_scaffold_drafts::Column::TenantId.eq(tenant_id))
+            let mut existing_query = mcp_scaffold_drafts::Entity::find_by_id(draft_id)
+                .filter(mcp_scaffold_drafts::Column::TenantId.eq(tenant_id));
+            if let Some(client_id) = expected_client_id {
+                existing_query =
+                    existing_query.filter(mcp_scaffold_drafts::Column::ClientId.eq(Some(client_id)));
+            }
+            let existing = existing_query
                 .one(&txn)
                 .await
                 .map_err(map_db_err)?
@@ -990,8 +1018,13 @@ impl McpManagementService {
             return Err(scaffold_status_error(draft_id, &existing.status));
         }
 
-        let claimed = mcp_scaffold_drafts::Entity::find_by_id(draft_id)
-            .filter(mcp_scaffold_drafts::Column::TenantId.eq(tenant_id))
+        let mut claimed_query = mcp_scaffold_drafts::Entity::find_by_id(draft_id)
+            .filter(mcp_scaffold_drafts::Column::TenantId.eq(tenant_id));
+        if let Some(client_id) = expected_client_id {
+            claimed_query =
+                claimed_query.filter(mcp_scaffold_drafts::Column::ClientId.eq(Some(client_id)));
+        }
+        let claimed = claimed_query
             .one(&txn)
             .await
             .map_err(map_db_err)?

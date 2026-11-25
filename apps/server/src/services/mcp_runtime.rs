@@ -271,7 +271,7 @@ impl McpScaffoldDraftStore for DbBackedMcpRuntimeBridge {
             &self.db,
             tenant_id,
             StageMcpScaffoldDraftInput {
-                client_id,
+                client_id: Some(client_id),
                 request,
                 created_by,
                 actor_id,
@@ -318,11 +318,19 @@ impl McpScaffoldDraftStore for DbBackedMcpRuntimeBridge {
             .map_err(|e| McpRuntimeError::Message(e.to_string()))?;
         let draft_id = Uuid::parse_str(&request.draft_id)
             .map_err(|error| McpRuntimeError::Message(format!("Invalid draft id: {error}")))?;
-        let draft = McpManagementService::get_scaffold_draft(&self.db, tenant_id, draft_id)
-            .await
-            .map_err(|error| McpRuntimeError::Message(error.to_string()))?
-            .ok_or_else(|| McpRuntimeError::Message(format!("Unknown scaffold draft: {}", request.draft_id)))?;
+        let client_id = client_id_from_runtime_context(context)
+            .map_err(|error| McpRuntimeError::Message(error.to_string()))?;
+        let draft = McpManagementService::get_scaffold_draft_for_client(
+            &self.db,
+            tenant_id,
+            client_id,
+            draft_id,
+        )
+        .await
+        .map_err(|error| McpRuntimeError::Message(error.to_string()))?
+        .ok_or_else(|| McpRuntimeError::Message(format!("Unknown scaffold draft: {}", request.draft_id)))?;
 
+        ensure_scaffold_draft_client_binding(draft.client_id, client_id)?;
         let draft = draft
             .to_reviewable_draft()
             .map_err(McpRuntimeError::Message)?;
@@ -346,6 +354,8 @@ impl McpScaffoldDraftStore for DbBackedMcpRuntimeBridge {
         let draft_id = Uuid::parse_str(&request.draft_id)
             .map_err(|error| McpRuntimeError::Message(format!("Invalid draft id: {error}")))?;
 
+        let client_id = client_id_from_runtime_context(context)
+            .map_err(|error| McpRuntimeError::Message(error.to_string()))?;
         let (_, response) = McpManagementService::apply_scaffold_draft(
             &self.db,
             tenant_id,
@@ -353,6 +363,7 @@ impl McpScaffoldDraftStore for DbBackedMcpRuntimeBridge {
             ApplyMcpScaffoldDraftInput {
                 workspace_root: request.workspace_root,
                 confirm: request.confirm,
+                expected_client_id: Some(client_id),
                 applied_by,
                 actor_id,
                 actor_type,
@@ -480,16 +491,28 @@ fn tenant_id_from_runtime_context(
 
 fn client_id_from_runtime_context(
     context: &McpScaffoldDraftRuntimeContext,
-) -> anyhow::Result<Option<Uuid>> {
-    match context
+) -> anyhow::Result<Uuid> {
+    let value = context
         .runtime_binding
         .as_ref()
         .and_then(|binding| binding.client_id.as_deref())
-    {
-        Some(value) => Ok(Some(Uuid::parse_str(value).map_err(|error| {
-            anyhow::anyhow!("Invalid MCP client id in runtime binding: {error}")
-        })?)),
-        None => Ok(None),
+        .ok_or_else(|| {
+            anyhow::anyhow!("Persisted scaffold draft flow requires a client-bound MCP runtime")
+        })?;
+    Uuid::parse_str(value)
+        .map_err(|error| anyhow::anyhow!("Invalid MCP client id in runtime binding: {error}"))
+}
+
+fn ensure_scaffold_draft_client_binding(
+    draft_client_id: Option<Uuid>,
+    expected_client_id: Uuid,
+) -> McpRuntimeResult<()> {
+    if draft_client_id == Some(expected_client_id) {
+        Ok(())
+    } else {
+        Err(McpRuntimeError::Message(
+            "Unknown scaffold draft".to_string(),
+        ))
     }
 }
 
@@ -654,7 +677,10 @@ fn map_runtime_policy_error(
 
 #[cfg(test)]
 mod tests {
-    use super::{filter_active_module_permissions, map_db_err, parse_uuid};
+    use super::{
+        ensure_scaffold_draft_client_binding, filter_active_module_permissions, map_db_err,
+        parse_uuid,
+    };
     use axum::{http::StatusCode, response::IntoResponse};
 
     use super::{access_context_for_client, actor_user_id_from_runtime_context, touch_last_used};
@@ -669,6 +695,17 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
     #[test]
+    fn scaffold_draft_access_is_bound_to_the_current_mcp_client() {
+        let client_id = Uuid::new_v4();
+        assert!(ensure_scaffold_draft_client_binding(Some(client_id), client_id).is_ok());
+        assert!(ensure_scaffold_draft_client_binding(None, client_id).is_err());
+        assert!(
+            ensure_scaffold_draft_client_binding(Some(Uuid::new_v4()), client_id).is_err()
+        );
+    }
+
+    #[test]
+    fn permission_filtering_is_stable_and_drops_unknown_permissions() {    #[test]
     fn mcp_runtime_uuid_parser_rejects_nil_identifiers() {
         let nil = Uuid::nil().to_string();
         assert_eq!(parse_uuid(Some(&nil)), None);
