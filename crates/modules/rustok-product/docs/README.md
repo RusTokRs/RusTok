@@ -70,6 +70,10 @@
 - Product editorial revision refusal classification requires the complete owner
   message, not a matching substring in arbitrary validation text. The shared public
   error and command-port classifiers retain their existing codes for genuine conflicts.
+  SKU revision refusals additionally require two distinct, canonically encoded positive
+  i64 revisions, using the same parser as SKU write admission. Noncanonical or equal
+  revisions remain ordinary validation errors in the public and command-port mappings.
+  Product editorial revision advancement rejects a nonpositive predecessor.
   Focused source regressions for these changes were authored but not run.
 - Canonical vocabulary and attach semantics for product tags live in
   `rustok-taxonomy` + `product_tags`, and the public contract uses a first-class

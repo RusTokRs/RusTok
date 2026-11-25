@@ -56,9 +56,9 @@ pub(crate) fn revision_conflict_of(message: &str) -> Option<RevisionConflictFact
 
 /// Returns the next aggregate revision, refusing an exhausted counter.
 pub(crate) fn next_revision(current_revision: i32) -> CommerceResult<i32> {
-    current_revision
-        .checked_add(1)
-        .filter(|next| *next > 0)
+    (current_revision > 0)
+        .then(|| current_revision.checked_add(1))
+        .flatten()
         .ok_or_else(|| {
             CommerceError::Validation(
                 "Product revision is exhausted; the product can no longer be edited".to_owned(),
@@ -154,8 +154,13 @@ pub(crate) fn variant_revision_conflict_of(message: &str) -> bool {
         return false;
     };
 
-    expected.parse::<i64>().is_ok_and(|revision| revision > 0)
-        && current.parse::<i64>().is_ok_and(|revision| revision > 0)
+    match (
+        expected_variant_revision(Some(expected)),
+        expected_variant_revision(Some(current)),
+    ) {
+        (Ok(expected), Ok(current)) => expected != current,
+        _ => false,
+    }
 }
 
 #[cfg(test)]
@@ -305,6 +310,27 @@ mod tests {
         assert!(!variant_revision_conflict_of(
             "product variant revision conflict: expected revision 4, current revision 5 trailing"
         ));
+        for message in [
+            "product variant revision conflict: expected revision 5, current revision 5",
+            "product variant revision conflict: expected revision 04, current revision 5",
+            "product variant revision conflict: expected revision 4, current revision 05",
+            "product variant revision conflict: expected revision +4, current revision 5",
+            "product variant revision conflict: expected revision 4, current revision +5",
+            "product variant revision conflict: expected revision 0, current revision 5",
+            "product variant revision conflict: expected revision 4, current revision 0",
+            "product variant revision conflict: expected revision 9223372036854775808, current revision 5",
+        ] {
+            assert!(!variant_revision_conflict_of(message), "{message}");
+            let public = crate::map_product_public_error(
+                &CommerceError::Validation(message.to_owned()),
+                "test",
+                "test",
+            );
+            assert_eq!(public.code, "PRODUCT_VALIDATION", "{message}");
+        }
+        assert!(variant_revision_conflict_of(
+            "product variant revision conflict: expected revision 9223372036854775807, current revision 5"
+        ));
     }
 
     #[test]
@@ -312,6 +338,7 @@ mod tests {
         assert_eq!(next_revision(1).expect("next"), 2);
         assert!(next_revision(i32::MAX).is_err());
         assert!(next_revision(-1).is_err());
+        assert!(next_revision(0).is_err());
     }
 
     #[test]

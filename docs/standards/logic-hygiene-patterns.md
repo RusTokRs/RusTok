@@ -612,6 +612,23 @@ They now capture any transport error into an `action_error` reactive signal and 
 
 ---
 
+### P-REVISION-REFUSAL-FACTS — recognize only genuine predecessor conflicts
+
+- **Category:** error mapping / state transition integrity.
+- **Observed defect:** Product SKU revision refusal classification accepted equal revisions
+  and integer spellings that the write admission parser rejected (leading zeroes or plus
+  signs). This could turn a validation failure into a conflict in the public response
+  and command receipt classification.
+- **Canonical correction:** Reuse the owner revision admission parser and require an
+  actual mismatch. For positive revision counters, reject nonpositive stored predecessors
+  before incrementing. In the existing reserved-message contract:
+  `match (parse(expected), parse(current)) { (Ok(a), Ok(b)) => a != b, _ => false }`.
+  Keep the typed public codes unchanged; prefer typed owner facts for new contracts.
+- **Detection:** `rg -n 'revision_conflict_of|expected_variant_revision|next_revision' crates/modules/rustok-product/src`.
+- **Evidence:** [Product revision control](../../crates/modules/rustok-product/src/services/catalog/concurrency.rs),
+  [command-port mapping](../../crates/modules/rustok-product/src/catalog_command_port.rs).
+  Focused regression sources authored, not executed.
+
 ## 1. Core Philosophy: The 6 Universal Logic Dimensions
 
 Under [AGENTS.md §4](../../AGENTS.md), verify the affected behavior and its owner contract across the **6 Universal Logic Dimensions**. Use source matches to find code to inspect. A match alone cannot establish a behavioral defect:
