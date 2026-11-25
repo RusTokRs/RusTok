@@ -448,11 +448,11 @@ pub fn SsrActionsFormsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                         </div>
                         <div class="grid grid-cols-2 gap-2">
                             <input name="slider_id" value=action_values.slider_id placeholder="Slider id (carousel)" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
-                            <input name="target_slide" value=action_values.target_slide placeholder="Target slide id (optional)" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
+                            <input name="target_slide" value=action_values.target_slide placeholder="Target slide id (choose one selector)" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
                         </div>
                         <div class="grid grid-cols-2 gap-2">
-                            <input name="direction" value=action_values.direction placeholder="Direction: next / prev" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
-                            <input name="index" value=action_values.index placeholder="Slide index (0, 1...)" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
+                            <input name="direction" value=action_values.direction placeholder="Direction: next / prev (choose one)" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
+                            <input name="index" value=action_values.index placeholder="Slide index (choose one selector)" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
                         </div>
                         <button type="submit" class="w-fit rounded border border-primary/40 px-2 py-1 text-xs text-primary">{save_action}</button>
                         </fieldset>
@@ -814,11 +814,17 @@ fn action_from_request(request: SsrComponentActionRequest) -> Result<ComponentAc
         }),
         "switch_slide" => {
             let direction = match request.direction.trim().to_ascii_lowercase().as_str() {
+                "" => None,
                 "next" => Some(fly::SlideDirection::Next),
                 "prev" => Some(fly::SlideDirection::Prev),
-                _ => None,
+                other => return Err(format!("slide direction `{other}` is unsupported")),
             };
-            let index = request.index.trim().parse::<usize>().ok();
+            let index = match request.index.trim() {
+                "" => None,
+                raw => Some(raw.parse::<usize>().map_err(|_| {
+                    "slide index must be a non-negative integer".to_string()
+                })?),
+            };
             let target_slide = if !request.target_slide.trim().is_empty() {
                 Some(validate_token(&request.target_slide, "target slide id")?)
             } else {
