@@ -295,7 +295,7 @@ pub fn apply_style_rule_command(
     document: &mut ProjectDocument,
     command: &StyleRuleCommand,
 ) -> FlyResult<()> {
-    match command {
+    let result = match command {
         StyleRuleCommand::UpsertComponentRule {
             component_id,
             scope,
@@ -356,7 +356,11 @@ pub fn apply_style_rule_command(
             }
             Ok(())
         }
+    };
+    if result.is_ok() {
+        document.invalidate_caches();
     }
+    result
 }
 
 fn upsert_raw_style_rule(document: &mut ProjectDocument, rule: Value) -> FlyResult<()> {
