@@ -238,6 +238,11 @@ pub async fn bootstrap_application_router(
     profile_media_result?;
 
     let runtime = bootstrap_app_runtime(runtime_ctx.clone(), auth_config.clone()).await?;
+    if stop.is_stopping() {
+        return Err(crate::error::Error::Message(
+            "server shutdown started after application runtime bootstrap".to_string(),
+        ));
+    }
     tracing::info!("RusTok app runtime bootstrap completed");
 
     let router = compose_application_router(
@@ -248,6 +253,11 @@ pub async fn bootstrap_application_router(
         runtime,
         &rustok_settings,
     )?;
+    if stop.is_stopping() {
+        return Err(crate::error::Error::Message(
+            "server shutdown started during application router composition".to_string(),
+        ));
+    }
     tracing::info!("RusTok application router composed");
 
     #[cfg(feature = "mod-comments")]
