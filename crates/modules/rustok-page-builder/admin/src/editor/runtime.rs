@@ -315,6 +315,8 @@ impl AdminEditorRuntime {
         self.active_runtime_scenario.set(Some(scenario.id.clone()));
         self.runtime_publish_gate_evaluation.set(None);
         self.server_preview_html.set(None);
+        self.preview_request.set(None);
+        self.preview_in_progress.set(false);
         self.last_error.set(None);
         self.announce(format!("Preview scenario applied: {}", scenario.label));
         true
@@ -326,6 +328,8 @@ impl AdminEditorRuntime {
         self.active_runtime_scenario.set(None);
         self.runtime_publish_gate_evaluation.set(None);
         self.server_preview_html.set(None);
+        self.preview_request.set(None);
+        self.preview_in_progress.set(false);
     }
 
     pub fn evaluate_runtime_publish_gate(&self) -> Option<RuntimePublishGateEvaluation> {
@@ -402,6 +406,8 @@ impl AdminEditorRuntime {
         ) {
             self.runtime_publish_gate_evaluation.set(None);
             self.server_preview_html.set(None);
+            self.preview_request.set(None);
+            self.preview_in_progress.set(false);
         }
         if self.peer_write_conflicted() && intent.mutates_document() {
             self.reject_peer_write_conflict();

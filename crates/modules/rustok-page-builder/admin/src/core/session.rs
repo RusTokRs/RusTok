@@ -224,6 +224,8 @@ impl EditorSessionState {
         self.active_runtime_scenario = Some(scenario.id.clone());
         self.runtime_publish_gate_evaluation = None;
         self.server_preview_html = None;
+        self.preview_request = None;
+        self.preview_in_progress = false;
         self.last_error = None;
         self.announce(format!("Preview scenario applied: {}", scenario.label));
         true
@@ -235,6 +237,8 @@ impl EditorSessionState {
         self.active_runtime_scenario = None;
         self.runtime_publish_gate_evaluation = None;
         self.server_preview_html = None;
+        self.preview_request = None;
+        self.preview_in_progress = false;
     }
 
     pub fn evaluate_runtime_publish_gate(&self) -> Option<RuntimePublishGateEvaluation> {
@@ -517,6 +521,8 @@ impl EditorSessionState {
         ) {
             self.runtime_publish_gate_evaluation = None;
             self.server_preview_html = None;
+            self.preview_request = None;
+            self.preview_in_progress = false;
         }
         match self.controller.dispatch(intent) {
             Ok(effects) => {
@@ -914,6 +920,48 @@ mod tests {
         assert!(state.server_preview_html.is_none());
         assert!(state.preview_request.is_none());
         assert!(!state.preview_in_progress);
+        assert!(state.last_error.is_none());
+    }
+
+    #[test]
+    fn runtime_context_change_retires_preview_and_ignores_old_completion() {
+        let mut state = EditorSessionState::new(sample_controller(), "Missing", "Saved");
+        state.prepare_server_preview_request().expect("first preview");
+        let first = state.preview_request.as_ref().expect("first attempt").id;
+
+        state.set_runtime_context(json!({ "locale": "fr-FR" }));
+        assert!(!state.preview_in_progress);
+        assert!(state.preview_request.is_none());
+
+        state.prepare_server_preview_request().expect("second preview");
+        let second = state.preview_request.as_ref().expect("second attempt").id;
+        assert_ne!(first, second);
+
+        let stale = PreviewPageBuilderResult {
+            page_id: "home".to_string(),
+            html: "<main>stale</main>".to_string(),
+            runtime_scenario_id: None,
+        };
+        state.handle_preview_failure(first, "late failure".to_string());
+        state.handle_preview_response(first, &stale).expect("stale response ignored");
+        assert!(state.preview_attempt_active(second));
+        assert!(state.last_error.is_none());
+    }
+
+    #[test]
+    fn page_activation_retires_an_in_flight_preview() {
+        let mut state = EditorSessionState::new(sample_controller(), "Missing", "Saved");
+        state.prepare_server_preview_request().expect("preview");
+        let attempt = state.preview_request.as_ref().expect("attempt").id;
+
+        state.dispatch_intent(UiIntent::ActivatePage {
+            page_id: Some("home".to_string()),
+            page_index: 0,
+        }).expect("activate page");
+
+        assert!(!state.preview_in_progress);
+        assert!(state.preview_request.is_none());
+        state.handle_preview_failure(attempt, "late failure".to_string());
         assert!(state.last_error.is_none());
     }
 
