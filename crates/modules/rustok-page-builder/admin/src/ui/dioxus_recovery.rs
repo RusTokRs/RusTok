@@ -717,7 +717,20 @@ fn merge_arrays_by_id(
         .collect::<Vec<_>>();
     let server_reordered = server_base_order != expected_server_order;
     let local_reordered = local_base_order != expected_local_order;
-    if server_reordered && local_reordered && server_base_order != local_base_order {
+    let merged_server_base_order = server_base_order
+        .iter()
+        .filter(|id| merged_items.contains_key(*id))
+        .cloned()
+        .collect::<Vec<_>>();
+    let merged_local_base_order = local_base_order
+        .iter()
+        .filter(|id| merged_items.contains_key(*id))
+        .cloned()
+        .collect::<Vec<_>>();
+    if server_reordered
+        && local_reordered
+        && merged_server_base_order != merged_local_base_order
+    {
         conflicts.push(format!("{path}/$order"));
         return None;
     }
@@ -1098,6 +1111,30 @@ mod tests {
         let merged = merge_optional(Some(&base), Some(&server), Some(&local), "$", &mut conflicts);
         assert!(merged.is_none());
         assert!(conflicts.iter().any(|path| path == "$/$order"));
+    }
+
+
+
+    #[test]
+    fn three_way_merge_ignores_reorders_of_items_deleted_by_the_other_side() {
+        let base = json!([
+            { "id": "a", "content": "A" },
+            { "id": "b", "content": "B" },
+            { "id": "c", "content": "C" }
+        ]);
+        let server = json!([
+            { "id": "b", "content": "B" },
+            { "id": "a", "content": "A" }
+        ]);
+        let local = json!([
+            { "id": "c", "content": "C" },
+            { "id": "b", "content": "B" }
+        ]);
+        let mut conflicts = Vec::new();
+        let merged = merge_optional(Some(&base), Some(&server), Some(&local), "$", &mut conflicts)
+            .expect("merge");
+        assert!(conflicts.is_empty());
+        assert_eq!(merged, Some(json!([{ "id": "b", "content": "B" }])));
     }
 
 }
