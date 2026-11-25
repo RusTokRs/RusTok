@@ -785,7 +785,7 @@ where
         let mut required_rows = Vec::with_capacity(required_pairs.len());
         for (attribute_id, locale) in required_pairs {
             let attribute_placeholder = format!("${}", values.len() + 1);
-            values.push(attribute_id.into());
+            values.push(attribute_id.to_string().into());
             let locale_placeholder = format!("${}", values.len() + 1);
             values.push(locale.into());
             required_rows.push(format!("({attribute_placeholder}, {locale_placeholder})"));
@@ -807,7 +807,7 @@ where
                     JOIN required_locales ON TRUE
                     JOIN product_attributes pa
                       ON pa.tenant_id = pv.tenant_id
-                     AND pa.id = required_locales.attribute_id
+                     AND CAST(pa.id AS TEXT) = required_locales.attribute_id
                      AND pa.archived_at IS NULL
                     LEFT JOIN product_variant_attribute_values pvav
                       ON pvav.tenant_id = pv.tenant_id
@@ -924,9 +924,9 @@ where
 #[cfg(test)]
 mod variant_publish_requirement_tests {
     use super::*;
-    use sea_orm::{Database, DatabaseBackend};
+    use sea_orm::Database;
 
-    async fn publish_requirement_database() -> DatabaseConnection {
+    async fn publish_requirement_database() -> sea_orm::DatabaseConnection {
         let db = Database::connect("sqlite::memory:").await.unwrap();
         db.execute_unprepared(
             "CREATE TABLE product_variants (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, product_id TEXT NOT NULL, sku TEXT, position INTEGER NOT NULL)",
@@ -957,7 +957,7 @@ mod variant_publish_requirement_tests {
     }
 
     async fn insert_two_variants(
-        db: &DatabaseConnection,
+        db: &sea_orm::DatabaseConnection,
         tenant_id: Uuid,
         product_id: Uuid,
         first_variant_id: Uuid,
