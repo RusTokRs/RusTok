@@ -51,6 +51,10 @@ and makes injected clock/ID/event-writer infrastructure request-dependent.
   `ArtifactHttpBindingRequest` admit and dispatch exact installed artifacts.
 - `ModuleEffectivePolicy` and `SharedModuleEffectivePolicyReader` provide the
   owner-issued, redacted availability decision.
+- `ModuleControlPlane::artifact_data_object_gc` returns the owner GC service.
+  Its `tenants_with_candidates_after(after, limit)` method returns a bounded
+  ascending UUID keyset page using an exclusive cursor; callers should wrap
+  after a short or empty page. The inventory is live, not snapshot-isolated.
 - `DatabaseStaticModuleSettingsReader` accepts either native or text tenant
   UUID storage on SQLite, including transactional reads. All four UUID text
   forms accepted by the Rust UUID parser are matched without regard to letter

@@ -3,8 +3,10 @@ use rustok_core::MigrationSource;
 use rustok_modules::{
     ARTIFACT_BLOB_GC_GRACE_PERIOD_SECONDS, ArtifactAdmissionStore, ArtifactBlobGcCandidateState,
     ArtifactBlobGcCandidateStore, ArtifactBlobGcClaimOutcome, ArtifactBlobGcMarkOutcome,
-    ModuleInstallationError, SeaOrmArtifactInstallationStore, StagedArtifactBlob,
+    ModuleControlPlane, ModuleInstallationError, SeaOrmArtifactInstallationStore,
+    StagedArtifactBlob,
 };
+use rustok_storage::StorageRuntime;
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, Statement};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
@@ -257,5 +259,82 @@ async fn blob_gc_candidate_requires_grace_and_final_unreferenced_claim() {
             .await
             .expect("candidates after final completion")
             .is_empty()
+    );
+}
+
+
+#[tokio::test]
+async fn data_object_gc_tenant_inventory_pages_past_persistent_early_candidates() {
+    const PAGE_SIZE: u32 = 256;
+    const TENANT_COUNT: u128 = 260;
+
+    let db = setup_test_db().await;
+    for value in 1..=TENANT_COUNT {
+        let tenant_id = Uuid::from_u128(value);
+        let candidate_id = Uuid::from_u128(10_000 + value);
+        let data_owner_id = Uuid::from_u128(20_000 + value);
+        let namespace_instance_id = Uuid::from_u128(30_000 + value);
+        db.execute_raw(Statement::from_sql_and_values(
+            db.get_database_backend(),
+            "INSERT INTO module_artifact_data_object_gc_candidates \
+             (candidate_id, tenant_id, data_owner_id, namespace_instance_id, policy_revision, storage_key, queued_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"
+                .to_string(),
+            vec![
+                candidate_id.to_string().into(),
+                tenant_id.to_string().into(),
+                data_owner_id.to_string().into(),
+                namespace_instance_id.to_string().into(),
+                1_i64.into(),
+                format!("artifact-data/{value}").into(),
+                fixed_time().to_rfc3339().into(),
+            ],
+        ))
+        .await
+        .expect("insert durable data-object GC candidate");
+    }
+
+    let gc = ModuleControlPlane::new(db.clone())
+        .artifact_data_object_gc(StorageRuntime::in_memory());
+    let first = gc
+        .tenants_with_candidates_after(None, PAGE_SIZE)
+        .await
+        .expect("first tenant inventory page");
+    assert_eq!(
+        first,
+        (1..=PAGE_SIZE as u128)
+            .map(Uuid::from_u128)
+            .collect::<Vec<_>>()
+    );
+
+    // Leave every first-page candidate in place (as an active retention hold
+    // would). The exclusive cursor must still expose later tenants.
+    let second = gc
+        .tenants_with_candidates_after(first.last().copied(), PAGE_SIZE)
+        .await
+        .expect("second tenant inventory page");
+    assert_eq!(
+        second,
+        ((PAGE_SIZE as u128 + 1)..=TENANT_COUNT)
+            .map(Uuid::from_u128)
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        gc.tenants_with_candidates_after(second.last().copied(), PAGE_SIZE)
+            .await
+            .expect("end of tenant inventory")
+            .is_empty()
+    );
+
+    assert_eq!(
+        gc.tenants_with_candidates_after(None, PAGE_SIZE)
+            .await
+            .expect("first page remains durable"),
+        first
+    );
+    assert!(
+        gc.tenants_with_candidates_after(Some(Uuid::nil()), PAGE_SIZE)
+            .await
+            .is_err()
     );
 }
