@@ -1767,36 +1767,8 @@ impl CatalogService {
                 .map(|axis| axis.attribute_id)
                 .collect::<Vec<_>>();
 
-            // Product locales drive which translation rows must exist; locales
-            // already carrying variant rows (for example from the Translation
-            // apply boundary) join them so their auto rows advance too. Capture
-            // the auto-generated titles of the current tuple before it changes
-            // so this edit refreshes seeded titles without touching authored copy.
-            let mut product_locales = entities::product_translation::Entity::find()
-                .filter(entities::product_translation::Column::TenantId.eq(tenant_id))
-                .filter(entities::product_translation::Column::ProductId.eq(product_id))
-                .all(&txn)
-                .await?
-                .into_iter()
-                .map(|translation| translation.locale)
-                .collect::<Vec<_>>();
-            for existing_locale in entities::variant_translation::Entity::find()
-                .filter(entities::variant_translation::Column::VariantId.eq(variant_id))
-                .all(&txn)
-                .await?
-                .into_iter()
-                .map(|row| row.locale)
-            {
-                if !product_locales.contains(&existing_locale) {
-                    product_locales.push(existing_locale);
-                }
-            }
-            let previous_auto_titles = variant_auto_titles_by_locale_in_tx(
-                &txn,
-                tenant_id,
-                product_id,
-                variant_id,
-                &product_locales,
+            let title_snapshot = VariantAutoTitleSnapshot::capture(
+                &txn, tenant_id, product_id, &[variant_id],
             )
             .await?;
 
@@ -1846,24 +1818,7 @@ impl CatalogService {
 
             assign_variant_axis_values_in_tx(&txn, tenant_id, variant_id, axis_values).await?;
 
-            // Refresh only un-authored titles: rows that are missing, empty, or still
-            // hold the previous auto-generated value. Operator-authored copy survives.
-            let next_auto_titles = variant_auto_titles_by_locale_in_tx(
-                &txn,
-                tenant_id,
-                product_id,
-                variant_id,
-                &product_locales,
-            )
-            .await?;
-            sync_variant_auto_titles_in_tx(
-                &txn,
-                variant_id,
-                &product_locales,
-                &previous_auto_titles,
-                &next_auto_titles,
-            )
-            .await?;
+            title_snapshot.refresh(&txn, tenant_id, product_id).await?;
         }
 
         if let Some(prices) = input.prices {
@@ -2471,33 +2426,91 @@ async fn validate_primary_category<C: ConnectionTrait>(
 
 /// Auto-generated variant titles per product locale, resolved from the currently
 /// persisted sparse tuple.
-async fn variant_auto_titles_by_locale_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    product_id: Uuid,
-    variant_id: Uuid,
-    locales: &[String],
-) -> CommerceResult<HashMap<String, String>> {
-    let variant_ids = [variant_id];
-    let mut titles = HashMap::with_capacity(locales.len());
-    for locale in locales {
-        let mut by_variant = super::projection::load_variant_display_titles(
-            txn,
-            tenant_id,
-            product_id,
-            &variant_ids,
-            locale,
-            PLATFORM_FALLBACK_LOCALE,
-        )
-        .await?;
-        titles.insert(
-            locale.clone(),
-            by_variant
-                .remove(&variant_id)
-                .unwrap_or_else(|| "Default".to_string()),
-        );
+/// Captures generated titles before a tuple or axis-order edit. Product locales
+/// apply to every affected SKU; an extra Translation locale belongs only to its SKU.
+pub(super) struct VariantAutoTitleSnapshot {
+    variants_by_locale: std::collections::BTreeMap<String, Vec<Uuid>>,
+    previous: HashMap<Uuid, HashMap<String, String>>,
+}
+
+impl VariantAutoTitleSnapshot {
+    pub(super) async fn capture(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        product_id: Uuid,
+        variant_ids: &[Uuid],
+    ) -> CommerceResult<Self> {
+        let mut variants_by_locale = std::collections::BTreeMap::new();
+        if !variant_ids.is_empty() {
+            let product_locales = entities::product_translation::Entity::find()
+                .filter(entities::product_translation::Column::TenantId.eq(tenant_id))
+                .filter(entities::product_translation::Column::ProductId.eq(product_id))
+                .select_only()
+                .column(entities::product_translation::Column::Locale)
+                .into_tuple::<String>()
+                .all(txn)
+                .await?;
+            for locale in product_locales {
+                variants_by_locale.insert(locale, variant_ids.to_vec());
+            }
+            let variant_locales = entities::variant_translation::Entity::find()
+                .filter(entities::variant_translation::Column::VariantId.is_in(variant_ids.iter().copied()))
+                .select_only()
+                .column(entities::variant_translation::Column::VariantId)
+                .column(entities::variant_translation::Column::Locale)
+                .into_tuple::<(Uuid, String)>()
+                .all(txn)
+                .await?;
+            for (variant_id, locale) in variant_locales {
+                let ids = variants_by_locale.entry(locale).or_default();
+                if !ids.contains(&variant_id) {
+                    ids.push(variant_id);
+                }
+            }
+        }
+        let previous = Self::load_titles(txn, tenant_id, product_id, &variants_by_locale).await?;
+        Ok(Self { variants_by_locale, previous })
     }
-    Ok(titles)
+
+    async fn load_titles(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        product_id: Uuid,
+        variants_by_locale: &std::collections::BTreeMap<String, Vec<Uuid>>,
+    ) -> CommerceResult<HashMap<Uuid, HashMap<String, String>>> {
+        let mut titles = HashMap::<Uuid, HashMap<String, String>>::new();
+        // Batch the tuple projection once per locale, not once per SKU and locale.
+        for (locale, variant_ids) in variants_by_locale {
+            let mut generated = super::projection::load_variant_display_titles(
+                txn, tenant_id, product_id, variant_ids, locale, PLATFORM_FALLBACK_LOCALE,
+            )
+            .await?;
+            for &variant_id in variant_ids {
+                titles.entry(variant_id).or_default().insert(
+                    locale.clone(),
+                    generated.remove(&variant_id).unwrap_or_else(|| "Default".to_owned()),
+                );
+            }
+        }
+        Ok(titles)
+    }
+
+    pub(super) async fn refresh(
+        self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        product_id: Uuid,
+    ) -> CommerceResult<()> {
+        let next = Self::load_titles(txn, tenant_id, product_id, &self.variants_by_locale).await?;
+        for (variant_id, previous) in self.previous {
+            let locales = previous.keys().cloned().collect::<Vec<_>>();
+            let next_titles = next.get(&variant_id).ok_or_else(|| {
+                CommerceError::Validation("Variant title refresh lost its locale snapshot".to_owned())
+            })?;
+            sync_variant_auto_titles_in_tx(txn, variant_id, &locales, &previous, next_titles).await?;
+        }
+        Ok(())
+    }
 }
 
 /// Refreshes variant translation titles after a tuple change without destroying

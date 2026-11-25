@@ -548,6 +548,16 @@ impl CatalogService {
         if plan.preview.has_changes {
             // Exhaustion is checked before any catalog mutation.
             let revision = next_revision(snapshot.product.revision)?;
+            let affected_ids = plan.variants.iter().filter(|variant| {
+                plan.configuration_changed
+                    || variant.identity_changed
+                    || !variant.values_to_write.is_empty()
+            }).map(|variant| variant.variant_id).collect::<Vec<_>>();
+            // Capture the old generated copy before configuration or tuple rows change.
+            let title_snapshot = VariantAutoTitleSnapshot::capture(
+                &txn, tenant_id, product_id, &affected_ids,
+            )
+            .await?;
             if plan.configuration_changed {
                 persist_configuration(&txn, tenant_id, product_id, &snapshot, &input).await?;
             }
@@ -603,6 +613,7 @@ impl CatalogService {
                 )
                 .await?;
             }
+            title_snapshot.refresh(&txn, tenant_id, product_id).await?;
             let mut product: entities::product::ActiveModel = snapshot.product.into();
             product.revision = Set(revision);
             product.updated_at = Set(Utc::now().into());
