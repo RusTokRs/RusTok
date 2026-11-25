@@ -575,11 +575,7 @@ mod variant_retry_tests {
         );
         let error = GraphqlOperationError {
             error: GraphqlHttpError::Network,
-            extensions: Some(rustok_graphql::GraphqlErrorExtensions {
-                code: None,
-                retryable: Some(true),
-                outcome: Some("unknown".to_owned()),
-            }),
+            extensions: None,
         };
 
         assert!(finish_lifecycle_result::<()>(slot, Err(error)).is_err());
