@@ -705,7 +705,6 @@ mod tests {
     }
 
     #[test]
-    fn permission_filtering_is_stable_and_drops_unknown_permissions() {    #[test]
     fn mcp_runtime_uuid_parser_rejects_nil_identifiers() {
         let nil = Uuid::nil().to_string();
         assert_eq!(parse_uuid(Some(&nil)), None);
