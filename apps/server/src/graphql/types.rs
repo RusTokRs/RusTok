@@ -161,10 +161,10 @@ impl User {
 
     async fn role(&self, ctx: &Context<'_>) -> Result<String> {
         let db = ctx.data::<DatabaseConnection>()?;
-        let role = RbacService::get_user_role(db, &self.tenant_id, &self.id)
+        let role = RbacService::get_user_role_slug(db, &self.tenant_id, &self.id)
             .await
             .map_err(|error| graphql_internal_error("Unable to resolve user role", error))?;
-        Ok(role.to_string())
+        Ok(role)
     }
 
     async fn can(&self, ctx: &Context<'_>, action: String) -> Result<bool> {

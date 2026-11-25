@@ -4,8 +4,11 @@ use tracing::{debug, warn};
 
 use rustok_core::UserRole;
 
-use rustok_api::{Permission, has_effective_permission};
-use rustok_rbac::PermissionResolver;
+use rustok_api::Permission;
+use rustok_rbac::{
+    PermissionResolver, evaluate_all_permissions, evaluate_any_permission,
+    evaluate_single_permission,
+};
 use rustok_telemetry::metrics;
 
 use super::rbac_persistence::replace_user_role_via_store;
@@ -72,7 +75,7 @@ impl RbacService {
         // resolution per request. The resolver below rejects an invalidated
         // matching scope rather than falling back to unscoped grants.
         if let Some(permissions) = scoped_permissions_for(tenant_id, user_id) {
-            let allowed = has_effective_permission(&permissions, required_permission);
+            let allowed = evaluate_single_permission(&permissions, required_permission).allowed;
             debug!(
                 tenant_id = %tenant_id,
                 user_id = %user_id,
@@ -136,10 +139,7 @@ impl RbacService {
 
         if let Some(permissions) = scoped_permissions_for(tenant_id, user_id) {
             // Matches policy-engine semantics: empty "any" set fails closed.
-            let allowed = !required_permissions.is_empty()
-                && required_permissions
-                    .iter()
-                    .any(|permission| has_effective_permission(&permissions, permission));
+            let allowed = evaluate_any_permission(&permissions, required_permissions).allowed;
             debug!(
                 tenant_id = %tenant_id,
                 user_id = %user_id,
@@ -202,9 +202,8 @@ impl RbacService {
         Self::record_authz_entrypoint_call("has_all_permissions", "library");
 
         if let Some(permissions) = scoped_permissions_for(tenant_id, user_id) {
-            let allowed = required_permissions
-                .iter()
-                .all(|permission| has_effective_permission(&permissions, permission));
+            // Matches policy-engine semantics: empty "all" set fails closed.
+            let allowed = evaluate_all_permissions(&permissions, required_permissions).allowed;
             debug!(
                 tenant_id = %tenant_id,
                 user_id = %user_id,
@@ -318,6 +317,15 @@ impl RbacService {
 
         ensure_scope_not_invalidated(tenant_id, user_id)?;
         Self::get_user_role_authoritative(db, tenant_id, user_id).await
+    }
+
+    pub async fn get_user_role_slug(
+        db: &DatabaseConnection,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+    ) -> Result<String> {
+        Self::record_authz_entrypoint_call("get_user_role_slug", "library");
+        Self::get_user_role_slug_authoritative(db, tenant_id, user_id).await
     }
 
     pub async fn get_user_ids_for_role(
@@ -683,6 +691,47 @@ mod tests {
                     .await
                     .expect("scoped role lookup"),
                 UserRole::Admin
+            );
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn request_scope_has_all_permissions_fails_closed_on_empty_slice() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let (tenant_id, user_id) = insert_tenant_and_user(
+            &db,
+            "request-scope-empty-all",
+            "request-scope-empty-all@example.com",
+        )
+        .await;
+        let scope = RbacRequestScope::new(
+            tenant_id,
+            user_id,
+            vec![Permission::USERS_MANAGE],
+            UserRole::Admin,
+        );
+        with_rbac_request_scope(Some(scope), async {
+            assert!(
+                !RbacService::has_all_permissions(&db, &tenant_id, &user_id, &[])
+                    .await
+                    .expect("empty all-permissions set fails closed"),
+                "request-scoped has_all_permissions(&[]) must fail closed like PermissionEvaluator"
+            );
+            assert!(
+                !RbacService::has_any_permission(&db, &tenant_id, &user_id, &[])
+                    .await
+                    .expect("empty any-permissions set fails closed"),
+            );
+            assert!(
+                RbacService::has_all_permissions(
+                    &db,
+                    &tenant_id,
+                    &user_id,
+                    &[Permission::USERS_READ]
+                )
+                .await
+                .expect("non-empty permission check succeeds"),
             );
         })
         .await;

@@ -854,7 +854,12 @@ rbac-perms-col-module = Модуль
 rbac-perms-col-roles = Назначено ролям
 rbac-perms-unassigned = Не назначено
 rbac-perms-clear-filter = Сбросить фильтр
-rbac-perms-showing-count = Показано { $shown } из { $total } разрешений
+rbac-perms-showing-count =
+    { $total ->
+        [one] Показано { $shown } из { $total } разрешения
+        [few] Показано { $shown } из { $total } разрешений
+       *[other] Показано { $shown } из { $total } разрешений
+    }
 rbac-module-core = Ядро
 rbac-module-enabled = Активен
 rbac-module-disabled = Отключён

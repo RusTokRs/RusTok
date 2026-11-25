@@ -282,6 +282,20 @@ impl ServerAuthAdminMutationProvider {
             .map_err(super::super_admin_guard::persistence_error)
     }
 
+    async fn user_role_slug<C>(
+        &self,
+        db: &C,
+        tenant_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<String, AuthAdminMutationError>
+    where
+        C: ConnectionTrait,
+    {
+        rustok_rbac::resolve_persisted_role_slug_on(db, tenant_id, user_id)
+            .await
+            .map_err(super::super_admin_guard::persistence_error)
+    }
+
     async fn ensure_role_assignment_allowed(
         &self,
         context: &AuthAdminMutationContext,
@@ -518,9 +532,9 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
                     .await
                     .map_err(super::super_admin_guard::persistence_error)?;
             }
-            self.user_role(&tx, context.tenant_id, user.id).await?
+            self.user_role_slug(&tx, context.tenant_id, user.id).await?
         } else {
-            role
+            role.to_string()
         };
         let tenant_name = self.tenant_name(&tx, context.tenant_id).await?;
         tx.commit().await.map_err(super::internal_admin_error)?;
@@ -907,9 +921,10 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
 
         let tenant_name = self.tenant_name(&tx, context.tenant_id).await?;
         let final_role = match role_mutation_plan.as_ref() {
-            Some(RolePlan::Builtin(plan)) => plan.new_role().clone(),
-            Some(RolePlan::Custom(_)) => self.user_role(&tx, context.tenant_id, user.id).await?,
-            None => current_role.clone(),
+            Some(RolePlan::Builtin(plan)) => plan.new_role().to_string(),
+            Some(RolePlan::Custom(_)) | None => {
+                self.user_role_slug(&tx, context.tenant_id, user.id).await?
+            }
         };
         tx.commit().await.map_err(super::internal_admin_error)?;
         if let Some(durable_generation) = durable_generation {

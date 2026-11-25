@@ -163,12 +163,8 @@ where
     // Repair only creates a missing system role (seeding its default grants
     // below); it never adds or removes grants on an existing role, because
     // tenant-level grant changes are legitimate persisted state, not drift.
-    if let Some((existing_role_id, true)) = existing {
-        let _ = existing_role_id;
-        return Ok(());
-    }
     let role_id = match existing {
-        Some((role_id, true)) => Some(role_id),
+        Some((_existing_role_id, true)) => return Ok(()),
         Some((_role_id, false)) => {
             return Err(RbacSystemRoleRepairError::BuiltInRoleSlugCollision { tenant_id, slug });
         }

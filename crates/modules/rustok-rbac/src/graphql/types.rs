@@ -1,4 +1,4 @@
-use async_graphql::{Enum, InputObject, SimpleObject};
+use async_graphql::{Enum, InputObject, MaybeUndefined, SimpleObject};
 use rustok_core::UserRole;
 
 #[derive(Enum, Copy, Clone, Debug, Eq, PartialEq)]
@@ -70,7 +70,7 @@ pub struct CreateRoleInput {
 pub struct UpdateRoleInput {
     pub slug: String,
     pub name: Option<String>,
-    pub description: Option<String>,
+    pub description: MaybeUndefined<String>,
     pub permissions: Option<Vec<String>>,
 }
 

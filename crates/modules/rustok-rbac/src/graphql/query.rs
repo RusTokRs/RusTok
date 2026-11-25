@@ -41,6 +41,7 @@ async fn role_display_name(
     store: &SeaOrmRbacPresentationStore,
     tenant_id: uuid::Uuid,
     role: &UserRole,
+    persisted_name: &str,
     requested_locale: &StoredLocale,
 ) -> Result<String> {
     let resource_key = role.to_string();
@@ -60,10 +61,17 @@ async fn role_display_name(
                 locale = %requested_locale.as_str(),
                 "RBAC owner presentation read failed"
             );
-            FieldError::new("RBAC role presentation is temporarily unavailable")
+            <FieldError as GraphQLError>::internal_error(
+                "RBAC role presentation is temporarily unavailable",
+            )
         })?;
     if let Some(presentation) = exact {
         return Ok(presentation.name);
+    }
+
+    let seed_name = legacy_seed_display_name(role);
+    if !persisted_name.trim().is_empty() && persisted_name != seed_name {
+        return Ok(persisted_name.to_string());
     }
 
     let source_locale = match StoredLocale::new("en") {
@@ -89,7 +97,9 @@ async fn role_display_name(
                     role = %resource_key,
                     "RBAC owner source presentation read failed"
                 );
-                FieldError::new("RBAC role presentation is temporarily unavailable")
+                <FieldError as GraphQLError>::internal_error(
+                    "RBAC role presentation is temporarily unavailable",
+                )
             })?;
         if let Some(presentation) = source {
             return Ok(presentation.name);
@@ -681,12 +691,12 @@ impl RbacQuery {
 
         if !role_rows.is_empty() {
             let availability = availability_snapshot(ctx, tenant.id).await;
-            let sql_perms = "SELECT rp.role_id, p.resource, p.action FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id WHERE p.tenant_id = ?";
+            let sql_perms = "SELECT rp.role_id, p.resource, p.action FROM role_permissions rp JOIN roles r ON r.id = rp.role_id JOIN permissions p ON p.id = rp.permission_id WHERE r.tenant_id = ? AND p.tenant_id = ?";
             let perm_rows = db
                 .query_all_raw(prepare_statement(
                     backend,
                     sql_perms,
-                    vec![tenant.id.into()],
+                    vec![tenant.id.into(), tenant.id.into()],
                 ))
                 .await
                 .map_err(|error| internal_db_error("list role permissions", error))?;
@@ -745,9 +755,14 @@ impl RbacQuery {
 
                 let display_name = if is_system {
                     if let Ok(builtin_role) = slug.parse::<UserRole>() {
-                        role_display_name(&store, tenant.id, &builtin_role, &requested_locale)
-                            .await
-                            .unwrap_or(name)
+                        role_display_name(
+                            &store,
+                            tenant.id,
+                            &builtin_role,
+                            &name,
+                            &requested_locale,
+                        )
+                        .await?
                     } else {
                         name
                     }

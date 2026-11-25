@@ -81,6 +81,18 @@ async fn setup_test_db() -> DatabaseConnection {
             applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             UNIQUE (tenant_id, idempotency_key)
         );
+        CREATE TABLE rbac_localized_presentations (
+            tenant_id TEXT NOT NULL,
+            resource_kind TEXT NOT NULL,
+            resource_key TEXT NOT NULL,
+            locale TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            copy_revision INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (tenant_id, resource_kind, resource_key, locale)
+        );
         "#,
     )
     .await
@@ -964,4 +976,194 @@ async fn generation_callback_defaults_to_legacy_membership_hook() {
         .await
         .unwrap();
     assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn update_role_preserves_dormant_grants_clears_description_and_syncs_system_display_name() {
+    use rustok_rbac::graphql::{RbacModuleAvailabilityHandle, RbacModuleAvailabilityProvider};
+    use sea_orm::Statement;
+    use std::collections::{BTreeMap, BTreeSet};
+
+    struct BlogDisabledAvailability;
+    #[async_trait::async_trait]
+    impl RbacModuleAvailabilityProvider for BlogDisabledAvailability {
+        async fn permission_availability(
+            &self,
+            _tenant_id: &Uuid,
+        ) -> Option<rustok_rbac::PermissionAvailability> {
+            let mut ownership = BTreeMap::new();
+            ownership.insert("blog_posts:create".to_string(), "blog".to_string());
+            ownership.insert("blog_categories:create".to_string(), "blog".to_string());
+            Some(rustok_rbac::PermissionAvailability::new(
+                ownership,
+                BTreeSet::new(),
+            ))
+        }
+    }
+
+    let db = setup_test_db().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    db.execute_raw(Statement::from_sql_and_values(
+        sea_orm::DbBackend::Sqlite,
+        "INSERT INTO tenants (id, name, slug) VALUES (?, ?, ?)",
+        vec![tenant_id.into(), "Test Tenant".into(), "test-tenant".into()],
+    ))
+    .await
+    .unwrap();
+    let schema = test_schema(
+        db.clone(),
+        tenant_id,
+        actor_id,
+        vec![
+            Permission::SETTINGS_READ,
+            Permission::SETTINGS_MANAGE,
+            Permission::PRODUCTS_READ,
+        ],
+    );
+
+    // Seed built-in system roles first via `roles` query.
+    let list_seed = schema
+        .execute(async_graphql::Request::new("{ roles { slug displayName } }"))
+        .await;
+    assert!(list_seed.errors.is_empty(), "{:?}", list_seed.errors);
+
+    let role_id = Uuid::new_v4();
+    let dormant_perm_candidate = Uuid::new_v4();
+
+    db.execute_raw(Statement::from_sql_and_values(
+        sea_orm::DbBackend::Sqlite,
+        "INSERT INTO roles (id, tenant_id, name, slug, description, is_system) VALUES (?, ?, ?, ?, ?, 0)",
+        vec![
+            role_id.into(),
+            tenant_id.into(),
+            "Content Editor".into(),
+            "content_editor".into(),
+            "Initial description".into(),
+        ],
+    ))
+    .await
+    .unwrap();
+    db.execute_raw(Statement::from_sql_and_values(
+        sea_orm::DbBackend::Sqlite,
+        "INSERT INTO permissions (id, tenant_id, resource, action) VALUES (?, ?, 'blog_posts', 'create') ON CONFLICT (tenant_id, resource, action) DO NOTHING",
+        vec![dormant_perm_candidate.into(), tenant_id.into()],
+    ))
+    .await
+    .unwrap();
+    let dormant_perm_id: Uuid = db
+        .query_one_raw(Statement::from_sql_and_values(
+            sea_orm::DbBackend::Sqlite,
+            "SELECT id FROM permissions WHERE tenant_id = ? AND resource = 'blog_posts' AND action = 'create'",
+            vec![tenant_id.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("", "id")
+        .unwrap();
+    db.execute_raw(Statement::from_sql_and_values(
+        sea_orm::DbBackend::Sqlite,
+        "INSERT INTO role_permissions (id, role_id, permission_id) VALUES (?, ?, ?)",
+        vec![Uuid::new_v4().into(), role_id.into(), dormant_perm_id.into()],
+    ))
+    .await
+    .unwrap();
+
+    // Actor permissions intentionally OMIT blog_posts:create because disabled-module
+    // permissions are stripped at authentication time.
+    let availability = RbacModuleAvailabilityHandle(std::sync::Arc::new(BlogDisabledAvailability));
+
+    // 1. Saving with existing dormant grant + active grant succeeds, AND description can be cleared with null.
+    let res = schema
+        .execute(
+            async_graphql::Request::new(
+                r#"mutation {
+                    updateRole(input: {
+                        slug: "content_editor",
+                        name: "Editorial Lead",
+                        description: null,
+                        permissions: ["blog_posts:create", "products:read"]
+                    }) {
+                        success
+                        role { displayName description permissions inactivePermissions }
+                    }
+                }"#,
+            )
+            .data(availability.clone()),
+        )
+        .await;
+    assert!(res.errors.is_empty(), "expected dormant grant retention to succeed: {:?}", res.errors);
+    let data = res.data.into_json().unwrap();
+    assert_eq!(data["updateRole"]["role"]["displayName"], "Editorial Lead");
+    assert!(data["updateRole"]["role"]["description"].is_null());
+    assert_eq!(
+        data["updateRole"]["role"]["inactivePermissions"],
+        serde_json::json!(["blog_posts:create"])
+    );
+
+    // 2. Omitting description keeps current description (set first via non-empty string).
+    let set_desc = schema
+        .execute(async_graphql::Request::new(
+            r#"mutation { updateRole(input: { slug: "content_editor", description: "Restored desc" }) { role { description } } }"#,
+        ))
+        .await;
+    assert!(set_desc.errors.is_empty(), "{:?}", set_desc.errors);
+    let keep_desc = schema
+        .execute(async_graphql::Request::new(
+            r#"mutation { updateRole(input: { slug: "content_editor", name: "Editorial Lead V2" }) { role { displayName description } } }"#,
+        ))
+        .await;
+    assert!(keep_desc.errors.is_empty(), "{:?}", keep_desc.errors);
+    let keep_json = keep_desc.data.into_json().unwrap();
+    assert_eq!(keep_json["updateRole"]["role"]["displayName"], "Editorial Lead V2");
+    assert_eq!(keep_json["updateRole"]["role"]["description"], "Restored desc");
+
+    // 3. Clearing via empty string clears back to null.
+    let clear_empty = schema
+        .execute(async_graphql::Request::new(
+            r#"mutation { updateRole(input: { slug: "content_editor", description: "   " }) { role { description } } }"#,
+        ))
+        .await;
+    assert!(clear_empty.errors.is_empty(), "{:?}", clear_empty.errors);
+    assert!(clear_empty.data.into_json().unwrap()["updateRole"]["role"]["description"].is_null());
+
+    // 4. Adding a *new* dormant permission or an active permission not held by actor still fails.
+    let new_dormant = schema
+        .execute(
+            async_graphql::Request::new(
+                r#"mutation { updateRole(input: { slug: "content_editor", permissions: ["blog_posts:create", "blog_categories:create"] }) { success } }"#,
+            )
+            .data(availability.clone()),
+        )
+        .await;
+    assert!(!new_dormant.errors.is_empty(), "new dormant permission must be rejected");
+
+    let unheld_active = schema
+        .execute(
+            async_graphql::Request::new(
+                r#"mutation { updateRole(input: { slug: "content_editor", permissions: ["blog_posts:create", "orders:manage"] }) { success } }"#,
+            )
+            .data(availability),
+        )
+        .await;
+    assert!(!unheld_active.errors.is_empty(), "unheld active permission must be rejected");
+
+    // 5. Updating a system role's display name is reflected by `roles` query.
+    let rename_system = schema
+        .execute(async_graphql::Request::new(
+            r#"mutation { updateRole(input: { slug: "manager", name: "Operations Lead" }) { role { slug displayName } } }"#,
+        ))
+        .await;
+    assert!(rename_system.errors.is_empty(), "{:?}", rename_system.errors);
+    let list_after = schema.execute(async_graphql::Request::new("{ roles { slug displayName } }")).await;
+    assert!(list_after.errors.is_empty(), "{:?}", list_after.errors);
+    let roles_json = list_after.data.into_json().unwrap();
+    let manager = roles_json["roles"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["slug"] == "manager")
+        .unwrap();
+    assert_eq!(manager["displayName"], "Operations Lead");
 }

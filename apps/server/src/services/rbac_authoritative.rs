@@ -34,34 +34,24 @@ impl RbacService {
         C: ConnectionTrait,
     {
         // The persisted relation graph is the only authoritative role source,
-        // and it is strictly tenant-scoped: no global/shared tenant fallback.
-        // Database and slug errors propagate instead of silently degrading to
-        // a permission-derived heuristic label.
-        let role_query = match db.get_database_backend() {
-            sea_orm::DbBackend::Postgres => sea_orm::Statement::from_sql_and_values(
-                sea_orm::DbBackend::Postgres,
-                "SELECT r.slug FROM user_roles ur JOIN roles r ON ur.role_id = r.id JOIN users u ON u.id = ur.user_id AND u.tenant_id = r.tenant_id WHERE ur.user_id = $1 AND r.tenant_id = $2 AND r.slug IN ('super_admin', 'admin', 'manager', 'customer') ORDER BY CASE WHEN r.slug = 'super_admin' THEN 1 WHEN r.slug = 'admin' THEN 2 WHEN r.slug = 'manager' THEN 3 ELSE 4 END LIMIT 1",
-                [(*user_id).into(), (*tenant_id).into()],
-            ),
-            _ => sea_orm::Statement::from_sql_and_values(
-                db.get_database_backend(),
-                "SELECT r.slug FROM user_roles ur JOIN roles r ON ur.role_id = r.id JOIN users u ON u.id = ur.user_id AND u.tenant_id = r.tenant_id WHERE ur.user_id = ? AND r.tenant_id = ? AND r.slug IN ('super_admin', 'admin', 'manager', 'customer') ORDER BY CASE WHEN r.slug = 'super_admin' THEN 1 WHEN r.slug = 'admin' THEN 2 WHEN r.slug = 'manager' THEN 3 ELSE 4 END LIMIT 1",
-                [(*user_id).into(), (*tenant_id).into()],
-            ),
-        };
+        // and it evaluates both built-in slugs and custom-role grants via the
+        // RBAC owner hierarchy policy.
+        rustok_rbac::resolve_role_hierarchy_on(db, *tenant_id, *user_id)
+            .await
+            .map_err(|error| sea_orm::DbErr::Custom(error.to_string()).into())
+    }
 
-        if let Some(row) = db.query_one_raw(role_query).await? {
-            let slug: String = row.try_get("", "slug")?;
-            let role = std::str::FromStr::from_str(&slug).map_err(|_| {
-                sea_orm::DbErr::Custom(format!("invalid persisted role slug: {slug}"))
-            })?;
-            return Ok(role);
-        }
-
-        // No persisted role assignment in this tenant: the least-privilege
-        // default applies. Permissions are still resolved independently from
-        // the relation graph, so this label cannot widen access.
-        Ok(rustok_core::UserRole::Customer)
+    pub async fn get_user_role_slug_authoritative<C>(
+        db: &C,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+    ) -> Result<String>
+    where
+        C: ConnectionTrait,
+    {
+        rustok_rbac::resolve_persisted_role_slug_on(db, *tenant_id, *user_id)
+            .await
+            .map_err(|error| sea_orm::DbErr::Custom(error.to_string()).into())
     }
 }
 

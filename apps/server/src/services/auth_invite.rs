@@ -382,11 +382,9 @@ impl AuthLifecycleService {
                     );
                     InviteAcceptanceError::Internal(Error::InternalServerError)
                 })?;
-            let permissions =
-                RbacService::get_user_permissions_authoritative(&tx, &tenant_id, &user.id)
-                    .await
-                    .map_err(InviteAcceptanceError::Internal)?;
-            rustok_core::infer_user_role_from_permissions(&permissions)
+            RbacService::get_user_role_authoritative(&tx, &tenant_id, &user.id)
+                .await
+                .map_err(InviteAcceptanceError::Internal)?
         } else {
             role
         };

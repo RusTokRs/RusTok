@@ -190,14 +190,14 @@ impl ServerAuthAdminMutationProvider {
 
     fn user_record(
         user: users::Model,
-        role: UserRole,
+        role: String,
         tenant_name: Option<String>,
     ) -> UserMutationRecord {
         UserMutationRecord {
             id: user.id,
             email: user.email,
             name: user.name,
-            role: role.to_string(),
+            role,
             status: user.status.to_string(),
             created_at: user.created_at.with_timezone(&chrono::Utc),
             tenant_name,
@@ -547,7 +547,7 @@ mod tests {
         };
         let record = ServerAuthAdminMutationProvider::user_record(
             user.clone(),
-            UserRole::Admin,
+            UserRole::Admin.to_string(),
             Some("Tenant".to_string()),
         );
         assert_eq!(record.id, user.id);

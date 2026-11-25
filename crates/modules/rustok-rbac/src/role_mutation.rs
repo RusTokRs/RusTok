@@ -675,6 +675,54 @@ pub async fn resolve_role_hierarchy_on<C: sea_orm::ConnectionTrait>(
     Ok(most_privileged_persisted_role(&memberships, &permissions))
 }
 
+/// Resolve the user's primary persisted role slug in `tenant_id`.
+/// Returns the exact slug (including custom role slugs) when the user has a
+/// single canonical membership, the highest-ranked built-in slug (or
+/// lexicographically first custom slug) when multiple rows exist, and
+/// `"customer"` when the user has no persisted memberships in the tenant.
+pub async fn resolve_persisted_role_slug_on<C: sea_orm::ConnectionTrait>(
+    db: &C,
+    tenant_id: Uuid,
+    user_id: Uuid,
+) -> Result<String, RbacRolePersistenceError> {
+    validate_identity("tenant_id", tenant_id)?;
+    validate_identity("target_user_id", user_id)?;
+    let memberships = load_tenant_role_memberships_on(db, tenant_id, user_id).await?;
+    if memberships.is_empty() {
+        return Ok(UserRole::Customer.to_string());
+    }
+    if memberships.len() == 1 {
+        return Ok(memberships[0].1.clone());
+    }
+
+    fn rank(role: &UserRole) -> u8 {
+        match role {
+            UserRole::Customer => 0,
+            UserRole::Manager => 1,
+            UserRole::Admin => 2,
+            UserRole::SuperAdmin => 3,
+        }
+    }
+
+    let mut best_builtin: Option<(u8, String)> = None;
+    let mut best_custom: Option<String> = None;
+    for (_, slug) in memberships {
+        if let Ok(builtin) = slug.parse::<UserRole>() {
+            let r = rank(&builtin);
+            if best_builtin.as_ref().is_none_or(|(best_r, _)| r > *best_r) {
+                best_builtin = Some((r, slug));
+            }
+        } else if best_custom.as_ref().is_none_or(|best| slug < *best) {
+            best_custom = Some(slug);
+        }
+    }
+
+    Ok(best_builtin
+        .map(|(_, slug)| slug)
+        .or(best_custom)
+        .unwrap_or_else(|| UserRole::Customer.to_string()))
+}
+
 fn most_privileged_persisted_role(
     memberships: &[(Uuid, String)],
     permissions: &[rustok_api::Permission],

@@ -22,6 +22,7 @@ ssr = [
   "rustok-api/server",
   "dep:leptos_axum",
   "dep:rustok-core",
+  "dep:rustok-modules",
   "dep:rustok-rbac",
   "rustok-grid-leptos/ssr",
 ]
@@ -37,6 +38,7 @@ rustok-grid-leptos = { workspace = true, default-features = false }
 
 rustok-ui-i18n.workspace = true
 rustok-core = { workspace = true, optional = true }
+rustok-modules = { workspace = true, optional = true }
 rustok-rbac = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 tracing.workspace = true

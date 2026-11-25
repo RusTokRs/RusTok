@@ -863,7 +863,11 @@ rbac-perms-col-module = Module
 rbac-perms-col-roles = Granted To Roles
 rbac-perms-unassigned = Unassigned
 rbac-perms-clear-filter = Clear filter
-rbac-perms-showing-count = Showing { $shown } of { $total } permissions
+rbac-perms-showing-count =
+    { $total ->
+        [one] Showing { $shown } of 1 permission
+       *[other] Showing { $shown } of { $total } permissions
+    }
 rbac-module-core = Core
 rbac-module-enabled = Active
 rbac-module-disabled = Disabled

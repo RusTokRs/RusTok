@@ -42,7 +42,8 @@ pub use bootstrap::{RbacRoleAssignmentDbWriter, RbacRoleAssignmentError};
 pub use catalog::BuiltinTenantRbacCatalog;
 pub use consistency::{RbacConsistencyStats, load_consistency_stats};
 pub use control_plane::{
-    RbacControlPlaneAdmissionError, RbacControlPlanePrincipal, require_direct_control_plane_user,
+    RbacControlPlaneAdmissionError, RbacControlPlanePrincipal, TenantRoleOverviewRecord,
+    load_tenant_roles_overview_on, require_direct_control_plane_user,
 };
 pub use error::RbacError;
 pub use invalidation_generation::{
@@ -71,8 +72,8 @@ pub use role_mutation::{
     plan_persisted_custom_role_assignment_on, plan_persisted_user_role_mutation_on,
     plan_user_role_mutation, replace_persisted_user_role_by_slug_on,
     replace_persisted_user_role_on, require_request_role_grant, require_role_assignment,
-    require_user_management, resolve_role_hierarchy_on, validate_custom_role_grant_on,
-    validate_persisted_role_grant_on,
+    require_user_management, resolve_persisted_role_slug_on, resolve_role_hierarchy_on,
+    validate_custom_role_grant_on, validate_persisted_role_grant_on,
 };
 pub use services::authz_mode::AuthzEngine;
 pub use services::module_availability::{ModulePermissionStatus, PermissionAvailability};

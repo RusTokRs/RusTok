@@ -1,11 +1,13 @@
-use async_graphql::{Context, FieldError, InputObject, Object, Result};
+use async_graphql::{Context, FieldError, InputObject, MaybeUndefined, Object, Result};
 use rustok_api::{
-    AuthContext, AuthPrincipalContext, Permission, TenantContext, graphql::GraphQLError,
-    has_effective_permission,
+    AuthContext, AuthPrincipalContext, Permission, StoredLocale, TenantContext,
+    graphql::GraphQLError, has_effective_permission,
 };
-use rustok_core::UserRole;
+use rustok_core::{UserRole, i18n::Locale};
 use sea_orm::{ConnectionTrait, DatabaseConnection, TransactionTrait};
 use uuid::Uuid;
+
+use crate::RbacPresentationResourceKind;
 
 use super::control_plane::{
     availability_snapshot, prepare_statement, require_direct_control_plane_user,
@@ -60,14 +62,19 @@ fn is_unique_violation<E: std::fmt::Display>(error: &E) -> bool {
     message.contains("unique") || message.contains("duplicate")
 }
 
-/// Parse role permissions against the canonical permission vocabulary and
-/// enforce the actor's authority ceiling: a role may never be granted a
-/// permission the actor does not effectively hold. Malformed strings are a
-/// client error, never silently skipped.
-fn parse_and_authorize_role_permissions(
-    actor_permissions: &[Permission],
-    raw_permissions: &[String],
-) -> Result<Vec<Permission>> {
+async fn abort_tx(tx: sea_orm::DatabaseTransaction, err: FieldError) -> FieldError {
+    if let Err(rollback_error) = tx.rollback().await {
+        tracing::warn!(
+            error = %rollback_error,
+            "RBAC role mutation transaction rollback failed"
+        );
+    }
+    err
+}
+
+/// Parse role permissions against the canonical permission vocabulary.
+/// Malformed strings are a client error, never silently skipped.
+fn parse_role_permissions(raw_permissions: &[String]) -> Result<Vec<Permission>> {
     let mut permissions: Vec<Permission> = Vec::with_capacity(raw_permissions.len());
     for raw in raw_permissions {
         let permission: Permission = raw.trim().parse().map_err(|_| {
@@ -75,16 +82,51 @@ fn parse_and_authorize_role_permissions(
                 "Invalid permission '{raw}': expected a canonical '<resource>:<action>' permission"
             ))
         })?;
-        if !has_effective_permission(actor_permissions, &permission) {
-            return Err(<FieldError as GraphQLError>::permission_denied(&format!(
-                "cannot grant permission '{permission}' because it exceeds the current request authority"
-            )));
-        }
         if !permissions.contains(&permission) {
             permissions.push(permission);
         }
     }
     permissions.sort_by_cached_key(ToString::to_string);
+    Ok(permissions)
+}
+
+/// Enforce the actor's authority ceiling on role permissions.
+/// Existing dormant grants (owned by a currently disabled tenant module and
+/// stripped from `actor_permissions` at login) may be retained across saves,
+/// whereas active grants and newly added grants require the actor to hold them.
+fn authorize_role_permissions(
+    actor_permissions: &[Permission],
+    availability: Option<&crate::PermissionAvailability>,
+    desired: &[Permission],
+    already_granted: &[String],
+) -> Result<()> {
+    for permission in desired {
+        if has_effective_permission(actor_permissions, permission) {
+            continue;
+        }
+        let key = permission.to_string();
+        let is_retained_dormant = already_granted.contains(&key)
+            && matches!(
+                availability.map(|snapshot| snapshot.status(&key)),
+                Some(crate::ModulePermissionStatus::Disabled(_))
+            );
+        if !is_retained_dormant {
+            return Err(<FieldError as GraphQLError>::permission_denied(&format!(
+                "cannot grant permission '{permission}' because it exceeds the current request authority"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Parse role permissions against the canonical permission vocabulary and
+/// enforce the actor's authority ceiling with no prior dormant grant retention.
+fn parse_and_authorize_role_permissions(
+    actor_permissions: &[Permission],
+    raw_permissions: &[String],
+) -> Result<Vec<Permission>> {
+    let permissions = parse_role_permissions(raw_permissions)?;
+    authorize_role_permissions(actor_permissions, None, &permissions, &[])?;
     Ok(permissions)
 }
 
@@ -310,9 +352,11 @@ impl RbacMutation {
                         ))
                         .await
                         .map_err(|e| internal_db_error("rbac role mutation", e))?
-                        .ok_or_else(|| {
-                            FieldError::new("Permission could not be retrieved after insert")
-                        })?;
+                            .ok_or_else(|| {
+                                <FieldError as GraphQLError>::internal_error(
+                                    "Permission could not be retrieved after insert",
+                                )
+                            })?;
                     persisted_row
                         .try_get::<Uuid>("", "id")
                         .map_err(|e| internal_db_error("rbac role mutation", e))?
@@ -402,10 +446,8 @@ impl RbacMutation {
                 "Role name must be at most 255 characters",
             ));
         }
-        if input
-            .description
-            .as_ref()
-            .is_some_and(|value| value.chars().count() > 2000)
+        if let MaybeUndefined::Value(ref value) = input.description
+            && value.trim().chars().count() > 2000
         {
             return Err(<FieldError as GraphQLError>::bad_user_input(
                 "Role description must be at most 2000 characters",
@@ -413,8 +455,12 @@ impl RbacMutation {
         }
         let db = ctx.data::<DatabaseConnection>()?;
         let backend = db.get_database_backend();
+        let locale = ctx.data_opt::<Locale>().copied().unwrap_or_default();
+        let requested_locale = StoredLocale::new(locale.as_str())
+            .or_else(|_| StoredLocale::new("en"))
+            .map_err(|e| internal_db_error("rbac role presentation locale", e))?;
 
-        let find_role_sql = "SELECT id, name, description, is_system FROM roles WHERE tenant_id = ? AND slug = ? LIMIT 1";
+        let find_role_sql = "SELECT id FROM roles WHERE tenant_id = ? AND slug = ? LIMIT 1";
         let existing = db
             .query_one_raw(prepare_statement(
                 backend,
@@ -430,15 +476,6 @@ impl RbacMutation {
         let role_id: Uuid = existing
             .try_get("", "id")
             .map_err(|e| internal_db_error("rbac role mutation", e))?;
-        let current_name: String = existing
-            .try_get("", "name")
-            .map_err(|e| internal_db_error("rbac role mutation", e))?;
-        let current_desc: Option<String> = existing
-            .try_get("", "description")
-            .map_err(|e| internal_db_error("rbac role mutation", e))?;
-        let is_system: bool = existing
-            .try_get("", "is_system")
-            .map_err(|e| internal_db_error("rbac role mutation", e))?;
 
         // Default roles are persisted tenant records and are editable
         // (name, description, permissions) within the actor's authority
@@ -451,11 +488,8 @@ impl RbacMutation {
             ));
         }
 
-        let validated_update_permissions = match &input.permissions {
-            Some(raw) => Some(parse_and_authorize_role_permissions(
-                &auth.permissions,
-                raw,
-            )?),
+        let parsed_update_permissions = match &input.permissions {
+            Some(raw) => Some(parse_role_permissions(raw)?),
             None => None,
         };
 
@@ -467,7 +501,7 @@ impl RbacMutation {
 
         // Resolve the optional host notifier before the transaction. The durable
         // generation remains mandatory even when no fast-path notifier exists.
-        let role_writer = if validated_update_permissions.is_some() {
+        let role_writer = if parsed_update_permissions.is_some() {
             ctx.data_opt::<RbacGraphqlRoleWriterHandle>()
                 .map(|handle| handle.0.clone())
         } else {
@@ -479,63 +513,112 @@ impl RbacMutation {
             .await
             .map_err(|e| internal_db_error("rbac role mutation", e))?;
 
-        // Re-read the role inside the transaction: the pre-transaction lookup
-        // above only shapes error reporting. If the role was deleted (or
-        // deleted and recreated) concurrently, fail instead of writing grant
-        // rows for a role that no longer exists.
+        // Lock and read current metadata inside the transaction so concurrent
+        // renames/edits or deletes are serialized cleanly with zero TOCTOU.
         let lock_role_sql = match backend {
             sea_orm::DbBackend::Sqlite => {
-                "UPDATE roles SET updated_at = updated_at WHERE tenant_id = ? AND id = ? RETURNING id"
+                "UPDATE roles SET updated_at = updated_at WHERE tenant_id = ? AND id = ? RETURNING name, description, is_system"
             }
             sea_orm::DbBackend::Postgres | sea_orm::DbBackend::MySql | _ => {
-                "SELECT id FROM roles WHERE tenant_id = ? AND id = ? LIMIT 1 FOR UPDATE"
+                "SELECT name, description, is_system FROM roles WHERE tenant_id = ? AND id = ? LIMIT 1 FOR UPDATE"
             }
         };
-        let tx_role = tx
+        let tx_role = match tx
             .query_one_raw(prepare_statement(
                 backend,
                 lock_role_sql,
                 vec![tenant.id.into(), role_id.into()],
             ))
             .await
-            .map_err(|e| internal_db_error("rbac role mutation", e))?;
-        if tx_role.is_none() {
-            return Err(<FieldError as GraphQLError>::not_found(&format!(
-                "Role '{slug}' not found"
-            )));
-        }
+        {
+            Ok(Some(row)) => row,
+            Ok(None) => {
+                return Err(abort_tx(
+                    tx,
+                    <FieldError as GraphQLError>::not_found(&format!("Role '{slug}' not found")),
+                )
+                .await);
+            }
+            Err(e) => return Err(abort_tx(tx, internal_db_error("rbac role mutation", e)).await),
+        };
 
-        if let Some(new_permissions) = validated_update_permissions.as_ref() {
-            let current_rows = tx
+        let current_name: String = match tx_role.try_get("", "name") {
+            Ok(value) => value,
+            Err(e) => return Err(abort_tx(tx, internal_db_error("rbac role mutation", e)).await),
+        };
+        let current_desc: Option<String> = match tx_role.try_get("", "description") {
+            Ok(value) => value,
+            Err(e) => return Err(abort_tx(tx, internal_db_error("rbac role mutation", e)).await),
+        };
+        let is_system: bool = match tx_role.try_get("", "is_system") {
+            Ok(value) => value,
+            Err(e) => return Err(abort_tx(tx, internal_db_error("rbac role mutation", e)).await),
+        };
+
+        if let Some(new_permissions) = parsed_update_permissions.as_ref() {
+            let current_rows = match tx
                 .query_all_raw(prepare_statement(
                     backend,
                     "SELECT p.resource, p.action FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id WHERE rp.role_id = ? AND p.tenant_id = ?",
                     vec![role_id.into(), tenant.id.into()],
                 ))
                 .await
-                .map_err(|e| internal_db_error("rbac role mutation", e))?;
+            {
+                Ok(rows) => rows,
+                Err(e) => return Err(abort_tx(tx, internal_db_error("rbac role mutation", e)).await),
+            };
             let mut current_grants = Vec::with_capacity(current_rows.len());
             for row in current_rows {
-                let resource: String = row
-                    .try_get("", "resource")
-                    .map_err(|e| internal_db_error("rbac role mutation", e))?;
-                let action: String = row
-                    .try_get("", "action")
-                    .map_err(|e| internal_db_error("rbac role mutation", e))?;
+                let resource: String = match row.try_get("", "resource") {
+                    Ok(value) => value,
+                    Err(e) => {
+                        return Err(abort_tx(tx, internal_db_error("rbac role mutation", e)).await);
+                    }
+                };
+                let action: String = match row.try_get("", "action") {
+                    Ok(value) => value,
+                    Err(e) => {
+                        return Err(abort_tx(tx, internal_db_error("rbac role mutation", e)).await);
+                    }
+                };
                 current_grants.push(format!("{resource}:{action}"));
             }
-            reject_newly_dormant_grants(availability.as_ref(), new_permissions, &current_grants)?;
+            if let Err(err) = authorize_role_permissions(
+                &auth.permissions,
+                availability.as_ref(),
+                new_permissions,
+                &current_grants,
+            ) {
+                return Err(abort_tx(tx, err).await);
+            }
+            if let Err(err) =
+                reject_newly_dormant_grants(availability.as_ref(), new_permissions, &current_grants)
+            {
+                return Err(abort_tx(tx, err).await);
+            }
         }
 
+        let name_updated = input.name.is_some();
+        let desc_updated = !input.description.is_undefined();
         let new_name = input
             .name
             .map(|n| n.trim().to_string())
-            .filter(|n| !n.is_empty())
             .unwrap_or(current_name);
-        let new_desc = input.description.or(current_desc);
+        let new_desc = match input.description {
+            MaybeUndefined::Undefined => current_desc,
+            MaybeUndefined::Null => None,
+            MaybeUndefined::Value(value) => {
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                }
+            }
+        };
 
         let update_role_sql = "UPDATE roles SET name = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?";
-        let update_result = tx
+        let update_result = match tx
             .execute_raw(prepare_statement(
                 backend,
                 update_role_sql,
@@ -546,16 +629,42 @@ impl RbacMutation {
                 ],
             ))
             .await
-            .map_err(|e| internal_db_error("rbac role mutation", e))?;
+        {
+            Ok(result) => result,
+            Err(e) => return Err(abort_tx(tx, internal_db_error("rbac role mutation", e)).await),
+        };
         if update_result.rows_affected() != 1 {
-            return Err(<FieldError as GraphQLError>::not_found(&format!(
-                "Role '{slug}' not found"
-            )));
+            return Err(abort_tx(
+                tx,
+                <FieldError as GraphQLError>::not_found(&format!("Role '{slug}' not found")),
+            )
+            .await);
+        }
+
+        if is_system && (name_updated || desc_updated) && slug.parse::<UserRole>().is_ok() {
+            let sync_presentation_sql = "INSERT INTO rbac_localized_presentations (tenant_id, resource_kind, resource_key, locale, name, description, copy_revision, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (tenant_id, resource_kind, resource_key, locale) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description, copy_revision = rbac_localized_presentations.copy_revision + 1, updated_at = CURRENT_TIMESTAMP";
+            if let Err(e) = tx
+                .execute_raw(prepare_statement(
+                    backend,
+                    sync_presentation_sql,
+                    vec![
+                        tenant.id.into(),
+                        RbacPresentationResourceKind::Role.as_str().into(),
+                        slug.clone().into(),
+                        requested_locale.as_str().into(),
+                        new_name.clone().into(),
+                        new_desc.clone().into(),
+                    ],
+                ))
+                .await
+            {
+                return Err(abort_tx(tx, internal_db_error("rbac role presentation", e)).await);
+            }
         }
 
         let permissions_updated = input.permissions.is_some();
         let mut final_permissions = Vec::new();
-        if let Some(new_permissions) = validated_update_permissions {
+        if let Some(new_permissions) = parsed_update_permissions {
             let del_links_sql = "DELETE FROM role_permissions WHERE role_id = ?";
             tx.execute_raw(prepare_statement(
                 backend,
@@ -608,7 +717,9 @@ impl RbacMutation {
                             .await
                             .map_err(|e| internal_db_error("rbac role mutation", e))?
                             .ok_or_else(|| {
-                                FieldError::new("Permission could not be retrieved after insert")
+                                <FieldError as GraphQLError>::internal_error(
+                                    "Permission could not be retrieved after insert",
+                                )
                             })?;
                         persisted_row
                             .try_get::<Uuid>("", "id")
@@ -797,18 +908,34 @@ impl RbacMutation {
         // concurrent assignment cannot race past it (no TOCTOU window), and a
         // failed count read fails closed instead of reading as zero.
         let count_sql = "SELECT COUNT(*) as cnt FROM user_roles WHERE role_id = ?";
-        let count_row = tx
+        let count_row = match tx
             .query_one_raw(prepare_statement(backend, count_sql, vec![role_id.into()]))
             .await
-            .map_err(|e| internal_db_error("rbac role mutation", e))?
-            .ok_or_else(|| FieldError::new("Role assignment count query returned no row"))?;
-        let count: i64 = count_row
-            .try_get("", "cnt")
-            .map_err(|e| internal_db_error("rbac role mutation", e))?;
+        {
+            Ok(Some(row)) => row,
+            Ok(None) => {
+                return Err(abort_tx(
+                    tx,
+                    <FieldError as GraphQLError>::internal_error(
+                        "Role assignment count query returned no row",
+                    ),
+                )
+                .await);
+            }
+            Err(e) => return Err(abort_tx(tx, internal_db_error("rbac role mutation", e)).await),
+        };
+        let count: i64 = match count_row.try_get("", "cnt") {
+            Ok(count) => count,
+            Err(e) => return Err(abort_tx(tx, internal_db_error("rbac role mutation", e)).await),
+        };
         if count > 0 {
-            return Err(<FieldError as GraphQLError>::bad_user_input(&format!(
-                "Cannot delete role '{slug}' because it is currently assigned to {count} user(s). Reassign them first."
-            )));
+            return Err(abort_tx(
+                tx,
+                <FieldError as GraphQLError>::bad_user_input(&format!(
+                    "Cannot delete role '{slug}' because it is currently assigned to {count} user(s). Reassign them first."
+                )),
+            )
+            .await);
         }
 
         let del_links_sql = "DELETE FROM role_permissions WHERE role_id = ?";

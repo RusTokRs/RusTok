@@ -200,6 +200,17 @@ test('updateRole validates slug and preserves super_admin permission immutabilit
 });
 
 test('updateRole rejects blank name and preserves explicit null description clearing', async () => {
+  let capturedVars = null;
+  const api = createApiModule(async (_query, vars) => {
+    capturedVars = vars;
+    return {
+      updateRole: {
+        success: true,
+        role: { slug: vars.input.slug, displayName: vars.input.name ?? '' }
+      }
+    };
+  });
+
   await assert.rejects(
     async () => api.updateRole({ slug: 'editor', name: '   ' }),
     /Role name cannot be empty/,
@@ -210,17 +221,16 @@ test('updateRole rejects blank name and preserves explicit null description clea
     name: '  Content Editor  ',
     description: '   ',
   });
-  assert.deepEqual(calls.at(-1)?.variables, {
-    input: {
-      slug: 'editor',
-      name: 'Content Editor',
-      description: null,
-      permissions: undefined,
-    },
+  assert.deepEqual(capturedVars?.input, {
+    slug: 'editor',
+    name: 'Content Editor',
+    description: null,
+    permissions: undefined,
   });
 });
 
-test('roles-page fails closed without hardcoded fallback permissions and permissions-table is localized', () => {
+test('roles-page fails closed without hardcoded fallback permissions and permissions-table is localized', async () => {
+  const { readFileSync } = await import('node:fs');
   const rolesPageSource = readFileSync(new URL('./pages/roles-page.tsx', import.meta.url), 'utf8');
   assert.equal(rolesPageSource.includes('FALLBACK_SYSTEM_ROLES'), false);
   assert.equal(rolesPageSource.includes('content:manage'), false);

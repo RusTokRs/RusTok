@@ -320,6 +320,16 @@ pub async fn publish_user_rbac_invalidation(
     user_id: &Uuid,
     generation: u64,
 ) -> Result<()> {
+    if tenant_id.is_nil() {
+        return Err(Error::Validation(
+            "RBAC invalidation tenant id must not be nil".to_string(),
+        ));
+    }
+    if user_id.is_nil() {
+        return Err(Error::Validation(
+            "RBAC invalidation user id must not be nil".to_string(),
+        ));
+    }
     tracing::debug!(
         %tenant_id,
         %user_id,
@@ -720,12 +730,21 @@ fn parse_rbac_invalidation_key(value: &str) -> Result<(Uuid, Uuid)> {
     let (tenant_id, user_id) = value
         .split_once(':')
         .ok_or_else(|| Error::Validation("malformed RBAC cache invalidation key".to_string()))?;
-    Ok((
-        Uuid::parse_str(tenant_id.trim())
-            .map_err(|_| Error::Validation("invalid RBAC invalidation tenant id".to_string()))?,
-        Uuid::parse_str(user_id.trim())
-            .map_err(|_| Error::Validation("invalid RBAC invalidation user id".to_string()))?,
-    ))
+    let tenant_id = Uuid::parse_str(tenant_id.trim())
+        .map_err(|_| Error::Validation("invalid RBAC invalidation tenant id".to_string()))?;
+    let user_id = Uuid::parse_str(user_id.trim())
+        .map_err(|_| Error::Validation("invalid RBAC invalidation user id".to_string()))?;
+    if tenant_id.is_nil() {
+        return Err(Error::Validation(
+            "nil RBAC invalidation tenant id".to_string(),
+        ));
+    }
+    if user_id.is_nil() {
+        return Err(Error::Validation(
+            "nil RBAC invalidation user id".to_string(),
+        ));
+    }
+    Ok((tenant_id, user_id))
 }
 
 #[cfg(test)]
@@ -798,6 +817,23 @@ mod tests {
     fn malformed_rbac_invalidation_key_is_rejected() {
         assert!(parse_rbac_invalidation_key("not-a-pair").is_err());
         assert!(parse_rbac_invalidation_key("invalid:also-invalid").is_err());
+        assert!(parse_rbac_invalidation_key(&format!("{}:{}", Uuid::nil(), Uuid::new_v4())).is_err());
+        assert!(parse_rbac_invalidation_key(&format!("{}:{}", Uuid::new_v4(), Uuid::nil())).is_err());
+    }
+
+    #[tokio::test]
+    async fn publish_user_rbac_invalidation_rejects_nil_uuids() {
+        let cache = rustok_cache::CacheService::from_url(None);
+        assert!(
+            publish_user_rbac_invalidation(&cache, &Uuid::nil(), &Uuid::new_v4(), 1)
+                .await
+                .is_err()
+        );
+        assert!(
+            publish_user_rbac_invalidation(&cache, &Uuid::new_v4(), &Uuid::nil(), 1)
+                .await
+                .is_err()
+        );
     }
 
     #[test]
