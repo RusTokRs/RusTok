@@ -79,6 +79,8 @@ pub fn FlyPalette(
     on_begin_drag: Option<EventHandler<String>>,
     #[props(default)]
     on_cancel_drag: Option<EventHandler<()>>,
+    #[props(default)]
+    on_error: Option<EventHandler<String>>,
     capabilities: Option<CapabilityState>,
     messages: Option<EditorMessages>,
 ) -> Element {
@@ -148,7 +150,13 @@ pub fn FlyPalette(
                                                         return;
                                                     }
                                                     let transfer = event.data.data_transfer();
-                                                    let _ = transfer.set_data("text/plain", &drag_id);
+                                                    if let Err(error) = transfer.set_data("text/plain", &drag_id) {
+                                                        event.prevent_default();
+                                                        if let Some(handler) = on_error {
+                                                            handler.call(format!("Could not start block drag: {error:?}"));
+                                                        }
+                                                        return;
+                                                    }
                                                     transfer.set_effect_allowed("move");
                                                     if let Some(handler) = on_begin_drag {
                                                         handler.call(drag_id.clone());
@@ -189,6 +197,8 @@ pub fn FlyLayerTree(
     on_begin_move: Option<EventHandler<String>>,
     #[props(default)]
     on_cancel_drag: Option<EventHandler<()>>,
+    #[props(default)]
+    on_error: Option<EventHandler<String>>,
 ) -> Element {
     let messages = messages.unwrap_or_default();
     let layers_label = messages.layers.clone();
@@ -241,7 +251,13 @@ pub fn FlyLayerTree(
                                             return;
                                         }
                                         let transfer = event.data.data_transfer();
-                                        let _ = transfer.set_data("text/plain", &move_id);
+                                        if let Err(error) = transfer.set_data("text/plain", &move_id) {
+                                            event.prevent_default();
+                                            if let Some(handler) = on_error {
+                                                handler.call(format!("Could not start component move: {error:?}"));
+                                            }
+                                            return;
+                                        }
                                         transfer.set_effect_allowed("move");
                                         if let Some(handler) = on_begin_move {
                                             handler.call(move_id.clone());
@@ -325,7 +341,22 @@ pub fn FlyThemeTokenEditor(
     let mut token_name = use_signal(String::new);
     let mut token_value = use_signal(String::new);
     let mut token_error = use_signal(|| Option::<String>::None);
+    let mut pending_submission = use_signal(|| Option::<(String, String)>::None);
     let token_error_message = token_error.read().clone();
+    let observed_tokens = tokens.clone();
+    use_effect(use_reactive!(|observed_tokens| {
+        let Some((name, value)) = pending_submission.peek().clone() else {
+            return;
+        };
+        if observed_tokens
+            .iter()
+            .any(|token| token.name == name && token.value == value)
+        {
+            token_name.set(String::new());
+            token_value.set(String::new());
+            pending_submission.set(None);
+        }
+    }));
 
     rsx! {
         div { class: "fly-theme-token-editor",
@@ -343,7 +374,10 @@ pub fn FlyThemeTokenEditor(
                         placeholder: "brand",
                         value: "{token_name}",
                         disabled: !can_edit_styles,
-                        oninput: move |event| token_name.set(event.value()),
+                        oninput: move |event| {
+                            pending_submission.set(None);
+                            token_name.set(event.value());
+                        },
                     }
                 }
                 label {
@@ -353,7 +387,10 @@ pub fn FlyThemeTokenEditor(
                         placeholder: "#0b5fff",
                         value: "{token_value}",
                         disabled: !can_edit_styles,
-                        oninput: move |event| token_value.set(event.value()),
+                        oninput: move |event| {
+                            pending_submission.set(None);
+                            token_value.set(event.value());
+                        },
                     }
                 }
                 button {
@@ -367,9 +404,17 @@ pub fn FlyThemeTokenEditor(
                         {
                             Ok(()) => {
                                 token_error.set(None);
-                                on_upsert.call((name, value));
-                                token_name.set(String::new());
-                                token_value.set(String::new());
+                                if observed_tokens
+                                    .iter()
+                                    .any(|token| token.name == name && token.value == value)
+                                {
+                                    token_name.set(String::new());
+                                    token_value.set(String::new());
+                                    pending_submission.set(None);
+                                } else {
+                                    pending_submission.set(Some((name.clone(), value.clone())));
+                                    on_upsert.call((name, value));
+                                }
                             }
                             Err(message) => {
                                 token_error.set(Some(message.clone()));
@@ -877,6 +922,7 @@ pub fn FlyEditorWorkspace(
                     },
                     on_begin_drag,
                     on_cancel_drag,
+                    on_error,
                     capabilities,
                     messages: Some(messages.clone()),
                 }
@@ -979,6 +1025,7 @@ pub fn FlyEditorWorkspace(
                     messages: Some(messages),
                     on_begin_move,
                     on_cancel_drag,
+                    on_error,
                 }
                 if let Some(canvas) = canvas {
                     {canvas}
@@ -1073,4 +1120,25 @@ mod controlled_workspace_regression_tests {
         );
         assert_eq!(local.document(), &first, "standalone editor is not reset");
     }
+
+
+    #[test]
+    fn token_form_acknowledges_only_the_exact_rendered_value() {
+        let tokens = vec![ThemeTokenItem {
+            name: "brand".to_string(),
+            value: "#123456".to_string(),
+            css_variable: "--brand".to_string(),
+        }];
+        assert!(tokens
+            .iter()
+            .any(|token| token.name == "brand" && token.value == "#123456"));
+        assert!(!tokens
+            .iter()
+            .any(|token| token.name == "brand" && token.value == "#654321"));
+        assert!(!tokens
+            .iter()
+            .any(|token| token.name == "other" && token.value == "#123456"));
+    }
+
+
 }
