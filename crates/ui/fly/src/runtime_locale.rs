@@ -34,7 +34,8 @@ impl RuntimeLocaleSelection {
         }
     }
 
-    fn candidates(&self) -> Vec<String> {
+    /// Ordered, deduplicated locale fallback chain shared by runtime values and routes.
+    pub(crate) fn candidates(&self) -> Vec<String> {
         let mut candidates = Vec::new();
         if let Some(locale) = self.locale.as_deref() {
             push_locale_candidate(&mut candidates, locale);

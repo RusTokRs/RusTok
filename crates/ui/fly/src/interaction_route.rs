@@ -1,6 +1,5 @@
 use crate::{
-    LocalizedPageRouteEntry, ProjectDocument, RuntimeLocaleSelection, localized_page_route_index,
-    normalize_locale_tag,
+    LocalizedPageRouteEntry, ProjectDocument, localized_page_route_index,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -61,32 +60,6 @@ impl InteractionRouteCatalog {
     }
 }
 
-pub(crate) fn interaction_locale_candidates(selection: &RuntimeLocaleSelection) -> Vec<String> {
-    let mut candidates = Vec::new();
-    if let Some(locale) = selection.locale.as_deref() {
-        push_locale_candidate(&mut candidates, locale);
-    }
-    for locale in &selection.fallback_locales {
-        push_locale_candidate(&mut candidates, locale);
-    }
-    candidates
-}
-
-fn push_locale_candidate(candidates: &mut Vec<String>, locale: &str) {
-    let Some(locale) = normalize_locale_tag(locale) else {
-        return;
-    };
-    if !candidates.contains(&locale) {
-        candidates.push(locale.clone());
-    }
-    if let Some((language, _)) = locale.split_once('-') {
-        let language = language.to_string();
-        if !candidates.contains(&language) {
-            candidates.push(language);
-        }
-    }
-}
-
 pub(crate) fn build_interaction_href(
     base_path: Option<&str>,
     slug: &str,
@@ -116,8 +89,56 @@ pub(crate) fn build_interaction_href(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::GrapesJsCodec;
+    use crate::{GrapesJsCodec, RuntimeLocaleSelection};
     use serde_json::json;
+
+    #[test]
+    fn links_and_actions_use_the_same_script_fallback_as_runtime_values() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "link",
+                        "type": "link",
+                        "flyPageLink": { "page_id": "about" }
+                    }, {
+                        "id": "action",
+                        "type": "button",
+                        "flyAction": { "kind": "navigate_page", "page_id": "about" }
+                    }]
+                }
+            }, {
+                "id": "about",
+                "flyPageMeta": {
+                    "slug": { "$localized": { "zh": "generic", "zh-Hant": "traditional" } }
+                },
+                "component": { "id": "about-root", "type": "wrapper" }
+            }]
+        }))
+        .expect("document");
+        #[cfg(not(feature = "platform-i18n"))]
+        let locales = ["zh-Hant-TW"];
+        #[cfg(feature = "platform-i18n")]
+        let locales = ["zh-Hant-TW", "zh-TW"];
+        for locale in locales {
+            let context = json!({ "$locale": locale });
+            let linked = crate::materialize_internal_page_links(&document, &context);
+            let actions = crate::materialize_component_actions(&document, &context);
+            assert_eq!(
+                linked.document.component("link").unwrap().attributes["href"],
+                "/traditional",
+                "{locale}"
+            );
+            assert_eq!(
+                actions.document.component("action").unwrap().attributes["href"],
+                "/traditional",
+                "{locale}"
+            );
+        }
+    }
 
     #[test]
     fn catalog_resolves_identical_locale_fallback_for_all_interactions() {
@@ -133,10 +154,11 @@ mod tests {
         .expect("document");
         let catalog = InteractionRouteCatalog::from_document(&document);
         let page_index = catalog.page_index("about").expect("page");
-        let candidates = interaction_locale_candidates(&RuntimeLocaleSelection {
+        let candidates = RuntimeLocaleSelection {
             locale: Some("ru-RU".to_string()),
             fallback_locales: vec!["en".to_string()],
-        });
+        }
+        .candidates();
         assert!(catalog.has_route(page_index));
         assert_eq!(catalog.slug_for(page_index, &candidates), Some("o-nas"));
         assert_eq!(

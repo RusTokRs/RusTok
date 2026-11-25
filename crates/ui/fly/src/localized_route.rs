@@ -95,7 +95,7 @@ pub fn resolve_localized_page_route(
     let policy_context = materialize_project_locale_context(document, input_context).context;
     let selection = RuntimeLocaleSelection::from_context(&policy_context);
     let requested_locale = selection.locale.clone();
-    let candidates = locale_candidates(&selection);
+    let candidates = selection.candidates();
     let entries = localized_page_route_index(document);
 
     let mut matched = None;
@@ -327,7 +327,7 @@ fn canonical_slug_for_page(
                 locale: Some(locale.to_string()),
                 fallback_locales: Vec::new(),
             };
-            locale_candidates(&selection)
+            selection.candidates()
         })
         .unwrap_or_default();
     for candidate in candidates {
@@ -342,32 +342,6 @@ fn canonical_slug_for_page(
         .find(|entry| entry.page_index == page_index && entry.locale.is_none())
         .or_else(|| entries.iter().find(|entry| entry.page_index == page_index))
         .map(|entry| entry.slug.clone())
-}
-
-fn locale_candidates(selection: &RuntimeLocaleSelection) -> Vec<String> {
-    let mut candidates = Vec::new();
-    if let Some(locale) = selection.locale.as_deref() {
-        push_candidate(&mut candidates, locale);
-    }
-    for locale in &selection.fallback_locales {
-        push_candidate(&mut candidates, locale);
-    }
-    candidates
-}
-
-fn push_candidate(candidates: &mut Vec<String>, locale: &str) {
-    let Some(locale) = normalize_locale_tag(locale) else {
-        return;
-    };
-    if !candidates.contains(&locale) {
-        candidates.push(locale.clone());
-    }
-    if let Some((language, _)) = locale.split_once('-') {
-        let language = language.to_string();
-        if !candidates.contains(&language) {
-            candidates.push(language);
-        }
-    }
 }
 
 fn route_diagnostic(
@@ -430,6 +404,30 @@ mod tests {
         assert_eq!(resolution.context[RUNTIME_LOCALE_FIELD], "ru");
         assert!(resolution.fallback_used);
         assert_eq!(resolution.selection(), PageSelection::Index(0));
+    }
+
+    #[test]
+    fn script_specific_slug_wins_over_the_generic_language_route() {
+        let document = document(json!({
+            "pages": [{
+                "id": "generic",
+                "flyPageMeta": { "slug": { "$localized": { "zh": "shared" } } },
+                "component": { "id": "generic-root", "type": "wrapper" }
+            }, {
+                "id": "traditional",
+                "flyPageMeta": { "slug": { "$localized": { "zh-Hant": "shared" } } },
+                "component": { "id": "traditional-root", "type": "wrapper" }
+            }]
+        }));
+        let resolution = resolve_localized_page_route(
+            &document,
+            "shared",
+            &json!({ "$locale": "zh-Hant-TW" }),
+        )
+        .expect("script-specific route");
+        assert_eq!(resolution.page_id.as_deref(), Some("traditional"));
+        assert_eq!(resolution.matched_locale.as_deref(), Some("zh-Hant"));
+        assert!(resolution.fallback_used);
     }
 
     #[test]

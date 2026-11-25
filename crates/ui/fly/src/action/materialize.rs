@@ -10,9 +10,7 @@ use crate::{
     ComponentObject, FLY_PAGE_LINK_FIELD, ProjectDocument, RuntimeLocaleSelection,
     ValidationDiagnostic, ValidationSeverity,
     component_visit::visit_project_components_mut,
-    interaction_route::{
-        InteractionRouteCatalog, build_interaction_href, interaction_locale_candidates,
-    },
+    interaction_route::{InteractionRouteCatalog, build_interaction_href},
 };
 use serde_json::Value;
 
@@ -49,8 +47,7 @@ pub fn materialize_component_actions_with_providers(
     providers: Option<&dyn FormProviderEndpointResolver>,
 ) -> ActionMaterialization {
     let routes = InteractionRouteCatalog::from_document(document);
-    let locale_candidates =
-        interaction_locale_candidates(&RuntimeLocaleSelection::from_context(context));
+    let locale_candidates = RuntimeLocaleSelection::from_context(context).candidates();
     let form_ids = collect_form_ids(document);
     let resolution = ActionResolution {
         routes: &routes,

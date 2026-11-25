@@ -174,6 +174,12 @@ crates/ui/fly/
   document validation share bounded srcset candidate checks, including numeric descriptor
   uniqueness, positive density/width and one descriptor family.
 
+## Runtime locale selection
+
+Runtime values, localized page routes, internal page links and navigation actions share the
+same ordered locale fallback chain. Coverage summary lookup also uses the resolver's chain;
+required translation coverage still requires an exact locale entry, never a fallback.
+
 ## Runtime binding ownership
 
 Each component slot has one runtime binding owner. HTML attribute and CSS property

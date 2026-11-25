@@ -2,9 +2,7 @@ use crate::{
     ComponentObject, ProjectDocument, RuntimeLocaleSelection, ValidationDiagnostic,
     ValidationSeverity,
     component_visit::{visit_project_components, visit_project_components_mut},
-    interaction_route::{
-        InteractionRouteCatalog, build_interaction_href, interaction_locale_candidates,
-    },
+    interaction_route::{InteractionRouteCatalog, build_interaction_href},
     safe_url::normalize_safe_url,
 };
 use serde::{Deserialize, Serialize};
@@ -82,8 +80,7 @@ pub fn materialize_internal_page_links(
     context: &Value,
 ) -> InternalLinkMaterialization {
     let routes = InteractionRouteCatalog::from_document(document);
-    let locale_candidates =
-        interaction_locale_candidates(&RuntimeLocaleSelection::from_context(context));
+    let locale_candidates = RuntimeLocaleSelection::from_context(context).candidates();
     let resolution = InternalLinkResolution {
         routes: &routes,
         locale_candidates: &locale_candidates,

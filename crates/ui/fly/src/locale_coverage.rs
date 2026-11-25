@@ -1,6 +1,7 @@
 use crate::{
     FLY_LOCALES_FIELD, FLY_PAGE_METADATA_FIELD, LOCALIZED_VALUES_FIELD, ProjectDocument,
-    ProjectLocalePolicy, TranslationCatalog, normalize_locale_tag,
+    LocaleResolver, ProjectLocalePolicy, TranslationCatalog, default_locale_resolver,
+    normalize_locale_tag,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -76,16 +77,13 @@ impl LocaleCoverageReport {
     }
 
     pub fn summary_for(&self, locale: &str) -> Option<&LocaleCoverageSummary> {
-        let locale = normalize_locale_tag(locale)?;
-        self.summaries
-            .iter()
-            .find(|summary| summary.locale == locale)
-            .or_else(|| {
-                locale.split_once('-').and_then(|(language, _)| {
-                    self.summaries
-                        .iter()
-                        .find(|summary| summary.locale == language)
-                })
+        default_locale_resolver()
+            .fallback_chain(locale)
+            .into_iter()
+            .find_map(|candidate| {
+                self.summaries
+                    .iter()
+                    .find(|summary| summary.locale == candidate)
             })
     }
 
@@ -325,6 +323,24 @@ mod tests {
                 .iter()
                 .any(|gap| gap.label == "home.description")
         );
+    }
+
+    #[test]
+    fn summary_lookup_prefers_script_without_satisfying_exact_required_coverage() {
+        let report = report(json!({
+            "flyLocales": {
+                "supported_locales": ["zh", "zh-Hant", "zh-Hant-TW"],
+                "required_locales": ["zh-Hant-TW"],
+                "enforce_required_locales": true
+            },
+            "flyTranslations": [
+                { "id": "hero", "values": { "zh": "Generic", "zh-Hant": "Traditional" } }
+            ],
+            "pages": [{ "component": { "id": "root", "type": "wrapper" } }]
+        }));
+        assert_eq!(report.summary_for("zh-Hant-HK").unwrap().locale, "zh-Hant");
+        assert_eq!(report.summary_for("zh-Hant-TW").unwrap().missing, 1);
+        assert!(!report.strict_ready());
     }
 
     #[test]
