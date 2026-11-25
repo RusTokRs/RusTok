@@ -121,7 +121,7 @@ fn check_production_environment(mac_root: &str, database_uri: &str, production: 
     Ok(())
 }
 
-pub(crate) fn known_dev_mac_root_fragment(secret: &str) -> Option<&'static str> {
+pub(crate) fn known_dev_mac_root_fragment(mac_root: &str) -> Option<&'static str> {
     const KNOWN_DEV_SUBSTRINGS: &[&str] = &[
         "dev-secret",
         "test-secret",
@@ -131,7 +131,7 @@ pub(crate) fn known_dev_mac_root_fragment(secret: &str) -> Option<&'static str> 
         "changeme",
         "replace_me",
     ];
-    let normalized = secret.trim().to_ascii_lowercase();
+    let normalized = mac_root.trim().to_ascii_lowercase();
     KNOWN_DEV_SUBSTRINGS
         .iter()
         .copied()
@@ -393,7 +393,7 @@ mod tests {
         let error = check_production_environment("", "postgres://app:strong@db/rustok", true)
             .expect_err("production must reject an empty MAC root");
         let message = error.to_string();
-        assert!(message.contains("MAC root is too short"));
+        assert!(message.contains("MAC root must contain at least 64 non-whitespace bytes"));
     }
 
     #[test]
@@ -402,7 +402,20 @@ mod tests {
         let error = check_production_environment("   ", "postgres://app:strong@db/rustok", true)
             .expect_err("production must reject whitespace MAC root");
         let message = error.to_string();
-        assert!(message.contains("MAC root is too short"));
+        assert!(message.contains("MAC root must contain at least 64 non-whitespace bytes"));
+    }
+
+    #[test]
+    fn production_mac_root_requires_64_non_whitespace_bytes() {
+        let _env = EnvGuard::new(SUPERADMIN_ENV_KEYS);
+        let short = "x".repeat(63);
+        let error = check_production_environment(&short, "postgres://app:strong@db/rustok", true)
+            .expect_err("63 non-whitespace bytes must fail the production MAC-root floor");
+        assert!(error.to_string().contains("64 non-whitespace bytes"));
+
+        let sufficient = "x".repeat(64);
+        check_production_environment(&sufficient, "postgres://app:strong@db/rustok", true)
+            .expect("64 non-whitespace bytes pass the length floor");
     }
 
     #[test]
@@ -427,7 +440,7 @@ mod tests {
     }
 
     #[test]
-    fn production_secret_validation_redacts_development_jwt_fragment() {
+    fn production_secret_validation_redacts_development_mac_root_fragment() {
         let _env = EnvGuard::new(SUPERADMIN_ENV_KEYS);
         let secret = "prefix-dev-secret-suffix";
         let error = check_production_environment(secret, "postgres://app:strong@db/rustok", true)
