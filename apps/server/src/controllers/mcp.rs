@@ -720,9 +720,9 @@ async fn create_client(
     State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireMcpManage(user): RequireMcpManage,
-    // Audit the actual principal (human user or service client).
     Json(input): Json<CreateMcpClientRequest>,
 ) -> Result<Json<CreateMcpClientResponse>> {
+    // Preserve the authenticated principal in the management audit trail.
     let (actor_id, actor_type, actor_user_id) = mcp_management_audit_actor(&user);
     tracing::debug!(
         tenant_id = %tenant.id,
@@ -776,10 +776,10 @@ async fn rotate_token(
     State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireMcpManage(user): RequireMcpManage,
-    // Audit the actual principal (human user or service client).
     Path(client_id): Path<Uuid>,
     Json(input): Json<RotateMcpTokenRequest>,
 ) -> Result<Json<RotateMcpTokenResponse>> {
+    // Preserve the authenticated principal in the management audit trail.
     let (actor_id, actor_type, actor_user_id) = mcp_management_audit_actor(&user);
     tracing::debug!(
         tenant_id = %tenant.id,
@@ -822,10 +822,10 @@ async fn update_policy(
     State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireMcpManage(user): RequireMcpManage,
-    // Audit the actual principal (human user or service client).
     Path(client_id): Path<Uuid>,
     Json(input): Json<UpdateMcpPolicyRequest>,
 ) -> Result<Json<McpPolicyResponse>> {
+    // Preserve the authenticated principal in the management audit trail.
     let (actor_id, actor_type, actor_user_id) = mcp_management_audit_actor(&user);
     tracing::debug!(
         tenant_id = %tenant.id,
@@ -866,9 +866,9 @@ async fn revoke_token_by_id(
     State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireMcpManage(user): RequireMcpManage,
-    // Audit the actual principal (human user or service client).
     Path(token_id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
+    // Preserve the authenticated principal in the management audit trail.
     let (actor_id, actor_type, actor_user_id) = mcp_management_audit_actor(&user);
     tracing::debug!(
         tenant_id = %tenant.id,
@@ -892,9 +892,9 @@ async fn deactivate_client(
     State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireMcpManage(user): RequireMcpManage,
-    // Audit the actual principal (human user or service client).
     Path(client_id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
+    // Preserve the authenticated principal in the management audit trail.
     let (actor_id, actor_type, actor_user_id) = mcp_management_audit_actor(&user);
     tracing::debug!(
         tenant_id = %tenant.id,
@@ -1003,6 +1003,7 @@ async fn stage_scaffold_draft(
         name_len = input.name.len(),
         "Handling stage MCP scaffold draft request"
     );
+    // Preserve the authenticated principal in the management audit trail.
     let (actor_id, actor_type, created_by) = mcp_management_audit_actor(&user);
     let draft = McpManagementService::stage_scaffold_draft(
         ctx.db(),
@@ -1041,6 +1042,7 @@ async fn apply_scaffold_draft(
         confirm = input.confirm,
         "Handling apply MCP scaffold draft request"
     );
+    // Preserve the authenticated principal in the management audit trail.
     let (actor_id, actor_type, applied_by) = mcp_management_audit_actor(&user);
     let (draft, _) = McpManagementService::apply_scaffold_draft(
         ctx.db(),
