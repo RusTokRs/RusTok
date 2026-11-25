@@ -353,8 +353,9 @@ the owner of the missing half.
   revision check remains authoritative. Mounted Dioxus browser/runtime verification is still
   a release gate.
 - **Session lifecycle of the standalone admin.** Cookie-authenticated intent writes already
-  require the server-verified `x-csrf-token` derived from the authenticated session ID; bearer API
-  requests use an explicit Authorization header. The remaining `CLEAN-060` gap is session
+  require the server-verified `x-csrf-token` derived from the authenticated session ID; Bearer API
+  requests must provide both an explicit Authorization header and an unambiguous `x-tenant-slug`
+  header, and never inherit a tenant from the browser session. The remaining `CLEAN-060` gap is session
   issuance: the admin shell still mirrors a `localStorage` token into a script-readable cookie
   instead of using a server-issued HttpOnly session. See `SECURITY.md`.
 - **Embeds use an explicit provider catalog; there is no custom-code block.** Built-in providers
