@@ -14133,6 +14133,8 @@ dependencies = [
  "chrono",
  "flex",
  "hex",
+ "hkdf",
+ "hmac 0.13.0",
  "http 1.5.0",
  "jsonwebtoken 11.1.0",
  "password-hash 0.6.1",

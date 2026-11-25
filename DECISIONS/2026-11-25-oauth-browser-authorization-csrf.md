@@ -86,7 +86,8 @@ missing. It did not protect the two GET fast paths.
 - Unit coverage for cookie-vs-explicit-bearer confirmation policy.
 - HTML contract coverage for the POST action and CSRF field.
 - Existing HMAC binding and consent epoch tests; effective scope-set changes
-  between GET and POST invalidate confirmation. The v4 MAC format invalidates
+  between GET and POST invalidate confirmation. The v5 MAC format uses a purpose-derived
+  HKDF-SHA256 key and invalidates
   outstanding earlier confirmation forms on deployment; a different direct session
   of the same user and an expiry beyond the allowed lifetime are rejected.
 - Maintainer-run server OAuth tests and full verification remain required.

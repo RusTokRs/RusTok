@@ -94,38 +94,6 @@ fn append_optional_csrf_mac_field(payload: &mut Vec<u8>, value: Option<&str>) {
     }
 }
 
-/// RFC 2104 HMAC-SHA256. Keeping this small primitive local avoids introducing
-/// a second crypto dependency for one fixed-size authentication use.
-fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] {
-    use sha2::{Digest, Sha256};
-
-    const BLOCK_SIZE: usize = 64;
-    let mut normalized_key = [0_u8; BLOCK_SIZE];
-    if key.len() > BLOCK_SIZE {
-        let digest = Sha256::digest(key);
-        normalized_key[..digest.len()].copy_from_slice(&digest);
-    } else {
-        normalized_key[..key.len()].copy_from_slice(key);
-    }
-
-    let mut inner_pad = [0_u8; BLOCK_SIZE];
-    let mut outer_pad = [0_u8; BLOCK_SIZE];
-    for index in 0..BLOCK_SIZE {
-        inner_pad[index] = normalized_key[index] ^ 0x36;
-        outer_pad[index] = normalized_key[index] ^ 0x5c;
-    }
-
-    let mut inner = Sha256::new();
-    inner.update(inner_pad);
-    inner.update(message);
-    let inner_digest = inner.finalize();
-
-    let mut outer = Sha256::new();
-    outer.update(outer_pad);
-    outer.update(inner_digest);
-    outer.finalize().into()
-}
-
 #[allow(clippy::too_many_arguments)]
 fn consent_csrf_mac(
     config: &crate::auth::AuthConfig,
@@ -139,9 +107,9 @@ fn consent_csrf_mac(
     state: Option<&str>,
     code_challenge: &str,
     expires_at: i64,
-) -> String {
+) -> Option<String> {
     let mut payload = Vec::new();
-    payload.extend_from_slice(b"rustok:oauth:consent-csrf:v4");
+    payload.extend_from_slice(b"rustok:oauth:consent-csrf:v5");
     append_csrf_mac_field(&mut payload, &tenant_id.to_string());
     append_csrf_mac_field(&mut payload, &user_id.to_string());
     append_csrf_mac_field(&mut payload, &session_id.to_string());
@@ -162,7 +130,9 @@ fn consent_csrf_mac(
     append_csrf_mac_field(&mut payload, code_challenge);
     append_csrf_mac_field(&mut payload, &expires_at.to_string());
 
-    hex::encode(hmac_sha256(config.secret.as_bytes(), &payload))
+    rustok_auth::auth_purpose_mac(config, rustok_auth::AuthMacPurpose::OAuthConsentCsrf, &payload)
+        .ok()
+        .map(hex::encode)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -177,9 +147,9 @@ fn issue_consent_csrf(
     effective_scopes: &[String],
     state: Option<&str>,
     code_challenge: &str,
-) -> String {
+) -> Option<String> {
     let expires_at = chrono::Utc::now().timestamp() + CONSENT_CSRF_TTL_SECS;
-    format!(
+    Some(format!(
         "{expires_at}.{}",
         consent_csrf_mac(
             config,
@@ -193,8 +163,8 @@ fn issue_consent_csrf(
             state,
             code_challenge,
             expires_at,
-        )
-    )
+        )?
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -229,7 +199,7 @@ fn verify_consent_csrf(
     {
         return false;
     }
-    let expected = consent_csrf_mac(
+    let Some(expected) = consent_csrf_mac(
         config,
         tenant_id,
         user_id,
@@ -241,7 +211,9 @@ fn verify_consent_csrf(
         state,
         code_challenge,
         expires_at,
-    );
+    ) else {
+        return false;
+    };
     expected.as_bytes().ct_eq(mac.as_bytes()).into()
 }
 
@@ -716,7 +688,7 @@ pub(crate) async fn authorize_browser_handler(
             error_description: "Authorization is temporarily unavailable".to_string(),
         });
     };
-    let consent_csrf = issue_consent_csrf(
+    let Some(consent_csrf) = issue_consent_csrf(
         auth_config,
         tenant_ctx.id,
         current_user.user.id,
@@ -727,7 +699,12 @@ pub(crate) async fn authorize_browser_handler(
         &validated.requested_scopes,
         req.state.as_deref(),
         &req.code_challenge,
-    );
+    ) else {
+        return oauth_error_response(TokenErrorResponse {
+            error: "server_error".to_string(),
+            error_description: "Authorization is temporarily unavailable".to_string(),
+        });
+    };
 
     Html(render_consent_page(
         &validated,
@@ -1692,18 +1669,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn consent_csrf_hmac_matches_rfc_4231_sha256_vector() {
-        let key = [0x0b_u8; 20];
-        let actual = super::hmac_sha256(&key, b"Hi There");
-        assert_eq!(
-            hex::encode(actual),
-            "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7"
-        );
-    }
-
-    #[test]
     fn consent_csrf_mac_fields_are_unambiguous() {
-        let key = b"test-consent-key";
+        let config = crate::auth::AuthConfig::new("test-consent-key-with-at-least-32-bytes".to_string());
         let mut first = Vec::new();
         super::append_optional_csrf_mac_field(&mut first, Some("scope\0state"));
         super::append_optional_csrf_mac_field(&mut first, None);
@@ -1713,8 +1680,8 @@ mod tests {
         super::append_optional_csrf_mac_field(&mut second, Some("state"));
 
         assert_ne!(
-            super::hmac_sha256(key, &first),
-            super::hmac_sha256(key, &second)
+            rustok_auth::auth_purpose_mac(&config, rustok_auth::AuthMacPurpose::OAuthConsentCsrf, &first).unwrap(),
+            rustok_auth::auth_purpose_mac(&config, rustok_auth::AuthMacPurpose::OAuthConsentCsrf, &second).unwrap()
         );
     }
 
@@ -1731,7 +1698,7 @@ mod tests {
         let displayed = validate_authorization_scopes(None, &allowed).unwrap();
         let token = issue_consent_csrf(
             &config, tenant, user, session, &client, redirect, None, &displayed, None, challenge,
-        );
+        ).unwrap();
         let verify = |effective: &[String]| {
             verify_consent_csrf(
                 &config, tenant, user, session, &client, redirect, None, effective, None,
@@ -1739,6 +1706,10 @@ mod tests {
             )
         };
         assert!(verify(&displayed));
+        let weak = crate::auth::AuthConfig::new("short".to_string());
+        assert!(issue_consent_csrf(
+            &weak, tenant, user, session, &client, redirect, None, &displayed, None, challenge,
+        ).is_none());
         assert!(!verify_consent_csrf(
             &config, tenant, user, Uuid::new_v4(), &client, redirect, None,
             &displayed, None, challenge, Some(token.as_str()),
@@ -1747,7 +1718,7 @@ mod tests {
         let future_token = format!("{future}.{}", consent_csrf_mac(
             &config, tenant, user, session, &client, redirect, None,
             &displayed, None, challenge, future,
-        ));
+        ).unwrap());
         assert!(!verify_consent_csrf(
             &config, tenant, user, session, &client, redirect, None,
             &displayed, None, challenge, Some(&future_token),
@@ -1768,7 +1739,7 @@ mod tests {
         let explicit = validate_authorization_scopes(Some("profile"), &allowed).unwrap();
         let explicit_token = issue_consent_csrf(
             &config, tenant, user, session, &client, redirect, Some("profile"), &explicit, None, challenge,
-        );
+        ).unwrap();
         let still_explicit = validate_authorization_scopes(Some("profile"), &expanded).unwrap();
         assert!(verify_consent_csrf(
             &config, tenant, user, session, &client, redirect, Some("profile"), &still_explicit, None,

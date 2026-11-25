@@ -13,6 +13,7 @@
   - `encode_password_reset_token`, `decode_password_reset_token`
   - `encode_email_verification_token`, `decode_email_verification_token`
   - `encode_oauth_access_token`
+- **Purpose-separated host MACs**: `AuthMacPurpose`, `auth_purpose_mac` (HKDF-SHA256 and HMAC-SHA256; no raw key export).
 - **Credential Management**:
   - `hash_password`, `verify_password` (Argon2)
   - `generate_refresh_token`, `hash_refresh_token`

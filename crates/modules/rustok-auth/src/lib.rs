@@ -20,6 +20,7 @@ pub mod backfill;
 pub mod bootstrap;
 pub mod config;
 pub mod credentials;
+mod crypto;
 pub mod error;
 #[cfg(feature = "graphql")]
 pub mod graphql;
@@ -56,6 +57,7 @@ pub use credentials::{
     MIN_PASSWORD_LENGTH_FLOOR_CHARS, generate_refresh_token, hash_password, hash_refresh_token,
     password_hash_needs_rehash, validate_password_policy, verify_password,
 };
+pub use crypto::{AuthMacPurpose, auth_purpose_mac};
 pub use error::AuthError;
 pub use jwt::{
     Claims, EmailVerificationClaims, InviteClaims, OauthAccessTokenInput, PasswordResetClaims,

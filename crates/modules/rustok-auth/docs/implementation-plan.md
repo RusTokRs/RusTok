@@ -176,6 +176,15 @@ gates in the [Page Builder backlog](../../../../docs/modules/page-builder-backlo
    exhaustively at the GraphQL boundary); `AuthSettingsOverrides::apply` is
    live runtime wiring, not dead code.
 
+## Purpose-separated host MACs (source only)
+
+Auth owns HKDF-SHA256 derivation and HMAC-SHA256 for password-reset credential
+binding and OAuth browser confirmation. The new formats reject earlier forms
+and reset links intentionally; access JWT signatures and refresh/session storage
+are unchanged. Stop old host writers before deploying new instances. Source
+regressions and locked Cargo dependency updates authored, unrun. JWT signing key
+rotation, key IDs and staged verification remain separate work.
+
 ## JWT and CSRF hardening (source only)
 
 Browser confirmation MAC v4 binds the direct session and bounds expiry;

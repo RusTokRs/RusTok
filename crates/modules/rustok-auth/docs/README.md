@@ -93,6 +93,15 @@ satisfy the platform multilingual storage contract. Their translation-table cuto
 is an explicit release-plan priority in this module's implementation plan; transports
 must not introduce a competing JSON or request-local fallback in the meantime.
 
+## Purpose-separated host MACs
+
+Auth derives distinct 32-byte keys with HKDF-SHA256 for OAuth browser confirmation
+and password-reset credential binding. Host adapters use `auth_purpose_mac` rather
+than raw shared-secret hashing or local HMAC. MAC v5 and reset fingerprint v2
+replace earlier formats without fallback; outstanding forms and reset links must
+be restarted. JWT signing and persisted session/refresh digests are unchanged.
+Source regressions unrun. Deploy all host instances together.
+
 ## JWT and browser confirmation hardening
 
 Both HS256 and RS256 host configuration require at least 32 non-whitespace
