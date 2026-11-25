@@ -566,7 +566,7 @@ mod tests {
                 && diagnostic.severity == ValidationSeverity::Warning
         }));
 
-        document.project.extensions[FLY_LOCALES_FIELD]["enforce_required_locales"] = json!(true);
+        document.project_mut().extensions[FLY_LOCALES_FIELD]["enforce_required_locales"] = json!(true);
         let diagnostics = validate_project_locale_policy(&document);
         assert!(diagnostics.iter().any(|diagnostic| {
             diagnostic.code == "translation_required_locale_missing"

@@ -44,11 +44,11 @@ fn snapshots_restore_and_verify_hash() {
 }
 
 #[test]
-fn snapshot_capture_fingerprints_the_actual_payload_even_after_raw_mutation() {
+fn snapshot_capture_fingerprints_the_actual_payload_after_project_mutation() {
     let mut source = document("Before");
     let old_hash = source.hash();
-    // The still-public raw project field can bypass cache invalidation.
-    source.project.extensions.insert("custom".to_string(), json!("changed"));
+    // The supported mutable accessor invalidates the document hash before the write.
+    source.project_mut().extensions.insert("custom".to_string(), json!("changed"));
     let mut catalog = SnapshotCatalog::default();
     let snapshot = catalog.capture("Current", &source, Map::new()).expect("capture");
     assert_ne!(snapshot.project_hash, old_hash.hex());
@@ -226,8 +226,8 @@ fn diff_counts_page_and_style_order_changes_after_cached_hash() {
     })).expect("document");
     let original_hash = before.hash();
     let original = before.clone();
-    before.project.pages.swap(0, 1);
-    before.project.styles.swap(0, 1);
+    before.project_mut().pages.swap(0, 1);
+    before.project_mut().styles.swap(0, 1);
     let diff = compare_projects(&original, &before);
     assert_eq!(diff.before_hash, original_hash.hex());
     assert_ne!(diff.after_hash, original_hash.hex());

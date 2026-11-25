@@ -2336,11 +2336,11 @@ mod tests {
     fn nested_repeater_styles_are_unique_bounded_and_only_target_survivors() {
         let mut source = nested_document();
         let long_rule = "r".repeat(crate::MAXIMUM_IDENTIFIER_LENGTH);
-        source.project.styles = vec![
+        source.project_mut().styles = vec![
             json!({"flyComponentId": "tag", "flyRuleId": long_rule, "style": {"color": "red"}}),
             json!({"flyComponentId": "card-title", "flyRuleId": "title-rule", "style": {"color": "blue"}}),
         ];
-        source.project.extensions.insert(FLY_RUNTIME_CONDITIONS_FIELD.to_string(), json!([{
+        source.project_mut().extensions.insert(FLY_RUNTIME_CONDITIONS_FIELD.to_string(), json!([{
             "id": "show-title", "component_id": "card-title", "path": "item.featured", "operator": "truthy"
         }]));
         let result = materialize_runtime(
@@ -2550,7 +2550,7 @@ mod tests {
     #[test]
     fn commands_preserve_unknown_entries() {
         let mut document = document();
-        document.project.extensions.insert(
+        document.project_mut().extensions.insert(
             FLY_RUNTIME_CONDITIONS_FIELD.to_string(),
             json!([{ "providerCondition": true }]),
         );
@@ -2646,7 +2646,7 @@ mod tests {
     #[test]
     fn materialization_skips_repeaters_with_empty_aliases() {
         let mut source = document();
-        source.project.extensions.insert(
+        source.project_mut().extensions.insert(
             FLY_RUNTIME_REPEATERS_FIELD.to_string(),
             json!([{ "id": "bad", "component_id": "card", "path": "items", "item_alias": "" }]),
         );
@@ -2746,7 +2746,7 @@ mod tests {
         // not resolve there, so the old global pre-pass judged it falsy and deleted the template
         // for every item.
         let mut source = nested_document();
-        source.project.extensions.insert(
+        source.project_mut().extensions.insert(
             FLY_RUNTIME_CONDITIONS_FIELD.to_string(),
             json!([{
                 "id": "show-title",

@@ -634,7 +634,7 @@ mod tests {
     #[test]
     fn upsert_preserves_unknown_rule_fields() {
         let mut document = document();
-        document.project.styles.push(json!({
+        document.project_mut().styles.push(json!({
             "selectors": [{ "name": "hero", "type": 2 }],
             "style": { "color": "red" },
             "flyComponentId": "hero",
@@ -774,7 +774,7 @@ mod tests {
     #[test]
     fn media_state_rule_keeps_both_dimensions() {
         let mut document = document();
-        document.project.styles.push(json!({
+        document.project_mut().styles.push(json!({
             "selectors": [{ "name": "hero", "type": 2 }],
             "atRuleType": "media",
             "mediaText": "(max-width: 767px)",

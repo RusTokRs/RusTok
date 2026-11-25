@@ -995,7 +995,7 @@ mod tests {
             })],
         );
         let mut separate = document_with(instance("contact", "form"), vec![definition.clone()]);
-        separate.project.pages.push(serde_json::from_value(json!({
+        separate.project_mut().pages.push(serde_json::from_value(json!({
             "id": "second", "component": {"id": "other", "type": "section", "attributes": {"id": "contact"}}
         })).unwrap());
         resolve_symbol_instances(&separate).expect("a DOM id on another page does not collide");
@@ -1257,7 +1257,7 @@ mod tests {
     #[test]
     fn invalid_catalog_block_fails_closed() {
         let mut document = document_with(object("root", "wrapper", vec![]), Vec::new());
-        document.project.extensions.insert(
+        document.project_mut().extensions.insert(
             FLY_SYMBOLS_FIELD.to_string(),
             serde_json::json!({"bad": true}),
         );

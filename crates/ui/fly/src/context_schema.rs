@@ -1774,7 +1774,7 @@ mod tests {
     #[test]
     fn commands_preserve_opaque_entries() {
         let mut document = document();
-        document.project.extensions.insert(
+        document.project_mut().extensions.insert(
             FLY_RUNTIME_CONTEXT_SCHEMA_FIELD.to_string(),
             serde_json::json!([{ "providerSchema": true }]),
         );

@@ -395,7 +395,7 @@ mod tests {
     #[test]
     fn commands_preserve_opaque_entries_and_support_removal() {
         let mut document = document();
-        document.project.extensions.insert(
+        document.project_mut().extensions.insert(
             FLY_TRANSLATIONS_FIELD.to_string(),
             json!([{ "future": true }]),
         );
@@ -496,7 +496,7 @@ mod tests {
     #[test]
     fn validation_reports_duplicate_and_invalid_locale_definitions() {
         let mut document = document();
-        document.project.extensions.insert(
+        document.project_mut().extensions.insert(
             FLY_TRANSLATIONS_FIELD.to_string(),
             json!([{
                 "id": "hero",

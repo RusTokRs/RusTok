@@ -443,7 +443,7 @@ mod tests {
     #[test]
     fn last_page_cannot_be_removed() {
         let mut document = document();
-        document.project.pages.truncate(1);
+        document.project_mut().pages.truncate(1);
         assert!(matches!(
             apply_page_command(
                 &mut document,
