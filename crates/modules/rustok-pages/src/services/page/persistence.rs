@@ -14,7 +14,8 @@ use crate::entities::{
 use crate::error::{PagesError, PagesResult};
 
 use super::helpers::{
-    merge_working_bodies, next_page_translation_revision, normalize_locale, normalize_slug,
+    merge_working_bodies, next_body_revision_timestamp, next_page_translation_revision,
+    normalize_locale, normalize_slug,
 };
 use super::route::ensure_route_alias_claim_available_in_tx;
 use super::{PageService, PreparedPageBody, WorkingBody};
@@ -328,7 +329,21 @@ impl PageService {
         body_revision: &str,
         created_by: Option<Uuid>,
     ) -> PagesResult<page_body_revision::Model> {
-        let now = Utc::now();
+        // History ordering and retention use created_at, so it must be monotonic too.
+        // Select only the timestamp: revision content can be a large document snapshot.
+        let previous_created_at = page_body_revision::Entity::find()
+            .select_only()
+            .column(page_body_revision::Column::CreatedAt)
+            .filter(page_body_revision::Column::TenantId.eq(tenant_id))
+            .filter(page_body_revision::Column::PageId.eq(page_id))
+            .filter(page_body_revision::Column::Locale.eq(locale))
+            .order_by_desc(page_body_revision::Column::CreatedAt)
+            .order_by_desc(page_body_revision::Column::Id)
+            .into_tuple::<DateTimeWithTimeZone>()
+            .one(txn)
+            .await?;
+        let now =
+            next_body_revision_timestamp(Utc::now(), previous_created_at.as_ref())?;
         let model = page_body_revision::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant_id),
