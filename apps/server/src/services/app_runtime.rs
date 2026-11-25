@@ -995,12 +995,19 @@ mod tests {
 
     #[tokio::test]
     async fn shutdown_deadline_bounds_wait_for_stuck_module_work_registration() {
-        use crate::services::app_lifecycle::{ModuleWorkSchedulerHandle, shutdown_runtime_workers};
+        use crate::services::app_lifecycle::{
+            ModuleWorkSchedulerHandle, ServerBootstrapInitializationLock, shutdown_runtime_workers,
+        };
 
         let (ctx, registry, extensions, registration) = blocking_module_work_fixture().await;
         let (first_ctx, first_registry, first_extensions) =
             (ctx.clone(), registry.clone(), extensions.clone());
+        // Exercise the real router-bootstrap lock as well as the scheduler's
+        // own registration lock. Shutdown must not be trapped behind the
+        // outer lock while waiting for a stuck, unpublished registration.
+        let bootstrap_initialization = ServerBootstrapInitializationLock::ensure(&first_ctx);
         let first = tokio::spawn(async move {
+            let _bootstrap_guard = bootstrap_initialization.lock().await;
             super::initialize_module_work_runtime(&first_ctx, &first_registry, &first_extensions)
                 .await
         });
