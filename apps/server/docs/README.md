@@ -1031,6 +1031,11 @@ before the event forwarder. The Outbox relay supervisor owns and gracefully drai
   loopback HTTP, keeping local development separate from production web-client policy.
 - The OAuth token endpoint resolves clients through the security-only OAuth app lookup, so token issuance does
   not depend on tenant locale or `oauth_app_translations` presentation data.
+- OAuth token and revocation requests support RFC 6749 `client_secret_basic` as well as the existing
+  `client_secret_post` compatibility path. The server Base64-decodes the Basic payload, then
+  form-url-decodes each credential component; mixed methods and ambiguous Authorization headers are
+  rejected. Public first-party/mobile PKCE clients can revoke without a client secret, while service
+  and configured confidential clients must authenticate with their secret.
 - Auth self-service endpoints (`/api/auth/me`, sessions, password change, profile, and history) require
   the typed `AuthPrincipalKind::DirectUser` principal. Delegated OAuth user principals are valid for
   delegated OAuth/storefront flows but do not inherit the direct-session self-service contract.
