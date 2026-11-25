@@ -932,6 +932,7 @@ impl CatalogService {
 
                 VariantResponse {
                     id: variant.id,
+                    revision: variant.index_revision.to_string(),
                     product_id: variant.product_id,
                     sku: variant.sku,
                     barcode: variant.barcode,
@@ -1159,6 +1160,7 @@ impl CatalogService {
 
         Ok(VariantResponse {
             id: variant.id,
+            revision: variant.index_revision.to_string(),
             product_id: variant.product_id,
             sku: variant.sku,
             barcode: variant.barcode,

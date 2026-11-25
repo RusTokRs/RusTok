@@ -23,6 +23,7 @@ pub struct Model {
     pub position: i32,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
+    pub index_revision: i64,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -88,6 +89,7 @@ mod tests {
             position: 1,
             created_at: Utc::now().into(),
             updated_at: Utc::now().into(),
+            index_revision: 1,
         };
         assert!(in_stock_variant.is_in_stock());
         assert!(!in_stock_variant.allows_backorders());

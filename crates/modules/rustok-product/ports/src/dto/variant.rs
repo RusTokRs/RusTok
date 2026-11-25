@@ -71,6 +71,10 @@ pub struct UpdateVariantInput {
     #[validate(nested)]
     pub prices: Option<Vec<PriceInput>>,
     pub inventory_quantity: Option<i32>,
+    /// Quantity snapshot observed by the caller when inventory_quantity was read.
+    pub expected_inventory_quantity: Option<i32>,
+    /// Opaque product-variant row revision observed by the caller.
+    pub expected_revision: Option<String>,
     #[validate(length(
         min = 1,
         max = 32,
@@ -105,6 +109,8 @@ impl UpdateVariantInput {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct VariantResponse {
     pub id: Uuid,
+    #[serde(default)]
+    pub revision: String,
     pub product_id: Uuid,
     pub sku: Option<String>,
     pub barcode: Option<String>,

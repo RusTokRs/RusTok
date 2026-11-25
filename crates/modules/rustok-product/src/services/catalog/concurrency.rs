@@ -86,11 +86,54 @@ pub(crate) fn validate_patch_text_length(
     Ok(())
 }
 
+
+const VARIANT_REVISION_CONFLICT_PREFIX: &str = "product variant revision conflict";
+
+pub(crate) fn expected_variant_revision(value: Option<&str>) -> CommerceResult<i64> {
+    let Some(value) = value.filter(|value| !value.is_empty()) else {
+        return Err(CommerceError::Validation(
+            "variant writes require the revision that was read".to_owned(),
+        ));
+    };
+    if value.len() > 19 || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(CommerceError::Validation(
+            "variant revision must be a positive integer".to_owned(),
+        ));
+    }
+
+    value
+        .parse::<i64>()
+        .ok()
+        .filter(|revision| *revision > 0)
+        .ok_or_else(|| {
+            CommerceError::Validation("variant revision must be a positive integer".to_owned())
+        })
+}
+
+pub(crate) fn ensure_expected_variant_revision(
+    variant: &entities::product_variant::Model,
+    expected_revision: Option<&str>,
+) -> CommerceResult<()> {
+    let expected = expected_variant_revision(expected_revision)?;
+    if variant.index_revision != expected {
+        return Err(CommerceError::Validation(format!(
+            "{VARIANT_REVISION_CONFLICT_PREFIX}: expected revision {expected}, current revision {}",
+            variant.index_revision
+        )));
+    }
+    Ok(())
+}
+
+pub(crate) fn variant_revision_conflict_of(message: &str) -> bool {
+    message.contains(VARIANT_REVISION_CONFLICT_PREFIX)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        REVISION_CONFLICT_PREFIX, ensure_expected_revision, next_revision, revision_conflict,
-        revision_conflict_of, validate_patch_text_length,
+        REVISION_CONFLICT_PREFIX, ensure_expected_revision, expected_variant_revision,
+        next_revision, revision_conflict, revision_conflict_of, validate_patch_text_length,
+        variant_revision_conflict_of, CommerceError,
     };
     use crate::entities;
     use rustok_api::Patch;
@@ -137,6 +180,24 @@ mod tests {
                 .current_revision,
             3
         );
+    }
+
+
+    #[test]
+    fn variant_revision_requires_a_positive_database_revision() {
+        assert_eq!(expected_variant_revision(Some("7")).unwrap(), 7);
+        assert!(expected_variant_revision(None).is_err());
+        assert!(expected_variant_revision(Some("0")).is_err());
+        assert!(expected_variant_revision(Some("not-a-revision")).is_err());
+    }
+
+    #[test]
+    fn variant_revision_conflicts_are_recognized() {
+        let error = CommerceError::Validation(
+            "product variant revision conflict: expected revision 4, current revision 5".into(),
+        );
+        assert!(variant_revision_conflict_of(&error.to_string()));
+        assert!(!variant_revision_conflict_of("ordinary validation error"));
     }
 
     #[test]
