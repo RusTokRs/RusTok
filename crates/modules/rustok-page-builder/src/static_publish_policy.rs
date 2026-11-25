@@ -7,7 +7,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
-pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT: &str = "page_builder_static_publish_policy_v1";
+pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT: &str = "page_builder_static_publish_policy_v2";
 
 const ALLOWED_TAGS: &[&str] = &[
     "a",
@@ -776,12 +776,7 @@ fn validate_css_declarations(
     entries.sort_by(|left, right| left.0.cmp(right.0));
     for (name, value) in entries {
         let declaration_path = format!("{path}.{name}");
-        if name.is_empty()
-            || name.len() > policy.max_css_property_bytes
-            || name.starts_with("--")
-            || !name
-                .chars()
-                .all(|character| character.is_ascii_alphabetic() || character == '-')
+        if name.len() > policy.max_css_property_bytes || !fly::css_property_allowed(name)
         {
             reject(
                 diagnostics,
@@ -882,8 +877,9 @@ fn validate_page_metadata(
             continue;
         };
         for (field, kind) in [
-            ("canonical_url", UrlKind::Canonical),
-            ("open_graph_image", UrlKind::ResourceImage),
+            ("canonical_url", UrlKind::HeadCanonical),
+            ("open_graph_image", UrlKind::HeadImage),
+            ("twitter_image", UrlKind::HeadImage),
         ] {
             let Some(value) = metadata.get(field) else {
                 continue;
@@ -920,6 +916,8 @@ enum UrlKind {
     ResourceImage,
     FormAction,
     Canonical,
+    HeadCanonical,
+    HeadImage,
     Fragment,
 }
 
@@ -958,9 +956,13 @@ fn validate_url(
         return Err(StaticPublishValidationError("control characters are forbidden"));
     }
 
+    if fly::normalized_url_candidate(value).is_none() {
+        return Err(StaticPublishValidationError("URL contains whitespace or exceeds Fly's URL limit"));
+    }
+
     let normalized = value.to_ascii_lowercase();
-    let https = normalized.starts_with("https://");
-    let relative = relative_url_allowed(value);
+    let https = fly::absolute_url_has_authority(value, "https://");
+    let relative = fly::relative_url_allowed(value);
     let fragment = normalized.starts_with('#');
     let data_image = policy
         .allowed_data_image_prefixes
@@ -972,14 +974,18 @@ fn validate_url(
             fragment
                 || relative
                 || https
-                || normalized.starts_with("mailto:")
-                || normalized.starts_with("tel:")
+                || fly::scheme_target_is_not_empty(value, "mailto:")
+                || fly::scheme_target_is_not_empty(value, "tel:")
         }
         UrlKind::Resource => relative || https,
         UrlKind::ResourceImage => relative || https || data_image,
         UrlKind::FormAction => relative,
         UrlKind::Canonical => relative || https,
-        UrlKind::Fragment => fragment,
+        UrlKind::HeadCanonical => (value.starts_with('/') || https)
+            && fly::head_url(value, false).is_some(),
+        UrlKind::HeadImage => (value.starts_with('/') || https || data_image)
+            && fly::head_url(value, true).is_some(),
+        UrlKind::Fragment => fragment && value.len() > 1,
     };
     if allowed {
         Ok(())
@@ -988,99 +994,19 @@ fn validate_url(
     }
 }
 
-fn relative_url_allowed(value: &str) -> bool {
-    if value.starts_with('#') {
-        return false;
-    }
-    let scheme_boundary = value.find(['/', '?', '#']).unwrap_or(value.len());
-    !value[..scheme_boundary].contains(':')
-}
-
-/// Validates one `srcset` value as a bounded candidate list.
-///
-/// Every candidate URL passes the same rule as an image `src`
-/// ([`UrlKind::ResourceImage`]) except that `data:` payloads are refused: their
-/// base64 bodies contain commas, which collide with the candidate grammar. The
-/// per-candidate check is the safety boundary; the counts here are only limits.
+/// Validate the shared Fly candidate grammar with the stricter static image URL
+/// policy and the evidence-bound host candidate ceiling.
 fn validate_srcset(
     value: &str,
     policy: &PageBuilderStaticPublishPolicy,
 ) -> Result<(), StaticPublishValidationError> {
-    let mut candidates = 0usize;
-    let mut descriptors = BTreeSet::new();
-    let mut family: Option<&'static str> = None;
-    for raw_part in value.split(',') {
-        let part = raw_part.trim();
-        if part.is_empty() {
-            return Err(StaticPublishValidationError("value contains an empty candidate"));
-        }
-        candidates += 1;
-        if candidates > policy.max_srcset_candidates {
-            return Err(StaticPublishValidationError("value exceeds the candidate limit"));
-        }
-        let mut tokens = part.split_whitespace();
-        let Some(url) = tokens.next() else {
-            return Err(StaticPublishValidationError("candidate URL is empty"));
-        };
-        let descriptor = tokens.next();
-        if tokens.next().is_some() {
-            return Err(StaticPublishValidationError("candidate has unexpected trailing tokens"));
-        }
-        if url.starts_with("data:") {
-            return Err(StaticPublishValidationError("data: URLs are not allowed in srcset candidates"));
-        }
-        validate_url(url, UrlKind::ResourceImage, policy)?;
-        let (candidate_family, normalized) = match descriptor {
-            None => ("x", "1x".to_string()),
-            Some(descriptor) => {
-                let family = parse_srcset_descriptor(descriptor)
-                    .ok_or(StaticPublishValidationError("candidate descriptor must be <N>w or <N>x"))?;
-                (family, descriptor.to_string())
-            }
-        };
-        match family {
-            None => family = Some(candidate_family),
-            Some(seen) if seen == candidate_family => {}
-            Some(_) => return Err(StaticPublishValidationError("width and density descriptors must not be mixed")),
-        }
-        if !descriptors.insert(normalized) {
-            return Err(StaticPublishValidationError("candidate descriptors must be unique"));
-        }
+    if fly::validate_srcset_candidates(value, policy.max_srcset_candidates.min(16), |url| {
+        validate_url(url, UrlKind::ResourceImage, policy).is_ok()
+    }) {
+        Ok(())
+    } else {
+        Err(StaticPublishValidationError("candidate URL, descriptor or count is not allowed"))
     }
-    if candidates == 0 {
-        return Err(StaticPublishValidationError("value is empty"));
-    }
-    Ok(())
-}
-
-/// Returns the descriptor family (`w` or `x`) for a syntactically valid descriptor.
-fn parse_srcset_descriptor(descriptor: &str) -> Option<&'static str> {
-    if let Some(rest) = descriptor.strip_suffix('w') {
-        if !rest.is_empty()
-            && rest.len() <= 6
-            && rest.bytes().all(|byte| byte.is_ascii_digit())
-            && rest.parse::<u32>().is_ok_and(|width| width >= 1)
-        {
-            return Some("w");
-        }
-        return None;
-    }
-    let rest = descriptor.strip_suffix('x')?;
-    let (whole, fraction) = match rest.split_once('.') {
-        Some((whole, fraction)) => (whole, Some(fraction)),
-        None => (rest, None),
-    };
-    if whole.is_empty() || whole.len() > 3 || !whole.bytes().all(|byte| byte.is_ascii_digit()) {
-        return None;
-    }
-    if let Some(fraction) = fraction
-        && (fraction.is_empty()
-            || fraction.len() > 3
-            || !fraction.bytes().all(|byte| byte.is_ascii_digit()))
-    {
-        return None;
-    }
-    Some("x")
 }
 
 /// Validates one `sizes` value as a bounded list of `[media-condition ]<length>`.
@@ -1592,6 +1518,67 @@ mod tests {
                 .iter()
                 .any(|diagnostic| diagnostic.code == "landing_metadata_url_invalid")
         );
+    }
+
+    #[test]
+    fn static_policy_rejects_urls_and_descriptors_the_renderer_cannot_emit() {
+        let policy = PageBuilderStaticPublishPolicy::default();
+        for url in [
+            "https://", "https:///example.test/a", "https://example.test:99999/a",
+            "/has space", "mailto:", "tel:",
+        ] {
+            assert!(validate_url(url, UrlKind::Navigation, &policy).is_err(), "{url}");
+        }
+        assert!(validate_url("#", UrlKind::Fragment, &policy).is_err());
+        assert!(validate_url("relative.png", UrlKind::ResourceImage, &policy).is_ok());
+        assert!(validate_url("relative.png", UrlKind::HeadImage, &policy).is_err());
+        for value in [
+            "/a 1x, /b 1.0x", "/a 0800w, /b 800w", "/a 0x",
+            "/a 0w", "DATA:image/png;base64,AAAA 2x",
+        ] {
+            assert!(validate_srcset(value, &policy).is_err(), "{value}");
+        }
+        assert!(validate_srcset("/a 0.5x, /b 2x", &policy).is_ok());
+        assert!(validate_srcset("/a 800w, /b 1600w", &policy).is_ok());
+        assert!(!safe_css_value("url(https://example.test:99999/a)", &policy));
+    }
+
+    #[test]
+    fn static_policy_checks_every_localized_twitter_image() {
+        let mut document = document(json!({"id": "root", "type": "wrapper"}));
+        document.project_mut().pages[0].extensions
+            .get_mut(FLY_PAGE_METADATA_FIELD).and_then(Value::as_object_mut)
+            .expect("metadata").insert("twitter_image".to_string(), json!({
+                "$localized": {"en": "/valid.png", "fr": "relative.png"}
+            }));
+        let error = validate_static_publish_document(&document).expect_err("invalid localized URL");
+        assert!(error.diagnostics().iter().any(|d| {
+            d.code == "landing_metadata_url_rejected" && d.path.ends_with("twitter_image.$localized.fr")
+        }));
+    }
+
+    #[test]
+    fn static_policy_rejects_renderer_denied_css_property_names() {
+        let document = document(json!({
+            "id": "root", "type": "wrapper",
+            "style": {"behavior": "none", "-ms-behavior": "none", "-moz-binding": "none"}
+        }));
+        let error = validate_static_publish_document(&document).expect_err("denied CSS names");
+        for name in ["behavior", "-ms-behavior", "-moz-binding"] {
+            assert!(error.diagnostics().iter().any(|d| {
+                d.code == "landing_css_property_rejected" && d.path.ends_with(&format!(".{name}"))
+            }), "{name}");
+        }
+    }
+
+    #[test]
+    fn v1_policy_evidence_is_not_current_after_v2_cutover() {
+        let policy = PageBuilderStaticPublishPolicy::default();
+        let evidence = PageBuilderStaticPublishPolicyEvidence {
+            format: "page_builder_static_publish_policy_v1".to_string(),
+            policy_hash: policy.policy_hash().expect("current hash"),
+        };
+        assert!(evidence.verify_integrity().is_err());
     }
 
     #[test]

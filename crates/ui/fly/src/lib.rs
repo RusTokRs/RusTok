@@ -177,7 +177,7 @@ pub use registry::{
 pub use render::{
     AlternateLocaleLink, PageHead, PageSelection, RenderPolicy, RenderedPage,
     compose_document_html, document_html_stylesheet, document_html_with_style_nonce,
-    escape_css_attribute, render_page, render_page_with_embed_registry,
+    css_property_allowed, escape_css_attribute, render_page, render_page_with_embed_registry,
     render_page_with_rich_text, render_page_with_rich_text_and_embed_registry, resolve_page,
 };
 pub use rich_text::{
@@ -201,6 +201,10 @@ pub use runtime_render::{
     render_page_with_runtime_context_with_providers_and_embed_registry,
 };
 pub use runtime_validation::{extend_with_runtime_validation, validate_runtime_extensions};
+pub use safe_url::{
+    absolute_url_has_authority, head_url, normalized_url_candidate, relative_url_allowed,
+    scheme_target_is_not_empty, validate_srcset_candidates,
+};
 pub use snapshot::{ProjectDiffSummary, ProjectSnapshot, SnapshotCatalog, compare_projects};
 pub use style_rule::{
     FLY_COMPONENT_RULE_FIELD, FLY_RULE_ID_FIELD, SUPPORTED_PSEUDO_CLASSES, StyleRuleCatalog,

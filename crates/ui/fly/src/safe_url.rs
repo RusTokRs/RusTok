@@ -142,7 +142,7 @@ impl UrlPolicy {
 /// Protocol-relative (`//host`) is refused because it inherits the page scheme; backslashes
 /// because browsers normalise them to `/` and they are a classic authority-confusion vector;
 /// control characters and whitespace because they let a payload smuggle a newline past a filter.
-pub(crate) fn normalized_url_candidate(value: &str) -> Option<&str> {
+pub fn normalized_url_candidate(value: &str) -> Option<&str> {
     let value = value.trim();
     if value.is_empty()
         || value.len() > MAXIMUM_URL_LENGTH
@@ -159,7 +159,7 @@ pub(crate) fn normalized_url_candidate(value: &str) -> Option<&str> {
 /// Upper bound on a URL we are willing to emit or store.
 pub(crate) const MAXIMUM_URL_LENGTH: usize = 2048;
 
-pub(crate) fn relative_url_allowed(value: &str) -> bool {
+pub fn relative_url_allowed(value: &str) -> bool {
     if value.starts_with('#') {
         return false;
     }
@@ -167,7 +167,7 @@ pub(crate) fn relative_url_allowed(value: &str) -> bool {
     !value[..scheme_boundary].contains(':')
 }
 
-pub(crate) fn absolute_url_has_authority(value: &str, scheme: &str) -> bool {
+pub fn absolute_url_has_authority(value: &str, scheme: &str) -> bool {
     let lower = value.to_ascii_lowercase();
     if !lower.starts_with(scheme) {
         return false;
@@ -185,7 +185,7 @@ pub(crate) fn absolute_url_has_authority(value: &str, scheme: &str) -> bool {
         })
 }
 
-pub(crate) fn scheme_target_is_not_empty(value: &str, scheme: &str) -> bool {
+pub fn scheme_target_is_not_empty(value: &str, scheme: &str) -> bool {
     let lower = value.to_ascii_lowercase();
     lower.starts_with(scheme) && !value[scheme.len()..].is_empty()
 }
@@ -205,7 +205,7 @@ pub(crate) fn safe_data_image(normalized: &str) -> bool {
 /// Canonical/preview head URLs are intentionally root-relative or absolute,
 /// not arbitrary document-relative links. The same admission rule serves
 /// diagnostics and rendering.
-pub(crate) fn head_url(value: &str, allow_data_image: bool) -> Option<&str> {
+pub fn head_url(value: &str, allow_data_image: bool) -> Option<&str> {
     let value = normalized_url_candidate(value)?;
     let normalized = value.to_ascii_lowercase();
     (value.starts_with('/')
@@ -220,14 +220,25 @@ pub(crate) fn head_url(value: &str, allow_data_image: bool) -> Option<&str> {
 /// Inline data images are forbidden because their commas conflict with the
 /// candidate separator. A bad candidate rejects the entire attribute.
 pub(crate) fn srcset_allowed(value: &str, policy: &UrlPolicy) -> bool {
-    const MAX_CANDIDATES: usize = 16;
+    validate_srcset_candidates(value, 16, |url| {
+        url_allowed(url, UrlAttributeKind::Resource, policy)
+    })
+}
+
+/// Shared candidate grammar for SSR and hosts with a stricter resource policy.
+/// The callback must apply the host's complete URL admission rule.
+pub fn validate_srcset_candidates(
+    value: &str,
+    max_candidates: usize,
+    mut allow_url: impl FnMut(&str) -> bool,
+) -> bool {
     if value.chars().any(char::is_control) {
         return false;
     }
     let mut descriptors = BTreeSet::new();
     let mut family = None;
     for (index, candidate) in value.split(',').enumerate() {
-        if index >= MAX_CANDIDATES {
+        if index >= max_candidates {
             return false;
         }
         let mut tokens = candidate.split_ascii_whitespace();
@@ -235,7 +246,7 @@ pub(crate) fn srcset_allowed(value: &str, policy: &UrlPolicy) -> bool {
             return false;
         };
         if url.to_ascii_lowercase().starts_with("data:")
-            || !url_allowed(url, UrlAttributeKind::Resource, policy)
+            || !allow_url(url)
         {
             return false;
         }

@@ -60,6 +60,8 @@ rebuild still checks retained hashes and fails closed if a corrected materializa
   URL is re-checked against the same image-resource policy as `src`, and one
   malformed or disallowed candidate drops the whole attribute (a partial
   `srcset` would silently change which image the browser picks).
+  Policy v2 shares Fly URL shape, CSS property-name and srcset candidate admission,
+  and checks canonical, Open Graph and Twitter metadata URLs in every locale.
   After the policy hash changes, exact
   rebuild of earlier retained sanitized sources reports hash drift until the
   page is re-published (fail-closed by design, see
