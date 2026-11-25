@@ -105,7 +105,11 @@ before starting a new production host; no automatic fallback is allowed.
 `auth.jwt.secret` is the independent host MAC root and still supplies the
 pre-cutover HS256 default derivation source. The accepted [RS256-only target](../../DECISIONS/2026-11-25-rs256-only-jwt.md)
 requires four independent RSA pairs. Complete generation-bearing file
-provisioning is available today; do not deploy the future cutover until the
+provisioning is available today. The full development Compose stack now
+requires a pre-provisioned private directory with `jwt.json` (see the
+[root quick start](../../README.md#local-stack-launch)); the directory is
+mounted read-only to preserve visibility of atomic file replacement. The
+executable's remaining static startup path has not yet been removed; do not deploy the future cutover until the
 provisioning and retained-state requirements are satisfied. Optional runtime
 overrides live under `settings.rustok.auth`:
 

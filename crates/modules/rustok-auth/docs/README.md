@@ -241,6 +241,13 @@ python3 scripts/dev/provision-jwt-keyring.py --output "$HOME/.local/share/rustok
 export RUSTOK_JWT_KEYRING_FILE="$HOME/.local/share/rustok-dev/jwt.json"
 ```
 
+The full development Compose stack consumes this existing file by mounting
+its dedicated directory read-only. For a different directory export
+`RUSTOK_DEV_JWT_KEYRING_DIR` in the calling shell. The dev startup script
+requires a readable `jwt.json` before starting Compose and does not generate
+keys or reset security state. A direct executable launch still uses the
+pre-cutover startup contract.
+
 The command generates four independent RSA pairs with distinct key IDs,
 writes a complete file with mode 0600 outside the checkout, and refuses
 replacement even if concurrent provisioning targets the same path. It never

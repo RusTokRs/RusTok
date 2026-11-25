@@ -313,9 +313,22 @@ Platform capabilities are structured into modular crates defined in [`modules.to
 
 ### Local Stack Launch
 
+For a **fresh, isolated development security store**, provision the RSA
+keyring once (POSIX, Python 3.9+ and OpenSSL):
+
 ```bash
+install -d -m 0700 "$HOME/.local/share/rustok-dev"
+python3 scripts/dev/provision-jwt-keyring.py --output "$HOME/.local/share/rustok-dev/jwt.json"
 ./scripts/dev-start.sh
 ```
+
+Reuse the same keyring for subsequent launches. The development stack mounts
+the dedicated directory read-only; export `RUSTOK_DEV_JWT_KEYRING_DIR` in
+your shell to select a different private directory outside the checkout.
+The file must be named `jwt.json`. Never generate a new generation-1
+keyring for an already enrolled store or delete security state to make it
+start. Retained HS256 state requires the authenticated conversion described
+in the [RS256-only decision](DECISIONS/2026-11-25-rs256-only-jwt.md).
 
 Default local endpoints:
 

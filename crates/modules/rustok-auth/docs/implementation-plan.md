@@ -69,8 +69,11 @@ Embedded test RSA keys in the Auth owner sources are removed. Explicit HS256
 negative and existing startup-source tests remain until consumer cutover.
 Server host-policy, runtime-context, OAuth confirmation and extractor tests
 now exercise complete RSA fixtures, with issuance using the same runtime's
-configuration. Remaining constructors, deployment tooling and mandatory
-startup source admission still need migration; scoped execution remains pending. The file-source entry point now
+configuration. Full development Compose now mounts the explicitly
+provisioned dedicated keyring directory read-only and the dev launch script
+requires an existing readable file before starting migrations. Browser smoke
+CI, remaining constructors and mandatory executable source admission still
+need coordinated migration; scoped execution remains pending. The file-source entry point now
 constructs and validates only the actual complete candidate, without
 instantiating default signing inputs, with typed source exclusivity
 owned by Auth, not a redundant startup signer. Independent MAC root validation
