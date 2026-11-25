@@ -859,10 +859,14 @@ before GraphQL's normal document validation.
   gives bootstrap and direct worker initializers one shared five-second
   startup-publication deadline before taking the drain snapshot. If that
   barrier expires, shutdown continues through each worker's stop/admission
-  fence instead of waiting indefinitely. Module-work registration cancels its
-  unpublished scheduler preparation when stop wins, so a late callback cannot
-  publish a new scheduler. `connect_runtime_workers_with_runtime` can also be
-  called directly, without this router-bootstrap mutex. Its separate
+  fence instead of waiting indefinitely. The active-manifest read, storage and
+  tenant-cache preparation, Alloy executor construction, and product/profile
+  deployment-provider connects are stop-interruptible before publication.
+  Manifest-managed OAuth synchronization is allowed to finish its transaction
+  and then rechecks stop. Module-work registration cancels its unpublished
+  scheduler preparation when stop wins, so a late callback cannot publish a
+  new scheduler. `connect_runtime_workers_with_runtime` can also be called
+  directly, without this router-bootstrap mutex. Its separate
   artifact/runtime-worker startup mutex participates in the same bounded
   barrier and is released *before* concurrent task drains, preventing a lock
   cycle with artifact maintenance's own shutdown drain. New startup calls
