@@ -1537,11 +1537,15 @@ async fn revoke_handler_inner(
     // stored hash for either token kind.
     let token_hash = crate::auth::hash_refresh_token(&req.token);
 
-    OAuthAppService::revoke_token_by_hash(ctx.db(), &token_hash, app.id, tenant_ctx.id)
+    OAuthAppService::revoke_authenticated_token_by_hash(ctx.db(), &token_hash, &app, tenant_ctx.id)
         .await
-        .map_err(|_| TokenErrorResponse {
-            error: "server_error".to_string(),
-            error_description: "Failed to revoke token".to_string(),
+        .map_err(|error| match error {
+            crate::error::Error::Unauthorized(_) =>
+                oauth_invalid_client_error("Invalid client credentials"),
+            _ => TokenErrorResponse {
+                error: "server_error".to_string(),
+                error_description: "Failed to revoke token".to_string(),
+            },
         })?;
 
     // RFC 7009: always return 200 OK regardless of whether token existed

@@ -93,6 +93,13 @@ satisfy the platform multilingual storage contract. Their translation-table cuto
 is an explicit release-plan priority in this module's implementation plan; transports
 must not introduce a competing JSON or request-local fallback in the meantime.
 
+## OAuth revocation client fence
+
+RFC 7009 revocation rechecks the authenticated client snapshot under the app
+mutation lock before inspecting the token. Concurrent secret or client policy
+changes invalidate the preflight authentication; unknown tokens still succeed
+for an authenticated client. Source regression unrun.
+
 ## OAuth issuance fences
 
 Browser approval and authorization-code issuance share one transaction. The host

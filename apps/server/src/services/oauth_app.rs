@@ -746,21 +746,58 @@ impl OAuthAppService {
     /// Access JWTs are registered
     /// as `token_kind = access` rows, so revocation fences an already-issued
     /// JWT before its signed TTL; refresh rows fence the rotation lineage.
-    pub async fn revoke_token_by_hash(
+    pub(crate) async fn revoke_authenticated_token_by_hash(
+        db: &DatabaseConnection,
+        token_hash: &str,
+        authenticated_app: &oauth_apps::Model,
+        tenant_id: Uuid,
+    ) -> Result<()> {
+        Self::revoke_token_by_hash_inner(
+            db, token_hash, authenticated_app.id, tenant_id, Some(authenticated_app),
+        )
+        .await
+    }
+
+    #[cfg(test)]
+    async fn revoke_token_by_hash(
         db: &DatabaseConnection,
         token_hash: &str,
         app_id: Uuid,
         tenant_id: Uuid,
     ) -> Result<()> {
+        Self::revoke_token_by_hash_inner(db, token_hash, app_id, tenant_id, None).await
+    }
+
+    async fn revoke_token_by_hash_inner(
+        db: &DatabaseConnection,
+        token_hash: &str,
+        app_id: Uuid,
+        tenant_id: Uuid,
+        authenticated_app: Option<&oauth_apps::Model>,
+    ) -> Result<()> {
         let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
         // Acquire the same app-row fence as refresh rotation and token issuance
         // BEFORE reading the revocation target. Otherwise a refresh can commit
         // its replacement after this lookup but before the family update.
-        // A missing app is not an existence oracle: still complete the normal
-        // scoped unknown-token path without a distinct public result.
-        let _app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
+        let current_app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
             .await
             .map_err(|_| Error::InternalServerError)?;
+        if let Some(authenticated) = authenticated_app {
+            // Secret verification is intentionally outside the transaction.
+            // The app snapshot must still describe the same authenticated
+            // client under the mutation fence, even for an unknown token.
+            let unchanged = current_app.as_ref().is_some_and(|current| {
+                current.is_active()
+                    && authenticated.tenant_id == tenant_id
+                    && authenticated.id == current.id
+                    && authenticated.client_id == current.client_id
+                    && authenticated.app_type == current.app_type
+                    && authenticated.client_secret_hash == current.client_secret_hash
+            });
+            if !unchanged {
+                return Err(Error::Unauthorized("OAuth client credentials changed".to_string()));
+            }
+        }
         let token = OAuthTokens::find()
             .filter(oauth_tokens::Column::TokenHash.eq(token_hash))
             .filter(oauth_tokens::Column::AppId.eq(app_id))
@@ -3297,6 +3334,43 @@ mod tests {
             0,
             "invalid tenant, redirect, scope and user decisions cannot persist codes"
         );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn revocation_rechecks_client_credentials_under_app_lock() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let app = insert_revocation_app(&db, tenant.id, "revoke-client-fence").await;
+        let token = insert_revocation_token(&db, &app, "revoke-client-fence-token", None).await;
+        oauth_apps::Entity::update_many()
+            .col_expr(oauth_apps::Column::ClientSecretHash, Expr::value("new-secret-hash"))
+            .filter(oauth_apps::Column::Id.eq(app.id))
+            .exec(&db)
+            .await
+            .expect("rotate client credentials");
+        let rejected = OAuthAppService::revoke_authenticated_token_by_hash(
+            &db, &token.token_hash, &app, tenant.id,
+        )
+        .await;
+        assert!(matches!(rejected, Err(Error::Unauthorized(_))));
+        let persisted = OAuthTokens::find_by_id(token.id)
+            .one(&db).await.expect("read token").expect("token");
+        assert!(persisted.revoked_at.is_none());
+        let current = OAuthAppService::find_security_by_client_id_scoped(
+            &db, tenant.id, app.client_id,
+        )
+        .await.expect("read client").expect("active client");
+        OAuthAppService::revoke_authenticated_token_by_hash(
+            &db, &token.token_hash, &current, tenant.id,
+        )
+        .await.expect("current client can revoke");
+        let persisted = OAuthTokens::find_by_id(token.id)
+            .one(&db).await.expect("read token").expect("token");
+        assert!(persisted.revoked_at.is_some());
+        OAuthAppService::revoke_authenticated_token_by_hash(
+            &db, "unknown-token", &current, tenant.id,
+        )
+        .await.expect("authenticated unknown token remains idempotent");
     }
 
     #[tokio::test]

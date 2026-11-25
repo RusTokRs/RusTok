@@ -176,6 +176,13 @@ gates in the [Page Builder backlog](../../../../docs/modules/page-builder-backlo
    exhaustively at the GraphQL boundary); `AuthSettingsOverrides::apply` is
    live runtime wiring, not dead code.
 
+## OAuth revocation client fence (source only)
+
+RFC 7009 revocation revalidates the active client identity, type and secret hash
+under the app lock before token lookup. Stale authentication returns invalid_client;
+unknown tokens still succeed for authenticated clients. Source regression authored,
+compilation and runtime verification pending.
+
 ## OAuth authorization session fence (source only)
 
 Authorization issuance rechecks the direct session, its subject, credential
