@@ -126,6 +126,8 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
                 granted_scopes: command.granted_scopes,
                 metadata: command.metadata,
                 created_by: Some(context.actor_id),
+                actor_id: Some(context.actor_id.to_string()),
+                actor_type: Some("human_user".to_string()),
             },
         )
         .await
@@ -153,6 +155,8 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
                 expires_at: parse_optional_datetime(command.expires_at)?,
                 metadata: command.metadata,
                 created_by: Some(context.actor_id),
+                actor_id: Some(context.actor_id.to_string()),
+                actor_type: Some("human_user".to_string()),
                 revoke_existing_tokens: command.revoke_existing_tokens,
             },
         )
@@ -183,6 +187,8 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
                 granted_scopes: command.granted_scopes,
                 metadata: command.metadata,
                 updated_by: Some(context.actor_id),
+                actor_id: Some(context.actor_id.to_string()),
+                actor_type: Some("human_user".to_string()),
             },
         )
         .await
@@ -202,6 +208,8 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
             context.tenant_id,
             token_id,
             Some(context.actor_id),
+            Some(context.actor_id.to_string()),
+            Some("human_user".to_string()),
             reason,
         )
         .await
@@ -220,6 +228,8 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
             context.tenant_id,
             client_id,
             Some(context.actor_id),
+            Some(context.actor_id.to_string()),
+            Some("human_user".to_string()),
             reason,
         )
         .await

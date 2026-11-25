@@ -720,8 +720,10 @@ async fn create_client(
     State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireMcpManage(user): RequireMcpManage,
+    // Audit the actual principal (human user or service client).
     Json(input): Json<CreateMcpClientRequest>,
 ) -> Result<Json<CreateMcpClientResponse>> {
+    let (actor_id, actor_type, actor_user_id) = mcp_management_audit_actor(&user);
     tracing::debug!(
         tenant_id = %tenant.id,
         slug_len = input.slug.len(),
@@ -755,7 +757,9 @@ async fn create_client(
             granted_permissions: input.granted_permissions,
             granted_scopes: input.granted_scopes,
             metadata: input.metadata,
-            created_by: Some(user.user.id),
+            created_by: actor_user_id,
+            actor_id,
+            actor_type,
         },
     )
     .await?;
@@ -772,9 +776,11 @@ async fn rotate_token(
     State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireMcpManage(user): RequireMcpManage,
+    // Audit the actual principal (human user or service client).
     Path(client_id): Path<Uuid>,
     Json(input): Json<RotateMcpTokenRequest>,
 ) -> Result<Json<RotateMcpTokenResponse>> {
+    let (actor_id, actor_type, actor_user_id) = mcp_management_audit_actor(&user);
     tracing::debug!(
         tenant_id = %tenant.id,
         client_id = %client_id,
@@ -797,7 +803,9 @@ async fn rotate_token(
             token_name: input.token_name,
             expires_at: input.expires_at,
             metadata: input.metadata,
-            created_by: Some(user.user.id),
+            created_by: actor_user_id,
+            actor_id,
+            actor_type,
             revoke_existing_tokens: input.revoke_existing_tokens.unwrap_or(true),
         },
     )
@@ -814,9 +822,11 @@ async fn update_policy(
     State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireMcpManage(user): RequireMcpManage,
+    // Audit the actual principal (human user or service client).
     Path(client_id): Path<Uuid>,
     Json(input): Json<UpdateMcpPolicyRequest>,
 ) -> Result<Json<McpPolicyResponse>> {
+    let (actor_id, actor_type, actor_user_id) = mcp_management_audit_actor(&user);
     tracing::debug!(
         tenant_id = %tenant.id,
         client_id = %client_id,
@@ -842,7 +852,9 @@ async fn update_policy(
             granted_permissions: input.granted_permissions,
             granted_scopes: input.granted_scopes,
             metadata: input.metadata,
-            updated_by: Some(user.user.id),
+            updated_by: actor_user_id,
+            actor_id,
+            actor_type,
         },
     )
     .await?;
@@ -854,14 +866,24 @@ async fn revoke_token_by_id(
     State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireMcpManage(user): RequireMcpManage,
+    // Audit the actual principal (human user or service client).
     Path(token_id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
+    let (actor_id, actor_type, actor_user_id) = mcp_management_audit_actor(&user);
     tracing::debug!(
         tenant_id = %tenant.id,
         token_id = %token_id,
         "Handling revoke MCP token request"
     );
-    McpManagementService::revoke_token(ctx.db(), tenant.id, token_id, Some(user.user.id), None)
+    McpManagementService::revoke_token(
+        ctx.db(),
+        tenant.id,
+        token_id,
+        actor_user_id,
+        actor_id,
+        actor_type,
+        None,
+    )
         .await?;
     Ok(Json(serde_json::json!({ "success": true })))
 }
@@ -870,8 +892,10 @@ async fn deactivate_client(
     State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireMcpManage(user): RequireMcpManage,
+    // Audit the actual principal (human user or service client).
     Path(client_id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
+    let (actor_id, actor_type, actor_user_id) = mcp_management_audit_actor(&user);
     tracing::debug!(
         tenant_id = %tenant.id,
         client_id = %client_id,
@@ -881,7 +905,9 @@ async fn deactivate_client(
         ctx.db(),
         tenant.id,
         client_id,
-        Some(user.user.id),
+        actor_user_id,
+        actor_id,
+        actor_type,
         None,
     )
     .await?;

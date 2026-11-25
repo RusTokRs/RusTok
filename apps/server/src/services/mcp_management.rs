@@ -31,6 +31,8 @@ pub struct CreateMcpClientInput {
     pub granted_scopes: Vec<String>,
     pub metadata: serde_json::Value,
     pub created_by: Option<Uuid>,
+    pub actor_id: Option<String>,
+    pub actor_type: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -39,6 +41,8 @@ pub struct RotateMcpTokenInput {
     pub expires_at: Option<DateTime<Utc>>,
     pub metadata: serde_json::Value,
     pub created_by: Option<Uuid>,
+    pub actor_id: Option<String>,
+    pub actor_type: Option<String>,
     pub revoke_existing_tokens: bool,
 }
 
@@ -50,6 +54,8 @@ pub struct UpdateMcpPolicyInput {
     pub granted_scopes: Vec<String>,
     pub metadata: serde_json::Value,
     pub updated_by: Option<Uuid>,
+    pub actor_id: Option<String>,
+    pub actor_type: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -211,8 +217,14 @@ impl McpManagementService {
                 tenant_id,
                 client_id: Some(client.id),
                 token_id: Some(token.id),
-                actor_id: input.created_by.map(|value| value.to_string()),
-                actor_type: Some("human_user".to_string()),
+                actor_id: input
+                    .actor_id
+                    .clone()
+                    .or_else(|| input.created_by.map(|value| value.to_string())),
+                actor_type: input
+                    .actor_type
+                    .clone()
+                    .or_else(|| input.created_by.map(|_| "human_user".to_string())),
                 action: "client_created".to_string(),
                 outcome: "success".to_string(),
                 tool_name: None,
@@ -338,8 +350,14 @@ impl McpManagementService {
                 tenant_id,
                 client_id: Some(client.id),
                 token_id: Some(token.id),
-                actor_id: input.created_by.map(|value| value.to_string()),
-                actor_type: Some("human_user".to_string()),
+                actor_id: input
+                    .actor_id
+                    .clone()
+                    .or_else(|| input.created_by.map(|value| value.to_string())),
+                actor_type: input
+                    .actor_type
+                    .clone()
+                    .or_else(|| input.created_by.map(|_| "human_user".to_string())),
                 action: "token_rotated".to_string(),
                 outcome: "success".to_string(),
                 tool_name: None,
@@ -424,8 +442,14 @@ impl McpManagementService {
                 tenant_id,
                 client_id: Some(client.id),
                 token_id: None,
-                actor_id: input.updated_by.map(|value| value.to_string()),
-                actor_type: Some("human_user".to_string()),
+                actor_id: input
+                    .actor_id
+                    .clone()
+                    .or_else(|| input.updated_by.map(|value| value.to_string())),
+                actor_type: input
+                    .actor_type
+                    .clone()
+                    .or_else(|| input.updated_by.map(|_| "human_user".to_string())),
                 action: "policy_updated".to_string(),
                 outcome: "success".to_string(),
                 tool_name: None,
@@ -449,6 +473,8 @@ impl McpManagementService {
         tenant_id: Uuid,
         token_id: Uuid,
         revoked_by: Option<Uuid>,
+        actor_id: Option<String>,
+        actor_type: Option<String>,
         reason: Option<String>,
     ) -> Result<mcp_tokens::Model> {
         let token = mcp_tokens::Entity::find_by_id(token_id)
@@ -469,8 +495,12 @@ impl McpManagementService {
                 tenant_id,
                 client_id: Some(updated.client_id),
                 token_id: Some(updated.id),
-                actor_id: revoked_by.map(|value| value.to_string()),
-                actor_type: Some("human_user".to_string()),
+                actor_id: actor_id
+                    .clone()
+                    .or_else(|| revoked_by.map(|value| value.to_string())),
+                actor_type: actor_type
+                    .clone()
+                    .or_else(|| revoked_by.map(|_| "human_user".to_string())),
                 action: "token_revoked".to_string(),
                 outcome: "success".to_string(),
                 tool_name: None,
@@ -493,6 +523,8 @@ impl McpManagementService {
         tenant_id: Uuid,
         client_id: Uuid,
         revoked_by: Option<Uuid>,
+        actor_id: Option<String>,
+        actor_type: Option<String>,
         reason: Option<String>,
     ) -> Result<mcp_clients::Model> {
         let txn = db.begin().await.map_err(map_db_err)?;
@@ -512,8 +544,12 @@ impl McpManagementService {
                 tenant_id,
                 client_id: Some(updated.id),
                 token_id: None,
-                actor_id: revoked_by.map(|value| value.to_string()),
-                actor_type: Some("human_user".to_string()),
+                actor_id: actor_id
+                    .clone()
+                    .or_else(|| revoked_by.map(|value| value.to_string())),
+                actor_type: actor_type
+                    .clone()
+                    .or_else(|| revoked_by.map(|_| "human_user".to_string())),
                 action: "client_deactivated".to_string(),
                 outcome: "success".to_string(),
                 tool_name: None,
