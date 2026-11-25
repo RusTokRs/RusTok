@@ -1499,3 +1499,7 @@ integration tests; MySQL support is out of scope.
 2026-11-25 Pages SSR receipt replay ordering follow-up (source only; not executed):
 - Both explicit receipt resolution and duplicate-operation replay now reload the owner-scoped draft after observing a committed receipt, through the same helper as commit-time replay. A pre-commit snapshot cannot be returned as the committed result when receipt lookup races a writer.
 - Added a regression for the pre-commit read / post-commit receipt interleaving. Tests, compilation and formatting remain pending.
+
+2026-11-25 Pages SSR save attempt correlation follow-up (source only; not executed):
+- Finished the SSR consumer migration to the correlated AdminCanvasController save API. Preserve the effect hash/sequence, validate before I/O, begin the attempt, and correlate success, failure and conflict with that exact attempt.
+- Fixed missing receipt regression fixture references and added a save-effect identity regression. Compilation and tests remain pending.

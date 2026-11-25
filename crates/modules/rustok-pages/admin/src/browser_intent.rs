@@ -15,7 +15,7 @@ use rustok_page_builder::runtime_context::{
 use rustok_page_builder_admin::{
     AdminCanvasController, BrowserIntentDispatchError, BrowserIntentDispatchResult,
     BrowserIntentEffect, DraftSessionOwner, DurableSsrDraftSessionStore, PageBuilderAdminFacade,
-    PageBuilderAdminFacadeError, SsrDraftOperationCommit, SsrDraftSessionError,
+    PageBuilderAdminFacadeError, SaveAttempt, SsrDraftOperationCommit, SsrDraftSessionError,
     SsrDraftSessionSnapshot, SsrDraftSessionStore, dispatch_browser_intent,
     validate_browser_capability_access,
 };
@@ -413,17 +413,24 @@ pub async fn dispatch_pages_browser_intent_with_store(
 
     let mut persistence = None;
     if let Some(request) = single_request(requests)? {
-        let is_save = matches!(request, PageBuilderCapabilityRequest::Publish(_));
+        let save = if matches!(&request.request, PageBuilderCapabilityRequest::Publish(_)) {
+            Some(begin_consumer_save(&mut controller, &request)?)
+        } else {
+            None
+        };
         let facade_snapshot = snapshot.clone();
         let facade = PagesBuilderFacade::new(move || facade_snapshot.clone(), |_page, _project| {});
-        match facade.execute(request).await {
+        match facade.execute(request.request).await {
             Ok(response) => {
                 if let PageBuilderCapabilityResponse::Publish(PublishPageBuilderResult {
                     revision_id,
                     ..
                 }) = &response
                 {
-                    controller.acknowledge_save(revision_id.clone())?;
+                    let (hash, attempt) = save.as_ref().ok_or_else(|| {
+                        fly::FlyError::InvalidSaveState("unexpected save response".to_string())
+                    })?;
+                    controller.acknowledge_save_for_attempt(*hash, attempt, revision_id.clone())?;
                     // The publish advanced the persisted revision; record it so the
                     // following intents keep hitting the fetch-free fast path
                     // instead of re-fetching the page they just wrote.
@@ -437,6 +444,11 @@ pub async fn dispatch_pages_browser_intent_with_store(
                     // in this dispatch (the persisted revision may have changed again).
                     save_failure = None;
                 }
+                if save.is_some() && !matches!(&response, PageBuilderCapabilityResponse::Publish(_)) {
+                    return Err(fly::FlyError::InvalidSaveState(
+                        "save returned a different capability response".to_string(),
+                    ).into());
+                }
                 persistence = Some(response);
             }
             // A rejected save is not a failed dispatch (audit §6.4): the
@@ -445,8 +457,11 @@ pub async fn dispatch_pages_browser_intent_with_store(
             // drop the change from the draft session while the canvas keeps
             // showing it. Instead the change stays in the draft, marked as
             // unsaved, and the client is told to re-render from the server.
-            Err(error) if is_save => {
-                record_save_failure(&mut controller, &error)?;
+            Err(error) if save.is_some() => {
+                let (_, attempt) = save.as_ref().ok_or_else(|| {
+                    fly::FlyError::InvalidSaveState("missing save attempt".to_string())
+                })?;
+                record_save_failure(&mut controller, attempt, &error)?;
                 // Whatever revision was cached is no longer trustworthy —
                 // for a conflict it is known to be stale. The next intent
                 // re-fetches the page but preserves the original session.
@@ -827,9 +842,16 @@ fn reloads_render(
 /// for one `persistence` outcome. A second request is a contract change that
 /// must be handled deliberately; failing the dispatch — before anything is
 /// executed — beats silently dropping every request after the first.
+#[derive(Debug, Clone, PartialEq)]
+struct ConsumerRequest {
+    request: PageBuilderCapabilityRequest,
+    expected_hash: Option<String>,
+    command_sequence: u64,
+}
+
 fn single_request(
-    mut requests: Vec<PageBuilderCapabilityRequest>,
-) -> Result<Option<PageBuilderCapabilityRequest>, PagesBrowserIntentError> {
+    mut requests: Vec<ConsumerRequest>,
+) -> Result<Option<ConsumerRequest>, PagesBrowserIntentError> {
     if requests.len() > 1 {
         return Err(PagesBrowserIntentError::UnsupportedRequestBatch {
             count: requests.len(),
@@ -857,28 +879,56 @@ pub(crate) fn mark_stale_draft_conflict(
     Ok(!was_conflicted)
 }
 
+/// Validate the exact persistence effect before starting transport.
+fn begin_consumer_save(
+    controller: &mut AdminCanvasController,
+    request: &ConsumerRequest,
+) -> Result<(fly::ProjectHash, SaveAttempt), PagesBrowserIntentError> {
+    let revision = controller.editor().revision();
+    let hash = revision.project_hash;
+    if request.expected_hash.as_deref() != Some(hash.hex().as_str())
+        || request.command_sequence != revision.command_sequence
+    {
+        return Err(fly::FlyError::InvalidSaveState(
+            "save effect does not match the current document snapshot".to_string(),
+        ).into());
+    }
+    let attempt = controller.mark_save_started_with_id()?;
+    Ok((hash, attempt))
+}
+
 /// Marks the working copy as "changes not on the server" after a rejected
 /// save: a lost update is recorded as a conflict (retrying against the same
 /// revision would conflict again), anything else as a failed save.
 fn record_save_failure(
     controller: &mut AdminCanvasController,
+    attempt: &SaveAttempt,
     error: &PageBuilderAdminFacadeError,
 ) -> Result<(), PagesBrowserIntentError> {
-    if error.stable_code.as_deref() == Some(BROWSER_REVISION_CONFLICT_CODE) {
+    let applied = if error.stable_code.as_deref() == Some(BROWSER_REVISION_CONFLICT_CODE) {
         let expected = controller.revision_id().to_string();
-        controller.mark_save_conflict(expected, "a newer revision".to_string())?;
+        controller.mark_save_conflict_for_attempt(attempt, expected, "a newer revision".to_string())?
     } else {
-        controller.mark_save_failed()?;
+        controller.mark_save_failed_for_attempt(attempt)?
+    };
+    if !applied {
+        return Err(fly::FlyError::InvalidSaveState(
+            "save failure does not match the active attempt".to_string(),
+        ).into());
     }
     Ok(())
 }
 
-fn request_effects(result: &BrowserIntentDispatchResult) -> Vec<PageBuilderCapabilityRequest> {
+fn request_effects(result: &BrowserIntentDispatchResult) -> Vec<ConsumerRequest> {
     result
         .effects
         .iter()
         .filter_map(|effect| match effect {
-            BrowserIntentEffect::Request { request, .. } => Some(request.clone()),
+            BrowserIntentEffect::Request { request, expected_hash, command_sequence } => Some(ConsumerRequest {
+                request: request.clone(),
+                expected_hash: expected_hash.clone(),
+                command_sequence: *command_sequence,
+            }),
             BrowserIntentEffect::Announce { .. } => None,
         })
         .collect()
@@ -952,15 +1002,23 @@ mod tests {
                 },
             ],
         };
-        assert_eq!(request_effects(&result), vec![request]);
+        assert_eq!(request_effects(&result), vec![ConsumerRequest {
+            request,
+            expected_hash: None,
+            command_sequence: 1,
+        }]);
     }
 
-    fn save_request(revision_id: &str) -> PageBuilderCapabilityRequest {
-        PageBuilderCapabilityRequest::Publish(rustok_page_builder::dto::PublishPageBuilderInput {
-            page_id: "home".to_string(),
-            revision_id: revision_id.to_string(),
-            project_data: json!({ "pages": [] }),
-        })
+    fn save_request(revision_id: &str) -> ConsumerRequest {
+        ConsumerRequest {
+            request: PageBuilderCapabilityRequest::Publish(rustok_page_builder::dto::PublishPageBuilderInput {
+                page_id: "home".to_string(),
+                revision_id: revision_id.to_string(),
+                project_data: json!({ "pages": [] }),
+            }),
+            expected_hash: None,
+            command_sequence: 0,
+        }
     }
 
     #[test]
@@ -1191,11 +1249,37 @@ mod tests {
     }
 
     #[test]
+    fn consumer_save_preserves_effect_identity_and_rejects_stale_effects() {
+        let mut controller = dirty_controller();
+        let mut envelope = form_envelope("save", json!({}));
+        envelope.project_hash = Some(controller.editor().revision().project_hash.hex());
+        let result = dispatch_browser_intent(&mut controller, envelope).expect("save intent");
+        let request = single_request(request_effects(&result)).expect("one effect").expect("save effect");
+        let mut stale = request.clone();
+        stale.command_sequence = stale.command_sequence.saturating_add(1);
+        assert!(begin_consumer_save(&mut controller, &stale).is_err());
+        assert!(controller.active_save_attempt().is_none());
+
+        let (hash, attempt) = begin_consumer_save(&mut controller, &request).expect("begin save");
+        assert_eq!(controller.active_save_attempt().as_ref(), Some(&attempt));
+        controller.acknowledge_save_for_attempt(hash, &attempt, "rev-2").expect("acknowledge");
+        assert_eq!(controller.revision_id(), "rev-2");
+        assert!(!controller.editor().revision().dirty);
+        assert!(controller.active_save_attempt().is_none());
+        assert!(record_save_failure(
+            &mut controller, &attempt, &PageBuilderAdminFacadeError::new("late failure"),
+        ).is_err());
+        assert!(!controller.editor().revision().save_failed);
+    }
+
+    #[test]
     fn failed_save_keeps_the_edit_and_marks_the_draft_unsaved() {
         let mut controller = dirty_controller();
         let edited_hash = controller.editor().revision().project_hash;
+        let attempt = controller.mark_save_started_with_id().expect("start save");
         record_save_failure(
             &mut controller,
+            &attempt,
             &PageBuilderAdminFacadeError::new("Pages rejected the document"),
         )
         .expect("record failure");
@@ -1222,8 +1306,10 @@ mod tests {
         // Dirty but never rejected: the autosave has not been tried yet.
         assert_eq!(failed_save_hash(&controller), None);
 
+        let attempt = controller.mark_save_started_with_id().expect("start save");
         record_save_failure(
             &mut controller,
+            &attempt,
             &PageBuilderAdminFacadeError::new("Pages rejected the document"),
         )
         .expect("record failure");
@@ -1251,8 +1337,10 @@ mod tests {
     #[test]
     fn revision_conflict_on_save_is_recorded_as_a_lost_update() {
         let mut controller = dirty_controller();
+        let attempt = controller.mark_save_started_with_id().expect("start save");
         record_save_failure(
             &mut controller,
+            &attempt,
             &PageBuilderAdminFacadeError::with_stable_code(
                 "REVISION_CONFLICT: expected `rev-1`, current `rev-2`",
                 BROWSER_REVISION_CONFLICT_CODE,
@@ -1343,7 +1431,7 @@ mod tests {
         let session = SsrDraftSessionSnapshot {
             token: "draft-token".to_string(),
             generation: 9,
-            controller: controller("home"),
+            controller: two_page_controller(),
             runtime_context: json!({ "latest": true }),
             owner: None,
         };
@@ -1369,7 +1457,7 @@ mod tests {
     #[test]
     fn committed_receipt_replay_reloads_a_snapshot_read_before_the_commit() {
         let store = rustok_page_builder_admin::InMemorySsrDraftSessionStore::default();
-        let first = store.commit(None, None, controller("home"), None)
+        let first = store.commit(None, None, two_page_controller(), None)
             .expect("create draft");
         let old = store.load(&first.token, "home", None)
             .expect("load").expect("draft before commit");

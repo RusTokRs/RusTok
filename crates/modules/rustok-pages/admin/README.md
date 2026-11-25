@@ -59,6 +59,13 @@ verified against a running server.
 
 - `PagesAdmin`
 
+## SSR save attempt correlation
+
+The Pages browser dispatcher retains the hash and command sequence emitted by
+Fly's persistence effect, checks them before transport, starts a correlated save
+attempt and uses that attempt for both success and failure. A stale effect cannot
+start a save, and a late failure cannot retire a different attempt.
+
 ## SSR operation receipt recovery
 
 Committed receipt replay loads the owner-scoped draft again after observing the
