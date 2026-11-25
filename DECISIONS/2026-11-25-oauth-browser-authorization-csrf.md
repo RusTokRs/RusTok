@@ -33,8 +33,9 @@ missing. It did not protect the two GET fast paths.
    form and must never issue an authorization code, regardless of app type or
    existing consent.
 2. The hosted form carries a short-lived HMAC CSRF token bound to tenant,
-   direct user, client id, registered redirect URI, optional scope, optional
-   state and PKCE challenge. Only a POST to the consent/confirmation endpoint
+   direct user, direct session id, client id, registered redirect URI, optional scope, the
+   effective scope set displayed to the user, optional state and PKCE
+   challenge. Only a POST to the consent/confirmation endpoint
    with a valid token can issue the code for a cookie-authenticated flow.
 3. The POST rechecks active consent against the requested scopes. It grants
    consent only when the app requires user consent and the existing active
@@ -56,7 +57,9 @@ missing. It did not protect the two GET fast paths.
   redirects with a code.
 - A code for a cookie-authenticated browser flow is issued only after a valid,
   unexpired HMAC confirmation token is verified against the current direct
-  user and exact request parameters.
+  user, session and exact request parameters. If the current effective scope set differs
+  from the displayed set, the user must restart confirmation; omitted scope
+  cannot silently authorize newly registered scopes.
 - A previously active consent does not bypass user confirmation for a
   cookie-authenticated GET.
 - A first-party or embedded app that does not require consent still requires
@@ -82,7 +85,11 @@ missing. It did not protect the two GET fast paths.
 
 - Unit coverage for cookie-vs-explicit-bearer confirmation policy.
 - HTML contract coverage for the POST action and CSRF field.
-- Existing HMAC binding and consent epoch tests.
+- Existing HMAC binding and consent epoch tests; effective scope-set changes
+  between GET and POST invalidate confirmation. The v5 MAC format uses a purpose-derived
+  HKDF-SHA256 key and invalidates
+  outstanding earlier confirmation forms on deployment; a different direct session
+  of the same user and an expiry beyond the allowed lifetime are rejected.
 - Maintainer-run server OAuth tests and full verification remain required.
 
 ## Consequences

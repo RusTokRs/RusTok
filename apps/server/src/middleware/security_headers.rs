@@ -506,7 +506,7 @@ mod tests {
                 .uri(CSP_REPORT_PATH)
                 .header("content-type", "application/csp-report")
                 .body(Body::from(
-                    r#"{"csp-report":{"document-uri":"https://admin.example.com/orders","blocked-uri":"inline","violated-directive":"script-src-elem"}}"#,
+                    r#"{"csp-report":{"document-uri":"https://admin.example.com/orders","blocked-uri":"inline","violated-directive":"default-src","effective-directive":"script-src-elem"}}"#,
                 ))
                 .expect("CSP report request")
         };

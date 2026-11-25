@@ -418,6 +418,14 @@ remain separate unfinished control-plane work.
 
 ## REST transport correctness
 
+The CSP report collector accepts legacy browser reports containing both
+`effective-directive` and `violated-directive`, preferring the nonblank
+effective value for bounded telemetry. The 512-byte location limit applies
+to both serialized origins and opaque URL schemes. See the
+[CSP collection contract](../../../docs/security/csp-report-only-inventory.md).
+Focused parser and middleware regressions are authored; execution remains
+with maintainer verification.
+
 The legacy commerce `ApiErrorResponse` adapter returns actionable client HTTP
 statuses for invalid price/options/variants (400), missing products, variants,
 or shipping profiles (404), and duplicate identifiers or shipping-profile
@@ -459,8 +467,16 @@ authorization or same-origin request gate.
 
 These host security gates use the shared production-security mode: every release
 binary remains fail-closed even if `RUSTOK_ENV` names `staging`; only debug
-builds may use development fallbacks. Host startup applies the same predicate
-to database, HTTPS/HSTS, JWT, and tenant-profile validation.
+builds may use development fallbacks. Host startup and router composition apply
+the same predicate to database, HTTPS/HSTS, JWT, tenant-profile validation and
+CORS, so a release build never regains local-origin fallbacks through a
+non-production environment label.
+
+When Redis rate limiting is enabled, startup accepts the same explicit
+`rustok.cache.redis_url` that `CacheService` uses, ahead of the
+`RUSTOK_REDIS_URL` / `REDIS_URL` environment fallback. A blank YAML value
+continues to defer to the environment resolver; rate limiting and cache
+construction therefore cannot disagree about whether a Redis target is configured.
 
 The module event dispatcher and its four startup-owned recovery workers
 (paid-order labels, marketplace financial, payment-provider events and
@@ -514,6 +530,8 @@ authorization. All those middleware use the shared bounded path vocabulary;
 custom methods in registry diagnostics use the bounded method vocabulary.
 The original request pathname still drives routing, security-header
 selection, request authorization, tenant/locale policy and rate-limit matching.
+The unmatched-route fallback and embedded-admin URI-rewrite diagnostics also
+use the same bounded path family rather than logging raw URL segments.
 
 HTTP edge settings are bounded before reaching Tokio and Tower:
 `RUSTOK_HTTP_REQUEST_TIMEOUT_SECONDS` defaults to 30 seconds and is capped at
@@ -538,8 +556,9 @@ Out-of-range values fail startup instead of creating unbounded pool limits or
 timeouts.
 
 OAuth browser-consent forms preserve absent optional `scope` and `state` values
-across GET-to-POST submission, so CSRF-bound data and default requested scopes
-do not diverge. Cookie-authenticated browser authorization GETs never issue a
+across GET-to-POST submission. The HMAC also binds the effective scope set
+displayed on GET so a changed default scope policy cannot silently expand the
+authority approved by the user on POST. Cookie-authenticated browser authorization GETs never issue a
 code, even for first-party apps or previously consented third-party apps; they
 always render a short-lived HMAC-CSRF confirmation form. For cookie-backed flows, the code is issued
 only after the confirmation POST, and consent is written only when the app
@@ -551,6 +570,20 @@ OAuth client database lookup failures also become sanitized HTTP 500 errors, not
 misleading `invalid_client` / HTTP 401 responses.
 All `/api/oauth/*` responses, including consent HTML, authorization redirects,
 userinfo, and failures, carry `Cache-Control: no-store` and `Pragma: no-cache`.
+
+Direct refresh and bulk session revocation acquire the tenant-scoped user
+mutation fence before session locks. The initial refresh digest lookup is a
+non-authoritative routing hint; state is rechecked under lock. History-only
+replay reserves the SQLite writer before reading evidence. Bulk self-service
+revocation rechecks the current session under lock. Source regressions authored,
+PostgreSQL contention and mounted verification remain pending.
+
+Direct-session rotation records the outgoing hash and its rotation time in
+`session_refresh_history` atomically with replacement. Replay of any recorded
+generation outside grace revokes the current tenant-scoped session. The previous
+hash remains a projection for logout with the immediately preceding cookie;
+history is deleted by the session foreign-key cascade. Migration and regressions
+are authored, unrun.
 
 Cookie-session login, registration and refresh use the remaining persisted
 refresh-session lifetime for cookie Max-Age. The absolute 90-day lineage cap
@@ -949,11 +982,17 @@ before the event forwarder. The Outbox relay supervisor owns and gracefully drai
 - Auth REST handlers extract a narrow `ServerAuthRuntime`; password reset and verification endpoints
   additionally receive `ServerEmailRuntime`. The controller receives explicit config, DB, and mailer
   dependencies, and JSON response formatting goes through `rustok_web::json_response`.
+- Password recovery requests share one lifecycle service for REST and GraphQL/native. Account-dependent token, mailer and URL preparation failures keep the generic public response; inactive accounts do not receive unusable reset links. Confirmation atomically compares the observed mailbox, tenant, active status and password hash before updating credentials and revoking sessions. Source regression authored; checks pending.
 - Module guard and server channel contract are typed through `ServerRuntimeContext`; no
   framework-global application context is a request/channel contract for server-owned runtime paths.
 - OAuth discovery metadata also uses `ServerAuthRuntime` as the single source of auth config.
 - OAuth REST token, authorize/consent, browser-session, and revoke handlers extract `ServerAuthRuntime`
   or `ServerRuntimeContext`; host-wide context does not participate in OAuth request state.
+- Auth derives separate host MAC keys for OAuth CSRF and password reset via HKDF-SHA256 and uses library HMAC-SHA256. MAC v5 and reset fingerprint v2 invalidate outstanding previous forms/links; JWT signing and session storage are unchanged. Deploy host instances together. Source regressions unrun.
+- OAuth browser confirmation MAC v4 binds the current direct session and bounds the expiry. JWT validation rejects future or inconsistent issuance times and future `nbf`; duration conversion is checked. RS256 configuration still requires a strong symmetric secret for host MACs. Source regressions unrun.
+- OAuth RFC 7009 revocation revalidates the authenticated client snapshot (identity, active state, app type, and secret hash) under the app mutation lock before looking up any token. Unknown tokens still succeed for authenticated clients. Source regression unrun.
+- OAuth authorization locks app, subject and direct session in that order, rechecks email policy and credential expiry, and commits browser approval and code issuance together. A stale session cannot grant consent or issue codes. Source regressions unrun.
+- OAuth consent re-grant invalidates pending codes for that app, tenant and subject in the same transaction. Code exchange rejects a newer consent epoch and rechecks the refresh grant if a refresh credential was prepared. OAuth replay grace uses the exact elapsed duration and rejects future timestamps. Source regressions unrun.
 - OAuth access JWTs are registered credentials: issuance writes a `token_kind = access`
   row whose id is the JWT `jti`, and the extractor requires that row to be active,
   hash-bound, client/tenant/grant-scoped, and subject-bound. RFC 7009, app/consent
@@ -1594,3 +1633,97 @@ open an arbitrary target after process loss. A stale job remains
 receipts; lease expiry never transfers ownership. Source regressions were
 authored, but tests, compilation and formatting were not run at the
 maintainer's request.
+
+
+## Server host follow-up — release CORS, Redis configuration and HTTP diagnostics (2026-11-25)
+
+The composed router now passes the shared release-aware production-security
+predicate into the HTTP edge/CORS stack. A release binary with
+`RUSTOK_ENV=staging` or `development` therefore remains on the explicit-origin
+policy instead of receiving development loopback origins.
+
+Redis rate-limit startup validation now accepts `rustok.cache.redis_url`,
+matching the URL precedence already used by `CacheService::from_url`; environment
+fallback remains available when the YAML value is absent or blank. The regression
+test covers a YAML-only Redis target with both Redis environment variables cleared.
+
+Unmatched-route and embedded-admin rewrite diagnostics now use the fixed
+`trace_path_family` vocabulary. Embedded static assets also publish the
+representation `Content-Length` on HEAD responses while keeping the body empty.
+Focused regressions were added; tests, compilation and formatting were not run
+at the maintainer's request.
+
+## Server follow-up — installer heartbeat ownership and search limiter readiness (2026-11-25)
+
+The installer heartbeat now runs as a sibling future inside the runtime-owned
+executor task rather than a detached Tokio task. Completion or forced
+cancellation drops the heartbeat even while its database call is pending.
+Heartbeat termination or panic does not cancel an admitted installer operation;
+the existing status CAS and quarantine policy remain unchanged. A database
+operation already submitted before cancellation may still commit, but cannot
+revive a non-running row.
+
+Readiness now checks the independent search rate limiter alongside API, Auth
+and OAuth when rate limiting is enabled on applicable host profiles. Missing
+search limiter state is a critical readiness failure, as with other limiter
+namespaces. This does not add a search indexing requirement.
+
+Focused source regressions cover heartbeat cancellation/completion, continued
+execution after heartbeat termination, and search limiter readiness. Tests,
+compilation and formatting were not run at the maintainer's request.
+
+## Server follow-up — OAuth confirmation scope binding and session cookie failure (2026-11-25)
+
+OAuth browser confirmation now authenticates the effective scope set in
+addition to the original optional scope parameter. If a client policy change
+expands or narrows omitted/default scopes between GET and POST, the old form
+is rejected and the user must confirm again. Reordering or duplication of
+equivalent scope entries does not invalidate the set. Code issuance retains
+its transactional app/user/consent checks; the MAC version bump intentionally
+invalidates outstanding v2 forms. Issuance failure logs use a bounded error code.
+
+First-party login, registration, refresh and logout responses use one
+fallible Set-Cookie attachment path. Header encoding failures return an
+internal error instead of falsely reporting success; generated credential
+headers are marked sensitive. This does not roll back a committed auth
+mutation if response construction fails.
+
+Focused regressions are authored for changed/equivalent scope sets, omitted
+versus explicit scope, and invalid/valid session cookie headers. Compilation,
+formatting and tests were not run at the maintainer's request.
+
+## Server follow-up — rate-limit runtime ownership (2026-11-25)
+
+Per-context rate limiters now reuse the published namespace Arc across repeat
+initialization rather than replacing active counters and splitting middleware,
+GraphQL and readiness ownership. A synchronous registration gate covers lookup,
+publication and maintenance task registration. Shutdown closes and drains the
+same registry even if no limiter has been initialized yet; the closed registry
+remains installed and rejects late initializers. Only enabled memory limiters
+need Moka maintenance tasks. The runtime bootstrap also rejects a stopped host
+before setup and before returning success.
+
+Focused source regressions cover preserved counters, Arc identity, one
+maintenance task per namespace, and shutdown before/after registration.
+Compilation, formatting and tests were not run at the maintainer's request.
+
+## Server follow-up — single-owner event delivery runtime (2026-11-25)
+
+EventRuntime initialization now serializes construction per host context and
+reuses a published runtime rather than replacing its relay/listener bus or
+re-reading the desired profile. Shutdown fences direct initialization before
+taking worker snapshots. Pending profile/configuration reads are stoppable;
+an Iggy connection already being constructed retains its owner startup path.
+The durable publisher transport comes from the same atomic resolver used by
+early EventBus and transactional callers. Non-transactional or non-outbox
+preinstalled transports fail event runtime startup. Registry-only composition
+no longer replaces a concurrently registered transport. The operator settings
+service is the canonical active-profile reader used by both GraphQL operations.
+
+An already constructed but unpublished Iggy connector is explicitly shut down
+on ordinary listener-start failure or stop before publication; this does not
+claim cancellation safety inside the connector's own constructor.
+
+Focused source regressions cover reuse without desired-policy reads, stopped
+initialization, and active-profile reporting. Compilation, formatting and tests
+were not run at the maintainer's request.

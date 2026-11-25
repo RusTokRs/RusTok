@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
-use rustok_graphql::GraphqlHttpError;
+use rustok_graphql::{GraphqlHttpError, GraphqlOperationError};
 
 use super::product_lifecycle_graphql;
 use crate::lifecycle_retry_identity::{
@@ -73,6 +73,35 @@ fn mark_lifecycle_succeeded(slot: &str) {
     registry.remove(slot);
 }
 
+fn mark_lifecycle_rejected(slot: &str) {
+    retry_registry()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .remove(slot);
+}
+
+fn finish_lifecycle_result<T>(
+    slot: &str,
+    result: Result<T, GraphqlOperationError>,
+) -> Result<T, GraphqlHttpError> {
+    match result {
+        Ok(value) => {
+            mark_lifecycle_succeeded(slot);
+            Ok(value)
+        }
+        Err(error) => {
+            let durable_rejection = error.extensions.as_ref().is_some_and(|extensions| {
+                extensions.outcome.as_deref() == Some("rejected")
+                    && extensions.retryable == Some(false)
+            });
+            if durable_rejection {
+                mark_lifecycle_rejected(slot);
+            }
+            Err(error.error)
+        }
+    }
+}
+
 fn draft_intent(
     operation: ProductAdminLifecycleOperation,
     tenant_id: &str,
@@ -118,10 +147,7 @@ pub(crate) async fn create_product(
         draft,
     )
     .await;
-    if result.is_ok() {
-        mark_lifecycle_succeeded(&slot);
-    }
-    result
+    finish_lifecycle_result(&slot, result)
 }
 
 pub(crate) async fn update_product(
@@ -146,10 +172,7 @@ pub(crate) async fn update_product(
         draft,
     )
     .await;
-    if result.is_ok() {
-        mark_lifecycle_succeeded(&slot);
-    }
-    result
+    finish_lifecycle_result(&slot, result)
 }
 
 pub(crate) async fn change_product_status(
@@ -174,10 +197,7 @@ pub(crate) async fn change_product_status(
         idempotency_key,
     )
     .await;
-    if result.is_ok() {
-        mark_lifecycle_succeeded(&slot);
-    }
-    result
+    finish_lifecycle_result(&slot, result)
 }
 
 pub(crate) async fn delete_product(
@@ -200,10 +220,11 @@ pub(crate) async fn delete_product(
         idempotency_key,
     )
     .await;
-    if result.is_ok() {
-        mark_lifecycle_succeeded(&slot);
-    }
-    result
+    finish_lifecycle_result(&slot, result)
+}
+
+fn effective_optional_text(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|value| !value.is_empty())
 }
 
 fn variant_update_intent(
@@ -212,8 +233,50 @@ fn variant_update_intent(
     variant_id: &str,
     draft: &VariantUpdateDraft,
 ) -> String {
+    // Match the exact effective GraphQL input. An untouched price editor buffer is not
+    // sent unless prices_changed is true, and an empty axis buffer is omitted.
+    let axis_values = (!draft.axis_values.is_empty()).then_some(&draft.axis_values);
+    let prices = draft.prices_changed.then(|| {
+        draft
+            .prices
+            .iter()
+            .map(|price| {
+                (
+                    price.currency_code.as_str(),
+                    price.amount.as_str(),
+                    effective_optional_text(price.compare_at_amount.as_deref()),
+                )
+            })
+            .collect::<Vec<_>>()
+    });
+    let inventory_policy = effective_optional_text(draft.inventory_policy.as_deref());
+
     format!(
-        "operation=update-variant;tenant={tenant_id:?};actor={user_id:?};variant={variant_id:?};draft={draft:?}"
+        concat!(
+            "operation=update-variant;tenant={tenant_id:?};actor={user_id:?};variant={variant_id:?};",
+            "sku={:?};barcode={:?};shipping_profile_slug={:?};weight={:?};weight_unit={:?};",
+            "axis_values={axis_values:?};prices={prices:?};inventory_quantity={:?};",
+            "expected_inventory_quantity={:?};expected_revision={:?};inventory_policy={inventory_policy:?}"
+        ),
+        draft.sku,
+        draft.barcode,
+        draft.shipping_profile_slug,
+        draft.weight,
+        draft.weight_unit,
+        draft.inventory_quantity,
+        draft.expected_inventory_quantity,
+        draft.expected_revision
+    )
+}
+
+fn variant_delete_intent(
+    tenant_id: &str,
+    user_id: &str,
+    variant_id: &str,
+    expected_revision: &str,
+) -> String {
+    format!(
+        "operation=delete-variant;tenant={tenant_id:?};actor={user_id:?};variant={variant_id:?};expected_revision={expected_revision:?}"
     )
 }
 
@@ -239,10 +302,7 @@ pub(crate) async fn update_product_variant(
         draft,
     )
     .await;
-    if result.is_ok() {
-        mark_lifecycle_succeeded(&slot);
-    }
-    result
+    finish_lifecycle_result(&slot, result)
 }
 
 #[expect(dead_code, reason = "Product variant deletion transport pending UI caller integration")]
@@ -252,11 +312,15 @@ pub(crate) async fn delete_product_variant(
     tenant_id: String,
     user_id: String,
     variant_id: String,
+    expected_revision: String,
 ) -> Result<bool, GraphqlHttpError> {
     let operation = ProductAdminLifecycleOperation::DeleteVariant;
     let slot = lifecycle_slot(operation, &tenant_id, &user_id, Some(&variant_id));
-    let intent = format!(
-        "operation=delete-variant;tenant={tenant_id:?};actor={user_id:?};variant={variant_id:?}"
+    let intent = variant_delete_intent(
+        &tenant_id,
+        &user_id,
+        &variant_id,
+        &expected_revision,
     );
     let idempotency_key = retained_caller_key(&slot, operation, intent);
     let result = product_lifecycle_graphql::delete_product_variant(
@@ -265,13 +329,11 @@ pub(crate) async fn delete_product_variant(
         tenant_id,
         user_id,
         variant_id,
+        expected_revision,
         idempotency_key,
     )
     .await;
-    if result.is_ok() {
-        mark_lifecycle_succeeded(&slot);
-    }
-    result
+    finish_lifecycle_result(&slot, result)
 }
 
 pub(crate) async fn add_product_image(
@@ -299,10 +361,7 @@ pub(crate) async fn add_product_image(
         draft,
     )
     .await;
-    if result.is_ok() {
-        mark_lifecycle_succeeded(&slot);
-    }
-    result
+    finish_lifecycle_result(&slot, result)
 }
 
 pub(crate) async fn update_product_image(
@@ -330,10 +389,7 @@ pub(crate) async fn update_product_image(
         draft,
     )
     .await;
-    if result.is_ok() {
-        mark_lifecycle_succeeded(&slot);
-    }
-    result
+    finish_lifecycle_result(&slot, result)
 }
 
 pub(crate) async fn delete_product_image(
@@ -359,10 +415,7 @@ pub(crate) async fn delete_product_image(
         idempotency_key,
     )
     .await;
-    if result.is_ok() {
-        mark_lifecycle_succeeded(&slot);
-    }
-    result
+    finish_lifecycle_result(&slot, result)
 }
 
 pub(crate) async fn reorder_product_images(
@@ -389,10 +442,7 @@ pub(crate) async fn reorder_product_images(
         idempotency_key,
     )
     .await;
-    if result.is_ok() {
-        mark_lifecycle_succeeded(&slot);
-    }
-    result
+    finish_lifecycle_result(&slot, result)
 }
 
 #[cfg(test)]
@@ -441,9 +491,102 @@ mod variant_retry_tests {
             currency_code: "USD".into(),
             compare_at_amount: None,
         });
+        assert_eq!(
+            previous,
+            variant_update_intent("tenant", "actor", "variant", &draft),
+            "unmarked prices are only an editor buffer and are not part of the owner request"
+        );
+        draft.prices_changed = true;
         assert_ne!(
             previous,
-            variant_update_intent("tenant", "actor", "variant", &draft)
+            variant_update_intent("tenant", "actor", "variant", &draft),
+            "an explicit price replacement must produce a different retry identity"
         );
     }
+
+    #[test]
+    fn variant_update_intent_omits_empty_price_replacements_and_blank_inventory_policy() {
+        let draft = VariantUpdateDraft::default();
+        let original = variant_update_intent("tenant", "actor", "variant", &draft);
+
+        let mut blank_policy = draft.clone();
+        blank_policy.inventory_policy = Some("  ".to_owned());
+        assert_eq!(
+            original,
+            variant_update_intent("tenant", "actor", "variant", &blank_policy)
+        );
+
+        let mut clear_prices = draft;
+        clear_prices.prices_changed = true;
+        assert_ne!(
+            original,
+            variant_update_intent("tenant", "actor", "variant", &clear_prices),
+            "an explicit empty replacement clears prices and is not equivalent to Keep"
+        );
+    }
+
+    #[test]
+    fn variant_delete_attempt_identity_includes_the_expected_revision() {
+        let first = variant_delete_intent("tenant", "actor", "variant", "7");
+        let retry = variant_delete_intent("tenant", "actor", "variant", "7");
+        let refreshed = variant_delete_intent("tenant", "actor", "variant", "8");
+
+        assert_eq!(first, retry);
+        assert_ne!(first, refreshed);
+    }
+
+    #[test]
+    fn terminal_graphql_rejection_rotates_retry_key() {
+        let slot = "product-terminal-rejection-retry-test";
+        let intent = "same-variant-delete-intent".to_owned();
+        let first = retained_caller_key(
+            slot,
+            ProductAdminLifecycleOperation::DeleteVariant,
+            intent.clone(),
+        );
+        let error = GraphqlOperationError {
+            error: GraphqlHttpError::Graphql("request rejected".to_owned()),
+            extensions: Some(rustok_graphql::GraphqlErrorExtensions {
+                code: Some("PRODUCT_VARIANT_INVENTORY_BLOCKED".to_owned()),
+                retryable: Some(false),
+                outcome: Some("rejected".to_owned()),
+            }),
+        };
+
+        assert!(finish_lifecycle_result::<()>(slot, Err(error)).is_err());
+        let retry = retained_caller_key(
+            slot,
+            ProductAdminLifecycleOperation::DeleteVariant,
+            intent,
+        );
+
+        assert_ne!(first, retry);
+        mark_lifecycle_rejected(slot);
+    }
+
+    #[test]
+    fn unknown_graphql_outcome_retains_retry_key_for_recovery() {
+        let slot = "product-unknown-outcome-retry-test";
+        let intent = "same-product-update-intent".to_owned();
+        let first = retained_caller_key(
+            slot,
+            ProductAdminLifecycleOperation::UpdateProduct,
+            intent.clone(),
+        );
+        let error = GraphqlOperationError {
+            error: GraphqlHttpError::Network,
+            extensions: None,
+        };
+
+        assert!(finish_lifecycle_result::<()>(slot, Err(error)).is_err());
+        let retry = retained_caller_key(
+            slot,
+            ProductAdminLifecycleOperation::UpdateProduct,
+            intent,
+        );
+
+        assert_eq!(first, retry);
+        mark_lifecycle_rejected(slot);
+    }
+
 }

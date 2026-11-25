@@ -51,7 +51,7 @@ impl EventDeliverySettingsService {
     pub async fn configuration(
         ctx: &ServerRuntimeContext,
     ) -> Result<EventDeliveryConfiguration, EventDeliverySettingsError> {
-        let active_profile = ctx.settings().events.delivery_profile;
+        let active_profile = Self::active_profile(ctx);
         let desired_profile = Self::desired_profile(ctx).await?;
         Ok(EventDeliveryConfiguration {
             active_profile,
@@ -61,6 +61,12 @@ impl EventDeliverySettingsService {
                     .await
                     .is_none(),
         })
+    }
+
+    pub fn active_profile(ctx: &ServerRuntimeContext) -> EventDeliveryProfile {
+        ctx.shared_get::<std::sync::Arc<crate::services::event_transport_factory::EventRuntime>>()
+            .map(|runtime| runtime.delivery_profile)
+            .unwrap_or(ctx.settings().events.delivery_profile)
     }
 
     pub async fn desired_profile(
@@ -107,6 +113,38 @@ impl EventDeliverySettingsService {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::settings::RustokSettings;
+    use crate::services::event_transport_factory::EventRuntime;
+    use rustok_core::events::MemoryTransport;
+    use std::sync::Arc;
+
+    #[test]
+    fn active_profile_comes_from_published_runtime_not_bootstrap_default() {
+        let mut settings = RustokSettings::default();
+        settings.events.delivery_profile = EventDeliveryProfile::Outbox;
+        let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
+        assert_eq!(EventDeliverySettingsService::active_profile(&ctx), EventDeliveryProfile::Outbox);
+
+        ctx.shared_insert(Arc::new(EventRuntime {
+            delivery_profile: EventDeliveryProfile::OutboxIggy,
+            iggy_mode: None,
+            transport: crate::services::event_bus::shared_event_transport(&ctx),
+            listener_bus: MemoryTransport::with_capacity(8).event_bus(),
+            relay_config: None,
+            outbox_retention: None,
+            channel_capacity: 8,
+            relay_fallback_active: false,
+        }));
+        assert_eq!(
+            EventDeliverySettingsService::active_profile(&ctx),
+            EventDeliveryProfile::OutboxIggy,
+        );
     }
 }
 

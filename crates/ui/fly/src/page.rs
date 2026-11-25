@@ -1,6 +1,6 @@
 use crate::{
-    ComponentNode, ComponentObject, FlyError, FlyResult, ProjectDocument, ProjectPage,
-    StyleRuleIdentity,
+    validate_identifier, ComponentNode, ComponentObject, FlyError, FlyResult, ProjectDocument,
+    ProjectPage, StyleRuleIdentity,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -104,8 +104,7 @@ impl ProjectDocument {
 
     pub fn page_mut(&mut self, locator: &PageLocator) -> FlyResult<&mut ProjectPage> {
         let index = locator.resolve(self)?;
-        self.invalidate_caches();
-        self.project
+        self.project_mut()
             .pages
             .get_mut(index)
             .ok_or_else(|| FlyError::PageNotFound(index.to_string()))
@@ -279,6 +278,11 @@ fn ensure_page_id_available(
             "page id must not be empty".to_string(),
         ));
     }
+    validate_identifier(id).map_err(|reason| {
+        FlyError::InvalidPagePatch(format!(
+            "page id `{id}` is not a valid identifier: {reason}"
+        ))
+    })?;
     if document
         .project
         .pages
@@ -559,4 +563,48 @@ mod tests {
         assert!(matches!(error, FlyError::InvalidPagePatch(_)));
         assert_eq!(document, before);
     }
+
+    #[test]
+    fn page_commands_reject_invalid_identifier_syntax_without_mutating_document() {
+        let invalid_ids = [
+            "bad id".to_string(),
+            "bad/id".to_string(),
+            "x".repeat(129),
+        ];
+
+        for invalid_id in invalid_ids {
+            let mut added = document();
+            let before_add = added.clone();
+            let error = apply_page_command(
+                &mut added,
+                &PageCommand::Add {
+                    index: 2,
+                    page: Box::new(blank_page(&invalid_id, "Invalid")),
+                },
+            )
+            .expect_err("invalid page ids must be rejected when adding");
+            assert!(matches!(error, FlyError::InvalidPagePatch(_)));
+            assert_eq!(added, before_add);
+
+            let mut patched = document();
+            let before_patch = patched.clone();
+            let error = apply_page_command(
+                &mut patched,
+                &PageCommand::Patch {
+                    locator: PageLocator::by_id("a"),
+                    patch: PagePatch {
+                        fields: Map::from_iter([(
+                            "id".to_string(),
+                            Value::String(invalid_id),
+                        )]),
+                        ..PagePatch::default()
+                    },
+                },
+            )
+            .expect_err("invalid page ids must be rejected when patching");
+            assert!(matches!(error, FlyError::InvalidPagePatch(_)));
+            assert_eq!(patched, before_patch);
+        }
+    }
+
 }

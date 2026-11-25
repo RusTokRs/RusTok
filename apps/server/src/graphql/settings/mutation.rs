@@ -135,10 +135,8 @@ impl SettingsMutation {
         .await
         .map_err(map_event_delivery_settings_error)?;
 
-        let active_profile = runtime_ctx
-            .shared_get::<std::sync::Arc<crate::services::event_transport_factory::EventRuntime>>()
-            .map(|runtime| runtime.delivery_profile)
-            .unwrap_or(runtime_ctx.settings().events.delivery_profile);
+        let active_profile =
+            crate::services::event_delivery_settings_service::EventDeliverySettingsService::active_profile(runtime_ctx);
         Ok(UpdateEventDeliveryConfigurationPayload {
             desired_profile: profile.as_str().to_string(),
             restart_required: active_profile != profile,

@@ -189,6 +189,7 @@ impl FlyUiStateMachine {
                     candidates: Vec::new(),
                     active_candidate: None,
                 });
+                self.state.overlays.insertion = None;
                 vec![UiEffect::Announce("Drag started".to_string())]
             }
             UiIntent::UpdateHitTest(candidates) => {
@@ -218,14 +219,7 @@ impl FlyUiStateMachine {
                                 "drop candidate index is out of bounds".to_string(),
                             )
                         })?;
-                        if !candidate.legal {
-                            return Err(UiError::IllegalDrop(
-                                candidate
-                                    .reason
-                                    .clone()
-                                    .unwrap_or_else(|| "candidate rejected by policy".to_string()),
-                            ));
-                        }
+                        candidate.validate_for_drop()?;
                     }
                     drag.active_candidate = index;
                     drag.active_candidate()
@@ -245,14 +239,6 @@ impl FlyUiStateMachine {
                 let candidate = drag
                     .active_candidate()
                     .ok_or_else(|| UiError::IllegalDrop("no active drop candidate".to_string()))?;
-                if !candidate.legal {
-                    return Err(UiError::IllegalDrop(
-                        candidate
-                            .reason
-                            .clone()
-                            .unwrap_or_else(|| "candidate rejected by policy".to_string()),
-                    ));
-                }
                 let command = command_for_drop(drag.source.clone(), candidate)?;
                 self.state.drag = None;
                 self.state.overlays.insertion = None;

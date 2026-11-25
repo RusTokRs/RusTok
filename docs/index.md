@@ -34,6 +34,7 @@ Component-local documents live in `apps/*/docs/`, `crates/{libs,modules,ui,utils
 - [Architecture Quick Reference](../ARCHITECTURE.md)
 - [ADR Registry](../DECISIONS/README.md)
 - [Proposed ADR: Workflow cron durable scheduling and recovery](../DECISIONS/2026-11-23-workflow-cron-durable-scheduling-and-recovery.md) — workflow-owned schedule cursors, per-firing claims, conservative recovery and operator evidence.
+- [ADR: Direct session refresh history](../DECISIONS/2026-11-25-session-refresh-history.md) — retain all recorded rotated refresh digests until session deletion.
 - [ADR: OAuth browser authorization CSRF boundary](../DECISIONS/2026-11-25-oauth-browser-authorization-csrf.md) — cookie-authenticated authorization GETs are side-effect-free and require a CSRF-bound POST before code issuance.
 - [ADR: Installer HTTP job crash quarantine](../DECISIONS/2026-11-24-installer-http-job-crash-quarantine.md) — heartbeat-based interruption detection, fail-closed recovery status, and no automatic lease takeover or target replay.
 - [ADR: Fly save-attempt correlation and peer-write fencing](../DECISIONS/2026-11-24-fly-save-attempt-correlation-and-peer-write-fencing.md) — UUID-backed save response correlation, editor-scoped cross-tab fencing, and the boundary between draft save and release gating.

@@ -93,6 +93,18 @@ sliding editor retention. Set `RUSTOK_DRAFT_SESSION_DIR` to an explicitly mounte
 persistent directory in containers; multi-replica deployments must use a shared
 KV backend rather than relying on a node-local filesystem.
 
+The file backend uses native OS file locks (`std::fs::File::try_lock`; `flock` on Unix, `LockFileEx` on Windows) and holds
+the token lock descriptor for the full read-check-write operation. A stable
+`_locks/.guard.lock` serializes token-lock opening with cleanup: waiters close a
+contended descriptor before releasing the guard, and `prune` unlinks only idle
+session and owner-cap lock files while holding it. The OS releases held locks when a process exits;
+there is no age-based stale-lock breaking. Per-owner capacity checks also take a
+stable owner-key lock held across the capacity scan and new-record write, while
+candidate records are revalidated under their own token locks before eviction. All writers sharing a directory must use the same
+protocol, so drain old-version writers before rolling out this change.
+The underlying filesystem must propagate OS file locks; use the shared KV backend
+when that guarantee is unavailable.
+
 A consumer that restores SSR draft sessions provides `SsrDraftRenderBinding`, including the
 exact token and generation that produced the rendered controller (or an explicit saved-page
 render with no session). Pages supplies this binding. The browser uses the rendered generation,

@@ -7,11 +7,11 @@ pub use rustok_auth::{
 
 use crate::error::{Error, Result};
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
+use rustok_auth::{AuthMacPurpose, auth_purpose_mac};
 use subtle::ConstantTimeEq;
 
 const TOKEN_SUBJECT_SEPARATOR: char = '\u{001f}';
-const PASSWORD_RESET_FINGERPRINT_DOMAIN: &[u8] = b"rustok-password-reset-credential-v1";
+const PASSWORD_RESET_FINGERPRINT_VERSION: &str = "v2:";
 
 /// Server-owned password reset claims.
 ///
@@ -114,7 +114,7 @@ pub fn encode_password_reset_token(
     ttl_seconds: u64,
 ) -> Result<String> {
     let normalized_email = email.trim().to_lowercase();
-    let fingerprint = password_reset_credential_fingerprint(config, password_hash);
+    let fingerprint = password_reset_credential_fingerprint(config, password_hash)?;
     let subject = format!("{normalized_email}{TOKEN_SUBJECT_SEPARATOR}{fingerprint}");
     rustok_auth::encode_password_reset_token(config, tenant_id, &subject, ttl_seconds)
         .map_err(auth_err)
@@ -143,21 +143,19 @@ pub fn password_reset_credential_matches(
     password_hash: &str,
     expected_fingerprint: &str,
 ) -> bool {
-    let actual = password_reset_credential_fingerprint(config, password_hash);
+    let Ok(actual) = password_reset_credential_fingerprint(config, password_hash) else {
+        return false;
+    };
     actual
         .as_bytes()
         .ct_eq(expected_fingerprint.as_bytes())
         .into()
 }
 
-fn password_reset_credential_fingerprint(config: &AuthConfig, password_hash: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(PASSWORD_RESET_FINGERPRINT_DOMAIN);
-    hasher.update([0]);
-    hasher.update(config.secret.as_bytes());
-    hasher.update([0]);
-    hasher.update(password_hash.as_bytes());
-    hex::encode(hasher.finalize())
+fn password_reset_credential_fingerprint(config: &AuthConfig, password_hash: &str) -> Result<String> {
+    let tag = auth_purpose_mac(config, AuthMacPurpose::PasswordResetCredential, password_hash.as_bytes())
+        .map_err(auth_err)?;
+    Ok(format!("{PASSWORD_RESET_FINGERPRINT_VERSION}{}", hex::encode(tag)))
 }
 
 pub fn encode_email_verification_token(
@@ -395,6 +393,7 @@ mod tests {
 
         assert_eq!(claims.sub, "user@example.com");
         assert_eq!(claims.tenant_id, tenant_id);
+        assert!(claims.credential_fingerprint.starts_with("v2:"));
         assert!(password_reset_credential_matches(
             &config,
             "old-password-hash",
@@ -405,6 +404,17 @@ mod tests {
             "new-password-hash",
             &claims.credential_fingerprint,
         ));
+    }
+
+    #[test]
+    fn reset_binding_rejects_legacy_and_different_secrets() {
+        let config = AuthConfig::new(secret());
+        let tag = password_reset_credential_fingerprint(&config, "hash").unwrap();
+        assert!(!password_reset_credential_matches(&config, "hash", &tag[3..]));
+        let other = AuthConfig::new("another-secret-at-least-thirty-two-bytes".to_string());
+        assert!(!password_reset_credential_matches(&other, "hash", &tag));
+        let weak = AuthConfig::new("short".to_string());
+        assert!(!password_reset_credential_matches(&weak, "hash", &tag));
     }
 
     #[test]

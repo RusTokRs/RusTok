@@ -14,6 +14,9 @@
 //! * [`url_allowed`] — the attribute policy for *rendered markup* and validation, which may permit
 //!   inline `data:image/...;base64,` resources under [`UrlPolicy::allow_data_images`].
 
+use std::collections::BTreeSet;
+use url::Url;
+
 pub(crate) fn validate_safe_url(value: &str, label: &str) -> Result<(), String> {
     normalize_safe_url(value, label)?;
     Ok(())
@@ -39,11 +42,11 @@ pub(crate) fn normalize_safe_url(value: &str, label: &str) -> Result<String, Str
         return Ok(value.to_string());
     }
     if lower.starts_with("https://") {
-        validate_authority(value, "https://".len(), label)?;
+        validate_authority(value, "https://", label)?;
         return Ok(value.to_string());
     }
     if lower.starts_with("http://") {
-        validate_authority(value, "http://".len(), label)?;
+        validate_authority(value, "http://", label)?;
         return Ok(value.to_string());
     }
     if lower.starts_with("mailto:") {
@@ -58,15 +61,11 @@ pub(crate) fn normalize_safe_url(value: &str, label: &str) -> Result<String, Str
     Err(format!("{label} `{value}` uses an unsupported URL form"))
 }
 
-fn validate_authority(value: &str, prefix_len: usize, label: &str) -> Result<(), String> {
-    let authority = value[prefix_len..]
-        .split(['/', '?', '#'])
-        .next()
-        .unwrap_or_default();
-    if authority.is_empty() || authority.starts_with(':') {
-        Err(format!("{label} `{value}` has no valid authority"))
-    } else {
+fn validate_authority(value: &str, scheme: &str, label: &str) -> Result<(), String> {
+    if absolute_url_has_authority(value, scheme) {
         Ok(())
+    } else {
+        Err(format!("{label} `{value}` has no valid authority"))
     }
 }
 
@@ -177,7 +176,13 @@ pub(crate) fn absolute_url_has_authority(value: &str, scheme: &str) -> bool {
         .split(['/', '?', '#'])
         .next()
         .unwrap_or_default();
-    !authority.is_empty() && !authority.starts_with(':')
+    // WHATWG parsers accept extra slashes after an HTTP scheme; retain Fly's
+    // explicit authority requirement before parsing the host and port.
+    !authority.is_empty()
+        && !authority.starts_with(':')
+        && Url::parse(value).is_ok_and(|url| {
+            matches!(url.scheme(), "http" | "https") && url.has_host()
+        })
 }
 
 pub(crate) fn scheme_target_is_not_empty(value: &str, scheme: &str) -> bool {
@@ -195,6 +200,84 @@ pub(crate) fn safe_data_image(normalized: &str) -> bool {
     ]
     .iter()
     .any(|prefix| normalized.starts_with(prefix))
+}
+
+/// Canonical/preview head URLs are intentionally root-relative or absolute,
+/// not arbitrary document-relative links. The same admission rule serves
+/// diagnostics and rendering.
+pub(crate) fn head_url(value: &str, allow_data_image: bool) -> Option<&str> {
+    let value = normalized_url_candidate(value)?;
+    let normalized = value.to_ascii_lowercase();
+    (value.starts_with('/')
+        || absolute_url_has_authority(value, "http://")
+        || absolute_url_has_authority(value, "https://")
+        || (allow_data_image && safe_data_image(&normalized)))
+        .then_some(value)
+}
+
+/// Validate the bounded, deliberately conservative image candidate grammar.
+/// Compare descriptor values numerically (1x and 1.0x are the same density).
+/// Inline data images are forbidden because their commas conflict with the
+/// candidate separator. A bad candidate rejects the entire attribute.
+pub(crate) fn srcset_allowed(value: &str, policy: &UrlPolicy) -> bool {
+    const MAX_CANDIDATES: usize = 16;
+    if value.chars().any(char::is_control) {
+        return false;
+    }
+    let mut descriptors = BTreeSet::new();
+    let mut family = None;
+    for (index, candidate) in value.split(',').enumerate() {
+        if index >= MAX_CANDIDATES {
+            return false;
+        }
+        let mut tokens = candidate.split_ascii_whitespace();
+        let Some(url) = tokens.next() else {
+            return false;
+        };
+        if url.to_ascii_lowercase().starts_with("data:")
+            || !url_allowed(url, UrlAttributeKind::Resource, policy)
+        {
+            return false;
+        }
+        let descriptor = tokens.next().unwrap_or("1x");
+        if tokens.next().is_some() {
+            return false;
+        }
+        let Some((kind, amount)) = srcset_descriptor(descriptor) else {
+            return false;
+        };
+        if family.is_some_and(|previous| previous != kind) || !descriptors.insert(amount) {
+            return false;
+        }
+        family = Some(kind);
+    }
+    family.is_some()
+}
+
+fn srcset_descriptor(descriptor: &str) -> Option<(char, u32)> {
+    if let Some(width) = descriptor.strip_suffix('w') {
+        if width.is_empty() || width.len() > 6 || !width.bytes().all(|b| b.is_ascii_digit()) {
+            return None;
+        }
+        let width = width.parse::<u32>().ok()?;
+        return (width > 0).then_some(('w', width));
+    }
+    let density = descriptor.strip_suffix('x')?;
+    let (whole, fraction) = density.split_once('.').unwrap_or((density, ""));
+    if whole.is_empty() || whole.len() > 3 || !whole.bytes().all(|b| b.is_ascii_digit())
+        || fraction.len() > 3 || !fraction.bytes().all(|b| b.is_ascii_digit())
+        || (density.contains('.') && fraction.is_empty())
+    {
+        return None;
+    }
+    let whole = whole.parse::<u32>().ok()?;
+    let fraction = if fraction.is_empty() {
+        0
+    } else {
+        fraction.parse::<u32>().ok()? * 10_u32.pow(3 - fraction.len() as u32)
+    };
+    let thousandths = whole * 1000 + fraction;
+    (thousandths > 0).then_some(('x', thousandths))
 }
 
 /// Decide whether `value` may appear in the given attribute slot under `policy`.
@@ -297,6 +380,49 @@ mod tests {
                 "attribute policy rejected {value}"
             );
         }
+    }
+
+    #[test]
+    fn absolute_url_shape_is_shared_across_actions_resources_and_head() {
+        let policy = UrlPolicy::permissive();
+        for value in [
+            "https://example.test:65536/a",
+            "https://example.test:abc/a",
+            "https://[invalid]/a",
+            "https://@/a",
+            "https:///example.test/a",
+        ] {
+            assert!(normalize_safe_url(value, "URL").is_err(), "{value}");
+            assert!(!url_allowed(value, UrlAttributeKind::Resource, &policy), "{value}");
+            assert!(head_url(value, false).is_none(), "{value}");
+        }
+        for value in ["https://[::1]:8443/a", "HTTPS://example.test/a"] {
+            assert!(normalize_safe_url(value, "URL").is_ok(), "{value}");
+            assert!(url_allowed(value, UrlAttributeKind::Resource, &policy), "{value}");
+            assert!(head_url(value, false).is_some(), "{value}");
+        }
+    }
+
+    #[test]
+    fn srcset_uses_numeric_descriptor_identity_and_bounded_candidates() {
+        let policy = UrlPolicy::permissive();
+        for value in [
+            "/a 1x, /b 1.0x",
+            "/a, /b 01x",
+            "/a 0800w, /b 800w",
+            "/a 0x",
+            "/a 0w",
+            "/a 1x, /b 800w",
+            "/a nonsense",
+            "DATA:image/png;base64,AAAA 2x",
+            "/a 1x, /b 2x,",
+        ] {
+            assert!(!srcset_allowed(value, &policy), "{value}");
+        }
+        assert!(srcset_allowed("/a 0.5x, /b 2x", &policy));
+        assert!(srcset_allowed("/a 800w, /b 1600w", &policy));
+        let oversized = (1..=17).map(|i| format!("/image-{i} {i}w")).collect::<Vec<_>>().join(", ");
+        assert!(!srcset_allowed(&oversized, &policy));
     }
 
     #[test]

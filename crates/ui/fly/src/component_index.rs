@@ -9,9 +9,9 @@
 //! tens of millions of node visits to answer a question that one traversal answers for all of
 //! them.
 //!
-//! Build an index once, query it many times. The index is a *snapshot*: it borrows nothing and is
-//! invalidated by any mutation, so it is deliberately not cached on the document — a stale index
-//! would be far worse than a slow lookup.
+//! Build an index once, query it many times. The index is a *snapshot*: it borrows nothing and
+//! must be invalidated when the document changes. The document caches it until its mutation
+//! boundary invalidates the cache.
 
 use crate::{ComponentLocation, ComponentNode, ComponentObject, ProjectDocument};
 use std::collections::{BTreeMap, BTreeSet};
@@ -116,6 +116,21 @@ impl ComponentIndex {
         self.locations.get(component_id)
     }
 
+    /// Test strict ancestry using structural paths instead of parent IDs.
+    ///
+    /// An intermediate node need not have an ID, and a repeated parent ID may
+    /// resolve to a different branch under the first-occurrence lookup rule.
+    pub(crate) fn is_descendant_of(&self, candidate_id: &str, ancestor_id: &str) -> bool {
+        let (Some((candidate_page, candidate_path)), Some((ancestor_page, ancestor_path))) =
+            (self.paths.get(candidate_id), self.paths.get(ancestor_id))
+        else {
+            return false;
+        };
+        candidate_page == ancestor_page
+            && candidate_path.len() > ancestor_path.len()
+            && candidate_path.starts_with(ancestor_path)
+    }
+
     /// Retrieve the component directly via its indexed path in O(depth) steps.
     pub fn get_component<'a>(
         &self,
@@ -157,7 +172,7 @@ impl ComponentIndex {
         id: &str,
     ) -> Option<&'a mut ComponentObject> {
         let (page_index, path) = self.paths.get(id)?;
-        let page = document.project.pages.get_mut(*page_index)?;
+        let page = document.project_mut().pages.get_mut(*page_index)?;
         let root = page.component.as_mut()?.as_object_mut()?;
         let target = navigate_mut(root, path)?;
         if target.id() == Some(id) {
@@ -319,6 +334,35 @@ mod tests {
                 "title"
             ]
         );
+    }
+
+    #[test]
+    fn indexed_mutation_invalidates_hash_and_location_cache() {
+        let mut document = document();
+        let index = ComponentIndex::build(&document);
+        let before_hash = document.hash();
+        assert!(document.component_index().contains("title"));
+
+        index.get_component_mut(&mut document, "title").expect("title").id =
+            Some("renamed-title".to_string());
+
+        assert_ne!(document.hash(), before_hash);
+        assert!(document.component_location("title").is_none());
+        assert!(document.component_location("renamed-title").is_some());
+        assert!(document.component_index().contains("renamed-title"));
+    }
+
+    #[test]
+    fn raw_project_mutable_borrow_invalidates_both_caches() {
+        let mut document = document();
+        let before_hash = document.hash();
+        assert!(document.component_index().contains("about-root"));
+
+        document.project_mut().pages.remove(1);
+
+        assert_ne!(document.hash(), before_hash);
+        assert!(document.component_location("about-root").is_none());
+        assert!(!document.component_index().contains("about-hero"));
     }
 
     #[test]

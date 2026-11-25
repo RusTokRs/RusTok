@@ -435,14 +435,16 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
             self.db.begin().await.map_err(|error| {
                 storage_unavailable_with_context(&context, owner_operation, error)
             })?;
-        let variant = load_tenant_variant(
+        // Product policy and deletion serialize before the shared Inventory item lock.
+        let variant = require_tenant_variant(
             &context,
             owner_operation,
-            &txn,
-            tenant_id,
             request.variant_id,
-        )
-        .await?;
+            crate::product_port::find_variant_info_for_reservation(
+                &txn, tenant_id, request.variant_id,
+            )
+            .await,
+        )?;
         let inventory_item =
             load_inventory_item_for_update(&context, owner_operation, &txn, request.variant_id)
                 .await?
@@ -903,8 +905,21 @@ pub(super) async fn load_tenant_variant<C>(
 where
     C: ConnectionTrait,
 {
-    crate::product_port::find_variant_info_from_conn(conn, tenant_id, variant_id)
-        .await
+    require_tenant_variant(
+        context,
+        owner_operation,
+        variant_id,
+        crate::product_port::find_variant_info_from_conn(conn, tenant_id, variant_id).await,
+    )
+}
+
+fn require_tenant_variant(
+    context: &PortContext,
+    owner_operation: &'static str,
+    variant_id: Uuid,
+    result: Result<Option<crate::product_port::InventoryProductVariantInfo>, sea_orm::DbErr>,
+) -> Result<crate::product_port::InventoryProductVariantInfo, PortError> {
+    result
         .map_err(|error| storage_unavailable_with_context(context, owner_operation, error))?
         .ok_or_else(|| {
             let facts = InventoryOwnerErrorFacts::uuid("variant_not_found", variant_id);

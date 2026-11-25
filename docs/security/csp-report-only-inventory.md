@@ -17,6 +17,7 @@ No violation in this document is an automatic allowlist request. The preferred r
 
 - Endpoint: `POST /api/security/csp-report` on the main RusToK server host.
 - Accepted formats: legacy `application/csp-report`, Reporting API `application/reports+json`, and JSON-compatible test traffic.
+- Legacy reports may include both `effective-directive` and `violated-directive`; the collector prefers the nonblank effective directive and uses the violated directive only as a fallback. Both fields are decoded independently.
 - Maximum request body: 64 KiB.
 - Maximum processed Reporting API entries: 20 per request.
 - The outer security middleware handles the endpoint before tenant and authentication routing.
@@ -25,7 +26,7 @@ No violation in this document is an automatic allowlist request. The preferred r
 - Invalid content types, JSON and report shapes are rejected with bounded status codes.
 - The standalone admin process does not advertise a report endpoint it cannot receive; it emits enforced CSP only.
 
-The collector never records `script-sample`, full document paths, URL queries or URL fragments. Structured logs retain only normalized origins or fixed values such as `inline`, `eval`, `data` and `blob`.
+The collector never records `script-sample`, full document paths, URL queries or URL fragments. Structured logs retain only normalized origins, bounded opaque-URL schemes or fixed values such as `inline`, `eval`, `data` and `blob`. The 512-byte location limit also applies to opaque URL schemes.
 
 ## Telemetry Contract
 

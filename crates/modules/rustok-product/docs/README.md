@@ -49,6 +49,11 @@
   command runtimes when Pricing is compiled. Commerce's embedded catalog
   fallbacks use the same adapter. Price mutations participate in the Product
   transaction, and a host-selected external runtime keeps its own provider.
+  The catalog-card `priceFrom` summary resolves channel precedence per SKU
+  and currency in Pricing before taking the product minimum; one SKU's
+  channel price must not suppress another SKU's eligible unscoped price.
+  Equal minima are ordered by stable SKU and price identities. Mixed eligible
+  currencies without a requested currency produce no summary.
 - FBA boundary is published as `ProductCatalogReadPort` / `product.catalog_read.v1`.
   Registry `contracts/product-fba-registry.json`, static matrix,
   no-compile runtime contract smoke, source-locked runtime fallback smoke, and

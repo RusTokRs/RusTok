@@ -3346,3 +3346,101 @@ checks that publishing through one cache owner does not notify an independent
 owner, and the architecture guard rejects reintroduction of the global pointer.
 
 Tests and compilation were not run, as requested by the maintainer.
+
+
+## Follow-up code review — release-aware CORS and Redis config parity (2026-11-25)
+
+The main API router passed the environment-label predicate into the HTTP edge
+stack even though CORS origin resolution and host startup use the shared
+release-aware production-security mode. A release build labeled
+`staging`/`development` could therefore receive the development loopback
+allow-list. Router composition now uses `is_production_security_mode()`
+for the edge stack.
+
+Rate-limit settings validation also checked only environment Redis URLs,
+while `CacheService::from_url` already honors `rustok.cache.redis_url` first.
+YAML-only Redis deployments were rejected before runtime composition. Validation
+now accepts a nonblank configured cache URL before checking environment fallback,
+and a focused regression covers that configuration.
+
+The 404 fallback and embedded-admin URI rewrite failure path now log only the
+fixed HTTP path family. Static admin asset responses include the selected
+representation length for both GET and HEAD; HEAD keeps an empty body. Focused
+tests were authored for Redis-only YAML configuration and HEAD metadata.
+
+Tests, compilation and formatting were not run, as requested by the maintainer.
+
+## Server follow-up — installer heartbeat ownership and search limiter readiness (2026-11-25)
+
+The installer heartbeat now runs as a sibling future inside the runtime-owned
+executor task rather than a detached Tokio task. Completion or forced
+cancellation drops the heartbeat even while its database call is pending.
+Heartbeat termination or panic does not cancel an admitted installer operation;
+the existing status CAS and quarantine policy remain unchanged. A database
+operation already submitted before cancellation may still commit, but cannot
+revive a non-running row.
+
+Readiness now checks the independent search rate limiter alongside API, Auth
+and OAuth when rate limiting is enabled on applicable host profiles. Missing
+search limiter state is a critical readiness failure, as with other limiter
+namespaces. This does not add a search indexing requirement.
+
+Focused source regressions cover heartbeat cancellation/completion, continued
+execution after heartbeat termination, and search limiter readiness. Tests,
+compilation and formatting were not run at the maintainer's request.
+
+## Server follow-up — OAuth confirmation scope binding and session cookie failure (2026-11-25)
+
+OAuth browser confirmation now authenticates the effective scope set in
+addition to the original optional scope parameter. If a client policy change
+expands or narrows omitted/default scopes between GET and POST, the old form
+is rejected and the user must confirm again. Reordering or duplication of
+equivalent scope entries does not invalidate the set. Code issuance retains
+its transactional app/user/consent checks; the MAC version bump intentionally
+invalidates outstanding v2 forms. Issuance failure logs use a bounded error code.
+
+First-party login, registration, refresh and logout responses use one
+fallible Set-Cookie attachment path. Header encoding failures return an
+internal error instead of falsely reporting success; generated credential
+headers are marked sensitive. This does not roll back a committed auth
+mutation if response construction fails.
+
+Focused regressions are authored for changed/equivalent scope sets, omitted
+versus explicit scope, and invalid/valid session cookie headers. Compilation,
+formatting and tests were not run at the maintainer's request.
+
+## Server follow-up — rate-limit runtime ownership (2026-11-25)
+
+Per-context rate limiters now reuse the published namespace Arc across repeat
+initialization rather than replacing active counters and splitting middleware,
+GraphQL and readiness ownership. A synchronous registration gate covers lookup,
+publication and maintenance task registration. Shutdown closes and drains the
+same registry even if no limiter has been initialized yet; the closed registry
+remains installed and rejects late initializers. Only enabled memory limiters
+need Moka maintenance tasks. The runtime bootstrap also rejects a stopped host
+before setup and before returning success.
+
+Focused source regressions cover preserved counters, Arc identity, one
+maintenance task per namespace, and shutdown before/after registration.
+Compilation, formatting and tests were not run at the maintainer's request.
+
+## Server follow-up — single-owner event delivery runtime (2026-11-25)
+
+EventRuntime initialization now serializes construction per host context and
+reuses a published runtime rather than replacing its relay/listener bus or
+re-reading the desired profile. Shutdown fences direct initialization before
+taking worker snapshots. Pending profile/configuration reads are stoppable;
+an Iggy connection already being constructed retains its owner startup path.
+The durable publisher transport comes from the same atomic resolver used by
+early EventBus and transactional callers. Non-transactional or non-outbox
+preinstalled transports fail event runtime startup. Registry-only composition
+no longer replaces a concurrently registered transport. The operator settings
+service is the canonical active-profile reader used by both GraphQL operations.
+
+An already constructed but unpublished Iggy connector is explicitly shut down
+on ordinary listener-start failure or stop before publication; this does not
+claim cancellation safety inside the connector's own constructor.
+
+Focused source regressions cover reuse without desired-policy reads, stopped
+initialization, and active-profile reporting. Compilation, formatting and tests
+were not run at the maintainer's request.

@@ -93,6 +93,72 @@ satisfy the platform multilingual storage contract. Their translation-table cuto
 is an explicit release-plan priority in this module's implementation plan; transports
 must not introduce a competing JSON or request-local fallback in the meantime.
 
+## Purpose-separated host MACs
+
+Auth derives distinct 32-byte keys with HKDF-SHA256 for OAuth browser confirmation
+and password-reset credential binding. Host adapters use `auth_purpose_mac` rather
+than raw shared-secret hashing or local HMAC. MAC v5 and reset fingerprint v2
+replace earlier formats without fallback; outstanding forms and reset links must
+be restarted. JWT signing and persisted session/refresh digests are unchanged.
+Source regressions unrun. Deploy all host instances together.
+
+## JWT and browser confirmation hardening
+
+Both HS256 and RS256 host configuration require at least 32 non-whitespace
+bytes of symmetric secret because browser confirmation and credential binding
+still use it. JWT validation enforces `iat > 0`, `iat <= now`, `iat < exp`,
+and `nbf` when present; checked duration construction rejects out-of-range TTL.
+OAuth browser confirmation MAC v4 includes the direct session ID and rejects
+expiries beyond its ten-minute window. Source regressions unrun.
+
+## OAuth revocation client fence
+
+RFC 7009 revocation rechecks the authenticated client snapshot under the app
+mutation lock before inspecting the token. Concurrent secret or client policy
+changes invalidate the preflight authentication; unknown tokens still succeed
+for an authenticated client. Source regression unrun.
+
+## OAuth issuance fences
+
+Browser approval and authorization-code issuance share one transaction. The host
+locks app, user and direct session in order, rechecks ownership, session liveness,
+email policy and access credential expiry, then grants missing consent only for
+explicit approval. Code insertion failure rolls back the consent change.
+
+Re-granting consent invalidates pending authorization codes for the same app,
+subject and tenant. Exchange rejects codes older than current consent and
+rechecks the refresh grant under the app lock before persisting prepared refresh
+credentials. OAuth refresh replay grace requires a nonnegative elapsed duration
+less than 30 seconds. Source regression definitions are unrun.
+
+## Direct session concurrency
+
+The host uses user-before-session locking for direct refresh and bulk self-service
+revocation, matching credential changes. Refresh revalidates the digest and subject
+under the locks; historical replay locks the session only and never acquires a user
+lock afterward. Bulk self-service revocation requires a still-active current session.
+SQLite history-only replay acquires the writer before reading the history.
+
+## Direct session refresh history
+
+The host records each rotated refresh digest and its timestamp in `session_refresh_history`
+inside the refresh transaction. The session remains the tenant and revocation authority;
+all historical digests are rejected, and replay outside the 30-second per-token grace
+revokes a live session. The previous-token columns are a last-rotation projection for
+logout with a stale cookie, not the replay authority. History cascades on session deletion.
+See [the ADR](../../../../DECISIONS/2026-11-25-session-refresh-history.md).
+
+## GraphQL credential throttling
+
+The Auth-owned rate-limit extension charges each distinct root credential mutation
+response key in the selected operation. Different aliases are separate charges;
+merged selections of the same field are not. Root fragment traversal is iterative
+and each named fragment is visited once per operation, even before schema validation.
+The normal GraphQL validator still rejects invalid documents. REST and GraphQL
+share an IP-only Auth namespace budget; authenticated password change and logout
+also consume it. Tenant, actor and mutation names do not partition the budget.
+Backend-failure semantics remain unchanged.
+
 ## Responsibility Zone
 
 `rustok-auth` owns authentication, OAuth, credential, token, and user-lifecycle

@@ -6,15 +6,62 @@ use sea_orm::{
 };
 
 use crate::auth::{
-    AuthConfig, decode_password_reset_token, hash_password_async,
-    password_reset_credential_matches, validate_password_policy,
+    AuthConfig, decode_password_reset_token, encode_password_reset_token, hash_password_async,
+    mask_auth_lookup_timing, password_reset_credential_matches, validate_password_policy,
 };
 use crate::models::{sessions, users};
+use crate::services::email::{
+    PASSWORD_RESET_TOKEN_TTL_SECS, email_service_from_ctx, password_reset_url,
+    spawn_password_reset_email,
+};
 
 use super::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use super::server_runtime_context::ServerRuntimeContext;
 
 impl AuthLifecycleService {
+    /// Shared REST/GraphQL/native recovery request. The public response must
+    /// not reveal account existence through account-dependent preparation
+    /// errors. Storage and timing-mask failures remain real service errors.
+    pub async fn request_password_reset_runtime(
+        ctx: &ServerRuntimeContext,
+        config: &AuthConfig,
+        tenant_id: uuid::Uuid,
+        email: &str,
+        locale: &str,
+    ) -> Result<(), AuthLifecycleError> {
+        let user = users::Entity::find_by_email(ctx.db(), tenant_id, email.trim())
+            .await
+            .map_err(AuthLifecycleError::from)?;
+        mask_auth_lookup_timing().await.map_err(AuthLifecycleError::from)?;
+
+        let Some(user) = user.filter(users::Model::is_active) else {
+            return Ok(());
+        };
+        let prepared = (|| {
+            let token = encode_password_reset_token(
+                config,
+                tenant_id,
+                &user.email,
+                &user.password_hash,
+                PASSWORD_RESET_TOKEN_TTL_SECS,
+            )?;
+            let service = email_service_from_ctx(ctx, locale)?;
+            let url = password_reset_url(ctx, &token)?;
+            Ok::<_, crate::error::Error>((service, url))
+        })();
+        match prepared {
+            Ok((service, url)) => {
+                let _task = spawn_password_reset_email(ctx, service, user.email, url);
+            }
+            Err(_) => {
+                tracing::warn!(
+                    "Password reset email could not be prepared; keeping the public response generic"
+                );
+            }
+        }
+        Ok(())
+    }
+
     /// Confirm a password reset token that is bound to the credential state
     /// present at issuance time.
     ///
@@ -53,18 +100,15 @@ impl AuthLifecycleService {
         validate_password_policy(new_password, config.min_password_length)
             .map_err(AuthLifecycleError::from)?;
 
-        let previous_hash = user.password_hash;
         let new_hash = hash_password_async(new_password.to_string())
             .await
             .map_err(AuthLifecycleError::from)?;
         let now = Utc::now();
         let tx = ctx.db().begin().await.map_err(AuthLifecycleError::from)?;
 
-        // The initial active-user check precedes password hashing and may race
-        // with deactivation. Keep status and credential state in the atomic CAS.
-        if !update_password_if_active(&tx, tenant_id, user.id, &previous_hash, &new_hash, now)
-            .await?
-        {
+        // Hashing runs outside the transaction. Recheck the account, mailbox,
+        // status and original credential together before changing any state.
+        if !update_password_if_active(&tx, &user, &new_hash, now).await? {
             tx.rollback().await.map_err(AuthLifecycleError::from)?;
             return Err(AuthLifecycleError::InvalidResetToken);
         }
@@ -113,14 +157,11 @@ impl AuthLifecycleService {
     }
 }
 
-/// The account can be deactivated after its initial lookup. This predicate
-/// serializes deactivation and reset on the same row and prevents a reset from
-/// succeeding against a now-inactive user.
+/// Serialize reset with account deactivation, mailbox changes and credential
+/// changes. The exact stored email is the mailbox observed before hashing.
 async fn update_password_if_active<C: ConnectionTrait>(
     db: &C,
-    tenant_id: uuid::Uuid,
-    user_id: uuid::Uuid,
-    previous_hash: &str,
+    observed_user: &users::Model,
     new_hash: &str,
     now: chrono::DateTime<Utc>,
 ) -> Result<bool, AuthLifecycleError> {
@@ -131,10 +172,11 @@ async fn update_password_if_active<C: ConnectionTrait>(
         )
         .col_expr(users::Column::PasswordChangedAt, Expr::value(now))
         .col_expr(users::Column::UpdatedAt, Expr::value(now))
-        .filter(users::Column::Id.eq(user_id))
-        .filter(users::Column::TenantId.eq(tenant_id))
+        .filter(users::Column::Id.eq(observed_user.id))
+        .filter(users::Column::TenantId.eq(observed_user.tenant_id))
         .filter(users::Column::Status.eq(rustok_core::UserStatus::Active))
-        .filter(users::Column::PasswordHash.eq(previous_hash))
+        .filter(users::Column::Email.eq(&observed_user.email))
+        .filter(users::Column::PasswordHash.eq(&observed_user.password_hash))
         .exec(db)
         .await
         .map_err(AuthLifecycleError::from)?;
@@ -201,7 +243,7 @@ mod tests {
 
     #[tokio::test]
     async fn reset_cas_rejects_deactivation_after_credential_read() {
-        let (db, _ctx, _config, tenant, user) = setup_user_with_sessions(
+        let (db, _ctx, _config, _tenant, user) = setup_user_with_sessions(
             "reset-tenant-deactivated",
             "deactivated@example.com",
             &["deactivated-session"],
@@ -219,9 +261,7 @@ mod tests {
 
         let updated = update_password_if_active(
             &db,
-            tenant.id,
-            user.id,
-            &user.password_hash,
+            &user,
             "unexpected-new-hash",
             Utc::now(),
         )
@@ -236,6 +276,38 @@ mod tests {
             .expect("user must exist");
         assert_eq!(stored.password_hash, user.password_hash);
         assert!(stored.password_changed_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn reset_cas_rejects_mailbox_change_after_credential_read() {
+        let (db, _ctx, _config, _tenant, user) = setup_user_with_sessions(
+            "reset-mailbox-change",
+            "old@example.com",
+            &["mailbox-session"],
+        )
+        .await;
+        users::ActiveModel {
+            id: Set(user.id),
+            email: Set("new@example.com".to_string()),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("change mailbox");
+
+        assert!(
+            !update_password_if_active(&db, &user, "unexpected-new-hash", Utc::now())
+                .await
+                .expect("compare and swap")
+        );
+        let current = users::Entity::find_by_id(user.id)
+            .one(&db)
+            .await
+            .expect("reload user")
+            .expect("user exists");
+        assert_eq!(current.email, "new@example.com");
+        assert_eq!(current.password_hash, user.password_hash);
+        assert!(current.password_changed_at.is_none());
     }
 
     #[tokio::test]

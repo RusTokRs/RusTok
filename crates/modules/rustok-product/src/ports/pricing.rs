@@ -112,10 +112,11 @@ pub trait ProductPricingPort: Send + Sync {
 
     /// Resolves storefront minimum "from" prices for a product listing.
     ///
-    /// Channel-scoped rows are eligible only for an exact channel match; unscoped
-    /// rows are the only fallback. When no currency is requested, a price is
-    /// returned only if the eligible rows use one currency, because amounts in
-    /// different currencies are not comparable.
+    /// Channel-scoped rows are eligible only for an exact channel match. For
+    /// each SKU and currency, unscoped rows are the only fallback. The minimum
+    /// is selected across those eligible SKU prices, with stable SKU/price ID
+    /// ordering for ties. Without a requested currency, a price is returned
+    /// only if the eligible rows use one currency.
     async fn load_storefront_list_prices(
         &self,
         conn: PricingConnection<'_>,

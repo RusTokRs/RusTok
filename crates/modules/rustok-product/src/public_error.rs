@@ -1,7 +1,7 @@
 use uuid::Uuid;
 
 use crate::CommerceError;
-use crate::services::catalog::revision_conflict_of;
+use crate::services::catalog::{revision_conflict_of, variant_revision_conflict_of};
 use crate::services::catalog_schema_service::attribute_validation::{
     attribute_validation_public_message, attribute_validation_rule_of,
 };
@@ -74,6 +74,8 @@ fn product_owner_error_facts(error: &CommerceError) -> ProductOwnerErrorFacts {
         CommerceError::Validation(message) => (
             if attribute_validation_rule_of(message).is_some() {
                 "attribute_validation"
+            } else if variant_revision_conflict_of(message) {
+                "variant_revision_conflict"
             } else if revision_conflict_of(message).is_some() {
                 "revision_conflict"
             } else {
@@ -204,11 +206,15 @@ pub fn map_product_public_error(
             "DUPLICATE_SKU",
             false,
         ),
-        CommerceError::Validation(message) if revision_conflict_of(message).is_some() => (
-            "Product was modified by another editor; reload the product and apply your changes again",
-            "PRODUCT_REVISION_CONFLICT",
-            false,
-        ),
+        CommerceError::Validation(message)
+            if revision_conflict_of(message).is_some() || variant_revision_conflict_of(message) =>
+        {
+            (
+                "Product or variant was modified by another editor; reload it and apply your changes again",
+                "PRODUCT_REVISION_CONFLICT",
+                false,
+            )
+        }
         CommerceError::Validation(message) if attribute_validation_rule_of(message).is_some() => {
             attribute_validation_public_failure(message)
         }
@@ -276,6 +282,29 @@ mod tests {
         assert!(!public.retryable);
         assert!(!rendered.contains("HostRuntimeContext"));
         assert!(!rendered.contains("TransactionalEventBus"));
+    }
+
+    #[test]
+    fn stale_variant_revision_uses_the_public_revision_conflict_code() {
+        let error = CommerceError::Validation(
+            "product variant revision conflict: expected revision 4, current revision 5".into(),
+        );
+        let public = map_product_public_error(&error, "update_variant", "graphql");
+
+        assert_eq!(public.code, "PRODUCT_REVISION_CONFLICT");
+        assert!(!public.retryable);
+        assert!(public.message.contains("variant"));
+        assert!(public.message.contains("reload"));
+    }
+
+    #[test]
+    fn malformed_variant_revision_text_remains_a_validation_error() {
+        let error = CommerceError::Validation(
+            "user value mentions product variant revision conflict".into(),
+        );
+        let public = map_product_public_error(&error, "update_variant", "graphql");
+
+        assert_eq!(public.code, "PRODUCT_VALIDATION");
     }
 
     #[test]

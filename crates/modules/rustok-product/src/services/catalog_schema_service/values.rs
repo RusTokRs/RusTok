@@ -703,3 +703,162 @@ where
     }
     Ok(None)
 }
+
+
+#[cfg(test)]
+mod localized_clear_tests {
+    use super::*;
+    use sea_orm::{Database, DatabaseBackend, Statement};
+
+    async fn localized_value_database(
+        locales: &[&str],
+    ) -> (DatabaseConnection, Uuid, Uuid, Uuid, Uuid) {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        db.execute_unprepared(
+            "CREATE TABLE product_attribute_values (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, product_id TEXT NOT NULL, attribute_id TEXT NOT NULL)",
+        )
+        .await
+        .unwrap();
+        db.execute_unprepared(
+            "CREATE TABLE product_attribute_value_translations (tenant_id TEXT NOT NULL, value_id TEXT NOT NULL, locale TEXT NOT NULL, value_text TEXT NOT NULL, PRIMARY KEY (value_id, locale))",
+        )
+        .await
+        .unwrap();
+
+        let tenant_id = Uuid::from_u128(1);
+        let product_id = Uuid::from_u128(2);
+        let attribute_id = Uuid::from_u128(3);
+        let value_id = Uuid::from_u128(4);
+        db.execute_unprepared(&format!(
+            "INSERT INTO product_attribute_values (id, tenant_id, product_id, attribute_id) VALUES ('{value_id}', '{tenant_id}', '{product_id}', '{attribute_id}')"
+        ))
+        .await
+        .unwrap();
+        for locale in locales {
+            db.execute_unprepared(&format!(
+                "INSERT INTO product_attribute_value_translations (tenant_id, value_id, locale, value_text) VALUES ('{tenant_id}', '{value_id}', '{locale}', 'value-{locale}')"
+            ))
+            .await
+            .unwrap();
+        }
+
+        (db, tenant_id, product_id, attribute_id, value_id)
+    }
+
+    async fn count_rows(db: &DatabaseConnection, sql: &str) -> i64 {
+        db.query_one(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            sql.to_owned(),
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("", "total")
+        .unwrap()
+    }
+
+    fn localized_definition(attribute_id: Uuid) -> ProductAttributeWriteDefinitionRow {
+        ProductAttributeWriteDefinitionRow {
+            id: attribute_id,
+            value_type: "text".to_owned(),
+            scope: "product".to_owned(),
+            is_localized: true,
+        }
+    }
+
+    #[tokio::test]
+    async fn clearing_one_locale_preserves_other_localized_values() {
+        let (db, tenant_id, product_id, attribute_id, value_id) =
+            localized_value_database(&["en-US", "ru-RU"]).await;
+        let definition = localized_definition(attribute_id);
+        let patch = ProductAttributeValuePatch {
+            attribute_id,
+            value: ProductAttributeValuePatchValue::Clear,
+        };
+
+        write_product_value_patch(
+            &db,
+            tenant_id,
+            product_id,
+            "ru-RU",
+            &definition,
+            &patch,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            count_rows(
+                &db,
+                &format!(
+                    "SELECT COUNT(*) AS total FROM product_attribute_value_translations WHERE value_id = '{value_id}' AND locale = 'en-US'"
+                ),
+            )
+            .await,
+            1
+        );
+        assert_eq!(
+            count_rows(
+                &db,
+                &format!(
+                    "SELECT COUNT(*) AS total FROM product_attribute_value_translations WHERE value_id = '{value_id}' AND locale = 'ru-RU'"
+                ),
+            )
+            .await,
+            0
+        );
+        assert_eq!(
+            count_rows(
+                &db,
+                &format!(
+                    "SELECT COUNT(*) AS total FROM product_attribute_values WHERE id = '{value_id}'"
+                ),
+            )
+            .await,
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn clearing_last_locale_removes_empty_localized_value_row() {
+        let (db, tenant_id, product_id, attribute_id, value_id) =
+            localized_value_database(&["ru-RU"]).await;
+        let definition = localized_definition(attribute_id);
+        let patch = ProductAttributeValuePatch {
+            attribute_id,
+            value: ProductAttributeValuePatchValue::Clear,
+        };
+
+        write_product_value_patch(
+            &db,
+            tenant_id,
+            product_id,
+            "ru-RU",
+            &definition,
+            &patch,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            count_rows(
+                &db,
+                &format!(
+                    "SELECT COUNT(*) AS total FROM product_attribute_value_translations WHERE value_id = '{value_id}'"
+                ),
+            )
+            .await,
+            0
+        );
+        assert_eq!(
+            count_rows(
+                &db,
+                &format!(
+                    "SELECT COUNT(*) AS total FROM product_attribute_values WHERE id = '{value_id}'"
+                ),
+            )
+            .await,
+            0
+        );
+    }
+}

@@ -29,7 +29,7 @@ it then trusts for authorisation decisions, Fly cannot help.
 | Document size | Bounded component/page/asset/style-rule counts and nesting depth | `validation.rs::ValidationLimits`, `DEFAULT_MAXIMUM_PAGES`, `DEFAULT_MAXIMUM_ASSETS`, `DEFAULT_MAXIMUM_STYLE_RULES` |
 | Undo history | Bounded by entry count *and* retained bytes | `command/model.rs::History` |
 | Snapshot / bundle integrity | SHA-256, compared in constant time | `digest.rs::ContentDigest` |
-| Inbound canvas messages | Accepted only when the sender is the canvas iframe *and* its origin equals the configured origin; an unset origin, the empty string and `*` refuse the mount | `fly-browser.js::normalizeExpectedOrigin`, `web/src/origin.rs::normalize_expected_origin` |
+| Inbound canvas messages | Accepted only when the sender is the canvas iframe, its origin equals the configured origin, and the UTF-8 payload is at most 4 MiB before JSON decoding; an unset origin, the empty string and `*` refuse the mount | `fly-web::MAX_IFRAME_MESSAGE_BYTES`, `browser_runtime.rs`, `fly-browser.js::normalizeExpectedOrigin`, `web/src/origin.rs::normalize_expected_origin` |
 | Intent credentials & CSRF | Same-origin session cookie + cryptographically derived CSRF token in `x-csrf-token` header | `fly-browser.js::postIntent`, `fly_browser::derive_csrf_token` / `verify_csrf_token`, `apps/admin/src/main.rs::page_builder_intent` |
 
 ## Integrity: `ProjectHash` vs `ContentDigest`

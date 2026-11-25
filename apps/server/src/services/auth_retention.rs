@@ -1,8 +1,8 @@
 //! Bounded retention for authentication artifacts.
 //!
 //! Sessions and invite bookkeeping only need to outlive their security
-//! purpose: a session row (with the previous-token hash used for reuse
-//! detection) is worthless once the whole lineage has expired, and an
+//! purpose: a session row and its cascading refresh-token history are
+//! worthless once the whole lineage has expired, and an
 //! invite digest only has to survive until the signed token expires.
 //! Rows are purged 30 days past expiry, so storage stays bounded
 //! without weakening exactly-once acceptance or theft detection. The

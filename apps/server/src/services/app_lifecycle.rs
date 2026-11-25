@@ -980,6 +980,14 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     let bootstrap_initialization = ServerBootstrapInitializationLock::ensure(runtime_ctx);
     let _bootstrap_guard = bootstrap_initialization.lock().await;
 
+    // Direct event-runtime construction can bypass router bootstrap. Wait
+    // for its publication owner before taking worker snapshots.
+    // Lock order matches router startup: bootstrap -> event runtime.
+    let event_initialization =
+        crate::services::event_transport_factory::EventRuntimeInitializationLock::ensure(runtime_ctx);
+    let event_guard = event_initialization.lock().await;
+    drop(event_guard);
+
     // Router bootstrap holds the lock above, but this public startup function
     // can also be invoked directly. It uses the artifact maintenance lock
     // across *all* additional worker registration. Wait for that caller to
@@ -1018,20 +1026,21 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     let timeout_duration = Duration::from_secs(5);
 
     let rate_limit_cleanup_drain = async {
-        if let Some(registry) =
-            runtime_ctx.shared_take::<crate::middleware::rate_limit::RateLimitCleanupTaskRegistry>()
-        {
-            let tasks = registry.take_tasks();
-            for task in &tasks {
-                task.abort();
-            }
-            await_runtime_worker_shutdown_tasks_with_timeout(
-                "Rate-limit cleanup",
-                tasks,
-                timeout_duration,
-            )
-            .await;
+        // Retain the terminal registry even if shutdown wins before the first
+        // initializer. Its mutex serializes the snapshot with publication.
+        let registry = runtime_ctx.shared_get_or_insert_with(
+            crate::middleware::rate_limit::RateLimitCleanupTaskRegistry::default,
+        );
+        let tasks = registry.close_and_take_tasks();
+        for task in &tasks {
+            task.abort();
         }
+        await_runtime_worker_shutdown_tasks_with_timeout(
+            "Rate-limit cleanup",
+            tasks,
+            timeout_duration,
+        )
+        .await;
     };
 
     let relay_drain = async {
@@ -2411,20 +2420,42 @@ mod tests {
         let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
         let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
         let (stopped_tx, stopped_rx) = tokio::sync::oneshot::channel();
-        let task = tokio::spawn(async move {
-            let _notify_drop = NotifyDrop(Some(stopped_tx));
-            std::future::pending::<()>().await;
-        });
+        let notify_drop = NotifyDrop(Some(stopped_tx));
         let registry = RateLimitCleanupTaskRegistry::default();
-        registry.register(task);
-        ctx.shared_insert(registry);
+        registry
+            .with_open(|tasks| {
+                tasks.push(tokio::spawn(async move {
+                    let _notify_drop = notify_drop;
+                    std::future::pending::<()>().await;
+                }));
+                Ok(())
+            })
+            .expect("register cleanup task");
+        ctx.shared_insert(registry.clone());
 
         super::shutdown_runtime_workers(&ctx).await;
 
         stopped_rx
             .await
             .expect("cleanup worker must be dropped by shutdown");
+        assert!(registry.with_open::<()>(|_| panic!("closed registry admitted work")).is_err());
+        let retained = ctx.shared_get::<RateLimitCleanupTaskRegistry>().unwrap();
+        assert!(retained.with_open::<()>(|_| panic!("shutdown replaced registry")).is_err());
+        assert!(retained.close_and_take_tasks().is_empty());
+    }
+
+    #[tokio::test]
+    async fn shutdown_before_rate_limit_initialization_leaves_a_closed_registry() {
+        use crate::middleware::rate_limit::RateLimitCleanupTaskRegistry;
+
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
         assert!(!ctx.shared_contains::<RateLimitCleanupTaskRegistry>());
+
+        super::shutdown_runtime_workers(&ctx).await;
+
+        let registry = ctx.shared_get_or_insert_with(RateLimitCleanupTaskRegistry::default);
+        assert!(registry.with_open::<()>(|_| panic!("late startup admitted work")).is_err());
     }
 
     #[tokio::test]

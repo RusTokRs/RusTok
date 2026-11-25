@@ -27,7 +27,7 @@ use uuid::Uuid;
 use crate::common::RustokSettings;
 use crate::context::TenantContext;
 use crate::extractors::auth::{CurrentUser, resolve_current_user_from_access_token};
-use crate::services::oauth_app::OAuthAppService;
+use crate::services::oauth_app::{AuthorizationSession, OAuthAppService};
 use crate::services::oauth_token_service::OAuthTokenService;
 use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext};
 
@@ -73,7 +73,7 @@ fn direct_user_required_error() -> TokenErrorResponse {
 /// session cookie, which is still sent on cross-site top-level GET navigation.
 /// Therefore cookie-authenticated GET requests must render a confirmation
 /// form and never issue a code directly. The form is protected by a short-lived
-/// keyed MAC bound to the signed-in user and exact authorization parameters;
+/// keyed MAC bound to the signed-in user, direct session and exact authorization parameters;
 /// a forged cross-site submission (including from a same-site subdomain)
 /// cannot produce a valid value.
 const CONSENT_CSRF_TTL_SECS: i64 = 10 * 60;
@@ -94,61 +94,45 @@ fn append_optional_csrf_mac_field(payload: &mut Vec<u8>, value: Option<&str>) {
     }
 }
 
-/// RFC 2104 HMAC-SHA256. Keeping this small primitive local avoids introducing
-/// a second crypto dependency for one fixed-size authentication use.
-fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] {
-    use sha2::{Digest, Sha256};
-
-    const BLOCK_SIZE: usize = 64;
-    let mut normalized_key = [0_u8; BLOCK_SIZE];
-    if key.len() > BLOCK_SIZE {
-        let digest = Sha256::digest(key);
-        normalized_key[..digest.len()].copy_from_slice(&digest);
-    } else {
-        normalized_key[..key.len()].copy_from_slice(key);
-    }
-
-    let mut inner_pad = [0_u8; BLOCK_SIZE];
-    let mut outer_pad = [0_u8; BLOCK_SIZE];
-    for index in 0..BLOCK_SIZE {
-        inner_pad[index] = normalized_key[index] ^ 0x36;
-        outer_pad[index] = normalized_key[index] ^ 0x5c;
-    }
-
-    let mut inner = Sha256::new();
-    inner.update(inner_pad);
-    inner.update(message);
-    let inner_digest = inner.finalize();
-
-    let mut outer = Sha256::new();
-    outer.update(outer_pad);
-    outer.update(inner_digest);
-    outer.finalize().into()
-}
-
+#[allow(clippy::too_many_arguments)]
 fn consent_csrf_mac(
     config: &crate::auth::AuthConfig,
     tenant_id: Uuid,
     user_id: Uuid,
+    session_id: Uuid,
     client_id: &str,
     redirect_uri: &str,
     scope: Option<&str>,
+    effective_scopes: &[String],
     state: Option<&str>,
     code_challenge: &str,
     expires_at: i64,
-) -> String {
+) -> Option<String> {
     let mut payload = Vec::new();
-    payload.extend_from_slice(b"rustok:oauth:consent-csrf:v2");
+    payload.extend_from_slice(b"rustok:oauth:consent-csrf:v5");
     append_csrf_mac_field(&mut payload, &tenant_id.to_string());
     append_csrf_mac_field(&mut payload, &user_id.to_string());
+    append_csrf_mac_field(&mut payload, &session_id.to_string());
     append_csrf_mac_field(&mut payload, client_id);
     append_csrf_mac_field(&mut payload, redirect_uri);
     append_optional_csrf_mac_field(&mut payload, scope);
+    // Bind the effective scope set displayed on GET, not just the optional
+    // query parameter. Omitted scope is resolved from mutable client policy.
+    // Ordering and duplicate entries do not change the granted authority.
+    let mut scopes = effective_scopes.iter().map(String::as_str).collect::<Vec<_>>();
+    scopes.sort_unstable();
+    scopes.dedup();
+    payload.extend_from_slice(&(scopes.len() as u64).to_be_bytes());
+    for scope in scopes {
+        append_csrf_mac_field(&mut payload, scope);
+    }
     append_optional_csrf_mac_field(&mut payload, state);
     append_csrf_mac_field(&mut payload, code_challenge);
     append_csrf_mac_field(&mut payload, &expires_at.to_string());
 
-    hex::encode(hmac_sha256(config.secret.as_bytes(), &payload))
+    rustok_auth::auth_purpose_mac(config, rustok_auth::AuthMacPurpose::OAuthConsentCsrf, &payload)
+        .ok()
+        .map(hex::encode)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -156,27 +140,31 @@ fn issue_consent_csrf(
     config: &crate::auth::AuthConfig,
     tenant_id: Uuid,
     user_id: Uuid,
+    session_id: Uuid,
     client_id: &str,
     redirect_uri: &str,
     scope: Option<&str>,
+    effective_scopes: &[String],
     state: Option<&str>,
     code_challenge: &str,
-) -> String {
+) -> Option<String> {
     let expires_at = chrono::Utc::now().timestamp() + CONSENT_CSRF_TTL_SECS;
-    format!(
+    Some(format!(
         "{expires_at}.{}",
         consent_csrf_mac(
             config,
             tenant_id,
             user_id,
+            session_id,
             client_id,
             redirect_uri,
             scope,
+            effective_scopes,
             state,
             code_challenge,
             expires_at,
-        )
-    )
+        )?
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -184,9 +172,11 @@ fn verify_consent_csrf(
     config: &crate::auth::AuthConfig,
     tenant_id: Uuid,
     user_id: Uuid,
+    session_id: Uuid,
     client_id: &str,
     redirect_uri: &str,
     scope: Option<&str>,
+    effective_scopes: &[String],
     state: Option<&str>,
     code_challenge: &str,
     presented: Option<&str>,
@@ -202,20 +192,28 @@ fn verify_consent_csrf(
     let Ok(expires_at) = expires_at.parse::<i64>() else {
         return false;
     };
-    if chrono::Utc::now().timestamp() >= expires_at {
+    let now = chrono::Utc::now().timestamp();
+    if session_id.is_nil()
+        || expires_at <= now
+        || expires_at > now.saturating_add(CONSENT_CSRF_TTL_SECS)
+    {
         return false;
     }
-    let expected = consent_csrf_mac(
+    let Some(expected) = consent_csrf_mac(
         config,
         tenant_id,
         user_id,
+        session_id,
         client_id,
         redirect_uri,
         scope,
+        effective_scopes,
         state,
         code_challenge,
         expires_at,
-    );
+    ) else {
+        return false;
+    };
     expected.as_bytes().ct_eq(mac.as_bytes()).into()
 }
 
@@ -536,7 +534,7 @@ async fn authorize_handler_inner(
     }
 
     let code =
-        issue_authorization_code(&ctx, tenant_ctx.id, &validated, current_user.user.id).await?;
+        issue_authorization_code(&ctx, tenant_ctx.id, &validated, &current_user, false).await?;
 
     let mut response = serde_json::json!({
         "code": code,
@@ -666,7 +664,8 @@ pub(crate) async fn authorize_browser_handler(
             runtime_ctx,
             tenant_ctx.id,
             &validated,
-            current_user.user.id,
+            &current_user,
+            false,
         )
         .await
         {
@@ -689,16 +688,23 @@ pub(crate) async fn authorize_browser_handler(
             error_description: "Authorization is temporarily unavailable".to_string(),
         });
     };
-    let consent_csrf = issue_consent_csrf(
+    let Some(consent_csrf) = issue_consent_csrf(
         auth_config,
         tenant_ctx.id,
         current_user.user.id,
+        current_user.session_id,
         &req.client_id,
         &req.redirect_uri,
         req.scope.as_deref(),
+        &validated.requested_scopes,
         req.state.as_deref(),
         &req.code_challenge,
-    );
+    ) else {
+        return oauth_error_response(TokenErrorResponse {
+            error: "server_error".to_string(),
+            error_description: "Authorization is temporarily unavailable".to_string(),
+        });
+    };
 
     Html(render_consent_page(
         &validated,
@@ -779,9 +785,11 @@ pub(crate) async fn consent_handler(
             auth_config,
             tenant_ctx.id,
             current_user.user.id,
+            current_user.session_id,
             &req.client_id,
             &req.redirect_uri,
             req.scope.as_deref(),
+            &validated.requested_scopes,
             req.state.as_deref(),
             &req.code_challenge,
             req.consent_csrf.as_deref(),
@@ -815,47 +823,9 @@ pub(crate) async fn consent_handler(
         });
     }
 
-    // A confirmation is required for every cookie-backed browser flow, but
-    // consent itself is only persisted for app types that require it. Recheck
-    // coverage at POST time so an existing grant is not needlessly rewritten
-    // and a revoked/insufficient grant cannot authorize this code.
-    if validated.app.requires_user_consent() {
-        let has_consent = match OAuthAppService::get_active_consent(
-            runtime_ctx.db(),
-            validated.app.id,
-            current_user.user.id,
-            tenant_ctx.id,
-            &validated.requested_scopes,
-        )
-        .await
-        {
-            Ok(has_consent) => has_consent,
-            Err(_) => {
-                return oauth_error_response(TokenErrorResponse {
-                    error: "server_error".to_string(),
-                    error_description: "Failed to verify consent".to_string(),
-                });
-            }
-        };
-        if !has_consent
-            && OAuthAppService::grant_consent_strict(
-                runtime_ctx.db(),
-                validated.app.id,
-                current_user.user.id,
-                tenant_ctx.id,
-                validated.requested_scopes.clone(),
-            )
-            .await
-            .is_err()
-        {
-            return oauth_error_response(TokenErrorResponse {
-                error: "server_error".to_string(),
-                error_description: "Failed to grant consent".to_string(),
-            });
-        }
-    }
-
-    match issue_authorization_code(runtime_ctx, tenant_ctx.id, &validated, current_user.user.id)
+    // Approval and issuance share one transaction, with a fresh direct-session
+    // check under the mutation locks. Never persist consent before issuance.
+    match issue_authorization_code(runtime_ctx, tenant_ctx.id, &validated, &current_user, true)
         .await
     {
         Ok(code) => redirect_with_code(
@@ -1086,8 +1056,11 @@ fn map_code_issuance_error(error: crate::error::Error) -> TokenErrorResponse {
             "access_denied",
             "OAuth subject or consent is no longer authorized",
         ),
-        other => {
-            tracing::error!(error = %other, "Failed to issue OAuth authorization code");
+        _ => {
+            tracing::error!(
+                error_code = "oauth_authorization_code_issuance_failed",
+                "Failed to issue OAuth authorization code"
+            );
             ("server_error", "Failed to generate authorization code")
         }
     };
@@ -1101,16 +1074,23 @@ async fn issue_authorization_code(
     ctx: &ServerRuntimeContext,
     tenant_id: Uuid,
     validated: &ValidatedAuthorizeRequest,
-    user_id: Uuid,
+    current_user: &CurrentUser,
+    approve_consent: bool,
 ) -> Result<String, TokenErrorResponse> {
     OAuthAppService::generate_authorization_code(
         ctx.db(),
         validated.app.id,
-        user_id,
+        AuthorizationSession {
+            user_id: current_user.user.id,
+            session_id: current_user.session_id,
+            access_expires_at: current_user.access_token_expires_at,
+            require_email_verification: ctx.settings().features.email_verification,
+        },
         tenant_id,
         validated.redirect_uri.clone(),
         validated.requested_scopes.clone(),
         validated.code_challenge.clone(),
+        approve_consent,
     )
     .await
     .map_err(map_code_issuance_error)
@@ -1546,11 +1526,15 @@ async fn revoke_handler_inner(
     // stored hash for either token kind.
     let token_hash = crate::auth::hash_refresh_token(&req.token);
 
-    OAuthAppService::revoke_token_by_hash(ctx.db(), &token_hash, app.id, tenant_ctx.id)
+    OAuthAppService::revoke_authenticated_token_by_hash(ctx.db(), &token_hash, &app, tenant_ctx.id)
         .await
-        .map_err(|_| TokenErrorResponse {
-            error: "server_error".to_string(),
-            error_description: "Failed to revoke token".to_string(),
+        .map_err(|error| match error {
+            crate::error::Error::Unauthorized(_) =>
+                oauth_invalid_client_error("Invalid client credentials"),
+            _ => TokenErrorResponse {
+                error: "server_error".to_string(),
+                error_description: "Failed to revoke token".to_string(),
+            },
         })?;
 
     // RFC 7009: always return 200 OK regardless of whether token existed
@@ -1685,18 +1669,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn consent_csrf_hmac_matches_rfc_4231_sha256_vector() {
-        let key = [0x0b_u8; 20];
-        let actual = super::hmac_sha256(&key, b"Hi There");
-        assert_eq!(
-            hex::encode(actual),
-            "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7"
-        );
-    }
-
-    #[test]
     fn consent_csrf_mac_fields_are_unambiguous() {
-        let key = b"test-consent-key";
+        let config = crate::auth::AuthConfig::new("test-consent-key-with-at-least-32-bytes".to_string());
         let mut first = Vec::new();
         super::append_optional_csrf_mac_field(&mut first, Some("scope\0state"));
         super::append_optional_csrf_mac_field(&mut first, None);
@@ -1706,9 +1680,75 @@ mod tests {
         super::append_optional_csrf_mac_field(&mut second, Some("state"));
 
         assert_ne!(
-            super::hmac_sha256(key, &first),
-            super::hmac_sha256(key, &second)
+            rustok_auth::auth_purpose_mac(&config, rustok_auth::AuthMacPurpose::OAuthConsentCsrf, &first).unwrap(),
+            rustok_auth::auth_purpose_mac(&config, rustok_auth::AuthMacPurpose::OAuthConsentCsrf, &second).unwrap()
         );
+    }
+
+    #[test]
+    fn consent_confirmation_binds_the_effective_scopes_even_when_scope_is_omitted() {
+        let config = crate::auth::AuthConfig::new("test-oauth-consent-secret-with-32-bytes".to_string());
+        let tenant = Uuid::new_v4();
+        let user = Uuid::new_v4();
+        let session = Uuid::new_v4();
+        let client = Uuid::new_v4().to_string();
+        let redirect = "https://example.com/callback";
+        let challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
+        let allowed = vec!["profile".to_string(), "catalog:read".to_string()];
+        let displayed = validate_authorization_scopes(None, &allowed).unwrap();
+        let token = issue_consent_csrf(
+            &config, tenant, user, session, &client, redirect, None, &displayed, None, challenge,
+        ).unwrap();
+        let verify = |effective: &[String]| {
+            verify_consent_csrf(
+                &config, tenant, user, session, &client, redirect, None, effective, None,
+                challenge, Some(token.as_str()),
+            )
+        };
+        assert!(verify(&displayed));
+        let weak = crate::auth::AuthConfig::new("short".to_string());
+        assert!(issue_consent_csrf(
+            &weak, tenant, user, session, &client, redirect, None, &displayed, None, challenge,
+        ).is_none());
+        assert!(!verify_consent_csrf(
+            &config, tenant, user, Uuid::new_v4(), &client, redirect, None,
+            &displayed, None, challenge, Some(token.as_str()),
+        ), "a confirmation cannot cross sessions of the same user");
+        let future = chrono::Utc::now().timestamp() + CONSENT_CSRF_TTL_SECS + 60;
+        let future_token = format!("{future}.{}", consent_csrf_mac(
+            &config, tenant, user, session, &client, redirect, None,
+            &displayed, None, challenge, future,
+        ).unwrap());
+        assert!(!verify_consent_csrf(
+            &config, tenant, user, session, &client, redirect, None,
+            &displayed, None, challenge, Some(&future_token),
+        ), "a signed expiry beyond the confirmation lifetime is invalid");
+
+        let expanded = vec!["profile".to_string(), "catalog:read".to_string(), "catalog:write".to_string()];
+        let expanded = validate_authorization_scopes(None, &expanded).unwrap();
+        assert!(!verify(&expanded), "new scopes require a new confirmation");
+
+        let narrowed = validate_authorization_scopes(None, &allowed[..1]).unwrap();
+        assert!(!verify(&narrowed), "a changed scope set requires a new confirmation");
+
+        let reordered = vec!["catalog:read".to_string(), "profile".to_string(), "profile".to_string()];
+        assert!(verify(&reordered), "equivalent scope sets have the same binding");
+
+        // An explicit unchanged request still works when unrelated client
+        // permissions change, but is not interchangeable with an omitted scope.
+        let explicit = validate_authorization_scopes(Some("profile"), &allowed).unwrap();
+        let explicit_token = issue_consent_csrf(
+            &config, tenant, user, session, &client, redirect, Some("profile"), &explicit, None, challenge,
+        ).unwrap();
+        let still_explicit = validate_authorization_scopes(Some("profile"), &expanded).unwrap();
+        assert!(verify_consent_csrf(
+            &config, tenant, user, session, &client, redirect, Some("profile"), &still_explicit, None,
+            challenge, Some(explicit_token.as_str()),
+        ));
+        assert!(!verify_consent_csrf(
+            &config, tenant, user, session, &client, redirect, None, &still_explicit, None,
+            challenge, Some(explicit_token.as_str()),
+        ));
     }
 
     #[test]

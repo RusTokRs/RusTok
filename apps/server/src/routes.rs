@@ -10,7 +10,10 @@ pub type ServerRouter = axum::Router<ServerAuthRuntime>;
 
 /// Canonical fallback handler for unmatched routes, returning structured JSON error envelope.
 pub async fn not_found_fallback(uri: axum::http::Uri) -> impl IntoResponse {
-    tracing::debug!(path = %uri.path(), "Route not found");
+    tracing::debug!(
+        path_group = crate::middleware::http_stack::trace_path_family(uri.path()),
+        "Route not found"
+    );
     Error::NotFound
 }
 

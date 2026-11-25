@@ -62,28 +62,28 @@ impl ProjectDocument {
         }
     }
 
-    pub fn is_component_descendant_of(&self, candidate_id: &str, ancestor_id: &str) -> bool {
+    /// Does the insertion locator identify the component's actual parent?
+    /// A missing parent ID denotes the first page root, not every anonymous parent.
+    pub(crate) fn component_has_parent(&self, component_id: &str, parent_id: Option<&str>) -> bool {
         let index = self.component_index();
-        let (Some(candidate_loc), Some(ancestor_loc)) =
-            (index.location(candidate_id), index.location(ancestor_id))
-        else {
+        let Some((page, path)) = index.paths.get(component_id) else {
             return false;
         };
-        if candidate_loc.page_index != ancestor_loc.page_index
-            || candidate_loc.depth <= ancestor_loc.depth
-        {
+        let Some((_, parent_path)) = path.split_last() else {
             return false;
+        };
+        match parent_id {
+            Some(id) => index.paths.get(id).is_some_and(|(parent_page, target_path)| {
+                parent_page == page && target_path.as_slice() == parent_path
+            }),
+            None => parent_path.is_empty()
+                && self.project.pages.iter().position(|page| page.component.is_some()) == Some(*page),
         }
-        let mut curr_parent = candidate_loc.parent_component_id.as_deref();
-        while let Some(parent_id) = curr_parent {
-            if parent_id == ancestor_id {
-                return true;
-            }
-            curr_parent = index
-                .location(parent_id)
-                .and_then(|l| l.parent_component_id.as_deref());
-        }
-        false
+    }
+
+    pub fn is_component_descendant_of(&self, candidate_id: &str, ancestor_id: &str) -> bool {
+        self.component_index()
+            .is_descendant_of(candidate_id, ancestor_id)
     }
 
     pub fn component_type_for_id(&self, component_id: &str) -> Option<&str> {
@@ -199,6 +199,75 @@ mod tests {
         );
         assert!(!decision.legal);
         assert!(decision.reason.unwrap_or_default().contains("descendants"));
+    }
+
+    #[test]
+    fn ancestry_and_placement_cross_anonymous_intermediate_nodes() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "section",
+                        "type": "section",
+                        "components": [{
+                            "type": "section",
+                            "components": [{ "id": "nested", "type": "section" }]
+                        }]
+                    }, { "id": "sibling", "type": "section" }]
+                }
+            }]
+        }))
+        .expect("document");
+
+        assert!(document.is_component_descendant_of("nested", "section"));
+        assert!(document.is_component_descendant_of("nested", "root"));
+        assert!(!document.is_component_descendant_of("nested", "nested"));
+        assert!(!document.is_component_descendant_of("nested", "sibling"));
+        assert!(!document.is_component_descendant_of("missing", "root"));
+        let decision = RegistrySet::with_builtins().evaluate_placement(
+            &document,
+            Some("section"),
+            "section",
+            Some("nested"),
+            0,
+        );
+        assert!(!decision.legal);
+        assert!(decision.reason.unwrap_or_default().contains("descendants"));
+    }
+
+    #[test]
+    fn ancestry_uses_actual_branch_not_first_lookup_of_repeated_parent() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "first",
+                "component": {
+                    "id": "first-root",
+                    "type": "wrapper",
+                    "components": [{ "id": "repeated", "type": "section" }]
+                }
+            }, {
+                "id": "second",
+                "component": {
+                    "id": "second-root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "repeated",
+                        "type": "section",
+                        "components": [{ "id": "nested", "type": "section" }]
+                    }]
+                }
+            }]
+        }))
+        .expect("document");
+
+        // Repeated IDs remain invalid document identities. For a diagnostic
+        // lookup the first occurrence wins; it is not the actual ancestor here.
+        assert!(document.is_component_descendant_of("nested", "second-root"));
+        assert!(!document.is_component_descendant_of("nested", "first-root"));
+        assert!(!document.is_component_descendant_of("nested", "repeated"));
     }
 
     #[test]

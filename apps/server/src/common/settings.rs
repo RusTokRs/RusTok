@@ -1033,10 +1033,15 @@ impl RustokSettings {
         }
 
         if parsed.rate_limit.enabled && parsed.rate_limit.backend == RateLimitBackendKind::Redis {
-            if resolve_redis_url().is_none() {
+            let cache_redis_url_configured = parsed
+                .cache
+                .redis_url
+                .as_deref()
+                .is_some_and(|url| !url.trim().is_empty());
+            if !cache_redis_url_configured && resolve_redis_url().is_none() {
                 return Err(serde_json::Error::io(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
-                    "rustok.rate_limit.backend=redis requires RUSTOK_REDIS_URL or REDIS_URL",
+                    "rustok.rate_limit.backend=redis requires rustok.cache.redis_url, RUSTOK_REDIS_URL or REDIS_URL",
                 )));
             }
 
@@ -2213,7 +2218,7 @@ mod tests {
             RustokSettings::from_settings(&Some(raw)).expect_err("redis URL validation expected");
         assert!(
             err.to_string()
-                .contains("rustok.rate_limit.backend=redis requires RUSTOK_REDIS_URL or REDIS_URL")
+                .contains("rustok.rate_limit.backend=redis requires rustok.cache.redis_url, RUSTOK_REDIS_URL or REDIS_URL")
         );
     }
 
@@ -2237,6 +2242,34 @@ mod tests {
         let settings = RustokSettings::from_settings(&Some(raw)).expect("redis settings parse");
         assert_eq!(settings.rate_limit.backend, RateLimitBackendKind::Redis);
     }
+    #[test]
+    fn allows_enabled_redis_rate_limit_with_cache_configured_redis_url() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _env_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
+        let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
+
+        let raw = serde_json::json!({
+            "rustok": {
+                "cache": {
+                    "redis_url": "redis://localhost:6379/0"
+                },
+                "rate_limit": {
+                    "enabled": true,
+                    "backend": "redis"
+                }
+            }
+        });
+
+        let settings =
+            RustokSettings::from_settings(&Some(raw)).expect("configured Redis URL is accepted");
+        assert_eq!(
+            settings.cache.redis_url.as_deref(),
+            Some("redis://localhost:6379/0")
+        );
+        assert_eq!(settings.rate_limit.backend, RateLimitBackendKind::Redis);
+    }
+
     #[test]
     fn tenant_resolution_mode_is_deserialized_strictly() {
         let raw = serde_json::json!({

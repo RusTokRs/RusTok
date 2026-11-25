@@ -176,6 +176,91 @@ gates in the [Page Builder backlog](../../../../docs/modules/page-builder-backlo
    exhaustively at the GraphQL boundary); `AuthSettingsOverrides::apply` is
    live runtime wiring, not dead code.
 
+## Purpose-separated host MACs (source only)
+
+Auth owns HKDF-SHA256 derivation and HMAC-SHA256 for password-reset credential
+binding and OAuth browser confirmation. The new formats reject earlier forms
+and reset links intentionally; access JWT signatures and refresh/session storage
+are unchanged. Stop old host writers before deploying new instances. Source
+regressions and locked Cargo dependency updates authored, unrun. JWT signing key
+rotation, key IDs and staged verification remain separate work.
+
+## JWT and CSRF hardening (source only)
+
+Browser confirmation MAC v4 binds the direct session and bounds expiry;
+previous forms require restart. RS256 host config now also validates the
+symmetric secret. JWT time claims and chrono duration construction fail closed.
+Source regressions authored, unrun. Deployment must provision the symmetric
+secret even with RSA signing; keep server clocks synchronized.
+
+## OAuth revocation client fence (source only)
+
+RFC 7009 revocation revalidates the active client identity, type and secret hash
+under the app lock before token lookup. Stale authentication returns invalid_client;
+unknown tokens still succeed for authenticated clients. Source regression authored,
+compilation and runtime verification pending.
+
+## OAuth authorization session fence (source only)
+
+Authorization issuance rechecks the direct session, its subject, credential
+expiry and email policy under app -> user -> session locking. Browser approval
+and code persistence now commit together; rejected or failed code issuance
+cannot leave a new grant behind. Source regressions authored, unrun.
+
+## OAuth consent and grant fences (source only)
+
+Consent re-grant invalidates pending codes in its transaction; code exchange
+rejects a newer consent epoch and checks the refresh grant under the app lock
+before persisting prepared credentials. OAuth replay grace no longer accepts
+future timestamps or truncates elapsed time to whole seconds. Focused source
+regressions authored; compilation and runtime verification remain pending.
+
+## Direct session mutation ordering (source only)
+
+Refresh and bulk session revocation use the shared tenant-scoped user mutation
+fence before acquiring session locks. Bulk self-service revocation checks the
+current session again under lock. SQLite history-only replay reserves its writer
+before reading the evidence. Regressions exercise lock ordering and stale current
+session rejection; PostgreSQL contention, compilation and the remediation gate
+remain maintainer-run.
+
+## Direct session refresh history (source only)
+
+The platform migration preserves the available previous digest and timestamp; every
+subsequent rotation records immutable history in the same transaction. Replays of any
+recorded generation outside grace revoke only the tenant-scoped session. The current
+session and previous-cookie logout contract are preserved. Older overwritten digests
+cannot be recovered. Apply the migration before deploying the new host, with old host
+writers stopped. Regression definitions, PostgreSQL backfill, cascade, rollback and
+concurrency checks remain unrun.
+
+## Password recovery parity (source only)
+
+REST and GraphQL/native recovery requests delegate to the same host lifecycle
+service. Account-dependent preparation failures preserve the generic response;
+inactive accounts do not receive unusable reset links. Confirmation now includes
+the exact observed mailbox in its atomic credential CAS, preventing a concurrent
+mailbox change from authorizing a stale reset. Run `cargo test -p rustok-server
+--lib auth_password_reset` plus mounted REST and GraphQL recovery checks.
+Compilation, regressions and remediation gate remain maintainer-run.
+
+## Shared Auth throttling budget (source only)
+
+REST and GraphQL use the same per-IP key in the shared Auth limiter, including
+one unknown-IP bucket. Trusted bearer claims cannot partition this strict budget;
+GraphQL password changes and logout now consume it as well. General API and OAuth
+key dimensions remain unchanged. Source key and shared-counter regressions are
+unrun; mounted middleware/GraphQL and Redis verification remain pending.
+
+## GraphQL credential throttling remediation (source only)
+
+The credential limiter now accounts for separate aliased resolver calls, ignores
+unselected named operations, and traverses cyclic/shared fragment graphs safely
+before validation. Focused classifier regressions are authored but unrun. Run
+`cargo test -p rustok-auth --features graphql --lib graphql::rate_limit` and the
+host GraphQL integration checks before release. Compilation and the remediation
+gate are pending maintainer verification.
+
 ## Verification
 
 - `npm run verify:auth:ui-boundary` and `npm run test:verify:auth:ui-boundary`

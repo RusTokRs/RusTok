@@ -189,7 +189,7 @@ pub fn decode_access_token(config: &AuthConfig, token: &str) -> Result<Claims> {
         .map(|data| data.claims)
         .map_err(|_| AuthError::InvalidAccessToken)?;
 
-    if claims.sub.is_nil() || claims.tenant_id.is_nil() {
+    if claims.sub.is_nil() || claims.tenant_id.is_nil() || !valid_token_times(claims.iat, claims.exp) {
         return Err(AuthError::InvalidAccessToken);
     }
 
@@ -243,6 +243,7 @@ pub fn decode_password_reset_token(
 
     if claims.tenant_id.is_nil()
         || claims.sub.trim().is_empty()
+        || !valid_token_times(claims.iat, claims.exp)
         || claims.purpose != PASSWORD_RESET_PURPOSE
     {
         return Err(AuthError::InvalidResetToken);
@@ -296,6 +297,7 @@ pub fn decode_email_verification_token(
 
     if claims.tenant_id.is_nil()
         || claims.sub.trim().is_empty()
+        || !valid_token_times(claims.iat, claims.exp)
         || claims.purpose != EMAIL_VERIFICATION_PURPOSE
     {
         return Err(AuthError::InvalidVerificationToken);
@@ -348,7 +350,10 @@ pub fn decode_invite_token(config: &AuthConfig, token: &str) -> Result<InviteCla
         .map(|data| data.claims)
         .map_err(|_| AuthError::InvalidInviteToken)?;
 
-    if claims.tenant_id.is_nil() || claims.sub.trim().is_empty() || claims.purpose != INVITE_PURPOSE
+    if claims.tenant_id.is_nil()
+        || claims.sub.trim().is_empty()
+        || !valid_token_times(claims.iat, claims.exp)
+        || claims.purpose != INVITE_PURPOSE
     {
         return Err(AuthError::InvalidInviteToken);
     }
@@ -367,7 +372,9 @@ fn token_expiration(now: chrono::DateTime<Utc>, ttl_seconds: u64) -> Result<chro
     let ttl_seconds = i64::try_from(ttl_seconds)
         .map_err(|_| AuthError::Internal("Token expiration is out of range".to_string()))?;
 
-    now.checked_add_signed(Duration::seconds(ttl_seconds))
+    let ttl = Duration::try_seconds(ttl_seconds)
+        .ok_or_else(|| AuthError::Internal("Token expiration is out of range".to_string()))?;
+    now.checked_add_signed(ttl)
         .ok_or_else(|| AuthError::Internal("Token expiration is out of range".to_string()))
 }
 
@@ -428,9 +435,17 @@ fn decoding_key(config: &AuthConfig) -> Result<DecodingKey> {
 
 // ─── Validation ──────────────────────────────────────────────────────
 
+fn valid_token_times(iat: usize, exp: usize) -> bool {
+    let Ok(now) = usize::try_from(Utc::now().timestamp()) else {
+        return false;
+    };
+    iat > 0 && iat <= now && iat < exp
+}
+
 fn strict_jwt_validation(config: &AuthConfig) -> Validation {
     let mut validation = Validation::new(jwt_algorithm(config));
     validation.validate_exp = true;
+    validation.validate_nbf = true;
     // Strict expiration: the same authority issues and validates these
     // tokens, so there is no cross-machine clock skew to absorb.
     validation.leeway = 0;
@@ -654,6 +669,10 @@ mod tests {
     fn token_encoders_reject_ttl_values_that_cannot_be_represented_safely() {
         let config = test_config();
 
+        // These fit i64 but exceed chrono's representable TimeDelta.
+        for ttl in [i64::MAX as u64, (i64::MAX / 2) as u64] {
+            assert!(token_expiration(Utc::now(), ttl).is_err());
+        }
         let access = AuthConfig {
             access_expiration: u64::MAX,
             ..config.clone()
@@ -705,6 +724,52 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn signed_tokens_with_invalid_time_claims_are_rejected() {
+        let config = test_config();
+        let now = Utc::now().timestamp() as usize;
+        let mut claims = Claims {
+            sub: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            role: UserRole::Customer,
+            session_id: Uuid::new_v4(),
+            iss: config.issuer.clone(),
+            aud: config.audience.clone(),
+            exp: now + 600,
+            iat: now + 60,
+            client_id: None,
+            scopes: vec![],
+            grant_type: DIRECT_GRANT_TYPE.to_string(),
+            jti: None,
+        };
+        for issued_at in [now + 60, claims.exp, 0] {
+            claims.iat = issued_at;
+            let signed = encode(&jwt_header(&config), &claims, &encoding_key(&config).unwrap())
+                .unwrap();
+            assert!(decode_access_token(&config, &signed).is_err());
+        }
+
+        claims.iat = now;
+        let mut payload = serde_json::to_value(&claims).unwrap();
+        payload["nbf"] = serde_json::json!(now + 60);
+        let signed = encode(&jwt_header(&config), &payload, &encoding_key(&config).unwrap())
+            .unwrap();
+        assert!(decode_access_token(&config, &signed).is_err());
+
+        let reset = PasswordResetClaims {
+            sub: "user@example.com".to_string(),
+            tenant_id: claims.tenant_id,
+            purpose: PASSWORD_RESET_PURPOSE.to_string(),
+            iss: config.issuer.clone(),
+            aud: config.audience.clone(),
+            exp: now + 600,
+            iat: now + 60,
+        };
+        let signed = encode(&jwt_header(&config), &reset, &encoding_key(&config).unwrap())
+            .unwrap();
+        assert!(decode_password_reset_token(&config, &signed).is_err());
     }
 
     #[test]

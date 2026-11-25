@@ -61,7 +61,9 @@ Concurrent save requests and retries after an unresolved revision conflict are r
 implement automatic merge. Host transports must carry the `SaveAttempt` end-to-end. The local
 request ID is not a server idempotency key.
 Drop rechecks the current presentation and drag capability at commit time, including when
-restored state contains a drag started under a different policy.
+restored state contains a drag started under a different policy. Command construction also
+rejects illegal or malformed candidates, so direct callers and restored state cannot bypass
+candidate validation. Starting another drag clears the preceding insertion overlay.
 
 A save success is accepted only during an active `SaveStarted` transition and only when its
 request ID matches the active attempt. A stale success or failure, uncorrelated failure, or
@@ -80,3 +82,10 @@ The request ID and active sequence are transient and are not restored from seria
 Pointer movement over one million CSS pixels is rejected as malformed input at the resize
 boundary, preventing otherwise finite but impractically huge CSS sizes. Viewport preset
 application continues clamping horizontal scroll to the selected width.
+
+Resize gestures leave untouched dimensions unchanged, including off-grid dimensions and
+perpendicular arrow keys. A zero-displacement gesture produces no patch. Corner gestures with
+aspect-ratio preservation snap the driving dimension and constrain a single scale to both axes'
+size bounds; the aspect ratio and bounds take precedence over snapping the second dimension.
+Incompatible bounds leave the original geometry unchanged. West and north handles anchor their
+opposite edges to the initial rectangle.

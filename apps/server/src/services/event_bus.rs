@@ -120,8 +120,7 @@ impl EventForwarderHandle {
 
 pub fn event_bus_from_context(ctx: &ServerRuntimeContext) -> EventBus {
     tracing::debug!("Resolving EventBus from ServerRuntimeContext");
-    ctx.shared_insert_if_absent(EventBusStartLock::default());
-    let start_lock = ctx.shared_get::<EventBusStartLock>().unwrap_or_default();
+    let start_lock = ctx.shared_get_or_insert_with(EventBusStartLock::default);
     let _start_guard = start_lock
         .0
         .lock()
@@ -142,7 +141,7 @@ pub fn event_bus_from_context(ctx: &ServerRuntimeContext) -> EventBus {
 /// Resolve the *published* runtime transport atomically. A check-then-insert
 /// caller that loses the race must never keep using its locally constructed
 /// OutboxTransport while the forwarder and other publishers use the winner.
-fn shared_event_transport(ctx: &ServerRuntimeContext) -> Arc<dyn EventTransport> {
+pub(crate) fn shared_event_transport(ctx: &ServerRuntimeContext) -> Arc<dyn EventTransport> {
     ctx.shared_get_or_insert_with(|| {
         Arc::new(rustok_outbox::OutboxTransport::new(ctx.db_clone())) as Arc<dyn EventTransport>
     })

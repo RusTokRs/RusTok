@@ -594,6 +594,37 @@ where
     C: ConnectionTrait,
 {
     if matches!(&patch.value, ProductAttributeValuePatchValue::Clear)
+        && definition.is_localized
+    {
+        let Some(value) = IdRow::find_by_statement(Statement::from_sql_and_values(
+            conn.get_database_backend(),
+            "SELECT id FROM product_variant_attribute_values WHERE tenant_id = $1 AND variant_id = $2 AND attribute_id = $3",
+            vec![tenant_id.into(), variant_id.into(), patch.attribute_id.into()],
+        ))
+        .one(conn)
+        .await?
+        else {
+            return Ok(());
+        };
+
+        // Variant translations have no tenant column; the tenant-owned value row
+        // is resolved first, then only the requested locale is removed.
+        conn.execute_raw(Statement::from_sql_and_values(
+            conn.get_database_backend(),
+            "DELETE FROM product_variant_attribute_value_translations WHERE value_id = $1 AND locale = $2",
+            vec![value.id.into(), locale.into()],
+        ))
+        .await?;
+        conn.execute_raw(Statement::from_sql_and_values(
+            conn.get_database_backend(),
+            "DELETE FROM product_variant_attribute_values WHERE tenant_id = $1 AND variant_id = $2 AND attribute_id = $3 AND id = $4 AND NOT EXISTS (SELECT 1 FROM product_variant_attribute_value_translations WHERE value_id = $4)",
+            vec![tenant_id.into(), variant_id.into(), patch.attribute_id.into(), value.id.into()],
+        ))
+        .await?;
+        return Ok(());
+    }
+
+    if matches!(&patch.value, ProductAttributeValuePatchValue::Clear)
         || matches!(
             &patch.value,
             ProductAttributeValuePatchValue::Multiselect(option_ids) if option_ids.is_empty()
@@ -717,4 +748,164 @@ fn canonical_variant_value_locale(locale: &str) -> CommerceResult<String> {
     TenantLocale::new(locale)
         .map(TenantLocale::into_inner)
         .map_err(|error| CommerceError::Validation(error.to_string()))
+}
+
+
+#[cfg(test)]
+mod localized_clear_tests {
+    use super::*;
+    use sea_orm::{Database, DatabaseBackend, Statement};
+
+    async fn localized_variant_value_database(
+        locales: &[&str],
+    ) -> (DatabaseConnection, Uuid, Uuid, Uuid, Uuid) {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        db.execute_unprepared(
+            "CREATE TABLE product_variant_attribute_values (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, variant_id TEXT NOT NULL, attribute_id TEXT NOT NULL)",
+        )
+        .await
+        .unwrap();
+        db.execute_unprepared(
+            "CREATE TABLE product_variant_attribute_value_translations (id TEXT PRIMARY KEY, value_id TEXT NOT NULL, locale TEXT NOT NULL, value_text TEXT NOT NULL, PRIMARY KEY (value_id, locale))",
+        )
+        .await
+        .unwrap();
+
+        let tenant_id = Uuid::from_u128(11);
+        let variant_id = Uuid::from_u128(12);
+        let attribute_id = Uuid::from_u128(13);
+        let value_id = Uuid::from_u128(14);
+        db.execute_unprepared(&format!(
+            "INSERT INTO product_variant_attribute_values (id, tenant_id, variant_id, attribute_id) VALUES ('{value_id}', '{tenant_id}', '{variant_id}', '{attribute_id}')"
+        ))
+        .await
+        .unwrap();
+        for (index, locale) in locales.iter().enumerate() {
+            db.execute_unprepared(&format!(
+                "INSERT INTO product_variant_attribute_value_translations (id, value_id, locale, value_text) VALUES ('{}', '{value_id}', '{locale}', 'value-{locale}')",
+                Uuid::from_u128(20 + index as u128)
+            ))
+            .await
+            .unwrap();
+        }
+
+        (db, tenant_id, variant_id, attribute_id, value_id)
+    }
+
+    async fn count_rows(db: &DatabaseConnection, sql: &str) -> i64 {
+        db.query_one(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            sql.to_owned(),
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("", "total")
+        .unwrap()
+    }
+
+    fn localized_definition(attribute_id: Uuid) -> ProductAttributeWriteDefinitionRow {
+        ProductAttributeWriteDefinitionRow {
+            id: attribute_id,
+            value_type: "text".to_owned(),
+            scope: "variant".to_owned(),
+            is_localized: true,
+        }
+    }
+
+    #[tokio::test]
+    async fn clearing_one_variant_locale_preserves_other_localized_values() {
+        let (db, tenant_id, variant_id, attribute_id, value_id) =
+            localized_variant_value_database(&["en-US", "ru-RU"]).await;
+        let definition = localized_definition(attribute_id);
+        let patch = ProductAttributeValuePatch {
+            attribute_id,
+            value: ProductAttributeValuePatchValue::Clear,
+        };
+
+        write_variant_value_patch(
+            &db,
+            tenant_id,
+            variant_id,
+            "ru-RU",
+            &definition,
+            &patch,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            count_rows(
+                &db,
+                &format!(
+                    "SELECT COUNT(*) AS total FROM product_variant_attribute_value_translations WHERE value_id = '{value_id}' AND locale = 'en-US'"
+                ),
+            )
+            .await,
+            1
+        );
+        assert_eq!(
+            count_rows(
+                &db,
+                &format!(
+                    "SELECT COUNT(*) AS total FROM product_variant_attribute_value_translations WHERE value_id = '{value_id}' AND locale = 'ru-RU'"
+                ),
+            )
+            .await,
+            0
+        );
+        assert_eq!(
+            count_rows(
+                &db,
+                &format!(
+                    "SELECT COUNT(*) AS total FROM product_variant_attribute_values WHERE id = '{value_id}'"
+                ),
+            )
+            .await,
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn clearing_last_variant_locale_removes_empty_value_row() {
+        let (db, tenant_id, variant_id, attribute_id, value_id) =
+            localized_variant_value_database(&["ru-RU"]).await;
+        let definition = localized_definition(attribute_id);
+        let patch = ProductAttributeValuePatch {
+            attribute_id,
+            value: ProductAttributeValuePatchValue::Clear,
+        };
+
+        write_variant_value_patch(
+            &db,
+            tenant_id,
+            variant_id,
+            "ru-RU",
+            &definition,
+            &patch,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            count_rows(
+                &db,
+                &format!(
+                    "SELECT COUNT(*) AS total FROM product_variant_attribute_value_translations WHERE value_id = '{value_id}'"
+                ),
+            )
+            .await,
+            0
+        );
+        assert_eq!(
+            count_rows(
+                &db,
+                &format!(
+                    "SELECT COUNT(*) AS total FROM product_variant_attribute_values WHERE id = '{value_id}'"
+                ),
+            )
+            .await,
+            0
+        );
+    }
 }

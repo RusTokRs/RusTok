@@ -1,4 +1,6 @@
-use crate::{BrowserRect, IframeBridgeEnvelope, IframeBridgeMessage};
+use crate::{
+    BrowserRect, IframeBridgeEnvelope, IframeBridgeMessage, MAX_IFRAME_MESSAGE_BYTES,
+};
 use js_sys::{Array, Object};
 use std::cell::Cell;
 use std::rc::Rc;
@@ -177,6 +179,9 @@ impl WindowMessageSubscription {
                 let Some(payload) = event.data().as_string() else {
                     return;
                 };
+                if !crate::foundation::iframe_message_payload_within_limit(&payload) {
+                    return;
+                }
                 let Ok(envelope) = serde_json::from_str::<IframeBridgeEnvelope>(&payload) else {
                     return;
                 };
@@ -250,6 +255,9 @@ impl IframeJsonSubscription {
                 let Some(payload) = event.data().as_string() else {
                     return;
                 };
+                if !crate::foundation::iframe_message_payload_within_limit(&payload) {
+                    return;
+                }
                 let Some((sequence, message)) = decode(&payload, callback_sequence.get()) else {
                     return;
                 };
@@ -318,6 +326,11 @@ impl IframeMessagePort {
         let envelope = IframeBridgeEnvelope::new(&self.instance_id, sequence, message);
         let payload = serde_json::to_string(&envelope)
             .map_err(|error| BrowserRuntimeError::Serialization(error.to_string()))?;
+        if payload.len() > MAX_IFRAME_MESSAGE_BYTES {
+            return Err(BrowserRuntimeError::Serialization(format!(
+                "iframe message exceeds the {MAX_IFRAME_MESSAGE_BYTES}-byte limit"
+            )));
+        }
         // The configured origin is normalized for comparison; `postMessage` needs the deliverable
         // form. Passing `"null"` straight through cannot work — the platform accepts only `*`,
         // `/` or an absolute URL there — so an opaque destination is sent to `*` and validated by

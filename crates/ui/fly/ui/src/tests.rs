@@ -266,6 +266,51 @@ fn drag_state_emits_framework_neutral_command() {
 }
 
 #[test]
+fn drop_command_rejects_illegal_and_invalid_restored_candidates() {
+    let source = DragSource::ExistingComponent {
+        component_id: "hero".to_string(),
+    };
+    let mut candidate = legal_candidate();
+    candidate.legal = false;
+    candidate.reason = Some("target denied".to_string());
+    assert_eq!(
+        command_for_drop(source.clone(), &candidate),
+        Err(UiError::IllegalDrop("target denied".to_string()))
+    );
+    candidate.legal = true;
+    candidate.rect.width = -1.0;
+    assert_eq!(
+        command_for_drop(source.clone(), &candidate),
+        Err(UiError::InvalidGeometry("drop candidate".to_string()))
+    );
+
+    let mut machine = FlyUiStateMachine::new(Presentation::Full);
+    machine.dispatch(UiIntent::BeginDrag(source)).expect("drag");
+    machine.state.drag.as_mut().expect("drag").candidates = vec![candidate];
+    machine.state.drag.as_mut().expect("drag").active_candidate = Some(0);
+    assert_eq!(
+        machine.dispatch(UiIntent::Drop),
+        Err(UiError::InvalidGeometry("drop candidate".to_string()))
+    );
+    assert!(machine.state.drag.is_some());
+    assert!(!machine.state.dirty.dirty);
+}
+
+#[test]
+fn restarting_drag_clears_the_previous_insertion_overlay() {
+    let mut machine = FlyUiStateMachine::new(Presentation::Full);
+    let source = DragSource::ExistingComponent {
+        component_id: "hero".to_string(),
+    };
+    machine.dispatch(UiIntent::BeginDrag(source.clone())).expect("drag");
+    machine.dispatch(UiIntent::UpdateHitTest(vec![legal_candidate()])).expect("candidate");
+    assert!(machine.state.overlays.insertion.is_some());
+    machine.dispatch(UiIntent::BeginDrag(source)).expect("restart");
+    assert!(machine.state.overlays.insertion.is_none());
+    assert!(machine.state.drag.as_ref().expect("drag").active_candidate().is_none());
+}
+
+#[test]
 fn a_rejected_drop_does_not_destroy_drag_or_insertion_overlay() {
     let mut machine = FlyUiStateMachine::new(Presentation::Full);
     machine

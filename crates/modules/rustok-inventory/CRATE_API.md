@@ -56,6 +56,12 @@
   signed available quantities can be negative and are not channel-eligibility proofs.
 - Idempotent reservations: `(reservation_id, external_id)` pairs uniquely identify durable reservations; re-reserving with identical parameters is replay-safe.
 - Case-insensitive backorder policy: `continue` policy permits reservations beyond on-hand quantity.
+- New anonymous and identity allocations lock the tenant-scoped Product Variant before
+  locking its Inventory item, so Product policy/SKU edits and deletion cannot race a
+  stale allocation decision. Existing reservation replay/release and adoption do not
+  re-admit stock against changed policy. Release/adoption keep nonlocking Product
+  proofs where they already hold the item lock. SQL-shape and reservation lifecycle
+  regressions are authored but unrun; live database contention is not certified.
 - Tenant isolation enforced across all database queries, levels, and reservations.
 
 ### Identity allocation and recovery (2026-10-30; source only)

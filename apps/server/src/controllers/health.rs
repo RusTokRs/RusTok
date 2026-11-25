@@ -25,7 +25,7 @@ use utoipa::ToSchema;
 
 use crate::common::settings::{EmailProvider, RustokSettings};
 use crate::middleware::rate_limit::{
-    SharedApiRateLimiter, SharedAuthRateLimiter, SharedOAuthRateLimiter,
+    SharedApiRateLimiter, SharedAuthRateLimiter, SharedOAuthRateLimiter, SharedSearchRateLimiter,
 };
 use crate::middleware::tenant::{
     TenantInvalidationListenerStatus, tenant_invalidation_listener_snapshot,
@@ -324,7 +324,7 @@ async fn collect_readiness(
             );
         }
         if settings.rate_limit.enabled {
-            for &namespace in &["api", "auth", "oauth"] {
+            for &namespace in &["api", "auth", "oauth", "search"] {
                 let ctx = ctx.clone();
                 let circuits = circuits.clone();
                 pending.push(
@@ -1136,6 +1136,13 @@ async fn check_rate_limit_backend(
             .check_backend_health()
             .await
             .map_err(|_| "oauth rate-limit backend check failed".to_string()),
+        "search" => ctx
+            .shared_get::<SharedSearchRateLimiter>()
+            .ok_or_else(|| "Search rate limiter not initialized in shared_store".to_string())?
+            .0
+            .check_backend_health()
+            .await
+            .map_err(|_| "search rate-limit backend check failed".to_string()),
         _ => Err(format!("unknown rate-limit namespace: {namespace}")),
     }
 }
@@ -1555,6 +1562,34 @@ mod tests {
                 .as_deref()
                 .is_some_and(|reason| reason.contains("disabled"))
         );
+    }
+
+    #[tokio::test]
+    async fn readiness_includes_the_independent_search_rate_limiter() {
+        use crate::middleware::rate_limit::{RateLimitConfig, RateLimiter};
+
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("in-memory readiness database");
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = crate::common::settings::RuntimeHostMode::Api;
+        settings.features.search_indexing = false;
+        settings.rate_limit.enabled = true;
+        let ctx = ServerRuntimeContext::new(db, settings);
+
+        let response = collect_readiness(ctx.clone(), ModuleRegistry::new()).await;
+        let search = response
+            .checks
+            .iter()
+            .find(|check| check.name == "rate_limit:search")
+            .expect("readiness must include the search limiter");
+        assert_eq!(search.criticality, DependencyCriticality::Critical);
+        assert_eq!(search.status, ReadinessStatus::Unhealthy);
+
+        ctx.shared_insert(SharedSearchRateLimiter(Arc::new(
+            RateLimiter::new_with_namespace(RateLimitConfig::default(), "search"),
+        )));
+        assert!(check_rate_limit_backend(&ctx, "search").await.is_ok());
     }
 
     #[tokio::test]

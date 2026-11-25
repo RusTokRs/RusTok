@@ -85,6 +85,7 @@ impl ProductCatalogSchemaService {
         tenant_id: Uuid,
         locale: &str,
     ) -> CommerceResult<Vec<ProductAttributeSchemaListRecord>> {
+        super::validate_locale(locale)?;
         ProductAttributeSchemaListRow::find_by_statement(Statement::from_sql_and_values(
             self.db.get_database_backend(),
             r#"

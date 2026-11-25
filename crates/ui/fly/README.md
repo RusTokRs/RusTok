@@ -167,6 +167,9 @@ crates/ui/fly/
   `MAXIMUM_DECODE_DEPTH` before any recursive code touches them.
 - **Rendering escapes at every sink.** HTML text, attribute values, CSS attribute selectors and the
   `<style>` element body each have their own escape; URLs are filtered by `RenderPolicy`.
+  Action, attribute and head URL checks share parsed HTTP(S) authority validation. SSR and
+  document validation share bounded srcset candidate checks, including numeric descriptor
+  uniqueness, positive density/width and one descriptor family.
 
 ## Identity and history contracts
 
@@ -193,6 +196,13 @@ Page identities remain optional for legacy documents, but a page patch that sets
 History budgets both undo and redo snapshots plus commands using a serialized-size estimate. It
 preserves one oversized entry, and recomputes the accounting after deserialization. The estimate
 is not an exact heap measurement and may count shared snapshots more than once.
+Batch transactions and content patches that remove scalar text children do not claim a
+local inverse; undo and redo restore the retained before/after snapshots. Style inverses
+restore the complete original style slot, including absence.
+
+Snapshot capture verifies canonical payload round-trip, derives the fingerprint from that
+payload rather than a cached document hash, and commits its sequence only on success.
+Exhausted sequences, duplicate IDs and zero-capacity restored catalogs reject capture.
 
 ## Site symbols
 
@@ -208,6 +218,12 @@ caps. The `fly` crate has no cross-page store: consumer modules such as
 ([ADR](../../../DECISIONS/2026-10-09-site-symbols-shared-definitions.md)).
 
 ## Known Limitations / Pending Implementation
+
+- **Raw project mutation can bypass cache invalidation.** `ProjectDocument.project` is still public.
+  Use `project_mut()`, `component_mut()`, or the owner command API for writes; indexed mutable
+  component access now invalidates both caches. Closing the field requires migrating all
+  workspace consumers and source guards together. This remaining cutover is tracked in the
+  [Page Builder backlog](../../../docs/modules/page-builder-backlog.md).
 
 `CHANGELOG.md` carries the release-level *Known gaps*. This section lists the boundaries an
 integrator can hit today, each implemented to a stated point and deliberately no further. An

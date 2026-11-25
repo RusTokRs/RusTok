@@ -23,6 +23,8 @@ pub struct Model {
     pub position: i32,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
+    /// Monotonic row revision used by optimistic Product variant writes.
+    pub index_revision: i64,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

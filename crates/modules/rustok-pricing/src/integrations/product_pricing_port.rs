@@ -18,6 +18,26 @@ use uuid::Uuid;
 use crate::entities::price;
 use crate::services::bootstrap::{BootstrapService, catalog_base_scope};
 
+const PRIMARY_CATALOG_CURRENCY_CODE: &str = "USD";
+
+/// Product Admin treats the first catalog base price as its primary display/edit row.
+/// Database row order is undefined, so return a deterministic order with USD first.
+fn sort_catalog_base_prices(models: &mut [price::Model]) {
+    models.sort_by(|left, right| {
+        let left_is_secondary = !left
+            .currency_code
+            .eq_ignore_ascii_case(PRIMARY_CATALOG_CURRENCY_CODE);
+        let right_is_secondary = !right
+            .currency_code
+            .eq_ignore_ascii_case(PRIMARY_CATALOG_CURRENCY_CODE);
+
+        left.variant_id
+            .cmp(&right.variant_id)
+            .then_with(|| left_is_secondary.cmp(&right_is_secondary))
+            .then_with(|| left.currency_code.cmp(&right.currency_code))
+    });
+}
+
 fn map_catalog_scope_error(error: PricingError) -> ProductError {
     match error {
         PricingError::Database(error) => ProductError::Database(error),
@@ -131,7 +151,7 @@ impl ProductPricingPort for PricingProductPricingPortAdapter {
             return Ok(Vec::new());
         }
 
-        let models = match conn {
+        let mut models = match conn {
             PricingConnection::Connection(c) => {
                 price::Entity::find()
                     .filter(price::Column::VariantId.is_in(variant_ids.iter().copied()))
@@ -147,6 +167,8 @@ impl ProductPricingPort for PricingProductPricingPortAdapter {
                     .await?
             }
         };
+
+        sort_catalog_base_prices(&mut models);
 
         Ok(models
             .into_iter()
@@ -265,34 +287,46 @@ fn select_storefront_list_price<'a>(
 
     candidates
         .into_iter()
-        .min_by(|left, right| left.amount.cmp(&right.amount))
+        .min_by(|left, right| {
+            left.amount
+                .cmp(&right.amount)
+                .then_with(|| left.variant_id.cmp(&right.variant_id))
+                .then_with(|| left.id.cmp(&right.id))
+        })
 }
 
 fn select_storefront_list_price_candidates<'a>(
     candidates: Vec<&'a price::Model>,
     public_channel_slug: Option<&str>,
 ) -> Vec<&'a price::Model> {
-    if let Some(channel_slug) = public_channel_slug {
-        let channel_scoped = candidates
-            .iter()
-            .copied()
-            .filter(|price| {
-                price
-                    .channel_slug
-                    .as_deref()
-                    .is_some_and(|slug| slug.eq_ignore_ascii_case(channel_slug))
-            })
-            .collect::<Vec<_>>();
-        if !channel_scoped.is_empty() {
-            return channel_scoped;
-        }
-    }
+    let matches_channel = |price: &price::Model| {
+        public_channel_slug.is_some_and(|channel_slug| {
+            price
+                .channel_slug
+                .as_deref()
+                .is_some_and(|slug| slug.eq_ignore_ascii_case(channel_slug))
+        })
+    };
+    // Channel precedence belongs to an individual SKU and currency, not the
+    // entire product. A scoped price must not hide another SKU's base price
+    // or a base price in a different currency.
+    let scoped_keys: HashSet<_> = candidates
+        .iter()
+        .filter(|price| matches_channel(price))
+        .map(|price| (price.variant_id, price.currency_code.to_ascii_uppercase()))
+        .collect();
 
-    // Channel-scoped rows are never global fallbacks. With or without a
-    // requested channel, only an exact channel match or an unscoped row applies.
     candidates
         .into_iter()
-        .filter(|price| price.channel_id.is_none() && price.channel_slug.is_none())
+        .filter(|price| {
+            matches_channel(price)
+                || (price.channel_id.is_none()
+                    && price.channel_slug.is_none()
+                    && !scoped_keys.contains(&(
+                        price.variant_id,
+                        price.currency_code.to_ascii_uppercase(),
+                    )))
+        })
         .collect()
 }
 
@@ -330,6 +364,30 @@ mod tests {
             min_quantity,
             max_quantity,
         }
+    }
+
+    #[test]
+    fn catalog_base_price_order_keeps_usd_primary_and_sorts_remaining_currencies() {
+        let usd = candidate(1, None, None, None, None, None, 10);
+        let eur = price::Model {
+            currency_code: "EUR".to_owned(),
+            ..candidate(2, None, None, None, None, None, 9)
+        };
+        let gbp = price::Model {
+            currency_code: "GBP".to_owned(),
+            ..candidate(3, None, None, None, None, None, 8)
+        };
+        let mut models = vec![gbp, eur, usd];
+
+        sort_catalog_base_prices(&mut models);
+
+        assert_eq!(
+            models
+                .iter()
+                .map(|model| model.currency_code.as_str())
+                .collect::<Vec<_>>(),
+            vec!["USD", "EUR", "GBP"]
+        );
     }
 
     #[test]
@@ -383,6 +441,72 @@ mod tests {
 
         assert_eq!(selected.len(), 1);
         assert_eq!(selected[0].id, matching.id);
+    }
+
+    #[test]
+    fn channel_precedence_is_independent_for_each_sku() {
+        let scoped = candidate(
+            1,
+            Some(Uuid::from_u128(2)),
+            Some("web"),
+            None,
+            None,
+            None,
+            12,
+        );
+        let shadowed = candidate(2, None, None, None, None, None, 1);
+        let other_sku = price::Model {
+            variant_id: Uuid::from_u128(101),
+            ..candidate(3, None, None, None, None, None, 8)
+        };
+        let selected = select_storefront_list_price(
+            vec![&scoped, &shadowed, &other_sku],
+            Some("USD"),
+            Some("web"),
+        )
+        .expect("other SKU has an eligible base price");
+        assert_eq!(selected.id, other_sku.id);
+    }
+
+    #[test]
+    fn channel_precedence_does_not_hide_another_currency() {
+        let scoped = candidate(
+            1,
+            Some(Uuid::from_u128(2)),
+            Some("web"),
+            None,
+            None,
+            None,
+            12,
+        );
+        let eur = price::Model {
+            currency_code: "EUR".to_owned(),
+            ..candidate(2, None, None, None, None, None, 8)
+        };
+        assert!(select_storefront_list_price(vec![&scoped, &eur], None, Some("web")).is_none());
+        assert_eq!(
+            select_storefront_list_price(vec![&scoped, &eur], Some("EUR"), Some("web"))
+                .expect("EUR base price")
+                .id,
+            eur.id,
+        );
+    }
+
+    #[test]
+    fn equal_minimum_prices_have_deterministic_sale_metadata() {
+        let first = candidate(1, None, None, None, None, None, 10);
+        let second = price::Model {
+            compare_at_amount: Some(Decimal::new(20, 0)),
+            ..candidate(2, None, None, None, None, None, 10)
+        };
+        for rows in [vec![&first, &second], vec![&second, &first]] {
+            assert_eq!(
+                select_storefront_list_price(rows, Some("USD"), None)
+                    .expect("equal minimum")
+                    .id,
+                first.id,
+            );
+        }
     }
 
     #[test]

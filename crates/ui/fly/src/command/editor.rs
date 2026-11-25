@@ -313,11 +313,11 @@ impl FlyEditor {
                     in_batch,
                 )?;
                 document
-                    .project
+                    .project_mut()
                     .insert_component(parent_id.as_deref(), *index, component.clone())
             }
             EditorCommand::Remove { component_id } => {
-                document.project.remove_component(component_id)?;
+                document.project_mut().remove_component(component_id)?;
                 Ok(())
             }
             EditorCommand::Move {
@@ -338,14 +338,14 @@ impl FlyEditor {
                 let previous_location = document.component_location(component_id);
                 let mut insertion_index = *index;
                 if previous_location.as_ref().is_some_and(|location| {
-                    location.parent_component_id.as_deref() == new_parent_id.as_deref()
-                        && location.index < insertion_index
+                    location.index < insertion_index
+                        && document.component_has_parent(component_id, new_parent_id.as_deref())
                 }) {
                     insertion_index = insertion_index.saturating_sub(1);
                 }
 
-                let component = document.project.remove_component(component_id)?;
-                document.project.insert_component(
+                let component = document.project_mut().remove_component(component_id)?;
+                document.project_mut().insert_component(
                     new_parent_id.as_deref(),
                     insertion_index,
                     component,
@@ -537,9 +537,10 @@ fn apply_asset_command(document: &mut ProjectDocument, command: &AssetCommand) -
     }
 }
 
-/// Compute the exact inverse of an editor command against the current document state.
+/// Compute a local inverse against the pre-command document when representable.
 ///
-/// Enables lightweight delta-based history tracking and inverse-command undo operations.
+/// Snapshot history is authoritative for undo and redo. Compound commands and
+/// edits whose side effects cannot be represented by a local inverse return None.
 pub fn invert_command(
     document: &ProjectDocument,
     command: &EditorCommand,
@@ -552,6 +553,9 @@ pub fn invert_command(
         }
         EditorCommand::Remove { component_id } => {
             let location = document.component_location(component_id)?;
+            if !document.component_has_parent(component_id, location.parent_component_id.as_deref()) {
+                return None;
+            }
             let component = document.component(component_id)?;
             Some(EditorCommand::Insert {
                 parent_id: location.parent_component_id,
@@ -559,12 +563,30 @@ pub fn invert_command(
                 component: crate::ComponentNode::Object(Box::new(component.clone())),
             })
         }
-        EditorCommand::Move { component_id, .. } => {
+        EditorCommand::Move {
+            component_id,
+            new_parent_id,
+            index,
+        } => {
             let location = document.component_location(component_id)?;
+            let original_parent = location.parent_component_id;
+            if !document.component_has_parent(component_id, original_parent.as_deref()) {
+                // An unaddressable parent (or a page root) cannot be restored
+                // by a Move command. Snapshot history remains authoritative.
+                return None;
+            }
+            let inverse_index = if document.component_has_parent(component_id, new_parent_id.as_deref())
+                && *index < location.index
+            {
+                // Move indices describe insertion slots before removal.
+                location.index.checked_add(1)?
+            } else {
+                location.index
+            };
             Some(EditorCommand::Move {
                 component_id: component_id.clone(),
-                new_parent_id: location.parent_component_id,
-                index: location.index,
+                new_parent_id: original_parent,
+                index: inverse_index,
             })
         }
         EditorCommand::Patch {
@@ -572,6 +594,23 @@ pub fn invert_command(
             patch,
         } => {
             let component = document.component(component_id)?;
+            // Setting or removing content also removes scalar text children.
+            // A field patch cannot recreate those children.
+            if (patch.fields.contains_key("content")
+                || patch.remove_fields.iter().any(|field| field == "content"))
+                && component.children().iter().any(|child| {
+                    matches!(
+                        child,
+                        crate::ComponentNode::Opaque(
+                            serde_json::Value::String(_)
+                            | serde_json::Value::Number(_)
+                            | serde_json::Value::Bool(_)
+                        )
+                    )
+                })
+            {
+                return None;
+            }
             let mut inverse_patch = crate::ComponentPatch::default();
 
             for (key, _) in &patch.attributes {
@@ -591,33 +630,17 @@ pub fn invert_command(
                 }
             }
 
-            if patch.clear_style || patch.replace_style {
-                inverse_patch.replace_style = true;
-                inverse_patch.style = component.style.clone();
-            } else if patch.style.is_some() || !patch.remove_style_properties.is_empty() {
-                if let Some(serde_json::Value::Object(orig_style)) = &component.style {
-                    let mut restore_style = serde_json::Map::new();
-                    if let Some(serde_json::Value::Object(patch_style)) = &patch.style {
-                        for prop in patch_style.keys() {
-                            if let Some(old_val) = orig_style.get(prop) {
-                                restore_style.insert(prop.clone(), old_val.clone());
-                            } else {
-                                inverse_patch.remove_style_properties.push(prop.clone());
-                            }
-                        }
-                    }
-                    for prop in &patch.remove_style_properties {
-                        if let Some(old_val) = orig_style.get(prop) {
-                            restore_style.insert(prop.clone(), old_val.clone());
-                        }
-                    }
-                    if !restore_style.is_empty() {
-                        inverse_patch.style = Some(serde_json::Value::Object(restore_style));
-                    }
-                } else {
-                    inverse_patch.replace_style = true;
-                    inverse_patch.style = component.style.clone();
-                }
+            if patch.clear_style
+                || patch.replace_style
+                || patch.style.is_some()
+                || !patch.remove_style_properties.is_empty()
+            {
+                // A merge can replace a scalar style, and absence is distinct
+                // from an empty object. Restore the complete original slot.
+                inverse_patch = match &component.style {
+                    Some(style) => inverse_patch.replace_style(style.clone()),
+                    None => inverse_patch.clear_style(),
+                };
             }
 
             for (key, _) in &patch.fields {
@@ -773,13 +796,10 @@ pub fn invert_command(
                 })
             }
         },
-        EditorCommand::Batch { commands } => {
-            let mut inverted = Vec::with_capacity(commands.len());
-            for cmd in commands.iter().rev() {
-                inverted.push(invert_command(document, cmd)?);
-            }
-            Some(EditorCommand::Batch { commands: inverted })
-        }
+        // Inverting every step against the initial document is incorrect:
+        // previous steps may change indices, assets or the existence of targets.
+        // Use the already retained exact before/after snapshots for transactions.
+        EditorCommand::Batch { .. } => None,
         _ => None,
     }
 }

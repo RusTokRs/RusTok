@@ -228,7 +228,6 @@ pub struct VariantAxisValue {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ProductVariant {
     pub id: String,
-    #[serde(default)]
     pub revision: String,
     pub sku: Option<String>,
     pub barcode: Option<String>,
@@ -1182,5 +1181,27 @@ mod variant_update_draft_tests {
         assert!(draft.prices_changed);
         assert_eq!(draft.prices.len(), 1);
         assert_eq!(draft.prices[0].currency_code, "EUR");
+    }
+
+    #[test]
+    fn product_variant_deserialization_rejects_missing_revision() {
+        let value = serde_json::json!({
+            "id": "00000000-0000-4000-8000-000000000001",
+            "sku": null,
+            "barcode": null,
+            "shippingProfileSlug": null,
+            "title": "Variant",
+            "combinationIdentity": null,
+            "axisValues": [],
+            "prices": [],
+            "inventoryQuantity": 0,
+            "inventoryPolicy": "deny",
+            "inStock": false
+        });
+
+        assert!(
+            serde_json::from_value::<ProductVariant>(value).is_err(),
+            "a variant without its concurrency revision must not enter an editable snapshot"
+        );
     }
 }

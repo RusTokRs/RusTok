@@ -60,9 +60,15 @@ impl ProjectDocument {
         self.component_index.take();
     }
 
-    pub fn component_mut(&mut self, id: &str) -> Option<&mut ComponentObject> {
+    /// Borrow the raw project for mutation, invalidating derived state before
+    /// the borrow escapes. Prefer this to writing the public field directly.
+    pub fn project_mut(&mut self) -> &mut GrapesProject {
         self.invalidate_caches();
-        self.project.component_mut(id)
+        &mut self.project
+    }
+
+    pub fn component_mut(&mut self, id: &str) -> Option<&mut ComponentObject> {
+        self.project_mut().component_mut(id)
     }
 
     pub fn contains_component(&self, id: &str) -> bool {

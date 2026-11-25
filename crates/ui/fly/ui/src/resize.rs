@@ -119,58 +119,87 @@ impl ResizeSession {
         {
             return unchanged();
         }
-        let aspect = if self.start_rect.height > 0.0 {
-            self.start_rect.width / self.start_rect.height
+        let width_delta = if !self.handle.changes_width() {
+            0.0
+        } else if self.handle.moves_left_edge() {
+            -dx
         } else {
-            1.0
+            dx
         };
+        let height_delta = if !self.handle.changes_height() {
+            0.0
+        } else if self.handle.moves_top_edge() {
+            -dy
+        } else {
+            dy
+        };
+        if width_delta == 0.0 && height_delta == 0.0 {
+            return unchanged();
+        }
 
         let mut rect = self.start_rect;
-        if self.handle.changes_width() {
-            if self.handle.moves_left_edge() {
-                rect.x += dx;
-                rect.width -= dx;
-            } else {
-                rect.width += dx;
-            }
-        }
-        if self.handle.changes_height() {
-            if self.handle.moves_top_edge() {
-                rect.y += dy;
-                rect.height -= dy;
-            } else {
-                rect.height += dy;
-            }
-        }
-
         if self.policy.preserve_aspect_ratio
             && self.handle.changes_width()
             && self.handle.changes_height()
+            && rect.width > 0.0
+            && rect.height > 0.0
         {
-            if dx.abs() >= dy.abs() {
-                rect.height = rect.width / aspect.max(f64::EPSILON);
+            // Constrain one scale, not two independent dimensions. Snapping and
+            // clamping both dimensions separately can destroy the aspect ratio.
+            let (min_width, max_width) =
+                dimension_bounds(self.policy.minimum_width, self.policy.maximum_width);
+            let (min_height, max_height) =
+                dimension_bounds(self.policy.minimum_height, self.policy.maximum_height);
+            let min_scale = (min_width / rect.width).max(min_height / rect.height);
+            let max_scale = (max_width / rect.width).min(max_height / rect.height);
+            if !min_scale.is_finite() || min_scale > max_scale {
+                return unchanged();
+            }
+
+            let scale = if dx.abs() >= dy.abs() {
+                snap(rect.width + width_delta, self.policy.grid_size) / rect.width
             } else {
-                rect.width = rect.height * aspect;
+                snap(rect.height + height_delta, self.policy.grid_size) / rect.height
+            };
+            if !scale.is_finite() {
+                return unchanged();
+            }
+            let scale = scale.clamp(min_scale, max_scale);
+            rect.width *= scale;
+            rect.height *= scale;
+        } else {
+            // Do not normalize an untouched axis: the preview and persisted patch
+            // must describe the same dimensions, including off-grid starting sizes.
+            if width_delta != 0.0 {
+                let width = snap(rect.width + width_delta, self.policy.grid_size);
+                if !width.is_finite() {
+                    return unchanged();
+                }
+                rect.width = clamp_dimension(
+                    width,
+                    self.policy.minimum_width,
+                    self.policy.maximum_width,
+                );
+            }
+            if height_delta != 0.0 {
+                let height = snap(rect.height + height_delta, self.policy.grid_size);
+                if !height.is_finite() {
+                    return unchanged();
+                }
+                rect.height = clamp_dimension(
+                    height,
+                    self.policy.minimum_height,
+                    self.policy.maximum_height,
+                );
             }
         }
-
-        let original_right = rect.x + rect.width;
-        let original_bottom = rect.y + rect.height;
-        rect.width = clamp_dimension(
-            snap(rect.width, self.policy.grid_size),
-            self.policy.minimum_width,
-            self.policy.maximum_width,
-        );
-        rect.height = clamp_dimension(
-            snap(rect.height, self.policy.grid_size),
-            self.policy.minimum_height,
-            self.policy.maximum_height,
-        );
-        if self.handle.moves_left_edge() {
-            rect.x = original_right - rect.width;
+        // The opposite edges belong to the initial rectangle, before aspect-ratio
+        // adjustments, snapping or size limits.
+        if self.handle.moves_left_edge() && rect.width != self.start_rect.width {
+            rect.x = self.start_rect.x + (self.start_rect.width - rect.width);
         }
-        if self.handle.moves_top_edge() {
-            rect.y = original_bottom - rect.height;
+        if self.handle.moves_top_edge() && rect.height != self.start_rect.height {
+            rect.y = self.start_rect.y + (self.start_rect.height - rect.height);
         }
 
         if !rect.is_valid() {
@@ -223,17 +252,21 @@ fn snap(value: f64, grid_size: Option<f64>) -> f64 {
     }
 }
 
-fn clamp_dimension(value: f64, minimum: f64, maximum: Option<f64>) -> f64 {
+fn dimension_bounds(minimum: f64, maximum: Option<f64>) -> (f64, f64) {
     let minimum = if minimum.is_finite() {
         minimum.max(0.0)
     } else {
         0.0
     };
-    let maximum = maximum.filter(|maximum| maximum.is_finite() && *maximum >= minimum);
-    maximum.map_or_else(
-        || value.max(minimum),
-        |maximum| value.clamp(minimum, maximum),
-    )
+    let maximum = maximum
+        .filter(|maximum| maximum.is_finite() && *maximum >= minimum)
+        .unwrap_or(f64::INFINITY);
+    (minimum, maximum)
+}
+
+fn clamp_dimension(value: f64, minimum: f64, maximum: Option<f64>) -> f64 {
+    let (minimum, maximum) = dimension_bounds(minimum, maximum);
+    value.clamp(minimum, maximum)
 }
 
 fn px(value: f64) -> String {
@@ -328,6 +361,73 @@ mod tests {
             .expect("arrow key should resize");
         assert_eq!(north_result.rect.y, 24.0);
         assert_eq!(north_result.rect.height, 96.0);
+    }
+
+    #[test]
+    fn single_axis_resize_preserves_off_grid_perpendicular_dimension() {
+        let mut resize = session(ResizeHandle::East);
+        resize.start_rect.height = 103.0;
+        let result = resize.update(219.0, 117.0);
+        assert_eq!(result.rect.width, 216.0);
+        assert_eq!(result.rect.height, 103.0);
+        assert!(result.width_changed);
+        assert!(!result.height_changed);
+        let style = resize.component_patch(result).style.expect("style");
+        assert_eq!(style["width"], "216px");
+        assert!(style.get("height").is_none());
+
+        let mut resize = session(ResizeHandle::North);
+        resize.start_rect.width = 203.0;
+        let result = resize.update(219.0, 117.0);
+        assert_eq!(result.rect.width, 203.0);
+        assert_eq!(result.rect.height, 80.0);
+        assert!(!result.width_changed);
+        assert!(result.height_changed);
+    }
+
+    #[test]
+    fn no_movement_or_perpendicular_arrow_does_not_snap_geometry() {
+        let mut resize = session(ResizeHandle::East);
+        resize.start_rect.width = 203.0;
+        resize.start_rect.height = 103.0;
+        for result in [
+            resize.update(resize.start_x, resize.start_y),
+            resize.update_by_arrow_key("ArrowUp", false).expect("arrow"),
+        ] {
+            assert_eq!(result.rect, resize.start_rect);
+            assert!(!result.width_changed);
+            assert!(!result.height_changed);
+        }
+    }
+
+    #[test]
+    fn aspect_locked_corner_preserves_ratio_and_opposite_edges_under_bounds() {
+        let mut resize = session(ResizeHandle::NorthWest);
+        resize.policy.preserve_aspect_ratio = true;
+        resize.policy.maximum_height = Some(110.0);
+        let result = resize.update(160.0, 90.0);
+        assert!((result.rect.width - 220.0).abs() < 1e-9);
+        assert!((result.rect.height - 110.0).abs() < 1e-9);
+        assert!((result.rect.x + result.rect.width - 210.0).abs() < 1e-9);
+        assert!((result.rect.y + result.rect.height - 120.0).abs() < 1e-9);
+        assert!(result.width_changed && result.height_changed);
+
+        let result = resize.update(190.0, 80.0);
+        assert!((result.rect.width / result.rect.height - 2.0).abs() < 1e-9);
+        assert!((result.rect.x + result.rect.width - 210.0).abs() < 1e-9);
+        assert!((result.rect.y + result.rect.height - 120.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn incompatible_aspect_bounds_leave_geometry_unchanged() {
+        let mut resize = session(ResizeHandle::SouthEast);
+        resize.policy.preserve_aspect_ratio = true;
+        resize.policy.minimum_width = 240.0;
+        resize.policy.maximum_height = Some(110.0);
+        let result = resize.update(240.0, 120.0);
+        assert_eq!(result.rect, resize.start_rect);
+        assert!(!result.width_changed);
+        assert!(!result.height_changed);
     }
 
     #[test]

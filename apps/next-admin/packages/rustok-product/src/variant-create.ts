@@ -25,7 +25,7 @@ export const isVariantId = (value: unknown): value is string =>
 
 export const isVariantRevision = (value: unknown): value is string =>
   typeof value === 'string' &&
-  /^[1-9]\\d{0,18}$/.test(value) &&
+  /^[1-9]\d{0,18}$/.test(value) &&
   (value.length < 19 || value <= '9223372036854775807');
 const amount = (value: unknown): boolean => {
   if (typeof value !== 'string' || value.length > 64 || value.trim() !== value)

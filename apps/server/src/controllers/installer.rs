@@ -476,9 +476,24 @@ async fn settle_unstarted_http_job_after_creation_failure(
     }))
 }
 
+/// Keep heartbeat and execution in the same runtime-owned task. Losing the
+/// heartbeat must not cancel an admitted installer operation; completing or
+/// aborting execution must drop any pending heartbeat.
+async fn run_installer_execution_with_heartbeat<F, H>(execute: F, heartbeat: H)
+where
+    F: Future<Output = ()>,
+    H: Future<Output = ()>,
+{
+    tokio::pin!(execute);
+    tokio::select! {
+        biased;
+        _ = &mut execute => {}
+        _ = heartbeat => execute.await,
+    }
+}
+
 /// The request may be cancelled after admission. The runtime JoinSet owns the
-/// claim-to-execution task and the shutdown drain joins it before the event
-/// forwarder is stopped.
+/// claim-to-execution task and its heartbeat; shutdown drains both together.
 async fn await_installer_job_with_heartbeat<F>(
     persistence: InstallerPersistenceService,
     job_id: Uuid,
@@ -486,45 +501,40 @@ async fn await_installer_job_with_heartbeat<F>(
 ) where
     F: Future<Output = ()>,
 {
-    let heartbeat_persistence = persistence;
-    let (stop_tx, mut stop_rx) = tokio::sync::oneshot::channel();
-    let heartbeat = tokio::spawn(async move {
-        let mut interval = tokio::time::interval(INSTALLER_HTTP_JOB_HEARTBEAT_INTERVAL);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        interval.tick().await;
+    let heartbeat = async move {
+        let result = AssertUnwindSafe(async {
+            let mut interval = tokio::time::interval(INSTALLER_HTTP_JOB_HEARTBEAT_INTERVAL);
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            interval.tick().await;
 
-        loop {
-            tokio::select! {
-                _ = &mut stop_rx => break,
-                _ = interval.tick() => {
-                    match heartbeat_persistence.heartbeat_http_job(job_id).await {
-                        Ok(true) => {}
-                        Ok(false) => {
-                            tracing::warn!(
-                                %job_id,
-                                "Installer HTTP job heartbeat lost its running-state fence; execution remains quarantined"
-                            );
-                            break;
-                        }
-                        Err(_error) => {
-                            tracing::warn!(
-                                %job_id,
-                                "Installer HTTP job heartbeat failed; durable stale-job reconciliation remains fail-closed"
-                            );
-                        }
+            loop {
+                interval.tick().await;
+                match persistence.heartbeat_http_job(job_id).await {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        tracing::warn!(
+                            %job_id,
+                            "Installer HTTP job heartbeat lost its running-state fence; execution remains quarantined"
+                        );
+                        break;
+                    }
+                    Err(_error) => {
+                        tracing::warn!(
+                            %job_id,
+                            "Installer HTTP job heartbeat failed; durable stale-job reconciliation remains fail-closed"
+                        );
                     }
                 }
             }
+        })
+        .catch_unwind()
+        .await;
+        if result.is_err() {
+            tracing::error!(%job_id, "Installer HTTP job heartbeat panicked");
         }
-    });
+    };
 
-    execute.await;
-    if stop_tx.send(()).is_err() {
-        tracing::debug!(%job_id, "Installer HTTP job heartbeat already terminated before stop signal");
-    }
-    if heartbeat.await.is_err() {
-        tracing::error!(%job_id, "Installer HTTP job heartbeat task panicked");
-    }
+    run_installer_execution_with_heartbeat(execute, heartbeat).await;
 }
 
 fn spawn_persisted_installer_job<F>(
@@ -1264,6 +1274,80 @@ mod tests {
         .await
         .expect("install_http_jobs table");
         db
+    }
+
+    #[tokio::test]
+    async fn installer_heartbeat_is_dropped_on_completion_or_parent_abort() {
+        struct NotifyDrop(Option<tokio::sync::oneshot::Sender<()>>);
+        impl Drop for NotifyDrop {
+            fn drop(&mut self) {
+                if let Some(sender) = self.0.take() {
+                    let _ = sender.send(());
+                }
+            }
+        }
+
+        for abort in [false, true] {
+            let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
+            let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+            let (dropped_tx, dropped_rx) = tokio::sync::oneshot::channel();
+            let task = tokio::spawn(run_installer_execution_with_heartbeat(
+                async move {
+                    release_rx.await.expect("release executor");
+                },
+                async move {
+                    let _marker = NotifyDrop(Some(dropped_tx));
+                    started_tx.send(()).expect("heartbeat polled");
+                    std::future::pending::<()>().await;
+                },
+            ));
+            tokio::time::timeout(Duration::from_secs(2), started_rx)
+                .await
+                .expect("heartbeat starts")
+                .expect("heartbeat start signal");
+
+            if abort {
+                task.abort();
+            } else {
+                release_tx.send(()).expect("complete executor");
+            }
+            let result = tokio::time::timeout(Duration::from_secs(2), task)
+                .await
+                .expect("installer exits without waiting for stalled heartbeat");
+            if abort {
+                assert!(result.expect_err("parent aborted").is_cancelled());
+            } else {
+                result.expect("executor completed");
+            }
+            tokio::time::timeout(Duration::from_secs(2), dropped_rx)
+                .await
+                .expect("heartbeat drops with parent")
+                .expect("heartbeat drop signal");
+        }
+    }
+
+    #[tokio::test]
+    async fn installer_heartbeat_termination_does_not_cancel_admitted_execution() {
+        let (finished_tx, finished_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
+        let task = tokio::spawn(run_installer_execution_with_heartbeat(
+            async move {
+                release_rx.await.expect("finish admitted operation");
+            },
+            async move {
+                finished_tx.send(()).expect("heartbeat ended");
+            },
+        ));
+        tokio::time::timeout(Duration::from_secs(2), finished_rx)
+            .await
+            .expect("heartbeat terminates")
+            .expect("heartbeat completion signal");
+        assert!(!task.is_finished(), "heartbeat loss must not cancel the executor");
+        release_tx.send(()).expect("release admitted operation");
+        tokio::time::timeout(Duration::from_secs(2), task)
+            .await
+            .expect("executor completes")
+            .expect("installer task joins");
     }
 
     #[tokio::test]

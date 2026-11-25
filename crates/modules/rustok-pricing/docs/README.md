@@ -4,6 +4,23 @@
 
 ## Purpose
 
+The Product catalog-card `priceFrom` projection is a bounded base-price
+summary, not a checkout quote. Channel precedence is applied separately to
+each SKU and currency before finding the product minimum. An exact channel
+price shadows only that SKU's unscoped price in the same currency; other
+channels are never fallbacks. Without an explicit currency, mixed eligible
+currencies suppress the summary. Equal minimum amounts use stable SKU and
+price IDs so the compare-at/sale metadata does not depend on database row
+order. Focused regression tests are authored; execution remains unverified.
+
+Admin SKU price upserts return the exact persisted row captured in the owner
+transaction, after successful commit, rather than searching the variant's
+prices again. Regional rows and concurrent later writes cannot substitute
+the saved response. Price-list scope inheritance and validation occur under
+the transaction's list lock, not from an earlier unlocked list snapshot.
+This is not a durable command receipt or an expected-price CAS protocol;
+the focused regression is authored but has not been executed.
+
 - price-related service logic;
 - pricing migrations;
 - `PricingModule` and `PricingService`;

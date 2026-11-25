@@ -658,9 +658,9 @@ fn normalize_category_translations(
             }
 
             let name = translation.name.trim();
-            if name.is_empty() || name.chars().count() > 120 {
+            if name.is_empty() || name.chars().count() > 120 || name.contains('\0') {
                 return Err(CommerceError::Validation(
-                    "category translation name must be 1..120 characters for Taxonomy ownership"
+                    "category translation name must be 1..120 characters and contain no NUL for Taxonomy ownership"
                         .into(),
                 ));
             }
@@ -672,28 +672,28 @@ fn normalize_category_translations(
                 .map(str::to_owned);
             if description
                 .as_deref()
-                .is_some_and(|value| value.chars().count() > 2_000)
+                .is_some_and(|value| value.chars().count() > 2_000 || value.contains('\0'))
             {
                 return Err(CommerceError::Validation(
-                    "category translation description must not exceed 2000 characters".into(),
+                    "category translation description must not exceed 2000 characters or contain NUL".into(),
                 ));
             }
             if translation
                 .meta_title
                 .as_deref()
-                .is_some_and(|value| value.chars().count() > 255)
+                .is_some_and(|value| value.chars().count() > 255 || value.contains('\0'))
             {
                 return Err(CommerceError::Validation(
-                    "category translation meta_title must not exceed 255 characters".into(),
+                    "category translation meta_title must not exceed 255 characters or contain NUL".into(),
                 ));
             }
             if translation
                 .meta_description
                 .as_deref()
-                .is_some_and(|value| value.chars().count() > 500)
+                .is_some_and(|value| value.chars().count() > 500 || value.contains('\0'))
             {
                 return Err(CommerceError::Validation(
-                    "category translation meta_description must not exceed 500 characters".into(),
+                    "category translation meta_description must not exceed 500 characters or contain NUL".into(),
                 ));
             }
 
@@ -762,6 +762,25 @@ mod tests {
         assert_eq!(normalized[0].locale, "en-US");
         assert_eq!(normalized[0].name, "English");
         assert_eq!(normalized[1].locale, "fr-FR");
+    }
+
+    #[test]
+    fn category_translations_reject_nul_in_text_fields() {
+        let mut invalid_name = translation("en-US", "Category");
+        invalid_name.name.push('\0');
+        assert!(normalize_category_translations(&[invalid_name]).is_err());
+
+        let mut invalid_description = translation("en-US", "Category");
+        invalid_description.description = Some("bad\0description".to_owned());
+        assert!(normalize_category_translations(&[invalid_description]).is_err());
+
+        let mut invalid_meta_title = translation("en-US", "Category");
+        invalid_meta_title.meta_title = Some("bad\0title".to_owned());
+        assert!(normalize_category_translations(&[invalid_meta_title]).is_err());
+
+        let mut invalid_meta_description = translation("en-US", "Category");
+        invalid_meta_description.meta_description = Some("bad\0description".to_owned());
+        assert!(normalize_category_translations(&[invalid_meta_description]).is_err());
     }
 
     #[test]

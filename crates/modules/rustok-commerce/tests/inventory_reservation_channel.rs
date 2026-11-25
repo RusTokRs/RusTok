@@ -246,6 +246,70 @@ async fn availability_uses_trusted_context_and_rejects_explicit_channel_contradi
 }
 
 #[tokio::test]
+async fn changed_policy_refuses_new_backorders_without_invalidating_existing_identity() {
+    use rustok_product::entities::product_variant;
+
+    async fn set_policy(stock: &ChannelStock, policy: &str) {
+        let row = product_variant::Entity::find_by_id(stock.variant_id)
+            .one(&stock.db)
+            .await
+            .unwrap()
+            .unwrap();
+        let mut active: product_variant::ActiveModel = row.into();
+        active.inventory_policy = Set(policy.to_owned());
+        active.update(&stock.db).await.unwrap();
+    }
+
+    let stock = channel_stock().await;
+    // Seed a historical allocation under continue; switching the fixture's policy
+    // is not an assertion about the Product admin transition command.
+    set_policy(&stock, "continue").await;
+    let port = in_process_inventory_reservation_identity_port(stock.db.clone());
+    let context = inventory_port_context(stock.tenant_id, "changed-policy", true)
+        .with_channel("web");
+    let command = request(stock.variant_id, 7);
+    let first = port
+        .reserve_inventory_by_identity(context.clone(), command.clone())
+        .await
+        .unwrap();
+    assert_eq!(first.location_id, stock.web_location_id);
+    set_policy(&stock, "deny").await;
+
+    let replay = port
+        .reserve_inventory_by_identity(context.clone(), command.clone())
+        .await
+        .unwrap();
+    assert_eq!(replay.reservation_id, first.reservation_id);
+    assert_eq!(replay.location_id, first.location_id);
+    assert_eq!(replay.reserved_quantity, 7);
+
+    let error = port
+        .reserve_inventory_by_identity(
+            inventory_port_context(stock.tenant_id, "new-after-deny", true)
+                .with_channel("web"),
+            request(stock.variant_id, 1),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, "inventory.insufficient_inventory");
+    assert_eq!(reserved(&stock, stock.web_location_id).await, 7);
+    assert_eq!(reserved(&stock, stock.mobile_location_id).await, 0);
+
+    let release = port
+        .release_inventory_by_identity(
+            context,
+            InventoryIdentityReservationReleaseRequest {
+                reservation_id: command.reservation_id,
+                external_id: command.external_id,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(release.released_quantity, 7);
+    assert_eq!(reserved(&stock, stock.web_location_id).await, 0);
+}
+
+#[tokio::test]
 async fn backorder_does_not_authorize_a_hidden_location() {
     let stock = channel_stock().await;
     stock

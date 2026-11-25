@@ -36,9 +36,21 @@ draft; after reload, records are merged against the latest server document using
 merging and stable-id array merging. Ambiguous or overlapping changes remain preserved and put
 the editor in a read-only conflict state; storage errors expose a manual JSON-copy path. The
 localStorage record ceiling is 2 MiB and this is recovery, not live collaborative editing.
-The default file-backed SSR editor store now uses a persistent per-user state directory and
+The default file-backed SSR editor store uses a persistent per-user state directory and
 30-day sliding retention; containers must mount that path persistently, and multi-replica hosts
-must use a shared KV backend. Dioxus palette/layer drag sources now use native HTML5 dragstart/
+must use a shared KV backend. File mutations now use native OS file locks held for the full
+token operation. A stable directory guard serializes lock-file open/reap, so a waiter never keeps
+an open descriptor while cleanup can unlink the token file. Process exit releases held locks;
+there is no mtime-based stale-lock breaking. `prune` removes only idle session and owner-cap lock files, and
+temporary-write cleanup plus capacity eviction recheck under the owning token lock; per-owner
+create scans and the subsequent record write serialize under a stable owner-key lock so
+simultaneous creates cannot exceed the eight-session cap. All writers
+sharing the file directory must use the new protocol; drain pre-upgrade writers during rollout.
+The filesystem must propagate OS file locks; otherwise use the shared atomic KV backend.
+Focused regressions cover descriptor-drop/unwind release, pruning with a waiting writer, stale
+temporary cleanup under an active token lock, and generation-checked eviction; they are authored
+but not executed.
+Dioxus palette/layer drag sources now use native HTML5 dragstart/
 dragend, failed drops cancel the Fly drag, iframe dropEffect is explicit, and parent pointer
 events no longer cancel a cross-iframe drag. Selected-layer move now selects and begins moving
 as one rollback-safe browser intent. The existing independent-connection PostgreSQL save-race
@@ -57,6 +69,56 @@ expected page versions for unpublish/delete. The classic Next admin still does n
 content editing or call `savePageDocument`; it creates pages and links to the Rust admin builder.
 Peer notifications are advisory; server revision checks and receipts are authoritative. No build,
 Rust test, lint or Playwright run is claimed for this pass.
+
+Fly hardening follow-up (2026-11-25, source-only): `PageCommand::Add` and
+`PageCommand::Patch` now apply the canonical `validate_identifier` rule to explicit page
+IDs instead of accepting values that only pass empty/duplicate checks. Regressions cover
+invalid characters, overlong IDs and mutation atomicity. The Fly iframe bridge now enforces a
+4 MiB UTF-8 payload ceiling before JSON parsing and outbound `postMessage`; the shared window
+and iframe subscriptions and Page Builder canvas decoder enforce the same inbound bound.
+Contract/security docs and the logic-hygiene catalog were updated. No Rust build/test, lint or
+browser run was performed in this pass at the user's request; maintainer verification remains
+open.
+
+Fly geometry follow-up (2026-11-25, source-only): the shared resize controller preserves
+untouched axes, anchors opposite edges and constrains aspect-locked gestures to a single
+scale. Drag command construction rejects illegal or invalid candidates, restarting a drag clears
+its stale insertion overlay, and browser hit-testing filters invalid transformed geometry.
+Auto-scroll rejects malformed viewports and avoids overlapping edge zones. Focused unit
+regressions are authored; Rust compilation, tests, lint, remediation gate and mounted browser
+verification remain with the maintainer.
+
+Fly placement follow-up (2026-11-25, source-only): strict ancestry checks compare indexed
+structural paths on the same page rather than following parent IDs; anonymous intermediate
+nodes and repeated parent IDs no longer break the recursion guard. Regressions are authored
+but not executed.
+
+Fly cache and move follow-up (2026-11-25, source-only): indexed mutable component access
+and the new raw-project mutable accessor invalidate both document caches before returning
+a borrow; page access and structural editor commands use that accessor. Move commands
+resolve the implicit first-page root and explicit root ID as the same insertion parent;
+same-parent inverses account for pre-removal slot semantics. Four regressions are authored.
+**OPEN:** migrate all direct raw-project writes to the invalidating accessor and make
+`ProjectDocument.project` private (including consumer reads and source guards); the public
+field remains an invalidation bypass. Full workspace reference discovery was unavailable;
+scoped compilation, remediation gate, tests and lint were not run in this pass.
+
+Fly history and snapshot follow-up (2026-11-25, source-only): batch transactions no longer
+publish local inverses computed from the wrong intermediate state; content patches with
+scalar-child removal also defer to authoritative snapshot history. Style inverses restore
+the full original slot, and remove inverses require an addressable original parent.
+Snapshot capture verifies payload round-trip, derives a fresh payload fingerprint and checks
+sequence exhaustion, duplicate identity and invalid capacity before mutating the catalog.
+Six focused regressions authored; compilation, tests, lint and remediation gate not run.
+
+Fly URL validation follow-up (2026-11-25, source-only): action, markup and head URL
+checks require parseable HTTP(S) authorities; head diagnostics reuse SSR admission and
+cover Twitter images and the URL length ceiling. SSR and document validation share
+bounded srcset checks for numeric descriptor identity, positive width/density, uniform
+descriptor family and case-insensitive data URL exclusion. Existing static publish policy
+evidence/version was not changed; its independent URL and srcset grammar still requires
+a coordinated cutover with artifact compatibility review. Focused regressions authored;
+compilation, tests, lint and remediation gate not run.
 
 Reduced-motion follow-up: the shared Fly browser asset now uses instant scrolling for
 `scroll_to` when the target document requests reduced motion, including in the presence of

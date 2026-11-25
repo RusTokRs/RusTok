@@ -49,7 +49,7 @@ Every non-debug `apps/server` binary enforces production-grade host security gat
 
 | Key | Environment Variable | Default (Dev) | Description |
 | :--- | :--- | :--- | :--- |
-| `auth.jwt.secret` | `JWT_SECRET`, `RUSTOK_JWT_SECRET` | *dev placeholder* | HS256 signing secret. Production requires >= 64 high-entropy random bytes. |
+| `auth.jwt.secret` | `JWT_SECRET`, `RUSTOK_JWT_SECRET` | *dev placeholder* | HS256 signing and host MAC secret (also required with RS256). Auth config requires at least 32 non-whitespace bytes. Production requires >= 64 high-entropy random bytes. |
 | `auth.jwt.expiration` | `JWT_EXPIRATION` | `604800` (7 days) | Access token lifetime in seconds. Recommended `3600` (1 hour) in production. |
 | `settings.auth.refresh_expiration` | `REFRESH_TOKEN_EXPIRATION` | `1209600` (14 days) | Refresh token lifetime in seconds before re-authentication is required. |
 | `settings.auth.issuer` | `JWT_ISSUER` | `rustok` | Claim issuer (`iss`). Must match deployment API URL in production. |
@@ -103,7 +103,7 @@ selector. See [FBA scope](../backend/module-backend-architecture.md#fba-contract
 | `settings.rustok.rate_limit.backend` | `RATE_LIMIT_BACKEND` | `memory` | Rate limit storage backend: `memory` (in-process) or `redis`. |
 | `settings.rustok.rate_limit.requests_per_minute` | — | `60` | General API request quota per tenant/IP window. |
 | `settings.rustok.rate_limit.burst` | — | `10` | Allowable burst capacity for standard requests. |
-| `settings.rustok.rate_limit.auth_requests_per_minute` | — | `20` | Strict quota for login, registration, refresh/revocation, password-change, verification, reset, invite, and GraphQL WebSocket authentication endpoints. |
+| `settings.rustok.rate_limit.auth_requests_per_minute` | — | `20` | Shared IP-only quota for REST and GraphQL credential operations (including password change and logout), verification, reset, invite, and GraphQL WebSocket authentication endpoints. Trusted bearer dimensions do not partition this budget. |
 | `settings.rustok.rate_limit.oauth_requests_per_minute` | — | `30` | Quota for OAuth token, authorization, consent, revocation, and browser-session flows. |
 
 ---

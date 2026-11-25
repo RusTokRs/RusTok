@@ -8,7 +8,11 @@ tenant must never select its own broker or delivery semantics.
 
 The profile is persisted in `event_delivery_settings` and takes effect only at
 the next controlled server restart. This deliberately prevents a live swap of
-the event transport while an outbox relay is processing records.
+the event transport while an outbox relay is processing records. Repeated
+or concurrent initialization reuses the already published delivery graph,
+including its listener bus and canonical transactional outbox transport.
+The active profile is read from that graph; persisted desired state does
+not replace it during bootstrap retries.
 
 ## Profiles
 
