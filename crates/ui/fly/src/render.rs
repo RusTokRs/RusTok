@@ -1248,13 +1248,13 @@ pub fn css_property_allowed(name: &str) -> bool {
         && !DENIED_STYLE_PROPERTIES.contains(&name.to_ascii_lowercase().as_str())
 }
 
-/// Return byte ranges of quoted strings inside CSS image-set() functions.
+/// Return byte ranges of quoted resource strings inside CSS image functions.
 ///
-/// CSS image-set accepts quoted URL candidates, unlike most CSS image functions which
-/// express resources through url(). Callers validate each returned string with their
-/// own resource URL policy. Strings outside these functions are ignored. Escaped strings
-/// and malformed function/string boundaries fail closed.
-pub fn css_image_set_string_ranges(value: &str) -> Option<Vec<std::ops::Range<usize>>> {
+/// image-set(), image(), and src() can carry resource URLs as strings. The scanner also
+/// finds these functions when nested inside other functions such as cross-fade(). Callers
+/// validate each returned string with their own resource URL policy. Strings outside these
+/// functions are ignored. Escaped strings and malformed function/string boundaries fail closed.
+pub fn css_resource_string_ranges(value: &str) -> Option<Vec<std::ops::Range<usize>>> {
     if value.contains('\\') { return None; }
     let lowered = value.to_ascii_lowercase();
     let mut ranges = Vec::new();
@@ -1269,7 +1269,13 @@ pub fn css_image_set_string_ranges(value: &str) -> Option<Vec<std::ops::Range<us
             Some("-webkit-image-set(")
         } else if remaining.starts_with("image-set(") {
             Some("image-set(")
-        } else { None };
+        } else if remaining.starts_with("image(") {
+            Some("image(")
+        } else if remaining.starts_with("src(") {
+            Some("src(")
+        } else {
+            None
+        };
         if let Some(function) = function {
             let preceded_by_identifier = value[..cursor].chars().next_back()
                 .is_some_and(css_identifier_character);
@@ -1377,9 +1383,9 @@ fn safe_style(name: &str, value: &Value, policy: &RenderPolicy) -> Option<String
     // structural check must not see it. Characters that are dangerous *inside* a reference are
     // rejected by `url_allowed` and by the stricter check in the stripping pass.
     let mut without_urls = validate_and_strip_url_tokens(&value, policy)?;
-    let image_set_ranges = css_image_set_string_ranges(&without_urls)?;
+    let resource_string_ranges = css_resource_string_ranges(&without_urls)?;
     let url_policy = policy.url_policy();
-    for range in image_set_ranges.iter().rev() {
+    for range in resource_string_ranges.iter().rev() {
         if !safe_url::url_allowed(
             &without_urls[range.clone()],
             UrlAttributeKind::Resource,
@@ -2153,12 +2159,16 @@ mod tests {
     }
 
     #[test]
-    fn image_set_string_sources_follow_the_render_resource_policy() {
+    fn css_string_resource_sources_follow_the_render_resource_policy() {
         let policy = RenderPolicy::default();
         for value in [
             "image-set(\"/hero.png\" 1x, \"https://cdn.example/hero@2x.png\" 2x)",
             "-webkit-image-set('/hero.png' 1x)",
             "image-set(\"data:image/png;base64,iVBORw0KGgo=\" 1x)",
+            "image(\"https://cdn.example/hero.png\", red)",
+            "src(\"https://cdn.example/hero.png\")",
+            "cross-fade(image('/fade-start.png'), image('/fade-end.png'))",
+            "image(\"data:image/png;base64,iVBORw0KGgo=\", red)",
         ] {
             assert!(
                 safe_style("background-image", &Value::String(value.to_string()), &policy).is_some(),
@@ -2169,6 +2179,8 @@ mod tests {
             "image-set('javascript:alert(1)' 1x)",
             "image-set('//attacker.example/hero.png' 1x)",
             "image-set('data:image/svg+xml;base64,PHN2Zz4=' 1x)",
+            "image('javascript:alert(1)', red)",
+            "src('//attacker.example/hero.png')",
         ] {
             assert!(
                 safe_style("background-image", &Value::String(value.to_string()), &policy).is_none(),
@@ -2179,23 +2191,49 @@ mod tests {
             allow_https: false,
             ..RenderPolicy::default()
         };
+        for value in [
+            "image-set('https://cdn.example/hero.png' 1x)",
+            "image('https://cdn.example/hero.png', red)",
+            "src('https://cdn.example/hero.png')",
+        ] {
+            assert!(safe_style(
+                "background-image",
+                &Value::String(value.to_string()),
+                &no_https
+            ).is_none(), "accepted HTTPS with allow_https=false: {value}");
+        }
+        let no_data = RenderPolicy {
+            allow_data_images: false,
+            ..RenderPolicy::default()
+        };
         assert!(safe_style(
             "background-image",
-            &Value::String("image-set('https://cdn.example/hero.png' 1x)".to_string()),
-            &no_https
+            &Value::String("image('data:image/png;base64,iVBORw0KGgo=', red)".to_string()),
+            &no_data
         ).is_none());
     }
 
     #[test]
-    fn css_image_set_string_scanner_ignores_literals_and_handles_nested_functions() {
-        let css = r#"content: "image-set('not-a-resource')"; background-image: IMAGE-SET("/hero.png" 1x, url("/hero@2x.png") 2x, type("image/avif")); -webkit-image-set('/webkit.png' 1x)"#;
-        let ranges = css_image_set_string_ranges(css).expect("valid CSS string boundaries");
+    fn css_resource_string_scanner_ignores_literals_and_finds_nested_functions() {
+        let css = r#"content: "image-set('not-a-resource')"; background-image: IMAGE-SET("/hero.png" 1x, url("/hero@2x.png") 2x, type("image/avif")); -webkit-image-set('/webkit.png' 1x); background: image("https://cdn.example/hero.png", red); background: cross-fade(image("/fade.png"), src("/source.png"))"#;
+        let ranges = css_resource_string_ranges(css).expect("valid CSS string boundaries");
         let values = ranges.iter().map(|range| &css[range.clone()]).collect::<Vec<_>>();
-        assert_eq!(values, ["/hero.png", "/hero@2x.png", "image/avif", "/webkit.png"]);
-        assert!(css_image_set_string_ranges(r#"content: "image-set('/literal.png')""#)
+        assert_eq!(
+            values,
+            [
+                "/hero.png",
+                "/hero@2x.png",
+                "image/avif",
+                "/webkit.png",
+                "https://cdn.example/hero.png",
+                "/fade.png",
+                "/source.png"
+            ]
+        );
+        assert!(css_resource_string_ranges(r#"content: "image-set('/literal.png')""#)
             .expect("literal CSS string").is_empty());
-        assert!(css_image_set_string_ranges(r#"image-set("/unterminated.png" 1x"#).is_none());
-        assert!(css_image_set_string_ranges(r#"image-set("/escaped\".png" 1x)"#).is_none());
+        assert!(css_resource_string_ranges(r#"image-set("/unterminated.png" 1x"#).is_none());
+        assert!(css_resource_string_ranges(r#"image("/escaped\".png", red)"#).is_none());
     }
 
     #[test]

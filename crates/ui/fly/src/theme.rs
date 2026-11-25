@@ -128,10 +128,10 @@ pub fn validate_token_value(name: &str, value: &str) -> Result<(), String> {
         .chars()
         .filter(|character| !character.is_ascii_whitespace())
         .collect::<String>();
-    let image_set_strings = crate::css_image_set_string_ranges(value);
+    let image_set_strings = crate::css_resource_string_ranges(value);
     if !matches!(image_set_strings, Some(ref ranges) if ranges.is_empty()) {
         return Err(format!(
-            "design token {name} uses an image-set string resource that is not allowed in theme tokens"
+            "design token {name} uses a quoted CSS resource that is not allowed in theme tokens"
         ));
     }
     if compact.contains("expression(")
@@ -218,6 +218,14 @@ mod tests {
             (
                 json!({ "brand": "image-set(\"https://evil.example/x.png\" 1x)" }),
                 "image-set string URL",
+            ),
+            (
+                json!({ "brand": "image(\"https://evil.example/x.png\", red)" }),
+                "image() string URL",
+            ),
+            (
+                json!({ "brand": "src(\"https://evil.example/font.woff2\")" }),
+                "src() string URL",
             ),
             (
                 json!({ "brand": "expression(alert(1))" }),

@@ -7,7 +7,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
-pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT: &str = "page_builder_static_publish_policy_v3";
+pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT: &str = "page_builder_static_publish_policy_v4";
 
 const ALLOWED_TAGS: &[&str] = &[
     "a",
@@ -108,9 +108,9 @@ const ALLOWED_DATA_IMAGE_PREFIXES: &[&str] = &[
 /// failure after the author had already seen the background render in the editor.
 ///
 /// References are validated per URL: url() resources use
-/// [`strip_validated_css_urls`], while quoted image-set() candidates use Fly's shared CSS scanner.
-/// Both paths apply this policy's image-resource URL rule. Everything listed below has no
-/// legitimate use in a declaration and stays banned outright.
+/// [`strip_validated_css_urls`], while quoted image(), src(), and image-set() candidates use
+/// Fly's shared CSS scanner. Both paths apply this policy's image-resource URL rule. Everything
+/// listed below has no legitimate use in a declaration and stays banned outright.
 ///
 /// The validators still honour a `forbidden_css_tokens` list that names `"url("` (covered by
 /// tests), but no runtime path supplies one: see [`PageBuilderStaticPublishPolicy`].
@@ -1215,14 +1215,14 @@ fn safe_css_value(value: &str, policy: &PageBuilderStaticPublishPolicy) -> bool 
         }
     };
 
-    let image_set_ranges = match fly::css_image_set_string_ranges(&scanned) {
+    let resource_string_ranges = match fly::css_resource_string_ranges(&scanned) {
         Some(ranges) => ranges,
         None => return false,
     };
-    if bans_all_references && !image_set_ranges.is_empty() {
+    if bans_all_references && !resource_string_ranges.is_empty() {
         return false;
     }
-    for range in image_set_ranges.iter().rev() {
+    for range in resource_string_ranges.iter().rev() {
         if validate_url(&scanned[range.clone()], UrlKind::ResourceImage, policy).is_err() {
             return false;
         }
@@ -1620,10 +1620,10 @@ mod tests {
     }
 
     #[test]
-    fn v2_policy_evidence_is_not_current_after_v3_cutover() {
+    fn v3_policy_evidence_is_not_current_after_v4_cutover() {
         let policy = PageBuilderStaticPublishPolicy::default();
         let evidence = PageBuilderStaticPublishPolicyEvidence {
-            format: "page_builder_static_publish_policy_v2".to_string(),
+            format: "page_builder_static_publish_policy_v3".to_string(),
             policy_hash: policy.policy_hash().expect("current hash"),
         };
         assert!(evidence.verify_integrity().is_err());
@@ -1656,6 +1656,18 @@ mod tests {
             "image-set('data:image/png;base64,iVBORw0KGgo=' 1x)",
             &policy
         ));
+        assert!(safe_css_value(
+            "image(\"https://cdn.example/hero.png\", red)",
+            &policy
+        ));
+        assert!(safe_css_value(
+            "src(\"https://cdn.example/hero.png\")",
+            &policy
+        ));
+        assert!(safe_css_value(
+            "cross-fade(image('/fade-start.png'), image('/fade-end.png'))",
+            &policy
+        ));
     }
 
     #[test]
@@ -1676,6 +1688,9 @@ mod tests {
             "image-set('//protocol.relative/a.png' 1x)",
             "image-set('data:image/svg+xml;base64,PHN2Zz4=' 1x)",
             "-webkit-image-set('javascript:alert(1)' 1x)",
+            "image('javascript:alert(1)', red)",
+            "src('javascript:alert(1)')",
+            "src('//protocol.relative/a.png')",
         ] {
             assert!(!safe_css_value(value, &policy), "accepted hostile {value}");
         }
@@ -1692,6 +1707,14 @@ mod tests {
         ));
         assert!(!safe_css_value(
             "image-set('https://cdn.example/hero.png' 1x)",
+            &policy
+        ));
+        assert!(!safe_css_value(
+            "image('https://cdn.example/hero.png', red)",
+            &policy
+        ));
+        assert!(!safe_css_value(
+            "src('https://cdn.example/hero.png')",
             &policy
         ));
         assert!(safe_css_value("#ffffff", &policy));
