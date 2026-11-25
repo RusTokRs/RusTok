@@ -54,9 +54,9 @@ pub struct SsrDraftRenderBinding {
 /// Current on-disk shape of a persisted draft session record.
 ///
 /// A record written by an older build is upgraded in place on read (its missing `format` is
-/// `0`) and rewritten with this value on the next commit, so a rollback is served rather than
-/// refused. Bump it only together with a migration for the previous value.
-pub const DRAFT_SESSION_RECORD_FORMAT: u32 = 1;
+/// `0`) and rewritten with this value on the next commit. Format 2 introduces prepared
+/// save receipts; old binaries must refuse them rather than replay them as committed.
+pub const DRAFT_SESSION_RECORD_FORMAT: u32 = 2;
 
 /// A bounded, session-owned acknowledgement of one browser intent. The response is a compact
 /// transport projection; the canonical controller remains the session's source of truth.
@@ -99,8 +99,8 @@ pub struct PersistentDraftSessionRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner: Option<DraftSessionOwner>,
     pub expires_at_unix_secs: u64,
-    /// Optional extension to format 1: old binaries ignore it, and generation CAS remains the
-    /// safety fence if a rollback drops receipt metadata.
+    /// Format 1 introduced final receipts. Format 2 also permits a prepared-save
+    /// reservation, which must not be interpreted as a final acknowledgement.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub operation_receipts: Vec<SsrDraftOperationReceipt>,
 }
@@ -176,6 +176,8 @@ pub trait SsrDraftSessionStore: Send + Sync {
     /// Atomically advances a live session and records the response projection under the same
     /// operation identity. A duplicate key replays its original acknowledgement before the
     /// generation check; a different request under the same key is rejected.
+    /// The internal prepared-save projection reserves a generation. Completing
+    /// the exact receipt at that generation replaces it atomically.
     fn commit_with_operation_receipt(
         &self,
         token: &str,
@@ -290,6 +292,47 @@ fn lookup_operation_receipt(
         .map(|receipt| receipt.response.clone())
 }
 
+fn receipt_is_prepared(response: &Value) -> bool {
+    response.get("prepared_save").and_then(Value::as_bool) == Some(true)
+}
+
+fn ensure_no_prepared_save(receipts: &[SsrDraftOperationReceipt]) -> Result<(), SsrDraftSessionError> {
+    if receipts.iter().any(|receipt| receipt_is_prepared(&receipt.response)) {
+        return Err(SsrDraftSessionError::OperationReceiptPending);
+    }
+    Ok(())
+}
+
+/// Preparation and completion consume distinct generations. An original
+/// request retried at its old generation only replays the prepared checkpoint.
+fn receipt_completion_index(
+    receipts: &[SsrDraftOperationReceipt],
+    generation: u64,
+    expected_generation: u64,
+    operation_id: &str,
+    request_hash: &str,
+    response: &Value,
+) -> Result<Option<usize>, SsrDraftSessionError> {
+    if let Some((index, receipt)) = receipts.iter().enumerate()
+        .find(|(_, receipt)| receipt.operation_id == operation_id)
+    {
+        if receipt.request_hash != request_hash {
+            return Err(SsrDraftSessionError::OperationReceiptConflict);
+        }
+        if receipt_is_prepared(&receipt.response) && !receipt_is_prepared(response)
+            && receipt.generation == generation && generation == expected_generation
+        {
+            return Ok(Some(index));
+        }
+        return Ok(None);
+    }
+    ensure_no_prepared_save(receipts)?;
+    if receipt_is_prepared(response) {
+        generation.checked_add(2).ok_or(SsrDraftSessionError::GenerationExhausted)?;
+    }
+    Ok(None)
+}
+
 fn admit_operation_receipt(
     receipts: &[SsrDraftOperationReceipt],
     generation: u64,
@@ -301,6 +344,7 @@ fn admit_operation_receipt(
     if let Some(receipt) = check_operation_receipt_hash(receipts, operation_id, request_hash)? {
         return Ok(Some(receipt));
     }
+    ensure_no_prepared_save(receipts)?;
     if generation != expected_generation {
         return Err(SsrDraftSessionError::GenerationConflict {
             expected: generation,
@@ -569,6 +613,7 @@ impl InMemorySsrDraftSessionStore {
                     });
                 }
                 ensure_session_owner(entry.owner.as_ref(), owner)?;
+                ensure_no_prepared_save(&entry.operation_receipts)?;
                 if expected_generation.is_some_and(|generation| generation != entry.generation) {
                     return Err(SsrDraftSessionError::GenerationConflict {
                         expected: entry.generation,
@@ -720,10 +765,16 @@ impl SsrDraftSessionStore for InMemorySsrDraftSessionStore {
             });
         }
         ensure_session_owner(entry.owner.as_ref(), owner)?;
-        if let Some(response) = check_operation_receipt_hash(
-            &entry.operation_receipts, operation_id, request_hash,
-        )? {
-            return Ok(SsrDraftOperationCommit::Replayed(response));
+        let completion = receipt_completion_index(
+            &entry.operation_receipts, entry.generation, expected_generation,
+            operation_id, request_hash, &response,
+        )?;
+        if completion.is_none() {
+            if let Some(response) = check_operation_receipt_hash(
+                &entry.operation_receipts, operation_id, request_hash,
+            )? {
+                return Ok(SsrDraftOperationCommit::Replayed(response));
+            }
         }
         if entry.generation != expected_generation {
             return Err(SsrDraftSessionError::GenerationConflict {
@@ -731,7 +782,7 @@ impl SsrDraftSessionStore for InMemorySsrDraftSessionStore {
                 actual: expected_generation,
             });
         }
-        if entry.operation_receipts.len() >= MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION {
+        if completion.is_none() && entry.operation_receipts.len() >= MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION {
             return Err(SsrDraftSessionError::OperationReceiptCapacity {
                 maximum: MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION,
             });
@@ -744,12 +795,17 @@ impl SsrDraftSessionStore for InMemorySsrDraftSessionStore {
             entry.owner = owner.cloned();
         }
         entry.generation = generation;
-        entry.operation_receipts.push(SsrDraftOperationReceipt {
+        let receipt = SsrDraftOperationReceipt {
             operation_id: operation_id.to_string(),
             request_hash: request_hash.to_string(),
             generation,
             response,
-        });
+        };
+        if let Some(index) = completion {
+            entry.operation_receipts[index] = receipt;
+        } else {
+            entry.operation_receipts.push(receipt);
+        }
         entry.expires_at = EntryDeadline::new(self.deadline_from(now));
         Ok(SsrDraftOperationCommit::Committed(SsrDraftSessionSnapshot {
             token: token.to_string(),
@@ -1555,6 +1611,7 @@ impl FileSsrDraftSessionStore {
                 });
             }
             ensure_session_owner(record.owner.as_ref(), owner)?;
+            ensure_no_prepared_save(&record.operation_receipts)?;
             if expected_generation.is_some_and(|expected| expected != record.generation) {
                 return Err(SsrDraftSessionError::GenerationConflict {
                     expected: record.generation,
@@ -1863,10 +1920,16 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
                 });
             }
             ensure_session_owner(record.owner.as_ref(), owner)?;
-            if let Some(replayed) = check_operation_receipt_hash(
-                &record.operation_receipts, operation_id, request_hash,
-            )? {
-                return Ok(SsrDraftOperationCommit::Replayed(replayed));
+            let completion = receipt_completion_index(
+                &record.operation_receipts, record.generation, expected_generation,
+                operation_id, request_hash, &response,
+            )?;
+            if completion.is_none() {
+                if let Some(replayed) = check_operation_receipt_hash(
+                    &record.operation_receipts, operation_id, request_hash,
+                )? {
+                    return Ok(SsrDraftOperationCommit::Replayed(replayed));
+                }
             }
             if record.generation != expected_generation {
                 return Err(SsrDraftSessionError::GenerationConflict {
@@ -1874,7 +1937,7 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
                     actual: expected_generation,
                 });
             }
-            if record.operation_receipts.len() >= MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION {
+            if completion.is_none() && record.operation_receipts.len() >= MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION {
                 return Err(SsrDraftSessionError::OperationReceiptCapacity {
                     maximum: MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION,
                 });
@@ -1888,12 +1951,17 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
             if owner.is_some() {
                 record.owner = owner.cloned();
             }
-            record.operation_receipts.push(SsrDraftOperationReceipt {
+            let receipt = SsrDraftOperationReceipt {
                 operation_id: operation_id.to_string(),
                 request_hash: request_hash.to_string(),
                 generation,
                 response,
-            });
+            };
+            if let Some(index) = completion {
+                record.operation_receipts[index] = receipt;
+            } else {
+                record.operation_receipts.push(receipt);
+            }
             record.expires_at_unix_secs = current_unix_secs().saturating_add(self.ttl.as_secs());
             let snapshot = SsrDraftSessionSnapshot {
                 token: record.token.clone(),
@@ -2584,6 +2652,7 @@ impl DurableSsrDraftSessionStore {
                 });
             }
             ensure_session_owner(persistent_record.owner.as_ref(), owner)?;
+            ensure_no_prepared_save(&persistent_record.operation_receipts)?;
             if expected_generation.is_some_and(|expected| expected != persistent_record.generation)
             {
                 return Err(SsrDraftSessionError::GenerationConflict {
@@ -2781,10 +2850,16 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
             });
         }
         ensure_session_owner(expected_record.owner.as_ref(), owner)?;
-        if let Some(replayed) = check_operation_receipt_hash(
-            &expected_record.operation_receipts, operation_id, request_hash,
-        )? {
-            return Ok(SsrDraftOperationCommit::Replayed(replayed));
+        let completion = receipt_completion_index(
+            &expected_record.operation_receipts, expected_record.generation, expected_generation,
+            operation_id, request_hash, &response,
+        )?;
+        if completion.is_none() {
+            if let Some(replayed) = check_operation_receipt_hash(
+                &expected_record.operation_receipts, operation_id, request_hash,
+            )? {
+                return Ok(SsrDraftOperationCommit::Replayed(replayed));
+            }
         }
         if expected_record.generation != expected_generation {
             return Err(SsrDraftSessionError::GenerationConflict {
@@ -2792,7 +2867,7 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
                 actual: expected_generation,
             });
         }
-        if expected_record.operation_receipts.len() >= MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION {
+        if completion.is_none() && expected_record.operation_receipts.len() >= MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION {
             return Err(SsrDraftSessionError::OperationReceiptCapacity {
                 maximum: MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION,
             });
@@ -2808,12 +2883,17 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
         if owner.is_some() {
             new_record.owner = owner.cloned();
         }
-        new_record.operation_receipts.push(SsrDraftOperationReceipt {
+        let receipt = SsrDraftOperationReceipt {
             operation_id: operation_id.to_string(),
             request_hash: request_hash.to_string(),
             generation,
             response,
-        });
+        };
+        if let Some(index) = completion {
+            new_record.operation_receipts[index] = receipt;
+        } else {
+            new_record.operation_receipts.push(receipt);
+        }
         new_record.expires_at_unix_secs =
             current_unix_secs().saturating_add(self.memory.ttl().as_secs());
         let snapshot = SsrDraftSessionSnapshot {
@@ -3577,6 +3657,8 @@ pub enum SsrDraftSessionError {
     InvalidOperationHash,
     #[error("SSR draft operation id was reused with a different request")]
     OperationReceiptConflict,
+    #[error("SSR draft has a prepared save; resolve or retry its original operation before editing")]
+    OperationReceiptPending,
     #[error("SSR draft operation receipt capacity of {maximum} has been reached")]
     OperationReceiptCapacity { maximum: usize },
     #[error("SSR draft operation receipt is {bytes} bytes, above the {maximum} byte limit")]
@@ -3710,6 +3792,54 @@ mod tests {
             store.load(&first.token, "home", None).expect("load").unwrap().generation,
             2,
         );
+    }
+
+    fn assert_prepared_save_lifecycle(store: &dyn SsrDraftSessionStore) {
+        let original = store.commit(None, None, controller("home"), None).expect("create");
+        let hash = "a".repeat(64);
+        let marker = json!({"prepared_save": true});
+        let prepared = store.commit_with_operation_receipt(
+            &original.token, original.generation, original.controller.clone(), json!({}),
+            None, "save-op", &hash, marker.clone(),
+        ).expect("prepare");
+        let SsrDraftOperationCommit::Committed(prepared) = prepared else { panic!("prepare"); };
+        assert_eq!(prepared.generation, original.generation + 1);
+        assert_eq!(store.admit_operation_receipt(
+            &original.token, "home", None, original.generation, "save-op", &hash,
+        ).expect("retry"), Some(marker));
+        assert!(matches!(store.admit_operation_receipt(
+            &original.token, "home", None, prepared.generation, "other-op", &"b".repeat(64),
+        ), Err(SsrDraftSessionError::OperationReceiptPending)));
+        assert!(matches!(store.commit(
+            Some(&original.token), Some(prepared.generation), prepared.controller.clone(), None,
+        ), Err(SsrDraftSessionError::OperationReceiptPending)));
+        let response = json!({"save_failure": null});
+        let done = store.commit_with_operation_receipt(
+            &original.token, prepared.generation, prepared.controller.clone(), json!({}),
+            None, "save-op", &hash, response.clone(),
+        ).expect("complete");
+        let SsrDraftOperationCommit::Committed(done) = done else { panic!("complete"); };
+        assert_eq!(done.generation, prepared.generation + 1);
+        assert_eq!(store.lookup_operation_receipt(
+            &original.token, "home", None, "save-op", Some(&hash),
+        ).expect("receipt"), Some(response));
+        assert_eq!(store.admit_operation_receipt(
+            &original.token, "home", None, done.generation, "other-op", &"b".repeat(64),
+        ).expect("unfenced"), None);
+    }
+
+    #[test]
+    fn prepared_save_reserves_and_completes_the_same_receipt() {
+        assert_prepared_save_lifecycle(&InMemorySsrDraftSessionStore::default());
+        let dir = std::env::temp_dir().join(format!("fly-prepared-{}", Uuid::new_v4()));
+        let file = FileSsrDraftSessionStore::new(&dir, Duration::from_secs(3600), 100)
+            .expect("file");
+        assert_prepared_save_lifecycle(&file);
+        let durable = DurableSsrDraftSessionStore::new(
+            InMemorySsrDraftSessionStore::default(), file,
+        );
+        assert_prepared_save_lifecycle(&durable);
+        std::fs::remove_dir_all(dir).expect("cleanup");
     }
 
     #[test]

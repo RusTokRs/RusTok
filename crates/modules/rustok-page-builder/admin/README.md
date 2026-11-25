@@ -389,3 +389,9 @@ expected generation and receipt capacity before consumer I/O. This read-only
 admission is not a reservation; the final commit still checks the same fences
 atomically. It does not make external Pages persistence and draft storage one
 transaction.
+
+Strict Pages saves prepare the edited draft and reserve its generation in the
+existing operation ledger before external I/O. Only the same operation can
+complete the reservation; other writes are fenced. Receipt lookup stays read-only.
+Record format 2 protects prepared operations from older readers; deploy upgraded
+readers before using the new protocol.

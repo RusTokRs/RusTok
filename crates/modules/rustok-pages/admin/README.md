@@ -117,3 +117,7 @@ metadata. Unknown receipts remain read-only and do not resubmit operations.
   (`load_route_draft(..., draft_owner.as_ref())`), so a session that belongs to another caller is
   not restored. Do not thread the facade's snapshot owner into the store: it would add a second,
   unverified attribution without changing which sessions can be read or committed.
+
+Strict SSR persistence checkpoints the post-command controller before Pages I/O.
+An explicit retry uses the prepared controller and the Pages idempotency key
+rather than reapplying the original command. Unknown outcomes keep preparation.

@@ -2144,8 +2144,10 @@ export class FlyBrowserAdapter {
           this.pendingOperationUnresolved = true;
           shouldResolvePendingAfterRequest = true;
           showPendingOperationNotice(this, "checking");
-        } else if ([400, 401, 403, 404, 413, 422].includes(response.status)) {
-          // These responses are deterministic pre-commit rejections.
+        } else if (!retryPending && [400, 401, 403, 404, 413, 422].includes(response.status)) {
+          // Initial deterministic pre-commit rejection. A retry may have a
+          // durable preparation already; authorization or validation changes
+          // must not erase its original identity.
           this.clearPendingOperation();
         } else {
           this.pendingOperationUnresolved = true;
