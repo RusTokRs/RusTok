@@ -19,7 +19,7 @@
 ### Domain Invariants
 - FFA boundary separation: `core/` contains no UI framework types.
 - Native server functions consume host-provided `HostRuntimeContext`.
-- Role catalog and permission metadata are derived strictly from runtime registry without shadow storage.
+- Role catalog and permission metadata are resolved strictly from tenant-persisted RBAC state via `rustok-rbac`, `ModuleRegistry`, and effective module policy without hardcoded defaults or shadow storage.
 
 ### Events / Outbox Side Effects
 - Read-only admin inspection package; does not emit domain events or mutate database rows directly.

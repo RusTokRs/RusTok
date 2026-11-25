@@ -9,7 +9,7 @@ Leptos admin UI adapter package for the `rustok-rbac` module.
 
 ## Responsibilities
 
-- Exposes the RBAC runtime overview and built-in role catalog used by `apps/admin`.
+- Exposes the RBAC runtime overview and tenant-persisted role catalog used by `apps/admin`.
 - Keeps RBAC-specific visibility inside the module package.
 - Participates in the manifest-driven admin UI composition path through `rustok-module.toml`.
 - Keeps the admin surface in FFA shape: Leptos-free `core.rs`, module-owned `transport/` facade, and explicit `ui/leptos.rs` render adapter.
