@@ -108,7 +108,9 @@ Source regressions unrun. Deploy all host instances together.
 Auth uses four independent rings: access (direct and OAuth), password reset,
 email verification, and invite. Each has one active key and bounded verification
 history. Special JWTs require a purpose-specific `typ` and `kid`; access retains
-the existing `JWT` type. The caller selects the ring before inspecting the header.
+the existing `JWT` type. The caller selects the ring before inspecting the header. Only Auth-emitted JOSE
+fields are accepted; unknown fields, duplicate IDs and explicit null IDs fail
+closed even during the missing-ID migration.
 
 Set `settings.auth.jwt_keyring_env` to the environment variable holding access
 ring JSON. Access uses the existing `algorithm` and RSA settings. Set
@@ -144,6 +146,9 @@ The unconfigured access ID is `default`; special IDs are `reset-default`,
 }
 ```
 
+RSA keys must parse as actual public/private RSA material with a modulus of at
+least 2048 bits. The signing boundary checks that the private key matches the
+configured public key; isolation uses canonical RSA moduli, not PEM formatting.
 All explicit symmetric material is subject to production secret policy even
 with RSA access. Startup and selected-key use reject key material reuse across rings. Derived
 keys isolate disclosure of a derived signing key, not compromise of the
@@ -166,7 +171,8 @@ material to all replicas first, then promote it and retain the outgoing
 material until its JWTs expire. For derived HS256 keys, the historical
 material is the actual lowercase hex-encoded HKDF output (not the root).
 Prefer explicit independent secrets for operational rotations. Remove
-expired history; never reuse IDs or key material. HS256 verification material
+expired history; never reuse IDs or key material. The exclusive cutoff is
+checked both during selection and after signature verification. HS256 verification material
 is cryptographically capable of signing; use RSA for distribution to
 untrusted verifiers. Configuration is startup-scoped, not hot reload.
 Algorithm migration and multi-replica execution evidence are pending.

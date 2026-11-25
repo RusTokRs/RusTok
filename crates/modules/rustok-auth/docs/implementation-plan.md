@@ -187,7 +187,11 @@ regressions and locked Cargo dependency updates authored, unrun.
 JWT purpose keyrings, key IDs, verification retirement and access-only initial
 missing-ID migration are source-implemented. Scoped compilation, RSA rotation
 and multi-replica rollout evidence are pending; algorithm migration and hot reload
-remain separate work. Reissue pre-cutover shared-key special links. See the
+remain separate work. Reissue pre-cutover shared-key special links.
+Follow-up source review adds canonical RSA modulus identity, private/public
+pair enforcement at signing, strict JOSE header admission and post-signature
+retirement fencing. Zero-duration issuance and timestamp truncation are rejected;
+regressions authored but not executed. See the
 [owner contract](README.md#jwt-keyring-and-rotation).
 
 ## JWT and CSRF hardening (source only)

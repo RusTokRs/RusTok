@@ -1,15 +1,19 @@
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{Duration, Utc};
 use jsonwebtoken::{
-    Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, decode_header, encode,
+    Algorithm, EncodingKey, Header, Validation, decode, encode,
 };
 use rustok_core::UserRole;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+
+#[cfg(test)]
+use jsonwebtoken::decode_header;
 use uuid::Uuid;
 
 use crate::config::{AuthConfig, JwtAlgorithm};
 use crate::error::{AuthError, Result};
 use crate::jwt_keyring::{
-    JwtPurpose, PurposeKeyringRef, ensure_selected_key_isolated, verification_key,
+    JwtPurpose, PurposeKeyringRef, ensure_selected_key_isolated, rsa_signing_key, verification_key,
 };
 
 const DIRECT_GRANT_TYPE: &str = "direct";
@@ -188,11 +192,7 @@ pub fn decode_access_token(config: &AuthConfig, token: &str) -> Result<Claims> {
         return Err(AuthError::InvalidAccessToken);
     }
     tracing::debug!("Decoding access token");
-    let validation = strict_jwt_validation(config, JwtPurpose::Access);
-
-    let key = decoding_key(config, token, JwtPurpose::Access).map_err(|_| AuthError::InvalidAccessToken)?;
-    let claims = decode::<Claims>(token, &key, &validation)
-        .map(|data| data.claims)
+    let claims = decode_for_purpose::<Claims>(config, token, JwtPurpose::Access)
         .map_err(|_| AuthError::InvalidAccessToken)?;
 
     if claims.sub.is_nil() || claims.tenant_id.is_nil() || !valid_token_times(claims.iat, claims.exp) {
@@ -241,11 +241,7 @@ pub fn decode_password_reset_token(
         return Err(AuthError::InvalidResetToken);
     }
     tracing::debug!("Decoding password reset token");
-    let validation = strict_jwt_validation(config, JwtPurpose::PasswordReset);
-
-    let key = decoding_key(config, token, JwtPurpose::PasswordReset).map_err(|_| AuthError::InvalidResetToken)?;
-    let claims = decode::<PasswordResetClaims>(token, &key, &validation)
-        .map(|data| data.claims)
+    let claims = decode_for_purpose::<PasswordResetClaims>(config, token, JwtPurpose::PasswordReset)
         .map_err(|_| AuthError::InvalidResetToken)?;
 
     if claims.tenant_id.is_nil()
@@ -296,11 +292,7 @@ pub fn decode_email_verification_token(
         return Err(AuthError::InvalidVerificationToken);
     }
     tracing::debug!("Decoding email verification token");
-    let validation = strict_jwt_validation(config, JwtPurpose::EmailVerification);
-
-    let key = decoding_key(config, token, JwtPurpose::EmailVerification).map_err(|_| AuthError::InvalidVerificationToken)?;
-    let claims = decode::<EmailVerificationClaims>(token, &key, &validation)
-        .map(|data| data.claims)
+    let claims = decode_for_purpose::<EmailVerificationClaims>(config, token, JwtPurpose::EmailVerification)
         .map_err(|_| AuthError::InvalidVerificationToken)?;
 
     if claims.tenant_id.is_nil()
@@ -352,11 +344,7 @@ pub fn decode_invite_token(config: &AuthConfig, token: &str) -> Result<InviteCla
         return Err(AuthError::InvalidInviteToken);
     }
     tracing::debug!("Decoding invite token");
-    let validation = strict_jwt_validation(config, JwtPurpose::Invite);
-
-    let key = decoding_key(config, token, JwtPurpose::Invite).map_err(|_| AuthError::InvalidInviteToken)?;
-    let claims = decode::<InviteClaims>(token, &key, &validation)
-        .map(|data| data.claims)
+    let claims = decode_for_purpose::<InviteClaims>(config, token, JwtPurpose::Invite)
         .map_err(|_| AuthError::InvalidInviteToken)?;
 
     if claims.tenant_id.is_nil()
@@ -378,13 +366,20 @@ pub fn decode_invite_token(config: &AuthConfig, token: &str) -> Result<InviteCla
 }
 
 fn token_expiration(now: chrono::DateTime<Utc>, ttl_seconds: u64) -> Result<chrono::DateTime<Utc>> {
+    if ttl_seconds == 0 {
+        return Err(AuthError::TokenEncodingFailed);
+    }
     let ttl_seconds = i64::try_from(ttl_seconds)
         .map_err(|_| AuthError::Internal("Token expiration is out of range".to_string()))?;
 
     let ttl = Duration::try_seconds(ttl_seconds)
         .ok_or_else(|| AuthError::Internal("Token expiration is out of range".to_string()))?;
-    now.checked_add_signed(ttl)
-        .ok_or_else(|| AuthError::Internal("Token expiration is out of range".to_string()))
+    let exp = now.checked_add_signed(ttl)
+        .ok_or_else(|| AuthError::Internal("Token expiration is out of range".to_string()))?;
+    // Claims use usize on the wire; prevent truncation on narrow targets.
+    usize::try_from(now.timestamp()).map_err(|_| AuthError::TokenEncodingFailed)?;
+    usize::try_from(exp.timestamp()).map_err(|_| AuthError::TokenEncodingFailed)?;
+    Ok(exp)
 }
 
 // ─── Key helpers ─────────────────────────────────────────────────────
@@ -420,27 +415,68 @@ fn encoding_key(config: &AuthConfig, purpose: JwtPurpose) -> Result<EncodingKey>
         }
         JwtAlgorithm::RS256 => {
             let pem = selected.rsa_private.ok_or(AuthError::TokenEncodingFailed)?;
-            EncodingKey::from_rsa_pem(pem.as_bytes()).map_err(|_| AuthError::TokenEncodingFailed)
+            rsa_signing_key(pem, &material)
         }
     }
 }
 
-/// The untrusted header selects a key only within the caller's expected ring.
-fn decoding_key(config: &AuthConfig, token: &str, purpose: JwtPurpose) -> Result<DecodingKey> {
+/// Only the JOSE fields emitted by Auth are supported. In particular, null
+/// kid is not equivalent to an omitted kid during the access migration.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AuthJwtHeader {
+    alg: Algorithm,
+    typ: String,
+    #[serde(default, deserialize_with = "deserialize_present_kid")]
+    kid: Option<String>,
+}
+
+fn deserialize_present_kid<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<Option<String>, D::Error> {
+    String::deserialize(deserializer).map(Some)
+}
+
+fn auth_jwt_header(token: &str) -> Result<AuthJwtHeader> {
+    let (encoded, _) = token.split_once('.').ok_or(AuthError::InvalidAccessToken)?;
+    // Every supported header has three small scalar fields. Bound work
+    // before allocating or parsing attacker-controlled header JSON.
+    if encoded.len() > 1024 {
+        return Err(AuthError::InvalidAccessToken);
+    }
+    let bytes = URL_SAFE_NO_PAD.decode(encoded).map_err(|_| AuthError::InvalidAccessToken)?;
+    serde_json::from_slice(&bytes).map_err(|_| AuthError::InvalidAccessToken)
+}
+
+/// The untrusted header selects exactly one key in the expected ring.
+/// Recheck the exclusive retirement deadline after signature verification.
+fn decode_for_purpose<T: DeserializeOwned>(
+    config: &AuthConfig,
+    token: &str,
+    purpose: JwtPurpose,
+) -> Result<T> {
     let selected = PurposeKeyringRef::for_config(config, purpose);
-    let header = decode_header(token).map_err(|_| AuthError::InvalidAccessToken)?;
+    let header = auth_jwt_header(token)?;
     if header.alg != jwt_algorithm(selected.algorithm)
-        || header.typ.as_deref() != Some(purpose.typ())
+        || header.typ != purpose.typ()
         || !crate::config::hs256_secret_has_min_length(&config.secret)
         || (purpose != JwtPurpose::Access && header.kid.is_none())
     {
         return Err(AuthError::InvalidAccessToken);
     }
     let active = selected.active_material()?;
-    let material = selected.ring.select(header.kid.as_deref(), &active)
-        .ok_or(AuthError::InvalidAccessToken)?;
+    let (material, cutoff) = selected.ring.select(
+        header.kid.as_deref(), &active, Utc::now().timestamp(),
+    ).ok_or(AuthError::InvalidAccessToken)?;
     ensure_selected_key_isolated(config, purpose, selected.algorithm, material)?;
-    verification_key(selected.algorithm, material)
+    let key = verification_key(selected.algorithm, material)?;
+    let validation = strict_jwt_validation(config, purpose);
+    let claims = decode::<T>(token, &key, &validation)
+        .map_err(|_| AuthError::InvalidAccessToken)?.claims;
+    if cutoff.is_some_and(|until| Utc::now().timestamp() >= until) {
+        return Err(AuthError::InvalidAccessToken);
+    }
+    Ok(claims)
 }
 
 // ─── Validation ──────────────────────────────────────────────────────
@@ -449,7 +485,7 @@ fn valid_token_times(iat: usize, exp: usize) -> bool {
     let Ok(now) = usize::try_from(Utc::now().timestamp()) else {
         return false;
     };
-    iat > 0 && iat <= now && iat < exp
+    iat > 0 && iat <= now && iat < exp && now < exp
 }
 
 fn strict_jwt_validation(config: &AuthConfig, purpose: JwtPurpose) -> Validation {
@@ -986,21 +1022,49 @@ mod tests {
 
     #[test]
     fn rfc7519_jwt_expiration_enforced() {
-        let config = AuthConfig {
-            access_expiration: 0,
-            ..test_config()
-        };
-        let token = encode_access_token(
-            &config,
-            Uuid::new_v4(),
-            Uuid::new_v4(),
-            UserRole::Customer,
-            Uuid::new_v4(),
-        )
-        .unwrap();
+        let config = test_config();
+        let token = encode_access_token(&config, Uuid::new_v4(), Uuid::new_v4(),
+            UserRole::Customer, Uuid::new_v4()).unwrap();
+        let mut claims = decode_access_token(&config, &token).unwrap();
+        let now = Utc::now().timestamp() as usize;
+        claims.iat = now - 60;
+        claims.exp = now;
+        let expired = encode(&jwt_header(&config, JwtPurpose::Access), &claims,
+            &encoding_key(&config, JwtPurpose::Access).unwrap()).unwrap();
+        assert!(decode_access_token(&config, &expired).is_err());
+        let zero = config.with_expiration(0, 900);
+        assert!(encode_access_token(&zero, Uuid::new_v4(), Uuid::new_v4(),
+            UserRole::Customer, Uuid::new_v4()).is_err());
+        assert!(encode_password_reset_token(&zero, Uuid::new_v4(), "a@example.com", 0).is_err());
+        assert!(encode_email_verification_token(&zero, Uuid::new_v4(), "a@example.com", 0).is_err());
+        assert!(encode_invite_token(&zero, Uuid::new_v4(), "a@example.com", UserRole::Customer, None, 0).is_err());
+    }
 
-        let result = decode_access_token(&config, &token);
-        assert!(result.is_err(), "Expired JWT MUST be rejected");
+    #[test]
+    fn auth_header_rejects_null_duplicate_and_unsupported_fields() {
+        for raw in [
+            r#"{"alg":"HS256","typ":"JWT","kid":null}"#,
+            r#"{"alg":"HS256","typ":"JWT","kid":"a","kid":"b"}"#,
+            r#"{"alg":"HS256","typ":"JWT","kid":"a","crit":["b64"],"b64":false}"#,
+            r#"{"alg":"HS256","typ":"JWT","kid":"a","jku":"https://example.invalid"}"#,
+            r#"{"alg":"HS256","typ":"JWT","kid":"a","unknown":1}"#,
+            r#"{"alg":"HS256","kid":"a"}"#,
+        ] {
+            let token = format!("{}.e30.signature", URL_SAFE_NO_PAD.encode(raw));
+            assert!(auth_jwt_header(&token).is_err());
+        }
+        let omitted = format!("{}.e30.signature", URL_SAFE_NO_PAD.encode(r#"{"alg":"HS256","typ":"JWT"}"#));
+        assert!(auth_jwt_header(&omitted).unwrap().kid.is_none());
+        let oversized = format!("{}.e30.signature", "a".repeat(1025));
+        assert!(auth_jwt_header(&oversized).is_err());
+    }
+
+    #[test]
+    fn rsa_direct_signer_rejects_mismatched_pair() {
+        let wrong = TEST_RSA_PUBLIC_KEY.replacen("3bmu", "3cmu", 1);
+        let config = test_config().with_rs256(TEST_RSA_PRIVATE_KEY, wrong);
+        assert!(encode_access_token(&config, Uuid::new_v4(), Uuid::new_v4(),
+            UserRole::Customer, Uuid::new_v4()).is_err());
     }
 
     #[test]

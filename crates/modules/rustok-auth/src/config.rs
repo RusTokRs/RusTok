@@ -1,4 +1,4 @@
-use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
+use jsonwebtoken::{Algorithm, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 
 use crate::credentials::{
@@ -6,7 +6,7 @@ use crate::credentials::{
     MIN_PASSWORD_LENGTH_FLOOR_CHARS,
 };
 use crate::error::{AuthError, Result};
-use crate::jwt_keyring::{JwtKeyring, SpecialJwtKeyrings, validate_purpose_keyrings};
+use crate::jwt_keyring::{JwtKeyring, SpecialJwtKeyrings, rsa_signing_key, validate_purpose_keyrings, verification_key};
 
 const DEFAULT_ACCESS_EXPIRATION_SECS: u64 = 900; // 15 minutes
 const DEFAULT_REFRESH_EXPIRATION_SECS: u64 = 60 * 60 * 24 * 30; // 30 days
@@ -35,7 +35,7 @@ struct Rs256KeyPairProbe {
 
 /// JWT signing algorithm selector.
 ///
-/// - `HS256` (default): HMAC-SHA256, symmetric shared secret via `AuthConfig::secret`.
+/// - `HS256` (default): explicit symmetric signing material or a purpose-derived key.
 /// - `RS256`: RSA-SHA256, asymmetric — set `rsa_private_key_pem` for signing,
 ///   `rsa_public_key_pem` for verification.
 #[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq, Eq)]
@@ -295,7 +295,10 @@ fn resolve_key_material<F>(
 where
     F: FnMut(&str) -> Result<String>,
 {
-    if let Some(env_name) = env_name.filter(|name| !name.trim().is_empty()) {
+    if let Some(env_name) = env_name {
+        if env_name.trim().is_empty() {
+            return Err(AuthError::Internal("RSA key environment name is empty".to_string()));
+        }
         let value = env_resolver(&env_name)?;
         if value.trim().is_empty() {
             return Err(AuthError::Internal(format!(
@@ -365,10 +368,8 @@ pub fn validate_auth_config(config: &AuthConfig) -> Result<()> {
 }
 
 pub(crate) fn validate_rs256_key_pair(private_key_pem: &str, public_key_pem: &str) -> Result<()> {
-    let encoding_key = EncodingKey::from_rsa_pem(private_key_pem.as_bytes())
-        .map_err(|_| AuthError::Internal("Invalid RS256 private key PEM".to_string()))?;
-    let decoding_key = DecodingKey::from_rsa_pem(public_key_pem.as_bytes())
-        .map_err(|_| AuthError::Internal("Invalid RS256 public key PEM".to_string()))?;
+    let encoding_key = rsa_signing_key(private_key_pem, public_key_pem)?;
+    let decoding_key = verification_key(&JwtAlgorithm::RS256, public_key_pem)?;
     let token = encode(
         &Header::new(Algorithm::RS256),
         &Rs256KeyPairProbe {

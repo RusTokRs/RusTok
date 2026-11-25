@@ -14130,6 +14130,7 @@ dependencies = [
  "argon2 0.6.0",
  "async-graphql",
  "async-trait",
+ "base64 0.23.1",
  "chrono",
  "flex",
  "hex",
