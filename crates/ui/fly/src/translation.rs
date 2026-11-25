@@ -399,6 +399,7 @@ mod tests {
             FLY_TRANSLATIONS_FIELD.to_string(),
             json!([{ "future": true }]),
         );
+        let before_hash = document.hash();
         apply_translation_command(
             &mut document,
             &TranslationCommand::Upsert {
@@ -415,6 +416,7 @@ mod tests {
             },
         )
         .expect("upsert");
+        assert_ne!(document.hash(), before_hash);
         let catalog = TranslationCatalog::from_document(&document);
         assert_eq!(catalog.entries.len(), 1);
         assert_eq!(catalog.unknown_entries, vec![json!({ "future": true })]);
