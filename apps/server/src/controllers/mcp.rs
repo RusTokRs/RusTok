@@ -884,7 +884,7 @@ async fn revoke_token_by_id(
         actor_type,
         None,
     )
-        .await?;
+    .await?;
     Ok(Json(serde_json::json!({ "success": true })))
 }
 
