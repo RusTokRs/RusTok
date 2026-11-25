@@ -844,20 +844,25 @@ pub fn FlyStyleRules(
     #[prop(optional)] on_preview_breakpoint: Option<Callback<String>>,
     #[prop(optional_no_strip)] capabilities: Option<CapabilityState>,
     #[prop(optional)] messages: Option<EditorMessages>,
+    #[prop(optional)] intent_mode: bool,
 ) -> impl IntoView {
     let messages = messages.unwrap_or_else(EditorMessages::english);
     let styles_enabled = capabilities.map(|state| state.styles).unwrap_or(true);
     let breakpoints = builtin_responsive_breakpoints();
     let states = builtin_style_states();
     let descriptors = builtin_style_properties();
-    let Some(component_id) = component_id else {
-        return view! {
-            <section class="fly-style-rules">
-                <h3>{messages.responsive_styles}</h3>
-                <p class="fly-style-rules__empty">{messages.no_selection}</p>
-            </section>
+    let component_id = match component_id {
+        Some(component_id) => component_id,
+        None if intent_mode => String::new(),
+        None => {
+            return view! {
+                <section class="fly-style-rules">
+                    <h3>{messages.responsive_styles}</h3>
+                    <p class="fly-style-rules__empty">{messages.no_selection}</p>
+                </section>
+            }
+            .into_any();
         }
-        .into_any();
     };
     let media_property = RwSignal::new("padding".to_string());
     let state_property = RwSignal::new("padding".to_string());
@@ -912,6 +917,7 @@ pub fn FlyStyleRules(
         view! {
             <button
                 type="button"
+                data-fly-ssr-only="true"
                 disabled=!styles_enabled
                 on:click=move |_| preview.run(breakpoint_id.get_untracked())
             >
@@ -972,7 +978,8 @@ pub fn FlyStyleRules(
                     on:input=move |event| media_value.set(event_target_value(&event))
                 />
                 <button
-                    type="button"
+                    type="submit"
+                    form="fly-style-media-apply"
                     disabled=!styles_enabled
                     on:click=move |_| {
                         on_upsert.run(ScopedStyleChange {
@@ -988,7 +995,8 @@ pub fn FlyStyleRules(
                 </button>
                 {preview_button}
                 <button
-                    type="button"
+                    type="submit"
+                    form="fly-style-media-clear"
                     disabled=!styles_enabled
                     on:click=move |_| {
                         on_upsert.run(ScopedStyleChange {
@@ -1056,7 +1064,8 @@ pub fn FlyStyleRules(
                     on:input=move |event| state_value.set(event_target_value(&event))
                 />
                 <button
-                    type="button"
+                    type="submit"
+                    form="fly-style-state-apply"
                     disabled=!styles_enabled
                     on:click=move |_| {
                         on_upsert.run(ScopedStyleChange {
@@ -1073,7 +1082,8 @@ pub fn FlyStyleRules(
                     {apply_label}
                 </button>
                 <button
-                    type="button"
+                    type="submit"
+                    form="fly-style-state-clear"
                     disabled=!styles_enabled
                     on:click=move |_| {
                         on_upsert.run(ScopedStyleChange {
@@ -1090,6 +1100,64 @@ pub fn FlyStyleRules(
                     {clear_label}
                 </button>
             </div>
+            <form
+                id="fly-style-media-apply"
+                hidden=true
+                data-fly-intent-form=intent_mode.then_some("upsert_style_rule")
+                on:submit=move |event| event.prevent_default()
+            >
+                <input type="hidden" name="scope_kind" value="media"/>
+                <input
+                    type="hidden"
+                    name="scope_value"
+                    prop:value=move || match current_media_scope(breakpoint_id.get()) {
+                        fly::StyleRuleScope::Media { query } => query,
+                        _ => String::new(),
+                    }
+                />
+                <input type="hidden" name="property" prop:value=move || media_property.get()/>
+                <input type="hidden" name="value" prop:value=move || media_value.get()/>
+            </form>
+            <form
+                id="fly-style-media-clear"
+                hidden=true
+                data-fly-intent-form=intent_mode.then_some("upsert_style_rule")
+                on:submit=move |event| event.prevent_default()
+            >
+                <input type="hidden" name="scope_kind" value="media"/>
+                <input
+                    type="hidden"
+                    name="scope_value"
+                    prop:value=move || match current_media_scope(breakpoint_id.get()) {
+                        fly::StyleRuleScope::Media { query } => query,
+                        _ => String::new(),
+                    }
+                />
+                <input type="hidden" name="property" prop:value=move || media_property.get()/>
+                <input type="checkbox" name="remove" checked=true hidden=true/>
+            </form>
+            <form
+                id="fly-style-state-apply"
+                hidden=true
+                data-fly-intent-form=intent_mode.then_some("upsert_style_rule")
+                on:submit=move |event| event.prevent_default()
+            >
+                <input type="hidden" name="scope_kind" value="state"/>
+                <input type="hidden" name="scope_value" prop:value=move || state_pseudo.get()/>
+                <input type="hidden" name="property" prop:value=move || state_property.get()/>
+                <input type="hidden" name="value" prop:value=move || state_value.get()/>
+            </form>
+            <form
+                id="fly-style-state-clear"
+                hidden=true
+                data-fly-intent-form=intent_mode.then_some("upsert_style_rule")
+                on:submit=move |event| event.prevent_default()
+            >
+                <input type="hidden" name="scope_kind" value="state"/>
+                <input type="hidden" name="scope_value" prop:value=move || state_pseudo.get()/>
+                <input type="hidden" name="property" prop:value=move || state_property.get()/>
+                <input type="checkbox" name="remove" checked=true hidden=true/>
+            </form>
         </section>
     }
     .into_any()
