@@ -174,4 +174,69 @@ mod tests {
 
         assert!(!permissions.is_empty());
     }
+
+    #[tokio::test]
+    async fn custom_role_resolves_slug_and_permission_derived_hierarchy() {
+        use rustok_api::Permission;
+        use sea_orm::{ConnectionTrait, DbBackend, Statement};
+        use uuid::Uuid;
+
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let (tenant_id, user_id) = insert_tenant_and_user(
+            &db,
+            "authoritative-custom-role",
+            "authoritative-custom@example.com",
+        )
+        .await;
+
+        let custom_role_id = Uuid::new_v4();
+        let perm_id = Uuid::new_v4();
+        for (sql, values) in [
+            (
+                "INSERT INTO roles (id, tenant_id, name, slug, is_system) VALUES (?, ?, ?, ?, FALSE)",
+                vec![
+                    custom_role_id.into(),
+                    tenant_id.into(),
+                    "Security Lead".into(),
+                    "security_lead".into(),
+                ],
+            ),
+            (
+                "INSERT INTO permissions (id, tenant_id, resource, action) VALUES (?, ?, ?, ?)",
+                vec![
+                    perm_id.into(),
+                    tenant_id.into(),
+                    Permission::USERS_MANAGE.resource.to_string().into(),
+                    Permission::USERS_MANAGE.action.to_string().into(),
+                ],
+            ),
+            (
+                "INSERT INTO role_permissions (id, role_id, permission_id) VALUES (?, ?, ?)",
+                vec![Uuid::new_v4().into(), custom_role_id.into(), perm_id.into()],
+            ),
+            (
+                "INSERT INTO user_roles (id, user_id, role_id) VALUES (?, ?, ?)",
+                vec![Uuid::new_v4().into(), user_id.into(), custom_role_id.into()],
+            ),
+        ] {
+            let rewritten = sql.to_string();
+            db.execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                rewritten,
+                values,
+            ))
+            .await
+            .expect("seed custom role");
+        }
+
+        let role = RbacService::get_user_role_authoritative(&db, &tenant_id, &user_id)
+            .await
+            .expect("resolve custom role hierarchy");
+        assert_eq!(role, UserRole::Admin);
+
+        let slug = RbacService::get_user_role_slug_authoritative(&db, &tenant_id, &user_id)
+            .await
+            .expect("resolve custom role slug");
+        assert_eq!(slug, "security_lead");
+    }
 }

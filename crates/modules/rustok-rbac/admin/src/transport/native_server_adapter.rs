@@ -27,11 +27,18 @@ fn rbac_admin_context_error<E: std::fmt::Debug>(
 pub async fn fetch_bootstrap_native() -> Result<RbacAdminBootstrap, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
+        use std::collections::{BTreeMap, BTreeSet};
+
         use rustok_api::{
-            AuthContext, AuthPrincipalContext, Permission, TenantContext, has_effective_permission,
+            AuthContext, AuthPrincipalContext, HostRuntimeContext, Permission, RequestContext,
+            TenantContext, has_effective_permission,
         };
-        use rustok_core::{ModuleRegistry, Rbac, UserRole, infer_user_role_from_permissions};
-        use rustok_rbac::{RbacControlPlanePrincipal, require_direct_control_plane_user};
+        use rustok_core::{ModuleRegistry, infer_user_role_from_permissions};
+        use rustok_modules::SharedModuleEffectivePolicyReader;
+        use rustok_rbac::{
+            ModulePermissionStatus, PermissionAvailability, RbacControlPlanePrincipal,
+            load_tenant_roles_overview_on, require_direct_control_plane_user,
+        };
 
         let registry = expect_context::<ModuleRegistry>();
         let auth = leptos_axum::extract::<AuthContext>()
@@ -87,9 +94,47 @@ pub async fn fetch_bootstrap_native() -> Result<RbacAdminBootstrap, ServerFnErro
             ));
         }
 
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let mut ownership = BTreeMap::new();
+        for module in registry.list() {
+            let slug = module.slug().to_string();
+            for permission in module.permissions() {
+                ownership.insert(permission.to_string(), slug.clone());
+            }
+        }
+
+        let enabled_modules = if let Some(policy_reader) =
+            runtime_ctx.shared_get::<SharedModuleEffectivePolicyReader>()
+        {
+            let policy = policy_reader.0.resolve(tenant.id).await.map_err(|error| {
+                rbac_admin_context_error(
+                    error,
+                    "module_policy",
+                    "RBAC module policy is temporarily unavailable",
+                )
+            })?;
+            Some(
+                policy
+                    .enabled_module_slugs()
+                    .into_iter()
+                    .collect::<BTreeSet<String>>(),
+            )
+        } else {
+            None
+        };
+
+        let availability = enabled_modules
+            .as_ref()
+            .map(|enabled| PermissionAvailability::new(ownership, enabled.clone()));
+
         let mut module_permissions = registry
             .list()
             .into_iter()
+            .filter(|module| {
+                enabled_modules
+                    .as_ref()
+                    .is_none_or(|enabled| enabled.contains(module.slug()))
+            })
             .filter_map(|module| {
                 let mut permissions = module
                     .permissions()
@@ -118,35 +163,48 @@ pub async fn fetch_bootstrap_native() -> Result<RbacAdminBootstrap, ServerFnErro
         granted_permissions.sort();
         granted_permissions.dedup();
 
-        let roles = [
-            UserRole::SuperAdmin,
-            UserRole::Admin,
-            UserRole::Manager,
-            UserRole::Customer,
-        ]
-        .into_iter()
-        .map(|role| {
-            let mut permissions = Rbac::permissions_for_role(&role)
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>();
-            permissions.sort();
-            RbacRoleInfo {
-                id: None,
-                slug: role.to_string(),
-                display_name: match role {
-                    UserRole::SuperAdmin => "Super Admin",
-                    UserRole::Admin => "Admin",
-                    UserRole::Manager => "Manager",
-                    UserRole::Customer => "Customer",
+        let locale = leptos_axum::extract::<RequestContext>()
+            .await
+            .ok()
+            .map(|ctx| ctx.locale);
+        let role_records = load_tenant_roles_overview_on(
+            runtime_ctx.db(),
+            tenant.id,
+            availability.as_ref(),
+            locale.as_deref(),
+        )
+        .await
+        .map_err(|error| {
+            rbac_admin_context_error(
+                error,
+                "roles",
+                "RBAC role directory is temporarily unavailable",
+            )
+        })?;
+
+        let roles = role_records
+            .into_iter()
+            .map(|record| {
+                let active_permissions = match availability.as_ref() {
+                    Some(snapshot) => record
+                        .permissions
+                        .into_iter()
+                        .filter(|perm| {
+                            !matches!(snapshot.status(perm), ModulePermissionStatus::Disabled(_))
+                        })
+                        .collect(),
+                    None => record.permissions,
+                };
+                RbacRoleInfo {
+                    id: record.id.map(|id| id.to_string()),
+                    slug: record.slug,
+                    display_name: record.display_name,
+                    description: record.description,
+                    is_system: record.is_system,
+                    permissions: active_permissions,
                 }
-                .to_string(),
-                description: None,
-                is_system: true,
-                permissions,
-            }
-        })
-        .collect();
+            })
+            .collect();
 
         Ok(RbacAdminBootstrap {
             tenant_slug: tenant.slug,
