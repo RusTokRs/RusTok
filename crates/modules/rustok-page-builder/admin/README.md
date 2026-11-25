@@ -97,7 +97,7 @@ The file backend uses native OS file locks (`std::fs::File::try_lock`; `flock` o
 the token lock descriptor for the full read-check-write operation. A stable
 `_locks/.guard.lock` serializes token-lock opening with cleanup: waiters close a
 contended descriptor before releasing the guard, and `prune` unlinks only idle
-token lock files while holding it. The OS releases held locks when a process exits;
+session and owner-cap lock files while holding it. The OS releases held locks when a process exits;
 there is no age-based stale-lock breaking. Per-owner capacity checks also take a
 stable owner-key lock held across the capacity scan and new-record write, while
 candidate records are revalidated under their own token locks before eviction. All writers sharing a directory must use the same

@@ -41,7 +41,7 @@ The default file-backed SSR editor store uses a persistent per-user state direct
 must use a shared KV backend. File mutations now use native OS file locks held for the full
 token operation. A stable directory guard serializes lock-file open/reap, so a waiter never keeps
 an open descriptor while cleanup can unlink the token file. Process exit releases held locks;
-there is no mtime-based stale-lock breaking. `prune` removes only idle token lock files, and
+there is no mtime-based stale-lock breaking. `prune` removes only idle session and owner-cap lock files, and
 temporary-write cleanup plus capacity eviction recheck under the owning token lock; per-owner
 create scans and the subsequent record write serialize under a stable owner-key lock so
 simultaneous creates cannot exceed the eight-session cap. All writers
