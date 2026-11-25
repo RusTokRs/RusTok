@@ -63,6 +63,12 @@ jobs:
           rustup default 1.96.0
           rustc --version --verbose
 
+      - name: Provision isolated RSA JWT keyring
+        run: |
+          set -euo pipefail
+          install -d -m 0700 "$RUNNER_TEMP/rustok-jwt"
+          python3 scripts/dev/provision-jwt-keyring.py --output "$RUNNER_TEMP/rustok-jwt/jwt.json"
+
       - name: Create bounded PostgreSQL smoke role
         env:
           PGPASSWORD: postgres
@@ -118,6 +124,7 @@ jobs:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/browser-server
           DATABASE_URL: postgres://${{ env.RUSTOK_BROWSER_DATABASE_ROLE }}:${{ env.RUSTOK_BROWSER_DATABASE_PASSWORD }}@127.0.0.1:5432/${{ env.RUSTOK_BROWSER_DATABASE }}
           RUSTOK_ENV: browser-smoke
+          RUSTOK_JWT_KEYRING_FILE: ${{ runner.temp }}/rustok-jwt/jwt.json
           SUPERADMIN_EMAIL: browser-smoke@example.invalid
           SUPERADMIN_PASSWORD: BrowserSmoke-2026!9Qv2Lm7Rx
           SUPERADMIN_TENANT_SLUG: default
@@ -156,6 +163,10 @@ jobs:
             kill "$(cat rust-host-browser.pid)" 2>/dev/null || true
             wait "$(cat rust-host-browser.pid)" 2>/dev/null || true
           fi
+
+      - name: Remove private JWT key material
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/rustok-jwt"
 
       - name: Upload Rust-host browser evidence
         if: always()

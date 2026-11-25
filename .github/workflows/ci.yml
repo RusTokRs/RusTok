@@ -427,7 +427,15 @@ jobs:
           path: target/debug
       - name: Ensure rustok-server is executable
         run: chmod +x target/debug/rustok-server
+      - name: Provision isolated RSA JWT keyring
+        run: |
+          set -euo pipefail
+          install -d -m 0700 "$RUNNER_TEMP/rustok-jwt"
+          python3 scripts/dev/provision-jwt-keyring.py --output "$RUNNER_TEMP/rustok-jwt/jwt.json"
       - name: Start rustok-server
+        env:
+          RUSTOK_ENV: development
+          RUSTOK_JWT_KEYRING_FILE: ${{ runner.temp }}/rustok-jwt/jwt.json
         run: |
           ./target/debug/rustok-server > server.log 2>&1 &
           echo $! > server.pid
@@ -460,6 +468,9 @@ jobs:
             kill "$(cat server.pid)" || true
           fi
           tail -n 100 server.log || true
+      - name: Remove private JWT key material
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/rustok-jwt"
 
   server-library-docs-snapshot:
     name: Server Library Docs Snapshot Freshness
