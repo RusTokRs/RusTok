@@ -130,3 +130,14 @@ test('null custom JSON values use the empty-object default', () => {
   assert.equal(JSON.stringify(events[0].detail.payload), '{}');
   assert.equal(JSON.stringify(events[1].detail.input), '{}');
 });
+
+for (const animation of ['constructor', 'toString', '__proto__', 'unknown']) {
+  test('animation rejects non-allowlisted name ' + animation, () => {
+    for (const reduced of [true, false]) {
+      const { actions, calls, target, trigger } = fixture(reduced);
+      actions.handleAction({ kind: 'animate', target_id: 'destination', animation }, trigger);
+      assert.equal(calls.length, 0);
+      assert.equal(target.style.opacity, undefined);
+    }
+  });
+}
