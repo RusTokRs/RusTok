@@ -3,7 +3,9 @@ use fly::{
     ProjectFragment, ProjectHash, ProjectSnapshot, RegistrySet, ValidationReport,
 };
 use fly_ui::{FlyUiStateMachine, Presentation, UiEffect, UiIntent};
-use rustok_page_builder::dto::{PageBuilderCapabilityRequest, PublishPageBuilderInput};
+use rustok_page_builder::dto::{
+    PageBuilderCapabilityRequest, PreviewPageBuilderInput, PublishPageBuilderInput,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
@@ -127,6 +129,24 @@ impl AdminCanvasController {
                 })?;
         document.project_mut().pages = vec![page];
         GrapesJsCodec::encode_value(&document)
+    }
+
+    /// Page navigation does not advance the document revision or hash. A delayed
+    /// preview effect must therefore also match the actual active-page projection.
+    pub(crate) fn validate_preview_request(
+        &self,
+        input: &PreviewPageBuilderInput,
+        command_sequence: u64,
+    ) -> Result<(), AdminCanvasError> {
+        if input.page_id != self.page_id
+            || command_sequence != self.editor.revision().command_sequence
+            || input.project_data != self.active_page_project()?
+        {
+            return Err(AdminCanvasError::Authoring(
+                "preview request no longer matches the active page snapshot".to_string(),
+            ));
+        }
+        Ok(())
     }
 
     pub fn active_page_summary(&self) -> Option<PageSummary> {
@@ -1106,6 +1126,42 @@ mod tests {
             .dispatch(UiIntent::CutSelection)
             .expect("cut pasted component");
         assert!(!controller.editor().document().contains_component(&selected));
+    }
+
+    #[test]
+    fn preview_request_admission_rejects_stale_page_even_without_revision_change() {
+        let mut controller = controller();
+        controller
+            .dispatch(UiIntent::execute(EditorCommand::Page {
+                command: PageCommand::Add {
+                    index: 1,
+                    page: Box::new(blank_page("about", "About")),
+                },
+            }))
+            .expect("add page");
+        let sequence = controller.editor().revision().command_sequence;
+        let hash = controller.editor().revision().project_hash;
+        let home = PreviewPageBuilderInput::new(
+            controller.page_id(),
+            controller.active_page_project().expect("home projection"),
+        );
+        controller.validate_preview_request(&home, sequence).expect("current home");
+        controller.dispatch(UiIntent::ActivatePage {
+            page_id: Some("about".into()),
+            page_index: 1,
+        }).expect("navigate");
+        assert_eq!(controller.editor().revision().command_sequence, sequence);
+        assert_eq!(controller.editor().revision().project_hash, hash);
+        assert!(controller.validate_preview_request(&home, sequence).is_err());
+
+        let about = PreviewPageBuilderInput::new(
+            controller.page_id(),
+            controller.active_page_project().expect("about projection"),
+        );
+        controller.validate_preview_request(&about, sequence).expect("current about");
+        assert!(controller.validate_preview_request(&about, sequence + 1).is_err());
+        let foreign = PreviewPageBuilderInput::new("foreign", about.project_data.clone());
+        assert!(controller.validate_preview_request(&foreign, sequence).is_err());
     }
 
     #[test]

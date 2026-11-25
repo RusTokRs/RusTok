@@ -272,6 +272,12 @@ The framework-neutral `EditorSessionState` carries `SaveAttempt` through save st
 acknowledgement and failure actions. There is no hash-only acknowledgement fallback: Dioxus and
 external session adapters must return the exact attempt token.
 
+Toolbar and browser previews use the controller's canonical active-page projection. A missing
+page fails before an attempt is started. Before dispatching a browser preview (or a prepared
+Dioxus effect), the controller checks the page identity, command sequence and exact active-page
+payload, since navigating between pages does not change the project hash. Adopting a different
+browser runtime context or scenario clears the previous preview and runtime publish-gate result.
+
 The Dioxus admin Save toolbar and FlyEditorWorkspace consume reducer request effects and execute
 the supplied consumer facade. Save completion is attempt-aware; browser previews retain their
 scenario/context and lifecycle flags in the same session. The Page Builder Dioxus host now mounts

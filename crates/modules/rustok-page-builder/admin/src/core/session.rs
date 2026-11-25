@@ -1,5 +1,5 @@
 use crate::model::{AdminCanvasController, AdminCanvasEffect, SaveAttempt};
-use fly::{GrapesJsCodec, ProjectHash, TraitSchemaRegistry, ValidationSeverity};
+use fly::{ProjectHash, TraitSchemaRegistry, ValidationSeverity};
 use fly_ui::{EditorCapability, EditorCapabilityEvaluation, UiIntent};
 use rustok_page_builder::dto::{
     PageBuilderCapabilityRequest, PageBuilderPreviewRuntime, PreviewPageBuilderInput,
@@ -274,16 +274,7 @@ impl EditorSessionState {
         };
         let runtime_scenario_id = self.active_runtime_scenario.clone();
         let active_page_index = self.controller.active_page_index();
-        let mut document = self.controller.editor().document().clone();
-        let active_page = document
-            .project()
-            .pages
-            .get(active_page_index)
-            .cloned()
-            .into_iter()
-            .collect();
-        document.project_mut().pages = active_page;
-        let project_data = GrapesJsCodec::encode_value(&document).map_err(|e| e.to_string())?;
+        let project_data = self.controller.active_page_project().map_err(|e| e.to_string())?;
         let project_hash = self.controller.editor().revision().project_hash;
         let request = PageBuilderCapabilityRequest::Preview(
             PreviewPageBuilderInput::new(self.controller.page_id(), project_data).with_runtime(
@@ -1013,6 +1004,16 @@ mod tests {
             .with_trait_schemas(Arc::new(TraitSchemaRegistry::default()));
         state.update_host_configuration(None, None, None, None, None, true);
         assert_eq!(state.trait_schemas.as_ref(), &TraitSchemaRegistry::with_builtins());
+    }
+
+    #[test]
+    fn preview_preparation_fails_without_an_active_page() {
+        let controller = AdminCanvasController::new("home", "rev-1", json!({"pages": []}))
+            .expect("empty project controller");
+        let mut session = EditorSessionState::new(controller, "Missing", "Saved");
+        assert!(session.prepare_server_preview_request().is_err());
+        assert!(!session.preview_in_progress);
+        assert!(session.preview_request.is_none());
     }
 
     #[test]

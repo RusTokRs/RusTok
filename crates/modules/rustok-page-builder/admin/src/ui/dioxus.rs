@@ -148,18 +148,33 @@ where
                         if !state.preview_attempt_active(id) {
                             continue;
                         }
+                    } else if state.preview_in_progress {
+                        state.fail("Preview already in progress");
+                        continue;
+                    }
+                    if let Err(error) = state.controller.validate_preview_request(input, command_sequence) {
+                        if let Some(id) = preview_attempt_id {
+                            state.handle_preview_failure(id, error.to_string());
+                        } else {
+                            state.fail(error.to_string());
+                        }
+                        continue;
+                    }
+                    if let Some(id) = preview_attempt_id {
                         Some(id)
                     } else {
-                        if state.preview_in_progress {
-                            state.fail("Preview already in progress");
-                            continue;
-                        }
                         let context = input.runtime.context.clone();
                         let scenario = input.runtime.scenario_id.clone();
+                        if !state.runtime_context_configured
+                            || state.runtime_context != context
+                            || state.active_runtime_scenario != scenario
+                        {
+                            state.runtime_publish_gate_evaluation = None;
+                            state.server_preview_html = None;
+                        }
                         state.runtime_context = context.clone();
                         state.runtime_context_configured = true;
                         state.active_runtime_scenario = scenario.clone();
-                        state.runtime_publish_gate_evaluation = None;
                         let attempt = crate::core::session::PreviewAttempt::new(
                             state.controller.editor().revision().project_hash,
                             state.controller.active_page_index(),

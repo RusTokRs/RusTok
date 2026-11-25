@@ -5,7 +5,7 @@ use crate::{
     AdminCanvasController, AdminCanvasEffect, PageBuilderAdminFacade,
     PageBuilderAdminFacadeError, SaveAttempt,
 };
-use fly::{GrapesJsCodec, ProjectHash, TraitSchemaRegistry};
+use fly::{ProjectHash, TraitSchemaRegistry};
 #[cfg(not(target_arch = "wasm32"))]
 use fly_browser::BrowserIntentKind;
 use fly_ui::{EditorCapability, EditorCapabilityEvaluation, UiIntent};
@@ -349,16 +349,7 @@ impl AdminEditorRuntime {
         let runtime_scenario_id = self.active_runtime_scenario.get_untracked();
         let request = self.controller.with(|controller| {
             let active_page_index = controller.active_page_index();
-            let mut document = controller.editor().document().clone();
-            let active_page = document
-                .project()
-                .pages
-                .get(active_page_index)
-                .cloned()
-                .into_iter()
-                .collect();
-            document.project_mut().pages = active_page;
-            GrapesJsCodec::encode_value(&document)
+            controller.active_page_project()
                 .map(|project_data| {
                     (
                         PageBuilderCapabilityRequest::Preview(
@@ -480,11 +471,23 @@ impl AdminEditorRuntime {
                             self.fail("Preview already in progress");
                             continue;
                         }
-                        // The browser provides its own runtime context. Capture
-                        // that context and active page before the async preview
-                        // so the response can be checked against what was sent.
+                        if let Err(error) = self.controller.with(|controller| {
+                            controller.validate_preview_request(preview, command_sequence)
+                        }) {
+                            self.fail(error.to_string());
+                            continue;
+                        }
+                        // The browser supplies its own runtime context. Retire any
+                        // cached render/gate for different inputs before adopting it.
                         let context = preview.runtime.context.clone();
                         let scenario = preview.runtime.scenario_id.clone();
+                        if !self.runtime_context_configured.get_untracked()
+                            || self.runtime_context.get_untracked() != context
+                            || self.active_runtime_scenario.get_untracked() != scenario
+                        {
+                            self.runtime_publish_gate_evaluation.set(None);
+                            self.server_preview_html.set(None);
+                        }
                         self.runtime_context.set(context.clone());
                         self.runtime_context_configured.set(true);
                         self.active_runtime_scenario.set(scenario.clone());
