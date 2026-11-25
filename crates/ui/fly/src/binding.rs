@@ -312,6 +312,7 @@ fn write_catalog(document: &mut ProjectDocument, catalog: BindingCatalog) -> Fly
         FLY_RUNTIME_BINDINGS_FIELD.to_string(),
         Value::Array(entries),
     );
+    document.invalidate_caches();
     Ok(())
 }
 
