@@ -11,7 +11,7 @@ async fn setup_db() -> DatabaseConnection {
         .expect("SQLite in-memory database");
     db.execute_unprepared(
         "CREATE TABLE module_artifact_installations (
-            installation_id TEXT NOT NULL,
+            installation_id TEXT PRIMARY KEY NOT NULL,
             scope_kind TEXT NOT NULL,
             tenant_id TEXT NULL
         )",
@@ -20,7 +20,7 @@ async fn setup_db() -> DatabaseConnection {
     .expect("create installation table");
     db.execute_unprepared(
         "CREATE TABLE module_artifact_admissions (
-            installation_id TEXT NOT NULL,
+            installation_id TEXT PRIMARY KEY NOT NULL,
             revision INTEGER NOT NULL,
             verification_evidence TEXT NOT NULL,
             status TEXT NOT NULL
@@ -80,7 +80,10 @@ fn evidence_json(trust_revision: u64, capability_revision: u64) -> String {
     .to_string()
 }
 
-fn policy(trust_revision: u64, capability_revision: u64) -> AdmissionReverificationPolicyRevision {
+fn policy(
+    trust_revision: u64,
+    capability_revision: u64,
+) -> AdmissionReverificationPolicyRevision {
     AdmissionReverificationPolicyRevision {
         trust_policy_revision: trust_revision,
         capability_policy_revision: capability_revision,
