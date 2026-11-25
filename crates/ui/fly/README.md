@@ -360,9 +360,11 @@ the owner of the missing half.
   configure the same registry on `FlyEditor::with_embed_registry`, and pass it to
   `render_page_with_embed_registry` or `render_page_with_runtime_context_with_embed_registry`.
   URLs are parsed as HTTPS, credentials and non-default ports are rejected, and normalized paths
-  must remain within an exact provider path boundary. Static publishing refuses `fly_embed`
-  explicitly — embeds go through dynamic routes. Arbitrary unregistered embeds and custom code
-  stay out by design, while `raw_html` stays escaped (above). Owner: `fly` embed registry.
+  must remain within an exact provider path boundary. The iframe sandbox permits scripts and
+  same-origin access for player compatibility, so custom registrations must use dedicated
+  cross-origin provider hosts and must never include the storefront/admin origin. Static publishing
+  refuses `fly_embed` explicitly — embeds go through dynamic routes. Arbitrary unregistered embeds
+  and custom code stay out by design, while `raw_html` stays escaped (above). Owner: `fly` embed registry.
 - **Design tokens exist with usage checks and reference rewriting.**
   A project carries a `flyTheme` extension (`fly::theme`): validated tokens render as `:root`
   custom properties and style declarations reference them with `var(--name)`. Theme values reject

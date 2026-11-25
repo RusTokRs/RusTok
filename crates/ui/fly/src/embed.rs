@@ -18,6 +18,11 @@ pub const FLY_EMBED_FIELD: &str = "flyEmbed";
 /// Iframe sandbox applied to every rendered embed. Scripts and same-origin access are the
 /// minimum interactive embeds (video players, maps) require; top navigation, popups, and
 /// form submission from inside the frame stay denied.
+///
+/// Security invariant: allow-scripts + allow-same-origin is only safe for dedicated
+/// cross-origin provider hosts. Custom provider registrations are trusted host configuration
+/// and must never include the storefront or admin origin, because a same-origin frame could
+/// remove its sandbox and regain the parent origin's privileges.
 pub const EMBED_IFRAME_SANDBOX: &str = "allow-scripts allow-same-origin allow-presentation";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -51,6 +56,9 @@ impl EmbedProviderRegistry {
         }
     }
 
+    /// Register a trusted, dedicated cross-origin embed provider. Do not register the
+    /// storefront/admin origin: the iframe sandbox intentionally permits scripts and
+    /// same-origin access for third-party player compatibility.
     pub fn register(&mut self, provider: EmbedProvider) {
         if let Some(existing) = self
             .providers
