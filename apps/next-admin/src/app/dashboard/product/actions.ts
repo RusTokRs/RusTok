@@ -22,6 +22,7 @@ import {
   type ProductVariantDeleteRequest,
   isVariantCreateInput,
   isVariantId,
+  isVariantRevision,
   isVariantUpdateInput,
   type ProductSavePayload,
   type ProductWriteOutcome,
@@ -322,11 +323,16 @@ export async function deleteVariantAction(
 ): Promise<ProductWriteOutcome> {
   const outcome = await productWriteOutcome(async () => {
     const opts = await getProductWriteAuthOpts(request.scope, idempotencyKey);
-    if (!isVariantId(request.id) || !isVariantId(request.variantId))
+    if (
+      !isVariantId(request.id) ||
+      !isVariantId(request.variantId) ||
+      !isVariantRevision(request.expectedRevision)
+    )
       throw new Error('The saved Product variant deletion is invalid.');
     const deleted = await deleteVariant(
       opts,
       request.variantId,
+      request.expectedRevision,
       idempotencyKey
     );
     if (!deleted) throw new Error('Product variant deletion was not acknowledged.');

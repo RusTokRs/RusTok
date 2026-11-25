@@ -275,6 +275,7 @@ export interface ProductVariant {
   axisValues: VariantAxisValue[];
   combinationIdentity: string;
   id: string;
+  revision: string;
   sku: string | null;
   barcode: string | null;
   shippingProfileSlug: string | null;

@@ -2,7 +2,10 @@
 pub(super) mod variant_axes;
 
 use super::attached_localized_storage;
-use super::concurrency::{ensure_expected_revision, next_revision, validate_patch_text_length};
+use super::concurrency::{
+    ensure_expected_revision, ensure_expected_variant_revision, next_revision,
+    validate_patch_text_length,
+};
 use super::*;
 use crate::services::catalog_schema_service::policy::lock_schema_for_product_write;
 use rustok_api::{Patch, TenantLocale};
@@ -472,6 +475,7 @@ impl CatalogService {
                 position: Set(variant_position),
                 created_at: Set(now.into()),
                 updated_at: Set(now.into()),
+                index_revision: sea_orm::ActiveValue::NotSet,
             };
             variant.insert(&txn).await.map_err(|error| {
                 tracing::error!(%error, "variant.insert failed in create_product");
@@ -1525,6 +1529,7 @@ impl CatalogService {
             position: Set(next_position),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
+            index_revision: sea_orm::ActiveValue::NotSet,
         };
 
         variant
@@ -1637,6 +1642,11 @@ impl CatalogService {
         input
             .validate()
             .map_err(|e| CommerceError::Validation(e.to_string()))?;
+        if input.inventory_quantity.is_some() != input.expected_inventory_quantity.is_some() {
+            return Err(CommerceError::Validation(
+                "inventory quantity changes require the quantity snapshot that was read".into(),
+            ));
+        }
         validate_patch_text_length(&input.sku, 100, "SKU")?;
         validate_patch_text_length(&input.barcode, 100, "Barcode")?;
         validate_patch_text_length(&input.shipping_profile_slug, 100, "Shipping profile slug")?;
@@ -1682,6 +1692,9 @@ impl CatalogService {
         let product_id = observed_variant.product_id;
         let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
         let variant = find_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
+        if input.has_changes() {
+            ensure_expected_variant_revision(&variant, input.expected_revision.as_deref())?;
+        }
         if !input.has_changes() {
             let result = self.get_variant_in(&txn, tenant_id, variant_id).await?;
             record_product_operation_result(&result);
@@ -1876,7 +1889,16 @@ impl CatalogService {
 
         if let Some(quantity) = input.inventory_quantity {
             self.inventory()
-                .update_initial_quantity_in_tx(&txn, tenant_id, actor_id, variant_id, quantity)
+                .update_initial_quantity_in_tx(
+                    &txn,
+                    tenant_id,
+                    actor_id,
+                    variant_id,
+                    quantity,
+                    input.expected_inventory_quantity.ok_or_else(|| CommerceError::Validation(
+                        "inventory quantity changes require the quantity snapshot that was read".into(),
+                    ))?,
+                )
                 .await?;
         }
 
@@ -1909,6 +1931,7 @@ impl CatalogService {
         tenant_id: Uuid,
         actor_id: Uuid,
         variant_id: Uuid,
+        expected_revision: String,
     ) -> CommerceResult<()> {
         debug!("Deleting product variant");
 
@@ -1928,7 +1951,8 @@ impl CatalogService {
             .ok_or(CommerceError::VariantNotFound(variant_id))?;
         let product_id = observed_variant.product_id;
         let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
-        let _variant = find_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
+        let variant = find_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
+        ensure_expected_variant_revision(&variant, Some(&expected_revision))?;
 
         let count = entities::product_variant::Entity::find()
             .filter(entities::product_variant::Column::TenantId.eq(tenant_id))

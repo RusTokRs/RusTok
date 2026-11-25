@@ -681,7 +681,7 @@ test('the variant lifecycle journal has its own URL intent and retains exact pen
     id: productId,
     variantId,
     scope: testScope,
-    input: { sku: 'SKU-NEW' }
+    input: { sku: 'SKU-NEW', expectedRevision: '1' }
   };
   const journal = browserProductVariantWriteJournal(testScope, productId);
   const url = new URL(win.location.href);

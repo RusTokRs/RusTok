@@ -256,6 +256,7 @@ pub trait ProductInventoryPort: Send + Sync {
         actor_id: Uuid,
         variant_id: Uuid,
         quantity: i32,
+        expected_quantity: i32,
     ) -> Result<(), CommerceError>;
 
     /// Synchronizes the Inventory-owned SKU snapshot for a Product variant.
@@ -330,8 +331,9 @@ impl ProductInventoryPort for NoopProductInventoryPort {
         _actor_id: Uuid,
         _variant_id: Uuid,
         quantity: i32,
+        expected_quantity: i32,
     ) -> Result<(), CommerceError> {
-        if quantity != 0 {
+        if quantity != 0 || expected_quantity != 0 {
             return Err(CommerceError::InventoryQuantityBlocked(
                 ProductInventoryQuantityBlocker::LocationUnavailable,
             ));

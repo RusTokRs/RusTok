@@ -226,6 +226,8 @@ pub(crate) fn convert_update_variant_input(
         shipping_profile_slug: graphql_patch(input.shipping_profile_slug),
         prices,
         inventory_quantity: input.inventory_quantity,
+        expected_inventory_quantity: input.expected_inventory_quantity,
+        expected_revision: input.expected_revision,
         inventory_policy: input.inventory_policy,
         weight: match graphql_patch(input.weight) {
             rustok_api::Patch::Keep => rustok_api::Patch::Keep,

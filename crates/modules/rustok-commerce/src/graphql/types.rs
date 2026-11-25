@@ -151,6 +151,7 @@ pub struct GqlVariantAxisValue {
 #[derive(SimpleObject)]
 pub struct GqlVariant {
     pub id: Uuid,
+    pub revision: String,
     pub weight: Option<String>,
     pub weight_unit: Option<String>,
     pub sku: Option<String>,
@@ -1520,6 +1521,8 @@ pub struct UpdateVariantInput {
     pub axis_values: Option<Vec<VariantAxisValueInputObject>>,
     pub prices: Option<Vec<PriceInput>>,
     pub inventory_quantity: Option<i32>,
+    pub expected_inventory_quantity: Option<i32>,
+    pub expected_revision: Option<String>,
     pub inventory_policy: Option<String>,
 }
 
@@ -2316,6 +2319,7 @@ impl From<dto::VariantResponse> for GqlVariant {
     fn from(variant: dto::VariantResponse) -> Self {
         Self {
             id: variant.id,
+            revision: variant.revision,
             weight: variant.weight.map(|value| value.to_string()),
             weight_unit: variant.weight_unit,
             sku: variant.sku,

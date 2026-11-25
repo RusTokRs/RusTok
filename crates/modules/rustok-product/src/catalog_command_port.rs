@@ -267,6 +267,7 @@ impl ProductCatalogCommandPort for CatalogService {
         &self,
         context: PortContext,
         variant_id: Uuid,
+        expected_revision: String,
     ) -> Result<(), PortError> {
         let operation = "delete_variant";
         let (tenant_id, actor_id) = command_scope(&context, operation)?;
@@ -274,6 +275,7 @@ impl ProductCatalogCommandPort for CatalogService {
             "actor": &context.actor,
             "locale": &context.locale,
             "variant_id": &variant_id,
+            "expected_revision": &expected_revision,
         });
         execute_catalog_command(
             self,
@@ -281,7 +283,7 @@ impl ProductCatalogCommandPort for CatalogService {
             tenant_id,
             operation,
             &request,
-            self.delete_variant(tenant_id, actor_id, variant_id),
+            self.delete_variant(tenant_id, actor_id, variant_id, expected_revision),
         )
         .await
     }
@@ -645,7 +647,9 @@ fn product_command_error(
             "product SKU conflicts with an existing variant",
         ),
         CommerceError::Validation(message) => {
-            if crate::services::catalog::revision_conflict_of(&message).is_some() {
+            if crate::services::catalog::revision_conflict_of(&message).is_some()
+                || crate::services::catalog::variant_revision_conflict_of(&message)
+            {
                 PortError::conflict(
                     "product.revision_conflict",
                     "product was modified by another editor",
@@ -709,7 +713,9 @@ fn product_error_kind(error: &CommerceError) -> &'static str {
         CommerceError::DuplicateHandle { .. } => "duplicate_handle",
         CommerceError::DuplicateSku(_) => "duplicate_sku",
         CommerceError::Validation(message) => {
-            if crate::services::catalog::revision_conflict_of(message).is_some() {
+            if crate::services::catalog::revision_conflict_of(message).is_some()
+                || crate::services::catalog::variant_revision_conflict_of(message)
+            {
                 "revision_conflict"
             } else if crate::services::catalog::reconfiguration_error_code(message).is_some() {
                 "variant_axes_refusal"
@@ -736,7 +742,9 @@ fn product_error_code(error: &CommerceError) -> &'static str {
         CommerceError::DuplicateHandle { .. } => "product.duplicate_handle",
         CommerceError::DuplicateSku(_) => "product.duplicate_sku",
         CommerceError::Validation(message) => {
-            if crate::services::catalog::revision_conflict_of(message).is_some() {
+            if crate::services::catalog::revision_conflict_of(message).is_some()
+                || crate::services::catalog::variant_revision_conflict_of(message)
+            {
                 "product.revision_conflict"
             } else {
                 "product.validation"

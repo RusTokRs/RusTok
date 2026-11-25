@@ -10,12 +10,12 @@ const PRODUCT_ADMIN_MUTATION_GRAPHQL_BOUNDARY: &str = "product_admin_primary_gra
 const PRODUCT_ADMIN_HTTP_PUBLIC_MESSAGE: &str = "Product admin service is temporarily unavailable";
 const PRODUCT_ADMIN_GRAPHQL_PUBLIC_MESSAGE: &str = "Product admin request could not be completed";
 
-const CREATE_PRODUCT_MUTATION: &str = "mutation ProductAdminCreateProduct($idempotencyKey: String!, $input: CreateProductInput!) { createProduct(idempotencyKey: $idempotencyKey, input: $input) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt revision translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title combinationIdentity axisValues { attributeId optionId code label } inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } variantAxes { id attributeId code name position allowedValues { optionId value position } } images { id mediaId url altText position } } }";
-const UPDATE_PRODUCT_MUTATION: &str = "mutation ProductAdminUpdateProduct($idempotencyKey: String!, $id: UUID!, $input: UpdateProductInput!) { updateProduct(idempotencyKey: $idempotencyKey, id: $id, input: $input) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt revision translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title combinationIdentity axisValues { attributeId optionId code label } inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } variantAxes { id attributeId code name position allowedValues { optionId value position } } images { id mediaId url altText position } } }";
+const CREATE_PRODUCT_MUTATION: &str = "mutation ProductAdminCreateProduct($idempotencyKey: String!, $input: CreateProductInput!) { createProduct(idempotencyKey: $idempotencyKey, input: $input) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt revision translations { locale title handle description metaTitle metaDescription } variants { id revision sku barcode shippingProfileSlug title combinationIdentity axisValues { attributeId optionId code label } inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } variantAxes { id attributeId code name position allowedValues { optionId value position } } images { id mediaId url altText position } } }";
+const UPDATE_PRODUCT_MUTATION: &str = "mutation ProductAdminUpdateProduct($idempotencyKey: String!, $id: UUID!, $input: UpdateProductInput!) { updateProduct(idempotencyKey: $idempotencyKey, id: $id, input: $input) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt revision translations { locale title handle description metaTitle metaDescription } variants { id revision sku barcode shippingProfileSlug title combinationIdentity axisValues { attributeId optionId code label } inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } variantAxes { id attributeId code name position allowedValues { optionId value position } } images { id mediaId url altText position } } }";
 const DELETE_PRODUCT_MUTATION: &str = "mutation ProductAdminDeleteProduct($idempotencyKey: String!, $id: UUID!) { deleteProduct(idempotencyKey: $idempotencyKey, id: $id) }";
-const UPDATE_VARIANT_MUTATION: &str = "mutation ProductAdminUpdateVariant($idempotencyKey: String!, $id: UUID!, $input: UpdateVariantInput!) { updateProductVariant(idempotencyKey: $idempotencyKey, id: $id, input: $input) { id sku barcode shippingProfileSlug title combinationIdentity axisValues { attributeId optionId code label } inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } }";
+const UPDATE_VARIANT_MUTATION: &str = "mutation ProductAdminUpdateVariant($idempotencyKey: String!, $id: UUID!, $input: UpdateVariantInput!) { updateProductVariant(idempotencyKey: $idempotencyKey, id: $id, input: $input) { id revision sku barcode shippingProfileSlug title combinationIdentity axisValues { attributeId optionId code label } inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } }";
 #[expect(dead_code, reason = "Product variant deletion transport pending UI caller integration")]
-const DELETE_VARIANT_MUTATION: &str = "mutation ProductAdminDeleteVariant($idempotencyKey: String!, $id: UUID!) { deleteProductVariant(idempotencyKey: $idempotencyKey, id: $id) }";
+const DELETE_VARIANT_MUTATION: &str = "mutation ProductAdminDeleteVariant($idempotencyKey: String!, $id: UUID!, $expectedRevision: String!) { deleteProductVariant(idempotencyKey: $idempotencyKey, id: $id, expectedRevision: $expectedRevision) }";
 const ADD_PRODUCT_IMAGE_MUTATION: &str = "mutation ProductAdminAddImage($idempotencyKey: String!, $productId: UUID!, $input: AddProductImageInput!) { addProductImage(idempotencyKey: $idempotencyKey, productId: $productId, input: $input) { id mediaId url altText position } }";
 const UPDATE_PRODUCT_IMAGE_MUTATION: &str = "mutation ProductAdminUpdateImage($idempotencyKey: String!, $productId: UUID!, $id: UUID!, $input: UpdateProductImageInput!) { updateProductImage(idempotencyKey: $idempotencyKey, productId: $productId, id: $id, input: $input) { id mediaId url altText position } }";
 const DELETE_PRODUCT_IMAGE_MUTATION: &str = "mutation ProductAdminDeleteImage($idempotencyKey: String!, $productId: UUID!, $id: UUID!) { deleteProductImage(idempotencyKey: $idempotencyKey, productId: $productId, id: $id) }";
@@ -112,6 +112,8 @@ struct DeleteVariantVariables {
     #[serde(rename = "idempotencyKey")]
     idempotency_key: String,
     id: String,
+    #[serde(rename = "expectedRevision")]
+    expected_revision: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -192,6 +194,10 @@ struct UpdateVariantInput {
     prices: Option<Vec<PriceInput>>,
     #[serde(rename = "inventoryQuantity")]
     inventory_quantity: Option<i32>,
+    #[serde(rename = "expectedInventoryQuantity")]
+    expected_inventory_quantity: Option<i32>,
+    #[serde(rename = "expectedRevision")]
+    expected_revision: Option<String>,
     #[serde(rename = "inventoryPolicy")]
     inventory_policy: Option<String>,
 }
@@ -660,6 +666,8 @@ pub(crate) async fn update_product_variant(
         },
         prices,
         inventory_quantity: draft.inventory_quantity,
+        expected_inventory_quantity: draft.expected_inventory_quantity,
+        expected_revision: draft.expected_revision,
         inventory_policy: draft.inventory_policy.as_deref().and_then(optional_text),
     };
 
@@ -686,6 +694,7 @@ pub(crate) async fn delete_product_variant(
     tenant_id: String,
     actor_id: String,
     variant_id: String,
+    expected_revision: String,
     idempotency_key: String,
 ) -> Result<bool, GraphqlHttpError> {
     let context = MutationErrorContext::new(
@@ -701,6 +710,7 @@ pub(crate) async fn delete_product_variant(
         DeleteVariantVariables {
             idempotency_key,
             id: variant_id,
+            expected_revision,
         },
         token,
         tenant_slug,

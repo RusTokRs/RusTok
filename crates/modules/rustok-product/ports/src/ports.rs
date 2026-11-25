@@ -222,8 +222,12 @@ pub trait ProductCatalogCommandPort: Send + Sync {
         input: UpdateVariantInput,
     ) -> Result<VariantResponse, PortError>;
 
-    async fn delete_variant(&self, context: PortContext, variant_id: Uuid)
-    -> Result<(), PortError>;
+    async fn delete_variant(
+        &self,
+        context: PortContext,
+        variant_id: Uuid,
+        expected_revision: String,
+    ) -> Result<(), PortError>;
 
     async fn add_product_image(
         &self,

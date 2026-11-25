@@ -225,9 +225,38 @@ pub(super) async fn write_quantity(
     change: Change,
     low_stock_threshold: Option<i32>,
 ) -> WriteResult<WriteOutcome> {
+    write_quantity_with_expected(
+        txn,
+        tenant_id,
+        actor_id,
+        variant_id,
+        change,
+        None,
+        low_stock_threshold,
+    )
+    .await
+}
+
+pub(super) async fn write_quantity_with_expected(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    variant_id: Uuid,
+    change: Change,
+    expected_quantity: Option<i32>,
+    low_stock_threshold: Option<i32>,
+) -> WriteResult<WriteOutcome> {
     validate_request(tenant_id, actor_id, variant_id)?;
     require_current_snapshot(txn).await?;
-    let plan = QuantityPlan::load(txn, tenant_id, actor_id, variant_id, change).await?;
+    let plan = QuantityPlan::load(
+        txn,
+        tenant_id,
+        actor_id,
+        variant_id,
+        change,
+        expected_quantity,
+    )
+    .await?;
     plan.apply(txn, low_stock_threshold).await
 }
 
@@ -354,6 +383,16 @@ fn current_read<E: EntityTrait>(txn: &DatabaseTransaction, query: Select<E>) -> 
     }
 }
 
+fn ensure_expected_quantity_matches(
+    current_quantity: i32,
+    expected_quantity: Option<i32>,
+) -> WriteResult<()> {
+    if expected_quantity.is_some_and(|expected| expected != current_quantity) {
+        return Err(QuantityWriteBlocker::ConcurrentChange.into());
+    }
+    Ok(())
+}
+
 impl QuantityPlan {
     async fn load(
         txn: &DatabaseTransaction,
@@ -361,6 +400,7 @@ impl QuantityPlan {
         actor_id: Uuid,
         variant_id: Uuid,
         change: Change,
+        expected_quantity: Option<i32>,
     ) -> WriteResult<Self> {
         let variant = current_read(
             txn,
@@ -449,6 +489,7 @@ impl QuantityPlan {
             return Err(QuantityWriteBlocker::ConcurrentChange.into());
         }
         let before = available_quantity(&levels, item_id, &original_locations)?;
+        ensure_expected_quantity_matches(before, expected_quantity)?;
         let after = target_quantity(before, change)?;
         let mut plan = Self {
             tenant_id,

@@ -228,6 +228,8 @@ pub struct VariantAxisValue {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ProductVariant {
     pub id: String,
+    #[serde(default)]
+    pub revision: String,
     pub sku: Option<String>,
     pub barcode: Option<String>,
     #[serde(rename = "shippingProfileSlug")]
@@ -412,6 +414,10 @@ pub struct VariantUpdateDraft {
     pub prices_changed: bool,
     #[serde(rename = "inventoryQuantity")]
     pub inventory_quantity: Option<i32>,
+    #[serde(rename = "expectedInventoryQuantity", skip_serializing_if = "Option::is_none")]
+    pub expected_inventory_quantity: Option<i32>,
+    #[serde(rename = "expectedRevision", skip_serializing_if = "Option::is_none")]
+    pub expected_revision: Option<String>,
     #[serde(rename = "inventoryPolicy")]
     pub inventory_policy: Option<String>,
 }
@@ -542,6 +548,9 @@ impl VariantUpdateDraft {
             prices_changed,
             inventory_quantity: (inventory_quantity != original.inventory_quantity)
                 .then_some(inventory_quantity),
+            expected_inventory_quantity: (inventory_quantity != original.inventory_quantity)
+                .then_some(original.inventory_quantity),
+            expected_revision: Some(original.revision.clone()),
             inventory_policy: (inventory_policy != original.inventory_policy)
                 .then_some(inventory_policy),
             ..Default::default()
@@ -959,6 +968,7 @@ mod variant_update_draft_tests {
     fn original_variant() -> ProductVariant {
         ProductVariant {
             id: "variant-1".to_owned(),
+            revision: "1".to_owned(),
             sku: Some("SKU-1".to_owned()),
             barcode: Some("BAR-1".to_owned()),
             shipping_profile_slug: None,
