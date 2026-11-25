@@ -61,7 +61,7 @@ pub use credentials::{
     MIN_PASSWORD_LENGTH_FLOOR_CHARS, generate_refresh_token, hash_password, hash_refresh_token,
     password_hash_needs_rehash, validate_password_policy, verify_password,
 };
-pub use crypto::{AuthMacPurpose, auth_purpose_mac};
+pub use crypto::{AuthMacPurpose, auth_purpose_mac, is_canonical_auth_mac_tag};
 pub use error::AuthError;
 pub use jwt_fence::{
     JwtAdmission, JwtAuthorityConfig, JwtClusterObservation, JwtGenerationFence, JwtOperationalMetrics,

@@ -111,8 +111,9 @@ All JWT purposes require an exact key ID; missing-ID access and raw-root
 verification bridges are removed. Access grant type/scopes and invite nonce
 are mandatory; previously accepted missing fields are rejected.
 The keyring document uses one unversioned format with a bounded monotonic
-generation. Zero-legacy cleanup remains open for other unreleased token
-formats and config compatibility.
+generation. Password-reset credential binding and OAuth consent MAC proofs use one
+unversioned canonical format. Zero-legacy cleanup remains open for other
+unreleased token formats and config compatibility.
 Host root rotation remains open.
 Clock discontinuity detection and dual-deadline leases are source-implemented;
 independent clock fault-injection and suspend evidence remain pending.

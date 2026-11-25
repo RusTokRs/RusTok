@@ -111,7 +111,7 @@ fn consent_csrf_mac(
     expires_at: i64,
 ) -> Option<String> {
     let mut payload = Vec::new();
-    payload.extend_from_slice(b"rustok:oauth:consent-csrf:v5");
+    payload.extend_from_slice(b"rustok:oauth:consent-csrf");
     append_csrf_mac_field(&mut payload, &tenant_id.to_string());
     append_csrf_mac_field(&mut payload, &user_id.to_string());
     append_csrf_mac_field(&mut payload, &session_id.to_string());
@@ -150,7 +150,10 @@ fn issue_consent_csrf(
     state: Option<&str>,
     code_challenge: &str,
 ) -> Option<String> {
-    let expires_at = chrono::Utc::now().timestamp() + CONSENT_CSRF_TTL_SECS;
+    if tenant_id.is_nil() || user_id.is_nil() || session_id.is_nil() {
+        return None;
+    }
+    let expires_at = chrono::Utc::now().timestamp().checked_add(CONSENT_CSRF_TTL_SECS)?;
     Some(format!(
         "{expires_at}.{}",
         consent_csrf_mac(
@@ -188,14 +191,24 @@ fn verify_consent_csrf(
     let Some(presented) = presented else {
         return false;
     };
-    let Some((expires_at, mac)) = presented.split_once('.') else {
+    // A positive i64 decimal timestamp, separator and full hex MAC fit in 84 bytes.
+    if presented.len() > 84 {
+        return false;
+    }
+    let Some((expiry, mac)) = presented.split_once('.') else {
         return false;
     };
-    let Ok(expires_at) = expires_at.parse::<i64>() else {
+    if !rustok_auth::is_canonical_auth_mac_tag(mac) {
+        return false;
+    }
+    let Ok(expires_at) = expiry.parse::<i64>() else {
         return false;
     };
+    if expires_at <= 0 || expiry != expires_at.to_string() {
+        return false;
+    }
     let now = chrono::Utc::now().timestamp();
-    if session_id.is_nil()
+    if tenant_id.is_nil() || user_id.is_nil() || session_id.is_nil()
         || expires_at <= now
         || expires_at > now.saturating_add(CONSENT_CSRF_TTL_SECS)
     {
@@ -1713,6 +1726,28 @@ mod tests {
             )
         };
         assert!(verify(&displayed));
+        let (expiry, tag) = token.split_once('.').unwrap();
+        for malformed in [
+            format!("+{expiry}.{tag}"),
+            format!("0{expiry}.{tag}"),
+            format!("{expiry}.v5:{tag}"),
+            format!("{expiry}.{}", tag.to_uppercase()),
+            format!("{expiry}.{}", &tag[2..]),
+            format!("{expiry}.{tag}.extra"),
+        ] {
+            assert!(!verify_consent_csrf(
+                &config, tenant, user, session, &client, redirect, None,
+                &displayed, None, challenge, Some(&malformed),
+            ));
+        }
+        for (t, u, s) in [(Uuid::nil(), user, session), (tenant, Uuid::nil(), session), (tenant, user, Uuid::nil())] {
+            assert!(issue_consent_csrf(
+                &config, t, u, s, &client, redirect, None, &displayed, None, challenge,
+            ).is_none());
+            assert!(!verify_consent_csrf(
+                &config, t, u, s, &client, redirect, None, &displayed, None, challenge, Some(&token),
+            ));
+        }
         let weak = crate::auth::AuthConfig::new("short".to_string());
         assert!(issue_consent_csrf(
             &weak, tenant, user, session, &client, redirect, None, &displayed, None, challenge,

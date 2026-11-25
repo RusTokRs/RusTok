@@ -7,11 +7,10 @@ pub use rustok_auth::{
 
 use crate::error::{Error, Result};
 use serde::Deserialize;
-use rustok_auth::{AuthMacPurpose, auth_purpose_mac};
+use rustok_auth::{AuthMacPurpose, auth_purpose_mac, is_canonical_auth_mac_tag};
 use subtle::ConstantTimeEq;
 
 const TOKEN_SUBJECT_SEPARATOR: char = '\u{001f}';
-const PASSWORD_RESET_FINGERPRINT_VERSION: &str = "v2:";
 
 /// Server-owned password reset claims.
 ///
@@ -128,7 +127,7 @@ pub fn decode_password_reset_token(
     let (email, credential_fingerprint) = claims
         .sub
         .rsplit_once(TOKEN_SUBJECT_SEPARATOR)
-        .filter(|(email, fingerprint)| !email.is_empty() && !fingerprint.is_empty())
+        .filter(|(email, fingerprint)| !email.is_empty() && is_canonical_auth_mac_tag(fingerprint))
         .ok_or_else(|| auth_err(AuthError::InvalidResetToken))?;
 
     Ok(PasswordResetClaims {
@@ -143,6 +142,9 @@ pub fn password_reset_credential_matches(
     password_hash: &str,
     expected_fingerprint: &str,
 ) -> bool {
+    if !is_canonical_auth_mac_tag(expected_fingerprint) {
+        return false;
+    }
     let Ok(actual) = password_reset_credential_fingerprint(config, password_hash) else {
         return false;
     };
@@ -155,7 +157,7 @@ pub fn password_reset_credential_matches(
 fn password_reset_credential_fingerprint(config: &AuthConfig, password_hash: &str) -> Result<String> {
     let tag = auth_purpose_mac(config, AuthMacPurpose::PasswordResetCredential, password_hash.as_bytes())
         .map_err(auth_err)?;
-    Ok(format!("{PASSWORD_RESET_FINGERPRINT_VERSION}{}", hex::encode(tag)))
+    Ok(hex::encode(tag))
 }
 
 pub fn encode_email_verification_token(
@@ -393,7 +395,7 @@ mod tests {
 
         assert_eq!(claims.sub, "user@example.com");
         assert_eq!(claims.tenant_id, tenant_id);
-        assert!(claims.credential_fingerprint.starts_with("v2:"));
+        assert!(is_canonical_auth_mac_tag(&claims.credential_fingerprint));
         assert!(password_reset_credential_matches(
             &config,
             "old-password-hash",
@@ -410,7 +412,15 @@ mod tests {
     fn reset_binding_rejects_legacy_and_different_secrets() {
         let config = AuthConfig::new(secret());
         let tag = password_reset_credential_fingerprint(&config, "hash").unwrap();
-        assert!(!password_reset_credential_matches(&config, "hash", &tag[3..]));
+        assert!(password_reset_credential_matches(&config, "hash", &tag));
+        assert!(!password_reset_credential_matches(&config, "hash", &format!("v2:{tag}")));
+        assert!(!password_reset_credential_matches(&config, "hash", &tag[2..]));
+        let tenant = uuid::Uuid::new_v4();
+        for invalid in [format!("v2:{tag}"), tag.to_uppercase(), tag[2..].to_string()] {
+            let subject = format!("user@example.com{TOKEN_SUBJECT_SEPARATOR}{invalid}");
+            let token = rustok_auth::encode_password_reset_token(&config, tenant, &subject, 900).unwrap();
+            assert!(decode_password_reset_token(&config, &token).is_err());
+        }
         let other = AuthConfig::new("another-secret-at-least-thirty-two-bytes".to_string());
         assert!(!password_reset_credential_matches(&other, "hash", &tag));
         let weak = AuthConfig::new("short".to_string());

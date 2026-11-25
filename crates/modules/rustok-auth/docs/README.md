@@ -97,10 +97,15 @@ must not introduce a competing JSON or request-local fallback in the meantime.
 
 Auth derives distinct 32-byte keys with HKDF-SHA256 for OAuth browser confirmation
 and password-reset credential binding. Host adapters use `auth_purpose_mac` rather
-than raw shared-secret hashing or local HMAC. MAC v5 and reset fingerprint v2
-replace earlier formats without fallback; outstanding forms and reset links must
-be restarted. Persisted session/refresh digests are unchanged.
-Source regressions unrun. Deploy all host instances together.
+than raw shared-secret hashing or local HMAC. The canonical purpose labels
+and proof encodings are unversioned: reset credential fingerprints are exactly
+64 lowercase hex characters; OAuth consent proofs are a canonical positive
+decimal expiry, dot and 64 lowercase hex characters. No prior-format decoder
+or key derivation fallback is allowed. Outstanding forms and reset links must
+be restarted after the coordinated pre-release host cutover. Persisted
+session/refresh digests, JWT key derivation and durable authority MAC domains
+are unchanged. See [canonical Auth MAC proofs](../../../../DECISIONS/2026-11-25-canonical-auth-mac-proofs.md).
+Source regressions unrun.
 
 
 ## JWT keyring and rotation

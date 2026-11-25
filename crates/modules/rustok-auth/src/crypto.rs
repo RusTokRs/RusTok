@@ -17,8 +17,8 @@ pub enum AuthMacPurpose {
 impl AuthMacPurpose {
     fn label(self) -> &'static [u8] {
         match self {
-            Self::OAuthConsentCsrf => b"oauth-consent-csrf/v5",
-            Self::PasswordResetCredential => b"password-reset-credential/v2",
+            Self::OAuthConsentCsrf => b"oauth-consent-csrf",
+            Self::PasswordResetCredential => b"password-reset-credential",
         }
     }
 }
@@ -28,7 +28,7 @@ fn derive_key(config: &AuthConfig, purpose: AuthMacPurpose) -> Result<[u8; 32]> 
         return Err(AuthError::Internal("Auth MAC secret is too short".to_string()));
     }
     let hkdf = Hkdf::<Sha256>::new(
-        Some(b"rustok/auth/host-mac/v1"),
+        Some(b"rustok/auth/host-mac"),
         config.secret().as_bytes(),
     );
     let mut key = [0_u8; 32];
@@ -45,6 +45,13 @@ fn hmac_sha256(key: &[u8], payload: &[u8]) -> Result<[u8; 32]> {
     let mut tag = [0_u8; 32];
     tag.copy_from_slice(&bytes);
     Ok(tag)
+}
+
+/// Canonical lowercase hexadecimal representation of a full SHA-256 MAC.
+/// Validate the fixed-size wire representation before comparing a proof.
+pub fn is_canonical_auth_mac_tag(value: &str) -> bool {
+    value.len() == 64
+        && value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 /// Compute a purpose-scoped proof without exposing the derived key.
@@ -83,6 +90,14 @@ mod tests {
         assert_ne!(tag, auth_purpose_mac(&config, reset, payload).unwrap());
         assert_ne!(tag, auth_purpose_mac(&config, csrf, b"other payload").unwrap());
         assert_ne!(tag, hmac_sha256(config.secret().as_bytes(), payload).unwrap());
+    }
+
+    #[test]
+    fn mac_tag_requires_full_lowercase_hex() {
+        assert!(is_canonical_auth_mac_tag(&"a0".repeat(32)));
+        for invalid in ["", "aa", &"A0".repeat(32), &"g0".repeat(32), &"a0".repeat(33)] {
+            assert!(!is_canonical_auth_mac_tag(invalid));
+        }
     }
 
     #[test]

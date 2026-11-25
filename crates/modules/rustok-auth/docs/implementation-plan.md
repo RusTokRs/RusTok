@@ -223,10 +223,12 @@ See [owner contract](README.md#operational-observability).
 ## Purpose-separated host MACs (source only)
 
 Auth owns HKDF-SHA256 derivation and HMAC-SHA256 for password-reset credential
-binding and OAuth browser confirmation. The new formats reject earlier forms
-and reset links intentionally; access JWT signatures and refresh/session storage
+binding and OAuth browser confirmation. Canonical proof labels and wire
+encodings are unversioned, with strict lowercase full-length tags and canonical
+OAuth expiry encoding. Previous forms and reset links intentionally fail.
+Access JWT signatures, durable fence MAC domains and refresh/session storage
 are unchanged. Stop old host writers before deploying new instances. Source
-regressions and locked Cargo dependency updates authored, unrun.
+regressions authored, unrun. See [canonical Auth MAC proofs](../../../../DECISIONS/2026-11-25-canonical-auth-mac-proofs.md).
 
 JWT purpose keyrings, mandatory key IDs and verification retirement are
 source-implemented. Missing-ID access and raw-root JWT history are rejected. A two-key RS256 staging/promotion/
@@ -254,7 +256,7 @@ Scoped checks are pending. See the
 
 ## JWT and CSRF hardening (source only)
 
-Browser confirmation MAC v4 binds the direct session and bounds expiry;
+Browser confirmation MAC binds the direct session and bounds expiry;
 previous forms require restart. RS256 host config now also validates the
 symmetric secret. JWT time claims and chrono duration construction fail closed.
 Source regressions authored, unrun. Deployment must provision the symmetric
