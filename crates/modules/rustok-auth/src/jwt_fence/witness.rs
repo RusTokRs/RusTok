@@ -460,23 +460,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn mixed_algorithm_checkpoint_persists_and_revocation_cannot_be_bypassed() {
-        use super::super::tests::{algorithm_config, rsa_config};
-        use serde_json::json;
+    async fn witness_rejects_algorithm_change_and_preserves_revocation_history() {
+        use super::super::tests::rsa_config;
         let (authority, witness_db, id, fence) = deployment().await;
         let until = chrono::Utc::now().timestamp() + 3600;
         let first = config(ROOT, "old", OLD, None);
-        let staged = algorithm_config(json!({"keyring":{
-            "active_kid":"old", "active_hs256_secret":OLD,
-            "verification_keys":[{"kid":"rsa","algorithm":"RS256",
-                "material":crate::jwt::TEST_RSA_PUBLIC_KEY,"verify_until":until}]
-        }}));
-        let promoted = rsa_config(json!([{"kid":"old","algorithm":"HS256",
-            "material":OLD,"verify_until":until}]));
+        let staged = config(ROOT, "old", OLD, Some(("new", NEW, until)));
+        let promoted = config(ROOT, "new", NEW, Some(("old", OLD, until)));
+        let clean = config(ROOT, "new", NEW, None);
         assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
         assert_eq!(fence.admit(2, &staged).await.unwrap(), JwtAdmission::Admitted);
         assert_eq!(fence.admit(3, &promoted).await.unwrap(), JwtAdmission::Admitted);
+        let before = fence.load().await.unwrap();
+        assert!(fence.admit(4, &rsa_config(serde_json::json!([]))).await.is_err());
         let after = fence.load().await.unwrap();
+        assert_eq!(before.revision, after.revision);
+        assert_eq!(before.payload, after.payload);
+        assert_eq!(before.tag, after.tag);
         let mut reopened = bound(authority, id, ROOT).unwrap();
         reopened.witness = Some(Witness::new(witness_db));
         assert_eq!(reopened.load().await.unwrap().revision, after.revision);
@@ -484,7 +484,7 @@ mod tests {
         assert!(reopened.revoke_key(ROOT, "access", "old").await.unwrap().newly_revoked);
         assert!(reopened.admit(4, &staged).await.is_err());
         assert!(reopened.admit(4, &promoted).await.is_err());
-        assert_eq!(reopened.admit(4, &rsa_config(json!([]))).await.unwrap(), JwtAdmission::Admitted);
+        assert_eq!(reopened.admit(4, &clean).await.unwrap(), JwtAdmission::Admitted);
         assert!(reopened.admit(5, &promoted).await.is_err());
     }
 

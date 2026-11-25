@@ -103,10 +103,12 @@ regression execution and coordinated replica rollout evidence are pending.
 Optional process-local file-backed hot reload, durable generation fencing and
 identity tombstones are source-implemented;
 cluster lease/drain fencing and compatible rolling replica admission are
-source-implemented, including emergency enrolled-key revocation and managed staged
-HS256/RS256 migration. Persisted key metadata now requires an explicit
-algorithm; old ledger/grant/checkpoint payloads are not supported. Do not reset
-non-disposable security state. See the [cutover contract](docs/README.md#managed-algorithm-migration).
+source-implemented, including emergency enrolled-key revocation.
+RS256-only is the accepted target; mixed histories and active algorithm
+changes are rejected. Coordinated RSA-only bootstrap and consumer cutover,
+including removal of remaining homogeneous HS256 paths, is pending.
+Do not reset non-disposable security state. See the
+[cutover contract](docs/README.md#rs256-only-cutover).
 All JWT purposes require an exact key ID; missing-ID access and raw-root
 verification bridges are removed. Access grant type/scopes and invite nonce
 are mandatory; previously accepted missing fields are rejected.

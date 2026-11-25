@@ -1,10 +1,11 @@
 # Canonical JWT algorithm metadata
 
 - Date: 2026-11-25
-- Decision status: Accepted
+- Decision status: Superseded
 - Implementation status: In progress
 - Owners: Auth; server host composition
 - Supersedes: [JWT algorithm migration](2026-11-25-jwt-algorithm-migration.md).
+- Superseded by: [RS256-only JWT architecture](2026-11-25-rs256-only-jwt.md). Historical algorithm migration details below are no longer an active contract.
 
 
 The missing-ID and raw-root compatibility provisions (where present) are superseded by [Mandatory JWT key identity](2026-11-25-jwt-mandatory-key-identity.md). The remaining security invariants are retained.

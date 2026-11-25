@@ -25,7 +25,7 @@ pub struct JwtKeyring {
 #[serde(deny_unknown_fields)]
 struct VerificationKey {
     kid: String,
-    /// An omitted configuration algorithm uses the active ring default.
+    /// An explicit historical algorithm must match the ring algorithm.
     #[serde(default)]
     algorithm: Option<JwtAlgorithm>,
     material: String,
@@ -99,6 +99,7 @@ impl JwtKeyring {
             if !valid_kid(&key.kid)
                 || key.kid == self.active_kid
                 || key.verify_until <= 0
+                || key.algorithm.as_ref().is_some_and(|value| value != algorithm)
                 || key.material == active_material
                 || self.verification_keys[..index].iter().any(|other| {
                     other.kid == key.kid || other.material == key.material
@@ -494,9 +495,8 @@ impl ValidatedJwtKeyrings {
         Ok(result)
     }
 
-    /// Preserve identity across adjacent unmanaged generations. Active
-    /// algorithm migration requires the durable fence and its tombstones;
-    /// fixed configs may still verify a mixed-algorithm history.
+    /// Preserve identity across adjacent unmanaged generations.
+    /// Algorithm changes are rejected; rotation changes key material only.
     pub(crate) fn validate_successor(&self, next: &Self) -> Result<()> {
         let now = chrono::Utc::now().timestamp();
         for purpose in JwtPurpose::ALL {

@@ -49,10 +49,12 @@ authenticate the caller root even for an empty ledger, reject incompatible
 static grants and malformed registry identifiers, latch observed lease expiry,
 and validate authority before application migration. Focused regressions unrun.
 
-JWT algorithm migration: mixed per-key verification algorithms, exact JOSE
-algorithm pinning, staged managed promotion, replica compatibility, revocation
-and witness persistence are source-implemented. The persisted algorithm field
-is now mandatory per key; the legacy homogeneous metadata reader is removed.
+RS256-only JWT target: [accepted ADR](../../../../DECISIONS/2026-11-25-rs256-only-jwt.md).
+Mixed histories, mixed persisted snapshots/grants and cross-algorithm
+promotion are rejected in source. Next implement the coordinated four-RSA-pair
+bootstrap and all consumer/fixture cutover, remove the remaining HS256 JWT
+implementation and canonicalize persisted RSA-only metadata. Retained-state
+conversion and verification are explicit blockers to deployment where needed.
 Scoped compilation, regression execution and independent-replica rollout
 remain pending. Before root MAC rotation, complete the remaining pre-release
 zero-legacy cleanup: remaining canonical unreleased token contracts and review
@@ -256,7 +258,9 @@ regressions authored, unrun. See [canonical Auth MAC proofs](../../../../DECISIO
 JWT purpose keyrings, mandatory key IDs and verification retirement are
 source-implemented. Missing-ID access and raw-root JWT history are rejected. A two-key RS256 staging/promotion/
 retirement regression is authored. Scoped compilation, regression execution
-and multi-replica rollout evidence are pending; managed algorithm migration is now source-implemented. Reissue obsolete development tokens and shared-key special links.
+and multi-replica rollout evidence are pending. Managed algorithm migration
+is removed; RS256-only consumer/bootstrap cutover remains pending.
+Reissue obsolete development tokens and shared-key special links.
 Follow-up source review adds canonical RSA modulus identity, private/public
 pair enforcement at signing, strict JOSE header admission and post-signature
 retirement fencing. Zero-duration issuance and timestamp truncation are rejected;

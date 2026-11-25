@@ -141,8 +141,8 @@ Each ring object accepts:
 - `active_hs256_secret`: optional independent signing secret for HS256.
   If omitted, HKDF-SHA256 derives an independent purpose key from the host
   MAC root. The raw root is never a JWT signing or verification key.
-- `verification_keys`: up to 16 objects with `kid`, optional `algorithm` (HS256
-  or RS256; omission inherits the active ring algorithm), `material` (actual
+- `verification_keys`: up to 16 objects with `kid`, optional `algorithm` (if
+  supplied it must equal the active ring algorithm), `material` (actual
   HS256 signing secret or RSA public PEM), and exclusive Unix-second `verify_until`.
 
 The unconfigured access ID is `default`; special IDs are `reset-default`,
@@ -203,45 +203,27 @@ prepared encoding/decoding keys and indexed verification history; the JWT librar
 still constructs its internal crypto providers per operation.
 A source regression now exercises staging, promotion, retirement and exact
 key selection using two independent RS256 key pairs, including OAuth access and
-missing-ID rejection. Mixed-algorithm verification and managed staged
-promotion are also source-implemented; compile and multi-replica execution
-evidence remain pending.
+missing-ID rejection. Compile and multi-replica execution evidence remain
+pending.
 See [purpose keyring ADR](../../../../DECISIONS/2026-11-25-jwt-purpose-keyrings.md).
 
-### Managed algorithm migration
+### RS256-only cutover
 
-For HS256 to RS256, stage a historical verifier with a fresh kid,
-`algorithm: "RS256"`, RSA public PEM and a future `verify_until`, while
-the active HS256 signer remains unchanged. After all live replica grants
-can verify the new key, publish the next generation with the RSA pair
-and staged kid active, and retain the old signer in history with
-`algorithm: "HS256"`. The old HMAC secret is still sensitive signing material.
-Use a cutoff covering the old token TTL plus replica overlap. Retire it in
-a later generation. A reverse RS256 to HS256 migration must stage a fresh
-independent HMAC secret; demoted or revoked keys never become signers again.
-A revoked outgoing key must be removed and the existing drain applies.
-
-The decoder selects a single key by purpose and kid, then requires JOSE
-alg to match that key. Historical HMAC secrets remain subject to production
-policy even when the active signer is RSA. Do not configure public bytes
-as symmetric secrets; PEM-shaped HMAC material is rejected. For a rolling
-promotion preserve all accepted verification keys and
-deadlines through overlap. An incompatible candidate uses the bounded drain,
-not a guaranteed zero-downtime cutover.
-
-Every persisted key entry explicitly records its algorithm, even in a
-homogeneous ring. Missing or null algorithm metadata and obsolete ring fields are rejected;
-there is no previous-format reader. Stop all Auth hosts and operators for this pre-release
-format cutover. Only demonstrably disposable development authority and witness
-state may be re-created together, with fresh JWT signing material and
-invalidation of outstanding development tokens. Preserve non-disposable state;
-do not reset, overwrite or bypass authenticated ledger/checkpoint history.
-If such state exists, the cutover is blocked pending an explicit authenticated
-offline transformation that retains all identities, revocations and revisions.
-Only managed durable generations may change the active algorithm; unmanaged
-process-local publication refuses it. Keep the root and witness unchanged
-during normal algorithm rotation.
-See the [canonical JWT algorithm metadata ADR](../../../../DECISIONS/2026-11-25-jwt-canonical-algorithm-metadata.md).
+The accepted [RS256-only JWT architecture](../../../../DECISIONS/2026-11-25-rs256-only-jwt.md)
+replaces algorithm migration. Mixed verification histories and cross-algorithm
+generation changes are rejected. Persisted mixed snapshots or replica grants
+fail closed. The remaining homogeneous HS256 configuration and implicit
+development keys are pending removal in the coordinated bootstrap/consumer
+cutover; they are not part of the target architecture. Until that slice
+lands, the configuration examples below describe the existing runtime only.
+Four independent RSA pairs, exact kid selection, public-only history,
+terminal identity tombstones, rolling RSA rotation and emergency revocation
+are required in the target. HMAC root remains independent of JWT signing.
+Do not attempt live algorithm migration or deploy against retained mixed
+state. An authenticated offline preservation plan is required for valuable
+authority/witness history; only explicitly disposable development state may
+be replaced together with fresh keys and invalidation of old tokens.
+The cutover does not authorize data deletion.
 
 ### Process-local hot reload
 
