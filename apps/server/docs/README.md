@@ -1663,3 +1663,18 @@ mutation if response construction fails.
 Focused regressions are authored for changed/equivalent scope sets, omitted
 versus explicit scope, and invalid/valid session cookie headers. Compilation,
 formatting and tests were not run at the maintainer's request.
+
+## Server follow-up — rate-limit runtime ownership (2026-11-25)
+
+Per-context rate limiters now reuse the published namespace Arc across repeat
+initialization rather than replacing active counters and splitting middleware,
+GraphQL and readiness ownership. A synchronous registration gate covers lookup,
+publication and maintenance task registration. Shutdown closes and drains the
+same registry even if no limiter has been initialized yet; the closed registry
+remains installed and rejects late initializers. Only enabled memory limiters
+need Moka maintenance tasks. The runtime bootstrap also rejects a stopped host
+before setup and before returning success.
+
+Focused source regressions cover preserved counters, Arc identity, one
+maintenance task per namespace, and shutdown before/after registration.
+Compilation, formatting and tests were not run at the maintainer's request.

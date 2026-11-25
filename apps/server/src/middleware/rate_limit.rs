@@ -17,35 +17,44 @@ mod base;
 
 pub use base::*;
 
-/// Runtime-owned handles for rate-limit maintenance loops.
+/// Runtime-owned handles for rate-limit maintenance loops. Keep the closed
+/// registry installed for the runtime lifetime: late initializers must not
+/// create a replacement registry after the shutdown snapshot.
 #[derive(Clone, Default)]
-pub(crate) struct RateLimitCleanupTaskRegistry(Arc<Mutex<Vec<JoinHandle<()>>>>);
+pub(crate) struct RateLimitCleanupTaskRegistry(Arc<Mutex<RateLimitCleanupTaskState>>);
+
+#[derive(Default)]
+struct RateLimitCleanupTaskState {
+    closed: bool,
+    tasks: Vec<JoinHandle<()>>,
+}
 
 impl RateLimitCleanupTaskRegistry {
-    pub(crate) fn register(&self, task: JoinHandle<()>) {
-        match self.0.lock() {
-            Ok(mut tasks) => tasks.push(task),
-            Err(error) => {
-                tracing::error!(
-                    %error,
-                    "rate-limit cleanup task registry is poisoned; aborting untracked task"
-                );
-                task.abort();
-            }
+    /// Serialize limiter resolution, publication and cleanup registration
+    /// against shutdown. The initializer must be synchronous and must not
+    /// reacquire this registry's mutex.
+    pub(crate) fn with_open<T>(
+        &self,
+        initialize: impl FnOnce(&mut Vec<JoinHandle<()>>) -> crate::error::Result<T>,
+    ) -> crate::error::Result<T> {
+        let mut state = self.0.lock().map_err(|_| {
+            crate::error::Error::Message("rate-limit cleanup task registry is poisoned".to_string())
+        })?;
+        if state.closed {
+            return Err(crate::error::Error::Message(
+                "rate-limit runtime is closed for shutdown".to_string(),
+            ));
         }
+        initialize(&mut state.tasks)
     }
 
-    pub(crate) fn take_tasks(&self) -> Vec<JoinHandle<()>> {
-        match self.0.lock() {
-            Ok(mut tasks) => std::mem::take(&mut *tasks),
-            Err(error) => {
-                tracing::error!(
-                    %error,
-                    "rate-limit cleanup task registry is poisoned during shutdown"
-                );
-                std::mem::take(&mut *error.into_inner())
-            }
-        }
+    pub(crate) fn close_and_take_tasks(&self) -> Vec<JoinHandle<()>> {
+        let mut state = self.0.lock().unwrap_or_else(|error| {
+            tracing::error!("rate-limit cleanup task registry is poisoned during shutdown");
+            error.into_inner()
+        });
+        state.closed = true;
+        std::mem::take(&mut state.tasks)
     }
 }
 

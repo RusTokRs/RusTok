@@ -359,7 +359,9 @@ the driver mapping.
   mutex between dispatcher and all four child worker publication
   paths and each corresponding shutdown handle take; recheck stop
   with the mutex held, and release it before joining. Use a drop-safe
-  startup reservation for product-media.
+  startup reservation for product-media. The rate-limit registry follows the
+  same publication fence and retains its closed state after draining; removing
+  a terminal registry would allow a late initializer to recreate it.
 - **Verification:** Concurrent stop-vs-start and snapshot-vs-registration
   Tokio regressions for dispatcher and child workers authored but unrun.
 

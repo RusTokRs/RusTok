@@ -65,6 +65,11 @@ pub async fn bootstrap_app_runtime(
     runtime_ctx: ServerRuntimeContext,
     auth_config: AuthConfig,
 ) -> Result<AppRuntimeBootstrap> {
+    if crate::services::app_lifecycle::StopHandle::ensure(&runtime_ctx).is_stopping() {
+        return Err(Error::Message(
+            "server shutdown started before application runtime bootstrap".to_string(),
+        ));
+    }
     let settings = runtime_ctx.settings().clone();
     let cache_service = ensure_cache_service(&runtime_ctx);
 
@@ -219,6 +224,11 @@ pub async fn bootstrap_app_runtime(
     let rate_limits =
         init_rate_limit_layers(&runtime_ctx, &settings, &cache_service, Some(auth_config))?;
     let graphql_schema = init_graphql_schema(&runtime_ctx)?;
+    if crate::services::app_lifecycle::StopHandle::ensure(&runtime_ctx).is_stopping() {
+        return Err(Error::Message(
+            "server shutdown started during application runtime bootstrap".to_string(),
+        ));
+    }
 
     Ok(AppRuntimeBootstrap {
         deployment_surfaces,
@@ -588,42 +598,62 @@ fn build_namespaced_rate_limiter(
     burst: u32,
     shared_namespace: SharedLimiterNamespace,
 ) -> Result<Arc<RateLimiter>> {
-    let config = if settings.rate_limit.enabled {
-        RateLimitConfig::per_minute(requests_per_minute, burst)
-    } else {
-        RateLimitConfig::disabled()
-    };
+    let stop = crate::services::app_lifecycle::StopHandle::ensure(ctx);
+    let registry = ctx.shared_get_or_insert_with(RateLimitCleanupTaskRegistry::default);
 
-    let limiter = Arc::new(
-        RateLimiter::build_for_backend(
-            config,
-            settings.rate_limit.backend,
-            &settings.rate_limit.redis_key_prefix,
-            namespace,
-            cache_service,
-        )
-        .map_err(|err| Error::BadRequest(err.to_string()))?,
-    );
-
-    match shared_namespace {
-        SharedLimiterNamespace::Api => ctx.shared_insert(SharedApiRateLimiter(limiter.clone())),
-        SharedLimiterNamespace::Auth => ctx.shared_insert(SharedAuthRateLimiter(limiter.clone())),
-        SharedLimiterNamespace::Oauth => ctx.shared_insert(SharedOAuthRateLimiter(limiter.clone())),
-        SharedLimiterNamespace::Search => {
-            ctx.shared_insert(SharedSearchRateLimiter(limiter.clone()))
+    registry.with_open(|tasks| {
+        if stop.is_stopping() {
+            return Err(Error::Message(
+                "server shutdown started before rate-limit initialization".to_string(),
+            ));
         }
-    }
 
-    if settings.rate_limit.enabled {
-        let limiter_for_cleanup = limiter.clone();
-        let cleanup_handle = tokio::spawn(async move {
-            cleanup_task(limiter_for_cleanup).await;
-        });
-        ctx.shared_get_or_insert(RateLimitCleanupTaskRegistry::default())
-            .register(cleanup_handle);
-    }
+        // Settings are immutable for one ServerRuntimeContext. Repeated or
+        // concurrent bootstrap must reuse its existing limiter/counters and
+        // the same Arc consumed by middleware, GraphQL and readiness.
+        let existing = match shared_namespace {
+            SharedLimiterNamespace::Api => ctx.shared_get::<SharedApiRateLimiter>().map(|v| v.0),
+            SharedLimiterNamespace::Auth => ctx.shared_get::<SharedAuthRateLimiter>().map(|v| v.0),
+            SharedLimiterNamespace::Oauth => ctx.shared_get::<SharedOAuthRateLimiter>().map(|v| v.0),
+            SharedLimiterNamespace::Search => ctx.shared_get::<SharedSearchRateLimiter>().map(|v| v.0),
+        };
+        if let Some(existing) = existing {
+            return Ok(existing);
+        }
 
-    Ok(limiter)
+        let config = if settings.rate_limit.enabled {
+            RateLimitConfig::per_minute(requests_per_minute, burst)
+        } else {
+            RateLimitConfig::disabled()
+        };
+
+        let limiter = Arc::new(
+            RateLimiter::build_for_backend(
+                config,
+                settings.rate_limit.backend,
+                &settings.rate_limit.redis_key_prefix,
+                namespace,
+                cache_service,
+            )
+            .map_err(Error::BadRequest)?,
+        );
+
+        match shared_namespace {
+            SharedLimiterNamespace::Api => ctx.shared_insert(SharedApiRateLimiter(limiter.clone())),
+            SharedLimiterNamespace::Auth => ctx.shared_insert(SharedAuthRateLimiter(limiter.clone())),
+            SharedLimiterNamespace::Oauth => ctx.shared_insert(SharedOAuthRateLimiter(limiter.clone())),
+            SharedLimiterNamespace::Search => ctx.shared_insert(SharedSearchRateLimiter(limiter.clone())),
+        }
+
+        if settings.rate_limit.enabled && !limiter.is_distributed() {
+            let limiter_for_cleanup = limiter.clone();
+            tasks.push(tokio::spawn(async move {
+                cleanup_task(limiter_for_cleanup).await;
+            }));
+        }
+
+        Ok(limiter)
+    })
 }
 
 #[cfg(test)]
@@ -1230,6 +1260,57 @@ mod tests {
                 "missing dedicated OAuth rate-limit prefix: {prefix}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn repeated_rate_limit_initialization_preserves_counters_and_task_ownership() {
+        use super::*;
+        use crate::common::settings::RateLimitBackendKind;
+        use crate::services::app_lifecycle::StopHandle;
+
+        let mut settings = RustokSettings::default();
+        settings.rate_limit.enabled = true;
+        settings.rate_limit.backend = RateLimitBackendKind::Memory;
+        settings.rate_limit.requests_per_minute = 1;
+        settings.rate_limit.burst = 0;
+        let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
+        let cache = ensure_cache_service(&ctx);
+
+        let first = init_rate_limit_layers(&ctx, ctx.settings(), &cache, None)
+            .expect("initial rate limiters");
+        let limiter = ctx.shared_get::<SharedApiRateLimiter>().unwrap().0;
+        assert!(limiter.check_rate_limit("client").await.is_ok());
+
+        let second = init_rate_limit_layers(&ctx, ctx.settings(), &cache, None)
+            .expect("repeat rate limiter bootstrap");
+        for (before, after) in first
+            .combined_state
+            .policies
+            .iter()
+            .zip(second.combined_state.policies.iter())
+        {
+            assert!(Arc::ptr_eq(&before.limiter, &after.limiter));
+        }
+        assert!(Arc::ptr_eq(
+            &limiter,
+            &ctx.shared_get::<SharedApiRateLimiter>().unwrap().0,
+        ));
+        assert!(matches!(
+            limiter.check_rate_limit("client").await,
+            Err(crate::middleware::rate_limit::RateLimitCheckError::Exceeded(_))
+        ));
+
+        let registry = ctx.shared_get::<RateLimitCleanupTaskRegistry>().unwrap();
+        StopHandle::ensure(&ctx).stop().await;
+        assert!(init_rate_limit_layers(&ctx, ctx.settings(), &cache, None).is_err());
+        let tasks = registry.close_and_take_tasks();
+        assert_eq!(tasks.len(), 4, "one cleanup task per memory namespace");
+        for task in tasks {
+            task.abort();
+            let _ = task.await;
+        }
+        assert!(registry.close_and_take_tasks().is_empty());
+        assert!(init_rate_limit_layers(&ctx, ctx.settings(), &cache, None).is_err());
     }
 
     #[tokio::test]
