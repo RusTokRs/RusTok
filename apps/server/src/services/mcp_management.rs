@@ -1542,13 +1542,22 @@ mod tests {
         let claim = method
             .find("claim_scaffold_draft_for_apply")
             .expect("draft claim exists");
+        let target_validation = method
+            .find("validate_mcp_scaffold_target_path")
+            .expect("persisted target path must be validated");
         let apply = method
             .find("apply_staged_scaffold")
             .expect("staged filesystem apply exists");
 
         assert!(authorize < claim, "workspace must be authorized before draft claim");
-        assert!(claim < apply, "draft must be claimed before filesystem apply");
-        assert!(method.contains("apply_staged_scaffold(&staged_draft, &workspace_root)"));
+        assert!(claim < target_validation, "draft must be claimed before target validation");
+        assert!(
+            target_validation < apply,
+            "target and file paths must be validated before filesystem apply"
+        );
+        assert!(method.contains("tokio::task::spawn_blocking"));
+        assert!(method.contains("let _workspace_apply_guard = workspace_apply_guard"));
+        assert!(method.contains("apply_staged_scaffold(&staged_draft, &apply_workspace_root)"));
     }
 
     #[test]
