@@ -500,7 +500,7 @@ mod tests {
     #[test]
     fn body_revision_timestamps_remain_strictly_monotonic_for_same_or_regressed_clock() {
         let now = Utc::now();
-        let previous = body_revision_timestamp(now);
+        let previous = body_revision_timestamp(now.clone());
         let same_clock = next_body_revision_timestamp(now, Some(&previous))
             .expect("same clock advances the revision");
         assert_eq!(
