@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use rustok_commerce_foundation::entities::product_variant;
+use rustok_commerce_foundation::entities::{product, product_variant};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseTransaction, DbBackend, DbErr, EntityTrait,
     FromQueryResult, QueryFilter, QueryOrder, QuerySelect, Select, Statement,
@@ -191,27 +191,53 @@ impl DeletionPlan {
         tenant_id: Uuid,
         variant_ids: &[Uuid],
     ) -> Result<Self, CatalogDeletionError> {
-        // Structural tenant identity proof in the existing transaction-sharing native
-        // collaboration; no Product eligibility/publication policy is inferred here.
+        // Lock only Variant rows here. Product owns the parent-before-Variant lock order;
+        // its lifecycle caller already holds the parent lock. Inventory's additional parent
+        // proof below is deliberately nonlocking, so a direct Inventory caller cannot invert
+        // the Product -> Variant order.
         let variants = current_read(
             txn,
             product_variant::Entity::find()
                 .select_only()
                 .column(product_variant::Column::Id)
+                .column(product_variant::Column::ProductId)
                 .filter(product_variant::Column::TenantId.eq(tenant_id))
                 .filter(product_variant::Column::Id.is_in(variant_ids.iter().copied()))
                 .order_by_asc(product_variant::Column::Id)
                 .limit((MAX_CATALOG_DELETE_VARIANTS + 1) as u64),
         )
-        .into_tuple::<Uuid>()
+        .into_tuple::<(Uuid, Uuid)>()
         .all(txn)
         .await?;
-        if variants.as_slice() != variant_ids {
+        if variants.len() != variant_ids.len()
+            || !variants
+                .iter()
+                .zip(variant_ids)
+                .all(|((actual, _), expected)| actual == expected)
+            || variants.iter().any(|(id, product_id)| id.is_nil() || product_id.is_nil())
+        {
+            return Err(CatalogDeletionBlocker::IdentityUnavailable.into());
+        }
+        let parent_ids = variants
+            .iter()
+            .map(|(_, product_id)| *product_id)
+            .collect::<BTreeSet<_>>();
+        let owned_parent_ids = product::Entity::find()
+            .select_only()
+            .column(product::Column::Id)
+            .filter(product::Column::TenantId.eq(tenant_id))
+            .filter(product::Column::Id.is_in(parent_ids.iter().copied()))
+            .order_by_asc(product::Column::Id)
+            .limit((MAX_CATALOG_DELETE_VARIANTS + 1) as u64)
+            .into_tuple::<Uuid>()
+            .all(txn)
+            .await?;
+        if owned_parent_ids != parent_ids.iter().copied().collect::<Vec<_>>() {
             return Err(CatalogDeletionBlocker::IdentityUnavailable.into());
         }
 
-        // INVARIANT: all Variant UUIDs above are proved inside the current tenant before any
-        // tenant-less Inventory item, level or opaque history-reference lookup.
+        // INVARIANT: every Variant and its parent Product are proved inside this tenant
+        // before any tenant-less Inventory item, level or opaque history-reference lookup.
         let items = current_read(
             txn,
             inventory_item::Entity::find()
