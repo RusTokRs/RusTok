@@ -18,6 +18,26 @@ use uuid::Uuid;
 use crate::entities::price;
 use crate::services::bootstrap::{BootstrapService, catalog_base_scope};
 
+const PRIMARY_CATALOG_CURRENCY_CODE: &str = "USD";
+
+/// Product Admin treats the first catalog base price as its primary display/edit row.
+/// Database row order is undefined, so return a deterministic order with USD first.
+fn sort_catalog_base_prices(models: &mut [price::Model]) {
+    models.sort_by(|left, right| {
+        let left_is_secondary = !left
+            .currency_code
+            .eq_ignore_ascii_case(PRIMARY_CATALOG_CURRENCY_CODE);
+        let right_is_secondary = !right
+            .currency_code
+            .eq_ignore_ascii_case(PRIMARY_CATALOG_CURRENCY_CODE);
+
+        left.variant_id
+            .cmp(&right.variant_id)
+            .then_with(|| left_is_secondary.cmp(&right_is_secondary))
+            .then_with(|| left.currency_code.cmp(&right.currency_code))
+    });
+}
+
 fn map_catalog_scope_error(error: PricingError) -> ProductError {
     match error {
         PricingError::Database(error) => ProductError::Database(error),
@@ -131,7 +151,7 @@ impl ProductPricingPort for PricingProductPricingPortAdapter {
             return Ok(Vec::new());
         }
 
-        let models = match conn {
+        let mut models = match conn {
             PricingConnection::Connection(c) => {
                 price::Entity::find()
                     .filter(price::Column::VariantId.is_in(variant_ids.iter().copied()))
@@ -147,6 +167,8 @@ impl ProductPricingPort for PricingProductPricingPortAdapter {
                     .await?
             }
         };
+
+        sort_catalog_base_prices(&mut models);
 
         Ok(models
             .into_iter()
@@ -330,6 +352,30 @@ mod tests {
             min_quantity,
             max_quantity,
         }
+    }
+
+    #[test]
+    fn catalog_base_price_order_keeps_usd_primary_and_sorts_remaining_currencies() {
+        let usd = candidate(1, None, None, None, None, None, 10);
+        let eur = price::Model {
+            currency_code: "EUR".to_owned(),
+            ..candidate(2, None, None, None, None, None, 9)
+        };
+        let gbp = price::Model {
+            currency_code: "GBP".to_owned(),
+            ..candidate(3, None, None, None, None, None, 8)
+        };
+        let mut models = vec![gbp, eur, usd];
+
+        sort_catalog_base_prices(&mut models);
+
+        assert_eq!(
+            models
+                .iter()
+                .map(|model| model.currency_code.as_str())
+                .collect::<Vec<_>>(),
+            vec!["USD", "EUR", "GBP"]
+        );
     }
 
     #[test]
