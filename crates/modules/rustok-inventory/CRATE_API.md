@@ -405,6 +405,17 @@ its existing lifecycle event transaction. This is not Inventory → generic Inde
 and adds no revision/tombstone or authorization/replay receipt. Regression, migration, SQL,
 locking and compiler evidence remain unrun; see the [owner plan](docs/implementation-plan.md#catalog-deletion-safety-2026-11-01-source-only).
 
+## Tenant-scoped Product quantity projections (2026-11-25; source continuation)
+
+The unscoped Product/admin quantity projection carries the current tenant. Before reading
+tenant-less Inventory item/level rows, Inventory proves the complete Variant and parent Product
+identity set. It then resolves every distinct saved level location and requires exact same-tenant
+ownership; a missing or foreign location is an unverified binding, never silently omitted or
+counted. Archived same-tenant locations remain in administrative totals for reconciliation.
+Public-channel projections use the same location proof first, then apply active-location and
+channel-visibility filters. The read does not mutate stock, history, source revisions or events.
+The existing Product legacy-quantity fallback when an Inventory item itself is absent is unchanged.
+
 ## Canonical quantity writes (2026-11-01; source continuation)
 
 Native set/adjust and Product's existing transaction-sharing quantity update must use one

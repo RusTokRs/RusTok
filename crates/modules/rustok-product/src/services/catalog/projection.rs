@@ -859,7 +859,7 @@ impl CatalogService {
                 if variant_ids.is_empty() {
                     Ok::<_, CommerceError>(HashMap::new())
                 } else if let Some(port) = &self.inventory_port {
-                    port.load_available_quantities(conn.as_inventory_connection(), &variant_ids)
+                    port.load_available_quantities(conn.as_inventory_connection(), tenant_id, &variant_ids)
                         .await
                 } else {
                     Ok(HashMap::new())
@@ -1117,7 +1117,7 @@ impl CatalogService {
                 if variant_ids.is_empty() {
                     Ok::<_, CommerceError>(HashMap::new())
                 } else if let Some(port) = &self.inventory_port {
-                    port.load_available_quantities(conn.as_inventory_connection(), &variant_ids)
+                    port.load_available_quantities(conn.as_inventory_connection(), tenant_id, &variant_ids)
                         .await
                 } else {
                     Ok(HashMap::new())

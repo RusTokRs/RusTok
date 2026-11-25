@@ -101,16 +101,17 @@ impl ProductInventoryPort for InventoryProductInventoryPortAdapter {
     async fn load_available_quantities(
         &self,
         conn: InventoryConnection<'_>,
+        tenant_id: Uuid,
         variant_ids: &[Uuid],
     ) -> Result<HashMap<Uuid, i32>, CommerceError> {
         match conn {
             InventoryConnection::Connection(c) => {
-                BootstrapService::load_available_quantities(c, variant_ids)
+                BootstrapService::load_available_quantities(c, tenant_id, variant_ids)
                     .await
                     .map_err(CommerceError::from)
             }
             InventoryConnection::Transaction(tx) => {
-                BootstrapService::load_available_quantities(tx, variant_ids)
+                BootstrapService::load_available_quantities(tx, tenant_id, variant_ids)
                     .await
                     .map_err(CommerceError::from)
             }

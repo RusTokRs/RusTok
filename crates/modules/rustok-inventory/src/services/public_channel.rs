@@ -5,9 +5,10 @@ use rustok_commerce_foundation::{
     error::{CommerceError, CommerceResult},
 };
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, FromQueryResult, QueryFilter,
+    QueryOrder, QuerySelect,
 };
+use sea_orm::entity::prelude::DateTimeWithTimeZone;
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -82,7 +83,7 @@ pub fn is_metadata_visible_for_public_channel(
     is_allowlist_visible_for_public_channel(&allowed_channel_slugs, public_channel_slug)
 }
 
-async fn require_tenant_variant_identities<C: ConnectionTrait>(
+pub(super) async fn require_tenant_variant_identities<C: ConnectionTrait>(
     conn: &C,
     tenant_id: Uuid,
     variant_ids: &[Uuid],
@@ -106,6 +107,88 @@ async fn require_tenant_variant_identities<C: ConnectionTrait>(
         ));
     }
     Ok(())
+}
+
+/// Minimal location data needed by Inventory quantity projections. Avoid loading
+/// address/contact fields merely to prove a tenant-owned level binding.
+#[derive(Debug, Clone, FromQueryResult)]
+struct TenantLocationProjection {
+    id: Uuid,
+    tenant_id: Uuid,
+    deleted_at: Option<DateTimeWithTimeZone>,
+    metadata: Value,
+}
+
+fn tenant_location_identity_error() -> sea_orm::DbErr {
+    sea_orm::DbErr::Custom(
+        "Inventory level references a missing or foreign tenant location".into(),
+    )
+}
+
+fn validate_tenant_location_rows(
+    tenant_id: Uuid,
+    expected_ids: &BTreeSet<Uuid>,
+    rows: Vec<TenantLocationProjection>,
+) -> Result<HashMap<Uuid, TenantLocationProjection>, sea_orm::DbErr> {
+    if tenant_id.is_nil() || expected_ids.iter().any(|id| id.is_nil()) {
+        return Err(tenant_location_identity_error());
+    }
+
+    let mut locations = HashMap::with_capacity(expected_ids.len());
+    for location in rows {
+        if location.id.is_nil()
+            || location.tenant_id != tenant_id
+            || !expected_ids.contains(&location.id)
+            || locations.insert(location.id, location).is_some()
+        {
+            return Err(tenant_location_identity_error());
+        }
+    }
+    if locations.len() != expected_ids.len() {
+        return Err(tenant_location_identity_error());
+    }
+    Ok(locations)
+}
+
+/// Proves every saved level location belongs to the requested tenant.
+/// Archived same-tenant locations are returned so admin totals can retain them;
+/// storefront callers apply active/visibility policy only after this proof.
+pub(super) async fn load_tenant_locations<C: ConnectionTrait>(
+    conn: &C,
+    tenant_id: Uuid,
+    location_ids: &BTreeSet<Uuid>,
+) -> Result<HashMap<Uuid, TenantLocationProjection>, sea_orm::DbErr> {
+    if tenant_id.is_nil() || location_ids.iter().any(|id| id.is_nil()) {
+        return Err(tenant_location_identity_error());
+    }
+    if location_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let requested = location_ids.iter().copied().collect::<Vec<_>>();
+    let mut locations = HashMap::with_capacity(requested.len());
+    for chunk in requested.chunks(256) {
+        let expected = chunk.iter().copied().collect::<BTreeSet<_>>();
+        let rows = stock_location::Entity::find()
+            .select_only()
+            .column(stock_location::Column::Id)
+            .column(stock_location::Column::TenantId)
+            .column(stock_location::Column::DeletedAt)
+            .column(stock_location::Column::Metadata)
+            .filter(stock_location::Column::TenantId.eq(tenant_id))
+            .filter(stock_location::Column::Id.is_in(chunk.iter().copied()))
+            .order_by_asc(stock_location::Column::Id)
+            .limit((chunk.len() + 1) as u64)
+            .into_model::<TenantLocationProjection>()
+            .all(conn)
+            .await?;
+        locations.extend(validate_tenant_location_rows(tenant_id, &expected, rows)?);
+    }
+
+    if locations.len() != location_ids.len() {
+        return Err(tenant_location_identity_error());
+    }
+    Ok(locations)
 }
 
 /// Validates request-level storefront inventory semantics before any DB lookup.
@@ -275,23 +358,19 @@ where
         return super::quantity::available_by_variant(&item_to_variant, std::iter::empty());
     }
 
-    let location_ids: Vec<_> = levels.iter().map(|level| level.location_id)
-        .collect::<BTreeSet<_>>().into_iter().collect();
-    let mut visible_location_ids = HashSet::new();
-    for chunk in location_ids.chunks(256) {
-        let locations = stock_location::Entity::find()
-            .filter(stock_location::Column::TenantId.eq(tenant_id))
-            .filter(stock_location::Column::DeletedAt.is_null())
-            .filter(stock_location::Column::Id.is_in(chunk.iter().copied()))
-            .limit((chunk.len() + 1) as u64)
-            .all(db)
-            .await?;
-        for location in locations {
-            if is_metadata_visible_for_public_channel(&location.metadata, public_channel_slug) {
-                visible_location_ids.insert(location.id);
-            }
-        }
-    }
+    let location_ids = levels
+        .iter()
+        .map(|level| level.location_id)
+        .collect::<BTreeSet<_>>();
+    let locations = load_tenant_locations(db, tenant_id, &location_ids).await?;
+    let visible_location_ids = locations
+        .into_iter()
+        .filter_map(|(location_id, location)| {
+            (location.deleted_at.is_none()
+                && is_metadata_visible_for_public_channel(&location.metadata, public_channel_slug))
+            .then_some(location_id)
+        })
+        .collect::<HashSet<_>>();
 
     super::quantity::available_by_variant(
         &item_to_variant,
@@ -335,11 +414,39 @@ mod tests {
         PublicChannelInventoryVariantProjectionInput, check_public_channel_inventory_request,
         extract_allowed_channel_slugs, is_allowlist_visible_for_public_channel,
         is_metadata_visible_for_public_channel, normalize_public_channel_slug,
-        public_channel_inventory_projection_map,
+        public_channel_inventory_projection_map, validate_tenant_location_rows,
+        TenantLocationProjection,
     };
 
-    use std::collections::HashMap;
+    use std::collections::{BTreeSet, HashMap};
+    use chrono::Utc;
     use uuid::Uuid;
+
+    #[test]
+    fn tenant_location_projection_requires_complete_same_tenant_bindings() {
+        let tenant_id = Uuid::new_v4();
+        let location_id = Uuid::new_v4();
+        let expected = BTreeSet::from([location_id]);
+
+        let foreign = TenantLocationProjection {
+            id: location_id,
+            tenant_id: Uuid::new_v4(),
+            deleted_at: None,
+            metadata: serde_json::json!({}),
+        };
+        assert!(validate_tenant_location_rows(tenant_id, &expected, vec![foreign]).is_err());
+        assert!(validate_tenant_location_rows(tenant_id, &expected, Vec::new()).is_err());
+
+        let archived = TenantLocationProjection {
+            id: location_id,
+            tenant_id,
+            deleted_at: Some(Utc::now().into()),
+            metadata: serde_json::json!({}),
+        };
+        let loaded = validate_tenant_location_rows(tenant_id, &expected, vec![archived])
+            .expect("an archived same-tenant location remains valid admin identity");
+        assert!(loaded.get(&location_id).is_some_and(|location| location.deleted_at.is_some()));
+    }
 
     #[test]
     fn normalize_public_channel_slug_trims_and_lowercases() {
@@ -483,6 +590,16 @@ mod tests {
         .await
         .expect_err("foreign Variant must fail before tenantless Inventory lookup");
         assert!(error.to_string().contains("not all owned by the requested tenant"));
+
+        let unscoped_error =
+            crate::services::bootstrap::BootstrapService::load_available_quantities(
+                &db,
+                tenant_id,
+                &[foreign_variant_id],
+            )
+            .await
+            .expect_err("admin projection must prove the Variant parent tenant too");
+        assert!(unscoped_error.to_string().contains("not all owned by the requested tenant"));
     }
 
     #[test]

@@ -7,7 +7,7 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, Set,
     QuerySelect, Statement,
 };
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -275,23 +275,42 @@ impl BootstrapService {
 
     pub async fn load_available_quantities<C>(
         conn: &C,
+        tenant_id: Uuid,
         variant_ids: &[Uuid],
     ) -> Result<HashMap<Uuid, i32>, sea_orm::DbErr>
     where
         C: ConnectionTrait,
     {
-        if variant_ids.is_empty() {
-            return Ok(HashMap::new());
+        if tenant_id.is_nil() {
+            return Err(sea_orm::DbErr::Custom(
+                "tenant_id must not be a nil UUID".to_string(),
+            ));
         }
-
         if variant_ids.iter().any(|id| id.is_nil()) {
             return Err(sea_orm::DbErr::Custom(
                 "variant_ids must not contain a nil UUID".to_string(),
             ));
         }
+        if variant_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
 
-        let item_to_variant = super::quantity::load_projection_item_bindings(conn, variant_ids).await?;
+        // INVARIANT: Inventory item/level rows are tenant-less. Prove the complete
+        // Variant and parent Product set before resolving any stock identity.
+        super::public_channel::require_tenant_variant_identities(conn, tenant_id, variant_ids)
+            .await?;
+
+        let item_to_variant =
+            super::quantity::load_projection_item_bindings(conn, variant_ids).await?;
         let levels = super::quantity::load_projection_levels(conn, &item_to_variant).await?;
+
+        // Admin totals retain archived locations for reconciliation, but a level
+        // bound to a foreign or missing location is corrupt identity, never stock.
+        let location_ids = levels
+            .iter()
+            .map(|level| level.location_id)
+            .collect::<BTreeSet<_>>();
+        super::public_channel::load_tenant_locations(conn, tenant_id, &location_ids).await?;
 
         super::quantity::available_by_variant(&item_to_variant, &levels)
     }

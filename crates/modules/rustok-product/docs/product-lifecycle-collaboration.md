@@ -95,9 +95,12 @@ Pricing owns:
 - tenant-scoped validation of both ProductVariant identity and any initial Channel ID/slug;
 - canonical duplicate detection for initial `(variant, channel, currency)` price identities.
 
-Product passes the current tenant through the Pricing port. The Pricing adapter resolves Channel identity
-inside the caller transaction, verifies that the Variant belongs to the same tenant, and refuses
-duplicate initial price scopes before inserting any rows.
+Product passes the current tenant through Pricing write collaboration and the Inventory projection
+port. The Pricing adapter resolves Channel identity inside the caller transaction, verifies that the
+Variant belongs to the same tenant, and refuses duplicate initial price scopes before inserting any
+rows. Inventory proves every Variant and parent Product before reading tenant-less stock rows, then
+proves every saved location belongs to that tenant. Administrative totals retain archived same-tenant
+locations for reconciliation; public-channel reads apply active/visibility filtering only after ownership proof.
 
 Product source imports only those owner bootstrap contracts. It does not import foreign Inventory/Pricing ORM entities and does not issue direct SQL against their tables.
 

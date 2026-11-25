@@ -597,6 +597,13 @@ must connect real sparse tuples, stable SKU/quantity URLs, complete context vali
 live quote refresh and cart-context handoff in both clients. Current source/type
 checks do not certify that unfinished buyer flow or runtime concurrency.
 
+Product's unscoped Inventory projection now carries the current tenant. Inventory verifies the
+complete Variant/parent set and every saved level's location before returning a quantity: foreign
+or missing location bindings fail closed instead of leaking another tenant's stock or appearing
+as a misleading zero. Archived same-tenant locations remain in admin totals for reconciliation;
+public-channel projections exclude them only after the same ownership proof. The existing
+legacy Product scalar fallback for variants without an Inventory item is unchanged.
+
 ## Canonical quantity writer prerequisite (2026-11-01; source only)
 
 Native set/adjust and Product's real quantity-update hook now delegate to one Inventory-owned
