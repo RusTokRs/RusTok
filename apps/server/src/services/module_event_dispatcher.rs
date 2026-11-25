@@ -320,9 +320,9 @@ fn enrich_runtime_extensions_after_event_start(
         let financial_runtime = ctx.shared_get_or_insert_with(|| {
             rustok_commerce::MarketplaceFinancialRuntime::in_process(ctx.db_clone())
         });
-        let event_bus = ctx.shared_get_or_insert_with(|| {
-            crate::services::event_bus::transactional_event_bus_from_context(ctx)
-        });
+        let event_bus = ctx.shared_get_or_insert(
+            crate::services::event_bus::transactional_event_bus_from_context(ctx),
+        );
         enriched.insert(financial_runtime.clone());
         enriched.insert(event_bus);
 
