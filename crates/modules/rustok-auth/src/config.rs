@@ -227,8 +227,9 @@ impl AuthConfig {
     }
 }
 
-/// Helper for loading auth settings from nested YAML `settings.rustok.auth`.
+/// Helper for loading auth settings from nested YAML `settings.auth`.
 #[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct AuthSettingsOverrides {
     pub refresh_expiration: Option<u64>,
     pub issuer: Option<String>,
@@ -468,6 +469,27 @@ pub(crate) fn validate_rs256_key_pair(private_key_pem: &str, public_key_pem: &st
 mod tests {
     use super::*;
 
+
+    #[test]
+    fn auth_overrides_reject_unknown_security_settings() {
+        for value in [
+            serde_json::json!({"algoritm": "RS256"}),
+            serde_json::json!({"jwt_keyring_en": "JWT_KEYS"}),
+            serde_json::json!({"jwt_special_keyring_env": "SPECIAL_KEYS"}),
+            serde_json::json!({"rsa_public_key_en": "RSA_PUBLIC"}),
+        ] {
+            assert!(serde_json::from_value::<AuthSettingsOverrides>(value).is_err());
+        }
+        let valid = serde_json::from_value::<AuthSettingsOverrides>(serde_json::json!({
+            "algorithm": "RS256",
+            "jwt_keyring_env": "JWT_KEYS",
+            "jwt_special_keyrings_env": "SPECIAL_KEYS",
+            "rsa_public_key_env": "RSA_PUBLIC",
+            "rsa_private_key_env": "RSA_PRIVATE"
+        })).unwrap();
+        assert_eq!(valid.jwt_keyring_env.as_deref(), Some("JWT_KEYS"));
+        assert!(serde_json::from_value::<AuthSettingsOverrides>(serde_json::json!({})).is_ok());
+    }
 
     #[test]
     fn keyring_configuration_rejects_ambiguous_or_weak_keys() {

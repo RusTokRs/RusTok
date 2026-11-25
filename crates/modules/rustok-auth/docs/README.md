@@ -116,6 +116,10 @@ before mutation; invalid candidates never replace the prior snapshot. Only Auth-
 fields are accepted; unknown fields, duplicate IDs and explicit null IDs fail
 closed even during the missing-ID migration.
 
+Unknown fields in `settings.auth` fail configuration deserialization rather than
+silently falling back to JWT defaults. Correct misspelled or obsolete override
+names before startup.
+
 Set `settings.auth.jwt_keyring_env` to the environment variable holding access
 ring JSON. Access uses the existing `algorithm` and RSA settings. Set
 `settings.auth.jwt_special_keyrings_env` to a separate environment variable holding
