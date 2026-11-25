@@ -262,7 +262,6 @@ async fn blob_gc_candidate_requires_grace_and_final_unreferenced_claim() {
     );
 }
 
-
 #[tokio::test]
 async fn data_object_gc_tenant_inventory_pages_past_persistent_early_candidates() {
     const PAGE_SIZE: u32 = 256;
