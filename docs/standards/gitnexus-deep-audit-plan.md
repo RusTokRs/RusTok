@@ -5,8 +5,8 @@
 - **Status:** ACTIVE
 - **Active Cycle:** Round 1 (Fresh Start from Scratch)
 - **Active Phase:** Phase GN-05 — Social, Community & Communication Modules (15 модулей)
-- **Next Pending Component:** [`crates/modules/rustok-moderation`](../../crates/modules/rustok-moderation)
-- **Current main SHA:** `b6db8ddff7`
+- **Next Pending Component:** [`crates/modules/rustok-notifications`](../../crates/modules/rustok-notifications)
+- **Current main SHA:** `ee66e71180`
 - **Active Branch:** `main`
 
 ### Canonical Trigger
@@ -262,7 +262,7 @@ flowchart TD
 | `rustok-party` | `crates/modules/rustok-party` | [x] | [x] | [x] | [x] |
 | `rustok-groups` | `crates/modules/rustok-groups` | [x] | [x] | [x] | [x] |
 | `rustok-social-graph` (вкл. `cli`) | `crates/modules/rustok-social-graph` | [x] | [x] | [x] | [x] |
-| `rustok-moderation` | `crates/modules/rustok-moderation` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-moderation` | `crates/modules/rustok-moderation` | [x] | [x] | [x] | [x] |
 | `rustok-notifications` | `crates/modules/rustok-notifications` | [ ] | [ ] | [ ] | [ ] |
 | `rustok-email` | `crates/modules/rustok-email` | [ ] | [ ] | [ ] | [ ] |
 | `rustok-messenger` | `crates/modules/rustok-messenger` | [ ] | [ ] | [ ] | [ ] |
