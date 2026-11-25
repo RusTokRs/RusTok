@@ -688,13 +688,11 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                 };
                 (dirty, project_data)
             };
-            if !dirty
-                && matches!(
-                    &*persistence_status.peek(),
-                    DraftRecoveryStatus::Conflict { .. } | DraftRecoveryStatus::Error(_)
-                )
-            {
-                // Conflict/error recovery is preserved until the user explicitly resolves it.
+            if matches!(
+                &*persistence_status.peek(),
+                DraftRecoveryStatus::Conflict { .. } | DraftRecoveryStatus::Error(_)
+            ) {
+                // Conflicts and unreadable recovery records are preserved until explicitly resolved.
                 return;
             }
             persistence_ready.set(false);
@@ -711,14 +709,14 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                         }
                     }
                     Err(error) => {
-                        persistence_status.set(DraftRecoveryStatus::Error(error));
+                        persistence_status.set(DraftRecoveryStatus::SaveError(error));
                     }
                 }
                 return;
             }
 
             let Some(project_data) = project_data else {
-                persistence_status.set(DraftRecoveryStatus::Error(
+                persistence_status.set(DraftRecoveryStatus::SaveError(
                     "Could not serialize the current draft for local recovery.".to_string(),
                 ));
                 return;
@@ -729,13 +727,13 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                     persistence_ready.set(true);
                     if matches!(
                         &*persistence_status.peek(),
-                        DraftRecoveryStatus::Error(_)
+                        DraftRecoveryStatus::SaveError(_)
                     ) {
                         persistence_status.set(DraftRecoveryStatus::Ready);
                     }
                 }
                 Err(error) => {
-                    persistence_status.set(DraftRecoveryStatus::Error(error));
+                    persistence_status.set(DraftRecoveryStatus::SaveError(error));
                 }
             }
         });
@@ -820,15 +818,20 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                         cleanup_error.get_or_insert(error);
                     }
                     if let Some(error) = cleanup_error {
-                        status.set(DraftRecoveryStatus::Error(error));
+                        status.set(DraftRecoveryStatus::SaveError(error));
                         persisted.set(false);
-                    } else {
+                    } else if !matches!(&*status.peek(), DraftRecoveryStatus::Error(_)) {
                         status.set(DraftRecoveryStatus::Ready);
                         persisted.set(true);
+                    } else {
+                        // The server save is confirmed, but an unreadable local record remains.
+                        persisted.set(false);
                     }
                 } else {
-                    if let Some(error) = cleanup_error {
-                        status.set(DraftRecoveryStatus::Error(error));
+                    if let Some(error) = cleanup_error
+                        && !matches!(&*status.peek(), DraftRecoveryStatus::Error(_))
+                    {
+                        status.set(DraftRecoveryStatus::SaveError(error));
                     }
                     persisted.set(false);
                 }
@@ -903,7 +906,9 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
         matches!(&recovery_status_value, DraftRecoveryStatus::Conflict { .. });
     let recovery_storage_unavailable = matches!(
         &recovery_status_value,
-        DraftRecoveryStatus::Disabled(_) | DraftRecoveryStatus::Error(_)
+        DraftRecoveryStatus::Disabled(_)
+            | DraftRecoveryStatus::Error(_)
+            | DraftRecoveryStatus::SaveError(_)
     );
     let save_outcome_unknown_active = *save_outcome_unknown.read();
     let local_recovery_json = (
@@ -1111,7 +1116,7 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                     discard_json.set(None);
                     discard_persisted.set(true);
                 }
-                Err(error) => discard_status.set(DraftRecoveryStatus::Error(error)),
+                Err(error) => discard_status.set(DraftRecoveryStatus::SaveError(error)),
             }
         }
     });
@@ -1306,7 +1311,9 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                     }
                 }
             }
-            if let DraftRecoveryStatus::Error(message) = recovery_status_value.clone() {
+            if let DraftRecoveryStatus::Error(message)
+            | DraftRecoveryStatus::SaveError(message) = recovery_status_value.clone()
+            {
                 div {
                     class: "p-3 bg-amber-500/10 text-amber-900 dark:text-amber-200 text-sm border-b border-amber-500/30 space-y-2",
                     role: "alert",
@@ -1323,13 +1330,24 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                         }
                     } else if !local_recovery_json_text.is_empty() {
                         details {
-                            summary { class: "cursor-pointer font-medium", "Show current draft JSON to copy" }
+                            summary { class: "cursor-pointer font-medium", "Show current server-backed document JSON" }
                             pre {
                                 class: "mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-all rounded border border-amber-500/30 bg-background p-2 text-xs text-foreground",
                                 tabindex: "0",
                                 aria_label: "Current local Page Builder draft JSON",
                                 "{local_recovery_json_text}"
                             }
+                        }
+                        p {
+                            class: "text-xs opacity-80",
+                            "This is the current server-backed document; an unreadable browser recovery record, if present, remains untouched."
+                        }
+                    }
+                    if recovery_store.is_some() {
+                        button {
+                            class: "rounded border border-amber-600/40 px-3 py-1.5 font-medium hover:bg-amber-500/10",
+                            onclick: move |_| on_discard_recovery.call(()),
+                            "Discard unreadable local recovery records"
                         }
                     }
                 }

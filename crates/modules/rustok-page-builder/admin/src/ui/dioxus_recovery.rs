@@ -25,6 +25,7 @@ pub(crate) enum DraftRecoveryStatus {
     Conflict { paths: Vec<String> },
     Disabled(String),
     Error(String),
+    SaveError(String),
 }
 
 #[derive(Clone)]
@@ -90,6 +91,18 @@ fn valid_recovery_token(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+}
+
+fn valid_recovery_storage_key(prefix: &str, key: &str) -> bool {
+    let Some(suffix) = key.strip_prefix(prefix) else {
+        return false;
+    };
+    match suffix.split_once(':') {
+        Some((writer_id, record_id)) => {
+            valid_recovery_token(writer_id) && valid_recovery_token(record_id)
+        }
+        None => valid_recovery_token(suffix),
+    }
 }
 
 fn recovery_record_is_newer(
@@ -209,9 +222,15 @@ impl DraftRecoveryStore {
         &self,
         supersedes_keys: BTreeSet<String>,
         consumed_records: Vec<RecoveryRecordRef>,
-    ) {
+    ) -> Result<(), String> {
+        if supersedes_keys.len() > MAX_RECOVERY_SUPERSEDED_KEYS {
+            return Err(format!(
+                "The local recovery lineage exceeds the {MAX_RECOVERY_SUPERSEDED_KEYS}-record safety limit; existing records were left untouched."
+            ));
+        }
         *self.supersedes_keys.borrow_mut() = supersedes_keys;
         *self.consumed_records.borrow_mut() = consumed_records;
+        Ok(())
     }
 
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
@@ -269,7 +288,8 @@ impl DraftRecoveryStore {
                 || (!record.record_id.is_empty() && !valid_recovery_token(&record.record_id))
                 || record.supersedes.len() > MAX_RECOVERY_SUPERSEDED_KEYS
                 || record.supersedes.iter().any(|superseded_key| {
-                    superseded_key.len() > 512 || !superseded_key.starts_with(&self.prefix)
+                    superseded_key.len() > 512
+                        || !valid_recovery_storage_key(&self.prefix, superseded_key)
                 })
                 || key != recovery_record_storage_key(
                     &self.prefix,
@@ -543,9 +563,21 @@ pub(crate) fn initialize_draft_recovery(
         };
         let mut supersedes_keys = loaded.supersedes_keys.clone();
         supersedes_keys.extend(loaded.references.iter().map(|reference| reference.key.clone()));
-        store.set_recovery_lineage(supersedes_keys, loaded.references.clone());
-        let records = loaded.records;
         let consumed_records = loaded.references;
+        if let Err(error) =
+            store.set_recovery_lineage(supersedes_keys, consumed_records.clone())
+        {
+            return DraftRecoveryBootstrap {
+                store: Some(store),
+                base,
+                merged_document: None,
+                status: DraftRecoveryStatus::Error(error),
+                conflict_json: None,
+                consumed_records,
+                persisted: false,
+            };
+        }
+        let records = loaded.records;
         if records.is_empty() {
             return DraftRecoveryBootstrap {
                 store: Some(store),
@@ -1027,7 +1059,10 @@ mod tests {
         assert_eq!(legacy, format!("{prefix}{writer}"));
         assert_ne!(first, second);
         assert_ne!(legacy, first);
-        assert!(first.starts_with(&format!("{prefix}{writer}:")));
+        assert!(valid_recovery_storage_key(prefix, &legacy));
+        assert!(valid_recovery_storage_key(prefix, &first));
+        assert!(!valid_recovery_storage_key(prefix, &format!("{prefix}bad:token:extra")));
+        assert!(!valid_recovery_storage_key(prefix, "other-scope:writer:1-a"));
     }
 
     #[test]
