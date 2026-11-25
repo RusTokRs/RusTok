@@ -27,7 +27,7 @@ without evidence of a failure is recorded separately below.
 |---|---|---|
 | `P-FLY-CROSS-DOCUMENT-INTENT` | Browser intents accepted an optional page ID without comparing it to the controller's owning document; a stale/wrong document could pass revision validation. The dispatcher now rejects explicit page scope mismatches before applying any selection or command, and Leptos checks response scope before facade execution. | [Browser dispatcher](../../crates/modules/rustok-page-builder/admin/src/browser_intent.rs), [Leptos runtime](../../crates/modules/rustok-page-builder/admin/src/editor/runtime.rs) |
 | `P-FLY-PARTIAL-INTENT` | Page Builder's browser dispatcher applied `selected_component_id` to editor selection before resolving the requested operation. If a later step failed (unknown palette block, duplicate paste, page navigation), it returned an error while retaining the earlier state mutation. The browser-intent boundary now snapshots and rolls back the composed gesture on failure; focused tests authored, unrun. | [Browser dispatcher](../../crates/modules/rustok-page-builder/admin/src/browser_intent.rs) |
-| `P-FLY-SPLIT-VALIDATION-BOUNDS` | Action/form IDs used a second validator without the canonical 128-byte limit, and strict authored action URLs bypassed the 2048-byte limit already imposed on rendered attributes. Both admission paths now reuse the shared identifier and URL limits. Unit regressions authored, unrun. | [Action validation](../../crates/ui/fly/src/action/validation.rs), [URL policy](../../crates/ui/fly/src/safe_url.rs) |
+| `P-FLY-SPLIT-VALIDATION-BOUNDS` | Page IDs in `PageCommand::Add/Patch` and action/form IDs used narrower local checks instead of the canonical identifier grammar and 128-byte bound; strict authored action URLs also bypassed the 2048-byte rendered-attribute limit. All admission paths now reuse canonical identifier/URL limits, and page-command regressions verify invalid IDs are rejected without partial mutation. | [Page commands](../../crates/ui/fly/src/page.rs), [Action validation](../../crates/ui/fly/src/action/validation.rs), [URL policy](../../crates/ui/fly/src/safe_url.rs) |
 | `P-FLY-UNVERSIONED-MUTATION` | The Page Builder browser dispatcher treated an absent revision as an acceptable mutation rather than a missing precondition; a request without a base revision bypassed its optimistic concurrency check. Mutating intents now require the page, revision and project hash captured by the workspace snapshot; a trusted callback must never upgrade an old event by re-reading the live controller. Focused regressions added, unrun. | [Browser intent admission](../../crates/modules/rustok-page-builder/admin/src/browser_intent.rs), [Leptos host adapter](../../crates/modules/rustok-page-builder/admin/src/editor/adapter_workspace.rs), [Dioxus host adapter](../../crates/modules/rustok-page-builder/admin/src/ui/dioxus.rs) |
 | `P-FLY-DOCUMENT-CACHE-INVALIDATION` | Public Fly document mutators updated pages and extension catalogs without invalidating the cached project hash/component index; later revision and lookup reads could observe stale state. Public command writers now invalidate after successful mutation, mutable page access invalidates before returning a borrow, and symbol/theme commands stage changes on a candidate document so validation failures cannot leak partial writes. Direct-mutator regressions are authored but unrun. | [Page commands and mutable access](../../crates/ui/fly/src/page.rs), [Document cache boundary](../../crates/ui/fly/src/model.rs), [Catalog writers](../../crates/ui/fly/src/binding.rs), [Context schema](../../crates/ui/fly/src/context_schema.rs), [Dynamic catalogs](../../crates/ui/fly/src/dynamic.rs), [Translations and locales](../../crates/ui/fly/src/translation.rs), [Locale policy](../../crates/ui/fly/src/locale_policy.rs), [Styles](../../crates/ui/fly/src/style_rule.rs), [Theme](../../crates/ui/fly/src/theme.rs), [Symbols](../../crates/ui/fly/src/symbol.rs) |
 | `P-FLY-STALE-SAVE-ACK` | Fly UI cleared the dirty bit when a save for an earlier command sequence succeeded even though newer edits had been made in flight; the browser also cleared parked save failures on responses without a clean-state observation. The UI now compares the sequence captured at save start and the browser requires an explicit `dirty: false` before removing a standing failure. Focused regressions authored, unrun. | [Fly UI state machine](../../crates/ui/fly/ui/src/machine.rs), [Browser save state](../../crates/ui/fly/browser/assets/fly-browser.js), [Save warning regression](../../apps/next-admin/tests/e2e/fly-browser-save-failure.spec.ts) |
@@ -2219,8 +2219,8 @@ Doctor flags any occurrence of danger-mode certificate acceptance or assertion m
 
 - **Category:** Memory bounds and DoS prevention.
 - **Logic dimensions:** Preconditions and bounds, calculation correctness.
-- **Observed behavior:** Network protocols and binary RPC decoders read a length prefix from incoming packet headers (e.g. `u32::from_be_bytes(len_buf) as usize`) and immediately allocate a buffer using `vec![0u8; len]` or `Vec::with_capacity(len)` without validating `len` against an upper limit. An untrusted remote peer can send a header claiming a 4 GB length, causing the node to immediately abort with an Out-Of-Memory (OOM) panic or crash under memory pressure.
-- **Remediation:** Enforce a hard protocol limit (e.g. `MAX_FRAME_SIZE` or `MAX_PAYLOAD_BYTES`) on the parsed length *before* allocating memory. Validate `len <= MAX_ALLOWED_LEN` and return a typed protocol error if the declared length exceeds the limit.
+- **Observed behavior:** Network protocols and binary RPC decoders read a length prefix from incoming packet headers (e.g. `u32::from_be_bytes(len_buf) as usize`) and immediately allocate a buffer using `vec![0u8; len]` or `Vec::with_capacity(len)` without validating `len` against an upper limit. An untrusted remote peer can send a header claiming a 4 GB length, causing the node to immediately abort with an Out-Of-Memory (OOM) panic or crash under memory pressure. The same boundary defect appears in string-based browser message bridges when an unbounded `postMessage` payload is passed directly to `serde_json::from_str`: parser allocations and CPU are then controlled by the sender before domain validation can reject the decoded message.
+- **Remediation:** Enforce a hard protocol limit (e.g. `MAX_FRAME_SIZE` or `MAX_PAYLOAD_BYTES`) on the parsed length *before* allocating memory. Validate `len <= MAX_ALLOWED_LEN` and return a typed protocol error if the declared length exceeds the limit. For string-based JSON bridges, validate the UTF-8 byte length (`payload.len()`) against a shared message ceiling before deserialization, and apply the same ceiling to outbound serialization before `postMessage`.
 
 ```rust
 // Vulnerable: remote attacker triggers OOM by declaring 4GB length
@@ -2235,9 +2235,21 @@ if len > MAX_PAYLOAD_BYTES {
 let mut response_bytes = vec![0u8; len];
 ```
 
-Detection: `cargo xtask doctor hygiene` or
-`rg -n 'from_(be|le)_bytes' crates/ apps/`.
-Doctor flags buffer allocations (`vec![...; len]` or `Vec::with_capacity(len)`) following `from_be_bytes` / `from_le_bytes` without an intervening bound check or guard function.
+String-based browser bridge:
+
+```rust
+if payload.len() > MAX_IFRAME_MESSAGE_BYTES {
+    return Err(BridgeError::PayloadTooLarge);
+}
+let message: BridgeMessage = serde_json::from_str(payload)?;
+```
+
+Detection: `cargo xtask doctor hygiene`, `rg -n 'from_(be|le)_bytes' crates/ apps/`, or
+`rg -n 'serde_json::from_str|postMessage|onmessage' crates/ apps/`.
+Review every externally supplied string for a byte bound before JSON parsing; the search is
+a candidate finder, not proof that a guard is absent. Doctor flags buffer allocations
+(`vec![...; len]` or `Vec::with_capacity(len)`) following `from_be_bytes` / `from_le_bytes`
+without an intervening bound check or guard function.
 
 ## P-CANONICAL-DIGEST — Delimit variable-length fields in cryptographic digests
 

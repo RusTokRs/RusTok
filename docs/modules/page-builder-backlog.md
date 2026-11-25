@@ -58,6 +58,16 @@ content editing or call `savePageDocument`; it creates pages and links to the Ru
 Peer notifications are advisory; server revision checks and receipts are authoritative. No build,
 Rust test, lint or Playwright run is claimed for this pass.
 
+Fly hardening follow-up (2026-11-25, source-only): `PageCommand::Add` and
+`PageCommand::Patch` now apply the canonical `validate_identifier` rule to explicit page
+IDs instead of accepting values that only pass empty/duplicate checks. Regressions cover
+invalid characters, overlong IDs and mutation atomicity. The Fly iframe bridge now enforces a
+4 MiB UTF-8 payload ceiling before JSON parsing and outbound `postMessage`; the shared window
+and iframe subscriptions and Page Builder canvas decoder enforce the same inbound bound.
+Contract/security docs and the logic-hygiene catalog were updated. No Rust build/test, lint or
+browser run was performed in this pass at the user's request; maintainer verification remains
+open.
+
 Reduced-motion follow-up: the shared Fly browser asset now uses instant scrolling for
 `scroll_to` when the target document requests reduced motion, including in the presence of
 CSS `scroll-behavior: smooth`; animations use the same document preference. The Node runtime
