@@ -822,7 +822,12 @@ fn render_component(
             Ok(payload) => {
                 let rendered = rich_text
                     .and_then(|renderer| renderer.render_rich_text(&payload))
-                    .unwrap_or_else(|| crate::rich_text_fallback_html(&payload));
+                    .unwrap_or_else(|| {
+                        crate::rich_text::rich_text_fallback_html_with_policy(
+                            &payload,
+                            &policy.url_policy(),
+                        )
+                    });
                 output.push_str(&rendered);
             }
             Err(_) => {
@@ -890,7 +895,7 @@ fn render_embed(
     }
     write_attribute(output, "class", "fly-embed");
     match crate::decode_embed_spec_with_registry(raw_spec, embeds) {
-        Ok(spec) => {
+        Ok(spec) if url_allowed(&spec.url, UrlAttributeKind::Resource, policy) => {
             if let Some(ratio) = spec.aspect_ratio.as_deref() {
                 let ratio = ratio.replace('/', " / ");
                 write_attribute(output, "style", &format!("aspect-ratio:{ratio}"));
@@ -903,7 +908,7 @@ fn render_embed(
             write_attribute(output, "referrerpolicy", "strict-origin-when-cross-origin");
             output.push_str(" allowfullscreen></iframe></div>");
         }
-        Err(_) => {
+        _ => {
             output.push('>');
             let raw_title = raw_spec
                 .get("title")
@@ -913,11 +918,7 @@ fn render_embed(
                 .get("url")
                 .and_then(Value::as_str)
                 .unwrap_or_default();
-            if crate::safe_url::url_allowed(
-                raw_url,
-                crate::safe_url::UrlAttributeKind::Resource,
-                &crate::safe_url::UrlPolicy::permissive(),
-            ) && raw_url
+            if url_allowed(raw_url, UrlAttributeKind::Navigation, policy) && raw_url
                 .trim_start()
                 .to_ascii_lowercase()
                 .starts_with("https://")
@@ -2617,6 +2618,92 @@ mod tests {
         .expect("custom render");
         assert!(custom_render.html.contains("<iframe"));
         assert!(custom_render.html.contains("https://player.example.test/frame/123"));
+    }
+
+    #[test]
+    fn render_policy_filters_embeds_and_fallback_links() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [
+                        {
+                            "id": "registered",
+                            "type": "wrapper",
+                            "flyEmbed": {
+                                "provider": "youtube",
+                                "url": "https://www.youtube.com/embed/demo",
+                                "title": "Registered video"
+                            }
+                        },
+                        {
+                            "id": "unknown",
+                            "type": "wrapper",
+                            "flyEmbed": {
+                                "provider": "unknown",
+                                "url": "https://example.test/video",
+                                "title": "Unknown video"
+                            }
+                        },
+                        {
+                            "id": "rich",
+                            "type": "wrapper",
+                            "flyRichText": {
+                                "capability": "richtext",
+                                "payload": {
+                                    "type": "doc",
+                                    "content": [{
+                                        "type": "paragraph",
+                                        "content": [
+                                            {
+                                                "type": "text",
+                                                "text": "External link",
+                                                "marks": [{
+                                                    "type": "link",
+                                                    "attrs": {"href": "https://example.test/link"}
+                                                }]
+                                            },
+                                            {
+                                                "type": "text",
+                                                "text": "Local link",
+                                                "marks": [{
+                                                    "type": "link",
+                                                    "attrs": {"href": "/local"}
+                                                }]
+                                            }
+                                        ]
+                                    }]
+                                }
+                            }
+                        }
+                    ]
+                }
+            }]
+        })).expect("document");
+
+        let default = render_page(&document, &PageSelection::First, &RenderPolicy::default())
+            .expect("default render");
+        assert!(default.html.contains("<iframe"));
+        assert!(default.html.contains("href=\"https://example.test/video\""));
+        assert!(default.html.contains("href=\"https://example.test/link\""));
+        assert!(default.html.contains("href=\"/local\""));
+
+        let restricted = render_page(
+            &document,
+            &PageSelection::First,
+            &RenderPolicy {
+                allow_https: false,
+                ..RenderPolicy::default()
+            },
+        ).expect("restricted render");
+        assert!(!restricted.html.contains("<iframe"));
+        assert!(!restricted.html.contains("https://"));
+        assert!(restricted.html.contains("Registered video"));
+        assert!(restricted.html.contains("Unknown video"));
+        assert!(restricted.html.contains("External link"));
+        assert!(restricted.html.contains("href=\"/local\""));
     }
 
     #[test]
