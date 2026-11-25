@@ -43,7 +43,9 @@
   optional line_item_id and metadata. Location is selected by the owner, not supplied by a client.
 - `InventoryReservationReleaseRequest`: variant_id, quantity, optional order_id and line_item_id.
 - `InventoryIdentityReservationReleaseRequest`: reservation_id, external_id.
-- `InitialInventory`: variant_id, quantity, optional location_id.
+- `InitialInventory`: variant_id, optional SKU snapshot, and nonnegative available_quantity.
+  Inventory resolves an active tenant-owned location; callers cannot select a replacement location.
+  The SKU snapshot must match the current Product-owned Variant SKU.
 - `ReturnRestockLine`: return_item_id, return_id, order_line_item_id, explicit saved
   variant_id (optional only for a proved SKU-less Order line), positive quantity. Location
   is resolved from Inventory's saved allocation/receipt, never supplied as a replacement.

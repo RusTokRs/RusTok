@@ -85,7 +85,9 @@ Inventory owns:
 
 - stock locations, inventory items, inventory levels, retained reservation/shipment/return history, and history-preserving empty-bookkeeping deletion;
 - `rustok_inventory::BootstrapService`;
-- `InitialInventory` and the transaction-aware create/read/delete operations.
+- `InitialInventory` and the transaction-aware create/read/delete operations. Bootstrap and
+  SKU-sync writes verify the caller's normalized SKU snapshot against the current locked Product
+  Variant; Inventory never treats a supplied SKU string as identity authority.
 
 Pricing owns:
 
