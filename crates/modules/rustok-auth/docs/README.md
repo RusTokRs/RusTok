@@ -171,6 +171,16 @@ special links through canonical issuance. The format cutover requires all
 hosts and operators to stop and follows the retained-state rules below.
 See [mandatory JWT key identity](../../../../DECISIONS/2026-11-25-jwt-mandatory-key-identity.md).
 
+Access JWTs explicitly carry `grant_type` and `scopes`, including direct
+session tokens with an empty scope list. Missing or null fields are rejected;
+no principal is inferred from absent claims. Direct sessions have no OAuth
+client or durable OAuth access-token ID; OAuth access requires both.
+Every invite has a mandatory non-nil unique `jti`; missing, null and nil
+nonces are rejected. The exact token digest remains the single-use authority.
+A baseline-role invite may omit its optional custom-role slug.
+Reissue noncanonical development credentials. See the
+[canonical JWT claims ADR](../../../../DECISIONS/2026-11-25-jwt-canonical-claims.md).
+
 For subsequent same-algorithm rotations, distribute the next verification
 material to all replicas first, then promote it and retain the outgoing
 material until its JWTs expire. For derived HS256 keys, the historical

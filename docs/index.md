@@ -108,6 +108,7 @@ RusToK provides a sandboxed, extensible module runtime supporting native Rust cr
 
 ### Domain Module Documentation
 
+- [ADR: Canonical JWT claims](../DECISIONS/2026-11-25-jwt-canonical-claims.md) — explicit access grant type/scopes and mandatory invitation nonce.
 - [ADR: Mandatory JWT key identity](../DECISIONS/2026-11-25-jwt-mandatory-key-identity.md) — no missing-ID or raw-root JWT bridge.
 - [ADR: Canonical JWT algorithm metadata](../DECISIONS/2026-11-25-jwt-canonical-algorithm-metadata.md) — mandatory persisted algorithms, exact per-key binding and staged managed promotion.
 - [ADR: JWT authority rollback witness](../DECISIONS/2026-11-25-jwt-rollback-witness.md) — authenticated full-state checkpoint, witness-first commits and offline recovery.

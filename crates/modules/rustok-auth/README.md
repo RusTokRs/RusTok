@@ -108,8 +108,10 @@ HS256/RS256 migration. Persisted key metadata now requires an explicit
 algorithm; old ledger/grant/checkpoint payloads are not supported. Do not reset
 non-disposable security state. See the [cutover contract](docs/README.md#managed-algorithm-migration).
 All JWT purposes require an exact key ID; missing-ID access and raw-root
-verification bridges are removed. Zero-legacy cleanup remains open for
-unreleased token/document formats and other config compatibility.
+verification bridges are removed. Access grant type/scopes and invite nonce
+are mandatory; previously accepted missing fields are rejected.
+Zero-legacy cleanup remains open for other unreleased token/document formats
+and config compatibility.
 Host root rotation remains open.
 Clock discontinuity detection and dual-deadline leases are source-implemented;
 independent clock fault-injection and suspend evidence remain pending.

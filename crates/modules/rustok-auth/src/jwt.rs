@@ -33,12 +33,10 @@ pub struct Claims {
     pub exp: usize,
     pub iat: usize,
 
-    // OAuth2 extension fields (backward-compatible)
+    // Principal-specific OAuth fields. Grant type and scopes are explicit.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client_id: Option<Uuid>,
-    #[serde(default)]
     pub scopes: Vec<String>,
-    #[serde(default = "default_grant_type")]
     pub grant_type: String,
     /// Registered OAuth access-token id (`jti`). Direct first-party
     /// session tokens leave this absent; delegated/service OAuth tokens
@@ -48,24 +46,18 @@ pub struct Claims {
     pub jti: Option<Uuid>,
 }
 
-fn default_grant_type() -> String {
-    DIRECT_GRANT_TYPE.to_string()
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct InviteClaims {
     pub sub: String,
     pub tenant_id: Uuid,
     pub role: UserRole,
     /// Tenant-defined custom role layered over the baseline `role`
-    /// membership at acceptance time. Absent on tokens issued before
-    /// custom-role invites existed, which therefore keep decoding.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// membership at acceptance time. Absent for a baseline-role invite.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub custom_role_slug: Option<String>,
-    /// Unique issuance nonce. Previously issued invitations omit this field;
-    /// the persisted exact token digest remains the single-use authority.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub jti: Option<Uuid>,
+    /// Mandatory unique issuance nonce. The persisted exact token digest
+    /// remains the single-use authority.
+    pub jti: Uuid,
     pub purpose: String,
     pub iss: String,
     pub aud: String,
@@ -353,7 +345,7 @@ pub fn encode_invite_token(
         tenant_id,
         role,
         custom_role_slug,
-        jti: Some(Uuid::new_v4()),
+        jti: Uuid::new_v4(),
         purpose: INVITE_PURPOSE.to_string(),
         iss: config.issuer.clone(),
         aud: config.audience.clone(),
@@ -377,7 +369,7 @@ pub fn decode_invite_token(config: &AuthConfig, token: &str) -> Result<InviteCla
         || claims.sub.trim().is_empty()
         || !valid_token_times(claims.iat, claims.exp)
         || claims.purpose != INVITE_PURPOSE
-        || claims.jti.is_some_and(|id| id.is_nil())
+        || claims.jti.is_nil()
     {
         return Err(AuthError::InvalidInviteToken);
     }
@@ -1392,7 +1384,7 @@ mod tests {
     }
 
     #[test]
-    fn invite_issuance_has_a_unique_nonce_and_preserves_legacy_tokens() {
+    fn invite_issuance_requires_a_unique_non_nil_nonce() {
         let config = test_config();
         let tenant = Uuid::new_v4();
         let issue = || encode_invite_token(
@@ -1403,15 +1395,50 @@ mod tests {
         assert_ne!(first, second);
         let mut claims = decode_invite_token(&config, &first).unwrap();
         let second_claims = decode_invite_token(&config, &second).unwrap();
-        assert!(claims.jti.is_some_and(|id| !id.is_nil()));
-        assert!(second_claims.jti.is_some_and(|id| !id.is_nil()));
+        assert!(!claims.jti.is_nil());
+        assert!(!second_claims.jti.is_nil());
         assert_ne!(claims.jti, second_claims.jti);
-        claims.jti = None;
-        let legacy = encode_for_purpose(&config, JwtPurpose::Invite, &claims).unwrap();
-        assert!(decode_invite_token(&config, &legacy).unwrap().jti.is_none());
-        claims.jti = Some(Uuid::nil());
+        let mut payload = serde_json::to_value(&claims).unwrap();
+        payload.as_object_mut().unwrap().remove("jti");
+        let missing = encode_for_purpose(&config, JwtPurpose::Invite, &payload).unwrap();
+        assert!(decode_invite_token(&config, &missing).is_err());
+        payload["jti"] = serde_json::Value::Null;
+        let null = encode_for_purpose(&config, JwtPurpose::Invite, &payload).unwrap();
+        assert!(decode_invite_token(&config, &null).is_err());
+        claims.jti = Uuid::nil();
         let invalid = encode_for_purpose(&config, JwtPurpose::Invite, &claims).unwrap();
         assert!(decode_invite_token(&config, &invalid).is_err());
+    }
+
+    #[test]
+    fn access_claims_require_explicit_grant_type_and_scopes() {
+        let config = test_config();
+        let direct = encode_access_token(
+            &config, Uuid::new_v4(), Uuid::new_v4(),
+            UserRole::Customer, Uuid::new_v4(),
+        ).unwrap();
+        let oauth = encode_oauth_access_token(&config, OauthAccessTokenInput {
+            app_id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            role: UserRole::Customer,
+            client_id: Uuid::new_v4(),
+            scopes: &[],
+            grant_type: "client_credentials",
+            expires_in_secs: 900,
+            token_id: Uuid::new_v4(),
+        }).unwrap();
+        for token in [direct, oauth] {
+            let claims = decode_access_token(&config, &token).unwrap();
+            for field in ["grant_type", "scopes"] {
+                let mut payload = serde_json::to_value(&claims).unwrap();
+                payload.as_object_mut().unwrap().remove(field);
+                let missing = encode_for_purpose(&config, JwtPurpose::Access, &payload).unwrap();
+                assert!(decode_access_token(&config, &missing).is_err());
+                payload[field] = serde_json::Value::Null;
+                let null = encode_for_purpose(&config, JwtPurpose::Access, &payload).unwrap();
+                assert!(decode_access_token(&config, &null).is_err());
+            }
+        }
     }
 
     #[test]

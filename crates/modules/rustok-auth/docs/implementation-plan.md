@@ -55,9 +55,11 @@ and witness persistence are source-implemented. The persisted algorithm field
 is now mandatory per key; the legacy homogeneous metadata reader is removed.
 Scoped compilation, regression execution and independent-replica rollout
 remain pending. Before root MAC rotation, complete the remaining pre-release
-zero-legacy cleanup: canonical unreleased token and keyring document
+zero-legacy cleanup: remaining canonical unreleased token and keyring document
 contracts, and review of configuration defaults/aliases. Mandatory kid for
-every purpose and removal of raw-root JWT history are source-implemented. Preserve key rotation, terminal tombstones,
+every purpose and removal of raw-root JWT history are source-implemented.
+Access grant type and scopes are now required; invite issuance nonce is
+a mandatory non-nil UUID. Source regressions reject missing and null claims. Preserve key rotation, terminal tombstones,
 lease fencing and witness security. Do not silently reset non-disposable
 authority or witness state; follow the owner cutover contract.
 
