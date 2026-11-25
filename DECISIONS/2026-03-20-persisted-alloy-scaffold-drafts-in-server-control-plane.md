@@ -25,8 +25,8 @@ runtime flow.
 The host-workspace apply path is a cooperating writer with native scaffolding. Before claiming a
 draft it takes the permanent `.rustok/scaffold/lock` OS lock used by `cargo xtask scaffold` and
 refuses to proceed while native recovery markers are present. It stages the complete crate under a
-unique private directory inside `.rustok/scaffold` on the same filesystem and publishes the finished directory with one rename;
-it never exposes a partially written final crate directory. The permanent lock file is never
+unique private directory inside `.rustok/scaffold` and publishes the finished directory with one same-filesystem rename;
+if `.rustok/scaffold` and `crates/modules` are on different filesystems, publication fails closed without exposing a partial final crate directory. The permanent lock file is never
 removed. Interrupted applies remain quarantined in `applying` or `recovery_required` until an
 operator verifies the workspace and explicitly reconciles the persisted draft state.
 

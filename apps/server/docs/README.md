@@ -739,6 +739,13 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   policies rather than acknowledging an ineffective invalidation.
   The canonical `*` key retains its intended global-invalidation
   meaning; a nil UUID is not accepted as a tenant identity.
+  The root event-delivery gate also synchronously fences the process-local
+  effective-policy cache before checking listener readiness and before
+  downstream delivery. The Pages cache handler runs before that readiness
+  check as well. Bounded event-ID dedupe prevents outbox retries from
+  repeatedly advancing the same local cache generation. This is a
+  per-process ordering guarantee only; other instances still converge
+  through the durable generation record.
 - Tenant locale generation recovery now serializes local invalidation
   messages, Redis Pub/Sub delivery and periodic reconciliation under one
   per-listener asynchronous transition gate. The shared generation tracker

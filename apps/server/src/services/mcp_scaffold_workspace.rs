@@ -160,6 +160,20 @@ pub fn apply_mcp_scaffold_atomically(
     rustok_mcp::ApplyModuleScaffoldResponse,
     rustok_mcp::AlloyScaffoldError,
 > {
+    let file_paths = draft
+        .preview
+        .files
+        .iter()
+        .map(|file| file.path.clone())
+        .collect::<Vec<_>>();
+    validate_mcp_scaffold_target_path_blocking(
+        workspace_root,
+        &draft.preview.crate_name,
+        &draft.preview.crate_path,
+        &file_paths,
+    )
+    .map_err(|error| rustok_mcp::AlloyScaffoldError::Workspace(error.to_string()))?;
+
     let workspace_root = Path::new(workspace_root);
     let modules_root = workspace_root.join("crates/modules");
     ensure_apply_directory(&modules_root)?;
