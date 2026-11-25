@@ -1016,8 +1016,11 @@ before the event forwarder. The Outbox relay supervisor owns and gracefully drai
   authorization-code grant, current scopes, registered redirect URI, subject status,
   and password-change epoch before consuming the code. Refresh rotation similarly
   locks the app and subject and rechecks the client-secret hash, refresh grant,
-  current scopes, subject status, and password-change epoch before consuming the
-  refresh token. Client-credentials issuance locks and rechecks its app before
+  current scopes, subject status, password-change epoch and the original
+  refresh-family absolute deadline before consuming the refresh token. The
+  family root is resolved again inside the transaction, so waiting for app or
+  subject locks cannot extend the lifetime of the lineage.
+  Client-credentials issuance locks and rechecks its app before
   persisting the access row. The OAuth authorization-code **creation**
   service independently reserves the same app-then-user mutation fences,
   revalidates active app/subject, authorization-code grant, registered redirect,

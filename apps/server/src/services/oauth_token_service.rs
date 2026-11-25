@@ -196,11 +196,7 @@ impl OAuthTokenService {
                     OAuthTokenProtocolError::invalid_grant("Refresh token has no associated user")
                 })?;
                 let family = resolve_refresh_family(db, &current).await?;
-                if Utc::now() >= refresh_family_deadline(family.created_at)? {
-                    return Err(OAuthTokenProtocolError::invalid_grant(
-                        "Refresh token family exceeded its maximum lifetime",
-                    ));
-                }
+                ensure_refresh_family_live(&family, Utc::now())?;
                 // OAuth refresh requests may narrow an existing grant, never widen it.
                 // An omitted scope retains the original grant; a supplied empty
                 // scope must not silently restore the full set of permissions.
@@ -459,7 +455,7 @@ async fn validate_authorization_code(
     validate_scope_subset(&app.scopes_list(), &scopes)?;
     let (user, consent_granted_at) =
         validate_active_subject_and_consent(db, app, tenant_id, code.user_id, &scopes).await?;
-    validate_code_consent_epoch(code, consent_granted_at.as_ref())?;
+    validate_code_consent_epoch(&code, consent_granted_at.as_ref())?;
     if user.rejects_delegated_token_issued_at(code.created_at.with_timezone(&Utc)) {
         return Err(OAuthTokenProtocolError::invalid_grant(
             "Authorization code predates the current credential state",
@@ -553,15 +549,30 @@ fn refresh_family_deadline(
         })
 }
 
+fn ensure_refresh_family_live(
+    family: &RefreshTokenFamily,
+    now: chrono::DateTime<Utc>,
+) -> Result<(), OAuthTokenProtocolError> {
+    if now >= refresh_family_deadline(family.created_at)? {
+        return Err(OAuthTokenProtocolError::invalid_grant(
+            "Refresh token family exceeded its maximum lifetime",
+        ));
+    }
+    Ok(())
+}
+
 /// Resolve the lineage of the presented refresh token. Pre-migration
 /// rows have no family id and start their own family rooted at
 /// themselves. A referenced root that is missing or belongs to another
 /// client/tenant/subject fails closed: falling back to the current token
 /// would let an orphaned row reset the absolute lineage lifetime cap.
-async fn resolve_refresh_family(
-    db: &DatabaseConnection,
+async fn resolve_refresh_family<C>(
+    db: &C,
     current: &oauth_tokens::Model,
-) -> Result<RefreshTokenFamily, OAuthTokenProtocolError> {
+) -> Result<RefreshTokenFamily, OAuthTokenProtocolError>
+where
+    C: ConnectionTrait,
+{
     let family_id = current.family_id.unwrap_or(current.id);
     let created_at = if family_id == current.id {
         current.created_at.with_timezone(&Utc)
@@ -1313,7 +1324,12 @@ async fn commit_refresh_rotation(
     )
     .await?;
 
+    // Preparation can finish before the absolute deadline while lock
+    // acquisition waits past it. Resolve the root again under the same
+    // app/subject fences and check the clock immediately before consumption.
+    let family = resolve_refresh_family(&tx, current).await?;
     let now = Utc::now();
+    ensure_refresh_family_live(&family, now)?;
     let consumed = OAuthTokens::update_many()
         .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
         .col_expr(oauth_tokens::Column::LastUsedAt, Expr::value(now))
@@ -1401,7 +1417,8 @@ fn required<'a>(
 #[cfg(test)]
 mod tests {
     use super::{
-        PreparedUserTokens, REFRESH_TOKEN_GRANT, authenticate_client, commit_refresh_rotation,
+        PreparedUserTokens, REFRESH_TOKEN_GRANT, USER_REFRESH_FAMILY_ABSOLUTE_LIFETIME_DAYS,
+        authenticate_client, commit_refresh_rotation,
         lock_active_oauth_subject, refresh_family_deadline, require_grant, resolve_client,
         scopes_for_refresh, validate_requested_scopes,
     };
@@ -1412,8 +1429,8 @@ mod tests {
     use chrono::Utc;
     use rustok_auth::TokenRequest;
     use sea_orm::{
-        ActiveModelTrait, ConnectionTrait, Database, EntityTrait, PaginatorTrait, Schema, Set,
-        TransactionTrait, prelude::DateTimeWithTimeZone,
+        ActiveModelTrait, ColumnTrait, ConnectionTrait, Database, EntityTrait, PaginatorTrait,
+        QueryFilter, Schema, Set, TransactionTrait, prelude::DateTimeWithTimeZone,
     };
     use uuid::Uuid;
 
@@ -2211,7 +2228,9 @@ mod tests {
         client.id = app_id;
         client.tenant_id = tenant_id;
         // This test exercises refresh CAS, not consent enforcement.
-        client.app_type = "service".to_string();
+        // A first-party client supports delegated refresh without consent;
+        // a service client is forbidden from using the refresh grant.
+        client.app_type = "first_party".to_string();
         let active_app: crate::models::_entities::oauth_apps::ActiveModel = client.clone().into();
         active_app.insert(&db).await.expect("insert OAuth app");
         let mut subject = users::ActiveModel::new(
@@ -2292,6 +2311,48 @@ mod tests {
         commit_refresh_rotation(&db, &client, &current, &replacement("replacement-1"), false)
             .await
             .expect("first rotation");
+
+        // The replacement remains individually unexpired, but its original
+        // family may cross the absolute deadline while issuance is in flight.
+        let successor = oauth_tokens::Entity::find()
+            .filter(oauth_tokens::Column::TokenHash.eq("replacement-1"))
+            .one(&db)
+            .await
+            .expect("reload successor")
+            .expect("successor exists");
+        let mut root: oauth_tokens::ActiveModel = oauth_tokens::Entity::find_by_id(current_id)
+            .one(&db)
+            .await
+            .expect("reload family root")
+            .expect("family root exists")
+            .into();
+        root.created_at = Set(
+            (now - chrono::Duration::days(USER_REFRESH_FAMILY_ABSOLUTE_LIFETIME_DAYS + 1)).into(),
+        );
+        let expired_root = root.update(&db).await.expect("expire family root");
+        let expired_family = commit_refresh_rotation(
+            &db,
+            &client,
+            &successor,
+            &replacement("replacement-expired-family"),
+            false,
+        )
+        .await
+        .expect_err("rotation must recheck the absolute family deadline under lock");
+        assert_eq!(expired_family.error, "invalid_grant");
+        assert!(expired_family.description.contains("maximum lifetime"));
+        let unchanged = oauth_tokens::Entity::find_by_id(successor.id)
+            .one(&db)
+            .await
+            .expect("reload successor")
+            .expect("successor remains present");
+        assert!(unchanged.revoked_at.is_none());
+        assert_eq!(oauth_tokens::Entity::find().count(&db).await.unwrap(), 3);
+
+        let mut root: oauth_tokens::ActiveModel = expired_root.into();
+        root.created_at = Set(current.created_at.clone());
+        root.update(&db).await.expect("restore family root for replay test");
+
         let replay = commit_refresh_rotation(&db, &client, &current, &replacement("replacement-2"), false)
             .await
             .expect_err("refresh token replay must fail");
