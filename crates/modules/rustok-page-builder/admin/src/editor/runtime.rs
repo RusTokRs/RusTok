@@ -400,10 +400,7 @@ impl AdminEditorRuntime {
     }
 
     pub fn dispatch(&self, intent: UiIntent) {
-        if matches!(
-            &intent,
-            UiIntent::Execute(_) | UiIntent::Undo | UiIntent::Redo | UiIntent::ActivatePage { .. }
-        ) {
+        if intent.mutates_document() || matches!(&intent, UiIntent::ActivatePage { .. }) {
             self.runtime_publish_gate_evaluation.set(None);
             self.server_preview_html.set(None);
             self.preview_request.set(None);

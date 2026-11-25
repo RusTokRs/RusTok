@@ -515,10 +515,7 @@ impl EditorSessionState {
     }
 
     pub fn dispatch_intent(&mut self, intent: UiIntent) -> Result<Vec<AdminCanvasEffect>, String> {
-        if matches!(
-            &intent,
-            UiIntent::Execute(_) | UiIntent::Undo | UiIntent::Redo | UiIntent::ActivatePage { .. }
-        ) {
+        if intent.mutates_document() || matches!(&intent, UiIntent::ActivatePage { .. }) {
             self.runtime_publish_gate_evaluation = None;
             self.server_preview_html = None;
             self.preview_request = None;
@@ -946,6 +943,17 @@ mod tests {
         state.handle_preview_response(first, &stale).expect("stale response ignored");
         assert!(state.preview_attempt_active(second));
         assert!(state.last_error.is_none());
+    }
+
+    #[test]
+    fn mutating_intent_retires_an_in_flight_preview() {
+        let mut state = EditorSessionState::new(sample_controller(), "Missing", "Saved");
+        state.prepare_server_preview_request().expect("preview");
+
+        state.dispatch_intent(UiIntent::Undo).expect("undo intent");
+
+        assert!(!state.preview_in_progress);
+        assert!(state.preview_request.is_none());
     }
 
     #[test]
