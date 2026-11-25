@@ -330,10 +330,11 @@ pub fn FlyThemeTokenEditor(
             <dl class="fly-theme-tokens" aria-label=tokens_label>
                 {tokens
                     .into_iter()
-                    .map(|token| {
+                    .enumerate()
+                    .map(|(index, token)| {
                         let name_for_remove = token.name.clone();
                         let name_for_form = token.name.clone();
-                        let remove_form_id = format!("fly-theme-remove-{}", token.name);
+                        let remove_form_id = format!("fly-theme-remove-{index}");
                         let remove_label = remove_label.clone();
                         view! {
                             <div class="fly-theme-tokens__row">
