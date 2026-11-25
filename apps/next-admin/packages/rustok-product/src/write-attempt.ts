@@ -94,6 +94,7 @@ export type ProductVariantDeleteRequest = {
   /** Owning Product ID; the journal is scoped to this resource. */
   id: string;
   variantId: string;
+  expectedRevision: string;
   scope: ProductWriteScope;
 };
 

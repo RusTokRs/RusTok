@@ -1025,7 +1025,10 @@ export function ProductEditorPage({
     }
   };
 
-  const handleDeleteVariant = async (variantId: string) => {
+  const handleDeleteVariant = async (
+    variantId: string,
+    expectedRevision: string
+  ) => {
     assertEditorialWriteResolved();
     if (!initialProduct?.id || !onDeleteVariant || isNew)
       throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
@@ -1033,6 +1036,7 @@ export function ProductEditorPage({
     const request: ProductVariantDeleteRequest = {
       id: initialProduct.id,
       variantId,
+      expectedRevision,
       scope: writeScope
     };
     setIsSaving(true);

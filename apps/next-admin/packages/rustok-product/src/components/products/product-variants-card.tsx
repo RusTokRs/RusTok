@@ -98,7 +98,7 @@ interface ProductVariantsCardProps {
   axes?: VariantAxisConfig[];
   onAddVariant?: (variant: CreateVariantInput) => Promise<void>;
   onUpdateVariant?: (id: string, variant: UpdateVariantInput) => Promise<void>;
-  onDeleteVariant?: (id: string) => Promise<void>;
+  onDeleteVariant?: (id: string, expectedRevision: string) => Promise<void>;
   /** An explicit, terminally rejected creation reopened as a new operation. */
   creationDraft?: { input: CreateVariantInput; intent: string } | null;
   disabled?: boolean;
@@ -250,10 +250,19 @@ export function ProductVariantsCard({
     inventoryQuantity: number
   ) => {
     if (disabled || isBusy || !onUpdateVariant) return;
+    const variant = variants.find((candidate) => candidate.id === variantId);
+    if (!variant) {
+      setError('The variant changed. Refresh the product and try again.');
+      return;
+    }
     setIsBusy(true);
     setError(null);
     try {
-      await onUpdateVariant(variantId, { inventoryQuantity });
+      await onUpdateVariant(variantId, {
+        inventoryQuantity,
+        expectedInventoryQuantity: variant.inventoryQuantity,
+        expectedRevision: variant.revision
+      });
     } catch (failure) {
       setError(
         failure instanceof Error ? failure.message : 'Failed to update stock.'
@@ -271,10 +280,15 @@ export function ProductVariantsCard({
       )
     )
       return;
+    const variant = variants.find((candidate) => candidate.id === variantId);
+    if (!variant) {
+      setError('The variant changed. Refresh the product and try again.');
+      return;
+    }
     setIsBusy(true);
     setError(null);
     try {
-      await onDeleteVariant(variantId);
+      await onDeleteVariant(variantId, variant.revision);
     } catch (failure) {
       setError(
         failure instanceof Error ? failure.message : 'Failed to delete variant.'

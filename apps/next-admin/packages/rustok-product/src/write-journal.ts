@@ -29,6 +29,7 @@ import {
   isVariantCreateRefusalCode,
   isVariantId,
   isVariantLifecycleRefusalCode,
+  isVariantRevision,
   isVariantUpdateInput
 } from './variant-create.ts';
 
@@ -236,8 +237,9 @@ export class ProductWriteJournal {
       }
       if (operation === 'variant_delete') {
         return (
-          only(value, ['id', 'variantId', 'scope']) &&
-          isVariantId(value.variantId)
+          only(value, ['id', 'variantId', 'expectedRevision', 'scope']) &&
+          isVariantId(value.variantId) &&
+          isVariantRevision(value.expectedRevision)
         );
       }
       return false;
