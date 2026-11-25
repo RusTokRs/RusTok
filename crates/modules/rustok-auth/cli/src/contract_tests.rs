@@ -27,11 +27,13 @@ fn auth_cli_command_provider_descriptors() {
         runtime: RuntimeComposition::without_database(serde_json::json!({})),
     };
     let commands = provider.commands();
-    assert_eq!(commands.len(), 3);
+    assert_eq!(commands.len(), 4);
     assert_eq!(commands[0].namespace, "oauth");
     assert_eq!(commands[0].name, "create-app");
     assert_eq!(commands[1].namespace, "auth");
     assert_eq!(commands[1].name, "sessions-cleanup");
     assert_eq!(commands[2].namespace, "auth");
-    assert_eq!(commands[2].name, "jwt-revoke");
+    assert_eq!(commands[2].name, "jwt-authority-init");
+    assert_eq!(commands[3].namespace, "auth");
+    assert_eq!(commands[3].name, "jwt-revoke");
 }

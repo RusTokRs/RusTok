@@ -64,7 +64,7 @@ pub use credentials::{
 pub use crypto::{AuthMacPurpose, auth_purpose_mac};
 pub use error::AuthError;
 pub use jwt_fence::{
-    JwtAdmission, JwtClusterObservation, JwtGenerationFence, JwtOperationalMetrics,
+    JwtAdmission, JwtAuthorityConfig, JwtClusterObservation, JwtGenerationFence, JwtOperationalMetrics,
     JwtReloadOutcome, JwtRevocationReceipt,
 };
 pub use jwt::{

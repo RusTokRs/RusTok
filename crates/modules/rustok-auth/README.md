@@ -106,7 +106,9 @@ cluster lease/drain fencing and compatible rolling replica admission are
 source-implemented, including emergency enrolled-key revocation; algorithm and host root migration remain open.
 Clock discontinuity detection and dual-deadline leases are source-implemented;
 independent clock fault-injection and suspend evidence remain pending.
-See [JWT rotation](docs/README.md#jwt-keyring-and-rotation).
+Independent production JWT authority and explicit offline import are source-implemented;
+application DB restore no longer owns key rollback. Independent-store rollback and
+application session rollback remain separate. See [JWT rotation](docs/README.md#jwt-keyring-and-rotation).
 Operational JWT metrics and initial alerts are source-implemented; see
 [operational observability](docs/README.md#operational-observability).
 Compilation, metrics regressions and live scrape/alert evidence remain pending.

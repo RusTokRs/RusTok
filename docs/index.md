@@ -108,6 +108,7 @@ RusToK provides a sandboxed, extensible module runtime supporting native Rust cr
 
 ### Domain Module Documentation
 
+- [ADR: Independent JWT authority](../DECISIONS/2026-11-25-jwt-independent-authority.md) — separate restore domain, pinned identity and offline cutover.
 - [ADR: JWT clock discontinuity protection](../DECISIONS/2026-11-25-jwt-clock-discontinuity.md) — dual lease deadlines, bounded DB clock samples and sticky local fencing.
 - [ADR: JWT emergency key revocation](../DECISIONS/2026-11-25-jwt-emergency-revocation.md) — irreversible identity bans and bounded lease enforcement.
 - [ADR: JWT rolling replica admission](../DECISIONS/2026-11-25-jwt-rolling-admission.md) — registered grants and compatible staged signer promotion.

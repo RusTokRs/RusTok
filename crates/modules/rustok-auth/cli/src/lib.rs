@@ -34,6 +34,10 @@ impl CommandProvider for AuthCommandProvider {
             ),
             CommandDescriptor::new("auth", "sessions-cleanup", "Remove expired auth sessions"),
             CommandDescriptor::new(
+                "auth", "jwt-authority-init",
+                "Import the offline JWT ledger into a new independent authority",
+            ),
+            CommandDescriptor::new(
                 "auth", "jwt-revoke",
                 "Irreversibly revoke an enrolled JWT key across the deployment",
             ),
@@ -44,11 +48,12 @@ impl CommandProvider for AuthCommandProvider {
         match (request.namespace.as_str(), request.name.as_str()) {
             ("oauth", "create-app") => self.create_app(request.args).await,
             ("auth", "sessions-cleanup") => self.cleanup_sessions().await,
-            ("auth", "jwt-revoke") if request.dry_run => Err(CliCoreError::DryRunNotSupported {
+            ("auth", "jwt-revoke" | "jwt-authority-init") if request.dry_run => Err(CliCoreError::DryRunNotSupported {
                 namespace: request.namespace,
                 name: request.name,
             }),
             ("auth", "jwt-revoke") => self.revoke_jwt(request.args).await,
+            ("auth", "jwt-authority-init") => self.init_jwt_authority(request.args).await,
             _ => Err(CliCoreError::UnknownCommand {
                 namespace: request.namespace,
                 name: request.name,
@@ -89,11 +94,21 @@ impl AuthCommandProvider {
                 message: "RUSTOK_JWT_REVOCATION_ROOT is required".into(),
             }
         })?;
-        let db = db_clone(self.runtime.require_host().map_err(command_failed)?);
-        let receipt = rustok_auth::JwtGenerationFence::new(db)
-            .revoke_key(&root, purpose, kid).await.map_err(command_failed)?;
+        let authority = required_jwt_authority()?;
+        let receipt = authority.revoke_key(&root, purpose, kid).await.map_err(command_failed)?;
         let data = serde_json::to_value(receipt).map_err(command_failed)?;
         Ok(CommandOutcome::success("JWT key revocation recorded").with_data(data))
+    }
+
+    async fn init_jwt_authority(&self, args: serde_json::Value) -> CliCoreResult<CommandOutcome> {
+        validate_authority_init_options(&args)?;
+        let root = std::env::var("RUSTOK_JWT_REVOCATION_ROOT").map_err(|_| {
+            CliCoreError::InvalidInput { message: "RUSTOK_JWT_REVOCATION_ROOT is required".into() }
+        })?;
+        let authority = required_jwt_authority()?;
+        let source = db_clone(self.runtime.require_host().map_err(command_failed)?);
+        authority.import_offline(&source, &root).await.map_err(command_failed)?;
+        Ok(CommandOutcome::success("Independent JWT authority initialized"))
     }
 
     async fn cleanup_sessions(&self) -> CliCoreResult<CommandOutcome> {
@@ -230,6 +245,26 @@ fn required_tenant_id(options: &serde_json::Map<String, serde_json::Value>) -> C
     Ok(tenant_id)
 }
 
+fn required_jwt_authority() -> CliCoreResult<rustok_auth::JwtAuthorityConfig> {
+    rustok_auth::JwtAuthorityConfig::from_env().map_err(command_failed)?
+        .ok_or_else(|| CliCoreError::InvalidInput {
+            message: "RUSTOK_JWT_AUTHORITY_DATABASE_URL and RUSTOK_JWT_AUTHORITY_ID are required".into(),
+        })
+}
+
+fn validate_authority_init_options(args: &serde_json::Value) -> CliCoreResult<()> {
+    let valid = args.get("options").and_then(serde_json::Value::as_object)
+        .is_some_and(|options| options.len() == 1
+            && options.get("confirm").and_then(serde_json::Value::as_bool) == Some(true))
+        && args.get("positionals").is_none_or(|value| value.as_array().is_some_and(|p| p.is_empty()));
+    if !valid {
+        return Err(CliCoreError::InvalidInput {
+            message: "auth jwt-authority-init requires --confirm and no other arguments".into(),
+        });
+    }
+    Ok(())
+}
+
 fn jwt_revocation_options(args: &serde_json::Value) -> CliCoreResult<(&str, &str)> {
     let invalid = || CliCoreError::InvalidInput {
         message: "auth jwt-revoke requires --purpose access|password-reset|email-verification|invite --kid <id> --confirm and no other arguments".into(),
@@ -308,6 +343,19 @@ mod tests {
             true,
         )).await;
         assert!(matches!(result, Err(CliCoreError::DryRunNotSupported { .. })));
+    }
+
+    #[test]
+    fn authority_import_requires_explicit_confirmation() {
+        assert!(super::validate_authority_init_options(&serde_json::json!({"options":{"confirm":true}})).is_ok());
+        for args in [
+            serde_json::json!({"options":{}}),
+            serde_json::json!({"options":{"confirm":"true"}}),
+            serde_json::json!({"options":{"confirm":true,"reset":true}}),
+            serde_json::json!({"options":{"confirm":true},"positionals":["other"]}),
+        ] {
+            assert!(super::validate_authority_init_options(&args).is_err());
+        }
     }
 
     #[test]

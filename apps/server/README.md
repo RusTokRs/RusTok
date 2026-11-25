@@ -95,6 +95,11 @@ Every release build also enforces the host's production-security posture even wh
 
 `apps/server/src/auth.rs` adapts the host configuration snapshot into
 `rustok-auth`.
+Production also requires an independently provisioned JWT authority via
+`RUSTOK_JWT_AUTHORITY_DATABASE_URL` and `RUSTOK_JWT_AUTHORITY_ID`. Follow the
+[offline import and recovery contract](../../crates/modules/rustok-auth/docs/README.md#independent-jwt-authority)
+before starting a new production host; no automatic fallback is allowed.
+
 `auth.jwt.secret` remains the HS256 default secret source. Optional runtime
 overrides live under `settings.rustok.auth`:
 

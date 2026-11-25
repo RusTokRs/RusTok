@@ -32,7 +32,7 @@ modification. A repeated revocation is idempotent and preserves its timestamp.
 
 The supported operator surface is the local trusted Auth CLI
 `rustok-cli auth jwt-revoke --purpose access --kid <id> --confirm`.
-The process must be pointed at the deployment's authoritative database and
+The process must be pointed at the [independent JWT authority](2026-11-25-jwt-independent-authority.md) and
 receive the stable host MAC root via `RUSTOK_JWT_REVOCATION_ROOT`, never a
 command argument. The command requires an explicit confirmation flag and an
 exact purpose (access, password-reset, email-verification, invite). No public

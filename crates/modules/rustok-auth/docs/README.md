@@ -275,7 +275,7 @@ denied. File-backed stale hosts keep polling with JWT crypto fenced after
 expiry. The host's critical `jwt_cluster_lease` readiness check samples the
 same local gate after awaited dependency probes, returning 503 when the lease
 is unavailable. In-flight business transactions already authorized are not cancelled.
-Root rotation and rollback of the database itself remain separate work. Keys removed before first enrollment are
+Root rotation and rollback of the independent authority itself remain separate work. Keys removed before first enrollment are
 not known to the ledger.
 
 ### Rolling replica admission
@@ -332,7 +332,7 @@ its legacy mapping, and a conservative drain of incompatible outstanding
 grants. Retain only uncompromised material. Already-authorized business IO
 is not cancelled. Static generation zero is not an enrolled identity
 authority. Stop older binaries before use; unmanaged embedders, root
-compromise and database rollback are outside the contract.
+compromise and rollback of the independent authority are outside the contract.
 
 Source regressions are authored, unrun.
 
@@ -357,14 +357,51 @@ grants or expires authority; its wall-clock receipt is not elapsed-time proof.
 
 This does not detect coherent failure of all clocks or a freshly started
 host with a false time source. Independently synchronize hosts to UTC within
-500 ms, keep the primary trusted and stop older binaries. Database rollback
-protection remains open. No migration is needed. See the
+500 ms, keep the primary trusted and stop older binaries. Independent-authority rollback protection remains open. No migration is needed. See the
 [clock discontinuity ADR](../../../../DECISIONS/2026-11-25-jwt-clock-discontinuity.md) for assumptions, recovery and
 verification. Source regressions are unrun.
+
+### Independent JWT authority
+
+Production requires an independently administered PostgreSQL database outside
+the application backup/restore domain. Set `RUSTOK_JWT_AUTHORITY_DATABASE_URL`
+and a stable, non-nil `RUSTOK_JWT_AUTHORITY_ID` UUID through trusted deployment
+configuration. Partial configuration is refused. The UUID is authenticated
+with the stable host MAC root and verified with the ledger on every authority
+read. No host creates or reseeds the independent store automatically.
+Development hosts may use the application DB only if both settings are absent;
+that mode has no rollback protection. Revocation CLI always requires the
+independent settings.
+
+Cut over offline: apply existing source migrations, stop all older hosts
+and CLI writers, wait for every lease and drain to expire, and back up the
+trusted source. Create a new empty PostgreSQL database in a separate restore
+domain; set the authority settings and `RUSTOK_JWT_REVOCATION_ROOT`, point
+the CLI runtime at the trusted source, then run:
+
+```sh
+rustok-cli auth jwt-authority-init --confirm
+```
+
+Import preserves the authenticated ledger and all grant/horizon fields in
+one destination transaction. Existing schemas and active source leases/drains
+are refused. Never initialize from an old application snapshot during recovery.
+The source remains historical evidence, not a runtime fallback. All hosts
+and emergency commands must use the same pinned authority. Provision restricted
+runtime credentials, verified TLS and independent backup/failover.
+
+Restoring application data does not roll back JWT generation, key tombstones
+or revocations. It does not protect restored sessions, refresh tokens, OAuth
+or RBAC, or detect restoring the independent authority itself. Static generation
+zero has no enrolled key history. Do not resume traffic after loss of current
+authority. See the [independent authority ADR](../../../../DECISIONS/2026-11-25-jwt-independent-authority.md).
+No new application migration. Compilation and PostgreSQL restore/cutover
+evidence remain pending.
 
 ### Operational observability
 
 The existing host-authorized metrics endpoint exports `rustok_auth_jwt_*`.
+`independent_authority` reports whether an external pinned authority is configured.
 The Auth owner reads the same authority row and authenticates its ledger;
 the read never renews a lease or modifies the database. The host bounds the
 diagnostic query to two seconds. Failure exports `collection_status=0`

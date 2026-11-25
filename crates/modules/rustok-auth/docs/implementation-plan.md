@@ -44,6 +44,12 @@ obsolete fake session; its stale generated standalone lockfile was removed and i
 screenshot is historical, not verification of this migration. Preserve the release
 gates in the [Page Builder backlog](../../../../docs/modules/page-builder-backlog.md).
 
+Independent JWT authority: production requires a pinned external PostgreSQL store;
+Auth CLI imports the offline ledger once and revokes against that same store.
+Application DB rollback cannot erase its key history. Independent authority
+restore and session/OAuth rollback protection remain separate. Scoped compilation,
+CLI and real PostgreSQL cutover/restore evidence remain pending.
+
 JWT clock discontinuity detection: dual local deadlines, sticky runtime and
 shared authority fault latches, bounded DB time samples and conservative key
 retirement/promotion margins are source-implemented. No schema change.

@@ -160,9 +160,15 @@ pub async fn run() -> Result<()> {
         return Ok(());
     }
 
-    // The database is the durable admission authority. Do not expose a
-    // listener or compose request consumers before the startup fence succeeds.
-    let fence = rustok_auth::JwtGenerationFence::new(db.clone());
+    // Production never takes JWT authority from the restorable application DB.
+    let authority = rustok_auth::JwtAuthorityConfig::from_env()
+        .map_err(crate::auth::auth_err)?;
+    let fence = match authority {
+        Some(authority) => authority.open(auth_config.secret()).await
+            .map_err(crate::auth::auth_err)?,
+        None if !production => rustok_auth::JwtGenerationFence::new(db.clone()),
+        None => return Err(Error::Message("Independent JWT authority is required in production".into())),
+    };
     let generation = if let Some((_, generation, _)) = &reload_source {
         loop {
             let admission = tokio::select! {

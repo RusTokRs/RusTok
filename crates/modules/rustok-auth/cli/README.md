@@ -4,6 +4,9 @@ For full public interface and operational contract definitions, see [CRATE_API.m
 
 Operational command adapters for the Auth module.
 
+Production JWT authority import and revocation use the independently pinned
+PostgreSQL authority; see [offline cutover](../docs/README.md#independent-jwt-authority).
+
 ## Responsibilities
 
 - Parse Auth CLI commands through the shared CLI runtime.

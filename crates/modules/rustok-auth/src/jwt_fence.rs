@@ -13,7 +13,10 @@ use sha2::Sha256;
 use crate::{AuthConfig, AuthError, JwtAlgorithm, JwtKeyringPublisher};
 use crate::error::Result;
 
+mod authority;
 mod observability;
+pub use authority::JwtAuthorityConfig;
+use authority::AuthorityBinding;
 pub use observability::{JwtClusterObservation, JwtOperationalMetrics, JwtReloadOutcome};
 use observability::OperationMetrics;
 
@@ -248,6 +251,7 @@ impl Ledger {
 struct FenceMac {
     identity: [u8; 32],
     state: [u8; 32],
+    authority: [u8; 32],
 }
 
 impl FenceMac {
@@ -259,7 +263,9 @@ impl FenceMac {
         let mut state = [0_u8; 32];
         hkdf.expand(b"key-identity", &mut identity).map_err(|_| unavailable())?;
         hkdf.expand(b"state-envelope", &mut state).map_err(|_| unavailable())?;
-        Ok(Self { identity, state })
+        let mut authority = [0_u8; 32];
+        hkdf.expand(b"external-authority-identity", &mut authority).map_err(|_| unavailable())?;
+        Ok(Self { identity, state, authority })
     }
 
     fn identity(&self, digest: &[u8; 32]) -> Result<String> {
@@ -283,6 +289,7 @@ pub struct JwtGenerationFence {
     db: DatabaseConnection,
     metrics: OperationMetrics,
     clock: Arc<ClockGuard>,
+    binding: Option<AuthorityBinding>,
 }
 
 struct StoredFence {
@@ -343,7 +350,7 @@ impl StoredFence {
 
 impl JwtGenerationFence {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db, metrics: OperationMetrics::default(), clock: Arc::new(ClockGuard::new()) }
+        Self { db, metrics: OperationMetrics::default(), clock: Arc::new(ClockGuard::new()), binding: None }
     }
 
     async fn load(&self) -> Result<StoredFence> {
@@ -370,10 +377,12 @@ impl JwtGenerationFence {
             DbBackend::Sqlite => "CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)",
             _ => return Err(unavailable()),
         };
-        let row = self.db.query_one_raw(Statement::from_string(
-            backend,
-            format!("SELECT generation, payload, tag, lease_until_ms, drain_until_ms, untracked_until_ms, replica_grants, {clock} AS now_ms FROM auth_jwt_generation_fence WHERE id = 1"),
-        )).await.map_err(|_| unavailable())?.ok_or_else(unavailable)?;
+        let sql = format!("SELECT generation, payload, tag, lease_until_ms, drain_until_ms, untracked_until_ms, replica_grants, {clock} AS now_ms FROM auth_jwt_generation_fence WHERE id = 1");
+        let statement = match &self.binding {
+            Some(binding) => binding.bind_read(backend, sql)?,
+            None => Statement::from_string(backend, sql),
+        };
+        let row = self.db.query_one_raw(statement).await.map_err(|_| unavailable())?.ok_or_else(unavailable)?;
         let stored = StoredFence {
             generation: row.try_get("", "generation").map_err(|_| unavailable())?,
             payload: row.try_get("", "payload").map_err(|_| unavailable())?,

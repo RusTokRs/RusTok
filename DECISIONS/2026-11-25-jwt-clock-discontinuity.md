@@ -69,7 +69,7 @@ host with a false time source cannot be ruled out by these local checks.
 Never restart through an unresolved time incident or restore an old database.
 During recovery correct independent clocks first and allow at least the
 conservative lease window to elapse on a reliable external clock before
-restarting an affected cluster. DB rollback protection remains separate.
+restarting an affected cluster. The [independent JWT authority](2026-11-25-jwt-independent-authority.md) removes the application DB from the production JWT authority path. Rollback of that independent store remains separate.
 
 ## Verification
 
