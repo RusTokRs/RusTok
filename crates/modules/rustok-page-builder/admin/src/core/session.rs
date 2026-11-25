@@ -1,6 +1,6 @@
 use crate::model::{AdminCanvasController, AdminCanvasEffect, SaveAttempt};
 use fly::{GrapesJsCodec, ProjectHash, TraitSchemaRegistry, ValidationSeverity};
-use fly_ui::{CapabilityState, EditorCapability, EditorCapabilityEvaluation, UiIntent};
+use fly_ui::{EditorCapability, EditorCapabilityEvaluation, UiIntent};
 use rustok_page_builder::dto::{
     PageBuilderCapabilityRequest, PageBuilderPreviewRuntime, PreviewPageBuilderInput,
     PreviewPageBuilderResult,
@@ -467,12 +467,6 @@ impl EditorSessionState {
             actual,
         ) {
             Ok(true) => {
-                if let Err(error) = self
-                    .controller
-                    .dispatch(UiIntent::SetEditableCapabilities(CapabilityState::read_only()))
-                {
-                    tracing::warn!(?error, "Failed to fence after Page Builder revision conflict");
-                }
                 self.fail(message);
                 true
             }
@@ -505,11 +499,6 @@ impl EditorSessionState {
                 false
             }
         };
-        if let Err(error) = self.controller.dispatch(UiIntent::SetEditableCapabilities(
-            fly_ui::CapabilityState::read_only(),
-        )) {
-            tracing::warn!(?error, "Failed to fence Page Builder after peer write");
-        }
         self.fail(message);
         marked
     }

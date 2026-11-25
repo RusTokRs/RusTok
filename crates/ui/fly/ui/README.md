@@ -70,7 +70,10 @@ candidate validation. Starting another drag clears the preceding insertion overl
 
 A save success is accepted only during an active `SaveStarted` transition and only when its
 request ID matches the active attempt. A stale success or failure, uncorrelated failure, or
-unrelated operation never implicitly clears a standing revision conflict.
+unrelated operation never implicitly clears a standing revision conflict. The conflict also
+forces the effective capabilities to read-only and clears drag/resize affordances. Refreshing
+host capabilities or switching presentation cannot lift this fence; the host capability ceiling
+is retained separately. The conflict remains authoritative after deserialization.
 
 Viewport dimensions and zoom are normalized at the intent boundary using the same limits as
 custom preview presets; invalid scroll offsets become zero. Non-finite overlay/drop geometry is

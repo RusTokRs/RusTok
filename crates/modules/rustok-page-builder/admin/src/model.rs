@@ -150,6 +150,11 @@ impl AdminCanvasController {
         &mut self,
         project_data: Value,
     ) -> Result<(), AdminCanvasError> {
+        if self.editor.revision().save_conflict {
+            return Err(AdminCanvasError::Authoring(
+                "reload the conflicting draft before applying a recovered merge".to_string(),
+            ));
+        }
         let document = GrapesJsCodec::decode_value(project_data.clone())?;
         let snapshot = ProjectSnapshot {
             id: format!("local-recovery-{}", Uuid::new_v4()),
@@ -880,6 +885,25 @@ mod tests {
         assert!(controller.ui().state.dirty.save_conflict);
         assert!(controller.ui().state.dirty.dirty);
         assert_eq!(controller.revision_id(), "rev-1");
+    }
+
+    #[test]
+    fn conflict_fence_survives_host_capability_refresh_without_changing_document() {
+        let mut controller = controller();
+        controller
+            .mark_peer_write_conflict("rev-1".into(), "rev-2".into())
+            .expect("peer conflict");
+        controller.dispatch(UiIntent::SetEditableCapabilities(fly_ui::CapabilityState::full()))
+            .expect("refresh host permissions");
+        assert!(!controller.ui().state.capabilities.edit);
+        let before = controller.clone();
+        assert!(controller.dispatch(UiIntent::execute(EditorCommand::Remove {
+            component_id: "hero".into(),
+        })).is_err());
+        let recovered = GrapesJsCodec::encode_value(controller.editor().document())
+            .expect("recovery document");
+        assert!(controller.apply_recovered_merge(recovered).is_err());
+        assert_eq!(controller, before);
     }
 
     #[test]

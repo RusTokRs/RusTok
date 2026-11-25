@@ -658,11 +658,11 @@ fn save_conflict_is_a_distinct_lost_update_state() {
     assert!(state.dirty.save_conflict);
     assert!(state.dirty.dirty);
     assert!(state.dirty.save_failed);
+    assert!(!state.dirty.save_in_progress);
     assert!(matches!(
         machine.dispatch(UiIntent::RequestSave),
         Err(UiError::CapabilityUnavailable(_))
     ));
-    assert!(!state.dirty.save_in_progress);
     assert!(effects.iter().any(|effect| matches!(
         effect,
         UiEffect::Announce(message) if message.contains("another session")
@@ -679,6 +679,53 @@ fn save_conflict_is_a_distinct_lost_update_state() {
     assert!(machine.state.dirty.save_conflict);
     machine.dispatch(UiIntent::SaveFailed { request_id: None }).expect("failed response");
     assert!(machine.state.dirty.save_conflict);
+}
+
+#[test]
+fn revision_conflict_fences_mutations_across_policy_refresh_and_rehydration() {
+    let mut machine = FlyUiStateMachine::new(Presentation::Full);
+    machine.dispatch(UiIntent::BeginDrag(DragSource::PaletteBlock {
+        block_id: "section".into(),
+        component: ComponentNode::object("section"),
+    })).expect("begin drag");
+    machine.dispatch(UiIntent::SetSelectedOverlay(Some(legal_candidate().rect)))
+        .expect("resize overlay");
+    machine.dispatch(UiIntent::SaveConflict {
+        request_id: None,
+        expected: "rev-1".into(),
+        actual: "rev-2".into(),
+    }).expect("peer conflict");
+    assert_eq!(machine.state.capabilities, CapabilityState::read_only());
+    assert!(machine.state.drag.is_none());
+    assert!(machine.state.overlays.insertion.is_none());
+    assert!(!machine.state.overlays.resize_handles_visible);
+    assert_eq!(machine.editable_capabilities(), CapabilityState::full());
+
+    let mut restored: FlyUiStateMachine =
+        serde_json::from_value(serde_json::to_value(&machine).unwrap()).unwrap();
+    restored.dispatch(UiIntent::SetEditableCapabilities(CapabilityState::full()))
+        .expect("host policy refresh");
+    restored.dispatch(UiIntent::SetPresentation(Presentation::Inline))
+        .expect("presentation change");
+    assert_eq!(restored.state.capabilities, CapabilityState::read_only());
+    // Even an inconsistent restored projection cannot bypass the conflict.
+    restored.state.capabilities = CapabilityState::full();
+    for intent in [
+        UiIntent::execute(EditorCommand::Patch {
+            component_id: "hero".into(),
+            patch: ComponentPatch::default(),
+        }),
+        UiIntent::Undo,
+        UiIntent::Redo,
+        UiIntent::PasteClipboard,
+        UiIntent::RequestSave,
+    ] {
+        let before = restored.clone();
+        assert!(restored.dispatch(intent).is_err());
+        assert_eq!(restored, before);
+    }
+    restored.dispatch(UiIntent::Select(Some("hero".into())))
+        .expect("read-only selection remains available");
 }
 
 #[test]

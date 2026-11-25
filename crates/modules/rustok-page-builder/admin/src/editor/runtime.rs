@@ -9,8 +9,6 @@ use fly::{GrapesJsCodec, ProjectHash, TraitSchemaRegistry};
 #[cfg(not(target_arch = "wasm32"))]
 use fly_browser::BrowserIntentKind;
 use fly_ui::{EditorCapability, EditorCapabilityEvaluation, UiIntent};
-#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
-use fly_ui::CapabilityState;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use rustok_page_builder::dto::{
@@ -46,13 +44,6 @@ fn make_peer_write_channel(
             controller.mark_peer_write_conflict(expected, actual)
         }) {
             tracing::warn!(?error, "Failed to mark peer-tab save conflict");
-        }
-        // Retiring an in-flight attempt makes its delayed response stale; the response can no
-        // longer clear this conflict or move the local revision backwards.
-        if let Some(Err(error)) = controller.try_update(|controller| {
-            controller.dispatch(UiIntent::SetEditableCapabilities(CapabilityState::read_only()))
-        }) {
-            tracing::warn!(?error, "Failed to fence Page Builder after peer-tab write");
         }
         peer_write_conflict.set(Some(conflict.clone()));
         last_error.set(Some(format!(
@@ -814,17 +805,7 @@ impl AdminEditorRuntime {
             .unwrap_or_else(|| "newer server revision".to_string());
         self.controller
             .try_update(|controller| {
-                let conflicted = controller.mark_save_conflict_for_attempt(
-                    attempt,
-                    expected,
-                    actual,
-                )?;
-                if conflicted {
-                    controller.dispatch(UiIntent::SetEditableCapabilities(
-                        fly_ui::CapabilityState::read_only(),
-                    ))?;
-                }
-                Ok::<_, crate::model::AdminCanvasError>(conflicted)
+                controller.mark_save_conflict_for_attempt(attempt, expected, actual)
             })
             .is_some_and(|result| result.unwrap_or(false))
     }

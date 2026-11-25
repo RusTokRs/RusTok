@@ -453,6 +453,7 @@ impl FlyUiStateMachine {
                 self.state.dirty.save_in_progress = false;
                 self.state.dirty.save_failed = true;
                 self.state.dirty.save_conflict = true;
+                self.refresh_effective_capabilities();
                 vec![UiEffect::Announce(format!(
                     "Save conflict: this page changed in another session (expected {expected}, found {actual}). Your changes are not saved; preserve them before opening the latest version."
                 ))]
@@ -472,7 +473,9 @@ impl FlyUiStateMachine {
     }
 
     fn refresh_effective_capabilities(&mut self) {
-        let capabilities = if self.state.presentation.is_editable() {
+        let capabilities = if self.state.presentation.is_editable()
+            && !self.state.dirty.save_conflict
+        {
             self.editable_capabilities.normalized()
         } else {
             CapabilityState::read_only()
@@ -491,7 +494,7 @@ impl FlyUiStateMachine {
     /// capabilities above the host-evaluated ceiling. Recheck both at admission,
     /// including inconsistent restored state with edit denied and a sub-capability set.
     fn effective_capabilities(&self) -> CapabilityState {
-        if !self.state.presentation.is_editable() {
+        if !self.state.presentation.is_editable() || self.state.dirty.save_conflict {
             return CapabilityState::read_only();
         }
         self.state.capabilities.intersection(self.editable_capabilities).normalized()

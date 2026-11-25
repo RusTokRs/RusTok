@@ -260,6 +260,8 @@ is **not** a server idempotency key. A restored controller cannot accept a respo
 attempt that existed before serialization. Known `REVISION_CONFLICT` and
 `PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN` codes survive the Leptos server-function error boundary;
 a stale-revision response retires only its matching attempt and fences the editor read-only.
+Fly UI owns the effective capability fence, so host permission refreshes cannot unlock it.
+Recovered merges are applied to a fresh/reloaded controller, not a conflicted revision.
 
 The Leptos facade runtime and callback transport now carry the same `SaveAttempt`. The public
 `PageBuilderCapabilityExecution` callback receives the request and its optional attempt together,
