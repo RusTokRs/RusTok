@@ -62,7 +62,7 @@ pub(crate) fn invalid_config() -> AuthError {
     AuthError::Internal("Invalid JWT keyring configuration".to_string())
 }
 
-fn valid_kid(kid: &str) -> bool {
+pub(crate) fn valid_kid(kid: &str) -> bool {
     !kid.is_empty()
         && kid.len() <= 64
         && kid.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')

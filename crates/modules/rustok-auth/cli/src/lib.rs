@@ -44,6 +44,10 @@ impl CommandProvider for AuthCommandProvider {
         match (request.namespace.as_str(), request.name.as_str()) {
             ("oauth", "create-app") => self.create_app(request.args).await,
             ("auth", "sessions-cleanup") => self.cleanup_sessions().await,
+            ("auth", "jwt-revoke") if request.dry_run => Err(CliCoreError::DryRunNotSupported {
+                namespace: request.namespace,
+                name: request.name,
+            }),
             ("auth", "jwt-revoke") => self.revoke_jwt(request.args).await,
             _ => Err(CliCoreError::UnknownCommand {
                 namespace: request.namespace,
@@ -291,6 +295,20 @@ mod tests {
     use rustok_cli_core::CliCoreError;
     use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
     use uuid::Uuid;
+
+    #[tokio::test]
+    async fn direct_provider_cannot_execute_dry_run_revocation() {
+        use rustok_cli_core::{CommandProvider, CommandRequest};
+        let provider = super::AuthCommandProvider {
+            runtime: rustok_runtime::RuntimeComposition::without_database(serde_json::Value::Null),
+        };
+        let result = provider.execute(CommandRequest::new(
+            "auth", "jwt-revoke",
+            serde_json::json!({"options":{"purpose":"access","kid":"key-1","confirm":true}}),
+            true,
+        )).await;
+        assert!(matches!(result, Err(CliCoreError::DryRunNotSupported { .. })));
+    }
 
     #[test]
     fn jwt_revocation_requires_exact_target_and_confirmation() {

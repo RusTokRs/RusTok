@@ -13,7 +13,8 @@ distribution and module command entrypoints.
 - Reject duplicate `namespace/name` command registrations before execution.
 - Dispatch `rustok-cli <namespace> <command>` to selected providers.
 - Normalize command arguments into `CommandRequest.args.options` and
-  `CommandRequest.args.positionals`.
+  `CommandRequest.args.positionals`; reject repeated normalized option names
+  instead of silently overwriting the first value.
 - Stay outside the production HTTP server runtime.
 
 ## Entry Points

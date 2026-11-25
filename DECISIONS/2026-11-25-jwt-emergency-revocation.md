@@ -21,7 +21,9 @@ a previously enrolled purpose/kid binding. No new schema is necessary:
 missing timestamps in pre-upgrade authenticated envelopes mean not revoked.
 A revocation changes the authenticated ledger tag without changing the
 generation or erasing replica grants. All grant/admission/ACK CAS operations
-compare that tag. A committed revocation prevents new grants for any snapshot
+compare that tag. The revocation CAS compares generation and tag only and
+returns the lease horizon from the updated row, so unrelated lease-only
+writes cannot starve an incident command. A committed revocation prevents new grants for any snapshot
 containing the revoked identity and prevents admission of that identity even
 under the same generation, another ID or another purpose. The existing
 lifetime identity ledger remains authoritative for reuse and removal.
@@ -80,7 +82,8 @@ All revocations are permanent and consume no extra lifetime identity slots.
 ## Verification
 
 Source regressions cover durable/idempotent revocation, unknown targets,
-wrong root, stale and current replica refusal, sticky local fencing,
+wrong root, concurrent renewal and receipt horizon, ambiguous CLI options,
+stale and current replica refusal, sticky local fencing,
 same-generation rejection, recovery with a new signer, historical-key
 revocation, restart and cross-purpose material reuse. Compile and exercise
 real independent-pool PostgreSQL/partition races before production.

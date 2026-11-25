@@ -314,9 +314,12 @@ rustok-cli auth jwt-revoke --purpose access --kid access-1 --confirm
 Supported purposes are access, password-reset, email-verification and invite.
 The target must have been enrolled in the lifetime ledger. Revocation is
 permanent, idempotent, and does not require a replacement file. The receipt
-reports the first database-clock revocation time and the conservative
+reports the first recorded database-clock revocation time and the conservative
 outstanding lease horizon (milliseconds since Unix epoch), not an immediate
-cluster-wide completion guarantee. Do not pass the root on the command line.
+cluster-wide completion guarantee. The emergency write compares the ledger
+tag rather than competing with lease-only updates and returns the horizon
+from the updated row. Duplicate CLI options are rejected. Do not pass the
+root on the command line.
 
 The authenticated ledger denies new grants and admission containing revoked
 material. A replica observing revocation fences its whole local JWT runtime

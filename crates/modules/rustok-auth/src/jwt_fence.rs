@@ -39,13 +39,15 @@ pub struct JwtRevocationReceipt {
 }
 
 fn revocation_purpose(purpose: &str) -> Result<&'static str> {
-    match purpose {
-        "access" => Ok("JWT"),
-        "password-reset" => Ok("rustok-reset+jwt"),
-        "email-verification" => Ok("rustok-email-verification+jwt"),
-        "invite" => Ok("rustok-invite+jwt"),
-        _ => Err(rejected()),
-    }
+    use crate::jwt_keyring::JwtPurpose;
+    let purpose = match purpose {
+        "access" => JwtPurpose::Access,
+        "password-reset" => JwtPurpose::PasswordReset,
+        "email-verification" => JwtPurpose::EmailVerification,
+        "invite" => JwtPurpose::Invite,
+        _ => return Err(rejected()),
+    };
+    Ok(purpose.typ())
 }
 
 fn rejected() -> AuthError {
@@ -154,11 +156,13 @@ struct Ledger {
 
 impl Ledger {
     fn contains_revoked(&self, snapshot: &Snapshot) -> bool {
-        snapshot.values().flat_map(|ring| ring.keys.values()).any(|key| {
-            self.seen.values().flat_map(|keys| keys.values()).any(|binding| {
-                binding.revoked_at_ms.is_some() && binding.identity == key.identity
-            })
-        })
+        let revoked: std::collections::HashSet<&str> = self.seen.values()
+            .flat_map(|keys| keys.values())
+            .filter(|binding| binding.revoked_at_ms.is_some())
+            .map(|binding| binding.identity.as_str())
+            .collect();
+        snapshot.values().flat_map(|ring| ring.keys.values())
+            .any(|key| revoked.contains(key.identity.as_str()))
     }
 
     fn enroll(generation: u64, current: Snapshot) -> Self {
@@ -375,8 +379,7 @@ impl JwtGenerationFence {
     ) -> Result<JwtRevocationReceipt> {
         let purpose = revocation_purpose(purpose)?;
         if !crate::config::hs256_secret_has_min_length(root)
-            || kid.is_empty() || kid.len() > 64
-            || !kid.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+            || !crate::jwt_keyring::valid_kid(kid)
         {
             return Err(rejected());
         }
@@ -402,21 +405,26 @@ impl JwtGenerationFence {
             }
             let tag = hex::encode(mac.state_mac(&payload)?.finalize().into_bytes());
             let backend = self.db.get_database_backend();
+            // Lease-only writes do not modify the authenticated envelope.
+            // Compare its tag, not the lease registry, and return the horizon
+            // from the updated row. This serializes with concurrent grants
+            // without repeatedly losing to ordinary renewal traffic.
             let sql = match backend {
-                DbBackend::Postgres => "UPDATE auth_jwt_generation_fence SET payload = $1, tag = $2 WHERE id = 1 AND generation = $3 AND tag = $4 AND lease_until_ms = $5 AND replica_grants = $6 AND drain_until_ms = $7",
-                DbBackend::Sqlite => "UPDATE auth_jwt_generation_fence SET payload = ?1, tag = ?2 WHERE id = 1 AND generation = ?3 AND tag = ?4 AND lease_until_ms = ?5 AND replica_grants = ?6 AND drain_until_ms = ?7",
+                DbBackend::Postgres => "UPDATE auth_jwt_generation_fence SET payload = $1, tag = $2 WHERE id = 1 AND generation = $3 AND tag = $4 RETURNING lease_until_ms",
+                DbBackend::Sqlite => "UPDATE auth_jwt_generation_fence SET payload = ?1, tag = ?2 WHERE id = 1 AND generation = ?3 AND tag = ?4 RETURNING lease_until_ms",
                 _ => return Err(unavailable()),
             };
-            let updated = self.db.execute_raw(Statement::from_sql_and_values(
+            let updated = self.db.query_one_raw(Statement::from_sql_and_values(
                 backend, sql, vec![payload.into(), tag.into(), stored.generation.into(),
-                    stored.tag.into(), stored.lease_until_ms.into(), stored.replica_grants.into(),
-                    stored.drain_until_ms.into()],
+                    stored.tag.into()],
             )).await.map_err(|_| unavailable())?;
-            if updated.rows_affected() == 1 {
+            if let Some(row) = updated {
+                let existing_lease_until_ms: i64 = row.try_get("", "lease_until_ms")
+                    .map_err(|_| unavailable())?;
                 tracing::warn!(generation = ledger.generation, "JWT emergency key revocation committed");
                 return Ok(JwtRevocationReceipt {
                     generation: ledger.generation, revoked_at_ms: stored.now_ms,
-                    existing_lease_until_ms: stored.lease_until_ms,
+                    existing_lease_until_ms,
                     newly_revoked: true,
                 });
             }
@@ -755,6 +763,26 @@ mod tests {
         assert!(!reopened.renew(&b).await.unwrap());
         assert!(reopened.admit(4, &config(ROOT, "renamed", OLD, None, None)).await.is_err());
         assert!(reopened.admit(4, &staged).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn emergency_revocation_serializes_with_renewal_and_reports_horizon() {
+        let db = database().await;
+        let fence = JwtGenerationFence::new(db.clone());
+        let other = JwtGenerationFence::new(db);
+        let first = config(ROOT, "old", OLD, None, None);
+        assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
+        let (_, publisher) = first.into_cluster_jwt(1).unwrap();
+        let (renewal, revoked) = tokio::join!(
+            fence.renew(&publisher),
+            other.revoke_key(ROOT, "access", "old"),
+        );
+        let _ = renewal.unwrap();
+        let receipt = revoked.unwrap();
+        assert!(receipt.newly_revoked);
+        assert_eq!(receipt.existing_lease_until_ms, fence.load().await.unwrap().lease_until_ms);
+        assert!(!fence.renew(&publisher).await.unwrap());
+        assert!(!publisher.lease_readiness().unwrap().is_ready());
     }
 
     #[tokio::test]

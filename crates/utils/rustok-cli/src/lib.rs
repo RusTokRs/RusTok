@@ -326,7 +326,9 @@ pub fn parse_command_args(args: &[String]) -> Result<(serde_json::Value, bool), 
             if key == "dry_run" {
                 dry_run = value.as_bool().unwrap_or(true);
             }
-            options.insert(key, value);
+            if options.insert(key, value).is_some() {
+                return Err("Duplicate command option is not allowed".to_string());
+            }
             index += consumed;
             continue;
         }
@@ -471,6 +473,18 @@ mod tests {
         assert_eq!(args["options"]["dry_run"], true);
         assert_eq!(args["positionals"][0], "extra");
         assert_eq!(args["positionals"][1], "--literal");
+    }
+
+    #[test]
+    fn command_args_reject_duplicate_normalized_options() {
+        for raw in [
+            vec!["--kid", "one", "--kid=two"],
+            vec!["--tenant-id", "one", "--tenant_id", "two"],
+            vec!["--confirm", "--confirm"],
+        ] {
+            let args = raw.into_iter().map(str::to_string).collect::<Vec<_>>();
+            assert!(super::parse_command_args(&args).is_err());
+        }
     }
 
     #[test]
