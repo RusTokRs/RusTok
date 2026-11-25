@@ -81,6 +81,49 @@ fn is_digits(value: &str) -> bool {
 fn is_alphanumeric(value: &str) -> bool {
     !value.is_empty() && value.chars().all(|c| c.is_ascii_alphanumeric())
 }
+/// Validate extension/private-use syntax even though those subtags do not participate
+/// in Fly's translation-catalog key. Silently accepting an incomplete or duplicated extension
+/// would make malformed BCP-47 input look like a valid base locale.
+fn valid_extension_sequence(parts: &[&str]) -> bool {
+    let mut seen_singletons: Vec<String> = Vec::new();
+    let mut cursor = 0usize;
+
+    while cursor < parts.len() {
+        let singleton = parts[cursor];
+        if singleton.len() != 1 || !is_alphanumeric(singleton) {
+            return false;
+        }
+        let singleton = singleton.to_ascii_lowercase();
+        if seen_singletons.contains(&singleton) {
+            return false;
+        }
+        seen_singletons.push(singleton.clone());
+        cursor += 1;
+
+        // Private use is terminal and permits one-character subtags; all other extensions
+        // require one or more 2-8 character subtags.
+        if singleton == "x" {
+            return cursor < parts.len()
+                && parts[cursor..]
+                    .iter()
+                    .all(|part| (1..=8).contains(&part.len()) && is_alphanumeric(part));
+        }
+
+        let first_subtag = cursor;
+        while cursor < parts.len() && parts[cursor].len() != 1 {
+            let subtag = parts[cursor];
+            if !(2..=8).contains(&subtag.len()) || !is_alphanumeric(subtag) {
+                return false;
+            }
+            cursor += 1;
+        }
+        if cursor == first_subtag {
+            return false;
+        }
+    }
+
+    true
+}
 
 /// Parse a tag into subtags, rejecting anything that is not well-formed BCP-47.
 ///
@@ -127,17 +170,13 @@ fn parse_tag(locale: &str) -> Option<ParsedTag> {
         cursor += 1;
     }
 
+    let extension_start = parts[cursor..]
+        .iter()
+        .position(|part| part.len() == 1)
+        .map(|offset| cursor + offset);
+    let variant_end = extension_start.unwrap_or(parts.len());
     let mut variants: Vec<String> = Vec::new();
-    for part in &parts[cursor..] {
-        // A singleton (`u`, `t`, `x`, ...) starts an extension. Extensions take no part in catalog
-        // selection, so parsing stops here — everything before it was valid, so the tag is
-        // accepted rather than rejected.
-        if part.len() == 1 {
-            if !is_alphanumeric(part) {
-                return None;
-            }
-            break;
-        }
+    for part in &parts[cursor..variant_end] {
         let is_variant = ((5..=8).contains(&part.len()) && is_alphanumeric(part))
             || (part.len() == 4
                 && part.starts_with(|c: char| c.is_ascii_digit())
@@ -146,9 +185,15 @@ fn parse_tag(locale: &str) -> Option<ParsedTag> {
             return None;
         }
         let variant = part.to_ascii_lowercase();
-        if !variants.contains(&variant) {
-            variants.push(variant);
+        if variants.contains(&variant) {
+            return None;
         }
+        variants.push(variant);
+    }
+    if let Some(extension_start) = extension_start
+        && !valid_extension_sequence(&parts[extension_start..])
+    {
+        return None;
     }
     // Canonical order for what is semantically an unordered set, so a tag always renders
     // identically no matter how it was written.
@@ -310,6 +355,28 @@ mod tests {
             resolver.normalize_tag("en-US-u-ca-gregory").as_deref(),
             Some("en-US")
         );
+        assert_eq!(
+            resolver.normalize_tag("en-US-u-ca-gregory-x-private").as_deref(),
+            Some("en-US")
+        );
+    }
+
+    #[test]
+    fn malformed_extensions_and_duplicate_variants_are_rejected() {
+        let resolver = BasicLocaleResolver;
+        for input in [
+            "en-u",
+            "en-x",
+            "en-u-ca-",
+            "en-u-ca-u-nu-latn",
+            "en-u-@",
+            "de-DE-1996-1996",
+        ] {
+            assert!(
+                resolver.normalize_tag(input).is_none(),
+                "malformed locale `{input}` must be rejected"
+            );
+        }
     }
 
     /// The two resolvers must agree wherever CLDR data is not involved.
