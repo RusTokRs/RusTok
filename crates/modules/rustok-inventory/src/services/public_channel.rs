@@ -475,7 +475,7 @@ mod tests {
         )
         .await
         .expect_err("foreign Variant must fail before tenantless Inventory lookup");
-        assert!(error.to_string().contains("tenant-owned"));
+        assert!(error.to_string().contains("not all owned by the requested tenant"));
     }
 
     #[test]

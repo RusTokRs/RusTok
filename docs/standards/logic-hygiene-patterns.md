@@ -633,6 +633,21 @@ They now capture any transport error into an `action_error` reactive signal and 
   [command-port mapping](../../crates/modules/rustok-product/src/catalog_command_port.rs).
   Focused regression sources authored, not executed.
 
+### P-SCOPED-PROJECTION-FALLBACK — never substitute a broader stock scope
+
+- **Category:** scope integrity / branch completeness.
+- **Observed defect:** Product storefront detail reused the unscoped variant quantity
+  when the Inventory channel map omitted an identity, contradicting Inventory's
+  own public projection and potentially displaying stock outside the sales channel.
+- **Canonical correction:** Consume only the selected scope's authoritative result.
+  Inventory's public quantity contract maps missing entries to zero
+  (`map.get(&variant_id).copied().unwrap_or(0)`), preserves signed values and
+  propagates provider errors. Never reuse a broader projection as proof of availability.
+- **Detection:** `rg -n 'apply_public_channel_inventory_to_product|resolve_variant_inventory_quantity' crates/modules/rustok-product`.
+- **Evidence:** [Product public projection](../../crates/modules/rustok-product/src/services/catalog/helpers.rs),
+  [Inventory public projection](../../crates/modules/rustok-inventory/src/services/public_channel.rs).
+  Focused regression sources authored, not run.
+
 ## 1. Core Philosophy: The 6 Universal Logic Dimensions
 
 Under [AGENTS.md §4](../../AGENTS.md), verify the affected behavior and its owner contract across the **6 Universal Logic Dimensions**. Use source matches to find code to inspect. A match alone cannot establish a behavioral defect:

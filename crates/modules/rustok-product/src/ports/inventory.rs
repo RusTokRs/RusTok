@@ -231,6 +231,8 @@ pub trait ProductInventoryPort: Send + Sync {
     ) -> Result<HashMap<Uuid, i32>, CommerceError>;
 
     /// Loads available stock quantities for variants scoped to a public sales channel.
+    /// A missing identity in a successful response means no proven channel stock.
+    /// Consumers must not substitute unscoped catalog quantities; provider errors propagate.
     async fn load_available_inventory_by_variant_for_public_channel(
         &self,
         conn: InventoryConnection<'_>,

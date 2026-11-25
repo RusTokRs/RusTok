@@ -100,7 +100,9 @@ are wired. Inventory must prove stock/history cleanup; Pricing must remove every
 authoritative price row in the same owner transaction. The standalone profile
 does not currently expose these deletion operations without those collaborators.
 Catalog reads that must resolve stored tag relations report an unavailable
-dependency when Taxonomy is not wired.
+dependency when Taxonomy is not wired. Without an Inventory provider, published
+detail and storefront SKU reads expose zero available units, not unscoped
+catalog stock; the existing backorder policy remains effective.
 
 Set `RUSTOK_PRODUCT_TAXONOMY_GRPC_ENDPOINT` to the Taxonomy HTTPS origin and
 `RUSTOK_TAXONOMY_TERM_NAMES_GRPC_BEARER_TOKEN` to the dedicated read credential.

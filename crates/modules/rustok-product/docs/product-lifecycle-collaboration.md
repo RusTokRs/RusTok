@@ -248,6 +248,15 @@ The Product response and public-channel quantity projection now use checked wide
 rather than order-dependent saturation; visibility and retained/absent stock remain different
 concepts. This does not make those existing read paths an authoritative Index source.
 
+The published Product detail and storefront SKU projection consume only the
+Inventory channel result. Missing entries (including an empty result when no
+Inventory provider is attached) project zero available units, never the
+previous unscoped Product quantity. Explicit zero and signed quantities are
+preserved; the existing continue/backorder policy still determines availability
+when stock is nonpositive. Inventory read errors propagate. Administrative
+unscoped projections retain their existing legacy quantity behavior. Focused
+source regressions are authored, not executed.
+
 [33 Rust/10 Node source definitions](../../rustok-inventory/contracts/evidence/quantity-writes-source.json)
 remain unrun/uncompiled; real SQL/isolation/locking/concurrency/client recovery remain maintainer
 gates. No client UI is changed or declared parity-complete. Installation baseline, Inventory-owned

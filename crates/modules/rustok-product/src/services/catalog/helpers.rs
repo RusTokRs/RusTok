@@ -1,5 +1,6 @@
 use crate::dto::{
     ProductResponse, ProductTranslationInput, ProductTranslationResponse, VariantAxisValueResponse,
+    VariantResponse,
 };
 use crate::entities;
 use crate::error::{CommerceError, CommerceResult};
@@ -736,18 +737,23 @@ pub async fn apply_public_channel_inventory_to_product(
         std::collections::HashMap::new()
     };
 
-    for variant in &mut product.variants {
-        let available_inventory = resolve_variant_inventory_quantity(
-            variant.id,
-            variant.inventory_quantity,
-            &available_by_variant,
-        );
+    project_public_channel_inventory(&mut product.variants, &available_by_variant);
+
+    Ok(())
+}
+
+/// The public channel projection has no unscoped stock fallback. A missing
+/// Inventory identity or provider cannot prove that stock is available here.
+fn project_public_channel_inventory(
+    variants: &mut [VariantResponse],
+    available_by_variant: &HashMap<Uuid, i32>,
+) {
+    for variant in variants {
+        let available_inventory = available_by_variant.get(&variant.id).copied().unwrap_or(0);
         variant.inventory_quantity = available_inventory;
         variant.in_stock = available_inventory > 0
             || inventory_policy_allows_backorder(&variant.inventory_policy);
     }
-
-    Ok(())
 }
 
 pub async fn find_published_product_id_by_handle(
@@ -1253,6 +1259,64 @@ mod category_filter_subtree_tests {
             .await
             .expect_err("an oversized subtree must be refused");
         assert!(matches!(error, CommerceError::Validation(_)));
+    }
+}
+
+#[cfg(test)]
+mod public_channel_inventory_tests {
+    use super::*;
+
+    fn variant(policy: &str) -> VariantResponse {
+        VariantResponse {
+            id: Uuid::new_v4(),
+            revision: "1".to_owned(),
+            product_id: Uuid::new_v4(),
+            sku: None,
+            barcode: None,
+            shipping_profile_slug: None,
+            title: "Variant".to_owned(),
+            translations: Vec::new(),
+            combination_identity: None,
+            axis_values: Vec::new(),
+            prices: Vec::new(),
+            inventory_quantity: 50,
+            inventory_policy: policy.to_owned(),
+            in_stock: true,
+            weight: None,
+            weight_unit: None,
+            position: 0,
+        }
+    }
+
+    #[test]
+    fn channel_projection_never_reuses_unscoped_stock() {
+        let mut variants = [
+            variant("deny"),
+            variant("continue"),
+            variant("deny"),
+            variant("deny"),
+            variant("deny"),
+        ];
+        let channel_stock = HashMap::from([
+            (variants[2].id, 0),
+            (variants[3].id, 3),
+            (variants[4].id, -2),
+        ]);
+        project_public_channel_inventory(&mut variants, &channel_stock);
+        assert_eq!(
+            variants.map(|variant| (variant.inventory_quantity, variant.in_stock)),
+            [(0, false), (0, true), (0, false), (3, true), (-2, false)]
+        );
+    }
+
+    #[test]
+    fn absent_channel_provider_does_not_advertise_catalog_stock() {
+        let mut variants = [variant("deny"), variant("continue")];
+        project_public_channel_inventory(&mut variants, &HashMap::new());
+        assert_eq!(
+            variants.map(|variant| (variant.inventory_quantity, variant.in_stock)),
+            [(0, false), (0, true)]
+        );
     }
 }
 
