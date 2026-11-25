@@ -11,6 +11,9 @@ versioned with the host workspace, so until it is extracted (see the `rustok-ui-
 
 ### Fixed
 
+- **Resize handle event safety.** Pointerdown is consumed only for an active primary left-button
+  resize after pointer capture succeeds, preserving context menus and canvas interactions when
+  resize setup is unavailable.
 - **Resize preview/commit parity.** The browser resize policy and SSR patch validator now
   share the same 100,000px dimension cap, preventing a preview from exceeding a limit that
   the server would later reject.

@@ -31,6 +31,11 @@ struct SvgPoint {
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
+fn can_start_resize_pointer(listeners_ready: bool, button: i16, is_primary: bool) -> bool {
+    listeners_ready && button == 0 && is_primary
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
 fn page_builder_resize_policy() -> ResizePolicy {
     ResizePolicy {
         grid_size: Some(4.0),
@@ -163,9 +168,11 @@ pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
                         on:pointerdown={
                             let runtime = runtime.clone();
                             move |event: PointerEvent| {
-                                event.prevent_default();
-                                event.stop_propagation();
-                                if !listeners_ready || event.button() != 0 || !event.is_primary() {
+                                if !can_start_resize_pointer(
+                                    listeners_ready,
+                                    event.button(),
+                                    event.is_primary(),
+                                ) {
                                     return;
                                 }
                                 let Some((component_id, rect, zoom)) = runtime.controller.with(|controller| {
@@ -206,6 +213,10 @@ pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
                                     runtime.fail(error.to_string());
                                     return;
                                 }
+                                // Only consume the event after the resize session and pointer
+                                // capture are ready. Failed setup must not block canvas clicks.
+                                event.prevent_default();
+                                event.stop_propagation();
                                 captured_element.set_value(Some(element));
                                 session.set_value(Some(resize));
                                 preview.set(None);
@@ -452,6 +463,14 @@ pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resize_pointerdown_only_consumes_primary_left_gestures() {
+        assert!(can_start_resize_pointer(true, 0, true));
+        assert!(!can_start_resize_pointer(false, 0, true));
+        assert!(!can_start_resize_pointer(true, 2, true));
+        assert!(!can_start_resize_pointer(true, 0, false));
+    }
 
     #[test]
     fn page_builder_resize_policy_matches_server_dimension_limit() {
