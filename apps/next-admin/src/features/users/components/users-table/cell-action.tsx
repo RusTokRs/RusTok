@@ -67,7 +67,7 @@ export const CellAction: React.FC<CellActionProps> = ({ data, roles }) => {
           }
         })
         .catch(() => {
-          // fallback roles remain
+          toast.error(t('toast.load.error'));
         });
     }
   }, [roles, token, tenantSlug]);

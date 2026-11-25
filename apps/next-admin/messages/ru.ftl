@@ -842,6 +842,22 @@ rbac-toast-create-success = Роль успешно создана
 rbac-toast-update-success = Роль успешно обновлена
 rbac-toast-delete-success = Роль успешно удалена
 rbac-toast-error = Произошла ошибка
+rbac-load-error-title = Не удалось загрузить конфигурацию RBAC
+rbac-load-error-desc = Не удалось получить роли тенанта с сервера. Проверьте права доступа или повторите попытку.
+rbac-catalog-load-error = Не удалось загрузить каталог разрешений платформы. Редактирование прав недоступно до загрузки каталога.
+rbac-btn-retry = Повторить
+rbac-perms-search-placeholder = Поиск разрешений...
+rbac-perms-empty = Разрешения по вашему запросу не найдены.
+rbac-perms-col-permission = Разрешение
+rbac-perms-col-resource = Ресурс
+rbac-perms-col-module = Модуль
+rbac-perms-col-roles = Назначено ролям
+rbac-perms-unassigned = Не назначено
+rbac-perms-clear-filter = Сбросить фильтр
+rbac-perms-showing-count = Показано { $shown } из { $total } разрешений
+rbac-module-core = Ядро
+rbac-module-enabled = Активен
+rbac-module-disabled = Отключён
 
 # Users table and actions
 users-table-select-all = Выбрать все

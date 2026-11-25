@@ -287,7 +287,7 @@ impl<'ast> Visit<'ast> for MigrationNames<'_> {
         if item
             .trait_
             .as_ref()
-            .and_then(|(_, path, _)| path.segments.last())
+            .and_then(|(path, _)| path.segments.last())
             .is_some_and(|segment| segment.ident.unraw() == "MigrationName")
         {
             for item in &item.items {

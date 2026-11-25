@@ -12,6 +12,8 @@ use crate::core::{
 };
 use crate::model::{CatalogCategoryDraft, CatalogCategorySummary};
 
+const STRUCTURAL_CATEGORY_KIND: &str = "structural";
+
 #[component]
 fn CategoryTreeGrid(
     #[prop(into)] categories: Signal<Vec<CatalogCategorySummary>>,
@@ -99,11 +101,11 @@ fn CategoryTreeGrid(
                 let is_virt = row.category.kind.to_lowercase() == "virtual";
                 view! {
                     <span class=if is_virt {
-                        "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20"
+                        "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20"
                     } else {
-                        "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20"
+                        "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20"
                     }>
-                        {if is_virt { "Virtual" } else { "Physical" }}
+                        {row.category.kind}
                     </span>
                 }.into_any()
             }
@@ -185,7 +187,7 @@ pub fn CategoriesPage() -> impl IntoView {
     let (cat_slug, set_cat_slug) = signal(String::new());
     let (cat_code, set_cat_code) = signal(String::new());
     let (cat_parent_id, set_cat_parent_id) = signal(String::new());
-    let (cat_kind, set_cat_kind) = signal("physical".to_string());
+    let (cat_kind, set_cat_kind) = signal(STRUCTURAL_CATEGORY_KIND.to_owned());
     let (cat_description, set_cat_description) = signal(String::new());
 
     // Load categories
@@ -233,7 +235,7 @@ pub fn CategoriesPage() -> impl IntoView {
         set_cat_slug.set(String::new());
         set_cat_code.set(String::new());
         set_cat_parent_id.set(String::new());
-        set_cat_kind.set("physical".to_string());
+        set_cat_kind.set(STRUCTURAL_CATEGORY_KIND.to_owned());
         set_cat_description.set(String::new());
         set_error_msg.set(None);
         set_success_msg.set(None);
@@ -519,7 +521,7 @@ pub fn CategoriesPage() -> impl IntoView {
                             on:change=move |ev| set_cat_kind.set(event_target_value(&ev))
                             class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary"
                         >
-                            <option value="physical">{if is_ru { "Физическая (Физические товары)" } else { "Physical (Physical Goods)" }}</option>
+                            <option value=STRUCTURAL_CATEGORY_KIND>{if is_ru { "Структурная" } else { "Structural" }}</option>
                             <option value="virtual">{if is_ru { "Виртуальная (Цифровые услуги / Смарт-правила)" } else { "Virtual (Digital / Smart Rules)" }}</option>
                         </select>
                     </div>

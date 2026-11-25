@@ -67,9 +67,9 @@ pub use alloy_import::{
     AlloyPublishedReleaseRef, TOOL_ALLOY_IMPORT_PUBLISHED_RELEASE, import_published_release,
 };
 pub use alloy_scaffold::{
-    ApplyModuleScaffoldRequest, ApplyModuleScaffoldResponse, ModuleScaffoldDraftStatus,
-    ReviewModuleScaffoldRequest, ReviewModuleScaffoldResponse, ScaffoldModuleFile,
-    ScaffoldModulePreview, ScaffoldModuleRequest, StageModuleScaffoldResponse,
+    AlloyScaffoldError, ApplyModuleScaffoldRequest, ApplyModuleScaffoldResponse,
+    ModuleScaffoldDraftStatus, ReviewModuleScaffoldRequest, ReviewModuleScaffoldResponse,
+    ScaffoldModuleFile, ScaffoldModulePreview, ScaffoldModuleRequest, StageModuleScaffoldResponse,
     StagedModuleScaffold, apply_staged_scaffold, generate_module_scaffold, scaffold_source_digest,
 };
 pub use alloy_tools::{

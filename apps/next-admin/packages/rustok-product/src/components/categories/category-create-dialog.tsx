@@ -26,6 +26,8 @@ import { toast } from 'sonner';
 import type { CatalogCategorySummary } from '../../api/types';
 import { SearchableCategorySelect } from './searchable-category-select';
 
+const STRUCTURAL_CATEGORY_KIND = 'structural';
+
 interface CategoryCreateDialogProps {
   categories: CatalogCategorySummary[];
   onCreateCategory: (payload: {
@@ -48,7 +50,7 @@ export function CategoryCreateDialog({
   const [code, setCode] = React.useState('');
   const [slug, setSlug] = React.useState('');
   const [parentId, setParentId] = React.useState<string>('none');
-  const [kind, setKind] = React.useState('standard');
+  const [kind, setKind] = React.useState<string>(STRUCTURAL_CATEGORY_KIND);
   const [description, setDescription] = React.useState('');
 
   const handleNameChange = (val: string) => {
@@ -116,6 +118,7 @@ export function CategoryCreateDialog({
       setCode('');
       setSlug('');
       setParentId('none');
+      setKind(STRUCTURAL_CATEGORY_KIND);
       setDescription('');
     } catch (err) {
       toast.error(
@@ -211,7 +214,9 @@ export function CategoryCreateDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value='standard'>Standard</SelectItem>
+                    <SelectItem value={STRUCTURAL_CATEGORY_KIND}>
+                      Structural
+                    </SelectItem>
                     <SelectItem value='virtual'>
                       Virtual (Rule-based)
                     </SelectItem>

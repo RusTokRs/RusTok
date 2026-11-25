@@ -851,6 +851,22 @@ rbac-toast-create-success = Role created successfully
 rbac-toast-update-success = Role updated successfully
 rbac-toast-delete-success = Role deleted successfully
 rbac-toast-error = Operation failed
+rbac-load-error-title = Failed to load RBAC configuration
+rbac-load-error-desc = Unable to retrieve tenant roles from the server. Check your permissions or try again.
+rbac-catalog-load-error = Failed to load platform permission catalog. Permission editing is unavailable until the catalog loads.
+rbac-btn-retry = Retry
+rbac-perms-search-placeholder = Search permissions...
+rbac-perms-empty = No permissions found matching your query.
+rbac-perms-col-permission = Permission
+rbac-perms-col-resource = Resource
+rbac-perms-col-module = Module
+rbac-perms-col-roles = Granted To Roles
+rbac-perms-unassigned = Unassigned
+rbac-perms-clear-filter = Clear filter
+rbac-perms-showing-count = Showing { $shown } of { $total } permissions
+rbac-module-core = Core
+rbac-module-enabled = Active
+rbac-module-disabled = Disabled
 
 # Users table and actions
 users-table-select-all = Select all

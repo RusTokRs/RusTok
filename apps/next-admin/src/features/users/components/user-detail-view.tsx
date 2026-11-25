@@ -16,7 +16,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useTranslations } from '@rustok/next-fluent/client';
-import { listRoles, type RoleInfo } from '@rustok/rbac-admin';
+import { assignUserRole, listRoles, type RoleInfo } from '@rustok/rbac-admin';
 
 interface UserDetail {
   id: string;
@@ -67,19 +67,25 @@ export default function UserDetailView({ userId }: { userId: string }) {
     if (!token) return;
     (async () => {
       try {
-        const [userData, fetchedRoles] = await Promise.all([
+        const [userResult, rolesResult] = await Promise.allSettled([
           graphqlRequest<{ id: string }, { user: UserDetail | null }>(
             USER_QUERY,
             { id: userId },
             token,
             tenantSlug
           ),
-          listRoles({ token, tenantSlug }).catch(() => FALLBACK_ROLES)
+          listRoles({ token, tenantSlug })
         ]);
 
+        if (userResult.status !== 'fulfilled') {
+          throw userResult.reason;
+        }
+        const userData = userResult.value;
         setUser(userData.user);
-        if (fetchedRoles && fetchedRoles.length > 0) {
-          setRoles(fetchedRoles);
+        if (rolesResult.status === 'fulfilled' && rolesResult.value.length > 0) {
+          setRoles(rolesResult.value);
+        } else if (rolesResult.status === 'rejected') {
+          toast.error(t('toast.load.error'));
         }
         if (userData.user) {
           setEditName(userData.user.name ?? '');
@@ -97,16 +103,42 @@ export default function UserDetailView({ userId }: { userId: string }) {
     if (!token || !user) return;
     setIsSaving(true);
     try {
-      const data = await graphqlRequest<object, { updateUser: UserDetail }>(
-        UPDATE_USER_MUTATION,
-        {
-          id: userId,
-          input: { name: editName.trim() || null, role: editRole || undefined }
-        },
-        token,
-        tenantSlug
-      );
-      setUser(data.updateUser);
+      const trimmedName = editName.trim() || null;
+      const currentName = user.name?.trim() || null;
+      const currentRole = user.role?.toLowerCase() ?? 'customer';
+      const roleChanged = Boolean(editRole && editRole !== currentRole);
+      let updatedUser = user;
+
+      if (trimmedName !== currentName) {
+        const data = await graphqlRequest<object, { updateUser: UserDetail }>(
+          UPDATE_USER_MUTATION,
+          {
+            id: userId,
+            input: { name: trimmedName }
+          },
+          token,
+          tenantSlug
+        );
+        updatedUser = data.updateUser;
+      }
+
+      if (roleChanged) {
+        await assignUserRole(
+          { userId, roleSlug: editRole },
+          { token, tenantSlug }
+        );
+        const refreshed = await graphqlRequest<
+          { id: string },
+          { user: UserDetail | null }
+        >(USER_QUERY, { id: userId }, token, tenantSlug);
+        if (refreshed.user) {
+          updatedUser = refreshed.user;
+        }
+      }
+
+      setUser(updatedUser);
+      setEditName(updatedUser.name ?? '');
+      setEditRole(updatedUser.role?.toLowerCase() ?? 'customer');
       setIsEditing(false);
       toast.success(t('toast.detail.update.success'));
     } catch (err) {

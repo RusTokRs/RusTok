@@ -26,14 +26,14 @@ use crate::core::{
     build_product_detached_attribute_value_view_models, build_product_image_view_models,
     build_product_media_panel_copy, build_product_variants_panel_copy, build_save_command,
     build_selected_product_summary_view_model, build_status_command,
-    build_status_result_view_model, build_variant_row_update_draft_with_price_clear, build_variant_row_view_models,
-    validate_editor_variant_draft,
-    empty_product_admin_editor_form_state, parse_product_admin_quantity_input,
-    pricing_preview_request_from_product, pricing_preview_state_from_result,
-    product_admin_clear_product_query_intent, product_admin_list_actions_disabled,
-    product_admin_open_product_query_intent, product_admin_products_load_view_from_result,
-    product_admin_saved_product_query_intent, product_admin_selected_product_query_state,
-    shipping_profiles_load_view_from_result, text_or_none,
+    build_status_result_view_model, build_variant_row_update_draft_with_price_clear,
+    build_variant_row_view_models, empty_product_admin_editor_form_state,
+    parse_product_admin_quantity_input, pricing_preview_request_from_product,
+    pricing_preview_state_from_result, product_admin_clear_product_query_intent,
+    product_admin_list_actions_disabled, product_admin_open_product_query_intent,
+    product_admin_products_load_view_from_result, product_admin_saved_product_query_intent,
+    product_admin_selected_product_query_state, shipping_profiles_load_view_from_result,
+    text_or_none, validate_editor_variant_draft,
 };
 use crate::model::{
     BindCategoryAttributeDraft, BindSchemaAttributeDraft, CatalogCategorySummary,
@@ -1835,6 +1835,7 @@ pub(super) fn ProductVariantsPanel(
                             }
                             "price" => {
                                 let price_val = row.price.clone();
+                                let clear_price_label = clear_price_label.clone();
                                 view! {
                                     <div class="text-foreground">
                                         {move || if is_editing_this.get() {

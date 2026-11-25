@@ -145,43 +145,64 @@ test('parent category picker searches the category list', async ({
   }
 });
 
-test('subcategory is created under the seeded parent category', async ({
+test('structural root and subcategory persist in the catalog tree', async ({
   browser
 }) => {
   const { page, close } = await authenticatedAdminPage(browser);
   try {
-    const uniqueName = `E2E Subcategory ${Date.now()}`;
-    const fragment = seededParentTitle.slice(
-      0,
-      Math.min(4, seededParentTitle.length)
-    );
+    const runId = Date.now();
+    const rootName = `E2E Category ${runId}`;
+    const rootSlug = `e2e-category-${runId}`;
+    const childPath = `${rootSlug}/e2e-subcategory-${runId}`;
+    const childName = `E2E Subcategory ${runId}`;
 
     await openCreateDialog(page);
-    await page.locator('#cat-name').fill(uniqueName);
+    await page.locator('#cat-name').fill(rootName);
+    await page.getByRole('button', { name: 'Create Category' }).click();
+    await expect(page.getByText('Category created successfully')).toBeVisible({
+      timeout: 30_000
+    });
 
+    await openCreateDialog(page);
+    await page.locator('#cat-name').fill(childName);
     await page.locator('#cat-parent').click();
-    await page
-      .getByPlaceholder('Search parent category...')
-      .fill(fragment);
-    await page
-      .getByRole('option', { name: fragment })
-      .first()
-      .click();
+    await page.getByPlaceholder('Search parent category...').fill(rootSlug);
+    await page.getByRole('option', { name: rootSlug, exact: true }).click();
 
     await page.getByRole('button', { name: 'Create Category' }).click();
     await expect(page.getByText('Category created successfully')).toBeVisible({
       timeout: 30_000
     });
 
-    // The categories page is a server component: reload to verify the new
-    // subcategory actually persisted with its parent-derived path.
     await page.goto(`${baseUrl}/dashboard/product/categories`);
     await page
       .getByPlaceholder('Filter categories by name, code or path...')
-      .fill(uniqueName);
+      .fill(rootSlug);
+    const rootRow = page.getByRole('row').filter({
+      has: page.getByText(rootName, { exact: true })
+    });
+    const childRow = page.getByRole('row').filter({
+      has: page.getByText(childName, { exact: true })
+    });
     await expect(
-      page.getByText(uniqueName, { exact: false }).first()
+      rootRow.getByRole('cell', { name: 'structural' })
     ).toBeVisible();
+    await expect(
+      childRow.getByRole('cell', { name: 'structural' })
+    ).toBeVisible();
+    await expect(
+      childRow.getByRole('cell', {
+        name: childPath,
+        exact: true
+      })
+    ).toBeVisible();
+
+    await page.goto(`${baseUrl}/dashboard/product/new`);
+    const primaryCategory = page.locator('#category-select');
+    await primaryCategory.click();
+    await page.getByPlaceholder('Search categories...').fill(childPath);
+    await page.getByRole('option', { name: childPath, exact: true }).click();
+    await expect(primaryCategory).toContainText(childPath);
   } finally {
     await close();
   }

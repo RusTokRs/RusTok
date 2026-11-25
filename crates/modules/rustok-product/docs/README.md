@@ -95,6 +95,8 @@ and [native transaction contract](./product-lifecycle-collaboration.md#atomicity
 
 - `product_attributes` is the unified reference for ecommerce attributes.
 - `catalog_categories` stores structural, collection and virtual categories; `products.primary_category_id` determines product form only through structural category. Deferred PostgreSQL constraint triggers reject parent cycles and require `catalog_category_closure` to remain the exact tenant-owned ancestry projection at commit.
+- Both admin category forms send `structural` by default. Root creation leaves the parent empty,
+  while subcategory creation sends the selected parent ID with the same kind.
 - `product_attribute_schemas` are optional reusable templates, and category bindings/groups provide inheritance, clone snapshot, custom and local override scenarios.
 - `product_categories` stores additional navigation/storefront bindings and does not change the product form.
 - Values live in typed product/variant attribute value tables; localized labels and text-like values are in translation tables.

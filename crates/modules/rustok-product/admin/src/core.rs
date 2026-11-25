@@ -4506,7 +4506,7 @@ mod tests {
                 code: "shoes".to_string(),
                 slug: "shoes".to_string(),
                 path: "/shoes".to_string(),
-                kind: "physical".to_string(),
+                kind: "structural".to_string(),
                 name: "Shoes".to_string(),
                 parent_id: None,
             },

@@ -775,6 +775,12 @@ PostgreSQL 16 databases. The returned catalog item existed only in Product.
 Use the [host fixture instructions](../../../../apps/server/README.md#mounted-product-storefront-evidence)
 to reproduce this scenario. Full `rustok-server` startup with a separate
 PostgreSQL consumer database remains part of the combined deployment capture.
+The full `mod-commerce,mod-ai` executable connected to the selected Product
+provider on separate PostgreSQL 16 databases during the first-start regression.
+Product passed schema preflight and the six authenticated read probes. The
+consumer rejected a bootstrap manifest missing the baseline Social Graph entry
+and left `platform_state` empty. Distribution explicitly selects the Social
+Graph Index integration required by the owner manifest for the retry.
 
 ### Mounted AI product attributes (2026-11-10)
 

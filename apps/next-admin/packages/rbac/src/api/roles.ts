@@ -230,12 +230,19 @@ export async function updateRole(
   if (!cleanSlug) {
     throw new Error('Role slug is required');
   }
+  const cleanName =
+    input.name !== undefined ? input.name?.trim() ?? '' : undefined;
+  if (cleanName !== undefined && cleanName.length === 0) {
+    throw new Error('Role name cannot be empty');
+  }
   const payload: UpdateRoleInput = {
     slug: cleanSlug,
-    name: input.name !== undefined ? input.name?.trim() || null : undefined,
+    name: cleanName,
     description:
       input.description !== undefined
-        ? input.description?.trim() || null
+        ? input.description === null
+          ? null
+          : input.description.trim() || null
         : undefined,
     permissions:
       cleanSlug === 'super_admin' ? undefined : (input.permissions ?? undefined)

@@ -164,7 +164,7 @@ export function AssignRoleDialog({
               onClick={() => onOpenChange(false)}
               disabled={isSubmitting}
             >
-              {t('btn.cancel')}
+              {t('btn-cancel')}
             </Button>
             <Button type='submit' disabled={isSubmitting}>
               {isSubmitting
