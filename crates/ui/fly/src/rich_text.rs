@@ -29,10 +29,10 @@ pub const RICH_TEXT_CAPABILITY: &str = "richtext";
 
 /// Renders a validated rich-text payload to **safe HTML**.
 ///
-/// Implementations own profile validation and sanitization (in RusToK:
-/// `rustok-content::richtext::render_html`). The returned string is trusted by the Fly
-/// renderer exactly to the extent the host trusts its own rich-text capability; returning
-/// `None` declines the payload and Fly uses its escaped fallback projection instead.
+/// Fly filters link marks against the enclosing RenderPolicy before calling this port.
+/// Implementations still own profile validation and safe HTML generation (in RusToK:
+/// rustok-content::richtext::render_html). The returned string is trusted HTML; returning
+/// None declines the payload and Fly uses its escaped fallback projection instead.
 pub trait RichTextHtmlRenderer {
     fn render_rich_text(&self, payload: &RichTextPayload) -> Option<String>;
 }
@@ -43,6 +43,41 @@ where
 {
     fn render_rich_text(&self, payload: &RichTextPayload) -> Option<String> {
         self(payload)
+    }
+}
+
+/// Remove link marks that do not satisfy the enclosing page's navigation URL policy.
+/// This runs before either the host HTML renderer or Fly's fallback sees the payload, so a
+/// trusted host renderer cannot accidentally re-enable a link disabled by RenderPolicy.
+pub(crate) fn filter_rich_text_links_for_policy(
+    payload: &mut RichTextPayload,
+    policy: &UrlPolicy,
+) {
+    filter_rich_text_node_links(&mut payload.payload, policy);
+}
+
+fn filter_rich_text_node_links(node: &mut Value, policy: &UrlPolicy) {
+    let Some(object) = node.as_object_mut() else {
+        return;
+    };
+
+    if let Some(marks) = object.get_mut("marks").and_then(Value::as_array_mut) {
+        marks.retain(|mark| {
+            if mark.get("type").and_then(Value::as_str) != Some("link") {
+                return true;
+            }
+            let href = mark
+                .get("attrs")
+                .and_then(|attrs| attrs.get("href"))
+                .and_then(Value::as_str);
+            href.is_some_and(|href| url_allowed(href, UrlAttributeKind::Navigation, policy))
+        });
+    }
+
+    if let Some(children) = object.get_mut("content").and_then(Value::as_array_mut) {
+        for child in children {
+            filter_rich_text_node_links(child, policy);
+        }
     }
 }
 

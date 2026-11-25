@@ -410,6 +410,6 @@ Composed component style patches preserve sequential merge semantics: a non-obje
 replaces the entire slot, and subsequent object merges cannot restore discarded properties.
 The composed patch remains a single atomic, reversible editor command.
 
-The enclosing `RenderPolicy` also gates iframe resources and fallback navigation links.
-Built-in rich-text fallback links use that same navigation policy; a host-supplied
-`RichTextHtmlRenderer` remains a trusted HTML port responsible for its own sanitization.
+The enclosing `RenderPolicy` also gates iframe resources and rich-text navigation links.
+Fly filters link marks before either the built-in fallback or a host-supplied
+`RichTextHtmlRenderer` receives the payload; the host port remains responsible for safe HTML.

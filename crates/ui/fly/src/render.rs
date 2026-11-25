@@ -819,13 +819,15 @@ fn render_component(
         // A rich-text component is a leaf: the payload replaces both the plain `content`
         // string and any children, which are preserved in the document but not rendered.
         match crate::decode_rich_text_payload(raw_payload) {
-            Ok(payload) => {
+            Ok(mut payload) => {
+                let url_policy = policy.url_policy();
+                crate::rich_text::filter_rich_text_links_for_policy(&mut payload, &url_policy);
                 let rendered = rich_text
                     .and_then(|renderer| renderer.render_rich_text(&payload))
                     .unwrap_or_else(|| {
                         crate::rich_text::rich_text_fallback_html_with_policy(
                             &payload,
-                            &policy.url_policy(),
+                            &url_policy,
                         )
                     });
                 output.push_str(&rendered);
@@ -2911,6 +2913,69 @@ mod tests {
         assert!(restricted.html.contains("Unknown video"));
         assert!(restricted.html.contains("External link"));
         assert!(restricted.html.contains("href=\"/local\""));
+    }
+
+    #[test]
+    fn render_policy_filters_links_before_trusted_rich_text_renderer() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "rich",
+                        "type": "wrapper",
+                        "flyRichText": {
+                            "capability": "richtext",
+                            "payload": {
+                                "type": "doc",
+                                "content": [{
+                                    "type": "paragraph",
+                                    "content": [
+                                        {
+                                            "type": "text",
+                                            "text": "External link",
+                                            "marks": [{
+                                                "type": "link",
+                                                "attrs": {"href": "https://example.test/link"}
+                                            }]
+                                        },
+                                        {
+                                            "type": "text",
+                                            "text": "Local link",
+                                            "marks": [{
+                                                "type": "link",
+                                                "attrs": {"href": "/local"}
+                                            }]
+                                        }
+                                    ]
+                                }]
+                            }
+                        }
+                    }]
+                }
+            }]
+        })).expect("document");
+        let trusted_renderer = |payload: &crate::RichTextPayload| {
+            Some(crate::rich_text_fallback_html(payload))
+        };
+        let policy = RenderPolicy {
+            allow_https: false,
+            ..RenderPolicy::default()
+        };
+        let rendered = render_page_with_rich_text(
+            &document,
+            &PageSelection::First,
+            &policy,
+            Some(&trusted_renderer),
+        ).expect("render");
+
+        assert!(!rendered.html.contains("https://"));
+        assert!(rendered.html.contains("External link"));
+        assert!(rendered.html.contains("Local link"));
+        assert!(!rendered.html.contains("href=\"https://"));
+        assert!(rendered.html.contains("href=\"/local\""));
     }
 
     #[test]
