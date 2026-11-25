@@ -1933,6 +1933,32 @@ mod tests {
     }
 
     #[test]
+    fn renderer_drops_undeclared_css_variable_references_and_nested_fallbacks() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "flyTheme": { "tokens": { "brand": "#0b5fff" } },
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "style": {
+                        "color": "var(--brand)",
+                        "background-image": "var(--host-url)",
+                        "mask-image": "var(--brand, var(--external-url))"
+                    },
+                    "components": []
+                }
+            }]
+        })).expect("document");
+        let page = render_page(&document, &PageSelection::First, &RenderPolicy::default())
+            .expect("rendered");
+
+        assert!(page.css.contains("color:var(--brand)"), "css: {}", page.css);
+        assert!(!page.css.contains("var(--host-url)"), "css: {}", page.css);
+        assert!(!page.css.contains("var(--external-url)"), "css: {}", page.css);
+    }
+
+    #[test]
     fn malformed_theme_renders_no_root_rule() {
         let document = GrapesJsCodec::decode_value(json!({
             "flyTheme": { "tokens": { "Brand": "red; } body { display: none" } },
