@@ -37,6 +37,7 @@ pub struct OAuthAuthorizationServerMetadata {
     pub response_modes_supported: Vec<String>,
     pub grant_types_supported: Vec<String>,
     pub token_endpoint_auth_methods_supported: Vec<String>,
+    pub revocation_endpoint_auth_methods_supported: Vec<String>,
     pub code_challenge_methods_supported: Vec<String>,
 
     // UserInfo claims actually returned by the server.
@@ -81,6 +82,12 @@ fn metadata_for_issuer(issuer: &str) -> Result<OAuthAuthorizationServerMetadata,
         token_endpoint_auth_methods_supported: vec![
             "none".into(),
             "client_secret_post".into(),
+            "client_secret_basic".into(),
+        ],
+        revocation_endpoint_auth_methods_supported: vec![
+            "none".into(),
+            "client_secret_post".into(),
+            "client_secret_basic".into(),
         ],
 
         code_challenge_methods_supported: vec!["S256".into()],
@@ -190,10 +197,25 @@ mod tests {
             ],
             "discovery must advertise only claims the UserInfo handler actually returns"
         );
+        let supported_client_auth_methods = vec![
+            "none".to_string(),
+            "client_secret_post".to_string(),
+            "client_secret_basic".to_string(),
+        ];
         assert_eq!(
             metadata.token_endpoint_auth_methods_supported,
-            vec!["none".to_string(), "client_secret_post".to_string()],
-            "discovery must include public-client auth and only the confidential method the endpoint implements"
+            supported_client_auth_methods,
+            "discovery must advertise public-client auth and every confidential method implemented by the token endpoint"
+        );
+        assert_eq!(
+            metadata.revocation_endpoint_auth_methods_supported,
+            supported_client_auth_methods,
+            "discovery must advertise public-client revocation and every confidential method implemented by the revocation endpoint"
+        );
+        assert_eq!(
+            serialized["revocation_endpoint_auth_methods_supported"],
+            serde_json::json!(["none", "client_secret_post", "client_secret_basic"]),
+            "revocation authentication methods must be present in the serialized discovery document"
         );
     }
 

@@ -3302,24 +3302,6 @@ mod tests {
     }
 
     #[test]
-    fn rfc8414_metadata_matches_implementation() {
-        // Verify our metadata matches what we actually implement
-        let response_types = vec!["code"];
-        let grant_types = ["authorization_code", "client_credentials", "refresh_token"];
-        let code_challenge_methods = vec!["S256"];
-        let auth_methods = vec!["client_secret_post"];
-
-        // We only support "code" (not "token" / implicit)
-        assert_eq!(response_types, vec!["code"]);
-        // We only support S256 (not "plain" — which is insecure)
-        assert_eq!(code_challenge_methods, vec!["S256"]);
-        // We use client_secret_post (not basic auth)
-        assert_eq!(auth_methods, vec!["client_secret_post"]);
-        // Three grant types
-        assert_eq!(grant_types.len(), 3);
-    }
-
-    #[test]
     fn rfc8414_well_known_paths() {
         // RFC 8414 §3: The well-known URI string is:
         //   "/.well-known/oauth-authorization-server"

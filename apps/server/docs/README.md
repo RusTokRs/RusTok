@@ -1035,7 +1035,8 @@ before the event forwarder. The Outbox relay supervisor owns and gracefully drai
   `client_secret_post` compatibility path. The server Base64-decodes the Basic payload, then
   form-url-decodes each credential component; mixed methods and ambiguous Authorization headers are
   rejected. Public first-party/mobile PKCE clients can revoke without a client secret, while service
-  and configured confidential clients must authenticate with their secret.
+  and configured confidential clients must authenticate with their secret. RFC 8414 discovery
+  advertises `none`, `client_secret_post`, and `client_secret_basic` for both endpoints.
 - Auth self-service endpoints (`/api/auth/me`, sessions, password change, profile, and history) require
   the typed `AuthPrincipalKind::DirectUser` principal. Delegated OAuth user principals are valid for
   delegated OAuth/storefront flows but do not inherit the direct-session self-service contract.
