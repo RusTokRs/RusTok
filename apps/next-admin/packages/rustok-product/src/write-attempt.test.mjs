@@ -21,7 +21,7 @@ const payload = () => ({
   translations: [{ locale: 'en', title: 'Chair' }],
   revision: 7,
   tags: [],
-  attributePatches: [],
+  attributeValueBatches: [],
   activeLocale: 'en'
 });
 

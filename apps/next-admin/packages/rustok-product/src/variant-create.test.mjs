@@ -464,6 +464,8 @@ test('sparse variant update journal input accepts only bounded owner fields', ()
   const valid = {
     sku: 'SKU-NEW',
     inventoryQuantity: 0,
+    expectedRevision: '1',
+    expectedInventoryQuantity: 0,
     prices: [
       { currencyCode: 'USD', amount: '0', compareAtAmount: null }
     ]
@@ -471,14 +473,16 @@ test('sparse variant update journal input accepts only bounded owner fields', ()
   assert.equal(isVariantUpdateInput(valid), true);
   assert.equal(isVariantUpdateInput({}), false);
   for (const invalid of [
-    { sku: 'SKU-NEW', unexpected: true },
-    { inventoryQuantity: -1 },
-    { inventoryQuantity: 2147483648 },
-    { inventoryPolicy: 'backorder' },
-    { axisValues: [{ attributeId: 'bad', optionId: id(3) }] },
-    { axisValues: [{ attributeId: id(2), optionId: id(3) }, { attributeId: id(2), optionId: id(4) }] },
-    { prices: [{ currencyCode: 'US', amount: '1' }] },
-    { prices: [{ currencyCode: 'USD', amount: 'not-money' }] }
+    { sku: 'SKU-NEW' },
+    { sku: 'SKU-NEW', expectedRevision: '1', unexpected: true },
+    { inventoryQuantity: 0, expectedRevision: '1' },
+    { inventoryQuantity: -1, expectedRevision: '1', expectedInventoryQuantity: 0 },
+    { inventoryQuantity: 2147483648, expectedRevision: '1', expectedInventoryQuantity: 0 },
+    { inventoryPolicy: 'backorder', expectedRevision: '1' },
+    { axisValues: [{ attributeId: 'bad', optionId: id(3) }], expectedRevision: '1' },
+    { axisValues: [{ attributeId: id(2), optionId: id(3) }, { attributeId: id(2), optionId: id(4) }], expectedRevision: '1' },
+    { prices: [{ currencyCode: 'US', amount: '1' }], expectedRevision: '1' },
+    { prices: [{ currencyCode: 'USD', amount: 'not-money' }], expectedRevision: '1' }
   ]) {
     assert.equal(isVariantUpdateInput(invalid), false);
   }

@@ -3264,6 +3264,7 @@ mod tests {
             variant_axes: Vec::new(),
             variants: vec![crate::model::ProductVariant {
                 id: "variant-1".to_string(),
+                revision: "1".to_string(),
                 sku: Some("COAT-1".to_string()),
                 barcode: Some("123".to_string()),
                 shipping_profile_slug: None,
@@ -3602,6 +3603,7 @@ mod tests {
             variant_axes: Vec::new(),
             variants: vec![crate::model::ProductVariant {
                 id: "variant-1".to_string(),
+                revision: "1".to_string(),
                 sku: Some("COAT-1".to_string()),
                 barcode: Some("123".to_string()),
                 shipping_profile_slug: None,
@@ -4052,6 +4054,7 @@ mod tests {
             variant_axes: Vec::new(),
             variants: vec![crate::model::ProductVariant {
                 id: "variant-1".to_string(),
+                revision: "1".to_string(),
                 sku: None,
                 barcode: None,
                 shipping_profile_slug: None,
@@ -4233,6 +4236,7 @@ mod tests {
 
         product.variants.push(crate::model::ProductVariant {
             id: "variant-2".to_string(),
+            revision: "1".to_string(),
             sku: Some("COAT-BLK-M".to_string()),
             barcode: None,
             shipping_profile_slug: None,

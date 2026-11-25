@@ -1167,3 +1167,89 @@ async fn update_role_preserves_dormant_grants_clears_description_and_syncs_syste
         .unwrap();
     assert_eq!(manager["displayName"], "Operations Lead");
 }
+
+#[tokio::test]
+async fn load_tenant_roles_overview_on_resolves_custom_roles_inactive_perms_and_locales() {
+    let db = setup_test_db().await;
+    let tenant_id = Uuid::new_v4();
+    let admin_role_id = Uuid::new_v4();
+    let custom_role_id = Uuid::new_v4();
+    let blog_perm_id = Uuid::new_v4();
+    let users_perm_id = Uuid::new_v4();
+
+    for (sql, params) in [
+        (
+            "INSERT INTO tenants (id, name, slug) VALUES (?, 'Acme', 'acme')",
+            vec![tenant_id.into()],
+        ),
+        (
+            "INSERT INTO roles (id, tenant_id, name, slug, description, is_system) VALUES (?, ?, 'Admin', 'admin', 'System admin', 1), (?, ?, 'Blog Curator', 'blog_curator', 'Curates blog', 0)",
+            vec![
+                admin_role_id.into(),
+                tenant_id.into(),
+                custom_role_id.into(),
+                tenant_id.into(),
+            ],
+        ),
+        (
+            "INSERT INTO permissions (id, tenant_id, resource, action) VALUES (?, ?, 'blog_posts', 'read'), (?, ?, 'users', 'read')",
+            vec![
+                blog_perm_id.into(),
+                tenant_id.into(),
+                users_perm_id.into(),
+                tenant_id.into(),
+            ],
+        ),
+        (
+            "INSERT INTO role_permissions (id, role_id, permission_id) VALUES (?, ?, ?), (?, ?, ?), (?, ?, ?)",
+            vec![
+                Uuid::new_v4().into(),
+                admin_role_id.into(),
+                users_perm_id.into(),
+                Uuid::new_v4().into(),
+                custom_role_id.into(),
+                blog_perm_id.into(),
+                Uuid::new_v4().into(),
+                custom_role_id.into(),
+                users_perm_id.into(),
+            ],
+        ),
+        (
+            "INSERT INTO rbac_localized_presentations (tenant_id, resource_kind, resource_key, locale, name) VALUES (?, 'role', 'admin', 'ru', 'Администратор')",
+            vec![tenant_id.into()],
+        ),
+    ] {
+        db.execute_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DbBackend::Sqlite,
+            sql,
+            params,
+        ))
+        .await
+        .unwrap();
+    }
+
+    let availability = rustok_rbac::PermissionAvailability::new(
+        std::collections::BTreeMap::from([("blog_posts:read".to_string(), "blog".to_string())]),
+        std::collections::BTreeSet::new(),
+    );
+    let overview = rustok_rbac::load_tenant_roles_overview_on(
+        &db,
+        tenant_id,
+        Some(&availability),
+        Some("ru"),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(overview.len(), 2);
+    let admin = overview.iter().find(|r| r.slug == "admin").unwrap();
+    assert_eq!(admin.display_name, "Администратор");
+    assert_eq!(admin.permissions, vec!["users:read"]);
+    assert!(admin.inactive_permissions.is_empty());
+
+    let custom = overview.iter().find(|r| r.slug == "blog_curator").unwrap();
+    assert_eq!(custom.display_name, "Blog Curator");
+    assert_eq!(custom.permissions, vec!["blog_posts:read", "users:read"]);
+    assert_eq!(custom.inactive_permissions, vec!["blog_posts:read"]);
+    assert!(!custom.is_system);
+}

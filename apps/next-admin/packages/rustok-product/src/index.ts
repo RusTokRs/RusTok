@@ -30,6 +30,7 @@ export { initialVariantInput } from './variant-draft';
 export {
   isVariantCreateInput,
   isVariantId,
+  isVariantRevision,
   isVariantUpdateInput,
   isVariantLifecycleRefusalCode
 } from './variant-create';

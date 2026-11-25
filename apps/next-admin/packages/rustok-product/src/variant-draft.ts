@@ -345,7 +345,7 @@ export function buildVariantUpdatePatch(
   draft: {
     sku: string;
     barcode: string;
-    shippingProfileSlug: string;
+    shippingProfileSlug?: string | null;
     inventoryQuantity: number;
     inventoryPolicy: string;
     prices: Array<{
@@ -360,9 +360,11 @@ export function buildVariantUpdatePatch(
   const barcode = draft.barcode.trim() || null;
   if (sku !== (current.sku ?? null)) patch.sku = sku;
   if (barcode !== (current.barcode ?? null)) patch.barcode = barcode;
-  const shippingProfileSlug = draft.shippingProfileSlug.trim() || null;
-  if (shippingProfileSlug !== (current.shippingProfileSlug ?? null)) {
-    patch.shippingProfileSlug = shippingProfileSlug;
+  if (draft.shippingProfileSlug !== undefined) {
+    const shippingProfileSlug = draft.shippingProfileSlug?.trim() || null;
+    if (shippingProfileSlug !== (current.shippingProfileSlug ?? null)) {
+      patch.shippingProfileSlug = shippingProfileSlug;
+    }
   }
   if (draft.inventoryQuantity !== current.inventoryQuantity) {
     patch.inventoryQuantity = draft.inventoryQuantity;

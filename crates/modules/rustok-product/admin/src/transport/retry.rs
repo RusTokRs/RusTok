@@ -252,12 +252,7 @@ fn variant_update_intent(
     let inventory_policy = effective_optional_text(draft.inventory_policy.as_deref());
 
     format!(
-        concat!(
-            "operation=update-variant;tenant={tenant_id:?};actor={user_id:?};variant={variant_id:?};",
-            "sku={:?};barcode={:?};shipping_profile_slug={:?};weight={:?};weight_unit={:?};",
-            "axis_values={axis_values:?};prices={prices:?};inventory_quantity={:?};",
-            "expected_inventory_quantity={:?};expected_revision={:?};inventory_policy={inventory_policy:?}"
-        ),
+        "operation=update-variant;tenant={tenant_id:?};actor={user_id:?};variant={variant_id:?};sku={:?};barcode={:?};shipping_profile_slug={:?};weight={:?};weight_unit={:?};axis_values={axis_values:?};prices={prices:?};inventory_quantity={:?};expected_inventory_quantity={:?};expected_revision={:?};inventory_policy={inventory_policy:?}",
         draft.sku,
         draft.barcode,
         draft.shipping_profile_slug,

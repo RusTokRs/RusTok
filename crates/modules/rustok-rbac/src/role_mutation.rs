@@ -1483,6 +1483,12 @@ mod tests {
         ));
         tx.rollback().await.unwrap();
 
+        assert_eq!(
+            resolve_persisted_role_slug_on(&db, tenant, target)
+                .await
+                .unwrap(),
+            "customer"
+        );
         // Within the ceiling the assignment plans, applies, and then no-ops.
         let tx = db.begin().await.unwrap();
         let plan = plan_persisted_custom_role_assignment_on(
@@ -1513,6 +1519,12 @@ mod tests {
             .is_none()
         );
         tx.commit().await.unwrap();
+        assert_eq!(
+            resolve_persisted_role_slug_on(&db, tenant, target)
+                .await
+                .unwrap(),
+            "content_editor"
+        );
 
         // Built-in slugs are tenant records too: an edited persisted Manager
         // role must not be assignable by an actor who lacks its added grant.

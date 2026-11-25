@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { stripTypeScriptTypes } from 'node:module';
 import vm from 'node:vm';
 import { parsePriceAmount } from './money.ts';
+import { buildProductAttributeValueBatches } from './attribute-value-state.ts';
 import { variantDraftCore } from './variant-draft-test-support.mjs';
 import { PRODUCT_RECOVERY_UNAVAILABLE } from './write-journal.ts';
 import { ProductWriteAttempt, UNKNOWN_PRODUCT_WRITE } from './write-attempt.ts';
@@ -57,7 +58,12 @@ const payload = () => ({
   isNew: true,
   translations: [{ locale: 'en', title: 'Chair' }],
   tags: [],
-  attributePatches: [{ attributeId: 'material', kind: 'TEXT', text: 'cotton' }],
+  attributeValueBatches: [
+    {
+      locale: 'en',
+      patches: [{ attributeId: 'material', kind: 'TEXT', text: 'cotton' }]
+    }
+  ],
   activeLocale: 'en',
   status: 'ACTIVE'
 });
@@ -73,6 +79,8 @@ function saveHandler(send) {
     setRecoveryReady: () => {},
     setRecoveryError: () => {},
     isLoadingForm: false,
+    isLoadingAttributeValues: false,
+    attributeValuesReady: true,
     isSaving: false,
     isNew: true,
     initialProduct: null,
@@ -97,10 +105,14 @@ function saveHandler(send) {
     productBrands: [],
     status: 'ACTIVE',
     documentRevision: 7,
-    dirtyAttributeIds: new Set(['material']),
-    attributeValues: {
-      material: { attributeId: 'material', kind: 'TEXT', text: 'cotton' }
+    dirtyLocalizedAttributeIdsByLocale: { en: new Set(['material']) },
+    dirtyNonLocalizedAttributeIds: new Set(),
+    attributeValuesByLocale: {
+      en: {
+        material: { attributeId: 'material', kind: 'TEXT', text: 'cotton' }
+      }
     },
+    nonLocalizedAttributeValues: {},
     initialVariants: [
       {
         axisValues: [],
@@ -123,9 +135,11 @@ function saveHandler(send) {
     setPendingOperation: (value) => {
       state.pending = value;
     },
-    setDirtyAttributeIds: () => {
+    setDirtyLocalizedAttributeIdsByLocale: () => {
       state.dirtyCleared++;
     },
+    setDirtyNonLocalizedAttributeIds: () => {},
+    buildProductAttributeValueBatches,
     parsePriceAmount,
     normalizeInitialCatalog: variantDraftCore.normalizeInitialCatalog,
     onSaveProduct: send,
@@ -177,14 +191,14 @@ test('actual save handler retries the original complete request after an unknown
   assert.equal(state.dirtyCleared, 0);
   assert.equal(state.errors[0], UNKNOWN_PRODUCT_WRITE);
   context.translations.en.title = 'Different new title';
-  context.attributeValues.material.text = 'wool';
+  context.attributeValuesByLocale.en.material.text = 'wool';
   context.documentRevision = 100;
   context.writeScope = { tenantId: 'other', actorId: 'other' };
   await run();
   assert.equal(calls[0].key, calls[1].key);
   assert.deepEqual(calls[0].request, calls[1].request);
   assert.equal(calls[1].request.translations[0].title, 'Chair');
-  assert.equal(calls[1].request.attributePatches[0].text, 'cotton');
+  assert.equal(calls[1].request.attributeValueBatches[0].patches[0].text, 'cotton');
   assert.equal(calls[1].request.revision, 7);
   assert.deepEqual(calls[1].request.scope, scope);
   assert.equal(state.dirtyCleared, 0);
@@ -344,7 +358,7 @@ test('Server Action forwards a retained key with EAV, without compensating a cre
   assert.equal(calls[0].request.publish, true);
   assert.deepEqual(
     JSON.parse(JSON.stringify(calls[0].request.attributeValues)),
-    [{ locale: 'en', patches: payload().attributePatches }]
+    payload().attributeValueBatches
   );
 });
 

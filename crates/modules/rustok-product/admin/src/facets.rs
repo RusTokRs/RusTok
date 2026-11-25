@@ -379,20 +379,20 @@ mod tests {
         let color = &panel.facets[0];
         assert_eq!(
             color.clear_href.as_deref(),
-            Some("/modules/product?category_id=category-1&sort_by=created_at&sort_direction=asc&per_page=24")
+            Some("/modules/product?category_id=category-1&sort_by=created_at&sort_direction=asc&per_page=20")
         );
         assert!(color.values[0].selected);
         assert_eq!(color.values[0].marker, "[x]");
         assert_eq!(color.values[0].count_label, "(2)");
         assert_eq!(
             color.values[1].href,
-            "/modules/product?category_id=category-1&sort_by=created_at&sort_direction=asc&per_page=24&attribute_filters=color%3Dred%3Bcolor%3Dblue"
+            "/modules/product?category_id=category-1&sort_by=created_at&sort_direction=asc&per_page=20&attribute_filters=color%3Dred%3Bcolor%3Dblue"
         );
         assert!(panel.facets[1].unbounded_hint.is_some());
         assert_eq!(panel.facets[1].clear_href, None);
         assert_eq!(
             panel.clear_href.as_deref(),
-            Some("/modules/product?category_id=category-1&sort_by=created_at&sort_direction=asc&per_page=24")
+            Some("/modules/product?category_id=category-1&sort_by=created_at&sort_direction=asc&per_page=20")
         );
     }
 

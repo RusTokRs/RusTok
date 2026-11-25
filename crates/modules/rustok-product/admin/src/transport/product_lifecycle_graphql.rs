@@ -1011,6 +1011,8 @@ mod tests {
             axis_values: None,
             prices: None,
             inventory_quantity: None,
+            expected_inventory_quantity: draft.expected_inventory_quantity,
+            expected_revision: draft.expected_revision,
             inventory_policy: None,
         };
         let json = serde_json::to_value(input).unwrap();
