@@ -84,6 +84,7 @@ pub fn ProductEditorPage(
     let (barcode, set_barcode) = signal(String::new());
     let (variant_shipping_profile_slug, set_variant_shipping_profile_slug) = signal(String::new());
     let (inventory_quantity, set_inventory_quantity) = signal(0_i32);
+    let (inventory_quantity_text, set_inventory_quantity_text) = signal("0".to_string());
     let (inventory_quantity_valid, set_inventory_quantity_valid) = signal(true);
     let (inventory_policy, set_inventory_policy) = signal("DENY".to_string());
 
@@ -296,6 +297,7 @@ pub fn ProductEditorPage(
                     set_variant_shipping_profile_slug
                         .set(variant.shipping_profile_slug.clone().unwrap_or_default());
                     set_inventory_quantity.set(variant.inventory_quantity);
+                    set_inventory_quantity_text.set(variant.inventory_quantity.to_string());
                     set_inventory_quantity_valid.set(variant.inventory_quantity >= 0);
                     set_inventory_policy.set(variant.inventory_policy.clone());
                     if let Some(price) = variant.prices.first() {
@@ -844,7 +846,7 @@ pub fn ProductEditorPage(
             inventory_quantity.get_untracked(),
             inventory_policy.get_untracked(),
         );
-        if draft.inventory_quantity.is_some() && !inventory_quantity_valid.get_untracked() {
+        if !inventory_quantity_valid.get_untracked() {
             set_error_msg.set(Some(
                 "Inventory must be a non-negative 32-bit integer.".to_string(),
             ));
@@ -1371,11 +1373,17 @@ pub fn ProductEditorPage(
                                 <input
                                     type="number"
                                     min="0"
-                                    prop:value=move || inventory_quantity.get()
+                                    prop:value=move || inventory_quantity_text.get()
                                     on:input=move |ev| {
-                                        if let Ok(num) = event_target_value(&ev).parse::<i32>() {
-                                            set_inventory_quantity.set(num);
-                                        }
+                                        let raw = event_target_value(&ev);
+                                        set_inventory_quantity_text.set(raw.clone());
+                                        let (quantity, valid) =
+                                            crate::core::initial_catalog::inventory_input_state(
+                                                inventory_quantity.get_untracked(),
+                                                &raw,
+                                            );
+                                        set_inventory_quantity.set(quantity);
+                                        set_inventory_quantity_valid.set(valid);
                                     }
                                     class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground font-mono outline-none focus:border-primary"
                                 />

@@ -1715,6 +1715,7 @@ pub(super) fn ProductVariantsPanel(
     let (edit_shipping_profile_slug, set_edit_shipping_profile_slug) = signal(String::new());
     let (edit_price, set_edit_price) = signal(String::new());
     let (edit_stock, set_edit_stock) = signal(0_i32);
+    let (edit_stock_text, set_edit_stock_text) = signal("0".to_string());
     let edit_stock_valid = RwSignal::new(true);
 
     let Some(product) = product else {
@@ -1853,10 +1854,17 @@ pub(super) fn ProductVariantsPanel(
                                                 <input
                                                     type="number"
                                                     class="rounded border border-border bg-background px-2 py-1 text-xs outline-none focus:border-primary w-16"
-                                                    prop:value=move || edit_stock.get().to_string()
-                                                    on:input=move |ev| match crate::core::initial_catalog::parse_inventory_quantity(&event_target_value(&ev)) {
-                                                        Ok(quantity) => { set_edit_stock.set(quantity); edit_stock_valid.set(true); },
-                                                        Err(_) => edit_stock_valid.set(false),
+                                                    prop:value=move || edit_stock_text.get()
+                                                    on:input=move |ev| {
+                                                        let raw = event_target_value(&ev);
+                                                        set_edit_stock_text.set(raw.clone());
+                                                        let (quantity, valid) =
+                                                            crate::core::initial_catalog::inventory_input_state(
+                                                                edit_stock.get_untracked(),
+                                                                &raw,
+                                                            );
+                                                        set_edit_stock.set(quantity);
+                                                        edit_stock_valid.set(valid);
                                                     }
                                                 />
                                             }.into_any()
@@ -1891,6 +1899,7 @@ pub(super) fn ProductVariantsPanel(
                                         original.prices.first().map(|price| price.amount.clone()).unwrap_or_default()
                                     );
                                     set_edit_stock.set(original.inventory_quantity);
+                                    set_edit_stock_text.set(original.inventory_quantity.to_string());
                                     edit_stock_valid.set(true);
                                     set_editing_variant_id.set(Some(v_id.clone()));
                                 };
