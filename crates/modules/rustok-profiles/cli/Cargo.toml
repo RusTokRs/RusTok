@@ -23,3 +23,6 @@ rustok-runtime.workspace = true
 rustok-tenant.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
+
+[lints]
+workspace = true

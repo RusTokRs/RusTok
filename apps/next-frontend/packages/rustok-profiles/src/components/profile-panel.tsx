@@ -10,7 +10,7 @@
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { storefrontGraphql } from '@/shared/lib/graphql';
 import type {
   ProfilesStorefrontFollowState,
@@ -39,6 +39,15 @@ export function ProfilePanel({
   locale?: string | null;
 }): React.JSX.Element {
   const profile = page.profile;
+  const [followState, setFollowState] =
+    useState<ProfilesStorefrontFollowState | null>(page.followState);
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
+
+  useEffect(() => {
+    setFollowState(page.followState);
+    setFeedback(null);
+  }, [page.profile?.userId, page.followState]);
 
   if (!profile) {
     return (
@@ -53,13 +62,9 @@ export function ProfilePanel({
     );
   }
 
-  const [followState, setFollowState] =
-    useState<ProfilesStorefrontFollowState | null>(page.followState);
-  const [busy, setBusy] = useState(false);
-  const [feedback, setFeedback] = useState<string | null>(null);
-
   const isSelf = page.isSelf;
   const viewerAuthenticated = page.viewerAuthenticated;
+  const controlsAvailable = followState !== null;
   const isFollowing = followState?.following ?? false;
 
   const handleToggleFollow = async () => {
@@ -163,6 +168,15 @@ export function ProfilePanel({
                 {locale === 'ru'
                   ? 'Войдите, чтобы подписаться.'
                   : 'Sign in to follow this profile.'}
+              </p>
+            ) : !controlsAvailable ? (
+              <p
+                role='status'
+                className='rounded-2xl bg-muted px-4 py-3 text-center text-sm text-muted-foreground'
+              >
+                {locale === 'ru'
+                  ? 'Управление подпиской временно недоступно.'
+                  : 'Follow controls are temporarily unavailable.'}
               </p>
             ) : (
               <button

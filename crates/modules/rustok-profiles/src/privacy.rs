@@ -235,12 +235,15 @@ impl ProfilePrivacyReadPort for ProfilePrivacyService {
         request: ProfilePrivacyReadRequest,
     ) -> Result<ProfilePrivacyDecision, PortError> {
         context.require_policy(PortCallPolicy::read())?;
-        let tenant_id = Uuid::parse_str(&context.tenant_id).map_err(|_| {
-            PortError::validation(
-                "profiles.tenant_id_invalid",
-                "profile privacy reads require a valid tenant identifier",
-            )
-        })?;
+        let tenant_id = Uuid::parse_str(&context.tenant_id)
+            .ok()
+            .filter(|id| !id.is_nil())
+            .ok_or_else(|| {
+                PortError::validation(
+                    "profiles.tenant_id_invalid",
+                    "profile privacy reads require a valid tenant identifier",
+                )
+            })?;
         let audience = audience_from_port_context(&context, request.actor_id)?;
 
         self.evaluate_access(tenant_id, request.recipient_id, audience)
@@ -265,12 +268,15 @@ fn audience_from_port_context(
 ) -> Result<ProfileAccessAudience, PortError> {
     match &context.actor.kind {
         PortActorKind::User => {
-            let context_actor_id = Uuid::parse_str(&context.actor.id).map_err(|_| {
-                PortError::validation(
-                    "profiles.actor_id_invalid",
-                    "profile privacy user actors require a valid actor identifier",
-                )
-            })?;
+            let context_actor_id = Uuid::parse_str(&context.actor.id)
+                .ok()
+                .filter(|id| !id.is_nil())
+                .ok_or_else(|| {
+                    PortError::validation(
+                        "profiles.actor_id_invalid",
+                        "profile privacy user actors require a valid actor identifier",
+                    )
+                })?;
             if actor_id != Some(context_actor_id) {
                 return Err(PortError::validation(
                     "profiles.actor_id_mismatch",
@@ -406,5 +412,31 @@ mod tests {
                 ProfilePrivacyDecision::RecipientUnavailable
             );
         }
+    }
+
+    #[test]
+    fn audience_from_port_context_rejects_nil_and_mismatched_actor_ids() {
+        let valid_actor = Uuid::new_v4();
+        let nil_actor_ctx = PortContext::new(
+            Uuid::new_v4().to_string(),
+            rustok_api::PortActor::user(Uuid::nil().to_string()),
+            "en",
+            "corr-nil-actor",
+        );
+        assert!(audience_from_port_context(&nil_actor_ctx, Some(Uuid::nil())).is_err());
+
+        let valid_ctx = PortContext::new(
+            Uuid::new_v4().to_string(),
+            rustok_api::PortActor::user(valid_actor.to_string()),
+            "en",
+            "corr-valid-actor",
+        );
+        assert!(audience_from_port_context(&valid_ctx, Some(Uuid::new_v4())).is_err());
+        assert_eq!(
+            audience_from_port_context(&valid_ctx, Some(valid_actor)).unwrap(),
+            ProfileAccessAudience::Authenticated {
+                actor_id: valid_actor,
+            }
+        );
     }
 }
