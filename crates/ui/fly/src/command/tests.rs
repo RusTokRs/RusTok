@@ -726,6 +726,57 @@ fn history_entry_records_exact_inverse_command() {
 }
 
 #[test]
+fn move_to_implicit_root_uses_the_same_insertion_slots_as_explicit_root() {
+    let document = GrapesJsCodec::decode_value(json!({
+        "pages": [{"id": "home", "component": {"id": "root", "type": "wrapper",
+            "components": [
+                {"id": "a", "type": "section"},
+                {"id": "b", "type": "section"},
+                {"id": "c", "type": "section"}
+            ]
+        }}]
+    })).expect("document");
+    for parent in [None, Some("root".to_string())] {
+        let mut editor = FlyEditor::new(document.clone(), RegistrySet::with_builtins());
+        editor.apply(EditorCommand::Move {
+            component_id: "a".to_string(),
+            new_parent_id: parent,
+            index: 3,
+        }).expect("move to end");
+        assert_eq!(editor.document().component_location("a").expect("a").index, 2);
+        assert_eq!(editor.document().component_location("b").expect("b").index, 0);
+    }
+}
+
+#[test]
+fn move_inverse_restores_same_parent_order_in_both_directions() {
+    let document = GrapesJsCodec::decode_value(json!({
+        "pages": [{"id": "home", "component": {"id": "root", "type": "wrapper",
+            "components": [
+                {"id": "a", "type": "section"},
+                {"id": "b", "type": "section"},
+                {"id": "c", "type": "section"}
+            ]
+        }}]
+    })).expect("document");
+    for (id, index) in [("a", 3), ("c", 0), ("b", 1), ("b", 2)] {
+        for parent in [None, Some("root".to_string())] {
+            let mut editor = FlyEditor::new(document.clone(), RegistrySet::with_builtins());
+            let before = editor.document().clone();
+            let command = EditorCommand::Move {
+                component_id: id.to_string(),
+                new_parent_id: parent,
+                index,
+            };
+            let inverse = invert_command(&before, &command).expect("move inverse");
+            editor.apply(command).expect("forward");
+            editor.apply(inverse).expect("inverse");
+            assert_eq!(editor.document(), &before, "move {id} to slot {index}");
+        }
+    }
+}
+
+#[test]
 fn invert_insert_and_remove_are_reciprocal() {
     let mut editor = editor();
     let mut new_node = ComponentNode::object("section");

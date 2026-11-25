@@ -93,6 +93,16 @@ structural paths on the same page rather than following parent IDs; anonymous in
 nodes and repeated parent IDs no longer break the recursion guard. Regressions are authored
 but not executed.
 
+Fly cache and move follow-up (2026-11-25, source-only): indexed mutable component access
+and the new raw-project mutable accessor invalidate both document caches before returning
+a borrow; page access and structural editor commands use that accessor. Move commands
+resolve the implicit first-page root and explicit root ID as the same insertion parent;
+same-parent inverses account for pre-removal slot semantics. Four regressions are authored.
+**OPEN:** migrate all direct raw-project writes to the invalidating accessor and make
+`ProjectDocument.project` private (including consumer reads and source guards); the public
+field remains an invalidation bypass. Full workspace reference discovery was unavailable;
+scoped compilation, remediation gate, tests and lint were not run in this pass.
+
 Reduced-motion follow-up: the shared Fly browser asset now uses instant scrolling for
 `scroll_to` when the target document requests reduced motion, including in the presence of
 CSS `scroll-behavior: smooth`; animations use the same document preference. The Node runtime

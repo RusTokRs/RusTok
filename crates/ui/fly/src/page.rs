@@ -104,8 +104,7 @@ impl ProjectDocument {
 
     pub fn page_mut(&mut self, locator: &PageLocator) -> FlyResult<&mut ProjectPage> {
         let index = locator.resolve(self)?;
-        self.invalidate_caches();
-        self.project
+        self.project_mut()
             .pages
             .get_mut(index)
             .ok_or_else(|| FlyError::PageNotFound(index.to_string()))

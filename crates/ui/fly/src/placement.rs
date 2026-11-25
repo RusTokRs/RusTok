@@ -62,6 +62,25 @@ impl ProjectDocument {
         }
     }
 
+    /// Does the insertion locator identify the component's actual parent?
+    /// A missing parent ID denotes the first page root, not every anonymous parent.
+    pub(crate) fn component_has_parent(&self, component_id: &str, parent_id: Option<&str>) -> bool {
+        let index = self.component_index();
+        let Some((page, path)) = index.paths.get(component_id) else {
+            return false;
+        };
+        let Some((_, parent_path)) = path.split_last() else {
+            return false;
+        };
+        match parent_id {
+            Some(id) => index.paths.get(id).is_some_and(|(parent_page, target_path)| {
+                parent_page == page && target_path.as_slice() == parent_path
+            }),
+            None => parent_path.is_empty()
+                && self.project.pages.iter().position(|page| page.component.is_some()) == Some(*page),
+        }
+    }
+
     pub fn is_component_descendant_of(&self, candidate_id: &str, ancestor_id: &str) -> bool {
         self.component_index()
             .is_descendant_of(candidate_id, ancestor_id)

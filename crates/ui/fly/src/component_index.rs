@@ -172,7 +172,7 @@ impl ComponentIndex {
         id: &str,
     ) -> Option<&'a mut ComponentObject> {
         let (page_index, path) = self.paths.get(id)?;
-        let page = document.project.pages.get_mut(*page_index)?;
+        let page = document.project_mut().pages.get_mut(*page_index)?;
         let root = page.component.as_mut()?.as_object_mut()?;
         let target = navigate_mut(root, path)?;
         if target.id() == Some(id) {
@@ -334,6 +334,35 @@ mod tests {
                 "title"
             ]
         );
+    }
+
+    #[test]
+    fn indexed_mutation_invalidates_hash_and_location_cache() {
+        let mut document = document();
+        let index = ComponentIndex::build(&document);
+        let before_hash = document.hash();
+        assert!(document.component_index().contains("title"));
+
+        index.get_component_mut(&mut document, "title").expect("title").id =
+            Some("renamed-title".to_string());
+
+        assert_ne!(document.hash(), before_hash);
+        assert!(document.component_location("title").is_none());
+        assert!(document.component_location("renamed-title").is_some());
+        assert!(document.component_index().contains("renamed-title"));
+    }
+
+    #[test]
+    fn raw_project_mutable_borrow_invalidates_both_caches() {
+        let mut document = document();
+        let before_hash = document.hash();
+        assert!(document.component_index().contains("about-root"));
+
+        document.project_mut().pages.remove(1);
+
+        assert_ne!(document.hash(), before_hash);
+        assert!(document.component_location("about-root").is_none());
+        assert!(!document.component_index().contains("about-hero"));
     }
 
     #[test]

@@ -209,6 +209,12 @@ caps. The `fly` crate has no cross-page store: consumer modules such as
 
 ## Known Limitations / Pending Implementation
 
+- **Raw project mutation can bypass cache invalidation.** `ProjectDocument.project` is still public.
+  Use `project_mut()`, `component_mut()`, or the owner command API for writes; indexed mutable
+  component access now invalidates both caches. Closing the field requires migrating all
+  workspace consumers and source guards together. This remaining cutover is tracked in the
+  [Page Builder backlog](../../../docs/modules/page-builder-backlog.md).
+
 `CHANGELOG.md` carries the release-level *Known gaps*. This section lists the boundaries an
 integrator can hit today, each implemented to a stated point and deliberately no further. An
 unrecorded incompleteness is treated as a defect in this repository, so every entry below names
