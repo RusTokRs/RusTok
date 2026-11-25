@@ -722,28 +722,159 @@ fn merge_arrays_by_id(
         return None;
     }
 
-    let mut order = if local_reordered && !server_reordered {
-        local_order.clone()
+    let preferred_base_order = if local_reordered && !server_reordered {
+        &local_base_order
+    } else if server_reordered {
+        &server_base_order
     } else {
-        server_order.clone()
+        &base_order
     };
-    for id in &local_order {
-        if !order.contains(id) {
-            order.push(id.clone());
+    let merged_base_order = preferred_base_order
+        .iter()
+        .filter(|id| merged_items.contains_key(*id))
+        .cloned()
+        .collect::<Vec<_>>();
+    let surviving_base_ids = merged_base_order.iter().cloned().collect::<BTreeSet<_>>();
+    let merged_item_ids = merged_items.keys().cloned().collect::<BTreeSet<_>>();
+
+    type Gap = (Option<String>, Option<String>);
+
+    fn insertion_groups(
+        order: &[String],
+        base_ids: &BTreeSet<String>,
+        surviving_base_ids: &BTreeSet<String>,
+        merged_item_ids: &BTreeSet<String>,
+    ) -> (BTreeMap<Gap, Vec<String>>, BTreeMap<String, Gap>) {
+        let mut next_base_at = vec![None; order.len()];
+        let mut next_base = None;
+        for index in (0..order.len()).rev() {
+            next_base_at[index] = next_base.clone();
+            if surviving_base_ids.contains(&order[index]) {
+                next_base = Some(order[index].clone());
+            }
+        }
+
+        let mut previous_base = None;
+        let mut groups = BTreeMap::<Gap, Vec<String>>::new();
+        let mut positions = BTreeMap::<String, Gap>::new();
+        for (index, id) in order.iter().enumerate() {
+            if base_ids.contains(id) {
+                if surviving_base_ids.contains(id) {
+                    previous_base = Some(id.clone());
+                }
+                continue;
+            }
+            if !merged_item_ids.contains(id) {
+                continue;
+            }
+            let gap = (previous_base.clone(), next_base_at[index].clone());
+            groups.entry(gap.clone()).or_default().push(id.clone());
+            positions.insert(id.clone(), gap);
+        }
+        (groups, positions)
+    }
+
+    fn gap_is_valid(gap: &Gap, positions: &BTreeMap<String, usize>, base_len: usize) -> bool {
+        let previous = match gap.0.as_ref() {
+            Some(id) => match positions.get(id) {
+                Some(index) => Some(*index),
+                None => return false,
+            },
+            None => None,
+        };
+        let next = match gap.1.as_ref() {
+            Some(id) => match positions.get(id) {
+                Some(index) => Some(*index),
+                None => return false,
+            },
+            None => None,
+        };
+
+        match (previous, next) {
+            (None, None) => base_len == 0,
+            (None, Some(next)) => next == 0,
+            (Some(previous), None) => previous + 1 == base_len,
+            (Some(previous), Some(next)) => previous + 1 == next,
         }
     }
-    for id in &server_order {
-        if !order.contains(id) {
-            order.push(id.clone());
+
+    let (server_groups, server_positions) = insertion_groups(
+        &server_order,
+        &base_ids,
+        &surviving_base_ids,
+        &merged_item_ids,
+    );
+    let (local_groups, local_positions) = insertion_groups(
+        &local_order,
+        &base_ids,
+        &surviving_base_ids,
+        &merged_item_ids,
+    );
+
+    // The same newly-created id cannot be placed at two different gaps.
+    for (id, server_gap) in &server_positions {
+        if local_positions
+            .get(id)
+            .is_some_and(|local_gap| local_gap != server_gap)
+        {
+            conflicts.push(format!("{path}/$order"));
+            return None;
         }
     }
-    for id in merged_items.keys() {
-        if !order.contains(id) {
-            order.push(id.clone());
+
+    let base_positions = merged_base_order
+        .iter()
+        .enumerate()
+        .map(|(index, id)| (id.clone(), index))
+        .collect::<BTreeMap<_, _>>();
+    if server_groups
+        .keys()
+        .chain(local_groups.keys())
+        .any(|gap| !gap_is_valid(gap, &base_positions, merged_base_order.len()))
+    {
+        // A side inserted between anchors that the other side reordered or separated.
+        // Do not silently move that component to a different position.
+        conflicts.push(format!("{path}/$order"));
+        return None;
+    }
+
+    let mut ordered_ids = Vec::with_capacity(merged_items.len());
+    let mut seen = BTreeSet::new();
+    for gap_index in 0..=merged_base_order.len() {
+        let gap = (
+            gap_index
+                .checked_sub(1)
+                .and_then(|index| merged_base_order.get(index).cloned()),
+            merged_base_order.get(gap_index).cloned(),
+        );
+        if let Some(ids) = server_groups.get(&gap) {
+            for id in ids {
+                if seen.insert(id.clone()) {
+                    ordered_ids.push(id.clone());
+                }
+            }
+        }
+        if let Some(ids) = local_groups.get(&gap) {
+            for id in ids {
+                if seen.insert(id.clone()) {
+                    ordered_ids.push(id.clone());
+                }
+            }
+        }
+        if let Some(base_id) = merged_base_order.get(gap_index) {
+            if seen.insert(base_id.clone()) {
+                ordered_ids.push(base_id.clone());
+            }
         }
     }
+
+    if ordered_ids.len() != merged_items.len() {
+        conflicts.push(format!("{path}/$order"));
+        return None;
+    }
+
     Some(Value::Array(
-        order
+        ordered_ids
             .into_iter()
             .filter_map(|id| merged_items.remove(&id))
             .collect(),
@@ -861,5 +992,112 @@ mod tests {
         assert!(recovery_record_is_newer(&newer, &base));
     }
 
+
+
+
+    #[test]
+    fn three_way_merge_preserves_independent_insertions_at_their_shared_gap() {
+        let base = json!([
+            { "id": "a", "content": "A" },
+            { "id": "b", "content": "B" }
+        ]);
+        let server = json!([
+            { "id": "a", "content": "A" },
+            { "id": "server", "content": "S" },
+            { "id": "b", "content": "B" }
+        ]);
+        let local = json!([
+            { "id": "a", "content": "A" },
+            { "id": "local", "content": "L" },
+            { "id": "b", "content": "B" }
+        ]);
+        let mut conflicts = Vec::new();
+        let merged = merge_optional(Some(&base), Some(&server), Some(&local), "$", &mut conflicts)
+            .expect("merge");
+        assert!(conflicts.is_empty());
+        assert_eq!(
+            merged,
+            Some(json!([
+                { "id": "a", "content": "A" },
+                { "id": "server", "content": "S" },
+                { "id": "local", "content": "L" },
+                { "id": "b", "content": "B" }
+            ]))
+        );
+    }
+
+    #[test]
+    fn three_way_merge_preserves_front_and_end_insertions() {
+        let base = json!([
+            { "id": "a", "content": "A" },
+            { "id": "b", "content": "B" }
+        ]);
+        let server = json!([
+            { "id": "front", "content": "F" },
+            { "id": "a", "content": "A" },
+            { "id": "b", "content": "B" }
+        ]);
+        let local = json!([
+            { "id": "a", "content": "A" },
+            { "id": "b", "content": "B" },
+            { "id": "end", "content": "E" }
+        ]);
+        let mut conflicts = Vec::new();
+        let merged = merge_optional(Some(&base), Some(&server), Some(&local), "$", &mut conflicts)
+            .expect("merge");
+        assert!(conflicts.is_empty());
+        assert_eq!(
+            merged,
+            Some(json!([
+                { "id": "front", "content": "F" },
+                { "id": "a", "content": "A" },
+                { "id": "b", "content": "B" },
+                { "id": "end", "content": "E" }
+            ]))
+        );
+    }
+
+    #[test]
+    fn three_way_merge_rejects_insertions_whose_anchors_were_reordered() {
+        let base = json!([
+            { "id": "a", "content": "A" },
+            { "id": "b", "content": "B" }
+        ]);
+        let server = json!([
+            { "id": "b", "content": "B" },
+            { "id": "a", "content": "A" }
+        ]);
+        let local = json!([
+            { "id": "a", "content": "A" },
+            { "id": "local", "content": "L" },
+            { "id": "b", "content": "B" }
+        ]);
+        let mut conflicts = Vec::new();
+        let merged = merge_optional(Some(&base), Some(&server), Some(&local), "$", &mut conflicts);
+        assert!(merged.is_none());
+        assert!(conflicts.iter().any(|path| path == "$/$order"));
+    }
+
+    #[test]
+    fn three_way_merge_rejects_the_same_new_id_at_different_positions() {
+        let base = json!([
+            { "id": "a", "content": "A" },
+            { "id": "b", "content": "B" }
+        ]);
+        let server = json!([
+            { "id": "a", "content": "A" },
+            { "id": "shared", "content": "S" },
+            { "id": "b", "content": "B" }
+        ]);
+        let local = json!([
+            { "id": "shared", "content": "S" },
+            { "id": "a", "content": "A" },
+            { "id": "b", "content": "B" }
+        ]);
+        let mut conflicts = Vec::new();
+        let merged = merge_optional(Some(&base), Some(&server), Some(&local), "$", &mut conflicts);
+        assert!(merged.is_none());
+        assert!(conflicts.iter().any(|path| path == "$/$order"));
+    }
 
 }
