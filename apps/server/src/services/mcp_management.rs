@@ -141,6 +141,7 @@ impl McpManagementService {
         input: CreateMcpClientInput,
     ) -> Result<CreateMcpClientResult> {
         validate_slug(&input.slug)?;
+        validate_token_expiry(input.token_expires_at.as_ref())?;
         let token_name = input
             .token_name
             .clone()
@@ -307,6 +308,7 @@ impl McpManagementService {
             .clone()
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| "rotated".to_string());
+        validate_token_expiry(input.expires_at.as_ref())?;
         let txn = db.begin().await.map_err(map_db_err)?;
         let client = lock_client_for_update_txn(&txn, tenant_id, client_id).await?;
         if !client.is_active() {
@@ -1389,6 +1391,15 @@ fn clamp_limit(limit: Option<u64>, default: u64, max: u64) -> u64 {
     limit.unwrap_or(default).clamp(1, max)
 }
 
+fn validate_token_expiry(expires_at: Option<&DateTime<Utc>>) -> Result<()> {
+    if expires_at.is_some_and(|expires_at| expires_at <= &Utc::now()) {
+        return Err(Error::BadRequest(
+            "MCP token expiry must be in the future".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 fn validate_slug(slug: &str) -> Result<()> {
     if slug.trim().is_empty() {
         return Err(Error::BadRequest(
@@ -1467,10 +1478,12 @@ fn map_db_err(_err: sea_orm::DbErr) -> Error {
 #[cfg(test)]
 mod tests {
     use super::{
-        dedupe, scaffold_apply_error_requires_recovery, scaffold_status_error, token_preview,
-        MCP_SCAFFOLD_STATUS_APPLYING, MCP_SCAFFOLD_STATUS_RECOVERY_REQUIRED,
+        dedupe, scaffold_apply_error_requires_recovery, scaffold_status_error,
+        token_preview, validate_token_expiry, MCP_SCAFFOLD_STATUS_APPLYING,
+        MCP_SCAFFOLD_STATUS_RECOVERY_REQUIRED,
     };
     use crate::error::Error;
+    use chrono::Utc;
     use rustok_mcp::alloy_scaffold::AlloyScaffoldError;
     use uuid::Uuid;
 
@@ -1512,6 +1525,16 @@ mod tests {
             error,
             Error::BadRequest(message) if message.contains("manual workspace reconciliation")
         ));
+    }
+
+    #[test]
+    fn token_expiry_must_be_in_the_future() {
+        let past = Utc::now() - chrono::Duration::seconds(1);
+        let future = Utc::now() + chrono::Duration::seconds(60);
+
+        assert!(validate_token_expiry(None).is_ok());
+        assert!(validate_token_expiry(Some(&future)).is_ok());
+        assert!(validate_token_expiry(Some(&past)).is_err());
     }
 
     #[test]
