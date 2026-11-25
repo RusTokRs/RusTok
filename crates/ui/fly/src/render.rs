@@ -1373,6 +1373,8 @@ pub fn css_property_may_load_resource(name: &str) -> bool {
             | "src"
             | "stroke"
             | "-webkit-background-image"
+            | "-webkit-clip-path"
+            | "-webkit-filter"
             | "-webkit-border-image"
             | "-webkit-border-image-source"
             | "-webkit-mask"
