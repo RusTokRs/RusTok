@@ -60,6 +60,7 @@ query ProductAdminProductDetail($tenantId: UUID!, $id: UUID!, $locale: String) {
     }
     variants {
       id
+      revision
       sku
       barcode
       shippingProfileSlug
@@ -138,6 +139,7 @@ mutation ProductAdminUpdateProduct($idempotencyKey: String!, $id: UUID!, $input:
     }
     variants {
       id
+      revision
       sku
       barcode
       shippingProfileSlug
@@ -173,6 +175,7 @@ export const CREATE_VARIANT_MUTATION = `
 mutation ProductAdminCreateVariant($idempotencyKey: String!, $productId: UUID!, $input: CreateVariantInput!) {
   createProductVariant(idempotencyKey: $idempotencyKey, productId: $productId, input: $input) {
     id
+    revision
     sku
     barcode
     title
@@ -194,6 +197,7 @@ export const UPDATE_VARIANT_MUTATION = `
 mutation ProductAdminUpdateVariant($idempotencyKey: String!, $id: UUID!, $input: UpdateVariantInput!) {
   updateProductVariant(idempotencyKey: $idempotencyKey, id: $id, input: $input) {
     id
+    revision
     sku
     barcode
     title
@@ -212,8 +216,8 @@ mutation ProductAdminUpdateVariant($idempotencyKey: String!, $id: UUID!, $input:
 }`;
 
 export const DELETE_VARIANT_MUTATION = `
-mutation ProductAdminDeleteVariant($idempotencyKey: String!, $id: UUID!) {
-  deleteProductVariant(idempotencyKey: $idempotencyKey, id: $id)
+mutation ProductAdminDeleteVariant($idempotencyKey: String!, $id: UUID!, $expectedRevision: String!) {
+  deleteProductVariant(idempotencyKey: $idempotencyKey, id: $id, expectedRevision: $expectedRevision)
 }`;
 
 export const ADD_PRODUCT_IMAGE_MUTATION = `
@@ -309,6 +313,8 @@ export type UpdateVariantInput = {
     compareAtAmount?: string | null;
   }>;
   inventoryQuantity?: number;
+  expectedInventoryQuantity?: number;
+  expectedRevision?: string;
   inventoryPolicy?: string;
 };
 
@@ -555,6 +561,7 @@ export async function updateVariant(
 export async function deleteVariant(
   opts: GqlOpts,
   id: string,
+  expectedRevision: string,
   idempotencyKey: string
 ): Promise<boolean> {
   if (!opts.token || !opts.tenantSlug || !opts.tenantId) {
@@ -566,11 +573,11 @@ export async function deleteVariant(
   }
   const executor = opts.graphql ?? graphqlRequest;
   const data = await executor<
-    { idempotencyKey: string; id: string },
+    { idempotencyKey: string; id: string; expectedRevision: string },
     { deleteProductVariant: boolean }
   >(
     DELETE_VARIANT_MUTATION,
-    { idempotencyKey, id },
+    { idempotencyKey, id, expectedRevision },
     opts.token,
     opts.tenantSlug
   );

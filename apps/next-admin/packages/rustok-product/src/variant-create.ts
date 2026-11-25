@@ -22,6 +22,11 @@ export const isVariantId = (value: unknown): value is string =>
   typeof value === 'string' &&
   idPattern.test(value) &&
   value !== '00000000-0000-0000-0000-000000000000';
+
+export const isVariantRevision = (value: unknown): value is string =>
+  typeof value === 'string' &&
+  /^[1-9]\\d{0,18}$/.test(value) &&
+  (value.length < 19 || value <= '9223372036854775807');
 const amount = (value: unknown): boolean => {
   if (typeof value !== 'string' || value.length > 64 || value.trim() !== value)
     return false;
@@ -155,6 +160,7 @@ const refusals = new Set([
 
 const lifecycleRefusals = new Set([
   ...refusals,
+  'PRODUCT_REVISION_CONFLICT',
   'NO_VARIANTS',
   'CANNOT_DELETE_ONLY_VARIANT',
   'PRODUCT_INVENTORY_DELETION_INVALID',
@@ -192,9 +198,10 @@ export function isVariantUpdateInput(
       'weightUnit',
       'prices',
       'inventoryQuantity',
+      'expectedInventoryQuantity',
+      'expectedRevision',
       'inventoryPolicy'
-    ]) ||
-    Object.keys(value).length === 0
+    ])
   )
     return false;
 
@@ -206,6 +213,15 @@ export function isVariantUpdateInput(
     !optionalShortText(value.shippingProfileSlug) ||
     !optionalShortText(value.weight) ||
     !optionalShortText(value.weightUnit) ||
+    !isVariantRevision(value.expectedRevision) ||
+    (value.expectedInventoryQuantity !== undefined &&
+      (!Number.isInteger(value.expectedInventoryQuantity) ||
+        (value.expectedInventoryQuantity as number) < -2147483648 ||
+        (value.expectedInventoryQuantity as number) > 2147483647)) ||
+    (value.inventoryQuantity !== undefined &&
+      value.expectedInventoryQuantity === undefined) ||
+    (value.inventoryQuantity === undefined &&
+      value.expectedInventoryQuantity !== undefined) ||
     (value.inventoryQuantity !== undefined &&
       (!Number.isInteger(value.inventoryQuantity) ||
         (value.inventoryQuantity as number) < 0 ||
@@ -213,6 +229,13 @@ export function isVariantUpdateInput(
     (value.inventoryPolicy !== undefined &&
       (typeof value.inventoryPolicy !== 'string' ||
         !['deny', 'continue'].includes(value.inventoryPolicy.toLowerCase())))
+  )
+    return false;
+
+  if (
+    !Object.keys(value).some(
+      (key) => key !== 'expectedRevision' && key !== 'expectedInventoryQuantity'
+    )
   )
     return false;
 

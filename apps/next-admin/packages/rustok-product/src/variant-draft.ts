@@ -389,5 +389,11 @@ export function buildVariantUpdatePatch(
       compareAtAmount: price.compareAtAmount?.trim() || null
     }));
   }
+  if (Object.keys(patch).length > 0) {
+    patch.expectedRevision = current.revision;
+    if (patch.inventoryQuantity !== undefined) {
+      patch.expectedInventoryQuantity = current.inventoryQuantity;
+    }
+  }
   return patch;
 }
