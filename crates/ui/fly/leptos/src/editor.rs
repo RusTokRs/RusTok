@@ -363,20 +363,16 @@ pub fn FlyThemeTokenEditor(
                     })
                     .collect_view()}
             </dl>
-            <div class="fly-theme-token-editor__form">
-                <form
-                    id="fly-theme-token-upsert"
-                    hidden=true
-                    data-fly-intent-form=intent_mode.then_some("set_theme_token")
-                    on:submit=move |event| event.prevent_default()
-                >
-                    <input type="hidden" name="name" prop:value=move || token_name.get()/>
-                    <input type="hidden" name="value" prop:value=move || token_value.get()/>
-                </form>
+            <form
+                class="fly-theme-token-editor__form"
+                data-fly-intent-form=intent_mode.then_some("set_theme_token")
+                on:submit=move |event| event.prevent_default()
+            >
                 <label>
                     {token_name_label}
                     <input
                         type="text"
+                        name="name"
                         disabled=!can_styles
                         placeholder="brand"
                         prop:value=move || token_name.get()
@@ -387,6 +383,7 @@ pub fn FlyThemeTokenEditor(
                     {token_value_label}
                     <input
                         type="text"
+                        name="value"
                         disabled=!can_styles
                         placeholder="#0b5fff"
                         prop:value=move || token_value.get()
@@ -395,7 +392,6 @@ pub fn FlyThemeTokenEditor(
                 </label>
                 <button
                     type="submit"
-                    form="fly-theme-token-upsert"
                     disabled=!can_styles
                     on:click=move |event| {
                         let name = token_name.get_untracked().trim().to_string();
@@ -425,7 +421,7 @@ pub fn FlyThemeTokenEditor(
                             }
                         })
                 }}
-            </div>
+            </form>
         </div>
     }
 }
