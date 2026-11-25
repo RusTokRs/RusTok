@@ -1,5 +1,16 @@
 # Server App — Implementation Plan
 
+## External Iggy configuration validation parity (2026-11-25)
+
+Source changes reuse the connector's structural validation before accepting
+external settings, and share stored configuration resolution between readiness
+and startup. The deployment fallback returns the normalized address list
+rather than the unchecked original. Added deployment normalization and
+connector-incompatible configuration regressions. Maintainer verification:
+`cargo check -p rustok-server`, `cargo test -p rustok-server --lib iggy_connector_settings_service`,
+`cargo test -p rustok-iggy-connector --lib`, real broker tests and remediation gate.
+No compilation or live broker result is claimed.
+
 ## Worker group cancellation ordering follow-up (2026-11-25)
 
 Source changes cancel all remaining group members before joining their

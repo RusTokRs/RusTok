@@ -1,5 +1,14 @@
 # Documentation: `apps/server`
 
+## External Iggy configuration validation parity (2026-11-25)
+
+External Iggy settings save, readiness and startup share connector-owned
+connection-string validation, including the resolved password, TCP protocol
+and inherited TLS parameters. Deployment and stored address lists are
+normalized before use, preserving first occurrence and endpoint priority.
+Validation is structural and does not prove broker reachability or
+authentication. Bundled mode validation is unchanged.
+
 ## Worker group cancellation ordering (2026-11-25)
 
 When a runtime worker group exhausts its cooperative shutdown deadline, the

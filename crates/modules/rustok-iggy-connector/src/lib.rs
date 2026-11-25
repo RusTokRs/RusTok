@@ -174,6 +174,46 @@ pub struct ExternalConnectorConfig {
     pub tls_ca_file: Option<String>,
 }
 
+impl ExternalConnectorConfig {
+    /// Validate the settings used by the SDK connection-string builder without
+    /// connecting to a broker or returning a credential-bearing string.
+    pub fn validate_connection_settings(&self) -> Result<(), ConnectorError> {
+        if self.protocol != "tcp" {
+            return Err(ConnectorError::Config(
+                "persistent Iggy consumer groups require the tcp protocol".to_string(),
+            ));
+        }
+        if self.addresses.is_empty() {
+            return Err(ConnectorError::Config(
+                "Iggy external configuration requires at least one address".to_string(),
+            ));
+        }
+
+        if self.username.is_empty() != self.password.is_empty() {
+            return Err(ConnectorError::Config(
+                "Iggy username and password must either both be set or both be empty".to_string(),
+            ));
+        }
+        validate_connection_string_component(&self.username, "username", &[':', '@'])?;
+        validate_connection_string_component(&self.password, "password", &[':', '@'])?;
+        if let Some(domain) = self.tls_domain.as_deref() {
+            validate_connection_string_component(domain, "tls_domain", &['?', '&', '='])?;
+        }
+        if let Some(ca_file) = self.tls_ca_file.as_deref() {
+            validate_connection_string_component(ca_file, "tls_ca_file", &['?', '&', '='])?;
+        }
+        for address in &self.addresses {
+            if address.is_empty() {
+                return Err(ConnectorError::Config(
+                    "Iggy external addresses must not contain an empty value".to_string(),
+                ));
+            }
+            validate_connection_string_component(address, "address", &['@', '?', '#'])?;
+        }
+        Ok(())
+    }
+}
+
 impl Default for ExternalConnectorConfig {
     fn default() -> Self {
         Self {
@@ -707,30 +747,7 @@ impl ExternalConnector {
 
     #[cfg(any(feature = "iggy", test))]
     fn connection_strings(config: &ExternalConnectorConfig) -> Result<Vec<String>, ConnectorError> {
-        if config.protocol != "tcp" {
-            return Err(ConnectorError::Config(
-                "persistent Iggy consumer groups require the tcp protocol".to_string(),
-            ));
-        }
-        if config.addresses.is_empty() {
-            return Err(ConnectorError::Config(
-                "Iggy external configuration requires at least one address".to_string(),
-            ));
-        }
-
-        if config.username.is_empty() != config.password.is_empty() {
-            return Err(ConnectorError::Config(
-                "Iggy username and password must either both be set or both be empty".to_string(),
-            ));
-        }
-        validate_connection_string_component(&config.username, "username", &[':', '@'])?;
-        validate_connection_string_component(&config.password, "password", &[':', '@'])?;
-        if let Some(domain) = config.tls_domain.as_deref() {
-            validate_connection_string_component(domain, "tls_domain", &['?', '&', '='])?;
-        }
-        if let Some(ca_file) = config.tls_ca_file.as_deref() {
-            validate_connection_string_component(ca_file, "tls_ca_file", &['?', '&', '='])?;
-        }
+        config.validate_connection_settings()?;
         let mut options = Vec::new();
         if config.tls_enabled {
             options.push("tls=true".to_string());
@@ -753,12 +770,6 @@ impl ExternalConnector {
             .addresses
             .iter()
             .map(|address| {
-                if address.is_empty() {
-                    return Err(ConnectorError::Config(
-                        "Iggy external addresses must not contain an empty value".to_string(),
-                    ));
-                }
-                validate_connection_string_component(address, "address", &['@', '?', '#'])?;
 
                 let mut connection_string = if !config.username.is_empty() {
                     format!("iggy://{}:{}@{}", config.username, config.password, address)
@@ -1541,7 +1552,6 @@ impl IggyConnector for BundledConnector {
 ///
 /// The SDK parser does not URL-decode values. Reject its structural delimiters
 /// instead of generating a string that authenticates with unintended values.
-#[cfg(any(feature = "iggy", test))]
 fn validate_connection_string_component(
     value: &str,
     field: &str,
