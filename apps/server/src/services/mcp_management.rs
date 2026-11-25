@@ -120,6 +120,7 @@ pub struct McpManagementService;
 const MCP_SCAFFOLD_STATUS_STAGED: &str = "staged";
 const MCP_SCAFFOLD_STATUS_APPLYING: &str = "applying";
 const MCP_SCAFFOLD_STATUS_APPLIED: &str = "applied";
+const MCP_SCAFFOLD_STATUS_RECOVERY_REQUIRED: &str = "recovery_required";
 
 impl McpManagementService {
     #[tracing::instrument(
@@ -690,10 +691,48 @@ impl McpManagementService {
                 return Err(Error::BadRequest(reason));
             }
         };
-        let apply_result = match apply_staged_scaffold(&staged_draft, &workspace_root) {
-            Ok(response) => response,
-            Err(error) => {
+        // Scaffold generation writes several files synchronously. Keep that filesystem
+        // work off Tokio's async workers; a panic or partial write is quarantined below.
+        let apply_workspace_root = workspace_root.clone();
+        let apply_result = match tokio::task::spawn_blocking(move || {
+            apply_staged_scaffold(&staged_draft, &apply_workspace_root)
+        })
+        .await
+        {
+            Ok(Ok(response)) => response,
+            Ok(Err(error)) => {
                 let reason = error.to_string();
+                if matches!(
+                    &error,
+                    rustok_mcp::alloy_scaffold::AlloyScaffoldError::FileWrite { .. }
+                ) {
+                    tracing::error!(
+                        draft_id = %draft_id,
+                        error = %error,
+                        "MCP scaffold filesystem write failed; workspace may contain partial files"
+                    );
+                    let recovery_reason = "Scaffold filesystem write failed; the target workspace may contain partial files and requires manual reconciliation";
+                    if let Err(mark_error) = Self::mark_scaffold_apply_recovery_required(
+                        db,
+                        tenant_id,
+                        &draft,
+                        input.applied_by,
+                        input.actor_id.clone(),
+                        input.actor_type.clone(),
+                        &workspace_root,
+                        recovery_reason,
+                    )
+                    .await
+                    {
+                        tracing::error!(
+                            draft_id = %draft_id,
+                            error = ?mark_error,
+                            "Failed to persist MCP scaffold recovery-required state"
+                        );
+                    }
+                    return Err(Error::InternalServerError);
+                }
+
                 Self::mark_scaffold_apply_failed(
                     db,
                     tenant_id,
@@ -707,51 +746,124 @@ impl McpManagementService {
                 .await?;
                 return Err(Error::BadRequest(reason));
             }
+            Err(join_error) if join_error.is_cancelled() => {
+                let reason = "Scaffold apply worker was cancelled before it completed";
+                Self::mark_scaffold_apply_failed(
+                    db,
+                    tenant_id,
+                    &draft,
+                    input.applied_by,
+                    input.actor_id.clone(),
+                    input.actor_type.clone(),
+                    &workspace_root,
+                    reason,
+                )
+                .await?;
+                return Err(Error::InternalServerError);
+            }
+            Err(join_error) => {
+                tracing::error!(
+                    draft_id = %draft_id,
+                    error = %join_error,
+                    "MCP scaffold apply worker panicked; workspace may contain partial files"
+                );
+                let recovery_reason = "Scaffold apply worker panicked; the target workspace may contain partial files and requires manual reconciliation";
+                if let Err(mark_error) = Self::mark_scaffold_apply_recovery_required(
+                    db,
+                    tenant_id,
+                    &draft,
+                    input.applied_by,
+                    input.actor_id.clone(),
+                    input.actor_type.clone(),
+                    &workspace_root,
+                    recovery_reason,
+                )
+                .await
+                {
+                    tracing::error!(
+                        draft_id = %draft_id,
+                        error = ?mark_error,
+                        "Failed to persist MCP scaffold recovery-required state"
+                    );
+                }
+                return Err(Error::InternalServerError);
+            }
         };
 
-        let txn = db.begin().await.map_err(map_db_err)?;
-        let mut active: mcp_scaffold_drafts::ActiveModel = draft.clone().into();
-        active.status = Set(MCP_SCAFFOLD_STATUS_APPLIED.to_string());
-        active.workspace_root = Set(Some(workspace_root.clone()));
-        active.applied_at = Set(Some(Utc::now().into()));
-        active.updated_at = Set(Utc::now().into());
-        let updated = active.update(&txn).await.map_err(map_db_err)?;
+        let finalize_result = async {
+            let txn = db.begin().await.map_err(map_db_err)?;
+            let mut active: mcp_scaffold_drafts::ActiveModel = draft.clone().into();
+            active.status = Set(MCP_SCAFFOLD_STATUS_APPLIED.to_string());
+            active.workspace_root = Set(Some(workspace_root.clone()));
+            active.applied_at = Set(Some(Utc::now().into()));
+            active.updated_at = Set(Utc::now().into());
+            let updated = active.update(&txn).await.map_err(map_db_err)?;
 
-        let host_authority_actor_id = crate::host_authority::current_host_authority()
-            .map(|authority| authority.actor_id());
-        Self::record_audit_event_txn(
-            &txn,
-            RecordMcpAuditEventInput {
-                tenant_id,
-                client_id: updated.client_id,
-                token_id: None,
-                actor_id: input
-                    .actor_id
-                    .clone()
-                    .or_else(|| input.applied_by.map(|value| value.to_string())),
-                actor_type: input
-                    .actor_type
-                    .clone()
-                    .or_else(|| input.applied_by.map(|_| "human_user".to_string())),
-                action: "scaffold_draft_applied".to_string(),
-                outcome: "success".to_string(),
-                tool_name: Some("alloy_apply_module_scaffold".to_string()),
-                reason: None,
-                correlation_id: Some(updated.id.to_string()),
-                metadata: serde_json::json!({
-                    "draft_id": updated.id,
-                    "slug": updated.slug,
-                    "crate_name": updated.crate_name,
-                    "workspace_root": workspace_root,
-                    "host_authority_actor_id": host_authority_actor_id,
-                    "host_authority": "manage",
-                }),
-                created_by: input.applied_by,
-            },
-        )
-        .await?;
+            let host_authority_actor_id = crate::host_authority::current_host_authority()
+                .map(|authority| authority.actor_id());
+            Self::record_audit_event_txn(
+                &txn,
+                RecordMcpAuditEventInput {
+                    tenant_id,
+                    client_id: updated.client_id,
+                    token_id: None,
+                    actor_id: input
+                        .actor_id
+                        .clone()
+                        .or_else(|| input.applied_by.map(|value| value.to_string())),
+                    actor_type: input
+                        .actor_type
+                        .clone()
+                        .or_else(|| input.applied_by.map(|_| "human_user".to_string())),
+                    action: "scaffold_draft_applied".to_string(),
+                    outcome: "success".to_string(),
+                    tool_name: Some("alloy_apply_module_scaffold".to_string()),
+                    reason: None,
+                    correlation_id: Some(updated.id.to_string()),
+                    metadata: serde_json::json!({
+                        "draft_id": updated.id,
+                        "slug": updated.slug,
+                        "crate_name": updated.crate_name,
+                        "workspace_root": workspace_root.clone(),
+                        "host_authority_actor_id": host_authority_actor_id,
+                        "host_authority": "manage",
+                    }),
+                    created_by: input.applied_by,
+                },
+            )
+            .await?;
 
-        txn.commit().await.map_err(map_db_err)?;
+            txn.commit().await.map_err(map_db_err)?;
+            Ok::<mcp_scaffold_drafts::Model, Error>(updated)
+        }
+        .await;
+
+        let updated = match finalize_result {
+            Ok(updated) => updated,
+            Err(error) => {
+                let recovery_reason = "Scaffold files were written but database finalization failed; the target workspace requires manual reconciliation";
+                if let Err(mark_error) = Self::mark_scaffold_apply_recovery_required(
+                    db,
+                    tenant_id,
+                    &draft,
+                    input.applied_by,
+                    input.actor_id.clone(),
+                    input.actor_type.clone(),
+                    &workspace_root,
+                    recovery_reason,
+                )
+                .await
+                {
+                    tracing::error!(
+                        draft_id = %draft_id,
+                        error = ?mark_error,
+                        "Failed to persist MCP scaffold recovery-required state after finalization failure"
+                    );
+                }
+                return Err(error);
+            }
+        };
+
         Ok((updated, apply_result))
     }
 
@@ -873,6 +985,85 @@ impl McpManagementService {
                     "slug": updated.slug,
                     "crate_name": updated.crate_name,
                     "workspace_root": workspace_root,
+                }),
+                created_by: applied_by,
+            },
+        )
+        .await?;
+
+        txn.commit().await.map_err(map_db_err)?;
+        Ok(())
+    }
+
+    async fn mark_scaffold_apply_recovery_required(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        draft: &mcp_scaffold_drafts::Model,
+        applied_by: Option<Uuid>,
+        actor_id: Option<String>,
+        actor_type: Option<String>,
+        workspace_root: &str,
+        reason: &str,
+    ) -> Result<()> {
+        let txn = db.begin().await.map_err(map_db_err)?;
+        let result = mcp_scaffold_drafts::Entity::update_many()
+            .filter(mcp_scaffold_drafts::Column::Id.eq(draft.id))
+            .filter(mcp_scaffold_drafts::Column::TenantId.eq(tenant_id))
+            .filter(mcp_scaffold_drafts::Column::Status.eq(MCP_SCAFFOLD_STATUS_APPLYING))
+            .col_expr(
+                mcp_scaffold_drafts::Column::Status,
+                Expr::value(MCP_SCAFFOLD_STATUS_RECOVERY_REQUIRED),
+            )
+            .col_expr(
+                mcp_scaffold_drafts::Column::WorkspaceRoot,
+                Expr::value(Some(workspace_root.to_string())),
+            )
+            .col_expr(
+                mcp_scaffold_drafts::Column::UpdatedAt,
+                Expr::value(Utc::now()),
+            )
+            .exec(&txn)
+            .await
+            .map_err(map_db_err)?;
+
+        if result.rows_affected == 0 {
+            txn.rollback().await.map_err(map_db_err)?;
+            return Ok(());
+        }
+
+        let updated = mcp_scaffold_drafts::Entity::find_by_id(draft.id)
+            .filter(mcp_scaffold_drafts::Column::TenantId.eq(tenant_id))
+            .one(&txn)
+            .await
+            .map_err(map_db_err)?
+            .ok_or(Error::NotFound)?;
+
+        let host_authority_actor_id = crate::host_authority::current_host_authority()
+            .map(|authority| authority.actor_id());
+        Self::record_audit_event_txn(
+            &txn,
+            RecordMcpAuditEventInput {
+                tenant_id,
+                client_id: updated.client_id,
+                token_id: None,
+                actor_id: actor_id
+                    .clone()
+                    .or_else(|| applied_by.map(|value| value.to_string())),
+                actor_type: actor_type
+                    .clone()
+                    .or_else(|| applied_by.map(|_| "human_user".to_string())),
+                action: "scaffold_draft_apply_recovery_required".to_string(),
+                outcome: "recovery_required".to_string(),
+                tool_name: Some("alloy_apply_module_scaffold".to_string()),
+                reason: Some(reason.to_string()),
+                correlation_id: Some(updated.id.to_string()),
+                metadata: serde_json::json!({
+                    "draft_id": updated.id,
+                    "slug": updated.slug,
+                    "crate_name": updated.crate_name,
+                    "workspace_root": workspace_root,
+                    "host_authority_actor_id": host_authority_actor_id,
+                    "host_authority": "manage",
                 }),
                 created_by: applied_by,
             },
@@ -1079,6 +1270,10 @@ fn scaffold_status_error(draft_id: Uuid, status: &str) -> Error {
         )),
         MCP_SCAFFOLD_STATUS_APPLYING => Error::BadRequest(format!(
             "Scaffold draft {} is already being applied",
+            draft_id
+        )),
+        MCP_SCAFFOLD_STATUS_RECOVERY_REQUIRED => Error::BadRequest(format!(
+            "Scaffold draft {} requires manual workspace reconciliation before it can be applied again",
             draft_id
         )),
         other => Error::BadRequest(format!(
