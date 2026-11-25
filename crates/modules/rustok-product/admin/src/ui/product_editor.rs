@@ -87,7 +87,7 @@ pub fn ProductEditorPage(
     let (inventory_quantity, set_inventory_quantity) = signal(0_i32);
     let (inventory_quantity_text, set_inventory_quantity_text) = signal("0".to_string());
     let (inventory_quantity_valid, set_inventory_quantity_valid) = signal(true);
-    let (inventory_policy, set_inventory_policy) = signal("DENY".to_string());
+    let (inventory_policy, set_inventory_policy) = signal("deny".to_string());
 
     // Variable Product Specific
 
@@ -1413,8 +1413,8 @@ pub fn ProductEditorPage(
                                     on:change=move |ev| set_inventory_policy.set(event_target_value(&ev))
                                     class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary"
                                 >
-                                    <option value="DENY">{if is_ru { "Запретить заказ при отсутствии" } else { "Deny when out of stock" }}</option>
-                                    <option value="CONTINUE">{if is_ru { "Разрешить предзаказ" } else { "Allow backorders" }}</option>
+                                    <option value="deny">{if is_ru { "Запретить заказ при отсутствии" } else { "Deny when out of stock" }}</option>
+                                    <option value="continue">{if is_ru { "Разрешить предзаказ" } else { "Allow backorders" }}</option>
                                 </select>
                             </div>
                         </div>

@@ -1088,6 +1088,27 @@ mod variant_update_draft_tests {
     }
 
     #[test]
+    fn unchanged_canonical_inventory_policy_is_not_replayed() {
+        let mut original = original_variant();
+        original.inventory_policy = "continue".to_owned();
+
+        let draft = VariantUpdateDraft::from_editor_state(
+            &original,
+            "SKU-1".to_owned(),
+            "BAR-1".to_owned(),
+            String::new(),
+            "USD".to_owned(),
+            "12.50".to_owned(),
+            String::new(),
+            8,
+            "continue".to_owned(),
+        );
+
+        assert!(draft.inventory_policy.is_none());
+        assert!(!draft.has_changes());
+    }
+
+    #[test]
     fn blank_sku_and_barcode_are_explicit_nullable_clears() {
         let mut original = original_variant();
         original.shipping_profile_slug = Some("parcel".to_owned());
