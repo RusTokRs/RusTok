@@ -21,6 +21,12 @@ New PriceUpdated amounts are encoded without rounding. Calculated discount
 rounding and the retained two-decimal legacy mirror are unchanged.
 Focused regressions are authored but not executed.
 
+Direct embedded Pricing base-price authoring advances the Product-owned Variant
+predecessor using its co-located transaction seam; the exact PriceUpdated envelope
+causes the corresponding Variant Index refresh. Batch writes advance once after
+all rows succeed. Contextual price writes do not invalidate the catalog edit
+snapshot. No new event family or external write capability is introduced.
+
 Admin SKU price upserts return the exact persisted row captured in the owner
 transaction, after successful commit, rather than searching the variant's
 prices again. Regional rows and concurrent later writes cannot substitute

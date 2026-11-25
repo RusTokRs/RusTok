@@ -36,7 +36,11 @@ must conflict; replay returns the original public result and does not reapply a 
 
 Omitted prices and axes keep their values. The owner checks the predecessor
 for a patch with changes and for deletion. The revision is part of the command
-receipt request. Create retains its existing optional fields.
+receipt request. Create retains its existing optional fields. Direct Pricing base-price
+writes now advance the same predecessor and record its exact Index refresh cause
+atomically. Contextual prices are outside the catalog-edit snapshot. This prevents
+a stale catalog edit from replacing a later base-price change in the embedded profile.
+The cross-owner regression is authored but not run.
 [Revision-guarded gRPC](../ports/README.md).
 
 ## Owner and adapter rules

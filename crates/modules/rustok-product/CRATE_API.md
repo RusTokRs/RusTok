@@ -70,7 +70,7 @@ moves them into `rustok-product-ports` with a runtime-independent build.
 ## Domain Collaborations
 
 - **Taxonomy**: Product categorization, hierarchical taxonomy tree bindings, and storefront breadcrumbs.
-- **Pricing Collaboration**: Transaction-aware initial price creation, replacement, cleanup, and catalog projections via `ProductPricingPort` during product and variant lifecycle.
+- **Pricing Collaboration**: Transaction-aware initial price creation, replacement, cleanup, and catalog projections via `ProductPricingPort` during product and variant lifecycle. Co-located direct base-price writers use `services::catalog_references::record_catalog_base_price_change_in_tx` with the locked Variant and exact PriceUpdated envelope to advance the catalog predecessor and refresh ledger atomically.
 - **Inventory**: Transaction-aware initial inventory item provisioning during variant creation.
 - **Flex**: Custom fields and dynamic attribute schemas attached to product aggregates.
 - **Brand**: Cross-boundary collaboration with `rustok-brand`. Product owns the relational `product_brands` table mapping products to primary manufacturers and collaborative partner brands.

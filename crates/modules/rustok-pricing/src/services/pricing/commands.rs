@@ -621,9 +621,19 @@ impl PricingService {
             .validate()
             .map_err(|e| CommerceError::Validation(format!("Invalid price event: {}", e)))?;
 
-        self.event_bus
-            .publish_in_tx(&txn, tenant_id, Some(actor_id), event)
+        let price_event_id = self.event_bus
+            .publish_in_tx_with_envelope_id(&txn, tenant_id, Some(actor_id), event)
             .await?;
+        if saved.price_list_id.is_none()
+            && saved.channel_id.is_none()
+            && saved.channel_slug.is_none()
+            && saved.region_id.is_none()
+            && saved.min_quantity.is_none()
+            && saved.max_quantity.is_none()
+        {
+            record_catalog_price_revision(&txn, tenant_id, variant.product_id, variant_id, price_event_id)
+                .await?;
+        }
 
         txn.commit().await?;
         Ok(saved)
@@ -648,6 +658,7 @@ impl PricingService {
         let txn = self.db.begin().await?;
         let variant = load_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
 
+        let mut last_catalog_price_event = None;
         for price_input in &prices {
             let normalized_currency = normalize_resolution_currency(&price_input.currency_code)?;
             let normalized_channel_slug =
@@ -762,8 +773,15 @@ impl PricingService {
                 .validate()
                 .map_err(|e| CommerceError::Validation(format!("Invalid price event: {}", e)))?;
 
-            self.event_bus
-                .publish_in_tx(&txn, tenant_id, Some(actor_id), event)
+            let price_event_id = self.event_bus
+                .publish_in_tx_with_envelope_id(&txn, tenant_id, Some(actor_id), event)
+                .await?;
+            if price_input.channel_id.is_none() && normalized_channel_slug.is_none() {
+                last_catalog_price_event = Some(price_event_id);
+            }
+        }
+        if let Some(price_event_id) = last_catalog_price_event {
+            record_catalog_price_revision(&txn, tenant_id, variant.product_id, variant_id, price_event_id)
                 .await?;
         }
 
@@ -811,4 +829,24 @@ impl PricingService {
             .map(|_| ())
             .ok_or(CommerceError::VariantNotFound(variant_id))
     }
+}
+
+async fn record_catalog_price_revision(
+    txn: &sea_orm::DatabaseTransaction,
+    tenant_id: Uuid,
+    product_id: Uuid,
+    variant_id: Uuid,
+    price_event_id: Uuid,
+) -> CommerceResult<()> {
+    rustok_product::services::catalog_references::record_catalog_base_price_change_in_tx(
+        txn, tenant_id, product_id, variant_id, price_event_id,
+    )
+    .await
+    .map_err(|error| match error {
+        rustok_product::CommerceError::Database(error) => CommerceError::Database(error),
+        rustok_product::CommerceError::Core(error) => CommerceError::Core(error),
+        _ => CommerceError::Core(rustok_core::error::Error::Internal(
+            "Product catalog price revision could not be recorded".into(),
+        )),
+    })
 }

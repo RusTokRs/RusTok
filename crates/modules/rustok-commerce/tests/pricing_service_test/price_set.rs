@@ -1,6 +1,37 @@
 use super::*;
 
 #[tokio::test]
+async fn base_price_write_invalidates_catalog_variant_predecessor() {
+    use rustok_product::dto::UpdateVariantInput;
+    use rustok_product::entities::product_variant;
+
+    let (db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (_, variant_id) = create_test_product(&catalog, tenant_id).await;
+    let previous = product_variant::Entity::find_by_id(variant_id)
+        .one(&db).await.unwrap().unwrap().index_revision;
+    service.set_price(tenant_id, actor_id, variant_id, "USD", dec!(49.99), None)
+        .await.unwrap();
+    let current = product_variant::Entity::find_by_id(variant_id)
+        .one(&db).await.unwrap().unwrap().index_revision;
+    assert!(current > previous);
+    let error = catalog.update_variant(
+        tenant_id, actor_id, variant_id,
+        UpdateVariantInput {
+            expected_revision: Some(previous.to_string()),
+            sku: rustok_api::Patch::Set("STALE-SKU".into()),
+            ..Default::default()
+        },
+    ).await.expect_err("stale catalog predecessor");
+    assert_eq!(
+        rustok_product::map_product_public_error(&error, "test", "test").code,
+        "PRODUCT_REVISION_CONFLICT",
+    );
+    assert_eq!(service.get_price(tenant_id, variant_id, "USD").await.unwrap(), Some(dec!(49.99)));
+}
+
+#[tokio::test]
 async fn admin_upsert_returns_saved_base_price_not_a_regional_row() {
     let (db, service, catalog) = setup().await;
     let tenant_id = Uuid::new_v4();
