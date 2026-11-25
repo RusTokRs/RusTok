@@ -1,5 +1,15 @@
 # Server App — Implementation Plan
 
+## Worker group cancellation ordering follow-up (2026-11-25)
+
+Source changes cancel all remaining group members before joining their
+cleanup and resolve the stop signal through one atomic singleton operation.
+Added regressions for dependent task cleanup and concurrent stop-handle
+resolution. Maintainer verification remains pending:
+`cargo check -p rustok-server`, `cargo test -p rustok-server --lib app_lifecycle`,
+`cargo test -p rustok-server --lib stop_handle`, and the remediation gate.
+No compile or runtime result is claimed.
+
 ## Forwarded authority parsing follow-up (2026-11-25)
 
 Source changes reject duplicate RFC Forwarded parameters, preserve quoted

@@ -1657,15 +1657,10 @@ fn await_runtime_worker_shutdown_tasks_with_timeout(
                         worker,
                         "Runtime worker shutdown timed out; aborting remaining tasks"
                     );
-                    task.abort();
-                    if let Err(error) = task.handle_mut().await {
-                        if !error.is_cancelled() {
-                            tracing::warn!(worker, ?error, "Runtime worker failed after abort");
-                        }
-                    }
-                    task.disarm();
-
-                    let remaining: Vec<_> = remaining.collect();
+                    // Broadcast cancellation to the entire remaining group
+                    // before waiting for any task's cleanup. A task's Drop
+                    // may depend on resources owned by another group member.
+                    let remaining: Vec<_> = std::iter::once(task).chain(remaining).collect();
                     for task in &remaining {
                         task.abort();
                     }
@@ -2485,6 +2480,64 @@ mod tests {
 
         let registry = ctx.shared_get_or_insert_with(RateLimitCleanupTaskRegistry::default);
         assert!(registry.with_open::<()>(|_| panic!("late startup admitted work")).is_err());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn runtime_worker_group_aborts_all_members_before_joining_cleanup() {
+        struct WaitForPeerDrop {
+            peer: std::sync::mpsc::Receiver<()>,
+            observed: Option<tokio::sync::oneshot::Sender<bool>>,
+        }
+        impl Drop for WaitForPeerDrop {
+            fn drop(&mut self) {
+                // Bounded even on regression: the old drain would not abort
+                // the peer until this cleanup returned.
+                let peer_stopped = self.peer.recv_timeout(Duration::from_secs(3)).is_ok();
+                if let Some(observed) = self.observed.take() {
+                    let _ = observed.send(peer_stopped);
+                }
+            }
+        }
+        struct SignalPeerDrop(Option<std::sync::mpsc::Sender<()>>);
+        impl Drop for SignalPeerDrop {
+            fn drop(&mut self) {
+                if let Some(sender) = self.0.take() {
+                    let _ = sender.send(());
+                }
+            }
+        }
+
+        let (peer_tx, peer_rx) = std::sync::mpsc::channel();
+        let (observed_tx, observed_rx) = tokio::sync::oneshot::channel();
+        let (first_started_tx, first_started_rx) = tokio::sync::oneshot::channel();
+        let first = tokio::spawn(async move {
+            let _cleanup = WaitForPeerDrop {
+                peer: peer_rx,
+                observed: Some(observed_tx),
+            };
+            first_started_tx.send(()).expect("first task started");
+            std::future::pending::<()>().await;
+        });
+        let (peer_started_tx, peer_started_rx) = tokio::sync::oneshot::channel();
+        let peer = tokio::spawn(async move {
+            let _cleanup = SignalPeerDrop(Some(peer_tx));
+            peer_started_tx.send(()).expect("peer task started");
+            std::future::pending::<()>().await;
+        });
+        first_started_rx.await.expect("first cleanup installed");
+        peer_started_rx.await.expect("peer cleanup installed");
+
+        super::await_runtime_worker_shutdown_tasks_with_timeout(
+            "test worker group",
+            vec![first, peer],
+            Duration::from_millis(1),
+        )
+        .await;
+
+        assert!(
+            observed_rx.await.expect("first cleanup finished"),
+            "all remaining tasks must be cancelled before the first join"
+        );
     }
 
     #[tokio::test]

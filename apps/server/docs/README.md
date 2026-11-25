@@ -1,5 +1,15 @@
 # Documentation: `apps/server`
 
+## Worker group cancellation ordering (2026-11-25)
+
+When a runtime worker group exhausts its cooperative shutdown deadline, the
+host aborts every remaining group member before awaiting any individual
+cleanup. Cancellation of the drain still aborts its owned handles. The
+runtime-wide StopHandle uses the atomic shared singleton primitive, with no
+unregistered fallback handle. Producer/dispatcher/forwarder shutdown order
+and the existing join-after-abort contract are unchanged. Abort is cooperative
+at Tokio cancellation points; a non-yielding task can still delay joining.
+
 ## Forwarded authority parsing (2026-11-25)
 
 The shared request-trust boundary preserves quoted RFC Forwarded delimiters,
