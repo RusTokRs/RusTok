@@ -974,56 +974,72 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     tracing::info!("Stopping background workers");
     stop.stop().await;
 
-    // Wait for any in-flight bootstrap to finish registering its workers
-    // before taking the shutdown snapshot. The stop signal above ensures a
-    // bootstrap that was already running will not start long-lived work.
-    let bootstrap_initialization = ServerBootstrapInitializationLock::ensure(runtime_ctx);
-    let _bootstrap_guard = bootstrap_initialization.lock().await;
+    // A single deadline bounds the startup-publication barrier. Every worker
+    // starter has its own stop/admission fence; if a pre-publication operation
+    // stalls, shutdown must still reach the worker drains instead of waiting
+    // indefinitely on the outer bootstrap mutex.
+    let timeout_duration = Duration::from_secs(5);
+    let startup_deadline = tokio::time::Instant::now() + timeout_duration;
 
-    // Direct event-runtime construction can bypass router bootstrap. Wait
-    // for its publication owner before taking worker snapshots.
-    // Lock order matches router startup: bootstrap -> event runtime.
+    let bootstrap_initialization = ServerBootstrapInitializationLock::ensure(runtime_ctx);
+    let _bootstrap_guard = match tokio::time::timeout_at(
+        startup_deadline,
+        bootstrap_initialization.lock(),
+    )
+    .await
+    {
+        Ok(guard) => Some(guard),
+        Err(_) => {
+            tracing::warn!(
+                "Server bootstrap did not quiesce within the shutdown startup barrier; continuing with per-worker stop fences"
+            );
+            None
+        }
+    };
+
+    // Direct event-runtime construction can bypass router bootstrap. Give its
+    // publication owner the same bounded window before taking worker snapshots.
     let event_initialization =
         crate::services::event_transport_factory::EventRuntimeInitializationLock::ensure(runtime_ctx);
-    let event_guard = event_initialization.lock().await;
-    drop(event_guard);
+    match tokio::time::timeout_at(startup_deadline, event_initialization.lock()).await {
+        Ok(guard) => drop(guard),
+        Err(_) => tracing::warn!(
+            "Event runtime initialization did not quiesce within the shutdown startup barrier"
+        ),
+    }
 
     // Router bootstrap holds the lock above, but this public startup function
-    // can also be invoked directly. It uses the artifact maintenance lock
-    // across *all* additional worker registration. Wait for that caller to
-    // finish before the shutdown snapshot, or a late worker could publish its
-    // handle after the drain already took the old value.
-    //
-    // Lock order matches router bootstrap: bootstrap -> runtime workers.
-    // Release the workers lock before join! (the artifact worker's own drain
-    // acquires it again). New callers see the stop flag after acquiring it
-    // and do not start more workers.
+    // can also be invoked directly. Its own stop gate prevents late publication
+    // if the shared startup barrier expires.
     let worker_initialization = ModuleArtifactMaintenanceInitializationLock::ensure(runtime_ctx);
-    let _worker_initialization_guard = worker_initialization.0.lock().await;
-    drop(_worker_initialization_guard);
+    match tokio::time::timeout_at(startup_deadline, worker_initialization.0.lock()).await {
+        Ok(guard) => drop(guard),
+        Err(_) => tracing::warn!(
+            "Module artifact maintenance initialization did not quiesce within the shutdown startup barrier"
+        ),
+    }
 
-    // Direct observer startup can bypass router bootstrap. Wait for each
-    // observer's check-stop -> spawn -> publish sequence to complete before
-    // taking the shutdown JoinHandle snapshot. Lock order is bootstrap ->
-    // runtime workers -> observer; observer starters never acquire either
-    // outer lock while holding this one.
+    // Direct observer startup can bypass router bootstrap. Bound its
+    // check-stop -> spawn -> publish barrier by the same deadline.
     #[cfg(feature = "mod-social_graph")]
-    let observer_initialization = SocialGraphObserverInitializationLock::ensure(runtime_ctx);
-    #[cfg(feature = "mod-social_graph")]
-    let _observer_initialization_guard = observer_initialization.0.lock().await;
-    #[cfg(feature = "mod-social_graph")]
-    drop(_observer_initialization_guard);
+    {
+        let observer_initialization = SocialGraphObserverInitializationLock::ensure(runtime_ctx);
+        match tokio::time::timeout_at(startup_deadline, observer_initialization.0.lock()).await {
+            Ok(guard) => drop(guard),
+            Err(_) => tracing::warn!(
+                "Social Graph observer initialization did not quiesce within the shutdown startup barrier"
+            ),
+        }
+    }
 
-    // Direct DLQ observer/projection startup may bypass router bootstrap.
-    // Synchronize both check-stop -> publish paths with the shutdown snapshot.
+    // Direct DLQ observer/projection startup uses a synchronous critical
+    // section, so this lock cannot be held across an asynchronous operation.
     let dlq_observer_initialization = EventDlqObserverInitializationLock::ensure(runtime_ctx);
     let _dlq_observer_guard = dlq_observer_initialization
         .0
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     drop(_dlq_observer_guard);
-
-    let timeout_duration = Duration::from_secs(5);
 
     let rate_limit_cleanup_drain = async {
         // Retain the terminal registry even if shutdown wins before the first
@@ -1089,7 +1105,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     let module_work_drain = async {
         let initialization = ModuleWorkSchedulerInitializationLock::ensure(runtime_ctx);
-        let deadline = tokio::time::Instant::now() + timeout_duration;
+        let deadline = startup_deadline;
         let worker = match tokio::time::timeout_at(deadline, initialization.0.lock()).await {
             Ok(_guard) => runtime_ctx.shared_take::<ModuleWorkSchedulerHandle>(),
             Err(_) => {
@@ -1110,7 +1126,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     #[cfg(feature = "mod-workflow")]
     let workflow_drain = async {
         let initialization = WorkflowCronSchedulerInitializationLock::ensure(runtime_ctx);
-        let deadline = tokio::time::Instant::now() + timeout_duration;
+        let deadline = startup_deadline;
         let worker = match tokio::time::timeout_at(deadline, initialization.0.lock()).await {
             Ok(_guard) => runtime_ctx.shared_take::<WorkflowCronSchedulerHandle>(),
             Err(_) => {
@@ -1150,7 +1166,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     let module_artifact_maintenance_drain = async {
         let initialization = ModuleArtifactMaintenanceInitializationLock::ensure(runtime_ctx);
-        let deadline = tokio::time::Instant::now() + timeout_duration;
+        let deadline = startup_deadline;
         let worker = match tokio::time::timeout_at(deadline, initialization.0.lock()).await {
             Ok(_guard) => runtime_ctx
                 .shared_take::<crate::services::module_artifact_maintenance::ModuleArtifactMaintenanceHandle>(),
