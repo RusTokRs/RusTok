@@ -191,6 +191,14 @@ property names and non-identity attributes; identity/reference and provider
 contract writes remain blocked until they can participate in identity proofs.
 The standalone `materialize_bindings` function remains the global-only pass.
 
+## Runtime context migration
+
+Migration uses the same blocking field and computed diagnostics as strict runtime
+preflight. Tolerating breaking contract changes never suppresses invalid payload
+values. Disabling target materialization preserves caller values (apart from
+explicitly requested removals), still validates required fields and value types,
+and deliberately does not evaluate computed producers.
+
 ## Runtime materialization bounds
 
 Runtime context paths are bounded to 2048 bytes, 64 segments and array index 9999.

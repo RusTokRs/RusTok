@@ -155,22 +155,12 @@ pub fn preflight_runtime_context(
         .filter(|diagnostic| diagnostic.code == "runtime_context_required_missing")
         .count();
 
-    diagnostics.extend(materialized.diagnostics.into_iter().map(|mut diagnostic| {
-        let promote = match diagnostic.code.as_str() {
-            "runtime_context_required_missing" => policy.missing_required_is_error,
-            "runtime_context_type_mismatch" | "runtime_context_array_item_type_mismatch" => {
-                policy.type_mismatch_is_error
-            }
-            "runtime_computed_unresolved" | "runtime_computed_evaluation_failed" | "runtime_computed_write_failed" => {
-                policy.unresolved_computed_is_error
-            }
-            _ => false,
-        };
-        if promote {
-            diagnostic.severity = ValidationSeverity::Error;
-        }
-        diagnostic
-    }));
+    diagnostics.extend(
+        materialized
+            .diagnostics
+            .into_iter()
+            .map(|diagnostic| promote_context_diagnostic(diagnostic, policy)),
+    );
     deduplicate_diagnostics(&mut diagnostics);
     let accepted = !diagnostics
         .iter()
@@ -249,7 +239,27 @@ fn collect_dependencies(expression: &ContextExpression, paths: &mut BTreeSet<Str
     }
 }
 
-fn deduplicate_diagnostics(diagnostics: &mut Vec<ValidationDiagnostic>) {
+pub(crate) fn promote_context_diagnostic(
+    mut diagnostic: ValidationDiagnostic,
+    policy: RuntimeContextPreflightPolicy,
+) -> ValidationDiagnostic {
+    let promote = match diagnostic.code.as_str() {
+        "runtime_context_required_missing" => policy.missing_required_is_error,
+        "runtime_context_type_mismatch" | "runtime_context_array_item_type_mismatch" => {
+            policy.type_mismatch_is_error
+        }
+        "runtime_computed_unresolved"
+        | "runtime_computed_evaluation_failed"
+        | "runtime_computed_write_failed" => policy.unresolved_computed_is_error,
+        _ => false,
+    };
+    if promote {
+        diagnostic.severity = ValidationSeverity::Error;
+    }
+    diagnostic
+}
+
+pub(crate) fn deduplicate_diagnostics(diagnostics: &mut Vec<ValidationDiagnostic>) {
     let mut seen = BTreeSet::new();
     diagnostics.retain(|diagnostic| {
         seen.insert((

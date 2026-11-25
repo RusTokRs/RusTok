@@ -43,3 +43,31 @@ pub fn migrate_page_builder_runtime_context(
 ) -> FlyResult<PageBuilderRuntimeContextMigrationResponse> {
     PageBuilderRuntimeContextMigrator.migrate(request)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn adapter_preserves_payload_rejection_without_materialization() {
+        let project_data = json!({
+            "pages": [{ "component": { "id": "root", "type": "wrapper" } }],
+            "flyRuntimeContextSchema": [{
+                "id": "quantity", "path": "quantity", "kind": "number", "required": true
+            }]
+        });
+        let response = migrate_page_builder_runtime_context(PageBuilderRuntimeContextMigrationRequest {
+            source_project_data: project_data.clone(),
+            target_project_data: project_data,
+            context: json!({ "quantity": "not a number" }),
+            policy: RuntimeContextMigrationPolicy {
+                apply_target_defaults: false,
+                ..Default::default()
+            },
+        })
+        .expect("migration report");
+        assert!(!response.migration.is_accepted());
+        assert_eq!(response.migration.type_mismatches, 1);
+    }
+}
