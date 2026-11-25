@@ -274,21 +274,26 @@ pub(super) async fn sync_variant_sku(
     validate_request(tenant_id, actor_id, variant_id)?;
     require_current_snapshot(txn).await?;
 
-    let (saved_variant_id, product_id) = current_read(
+    let (saved_variant_id, product_id, product_sku) = current_read(
         txn,
         product_variant::Entity::find_by_id(variant_id)
             .select_only()
             .column(product_variant::Column::Id)
             .column(product_variant::Column::ProductId)
+            .column(product_variant::Column::Sku)
             .filter(product_variant::Column::TenantId.eq(tenant_id)),
     )
-    .into_tuple::<(Uuid, Uuid)>()
+    .into_tuple::<(Uuid, Uuid, Option<String>)>()
     .one(txn)
     .await?
     .ok_or(QuantityWriteError::VariantNotFound(variant_id))?;
     if saved_variant_id.is_nil() || product_id.is_nil() {
         return Err(QuantityWriteBlocker::IdentityUnavailable.into());
     }
+    let sku = match crate::product_port::verify_variant_sku_snapshot(sku, product_sku) {
+        Ok(sku) => sku,
+        Err(()) => return Err(QuantityWriteBlocker::IdentityUnavailable.into()),
+    };
 
     // INVARIANT: prove the parent tenant before touching tenant-less inventory_items.
     let parent_id = product::Entity::find_by_id(product_id)
@@ -310,9 +315,6 @@ pub(super) async fn sync_variant_sku(
         return Err(QuantityWriteBlocker::IdentityUnavailable.into());
     }
 
-    let sku = sku
-        .map(|value| value.trim().to_owned())
-        .filter(|value| !value.is_empty());
     let item = items
         .into_iter()
         .next()

@@ -45,6 +45,24 @@ impl InventoryProductVariantInfo {
     }
 }
 
+/// Normalize and verify a caller SKU snapshot against the current Product-owned SKU.
+pub(crate) fn verify_variant_sku_snapshot(
+    supplied: Option<String>,
+    canonical: Option<String>,
+) -> Result<Option<String>, ()> {
+    let normalize = |sku: Option<String>| {
+        sku.map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty())
+    };
+    let supplied = normalize(supplied);
+    let canonical = normalize(canonical);
+    if supplied == canonical {
+        Ok(canonical)
+    } else {
+        Err(())
+    }
+}
+
 /// Hexagonal port decoupling Inventory from Product persistence.
 ///
 /// Implementations may execute in-process via `rustok_product`,
