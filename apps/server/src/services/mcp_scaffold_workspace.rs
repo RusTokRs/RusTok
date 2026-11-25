@@ -860,6 +860,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
+    #[cfg(any(target_os = "linux", target_os = "macos", windows))]
     #[test]
     fn mcp_scaffold_is_published_atomically_from_private_staging() {
         let root = workspace("atomic");
