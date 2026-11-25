@@ -37,8 +37,8 @@ Current wiring in `apps/server/src/services/app_runtime.rs` uses separate limite
 
 - `/health/ready` -> `api`
 - `/api/*` -> `api`
-- `/api/auth/login`, `/api/auth/register`, `/api/auth/reset*` -> `auth`
-- `/api/oauth/token`, `/api/oauth/revoke`, `/api/oauth/authorize` -> `oauth`
+- `/api/auth/login`, `/api/auth/register`, `/api/auth/refresh`, `/api/auth/logout`, `/api/auth/change-password`, `/api/auth/session/*`, `/api/auth/reset/*`, `/api/auth/verify/*`, `/api/auth/invite/*`, `/api/graphql/ws` -> `auth`
+- `/api/oauth/token`, `/api/oauth/revoke`, `/api/oauth/authorize`, `/api/oauth/consent`, `/api/oauth/browser-session` -> `oauth`
 
 This lets runtime guardrails, metrics, and backend health be tracked separately per limiter policy.
 
@@ -136,7 +136,7 @@ X-RateLimit-Remaining: 0
 X-RateLimit-Reset: 42
 Content-Type: application/json
 
-{"error":"rate_limit_exceeded","message":"Rate limit exceeded"}
+{"code":"rate_limit_exceeded","message":"Rate limit exceeded"}
 ```
 
 ## Verification
@@ -145,6 +145,14 @@ Content-Type: application/json
 cargo test -p rustok-server rate_limit
 cargo check -p rustok-server --bin rustok-server
 ```
+
+With an isolated Redis instance, set `RUSTOK_CACHE_REAL_REDIS_URL` and run:
+
+```bash
+cargo test -p rustok-server --lib real_redis_rate_limit_preserves_precision_and_rejects_corrupt_counters -- --ignored
+```
+
+The test uses a unique key prefix and removes its own counter.
 
 ## Related Docs
 

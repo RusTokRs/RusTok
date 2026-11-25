@@ -392,7 +392,77 @@ fn redis_window_millis_saturate_at_i64_max() {
 }
 
 #[test]
-fn rate_limited_response_includes_contract_headers() {
+fn redis_rate_limit_result_rejects_invalid_counters_and_expiry() {
+    for (count, ttl) in [(-1, 1000), (0, 1000), (1, -1), (1, -2)] {
+        assert!(matches!(
+            decode_redis_rate_limit_result(count, ttl),
+            Err(RateLimitCheckError::BackendUnavailable(_))
+        ));
+    }
+    assert_eq!(decode_redis_rate_limit_result(1, 0).unwrap(), (1, 0));
+    assert_eq!(decode_redis_rate_limit_result(2, 1501).unwrap(), (2, 2));
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated Redis instance via RUSTOK_CACHE_REAL_REDIS_URL"]
+async fn real_redis_rate_limit_preserves_precision_and_rejects_corrupt_counters() {
+    let url = std::env::var("RUSTOK_CACHE_REAL_REDIS_URL")
+        .expect("isolated Redis URL");
+    let client = redis::Client::open(url).expect("Redis client");
+    let mut connection = client.get_multiplexed_async_connection().await.unwrap();
+    let prefix = format!("rate-limit-regression:{}", Uuid::new_v4());
+    let key = redis_rate_limit_key(&prefix, "client");
+    let script = Script::new(RATE_LIMIT_REDIS_SCRIPT_SOURCE);
+    let window_ms = 60_501_i64;
+
+    let (count, ttl): (i64, i64) = script
+        .key(&key)
+        .arg(window_ms)
+        .invoke_async(&mut connection)
+        .await
+        .unwrap();
+    assert_eq!(count, 1);
+    assert_eq!(ttl, window_ms);
+
+    let _: () = redis::cmd("SET")
+        .arg(&key)
+        .arg(-1)
+        .query_async(&mut connection)
+        .await
+        .unwrap();
+    let limiter = RateLimiter::with_redis(
+        RateLimitConfig::new(5, 60),
+        client,
+        prefix,
+    );
+    for _ in 0..2 {
+        assert!(matches!(
+            limiter.check_rate_limit("client").await,
+            Err(RateLimitCheckError::BackendUnavailable(_))
+        ));
+    }
+    let stored: i64 = redis::cmd("GET")
+        .arg(&key)
+        .query_async(&mut connection)
+        .await
+        .unwrap();
+    assert_eq!(stored, -1);
+    let ttl: i64 = redis::cmd("PTTL")
+        .arg(&key)
+        .query_async(&mut connection)
+        .await
+        .unwrap();
+    assert!(ttl > 0 && ttl <= 60_000);
+    let deleted: u64 = redis::cmd("DEL")
+        .arg(&key)
+        .query_async(&mut connection)
+        .await
+        .unwrap();
+    assert_eq!(deleted, 1);
+}
+
+#[tokio::test]
+async fn rate_limited_response_includes_contract_headers() {
     let response = rate_limited_response(&RateLimitExceeded::new(20, 42));
 
     assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
@@ -401,6 +471,12 @@ fn rate_limited_response_includes_contract_headers() {
     assert_eq!(response.headers()["x-ratelimit-remaining"], "0");
     assert_eq!(response.headers()["x-ratelimit-reset"], "42");
     assert_eq!(response.headers()["content-type"], "application/json");
+    let body = axum::body::to_bytes(response.into_body(), 4096).await.unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(body, serde_json::json!({
+        "code": "rate_limit_exceeded",
+        "message": "Rate limit exceeded"
+    }));
 }
 
 #[test]

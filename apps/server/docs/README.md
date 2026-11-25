@@ -546,9 +546,12 @@ clamped with a warning. Only exact `multipart/form-data` requests to
 `/api/media` and PUT requests to the registry artifact route receive the
 upload timeout budget. Active rate-limit windows are normalized to 1 second
 through 365 days for both memory and Redis backends, with fractional durations
-rounded up to millisecond precision; disabled limiters remain disabled. Redis rate-limit counters without an expiry are repaired in the
-atomic script; if an expiry still cannot be established, the request fails
-closed with backend unavailable instead of leaving a permanent counter lockout.
+rounded up to millisecond precision; disabled limiters remain disabled.
+Redis rate-limit counters without an expiry are repaired in the atomic script.
+Nonpositive or noncanonical stored counters are rejected without incrementing
+them; a missing expiry on such a counter is repaired so it can recover after
+the window. Invalid counters or expiry replies fail closed with backend
+unavailable.
 Redis uses millisecond TTLs, and memory/Redis reset headers round up to whole
 seconds so clients are not instructed to retry before the window actually ends.
 
