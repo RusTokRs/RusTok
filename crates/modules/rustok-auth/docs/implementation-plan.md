@@ -176,6 +176,14 @@ gates in the [Page Builder backlog](../../../../docs/modules/page-builder-backlo
    exhaustively at the GraphQL boundary); `AuthSettingsOverrides::apply` is
    live runtime wiring, not dead code.
 
+## OAuth consent and grant fences (source only)
+
+Consent re-grant invalidates pending codes in its transaction; code exchange
+rejects a newer consent epoch and checks the refresh grant under the app lock
+before persisting prepared credentials. OAuth replay grace no longer accepts
+future timestamps or truncates elapsed time to whole seconds. Focused source
+regressions authored; compilation and runtime verification remain pending.
+
 ## Direct session mutation ordering (source only)
 
 Refresh and bulk session revocation use the shared tenant-scoped user mutation

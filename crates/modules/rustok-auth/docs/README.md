@@ -93,6 +93,14 @@ satisfy the platform multilingual storage contract. Their translation-table cuto
 is an explicit release-plan priority in this module's implementation plan; transports
 must not introduce a competing JSON or request-local fallback in the meantime.
 
+## OAuth issuance fences
+
+Re-granting consent invalidates pending authorization codes for the same app,
+subject and tenant. Exchange rejects codes older than current consent and
+rechecks the refresh grant under the app lock before persisting prepared refresh
+credentials. OAuth refresh replay grace requires a nonnegative elapsed duration
+less than 30 seconds. Source regression definitions are unrun.
+
 ## Direct session concurrency
 
 The host uses user-before-session locking for direct refresh and bulk self-service

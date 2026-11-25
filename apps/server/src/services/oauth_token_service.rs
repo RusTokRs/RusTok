@@ -457,14 +457,29 @@ async fn validate_authorization_code(
 
     let scopes = code.scopes_list();
     validate_scope_subset(&app.scopes_list(), &scopes)?;
-    let (user, _consent_granted_at) =
+    let (user, consent_granted_at) =
         validate_active_subject_and_consent(db, app, tenant_id, code.user_id, &scopes).await?;
+    validate_code_consent_epoch(code, consent_granted_at.as_ref())?;
     if user.rejects_delegated_token_issued_at(code.created_at.with_timezone(&Utc)) {
         return Err(OAuthTokenProtocolError::invalid_grant(
             "Authorization code predates the current credential state",
         ));
     }
     Ok(code)
+}
+
+// Also fence pre-existing codes from before the re-grant invalidation fix.
+// Exact persisted timestamps are used; equality is allowed for coarse DB clocks.
+fn validate_code_consent_epoch(
+    code: &oauth_codes::Model,
+    consent_granted_at: Option<&sea_orm::prelude::DateTimeWithTimeZone>,
+) -> Result<(), OAuthTokenProtocolError> {
+    if consent_granted_at.is_some_and(|granted_at| &code.created_at < granted_at) {
+        return Err(OAuthTokenProtocolError::invalid_grant(
+            "Authorization code predates the current consent epoch",
+        ));
+    }
+    Ok(())
 }
 
 async fn validate_refresh_token(
@@ -642,7 +657,10 @@ async fn detect_oauth_refresh_reuse(
         })?;
         return Ok(());
     };
-    if Utc::now().timestamp() - revoked_at.timestamp() < OAUTH_REFRESH_REUSE_GRACE_SECONDS {
+    let age = Utc::now().signed_duration_since(revoked_at.with_timezone(&Utc));
+    if age >= chrono::Duration::zero()
+        && age < chrono::Duration::seconds(OAUTH_REFRESH_REUSE_GRACE_SECONDS)
+    {
         // Do not keep the SQLite writer reserved until a detached Drop rollback
         // completes; release it before the caller returns invalid_grant.
         tx.rollback().await.map_err(|_| {
@@ -1188,6 +1206,12 @@ async fn commit_authorization_code_exchange(
     let current_app = lock_active_oauth_app(&tx, authenticated_app.id, code.tenant_id).await?;
     ensure_client_secret_unchanged(authenticated_app, &current_app)?;
     require_grant(&current_app, AUTHORIZATION_CODE_GRANT)?;
+    if prepared.refresh_model.is_some() {
+        // Preparation is outside the transaction; a removed refresh grant
+        // must not result in a persisted refresh credential.
+        require_grant(&current_app, REFRESH_TOKEN_GRANT)?;
+    }
+    validate_code_consent_epoch(code, prepared.consent_granted_at.as_ref())?;
     if !current_app
         .redirect_uris_list()
         .contains(&code.redirect_uri)
@@ -1553,6 +1577,33 @@ mod tests {
             created_at: now,
             updated_at: now,
         }
+    }
+
+    #[test]
+    fn authorization_code_cannot_adopt_a_newer_consent_epoch() {
+        let now = Utc::now();
+        let code = oauth_codes::Model {
+            id: Uuid::new_v4(),
+            app_id: Uuid::new_v4(),
+            user_id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            code_hash: "digest".to_string(),
+            redirect_uri: "https://example.com/callback".to_string(),
+            scopes: serde_json::json!(["profile"]),
+            code_challenge: "challenge".to_string(),
+            code_challenge_method: "S256".to_string(),
+            expires_at: (now + chrono::Duration::minutes(10)).into(),
+            used_at: None,
+            created_at: now.into(),
+        };
+        let older = (now - chrono::Duration::seconds(1)).into();
+        let newer = (now + chrono::Duration::seconds(1)).into();
+        assert!(super::validate_code_consent_epoch(&code, None).is_ok());
+        assert!(super::validate_code_consent_epoch(&code, Some(&older)).is_ok());
+        assert!(super::validate_code_consent_epoch(&code, Some(&code.created_at)).is_ok());
+        let error = super::validate_code_consent_epoch(&code, Some(&newer))
+            .expect_err("a stale code cannot adopt later consent");
+        assert_eq!(error.error, "invalid_grant");
     }
 
     #[tokio::test]

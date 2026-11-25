@@ -3,7 +3,7 @@
 use crate::auth;
 use crate::error::{Error, Result};
 use crate::models::oauth_apps::{self, ActiveModel as OAuthAppActiveModel, Entity as OAuthApps};
-use crate::models::oauth_authorization_codes::ActiveModel as OAuthCodeActiveModel;
+use crate::models::oauth_authorization_codes::{self, ActiveModel as OAuthCodeActiveModel};
 use crate::models::oauth_consents::{
     ActiveModel as OAuthConsentActiveModel, Entity as OAuthConsents,
 };
@@ -880,9 +880,23 @@ impl OAuthAppService {
 
         match existing {
             Some(consent) => {
+                let now = Utc::now();
+                // Re-grant creates a new consent epoch even when the scopes
+                // are unchanged. Pending codes belong to the previous epoch.
+                // Invalidate them under the same app/subject transaction as
+                // the grant, before any exchange can observe the new epoch.
+                oauth_authorization_codes::Entity::update_many()
+                    .col_expr(oauth_authorization_codes::Column::UsedAt, Expr::value(now))
+                    .filter(oauth_authorization_codes::Column::AppId.eq(app_id))
+                    .filter(oauth_authorization_codes::Column::UserId.eq(user_id))
+                    .filter(oauth_authorization_codes::Column::TenantId.eq(tenant_id))
+                    .filter(oauth_authorization_codes::Column::UsedAt.is_null())
+                    .exec(db)
+                    .await
+                    .map_err(GrantConsentAttempt::classify)?;
                 let mut active: OAuthConsentActiveModel = consent.into();
                 active.scopes = Set(scopes_json.clone());
-                active.granted_at = Set(Utc::now().into());
+                active.granted_at = Set(now.into());
                 active.revoked_at = Set(None);
                 active
                     .update(db)
@@ -3017,6 +3031,64 @@ mod tests {
             2,
             "app revocation cannot be followed by newly inserted auth codes"
         );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn consent_regrant_invalidates_only_its_pending_codes() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let app = insert_revocation_app(&db, tenant.id, "regrant-code-fence").await;
+        let user = users::ActiveModel::new(tenant.id, "regrant@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("user");
+        let other = users::ActiveModel::new(tenant.id, "regrant-other@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("other user");
+        let scopes = vec!["openid".to_string()];
+        OAuthAppService::grant_consent_strict(&db, app.id, user.id, tenant.id, scopes.clone())
+            .await
+            .expect("grant consent");
+        let old_id = insert_pending_authorization_code(&db, app.id, user.id, tenant.id).await;
+        let unrelated_id =
+            insert_pending_authorization_code(&db, app.id, other.id, tenant.id).await;
+        OAuthAppService::grant_consent_strict(&db, app.id, user.id, tenant.id, scopes.clone())
+            .await
+            .expect("regrant consent");
+        let old = oauth_authorization_codes::Entity::find_by_id(old_id)
+            .one(&db)
+            .await
+            .expect("read old code")
+            .expect("old code retained");
+        assert!(old.used_at.is_some());
+        let unrelated = oauth_authorization_codes::Entity::find_by_id(unrelated_id)
+            .one(&db)
+            .await
+            .expect("read unrelated code")
+            .expect("unrelated code");
+        assert!(unrelated.used_at.is_none());
+        let raw = OAuthAppService::generate_authorization_code(
+            &db,
+            app.id,
+            user.id,
+            tenant.id,
+            "https://partner.example.com/callback".to_string(),
+            scopes,
+            "challenge".to_string(),
+        )
+        .await
+        .expect("new epoch admits a new code");
+        use sha2::{Digest, Sha256};
+        let new_code = oauth_authorization_codes::Entity::find()
+            .filter(oauth_authorization_codes::Column::CodeHash.eq(hex::encode(
+                Sha256::digest(raw.as_bytes()),
+            )))
+            .one(&db)
+            .await
+            .expect("read new code")
+            .expect("new code");
+        assert!(new_code.used_at.is_none());
     }
 
     #[tokio::test]
