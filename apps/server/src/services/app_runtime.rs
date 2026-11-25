@@ -65,7 +65,10 @@ pub async fn bootstrap_app_runtime(
     runtime_ctx: ServerRuntimeContext,
     auth_config: AuthConfig,
 ) -> Result<AppRuntimeBootstrap> {
-    if crate::services::app_lifecycle::StopHandle::ensure(&runtime_ctx).is_stopping() {
+    use crate::services::app_lifecycle::{await_worker_startup_or_stop, StopHandle};
+
+    let stop = StopHandle::ensure(&runtime_ctx);
+    if stop.is_stopping() {
         return Err(Error::Message(
             "server shutdown started before application runtime bootstrap".to_string(),
         ));
@@ -83,11 +86,17 @@ pub async fn bootstrap_app_runtime(
             Error::BadRequest(format!("modules.toml validation failed: {error}"))
         })?
     } else {
-        PlatformCompositionService::active_manifest(runtime_ctx.db())
-            .await
-            .map_err(|error| {
-                Error::BadRequest(format!("platform composition validation failed: {error}"))
-            })?
+        let Some(manifest_result) =
+            await_worker_startup_or_stop(&stop, PlatformCompositionService::active_manifest(runtime_ctx.db()))
+                .await
+        else {
+            return Err(Error::Message(
+                "server shutdown started while loading the active module manifest".to_string(),
+            ));
+        };
+        manifest_result.map_err(|error| {
+            Error::BadRequest(format!("platform composition validation failed: {error}"))
+        })?
     };
     let deployment_surfaces = match settings.runtime.host_mode {
         RuntimeHostMode::RegistryOnly | RuntimeHostMode::Worker | RuntimeHostMode::Api => {
@@ -116,7 +125,14 @@ pub async fn bootstrap_app_runtime(
     )?;
 
     if !settings.runtime.is_registry_only() {
-        init_storage(&runtime_ctx).await?;
+        let Some(storage_result) =
+            await_worker_startup_or_stop(&stop, init_storage(&runtime_ctx)).await
+        else {
+            return Err(Error::Message(
+                "server shutdown started while initializing storage".to_string(),
+            ));
+        };
+        storage_result?;
     }
 
     let registry = modules::build_registry();
@@ -151,7 +167,17 @@ pub async fn bootstrap_app_runtime(
                     "Failed to sync manifest-managed OAuth apps: {error}"
                 ))
             })?;
+        if stop.is_stopping() {
+            return Err(Error::Message(
+                "server shutdown started during manifest-managed app synchronization".to_string(),
+            ));
+        }
         middleware::tenant::init_tenant_cache_infrastructure(&runtime_ctx, &cache_service).await?;
+        if stop.is_stopping() {
+            return Err(Error::Message(
+                "server shutdown started during tenant cache infrastructure initialization".to_string(),
+            ));
+        }
         runtime_ctx.shared_insert(
             rustok_content_orchestration::build_content_orchestration_service(
                 runtime_ctx.db_clone(),
@@ -186,7 +212,14 @@ pub async fn bootstrap_app_runtime(
             }
         }
 
-        init_alloy_runtime(&runtime_ctx, &manifest).await?;
+        let Some(alloy_result) =
+            await_worker_startup_or_stop(&stop, init_alloy_runtime(&runtime_ctx, &manifest)).await
+        else {
+            return Err(Error::Message(
+                "server shutdown started while initializing the Alloy runtime".to_string(),
+            ));
+        };
+        alloy_result?;
     }
 
     if settings.runtime.is_registry_only() {
@@ -286,7 +319,16 @@ async fn initialize_module_work_runtime(
         {
             executor
         } else {
-            crate::services::artifact_runtime::compose_artifact_binding_executor(ctx).await?
+            let Some(executor_result) = await_worker_startup_or_stop(
+                &stop,
+                crate::services::artifact_runtime::compose_artifact_binding_executor(ctx),
+            )
+            .await
+            else {
+                tracing::info!("Shutdown requested while preparing the artifact binding executor");
+                return Ok(());
+            };
+            executor_result?
         };
         ctx.shared_insert(executor.clone());
         host.with_shared_value(executor)
