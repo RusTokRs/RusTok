@@ -69,6 +69,7 @@ pub mod m20261116_000042_add_product_flex_schema_projection;
 mod m20261116_000043_order_product_index_refresh_ledger_commits;
 mod m20261117_000044_order_product_channel_convergence_commits;
 mod m20261125_000045_fix_variant_attribute_translation_delete_revision;
+mod m20261125_000046_fix_product_attribute_value_translation_delete_revision;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -146,6 +147,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20261116_000043_order_product_index_refresh_ledger_commits::Migration),
         Box::new(m20261117_000044_order_product_channel_convergence_commits::Migration),
         Box::new(m20261125_000045_fix_variant_attribute_translation_delete_revision::Migration),
+        Box::new(m20261125_000046_fix_product_attribute_value_translation_delete_revision::Migration),
     ]
 }
 
@@ -158,6 +160,10 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20261125_000045_fix_variant_attribute_translation_delete_revision",
             vec!["m20260913_000030_add_product_variant_attribute_value_translation_target"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20261125_000046_fix_product_attribute_value_translation_delete_revision",
+            vec!["m20260913_000029_add_product_attribute_value_translation_target"],
         ),
         MigrationDependencyDescriptor::new(
             "m20261116_000043_order_product_index_refresh_ledger_commits",
