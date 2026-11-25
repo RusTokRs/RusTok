@@ -165,7 +165,9 @@ pub(super) fn BlogPostsTable(
     let search = RwSignal::new(String::new());
     let filters = RwSignal::new(ColumnFilters::default());
     let selection = RwSignal::new(RowSelection::default());
-    // Rows arrive page by page; the effect below sets the total from the rows on screen.
+    // Rows arrive page by page. The DataGrid is client-side (no on_page_change),
+    // so it derives the displayed total from the loaded rows itself; the initial
+    // total here is never read directly.
     let pagination = RwSignal::new(GridPagination::new(1, 10, 0));
     let load_more_label = t(locale.as_deref(), "blog.table.loadMore", "Load more");
     let pin_label = t(locale.as_deref(), "blog.table.pin", "Pin");

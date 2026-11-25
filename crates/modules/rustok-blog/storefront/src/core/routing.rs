@@ -100,9 +100,8 @@ pub fn post_link_typed_view(base: &str, slug: &str, open_label: &str) -> PostLin
     PostLinkView { href, open_label }
 }
 
-/// Preserve the selected post and other active filters while changing one filter.
-/// Cursor state is deliberately excluded: a cursor belongs to the old filter set.
-/// RSS route is mounted by the Leptos host, not by the generic module page.
+/// Builds the RSS feed link for a locale. The RSS route is mounted by the
+/// Leptos host, not by the generic module page.
 pub fn feed_href(locale: Option<&str>) -> String {
     match locale.map(str::trim).filter(|value| !value.is_empty()) {
         Some(locale) => format!("/{locale}/blog/feed.xml"),
@@ -110,6 +109,9 @@ pub fn feed_href(locale: Option<&str>) -> String {
     }
 }
 
+/// Builds a filter link that preserves the selected post and other active
+/// filters while changing one filter. Cursor state is deliberately excluded:
+/// a cursor belongs to the old filter set.
 pub fn filter_query_href(
     slug: Option<&str>,
     tag: Option<&str>,
