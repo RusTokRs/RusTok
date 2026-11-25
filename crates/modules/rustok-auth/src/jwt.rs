@@ -12,8 +12,6 @@ use uuid::Uuid;
 use crate::config::{AuthConfig, JwtAlgorithm};
 use crate::error::{AuthError, Result};
 use crate::jwt_keyring::{JwtPurpose, ValidatedJwtKeyring};
-#[cfg(test)]
-use crate::jwt_keyring::PurposeKeyringRef;
 
 const DIRECT_GRANT_TYPE: &str = "direct";
 const PASSWORD_RESET_PURPOSE: &str = "password_reset";
@@ -518,101 +516,28 @@ fn strict_jwt_validation(config: &AuthConfig, algorithm: &JwtAlgorithm) -> Valid
 // ─── Tests ───────────────────────────────────────────────────────────
 
 #[cfg(test)]
-pub(crate) const TEST_RSA_PRIVATE_KEY: &str = r#"-----BEGIN PRIVATE KEY-----
-MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDdua49SRdQT5tH
-privGhGOztfH1Tor39Zq1fm+oM2v9DksP3GLsllHP8UklUPWQbZTMtsJyoPlPqjH
-UDcBMTyGkiAHvIDEgRz741z6uOrJkZNH2wyV7EFjWhdaDcNausVTof5nOyOXOZLQ
-6Z5WBg4YxiBFRFPMrk284gUdy+ibmZ7Pj6VGPbB4Z0pTD+mkQZUXmebQsoIS7MUi
-rP1DZa0aB75Ys/fD9tJ8Xu51Jyn3EtcynDLbXHczBNTvFakXo1mMQnGozkelNwKI
-mJT08HoN4CRzWzUhd/72xwmSLUbalpmZY1ZBV6Bl2gbtyQeQOOfsqePHpWbUcNSy
-1DGq7GjHAgMBAAECggEAJ5jZfShoeXc+C/XCVcMaD57w+kciNGOtLzc3esvM7/d1
-nmlWJdScDRVeZ8Igc0sY/JLAe2cnVvFxwuaYbCYW4RGHltobRPyp6HIaUMxlYcoV
-u2drP/sJUmzsbrC2iqWASAdOH7F4EbG+foC6PjKmodYAPV6OeKdISssyjrezutXH
-ZGSQyXM/5+T+fiZEaJr1X0MEXKDU/GhmVLJ7PqPSRjZJFTYuD53uYqG4QjJBdOSI
-ttShhImjkbIbDjVlF6Ok3CgNScOfsObSGnv4ajvjVKpNtBLw+eN4JF3l0o8yI0dl
-sRrEaZ3qxYvQNRtjFzzB5yM3cWaQesZpVMJTubjOAQKBgQDxRvI+9RuwJSw3brkt
-Im0qxd0jFU9uzYLEEE28eo/+2KLxMo+7JllgEXj5ZDCMt+sjn1kOw55RtQ//CDcx
-V0XQ140icmQPiMAray+WVGv6BXfnQFF2xzqo24UQsuCJ+mtQAeQZYWJjaPSKvOd9
-ysY/cNdmje0qmwfnAc9usbJhYQKBgQDrQU9rQoVcpbcsBU50ye/Bwx4mmubNVp6d
-OFNbAeZIuIt87inDwCygbP7qqBf0wbx9Qcc+1u4W5T9GO+aeqZn6zJLOYqpn9SAo
-dBGdYDRpReDAH0A6T0sdlzBAQVr70LytUjGZhRdDj7zwLzpAC8tZey9vpppFpN+m
-7dUn2aFzJwKBgQDebIjlgRAFUj9w2qHa+eGpjL5PmVWgz9O860q+dj5IsW2E7ReT
-b8b0ySa8waAAGYyrSjrPYYaRzFjywqAe3FWAMTXqi4myyF5fqHA2JZ1k36WpiaGP
-3ho1kCkbO8vDZxeGqjedLimFezv0qjC9xjD8SwpHgI8it8iRLRoM8cOAAQKBgHlV
-eOmgKHpNOfjpT7qqgA7WXJGaqNlVCH+cElnI1AXDsKWhjEbasemX7a4HPjvNRDLy
-HxpI7gk++XB26o4AeVtB8aGif7MYWRqkKoWZnc6B7NYKCC1KwjojxQ4O5ycjVHyr
-/MrqOsJsuwzBvvBTZPDkuOWD7uNmkrdcyOhBtaRXAoGBAO/Cxvk7kLKxBctjSijt
-burjOIQ5oN/HmeSHm+QHXffXEzBWfQR5Yc4VXIuxsXb4+RdiUqswLzF+hXMa8/O5
-BR1yuIKlL4tKQxmoOx3+TfCbRAOwSfdvsxzIfFBrm1aavh/7Y5TNOzDnYlfD38S6
-t18YRhvA80STyqQJWI3Tg7sg
------END PRIVATE KEY-----"#;
-
-#[cfg(test)]
-pub(crate) const TEST_RSA_PUBLIC_KEY: &str = r#"-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA3bmuPUkXUE+bR6a4rxoR
-js7Xx9U6K9/WatX5vqDNr/Q5LD9xi7JZRz/FJJVD1kG2UzLbCcqD5T6ox1A3ATE8
-hpIgB7yAxIEc++Nc+rjqyZGTR9sMlexBY1oXWg3DWrrFU6H+ZzsjlzmS0OmeVgYO
-GMYgRURTzK5NvOIFHcvom5mez4+lRj2weGdKUw/ppEGVF5nm0LKCEuzFIqz9Q2Wt
-Gge+WLP3w/bSfF7udScp9xLXMpwy21x3MwTU7xWpF6NZjEJxqM5HpTcCiJiU9PB6
-DeAkc1s1IXf+9scJki1G2paZmWNWQVegZdoG7ckHkDjn7Knjx6Vm1HDUstQxquxo
-xwIDAQAB
------END PUBLIC KEY-----"#;
-
-// Independently generated, public test-only RSA fixture for rotation regression.
-#[cfg(test)]
-const TEST_RSA_NEXT_PRIVATE_KEY: &str = r#"-----BEGIN PRIVATE KEY-----
-MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCVngOSNiV4Xzwg
-3rNMmS3cxulFzieMJfcwm2CJf8qeW4QRP8Kv7RDVcsJBZVGDVCNTAU7StCYLxRhv
-p33cD5purve0V4802sqqTX2zkEdzcKSS4ASK6Lx2s2SM+AwLxURIuKW2WpHIMbDW
-xYf3w+f5TG2srOx55vrGfACFqUSeLiseh3WnTOj41cogOuOPwXbH3WBYJow8n2ug
-WB7vjzmU4NDIbgiad03xj3DxPlQYw2CY/wPBd+lf6G6/SB0qCsLC0lEIZyhlOzR8
-Uh6ifk5TBWki61Hm8TgKLA3/T0C++NnE08Jw3Xsk8RzEwbIGN0yzXQdKs+4u4l/p
-igBY5QqTAgMBAAECggEAEAXYlw9yatY0H8cJx6G97h9lOwMNbC5irxNsvrzvS488
-cQZ1iJaoT1uXXx6FIL3hfJGuydTeIDOO3uI+kdMf9EuLnoYkAYKO4rcix5ijdkLx
-dQNFqUSsbj/e/FPSIm6RVgJkSMehRiHAMPf9jDSwQpwDQNNSDeoFID2GZsoOXawl
-JiMEE7D3mlhEzFeT1HMzC7OH7UWzbykfpnjfiJX8dsxPWZ81aaL3hVS6SepFFbbI
-2ETEbo46+DG0HaICayzLfwf+RWd8xOC4pOWR0N/65H/K+/EovBEyZZDTHouO2oqJ
-qpAyBHwJvdm6fxeye43xTGwg+WATBhiqTl9JmYGBzQKBgQDI9GOCsbGe85d6CQvV
-n3EWVMxMYZgcxP1ApDFIFYaFqGykH9zyuVnXtCFoupkOHGr7e5IbQ5reBUjk1+dt
-RxR2YuetmSEnpoJ6JYz+UN+eJc4Ko+wjq1Ezp25ptr9rtecvrjASpxw00BUvZpTE
-r5HsUdI28yr0ceQ4EcvszSDAZwKBgQC+mazQVkg03y+3tkrcQjxez8060PIrOkMa
-RqID5lyhSvNbg1wtW0+SpKUkOJhJzEal0dhWixRpm7TiLepzjNY2WZ//3bqIyJak
-I7vRPjRRNvLHR8AJLyvdHFqo9P23hgSnS159l4betcGPtN6cytuxc6LyIspXrGhy
-itAv7lrY9QKBgBkC+gPBVCdBkF/7EkMDdlLeORNkrkceaZsLFKsxKq4mGWeQI7L+
-SOVlISdk2jn8ZYBpj/TexD7QD5OUH9TlHPHjO4zK22qQ+fp0BAl/TWXktLF0V6bU
-4uV3+HEl8stYN68ikg8wR313TLu6m9ejNplgUbbPK1CDgHFOHcCag3IPAoGBAIQr
-gMD/9BZl5msYyBSxAbgllYWBu0zqm/munU7jAbz/gn4lO1hgh2+DKNlTPZd/RkZa
-nBB3ZXJOfUKS4I+8TBdoUyFVGrMblgrAlM9muVTQK86xHKPByEMOFHgxW3dWQgfY
-pe+lkesCUvVaUTydF3eYXphWM8ZUUiGLzQ5P1UO5AoGAfVVCCKO4hKRXOTFq1SGp
-Q/Qor621Jz50lAoCpPxXLbIdClyGg8tUenAPMFcrM6Yv4tQY3fUKVXi0l753E4ez
-gxrMBgz0Q4WLZvc/Xt1SVGfbUK4Q4KYt2V2BTKvi1+jcEVjCQlnnTZ2kVgfFRCmB
-BAlvrrr6u4yOkZiWsK6xH7s=
------END PRIVATE KEY-----"#;
-
-#[cfg(test)]
-const TEST_RSA_NEXT_PUBLIC_KEY: &str = r#"-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlZ4DkjYleF88IN6zTJkt
-3MbpRc4njCX3MJtgiX/KnluEET/Cr+0Q1XLCQWVRg1QjUwFO0rQmC8UYb6d93A+a
-bq73tFePNNrKqk19s5BHc3CkkuAEiui8drNkjPgMC8VESLiltlqRyDGw1sWH98Pn
-+UxtrKzseeb6xnwAhalEni4rHod1p0zo+NXKIDrjj8F2x91gWCaMPJ9roFge7485
-lODQyG4ImndN8Y9w8T5UGMNgmP8DwXfpX+huv0gdKgrCwtJRCGcoZTs0fFIeon5O
-UwVpIutR5vE4CiwN/09AvvjZxNPCcN17JPEcxMGyBjdMs10HSrPuLuJf6YoAWOUK
-kwIDAQAB
------END PUBLIC KEY-----"#;
-
-#[cfg(test)]
 mod tests {
     use super::*;
+    use rustok_test_utils::jwt::{JwtKeyringFixture, RsaKeyPairFixture};
+
+    const ROOT: &str = "test-secret-key-for-unit-tests-only-32bytes!";
+
+    fn config_from_document(doc: &serde_json::Value) -> AuthConfig {
+        crate::build_auth_config_from_document(
+            ROOT.to_string(), 900, Default::default(), doc.to_string().as_bytes(),
+        ).unwrap().1
+    }
 
     fn test_config() -> AuthConfig {
-        AuthConfig::new("test-secret-key-for-unit-tests-only-32bytes!".to_string())
+        config_from_document(&JwtKeyringFixture::generate().unwrap().document(1))
     }
 
 
     #[test]
     fn jwt_keyring_rotation_selects_one_key_and_enforces_retirement() {
-        use serde_json::json;
-        let old = test_config();
+        let fixture = JwtKeyringFixture::generate().unwrap();
+        let next = RsaKeyPairFixture::generate().unwrap();
+        let old = config_from_document(&fixture.document(1));
         let tenant = Uuid::new_v4();
         let user = Uuid::new_v4();
         let session = Uuid::new_v4();
@@ -633,21 +558,10 @@ mod tests {
         let legacy = encode(&no_kid, &old_claims, encoding_key(&old, JwtPurpose::Access).unwrap()).unwrap();
         assert!(decode_access_token(&old, &legacy).is_err());
         let now = Utc::now().timestamp();
-        let settings = |until| json!({
-            "active_kid": "next",
-            "active_hs256_secret": "new-jwt-signing-secret-only-for-tests-123456",
-            "verification_keys": [{
-                "kid": "default", "material": PurposeKeyringRef::for_config(&old, JwtPurpose::Access).active_material().unwrap().as_ref(), "verify_until": until
-            }]
-        });
-        let rotated = crate::config::build_auth_config_with_env(
-            old.secret().to_string(), 900,
-            crate::config::AuthSettingsOverrides {
-                jwt_keyring_env: Some("JWT_KEYS".to_string()),
-                ..Default::default()
-            },
-            |_| Ok(settings(now + 3600).to_string()),
-        ).unwrap();
+        let settings = |until| fixture.document_with_access(
+            2, "next", &next, Some(("access", &fixture.access, until)),
+        );
+        let rotated = config_from_document(&settings(now + 3600));
         assert_eq!(decode_access_token(&rotated, &token).unwrap().sub, user);
         assert_eq!(decode_access_token(&rotated, &oauth).unwrap().grant_type, "client_credentials");
         assert!(decode_access_token(&rotated, &legacy).is_err());
@@ -655,16 +569,13 @@ mod tests {
         assert_eq!(decode_header(&fresh).unwrap().kid.as_deref(), Some("next"));
         assert!(decode_access_token(&rotated, &fresh).is_ok());
         assert!(decode_access_token(&old, &fresh).is_err());
-        for kid in ["unknown", "", "default"] {
+        for kid in ["unknown", "", "access"] {
             let mut header = jwt_header(&rotated, JwtPurpose::Access);
             header.kid = Some(kid.to_string());
             let forged = encode(&header, &old_claims, encoding_key(&rotated, JwtPurpose::Access).unwrap()).unwrap();
             assert!(decode_access_token(&rotated, &forged).is_err());
         }
-        let mut retired = rotated.clone();
-        retired.set_test_jwt_keyring(crate::jwt_keyring::JwtKeyring::from_json(
-            &settings(now - 1).to_string()
-        ).unwrap());
+        let retired = config_from_document(&settings(now - 1));
         assert!(decode_access_token(&retired, &token).is_err());
         assert!(decode_access_token(&retired, &legacy).is_err());
         assert!(decode_access_token(&retired, &fresh).is_ok());
@@ -673,7 +584,9 @@ mod tests {
     #[test]
     fn purpose_rotation_is_independent_and_rejects_cross_signed_claims() {
         use serde_json::json;
-        let old = test_config();
+        let fixture = JwtKeyringFixture::generate().unwrap();
+        let next = RsaKeyPairFixture::generate().unwrap();
+        let old = config_from_document(&fixture.document(1));
         let tenant = Uuid::new_v4();
         let reset = encode_password_reset_token(&old, tenant, "a@example.com", 900).unwrap();
         let verify = encode_email_verification_token(&old, tenant, "a@example.com", 900).unwrap();
@@ -681,24 +594,18 @@ mod tests {
         let access = encode_access_token(&old, Uuid::new_v4(), tenant, UserRole::Customer, Uuid::new_v4()).unwrap();
         let reset_claims = decode_password_reset_token(&old, &reset).unwrap();
         let access_claims = decode_access_token(&old, &access).unwrap();
-        let mut rotated = old.clone();
-        let old_reset_key = PurposeKeyringRef::for_config(&old, JwtPurpose::PasswordReset)
-            .active_material().unwrap();
-        let settings = |until| json!({
-            "password_reset": {"keyring": {
-                "active_kid": "reset-next",
-                "active_hs256_secret": "independent-reset-signing-key-for-tests-12345",
-                "verification_keys": [{
-                    "kid": "reset-default", "material": old_reset_key.as_ref(),
-                    "verify_until": until
-                }]
-            }}
-        });
+        let settings = |until| {
+            let mut doc = fixture.document(2);
+            let mut ring = next.ring("reset-next");
+            ring["keyring"]["verification_keys"] = json!([{
+                "kid": "password-reset", "material": fixture.password_reset.public_pem(),
+                "verify_until": until,
+            }]);
+            doc["password_reset"] = ring;
+            doc
+        };
         let now = Utc::now().timestamp();
-        rotated.set_test_special_jwt_keyrings(crate::jwt_keyring::SpecialJwtKeyrings::from_json(
-            &settings(now + 3600).to_string()
-        ).unwrap());
-        crate::config::validate_auth_config(&rotated).unwrap();
+        let rotated = config_from_document(&settings(now + 3600));
         assert!(decode_password_reset_token(&rotated, &reset).is_ok());
         assert!(decode_email_verification_token(&rotated, &verify).is_ok());
         assert!(decode_invite_token(&rotated, &invite).is_ok());
@@ -732,9 +639,7 @@ mod tests {
         let missing_kid = encode(&header, &reset_claims,
             encoding_key(&rotated, JwtPurpose::PasswordReset).unwrap()).unwrap();
         assert!(decode_password_reset_token(&rotated, &missing_kid).is_err());
-        rotated.set_test_special_jwt_keyrings(crate::jwt_keyring::SpecialJwtKeyrings::from_json(
-            &settings(now - 1).to_string()
-        ).unwrap());
+        let rotated = config_from_document(&settings(now - 1));
         assert!(decode_password_reset_token(&rotated, &reset).is_err());
         assert!(decode_password_reset_token(&rotated, &fresh).is_ok());
         assert!(decode_email_verification_token(&rotated, &verify).is_ok());
@@ -749,7 +654,8 @@ mod tests {
         let tenant = Uuid::new_v4();
         let access = encode_access_token(&old, Uuid::new_v4(), tenant, UserRole::Customer, Uuid::new_v4()).unwrap();
         let claims = decode_access_token(&old, &access).unwrap();
-        let header = jwt_header(&old, JwtPurpose::Access);
+        let mut header = jwt_header(&old, JwtPurpose::Access);
+        header.alg = Algorithm::HS256;
         let root_key = EncodingKey::from_secret(old.secret().as_bytes());
         let forged = encode(&header, &claims, &root_key).unwrap();
         assert!(decode_access_token(&old, &forged).is_err());
@@ -758,7 +664,7 @@ mod tests {
         candidate.set_test_jwt_keyring(crate::jwt_keyring::JwtKeyring::from_json(&json!({
             "active_kid": "access-next",
             "verification_keys": [{
-                "kid": "default", "material": old.secret(),
+                "kid": "access", "material": old.secret(),
                 "verify_until": Utc::now().timestamp() + 3600
             }]
         }).to_string()).unwrap());
@@ -768,38 +674,29 @@ mod tests {
 
     #[test]
     fn direct_configuration_cannot_bypass_cross_ring_key_isolation() {
-        let mut config = test_config();
-        let shared = "independent-but-reused-signing-material-test-123456";
+        let fixture = JwtKeyringFixture::generate().unwrap();
+        let mut doc = fixture.document(1);
         let tenant = Uuid::new_v4();
-        config.set_test_jwt_keyring(crate::jwt_keyring::JwtKeyring::from_json(
-            &serde_json::json!({
-                "active_kid": "access-next",
-                "active_hs256_secret": shared
-            }).to_string()
-        ).unwrap());
-        let token = encode_access_token(&config, Uuid::new_v4(), tenant, UserRole::Customer, Uuid::new_v4()).unwrap();
-        config.set_test_special_jwt_keyrings(crate::jwt_keyring::SpecialJwtKeyrings::from_json(
-            &serde_json::json!({
-                "invite": {"keyring": {
-                    "active_kid": "invite-next",
-                    "active_hs256_secret": shared
-                }}
-            }).to_string()
-        ).unwrap());
-        assert!(decode_access_token(&config, &token).is_err());
-        assert!(encode_invite_token(&config, tenant, "a@example.com", UserRole::Customer, None, 900).is_err());
+        let config = config_from_document(&doc);
+        let token = encode_access_token(&config, Uuid::new_v4(), tenant,
+            UserRole::Customer, Uuid::new_v4()).unwrap();
+        doc["invite"] = fixture.access.ring("invite-next");
+        let invalid = AuthConfig::from_test_document_unvalidated(ROOT.into(),
+            doc.to_string().as_bytes());
+        assert!(decode_access_token(&invalid, &token).is_err());
+        assert!(encode_invite_token(&invalid, tenant, "a@example.com",
+            UserRole::Customer, None, 900).is_err());
     }
 
     #[test]
     fn rs256_rotation_stages_promotes_and_retires_distinct_keys() {
-        use serde_json::json;
-        use crate::jwt_keyring::JwtKeyring;
-
         let now = Utc::now().timestamp();
         let user = Uuid::new_v4();
         let tenant = Uuid::new_v4();
         let session = Uuid::new_v4();
-        let old = rs256_test_config();
+        let fixture = JwtKeyringFixture::generate().unwrap();
+        let next = RsaKeyPairFixture::generate().unwrap();
+        let old = config_from_document(&fixture.document(1));
         let issue = |config: &AuthConfig| {
             encode_access_token(config, user, tenant, UserRole::Customer, session).unwrap()
         };
@@ -816,27 +713,15 @@ mod tests {
         }).unwrap();
         let reset = encode_password_reset_token(&old, tenant, "a@example.com", 900).unwrap();
 
-        let mut staged = old.clone();
-        staged.set_test_jwt_keyring(JwtKeyring::from_json(&json!({
-            "active_kid": "default",
-            "verification_keys": [{
-                "kid": "rsa-next", "material": TEST_RSA_NEXT_PUBLIC_KEY,
-                "verify_until": now + 3600
-            }]
-        }).to_string()).unwrap());
-        crate::config::validate_auth_config(&staged).unwrap();
-        assert_eq!(decode_header(&issue(&staged)).unwrap().kid.as_deref(), Some("default"));
+        let staged = config_from_document(&fixture.document_with_access(
+            2, "access", &fixture.access, Some(("rsa-next", &next, now + 3600)),
+        ));
+        assert_eq!(decode_header(&issue(&staged)).unwrap().kid.as_deref(), Some("access"));
 
-        let mut promoted = old.clone().with_rs256(TEST_RSA_NEXT_PRIVATE_KEY, TEST_RSA_NEXT_PUBLIC_KEY);
-        let history = |until| json!({
-            "active_kid": "rsa-next",
-            "verification_keys": [{
-                "kid": "default", "material": TEST_RSA_PUBLIC_KEY,
-                "verify_until": until
-            }]
-        });
-        promoted.set_test_jwt_keyring(JwtKeyring::from_json(&history(now + 3600).to_string()).unwrap());
-        crate::config::validate_auth_config(&promoted).unwrap();
+        let history = |until| fixture.document_with_access(
+            3, "rsa-next", &next, Some(("access", &fixture.access, until)),
+        );
+        let promoted = config_from_document(&history(now + 3600));
         let fresh = issue(&promoted);
         let header = decode_header(&fresh).unwrap();
         assert_eq!(header.alg, Algorithm::RS256);
@@ -859,8 +744,7 @@ mod tests {
         }
         assert!(decode_password_reset_token(&promoted, &reset).is_ok());
 
-        let mut retired = promoted.clone();
-        retired.set_test_jwt_keyring(JwtKeyring::from_json(&history(now - 1).to_string()).unwrap());
+        let retired = config_from_document(&history(now - 1));
         assert!(decode_access_token(&retired, &old_token).is_err());
         assert!(decode_access_token(&retired, &old_oauth).is_err());
         assert!(decode_access_token(&retired, &legacy).is_err());
@@ -875,18 +759,19 @@ mod tests {
         use serde_json::json;
         use crate::jwt_keyring::JwtKeyring;
         let cutoff = Utc::now().timestamp() + 3600;
-        let mut rsa = rs256_test_config();
+        let fixture = JwtKeyringFixture::generate().unwrap();
+        let mut rsa = config_from_document(&fixture.document(1));
         rsa.set_test_jwt_keyring(JwtKeyring::from_json(&json!({
             "active_kid":"rsa",
             "verification_keys":[{"kid":"hs","algorithm":"HS256",
                 "material":"independent-hmac-material-at-least-32-bytes","verify_until":cutoff}]
         }).to_string()).unwrap());
         assert!(crate::validate_auth_config(&rsa).is_err());
-        let mut hs = test_config();
+        let mut hs = AuthConfig::new(ROOT.into());
         hs.set_test_jwt_keyring(JwtKeyring::from_json(&json!({
             "active_kid":"hs",
             "verification_keys":[{"kid":"rsa","algorithm":"RS256",
-                "material":TEST_RSA_PUBLIC_KEY,"verify_until":cutoff}]
+                "material":fixture.access.public_pem(),"verify_until":cutoff}]
         }).to_string()).unwrap());
         assert!(crate::validate_auth_config(&hs).is_err());
         for config in [rsa, hs] {
@@ -896,38 +781,37 @@ mod tests {
     }
 
     #[test]
-    fn independent_rsa_special_ring_does_not_change_hs256_access() {
-        let mut config = test_config();
-        config.set_test_special_jwt_keyrings(crate::jwt_keyring::SpecialJwtKeyrings::from_json(
-            &serde_json::json!({
-                "invite": {
-                    "algorithm": "RS256",
-                    "keyring": {"active_kid": "invite-rsa"},
-                    "rsa_private_key_pem": TEST_RSA_PRIVATE_KEY,
-                    "rsa_public_key_pem": TEST_RSA_PUBLIC_KEY
-                }
-            }).to_string()
-        ).unwrap());
-        crate::config::validate_auth_config(&config).unwrap();
+    fn independent_rsa_special_ring_does_not_change_other_purposes() {
+        let fixture = JwtKeyringFixture::generate().unwrap();
+        let next = RsaKeyPairFixture::generate().unwrap();
+        let original = config_from_document(&fixture.document(1));
         let tenant = Uuid::new_v4();
-        let invite = encode_invite_token(&config, tenant, "a@example.com", UserRole::Customer, None, 900).unwrap();
+        let access = encode_access_token(&original, Uuid::new_v4(), tenant,
+            UserRole::Customer, Uuid::new_v4()).unwrap();
+        let mut doc = fixture.document(2);
+        doc["invite"] = next.ring("invite-rsa");
+        let config = config_from_document(&doc);
+        let invite = encode_invite_token(&config, tenant, "a@example.com",
+            UserRole::Customer, None, 900).unwrap();
         assert_eq!(decode_header(&invite).unwrap().alg, Algorithm::RS256);
         assert!(decode_invite_token(&config, &invite).is_ok());
-        let access = encode_access_token(&config, Uuid::new_v4(), tenant, UserRole::Customer, Uuid::new_v4()).unwrap();
-        assert_eq!(decode_header(&access).unwrap().alg, Algorithm::HS256);
-        let duplicated = config.with_rs256(TEST_RSA_PRIVATE_KEY, TEST_RSA_PUBLIC_KEY);
-        assert!(crate::config::validate_auth_config(&duplicated).is_err());
-    }
-
-    fn rs256_test_config() -> AuthConfig {
-        test_config().with_rs256(TEST_RSA_PRIVATE_KEY, TEST_RSA_PUBLIC_KEY)
+        assert!(decode_access_token(&config, &access).is_ok());
+        assert!(decode_invite_token(&original, &invite).is_err());
+        doc["access"] = next.ring("duplicate");
+        assert!(crate::build_auth_config_from_document(
+            ROOT.into(), 900, Default::default(), doc.to_string().as_bytes(),
+        ).is_err());
     }
 
     #[test]
-    fn hs256_weak_secret_fails_closed_at_key_materialization() {
+    fn weak_mac_root_fails_closed_at_key_materialization() {
         // AuthConfig can be built without build_auth_config; signing or
         // verifying with a sub-32-byte secret must still be impossible.
-        let weak = AuthConfig::new("short-secret".to_string());
+        let fixture = JwtKeyringFixture::generate().unwrap();
+        let doc = fixture.document(1);
+        let weak = AuthConfig::from_test_document_unvalidated(
+            "short-secret".into(), doc.to_string().as_bytes(),
+        );
         let encode = encode_access_token(
             &weak,
             Uuid::new_v4(),
@@ -937,7 +821,7 @@ mod tests {
         );
         assert!(encode.is_err());
 
-        let strong = test_config();
+        let strong = config_from_document(&doc);
         let token = encode_access_token(
             &strong,
             Uuid::new_v4(),
@@ -950,10 +834,14 @@ mod tests {
     }
 
     #[test]
-    fn hs256_whitespace_padded_secret_fails_closed() {
+    fn whitespace_padded_mac_root_fails_closed() {
         // 31 real bytes with an interior space: `trim().len()` counts 32 and
         // would pass, but whitespace must not credit toward the minimum.
-        let padded = AuthConfig::new(format!("{} {}", "a".repeat(16), "b".repeat(15)));
+        let fixture = JwtKeyringFixture::generate().unwrap();
+        let padded = AuthConfig::from_test_document_unvalidated(
+            format!("{} {}", "a".repeat(16), "b".repeat(15)),
+            fixture.document(1).to_string().as_bytes(),
+        );
         let encode = encode_access_token(
             &padded,
             Uuid::new_v4(),
@@ -989,7 +877,7 @@ mod tests {
     }
 
     #[test]
-    fn hs256_access_token_header_matches_config() {
+    fn access_token_header_has_exact_purpose_and_kid() {
         let config = test_config();
         let token = encode_access_token(
             &config,
@@ -1001,12 +889,14 @@ mod tests {
         .unwrap();
 
         let header = jsonwebtoken::decode_header(&token).unwrap();
-        assert_eq!(header.alg, Algorithm::HS256);
+        assert_eq!(header.alg, Algorithm::RS256);
+        assert_eq!(header.typ.as_deref(), Some(JwtPurpose::Access.typ()));
+        assert_eq!(header.kid.as_deref(), Some("access"));
     }
 
     #[test]
     fn rs256_access_token_round_trips_and_header_matches_config() {
-        let config = rs256_test_config();
+        let config = test_config();
         let user_id = Uuid::new_v4();
         let tenant_id = Uuid::new_v4();
         let session_id = Uuid::new_v4();
@@ -1024,7 +914,7 @@ mod tests {
 
     #[test]
     fn rs256_access_token_is_not_accepted_as_hs256() {
-        let rs256_config = rs256_test_config();
+        let rs256_config = test_config();
         let token = encode_access_token(
             &rs256_config,
             Uuid::new_v4(),
@@ -1034,21 +924,23 @@ mod tests {
         )
         .unwrap();
 
-        assert!(decode_access_token(&test_config(), &token).is_err());
+        assert!(decode_access_token(&AuthConfig::new(ROOT.into()), &token).is_err());
     }
 
     #[test]
-    fn rs256_access_with_default_hs256_special_purposes_round_trips() {
-        let config = rs256_test_config();
+    fn rs256_special_purposes_round_trip() {
+        let config = test_config();
         let tenant_id = Uuid::new_v4();
 
         let password_token =
             encode_password_reset_token(&config, tenant_id, "USER@example.com", 900).unwrap();
+        assert_eq!(decode_header(&password_token).unwrap().alg, Algorithm::RS256);
         let password_claims = decode_password_reset_token(&config, &password_token).unwrap();
         assert_eq!(password_claims.sub, "user@example.com");
 
         let verification_token =
             encode_email_verification_token(&config, tenant_id, "USER@example.com", 900).unwrap();
+        assert_eq!(decode_header(&verification_token).unwrap().alg, Algorithm::RS256);
         let verification_claims =
             decode_email_verification_token(&config, &verification_token).unwrap();
         assert_eq!(verification_claims.sub, "user@example.com");
@@ -1062,6 +954,7 @@ mod tests {
             900,
         )
         .unwrap();
+        assert_eq!(decode_header(&invite_token).unwrap().alg, Algorithm::RS256);
         let invite_claims = decode_invite_token(&config, &invite_token).unwrap();
         assert_eq!(invite_claims.sub, "invited@example.com");
         assert_eq!(invite_claims.role, UserRole::Admin);
@@ -1194,17 +1087,17 @@ mod tests {
     #[test]
     fn auth_header_rejects_null_duplicate_and_unsupported_fields() {
         for raw in [
-            r#"{"alg":"HS256","typ":"JWT","kid":null}"#,
-            r#"{"alg":"HS256","typ":"JWT","kid":"a","kid":"b"}"#,
-            r#"{"alg":"HS256","typ":"JWT","kid":"a","crit":["b64"],"b64":false}"#,
-            r#"{"alg":"HS256","typ":"JWT","kid":"a","jku":"https://example.invalid"}"#,
-            r#"{"alg":"HS256","typ":"JWT","kid":"a","unknown":1}"#,
-            r#"{"alg":"HS256","kid":"a"}"#,
+            r#"{"alg":"RS256","typ":"JWT","kid":null}"#,
+            r#"{"alg":"RS256","typ":"JWT","kid":"a","kid":"b"}"#,
+            r#"{"alg":"RS256","typ":"JWT","kid":"a","crit":["b64"],"b64":false}"#,
+            r#"{"alg":"RS256","typ":"JWT","kid":"a","jku":"https://example.invalid"}"#,
+            r#"{"alg":"RS256","typ":"JWT","kid":"a","unknown":1}"#,
+            r#"{"alg":"RS256","kid":"a"}"#,
         ] {
             let token = format!("{}.e30.signature", URL_SAFE_NO_PAD.encode(raw));
             assert!(auth_jwt_header(&token).is_err());
         }
-        let omitted = format!("{}.e30.signature", URL_SAFE_NO_PAD.encode(r#"{"alg":"HS256","typ":"JWT"}"#));
+        let omitted = format!("{}.e30.signature", URL_SAFE_NO_PAD.encode(r#"{"alg":"RS256","typ":"JWT"}"#));
         assert!(auth_jwt_header(&omitted).unwrap().kid.is_none());
         let oversized = format!("{}.e30.signature", "a".repeat(1025));
         assert!(auth_jwt_header(&oversized).is_err());
@@ -1212,8 +1105,12 @@ mod tests {
 
     #[test]
     fn rsa_direct_signer_rejects_mismatched_pair() {
-        let wrong = TEST_RSA_PUBLIC_KEY.replacen("3bmu", "3cmu", 1);
-        let config = test_config().with_rs256(TEST_RSA_PRIVATE_KEY, wrong);
+        let fixture = JwtKeyringFixture::generate().unwrap();
+        let wrong = RsaKeyPairFixture::generate().unwrap();
+        let mut doc = fixture.document(1);
+        doc["access"]["rsa_public_key_pem"] = serde_json::json!(wrong.public_pem());
+        let config = AuthConfig::from_test_document_unvalidated(ROOT.into(),
+            doc.to_string().as_bytes());
         assert!(encode_access_token(&config, Uuid::new_v4(), Uuid::new_v4(),
             UserRole::Customer, Uuid::new_v4()).is_err());
     }
@@ -1230,7 +1127,7 @@ mod tests {
         )
         .unwrap();
 
-        let wrong_config = test_config().with_issuer("wrong-issuer");
+        let wrong_config = config.clone().with_issuer("wrong-issuer");
         assert!(
             decode_access_token(&wrong_config, &token).is_err(),
             "Wrong issuer MUST be rejected"
@@ -1249,7 +1146,7 @@ mod tests {
         )
         .unwrap();
 
-        let wrong_config = test_config().with_audience("wrong-audience");
+        let wrong_config = config.clone().with_audience("wrong-audience");
         assert!(
             decode_access_token(&wrong_config, &token).is_err(),
             "Wrong audience MUST be rejected"
@@ -1268,7 +1165,7 @@ mod tests {
         )
         .unwrap();
 
-        let wrong_config = AuthConfig::new("completely-different-secret-key-32bytes!!".to_string());
+        let wrong_config = test_config();
         assert!(
             decode_access_token(&wrong_config, &token).is_err(),
             "Wrong signature MUST be rejected"

@@ -328,12 +328,12 @@ impl AuthConfig {
         }
     }
 
+    /// Exercise lazy materialization and direct runtime rejection in tests.
+    /// Production construction must validate the complete document.
     #[cfg(test)]
-    pub(crate) fn fixed_inputs(&self) -> Result<&JwtKeyInputs> {
-        match &self.key_state {
-            JwtKeySource::Fixed(keys) => Ok(&keys.inputs),
-            JwtKeySource::Live(_) => Err(invalid_rotation()),
-        }
+    pub(crate) fn from_test_document_unvalidated(root: String, bytes: &[u8]) -> Self {
+        let (_, inputs) = JwtKeyringDocument::parse(bytes).unwrap();
+        Self::from_key_inputs(root, inputs)
     }
 
     fn edit_key_inputs(&mut self, edit: impl FnOnce(&mut JwtKeyInputs)) -> Result<()> {
@@ -353,11 +353,6 @@ impl AuthConfig {
     #[cfg(test)]
     pub(crate) fn set_test_jwt_keyring(&mut self, ring: JwtKeyring) {
         self.edit_key_inputs(|inputs| inputs.jwt_keyring = ring).unwrap();
-    }
-
-    #[cfg(test)]
-    pub(crate) fn set_test_special_jwt_keyrings(&mut self, rings: SpecialJwtKeyrings) {
-        self.edit_key_inputs(|inputs| inputs.special_jwt_keyrings = rings).unwrap();
     }
 
     /// Inspect all current explicit HS256 material without exporting a secret copy.
@@ -1550,6 +1545,7 @@ mod tests {
 
     #[test]
     fn build_auth_config_resolves_rs256_keys_from_env() {
+        let pair = RsaKeyPairFixture::generate().unwrap();
         let config = build_auth_config_with_env(
             secret(),
             900,
@@ -1560,8 +1556,8 @@ mod tests {
                 ..AuthSettingsOverrides::default()
             },
             |name| match name {
-                "PRIVATE" => Ok(crate::jwt::TEST_RSA_PRIVATE_KEY.to_string()),
-                "PUBLIC" => Ok(crate::jwt::TEST_RSA_PUBLIC_KEY.to_string()),
+                "PRIVATE" => Ok(pair.private_pem().to_string()),
+                "PUBLIC" => Ok(pair.public_pem().to_string()),
                 _ => panic!("unexpected env key"),
             },
         )
@@ -1569,23 +1565,24 @@ mod tests {
 
         assert_eq!(
             config.rsa_private_key_pem().unwrap().as_deref(),
-            Some(crate::jwt::TEST_RSA_PRIVATE_KEY)
+            Some(pair.private_pem())
         );
         assert_eq!(
             config.rsa_public_key_pem().unwrap().as_deref(),
-            Some(crate::jwt::TEST_RSA_PUBLIC_KEY)
+            Some(pair.public_pem())
         );
     }
 
     #[test]
     fn rs256_configuration_requires_independent_mac_root() {
+        let fixture = JwtKeyringFixture::generate().unwrap();
+        let doc = fixture.document(1);
         for weak in [
             "", "short-secret", "abc                              ",
-            crate::jwt::TEST_RSA_PUBLIC_KEY, crate::jwt::TEST_RSA_PRIVATE_KEY,
+            fixture.access.public_pem(), fixture.access.private_pem(),
         ] {
-            let config = AuthConfig::new(weak.to_string()).with_rs256(
-                crate::jwt::TEST_RSA_PRIVATE_KEY,
-                crate::jwt::TEST_RSA_PUBLIC_KEY,
+            let config = AuthConfig::from_test_document_unvalidated(
+                weak.to_string(), doc.to_string().as_bytes(),
             );
             assert!(validate_auth_config(&config).is_err());
         }
@@ -1625,14 +1622,15 @@ mod tests {
 
     #[test]
     fn build_auth_config_rejects_mismatched_rs256_key_pair() {
-        let different_public_key = crate::jwt::TEST_RSA_PUBLIC_KEY.replacen("3bmu", "3cmu", 1);
+        let pair = RsaKeyPairFixture::generate().unwrap();
+        let different = RsaKeyPairFixture::generate().unwrap();
         let result = build_auth_config_with_env(
             secret(),
             900,
             AuthSettingsOverrides {
                 algorithm: Some(JwtAlgorithm::RS256),
-                rsa_private_key_pem: Some(crate::jwt::TEST_RSA_PRIVATE_KEY.to_string()),
-                rsa_public_key_pem: Some(different_public_key),
+                rsa_private_key_pem: Some(pair.private_pem().to_string()),
+                rsa_public_key_pem: Some(different.public_pem().to_string()),
                 ..AuthSettingsOverrides::default()
             },
             |_| panic!("env resolver should not be called"),

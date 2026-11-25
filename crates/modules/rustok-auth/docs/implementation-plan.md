@@ -63,9 +63,12 @@ regressions use it. Durable fence, rolling admission, revocation, authority,
 witness and observability scenarios now use fresh RSA pairs per isolated
 ledger and public-only history. Explicit cross-algorithm negative coverage is
 retained until the algorithm removal. Local lease gates, immutable snapshot concurrency and process-local
-rotation now exercise the same RSA fixture contract. Remaining constructors,
-JWT primitive tests and host consumers still need migration; scoped execution
-remains pending. The file-source entry point now
+rotation now exercise the same RSA fixture contract. JWT primitive tests now use independent RSA fixtures for positive signing
+and verification, including exact JOSE checks and cross-purpose rejection.
+Embedded test RSA keys in the Auth owner sources are removed. Explicit HS256
+negative and existing startup-source tests remain until consumer cutover.
+Remaining constructors and host consumers still need migration; scoped
+execution remains pending. The file-source entry point now
 constructs and validates only the actual complete candidate, without
 instantiating default signing inputs, with typed source exclusivity
 owned by Auth, not a redundant startup signer. Independent MAC root validation

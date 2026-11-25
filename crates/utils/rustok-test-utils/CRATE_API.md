@@ -30,7 +30,7 @@
   - `ProductFixture` & `NodeFixture`: Creates catalog products and CMS content nodes.
 - `jwt` (opt-in feature): Fresh RSA key pairs and complete JWT keyring document fixtures.
   - `JwtKeyringFixture::generate()` / `document(generation)` / `document_with_access(generation, kid, pair, history)`
-  - `RsaKeyPairFixture::generate()` / `ring(kid)` / `public_pem()`
+  - `RsaKeyPairFixture::generate()` / `ring(kid)` / `public_pem()` / `private_pem()` (test material only)
   - No embedded private keys, global signer cache, production wiring or external executable.
 - `helpers`: Security context generators, test IDs, and assertion macros.
   - `super_admin_context()`, `admin_context()`, `manager_context()`, `customer_context()`, `user_context(role, id)`

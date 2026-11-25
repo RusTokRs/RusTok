@@ -27,6 +27,12 @@ impl RsaKeyPairFixture {
         })
     }
 
+    /// Test-only access to the private encoding for negative key admission
+    /// and explicit environment-source fixtures. Never log this value.
+    pub fn private_pem(&self) -> &str {
+        &self.private_pem
+    }
+
     pub fn public_pem(&self) -> &str {
         &self.public_pem
     }

@@ -110,7 +110,9 @@ including removal of remaining homogeneous HS256 paths, is pending. The
 shared dev-only JWT fixture generator now supplies complete independent RSA
 keyrings to the Auth document bootstrap, server special-token regressions and
 durable fence, authority, witness, observability, local lease and immutable
-snapshot rotation scenarios. Explicit
+snapshot rotation scenarios. JWT primitive regressions now use complete RSA
+fixtures; embedded Auth test private keys have been removed from the owner
+sources. Explicit
 isolated dev/test provisioning of four independent RSA pairs is available
 through the [keyring provisioning command](docs/README.md#isolated-development-and-test-provisioning).
 File bootstrap constructs the selected complete key source directly without

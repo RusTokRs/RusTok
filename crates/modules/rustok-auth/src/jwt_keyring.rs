@@ -227,11 +227,6 @@ pub(crate) struct PurposeKeyringRef<'a> {
 }
 
 impl<'a> PurposeKeyringRef<'a> {
-    #[cfg(test)]
-    pub(crate) fn for_config(config: &'a crate::config::AuthConfig, purpose: JwtPurpose) -> Self {
-        Self::for_inputs(config.fixed_inputs().unwrap(), config.secret(), purpose)
-    }
-
     fn for_inputs(inputs: &'a JwtKeyInputs, root: &'a str, purpose: JwtPurpose) -> Self {
         let special = match purpose {
             JwtPurpose::Access => None,
@@ -628,11 +623,15 @@ mod tests {
 
     #[test]
     fn retirement_cutoff_is_exclusive() {
-        let mut config = AuthConfig::new("root-test-material-with-at-least-32-bytes".into());
-        config.set_test_jwt_keyring(JwtKeyring::from_json(r#"{
-            "active_kid":"next",
-            "verification_keys":[{"kid":"old","material":"old-verification-material-at-least-32-bytes","verify_until":200}]
-        }"#).unwrap());
+        let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
+        let old = rustok_test_utils::jwt::RsaKeyPairFixture::generate().unwrap();
+        let doc = fixture.document_with_access(
+            1, "next", &fixture.access, Some(("old", &old, 200)),
+        );
+        let config = crate::build_auth_config_from_document(
+            "root-test-material-with-at-least-32-bytes".into(), 900,
+            Default::default(), doc.to_string().as_bytes(),
+        ).unwrap().1;
         let ring = config.prepared_jwt().unwrap().for_purpose(JwtPurpose::Access);
         assert_eq!(ring.select("old", 199).map(|(_, _, cutoff)| cutoff), Some(Some(200)));
         assert!(ring.select("old", 200).is_none());
@@ -643,11 +642,12 @@ mod tests {
 
     #[test]
     fn public_pem_cannot_be_configured_as_hmac_material() {
+        let pair = rustok_test_utils::jwt::RsaKeyPairFixture::generate().unwrap();
         let mut config = AuthConfig::new("root-test-material-with-at-least-32-bytes".into());
         config.set_test_jwt_keyring(JwtKeyring::from_json(&serde_json::json!({
             "active_kid": "hs",
             "verification_keys": [{"kid":"wrong","algorithm":"HS256",
-                "material":crate::jwt::TEST_RSA_PUBLIC_KEY,"verify_until":200}]
+                "material":pair.public_pem(),"verify_until":200}]
         }).to_string()).unwrap());
         assert!(crate::validate_auth_config(&config).is_err());
     }

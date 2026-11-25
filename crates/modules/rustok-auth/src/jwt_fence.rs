@@ -830,7 +830,8 @@ mod tests {
     pub(super) const ROOT: &str = "stable-host-root-for-fence-tests-only-32bytes";
     #[test]
     fn fence_mac_rejects_invalid_independent_root() {
-        for root in ["short", crate::jwt::TEST_RSA_PUBLIC_KEY, crate::jwt::TEST_RSA_PRIVATE_KEY] {
+        let pair = rustok_test_utils::jwt::RsaKeyPairFixture::generate().unwrap();
+        for root in ["short", pair.public_pem(), pair.private_pem()] {
             assert!(FenceMac::new(root).is_err());
         }
         assert!(FenceMac::new(ROOT).is_ok());

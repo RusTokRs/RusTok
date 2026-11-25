@@ -102,7 +102,8 @@ mod tests {
 
     #[test]
     fn invalid_root_fails_closed_for_every_mac_purpose() {
-        for root in ["short", crate::jwt::TEST_RSA_PUBLIC_KEY, crate::jwt::TEST_RSA_PRIVATE_KEY] {
+        let pair = rustok_test_utils::jwt::RsaKeyPairFixture::generate().unwrap();
+        for root in ["short", pair.public_pem(), pair.private_pem()] {
             let config = AuthConfig::new(root.to_string());
             for purpose in [AuthMacPurpose::OAuthConsentCsrf, AuthMacPurpose::PasswordResetCredential] {
                 assert!(auth_purpose_mac(&config, purpose, b"payload").is_err());
