@@ -131,29 +131,7 @@ impl PricingService {
                 channel_slug.as_deref(),
             )
             .await?;
-        let base_amount = price.compare_at_amount.unwrap_or(price.amount);
-        let adjusted_amount = money::round_to_currency(
-            base_amount * ((Decimal::from(100) - discount_percent) / Decimal::from(100)),
-            &currency_code,
-        )
-        .map_err(|error| {
-            CommerceError::Validation(format!(
-                "discounted preview for {currency_code} cannot be rounded: {error}"
-            ))
-        })?;
-
-        Ok(PriceAdjustmentPreview {
-            kind: PriceAdjustmentKind::PercentageDiscount,
-            currency_code,
-            current_amount: price.amount,
-            base_amount,
-            adjustment_percent: discount_percent,
-            adjusted_amount,
-            compare_at_amount: Some(base_amount),
-            price_list_id: price.price_list_id,
-            channel_id: price.channel_id,
-            channel_slug: price.channel_slug,
-        })
+        percentage_discount_preview(&price, &currency_code, discount_percent)
     }
 
     #[instrument(skip(self))]
@@ -164,17 +142,17 @@ impl PricingService {
         currency_code: &str,
     ) -> CommerceResult<Option<Decimal>> {
         self.ensure_variant_tenant(tenant_id, variant_id).await?;
-        let price = price::Entity::find()
+        let mut prices = price::Entity::find()
             .filter(price::Column::VariantId.eq(variant_id))
             .filter(price::Column::CurrencyCode.eq(currency_code))
-            .filter(price::Column::RegionId.is_null())
-            .filter(price::Column::PriceListId.is_null())
-            .filter(price::Column::MinQuantity.is_null())
-            .filter(price::Column::MaxQuantity.is_null())
-            .one(&self.db)
+            .filter(crate::services::bootstrap::catalog_base_scope())
+            .limit(2)
+            .all(&self.db)
             .await?;
-
-        Ok(price.map(|price| price.amount))
+        if prices.len() > 1 {
+            return Err(ResolutionError::Ambiguous.into_commerce());
+        }
+        Ok(prices.pop().map(|price| price.amount))
     }
 
     #[instrument(skip(self))]
@@ -518,7 +496,7 @@ impl PricingService {
             ));
         }
         let currency_code = normalize_resolution_currency(currency_code)?;
-        price::Entity::find()
+        let mut prices = price::Entity::find()
             .filter(price::Column::VariantId.eq(variant_id))
             .filter(price::Column::CurrencyCode.eq(&currency_code))
             .filter(price::Column::RegionId.is_null())
@@ -533,9 +511,13 @@ impl PricingService {
             ))
             .filter(price::Column::MinQuantity.is_null())
             .filter(price::Column::MaxQuantity.is_null())
-            .one(&self.db)
-            .await?
-            .ok_or_else(|| {
+            .limit(2)
+            .all(&self.db)
+            .await?;
+        if prices.len() > 1 {
+            return Err(ResolutionError::Ambiguous.into_commerce());
+        }
+        prices.pop().ok_or_else(|| {
                 CommerceError::InvalidPrice(format!(
                     "No canonical price found for currency {}{}{}",
                     currency_code,
@@ -548,6 +530,40 @@ impl PricingService {
                 ))
             })
     }
+}
+
+pub(super) fn percentage_discount_preview(
+    price: &price::Model,
+    currency_code: &str,
+    discount_percent: Decimal,
+) -> CommerceResult<PriceAdjustmentPreview> {
+    validate_discount_percent(discount_percent)?;
+    if price.amount < Decimal::ZERO
+        || price.compare_at_amount.is_some_and(|reference| reference < price.amount)
+    {
+        return Err(resolution::invalid_data("Stored discount reference is invalid").into_commerce());
+    }
+    validate_price_precision(price.amount, price.compare_at_amount, currency_code)
+        .map_err(|_| resolution::invalid_data("Stored discount reference is not exactly representable").into_commerce())?;
+    let base_amount = price.compare_at_amount.unwrap_or(price.amount);
+    let adjusted = base_amount
+        .checked_mul((Decimal::from(100) - discount_percent) / Decimal::from(100))
+        .ok_or_else(|| resolution::invalid_data("Discount calculation exceeds the money range").into_commerce())?;
+    let adjusted_amount = money::round_to_currency(adjusted, currency_code)
+        .map_err(|_| resolution::invalid_data("Discount cannot be represented in its currency").into_commerce())?;
+    validate_price_precision(adjusted_amount, Some(base_amount), currency_code)?;
+    Ok(PriceAdjustmentPreview {
+        kind: PriceAdjustmentKind::PercentageDiscount,
+        currency_code: currency_code.to_owned(),
+        current_amount: price.amount,
+        base_amount,
+        adjustment_percent: discount_percent,
+        adjusted_amount,
+        compare_at_amount: Some(base_amount),
+        price_list_id: price.price_list_id,
+        channel_id: price.channel_id,
+        channel_slug: price.channel_slug.clone(),
+    })
 }
 
 pub(crate) async fn resolve_requested_price_list_id(

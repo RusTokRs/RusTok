@@ -119,6 +119,50 @@ async fn test_apply_discount_rounding() {
 }
 
 #[tokio::test]
+async fn discount_and_base_read_do_not_fall_back_to_channel_only_price() {
+    let (db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (_, variant_id) = create_test_product(&catalog, tenant_id).await;
+    let channel_id = Uuid::new_v4();
+    seed_pricing_channel(&db, tenant_id, channel_id, "web").await;
+    service.set_price_tier_with_channel(
+        tenant_id, actor_id, variant_id, "EUR", dec!(40.00), None,
+        Some(channel_id), Some("web".into()), None, None,
+    ).await.unwrap();
+
+    assert_eq!(service.get_price(tenant_id, variant_id, "EUR").await.unwrap(), None);
+    assert!(service.apply_percentage_discount(
+        tenant_id, actor_id, variant_id, "EUR", dec!(10),
+    ).await.is_err());
+    let scoped = service.get_variant_prices(tenant_id, variant_id).await.unwrap()
+        .into_iter().find(|row| row.currency_code == "EUR").unwrap();
+    assert_eq!(scoped.amount, dec!(40.00));
+    assert_eq!(scoped.channel_id, Some(channel_id));
+}
+
+#[tokio::test]
+async fn discount_rejects_invalid_historical_reference_without_writing() {
+    let (db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (_, variant_id) = create_test_product(&catalog, tenant_id).await;
+    let price = entities::price::Entity::find()
+        .filter(entities::price::Column::VariantId.eq(variant_id))
+        .one(&db).await.unwrap().unwrap();
+    let price_id = price.id;
+    let mut active: entities::price::ActiveModel = price.into();
+    active.compare_at_amount = Set(Some(dec!(100.001)));
+    active.update(&db).await.unwrap();
+
+    assert!(service.preview_percentage_discount(variant_id, "USD", dec!(10)).await.is_err());
+    assert!(service.apply_percentage_discount(tenant_id, actor_id, variant_id, "USD", dec!(10)).await.is_err());
+    let retained = entities::price::Entity::find_by_id(price_id).one(&db).await.unwrap().unwrap();
+    assert_eq!(retained.amount, dec!(99.99));
+    assert_eq!(retained.compare_at_amount, Some(dec!(100.001)));
+}
+
+#[tokio::test]
 async fn test_apply_discount_no_existing_price() {
     let (_db, service, catalog) = setup().await;
     let tenant_id = Uuid::new_v4();

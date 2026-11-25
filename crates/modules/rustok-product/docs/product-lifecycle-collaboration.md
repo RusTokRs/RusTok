@@ -108,7 +108,10 @@ that cannot be represented exactly in its currency's minor units, before the
 owner write transaction. Pricing bootstrap independently enforces the same
 platform money primitive before insert or base-price replacement, and direct
 Pricing single/batch authoring uses the existing resolver precision validator.
-Computed discounts retain currency-aware rounding; authored money is never
+Direct percentage-discount application calculates from the canonical price
+under the same Variant and selected price-list locks that protect its write,
+event and catalog predecessor advancement. Preview is advisory and not a
+write prerequisite. Computed discounts retain currency-aware rounding; authored money is never
 silently rounded to make an otherwise unquotable row acceptable.
 Existing legacy two-decimal mirrors are unchanged. Source regressions are
 authored but not executed; historical invalid price rows are not rewritten.

@@ -27,6 +27,15 @@ causes the corresponding Variant Index refresh. Batch writes advance once after
 all rows succeed. Contextual price writes do not invalidate the catalog edit
 snapshot. No new event family or external write capability is introduced.
 
+Percentage-discount apply computes from the canonical row only after locking
+the Variant and selected price list, then writes the calculated price, event
+and (for catalog base prices) Product predecessor in the same transaction.
+Preview and apply share the calculation and reject invalid historical reference
+money or ambiguous canonical rows. A missing row cannot become a new discount
+row. Legacy unscoped `get_price` reads only unscoped base rows; it never falls
+back to channel prices. Focused regression sources are unrun; PostgreSQL
+concurrent execution remains unverified.
+
 Admin SKU price upserts return the exact persisted row captured in the owner
 transaction, after successful commit, rather than searching the variant's
 prices again. Regional rows and concurrent later writes cannot substitute
