@@ -398,16 +398,49 @@ runtime credentials, verified TLS and independent backup/failover.
 
 Restoring application data does not roll back JWT generation, key tombstones
 or revocations. It does not protect restored sessions, refresh tokens, OAuth
-or RBAC, or detect restoring the independent authority itself. Static generation
+or RBAC, or protect against loss/rollback of the independent witness itself. Static generation
 zero has no enrolled key history. Do not resume traffic after loss of current
 authority. See the [independent authority ADR](../../../../DECISIONS/2026-11-25-jwt-independent-authority.md).
 No new application migration. Compilation and PostgreSQL restore/cutover
 evidence remain pending.
 
+### JWT rollback witness
+
+The independent authority now also requires `RUSTOK_JWT_WITNESS_DATABASE_URL`
+in a third restore domain. Both external PostgreSQL URIs require an explicit
+TCP host/database and `sslmode=verify-full`; only `sslrootcert`, `sslcert`
+and `sslkey` may be supplied additionally. Partial configuration is rejected.
+The witness stores an HMAC-authenticated exact metadata checkpoint including
+a monotonically increasing revision and every grant/horizon. All reads and
+all five mutation paths verify it. Mutations lock authority then witness,
+commit witness first and return success only after both durable commits.
+Mismatch or uncertain write commit fences local JWT; recovery is offline.
+
+For an existing independent authority, stop all older hosts and writers,
+wait for all leases and drains to expire, provision an empty separate witness
+database and run (with the stable root in `RUSTOK_JWT_REVOCATION_ROOT`):
+
+```sh
+rustok-cli auth jwt-witness-init --confirm
+```
+
+Fresh deployments must first run the independent authority import above.
+Do not reimport an existing authority. After a rollback or interrupted commit,
+stop all writers, wait for leases and independently verify the current witness;
+then run `rustok-cli auth jwt-witness-recover --confirm`. This copies only the
+authenticated checkpoint, preserves grants and refuses to lower the authority
+revision. Never reset/reseed the witness or restore it from an older backup.
+Restart fresh processes only after successful recovery. A joint rollback of the
+authority and witness cannot be detected by this model. See the
+[witness ADR](../../../../DECISIONS/2026-11-25-jwt-rollback-witness.md) for durability, failure-domain and runtime
+verification requirements.
+
 ### Operational observability
 
 The existing host-authorized metrics endpoint exports `rustok_auth_jwt_*`.
 `independent_authority` reports whether an external pinned authority is configured.
+`witness_configured` and `witness_fenced` report witness configuration and sticky
+fault status; `JwtWitnessFenced` is a critical alert.
 The Auth owner reads the same authority row and authenticates its ledger;
 the read never renews a lease or modifies the database. The host bounds the
 diagnostic query to two seconds. Failure exports `collection_status=0`

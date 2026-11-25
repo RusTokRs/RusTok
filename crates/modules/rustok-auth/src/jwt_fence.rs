@@ -6,7 +6,7 @@ use crate::jwt_clock::{ClockGuard, ClockSample, LeaseDeadline, KEY_CLOCK_MARGIN_
 
 use hkdf::Hkdf;
 use hmac::{Hmac, KeyInit, Mac};
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, Value};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, QueryResult, Statement, Value};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
@@ -15,6 +15,8 @@ use crate::error::Result;
 
 mod authority;
 mod observability;
+mod witness;
+use witness::Witness;
 pub use authority::JwtAuthorityConfig;
 use authority::AuthorityBinding;
 pub use observability::{JwtClusterObservation, JwtOperationalMetrics, JwtReloadOutcome};
@@ -252,6 +254,7 @@ struct FenceMac {
     identity: [u8; 32],
     state: [u8; 32],
     authority: [u8; 32],
+    witness: [u8; 32],
 }
 
 impl FenceMac {
@@ -265,7 +268,9 @@ impl FenceMac {
         hkdf.expand(b"state-envelope", &mut state).map_err(|_| unavailable())?;
         let mut authority = [0_u8; 32];
         hkdf.expand(b"external-authority-identity", &mut authority).map_err(|_| unavailable())?;
-        Ok(Self { identity, state, authority })
+        let mut witness = [0_u8; 32];
+        hkdf.expand(b"external-authority-witness/v1", &mut witness).map_err(|_| unavailable())?;
+        Ok(Self { identity, state, authority, witness })
     }
 
     fn identity(&self, digest: &[u8; 32]) -> Result<String> {
@@ -290,6 +295,7 @@ pub struct JwtGenerationFence {
     metrics: OperationMetrics,
     clock: Arc<ClockGuard>,
     binding: Option<AuthorityBinding>,
+    witness: Option<Witness>,
 }
 
 struct StoredFence {
@@ -301,6 +307,7 @@ struct StoredFence {
     untracked_until_ms: i64,
     replica_grants: String,
     now_ms: i64,
+    revision: i64,
 }
 
 impl StoredFence {
@@ -355,7 +362,7 @@ impl StoredFence {
 
 impl JwtGenerationFence {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db, metrics: OperationMetrics::default(), clock: Arc::new(ClockGuard::new()), binding: None }
+        Self { db, metrics: OperationMetrics::default(), clock: Arc::new(ClockGuard::new()), binding: None, witness: None }
     }
 
     fn checked_mac(&self, root: &str) -> Result<FenceMac> {
@@ -391,15 +398,24 @@ impl JwtGenerationFence {
     // Only emergency revocation may read without using the clock as an
     // expiry oracle: it never grants, removes or extends authority.
     async fn load_raw(&self) -> Result<StoredFence> {
-        let backend = self.db.get_database_backend();
+        match &self.witness {
+            Some(witness) => witness.read(self).await,
+            None => self.read_on(&self.db, false, false).await,
+        }
+    }
+
+    async fn read_on(&self, db: &impl ConnectionTrait, witnessed: bool, lock: bool) -> Result<StoredFence> {
+        let backend = db.get_database_backend();
         let clock = match backend {
             DbBackend::Postgres => "CAST(EXTRACT(EPOCH FROM clock_timestamp()) * 1000 AS BIGINT)",
             DbBackend::Sqlite => "CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)",
             _ => return Err(unavailable()),
         };
-        let sql = format!("SELECT generation, payload, tag, lease_until_ms, drain_until_ms, untracked_until_ms, replica_grants, {clock} AS now_ms FROM auth_jwt_generation_fence WHERE id = 1");
+        let revision = if witnessed { "witness_revision" } else { "CAST(0 AS BIGINT)" };
+        let locking = if lock && backend == DbBackend::Postgres { " FOR UPDATE" } else { "" };
+        let sql = format!("SELECT generation, payload, tag, lease_until_ms, drain_until_ms, untracked_until_ms, replica_grants, {revision} AS witness_revision, {clock} AS now_ms FROM auth_jwt_generation_fence WHERE id = 1{locking}");
         let statement = self.statement(backend, &sql, vec![])?;
-        let row = self.db.query_one_raw(statement).await.map_err(|_| unavailable())?.ok_or_else(unavailable)?;
+        let row = db.query_one_raw(statement).await.map_err(|_| unavailable())?.ok_or_else(unavailable)?;
         let stored = StoredFence {
             generation: row.try_get("", "generation").map_err(|_| unavailable())?,
             payload: row.try_get("", "payload").map_err(|_| unavailable())?,
@@ -409,13 +425,28 @@ impl JwtGenerationFence {
             untracked_until_ms: row.try_get("", "untracked_until_ms").map_err(|_| unavailable())?,
             replica_grants: row.try_get("", "replica_grants").map_err(|_| unavailable())?,
             now_ms: row.try_get("", "now_ms").map_err(|_| unavailable())?,
+            revision: row.try_get("", "witness_revision").map_err(|_| unavailable())?,
         };
-        if stored.now_ms <= 0 || stored.lease_until_ms < 0 || stored.drain_until_ms < 0
+        if stored.revision < 0 || stored.now_ms <= 0 || stored.lease_until_ms < 0 || stored.drain_until_ms < 0
             || stored.untracked_until_ms < 0 || stored.untracked_until_ms > stored.lease_until_ms
         {
             return Err(unavailable());
         }
         Ok(stored)
+    }
+
+    async fn execute_checked(&self, statement: Statement, revision: i64) -> Result<u64> {
+        match &self.witness {
+            Some(witness) => Ok(witness.apply(self, statement, revision, false).await?.0),
+            None => Ok(self.db.execute_raw(statement).await.map_err(|_| unavailable())?.rows_affected()),
+        }
+    }
+
+    async fn query_checked(&self, statement: Statement, revision: i64) -> Result<Option<QueryResult>> {
+        match &self.witness {
+            Some(witness) => Ok(witness.apply(self, statement, revision, true).await?.1),
+            None => self.db.query_one_raw(statement).await.map_err(|_| unavailable()),
+        }
     }
 
     /// Refuse configuration-source downgrade after the first file enrollment.
@@ -466,10 +497,10 @@ impl JwtGenerationFence {
                 DbBackend::Sqlite => "UPDATE auth_jwt_generation_fence SET payload = ?1, tag = ?2 WHERE id = 1 AND generation = ?3 AND tag = ?4 RETURNING lease_until_ms",
                 _ => return Err(unavailable()),
             };
-            let updated = self.db.query_one_raw(self.statement(
+            let updated = self.query_checked(self.statement(
                 backend, sql, vec![payload.into(), tag.into(), stored.generation.into(),
                     stored.tag.into()],
-            )?).await.map_err(|_| unavailable())?;
+            )?, stored.revision).await?;
             if let Some(row) = updated {
                 let existing_lease_until_ms: i64 = row.try_get("", "lease_until_ms")
                     .map_err(|_| unavailable())?;
@@ -579,12 +610,12 @@ impl JwtGenerationFence {
                 DbBackend::Sqlite => "UPDATE auth_jwt_generation_fence SET lease_until_ms = ?1, replica_grants = ?2 WHERE id = 1 AND generation = ?3 AND tag = ?4 AND drain_until_ms = ?5 AND lease_until_ms = ?6 AND replica_grants = ?7",
                 _ => return Err(unavailable()),
             };
-            let updated = self.db.execute_raw(self.statement(
+            let updated = self.execute_checked(self.statement(
                 backend, sql, vec![horizon.into(), encoded.into(), stored.generation.into(),
                     stored.tag.into(), stored.drain_until_ms.into(), stored.lease_until_ms.into(),
                     stored.replica_grants.into()],
-            )?).await.map_err(|_| unavailable())?;
-            if updated.rows_affected() == 1 {
+            )?, stored.revision).await?;
+            if updated == 1 {
                 return Ok(true);
             }
         }
@@ -664,17 +695,21 @@ impl JwtGenerationFence {
                 DbBackend::Sqlite => "UPDATE auth_jwt_generation_fence SET lease_until_ms = ?1, replica_grants = ?2 WHERE id = 1 AND generation = ?3 AND tag = ?4 AND drain_until_ms = ?5 AND lease_until_ms = ?6 AND replica_grants = ?7",
                 _ => return Err(unavailable()),
             };
-            let updated = self.db.execute_raw(self.statement(
+            let updated = self.execute_checked(self.statement(
                 backend, sql, vec![horizon.into(), encoded.into(),
                     generation_sql.into(), stored.tag.into(), stored.drain_until_ms.into(),
                     stored.lease_until_ms.into(), stored.replica_grants.into()],
-            )?).await.map_err(|_| unavailable())?;
-            if updated.rows_affected() == 1 {
+            )?, stored.revision).await?;
+            if updated == 1 {
                 if !self.clock.healthy_at(ClockSample::now()) {
                     return Err(unavailable());
                 }
-                return Ok(Some(LeaseDeadline::new(started, LOCAL_LEASE, self.clock.clone())
-                    .ok_or_else(unavailable)?));
+                let deadline = LeaseDeadline::new(started, LOCAL_LEASE, self.clock.clone())
+                    .ok_or_else(unavailable)?;
+                return Ok(Some(match &self.witness {
+                    Some(witness) => deadline.with_witness_fault(witness.fault.clone()),
+                    None => deadline,
+                }));
             }
         }
         self.metrics.record("grant", "contention");
@@ -755,10 +790,10 @@ impl JwtGenerationFence {
                     DbBackend::Sqlite => "UPDATE auth_jwt_generation_fence SET drain_until_ms = ?1 WHERE id = 1 AND generation = ?2 AND tag = ?3 AND drain_until_ms = ?4",
                     _ => return Err(unavailable()),
                 };
-                let updated = self.db.execute_raw(self.statement(
+                let updated = self.execute_checked(self.statement(
                     backend, sql, vec![until.into(), stored.generation.into(), stored.tag.into(), stored.drain_until_ms.into()],
-                )?).await.map_err(|_| unavailable())?;
-                if updated.rows_affected() == 1 {
+                )?, stored.revision).await?;
+                if updated == 1 {
                     return Ok(JwtAdmission::Draining);
                 }
                 continue;
@@ -772,12 +807,12 @@ impl JwtGenerationFence {
                 DbBackend::Sqlite => "UPDATE auth_jwt_generation_fence SET generation = ?1, payload = ?2, tag = ?3, lease_until_ms = ?4, drain_until_ms = 0, untracked_until_ms = 0, replica_grants = ?5 WHERE id = 1 AND generation = ?6 AND tag = ?7 AND lease_until_ms = ?8 AND drain_until_ms = ?9 AND replica_grants = ?10",
                 _ => return Err(unavailable()),
             };
-            let updated = self.db.execute_raw(self.statement(
+            let updated = self.execute_checked(self.statement(
                 backend, sql, vec![generation_sql.into(), payload.into(), tag.into(), retained_horizon.into(),
                     encoded.into(), stored.generation.into(), stored.tag.into(), stored.lease_until_ms.into(),
                     stored.drain_until_ms.into(), stored.replica_grants.into()],
-            )?).await.map_err(|_| unavailable())?;
-            if updated.rows_affected() == 1 {
+            )?, stored.revision).await?;
+            if updated == 1 {
                 return Ok(JwtAdmission::Admitted);
             }
         }

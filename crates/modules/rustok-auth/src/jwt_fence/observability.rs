@@ -204,6 +204,8 @@ impl JwtOperationalMetrics {
         }
         gauge!("collection_status", u8::from(cluster.is_some()));
         gauge!("independent_authority", u8::from(self.fence.binding.is_some()));
+        gauge!("witness_configured", u8::from(self.fence.witness.is_some()));
+        gauge!("witness_fenced", u8::from(self.fence.witness.as_ref().is_some_and(|w| w.faulted())));
         gauge!("local_state_available", u8::from(local.is_some()));
         gauge!("local_generation", local.map_or(f64::NAN, |s| s.0 as f64));
         gauge!("local_ready", u8::from(local.is_some_and(|s| s.1)));

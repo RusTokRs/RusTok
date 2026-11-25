@@ -7,6 +7,7 @@
 ## Platform Capability Bindings
 
 - **Core Module Registration**: Exposes `AuthModule` implementing `RusToKModule` (slug `"auth"`, kind `ModuleKind::Core`) and `MigrationSource`.
+- **JWT rollback witness**: `JwtAuthorityConfig::init_witness` and `recover_witness` are explicit offline operator paths. `open` and `revoke_key` require a matching independently configured witness and verified TLS; every authority mutation advances its authenticated checkpoint.
 - **Independent JWT authority**: `JwtAuthorityConfig::from_env`, `open`, `import_offline` and `revoke_key` compose a separately pinned PostgreSQL store. Production host and trusted revocation CLI require it; startup never seeds it.
 - **JWT operational metrics**: `JwtGenerationFence::operational_metrics` returns the read-only host handle `JwtOperationalMetrics`. `cluster_snapshot` authenticates the authority row; `render` samples the local gate. The trusted supervisor reports bounded reload outcomes via `record_reload`. No identity or secret is exported.
 - **Emergency revocation**: `JwtGenerationFence::revoke_key` returns a `JwtRevocationReceipt` for a previously enrolled purpose/kid, authenticates the stable root and persists an irreversible ban. Trusted deployment operator use only; lease renewal enforces the ban.

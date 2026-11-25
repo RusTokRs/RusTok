@@ -20,18 +20,21 @@ use crate::error::Result;
 
 const DATABASE_URL: &str = "RUSTOK_JWT_AUTHORITY_DATABASE_URL";
 const AUTHORITY_ID: &str = "RUSTOK_JWT_AUTHORITY_ID";
+const WITNESS_URL: &str = "RUSTOK_JWT_WITNESS_DATABASE_URL";
 
 /// Deployment-pinned identity and independently provisioned PostgreSQL URI.
 /// Deliberately not Debug/Serialize: the URI can contain credentials.
 pub struct JwtAuthorityConfig {
     uri: String,
     id: Uuid,
+    witness_uri: String,
 }
 
 #[derive(Clone)]
 pub(super) struct AuthorityBinding {
-    id: String,
-    proof: String,
+    pub(super) id: String,
+    pub(super) proof: String,
+    pub(super) witness_key: [u8; 32],
 }
 
 impl AuthorityBinding {
@@ -42,7 +45,7 @@ impl AuthorityBinding {
         let mac = FenceMac::new(root)?;
         let mut proof = Hmac::<Sha256>::new_from_slice(&mac.authority).map_err(|_| unavailable())?;
         proof.update(id.as_bytes());
-        Ok(Self { id: id.to_string(), proof: hex::encode(proof.finalize().into_bytes()) })
+        Ok(Self { id: id.to_string(), proof: hex::encode(proof.finalize().into_bytes()), witness_key: mac.witness })
     }
 
     /// Authenticate the caller even when the ledger is empty.
@@ -66,7 +69,10 @@ impl AuthorityBinding {
         let condition = format!(" AND EXISTS (SELECT 1 FROM auth_jwt_authority_identity WHERE id = 1 AND authority_id = {prefix}{first} AND proof = {prefix}{second})");
         let sql = match sql.split_once(" RETURNING ") {
             Some((before, returning)) => format!("{before}{condition} RETURNING {returning}"),
-            None => format!("{sql}{condition}"),
+            None => match sql.strip_suffix(" FOR UPDATE") {
+                Some(before) => format!("{before}{condition} FOR UPDATE"),
+                None => format!("{sql}{condition}"),
+            },
         };
         values.push(self.id.clone().into());
         values.push(self.proof.clone().into());
@@ -84,49 +90,59 @@ impl JwtAuthorityConfig {
                 Err(_) => Err(rejected()),
             }
         }
-        Self::from_values(optional(DATABASE_URL)?, optional(AUTHORITY_ID)?)
+        Self::from_values(optional(DATABASE_URL)?, optional(AUTHORITY_ID)?, optional(WITNESS_URL)?)
     }
 
-    fn from_values(uri: Option<String>, id: Option<String>) -> Result<Option<Self>> {
-        match (uri, id) {
-            (None, None) => Ok(None),
-            (Some(uri), Some(id)) => {
+    fn from_values(uri: Option<String>, id: Option<String>, witness_uri: Option<String>) -> Result<Option<Self>> {
+        match (uri, id, witness_uri) {
+            (None, None, None) => Ok(None),
+            (Some(uri), Some(id), Some(witness_uri)) => {
                 let id = Uuid::parse_str(&id).map_err(|_| rejected())?;
-                if id.is_nil() || uri.trim() != uri
-                    || !(uri.starts_with("postgres://") || uri.starts_with("postgresql://"))
-                {
+                if id.is_nil() || uri == witness_uri || !verified_tls_uri(&uri) || !verified_tls_uri(&witness_uri) {
                     return Err(rejected());
                 }
-                Ok(Some(Self { uri, id }))
+                Ok(Some(Self { uri, id, witness_uri }))
             }
             _ => Err(rejected()),
         }
     }
 
     async fn connect(&self) -> Result<DatabaseConnection> {
-        let mut options = ConnectOptions::new(self.uri.clone());
-        options.sqlx_logging(false)
-            .max_connections(4)
-            .connect_timeout(Duration::from_secs(5))
-            .acquire_timeout(Duration::from_secs(1));
-        let db = Database::connect(options).await.map_err(|_| unavailable())?;
-        if db.get_database_backend() != DbBackend::Postgres {
-            return Err(unavailable());
-        }
-        Ok(db)
+        connect_verified(&self.uri).await
     }
 
-    /// Open only a previously provisioned independent authority.
+    async fn witnessed(&self, root: &str) -> Result<JwtGenerationFence> {
+        let mut fence = bound(self.connect().await?, self.id, root)?;
+        let witness = super::witness::Witness::new(connect_verified(&self.witness_uri).await?);
+        witness.ensure_separate().await?;
+        fence.witness = Some(witness);
+        Ok(fence)
+    }
+
+    /// Open only a previously provisioned independent authority and witness.
     pub async fn open(&self, root: &str) -> Result<JwtGenerationFence> {
-        open_bound(self.connect().await?, self.id, root).await
+        let fence = self.witnessed(root).await?;
+        let stored = fence.load().await?;
+        stored.ledger(&fence.checked_mac(root)?)?;
+        stored.live_grants()?;
+        Ok(fence)
     }
 
-    /// Revocation is security-reducing; it must remain available during a
-    /// clock incident. The bound identity and authenticated ledger are still
-    /// checked by revoke_key, but no lease expiry oracle is consulted.
+    /// Revocation uses the witness but does not consult lease expiry time.
     pub async fn revoke_key(&self, root: &str, purpose: &str, kid: &str) -> Result<JwtRevocationReceipt> {
-        let fence = bound(self.connect().await?, self.id, root)?;
-        fence.revoke_key(root, purpose, kid).await
+        self.witnessed(root).await?.revoke_key(root, purpose, kid).await
+    }
+
+    /// Explicit one-time offline witness initialization. Never invoked by a host.
+    pub async fn init_witness(&self, root: &str) -> Result<()> {
+        let fence = self.witnessed(root).await?;
+        fence.witness.as_ref().ok_or_else(unavailable)?.initialize(&fence, root).await
+    }
+
+    /// Restore only the exact authenticated witness snapshot, offline.
+    pub async fn recover_witness(&self, root: &str) -> Result<()> {
+        let fence = self.witnessed(root).await?;
+        fence.witness.as_ref().ok_or_else(unavailable)?.recover(&fence, root).await
     }
 
     /// Offline cutover only. Stop all old writers and let their grants expire.
@@ -135,12 +151,64 @@ impl JwtAuthorityConfig {
     }
 }
 
-fn bound(db: DatabaseConnection, id: Uuid, root: &str) -> Result<JwtGenerationFence> {
+// Restrict the URI grammar before handing it to SQLx: exactly one literal
+// sslmode=verify-full, no alternate spellings/overrides or duplicate options.
+fn verified_tls_uri(uri: &str) -> bool {
+    if uri.trim() != uri || uri.contains('#') || uri.chars().any(char::is_control) {
+        return false;
+    }
+    let Some((base, query)) = uri.split_once('?') else { return false; };
+    let Some(target) = base.strip_prefix("postgres://").or_else(|| base.strip_prefix("postgresql://")) else {
+        return false;
+    };
+    let Some((address, database)) = target.split_once('/') else { return false; };
+    let endpoint = address.rsplit_once('@').map_or(address, |(_, host)| host);
+    // Require an explicit TCP endpoint. Encoded Unix socket paths and empty
+    // hosts must not select an implicit non-TLS connection.
+    if database.is_empty() || database.contains('/') || endpoint.is_empty()
+        || !endpoint.bytes().all(|b| b.is_ascii_alphanumeric() || b"-.:[]".contains(&b))
+        || !endpoint.bytes().any(|b| b.is_ascii_alphanumeric())
+    {
+        return false;
+    }
+    let mut keys = std::collections::BTreeSet::new();
+    for option in query.split('&') {
+        let Some((key, value)) = option.split_once('=') else { return false; };
+        if value.is_empty() || !keys.insert(key) {
+            return false;
+        }
+        match key {
+            "sslmode" if value == "verify-full" => {}
+            "sslrootcert" | "sslcert" | "sslkey" => {}
+            _ => return false,
+        }
+    }
+    keys.contains("sslmode")
+}
+
+async fn connect_verified(uri: &str) -> Result<DatabaseConnection> {
+    if !verified_tls_uri(uri) {
+        return Err(rejected());
+    }
+    let mut options = ConnectOptions::new(uri.to_string());
+    options.sqlx_logging(false)
+        .max_connections(4)
+        .connect_timeout(Duration::from_secs(5))
+        .acquire_timeout(Duration::from_secs(1));
+    let db = Database::connect(options).await.map_err(|_| unavailable())?;
+    if db.get_database_backend() != DbBackend::Postgres {
+        return Err(unavailable());
+    }
+    Ok(db)
+}
+
+pub(super) fn bound(db: DatabaseConnection, id: Uuid, root: &str) -> Result<JwtGenerationFence> {
     let mut fence = JwtGenerationFence::new(db);
     fence.binding = Some(AuthorityBinding::new(id, root)?);
     Ok(fence)
 }
 
+#[cfg(test)]
 async fn open_bound(db: DatabaseConnection, id: Uuid, root: &str) -> Result<JwtGenerationFence> {
     let fence = bound(db, id, root)?;
     let stored = fence.load().await?;
@@ -149,7 +217,7 @@ async fn open_bound(db: DatabaseConnection, id: Uuid, root: &str) -> Result<JwtG
     Ok(fence)
 }
 
-async fn import_bound(source: &DatabaseConnection, destination: DatabaseConnection, id: Uuid, root: &str) -> Result<()> {
+pub(super) async fn import_bound(source: &DatabaseConnection, destination: DatabaseConnection, id: Uuid, root: &str) -> Result<()> {
     let binding = AuthorityBinding::new(id, root)?;
     let source = JwtGenerationFence::new(source.clone());
     let stored = source.load().await?;
@@ -208,15 +276,30 @@ mod tests {
     use super::super::{JwtAdmission, tests::{ROOT, OLD, NEW, config, database}};
 
     #[test]
-    fn external_settings_are_all_or_nothing() {
-        let uri = "postgres://example/authority".to_string();
+    fn external_settings_and_verified_tls_are_mandatory() {
+        let uri = "postgres://example/authority?sslmode=verify-full".to_string();
+        let witness = "postgres://other/witness?sslmode=verify-full".to_string();
         let id = Uuid::new_v4().to_string();
-        assert!(JwtAuthorityConfig::from_values(None, None).unwrap().is_none());
-        assert!(JwtAuthorityConfig::from_values(Some(uri.clone()), None).is_err());
-        assert!(JwtAuthorityConfig::from_values(None, Some(id.clone())).is_err());
-        assert!(JwtAuthorityConfig::from_values(Some("sqlite::memory:".into()), Some(id.clone())).is_err());
-        assert!(JwtAuthorityConfig::from_values(Some(uri.clone()), Some(Uuid::nil().to_string())).is_err());
-        assert!(JwtAuthorityConfig::from_values(Some(uri), Some(id)).unwrap().is_some());
+        assert!(JwtAuthorityConfig::from_values(None, None, None).unwrap().is_none());
+        assert!(JwtAuthorityConfig::from_values(Some(uri.clone()), Some(id.clone()), None).is_err());
+        assert!(JwtAuthorityConfig::from_values(None, None, Some(witness.clone())).is_err());
+        assert!(JwtAuthorityConfig::from_values(Some(uri.clone()), Some(id.clone()), Some(uri.clone())).is_err());
+        assert!(JwtAuthorityConfig::from_values(Some(uri), Some(id), Some(witness)).unwrap().is_some());
+        for bad in [
+            "postgres://example/db",
+            "postgres://example/db?sslmode=require",
+            "postgres://example/db?sslmode=verify-ca",
+            "postgres://example/db?sslmode=verify-full&sslmode=disable",
+            "postgres://example/db?sslmode=verify-full&%73slmode=disable",
+            "postgres://example/db?sslmode=verify-full&options=anything",
+            "postgres://example/db?sslmode=verify-full#fragment",
+            "postgres:///db?sslmode=verify-full",
+            "postgres://%2Fvar%2Frun%2Fpostgresql/db?sslmode=verify-full",
+            "postgres://example?sslmode=verify-full",
+        ] {
+            assert!(!verified_tls_uri(bad), "{bad}");
+        }
+        assert!(verified_tls_uri("postgresql://example/db?sslrootcert=%2Fca.pem&sslmode=verify-full"));
     }
 
     #[tokio::test]

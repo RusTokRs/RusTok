@@ -83,3 +83,7 @@ reimport refusal, existing DB refusal and active grant refusal.
 Compile and run scoped Auth/CLI/server tests plus PostgreSQL transactional
 DDL, independent-pool cutover, failover, outage and restore exercises before
 production. Real external database provisioning is an operator action.
+
+The later [JWT rollback witness](2026-11-25-jwt-rollback-witness.md) extends this
+contract with mandatory verified TLS, a third independent checkpoint store and
+explicit witnessed recovery. Its cutover requirements apply to production.

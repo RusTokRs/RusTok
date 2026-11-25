@@ -27,9 +27,10 @@ auth:
 
 settings:
   auth:
-    # Production requires RUSTOK_JWT_AUTHORITY_DATABASE_URL and
-    # RUSTOK_JWT_AUTHORITY_ID in the environment. Provision/import the
-    # separate authority before starting; see the Auth module docs.
+    # Production requires RUSTOK_JWT_AUTHORITY_DATABASE_URL,
+    # RUSTOK_JWT_AUTHORITY_ID and RUSTOK_JWT_WITNESS_DATABASE_URL.
+    # Both PostgreSQL URIs require sslmode=verify-full. Provision the
+    # independent authority and witness before starting; see Auth docs.
     # Optional hot-reload source (environment RUSTOK_JWT_KEYRING_FILE):
     # mount a complete versioned secret document; do not combine with the startup
     # crypto overrides below. See the Auth owner docs for the JSON contract.

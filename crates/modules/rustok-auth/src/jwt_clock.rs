@@ -118,15 +118,25 @@ pub(crate) struct LeaseDeadline {
     expires: ClockSample,
     pub(crate) authority: Arc<ClockGuard>,
     expired: Arc<AtomicBool>,
+    witness_fault: Option<Arc<AtomicBool>>,
 }
 
 impl LeaseDeadline {
     pub(crate) fn new(start: ClockSample, duration: Duration, authority: Arc<ClockGuard>) -> Option<Self> {
-        Some(Self { expires: start.checked_add(duration)?, authority, expired: Arc::new(AtomicBool::new(false)) })
+        Some(Self { expires: start.checked_add(duration)?, authority, expired: Arc::new(AtomicBool::new(false)), witness_fault: None })
+    }
+
+    pub(crate) fn with_witness_fault(mut self, fault: Arc<AtomicBool>) -> Self {
+        self.witness_fault = Some(fault);
+        self
+    }
+
+    fn witness_healthy(&self) -> bool {
+        self.witness_fault.as_ref().is_none_or(|fault| !fault.load(Ordering::Acquire))
     }
 
     pub(crate) fn remaining(&self, now: ClockSample) -> Duration {
-        if self.expired.load(Ordering::Acquire) || !self.authority.healthy_at(now) {
+        if !self.witness_healthy() || self.expired.load(Ordering::Acquire) || !self.authority.healthy_at(now) {
             return Duration::ZERO;
         }
         let mono = self.expires.mono.saturating_duration_since(now.mono);
@@ -135,7 +145,7 @@ impl LeaseDeadline {
         if remaining.is_zero() {
             self.expired.store(true, Ordering::Release);
         }
-        if self.expired.load(Ordering::Acquire) || self.authority.faulted() {
+        if !self.witness_healthy() || self.expired.load(Ordering::Acquire) || self.authority.faulted() {
             Duration::ZERO
         } else {
             remaining

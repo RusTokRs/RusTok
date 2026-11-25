@@ -431,6 +431,14 @@ groups:
         annotations:
           summary: "JWT authority observation unavailable"
 
+      - alert: JwtWitnessFenced
+        expr: rustok_auth_jwt_witness_fenced == 1
+        labels:
+          severity: critical
+          component: auth
+        annotations:
+          summary: "JWT rollback witness fault; stop writers and recover the authenticated checkpoint"
+
       - alert: JwtClockFault
         expr: rustok_auth_jwt_local_clock_fenced == 1 or rustok_auth_jwt_authority_clock_fenced == 1
         labels:

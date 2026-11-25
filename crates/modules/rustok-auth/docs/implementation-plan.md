@@ -49,6 +49,12 @@ authenticate the caller root even for an empty ledger, reject incompatible
 static grants and malformed registry identifiers, latch observed lease expiry,
 and validate authority before application migration. Focused regressions unrun.
 
+JWT rollback witness: source-implemented exact authenticated checkpoint,
+monotonic mutation revision, witness-first commit, offline recovery, verified
+TLS and sticky local mismatch fencing. Production requires a third independent
+store. Scoped compilation, regression execution, real PostgreSQL commit-fault,
+restore/failover and TLS evidence remain pending.
+
 Independent JWT authority: production requires a pinned external PostgreSQL store;
 Auth CLI imports the offline ledger once and revokes against that same store.
 Application DB rollback cannot erase its key history. Independent authority

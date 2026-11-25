@@ -96,7 +96,9 @@ Every release build also enforces the host's production-security posture even wh
 `apps/server/src/auth.rs` adapts the host configuration snapshot into
 `rustok-auth`.
 Production also requires an independently provisioned JWT authority via
-`RUSTOK_JWT_AUTHORITY_DATABASE_URL` and `RUSTOK_JWT_AUTHORITY_ID`. Follow the
+`RUSTOK_JWT_AUTHORITY_DATABASE_URL`, `RUSTOK_JWT_AUTHORITY_ID` and
+`RUSTOK_JWT_WITNESS_DATABASE_URL`. Both external DB URIs require
+`sslmode=verify-full`. Follow the
 [offline import and recovery contract](../../crates/modules/rustok-auth/docs/README.md#independent-jwt-authority)
 before starting a new production host; no automatic fallback is allowed.
 

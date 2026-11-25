@@ -140,7 +140,7 @@ pub async fn run() -> Result<()> {
             result = authority.open(auth_config.secret()) => result.map_err(crate::auth::auth_err)?,
         }),
         None if !production => None,
-        None => return Err(Error::Message("Independent JWT authority is required in production".into())),
+        None => return Err(Error::Message("Independent JWT authority and rollback witness are required in production".into())),
     };
 
     let db = tokio::select! {
