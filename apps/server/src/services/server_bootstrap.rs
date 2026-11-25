@@ -6,7 +6,8 @@ use crate::auth::AuthConfig;
 use crate::common::settings::RustokSettings;
 use crate::error::Result;
 use crate::services::app_lifecycle::{
-    ServerBootstrapInitializationLock, StopHandle, connect_runtime_workers_with_runtime,
+    ServerBootstrapInitializationLock, StopHandle, await_worker_startup_or_stop,
+    connect_runtime_workers_with_runtime,
 };
 use crate::services::app_router::compose_application_router;
 use crate::services::app_runtime::bootstrap_app_runtime;
@@ -204,14 +205,38 @@ pub async fn bootstrap_application_router(
 ) -> Result<AxumRouter> {
     let initialization = ServerBootstrapInitializationLock::ensure(&runtime_ctx);
     let _initialization_guard = initialization.lock().await;
-    if StopHandle::ensure(&runtime_ctx).is_stopping() {
+    let stop = StopHandle::ensure(&runtime_ctx);
+    if stop.is_stopping() {
         return Err(crate::error::Error::Message(
             "server shutdown started before application router bootstrap".to_string(),
         ));
     }
     tracing::info!("RusTok application bootstrap started");
-    configure_product_catalog_deployment(&runtime_ctx).await?;
-    configure_profile_media_public_image_deployment(&runtime_ctx).await?;
+
+    let Some(product_catalog_result) = await_worker_startup_or_stop(
+        &stop,
+        configure_product_catalog_deployment(&runtime_ctx),
+    )
+    .await
+    else {
+        return Err(crate::error::Error::Message(
+            "server shutdown started during product catalog deployment bootstrap".to_string(),
+        ));
+    };
+    product_catalog_result?;
+
+    let Some(profile_media_result) = await_worker_startup_or_stop(
+        &stop,
+        configure_profile_media_public_image_deployment(&runtime_ctx),
+    )
+    .await
+    else {
+        return Err(crate::error::Error::Message(
+            "server shutdown started during profile media deployment bootstrap".to_string(),
+        ));
+    };
+    profile_media_result?;
+
     let runtime = bootstrap_app_runtime(runtime_ctx.clone(), auth_config.clone()).await?;
     tracing::info!("RusTok app runtime bootstrap completed");
 
