@@ -9,6 +9,7 @@ use axum::{
         HeaderMap, StatusCode,
         header::{
             AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, COOKIE, LOCATION, PRAGMA, SET_COOKIE,
+            WWW_AUTHENTICATE,
         },
     },
     response::{Html, IntoResponse},
@@ -227,6 +228,141 @@ struct ValidatedAuthorizeRequest {
     code_challenge: String,
 }
 
+/// Decode one application/x-www-form-urlencoded credential component after
+/// the HTTP Basic payload has been Base64-decoded.
+fn decode_basic_form_component(value: &str) -> Option<String> {
+    let bytes = value.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            if index + 2 >= bytes.len()
+                || !bytes[index + 1].is_ascii_hexdigit()
+                || !bytes[index + 2].is_ascii_hexdigit()
+            {
+                return None;
+            }
+            index += 3;
+        } else {
+            index += 1;
+        }
+    }
+
+    let query = format!("value={value}");
+    let mut pairs = url::form_urlencoded::parse(query.as_bytes());
+    let (key, value) = pairs.next()?;
+    if key != "value" || pairs.next().is_some() {
+        return None;
+    }
+    Some(value.into_owned())
+}
+
+fn oauth_invalid_client_error(description: &str) -> TokenErrorResponse {
+    TokenErrorResponse {
+        error: "invalid_client".to_string(),
+        error_description: description.to_string(),
+    }
+}
+
+fn oauth_invalid_request_error(description: &str) -> TokenErrorResponse {
+    TokenErrorResponse {
+        error: "invalid_request".to_string(),
+        error_description: description.to_string(),
+    }
+}
+
+/// Read the single client authentication method from the Authorization header.
+/// Body credentials remain supported as client_secret_post for compatibility.
+fn parse_basic_client_credentials(
+    headers: &HeaderMap,
+) -> Result<Option<(String, String)>, TokenErrorResponse> {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+
+    let mut values = headers.get_all(AUTHORIZATION).iter();
+    let Some(value) = values.next() else {
+        return Ok(None);
+    };
+    if values.next().is_some() {
+        return Err(oauth_invalid_request_error(
+            "Multiple Authorization headers are not allowed",
+        ));
+    }
+
+    let value = value
+        .to_str()
+        .map_err(|_| oauth_invalid_client_error("Invalid client authentication"))?;
+    let (scheme, encoded) = value
+        .trim()
+        .split_once(' ')
+        .ok_or_else(|| oauth_invalid_client_error("Invalid client authentication"))?;
+    if !scheme.eq_ignore_ascii_case("basic") {
+        return Err(oauth_invalid_client_error(
+            "Unsupported OAuth client authentication scheme",
+        ));
+    }
+
+    let encoded = encoded.trim();
+    if encoded.is_empty() || encoded.bytes().any(|byte| byte.is_ascii_whitespace()) {
+        return Err(oauth_invalid_client_error("Invalid client authentication"));
+    }
+
+    let decoded = STANDARD
+        .decode(encoded)
+        .map_err(|_| oauth_invalid_client_error("Invalid client authentication"))?;
+    let decoded = String::from_utf8(decoded)
+        .map_err(|_| oauth_invalid_client_error("Invalid client authentication"))?;
+    let (raw_client_id, raw_client_secret) = decoded
+        .split_once(':')
+        .ok_or_else(|| oauth_invalid_client_error("Invalid client authentication"))?;
+
+    let client_id = decode_basic_form_component(raw_client_id)
+        .ok_or_else(|| oauth_invalid_client_error("Invalid client authentication"))?;
+    let client_secret = decode_basic_form_component(raw_client_secret)
+        .ok_or_else(|| oauth_invalid_client_error("Invalid client authentication"))?;
+    if client_id.trim().is_empty()
+        || client_secret.trim().is_empty()
+        || client_id.chars().any(char::is_control)
+        || client_secret.chars().any(char::is_control)
+    {
+        return Err(oauth_invalid_client_error("Invalid client authentication"));
+    }
+
+    Ok(Some((client_id, client_secret)))
+}
+
+fn apply_basic_client_credentials(
+    headers: &HeaderMap,
+    client_id: &mut Option<String>,
+    client_secret: &mut Option<String>,
+) -> Result<(), TokenErrorResponse> {
+    let Some((basic_client_id, basic_client_secret)) =
+        parse_basic_client_credentials(headers)?
+    else {
+        return Ok(());
+    };
+
+    if client_id.is_some() || client_secret.is_some() {
+        return Err(oauth_invalid_request_error(
+            "Use only one OAuth client authentication method per request",
+        ));
+    }
+
+    *client_id = Some(basic_client_id);
+    *client_secret = Some(basic_client_secret);
+    Ok(())
+}
+
+fn add_basic_auth_challenge(
+    mut response: axum::response::Response,
+) -> axum::response::Response {
+    if response.status() == StatusCode::UNAUTHORIZED {
+        response.headers_mut().insert(
+            WWW_AUTHENTICATE,
+            axum::http::HeaderValue::from_static("Basic realm=\"oauth\""),
+        );
+    }
+    response
+}
+
 fn oauth_token_http_response(
     status: StatusCode,
     body: impl serde::Serialize,
@@ -239,7 +375,7 @@ fn oauth_token_http_response(
     response
         .headers_mut()
         .insert(PRAGMA, axum::http::HeaderValue::from_static("no-cache"));
-    response
+    add_basic_auth_challenge(response)
 }
 
 #[utoipa::path(
@@ -247,7 +383,7 @@ fn oauth_token_http_response(
     path = "/api/oauth/token",
     tag = "oauth",
     request_body(
-        description = "OAuth token request; JSON is retained for compatibility and form encoding is RFC-compliant",
+        description = "OAuth token request; supports HTTP Basic client_secret_basic and body client_secret_post authentication. JSON is retained for compatibility and form encoding is RFC-compliant",
         content(
             (TokenRequest = "application/json"),
             (TokenRequest = "application/x-www-form-urlencoded")
@@ -267,7 +403,7 @@ pub(crate) async fn token_handler(
     tracing::debug!("oauth::token_handler entry");
     let req = match parse_token_request(request, &ctx).await {
         Ok(request) => request,
-        Err(error) => return oauth_token_http_response(StatusCode::BAD_REQUEST, error),
+        Err(error) => return add_basic_auth_challenge(oauth_error_response(error)),
     };
 
     match OAuthTokenService::exchange(&ctx, tenant_ctx.id, &req).await {
@@ -286,30 +422,30 @@ async fn parse_token_request(
     request: Request,
     state: &ServerAuthRuntime,
 ) -> Result<TokenRequest, TokenErrorResponse> {
-    let is_form = request
-        .headers()
+    let headers = request.headers().clone();
+    let is_form = headers
         .get(CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
         .map(is_form_encoded_content_type)
         .unwrap_or(false);
 
-    if is_form {
+    let mut parsed = if is_form {
         Form::<TokenRequest>::from_request(request, state)
             .await
             .map(|Form(request)| request)
-            .map_err(|_| TokenErrorResponse {
-                error: "invalid_request".to_string(),
-                error_description: "Invalid OAuth token request".to_string(),
-            })
     } else {
         Json::<TokenRequest>::from_request(request, state)
             .await
             .map(|Json(request)| request)
-            .map_err(|_| TokenErrorResponse {
-                error: "invalid_request".to_string(),
-                error_description: "Invalid OAuth token request".to_string(),
-            })
     }
+    .map_err(|_| oauth_invalid_request_error("Invalid OAuth token request"))?;
+
+    apply_basic_client_credentials(
+        &headers,
+        &mut parsed.client_id,
+        &mut parsed.client_secret,
+    )?;
+    Ok(parsed)
 }
 
 fn is_form_encoded_content_type(value: &str) -> bool {
@@ -1272,14 +1408,26 @@ fn escape_attr(value: &str) -> String {
     escape_html(value)
 }
 
-/// Token Revocation Endpoint (RFC 7009)
-/// Revokes a refresh token (access tokens are stateless JWTs and expire naturally).
+/// Public PKCE clients do not authenticate revocation with a secret. Service
+/// clients always do; other confidential clients require a configured secret.
+fn oauth_revocation_requires_client_secret(app: &crate::models::oauth_apps::Model) -> bool {
+    if app.app_type == "service" {
+        return true;
+    }
+    if matches!(app.app_type.as_str(), "first_party" | "mobile") {
+        return false;
+    }
+    app.client_secret_hash.is_some()
+}
+
+/// Token Revocation Endpoint (RFC 7009).
+/// Revokes registered access and refresh credentials for the authenticated client.
 #[utoipa::path(
     post,
     path = "/api/oauth/revoke",
     tag = "oauth",
     request_body(
-        description = "OAuth revocation request; RFC 7009 form encoding is required, JSON is retained for compatibility",
+        description = "OAuth revocation request; supports HTTP Basic client_secret_basic and body client_secret_post authentication. RFC 7009 form encoding is required, JSON is retained for compatibility",
         content(
             (RevokeRequest = "application/x-www-form-urlencoded"),
             (RevokeRequest = "application/json")
@@ -1299,12 +1447,12 @@ pub(crate) async fn revoke_handler(
     tracing::debug!("oauth::revoke_handler entry");
     let req = match parse_revoke_request(request, &ctx).await {
         Ok(request) => request,
-        Err(error) => return oauth_error_response(error),
+        Err(error) => return add_basic_auth_challenge(oauth_error_response(error)),
     };
 
     match revoke_handler_inner(ctx, tenant_ctx, req).await {
         Ok(status) => status.into_response(),
-        Err(error) => oauth_error_response(error),
+        Err(error) => add_basic_auth_challenge(oauth_error_response(error)),
     }
 }
 
@@ -1312,30 +1460,30 @@ async fn parse_revoke_request(
     request: Request,
     state: &ServerRuntimeContext,
 ) -> Result<RevokeRequest, TokenErrorResponse> {
-    let is_form = request
-        .headers()
+    let headers = request.headers().clone();
+    let is_form = headers
         .get(CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
         .map(is_form_encoded_content_type)
         .unwrap_or(false);
 
-    if is_form {
+    let mut parsed = if is_form {
         Form::<RevokeRequest>::from_request(request, state)
             .await
             .map(|Form(request)| request)
-            .map_err(|_| TokenErrorResponse {
-                error: "invalid_request".to_string(),
-                error_description: "Invalid OAuth revocation request".to_string(),
-            })
     } else {
         Json::<RevokeRequest>::from_request(request, state)
             .await
             .map(|Json(request)| request)
-            .map_err(|_| TokenErrorResponse {
-                error: "invalid_request".to_string(),
-                error_description: "Invalid OAuth revocation request".to_string(),
-            })
     }
+    .map_err(|_| oauth_invalid_request_error("Invalid OAuth revocation request"))?;
+
+    apply_basic_client_credentials(
+        &headers,
+        &mut parsed.client_id,
+        &mut parsed.client_secret,
+    )?;
+    Ok(parsed)
 }
 
 async fn revoke_handler_inner(
@@ -1362,30 +1510,31 @@ async fn revoke_handler_inner(
                 error_description: "Unknown client_id".to_string(),
             })?;
 
-    // Verify client_secret if the app has one
-    if let Some(secret_hash) = &app.client_secret_hash {
+    // Public PKCE clients (first-party and mobile) cannot keep a client secret.
+    // Service clients always require one; other confidential clients require it
+    // whenever a secret hash is configured.
+    if oauth_revocation_requires_client_secret(&app) {
+        let secret_hash = app.client_secret_hash.as_deref().ok_or_else(|| {
+            oauth_invalid_client_error("Confidential client credentials are required")
+        })?;
         let client_secret = req
             .client_secret
             .as_deref()
-            .ok_or_else(|| TokenErrorResponse {
-                error: "invalid_client".to_string(),
-                error_description: "client_secret is required".to_string(),
-            })?;
+            .filter(|secret| !secret.is_empty())
+            .ok_or_else(|| oauth_invalid_client_error("client_secret is required"))?;
         let valid = OAuthAppService::verify_client_secret_async(
             client_secret.to_string(),
             secret_hash.to_string(),
         )
         .await
-        .map_err(|_| TokenErrorResponse {
-            error: "invalid_client".to_string(),
-            error_description: "Invalid client credentials".to_string(),
-        })?;
+        .map_err(|_| oauth_invalid_client_error("Invalid client credentials"))?;
         if !valid {
-            return Err(TokenErrorResponse {
-                error: "invalid_client".to_string(),
-                error_description: "Invalid client credentials".to_string(),
-            });
+            return Err(oauth_invalid_client_error("Invalid client credentials"));
         }
+    }
+
+    if req.token.trim().is_empty() || req.token.chars().any(char::is_whitespace) {
+        return Err(oauth_invalid_request_error("A non-empty token is required"));
     }
 
     // 2. Hash the token and try to revoke it. The canonical helper is
@@ -1404,8 +1553,8 @@ async fn revoke_handler_inner(
     Ok(axum::http::StatusCode::OK)
 }
 
-/// OpenID Connect UserInfo Endpoint (RFC 5362)
-/// Allows clients with `openid` or `profile` scopes to fetch user details.
+/// OpenID Connect Core 1.0 UserInfo Endpoint (§5.3).
+/// Requires `openid`; standard profile and email claims are gated by their scopes.
 #[utoipa::path(
     get,
     path = "/api/oauth/userinfo",
@@ -1428,8 +1577,8 @@ pub(crate) async fn userinfo_handler(
     }
 }
 
-/// OpenID Connect UserInfo Endpoint (RFC 5362)
-/// Allows clients with `openid` or `profile` scopes to fetch user details via POST.
+/// OpenID Connect Core 1.0 UserInfo Endpoint (§5.3), also available via POST.
+/// Requires `openid`; standard profile and email claims are gated by their scopes.
 #[utoipa::path(
     post,
     path = "/api/oauth/userinfo",
@@ -2078,5 +2227,176 @@ mod tests {
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(response.headers().get(CACHE_CONTROL).unwrap(), "no-store");
         assert_eq!(response.headers().get(PRAGMA).unwrap(), "no-cache");
+    }
+
+    fn basic_authorization_header(client_id: &str, client_secret: &str) -> HeaderValue {
+        use base64::{Engine as _, engine::general_purpose::STANDARD};
+
+        let encode_component = |value: &str| {
+            url::form_urlencoded::byte_serialize(value.as_bytes()).collect::<String>()
+        };
+        let credentials = format!(
+            "{}:{}",
+            encode_component(client_id),
+            encode_component(client_secret),
+        );
+        HeaderValue::from_str(&format!("Basic {}", STANDARD.encode(credentials.as_bytes())))
+            .expect("valid Basic authorization header")
+    }
+
+    #[test]
+    fn oauth_client_secret_basic_decodes_form_encoded_credentials() {
+        let client_id = "client:identifier +";
+        let client_secret = "secret:with + chars";
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            AUTHORIZATION,
+            basic_authorization_header(client_id, client_secret),
+        );
+
+        assert_eq!(
+            parse_basic_client_credentials(&headers).unwrap(),
+            Some((client_id.to_string(), client_secret.to_string())),
+        );
+
+        let mut parsed_client_id = None;
+        let mut parsed_client_secret = None;
+        apply_basic_client_credentials(
+            &headers,
+            &mut parsed_client_id,
+            &mut parsed_client_secret,
+        )
+        .unwrap();
+        assert_eq!(parsed_client_id.as_deref(), Some(client_id));
+        assert_eq!(parsed_client_secret.as_deref(), Some(client_secret));
+    }
+
+    #[test]
+    fn oauth_client_auth_rejects_multiple_or_mixed_authentication_methods() {
+        let mut duplicate_headers = HeaderMap::new();
+        duplicate_headers.append(
+            AUTHORIZATION,
+            basic_authorization_header("client", "secret"),
+        );
+        duplicate_headers.append(
+            AUTHORIZATION,
+            basic_authorization_header("client", "secret"),
+        );
+        assert_eq!(
+            parse_basic_client_credentials(&duplicate_headers)
+                .unwrap_err()
+                .error,
+            "invalid_request",
+        );
+
+        let mut basic_headers = HeaderMap::new();
+        basic_headers.insert(
+            AUTHORIZATION,
+            basic_authorization_header("client", "secret"),
+        );
+        let mut body_client_id = Some("body-client".to_string());
+        let mut body_client_secret = None;
+        assert_eq!(
+            apply_basic_client_credentials(
+                &basic_headers,
+                &mut body_client_id,
+                &mut body_client_secret,
+            )
+            .unwrap_err()
+            .error,
+            "invalid_request",
+        );
+    }
+
+    #[test]
+    fn oauth_client_secret_basic_rejects_unsupported_and_malformed_credentials() {
+        let mut unsupported = HeaderMap::new();
+        unsupported.insert(AUTHORIZATION, HeaderValue::from_static("Bearer token"));
+        assert_eq!(
+            parse_basic_client_credentials(&unsupported)
+                .unwrap_err()
+                .error,
+            "invalid_client",
+        );
+
+        let mut malformed = HeaderMap::new();
+        malformed.insert(AUTHORIZATION, HeaderValue::from_static("Basic !!!"));
+        assert_eq!(
+            parse_basic_client_credentials(&malformed)
+                .unwrap_err()
+                .error,
+            "invalid_client",
+        );
+
+        let mut malformed_form = HeaderMap::new();
+        use base64::{Engine as _, engine::general_purpose::STANDARD};
+        malformed_form.insert(
+            AUTHORIZATION,
+            HeaderValue::from_str(&format!("Basic {}", STANDARD.encode(b"client%ZZ:secret")))
+                .unwrap(),
+        );
+        assert_eq!(
+            parse_basic_client_credentials(&malformed_form)
+                .unwrap_err()
+                .error,
+            "invalid_client",
+        );
+    }
+
+    #[test]
+    fn oauth_revocation_secret_policy_matches_public_and_confidential_clients() {
+        let mut app = sample_app("first_party");
+        assert!(!oauth_revocation_requires_client_secret(&app));
+
+        app.app_type = "mobile".to_string();
+        assert!(!oauth_revocation_requires_client_secret(&app));
+
+        app.app_type = "third_party".to_string();
+        assert!(oauth_revocation_requires_client_secret(&app));
+        app.client_secret_hash = None;
+        assert!(!oauth_revocation_requires_client_secret(&app));
+
+        app.app_type = "service".to_string();
+        assert!(oauth_revocation_requires_client_secret(&app));
+        app.client_secret_hash = None;
+        assert!(oauth_revocation_requires_client_secret(&app));
+    }
+
+    #[test]
+    fn oauth_invalid_client_responses_advertise_basic_authentication_only_on_client_endpoints() {
+        let generic = oauth_error_response(TokenErrorResponse {
+            error: "invalid_client".to_string(),
+            error_description: "Invalid client credentials".to_string(),
+        });
+        assert!(generic.headers().get(WWW_AUTHENTICATE).is_none());
+
+        let token = oauth_token_http_response(
+            StatusCode::UNAUTHORIZED,
+            TokenErrorResponse {
+                error: "invalid_client".to_string(),
+                error_description: "Invalid client credentials".to_string(),
+            },
+        );
+        let revoke = add_basic_auth_challenge(oauth_error_response(TokenErrorResponse {
+            error: "invalid_client".to_string(),
+            error_description: "Invalid client credentials".to_string(),
+        }));
+
+        for response in [token, revoke] {
+            assert_eq!(
+                response
+                    .headers()
+                    .get(WWW_AUTHENTICATE)
+                    .and_then(|value| value.to_str().ok()),
+                Some("Basic realm=\"oauth\""),
+            );
+            assert_eq!(
+                response
+                    .headers()
+                    .get(CACHE_CONTROL)
+                    .and_then(|value| value.to_str().ok()),
+                Some("no-store"),
+            );
+        }
     }
 }
