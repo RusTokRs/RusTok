@@ -219,6 +219,20 @@ nested expansion; the existing public counter continues to count repeater instan
 
 ## Identity and history contracts
 
+Unique component IDs retain their existing bounded textual shape and serialized generator
+state. Native generation uses clock/process/instance information; browser WASM uses UUIDv4
+entropy for the stamp and generator salt. Constructing an editor must not call unsupported
+WASM standard-library clock or process APIs.
+
+**Dependency decision — WASM ID entropy.** Reuse the workspace UUID crate with its existing
+`v4` and `js` support rather than implement a separate browser RNG or require a browser
+framework in the core. This target-specific edge does not add a native dependency or change
+the persisted document contract; the workspace lock already contains UUID and its dependencies.
+A future alternative must preserve collision resistance across tabs and the identifier limit.
+Browser execution and WASM bundle impact remain to be verified; a compile-only check is not
+evidence that the entropy path executed successfully.
+
+
 `ProjectDocument::clone_as_page` and `ProjectFragment::remap_ids` return `FlyResult`; callers
 must handle ambiguous source IDs instead of assuming a copy succeeded. Component IDs and authored
 HTML IDs are reissued separately, along with their recognized references and component-bound

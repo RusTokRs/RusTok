@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
+#[cfg(not(target_arch = "wasm32"))]
 use std::sync::atomic::{AtomicU64, Ordering};
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub trait IdGenerator {
@@ -62,15 +64,45 @@ fn base36(mut value: u128) -> String {
 
 /// Process-wide salt source so two generator instances created in the same nanosecond still
 /// occupy disjoint id spaces.
+#[cfg(not(target_arch = "wasm32"))]
 static GENERATOR_SALT_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+#[cfg(not(target_arch = "wasm32"))]
+fn id_stamp() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default()
+}
+
+#[cfg(target_arch = "wasm32")]
+fn id_stamp() -> u128 {
+    // Browser wasm32 has neither a supported std system clock nor a process ID.
+    // UUID's workspace-enabled JS entropy source works without either.
+    uuid::Uuid::new_v4().as_u128()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn generator_salt() -> u64 {
+    let instance = GENERATOR_SALT_COUNTER.fetch_add(1, Ordering::Relaxed);
+    (id_stamp() as u64)
+        ^ (u64::from(std::process::id()) << 32)
+        ^ instance.wrapping_mul(0x9e37_79b9_7f4a_7c15)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn generator_salt() -> u64 {
+    id_stamp() as u64
+}
 
 /// Collision-resistant id generator for interactive editing sessions.
 ///
 /// [`SequentialIdGenerator`] restarts at `1` in every session, so two authors editing copies of
 /// the same project concurrently mint identical ids for different components; the collision is
 /// only discovered when the documents meet. This generator mixes a nanosecond timestamp, the
-/// process id, a process-wide instance salt, and a per-instance counter, which makes accidental
-/// collision across sessions practically impossible while keeping ids inside the
+/// process id, a process-wide instance salt, and a per-instance counter on native targets;
+/// WASM uses UUIDv4 entropy instead of unsupported standard-library clock/process APIs.
+/// Both keep ids inside the
 /// `[A-Za-z0-9_.:-]` identifier charset and far below the 128-byte limit. Ids are not
 /// cryptographic tokens and must not be used as credentials.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -82,14 +114,7 @@ pub struct UniqueIdGenerator {
 
 impl UniqueIdGenerator {
     pub fn new(prefix: impl Into<String>) -> Self {
-        let now_nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|duration| duration.as_nanos() as u64)
-            .unwrap_or_default();
-        let instance = GENERATOR_SALT_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let salt = now_nanos
-            ^ (u64::from(std::process::id()) << 32)
-            ^ instance.wrapping_mul(0x9e37_79b9_7f4a_7c15);
+        let salt = generator_salt();
         let prefix = normalize_prefix(&prefix.into());
         Self {
             prefix,
@@ -107,17 +132,14 @@ impl Default for UniqueIdGenerator {
 
 impl IdGenerator for UniqueIdGenerator {
     fn next_id(&mut self, hint: &str) -> String {
-        let now_nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|duration| duration.as_nanos())
-            .unwrap_or_default();
+        let stamp = id_stamp();
         let counter = self.next;
         self.next = self.next.wrapping_add(1);
 
         // Deserialization can bypass new, so normalize the stored prefix at the
         // boundary too. Allocate the remaining identifier budget to the hint.
         let prefix = normalize_prefix(&self.prefix);
-        let timestamp = base36(now_nanos);
+        let timestamp = base36(stamp);
         let counter = base36(u128::from(counter));
         let salt = base36(u128::from(self.salt));
         let fixed_length = prefix.len() + timestamp.len() + counter.len() + salt.len() + 4;
