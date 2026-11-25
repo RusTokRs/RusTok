@@ -453,3 +453,94 @@ test('dirty draft-only responses do not report a confirmed peer write', async ({
   await expect(peer.locator('#fly-root')).not.toHaveAttribute('data-fly-peer-write-conflict', 'true');
   await peer.close();
 });
+
+test('strict success without a matching receipt cannot rebase or navigate the editor', async ({ page }) => {
+  const source = await readFile(adapterPath, 'utf8');
+  await mountEditor(page, 'same-page', source);
+  const observed = await page.evaluate(async () => {
+    const scope = globalThis as PeerScope;
+    scope.__flyPeerAdapter?.stop();
+    const root = document.querySelector('#fly-root') as HTMLElement;
+    root.dataset.flyDraftContract = 'rendered';
+    root.dataset.flyRenderedDraftToken = 'draft-1';
+    const draftKey = 'fly:ssr-draft:same-page';
+    const pendingKey = 'fly:ssr-pending-operation:same-page';
+    sessionStorage.setItem(draftKey, JSON.stringify({ token: 'draft-1', generation: 1 }));
+    const requests: string[] = [];
+    const emitted: string[] = [];
+    const current: boolean[] = [];
+    root.addEventListener('fly:browser-intent', (event) => {
+      emitted.push((event as CustomEvent<{ intent: string }>).detail.intent);
+    });
+    root.addEventListener('fly:browser-intent-response', (event) => {
+      current.push((event as CustomEvent<{ current: boolean }>).detail.current);
+    });
+    globalThis.fetch = (_input, init) => {
+      const request = JSON.parse(String(init?.body)) as { intent: string };
+      requests.push(request.intent);
+      if (request.intent === 'resolve_operation') {
+        return new Promise<Response>(() => {});
+      }
+      return Promise.resolve(new Response(JSON.stringify({
+        operation_id: 'wrong-operation',
+        operation_status: 'committed',
+        result: { revision_id: 'wrong-revision', project_hash: 'wrong-hash', dirty: false },
+        draft_token: 'wrong-draft', draft_generation: 99,
+        location: '#unconfirmed'
+      }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    };
+    const adapter = scope.FlyBrowser?.mount(root, { intentEndpoint: '/fly-intent' });
+    if (!adapter) throw new Error('missing adapter');
+    const beforeLocation = location.href;
+    await adapter.emitIntent('save', {});
+    await adapter.emitIntent('select', { component_id: 'hero' });
+    const state = {
+      requests, emitted, current,
+      revision: root.dataset.flyRevision,
+      hash: root.dataset.flyProjectHash,
+      draft: JSON.parse(sessionStorage.getItem(draftKey)!),
+      pending: Boolean(sessionStorage.getItem(pendingKey)),
+      locationUnchanged: location.href === beforeLocation
+    };
+    adapter.stop();
+    return state;
+  });
+  expect(observed).toEqual({
+    requests: ['save', 'resolve_operation'],
+    emitted: ['save'],
+    current: [false],
+    revision: 'rev-1',
+    hash: 'hash-1',
+    draft: { token: 'draft-1', generation: 1 },
+    pending: true,
+    locationUnchanged: true
+  });
+});
+
+test('strict peer fence rejects view-state intents before emitting them', async ({ page }) => {
+  const source = await readFile(adapterPath, 'utf8');
+  await mountEditor(page, 'same-page', source);
+  const observed = await page.evaluate(async () => {
+    const scope = globalThis as PeerScope;
+    scope.__flyPeerAdapter?.stop();
+    const root = document.querySelector('#fly-root') as HTMLElement;
+    root.dataset.flyDraftContract = 'rendered';
+    root.dataset.flyRenderedDraftToken = 'draft-1';
+    sessionStorage.setItem('fly:ssr-draft:same-page', JSON.stringify({ token: 'draft-1', generation: 1 }));
+    const adapter = scope.FlyBrowser?.mount(root, { intentEndpoint: '/fly-intent' });
+    if (!adapter) throw new Error('missing adapter');
+    const fenced = new Promise<void>((resolve) => root.addEventListener(
+      'fly:browser-peer-write', () => resolve(), { once: true }
+    ));
+    const channel = new BroadcastChannel('fly:page-authoring-writes:v1');
+    channel.postMessage({
+      kind: 'confirmed-write', pageId: 'same-page',
+      revision: 'rev-peer', hash: 'hash-peer', senderId: 'other-editor'
+    });
+    await fenced;
+    channel.close();
+    await adapter.emitIntent('select', { component_id: 'hero' });
+    return { posted: scope.__flyPeerRequests, emitted: scope.__flyPeerEmitted };
+  });
+  expect(observed).toEqual({ posted: [], emitted: [] });
+});

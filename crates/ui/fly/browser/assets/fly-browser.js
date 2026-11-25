@@ -64,6 +64,12 @@ function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+// In strict SSR even view-state gestures commit the draft generation.
+function isAuthoritativeIntent(intent, requiresOperationReceipts) {
+  return Boolean(intent) && (!READ_ONLY_INTENTS.has(intent) ||
+    (requiresOperationReceipts && intent !== "resolve_operation"));
+}
+
 function isAbortSignal(value) {
   return typeof AbortSignal === "function" && value instanceof AbortSignal;
 }
@@ -1580,16 +1586,13 @@ export class FlyBrowserAdapter {
       return Promise.resolve(null);
     }
     const request = normalizedIntent(this, { intent, payload });
-    if (
-      this.requiresOperationReceipts &&
-      this.pendingOperationUnresolved &&
-      !READ_ONLY_INTENTS.has(request.intent)
-    ) {
+    const authoritative = isAuthoritativeIntent(request.intent, this.requiresOperationReceipts);
+    if (authoritative && this.requiresOperationReceipts && this.pendingOperationUnresolved) {
       return Promise.resolve(this.rejectPendingOperation(request));
     }
     // Fence before DOM listeners can consume an edit intent; POST-only gating
     // would let another host apply a gesture from a stale document locally.
-    if (request.intent && !READ_ONLY_INTENTS.has(request.intent) && this.peerWriteConflict) {
+    if (authoritative && this.peerWriteConflict) {
       this.rejectPeerWriteIntent(request);
       return Promise.resolve(null);
     }
@@ -1885,8 +1888,7 @@ export class FlyBrowserAdapter {
     // The strict Pages host commits draft context and generation even for
     // selection/hover requests. Serialize and receipt those requests as well;
     // only resolve_operation is a pure lookup that cannot advance the draft.
-    const authoritative = !READ_ONLY_INTENTS.has(request.intent) ||
-      (this.requiresOperationReceipts && !resolvesOperation);
+    const authoritative = isAuthoritativeIntent(request.intent, this.requiresOperationReceipts);
     if (authoritative && this.peerWriteConflict) {
       return this.rejectPeerWriteIntent(request);
     }
@@ -2076,6 +2078,7 @@ export class FlyBrowserAdapter {
         if (response.ok) {
           this.pendingOperationUnresolved = true;
           shouldResolvePendingAfterRequest = true;
+          showPendingOperationNotice(this, "checking");
         } else if ([400, 401, 403, 404, 413, 422].includes(response.status)) {
           // These responses are deterministic pre-commit rejections.
           this.clearPendingOperation();
@@ -2093,7 +2096,12 @@ export class FlyBrowserAdapter {
         result.reload !== true &&
         typeof result.location !== "string" &&
         (!this.requiresOperationReceipts || operationReceiptCommitted);
-      const current = !this.peerWriteConflict && (resolvesOperation
+      // A 2xx response is not an acknowledgement under the strict contract.
+      // Do not publish it as current to host listeners (including save warnings),
+      // adopt its metadata, or follow its navigation before receipt correlation.
+      const unconfirmedStrictSuccess = this.requiresOperationReceipts &&
+        authoritative && response.ok && !operationReceiptCommitted;
+      const current = !this.peerWriteConflict && !unconfirmedStrictSuccess && (resolvesOperation
         ? matchesPendingLookup && (resolvedPendingReceipt ||
           (matchingReceipt && result.operation_status === "unknown"))
         : authoritative
@@ -2114,7 +2122,10 @@ export class FlyBrowserAdapter {
           },
         }),
       );
-      if (current) {
+      if (!this.peerWriteConflict && (unconfirmedStrictSuccess ||
+          (matchesPendingLookup && !resolvedPendingReceipt && !current))) {
+        updateNetworkIndicator(this.root, "error", "OPERATION_OUTCOME_UNKNOWN");
+      } else if (current) {
         if (resolvesOperation && result?.operation_status === "unknown") {
           updateNetworkIndicator(this.root, "error", "OPERATION_OUTCOME_UNKNOWN");
         } else if (this.peerWriteConflict) {

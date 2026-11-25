@@ -1486,3 +1486,8 @@ integration tests; MySQL support is out of scope.
 - `switch_slide` validation now requires exactly one target selector. SSR form parsing rejects malformed direction/index values; the SSR action form now round-trips the exclusive-accordion flag.
 - Locale normalization now validates extension/private-use syntax and rejects duplicate extension singletons/variant subtags; punctuation-only page slugs normalize to no slug. Theme replacement rejects duplicate token names.
 - Added focused regression tests for invalid page identity, direct mutation cache invalidation, theme/symbol atomicity, malformed slide selectors, exclusive accordion form round-tripping, locale extension syntax and empty normalized slugs. **No Cargo build, Rust test, formatter, linter or browser test was run; maintainer verification remains pending.**
+
+2026-11-25 Fly strict SSR receipt admission follow-up (source only; not executed):
+- The browser adapter now shares one authoritative-intent classification between DOM emission and transport admission. Strict view-state intents cannot leak through DOM listeners while recovery or a peer conflict fences the draft.
+- A successful HTTP response without the matching committed operation receipt is non-current and cannot adopt revision/hash/draft metadata, clear a parked save warning, or navigate. The pending envelope remains available for read-only receipt recovery.
+- Added mounted-browser regressions for mismatched receipts and strict peer fencing; updated affected source contract assertions. Build, tests, lint, formatting and mounted verification remain pending with the maintainer.

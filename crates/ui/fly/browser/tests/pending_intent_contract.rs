@@ -17,16 +17,17 @@ fn public_bundle_bounds_and_aborts_pending_intents() {
 }
 
 #[test]
-fn pending_operation_fence_does_not_block_read_only_intents() {
+fn strict_receipt_fence_blocks_view_state_intents_before_dom_dispatch() {
+    assert!(contains("requiresOperationReceipts && intent !== \"resolve_operation\""));
+    assert!(contains(
+        "const authoritative = isAuthoritativeIntent(request.intent, this.requiresOperationReceipts)"
+    ));
     let source = include_str!("../assets/fly-browser.js");
-    let gate = source
-        .find("this.pendingOperationUnresolved &&")
-        .expect("pending operation fence");
-    let condition = &source[gate..gate + 120];
-    assert!(
-        condition.contains("!READ_ONLY_INTENTS.has(request.intent)"),
-        "only mutating intents should be blocked during receipt recovery"
-    );
+    let emit = source.find("emitIntent(intent, payload = {})").expect("emit intent");
+    let body = &source[emit..];
+    let fence = body.find("this.pendingOperationUnresolved").expect("receipt fence");
+    let dispatch = body.find("new CustomEvent(\"fly:browser-intent\"").expect("DOM dispatch");
+    assert!(fence < dispatch);
 }
 
 #[test]
@@ -66,7 +67,7 @@ fn every_non_mutating_rust_intent_is_read_only_in_the_browser_receipt_policy() {
             let intent = format!("\"{}\"", kind.as_str());
             assert!(
                 read_only.contains(&intent),
-                "non-mutating intent `{}` must not consume durable operation receipts",
+                "non-mutating intent `{}` must be classified for the non-strict transport",
                 kind.as_str()
             );
         }

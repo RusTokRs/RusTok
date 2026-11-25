@@ -106,6 +106,10 @@ Selection and hover cannot supersede recovery. The editable Pages server also co
 draft generation for view-state intents, so strict transport serializes and receipts
 all such requests, not only document commands. A receipt lookup is the only pure
 lookup and cannot advance the draft base until a matching committed receipt arrives.
+Both DOM dispatch and POST apply this strict classification, so a pending operation
+or peer conflict blocks view-state intents as well as document edits. A successful
+HTTP response without a matching committed receipt is non-current: it cannot clear
+a parked save warning, update revision/hash/draft metadata, or navigate the editor.
 Recovery refuses a different draft token, and the parked conflict retains the expected
 revision across reloads. Confirmed clean writes notify peers
 even when the SSR response requires reload; dirty draft-only changes do not.
