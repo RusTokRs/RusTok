@@ -477,17 +477,16 @@ impl InMemorySsrDraftSessionStore {
             .map_err(|_| SsrDraftSessionError::Poisoned)?;
         let now = self.now();
         Self::prune_locked(&mut entries, now);
-        Self::evict_oldest(&mut entries, self.maximum_entries);
-        // Re-seeding a token that already exists must not evict other
-        // sessions of the same owner: the per-owner count does not grow.
-        if !entries.contains_key(&snapshot.token)
-            && let Some(owner) = snapshot.owner.as_ref()
-        {
-            Self::evict_oldest_for_owner(
-                &mut entries,
-                owner,
-                MAX_DRAFT_SESSIONS_PER_OWNER.saturating_sub(1),
-            );
+        // Replacing an existing cache entry does not consume another slot.
+        if !entries.contains_key(&snapshot.token) {
+            Self::evict_oldest(&mut entries, self.maximum_entries);
+            if let Some(owner) = snapshot.owner.as_ref() {
+                Self::evict_oldest_for_owner(
+                    &mut entries,
+                    owner,
+                    MAX_DRAFT_SESSIONS_PER_OWNER.saturating_sub(1),
+                );
+            }
         }
         entries.insert(
             snapshot.token,
@@ -2660,33 +2659,26 @@ impl DurableSsrDraftSessionStore {
                     actual: expected_generation.unwrap_or_default(),
                 });
             }
-            // Read-only freshness probe: no TTL refresh, no exclusive lock
-            // (audit §5.3).
-            let is_stale = self
-                .memory
-                .generation(&persistent_record.token)?
-                .is_none_or(|generation| generation < persistent_record.generation);
-            if is_stale {
-                // The loaded record stays borrowed: it is the compare-and-set
-                // expectation for the backend write below.
-                self.memory.insert_snapshot(SsrDraftSessionSnapshot {
-                    token: persistent_record.token.clone(),
-                    generation: persistent_record.generation,
-                    controller: persistent_record.controller.clone(),
-                    runtime_context: persistent_record.runtime_context.clone(),
-                    owner: persistent_record.owner.clone(),
-                })?;
-            }
         }
-        // `None` keeps the context held by the memory tier, which was just
-        // re-seeded from the persistent record when it was stale.
-        let committed = self.memory.commit_internal(
-            token,
-            expected_generation,
+        // Stage the candidate only in local variables. The persistent backend,
+        // not the memory tier, owns the generation and runtime context.
+        let generation = match persistent_record.as_ref() {
+            Some(record) => record.generation.checked_add(1)
+                .ok_or(SsrDraftSessionError::GenerationExhausted)?,
+            None => 1,
+        };
+        let committed = SsrDraftSessionSnapshot {
+            token: persistent_record.as_ref()
+                .map(|record| record.token.clone())
+                .unwrap_or_else(|| Uuid::new_v4().simple().to_string()),
+            generation,
             controller,
-            runtime_context,
-            owner,
-        )?;
+            runtime_context: runtime_context.or_else(|| persistent_record.as_ref()
+                .map(|record| record.runtime_context.clone()))
+                .unwrap_or_else(InMemorySsrDraftSessionStore::empty_context),
+            owner: owner.cloned().or_else(|| persistent_record.as_ref()
+                .and_then(|record| record.owner.clone())),
+        };
         let record = PersistentDraftSessionRecord {
             format: DRAFT_SESSION_RECORD_FORMAT,
             token: committed.token.clone(),
@@ -2709,13 +2701,8 @@ impl DurableSsrDraftSessionStore {
         {
             Ok(stored) => stored,
             Err(error) => {
-                // The memory tier already holds the new generation, the
-                // backend does not. Left in place, that entry would fail
-                // every later commit of this session: a load answers with
-                // the cached generation, and the commit then compares it
-                // with the stored record, which is one behind. The backend
-                // is authoritative, so the entry is dropped and the next
-                // read loads the stored record again.
+                // An I/O error may itself have an ambiguous commit outcome.
+                // Drop the cache entry so the next read observes the backend.
                 self.forget_unpersisted(&committed.token);
                 return Err(error);
             }
@@ -2748,10 +2735,11 @@ impl DurableSsrDraftSessionStore {
                 actual: expected_generation.unwrap_or_default(),
             });
         }
+        self.memory.insert_snapshot(committed.clone())?;
         Ok(committed)
     }
 
-    /// Drops the memory entry of a commit the backend did not store. A
+    /// Drops a cache entry after an unconfirmed backend write. A
     /// failure here is logged, not returned: the caller is already reporting
     /// the backend error that caused it.
     fn forget_unpersisted(&self, token: &str) {
@@ -2948,60 +2936,32 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
         page_id: &str,
         owner: Option<&DraftSessionOwner>,
     ) -> Result<Option<SsrDraftSessionSnapshot>, SsrDraftSessionError> {
-        if let Some(snapshot) = self.memory.load(token, page_id, owner)? {
-            if let Some(record) = self.backend.load_record(token, owner)? {
-                if record.controller.page_id() != page_id {
-                    // The mismatch is the error to report; a cache entry
-                    // that stays behind is rejected the same way next time.
-                    if let Err(err) = self.memory.remove(token, owner) {
-                        tracing::warn!(
-                            error = %err,
-                            "mismatched draft session stayed in the memory cache"
-                        );
-                    }
-                    return Err(SsrDraftSessionError::PageMismatch {
-                        expected: record.controller.page_id().to_string(),
-                        actual: page_id.to_string(),
-                    });
-                }
-                ensure_session_owner(record.owner.as_ref(), owner)?;
-                if record.generation > snapshot.generation {
-                    let fresh_snapshot = SsrDraftSessionSnapshot {
-                        token: record.token,
-                        generation: record.generation,
-                        controller: record.controller,
-                        runtime_context: record.runtime_context,
-                        owner: record.owner,
-                    };
-                    self.memory.insert_snapshot(fresh_snapshot.clone())?;
-                    return Ok(Some(fresh_snapshot));
-                }
-                return Ok(Some(snapshot));
-            } else {
-                self.memory.remove(token, owner)?;
-                return Ok(None);
-            }
+        // Never return a cached snapshot merely because its generation is
+        // greater than or equal to the backend. Concurrent CAS losers (or
+        // delayed cache publications) may have a different document at that
+        // generation. Ownership and the returned snapshot come from the
+        // same authoritative read.
+        let Some(record) = self.backend.load_record(token, owner)? else {
+            self.memory.evict(token)?;
+            return Ok(None);
+        };
+        if record.controller.page_id() != page_id {
+            self.memory.evict(token)?;
+            return Err(SsrDraftSessionError::PageMismatch {
+                expected: record.controller.page_id().to_string(),
+                actual: page_id.to_string(),
+            });
         }
-        // Fallback to persistent backend (cross-process / cross-pod restart)
-        if let Some(record) = self.backend.load_record(token, owner)? {
-            if record.controller.page_id() != page_id {
-                return Err(SsrDraftSessionError::PageMismatch {
-                    expected: record.controller.page_id().to_string(),
-                    actual: page_id.to_string(),
-                });
-            }
-            ensure_session_owner(record.owner.as_ref(), owner)?;
-            let snapshot = SsrDraftSessionSnapshot {
-                token: record.token,
-                generation: record.generation,
-                controller: record.controller,
-                runtime_context: record.runtime_context,
-                owner: record.owner,
-            };
-            self.memory.insert_snapshot(snapshot.clone())?;
-            return Ok(Some(snapshot));
-        }
-        Ok(None)
+        ensure_session_owner(record.owner.as_ref(), owner)?;
+        let snapshot = SsrDraftSessionSnapshot {
+            token: record.token,
+            generation: record.generation,
+            controller: record.controller,
+            runtime_context: record.runtime_context,
+            owner: record.owner,
+        };
+        self.memory.insert_snapshot(snapshot.clone())?;
+        Ok(Some(snapshot))
     }
 
     fn commit(
@@ -3826,6 +3786,57 @@ mod tests {
         assert_eq!(store.admit_operation_receipt(
             &original.token, "home", None, done.generation, "other-op", &"b".repeat(64),
         ).expect("unfenced"), None);
+    }
+
+    #[test]
+    fn prepared_save_survives_cold_restart_and_concurrent_completion() {
+        let driver = Arc::new(MemoryKvDriver::new());
+        let make_store = || DurableSsrDraftSessionStore::distributed(
+            InMemorySsrDraftSessionStore::default(),
+            driver.clone(), Duration::from_secs(3600), 100,
+        );
+        let store = make_store();
+        let original = store.commit(None, None, controller("home"), None).expect("create");
+        let hash = "a".repeat(64);
+        let prepared = store.commit_with_operation_receipt(
+            &original.token, original.generation, original.controller.clone(),
+            json!({"checkpoint": true}), None, "save-op", &hash,
+            json!({"prepared_save": true}),
+        ).expect("prepare");
+        let SsrDraftOperationCommit::Committed(prepared) = prepared else { panic!("prepare"); };
+        drop(store);
+        let left = make_store();
+        let right = make_store();
+        assert!(left.memory().is_empty().expect("cold cache"));
+        assert_eq!(left.load(&original.token, "home", None).expect("load"), Some(prepared.clone()));
+        assert_eq!(right.admit_operation_receipt(
+            &original.token, "home", None, original.generation, "save-op", &hash,
+        ).expect("admit"), Some(json!({"prepared_save": true})));
+        let barrier = Arc::new(std::sync::Barrier::new(2));
+        let response = json!({"save_failure": null});
+        let complete = |store: DurableSsrDraftSessionStore, barrier: Arc<std::sync::Barrier>| {
+            barrier.wait();
+            store.commit_with_operation_receipt(
+                &prepared.token, prepared.generation, prepared.controller.clone(),
+                prepared.runtime_context.clone(), None, "save-op", &hash, response.clone(),
+            ).expect("complete")
+        };
+        let results = std::thread::scope(|scope| {
+            let left_barrier = barrier.clone();
+            let right_barrier = barrier.clone();
+            let a = scope.spawn(move || complete(left, left_barrier));
+            let b = scope.spawn(move || complete(right, right_barrier));
+            [a.join().expect("left"), b.join().expect("right")]
+        });
+        assert_eq!(results.iter().filter(|r| matches!(r, SsrDraftOperationCommit::Committed(_))).count(), 1);
+        assert_eq!(results.iter().filter(|r| matches!(r, SsrDraftOperationCommit::Replayed(value) if value == &response)).count(), 1);
+        let restarted = make_store();
+        let final_state = restarted.load(&original.token, "home", None)
+            .expect("load").expect("session");
+        assert_eq!(final_state.generation, prepared.generation + 1);
+        assert_eq!(restarted.lookup_operation_receipt(
+            &original.token, "home", None, "save-op", Some(&hash),
+        ).expect("receipt"), Some(response));
     }
 
     #[test]
@@ -4808,6 +4819,34 @@ mod tests {
         ) -> Result<usize, SsrDraftSessionError> {
             self.inner.prune_records(now_unix_secs, max_entries)
         }
+    }
+
+    #[test]
+    fn durable_load_never_adopts_ahead_or_divergent_cache_state() {
+        let driver = Arc::new(MemoryKvDriver::new());
+        let store = DurableSsrDraftSessionStore::distributed(
+            InMemorySsrDraftSessionStore::new(Duration::from_secs(3600), 2),
+            driver, Duration::from_secs(3600), 2,
+        );
+        let first = store.commit_with_context(
+            None, None, controller("home"), json!({"source": "backend"}), None,
+        ).expect("create");
+        let other = store.commit(None, None, controller("other"), None).expect("other");
+        for generation in [first.generation + 1, first.generation] {
+            let mut divergent = first.clone();
+            divergent.generation = generation;
+            divergent.runtime_context = json!({"source": "uncommitted"});
+            store.memory().insert_snapshot(divergent).expect("seed stale cache");
+            let observed = store.load(&first.token, "home", None)
+                .expect("load").expect("session");
+            assert_eq!(observed, first);
+            assert_eq!(store.memory().generation(&other.token).expect("probe"), Some(1));
+        }
+        let saved = store.commit(
+            Some(&first.token), Some(first.generation), first.controller.clone(), None,
+        ).expect("commit");
+        assert_eq!(saved.generation, first.generation + 1);
+        assert_eq!(saved.runtime_context, first.runtime_context);
     }
 
     #[test]

@@ -1522,3 +1522,6 @@ integration tests; MySQL support is out of scope.
 
 2026-11-25 Prepared save observation follow-up (source only; not executed):
 - Preserve prepared operation identity when a post-commit revision observation or prepare/finalization CAS fails; classify these outcomes as unknown rather than deterministic rejection. Explicit superseded receipt remains a revision conflict. Added focused regressions.
+
+2026-11-25 Durable draft cache publication and prepared restart (source only; not executed):
+- Stage ordinary commits outside the cache, read authoritative backend state and avoid evicting unrelated cache entries on replacement. Added regressions for divergent cached generations and cold restart with two competing finalizations of a prepared receipt. No runtime execution claimed.

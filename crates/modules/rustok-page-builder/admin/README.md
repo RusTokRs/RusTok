@@ -395,3 +395,8 @@ existing operation ledger before external I/O. Only the same operation can
 complete the reservation; other writes are fenced. Receipt lookup stays read-only.
 Record format 2 protects prepared operations from older readers; deploy upgraded
 readers before using the new protocol.
+
+Durable draft commits stage candidates outside the memory cache and publish
+only after persistent CAS. Loads return the owner-scoped backend snapshot,
+never a speculative or divergent cached generation. Replacing an existing
+cache entry does not evict an unrelated draft.
