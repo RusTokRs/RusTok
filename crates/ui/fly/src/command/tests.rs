@@ -288,6 +288,66 @@ fn batch_is_atomic_and_creates_one_history_entry() {
 }
 
 #[test]
+fn dependent_batch_uses_snapshot_history_not_a_false_local_inverse() {
+    let mut editor = editor();
+    let before = editor.document().clone();
+    let batch = EditorCommand::batch([
+        EditorCommand::Asset {
+            command: AssetCommand::Upsert {
+                asset: json!({"id": "temporary", "src": "/temporary.png"}),
+            },
+        },
+        EditorCommand::Asset {
+            command: AssetCommand::Remove { asset_id: "temporary".to_string() },
+        },
+        EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: ComponentPatch::default().set_attribute("title", json!("changed")),
+        },
+    ]);
+    assert!(invert_command(&before, &batch).is_none());
+    editor.apply(batch).expect("transaction");
+    let after = editor.document().clone();
+    assert!(editor.history().undo_entries().last().expect("entry").inverse().is_none());
+    editor.undo().expect("undo");
+    assert_eq!(editor.document(), &before);
+    editor.redo().expect("redo");
+    assert_eq!(editor.document(), &after);
+}
+
+#[test]
+fn style_inverse_restores_absent_and_replaced_style_slots() {
+    for original in [None, Some(json!({"color": "red", "padding": "24px"}))] {
+        let mut document = editor().document().clone();
+        document.component_mut("hero").expect("hero").style = original.clone();
+        let mut editor = FlyEditor::new(document, RegistrySet::with_builtins());
+        let before = editor.document().clone();
+        let command = EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: ComponentPatch::default().merge_style(json!({"width": "20px"})),
+        };
+        let inverse = invert_command(&before, &command).expect("style inverse");
+        editor.apply(command).expect("apply");
+        editor.apply(inverse).expect("restore original style");
+        assert_eq!(editor.document(), &before);
+    }
+}
+
+#[test]
+fn content_patch_that_removes_text_children_has_no_local_inverse() {
+    let document = GrapesJsCodec::decode_value(json!({
+        "pages": [{"id": "home", "component": {"id": "root", "type": "wrapper",
+            "components": [{"id": "hero", "type": "text", "components": ["Original"]}]
+        }}]
+    })).expect("document");
+    let command = EditorCommand::Patch {
+        component_id: "hero".to_string(),
+        patch: ComponentPatch::default().set_field("content", json!("Updated")),
+    };
+    assert!(invert_command(&document, &command).is_none());
+}
+
+#[test]
 fn failed_batch_does_not_change_document_or_history() {
     let mut editor = editor();
     let before = editor.document().hash();

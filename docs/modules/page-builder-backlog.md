@@ -103,6 +103,14 @@ same-parent inverses account for pre-removal slot semantics. Four regressions ar
 field remains an invalidation bypass. Full workspace reference discovery was unavailable;
 scoped compilation, remediation gate, tests and lint were not run in this pass.
 
+Fly history and snapshot follow-up (2026-11-25, source-only): batch transactions no longer
+publish local inverses computed from the wrong intermediate state; content patches with
+scalar-child removal also defer to authoritative snapshot history. Style inverses restore
+the full original slot, and remove inverses require an addressable original parent.
+Snapshot capture verifies payload round-trip, derives a fresh payload fingerprint and checks
+sequence exhaustion, duplicate identity and invalid capacity before mutating the catalog.
+Six focused regressions authored; compilation, tests, lint and remediation gate not run.
+
 Reduced-motion follow-up: the shared Fly browser asset now uses instant scrolling for
 `scroll_to` when the target document requests reduced motion, including in the presence of
 CSS `scroll-behavior: smooth`; animations use the same document preference. The Node runtime

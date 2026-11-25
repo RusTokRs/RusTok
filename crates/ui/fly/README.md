@@ -193,6 +193,13 @@ Page identities remain optional for legacy documents, but a page patch that sets
 History budgets both undo and redo snapshots plus commands using a serialized-size estimate. It
 preserves one oversized entry, and recomputes the accounting after deserialization. The estimate
 is not an exact heap measurement and may count shared snapshots more than once.
+Batch transactions and content patches that remove scalar text children do not claim a
+local inverse; undo and redo restore the retained before/after snapshots. Style inverses
+restore the complete original style slot, including absence.
+
+Snapshot capture verifies canonical payload round-trip, derives the fingerprint from that
+payload rather than a cached document hash, and commits its sequence only on success.
+Exhausted sequences, duplicate IDs and zero-capacity restored catalogs reject capture.
 
 ## Site symbols
 

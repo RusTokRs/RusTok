@@ -44,6 +44,43 @@ fn snapshots_restore_and_verify_hash() {
 }
 
 #[test]
+fn snapshot_capture_fingerprints_the_actual_payload_even_after_raw_mutation() {
+    let mut source = document("Before");
+    let old_hash = source.hash();
+    // The still-public raw project field can bypass cache invalidation.
+    source.project.extensions.insert("custom".to_string(), json!("changed"));
+    let mut catalog = SnapshotCatalog::default();
+    let snapshot = catalog.capture("Current", &source, Map::new()).expect("capture");
+    assert_ne!(snapshot.project_hash, old_hash.hex());
+    assert_eq!(snapshot.restore_verified().expect("restore"), source);
+}
+
+#[test]
+fn snapshot_capture_rejects_exhausted_or_reused_sequence_without_mutation() {
+    let mut catalog = SnapshotCatalog::default();
+    catalog.capture("First", &document("Original"), Map::new()).expect("first");
+    let serialized = serde_json::to_value(&catalog).expect("serialize");
+    for sequence in [1_u64, u64::MAX] {
+        let mut invalid = serialized.clone();
+        invalid["next_sequence"] = json!(sequence);
+        let mut restored: SnapshotCatalog = serde_json::from_value(invalid).expect("catalog");
+        let before = restored.clone();
+        assert!(restored.capture("Duplicate", &document("Original"), Map::new()).is_err());
+        assert_eq!(restored, before);
+    }
+}
+
+#[test]
+fn zero_capacity_restored_catalog_cannot_consume_a_sequence() {
+    let mut value = serde_json::to_value(SnapshotCatalog::default()).expect("serialize");
+    value["maximum_snapshots"] = json!(0);
+    let mut catalog: SnapshotCatalog = serde_json::from_value(value).expect("catalog");
+    let before = catalog.clone();
+    assert!(catalog.capture("Invalid", &document("Original"), Map::new()).is_err());
+    assert_eq!(catalog, before);
+}
+
+#[test]
 fn catalog_evicts_old_snapshots() {
     let mut catalog = SnapshotCatalog::new(2);
     catalog.capture("One", &document("1"), Map::new()).unwrap();
