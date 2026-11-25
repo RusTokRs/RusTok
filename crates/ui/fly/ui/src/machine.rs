@@ -1,5 +1,5 @@
 use crate::{
-    CanvasRect, CapabilityState, CommandCapabilityRequirement, DragSource, DragState, FlyUiState,
+    CanvasRect, CapabilityState, CommandCapabilityRequirement, DragSource, DragState, EditorCapability, FlyUiState,
     HitTestCandidate, PanelKind, Presentation, UiError, UiResult, ViewportState, command_for_drop,
 };
 use fly::{EditorCommand, ProjectHash, ValidationDiagnostic};
@@ -172,7 +172,7 @@ impl FlyUiStateMachine {
                 }
                 self.state.overlays.selected = rect;
                 self.state.overlays.resize_handles_visible =
-                    rect.is_some() && self.state.effective_editable();
+                    rect.is_some() && self.effective_capabilities().styles;
                 vec![UiEffect::None]
             }
             UiIntent::SetHoveredOverlay(rect) => {
@@ -183,7 +183,7 @@ impl FlyUiStateMachine {
                 vec![UiEffect::None]
             }
             UiIntent::BeginDrag(source) => {
-                self.require_edit_capability("drag_drop", self.state.capabilities.drag_drop)?;
+                self.require_edit_capability(EditorCapability::DragDrop)?;
                 self.state.drag = Some(DragState {
                     source,
                     candidates: Vec::new(),
@@ -232,7 +232,7 @@ impl FlyUiStateMachine {
             UiIntent::Drop => {
                 // Authorization must be revalidated at commit time, not inherited from
                 // BeginDrag: restored state or changed policy must not enable a write.
-                self.require_edit_capability("drag_drop", self.state.capabilities.drag_drop)?;
+                self.require_edit_capability(EditorCapability::DragDrop)?;
                 // Build and validate the command before consuming the drag. A rejected
                 // candidate or unsupported source must remain retryable/cancellable.
                 let drag = self.state.drag.as_ref().ok_or(UiError::NoActiveDrag)?;
@@ -254,7 +254,7 @@ impl FlyUiStateMachine {
                 vec![UiEffect::Announce("Drag cancelled".to_string())]
             }
             UiIntent::CopySelection => {
-                self.require_edit_capability("clipboard", self.state.capabilities.clipboard)?;
+                self.require_edit_capability(EditorCapability::Clipboard)?;
                 if self.state.selection.component_id.is_none() {
                     return Err(UiError::CapabilityUnavailable(
                         "copy requires a selected component".to_string(),
@@ -263,7 +263,7 @@ impl FlyUiStateMachine {
                 vec![UiEffect::CopySelection]
             }
             UiIntent::CutSelection => {
-                self.require_edit_capability("clipboard", self.state.capabilities.clipboard)?;
+                self.require_edit_capability(EditorCapability::Clipboard)?;
                 if self.state.selection.component_id.is_none() {
                     return Err(UiError::CapabilityUnavailable(
                         "cut requires a selected component".to_string(),
@@ -273,7 +273,7 @@ impl FlyUiStateMachine {
                 vec![UiEffect::CutSelection]
             }
             UiIntent::PasteClipboard => {
-                self.require_edit_capability("clipboard", self.state.capabilities.clipboard)?;
+                self.require_edit_capability(EditorCapability::Clipboard)?;
                 self.mark_dirty();
                 vec![UiEffect::PasteClipboard]
             }
@@ -283,7 +283,7 @@ impl FlyUiStateMachine {
                     if !self.state.presentation.is_editable() {
                         return Err(UiError::ReadOnly);
                     }
-                    if let Some(capability) = requirement.first_missing(self.state.capabilities) {
+                    if let Some(capability) = requirement.first_missing(self.effective_capabilities()) {
                         return Err(UiError::CapabilityUnavailable(
                             capability.as_str().to_string(),
                         ));
@@ -295,12 +295,12 @@ impl FlyUiStateMachine {
                 vec![UiEffect::Command(command)]
             }
             UiIntent::Undo => {
-                self.require_edit_capability("history", self.state.capabilities.history)?;
+                self.require_edit_capability(EditorCapability::History)?;
                 self.mark_dirty();
                 vec![UiEffect::Undo]
             }
             UiIntent::Redo => {
-                self.require_edit_capability("history", self.state.capabilities.history)?;
+                self.require_edit_capability(EditorCapability::History)?;
                 self.mark_dirty();
                 vec![UiEffect::Redo]
             }
@@ -309,7 +309,7 @@ impl FlyUiStateMachine {
                 // requires the edit capability (pages:update at the
                 // permission layer), not the publish capability. Real
                 // publication is a separate flow with its own gate.
-                self.require_edit_capability("edit", self.state.capabilities.edit)?;
+                self.require_edit_capability(EditorCapability::Edit)?;
                 if self.state.has_blocking_diagnostics() {
                     return Err(UiError::CapabilityUnavailable(
                         "save blocked by validation diagnostics".to_string(),
@@ -333,7 +333,7 @@ impl FlyUiStateMachine {
                 }]
             }
             UiIntent::SaveStarted { request_id } => {
-                self.require_edit_capability("edit", self.state.capabilities.edit)?;
+                self.require_edit_capability(EditorCapability::Edit)?;
                 if request_id.trim().is_empty() || request_id.len() > 128 {
                     return Err(UiError::CapabilityUnavailable(
                         "save request identity is missing or invalid".to_string(),
@@ -473,7 +473,7 @@ impl FlyUiStateMachine {
 
     fn refresh_effective_capabilities(&mut self) {
         let capabilities = if self.state.presentation.is_editable() {
-            self.editable_capabilities
+            self.editable_capabilities.normalized()
         } else {
             CapabilityState::read_only()
         };
@@ -481,18 +481,28 @@ impl FlyUiStateMachine {
             self.state.drag = None;
             self.state.overlays.insertion = None;
         }
-        if !capabilities.edit {
+        if !capabilities.styles {
             self.state.overlays.resize_handles_visible = false;
         }
         self.state.capabilities = capabilities;
     }
 
-    fn require_edit_capability(&self, name: &str, enabled: bool) -> UiResult<()> {
+    /// The public presentation state is a projection, not authority to grant
+    /// capabilities above the host-evaluated ceiling. Recheck both at admission,
+    /// including inconsistent restored state with edit denied and a sub-capability set.
+    fn effective_capabilities(&self) -> CapabilityState {
+        if !self.state.presentation.is_editable() {
+            return CapabilityState::read_only();
+        }
+        self.state.capabilities.intersection(self.editable_capabilities).normalized()
+    }
+
+    fn require_edit_capability(&self, capability: EditorCapability) -> UiResult<()> {
         if !self.state.presentation.is_editable() {
             return Err(UiError::ReadOnly);
         }
-        if !enabled {
-            return Err(UiError::CapabilityUnavailable(name.to_string()));
+        if !self.effective_capabilities().allows(capability) {
+            return Err(UiError::CapabilityUnavailable(capability.as_str().to_string()));
         }
         Ok(())
     }

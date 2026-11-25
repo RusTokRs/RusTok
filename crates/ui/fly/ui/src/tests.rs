@@ -680,3 +680,44 @@ fn save_conflict_is_a_distinct_lost_update_state() {
     machine.dispatch(UiIntent::SaveFailed { request_id: None }).expect("failed response");
     assert!(machine.state.dirty.save_conflict);
 }
+
+#[test]
+fn inconsistent_projection_cannot_bypass_edit_denial_or_host_ceiling() {
+    let mut machine = FlyUiStateMachine::new(Presentation::Full);
+    machine.state.capabilities.edit = false;
+    let intents = [
+        UiIntent::BeginDrag(DragSource::PaletteBlock {
+            block_id: "section".to_string(),
+            component: ComponentNode::object("section"),
+        }),
+        UiIntent::PasteClipboard,
+        UiIntent::Undo,
+        UiIntent::Redo,
+        UiIntent::execute(EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: ComponentPatch::default().merge_style(json!({"color": "blue"})),
+        }),
+    ];
+    for intent in intents {
+        let before = machine.clone();
+        assert!(matches!(machine.dispatch(intent), Err(UiError::CapabilityUnavailable(_))));
+        assert_eq!(machine, before);
+    }
+
+    machine.set_editable_capabilities(CapabilityState {
+        styles: false,
+        ..CapabilityState::full()
+    });
+    // Simulate an inconsistent projection after an external write or restore.
+    machine.state.capabilities.styles = true;
+    let before = machine.clone();
+    assert!(matches!(machine.dispatch(UiIntent::execute(EditorCommand::Patch {
+        component_id: "hero".to_string(),
+        patch: ComponentPatch::default().merge_style(json!({"color": "blue"})),
+    })), Err(UiError::CapabilityUnavailable(_))));
+    assert_eq!(machine, before);
+    machine.dispatch(UiIntent::SetSelectedOverlay(Some(legal_candidate().rect)))
+        .expect("overlay");
+    assert!(!machine.state.overlays.resize_handles_visible);
+    assert!(machine.dispatch(UiIntent::Select(Some("hero".to_string()))).is_ok());
+}

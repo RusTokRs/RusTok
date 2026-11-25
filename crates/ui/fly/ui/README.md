@@ -27,7 +27,10 @@ user permissions, and provider health. Its result is the editable capability cei
 Presentation modes only mask that ceiling. Switching to preview or read-only temporarily exposes a
 read-only effective profile; switching back to full or inline restores the previously evaluated
 ceiling rather than `CapabilityState::full()`. Revoking edit or drag-and-drop capabilities also
-cleans up transient drag, insertion, and resize state immediately.
+cleans up transient drag, insertion, and resize state immediately. Command admission intersects
+the public capability projection with the host-evaluated ceiling and normalizes edit-dependent
+permissions again; a restored or externally modified projection cannot grant a denied operation.
+Resize handles also require the effective style-edit capability.
 
 Framework and host packages may resolve authentication, RBAC, tenant rollout, and provider health,
 but they pass only the evaluated `CapabilityState` into `fly-ui`. Browser/SSR adapters must apply the
