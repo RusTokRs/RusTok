@@ -1,6 +1,7 @@
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{Duration, Utc};
 use jsonwebtoken::{Algorithm, Header, Validation, decode, encode};
+use rustok_api::AuthPrincipalKind;
 use rustok_core::UserRole;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
@@ -167,6 +168,9 @@ pub fn encode_oauth_access_token(
         jti: Some(input.token_id),
     };
 
+    if !valid_access_subject(&claims) {
+        return Err(AuthError::TokenEncodingFailed);
+    }
     encode_for_purpose(config, JwtPurpose::Access, &claims)
 }
 
@@ -191,11 +195,32 @@ pub fn decode_access_token(config: &AuthConfig, token: &str) -> Result<Claims> {
     let claims = decode_for_purpose::<Claims>(config, token, JwtPurpose::Access)
         .map_err(|_| AuthError::InvalidAccessToken)?;
 
-    if claims.sub.is_nil() || claims.tenant_id.is_nil() || !valid_token_times(claims.iat, claims.exp) {
+    if claims.sub.is_nil()
+        || claims.tenant_id.is_nil()
+        || !valid_access_subject(&claims)
+        || !valid_token_times(claims.iat, claims.exp)
+    {
         return Err(AuthError::InvalidAccessToken);
     }
 
     Ok(claims)
+}
+
+/// Keep JWT admission aligned with the platform's canonical principal
+/// classification. The durable OAuth registration is still checked by the host.
+fn valid_access_subject(claims: &Claims) -> bool {
+    match AuthPrincipalKind::from_authenticated_facts(
+        &claims.grant_type,
+        claims.client_id,
+        claims.session_id,
+    ) {
+        Some(AuthPrincipalKind::DirectUser) => claims.jti.is_none() && claims.scopes.is_empty(),
+        Some(AuthPrincipalKind::DelegatedUser | AuthPrincipalKind::Service) => {
+            claims.client_id.is_some_and(|id| !id.is_nil())
+                && claims.jti.is_some_and(|id| !id.is_nil())
+        }
+        None => false,
+    }
 }
 
 // ─── Special-purpose tokens ──────────────────────────────────────────
@@ -312,6 +337,9 @@ pub fn encode_invite_token(
     if email.is_empty() || tenant_id.is_nil() {
         return Err(AuthError::TokenEncodingFailed);
     }
+    if !valid_invite_role(&role, custom_role_slug.as_deref()) {
+        return Err(AuthError::TokenEncodingFailed);
+    }
     tracing::debug!(tenant_id = %tenant_id, role = ?role, "Encoding invite token");
     let now = Utc::now();
     let exp = token_expiration(now, ttl_seconds)?;
@@ -347,15 +375,18 @@ pub fn decode_invite_token(config: &AuthConfig, token: &str) -> Result<InviteCla
     {
         return Err(AuthError::InvalidInviteToken);
     }
-    if let Some(slug) = claims.custom_role_slug.as_deref() {
-        // A custom slug only makes sense layered over the baseline
-        // customer membership; anything else was not issued by us.
-        if slug.trim().is_empty() || slug.len() > 64 || claims.role != UserRole::Customer {
-            return Err(AuthError::InvalidInviteToken);
-        }
+    if !valid_invite_role(&claims.role, claims.custom_role_slug.as_deref()) {
+        return Err(AuthError::InvalidInviteToken);
     }
 
     Ok(claims)
+}
+
+fn valid_invite_role(role: &UserRole, custom_role_slug: Option<&str>) -> bool {
+    // A custom role is layered over baseline customer membership.
+    custom_role_slug.is_none_or(|slug| {
+        !slug.trim().is_empty() && slug.len() <= 64 && *role == UserRole::Customer
+    })
 }
 
 fn token_expiration(now: chrono::DateTime<Utc>, ttl_seconds: u64) -> Result<chrono::DateTime<Utc>> {
@@ -1134,6 +1165,75 @@ mod tests {
             encode_password_reset_token(&config, Uuid::new_v4(), "user@example.com", 900).unwrap();
 
         assert!(decode_invite_token(&config, &token).is_err());
+    }
+
+    #[test]
+    fn access_jwt_rejects_signed_invalid_principal_facts() {
+        let config = test_config();
+        let token = encode_access_token(
+            &config, Uuid::new_v4(), Uuid::new_v4(), UserRole::Customer, Uuid::new_v4(),
+        ).unwrap();
+        let signed_invalid = |claims: &Claims| {
+            let token = encode_for_purpose(&config, JwtPurpose::Access, claims).unwrap();
+            assert!(decode_access_token(&config, &token).is_err());
+        };
+        let mut claims = decode_access_token(&config, &token).unwrap();
+        claims.jti = Some(Uuid::new_v4());
+        signed_invalid(&claims);
+        claims.jti = None;
+        claims.scopes.push("catalog:read".to_string());
+        signed_invalid(&claims);
+        claims.scopes.clear();
+        claims.session_id = Uuid::nil();
+        signed_invalid(&claims);
+
+        claims.grant_type = "authorization_code".to_string();
+        claims.client_id = Some(Uuid::new_v4());
+        signed_invalid(&claims); // Missing durable registration.
+        claims.jti = Some(Uuid::nil());
+        signed_invalid(&claims);
+        claims.jti = Some(Uuid::new_v4());
+        claims.client_id = Some(Uuid::nil());
+        signed_invalid(&claims);
+        claims.client_id = Some(Uuid::new_v4());
+        claims.grant_type = "refresh_token".to_string();
+        signed_invalid(&claims);
+    }
+
+    #[test]
+    fn oauth_encoder_rejects_unsupported_grants() {
+        let config = test_config();
+        for grant_type in ["", "direct", "refresh_token", "unknown"] {
+            assert!(encode_oauth_access_token(&config, OauthAccessTokenInput {
+                app_id: Uuid::new_v4(),
+                tenant_id: Uuid::new_v4(),
+                role: UserRole::Customer,
+                client_id: Uuid::new_v4(),
+                scopes: &[],
+                grant_type,
+                expires_in_secs: 900,
+                token_id: Uuid::new_v4(),
+            }).is_err());
+        }
+    }
+
+    #[test]
+    fn invite_encoder_rejects_roles_that_decoder_cannot_accept() {
+        let config = test_config();
+        let tenant = Uuid::new_v4();
+        for (role, slug) in [
+            (UserRole::Customer, " ".to_string()),
+            (UserRole::Customer, "a".repeat(65)),
+            (UserRole::Admin, "custom".to_string()),
+        ] {
+            assert!(encode_invite_token(
+                &config, tenant, "a@example.com", role, Some(slug), 900,
+            ).is_err());
+        }
+        let token = encode_invite_token(
+            &config, tenant, "a@example.com", UserRole::Customer, Some("custom".to_string()), 900,
+        ).unwrap();
+        assert_eq!(decode_invite_token(&config, &token).unwrap().custom_role_slug.as_deref(), Some("custom"));
     }
 
     #[test]

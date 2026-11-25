@@ -37,7 +37,7 @@
 - `pub struct AuthConfig`
 - `pub enum AuthError`
 - `pub struct Claims` (OAuth access tokens carry `jti`; direct session tokens leave it absent)
-- `pub struct OauthAccessTokenInput` (requires a durable `token_id` that becomes `jti`)
+- `pub struct OauthAccessTokenInput` (requires non-nil client and durable `token_id` that becomes `jti`; only `authorization_code` and `client_credentials` access grants are admitted)
 - `pub struct UserAdminMutationRuntime`
 - `pub struct OAuthAdminRuntime`
 

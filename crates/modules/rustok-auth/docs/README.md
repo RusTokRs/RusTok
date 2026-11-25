@@ -185,6 +185,18 @@ still constructs its internal crypto providers per operation.
 Algorithm migration and multi-replica execution evidence are pending.
 See [purpose keyring ADR](../../../../DECISIONS/2026-11-25-jwt-purpose-keyrings.md).
 
+## JWT principal and invite admission
+
+Access JWT encoders and decoders enforce the canonical `AuthPrincipalKind`
+classification. Direct JWTs require a non-nil session and no OAuth scopes or
+registration ID. Delegated and service JWTs require non-nil client and durable
+registration IDs, a nil session and an admitted OAuth access grant. The
+`refresh_token` exchange still issues an `authorization_code` access grant.
+Signature admission does not replace the host's live session or OAuth row
+checks. Invite issuance and verification share the same custom-role predicate:
+custom roles require the Customer baseline and a nonblank slug of at most 64
+bytes. Source regressions are not yet executed.
+
 ## JWT and browser confirmation hardening
 
 Both HS256 and RS256 host configuration require at least 32 non-whitespace
