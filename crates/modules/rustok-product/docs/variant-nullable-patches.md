@@ -58,9 +58,10 @@ and retain their existing optional-field semantics.
   controls send null for blank/whitespace edits; absent Shipping/weight controls remain omitted.
   This slice does not add new weight or Shipping form widgets.
 - Leptos creation continues using `VariantDraft`; updates use `VariantUpdateDraft`. The routed
-  editor explicitly patches SKU/barcode, leaving Shipping/weight/unit as Keep. Inline editing
-  patches only SKU, leaving barcode and other unedited nullable fields as Keep. Edited blank
-  text becomes Clear; the transport must not re-normalize a patch through `Option`.
+  editor patches SKU, barcode and the Variant shipping-profile override, leaving weight/unit as
+  Keep. Inline editing patches SKU and shipping-profile override, leaving barcode, weight and unit
+  as Keep. Edited blank text becomes Clear; the transport must not re-normalize a patch through
+  `Option`.
 - Leptos retry intent includes the **complete draft** plus tenant, actor and Variant identity,
   not just SKU. Non-SKU edits rotate identity; an identical retry retains it. This is existing
   in-memory retry retention, not reload/crash recovery or a durable child-command journal.

@@ -1088,6 +1088,30 @@ mod variant_update_draft_tests {
     }
 
     #[test]
+    fn blank_sku_and_barcode_are_explicit_nullable_clears() {
+        let mut original = original_variant();
+        original.shipping_profile_slug = Some("parcel".to_owned());
+
+        let draft = VariantUpdateDraft::from_editor_state(
+            &original,
+            String::new(),
+            String::new(),
+            "parcel".to_owned(),
+            "USD".to_owned(),
+            "12.50".to_owned(),
+            String::new(),
+            8,
+            "deny".to_owned(),
+        );
+
+        assert!(matches!(draft.sku, Patch::Clear));
+        assert!(matches!(draft.barcode, Patch::Clear));
+        assert!(matches!(draft.shipping_profile_slug, Patch::Keep));
+        assert!(!draft.prices_changed);
+        assert!(crate::core::validate_editor_variant_draft(&draft).is_ok());
+    }
+
+    #[test]
     fn primary_price_edit_preserves_other_currency_prices() {
         let original = original_variant();
         let draft = draft(&original, "SKU-1", "13.00", "USD");

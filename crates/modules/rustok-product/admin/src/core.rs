@@ -79,9 +79,8 @@ pub(crate) fn effective_axis_policy_label(
     )
 }
 
-/// Local scalar admission for the independently saved Variant controls. This does
-/// not implement nullable patches: refuse an unsupported clear instead of showing
-/// success while the transport silently treats it as an omitted field.
+/// Local scalar admission for the independently saved Variant controls.
+/// Keep/Clear intent is preserved; only concrete Set values require scalar validation.
 pub(crate) fn validate_editor_variant_draft(
     draft: &crate::model::VariantUpdateDraft,
 ) -> Result<(), String> {
