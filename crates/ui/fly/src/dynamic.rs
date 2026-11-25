@@ -2482,6 +2482,7 @@ mod tests {
             FLY_RUNTIME_CONDITIONS_FIELD.to_string(),
             json!([{ "providerCondition": true }]),
         );
+        let before_hash = document.hash();
         apply_dynamic_command(
             &mut document,
             &DynamicCommand::UpsertCondition {
@@ -2497,6 +2498,7 @@ mod tests {
             },
         )
         .expect("upsert condition");
+        assert_ne!(document.hash(), before_hash);
         let entries = document.project.extensions[FLY_RUNTIME_CONDITIONS_FIELD]
             .as_array()
             .expect("condition array");
