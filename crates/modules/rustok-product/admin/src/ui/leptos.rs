@@ -26,7 +26,7 @@ use crate::core::{
     build_product_detached_attribute_value_view_models, build_product_image_view_models,
     build_product_media_panel_copy, build_product_variants_panel_copy, build_save_command,
     build_selected_product_summary_view_model, build_status_command,
-    build_status_result_view_model, build_variant_row_update_draft, build_variant_row_view_models,
+    build_status_result_view_model, build_variant_row_update_draft_with_price_clear, build_variant_row_view_models,
     validate_editor_variant_draft,
     empty_product_admin_editor_form_state, parse_product_admin_quantity_input,
     pricing_preview_request_from_product, pricing_preview_state_from_result,
@@ -1710,10 +1710,16 @@ pub(super) fn ProductVariantsPanel(
 ) -> impl IntoView {
     let blocked = blocked.unwrap_or_else(|| Signal::derive(|| false));
     let copy = build_product_variants_panel_copy(locale.as_deref());
+    let clear_price_label = crate::i18n::t(
+        locale.as_deref(),
+        "product-variantUpdate-clearPrimaryPrice",
+        "Clear primary price",
+    );
     let (editing_variant_id, set_editing_variant_id) = signal(Option::<String>::None);
     let (edit_sku, set_edit_sku) = signal(String::new());
     let (edit_shipping_profile_slug, set_edit_shipping_profile_slug) = signal(String::new());
     let (edit_price, set_edit_price) = signal(String::new());
+    let (edit_clear_primary_price, set_edit_clear_primary_price) = signal(false);
     let (edit_stock, set_edit_stock) = signal(0_i32);
     let (edit_stock_text, set_edit_stock_text) = signal("0".to_string());
     let edit_stock_valid = RwSignal::new(true);
@@ -1833,11 +1839,26 @@ pub(super) fn ProductVariantsPanel(
                                     <div class="text-foreground">
                                         {move || if is_editing_this.get() {
                                             view! {
-                                                <input
-                                                    class="rounded border border-border bg-background px-2 py-1 text-xs outline-none focus:border-primary w-20"
-                                                    prop:value=move || edit_price.get()
-                                                    on:input=move |ev| set_edit_price.set(event_target_value(&ev))
-                                                />
+                                                <div class="space-y-1">
+                                                    <input
+                                                        class="rounded border border-border bg-background px-2 py-1 text-xs outline-none focus:border-primary w-20"
+                                                        prop:value=move || edit_price.get()
+                                                        on:input=move |ev| {
+                                                            set_edit_price.set(event_target_value(&ev));
+                                                            set_edit_clear_primary_price.set(false);
+                                                        }
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        class="text-xs text-muted-foreground underline"
+                                                        on:click=move |_| {
+                                                            set_edit_price.set(String::new());
+                                                            set_edit_clear_primary_price.set(true);
+                                                        }
+                                                    >
+                                                        {clear_price_label.clone()}
+                                                    </button>
+                                                </div>
                                             }.into_any()
                                         } else {
                                             view! { <span>{price_val.clone()}</span> }.into_any()
@@ -1898,6 +1919,7 @@ pub(super) fn ProductVariantsPanel(
                                     set_edit_price.set(
                                         original.prices.first().map(|price| price.amount.clone()).unwrap_or_default()
                                     );
+                                    set_edit_clear_primary_price.set(false);
                                     set_edit_stock.set(original.inventory_quantity);
                                     set_edit_stock_text.set(original.inventory_quantity.to_string());
                                     edit_stock_valid.set(true);
@@ -1915,13 +1937,14 @@ pub(super) fn ProductVariantsPanel(
                                         set_error.set(Some("The selected variant is no longer available. Reload the catalog.".into()));
                                         return;
                                     };
-                                    let draft = build_variant_row_update_draft(
+                                    let draft = build_variant_row_update_draft_with_price_clear(
                                         &original,
                                         edit_sku.get_untracked(),
                                         edit_price.get_untracked(),
                                         edit_stock.get_untracked(),
                                         &default_curr_save,
                                         edit_shipping_profile_slug.get_untracked(),
+                                        edit_clear_primary_price.get_untracked(),
                                     );
                                     if !draft.has_changes() {
                                         set_editing_variant_id.set(None);

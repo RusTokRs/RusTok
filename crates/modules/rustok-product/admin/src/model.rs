@@ -430,6 +430,34 @@ impl VariantUpdateDraft {
         inventory_quantity: i32,
         inventory_policy: String,
     ) -> Self {
+        Self::from_editor_state_with_price_clear(
+            original,
+            sku,
+            barcode,
+            shipping_profile_slug,
+            currency_code,
+            amount,
+            compare_at_amount,
+            inventory_quantity,
+            inventory_policy,
+            false,
+        )
+    }
+
+    /// Explicitly clear the target Variant's primary-currency price only when requested.
+    /// An empty amount field by itself is an unchanged value, never an implicit deletion.
+    pub fn from_editor_state_with_price_clear(
+        original: &ProductVariant,
+        sku: String,
+        barcode: String,
+        shipping_profile_slug: String,
+        currency_code: String,
+        amount: String,
+        compare_at_amount: String,
+        inventory_quantity: i32,
+        inventory_policy: String,
+        clear_primary_price: bool,
+    ) -> Self {
         let sku = Self::edited_text_if_changed(sku, original.sku.as_deref());
         let barcode = Self::edited_text_if_changed(barcode, original.barcode.as_deref());
         let shipping_profile_slug = Self::edited_text_if_changed(
@@ -453,8 +481,10 @@ impl VariantUpdateDraft {
         let compare_at_amount = rustok_ui_core::normalize_ui_text(&compare_at_amount);
 
         if amount.is_empty() {
-            if let Some(primary_currency) = primary_currency {
-                next_prices.retain(|price| price.currency_code != primary_currency);
+            if clear_primary_price {
+                if let Some(primary_currency) = primary_currency {
+                    next_prices.retain(|price| price.currency_code != primary_currency);
+                }
             }
         } else {
             let updated_price = VariantPriceDraft {
@@ -1069,9 +1099,29 @@ mod variant_update_draft_tests {
     }
 
     #[test]
-    fn clearing_primary_price_preserves_other_currency_prices() {
+    fn empty_primary_price_input_leaves_all_base_prices_unchanged() {
         let original = original_variant();
         let draft = draft(&original, "SKU-1", "", "USD");
+        assert!(!draft.prices_changed);
+        assert!(draft.prices.is_empty());
+        assert!(!draft.has_changes());
+    }
+
+    #[test]
+    fn explicit_primary_price_clear_preserves_other_currency_prices() {
+        let original = original_variant();
+        let draft = VariantUpdateDraft::from_editor_state_with_price_clear(
+            &original,
+            "SKU-1".to_owned(),
+            "BAR-1".to_owned(),
+            String::new(),
+            "USD".to_owned(),
+            String::new(),
+            String::new(),
+            8,
+            "deny".to_owned(),
+            true,
+        );
         assert!(draft.prices_changed);
         assert_eq!(draft.prices.len(), 1);
         assert_eq!(draft.prices[0].currency_code, "EUR");

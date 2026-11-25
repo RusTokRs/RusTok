@@ -2110,12 +2110,33 @@ pub fn build_variant_row_update_draft(
     fallback_currency: &str,
     shipping_profile_slug: String,
 ) -> crate::model::VariantUpdateDraft {
+    build_variant_row_update_draft_with_price_clear(
+        original,
+        sku,
+        amount,
+        inventory_quantity,
+        fallback_currency,
+        shipping_profile_slug,
+        false,
+    )
+}
+
+/// The row editor clears a price only through its explicit clear-price action.
+pub fn build_variant_row_update_draft_with_price_clear(
+    original: &crate::model::ProductVariant,
+    sku: String,
+    amount: String,
+    inventory_quantity: i32,
+    fallback_currency: &str,
+    shipping_profile_slug: String,
+    clear_primary_price: bool,
+) -> crate::model::VariantUpdateDraft {
     let primary_price = original.prices.first();
     let compare_at_amount = primary_price
         .filter(|_| !amount.trim().is_empty())
         .and_then(|price| price.compare_at_amount.clone())
         .unwrap_or_default();
-    crate::model::VariantUpdateDraft::from_editor_state(
+    crate::model::VariantUpdateDraft::from_editor_state_with_price_clear(
         original,
         sku,
         original.barcode.clone().unwrap_or_default(),
@@ -2127,6 +2148,7 @@ pub fn build_variant_row_update_draft(
         compare_at_amount,
         inventory_quantity,
         original.inventory_policy.clone(),
+        clear_primary_price,
     )
 }
 
@@ -4212,6 +4234,49 @@ mod tests {
         assert_eq!(draft.prices[1].amount, "10.00");
         assert_eq!(draft.prices[1].compare_at_amount.as_deref(), Some("12.00"));
         assert!(draft.inventory_quantity.is_none());
+    }
+
+    #[test]
+    fn variant_row_empty_price_is_unchanged_until_explicitly_cleared() {
+        let mut product = product_detail();
+        product.variants[0].prices = vec![
+            crate::model::ProductPrice {
+                currency_code: "EUR".to_owned(),
+                amount: "12.00".to_owned(),
+                compare_at_amount: None,
+                on_sale: false,
+            },
+            crate::model::ProductPrice {
+                currency_code: "USD".to_owned(),
+                amount: "10.00".to_owned(),
+                compare_at_amount: None,
+                on_sale: false,
+            },
+        ];
+
+        let unchanged = build_variant_row_update_draft(
+            &product.variants[0],
+            product.variants[0].sku.clone().unwrap_or_default(),
+            String::new(),
+            product.variants[0].inventory_quantity,
+            "USD",
+            String::new(),
+        );
+        assert!(!unchanged.prices_changed);
+        assert!(unchanged.prices.is_empty());
+
+        let cleared = build_variant_row_update_draft_with_price_clear(
+            &product.variants[0],
+            product.variants[0].sku.clone().unwrap_or_default(),
+            String::new(),
+            product.variants[0].inventory_quantity,
+            "USD",
+            String::new(),
+            true,
+        );
+        assert!(cleared.prices_changed);
+        assert_eq!(cleared.prices.len(), 1);
+        assert_eq!(cleared.prices[0].currency_code, "USD");
     }
 
     #[test]

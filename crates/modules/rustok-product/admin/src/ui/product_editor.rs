@@ -78,6 +78,7 @@ pub fn ProductEditorPage(
     let (currency_code, set_currency_code) = signal("USD".to_string());
     let (amount, set_amount) = signal(String::new());
     let (compare_at_amount, set_compare_at_amount) = signal(String::new());
+    let (clear_primary_price, set_clear_primary_price) = signal(false);
 
     // Simple Product Specific
     let (sku, set_sku) = signal(String::new());
@@ -291,6 +292,7 @@ pub fn ProductEditorPage(
                     .set(detail.variants.first().map(|variant| variant.id.clone()));
                 set_amount.set(String::new());
                 set_compare_at_amount.set(String::new());
+                set_clear_primary_price.set(false);
                 if let Some(variant) = detail.variants.first() {
                     set_sku.set(variant.sku.clone().unwrap_or_default());
                     set_barcode.set(variant.barcode.clone().unwrap_or_default());
@@ -835,7 +837,7 @@ pub fn ProductEditorPage(
             ));
             return;
         }
-        let draft = crate::model::VariantUpdateDraft::from_editor_state(
+        let draft = crate::model::VariantUpdateDraft::from_editor_state_with_price_clear(
             &target_variant,
             sku.get_untracked(),
             barcode.get_untracked(),
@@ -845,6 +847,7 @@ pub fn ProductEditorPage(
             variant_compare,
             inventory_quantity.get_untracked(),
             inventory_policy.get_untracked(),
+            clear_primary_price.get_untracked(),
         );
         if !inventory_quantity_valid.get_untracked() {
             set_error_msg.set(Some(
@@ -1324,6 +1327,16 @@ pub fn ProductEditorPage(
                                     on:click=save_variant>
                                     {if is_ru { "Сохранить только этот вариант" } else { "Save only this variant" }}
                                 </button>
+                                <button type="button"
+                                    class="h-9 px-3 rounded-xl border border-border text-foreground disabled:opacity-50"
+                                    disabled=move || is_busy.get() || axes_locked.get() || variant_locked.get() || variant_target_id.get().is_none()
+                                    on:click=move |_| {
+                                        set_amount.set(String::new());
+                                        set_compare_at_amount.set(String::new());
+                                        set_clear_primary_price.set(true);
+                                    }>
+                                    {if is_ru { "Очистить основную цену" } else { "Clear primary price" }}
+                                </button>
                             </div>
                         })}
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1427,7 +1440,10 @@ pub fn ProductEditorPage(
                                     step="0.01"
                                     placeholder="0.00"
                                     prop:value=move || amount.get()
-                                    on:input=move |ev| set_amount.set(event_target_value(&ev))
+                                    on:input=move |ev| {
+                                        set_amount.set(event_target_value(&ev));
+                                        set_clear_primary_price.set(false);
+                                    }
                                     class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground font-mono outline-none focus:border-primary font-bold"
                                 />
                             </div>
@@ -1440,7 +1456,10 @@ pub fn ProductEditorPage(
                                     step="0.01"
                                     placeholder="0.00"
                                     prop:value=move || compare_at_amount.get()
-                                    on:input=move |ev| set_compare_at_amount.set(event_target_value(&ev))
+                                    on:input=move |ev| {
+                                        set_compare_at_amount.set(event_target_value(&ev));
+                                        set_clear_primary_price.set(false);
+                                    }
                                     class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground font-mono outline-none focus:border-primary"
                                 />
                             </div>
