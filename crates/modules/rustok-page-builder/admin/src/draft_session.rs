@@ -156,6 +156,23 @@ pub trait SsrDraftSessionStore: Send + Sync {
         Err(SsrDraftSessionError::OperationReceiptsUnsupported)
     }
 
+    /// Preflight a new receipt-bearing operation before external side effects.
+    /// Return an existing matching receipt even if its original generation is stale.
+    /// This is a read-only admission check, not a reservation: commit must recheck
+    /// the same conditions atomically, since another writer can win in between.
+    fn admit_operation_receipt(
+        &self,
+        token: &str,
+        page_id: &str,
+        owner: Option<&DraftSessionOwner>,
+        expected_generation: u64,
+        operation_id: &str,
+        request_hash: &str,
+    ) -> Result<Option<Value>, SsrDraftSessionError> {
+        let _ = (token, page_id, owner, expected_generation, operation_id, request_hash);
+        Err(SsrDraftSessionError::OperationReceiptsUnsupported)
+    }
+
     /// Atomically advances a live session and records the response projection under the same
     /// operation identity. A duplicate key replays its original acknowledgement before the
     /// generation check; a different request under the same key is rejected.
@@ -271,6 +288,32 @@ fn lookup_operation_receipt(
         .iter()
         .find(|receipt| receipt.operation_id == operation_id)
         .map(|receipt| receipt.response.clone())
+}
+
+fn admit_operation_receipt(
+    receipts: &[SsrDraftOperationReceipt],
+    generation: u64,
+    expected_generation: u64,
+    operation_id: &str,
+    request_hash: &str,
+) -> Result<Option<Value>, SsrDraftSessionError> {
+    validate_operation_receipt_input(operation_id, request_hash, &Value::Null)?;
+    if let Some(receipt) = check_operation_receipt_hash(receipts, operation_id, request_hash)? {
+        return Ok(Some(receipt));
+    }
+    if generation != expected_generation {
+        return Err(SsrDraftSessionError::GenerationConflict {
+            expected: generation,
+            actual: expected_generation,
+        });
+    }
+    if receipts.len() >= MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION {
+        return Err(SsrDraftSessionError::OperationReceiptCapacity {
+            maximum: MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION,
+        });
+    }
+    generation.checked_add(1).ok_or(SsrDraftSessionError::GenerationExhausted)?;
+    Ok(None)
 }
 
 fn check_operation_receipt_hash(
@@ -594,6 +637,33 @@ impl Default for InMemorySsrDraftSessionStore {
 impl SsrDraftSessionStore for InMemorySsrDraftSessionStore {
     fn supports_operation_receipts(&self) -> bool {
         true
+    }
+
+    fn admit_operation_receipt(
+        &self,
+        token: &str,
+        page_id: &str,
+        owner: Option<&DraftSessionOwner>,
+        expected_generation: u64,
+        operation_id: &str,
+        request_hash: &str,
+    ) -> Result<Option<Value>, SsrDraftSessionError> {
+        let entries = self.entries.read().map_err(|_| SsrDraftSessionError::Poisoned)?;
+        let now = self.now();
+        let entry = entries.get(token.trim())
+            .filter(|entry| entry.expires_at.get() > now)
+            .ok_or(SsrDraftSessionError::DraftUnavailable)?;
+        if entry.controller.page_id() != page_id {
+            return Err(SsrDraftSessionError::PageMismatch {
+                expected: entry.controller.page_id().to_string(),
+                actual: page_id.to_string(),
+            });
+        }
+        ensure_session_owner(entry.owner.as_ref(), owner)?;
+        admit_operation_receipt(
+            &entry.operation_receipts, entry.generation, expected_generation,
+            operation_id, request_hash,
+        )
     }
 
     fn lookup_operation_receipt(
@@ -1717,6 +1787,30 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
         true
     }
 
+    fn admit_operation_receipt(
+        &self,
+        token: &str,
+        page_id: &str,
+        owner: Option<&DraftSessionOwner>,
+        expected_generation: u64,
+        operation_id: &str,
+        request_hash: &str,
+    ) -> Result<Option<Value>, SsrDraftSessionError> {
+        let record = self.load_record(token, owner)?
+            .ok_or(SsrDraftSessionError::DraftUnavailable)?;
+        if record.controller.page_id() != page_id {
+            return Err(SsrDraftSessionError::PageMismatch {
+                expected: record.controller.page_id().to_string(),
+                actual: page_id.to_string(),
+            });
+        }
+        ensure_session_owner(record.owner.as_ref(), owner)?;
+        admit_operation_receipt(
+            &record.operation_receipts, record.generation, expected_generation,
+            operation_id, request_hash,
+        )
+    }
+
     fn lookup_operation_receipt(
         &self,
         token: &str,
@@ -2610,6 +2704,30 @@ impl Default for DurableSsrDraftSessionStore {
 impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
     fn supports_operation_receipts(&self) -> bool {
         true
+    }
+
+    fn admit_operation_receipt(
+        &self,
+        token: &str,
+        page_id: &str,
+        owner: Option<&DraftSessionOwner>,
+        expected_generation: u64,
+        operation_id: &str,
+        request_hash: &str,
+    ) -> Result<Option<Value>, SsrDraftSessionError> {
+        let record = self.backend.load_record(token, owner)?
+            .ok_or(SsrDraftSessionError::DraftUnavailable)?;
+        if record.controller.page_id() != page_id {
+            return Err(SsrDraftSessionError::PageMismatch {
+                expected: record.controller.page_id().to_string(),
+                actual: page_id.to_string(),
+            });
+        }
+        ensure_session_owner(record.owner.as_ref(), owner)?;
+        admit_operation_receipt(
+            &record.operation_receipts, record.generation, expected_generation,
+            operation_id, request_hash,
+        )
     }
 
     fn lookup_operation_receipt(
@@ -3618,6 +3736,22 @@ mod tests {
         }
 
         let current = store.load(&token, "home", None).expect("load").expect("session");
+        // Reject a new identity before its caller executes any external side effect.
+        assert!(matches!(
+            store.admit_operation_receipt(
+                &token, "home", None, current.generation,
+                "operation-overflow", &"f".repeat(64),
+            ),
+            Err(SsrDraftSessionError::OperationReceiptCapacity { .. })
+        ));
+        // The full ledger still admits an exact replay, even at a stale generation.
+        assert_eq!(
+            store.admit_operation_receipt(
+                &token, "home", None, first.generation,
+                "operation-0", &format!("{:064x}", 0),
+            ).expect("replay admission"),
+            Some(json!({ "index": 0 })),
+        );
         let overflow = store.commit_with_operation_receipt(
             &token,
             current.generation,

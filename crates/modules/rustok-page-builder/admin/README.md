@@ -383,3 +383,9 @@ changing the controller's document, revision, or history.
 A successful document mutation, including undo, redo and recovered merges,
 invalidates active drag/drop candidates and their insertion overlay. Failed and
 idempotent commands preserve the existing interaction so it can be retried.
+
+Receipt-bearing SSR operations preflight the owner-scoped receipt ledger,
+expected generation and receipt capacity before consumer I/O. This read-only
+admission is not a reservation; the final commit still checks the same fences
+atomically. It does not make external Pages persistence and draft storage one
+transaction.

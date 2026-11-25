@@ -1513,3 +1513,6 @@ integration tests; MySQL support is out of scope.
 
 2026-11-25 Browser pending operation ownership follow-up (source only; not executed):
 - Keep the tab/page recovery slot non-overwriting across mounted roots, and clear or retry only the exact stored envelope. Verify receipt namespace, advancing generation and usable editor state; do not return unconfirmed success to promise consumers. Added mounted regressions for cross-root ownership and malformed committed receipts.
+
+2026-11-25 SSR receipt admission follow-up (source only; not executed):
+- Preflight exact receipt replay, owner/page scope, generation exhaustion and receipt capacity in the in-memory, file and durable stores before Pages dispatch or consumer I/O. Reject non-editable new operations early. Existing receipt replay still works at capacity. This is not a cross-store reservation; final CAS races and external-save/draft-commit gaps remain open.

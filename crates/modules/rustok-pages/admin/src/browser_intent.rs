@@ -241,12 +241,18 @@ pub async fn dispatch_pages_browser_intent_with_store(
         operation_hash.as_deref(),
         loaded_session.as_ref(),
     ) {
-        let receipt = draft_store.lookup_operation_receipt(
+        if !draft_store.supports_operation_receipts() {
+            return Err(SsrDraftSessionError::OperationReceiptsUnsupported.into());
+        }
+        let expected_generation = envelope.draft_generation
+            .ok_or(SsrDraftSessionError::OperationReceiptRequiresSession)?;
+        let receipt = draft_store.admit_operation_receipt(
             &session.token,
             &snapshot.page_id,
             snapshot.owner.as_ref(),
+            expected_generation,
             operation_id,
-            Some(request_hash),
+            request_hash,
         )?;
         if let Some(receipt) = receipt {
             return replay_committed_operation(
@@ -254,6 +260,11 @@ pub async fn dispatch_pages_browser_intent_with_store(
                 operation_id, &receipt,
             );
         }
+    }
+    // New receipt-bearing operations require an editable session. Replays
+    // above remain read-only; do not dispatch or persist an uncommittable edit.
+    if envelope.operation_id.is_some() && !capabilities.edit {
+        return Err(SsrDraftSessionError::OperationReceiptRequiresSession.into());
     }
     if let (Some(expected), Some(session)) = (envelope.draft_generation, loaded_session.as_ref())
         && expected != session.generation
@@ -504,9 +515,6 @@ pub async fn dispatch_pages_browser_intent_with_store(
         envelope.operation_id.as_deref(),
         operation_hash.as_deref(),
     ) {
-        if !capabilities.edit {
-            return Err(SsrDraftSessionError::OperationReceiptRequiresSession.into());
-        }
         let token = session_token.as_deref()
             .ok_or(SsrDraftSessionError::OperationReceiptRequiresSession)?;
         let generation = session_generation
@@ -1369,6 +1377,9 @@ mod tests {
         let generation_check = source
             .find("if let (Some(expected), Some(session))")
             .expect("draft generation check");
+        let admission = source.find("draft_store.admit_operation_receipt(")
+            .expect("preflight receipt before consumer effects");
+        assert!(admission < dispatch, "receipt admission must precede external effects");
         assert!(
             receipt_lookup < generation_check,
             "a committed request must replay even when its original generation is now stale"
