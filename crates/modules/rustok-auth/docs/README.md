@@ -182,7 +182,10 @@ is cryptographically capable of signing; use RSA for distribution to
 untrusted verifiers. Configuration is startup-scoped, not hot reload. Auth request paths reuse
 prepared encoding/decoding keys and indexed verification history; the JWT library
 still constructs its internal crypto providers per operation.
-Algorithm migration and multi-replica execution evidence are pending.
+A source regression now exercises staging, promotion, retirement and exact
+key selection using two independent RS256 key pairs, including OAuth access and
+bounded missing-ID migration. It is not yet executed. Algorithm migration and
+multi-replica execution evidence are pending.
 See [purpose keyring ADR](../../../../DECISIONS/2026-11-25-jwt-purpose-keyrings.md).
 
 ## JWT principal and invite admission
@@ -195,7 +198,11 @@ registration IDs, a nil session and an admitted OAuth access grant. The
 Signature admission does not replace the host's live session or OAuth row
 checks. Invite issuance and verification share the same custom-role predicate:
 custom roles require the Customer baseline and a nonblank slug of at most 64
-bytes. Source regressions are not yet executed.
+bytes. New invitation JWTs carry a random non-nil `jti` so independent issuances
+with identical claims and timestamps cannot collide in the unique token-digest
+ledger. Previously issued invitations without a `jti` remain admissible subject
+to the same persisted exact-digest and one-use checks. Source regressions are
+not yet executed.
 
 ## JWT and browser confirmation hardening
 

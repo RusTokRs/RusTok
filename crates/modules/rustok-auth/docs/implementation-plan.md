@@ -185,7 +185,8 @@ are unchanged. Stop old host writers before deploying new instances. Source
 regressions and locked Cargo dependency updates authored, unrun.
 
 JWT purpose keyrings, key IDs, verification retirement and access-only initial
-missing-ID migration are source-implemented. Scoped compilation, RSA rotation
+missing-ID migration are source-implemented. A two-key RS256 staging/promotion/
+retirement regression is authored. Scoped compilation, regression execution
 and multi-replica rollout evidence are pending; algorithm migration and hot reload
 remain separate work. Reissue pre-cutover shared-key special links.
 Follow-up source review adds canonical RSA modulus identity, private/public

@@ -62,6 +62,10 @@ pub struct InviteClaims {
     /// custom-role invites existed, which therefore keep decoding.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_role_slug: Option<String>,
+    /// Unique issuance nonce. Previously issued invitations omit this field;
+    /// the persisted exact token digest remains the single-use authority.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jti: Option<Uuid>,
     pub purpose: String,
     pub iss: String,
     pub aud: String,
@@ -349,6 +353,7 @@ pub fn encode_invite_token(
         tenant_id,
         role,
         custom_role_slug,
+        jti: Some(Uuid::new_v4()),
         purpose: INVITE_PURPOSE.to_string(),
         iss: config.issuer.clone(),
         aud: config.audience.clone(),
@@ -372,6 +377,7 @@ pub fn decode_invite_token(config: &AuthConfig, token: &str) -> Result<InviteCla
         || claims.sub.trim().is_empty()
         || !valid_token_times(claims.iat, claims.exp)
         || claims.purpose != INVITE_PURPOSE
+        || claims.jti.is_some_and(|id| id.is_nil())
     {
         return Err(AuthError::InvalidInviteToken);
     }
@@ -559,6 +565,48 @@ GMYgRURTzK5NvOIFHcvom5mez4+lRj2weGdKUw/ppEGVF5nm0LKCEuzFIqz9Q2Wt
 Gge+WLP3w/bSfF7udScp9xLXMpwy21x3MwTU7xWpF6NZjEJxqM5HpTcCiJiU9PB6
 DeAkc1s1IXf+9scJki1G2paZmWNWQVegZdoG7ckHkDjn7Knjx6Vm1HDUstQxquxo
 xwIDAQAB
+-----END PUBLIC KEY-----"#;
+
+// Independently generated, public test-only RSA fixture for rotation regression.
+#[cfg(test)]
+const TEST_RSA_NEXT_PRIVATE_KEY: &str = r#"-----BEGIN PRIVATE KEY-----
+MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCtuECvu/mgwfjn
+a3Z4yAlDz5wl7HnvjbJ6ja6jbUpRtQXemkOVkyclEZPjh8Dr8f7KHKLS63MHEQ+P
+7hb4c/KbOfWL3YYEDVj/ghoaFiliCqaYwuJkRBqyUEI9YCr3tQ4lVOHNWv+YZets
+r8Oe2vnnSbIW2pfkFHMys/iS8kHW0LV1F5HLrbDhM8mK6cpHsvlpWYyA2vqE75jz
+VF8tDlJIJEMj4RthCDSoJAjr8D6w7DPWEs8o/SeHO+t38NY5ASxH7t8gNdC/H7bC
+h6W/SYHW6c3Dcg7P9cjbLmEGFGeAaK+AeNWssoqclkpgrhDepKDUtdjqBUc5bdWc
+tYLs3ZAtAgMBAAECggEACxEU1d0kvu/8ekmnR3R+2poMOYJCFlexigsil/irZl8g
+25h6O7ofIUZoZHNOf/lvoNKIMOWc81NL6YBiaDuCtg7QLLPVCMcM52ITZZwJ0Nwa
+1tp7b6XDCZ8BSUWqFxOqrgglRl7Ir522jLr5vFH435obRUdxq67907oRWNMkDJou
+BAwUG9Upb1eCsygWTUBIMIRgnjJDBvEJTl7BjjqSXWz6XDdE3ANXU1M45DOd+/pZ
+bZbBPepIOLpPW6D9jD3Ph6+8YbsjyAWfXj9TY8b/zi76EdNki/vdBuFlw7x4Ptyx
+hC6bqXmQl8vGfoBZ0/ZJZxnAs8H552cWNJVA6aOQQQKBgQDyWd4IyrOP+PoE2ulS
+ylH6+I47ior4c400N4Vcc269IB5Hb1io5IddG690MUq7qu3lG7pqcLm8SQIzV8OS
+wmUQ24HpQklZDaw4wZX+ADvoqZZPhpiZF3s9ocr0od9I4reDnndf38LITiTxpBfv
+/2ZcRIp/38MKZybc95pRWtmf3QKBgQC3gOIWSNMNj6/NOyTcdW7izH1/CaKHDYR4
+g6Nbc8Zr49FDb0RhXItt26TTEBd9SM8RecRSh1x9RQ93YNhjs7iiOt1pi0wXWoon
+3Fs0ZuqM5wIrt3SxTEop7eFzzXmcubfFPsVwpRD9JiJ5hkTNJ5c3ikX4vZIIP8pl
+/nqStCPUkQKBgCJ8o1oA7lh4h6uVM0qyu8PJBwR2DJyaZOefVvz2+DU1ktl7gNRX
+4ONhAzC3qvjVtBC8R2TKMcQXZ5bC0HPb8eHaOrxk0Gc5yN4yvhNtGRlcuKUMdD6k
+1sbIdUcmmc2XZaH3NOmRv/gdFqjEPxvJ7lkG7+aOgwTB9QfQvEcDdKCJAoGAJE1N
+7MSpZARp7frmVuqwbhOwPAKG8Zq9+y1nkr77oPpnuqR3bZ9mQexy1gJX80QFGtrw
++LaomGuiHKa/CDJUs1tb0/ZnrjMOI8aXEG3PtuI4breTUUPbZCIYONWMWnHvJgk9
+/APbsYjqxwnF8KQFaUpkf0nZauJbwwOt8fnLINECgYA2rJyIm4apFoF3Z9DgwEV4
+ImpSkI1ch7GUvPaV/+MLbAQMQSd369vs5vqhOJq1uzNAEaydN/hCnoKJ2MWiMBSk
+i/KgNm0W0/oarQJw+IkPQLGYsbQqt4Aajz7x3PvV+/5OcUKcVaJvFB4MHMviDlUN
+D2G10GqpzBPKSbwsZInOTw==
+-----END PRIVATE KEY-----"#;
+
+#[cfg(test)]
+const TEST_RSA_NEXT_PUBLIC_KEY: &str = r#"-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArbhAr7v5oMH452t2eMgJ
+Q8+cJex5742yeo2uo21KUbUF3ppDlZMnJRGT44fA6/H+yhyi0utzBxEPj+4W+HPy
+mzn1i92GBA1Y/4IaGhYpYgqmmMLiZEQaslBCPWAq97UOJVThzVr/mGXrbK/Dntr5
+50myFtqX5BRzMrP4kvJB1tC1dReRy62w4TPJiunKR7L5aVmMgNr6hO+Y81RfLQ5S
+SCRDI+EbYQg0qCQI6/A+sOwz1hLPKP0nhzvrd/DWOQEsR+7fIDXQvx+2woelv0mB
+1unNw3IOz/XI2y5hBhRngGivgHjVrLKKnJZKYK4Q3qSg1LXY6gVHOW3VnLWC7N2Q
+LQIDAQAB
 -----END PUBLIC KEY-----"#;
 
 #[cfg(test)]
@@ -753,6 +801,87 @@ mod tests {
         ).unwrap());
         assert!(decode_access_token(&config, &token).is_err());
         assert!(encode_invite_token(&config, tenant, "a@example.com", UserRole::Customer, None, 900).is_err());
+    }
+
+    #[test]
+    fn rs256_rotation_stages_promotes_and_retires_distinct_keys() {
+        use serde_json::json;
+        use crate::jwt_keyring::JwtKeyring;
+
+        let now = Utc::now().timestamp();
+        let user = Uuid::new_v4();
+        let tenant = Uuid::new_v4();
+        let session = Uuid::new_v4();
+        let old = rs256_test_config();
+        let issue = |config: &AuthConfig| {
+            encode_access_token(config, user, tenant, UserRole::Customer, session).unwrap()
+        };
+        let old_token = issue(&old);
+        let old_oauth = encode_oauth_access_token(&old, OauthAccessTokenInput {
+            app_id: user,
+            tenant_id: tenant,
+            role: UserRole::Customer,
+            client_id: Uuid::new_v4(),
+            scopes: &["catalog:read".to_string()],
+            grant_type: "client_credentials",
+            expires_in_secs: 900,
+            token_id: Uuid::new_v4(),
+        }).unwrap();
+        let reset = encode_password_reset_token(&old, tenant, "a@example.com", 900).unwrap();
+
+        let mut staged = old.clone();
+        staged.set_test_jwt_keyring(JwtKeyring::from_json(&json!({
+            "active_kid": "default",
+            "verification_keys": [{
+                "kid": "rsa-next", "material": TEST_RSA_NEXT_PUBLIC_KEY,
+                "verify_until": now + 3600
+            }]
+        }).to_string()).unwrap());
+        crate::config::validate_auth_config(&staged).unwrap();
+        assert_eq!(decode_header(&issue(&staged)).unwrap().kid.as_deref(), Some("default"));
+
+        let mut promoted = old.clone().with_rs256(TEST_RSA_NEXT_PRIVATE_KEY, TEST_RSA_NEXT_PUBLIC_KEY);
+        let history = |until| json!({
+            "active_kid": "rsa-next",
+            "verification_keys": [{
+                "kid": "default", "material": TEST_RSA_PUBLIC_KEY,
+                "verify_until": until
+            }],
+            "legacy_without_kid": {"kid": "default", "verify_until": until}
+        });
+        promoted.set_test_jwt_keyring(JwtKeyring::from_json(&history(now + 3600).to_string()).unwrap());
+        crate::config::validate_auth_config(&promoted).unwrap();
+        let fresh = issue(&promoted);
+        let header = decode_header(&fresh).unwrap();
+        assert_eq!(header.alg, Algorithm::RS256);
+        assert_eq!(header.kid.as_deref(), Some("rsa-next"));
+        assert!(decode_access_token(&staged, &fresh).is_ok());
+        assert!(decode_access_token(&old, &fresh).is_err());
+        assert!(decode_access_token(&promoted, &old_token).is_ok());
+        assert!(decode_access_token(&promoted, &old_oauth).is_ok());
+
+        let claims = decode_access_token(&old, &old_token).unwrap();
+        let mut legacy_header = jwt_header(&old, JwtPurpose::Access);
+        legacy_header.kid = None;
+        let legacy = encode(&legacy_header, &claims, encoding_key(&old, JwtPurpose::Access).unwrap()).unwrap();
+        assert!(decode_access_token(&promoted, &legacy).is_ok());
+        for wrong_id in ["rsa-next", "unknown"] {
+            let mut wrong_header = jwt_header(&old, JwtPurpose::Access);
+            wrong_header.kid = Some(wrong_id.to_string());
+            let wrong = encode(&wrong_header, &claims, encoding_key(&old, JwtPurpose::Access).unwrap()).unwrap();
+            assert!(decode_access_token(&promoted, &wrong).is_err());
+        }
+        assert!(decode_password_reset_token(&promoted, &reset).is_ok());
+
+        let mut retired = promoted.clone();
+        retired.set_test_jwt_keyring(JwtKeyring::from_json(&history(now - 1).to_string()).unwrap());
+        assert!(decode_access_token(&retired, &old_token).is_err());
+        assert!(decode_access_token(&retired, &old_oauth).is_err());
+        assert!(decode_access_token(&retired, &legacy).is_err());
+        assert!(decode_access_token(&retired, &fresh).is_ok());
+        assert!(decode_password_reset_token(&retired, &reset).is_ok());
+        // Immutable snapshots continue to behave according to their own cutoffs.
+        assert!(decode_access_token(&promoted, &old_token).is_ok());
     }
 
     #[test]
@@ -1215,6 +1344,29 @@ mod tests {
                 token_id: Uuid::new_v4(),
             }).is_err());
         }
+    }
+
+    #[test]
+    fn invite_issuance_has_a_unique_nonce_and_preserves_legacy_tokens() {
+        let config = test_config();
+        let tenant = Uuid::new_v4();
+        let issue = || encode_invite_token(
+            &config, tenant, "a@example.com", UserRole::Customer, None, 900,
+        ).unwrap();
+        let first = issue();
+        let second = issue();
+        assert_ne!(first, second);
+        let mut claims = decode_invite_token(&config, &first).unwrap();
+        let second_claims = decode_invite_token(&config, &second).unwrap();
+        assert!(claims.jti.is_some_and(|id| !id.is_nil()));
+        assert!(second_claims.jti.is_some_and(|id| !id.is_nil()));
+        assert_ne!(claims.jti, second_claims.jti);
+        claims.jti = None;
+        let legacy = encode_for_purpose(&config, JwtPurpose::Invite, &claims).unwrap();
+        assert!(decode_invite_token(&config, &legacy).unwrap().jti.is_none());
+        claims.jti = Some(Uuid::nil());
+        let invalid = encode_for_purpose(&config, JwtPurpose::Invite, &claims).unwrap();
+        assert!(decode_invite_token(&config, &invalid).is_err());
     }
 
     #[test]

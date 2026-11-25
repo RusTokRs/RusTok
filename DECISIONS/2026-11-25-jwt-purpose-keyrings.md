@@ -16,4 +16,4 @@ Existing explicitly configured independent access keys and RSA access keys can r
 
 ## Verification
 
-Source regressions cover independent rotation, cross-signature rejection with correct headers/claims, wrong type, missing ID, explicit access-only migration, duplicate active/historical material and an independent RSA special ring. Compilation and coordinated deployment remain pending.
+Source regressions cover independent rotation, cross-signature rejection with correct headers/claims, wrong type, missing ID, explicit access-only migration, duplicate active/historical material an independent RSA special ring, and staging, promotion and retirement with two distinct RSA access key pairs. Compilation, regression execution and coordinated deployment remain pending.
