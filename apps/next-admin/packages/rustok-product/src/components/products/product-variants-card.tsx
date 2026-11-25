@@ -183,6 +183,7 @@ export function ProductVariantsCard({
     setFormSku(variant.sku || '');
     setFormAxisValues(variant.axisValues);
     setFormBarcode(variant.barcode || '');
+    setFormShippingProfile(variant.shippingProfileSlug ?? '');
 
     if (variant.prices && variant.prices.length > 0) {
       setFormPrices(
@@ -266,7 +267,7 @@ export function ProductVariantsCard({
     if (disabled || isBusy || !onDeleteVariant) return;
     if (
       !window.confirm(
-        'Delete this variant? Its inventory and base-price records will also be removed.'
+        combinationsCopy('deleteConfirm')
       )
     )
       return;
@@ -329,6 +330,7 @@ export function ProductVariantsCard({
         updatePatch = buildVariantUpdatePatch(editingVariant, {
           sku: formSku,
           barcode: formBarcode,
+          shippingProfileSlug: formShippingProfile,
           inventoryQuantity: qty,
           inventoryPolicy: formPolicy,
           prices: formPrices
@@ -686,20 +688,19 @@ export function ProductVariantsCard({
                 </div>
               </div>
 
-              {!editingVariant && (
-                <div className='space-y-1.5'>
-                  <Label htmlFor='var-shipping-profile'>
-                    {creationCopy('shippingProfile')}
-                  </Label>
-                  <Input
-                    id='var-shipping-profile'
-                    value={formShippingProfile}
-                    onChange={(event) =>
-                      setFormShippingProfile(event.target.value)
-                    }
-                  />
-                </div>
-              )}
+              <div className='space-y-1.5'>
+                <Label htmlFor='var-shipping-profile'>
+                  {creationCopy('shippingProfile')}
+                </Label>
+                <Input
+                  id='var-shipping-profile'
+                  maxLength={100}
+                  value={formShippingProfile}
+                  onChange={(event) =>
+                    setFormShippingProfile(event.target.value)
+                  }
+                />
+              </div>
               {!editingVariant && formAxisValues.length > 0 && (
                 <div className='space-y-2'>
                   <p>

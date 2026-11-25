@@ -976,6 +976,7 @@ product-combinations-guidance = Configure axes and select concrete SKU tuples be
 product-combinations-configuration = Axes and explicitly selected SKUs
 product-combinations-retainedAssignment = Unavailable retained assignment
 product-combinations-writeUnavailable = The intended SKU save action is unavailable. This draft stays open; restore the create or update action before retrying.
+product-combinations-deleteConfirm = Delete this variant? Its inventory records and all prices will also be removed.
 
 # Standalone SKU immutable request and recovery
 product-variantCreate-title = Create an SKU

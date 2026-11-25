@@ -423,6 +423,7 @@ impl VariantUpdateDraft {
         original: &ProductVariant,
         sku: String,
         barcode: String,
+        shipping_profile_slug: String,
         currency_code: String,
         amount: String,
         compare_at_amount: String,
@@ -431,6 +432,10 @@ impl VariantUpdateDraft {
     ) -> Self {
         let sku = Self::edited_text_if_changed(sku, original.sku.as_deref());
         let barcode = Self::edited_text_if_changed(barcode, original.barcode.as_deref());
+        let shipping_profile_slug = Self::edited_text_if_changed(
+            shipping_profile_slug,
+            original.shipping_profile_slug.as_deref(),
+        );
 
         let original_prices = original
             .prices
@@ -498,6 +503,7 @@ impl VariantUpdateDraft {
         Self {
             sku,
             barcode,
+            shipping_profile_slug,
             prices: if prices_changed {
                 next_prices
             } else {
@@ -959,6 +965,7 @@ mod variant_update_draft_tests {
             original,
             sku.to_owned(),
             "BAR-1".to_owned(),
+            original.shipping_profile_slug.clone().unwrap_or_default(),
             currency.to_owned(),
             amount.to_owned(),
             String::new(),
@@ -973,6 +980,7 @@ mod variant_update_draft_tests {
         let draft = draft(&original, "SKU-1", "12.50", "USD");
         assert!(matches!(draft.sku, Patch::Keep));
         assert!(matches!(draft.barcode, Patch::Keep));
+        assert!(matches!(draft.shipping_profile_slug, Patch::Keep));
         assert!(draft.inventory_quantity.is_none());
         assert!(draft.inventory_policy.is_none());
         assert!(!draft.prices_changed);
@@ -1012,6 +1020,41 @@ mod variant_update_draft_tests {
         draft.prices_changed = false;
         draft.sku = Patch::Clear;
         assert!(draft.has_changes());
+    }
+
+    #[test]
+    fn shipping_profile_override_is_sparse_and_explicitly_clearable() {
+        let mut original = original_variant();
+        original.shipping_profile_slug = Some("parcel".to_owned());
+
+        let updated = VariantUpdateDraft::from_editor_state(
+            &original,
+            "SKU-1".to_owned(),
+            "BAR-1".to_owned(),
+            "express".to_owned(),
+            "USD".to_owned(),
+            "12.50".to_owned(),
+            String::new(),
+            8,
+            "deny".to_owned(),
+        );
+        assert!(matches!(
+            updated.shipping_profile_slug,
+            Patch::Set(value) if value == "express"
+        ));
+
+        let cleared = VariantUpdateDraft::from_editor_state(
+            &original,
+            "SKU-1".to_owned(),
+            "BAR-1".to_owned(),
+            String::new(),
+            "USD".to_owned(),
+            "12.50".to_owned(),
+            String::new(),
+            8,
+            "deny".to_owned(),
+        );
+        assert!(matches!(cleared.shipping_profile_slug, Patch::Clear));
     }
 
     #[test]

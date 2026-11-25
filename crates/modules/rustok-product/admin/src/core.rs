@@ -2037,6 +2037,7 @@ pub(crate) fn product_admin_status_badge_container_class(status: &str) -> &'stat
 pub struct VariantRowViewModel {
     pub id: String,
     pub sku: String,
+    pub shipping_profile_slug: String,
     pub title: String,
     pub options_summary: String,
     pub price: String,
@@ -2080,6 +2081,7 @@ pub fn build_variant_row_view_models(
             VariantRowViewModel {
                 id: v.id.clone(),
                 sku: v.sku.clone().unwrap_or_else(|| "—".to_string()),
+                shipping_profile_slug: v.shipping_profile_slug.clone().unwrap_or_default(),
                 title: if v.title.trim().is_empty() {
                     "—".to_string()
                 } else {
@@ -2106,6 +2108,7 @@ pub fn build_variant_row_update_draft(
     amount: String,
     inventory_quantity: i32,
     fallback_currency: &str,
+    shipping_profile_slug: String,
 ) -> crate::model::VariantUpdateDraft {
     let primary_price = original.prices.first();
     let compare_at_amount = primary_price
@@ -2116,6 +2119,7 @@ pub fn build_variant_row_update_draft(
         original,
         sku,
         original.barcode.clone().unwrap_or_default(),
+        shipping_profile_slug,
         primary_price
             .map(|price| price.currency_code.clone())
             .unwrap_or_else(|| fallback_currency.to_owned()),
@@ -2874,6 +2878,22 @@ pub fn product_variant_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> 
                 ),
             }),
         GridColumnDef::new(
+            "shipping_profile_slug",
+            if is_ru { "Профиль доставки" } else { "Shipping profile" },
+        )
+        .min_width(150)
+        .align(ColumnAlign::Left)
+        .filter(GridFilterType::Text {
+            placeholder: Some(
+                if is_ru {
+                    "Фильтр профиля доставки..."
+                } else {
+                    "Filter shipping profile..."
+                }
+                .into(),
+            ),
+        }),
+        GridColumnDef::new(
             "options_summary",
             if is_ru {
                 "Оси варианта"
@@ -2931,6 +2951,14 @@ pub fn matches_product_variant_filter(item: &VariantRowViewModel, filters: &Colu
             {
                 return false;
             }
+            ("shipping_profile_slug", FilterValue::Text(q))
+                if !item
+                    .shipping_profile_slug
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
+            }
             _ => {}
         }
     }
@@ -2952,6 +2980,7 @@ pub fn filter_product_variants(
                     && !item.options_summary.to_ascii_lowercase().contains(&term)
                     && !item.title.to_ascii_lowercase().contains(&term)
                     && !item.price.to_ascii_lowercase().contains(&term)
+                    && !item.shipping_profile_slug.to_ascii_lowercase().contains(&term)
                 {
                     return false;
                 }
@@ -4170,6 +4199,7 @@ mod tests {
             "13.00".to_owned(),
             product.variants[0].inventory_quantity,
             "USD",
+            String::new(),
         );
 
         assert!(draft.has_changes());
@@ -4196,6 +4226,7 @@ mod tests {
             String::new(),
             product.variants[0].inventory_quantity,
             "EUR",
+            String::new(),
         );
 
         assert!(draft.sku.is_keep());
@@ -4213,6 +4244,7 @@ mod tests {
             "12.00".to_owned(),
             product.variants[0].inventory_quantity,
             "USD",
+            String::new(),
         );
 
         assert!(matches!(&draft.sku, rustok_api::Patch::Set(value) if value == "COAT-2"));
@@ -4220,6 +4252,39 @@ mod tests {
         assert!(draft.prices.is_empty());
         assert!(draft.inventory_quantity.is_none());
         assert!(draft.has_changes());
+    }
+
+    #[test]
+    fn variant_row_update_changes_and_clears_shipping_profile_without_touching_other_fields() {
+        let mut product = product_detail();
+        product.variants[0].shipping_profile_slug = Some("parcel".to_owned());
+
+        let updated = build_variant_row_update_draft(
+            &product.variants[0],
+            product.variants[0].sku.clone().unwrap_or_default(),
+            product.variants[0].prices[0].amount.clone(),
+            product.variants[0].inventory_quantity,
+            "USD",
+            "express".to_owned(),
+        );
+        assert!(matches!(
+            updated.shipping_profile_slug,
+            rustok_api::Patch::Set(value) if value == "express"
+        ));
+        assert!(updated.inventory_quantity.is_none());
+        assert!(!updated.prices_changed);
+
+        let cleared = build_variant_row_update_draft(
+            &product.variants[0],
+            product.variants[0].sku.clone().unwrap_or_default(),
+            product.variants[0].prices[0].amount.clone(),
+            product.variants[0].inventory_quantity,
+            "USD",
+            String::new(),
+        );
+        assert!(matches!(cleared.shipping_profile_slug, rustok_api::Patch::Clear));
+        assert!(cleared.inventory_quantity.is_none());
+        assert!(!cleared.prices_changed);
     }
 
     #[test]
@@ -4322,6 +4387,7 @@ mod tests {
         let variant = VariantRowViewModel {
             id: "var-1".to_string(),
             sku: "SKU-RED-M".to_string(),
+            shipping_profile_slug: "parcel".to_string(),
             title: "Red / M".to_string(),
             options_summary: "Red / M".to_string(),
             price: "29.99 USD".to_string(),
@@ -4330,7 +4396,7 @@ mod tests {
             can_delete: true,
         };
         let var_cols = product_variant_grid_columns(Some("en"));
-        assert_eq!(var_cols.len(), 6);
+        assert_eq!(var_cols.len(), 7);
         let variants = vec![variant];
         assert_eq!(
             filter_product_variants(&variants, &ColumnFilters::default(), Some("RED")).len(),

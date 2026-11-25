@@ -1712,6 +1712,7 @@ pub(super) fn ProductVariantsPanel(
     let copy = build_product_variants_panel_copy(locale.as_deref());
     let (editing_variant_id, set_editing_variant_id) = signal(Option::<String>::None);
     let (edit_sku, set_edit_sku) = signal(String::new());
+    let (edit_shipping_profile_slug, set_edit_shipping_profile_slug) = signal(String::new());
     let (edit_price, set_edit_price) = signal(String::new());
     let (edit_stock, set_edit_stock) = signal(0_i32);
     let edit_stock_valid = RwSignal::new(true);
@@ -1803,6 +1804,28 @@ pub(super) fn ProductVariantsPanel(
                             "options_summary" => view! {
                                 <span class="text-foreground font-medium">{row.options_summary.clone()}</span>
                             }.into_any(),
+                            "shipping_profile_slug" => {
+                                let profile_slug = row.shipping_profile_slug.clone();
+                                view! {
+                                    <div class="text-foreground font-mono text-xs">
+                                        {move || if is_editing_this.get() {
+                                            view! {
+                                                <input
+                                                    type="text"
+                                                    maxlength="100"
+                                                    class="w-28 rounded border border-border bg-background px-2 py-1 text-xs outline-none focus:border-primary"
+                                                    prop:value=move || edit_shipping_profile_slug.get()
+                                                    on:input=move |ev| set_edit_shipping_profile_slug.set(event_target_value(&ev))
+                                                />
+                                            }.into_any()
+                                        } else {
+                                            view! {
+                                                <span>{if profile_slug.is_empty() { "—".to_string() } else { profile_slug.clone() }}</span>
+                                            }.into_any()
+                                        }}
+                                    </div>
+                                }.into_any()
+                            }
                             "price" => {
                                 let price_val = row.price.clone();
                                 view! {
@@ -1861,6 +1884,9 @@ pub(super) fn ProductVariantsPanel(
                                         return;
                                     };
                                     set_edit_sku.set(original.sku.clone().unwrap_or_default());
+                                    set_edit_shipping_profile_slug.set(
+                                        original.shipping_profile_slug.clone().unwrap_or_default()
+                                    );
                                     set_edit_price.set(
                                         original.prices.first().map(|price| price.amount.clone()).unwrap_or_default()
                                     );
@@ -1886,6 +1912,7 @@ pub(super) fn ProductVariantsPanel(
                                         edit_price.get_untracked(),
                                         edit_stock.get_untracked(),
                                         &default_curr_save,
+                                        edit_shipping_profile_slug.get_untracked(),
                                     );
                                     if !draft.has_changes() {
                                         set_editing_variant_id.set(None);

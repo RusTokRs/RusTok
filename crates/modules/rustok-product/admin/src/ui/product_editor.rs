@@ -82,6 +82,7 @@ pub fn ProductEditorPage(
     // Simple Product Specific
     let (sku, set_sku) = signal(String::new());
     let (barcode, set_barcode) = signal(String::new());
+    let (variant_shipping_profile_slug, set_variant_shipping_profile_slug) = signal(String::new());
     let (inventory_quantity, set_inventory_quantity) = signal(0_i32);
     let (inventory_quantity_valid, set_inventory_quantity_valid) = signal(true);
     let (inventory_policy, set_inventory_policy) = signal("DENY".to_string());
@@ -292,6 +293,8 @@ pub fn ProductEditorPage(
                 if let Some(variant) = detail.variants.first() {
                     set_sku.set(variant.sku.clone().unwrap_or_default());
                     set_barcode.set(variant.barcode.clone().unwrap_or_default());
+                    set_variant_shipping_profile_slug
+                        .set(variant.shipping_profile_slug.clone().unwrap_or_default());
                     set_inventory_quantity.set(variant.inventory_quantity);
                     set_inventory_quantity_valid.set(variant.inventory_quantity >= 0);
                     set_inventory_policy.set(variant.inventory_policy.clone());
@@ -834,6 +837,7 @@ pub fn ProductEditorPage(
             &target_variant,
             sku.get_untracked(),
             barcode.get_untracked(),
+            variant_shipping_profile_slug.get_untracked(),
             currency_code.get_untracked(),
             variant_amount,
             variant_compare,
@@ -1307,8 +1311,8 @@ pub fn ProductEditorPage(
                         </h2>
                         {is_editing.then(|| view! {
                             <div class="space-y-2 text-xs text-muted-foreground">
-                                <p>{if is_ru { "Цены, SKU, штрихкод и остаток сохраняются отдельной командой, не кнопками документа. Пустая цена оставляет базовые цены без изменений." }
-                                    else { "Price, SKU, barcode and stock use a separate command, not document Save/Publish. An empty price leaves base prices unchanged." }}</p>
+                                <p>{if is_ru { "Цены, SKU, штрихкод, профиль доставки и остаток сохраняются отдельной командой, не кнопками документа. Пустая цена оставляет базовые цены без изменений." }
+                                    else { "Price, SKU, barcode, shipping profile and stock use a separate command, not document Save/Publish. An empty price leaves base prices unchanged." }}</p>
                                 <p>{if is_ru { "Вариант: " } else { "Variant target: " }}
                                     <code>{move || variant_target_id.get().unwrap_or_else(|| "—".to_string())}</code>
                                 </p>
@@ -1345,6 +1349,21 @@ pub fn ProductEditorPage(
                                     class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground font-mono outline-none focus:border-primary"
                                 />
                             </div>
+                            {is_editing.then(|| view! {
+                                <div class="space-y-1.5">
+                                    <label class="text-xs font-medium text-foreground">
+                                        {if is_ru { "Профиль доставки SKU" } else { "SKU Shipping Profile" }}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        maxlength="100"
+                                        placeholder=if is_ru { "Код профиля" } else { "Profile slug" }
+                                        prop:value=move || variant_shipping_profile_slug.get()
+                                        on:input=move |ev| set_variant_shipping_profile_slug.set(event_target_value(&ev))
+                                        class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground font-mono outline-none focus:border-primary"
+                                    />
+                                </div>
+                            })}
                             <div class="space-y-1.5">
                                 <label class="text-xs font-medium text-foreground">
                                     {if is_ru { "Количество на складе" } else { "Stock Quantity" }}

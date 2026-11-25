@@ -62,6 +62,7 @@ query ProductAdminProductDetail($tenantId: UUID!, $id: UUID!, $locale: String) {
       id
       sku
       barcode
+      shippingProfileSlug
       title
       combinationIdentity
       axisValues { attributeId optionId code label }
@@ -139,6 +140,7 @@ mutation ProductAdminUpdateProduct($idempotencyKey: String!, $id: UUID!, $input:
       id
       sku
       barcode
+      shippingProfileSlug
       title
       combinationIdentity
       axisValues { attributeId optionId code label }

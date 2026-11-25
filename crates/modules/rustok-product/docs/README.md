@@ -72,6 +72,8 @@
   `variant.shipping_profile_slug -> product.shipping_profile_slug -> default`, and omission
   of the first-class field on the write-path must not overwrite an existing typed binding/compatibility
   normalization.
+  Both admin clients expose the variant override when editing an existing SKU; sparse updates
+  preserve an omitted binding and an explicit clear restores Product-level/default resolution.
 - Transport-level validation for `shipping_profile_slug` now lives in the
   `rustok-commerce` facade and checks the reference against active shipping profiles from the typed
   registry `shipping_profiles`, so that the product write-path does not accept arbitrary slugs.

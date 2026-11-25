@@ -967,6 +967,7 @@ product-combinations-guidance = Настройте оси и выберите к
 product-combinations-configuration = Оси и явно выбранные SKU
 product-combinations-retainedAssignment = Недоступное сохранённое значение
 product-combinations-writeUnavailable = Нужное действие сохранения SKU недоступно. Черновик остаётся открытым; восстановите действие создания или обновления перед повтором.
+product-combinations-deleteConfirm = Удалить этот вариант? Все его записи остатков и цены также будут удалены.
 
 # Standalone SKU immutable request and recovery
 product-variantCreate-title = Создание SKU

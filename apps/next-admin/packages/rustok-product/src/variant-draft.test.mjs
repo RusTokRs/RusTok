@@ -406,6 +406,37 @@ test('variant edits emit only explicitly changed fields, not stale Inventory or 
   );
 });
 
+test('variant edits patch only an explicitly changed shipping profile and can clear the override', () => {
+  const current = {
+    sku: 'SKU-1',
+    barcode: 'BAR-1',
+    shippingProfileSlug: 'parcel',
+    inventoryQuantity: 8,
+    inventoryPolicy: 'deny',
+    prices: [{ currencyCode: 'USD', amount: '12.50', compareAtAmount: null }]
+  };
+  const base = {
+    sku: 'SKU-1',
+    barcode: 'BAR-1',
+    inventoryQuantity: 8,
+    inventoryPolicy: 'deny',
+    prices: [{ currencyCode: 'USD', amount: '12.50', compareAtAmount: null }]
+  };
+
+  assert.deepEqual(
+    clone(buildVariantUpdatePatch(current, { ...base, shippingProfileSlug: 'parcel' })),
+    {}
+  );
+  assert.deepEqual(
+    clone(buildVariantUpdatePatch(current, { ...base, shippingProfileSlug: 'express' })),
+    { shippingProfileSlug: 'express' }
+  );
+  assert.deepEqual(
+    clone(buildVariantUpdatePatch(current, { ...base, shippingProfileSlug: '  ' })),
+    { shippingProfileSlug: null }
+  );
+});
+
 test('unchanged variant forms produce no write and preserve owner snapshots', () => {
   const current = {
     sku: 'SKU-1',

@@ -277,6 +277,7 @@ export interface ProductVariant {
   id: string;
   sku: string | null;
   barcode: string | null;
+  shippingProfileSlug: string | null;
   title: string | null;
   inventoryQuantity: number;
   inventoryPolicy: string;
