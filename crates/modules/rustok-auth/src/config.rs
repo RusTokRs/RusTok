@@ -82,7 +82,7 @@ struct JwtKeyState {
     prepared: OnceLock<Result<ValidatedJwtKeyrings>>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub(crate) struct JwtKeyInputs {
     pub(crate) jwt_keyring: JwtKeyring,
     pub(crate) special_jwt_keyrings: SpecialJwtKeyrings,
@@ -173,6 +173,38 @@ struct JwtKeyringDocument {
 }
 
 pub const MAX_JWT_KEYRING_DOCUMENT_BYTES: usize = 256 * 1024;
+
+impl JwtKeyringDocument {
+    fn parse(bytes: &[u8]) -> Result<(u64, JwtKeyInputs)> {
+        if bytes.len() > MAX_JWT_KEYRING_DOCUMENT_BYTES {
+            return Err(invalid_rotation());
+        }
+        let doc: Self = serde_json::from_slice(bytes).map_err(|_| invalid_rotation())?;
+        if doc.generation == 0 || i64::try_from(doc.generation).is_err() {
+            return Err(invalid_rotation());
+        }
+        Ok((doc.generation, JwtKeyInputs {
+            algorithm: doc.access.algorithm,
+            jwt_keyring: doc.access.keyring,
+            rsa_private_key_pem: doc.access.rsa_private_key_pem,
+            rsa_public_key_pem: doc.access.rsa_public_key_pem,
+            special_jwt_keyrings: SpecialJwtKeyrings {
+                password_reset: doc.password_reset,
+                email_verification: doc.email_verification,
+                invite: doc.invite,
+            },
+        }))
+    }
+}
+
+impl JwtKeyInputs {
+    fn into_fixed_source(self) -> JwtKeySource {
+        JwtKeySource::Fixed(Arc::new(JwtKeyState {
+            inputs: self,
+            prepared: OnceLock::new(),
+        }))
+    }
+}
 
 impl JwtKeyState {
     fn prepared(&self, root: &str) -> Result<&ValidatedJwtKeyrings> {
@@ -341,18 +373,13 @@ impl AuthConfig {
     }
 
     pub fn new(secret: String) -> Self {
+        Self::from_key_inputs(secret, JwtKeyInputs::default())
+    }
+
+    fn from_key_inputs(secret: String, inputs: JwtKeyInputs) -> Self {
         Self {
             root: Arc::from(secret),
-            key_state: JwtKeySource::Fixed(Arc::new(JwtKeyState {
-                inputs: JwtKeyInputs {
-                    jwt_keyring: JwtKeyring::default(),
-                    special_jwt_keyrings: SpecialJwtKeyrings::default(),
-                    algorithm: JwtAlgorithm::HS256,
-                    rsa_private_key_pem: None,
-                    rsa_public_key_pem: None,
-                },
-                prepared: OnceLock::new(),
-            })),
+            key_state: inputs.into_fixed_source(),
             access_expiration: DEFAULT_ACCESS_EXPIRATION_SECS,
             refresh_expiration: DEFAULT_REFRESH_EXPIRATION_SECS,
             issuer: "rustok".to_string(),
@@ -364,31 +391,11 @@ impl AuthConfig {
     /// Parse a complete generation-bearing key document against this immutable policy.
     /// Never mutate the live runtime while preparing a candidate.
     pub fn prepare_jwt_document(&self, bytes: &[u8]) -> Result<(u64, Self)> {
-        if bytes.len() > MAX_JWT_KEYRING_DOCUMENT_BYTES {
-            return Err(invalid_rotation());
-        }
-        let doc: JwtKeyringDocument = serde_json::from_slice(bytes)
-            .map_err(|_| invalid_rotation())?;
-        if doc.generation == 0 || i64::try_from(doc.generation).is_err() {
-            return Err(invalid_rotation());
-        }
+        let (generation, inputs) = JwtKeyringDocument::parse(bytes)?;
         let mut candidate = self.clone();
-        candidate.key_state = JwtKeySource::Fixed(Arc::new(JwtKeyState {
-            inputs: JwtKeyInputs {
-                algorithm: doc.access.algorithm,
-                jwt_keyring: doc.access.keyring,
-                rsa_private_key_pem: doc.access.rsa_private_key_pem,
-                rsa_public_key_pem: doc.access.rsa_public_key_pem,
-                special_jwt_keyrings: SpecialJwtKeyrings {
-                    password_reset: doc.password_reset,
-                    email_verification: doc.email_verification,
-                    invite: doc.invite,
-                },
-            },
-            prepared: OnceLock::new(),
-        }));
+        candidate.key_state = inputs.into_fixed_source();
         validate_auth_config(&candidate)?;
-        Ok((doc.generation, candidate))
+        Ok((generation, candidate))
     }
 
     pub(crate) fn fence_snapshot(
@@ -598,17 +605,35 @@ impl JwtKeyringPublisher {
         self.publish_inner(generation, candidate, Some(deadline))
     }
 
+    fn matches_candidate_policy(&self, candidate: &AuthConfig) -> bool {
+        matches!(&candidate.key_state, JwtKeySource::Fixed(_))
+            && self.config.secret() == candidate.secret()
+            && self.config.issuer == candidate.issuer
+            && self.config.audience == candidate.audience
+            && self.config.access_expiration == candidate.access_expiration
+            && self.config.refresh_expiration == candidate.refresh_expiration
+            && self.config.min_password_length == candidate.min_password_length
+    }
+
+    /// Reject a locally incompatible candidate before reserving a durable
+    /// replica grant. Publication still rechecks under the write fence.
+    pub(crate) fn accepts_grant_candidate(
+        &self, generation: u64, candidate: &AuthConfig,
+    ) -> Result<bool> {
+        if !self.matches_candidate_policy(candidate) || i64::try_from(generation).is_err() {
+            return Ok(false);
+        }
+        let JwtKeySource::Live(current) = &self.config.key_state else {
+            return Err(invalid_rotation());
+        };
+        let guard = current.read().map_err(|_| keyring_runtime_error())?;
+        Ok(guard.lease_required && generation > guard.generation)
+    }
+
     fn publish_inner(
         &self, generation: u64, candidate: AuthConfig, deadline: Option<LeaseDeadline>,
     ) -> Result<bool> {
-        if !matches!(&candidate.key_state, JwtKeySource::Fixed(_))
-            || self.config.secret() != candidate.secret()
-            || self.config.issuer != candidate.issuer
-            || self.config.audience != candidate.audience
-            || self.config.access_expiration != candidate.access_expiration
-            || self.config.refresh_expiration != candidate.refresh_expiration
-            || self.config.min_password_length != candidate.min_password_length
-        {
+        if !self.matches_candidate_policy(&candidate) {
             return Err(invalid_rotation());
         }
         validate_auth_config(&candidate)?;
@@ -723,33 +748,35 @@ impl AuthSettingsOverrides {
         Ok(())
     }
 
-    fn apply_with_env<F>(self, config: &mut AuthConfig, env_resolver: &mut F) -> Result<()>
+    /// Apply only non-key settings; no key source is constructed or resolved.
+    fn apply_policy(&mut self, config: &mut AuthConfig) {
+        if let Some(v) = self.refresh_expiration.take() {
+            config.refresh_expiration = v;
+        }
+        if let Some(v) = self.issuer.take() {
+            config.issuer = v;
+        }
+        if let Some(v) = self.audience.take() {
+            config.audience = v;
+        }
+        if let Some(v) = self.min_password_length.take() {
+            config.min_password_length = v;
+        }
+    }
+
+    fn apply_with_env<F>(mut self, config: &mut AuthConfig, env_resolver: &mut F) -> Result<()>
     where
         F: FnMut(&str) -> Result<String>,
     {
+        self.apply_policy(config);
         // Each cryptographic edit goes through the single copy-on-write boundary.
         if let Some(name) = self.jwt_keyring_env {
-            if name.trim().is_empty() {
-                return Err(AuthError::Internal("JWT keyring environment name is empty".to_string()));
-            }
-            let ring = JwtKeyring::from_json(&env_resolver(&name)?)?;
+            let ring = JwtKeyring::from_json(&resolve_auth_env(&name, env_resolver)?)?;
             config.edit_key_inputs(|inputs| inputs.jwt_keyring = ring)?;
         }
         if let Some(name) = self.jwt_special_keyrings_env {
-            if name.trim().is_empty() {
-                return Err(AuthError::Internal("Special JWT keyring environment name is empty".to_string()));
-            }
-            let rings = SpecialJwtKeyrings::from_json(&env_resolver(&name)?)?;
+            let rings = SpecialJwtKeyrings::from_json(&resolve_auth_env(&name, env_resolver)?)?;
             config.edit_key_inputs(|inputs| inputs.special_jwt_keyrings = rings)?;
-        }
-        if let Some(v) = self.refresh_expiration {
-            config.refresh_expiration = v;
-        }
-        if let Some(v) = self.issuer {
-            config.issuer = v;
-        }
-        if let Some(v) = self.audience {
-            config.audience = v;
         }
         if let Some(v) = self.algorithm {
             config.edit_key_inputs(|inputs| inputs.algorithm = v)?;
@@ -765,9 +792,6 @@ impl AuthSettingsOverrides {
                 self.rsa_public_key_pem, self.rsa_public_key_env, env_resolver,
             )?;
             config.edit_key_inputs(|inputs| inputs.rsa_public_key_pem = pem)?;
-        }
-        if let Some(v) = self.min_password_length {
-            config.min_password_length = v;
         }
         Ok(())
     }
@@ -793,7 +817,7 @@ pub fn build_auth_config(
 pub fn build_auth_config_from_document(
     secret: String,
     access_expiration: u64,
-    auth_settings: AuthSettingsOverrides,
+    mut auth_settings: AuthSettingsOverrides,
     bytes: &[u8],
 ) -> Result<(u64, AuthConfig)> {
     if auth_settings.has_key_overrides() {
@@ -801,12 +825,14 @@ pub fn build_auth_config_from_document(
             "JWT keyring file cannot be combined with startup key overrides".to_string(),
         ));
     }
-    let mut policy = AuthConfig::new(secret);
-    policy.access_expiration = access_expiration;
-    auth_settings.apply_with_env(&mut policy, &mut |_| Err(invalid_rotation()))?;
-    // Only the complete candidate, not the unused constructor defaults,
-    // enters key preparation and full validation.
-    policy.prepare_jwt_document(bytes)
+    // Construct the configuration directly from the selected document.
+    // No default keyring or unused startup source is even instantiated.
+    let (generation, inputs) = JwtKeyringDocument::parse(bytes)?;
+    let mut candidate = AuthConfig::from_key_inputs(secret, inputs);
+    candidate.access_expiration = access_expiration;
+    auth_settings.apply_policy(&mut candidate);
+    validate_auth_config(&candidate)?;
+    Ok((generation, candidate))
 }
 
 fn read_auth_env(name: &str) -> Result<String> {
@@ -832,6 +858,20 @@ where
     Ok(config)
 }
 
+fn resolve_auth_env<F>(name: &str, env_resolver: &mut F) -> Result<String>
+where
+    F: FnMut(&str) -> Result<String>,
+{
+    if name.trim().is_empty() || name.trim() != name || name.contains('=') || name.contains('\0') {
+        return Err(AuthError::Internal("Auth key environment name is invalid".to_string()));
+    }
+    let value = env_resolver(name)?;
+    if value.trim().is_empty() {
+        return Err(AuthError::Internal(format!("Auth env var {name} must not be empty")));
+    }
+    Ok(value)
+}
+
 fn resolve_key_material<F>(
     inline_pem: Option<String>,
     env_name: Option<String>,
@@ -846,16 +886,7 @@ where
         ));
     }
     if let Some(env_name) = env_name {
-        if env_name.trim().is_empty() || env_name.trim() != env_name || env_name.contains('=') || env_name.contains('\0') {
-            return Err(AuthError::Internal("RSA key environment name is invalid".to_string()));
-        }
-        let value = env_resolver(&env_name)?;
-        if value.trim().is_empty() {
-            return Err(AuthError::Internal(format!(
-                "Auth env var {env_name} must not be empty"
-            )));
-        }
-        return Ok(Some(value));
+        return resolve_auth_env(&env_name, env_resolver).map(Some);
     }
 
     if inline_pem.as_ref().is_some_and(|pem| pem.trim().is_empty()) {
@@ -1388,6 +1419,22 @@ mod tests {
                 .is_err(),
                 "min_password_length {invalid} must be rejected"
             );
+        }
+    }
+
+    #[test]
+    fn all_key_environment_sources_reject_invalid_names_before_lookup() {
+        for invalid in ["", " ", " JWT_KEYS", "JWT_KEYS ", "JWT=KEYS", "JWT\0KEYS"] {
+            for overrides in [
+                AuthSettingsOverrides { jwt_keyring_env: Some(invalid.into()), ..Default::default() },
+                AuthSettingsOverrides { jwt_special_keyrings_env: Some(invalid.into()), ..Default::default() },
+                AuthSettingsOverrides { rsa_private_key_env: Some(invalid.into()), ..Default::default() },
+                AuthSettingsOverrides { rsa_public_key_env: Some(invalid.into()), ..Default::default() },
+            ] {
+                assert!(build_auth_config_with_env(secret(), 900, overrides, |_| {
+                    panic!("invalid key source must not resolve an environment variable")
+                }).is_err());
+            }
         }
     }
 

@@ -109,6 +109,9 @@ changes are rejected. Coordinated RSA-only bootstrap and consumer cutover,
 including removal of remaining homogeneous HS256 paths, is pending. Explicit
 isolated dev/test provisioning of four independent RSA pairs is available
 through the [keyring provisioning command](docs/README.md#isolated-development-and-test-provisioning).
+File bootstrap constructs the selected complete key source directly without
+instantiating default signing inputs. Candidate grant admission rejects local
+policy mismatches and unmanaged publishers before durable grant mutation.
 Do not reset non-disposable security state. See the
 [cutover contract](docs/README.md#rs256-only-cutover).
 All JWT purposes require an exact key ID; missing-ID access and raw-root

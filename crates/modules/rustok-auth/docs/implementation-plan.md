@@ -57,10 +57,13 @@ now provisions four independent RSA pairs outside the checkout without
 replacing an existing keyring or touching persisted security state. Its
 source regression is authored but unrun; host/test consumers still need
 coordinated migration. The file-source entry point now
-validates only the actual complete candidate, with typed source exclusivity
+constructs and validates only the actual complete candidate, without
+instantiating default signing inputs, with typed source exclusivity
 owned by Auth, not a redundant startup signer. Independent MAC root validation
 now rejects PEM key material and weak roots at preparation, host proofs and
-fence MAC derivation; durable domains are unchanged. Remove the remaining HS256 JWT
+fence MAC derivation; durable domains are unchanged. Candidate activation
+rejects mismatched local policy and unmanaged publishers before grant mutation;
+all startup key environment references use the same strict resolver. Remove the remaining HS256 JWT
 implementation and canonicalize persisted RSA-only metadata. Retained-state
 conversion and verification are explicit blockers to deployment where needed.
 Scoped compilation, regression execution and independent-replica rollout

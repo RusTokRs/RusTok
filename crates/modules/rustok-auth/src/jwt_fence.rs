@@ -562,7 +562,7 @@ impl JwtGenerationFence {
         if !publisher.clock_healthy()? {
             return Err(unavailable());
         }
-        if generation <= publisher.generation()? || candidate.secret() != publisher.lease_root() {
+        if !publisher.accepts_grant_candidate(generation, &candidate)? {
             return Err(rejected());
         }
         crate::validate_auth_config(&candidate)?;
@@ -1146,6 +1146,37 @@ mod tests {
         assert!(decode_access_token(&live_a, &old).is_ok());
         assert!(fence.activate(&b, 3, promoted).await.unwrap());
         assert!(decode_access_token(&live_b, &fresh).is_ok());
+    }
+
+    #[tokio::test]
+    async fn incompatible_policy_or_unmanaged_runtime_never_reserves_candidate_grant() {
+        let fence = JwtGenerationFence::new(database().await);
+        let until = chrono::Utc::now().timestamp() + 3600;
+        let first = config(ROOT, "old", OLD, None);
+        let staged = config(ROOT, "old", OLD, Some(("new", NEW, until)));
+        assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
+        let (_, publisher) = first.clone().into_cluster_jwt(1).unwrap();
+        let (_, unmanaged) = first.into_live_jwt(1).unwrap();
+        assert!(fence.renew(&publisher).await.unwrap());
+        assert_eq!(fence.admit(2, &staged).await.unwrap(), JwtAdmission::Admitted);
+        let before = fence.load().await.unwrap();
+        for candidate in [
+            staged.clone().with_issuer("different-issuer"),
+            staged.clone().with_audience("different-audience"),
+            staged.clone().with_expiration(1800, staged.refresh_expiration),
+            staged.clone().with_expiration(staged.access_expiration, staged.refresh_expiration + 1),
+            staged.clone().with_min_password_length(staged.min_password_length + 1),
+        ] {
+            assert!(fence.activate(&publisher, 2, candidate).await.is_err());
+        }
+        assert!(fence.activate(&unmanaged, 2, staged.clone()).await.is_err());
+        let after = fence.load().await.unwrap();
+        assert_eq!(before.replica_grants, after.replica_grants);
+        assert_eq!(before.lease_until_ms, after.lease_until_ms);
+        assert_eq!(before.revision, after.revision);
+        assert_eq!(publisher.generation().unwrap(), 1);
+        assert!(fence.activate(&publisher, 2, staged).await.unwrap());
+        assert_eq!(publisher.generation().unwrap(), 2);
     }
 
     #[tokio::test]

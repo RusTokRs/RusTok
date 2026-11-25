@@ -258,7 +258,9 @@ removal of the algorithm field remain pending.
 Set `RUSTOK_JWT_KEYRING_FILE` to a trusted secret-manager-mounted JSON file.
 Do not combine this source with startup JWT algorithm, RSA or keyring overrides.
 Auth owns typed source exclusivity and validates only the complete file candidate;
-the host does not prepare an unused startup signer before loading the file.
+the file bootstrap does not instantiate or prepare unused startup signing inputs.
+File policy overrides are applied independently of key environment resolution.
+Every startup key environment source rejects invalid variable names before lookup.
 The file is limited to 256 KiB and requires a generation from 1 through 2^63-1 and a complete
 set of four purpose entries. The document has one unversioned format;
 obsolete schema tags and unknown fields are rejected. Generation is a
@@ -329,7 +331,10 @@ All upgraded HTTP hosts (including static mode) require a current database
 lease for JWT signing and verification. Renewal confirms the exact durable
 generation and canonical metadata. Auth checks a ten-second local monotonic and wall-clock
 deadline before and after crypto; the DB records a conservative fifteen-second
-maximum lease horizon. The host supervisor runs every two seconds from
+maximum lease horizon. Candidate activation checks the fixed source, immutable local policy,
+cluster-managed publisher and monotonic generation before reserving a durable
+replica grant; publication rechecks compatibility under its write fence.
+The host supervisor runs every two seconds from
 bootstrap through serving. For an incompatible generation change the database
 closes old renewal for up to 60 seconds and returns Draining until all old
 lease horizons have elapsed. The same candidate is retried without requiring
