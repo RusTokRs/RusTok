@@ -600,6 +600,7 @@ mod tests {
     #[test]
     fn component_media_rule_round_trips_through_grapesjs_shape() {
         let mut document = document();
+        let before_hash = document.hash();
         apply_style_rule_command(
             &mut document,
             &StyleRuleCommand::UpsertComponentRule {
@@ -615,6 +616,7 @@ mod tests {
             },
         )
         .expect("rule");
+        assert_ne!(document.hash(), before_hash);
         let rule = StyleRuleCatalog::from_document(&document)
             .component_rule(
                 "hero",
