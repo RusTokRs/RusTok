@@ -974,12 +974,27 @@ pub(crate) fn validate_rs256_key_pair(private_key_pem: &str, public_key_pem: &st
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rustok_test_utils::jwt::{JwtKeyringFixture, RsaKeyPairFixture};
+
+    fn rsa_config(root: String, fixture: &JwtKeyringFixture) -> AuthConfig {
+        build_auth_config_from_document(
+            root, 900, Default::default(), fixture.document(1).to_string().as_bytes(),
+        ).unwrap().1
+    }
+
+    fn document(
+        fixture: &JwtKeyringFixture, generation: u64, kid: &str, pair: &RsaKeyPairFixture,
+    ) -> Vec<u8> {
+        serde_json::to_vec(&fixture.document_with_access(generation, kid, pair, None)).unwrap()
+    }
 
 
     #[test]
     fn clock_fault_is_sticky_across_grants_and_publication() {
         let root = secret();
-        let (_, publisher) = AuthConfig::new(root.clone()).into_cluster_jwt(0).unwrap();
+        let fixture = JwtKeyringFixture::generate().unwrap();
+        let candidate = rsa_config(root, &fixture);
+        let (_, publisher) = candidate.clone().into_cluster_jwt(0).unwrap();
         let authority = Arc::new(ClockGuard::new());
         let deadline = LeaseDeadline::new(ClockSample::now(), Duration::from_secs(10), authority.clone()).unwrap();
         assert!(publisher.install_lease(0, deadline).unwrap());
@@ -990,7 +1005,7 @@ mod tests {
         let fresh = Arc::new(ClockGuard::new());
         let deadline = LeaseDeadline::new(ClockSample::now(), Duration::from_secs(10), fresh).unwrap();
         assert!(!publisher.install_lease(0, deadline.clone()).unwrap());
-        assert!(publisher.publish_granted(1, AuthConfig::new(root), deadline).is_err());
+        assert!(publisher.publish_granted(1, candidate, deadline).is_err());
         assert!(!readiness.is_ready());
     }
 
@@ -998,7 +1013,8 @@ mod tests {
     fn cluster_lease_gate_rejects_crypto_at_or_after_deadline() {
         use std::cell::Cell;
         use std::time::Duration;
-        let (config, publisher) = AuthConfig::new(secret()).into_cluster_jwt(0).unwrap();
+        let fixture = JwtKeyringFixture::generate().unwrap();
+        let (config, publisher) = rsa_config(secret(), &fixture).into_cluster_jwt(0).unwrap();
         let readiness = publisher.lease_readiness().unwrap();
         assert!(!readiness.is_ready());
         let authority = Arc::new(ClockGuard::new());
@@ -1118,16 +1134,6 @@ mod tests {
         }
     }
 
-    fn document(generation: u64, kid: &str, secret: &str) -> Vec<u8> {
-        serde_json::to_vec(&serde_json::json!({
-            "generation": generation,
-            "access": {"keyring": {"active_kid": kid, "active_hs256_secret": secret}},
-            "password_reset": {"keyring": {"active_kid": "reset-default"}},
-            "email_verification": {"keyring": {"active_kid": "verify-default"}},
-            "invite": {"keyring": {"active_kid": "invite-default"}}
-        })).unwrap()
-    }
-
     #[test]
     fn document_bootstrap_uses_only_file_keys_and_host_policy() {
         let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
@@ -1226,28 +1232,29 @@ mod tests {
 
     #[test]
     fn keyring_document_is_unversioned_and_generation_is_bounded() {
-        let base = AuthConfig::new(secret());
-        let material = "first-independent-signing-key-at-least-32-bytes";
+        let fixture = JwtKeyringFixture::generate().unwrap();
+        let base = rsa_config(secret(), &fixture);
+        let material = &fixture.access;
         let max = i64::MAX as u64;
         for generation in [1, max] {
             assert_eq!(base.prepare_jwt_document(&document(
-                generation, "one", material,
+                &fixture, generation, "one", material,
             )).unwrap().0, generation);
         }
         for generation in [0, max + 1, u64::MAX] {
             assert!(base.prepare_jwt_document(&document(
-                generation, "one", material,
+                &fixture, generation, "one", material,
             )).is_err());
         }
         let mut obsolete: serde_json::Value =
-            serde_json::from_slice(&document(1, "one", material)).unwrap();
+            serde_json::from_slice(&document(&fixture, 1, "one", material)).unwrap();
         obsolete["schema_version"] = serde_json::json!(1);
         assert!(base.prepare_jwt_document(&serde_json::to_vec(&obsolete).unwrap()).is_err());
         assert!(base.clone().into_live_jwt(max + 1).is_err());
         assert!(base.clone().into_cluster_jwt(max + 1).is_err());
         assert!(base.clone().into_cluster_jwt(0).is_ok());
         let (generation, first) = base.prepare_jwt_document(
-            &document(1, "one", material),
+            &document(&fixture, 1, "one", material),
         ).unwrap();
         let (_, publisher) = first.clone().into_live_jwt(generation).unwrap();
         assert!(publisher.publish(max + 1, first).is_err());
@@ -1259,10 +1266,13 @@ mod tests {
         use crate::{encode_access_token, decode_access_token};
         use rustok_core::UserRole;
         use uuid::Uuid;
-        let base = AuthConfig::new(secret());
-        let (generation, first) = base.prepare_jwt_document(&document(
-            1, "one", "first-independent-signing-key-at-least-32-bytes",
-        )).unwrap();
+        let fixture = JwtKeyringFixture::generate().unwrap();
+        let next_key = RsaKeyPairFixture::generate().unwrap();
+        let reused_key = RsaKeyPairFixture::generate().unwrap();
+        let (generation, first) = build_auth_config_from_document(
+            secret(), 900, Default::default(),
+            &document(&fixture, 1, "one", &fixture.access),
+        ).unwrap();
         let (live, publisher) = first.into_live_jwt(generation).unwrap();
         let clone = live.clone();
         let issue = |config: &AuthConfig| encode_access_token(
@@ -1270,7 +1280,7 @@ mod tests {
         ).unwrap();
         let old = issue(&clone);
         let (g, next) = publisher.prepare_document(&document(
-            2, "two", "second-independent-signing-key-at-least-32-bytes",
+            &fixture, 2, "two", &next_key,
         )).unwrap();
         publisher.publish(g, next.clone()).unwrap();
         assert_eq!(publisher.generation().unwrap(), 2);
@@ -1285,7 +1295,7 @@ mod tests {
         assert!(decode_access_token(&clone, &fresh).is_ok());
 
         let (g, reused) = publisher.prepare_document(&document(
-            3, "two", "changed-independent-signing-key-at-least-32-bytes",
+            &fixture, 3, "two", &reused_key,
         )).unwrap();
         assert!(publisher.publish(g, reused).is_err());
         assert_eq!(publisher.generation().unwrap(), 2);
@@ -1296,10 +1306,12 @@ mod tests {
         use crate::{decode_access_token, encode_access_token};
         use rustok_core::UserRole;
         use uuid::Uuid;
-        let old_secret = "first-independent-signing-key-at-least-32-bytes";
-        let new_secret = "second-independent-signing-key-at-least-32-bytes";
-        let base = AuthConfig::new(secret());
-        let (generation, first) = base.prepare_jwt_document(&document(1, "one", old_secret)).unwrap();
+        let fixture = JwtKeyringFixture::generate().unwrap();
+        let next_key = RsaKeyPairFixture::generate().unwrap();
+        let (generation, first) = build_auth_config_from_document(
+            secret(), 900, Default::default(),
+            &document(&fixture, 1, "one", &fixture.access),
+        ).unwrap();
         let (live, publisher) = first.into_live_jwt(generation).unwrap();
         let existing_clone = live.clone();
         let issue = || encode_access_token(
@@ -1307,29 +1319,25 @@ mod tests {
         ).unwrap();
         let old = issue();
         let until = chrono::Utc::now().timestamp() + 3600;
-        let with_history = |generation, active_kid, active_secret, history_kid, history_secret| {
-            let mut value: serde_json::Value = serde_json::from_slice(
-                &document(generation, active_kid, active_secret)
-            ).unwrap();
-            value["access"]["keyring"]["verification_keys"] = serde_json::json!([{
-                "kid": history_kid, "material": history_secret, "verify_until": until
-            }]);
-            serde_json::to_vec(&value).unwrap()
+        let with_history = |generation, active_kid, active_key, history_kid, history_key| {
+            serde_json::to_vec(&fixture.document_with_access(
+                generation, active_kid, active_key, Some((history_kid, history_key, until)),
+            )).unwrap()
         };
         let (g, staged) = publisher.prepare_document(
-            &with_history(2, "one", old_secret, "two", new_secret)
+            &with_history(2, "one", &fixture.access, "two", &next_key)
         ).unwrap();
         publisher.publish(g, staged).unwrap();
         assert_eq!(jsonwebtoken::decode_header(&issue()).unwrap().kid.as_deref(), Some("one"));
         let (g, promoted) = publisher.prepare_document(
-            &with_history(3, "two", new_secret, "one", old_secret)
+            &with_history(3, "two", &next_key, "one", &fixture.access)
         ).unwrap();
         publisher.publish(g, promoted).unwrap();
         let fresh = issue();
         assert_eq!(jsonwebtoken::decode_header(&fresh).unwrap().kid.as_deref(), Some("two"));
         assert!(decode_access_token(&live, &old).is_ok());
         assert!(decode_access_token(&live, &fresh).is_ok());
-        let (g, retired) = publisher.prepare_document(&document(4, "two", new_secret)).unwrap();
+        let (g, retired) = publisher.prepare_document(&document(&fixture, 4, "two", &next_key)).unwrap();
         publisher.publish(g, retired).unwrap();
         assert!(decode_access_token(&existing_clone, &old).is_err());
         assert!(decode_access_token(&existing_clone, &fresh).is_ok());
@@ -1338,16 +1346,19 @@ mod tests {
 
     #[test]
     fn live_rotation_serializes_concurrent_publishers() {
-        let base = AuthConfig::new(secret());
-        let (g, first) = base.prepare_jwt_document(&document(
-            1, "one", "first-independent-signing-key-at-least-32-bytes",
-        )).unwrap();
+        let fixture = JwtKeyringFixture::generate().unwrap();
+        let second_key = RsaKeyPairFixture::generate().unwrap();
+        let third_key = RsaKeyPairFixture::generate().unwrap();
+        let (g, first) = build_auth_config_from_document(
+            secret(), 900, Default::default(),
+            &document(&fixture, 1, "one", &fixture.access),
+        ).unwrap();
         let (_, publisher) = first.into_live_jwt(g).unwrap();
         let (g2, second) = publisher.prepare_document(&document(
-            2, "two", "second-independent-signing-key-at-least-32-bytes",
+            &fixture, 2, "two", &second_key,
         )).unwrap();
         let (g3, third) = publisher.prepare_document(&document(
-            3, "three", "third-independent-signing-key-at-least-32-bytes",
+            &fixture, 3, "three", &third_key,
         )).unwrap();
         std::thread::scope(|scope| {
             let a = scope.spawn(|| publisher.publish(g2, second));
@@ -1360,25 +1371,30 @@ mod tests {
 
     #[test]
     fn prepared_snapshot_is_shared_and_crypto_mutation_detaches() {
-        let original = AuthConfig::new(secret());
+        let fixture = JwtKeyringFixture::generate().unwrap();
+        let (_, inputs) = JwtKeyringDocument::parse(&document(&fixture, 1, "one", &fixture.access)).unwrap();
+        let original = AuthConfig::from_key_inputs(secret(), inputs);
         let before_first_use = original.clone();
         assert!(Arc::ptr_eq(&original.key_snapshot().unwrap(), &before_first_use.key_snapshot().unwrap()));
         let prepared = original.prepared_jwt().unwrap();
         assert!(std::ptr::eq(prepared, before_first_use.prepared_jwt().unwrap()));
         let policy_only = original.clone().with_issuer("other-issuer");
         assert!(std::ptr::eq(prepared, policy_only.prepared_jwt().unwrap()));
-        let rsa = original.clone().with_rs256(
-            crate::jwt::TEST_RSA_PRIVATE_KEY, crate::jwt::TEST_RSA_PUBLIC_KEY,
-        );
-        assert!(!Arc::ptr_eq(&original.key_snapshot().unwrap(), &rsa.key_snapshot().unwrap()));
-        let rsa_prepared = rsa.prepared_jwt().unwrap();
-        assert!(!std::ptr::eq(prepared, rsa_prepared));
+        let next_key = RsaKeyPairFixture::generate().unwrap();
+        let (_, inputs) = JwtKeyringDocument::parse(&document(&fixture, 2, "two", &next_key)).unwrap();
+        let mut candidate = original.clone();
+        candidate.edit_key_inputs(|current| *current = inputs).unwrap();
+        assert!(!Arc::ptr_eq(&original.key_snapshot().unwrap(), &candidate.key_snapshot().unwrap()));
+        let candidate_prepared = candidate.prepared_jwt().unwrap();
+        assert!(!std::ptr::eq(prepared, candidate_prepared));
         assert!(std::ptr::eq(prepared, original.prepared_jwt().unwrap()));
     }
 
     #[test]
     fn concurrent_first_use_and_failed_reconfiguration_are_isolated() {
-        let mut config = AuthConfig::new(secret());
+        let fixture = JwtKeyringFixture::generate().unwrap();
+        let (_, inputs) = JwtKeyringDocument::parse(&document(&fixture, 1, "one", &fixture.access)).unwrap();
+        let mut config = AuthConfig::from_key_inputs(secret(), inputs.clone());
         let clone = config.clone();
         std::thread::scope(|scope| {
             let thread = scope.spawn(|| clone.prepared_jwt().unwrap() as *const _ as usize);
@@ -1386,12 +1402,12 @@ mod tests {
             assert_eq!(thread.join().unwrap(), first);
         });
         let invalid = AuthSettingsOverrides {
-            algorithm: Some(JwtAlgorithm::RS256),
+            rsa_private_key_pem: Some("invalid-private-key".into()),
             ..Default::default()
         };
         assert!(invalid.apply(&mut config).is_err());
         assert!(std::ptr::eq(config.prepared_jwt().unwrap(), clone.prepared_jwt().unwrap()));
-        let invalid = AuthConfig::new("short".into());
+        let invalid = AuthConfig::from_key_inputs("short".into(), inputs);
         assert!(invalid.prepared_jwt().is_err());
         assert!(invalid.prepared_jwt().is_err());
     }

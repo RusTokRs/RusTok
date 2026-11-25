@@ -62,8 +62,10 @@ external executables. Auth document bootstrap and server reset/verification
 regressions use it. Durable fence, rolling admission, revocation, authority,
 witness and observability scenarios now use fresh RSA pairs per isolated
 ledger and public-only history. Explicit cross-algorithm negative coverage is
-retained until the algorithm removal. Remaining constructors and JWT/config
-rotation fixtures still need migration; scoped execution remains pending. The file-source entry point now
+retained until the algorithm removal. Local lease gates, immutable snapshot concurrency and process-local
+rotation now exercise the same RSA fixture contract. Remaining constructors,
+JWT primitive tests and host consumers still need migration; scoped execution
+remains pending. The file-source entry point now
 constructs and validates only the actual complete candidate, without
 instantiating default signing inputs, with typed source exclusivity
 owned by Auth, not a redundant startup signer. Independent MAC root validation

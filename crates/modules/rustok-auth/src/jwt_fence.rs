@@ -862,14 +862,7 @@ mod tests {
             &self, root: &str, kid: &str, pair: &RsaKeyPairFixture,
             history: Option<(&str, &RsaKeyPairFixture, i64)>,
         ) -> AuthConfig {
-            let mut doc = self.rings.document(1);
-            let mut access = pair.ring(kid);
-            if let Some((kid, pair, until)) = history {
-                access["keyring"]["verification_keys"] = serde_json::json!([{
-                    "kid": kid, "material": pair.public_pem(), "verify_until": until,
-                }]);
-            }
-            doc["access"] = access;
+            let doc = self.rings.document_with_access(1, kid, pair, history);
             crate::build_auth_config_from_document(
                 root.to_string(), 900, Default::default(),
                 doc.to_string().as_bytes(),
