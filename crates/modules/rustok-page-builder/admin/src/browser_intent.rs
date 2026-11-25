@@ -889,6 +889,30 @@ mod tests {
     }
 
     #[test]
+    fn upsert_style_rule_accepts_builtin_breakpoint_ids_from_ssr_forms() {
+        let mut controller = controller();
+        let breakpoint = fly::builtin_responsive_breakpoints()
+            .into_iter()
+            .next()
+            .expect("a built-in responsive breakpoint");
+
+        dispatch_browser_intent(
+            &mut controller,
+            intent(
+                "upsert_style_rule",
+                json!({
+                    "component_id": "hero",
+                    "scope_kind": "media",
+                    "scope_value": breakpoint.id,
+                    "property": "display",
+                    "value": "grid"
+                }),
+            ),
+        )
+        .expect("SSR style form breakpoint ID");
+    }
+
+    #[test]
     fn render_server_preview_yields_a_preview_request_for_the_active_page() {
         let mut controller = controller();
         controller
