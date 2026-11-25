@@ -100,6 +100,16 @@ pub async fn resolve_optional(
         return with_host_authority_scope(host_authority, next.run(req)).await;
     }
 
+    if is_oauth_client_auth_request(request_method.as_str(), request_path.as_str()) {
+        // OAuth token and revocation endpoints authenticate clients with
+        // protocol-level credentials (including HTTP Basic), not user Bearer tokens.
+        if let Some(host_authority) = host_authority {
+            parts.extensions.insert(host_authority);
+        }
+        let req = Request::from_parts(parts, body);
+        return with_host_authority_scope(host_authority, next.run(req)).await;
+    }
+
     let current_user_result = if parts
         .extensions
         .get::<crate::context::TenantContextExtension>()
@@ -296,6 +306,10 @@ fn auth_can_resolve_without_tenant_context(path: &str) -> bool {
         tenant_route_scope(path),
         TenantRouteScope::GlobalOperator | TenantRouteScope::SelfResolvingHandshake
     )
+}
+
+fn is_oauth_client_auth_request(method: &str, path: &str) -> bool {
+    method == "POST" && matches!(path, "/api/oauth/token" | "/api/oauth/revoke")
 }
 
 fn is_observability_auth_path(path: &str) -> bool {
@@ -506,6 +520,15 @@ mod tests {
             verified_tenant_id_from_access_token(&config, "not-a-jwt"),
             Err((StatusCode::UNAUTHORIZED, "Invalid token signature"))
         );
+    }
+
+    #[test]
+    fn oauth_client_authentication_is_not_interpreted_as_user_bearer_auth() {
+        assert!(is_oauth_client_auth_request("POST", "/api/oauth/token"));
+        assert!(is_oauth_client_auth_request("POST", "/api/oauth/revoke"));
+        assert!(!is_oauth_client_auth_request("GET", "/api/oauth/token"));
+        assert!(!is_oauth_client_auth_request("POST", "/api/oauth/authorize"));
+        assert!(!is_oauth_client_auth_request("POST", "/api/auth/login"));
     }
 
     #[test]
