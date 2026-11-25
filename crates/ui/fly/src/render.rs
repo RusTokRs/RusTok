@@ -556,7 +556,7 @@ pub fn render_page_with_rich_text_and_embed_registry(
     } else {
         decoded_theme_tokens
             .iter()
-            .map(|token| format!("{}:{}", token.css_variable(), token.value))
+            .map(|token| format!("{}:{}", token.css_variable(), token.value.trim()))
             .collect::<Vec<_>>()
             .join(";")
     };

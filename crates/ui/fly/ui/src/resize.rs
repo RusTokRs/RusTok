@@ -291,7 +291,7 @@ impl ResizeSession {
                     start_ratio.is_finite()
                         && result_ratio.is_finite()
                         && (result_ratio - start_ratio).abs()
-                            <= 1e-9 * start_ratio.abs().max(1.0)
+                            <= 1e-9 * start_ratio.abs().max(f64::MIN_POSITIVE)
                 }
             } else {
                 true
@@ -553,6 +553,30 @@ mod tests {
         };
         assert_eq!(
             corner.component_patch(wrong_ratio).style,
+            Some(Value::Object(Map::new()))
+        );
+
+        // An absolute 1e-9 tolerance is far too permissive for very narrow elements:
+        // it could accept a large relative aspect-ratio change.
+        let mut narrow = session(ResizeHandle::SouthEast);
+        narrow.start_rect = CanvasRect {
+            width: 1e-8,
+            height: 100.0,
+            ..narrow.start_rect
+        };
+        narrow.policy.minimum_width = 0.0;
+        narrow.policy.minimum_height = 0.0;
+        let narrow_wrong_ratio = ResizeResult {
+            rect: CanvasRect {
+                width: 2e-8,
+                height: 100.0,
+                ..narrow.start_rect
+            },
+            width_changed: true,
+            height_changed: true,
+        };
+        assert_eq!(
+            narrow.component_patch(narrow_wrong_ratio).style,
             Some(Value::Object(Map::new()))
         );
     }
