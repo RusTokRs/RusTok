@@ -12,7 +12,7 @@ use crate::error::{Error, Result};
 use crate::models::{mcp_audit_logs, mcp_clients, mcp_policies, mcp_scaffold_drafts, mcp_tokens};
 use rustok_mcp::{
     ApplyModuleScaffoldResponse, McpAccessContext, McpActorType, McpIdentity,
-    ScaffoldModuleRequest, apply_staged_scaffold, generate_module_scaffold,
+    ScaffoldModuleRequest, generate_module_scaffold,
 };
 
 #[derive(Debug, Clone)]
@@ -662,13 +662,15 @@ impl McpManagementService {
             )
             .await?;
 
-        // The host workspace is shared by all tenants in this process. Serialize
-        // filesystem applies so two drafts cannot both pass the target-exists
-        // check and interleave writes to the same crate directory.
+        // Serialize same-process requests, then acquire the permanent OS lock
+        // shared with native xtask scaffolding before claiming or touching files.
         let workspace_apply_lock = MCP_SCAFFOLD_APPLY_LOCK
             .get_or_init(|| std::sync::Arc::new(tokio::sync::Mutex::new(())))
             .clone();
         let workspace_apply_guard = workspace_apply_lock.lock_owned().await;
+        let workspace_lock =
+            crate::services::mcp_scaffold_workspace::lock_mcp_scaffold_workspace(&workspace_root)
+                .await?;
 
         let draft = Self::claim_scaffold_draft_for_apply(
             db,
@@ -740,7 +742,11 @@ impl McpManagementService {
         let apply_workspace_root = workspace_root.clone();
         let apply_result = match tokio::task::spawn_blocking(move || {
             let _workspace_apply_guard = workspace_apply_guard;
-            apply_staged_scaffold(&staged_draft, &apply_workspace_root)
+            crate::services::mcp_scaffold_workspace::apply_mcp_scaffold_atomically(
+                &staged_draft,
+                &apply_workspace_root,
+                workspace_lock,
+            )
         })
         .await
         {
