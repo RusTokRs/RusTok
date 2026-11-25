@@ -171,6 +171,15 @@ crates/ui/fly/
   document validation share bounded srcset candidate checks, including numeric descriptor
   uniqueness, positive density/width and one descriptor family.
 
+## Runtime materialization bounds
+
+Runtime context paths are bounded to 2048 bytes, 64 segments and array index 9999.
+A single path write may add at most 10,000 array slots across all nested arrays;
+invalid writes leave the original context unchanged. Equivalent path spellings are
+compared structurally for duplicate field/computed targets and self-references.
+Repeater expansion reserves work for every node in each copied template before
+nested expansion; the existing public counter continues to count repeater instances.
+
 ## Identity and history contracts
 
 `ProjectDocument::clone_as_page` and `ProjectFragment::remap_ids` return `FlyResult`; callers

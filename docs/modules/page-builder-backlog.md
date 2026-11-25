@@ -130,6 +130,16 @@ fresh reviewed publish. Four focused regressions authored; compiler, tests, lint
 remediation gate and evidence admission not run. Full CSS value grammar and runtime
 materialization resource audit remain open.
 
+Fly runtime resource follow-up (2026-11-25, source-only): shared context path parsing
+bounds length, depth and array indices, rejects ambiguous dot/bracket syntax, and
+preflights sparse growth before writing. Duplicate field/computed targets and computed
+self-references compare structural path segments. JSON-schema export checks the same
+path grammar. Repeater expansion charges complete cloned subtrees against the global
+work budget before nesting and borrows only the bounded input slice rather than
+cloning an entire source array. Three focused regressions authored; tests, build,
+lint and remediation gate not run. Computed dependency scheduling and alias admission
+remain open for follow-up.
+
 Reduced-motion follow-up: the shared Fly browser asset now uses instant scrolling for
 `scroll_to` when the target document requests reduced motion, including in the presence of
 CSS `scroll-behavior: smooth`; animations use the same document preference. The Node runtime

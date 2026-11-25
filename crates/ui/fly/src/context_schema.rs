@@ -439,7 +439,7 @@ pub fn validate_context_definitions(document: &ProjectDocument) -> Vec<Validatio
             &mut ids,
             &mut diagnostics,
         );
-        if !paths.insert(field.path.clone()) {
+        if parse_context_path(&field.path).is_some_and(|path| !paths.insert(path)) {
             diagnostics.push(context_diagnostic(
                 ValidationSeverity::Error,
                 "duplicate_runtime_context_field_path",
@@ -507,7 +507,7 @@ pub fn validate_context_definitions(document: &ProjectDocument) -> Vec<Validatio
     // silent, and neither is what the author wrote.
     diagnostics.extend(conflicting_field_paths(&catalog));
 
-    let mut computed_paths = BTreeMap::<String, String>::new();
+    let mut computed_paths = BTreeMap::<Vec<ContextPathSegment>, String>::new();
     for computed in &catalog.computed {
         validate_definition_id(
             "computed context value",
@@ -524,7 +524,9 @@ pub fn validate_context_definitions(document: &ProjectDocument) -> Vec<Validatio
                 format!("computed value `{}` path is invalid", computed.id),
             ));
         }
-        if let Some(previous) = computed_paths.insert(computed.path.clone(), computed.id.clone()) {
+        if let Some(previous) = parse_context_path(&computed.path)
+            .and_then(|path| computed_paths.insert(path, computed.id.clone()))
+        {
             diagnostics.push(context_diagnostic(
                 ValidationSeverity::Error,
                 "duplicate_runtime_computed_path",
@@ -549,7 +551,9 @@ pub fn validate_context_definitions(document: &ProjectDocument) -> Vec<Validatio
                     ),
                 ));
             }
-            if dependency == computed.path {
+            if parse_context_path(&dependency).is_some_and(|path| {
+                Some(path) == parse_context_path(&computed.path)
+            }) {
                 diagnostics.push(context_diagnostic(
                     ValidationSeverity::Error,
                     "runtime_computed_self_reference",
@@ -607,10 +611,10 @@ pub fn resolve_context_path<'a>(root: &'a Value, path: &str) -> Option<&'a Value
 
 pub fn set_context_path(root: &mut Value, path: &str, value: Value) -> Result<(), String> {
     let segments = parse_context_path(path).ok_or_else(|| format!("invalid path `{path}`"))?;
-    if segments.is_empty() {
-        *root = value;
-        return Ok(());
-    }
+    // Preflight the entire path before extending any arrays or creating objects.
+    // This bounds total sparse growth even for nested indices and leaves the
+    // original context intact when a write is rejected.
+    validate_context_write(root, &segments)?;
     set_path_segments(root, &segments, value)
 }
 
@@ -673,6 +677,43 @@ fn normalize_context(value: Value) -> Value {
     }
 }
 
+const MAX_CONTEXT_PATH_BYTES: usize = 2048;
+const MAX_CONTEXT_PATH_SEGMENTS: usize = 64;
+const MAX_CONTEXT_ARRAY_INDEX: usize = 9_999;
+const MAX_CONTEXT_WRITE_NEW_SLOTS: usize = 10_000;
+
+fn validate_context_write(root: &Value, segments: &[ContextPathSegment]) -> Result<(), String> {
+    let mut current = Some(root);
+    let mut new_slots = 0usize;
+    for segment in segments {
+        current = current.filter(|value| !value.is_null());
+        match segment {
+            ContextPathSegment::Key(key) => {
+                current = match current {
+                    Some(value) => value.as_object()
+                        .ok_or_else(|| format!("path segment `{key}` requires an object"))?
+                        .get(key),
+                    None => None,
+                };
+            }
+            ContextPathSegment::Index(index) => {
+                let length = match current {
+                    Some(value) => value.as_array()
+                        .ok_or_else(|| format!("path index `{index}` requires an array"))?
+                        .len(),
+                    None => 0,
+                };
+                new_slots = new_slots.saturating_add((index + 1).saturating_sub(length));
+                if new_slots > MAX_CONTEXT_WRITE_NEW_SLOTS {
+                    return Err("context write exceeds sparse array growth limit".to_string());
+                }
+                current = current.and_then(|value| value.as_array()?.get(*index));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn set_path_segments(
     current: &mut Value,
     segments: &[ContextPathSegment],
@@ -718,7 +759,7 @@ fn set_path_segments(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum ContextPathSegment {
     Key(String),
     Index(usize),
@@ -772,6 +813,9 @@ fn conflicting_field_paths(catalog: &ContextSchemaCatalog) -> Vec<ValidationDiag
 }
 
 fn parse_context_path(path: &str) -> Option<Vec<ContextPathSegment>> {
+    if path.len() > MAX_CONTEXT_PATH_BYTES {
+        return None;
+    }
     let path = path.trim();
     let path = path.strip_prefix('$').unwrap_or(path);
     let path = path.strip_prefix('.').unwrap_or(path);
@@ -788,7 +832,9 @@ fn parse_context_path(path: &str) -> Option<Vec<ContextPathSegment>> {
                     return None;
                 }
                 segments.push(ContextPathSegment::Key(std::mem::take(&mut token)));
-                chars.peek()?;
+                if matches!(chars.peek().copied(), None | Some('.') | Some('[') | Some(']')) {
+                    return None;
+                }
             }
             '[' => {
                 if !token.is_empty() {
@@ -803,10 +849,14 @@ fn parse_context_path(path: &str) -> Option<Vec<ContextPathSegment>> {
                     }
                     index.push(character);
                 }
-                if !closed || index.is_empty() {
+                if !closed || index.is_empty() || !index.bytes().all(|byte| byte.is_ascii_digit()) {
                     return None;
                 }
-                segments.push(ContextPathSegment::Index(index.parse().ok()?));
+                let index = index.parse::<usize>().ok()?;
+                if index > MAX_CONTEXT_ARRAY_INDEX {
+                    return None;
+                }
+                segments.push(ContextPathSegment::Index(index));
                 match chars.peek().copied() {
                     Some('.') => {
                         chars.next();
@@ -822,14 +872,14 @@ fn parse_context_path(path: &str) -> Option<Vec<ContextPathSegment>> {
                 }
             }
             ']' | '{' | '}' => return None,
-            character if character.is_whitespace() => return None,
+            character if character.is_whitespace() || character.is_control() => return None,
             _ => token.push(character),
         }
     }
     if !token.is_empty() {
         segments.push(ContextPathSegment::Key(token));
     }
-    (!segments.is_empty()).then_some(segments)
+    (!segments.is_empty() && segments.len() <= MAX_CONTEXT_PATH_SEGMENTS).then_some(segments)
 }
 
 fn evaluate_expression(expression: &ContextExpression, context: &Value) -> ExpressionEvaluation {
@@ -1182,7 +1232,9 @@ fn validate_computed_identity(computed: &ComputedContextValue) -> FlyResult<()> 
     }
     let mut paths = BTreeSet::new();
     collect_expression_paths(&computed.expression, &mut paths);
-    if paths.contains(&computed.path) {
+    if paths.iter().any(|path| {
+        parse_context_path(path).is_some_and(|path| Some(path) == parse_context_path(&computed.path))
+    }) {
         return Err(FlyError::Decode(
             "computed context value cannot reference its own target path".to_string(),
         ));
@@ -1693,6 +1745,42 @@ mod tests {
                 .iter()
                 .any(|entry| entry.get("providerSchema").is_some())
         );
+    }
+
+    #[test]
+    fn context_path_limits_reject_sparse_growth_and_invalid_grammar_atomically() {
+        let mut root = json!({"existing": 1});
+        let before = root.clone();
+        for path in [
+            "items[10000]", "items[18446744073709551615]", "items.[0]",
+            "items[+1]", "items[9999][9999]", "existing.child",
+        ] {
+            assert!(set_context_path(&mut root, path, json!(1)).is_err(), "{path}");
+            assert_eq!(root, before, "{path}");
+        }
+        assert!(!is_valid_context_path(&vec!["x"; 65].join(".")));
+        assert!(!is_valid_context_path(&"x".repeat(2049)));
+        set_context_path(&mut root, "items[2].name", json!("ok")).expect("bounded write");
+        assert_eq!(resolve_context_path(&root, "$.items[02].name"), Some(&json!("ok")));
+    }
+
+    #[test]
+    fn equivalent_context_field_and_computed_paths_are_duplicate_targets() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{"component": {"id": "root", "type": "wrapper"}}],
+            "flyRuntimeContextSchema": [
+                {"id": "first", "path": "page.title", "kind": "string"},
+                {"id": "second", "path": "$.page.title", "kind": "string"}
+            ],
+            "flyRuntimeComputed": [
+                {"id": "one", "path": "items[0]", "expression": {"op": "literal", "value": 1}},
+                {"id": "two", "path": "$.items[00]", "expression": {"op": "path", "path": "items[0]"}}
+            ]
+        })).expect("document");
+        let diagnostics = validate_context_definitions(&document);
+        for code in ["duplicate_runtime_context_field_path", "duplicate_runtime_computed_path", "runtime_computed_self_reference"] {
+            assert!(diagnostics.iter().any(|d| d.code == code), "{code}");
+        }
     }
 
     #[test]

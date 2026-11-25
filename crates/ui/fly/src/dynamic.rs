@@ -298,6 +298,7 @@ pub fn materialize_runtime(document: &ProjectDocument, context: &Value) -> Runti
         retired_style_ids: BTreeSet::new(),
         diagnostics: Vec::new(),
         repeated_nodes: 0,
+        generated_node_work: 0,
         hidden_components: 0,
         budget_reported: false,
     };
@@ -378,6 +379,8 @@ struct RuntimeExpander<'a> {
     retired_style_ids: BTreeSet<String>,
     diagnostics: Vec<ValidationDiagnostic>,
     repeated_nodes: usize,
+    // Count every copied tree node, including intermediate nested templates.
+    generated_node_work: usize,
     hidden_components: usize,
     budget_reported: bool,
 }
@@ -763,13 +766,13 @@ impl RuntimeExpander<'_> {
     ) {
         let values = resolve_path(context, &repeater.path)
             .and_then(Value::as_array)
-            .cloned()
+            .map(Vec::as_slice)
             .unwrap_or_default();
         let limit = repeater
             .limit
             .unwrap_or(DEFAULT_REPEATER_LIMIT)
             .min(MAX_REPEATER_LIMIT);
-        let values = values.into_iter().take(limit).collect::<Vec<_>>();
+        let values = &values[..values.len().min(limit)];
 
         if values.is_empty() {
             if repeater.empty_behavior == EmptyRepeaterBehavior::Hide {
@@ -802,7 +805,19 @@ impl RuntimeExpander<'_> {
             output.push(template);
             return;
         }
-        if self.repeated_nodes.saturating_add(values.len()) > MAX_TOTAL_REPEATED_NODES {
+        // Charge the entire cloned subtree, not just each repeater root.
+        // Reserve all copies before recursion so nested expansion cannot consume
+        // capacity already promised to later siblings.
+        let mut subtree_nodes = 0usize;
+        let mut pending = vec![&template];
+        while let Some(node) = pending.pop() {
+            subtree_nodes = subtree_nodes.saturating_add(1);
+            if let Some(object) = node.as_object() {
+                pending.extend(object.children());
+            }
+        }
+        let copy_cost = subtree_nodes.saturating_mul(values.len());
+        if self.generated_node_work.saturating_add(copy_cost) > MAX_TOTAL_REPEATED_NODES {
             if !self.budget_reported {
                 self.budget_reported = true;
                 self.diagnostics.push(runtime_diagnostic(
@@ -858,6 +873,7 @@ impl RuntimeExpander<'_> {
             }
         }
 
+        self.generated_node_work += copy_cost;
         self.retire_styles_for(&template, origin);
 
         for (index, item) in values.iter().enumerate() {
@@ -2529,6 +2545,23 @@ mod tests {
         )
         .expect_err("invalid path");
         assert!(matches!(error, FlyError::Decode(_)));
+    }
+
+    #[test]
+    fn repeater_budget_counts_anonymous_and_identified_descendants_before_cloning() {
+        let children = (0..100).map(|_| json!({"type": "text", "content": "item"}))
+            .collect::<Vec<_>>();
+        let source = GrapesJsCodec::decode_value(json!({
+            "pages": [{"component": {"id": "root", "type": "wrapper", "components": [
+                {"id": "card", "type": "section", "components": children}
+            ]}}],
+            "flyRuntimeRepeaters": [{"id": "cards", "component_id": "card", "path": "items", "limit": 1000}]
+        })).expect("document");
+        let context = json!({"items": vec![1; 1000]});
+        let result = materialize_runtime(&source, &context);
+        assert_eq!(result.repeated_nodes, 0);
+        assert_eq!(result.document, source);
+        assert!(result.diagnostics.iter().any(|d| d.code == "runtime_repeater_budget_exceeded"));
     }
 
     #[test]

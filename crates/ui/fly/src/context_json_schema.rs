@@ -299,6 +299,9 @@ fn push_required(object: &mut Map<String, Value>, property: &str) {
 }
 
 fn simple_object_path(path: &str) -> Option<Vec<String>> {
+    if !crate::is_valid_context_path(path) {
+        return None;
+    }
     let path = path.trim();
     let path = path.strip_prefix('$').unwrap_or(path);
     let path = path.strip_prefix('.').unwrap_or(path);
