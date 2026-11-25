@@ -109,7 +109,6 @@ impl UpdateVariantInput {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct VariantResponse {
     pub id: Uuid,
-    #[serde(default)]
     pub revision: String,
     pub product_id: Uuid,
     pub sku: Option<String>,
@@ -246,5 +245,24 @@ mod patch_tests {
         assert_ne!(keep, clear);
         assert_ne!(keep, set);
         assert_ne!(clear, set);
+    }
+
+    #[test]
+    fn variant_response_requires_a_revision_for_optimistic_writes() {
+        let value = serde_json::json!({
+            "id": "00000000-0000-4000-8000-000000000001",
+            "product_id": "00000000-0000-4000-8000-000000000002",
+            "title": "Variant",
+            "prices": [],
+            "inventory_quantity": 0,
+            "inventory_policy": "deny",
+            "in_stock": false,
+            "position": 0
+        });
+
+        assert!(
+            serde_json::from_value::<VariantResponse>(value).is_err(),
+            "a variant response without its row revision must be rejected"
+        );
     }
 }
