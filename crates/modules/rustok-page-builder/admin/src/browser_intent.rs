@@ -406,19 +406,7 @@ fn dispatch_named_intent(
                 .get("remove")
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
-            let scope = match scope_kind {
-                "media" => StyleRuleScope::Media {
-                    query: scope_value.to_string(),
-                },
-                "state" => StyleRuleScope::State {
-                    pseudo: scope_value.to_string(),
-                },
-                other => {
-                    return Err(BrowserIntentDispatchError::Payload(format!(
-                        "unknown style rule scope kind `{other}`"
-                    )));
-                }
-            };
+            let scope = style_rule_scope_from_payload(scope_kind, scope_value)?;
             let entry = StyleEntry {
                 property: property.to_string(),
                 value: if remove { String::new() } else { value },
@@ -792,6 +780,28 @@ fn unique_page_id_for(existing: &std::collections::BTreeSet<String>, name: &str)
     format!("{base}-{}", existing.len().saturating_add(1))
 }
 
+fn style_rule_scope_from_payload(
+    scope_kind: &str,
+    scope_value: &str,
+) -> Result<StyleRuleScope, BrowserIntentDispatchError> {
+    match scope_kind {
+        "media" => {
+            // SSR forms submit the stable breakpoint ID; typed callers may still
+            // submit a custom media query. Normalize IDs to the canonical query.
+            let query = fly::responsive_breakpoint(scope_value)
+                .map(|breakpoint| breakpoint.media_query)
+                .unwrap_or_else(|| scope_value.to_string());
+            Ok(StyleRuleScope::Media { query })
+        }
+        "state" => Ok(StyleRuleScope::State {
+            pseudo: scope_value.to_string(),
+        }),
+        other => Err(BrowserIntentDispatchError::Payload(format!(
+            "unknown style rule scope kind `{other}`"
+        ))),
+    }
+}
+
 fn page_locator_from_payload(payload: &Value) -> Result<PageLocator, BrowserIntentDispatchError> {
     let page_index = integer_field(payload, "page_index")? as usize;
     let page_id = payload
@@ -849,6 +859,32 @@ mod tests {
             draft_generation: None,
 
             operation_id: None,
+        }
+    }
+
+    #[test]
+    fn style_rule_scope_resolves_builtin_breakpoint_ids_to_media_queries() {
+        let breakpoint = fly::builtin_responsive_breakpoints()
+            .into_iter()
+            .next()
+            .expect("a built-in responsive breakpoint");
+        let scope = style_rule_scope_from_payload("media", breakpoint.id.as_str())
+            .expect("media breakpoint ID");
+
+        match scope {
+            StyleRuleScope::Media { query } => assert_eq!(query, breakpoint.media_query),
+            _ => panic!("expected media scope"),
+        }
+    }
+
+    #[test]
+    fn style_rule_scope_preserves_custom_media_queries() {
+        let query = "@media (min-width: 42rem)";
+        let scope = style_rule_scope_from_payload("media", query).expect("custom media query");
+
+        match scope {
+            StyleRuleScope::Media { query: actual } => assert_eq!(actual, query),
+            _ => panic!("expected media scope"),
         }
     }
 
