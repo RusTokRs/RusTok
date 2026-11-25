@@ -53,6 +53,15 @@ row. Legacy unscoped `get_price` reads only unscoped base rows; it never falls
 back to channel prices. Focused regression sources are unrun; PostgreSQL
 concurrent execution remains unverified.
 
+Persisted percentage rules require exact NUMERIC(16,6) scale (up to six
+fractional digits after removing trailing zeros), in addition to the existing
+(0, 100] domain. One-off discount calculation retains its separate contract.
+Rule authoring validates the saved row before commit and the projection
+mutation captures that row and its localized name within the same transaction.
+It no longer re-lists unscoped active price lists after commit, which could
+hide a successfully updated channel-scoped list or return a concurrent edit.
+Source regressions are authored, not executed; this is not a durable receipt.
+
 Admin SKU price upserts return the exact persisted row captured in the owner
 transaction, after successful commit, rather than searching the variant's
 prices again. Regional rows and concurrent later writes cannot substitute

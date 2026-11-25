@@ -401,3 +401,53 @@ async fn test_set_price_list_percentage_rule_clears_rule_metadata() {
     assert_eq!(option.rule_kind, None);
     assert_eq!(option.adjustment_percent, None);
 }
+
+#[tokio::test]
+async fn test_scoped_price_list_rule_projection_returns_saved_rule_and_refuses_rounding() {
+    let (db, service, _catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let channel_id = Uuid::new_v4();
+    seed_pricing_channel(&db, tenant_id, channel_id, "web-store").await;
+    let price_list_id = create_price_list_with_channel(
+        &db, tenant_id, "active", None, None, Some(channel_id), Some("web-store"),
+    )
+    .await;
+
+    let saved = service
+        .set_price_list_percentage_rule_projection(
+            tenant_id, actor_id, price_list_id, Some(dec!(12.345678)), "en", Some("en"),
+        )
+        .await
+        .expect("a scoped list must return its committed rule");
+    assert_eq!(saved.id, price_list_id);
+    assert_eq!(saved.channel_id, Some(channel_id));
+    assert_eq!(saved.channel_slug.as_deref(), Some("web-store"));
+    assert_eq!(saved.adjustment_percent, Some(dec!(12.345678)));
+
+    for invalid in [dec!(0.0000001), dec!(12.3456789)] {
+        assert!(service
+            .set_price_list_percentage_rule_projection(
+                tenant_id, actor_id, price_list_id, Some(invalid), "en", Some("en"),
+            )
+            .await
+            .is_err());
+    }
+
+    let lists = service
+        .list_active_price_lists_for_channel(
+            tenant_id, Some(channel_id), Some("web-store"), Some("en"), Some("en"),
+        )
+        .await
+        .unwrap();
+    let persisted = lists.iter().find(|list| list.id == price_list_id).unwrap();
+    assert_eq!(persisted.adjustment_percent, Some(dec!(12.345678)));
+    let cleared = service
+        .set_price_list_percentage_rule_projection(
+            tenant_id, actor_id, price_list_id, None, "en", Some("en"),
+        )
+        .await
+        .unwrap();
+    assert_eq!(cleared.rule_kind, None);
+    assert_eq!(cleared.adjustment_percent, None);
+}

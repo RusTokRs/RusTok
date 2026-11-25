@@ -682,6 +682,21 @@ They now capture any transport error into an `action_error` reactive signal and 
   [Product adapter](../../crates/modules/rustok-pricing/src/integrations/product_pricing_port.rs).
   Boundary regressions authored, not executed.
 
+### P-SCOPED-MUTATION-POSTCOMMIT-READ — do not rediscover the committed target
+
+- **Category:** mutation response integrity / scoped selection.
+- **Observed defect:** Pricing percentage-rule projection committed a list
+  update, then searched an unscoped active-list projection. A channel-scoped
+  list disappeared from that projection; expiry or concurrent writes could
+  also substitute a refusal or a later value for the committed mutation.
+- **Canonical correction:** capture the exact saved row and requested
+  translation projection inside the owner transaction, validate stored
+  percentage precision before commit, and return the captured result only
+  after successful commit. Do not claim this solves unknown commit outcomes.
+- **Evidence:** [Pricing commands](../../crates/modules/rustok-pricing/src/services/pricing/commands.rs),
+  [Pricing service regression](../../crates/modules/rustok-commerce/tests/pricing_service_test/price_list.rs).
+  Regression sources authored, not executed.
+
 ## 1. Core Philosophy: The 6 Universal Logic Dimensions
 
 Under [AGENTS.md §4](../../AGENTS.md), verify the affected behavior and its owner contract across the **6 Universal Logic Dimensions**. Use source matches to find code to inspect. A match alone cannot establish a behavioral defect:

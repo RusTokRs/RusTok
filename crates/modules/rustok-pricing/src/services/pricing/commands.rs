@@ -63,25 +63,42 @@ impl PricingService {
         price_list_id: Uuid,
         adjustment_percent: Option<Decimal>,
     ) -> CommerceResult<Option<PriceListRule>> {
-        if tenant_id.is_nil() || _actor_id.is_nil() || price_list_id.is_nil() {
+        let txn = self.db.begin().await?;
+        let price_list = Self::write_price_list_percentage_rule_in_tx(
+            &txn, tenant_id, _actor_id, price_list_id, adjustment_percent,
+        )
+        .await?;
+        let rule = resolution::stored_rule(&price_list).map_err(ResolutionError::into_commerce)?;
+        txn.commit().await?;
+        Ok(rule)
+    }
+
+    async fn write_price_list_percentage_rule_in_tx(
+        txn: &sea_orm::DatabaseTransaction,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        price_list_id: Uuid,
+        adjustment_percent: Option<Decimal>,
+    ) -> CommerceResult<entities::price_list::Model> {
+        if tenant_id.is_nil() || actor_id.is_nil() || price_list_id.is_nil() {
             return Err(CommerceError::Validation(
                 "tenant_id, actor_id, and price_list_id must not be nil UUIDs".to_string(),
             ));
         }
-        let txn = self.db.begin().await?;
-        let price_list = resolve_active_price_list_tx(&txn, tenant_id, price_list_id).await?;
-
         if let Some(percent) = adjustment_percent {
-            validate_discount_percent(percent)?;
+            validate_price_list_percentage(percent)?;
         }
-
+        let price_list = resolve_active_price_list_tx(txn, tenant_id, price_list_id).await?;
         let mut active: entities::price_list::ActiveModel = price_list.into();
         active.rule_kind = Set(adjustment_percent.map(|_| "percentage_discount".to_string()));
         active.adjustment_percent = Set(adjustment_percent);
-        let price_list = active.update(&txn).await?;
-
-        txn.commit().await?;
-        resolution::stored_rule(&price_list).map_err(ResolutionError::into_commerce)
+        let saved = active.update(txn).await?;
+        // Never commit a value that the owner cannot subsequently resolve.
+        resolution::stored_rule(&saved).map_err(ResolutionError::into_commerce)?;
+        if saved.adjustment_percent != adjustment_percent {
+            return Err(resolution::invalid_data("Stored price-list percentage differs from the authored value").into_commerce());
+        }
+        Ok(saved)
     }
 
     #[instrument(skip(self))]
@@ -94,19 +111,27 @@ impl PricingService {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> CommerceResult<ActivePriceListOption> {
-        resolve_active_price_list(&self.db, tenant_id, price_list_id).await?;
-        self.set_price_list_percentage_rule(tenant_id, actor_id, price_list_id, adjustment_percent)
+        let txn = self.db.begin().await?;
+        let saved = Self::write_price_list_percentage_rule_in_tx(
+            &txn, tenant_id, actor_id, price_list_id, adjustment_percent,
+        )
+        .await?;
+        let translations = entities::price_list_translation::Entity::find()
+            .filter(entities::price_list_translation::Column::PriceListId.eq(saved.id))
+            .all(&txn)
             .await?;
-
-        self.list_active_price_lists(tenant_id, Some(locale), fallback_locale.or(Some(locale)))
-            .await?
-            .into_iter()
-            .find(|price_list| price_list.id == price_list_id)
-            .ok_or_else(|| {
-                CommerceError::Validation(
-                    "price_list_id must reference an active price list".into(),
-                )
-            })
+        let name = Self::resolve_price_list_name(&translations, Some(locale), fallback_locale.or(Some(locale)));
+        let projection = ActivePriceListOption {
+            id: saved.id,
+            name,
+            list_type: saved.r#type,
+            channel_id: saved.channel_id,
+            channel_slug: saved.channel_slug,
+            rule_kind: saved.rule_kind,
+            adjustment_percent: saved.adjustment_percent,
+        };
+        txn.commit().await?;
+        Ok(projection)
     }
 
     #[instrument(skip(self))]

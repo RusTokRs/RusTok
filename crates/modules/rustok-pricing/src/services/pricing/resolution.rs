@@ -23,7 +23,7 @@ use rustok_core::{
 use super::{
     PriceListRule, PriceListRuleKind, PriceResolutionContext, PriceResolutionSource, ResolvedPrice,
     calculate_discount_percent, channel_scope_matches, is_sale_price, normalize_channel_slug,
-    validate_discount_percent, validate_price_precision, validate_price_tier_quantities,
+    validate_price_list_percentage, validate_price_precision, validate_price_tier_quantities,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -79,7 +79,7 @@ pub(super) fn stored_rule(
     match (model.rule_kind.as_deref(), model.adjustment_percent) {
         (None, None) => Ok(None),
         (Some("percentage_discount"), Some(percent)) => {
-            validate_discount_percent(percent)
+            validate_price_list_percentage(percent)
                 .map_err(|_| invalid_data("Stored price-list percentage is invalid"))?;
             Ok(Some(PriceListRule {
                 kind: PriceListRuleKind::PercentageDiscount,
@@ -471,7 +471,7 @@ mod tests {
         list.rule_kind = None;
         assert!(stored_rule(&list).is_err());
         list.rule_kind = Some("percentage_discount".into());
-        for percent in [Decimal::ZERO, Decimal::new(-1, 0), Decimal::new(101, 0)] {
+        for percent in [Decimal::ZERO, Decimal::new(-1, 0), Decimal::new(101, 0), Decimal::new(1, 7)] {
             list.adjustment_percent = Some(percent);
             assert!(stored_rule(&list).is_err());
         }

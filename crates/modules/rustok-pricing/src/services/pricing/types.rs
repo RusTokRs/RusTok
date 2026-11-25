@@ -416,6 +416,19 @@ pub(crate) fn validate_discount_percent(discount_percent: Decimal) -> CommerceRe
     Ok(())
 }
 
+/// Persisted list rules use NUMERIC(16,6); unlike a one-off adjustment,
+/// their percentage must round-trip exactly through the database.
+#[allow(clippy::result_large_err)]
+pub(crate) fn validate_price_list_percentage(percent: Decimal) -> CommerceResult<()> {
+    validate_discount_percent(percent)?;
+    if percent.normalize().scale() > 6 {
+        return Err(CommerceError::InvalidPrice(
+            "Price-list percentage must have at most six fractional digits".into(),
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn channel_scope_matches(
     scoped_channel_id: Option<Uuid>,
     scoped_channel_slug: Option<&str>,
@@ -464,5 +477,21 @@ mod price_storage_tests {
         }
         assert!(validate_price_precision(Decimal::new(1000, 3), None, "JPY").is_ok());
         assert!(validate_price_precision(Decimal::new(1001, 3), None, "USD").is_err());
+    }
+}
+
+#[cfg(test)]
+mod price_list_percentage_tests {
+    use super::*;
+
+    #[test]
+    fn persisted_rule_requires_exact_six_decimal_precision() {
+        for value in [Decimal::new(1, 6), Decimal::new(12345678, 6), Decimal::new(1000000000, 7)] {
+            assert!(validate_price_list_percentage(value).is_ok());
+        }
+        for value in [Decimal::ZERO, Decimal::new(1, 7), Decimal::new(123456789, 7), Decimal::new(1000000001, 7)] {
+            assert!(validate_price_list_percentage(value).is_err());
+        }
+        assert!(validate_discount_percent(Decimal::new(1, 7)).is_ok());
     }
 }
