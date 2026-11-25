@@ -2,7 +2,7 @@ use chrono::Utc;
 use rustok_modules::{
     AdmissionReverificationPolicyRevision, SeaOrmArtifactInstallationStore,
 };
-use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DatabaseBackend, Statement};
 use uuid::Uuid;
 
 async fn setup_db() -> DatabaseConnection {
@@ -37,7 +37,7 @@ async fn insert_admission(
     evidence: &str,
 ) {
     db.execute_raw(Statement::from_sql_and_values(
-        DbBackend::Sqlite,
+        DatabaseBackend::Sqlite,
         "INSERT INTO module_artifact_installations
          (installation_id, scope_kind, tenant_id)
          VALUES (?1, 'platform', NULL)"
