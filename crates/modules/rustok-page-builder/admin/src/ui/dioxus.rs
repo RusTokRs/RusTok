@@ -139,16 +139,49 @@ where
             EditorSessionEffect::ExecuteRequest {
                 request,
                 expected_hash,
+                preview_attempt_id,
             } => {
+                let preview_attempt_id = if let PageBuilderCapabilityRequest::Preview(input) = &request {
+                    let mut state = session.write();
+                    if let Some(id) = preview_attempt_id {
+                        if !state.preview_attempt_active(id) {
+                            continue;
+                        }
+                        Some(id)
+                    } else {
+                        if state.preview_in_progress {
+                            state.fail("Preview already in progress");
+                            continue;
+                        }
+                        let context = input.runtime.context.clone();
+                        let scenario = input.runtime.scenario_id.clone();
+                        state.runtime_context = context.clone();
+                        state.runtime_context_configured = true;
+                        state.active_runtime_scenario = scenario.clone();
+                        state.runtime_publish_gate_evaluation = None;
+                        let attempt = crate::core::session::PreviewAttempt::new(
+                            state.controller.editor().revision().project_hash,
+                            state.controller.active_page_index(),
+                            context,
+                            scenario,
+                        );
+                        let id = attempt.id;
+                        state.preview_request = Some(attempt);
+                        state.preview_in_progress = true;
+                        Some(id)
+                    }
+                } else {
+                    None
+                };
                 let Some(facade) = facade.clone() else {
                     // No request is sent and therefore no completion will ever
                     // arrive to retire an already prepared preview operation.
                     let mut state = session.write();
-                    if matches!(request, PageBuilderCapabilityRequest::Preview(_)) {
-                        state.preview_in_progress = false;
-                        state.preview_request = None;
+                    if let Some(id) = preview_attempt_id {
+                        state.handle_preview_failure(id, "Page Builder facade is missing".to_string());
+                    } else {
+                        state.fail("Page Builder facade is missing");
                     }
-                    state.fail("Page Builder facade is missing");
                     continue;
                 };
                 let capability = request.capability();
@@ -163,9 +196,12 @@ where
                         .is_some_and(|status| !status.preview_enabled())
                 {
                     let mut state = session.write();
-                    state.preview_in_progress = false;
-                    state.preview_request = None;
-                    state.fail("Server preview is disabled by the consumer provider or health policy");
+                    if let Some(id) = preview_attempt_id {
+                        state.handle_preview_failure(
+                            id,
+                            "Server preview is disabled by the consumer provider or health policy".to_string(),
+                        );
+                    }
                     continue;
                 }
                 let save_attempt = if capability == BuilderCapabilityKind::Publish {
@@ -184,37 +220,15 @@ where
                 } else {
                     None
                 };
-                if let PageBuilderCapabilityRequest::Preview(input) = &request {
-                    let mut state = session.write();
-                    if state.preview_in_progress {
-                        // An already prepared preview still has an in-flight
-                        // response. Do not allow a second request to steal its
-                        // correlation snapshot or clear its status on completion.
-                        state.fail("Preview already in progress");
-                        continue;
-                    }
-                    // Browser-origin previews supply runtime context in the
-                    // request instead of calling prepare_server_preview_request.
-                    let context = input.runtime.context.clone();
-                    let scenario = input.runtime.scenario_id.clone();
-                    state.runtime_context = context.clone();
-                    state.runtime_context_configured = true;
-                    state.active_runtime_scenario = scenario.clone();
-                    state.runtime_publish_gate_evaluation = None;
-                    state.preview_request = Some((
-                        state.controller.editor().revision().project_hash,
-                        state.controller.active_page_index(),
-                        context,
-                        scenario,
-                    ));
-                    state.preview_in_progress = true;
-                }
                 let on_publish_confirmed = on_publish_confirmed.clone();
                 let submitted_hash = expected_hash.as_ref().map(|hash| hash.hex());
                 let _task = spawn(async move {
                     let outcome = facade.execute(request).await;
                     let mut confirmed_write: Option<(String, String, Value)> = None;
                     let mut state = session.write();
+                    if preview_attempt_id.is_some_and(|id| !state.preview_attempt_active(id)) {
+                        return;
+                    }
                     match outcome {
                         Ok(PageBuilderCapabilityResponse::Publish(response))
                             if capability == BuilderCapabilityKind::Publish =>
@@ -251,7 +265,9 @@ where
                         Ok(PageBuilderCapabilityResponse::Preview(response))
                             if capability == BuilderCapabilityKind::Preview =>
                         {
-                            if let Err(error) = state.handle_preview_response(&response) {
+                            if let Some(id) = preview_attempt_id
+                                && let Err(error) = state.handle_preview_response(id, &response)
+                            {
                                 state.fail(error);
                             }
                         }
@@ -264,9 +280,9 @@ where
                                 if state.handle_publish_error_for_attempt(&id, error) {
                                     save_outcome_unknown.set(false);
                                 }
+                            } else if let Some(id) = preview_attempt_id {
+                                state.handle_preview_failure(id, error);
                             } else {
-                                state.preview_in_progress = false;
-                                state.preview_request = None;
                                 state.fail(error);
                             }
                         }
@@ -295,9 +311,9 @@ where
                                         }
                                     }
                                 }
+                            } else if let Some(id) = preview_attempt_id {
+                                state.handle_preview_failure(id, error.to_string());
                             } else {
-                                state.preview_in_progress = false;
-                                state.preview_request = None;
                                 state.fail(error.to_string());
                             }
                         }
@@ -1031,6 +1047,7 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                                 effects.push(EditorSessionEffect::ExecuteRequest {
                                     request,
                                     expected_hash,
+                                    preview_attempt_id: None,
                                 });
                             }
                         }

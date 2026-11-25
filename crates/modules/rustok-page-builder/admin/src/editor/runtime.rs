@@ -1,5 +1,6 @@
 #[cfg(not(target_arch = "wasm32"))]
 use crate::capability_access::intent_allowed;
+use crate::core::session::PreviewAttempt;
 use crate::{
     AdminCanvasController, AdminCanvasEffect, PageBuilderAdminFacade,
     PageBuilderAdminFacadeError, SaveAttempt,
@@ -131,7 +132,7 @@ pub struct AdminEditorRuntime {
     pub active_runtime_scenario: RwSignal<Option<String>>,
     pub runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
     pub runtime_publish_gate_evaluation: RwSignal<Option<RuntimePublishGateEvaluation>>,
-    preview_request: RwSignal<Option<(ProjectHash, usize, Value, Option<String>)>>,
+    preview_request: RwSignal<Option<PreviewAttempt>>,
     facade: Option<Arc<dyn PageBuilderAdminFacade>>,
     on_request: Option<Callback<PageBuilderCapabilityExecution>>,
     facade_missing: String,
@@ -381,7 +382,7 @@ impl AdminEditorRuntime {
         });
         match request {
             Ok((request, project_hash, active_page_index, runtime_context, scenario_id)) => {
-                self.preview_request.set(Some((
+                self.preview_request.set(Some(PreviewAttempt::new(
                     project_hash,
                     active_page_index,
                     runtime_context,
@@ -489,7 +490,7 @@ impl AdminEditorRuntime {
                         self.runtime_context.set(context.clone());
                         self.runtime_context_configured.set(true);
                         self.active_runtime_scenario.set(scenario.clone());
-                        self.preview_request.set(Some((
+                        self.preview_request.set(Some(PreviewAttempt::new(
                             actual_hash,
                             active_page_index,
                             context,
@@ -574,9 +575,16 @@ impl AdminEditorRuntime {
         } else {
             None
         };
-        if capability == BuilderCapabilityKind::Preview {
+        let preview_attempt_id = if capability == BuilderCapabilityKind::Preview {
+            let Some(attempt) = self.preview_request.get_untracked() else {
+                self.fail("Preview request has no tracked attempt");
+                return;
+            };
             self.preview_in_progress.set(true);
-        }
+            Some(attempt.id)
+        } else {
+            None
+        };
 
         if let Some(facade) = self.facade.as_ref() {
             let facade = Arc::clone(facade);
@@ -587,6 +595,7 @@ impl AdminEditorRuntime {
                     capability,
                     expected_hash,
                     save_attempt,
+                    preview_attempt_id,
                     outcome,
                 );
             });
@@ -602,6 +611,7 @@ impl AdminEditorRuntime {
                     capability,
                     completion_hash.clone(),
                     completion_attempt.clone(),
+                    preview_attempt_id,
                     outcome,
                 );
             });
@@ -611,13 +621,26 @@ impl AdminEditorRuntime {
                 on_complete,
             });
         } else {
-            self.preview_in_progress.set(false);
-            self.preview_request.set(None);
-            // SaveStarted is emitted before the host callback is selected. If neither a facade
-            // nor a callback exists, retire that exact attempt instead of leaving the editor
-            // permanently stuck in save_in_progress.
-            self.finish_failed_request(capability, save_attempt.as_ref());
-            self.fail(self.facade_missing.clone());
+            // A missing host must retire only the preview it failed to dispatch. A stale
+            // dispatch must never clear a newer preview or replace its error message.
+            if capability == BuilderCapabilityKind::Preview {
+                let active = preview_attempt_id.is_some_and(|id| {
+                    self.preview_in_progress.get_untracked()
+                        && self.preview_request.get_untracked()
+                            .is_some_and(|attempt| attempt.id == id)
+                });
+                if active {
+                    self.preview_in_progress.set(false);
+                    self.preview_request.set(None);
+                    self.fail(self.facade_missing.clone());
+                }
+            } else {
+                // SaveStarted is emitted before the host callback is selected. If neither a
+                // facade nor a callback exists, retire that exact attempt instead of leaving the
+                // editor permanently stuck in save_in_progress.
+                self.finish_failed_request(capability, save_attempt.as_ref());
+                self.fail(self.facade_missing.clone());
+            }
         }
     }
 
@@ -626,8 +649,18 @@ impl AdminEditorRuntime {
         capability: BuilderCapabilityKind,
         expected_hash: Option<ProjectHash>,
         save_attempt: Option<SaveAttempt>,
+        preview_attempt_id: Option<uuid::Uuid>,
         outcome: Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError>,
     ) {
+        if capability == BuilderCapabilityKind::Preview
+            && (!self.preview_in_progress.get_untracked()
+                || preview_attempt_id.is_none()
+                || self.preview_request.get_untracked().map(|attempt| attempt.id) != preview_attempt_id)
+        {
+            // An old callback (including a duplicate completion) must not
+            // consume the correlation state or error of a newer preview.
+            return;
+        }
         match outcome {
             Ok(PageBuilderCapabilityResponse::Preview(response))
                 if capability == BuilderCapabilityKind::Preview =>
@@ -663,7 +696,7 @@ impl AdminEditorRuntime {
                     return;
                 }
                 if preview_request.is_none_or(|expected| {
-                    expected
+                    expected.snapshot
                         != (
                             current.1,
                             current.2,

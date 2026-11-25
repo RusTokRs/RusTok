@@ -36,6 +36,32 @@ fn conflict_actual_revision(message: &str) -> Option<String> {
     None
 }
 
+/// Local correlation for a single asynchronous server preview. The snapshot
+/// describes the inputs, while the UUID distinguishes identical retries.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PreviewAttempt {
+    pub(crate) id: uuid::Uuid,
+    pub(crate) snapshot: (ProjectHash, usize, Value, Option<String>),
+}
+
+impl PreviewAttempt {
+    pub(crate) fn new(
+        hash: ProjectHash,
+        page_index: usize,
+        context: Value,
+        scenario: Option<String>,
+    ) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4(),
+            snapshot: (hash, page_index, context, scenario),
+        }
+    }
+
+    pub fn id(&self) -> uuid::Uuid {
+        self.id
+    }
+}
+
 #[derive(Clone)]
 pub struct EditorSessionState {
     pub controller: AdminCanvasController,
@@ -51,7 +77,7 @@ pub struct EditorSessionState {
     pub active_runtime_scenario: Option<String>,
     pub runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
     pub runtime_publish_gate_evaluation: Option<RuntimePublishGateEvaluation>,
-    pub preview_request: Option<(ProjectHash, usize, Value, Option<String>)>,
+    pub preview_request: Option<PreviewAttempt>,
     pub facade_missing: String,
     pub save_succeeded: String,
 }
@@ -140,10 +166,9 @@ impl EditorSessionState {
     ) {
         let runtime_context_configured = runtime_context.is_some();
         let runtime_context = runtime_context.unwrap_or_else(|| Value::Object(Map::new()));
-        let (trait_schemas_changed, trait_schemas) = match trait_schemas {
-            Some(next) => (!Arc::ptr_eq(&self.trait_schemas, &next), next),
-            None => (false, self.trait_schemas.clone()),
-        };
+        let trait_schemas = trait_schemas
+            .unwrap_or_else(|| Arc::new(TraitSchemaRegistry::with_builtins()));
+        let trait_schemas_changed = self.trait_schemas != trait_schemas;
         let (runtime_scenarios_changed, runtime_scenarios) = match runtime_scenarios {
             Some(next) => (self.runtime_scenarios != next, next),
             None => (
@@ -263,7 +288,7 @@ impl EditorSessionState {
                 ),
             ),
         );
-        self.preview_request = Some((
+        self.preview_request = Some(PreviewAttempt::new(
             project_hash,
             active_page_index,
             runtime_context.clone(),
@@ -281,8 +306,12 @@ impl EditorSessionState {
 
     pub fn handle_preview_response(
         &mut self,
+        attempt_id: uuid::Uuid,
         response: &PreviewPageBuilderResult,
     ) -> Result<(), String> {
+        if !self.preview_attempt_active(attempt_id) {
+            return Ok(());
+        }
         let preview_request = self.preview_request.take();
         self.preview_in_progress = false;
         let current_runtime_context = if self.runtime_context_configured {
@@ -311,7 +340,7 @@ impl EditorSessionState {
             return Err(msg);
         }
         if preview_request.is_none_or(|expected| {
-            expected
+            expected.snapshot
                 != (
                     current_hash,
                     current_active_page,
@@ -327,6 +356,19 @@ impl EditorSessionState {
         self.last_error = None;
         self.announce("Server preview refreshed");
         Ok(())
+    }
+
+    pub(crate) fn preview_attempt_active(&self, attempt_id: uuid::Uuid) -> bool {
+        self.preview_in_progress
+            && self.preview_request.as_ref().is_some_and(|attempt| attempt.id == attempt_id)
+    }
+
+    pub(crate) fn handle_preview_failure(&mut self, attempt_id: uuid::Uuid, message: String) {
+        if self.preview_attempt_active(attempt_id) {
+            self.preview_in_progress = false;
+            self.preview_request = None;
+            self.fail(message);
+        }
     }
 
     pub fn handle_publish_response(
@@ -558,6 +600,7 @@ impl EditorSessionState {
                                 effects.push(EditorSessionEffect::ExecuteRequest {
                                     request,
                                     expected_hash,
+                                    preview_attempt_id: None,
                                 });
                             }
                         }
@@ -576,6 +619,7 @@ impl EditorSessionState {
                         effects.push(EditorSessionEffect::ExecuteRequest {
                             request,
                             expected_hash: Some(hash),
+                            preview_attempt_id: self.preview_request.as_ref().map(PreviewAttempt::id),
                         });
                     }
                     Err(e) => {
@@ -609,15 +653,13 @@ impl EditorSessionState {
             EditorSessionAction::SaveFailed { attempt, message } => {
                 self.mark_save_failed_for_attempt(&attempt, message);
             }
-            EditorSessionAction::PreviewAcknowledged(response) => {
-                if let Err(err) = self.handle_preview_response(&response) {
+            EditorSessionAction::PreviewAcknowledged { attempt_id, response } => {
+                if let Err(err) = self.handle_preview_response(attempt_id, &response) {
                     self.fail(err);
                 }
             }
-            EditorSessionAction::PreviewFailed(err) => {
-                self.preview_in_progress = false;
-                self.preview_request = None;
-                self.fail(err);
+            EditorSessionAction::PreviewFailed { attempt_id, message } => {
+                self.handle_preview_failure(attempt_id, message);
             }
             EditorSessionAction::Announce(msg) => {
                 self.announce(msg);
@@ -650,8 +692,14 @@ pub enum EditorSessionAction {
         attempt: SaveAttempt,
         message: String,
     },
-    PreviewAcknowledged(Box<PreviewPageBuilderResult>),
-    PreviewFailed(String),
+    PreviewAcknowledged {
+        attempt_id: uuid::Uuid,
+        response: Box<PreviewPageBuilderResult>,
+    },
+    PreviewFailed {
+        attempt_id: uuid::Uuid,
+        message: String,
+    },
     Announce(String),
     Fail(String),
     ClearError,
@@ -664,6 +712,7 @@ pub enum EditorSessionEffect {
     ExecuteRequest {
         request: PageBuilderCapabilityRequest,
         expected_hash: Option<ProjectHash>,
+        preview_attempt_id: Option<uuid::Uuid>,
     },
 }
 
@@ -839,7 +888,7 @@ mod tests {
         state.runtime_context_configured = true;
         state.active_runtime_scenario = Some("old-scenario".to_string());
         state.server_preview_html = Some("<main>old</main>".to_string());
-        state.preview_request = Some((
+        state.preview_request = Some(PreviewAttempt::new(
             state.controller.editor().revision().project_hash,
             0,
             serde_json::json!({ "tenant": "old" }),
@@ -865,6 +914,51 @@ mod tests {
         assert!(state.preview_request.is_none());
         assert!(!state.preview_in_progress);
         assert!(state.last_error.is_none());
+    }
+
+    #[test]
+    fn stale_preview_completion_cannot_retire_an_identical_retry() {
+        let mut state = EditorSessionState::new(sample_controller(), "Missing", "Saved");
+        state.prepare_server_preview_request().expect("first preview");
+        let first = state.preview_request.as_ref().expect("attempt").id;
+        state.update_host_configuration(
+            None,
+            None,
+            Some(json!({"changed": true})),
+            None,
+            None,
+            true,
+        );
+        state.update_host_configuration(None, None, None, None, None, true);
+        state.prepare_server_preview_request().expect("second preview");
+        let second = state.preview_request.as_ref().expect("attempt").id;
+        assert_ne!(first, second);
+        let response = PreviewPageBuilderResult {
+            page_id: "home".to_string(),
+            html: "<main>stale</main>".to_string(),
+            runtime_scenario_id: None,
+        };
+        state.handle_preview_failure(first, "stale error".to_string());
+        state.handle_preview_response(first, &response).expect("ignore stale");
+        assert!(state.preview_attempt_active(second));
+        assert!(state.last_error.is_none());
+        assert!(state.server_preview_html.is_none());
+
+        let response = PreviewPageBuilderResult {
+            html: "<main>current</main>".to_string(),
+            ..response
+        };
+        state.handle_preview_response(second, &response).expect("current preview");
+        assert!(!state.preview_in_progress);
+        assert_eq!(state.server_preview_html.as_deref(), Some("<main>current</main>"));
+    }
+
+    #[test]
+    fn removing_host_trait_registry_restores_builtin_schemas() {
+        let mut state = EditorSessionState::new(sample_controller(), "Missing", "Saved")
+            .with_trait_schemas(Arc::new(TraitSchemaRegistry::default()));
+        state.update_host_configuration(None, None, None, None, None, true);
+        assert_eq!(state.trait_schemas.as_ref(), &TraitSchemaRegistry::with_builtins());
     }
 
     #[test]

@@ -281,7 +281,14 @@ unchanged props and suppress a needed rerender. Regression coverage authored, no
 The Leptos FlyEditorWorkspace's typed `on_intent` callback forwards Save/Preview and
 announcement effects to `AdminEditorRuntime`. The runtime compares the command sequence and
 submitted project hash before dispatch, captures the exact `SaveAttempt`, and retains the
-browser-provided preview context for response correlation.
+browser-provided preview context for response correlation. Server preview attempts also have
+a local UUID independent of their project hash, page index and runtime context. A superseded
+success, failure or duplicate callback cannot consume a newer preview's state, even when its
+inputs are identical. The Dioxus effect dispatcher distinguishes a prepared preview from a
+browser-origin request and retires only the matching attempt on transport/provider failure.
+Removing a host-supplied trait registry restores the builtin registry rather than retaining
+the previous host's schemas. Missing Leptos facades retire only the matching preview attempt,
+so the preview indicator cannot remain busy and stale dispatch failures cannot clear a newer one.
 
 Browser intent admission also rejects a supplied document page ID that disagrees with the
 controller's own page ID, including read-only intents. Leptos validates the completed workspace
