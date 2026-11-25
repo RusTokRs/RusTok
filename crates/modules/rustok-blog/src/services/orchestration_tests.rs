@@ -73,6 +73,7 @@ async fn test_create_promoted_post_validation() {
         post_id: Uuid::new_v4(),
         tenant_id: Uuid::new_v4(),
         author_id: Uuid::new_v4(),
+        actor_id: None,
         category_id: None,
         status: "published".to_string(),
         slug: "valid-post".to_string(),
@@ -161,6 +162,7 @@ async fn test_orchestration_promote_and_demote_lifecycle() {
         post_id,
         tenant_id,
         author_id,
+        actor_id: None,
         category_id: None,
         status: "published".to_string(),
         slug: "promoted-slug".to_string(),
@@ -208,6 +210,7 @@ async fn test_orchestration_promote_and_demote_lifecycle() {
         &txn,
         tenant_id,
         post_id,
+        None,
     )
     .await
     .unwrap();

@@ -27,6 +27,7 @@ fn compensation_write_context_uses_the_trusted_system_actor() {
         "delete-after-public-target-loss",
         Uuid::new_v4(),
         Uuid::new_v4(),
+        std::time::Duration::from_secs(2),
     )
     .expect("system compensation context should be valid");
 

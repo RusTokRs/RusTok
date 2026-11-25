@@ -89,7 +89,11 @@ pub fn blog_post_admin_table_row_view(
 ) -> BlogPostAdminTableRowViewModel {
     let post_id = post.id;
     let is_editing = is_editing_post(editing_post_id, post_id.as_str());
-    let is_busy = busy_key.is_some();
+    // A busy key is scoped to the single post it operates on; an in-flight
+    // action on one row must not freeze the action buttons of every other
+    // row. The key's last segment carries the post id, so only the row whose
+    // id matches is marked busy.
+    let is_busy = row_is_busy_for_post(busy_key, post_id.as_str());
     let is_published = is_published_status(post.status.as_str());
     let is_archived = is_archived_status(post.status.as_str());
     let show_publish_action = should_show_publish_action(is_archived);

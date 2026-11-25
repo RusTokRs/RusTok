@@ -279,9 +279,10 @@ pub fn BlogAdmin() -> impl IntoView {
         let tenant_value = tenant.get_untracked();
         let ui_locale = edit_post_locale.clone();
         let request = core::EditorRequest::new(Some(post_id.clone()), requested_locale.clone());
+        let edit_busy_key = core::busy_key_for_edit(post_id.as_str());
         editor_request.set(Some(request.clone()));
         set_submit_error.set(None);
-        set_busy_key.set(Some(core::busy_key_for_edit(post_id.as_str())));
+        set_busy_key.set(Some(edit_busy_key.clone()));
 
         spawn_local(async move {
             match transport::fetch_post(
@@ -292,7 +293,15 @@ pub fn BlogAdmin() -> impl IntoView {
             )
             .await
             {
-                _ if !request.is_current(editor_request.get_untracked().as_ref()) => return,
+                _ if !request.is_current(editor_request.get_untracked().as_ref()) => {
+                    if core::should_release_busy_key(
+                        set_busy_key.get_untracked().as_deref(),
+                        edit_busy_key.as_str(),
+                    ) {
+                        set_busy_key.set(None);
+                    }
+                    return;
+                }
                 Ok(Some(post))
                     if !request.accepts_post(editor_request.get_untracked().as_ref(), &post) =>
                 {
@@ -509,6 +518,12 @@ pub fn BlogAdmin() -> impl IntoView {
             if !request.is_current(editor_request.try_get_untracked().flatten().as_ref())
                 || editor_principal.try_get_untracked().as_ref() != Some(&principal)
             {
+                if core::should_release_busy_key(
+                    set_busy_key.get_untracked().as_deref(),
+                    command.busy_key.as_str(),
+                ) {
+                    set_busy_key.set(None);
+                }
                 return;
             }
             let cleanup_failed = retained.as_ref().is_some_and(|(scope, draft)| {
@@ -547,6 +562,12 @@ pub fn BlogAdmin() -> impl IntoView {
                             || editor_principal.try_get_untracked().as_ref()
                                 != Some(&principal) =>
                         {
+                            if core::should_release_busy_key(
+                                set_busy_key.get_untracked().as_deref(),
+                                command.busy_key.as_str(),
+                            ) {
+                                set_busy_key.set(None);
+                            }
                             return;
                         }
                         Ok(Some(post))
@@ -631,7 +652,15 @@ pub fn BlogAdmin() -> impl IntoView {
 
         spawn_local(async move {
             match transport::delete_post(token_value, tenant_value, command.post_id.clone()).await {
-                _ if !request.is_current(editor_request.get_untracked().as_ref()) => return,
+                _ if !request.is_current(editor_request.get_untracked().as_ref()) => {
+                    if core::should_release_busy_key(
+                        set_busy_key.get_untracked().as_deref(),
+                        command.busy_key.as_str(),
+                    ) {
+                        set_busy_key.set(None);
+                    }
+                    return;
+                }
                 Ok(deleted) => {
                     let delete_result = core::blog_post_delete_result_view(
                         deleted,
@@ -699,14 +728,23 @@ pub fn BlogAdmin() -> impl IntoView {
             core::EditorRequest::new(editing_post_id.get_untracked(), locale.get_untracked());
         editor_request.set(Some(request.clone()));
         set_submit_error.set(None);
-        set_busy_key.set(Some(core::busy_key_for_preview(post_id.as_str())));
+        let preview_busy_key = core::busy_key_for_preview(post_id.as_str());
+        set_busy_key.set(Some(preview_busy_key.clone()));
 
         spawn_local(async move {
             // The default TTL (168h) matches the backend default; the owner
             // service validates the 1..720h range and revokes tokens on any
             // lifecycle transition away from draft.
             match transport::create_preview_token(token_value, tenant_value, post_id, None).await {
-                _ if !request.is_current(editor_request.get_untracked().as_ref()) => return,
+                _ if !request.is_current(editor_request.get_untracked().as_ref()) => {
+                    if core::should_release_busy_key(
+                        set_busy_key.get_untracked().as_deref(),
+                        preview_busy_key.as_str(),
+                    ) {
+                        set_busy_key.set(None);
+                    }
+                    return;
+                }
                 Ok(minted) => {
                     set_preview_token.set(Some(minted));
                 }

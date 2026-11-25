@@ -23,7 +23,16 @@ pub fn blog_post_admin_clear_post_query_intent() -> BlogPostAdminRouteQueryInten
 }
 
 pub fn parse_tags(raw: &str) -> Vec<String> {
-    parse_ui_csv(raw)
+    // Deduplicate while preserving the user's order: the domain normalises and
+    // deduplicates tag term ids downstream, but keeping the canonical list free
+    // of repeats avoids duplicated chips in the admin list and storefront.
+    let mut tags = Vec::new();
+    for tag in parse_ui_csv(raw) {
+        if !tags.contains(&tag) {
+            tags.push(tag);
+        }
+    }
+    tags
 }
 
 pub fn status_badge_class(status: &str) -> &'static str {
@@ -76,6 +85,17 @@ pub fn busy_key_for_preview(post_id: &str) -> String {
 
 pub fn is_save_busy(busy_key: Option<&str>) -> bool {
     busy_key == Some("create") || ui_busy_key_matches_action(busy_key, "save")
+}
+
+/// Releases the shared editor busy key when a request that finished is obsolete.
+///
+/// A completion can arrive after a newer request has already started. The stale
+/// completion must never drop the busy key of the request that is actually in
+/// flight, but it must also never leave the editor locked after the obsolete
+/// request resolves. Release the key only when it still belongs to the finishing
+/// request; otherwise leave the newer in-flight key untouched.
+pub fn should_release_busy_key(current: Option<&str>, expected: &str) -> bool {
+    current.is_some_and(|value| value == expected)
 }
 
 pub fn label_with_id(template: &str, id: &str) -> String {
