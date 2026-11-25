@@ -176,6 +176,15 @@ gates in the [Page Builder backlog](../../../../docs/modules/page-builder-backlo
    exhaustively at the GraphQL boundary); `AuthSettingsOverrides::apply` is
    live runtime wiring, not dead code.
 
+## Direct session mutation ordering (source only)
+
+Refresh and bulk session revocation use the shared tenant-scoped user mutation
+fence before acquiring session locks. Bulk self-service revocation checks the
+current session again under lock. SQLite history-only replay reserves its writer
+before reading the evidence. Regressions exercise lock ordering and stale current
+session rejection; PostgreSQL contention, compilation and the remediation gate
+remain maintainer-run.
+
 ## Direct session refresh history (source only)
 
 The platform migration preserves the available previous digest and timestamp; every

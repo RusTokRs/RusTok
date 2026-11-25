@@ -93,6 +93,14 @@ satisfy the platform multilingual storage contract. Their translation-table cuto
 is an explicit release-plan priority in this module's implementation plan; transports
 must not introduce a competing JSON or request-local fallback in the meantime.
 
+## Direct session concurrency
+
+The host uses user-before-session locking for direct refresh and bulk self-service
+revocation, matching credential changes. Refresh revalidates the digest and subject
+under the locks; historical replay locks the session only and never acquires a user
+lock afterward. Bulk self-service revocation requires a still-active current session.
+SQLite history-only replay acquires the writer before reading the history.
+
 ## Direct session refresh history
 
 The host records each rotated refresh digest and its timestamp in `session_refresh_history`

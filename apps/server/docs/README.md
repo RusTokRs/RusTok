@@ -563,6 +563,13 @@ misleading `invalid_client` / HTTP 401 responses.
 All `/api/oauth/*` responses, including consent HTML, authorization redirects,
 userinfo, and failures, carry `Cache-Control: no-store` and `Pragma: no-cache`.
 
+Direct refresh and bulk session revocation acquire the tenant-scoped user
+mutation fence before session locks. The initial refresh digest lookup is a
+non-authoritative routing hint; state is rechecked under lock. History-only
+replay reserves the SQLite writer before reading evidence. Bulk self-service
+revocation rechecks the current session under lock. Source regressions authored,
+PostgreSQL contention and mounted verification remain pending.
+
 Direct-session rotation records the outgoing hash and its rotation time in
 `session_refresh_history` atomically with replacement. Replay of any recorded
 generation outside grace revokes the current tenant-scoped session. The previous

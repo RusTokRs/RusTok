@@ -897,7 +897,27 @@ impl AuthLifecycleService {
         require_email_verification: bool,
     ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
         let token_hash = hash_refresh_token(refresh_token);
+        // This lookup is only a routing hint, outside the transaction. The
+        // authoritative user and session are reloaded under their locks in
+        // user -> session order, matching password changes and deactivation.
+        // In particular, SQLite must not start a deferred read transaction
+        // before acquiring its writer fence.
+        let observed = sessions::Entity::find()
+            .filter(sessions::Column::TenantId.eq(tenant_id))
+            .filter(sessions::Column::TokenHash.eq(&token_hash))
+            .one(db)
+            .await
+            .map_err(AuthLifecycleError::from)?;
         let txn = db.begin().await.map_err(AuthLifecycleError::from)?;
+
+        let Some(observed) = observed else {
+            Self::detect_refresh_reuse_in_tx(&txn, tenant_id, &token_hash).await?;
+            txn.commit().await.map_err(AuthLifecycleError::from)?;
+            return Err(AuthLifecycleError::InvalidRefreshToken);
+        };
+        let user = Self::find_user_for_update_in_tx(&txn, tenant_id, observed.user_id)
+            .await?
+            .ok_or(AuthLifecycleError::UserNotFound)?;
 
         let session = match Self::find_refresh_session_for_update_in_tx(
             &txn,
@@ -906,12 +926,11 @@ impl AuthLifecycleService {
         )
         .await?
         {
-            Some(session) => session,
+            Some(session) if session.id == observed.id && session.user_id == user.id => session,
+            Some(_) => return Err(AuthLifecycleError::InvalidRefreshToken),
             None => {
-                // No live session holds this hash. If it is the token
-                // rotated away at any recorded refresh, its replay after
-                // the grace window means theft: revoke the lineage and
-                // commit that revocation before failing closed.
+                // Another refresh may have rotated the digest while we waited
+                // for the user lock. Check committed history, never the hint.
                 Self::detect_refresh_reuse_in_tx(&txn, tenant_id, &token_hash).await?;
                 txn.commit().await.map_err(AuthLifecycleError::from)?;
                 return Err(AuthLifecycleError::InvalidRefreshToken);
@@ -921,16 +940,6 @@ impl AuthLifecycleService {
         if !session.is_active() {
             return Err(AuthLifecycleError::SessionExpired);
         }
-
-        // The refresh session and the referenced user must belong to the
-        // same tenant. A stale or inconsistent cross-tenant foreign key must
-        // never be exchanged for an access token in the session tenant.
-        let user = users::Entity::find_by_id(session.user_id)
-            .filter(users::Column::TenantId.eq(tenant_id))
-            .one(&txn)
-            .await
-            .map_err(AuthLifecycleError::from)?
-            .ok_or(AuthLifecycleError::UserNotFound)?;
 
         if !user.is_active() {
             return Err(AuthLifecycleError::UserInactive);
@@ -1019,6 +1028,20 @@ impl AuthLifecycleService {
         tenant_id: uuid::Uuid,
         token_hash: &str,
     ) -> std::result::Result<(), AuthLifecycleError> {
+        // History-only requests have not necessarily acquired a writer yet.
+        // Reserve SQLite's writer before reading history, using a tenant-
+        // scoped parent predicate; do not upgrade a stale read transaction.
+        if txn.get_database_backend() == DatabaseBackend::Sqlite {
+            let statement = Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "UPDATE sessions SET last_used_at = last_used_at WHERE tenant_id = ?1 AND revoked_at IS NULL AND id IN (SELECT session_id FROM session_refresh_history WHERE token_hash = ?2)",
+                [tenant_id.into(), token_hash.to_owned().into()],
+            );
+            txn.execute_raw(statement)
+                .await
+                .map_err(AuthLifecycleError::from)?;
+        }
+
         let history = session_refresh_history::Entity::find_by_id(token_hash.to_owned())
             .inner_join(sessions::Entity)
             .filter(sessions::Column::TenantId.eq(tenant_id))
@@ -1084,34 +1107,9 @@ impl AuthLifecycleService {
         tenant_id: uuid::Uuid,
         user_id: uuid::Uuid,
     ) -> std::result::Result<Option<users::Model>, AuthLifecycleError> {
-        let query =
-            users::Entity::find_by_id(user_id).filter(users::Column::TenantId.eq(tenant_id));
-        match txn.get_database_backend() {
-            DatabaseBackend::Postgres | DatabaseBackend::MySql => query
-                .lock_exclusive()
-                .one(txn)
-                .await
-                .map_err(AuthLifecycleError::from),
-            DatabaseBackend::Sqlite => {
-                // The key is known, so reserve SQLite's write lock before the
-                // first read. A deferred read-then-write upgrade can otherwise
-                // race another credential/profile mutation.
-                let statement = Statement::from_sql_and_values(
-                    DatabaseBackend::Sqlite,
-                    "UPDATE users SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
-                    [tenant_id.into(), user_id.into()],
-                );
-                let result = txn
-                    .execute_raw(statement)
-                    .await
-                    .map_err(AuthLifecycleError::from)?;
-                if result.rows_affected() != 1 {
-                    return Ok(None);
-                }
-                query.one(txn).await.map_err(AuthLifecycleError::from)
-            }
-            _ => Err(AuthLifecycleError::Internal(Error::InternalServerError)),
-        }
+        Self::lock_user_for_mutation(txn, tenant_id, user_id)
+            .await
+            .map_err(AuthLifecycleError::from)
     }
 
     async fn find_current_session_for_password_change_in_tx(
@@ -1568,18 +1566,30 @@ impl AuthLifecycleService {
         user_id: uuid::Uuid,
         except_session_id: Option<uuid::Uuid>,
     ) -> std::result::Result<u64, AuthLifecycleError> {
-        let mut query = sessions::Entity::update_many()
-            .col_expr(sessions::Column::RevokedAt, Expr::value(Utc::now()))
-            .filter(sessions::Column::TenantId.eq(tenant_id))
-            .filter(sessions::Column::UserId.eq(user_id))
-            .filter(sessions::Column::RevokedAt.is_null());
-
+        let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
+        let user = Self::find_user_for_update_in_tx(&tx, tenant_id, user_id)
+            .await?
+            .ok_or(AuthLifecycleError::UserNotFound)?;
         if let Some(session_id) = except_session_id {
-            query = query.filter(sessions::Column::Id.ne(session_id));
+            if !user.is_active() {
+                return Err(AuthLifecycleError::UserInactive);
+            }
+            // A request authenticated before its session was revoked must
+            // not subsequently revoke the user's remaining sessions.
+            Self::find_current_session_for_password_change_in_tx(
+                &tx, tenant_id, user_id, session_id,
+            )
+            .await?
+            .filter(|session| session.is_active())
+            .ok_or(AuthLifecycleError::SessionExpired)?;
         }
 
-        let result = query.exec(db).await.map_err(AuthLifecycleError::from)?;
-        Ok(result.rows_affected)
+        let count = Self::revoke_user_sessions_db_with_connection(
+            &tx, tenant_id, user_id, except_session_id,
+        )
+        .await?;
+        tx.commit().await.map_err(AuthLifecycleError::from)?;
+        Ok(count)
     }
 }
 
@@ -3005,6 +3015,73 @@ mod tests {
             .expect_err("invalid token payload must be rejected");
 
         assert!(matches!(err, crate::error::Error::Unauthorized(_)));
+    }
+
+    #[tokio::test]
+    async fn refresh_acquires_user_fence_before_session_rotation() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Fence tenant", "refresh-user-fence")
+            .insert(&db).await.expect("tenant");
+        let user = users::ActiveModel::new(tenant.id, "fence@example.com", "hash")
+            .insert(&db).await.expect("user");
+        let raw_token = "refresh-user-fence-token";
+        let digest = hash_refresh_token(raw_token);
+        let session = sessions::ActiveModel::new(
+            tenant.id, user.id, digest.clone(), Utc::now() + Duration::hours(1), None, None,
+        )
+        .insert(&db).await.expect("session");
+
+        db.execute_unprepared("CREATE TABLE refresh_fence_probe (seen INTEGER NOT NULL)")
+            .await.expect("create probe");
+        db.execute_unprepared(
+            "CREATE TRIGGER record_refresh_user_fence AFTER UPDATE ON users \
+             BEGIN INSERT INTO refresh_fence_probe VALUES (1); END;",
+        )
+        .await.expect("record user fence");
+        db.execute_unprepared(
+            "CREATE TRIGGER require_refresh_user_fence BEFORE UPDATE ON sessions \
+             WHEN NOT EXISTS (SELECT 1 FROM refresh_fence_probe) \
+             BEGIN SELECT RAISE(ABORT, 'session locked before user'); END;",
+        )
+        .await.expect("require user fence");
+        let config = test_auth_config("refresh-user-fence", 600, 3600);
+        let (_, tokens) = AuthLifecycleService::refresh_with_config_db(
+            &db, &config, tenant.id, raw_token, false,
+        )
+        .await.expect("user fence precedes session lock");
+        let persisted = sessions::Entity::find_by_id(session.id)
+            .one(&db).await.expect("read").expect("session");
+        assert_eq!(persisted.token_hash, hash_refresh_token(&tokens.refresh_token));
+        assert_eq!(persisted.previous_token_hash, Some(digest));
+    }
+
+    #[tokio::test]
+    async fn revoked_current_session_cannot_revoke_remaining_sessions() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Stale tenant", "stale-bulk-revoke")
+            .insert(&db).await.expect("tenant");
+        let user = users::ActiveModel::new(tenant.id, "stale@example.com", "hash")
+            .insert(&db).await.expect("user");
+        let mut stale = sessions::ActiveModel::new(
+            tenant.id, user.id, "stale-token".to_string(),
+            Utc::now() + Duration::hours(1), None, None,
+        );
+        stale.revoked_at = Set(Some(Utc::now().into()));
+        let stale = stale.insert(&db).await.expect("revoked session");
+        let other = sessions::ActiveModel::new(
+            tenant.id, user.id, "other-token".to_string(),
+            Utc::now() + Duration::hours(1), None, None,
+        )
+        .insert(&db).await.expect("active session");
+
+        let result = AuthLifecycleService::revoke_user_sessions_db(
+            &db, tenant.id, user.id, Some(stale.id),
+        )
+        .await;
+        assert!(matches!(result, Err(AuthLifecycleError::SessionExpired)));
+        let persisted = sessions::Entity::find_by_id(other.id)
+            .one(&db).await.expect("read").expect("session");
+        assert!(persisted.is_active());
     }
 
     #[tokio::test]
