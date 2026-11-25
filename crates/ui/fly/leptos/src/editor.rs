@@ -918,6 +918,7 @@ pub fn FlyStyleRules(
             <button
                 type="button"
                 data-fly-ssr-only="true"
+                hidden=intent_mode
                 disabled=!styles_enabled
                 on:click=move |_| preview.run(breakpoint_id.get_untracked())
             >
@@ -2922,10 +2923,13 @@ pub fn FlyEditorWorkspace(
             data-fly-wasm-hydrated=move || if wasm_hydrated.get() { "true" } else { "false" }
             on:keydown=on_workspace_keydown
         >
-            <style>
-                {r#".fly-editor[data-fly-wasm-hydrated="false"] [data-fly-ssr-only="true"] { display: none !important; }"#}
-            </style>
-            <div class="fly-editor__toolbar" data-fly-ssr-only="true" role="toolbar" aria-label=toolbar_label>
+            <div
+                class="fly-editor__toolbar"
+                data-fly-ssr-only="true"
+                hidden=move || !wasm_hydrated.get()
+                role="toolbar"
+                aria-label=toolbar_label
+            >
                 <button
                     type="button"
                     disabled=move || {
@@ -3029,7 +3033,7 @@ pub fn FlyEditorWorkspace(
                     </button>
                 </div>
             </div>
-            <div data-fly-ssr-only="true">
+            <div data-fly-ssr-only="true" hidden=move || !wasm_hydrated.get()>
                 {move || {
                     let active = active_page.get();
                     view! {
@@ -3076,7 +3080,7 @@ pub fn FlyEditorWorkspace(
                         />
                     }
                 }}
-                <div data-fly-ssr-only="true">
+                <div data-fly-ssr-only="true" hidden=move || !wasm_hydrated.get()>
                     {move || {
                         let snapshot = properties_snapshot.get();
                         match snapshot {
@@ -3109,7 +3113,7 @@ pub fn FlyEditorWorkspace(
                             page_index=page_index
                             messages=panel_messages.clone()
                         />
-                        <div data-fly-ssr-only="true">
+                        <div data-fly-ssr-only="true" hidden=move || !wasm_hydrated.get()>
                             <FlyCanvasPreview
                                 document=document
                                 page_index=Some(page_index)
@@ -3124,7 +3128,7 @@ pub fn FlyEditorWorkspace(
                         </div>
                     }
                 }}
-                <div data-fly-ssr-only="true">
+                <div data-fly-ssr-only="true" hidden=move || !wasm_hydrated.get()>
                     {
                         let component_messages = component_messages.clone();
                         move || {
@@ -3160,7 +3164,7 @@ pub fn FlyEditorWorkspace(
                         }
                     }
                 }
-                <div data-fly-ssr-only="true">
+                <div data-fly-ssr-only="true" hidden=move || !wasm_hydrated.get()>
                     {move || {
                         let assets = asset_snapshot.get();
                         let selected_component =
@@ -3438,7 +3442,7 @@ mod tests {
 
         assert!(html.contains("data-fly-wasm-hydrated=\"false\""));
         assert!(html.contains("data-fly-ssr-only=\"true\""));
-        assert!(html.contains("display: none !important"));
+        assert!(html.contains("hidden"));
     }
 
     #[test]
