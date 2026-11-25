@@ -687,7 +687,7 @@ mod selected_resize_tests {
             }))
         ).is_err());
 
-        let mut maximum_controller = controller();
+        let mut maximum_controller = self::controller();
         maximum_controller.dispatch(UiIntent::Select(Some("hero".to_string())))
             .expect("select");
         let maximum_intent = maximum_controller.ssr_selected_style_patch_intent(

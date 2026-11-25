@@ -3403,7 +3403,7 @@ mod tests {
         let html = view! {
             <FlyEditorWorkspace
                 document=sample_document()
-                page_index=0
+                initial_page=0
                 on_intent=Callback::new(|_: BrowserIntentEnvelope| {})
             />
         }
