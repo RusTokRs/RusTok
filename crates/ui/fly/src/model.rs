@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ProjectDocument {
-    pub(crate) project: GrapesProject,
+    project: GrapesProject,
     #[serde(skip)]
     pub(crate) component_index: std::sync::OnceLock<ComponentIndex>,
     #[serde(skip)]

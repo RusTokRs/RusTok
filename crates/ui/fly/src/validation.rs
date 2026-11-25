@@ -118,8 +118,8 @@ pub fn validate_project_with_embed_registry(
     if report.page_count > DEFAULT_MAXIMUM_PAGES {
         return report;
     }
-    if document.project.assets.len() > DEFAULT_MAXIMUM_ASSETS {
-        report.asset_count = document.project.assets.len();
+    if document.project().assets.len() > DEFAULT_MAXIMUM_ASSETS {
+        report.asset_count = document.project().assets.len();
         report.diagnostics.push(diagnostic(
             ValidationSeverity::Error,
             "maximum_assets_exceeded",
@@ -131,8 +131,8 @@ pub fn validate_project_with_embed_registry(
         ));
         return report;
     }
-    if document.project.styles.len() > DEFAULT_MAXIMUM_STYLE_RULES {
-        report.style_rule_count = document.project.styles.len();
+    if document.project().styles.len() > DEFAULT_MAXIMUM_STYLE_RULES {
+        report.style_rule_count = document.project().styles.len();
         report.diagnostics.push(diagnostic(
             ValidationSeverity::Error,
             "maximum_style_rules_exceeded",
@@ -226,7 +226,7 @@ fn validate_theme_tokens(document: &ProjectDocument, report: &mut ValidationRepo
 }
 
 fn validate_pages(document: &ProjectDocument, report: &mut ValidationReport) {
-    report.page_count = document.project.pages.len();
+    report.page_count = document.project().pages.len();
     if report.page_count > DEFAULT_MAXIMUM_PAGES {
         report.diagnostics.push(diagnostic(
             ValidationSeverity::Error,
@@ -239,7 +239,7 @@ fn validate_pages(document: &ProjectDocument, report: &mut ValidationReport) {
         ));
         return;
     }
-    if document.project.pages.is_empty() {
+    if document.project().pages.is_empty() {
         report.diagnostics.push(ValidationDiagnostic {
             severity: ValidationSeverity::Error,
             code: "missing_pages".to_string(),
@@ -250,7 +250,7 @@ fn validate_pages(document: &ProjectDocument, report: &mut ValidationReport) {
     }
 
     let mut page_ids = BTreeSet::new();
-    for (index, page) in document.project.pages.iter().enumerate() {
+    for (index, page) in document.project().pages.iter().enumerate() {
         let path = format!("pages[{index}]");
         match page.id.as_deref() {
             Some(id) if id.trim().is_empty() => report.diagnostics.push(diagnostic(
@@ -490,7 +490,7 @@ fn validate_components(
     let mut ids = BTreeSet::new();
     let document_kind = document.document_kind();
     let mut slot_count = 0;
-    for (page_index, page) in document.project.pages.iter().enumerate() {
+    for (page_index, page) in document.project().pages.iter().enumerate() {
         let Some(root) = page.component.as_ref() else {
             continue;
         };
@@ -741,7 +741,7 @@ fn walk_component(
 
 pub fn validate_component_public_urls(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
     let mut diagnostics = Vec::new();
-    document.project.visit_components(|component, _, path| {
+    document.project().visit_components(|component, _, path| {
         check_component_public_urls(component, path, &mut diagnostics);
     });
     diagnostics
@@ -983,7 +983,7 @@ fn diagnostic(
 }
 
 fn validate_symbols(document: &ProjectDocument, report: &mut ValidationReport) {
-    if let Some(block) = document.project.extensions.get(FLY_SYMBOLS_FIELD) {
+    if let Some(block) = document.project().extensions.get(FLY_SYMBOLS_FIELD) {
         if let Err(error) =
             crate::codec::ensure_depth_within_limit(block, crate::MAXIMUM_DECODE_DEPTH)
         {
@@ -997,7 +997,7 @@ fn validate_symbols(document: &ProjectDocument, report: &mut ValidationReport) {
         }
     }
     if document
-        .project
+        .project()
         .extensions
         .get(FLY_SYMBOLS_FIELD)
         .is_some_and(|block| !block.is_array())
@@ -1091,7 +1091,7 @@ fn validate_symbols(document: &ProjectDocument, report: &mut ValidationReport) {
             format!("symbol definitions form a reference cycle: {cycle}"),
         ));
     }
-    document.project.visit_components(|component, _, path| {
+    document.project().visit_components(|component, _, path| {
         let Some(symbol_id) = component.symbol_id.as_deref() else {
             return;
         };

@@ -41,7 +41,7 @@ impl LocalizedPageRouteResolution {
 
 pub fn localized_page_route_index(document: &ProjectDocument) -> Vec<LocalizedPageRouteEntry> {
     let mut entries = Vec::new();
-    for (page_index, page) in document.project.pages.iter().enumerate() {
+    for (page_index, page) in document.project().pages.iter().enumerate() {
         let Some(metadata) = page
             .extensions
             .get(FLY_PAGE_METADATA_FIELD)
@@ -200,7 +200,7 @@ pub fn validate_localized_page_routes(document: &ProjectDocument) -> Vec<Validat
 
 fn validate_raw_slug_values(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
     let mut diagnostics = Vec::new();
-    for (page_index, page) in document.project.pages.iter().enumerate() {
+    for (page_index, page) in document.project().pages.iter().enumerate() {
         let Some(slug) = page
             .extensions
             .get(FLY_PAGE_METADATA_FIELD)

@@ -84,12 +84,12 @@ impl DynamicCatalog {
     pub fn from_document(document: &ProjectDocument) -> Self {
         let (conditions, unknown_condition_entries) = decode_entries(
             document
-                .project
+                .project()
                 .extensions
                 .get(FLY_RUNTIME_CONDITIONS_FIELD),
         );
         let (repeaters, unknown_repeater_entries) =
-            decode_entries(document.project.extensions.get(FLY_RUNTIME_REPEATERS_FIELD));
+            decode_entries(document.project().extensions.get(FLY_RUNTIME_REPEATERS_FIELD));
         Self {
             conditions,
             repeaters,
@@ -193,7 +193,7 @@ pub(crate) fn materialize_runtime_with_scoped_bindings(
     let mut materialized = document.clone();
     let mut diagnostics = Vec::new();
     let mut hidden_components = 0usize;
-    let original_styles = materialized.project.styles.clone();
+    let original_styles = materialized.project().styles.clone();
 
     // Components that live *inside* a repeater template. Their conditions must be evaluated once
     // per generated item, against that item's local context — evaluating them here, against the
@@ -2571,7 +2571,7 @@ mod tests {
         )
         .expect("upsert condition");
         assert_ne!(document.hash(), before_hash);
-        let entries = document.project.extensions[FLY_RUNTIME_CONDITIONS_FIELD]
+        let entries = document.project().extensions[FLY_RUNTIME_CONDITIONS_FIELD]
             .as_array()
             .expect("condition array");
         assert_eq!(entries.len(), 2);

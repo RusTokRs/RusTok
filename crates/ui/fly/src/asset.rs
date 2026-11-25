@@ -69,7 +69,7 @@ impl AssetCatalog {
     pub fn from_document(document: &ProjectDocument) -> Self {
         let mut catalog = Self::default();
         let mut ids = BTreeSet::new();
-        for raw in &document.project.assets {
+        for raw in &document.project().assets {
             match AssetDescriptor::from_value(raw.clone()) {
                 Some(asset) => {
                     if !ids.insert(asset.id.clone()) {

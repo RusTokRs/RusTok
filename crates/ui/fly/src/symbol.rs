@@ -52,7 +52,7 @@ impl SymbolDescriptor {
 
     /// Raw definition entries in document order with their `flySymbols` path.
     pub fn entries_from_document(document: &ProjectDocument) -> Vec<(String, Value)> {
-        let Some(block) = document.project.extensions.get(FLY_SYMBOLS_FIELD) else {
+        let Some(block) = document.project().extensions.get(FLY_SYMBOLS_FIELD) else {
             return Vec::new();
         };
         if crate::codec::ensure_depth_within_limit(block, crate::MAXIMUM_DECODE_DEPTH).is_err() {
@@ -114,7 +114,7 @@ fn apply_symbol_command_inner(
 ) -> FlyResult<()> {
     use crate::SymbolCommand;
 
-    if let Some(block) = document.project.extensions.get(FLY_SYMBOLS_FIELD) {
+    if let Some(block) = document.project().extensions.get(FLY_SYMBOLS_FIELD) {
         crate::codec::ensure_depth_within_limit(block, crate::MAXIMUM_DECODE_DEPTH)
             .map_err(|error| FlyError::InvalidSymbolReference(format!(
                 "symbol catalog exceeds safe JSON depth: {error}"
@@ -136,7 +136,7 @@ fn apply_symbol_command_inner(
                             "symbol asset must be an object with src, source, or url".to_string(),
                         )
                     })?;
-                if let Some(index) = document.project.assets.iter().position(|candidate| {
+                if let Some(index) = document.project().assets.iter().position(|candidate| {
                     crate::AssetDescriptor::from_value(candidate.clone())
                         .is_some_and(|candidate| candidate.id == asset_descriptor.id)
                 }) {
@@ -176,7 +176,7 @@ fn apply_symbol_command_inner(
                 .collect();
             let before = entries.len();
             let mut referenced = 0usize;
-            document.project.visit_components(|component, _, _| {
+            document.project().visit_components(|component, _, _| {
                 if component.symbol_id.as_deref() == Some(symbol_id.as_str()) {
                     referenced += 1;
                 }
@@ -406,21 +406,21 @@ pub fn resolve_symbol_instances(document: &ProjectDocument) -> FlyResult<Project
 /// True when a page contains at least one unresolved symbol instance.
 pub fn document_has_symbol_instances(document: &ProjectDocument) -> bool {
     let mut found = false;
-    document.project.visit_components(|component, _, _| {
+    document.project().visit_components(|component, _, _| {
         found = found || component.symbol_id.is_some();
     });
     found
 }
 
 fn strict_catalog(document: &ProjectDocument) -> FlyResult<BTreeMap<String, SymbolDescriptor>> {
-    if let Some(block) = document.project.extensions.get(FLY_SYMBOLS_FIELD) {
+    if let Some(block) = document.project().extensions.get(FLY_SYMBOLS_FIELD) {
         crate::codec::ensure_depth_within_limit(block, crate::MAXIMUM_DECODE_DEPTH)
             .map_err(|error| FlyError::InvalidSymbolReference(format!(
                 "symbol catalog exceeds safe JSON depth: {error}"
             )))?;
     }
     if document
-        .project
+        .project()
         .extensions
         .get(FLY_SYMBOLS_FIELD)
         .is_some_and(|block| !block.is_array())
@@ -798,7 +798,7 @@ mod tests {
 
         // Style rules were re-attached with remapped component references and
         // without stale rule identity, so ids derive from the new component ids.
-        let styles = &resolved.project.styles;
+        let styles = &resolved.project().styles;
         assert_eq!(styles.len(), 2);
         let mut targets: Vec<&str> = styles
             .iter()
@@ -1371,7 +1371,7 @@ mod tests {
         assert!(matches!(error, FlyError::SymbolCycle(_)));
         assert_eq!(document, before);
         assert_eq!(document.hash(), before_hash);
-        assert!(document.project.assets.is_empty());
+        assert!(document.project().assets.is_empty());
         assert!(!SymbolDescriptor::catalog_from_document(&document).contains_key("symbol-a"));
     }
 }

@@ -28,7 +28,7 @@ pub struct ProjectLocalePolicy {
 impl ProjectLocalePolicy {
     pub fn from_document(document: &ProjectDocument) -> Option<Self> {
         document
-            .project
+            .project()
             .extensions
             .get(FLY_LOCALES_FIELD)
             .cloned()
@@ -112,7 +112,7 @@ pub fn materialize_project_locale_context(
     document: &ProjectDocument,
     input_context: &Value,
 ) -> LocalePolicyMaterialization {
-    let Some(raw_policy) = document.project.extensions.get(FLY_LOCALES_FIELD) else {
+    let Some(raw_policy) = document.project().extensions.get(FLY_LOCALES_FIELD) else {
         return LocalePolicyMaterialization {
             context: input_context.clone(),
             diagnostics: Vec::new(),
@@ -246,7 +246,7 @@ pub fn materialize_project_locale_context(
 }
 
 pub fn validate_project_locale_policy(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
-    let Some(raw_policy) = document.project.extensions.get(FLY_LOCALES_FIELD) else {
+    let Some(raw_policy) = document.project().extensions.get(FLY_LOCALES_FIELD) else {
         return Vec::new();
     };
     let decoded = match serde_json::from_value::<ProjectLocalePolicy>(raw_policy.clone()) {
@@ -308,7 +308,7 @@ pub fn validate_project_locale_policy(document: &ProjectDocument) -> Vec<Validat
         }
     }
 
-    for (page_index, page) in document.project.pages.iter().enumerate() {
+    for (page_index, page) in document.project().pages.iter().enumerate() {
         let Some(metadata) = page
             .extensions
             .get(FLY_PAGE_METADATA_FIELD)
@@ -461,7 +461,7 @@ mod tests {
         assert_eq!(policy.extensions["providerFuture"], true);
         clear_project_locale_policy(&mut document);
         assert_ne!(document.hash(), before_clear_hash);
-        assert!(!document.project.extensions.contains_key(FLY_LOCALES_FIELD));
+        assert!(!document.project().extensions.contains_key(FLY_LOCALES_FIELD));
     }
 
     #[test]

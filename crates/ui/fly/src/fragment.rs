@@ -43,7 +43,7 @@ impl ProjectFragment {
             collect_component_asset_references(component, &mut asset_references);
         });
         let styles = document
-            .project
+            .project()
             .styles
             .iter()
             .filter(|raw| {
@@ -54,7 +54,7 @@ impl ProjectFragment {
             .cloned()
             .collect();
         let assets = document
-            .project
+            .project()
             .assets
             .iter()
             .filter(|raw| {
@@ -471,7 +471,7 @@ mod tests {
             "editor-minted ids come from the unique generator: {inserted_id}"
         );
         assert!(editor.document().component(&inserted_id).is_some());
-        assert!(editor.document().project.assets.iter().any(|asset| {
+        assert!(editor.document().project().assets.iter().any(|asset| {
             AssetDescriptor::from_value(asset.clone()).is_some_and(|asset| asset.id == "hero-asset")
         }));
         assert!(

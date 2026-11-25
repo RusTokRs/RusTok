@@ -138,7 +138,7 @@ pub fn validate_interaction_capabilities(
     policy: InteractionCapabilityPolicy,
 ) -> Vec<ValidationDiagnostic> {
     let mut diagnostics = Vec::new();
-    visit_project_components(&document.project, |component, visit| {
+    visit_project_components(&document.project(), |component, visit| {
         if let Some(raw) = component.extensions.get(FLY_ACTION_FIELD).cloned()
             && let Ok(ComponentAction::ProviderAction {
                 provider,

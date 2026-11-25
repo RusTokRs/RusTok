@@ -92,7 +92,7 @@ pub fn materialize_internal_page_links(
     let mut diagnostics = Vec::new();
     let mut counters = InternalLinkCounters::default();
 
-    visit_project_components_mut(&mut materialized.project, |component, visit| {
+    visit_project_components_mut(&mut materialized.project(), |component, visit| {
         materialize_component(
             component,
             visit.path(),
@@ -115,7 +115,7 @@ pub fn validate_internal_page_links(document: &ProjectDocument) -> Vec<Validatio
     let routes = InteractionRouteCatalog::from_document(document);
     let mut diagnostics = Vec::new();
 
-    visit_project_components(&document.project, |component, visit| {
+    visit_project_components(&document.project(), |component, visit| {
         validate_component(component, visit.path(), &routes, &mut diagnostics);
     });
     diagnostics
@@ -477,7 +477,7 @@ mod tests {
     #[test]
     fn fallback_href_is_used_when_target_page_has_no_slug() {
         let mut document = document();
-        document.project.pages[1]
+        document.project().pages[1]
             .extensions
             .remove(crate::FLY_PAGE_METADATA_FIELD);
         document

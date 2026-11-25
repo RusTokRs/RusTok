@@ -401,17 +401,17 @@ fn count_opaque_component_children(
 /// Fail closed before recursive render helpers inspect an untrusted/programmatically-built tree.
 pub(crate) fn ensure_render_component_limits(document: &ProjectDocument) -> FlyResult<()> {
     let limits = crate::ValidationLimits::default();
-    if document.project.pages.len() > crate::DEFAULT_MAXIMUM_PAGES {
+    if document.project().pages.len() > crate::DEFAULT_MAXIMUM_PAGES {
         return Err(FlyError::MaximumPagesExceeded {
             maximum: crate::DEFAULT_MAXIMUM_PAGES,
         });
     }
-    if document.project.assets.len() > crate::DEFAULT_MAXIMUM_ASSETS {
+    if document.project().assets.len() > crate::DEFAULT_MAXIMUM_ASSETS {
         return Err(FlyError::MaximumAssetsExceeded {
             maximum: crate::DEFAULT_MAXIMUM_ASSETS,
         });
     }
-    if document.project.styles.len() > crate::DEFAULT_MAXIMUM_STYLE_RULES {
+    if document.project().styles.len() > crate::DEFAULT_MAXIMUM_STYLE_RULES {
         return Err(FlyError::MaximumStyleRulesExceeded {
             maximum: crate::DEFAULT_MAXIMUM_STYLE_RULES,
         });
@@ -419,16 +419,16 @@ pub(crate) fn ensure_render_component_limits(document: &ProjectDocument) -> FlyR
     let mut pending = Vec::new();
 
     for value in document
-        .project
+        .project()
         .extensions
         .values()
-        .chain(document.project.styles.iter())
-        .chain(document.project.assets.iter())
+        .chain(document.project().styles.iter())
+        .chain(document.project().assets.iter())
     {
         crate::codec::ensure_depth_within_limit(value, crate::MAXIMUM_DECODE_DEPTH)?;
     }
 
-    for page in &document.project.pages {
+    for page in &document.project().pages {
         if let Some(frames) = page.frames.as_ref() {
             crate::codec::ensure_depth_within_limit(frames, crate::MAXIMUM_DECODE_DEPTH)?;
         }
@@ -571,20 +571,20 @@ pub fn resolve_page<'a>(
         PageSelection::First => 0,
         PageSelection::Index(index) => *index,
         PageSelection::Id(id) => document
-            .project
+            .project()
             .pages
             .iter()
             .position(|page| page.id.as_deref() == Some(id.as_str()))
             .ok_or_else(|| FlyError::PageNotFound(id.clone()))?,
         PageSelection::Slug(slug) => document
-            .project
+            .project()
             .pages
             .iter()
             .position(|page| PageMetadata::from_page(page).slug.as_deref() == Some(slug.as_str()))
             .ok_or_else(|| FlyError::PageNotFound(slug.clone()))?,
     };
     document
-        .project
+        .project()
         .pages
         .get(index)
         .map(|page| (index, page))
@@ -596,7 +596,7 @@ pub fn resolve_page<'a>(
 /// addressability works before and after publish materialization.
 fn action_target_ids(document: &ProjectDocument) -> std::collections::BTreeSet<String> {
     let mut targets = std::collections::BTreeSet::new();
-    for page in &document.project.pages {
+    for page in &document.project().pages {
         if let Some(root) = page.component.as_ref() {
             collect_action_targets(root, &mut targets);
         }

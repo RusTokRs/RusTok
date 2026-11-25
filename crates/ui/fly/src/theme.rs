@@ -36,7 +36,7 @@ impl DesignToken {
 /// Decode and validate the project's design tokens, sorted by name. A project without a
 /// `flyTheme` extension has no tokens; a malformed one is an error, never a partial theme.
 pub fn decode_theme_tokens(document: &ProjectDocument) -> Result<Vec<DesignToken>, String> {
-    let Some(theme) = document.project.extensions.get(FLY_THEME_FIELD) else {
+    let Some(theme) = document.project().extensions.get(FLY_THEME_FIELD) else {
         return Ok(Vec::new());
     };
     let tokens = theme
@@ -330,7 +330,7 @@ pub fn find_token_usages(document: &ProjectDocument, token_name: &str) -> Vec<To
     let mut usages = Vec::new();
 
     // 1. Component inline styles
-    document.project.visit_components(|component, _, _| {
+    document.project().visit_components(|component, _, _| {
         let comp_id = component
             .id
             .clone()
@@ -356,14 +356,14 @@ pub fn find_token_usages(document: &ProjectDocument, token_name: &str) -> Vec<To
         }
     });
 
-    for page in &document.project.pages {
+    for page in &document.project().pages {
         if let Some(ComponentNode::Opaque(val)) = &page.component {
             find_usages_in_opaque_value(val, token_name, &mut usages, "opaque-page-root");
         }
     }
 
     // 2. Project styles catalog
-    for (idx, rule_val) in document.project.styles.iter().enumerate() {
+    for (idx, rule_val) in document.project().styles.iter().enumerate() {
         if let Some(style_obj) = rule_val.get("style").and_then(Value::as_object) {
             for (prop, val) in style_obj {
                 if let Some(css_val) = val.as_str() {
@@ -801,7 +801,7 @@ mod command_tests {
         }
 
         // Verify project style catalog updated
-        let catalog_style = &editor.document().project.styles[0];
+        let catalog_style = &editor.document().project().styles[0];
         let style_obj = catalog_style
             .get("style")
             .and_then(Value::as_object)

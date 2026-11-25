@@ -38,7 +38,7 @@ pub fn compare_projects(before: &ProjectDocument, after: &ProjectDocument) -> Pr
         added_style_rules,
         removed_style_rules,
         changed_style_rules,
-        project_extensions_changed: before.project.extensions != after.project.extensions,
+        project_extensions_changed: before.project().extensions != after.project().extensions,
     }
 }
 
@@ -48,7 +48,7 @@ type OrderedEntries = BTreeMap<String, Vec<(usize, Value)>>;
 
 fn page_map(document: &ProjectDocument) -> OrderedEntries {
     let mut pages = OrderedEntries::new();
-    for (index, page) in document.project.pages.iter().enumerate() {
+    for (index, page) in document.project().pages.iter().enumerate() {
         let key = page.id.clone().unwrap_or_else(|| format!("@index:{index}"));
         pages.entry(key).or_default().push((
             index,
@@ -60,7 +60,7 @@ fn page_map(document: &ProjectDocument) -> OrderedEntries {
 
 fn component_map(document: &ProjectDocument) -> BTreeMap<String, Vec<Value>> {
     let mut components = BTreeMap::<String, Vec<Value>>::new();
-    visit_project_components(&document.project, |component, visit| {
+    visit_project_components(&document.project(), |component, visit| {
         let key = component
             .id()
             .map(ToString::to_string)
@@ -74,13 +74,13 @@ fn component_map(document: &ProjectDocument) -> BTreeMap<String, Vec<Value>> {
 }
 
 fn asset_map(document: &ProjectDocument) -> OrderedEntries {
-    ordered_raw_entries(&document.project.assets, |raw| {
+    ordered_raw_entries(&document.project().assets, |raw| {
         AssetDescriptor::from_value(raw.clone()).map(|asset| asset.id)
     })
 }
 
 fn style_rule_map(document: &ProjectDocument) -> OrderedEntries {
-    ordered_raw_entries(&document.project.styles, |raw| {
+    ordered_raw_entries(&document.project().styles, |raw| {
         StyleRuleIdentity::from_value(raw).map(|rule| rule.id)
     })
 }

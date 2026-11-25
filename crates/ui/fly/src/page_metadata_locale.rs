@@ -123,15 +123,15 @@ mod tests {
         .expect("document");
         let materialized =
             materialize_localized_page_metadata(&document, &json!({ "$locale": "ru-RU" }));
-        let metadata = PageMetadata::from_page(&materialized.document.project.pages[0]);
+        let metadata = PageMetadata::from_page(&materialized.document.project().pages[0]);
         assert_eq!(metadata.title.as_deref(), Some("Главная"));
         assert_eq!(metadata.description.as_deref(), Some("Русское описание"));
         assert_eq!(
-            materialized.document.project.pages[0].extensions[FLY_PAGE_METADATA_FIELD]["providerFuture"]
+            materialized.document.project().pages[0].extensions[FLY_PAGE_METADATA_FIELD]["providerFuture"]
                 ["enabled"],
             true
         );
-        assert!(document.project.pages[0].extensions[FLY_PAGE_METADATA_FIELD]["title"].is_object());
+        assert!(document.project().pages[0].extensions[FLY_PAGE_METADATA_FIELD]["title"].is_object());
         assert_eq!(materialized.localized_pages, 1);
         assert_eq!(materialized.resolved_values, 2);
     }
@@ -156,7 +156,7 @@ mod tests {
             &document,
             &json!({ "$locale": "de", "$fallback_locales": ["en"] }),
         );
-        let metadata = PageMetadata::from_page(&materialized.document.project.pages[0]);
+        let metadata = PageMetadata::from_page(&materialized.document.project().pages[0]);
         assert_eq!(metadata.title.as_deref(), Some("Home"));
         assert_eq!(materialized.fallback_values, 1);
         assert!(materialized.diagnostics.iter().any(|diagnostic| {
@@ -184,7 +184,7 @@ mod tests {
         let materialized =
             materialize_localized_page_metadata(&document, &json!({ "$locale": "de" }));
         assert!(
-            materialized.document.project.pages[0].extensions[FLY_PAGE_METADATA_FIELD]["title"]
+            materialized.document.project().pages[0].extensions[FLY_PAGE_METADATA_FIELD]["title"]
                 .is_object()
         );
         assert_eq!(materialized.unresolved_values, 1);

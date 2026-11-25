@@ -48,7 +48,7 @@ impl ProjectDocument {
     }
 
     pub fn root_child_count(&self) -> Option<usize> {
-        self.project
+        self.project()
             .pages
             .iter()
             .find_map(|page| page.component.as_ref())
@@ -79,7 +79,7 @@ impl ProjectDocument {
                 parent_page == page && target_path.as_slice() == parent_path
             }),
             None => parent_path.is_empty()
-                && self.project.pages.iter().position(|page| page.component.is_some()) == Some(*page),
+                && self.project().pages.iter().position(|page| page.component.is_some()) == Some(*page),
         }
     }
 
@@ -150,7 +150,7 @@ impl RegistrySet {
         let parent_type = match parent_component_id {
             Some(parent_id) => document.component_type_for_id(parent_id),
             None => document
-                .project
+                .project()
                 .pages
                 .iter()
                 .find_map(|page| page.component.as_ref())

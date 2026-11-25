@@ -112,7 +112,7 @@ fn dynamic_commands_participate_in_history() {
     assert!(
         editor
             .document()
-            .project
+            .project()
             .extensions
             .contains_key(FLY_RUNTIME_CONDITIONS_FIELD)
     );
@@ -275,9 +275,9 @@ fn batch_is_atomic_and_creates_one_history_entry() {
         ]))
         .expect("batch");
     assert_eq!(editor.history().undo_len(), 1);
-    assert_eq!(editor.document().project.assets.len(), 1);
+    assert_eq!(editor.document().project().assets.len(), 1);
     editor.undo().expect("undo batch");
-    assert!(editor.document().project.assets.is_empty());
+    assert!(editor.document().project().assets.is_empty());
     assert!(
         editor
             .document()
@@ -529,7 +529,7 @@ fn retained_bytes_include_redo_after_undoing_everything() {
 fn history_budget_counts_snapshots_even_for_a_small_invertible_patch() {
     let mut document = editor().document().clone();
     document
-        .project
+        .project()
         .extensions
         .insert("large".to_string(), json!("x".repeat(50_000)));
     let serialized_size = serde_json::to_vec(&document).expect("document json").len();

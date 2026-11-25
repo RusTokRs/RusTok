@@ -161,12 +161,12 @@ impl ContextSchemaCatalog {
     pub fn from_document(document: &ProjectDocument) -> Self {
         let (fields, unknown_field_entries) = decode_entries(
             document
-                .project
+                .project()
                 .extensions
                 .get(FLY_RUNTIME_CONTEXT_SCHEMA_FIELD),
         );
         let (computed, unknown_computed_entries) =
-            decode_entries(document.project.extensions.get(FLY_RUNTIME_COMPUTED_FIELD));
+            decode_entries(document.project().extensions.get(FLY_RUNTIME_COMPUTED_FIELD));
         Self {
             fields,
             computed,
@@ -1795,7 +1795,7 @@ mod tests {
         )
         .expect("upsert field");
         assert_ne!(document.hash(), before_hash);
-        let entries = document.project.extensions[FLY_RUNTIME_CONTEXT_SCHEMA_FIELD]
+        let entries = document.project().extensions[FLY_RUNTIME_CONTEXT_SCHEMA_FIELD]
             .as_array()
             .expect("schema entries");
         assert_eq!(entries.len(), 2);

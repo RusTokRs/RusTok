@@ -33,7 +33,7 @@ impl ComponentIndex {
     /// terrible thing to leave undiagnosed.
     pub fn build(document: &ProjectDocument) -> Self {
         let mut index = Self::default();
-        for (page_index, page) in document.project.pages.iter().enumerate() {
+        for (page_index, page) in document.project().pages.iter().enumerate() {
             let Some(root) = page.component.as_ref() else {
                 continue;
             };
@@ -138,7 +138,7 @@ impl ComponentIndex {
         id: &str,
     ) -> Option<&'a ComponentObject> {
         let indexed = self.paths.get(id).and_then(|(page_index, path)| {
-            let page = document.project.pages.get(*page_index)?;
+            let page = document.project().pages.get(*page_index)?;
             let root = page.component.as_ref()?.as_object()?;
             Some((root, path))
         });
@@ -162,7 +162,7 @@ impl ComponentIndex {
                 return Some(current);
             }
         }
-        document.project.component(id)
+        document.project().component(id)
     }
 
     /// Retrieve a mutable reference to the component via its indexed path in O(depth) steps.
@@ -393,7 +393,7 @@ mod tests {
         title_mut.component_type = Some("custom_heading".to_string());
         assert_eq!(
             document
-                .project
+                .project()
                 .component("title")
                 .and_then(|c| c.component_type.as_deref()),
             Some("custom_heading")

@@ -32,14 +32,14 @@ impl PageLocator {
     pub fn resolve(&self, document: &ProjectDocument) -> FlyResult<usize> {
         if let Some(id) = self.id.as_deref() {
             return document
-                .project
+                .project()
                 .pages
                 .iter()
                 .position(|page| page.id.as_deref() == Some(id))
                 .ok_or_else(|| FlyError::PageNotFound(id.to_string()));
         }
         if let Some(index) = self.index {
-            return (index < document.project.pages.len())
+            return (index < document.project().pages.len())
                 .then_some(index)
                 .ok_or_else(|| FlyError::PageNotFound(index.to_string()));
         }
@@ -86,7 +86,7 @@ pub enum PageCommand {
 
 impl ProjectDocument {
     pub fn page_summaries(&self) -> Vec<PageSummary> {
-        self.project
+        self.project()
             .pages
             .iter()
             .enumerate()
@@ -96,7 +96,7 @@ impl ProjectDocument {
 
     pub fn page(&self, locator: &PageLocator) -> FlyResult<&ProjectPage> {
         let index = locator.resolve(self)?;
-        self.project
+        self.project()
             .pages
             .get(index)
             .ok_or_else(|| FlyError::PageNotFound(index.to_string()))
@@ -128,10 +128,10 @@ pub fn blank_page(id: impl Into<String>, name: impl Into<String>) -> ProjectPage
 pub fn apply_page_command(document: &mut ProjectDocument, command: &PageCommand) -> FlyResult<()> {
     let result = match command {
         PageCommand::Add { index, page } => {
-            if *index > document.project.pages.len() {
+            if *index > document.project().pages.len() {
                 return Err(FlyError::InvalidPageIndex {
                     index: *index,
-                    len: document.project.pages.len(),
+                    len: document.project().pages.len(),
                 });
             }
             ensure_page_id_available(document, page.id.as_deref(), None)?;
@@ -140,7 +140,7 @@ pub fn apply_page_command(document: &mut ProjectDocument, command: &PageCommand)
         }
         PageCommand::Remove { locator } => {
             let index = locator.resolve(document)?;
-            if document.project.pages.len() <= 1 {
+            if document.project().pages.len() <= 1 {
                 return Err(FlyError::LastPageRemoval);
             }
             let page = document.project_mut().pages.remove(index);
@@ -149,7 +149,7 @@ pub fn apply_page_command(document: &mut ProjectDocument, command: &PageCommand)
         }
         PageCommand::Move { locator, index } => {
             let source_index = locator.resolve(document)?;
-            let len = document.project.pages.len();
+            let len = document.project().pages.len();
             if *index > len {
                 return Err(FlyError::InvalidPageIndex { index: *index, len });
             }
@@ -281,7 +281,7 @@ fn ensure_page_id_available(
         ))
     })?;
     if document
-        .project
+        .project()
         .pages
         .iter()
         .enumerate()
@@ -387,7 +387,7 @@ mod tests {
             },
         )
         .expect("remove");
-        assert_eq!(document.project.pages.len(), 2);
+        assert_eq!(document.project().pages.len(), 2);
         assert!(
             StyleRuleCatalog::from_document(&document)
                 .component_rule("hero-a", &StyleRuleScope::Base)
@@ -508,7 +508,7 @@ mod tests {
         )
         .expect_err("null must not silently clear page identity");
         assert!(matches!(error, FlyError::InvalidPagePatch(_)));
-        assert_eq!(document.project.pages[0].id.as_deref(), Some("a"));
+        assert_eq!(document.project().pages[0].id.as_deref(), Some("a"));
 
         apply_page_command(
             &mut document,
@@ -521,7 +521,7 @@ mod tests {
             },
         )
         .expect("explicitly remove page id");
-        assert_eq!(document.project.pages[0].id, None);
+        assert_eq!(document.project().pages[0].id, None);
     }
 
     #[test]

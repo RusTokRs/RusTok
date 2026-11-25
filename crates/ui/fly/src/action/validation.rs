@@ -34,7 +34,7 @@ pub fn validate_component_actions(document: &ProjectDocument) -> Vec<ValidationD
     let mut diagnostics = Vec::new();
     let mut seen_form_ids = BTreeSet::new();
 
-    visit_project_components(&document.project, |component, visit| {
+    visit_project_components(&document.project(), |component, visit| {
         validate_component(
             component,
             visit.path(),
@@ -43,7 +43,7 @@ pub fn validate_component_actions(document: &ProjectDocument) -> Vec<ValidationD
             &mut diagnostics,
         );
     });
-    for (page_index, page) in document.project.pages.iter().enumerate() {
+    for (page_index, page) in document.project().pages.iter().enumerate() {
         if let Some(root) = page.component.as_ref()
             && let Some(id) = crate::id_reference::conflicting_form_dom_id(std::iter::once(root))
         {
@@ -61,7 +61,7 @@ pub fn validate_component_actions(document: &ProjectDocument) -> Vec<ValidationD
 
 pub(super) fn collect_form_ids(document: &ProjectDocument) -> FormIndex {
     let mut forms = FormIndex::new();
-    visit_project_components(&document.project, |component, _| {
+    visit_project_components(&document.project(), |component, _| {
         let Some(raw) = component.extensions.get(FLY_FORM_FIELD).cloned() else {
             return;
         };
@@ -323,7 +323,7 @@ pub(super) fn validate_action_contract(
 
 fn collect_host_submitted_form_ids(document: &ProjectDocument) -> BTreeSet<String> {
     let mut ids = BTreeSet::new();
-    visit_project_components(&document.project, |component, _| {
+    visit_project_components(&document.project(), |component, _| {
         let Some(raw) = component.extensions.get(FLY_ACTION_FIELD).cloned() else {
             return;
         };

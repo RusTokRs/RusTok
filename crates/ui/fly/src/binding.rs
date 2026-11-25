@@ -68,7 +68,7 @@ impl BindingCatalog {
     pub fn from_document(document: &ProjectDocument) -> Self {
         let mut catalog = Self::default();
         let Some(Value::Array(entries)) =
-            document.project.extensions.get(FLY_RUNTIME_BINDINGS_FIELD)
+            document.project().extensions.get(FLY_RUNTIME_BINDINGS_FIELD)
         else {
             return catalog;
         };

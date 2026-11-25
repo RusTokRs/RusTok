@@ -20,7 +20,7 @@ impl InteractionRouteCatalog {
         let entries = localized_page_route_index(document);
         let routed_pages = entries.iter().map(|entry| entry.page_index).collect();
         let page_ids = document
-            .project
+            .project()
             .pages
             .iter()
             .enumerate()

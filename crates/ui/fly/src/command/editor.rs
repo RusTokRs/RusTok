@@ -410,10 +410,10 @@ fn prepare_insert_ids(
         let page_root = match parent_id {
             Some(parent_id) => document
                 .component_location(parent_id)
-                .and_then(|location| document.project.pages.get(location.page_index))
+                .and_then(|location| document.project().pages.get(location.page_index))
                 .and_then(|page| page.component.as_ref()),
             None => document
-                .project
+                .project()
                 .pages
                 .iter()
                 .find_map(|page| page.component.as_ref()),
@@ -490,7 +490,7 @@ fn apply_asset_command(document: &mut ProjectDocument, command: &AssetCommand) -
                     "asset must be an object with src, source, or url".to_string(),
                 )
             })?;
-            if let Some(index) = document.project.assets.iter().position(|candidate| {
+            if let Some(index) = document.project().assets.iter().position(|candidate| {
                 AssetDescriptor::from_value(candidate.clone())
                     .is_some_and(|candidate| candidate.id == descriptor.id)
             }) {
@@ -501,12 +501,12 @@ fn apply_asset_command(document: &mut ProjectDocument, command: &AssetCommand) -
             Ok(())
         }
         AssetCommand::Remove { asset_id } => {
-            let before = document.project.assets.len();
+            let before = document.project().assets.len();
             document.project_mut().assets.retain(|candidate| {
                 AssetDescriptor::from_value(candidate.clone())
                     .is_none_or(|candidate| candidate.id != *asset_id)
             });
-            if document.project.assets.len() == before {
+            if document.project().assets.len() == before {
                 return Err(FlyError::AssetNotFound(asset_id.clone()));
             }
             Ok(())
@@ -703,7 +703,7 @@ pub fn invert_command(
         EditorCommand::Asset { command } => match command {
             AssetCommand::Upsert { asset } => {
                 let descriptor = AssetDescriptor::from_value(asset.clone())?;
-                if let Some(existing) = document.project.assets.iter().find(|candidate| {
+                if let Some(existing) = document.project().assets.iter().find(|candidate| {
                     AssetDescriptor::from_value((*candidate).clone())
                         .is_some_and(|candidate| candidate.id == descriptor.id)
                 }) {
@@ -721,7 +721,7 @@ pub fn invert_command(
                 }
             }
             AssetCommand::Remove { asset_id } => {
-                let existing = document.project.assets.iter().find(|candidate| {
+                let existing = document.project().assets.iter().find(|candidate| {
                     AssetDescriptor::from_value((*candidate).clone())
                         .is_some_and(|candidate| candidate.id == *asset_id)
                 })?;

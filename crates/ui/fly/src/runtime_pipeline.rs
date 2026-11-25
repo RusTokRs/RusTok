@@ -680,7 +680,7 @@ mod tests {
         .expect("document");
         let materialized =
             materialize_project_with_runtime_context(&document, &json!({ "$locale": "ru-RU" }));
-        let metadata = PageMetadata::from_page(&materialized.document.project.pages[0]);
+        let metadata = PageMetadata::from_page(&materialized.document.project().pages[0]);
         assert_eq!(metadata.title.as_deref(), Some("Главная"));
         assert_eq!(metadata.description.as_deref(), Some("Русское описание"));
     }

@@ -95,7 +95,7 @@ impl LocaleCoverageReport {
 }
 
 pub fn analyze_project_locale_coverage(document: &ProjectDocument) -> LocaleCoverageReport {
-    let policy_present = document.project.extensions.contains_key(FLY_LOCALES_FIELD);
+    let policy_present = document.project().extensions.contains_key(FLY_LOCALES_FIELD);
     let policy =
         ProjectLocalePolicy::from_document(document).and_then(|policy| policy.normalized().ok());
     let policy_valid = !policy_present || policy.is_some();
@@ -196,7 +196,7 @@ struct MetadataField {
 
 fn collect_metadata(document: &ProjectDocument) -> Vec<MetadataField> {
     let mut result = Vec::new();
-    for (page_index, page) in document.project.pages.iter().enumerate() {
+    for (page_index, page) in document.project().pages.iter().enumerate() {
         let page_label = page
             .id
             .clone()

@@ -394,7 +394,7 @@ impl ProjectHash {
     pub fn try_from_document(document: &ProjectDocument) -> Option<Self> {
         let bytes = GrapesJsCodec::encode_vec(document)
             .ok()
-            .or_else(|| serde_json::to_vec(&document.project).ok())?;
+            .or_else(|| serde_json::to_vec(&document.project()).ok())?;
         Some(Self::from_bytes(&bytes))
     }
 

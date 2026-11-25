@@ -40,7 +40,7 @@ pub struct TranslationCatalog {
 impl TranslationCatalog {
     pub fn from_document(document: &ProjectDocument) -> Self {
         let mut catalog = Self::default();
-        let Some(Value::Array(entries)) = document.project.extensions.get(FLY_TRANSLATIONS_FIELD)
+        let Some(Value::Array(entries)) = document.project().extensions.get(FLY_TRANSLATIONS_FIELD)
         else {
             return catalog;
         };
@@ -452,16 +452,16 @@ mod tests {
         )
         .expect("set locale policy");
         assert_eq!(
-            document.project.extensions[FLY_LOCALES_FIELD]["default_locale"],
+            document.project().extensions[FLY_LOCALES_FIELD]["default_locale"],
             "ru-RU"
         );
         assert_eq!(
-            document.project.extensions[FLY_LOCALES_FIELD]["future"],
+            document.project().extensions[FLY_LOCALES_FIELD]["future"],
             true
         );
         apply_translation_command(&mut document, &TranslationCommand::ClearLocalePolicy)
             .expect("clear locale policy");
-        assert!(!document.project.extensions.contains_key(FLY_LOCALES_FIELD));
+        assert!(!document.project().extensions.contains_key(FLY_LOCALES_FIELD));
     }
 
     #[test]

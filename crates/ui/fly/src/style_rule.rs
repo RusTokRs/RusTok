@@ -146,7 +146,7 @@ pub struct StyleRuleCatalog {
 impl StyleRuleCatalog {
     pub fn from_document(document: &ProjectDocument) -> Self {
         let mut catalog = Self::default();
-        for raw in &document.project.styles {
+        for raw in &document.project().styles {
             match StyleRuleDescriptor::from_value(raw.clone()) {
                 Some(rule) => catalog.rules.push(rule),
                 None => catalog.unknown_entries.push(raw.clone()),
@@ -341,13 +341,13 @@ pub fn apply_style_rule_command(
             component_id,
             scope,
         } => {
-            let before = document.project.styles.len();
+            let before = document.project().styles.len();
             let scope_key = scope.stable_key();
             document.project_mut().styles.retain(|raw| {
                 StyleRuleIdentity::from_value(raw)
                     .is_none_or(|rule| !rule.targets(component_id, scope_key.as_str()))
             });
-            if document.project.styles.len() == before {
+            if document.project().styles.len() == before {
                 return Err(FlyError::StyleRuleNotFound(format!(
                     "{}:{}",
                     component_id,
@@ -375,7 +375,7 @@ fn upsert_raw_style_rule(document: &mut ProjectDocument, rule: Value) -> FlyResu
         return Err(FlyError::ComponentNotFound(component_id.to_string()));
     }
     let descriptor_scope_key = descriptor.scope.stable_key();
-    if let Some(index) = document.project.styles.iter().position(|raw| {
+    if let Some(index) = document.project().styles.iter().position(|raw| {
         StyleRuleIdentity::from_value(raw).is_some_and(|candidate| {
             candidate.id == descriptor.id.as_str()
                 || candidate.component_id.is_some()
@@ -471,7 +471,7 @@ fn find_component_rule_index(
     scope: &StyleRuleScope,
 ) -> Option<usize> {
     let scope_key = scope.stable_key();
-    document.project.styles.iter().position(|raw| {
+    document.project().styles.iter().position(|raw| {
         StyleRuleIdentity::from_value(raw)
             .is_some_and(|rule| rule.targets(component_id, scope_key.as_str()))
     })
@@ -654,11 +654,11 @@ mod tests {
         )
         .expect("rule");
         assert_eq!(
-            document.project.styles[0]["customPluginField"]["keep"],
+            document.project().styles[0]["customPluginField"]["keep"],
             true
         );
-        assert_eq!(document.project.styles[0]["style"]["color"], "red");
-        assert_eq!(document.project.styles[0]["style"]["width"], "100%");
+        assert_eq!(document.project().styles[0]["style"]["color"], "red");
+        assert_eq!(document.project().styles[0]["style"]["width"], "100%");
     }
 
     #[test]
@@ -694,9 +694,9 @@ mod tests {
             },
         )
         .expect("second rule");
-        assert_eq!(document.project.styles.len(), 1);
-        assert_eq!(document.project.styles[0]["style"]["color"], "red");
-        assert_eq!(document.project.styles[0]["style"]["padding"], "24px");
+        assert_eq!(document.project().styles.len(), 1);
+        assert_eq!(document.project().styles[0]["style"]["color"], "red");
+        assert_eq!(document.project().styles[0]["style"]["padding"], "24px");
     }
 
     #[test]
@@ -757,8 +757,8 @@ mod tests {
             },
         )
         .expect("rule");
-        assert_eq!(document.project.styles[0]["state"], "hover");
-        assert!(document.project.styles[0].get("atRuleType").is_none());
+        assert_eq!(document.project().styles[0]["state"], "hover");
+        assert!(document.project().styles[0].get("atRuleType").is_none());
         let rule = StyleRuleCatalog::from_document(&document)
             .component_rule(
                 "hero",
