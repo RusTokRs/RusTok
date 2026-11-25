@@ -1,5 +1,15 @@
 # Server App — Implementation Plan
 
+## HTTP observability response integrity follow-up (2026-11-25)
+
+Source changes enforce fail-closed readiness response normalization, preserve
+router method status and prohibit caching health/metrics responses. Regressions
+cover inconsistent and malformed readiness responses, aggregate metadata
+redaction, HEAD/POST behavior and edge cache policy. Maintainer verification:
+`cargo check -p rustok-server`, targeted `cargo test -p rustok-server --lib`
+for metrics_auth and security_headers, remediation gate and deployed probe/
+proxy verification remain pending. No runtime or compile result is claimed.
+
 ## Global event configuration persistence follow-up (2026-11-25)
 
 Source changes remove the read-before-insert race in both global settings

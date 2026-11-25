@@ -1,5 +1,17 @@
 # Documentation: `apps/server`
 
+## HTTP observability response integrity (2026-11-25)
+
+Readiness GET responses cannot promote an HTTP failure to success based on
+a contradictory JSON status. Unknown or contradictory readiness states
+return a generic unhealthy response; public redaction emits a new aggregate
+representation without privileged body metadata. HEAD and unsupported methods
+retain the router's status. Health and metrics responses carry
+`Cache-Control: private, no-store` from the outer HTTP edge, including
+short-circuited failures. The observability authentication path classification
+is shared between user-auth exclusion, monitoring authentication and edge
+cache policy. Host authority and monitoring-token admission remain separate.
+
 ## Global event configuration persistence (2026-11-25)
 
 Event-delivery profile and Iggy connector saves use a database-level singleton

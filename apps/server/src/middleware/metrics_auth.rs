@@ -2,7 +2,7 @@ use crate::common::is_production_security_mode;
 
 use axum::{
     body::{Body, to_bytes},
-    http::{HeaderValue, Request, StatusCode, header},
+    http::{Method, Request, StatusCode, header},
     middleware::Next,
     response::{IntoResponse, Response},
 };
@@ -31,10 +31,17 @@ pub async fn require_bearer(mut request: Request<Body>, next: Next) -> Response 
     let is_production = is_production_security_mode();
 
     if path == "/health/ready" {
+        let normalize_body = request.method() == Method::GET;
         let reveal_details = request_is_authorized(&request, is_production);
         strip_observability_credentials(request.headers_mut());
         let response = next.run(request).await;
-        return normalize_readiness_response(response, reveal_details).await;
+        // HEAD has no representation body and unsupported methods retain
+        // the router's method-not-allowed response.
+        return if normalize_body {
+            normalize_readiness_response(response, reveal_details).await
+        } else {
+            response
+        };
     }
 
     if !is_protected_observability_path(path) {
@@ -159,25 +166,31 @@ async fn normalize_readiness_response(response: Response, reveal_details: bool) 
         Ok(value) => value,
         Err(_) => return generic_readiness_response("unhealthy"),
     };
-    let status = value
+    let Some(status) = value
         .get("status")
         .and_then(serde_json::Value::as_str)
         .filter(|status| matches!(*status, "ok" | "degraded" | "unhealthy"))
-        .unwrap_or("unhealthy");
-    parts.status = readiness_http_status(status);
+    else {
+        return generic_readiness_response("unhealthy");
+    };
+    let normalized_status = readiness_http_status(status);
+    // A body is not allowed to turn an HTTP failure into a healthy probe.
+    // Only the canonical readiness statuses can carry diagnostic details.
+    if !matches!(parts.status, StatusCode::OK | StatusCode::SERVICE_UNAVAILABLE)
+        || (parts.status == StatusCode::SERVICE_UNAVAILABLE
+            && normalized_status == StatusCode::OK)
+    {
+        return generic_readiness_response("unhealthy");
+    }
+    parts.status = normalized_status;
 
     if reveal_details {
         return Response::from_parts(parts, Body::from(bytes));
     }
 
-    parts.headers.remove(header::CONTENT_LENGTH);
-    parts.headers.insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static("application/json; charset=utf-8"),
-    );
-    let sanitized = serde_json::to_vec(&serde_json::json!({ "status": status }))
-        .unwrap_or_else(|_| br#"{"status":"unhealthy"}"#.to_vec());
-    Response::from_parts(parts, Body::from(sanitized))
+    // Build a new representation rather than retaining metadata belonging
+    // to the privileged body (such as its ETag or content encoding).
+    generic_readiness_response(status)
 }
 
 fn generic_readiness_response(status: &str) -> Response {
@@ -212,6 +225,11 @@ fn configured_token() -> Option<String> {
         })
 }
 
+/// The same classification is consumed by authentication and edge policy.
+pub(crate) fn is_observability_auth_path(path: &str) -> bool {
+    path == "/health/ready" || is_protected_observability_path(path)
+}
+
 fn is_protected_observability_path(path: &str) -> bool {
     matches!(
         path,
@@ -236,7 +254,7 @@ fn constant_time_eq(left: &str, right: &str) -> bool {
 mod tests {
     use super::{
         allow_unauthenticated_without_token, constant_time_eq, is_protected_observability_path,
-        parse_bearer_token, readiness_http_status, sanitize_token,
+        normalize_readiness_response, parse_bearer_token, readiness_http_status, sanitize_token,
         strip_observability_credentials, supplied_token, OBSERVABILITY_TOKEN_HEADER,
     };
     use axum::{
@@ -259,6 +277,89 @@ mod tests {
         assert!(!is_protected_observability_path("/health/live"));
         assert!(!is_protected_observability_path("/health/ready"));
         assert!(!is_protected_observability_path("/api/graphql"));
+    }
+
+    #[tokio::test]
+    async fn readiness_does_not_promote_failure_or_expose_invalid_diagnostics() {
+        use axum::response::IntoResponse;
+
+        for reveal_details in [false, true] {
+            for (http_status, body) in [
+                (StatusCode::SERVICE_UNAVAILABLE, r#"{"status":"ok","internal":"diagnostic"}"#),
+                (StatusCode::INTERNAL_SERVER_ERROR, r#"{"status":"degraded","internal":"diagnostic"}"#),
+                (StatusCode::OK, r#"{"status":"unknown","internal":"diagnostic"}"#),
+                (StatusCode::OK, "not JSON"),
+            ] {
+                let response = normalize_readiness_response(
+                    (http_status, body).into_response(),
+                    reveal_details,
+                )
+                .await;
+                assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+                let bytes = axum::body::to_bytes(response.into_body(), 1024)
+                    .await
+                    .expect("readiness body");
+                assert_eq!(
+                    serde_json::from_slice::<serde_json::Value>(&bytes).expect("JSON"),
+                    serde_json::json!({"status": "unhealthy"}),
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn readiness_redaction_replaces_body_specific_metadata() {
+        use axum::response::IntoResponse;
+
+        let response = normalize_readiness_response(
+            (
+                StatusCode::OK,
+                [(header::ETAG, "\"privileged-body\"")],
+                r#"{"status":"degraded","internal":"diagnostic"}"#,
+            )
+                .into_response(),
+            false,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(!response.headers().contains_key(header::ETAG));
+        let bytes = axum::body::to_bytes(response.into_body(), 1024)
+            .await
+            .expect("readiness body");
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&bytes).expect("JSON"),
+            serde_json::json!({"status": "degraded"}),
+        );
+    }
+
+    #[tokio::test]
+    async fn readiness_head_and_unsupported_methods_keep_router_status() {
+        use axum::{Router, middleware, routing::get};
+        use tower::ServiceExt;
+
+        let app = Router::new()
+            .route(
+                "/health/ready",
+                get(|| async { axum::Json(serde_json::json!({"status": "ok"})) }),
+            )
+            .layer(middleware::from_fn(super::require_bearer));
+        for (method, expected) in [
+            ("HEAD", StatusCode::OK),
+            ("POST", StatusCode::METHOD_NOT_ALLOWED),
+        ] {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(method)
+                        .uri("/health/ready")
+                        .body(Body::empty())
+                        .expect("request"),
+                )
+                .await
+                .expect("response");
+            assert_eq!(response.status(), expected);
+        }
     }
 
     #[test]

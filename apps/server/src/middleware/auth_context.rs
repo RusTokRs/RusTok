@@ -18,6 +18,7 @@ use rustok_core::SecurityActorKind;
 use crate::auth::decode_access_token;
 use crate::extractors::auth::{resolve_current_user, resolve_current_user_from_access_token};
 use crate::host_authority::{take_host_authority, with_host_authority_scope};
+use crate::middleware::metrics_auth::is_observability_auth_path;
 use crate::middleware::tenant_route_policy::{TenantRouteScope, tenant_route_scope};
 use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
 use crate::services::server_runtime_context::ServerAuthRuntime;
@@ -310,18 +311,6 @@ fn auth_can_resolve_without_tenant_context(path: &str) -> bool {
 
 fn is_oauth_client_auth_request(method: &str, path: &str) -> bool {
     method == "POST" && matches!(path, "/api/oauth/token" | "/api/oauth/revoke")
-}
-
-fn is_observability_auth_path(path: &str) -> bool {
-    matches!(
-        path,
-        "/metrics"
-            | "/metrics/"
-            | "/api/_health/metrics"
-            | "/health/ready"
-            | "/health/runtime"
-            | "/health/modules"
-    )
 }
 
 fn is_direct_user_self_service_principal(principal_kind: AuthPrincipalKind) -> bool {
