@@ -27,7 +27,7 @@ use uuid::Uuid;
 use crate::common::RustokSettings;
 use crate::context::TenantContext;
 use crate::extractors::auth::{CurrentUser, resolve_current_user_from_access_token};
-use crate::services::oauth_app::OAuthAppService;
+use crate::services::oauth_app::{AuthorizationSession, OAuthAppService};
 use crate::services::oauth_token_service::OAuthTokenService;
 use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext};
 
@@ -552,7 +552,7 @@ async fn authorize_handler_inner(
     }
 
     let code =
-        issue_authorization_code(&ctx, tenant_ctx.id, &validated, current_user.user.id).await?;
+        issue_authorization_code(&ctx, tenant_ctx.id, &validated, &current_user, false).await?;
 
     let mut response = serde_json::json!({
         "code": code,
@@ -682,7 +682,8 @@ pub(crate) async fn authorize_browser_handler(
             runtime_ctx,
             tenant_ctx.id,
             &validated,
-            current_user.user.id,
+            &current_user,
+            false,
         )
         .await
         {
@@ -833,47 +834,9 @@ pub(crate) async fn consent_handler(
         });
     }
 
-    // A confirmation is required for every cookie-backed browser flow, but
-    // consent itself is only persisted for app types that require it. Recheck
-    // coverage at POST time so an existing grant is not needlessly rewritten
-    // and a revoked/insufficient grant cannot authorize this code.
-    if validated.app.requires_user_consent() {
-        let has_consent = match OAuthAppService::get_active_consent(
-            runtime_ctx.db(),
-            validated.app.id,
-            current_user.user.id,
-            tenant_ctx.id,
-            &validated.requested_scopes,
-        )
-        .await
-        {
-            Ok(has_consent) => has_consent,
-            Err(_) => {
-                return oauth_error_response(TokenErrorResponse {
-                    error: "server_error".to_string(),
-                    error_description: "Failed to verify consent".to_string(),
-                });
-            }
-        };
-        if !has_consent
-            && OAuthAppService::grant_consent_strict(
-                runtime_ctx.db(),
-                validated.app.id,
-                current_user.user.id,
-                tenant_ctx.id,
-                validated.requested_scopes.clone(),
-            )
-            .await
-            .is_err()
-        {
-            return oauth_error_response(TokenErrorResponse {
-                error: "server_error".to_string(),
-                error_description: "Failed to grant consent".to_string(),
-            });
-        }
-    }
-
-    match issue_authorization_code(runtime_ctx, tenant_ctx.id, &validated, current_user.user.id)
+    // Approval and issuance share one transaction, with a fresh direct-session
+    // check under the mutation locks. Never persist consent before issuance.
+    match issue_authorization_code(runtime_ctx, tenant_ctx.id, &validated, &current_user, true)
         .await
     {
         Ok(code) => redirect_with_code(
@@ -1122,16 +1085,23 @@ async fn issue_authorization_code(
     ctx: &ServerRuntimeContext,
     tenant_id: Uuid,
     validated: &ValidatedAuthorizeRequest,
-    user_id: Uuid,
+    current_user: &CurrentUser,
+    approve_consent: bool,
 ) -> Result<String, TokenErrorResponse> {
     OAuthAppService::generate_authorization_code(
         ctx.db(),
         validated.app.id,
-        user_id,
+        AuthorizationSession {
+            user_id: current_user.user.id,
+            session_id: current_user.session_id,
+            access_expires_at: current_user.access_token_expires_at,
+            require_email_verification: ctx.settings().features.email_verification,
+        },
         tenant_id,
         validated.redirect_uri.clone(),
         validated.requested_scopes.clone(),
         validated.code_challenge.clone(),
+        approve_consent,
     )
     .await
     .map_err(map_code_issuance_error)

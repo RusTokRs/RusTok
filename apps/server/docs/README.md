@@ -980,6 +980,7 @@ before the event forwarder. The Outbox relay supervisor owns and gracefully drai
 - OAuth discovery metadata also uses `ServerAuthRuntime` as the single source of auth config.
 - OAuth REST token, authorize/consent, browser-session, and revoke handlers extract `ServerAuthRuntime`
   or `ServerRuntimeContext`; host-wide context does not participate in OAuth request state.
+- OAuth authorization locks app, subject and direct session in that order, rechecks email policy and credential expiry, and commits browser approval and code issuance together. A stale session cannot grant consent or issue codes. Source regressions unrun.
 - OAuth consent re-grant invalidates pending codes for that app, tenant and subject in the same transaction. Code exchange rejects a newer consent epoch and rechecks the refresh grant if a refresh credential was prepared. OAuth replay grace uses the exact elapsed duration and rejects future timestamps. Source regressions unrun.
 - OAuth access JWTs are registered credentials: issuance writes a `token_kind = access`
   row whose id is the JWT `jti`, and the extractor requires that row to be active,

@@ -95,6 +95,11 @@ must not introduce a competing JSON or request-local fallback in the meantime.
 
 ## OAuth issuance fences
 
+Browser approval and authorization-code issuance share one transaction. The host
+locks app, user and direct session in order, rechecks ownership, session liveness,
+email policy and access credential expiry, then grants missing consent only for
+explicit approval. Code insertion failure rolls back the consent change.
+
 Re-granting consent invalidates pending authorization codes for the same app,
 subject and tenant. Exchange rejects codes older than current consent and
 rechecks the refresh grant under the app lock before persisting prepared refresh

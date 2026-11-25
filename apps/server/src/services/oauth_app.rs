@@ -192,6 +192,16 @@ where
     }
 }
 
+/// Previously authenticated direct-session facts, revalidated under the
+/// app -> user -> session locks before any user delegation is persisted.
+#[derive(Clone, Copy)]
+pub(crate) struct AuthorizationSession {
+    pub user_id: Uuid,
+    pub session_id: Uuid,
+    pub access_expires_at: chrono::DateTime<Utc>,
+    pub require_email_verification: bool,
+}
+
 pub struct OAuthAppService;
 
 impl OAuthAppService {
@@ -582,14 +592,15 @@ impl OAuthAppService {
     /// active status and third-party consent may change before this insert.
     /// Revalidate them inside the transaction to avoid creating a code after
     /// revocation has already invalidated all previously pending codes.
-    pub async fn generate_authorization_code(
+    pub(crate) async fn generate_authorization_code(
         db: &DatabaseConnection,
         app_id: Uuid,
-        user_id: Uuid,
+        subject: AuthorizationSession,
         tenant_id: Uuid,
         redirect_uri: String,
         scopes: Vec<String>,
         code_challenge: String,
+        approve_consent: bool,
     ) -> Result<String> {
         let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
         let app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
@@ -618,31 +629,53 @@ impl OAuthAppService {
             ));
         }
 
-        let user = lock_oauth_user_for_mutation(&tx, user_id, tenant_id)
+        let user = lock_oauth_user_for_mutation(&tx, subject.user_id, tenant_id)
             .await
             .map_err(|_| Error::InternalServerError)?
             .filter(|user| user.is_active())
             .ok_or_else(|| {
                 Error::Unauthorized("OAuth authorization subject is missing or inactive".to_string())
             })?;
+        if subject.require_email_verification && !user.is_email_verified() {
+            return Err(Error::Unauthorized("Email verification required".to_string()));
+        }
+        crate::services::auth_lifecycle::AuthLifecycleService::find_session_by_id_for_update_in_tx(
+            &tx, tenant_id, subject.session_id,
+        )
+        .await
+        .map_err(|_| Error::InternalServerError)?
+        .filter(|session| session.user_id == user.id && session.is_active())
+        .ok_or_else(|| Error::Unauthorized("OAuth authorization session is no longer active".to_string()))?;
+        if subject.access_expires_at <= Utc::now() {
+            return Err(Error::Unauthorized("OAuth authorization credential expired".to_string()));
+        }
 
         if app.requires_user_consent() {
             let consent = OAuthConsents::find_active_consent(&tx, app_id, user.id, tenant_id)
                 .await
-                .map_err(|_| Error::InternalServerError)?
-                .ok_or_else(|| {
-                    Error::Unauthorized(
+                .map_err(|_| Error::InternalServerError)?;
+            let covered = consent.is_some_and(|consent| {
+                let granted = consent.scopes_list();
+                scopes.iter().all(|scope| scope_matches(&granted, scope))
+            });
+            if !covered {
+                if !approve_consent {
+                    return Err(Error::Unauthorized(
                         "OAuth authorization requires active user consent".to_string(),
-                    )
+                    ));
+                }
+                let scopes_json = serde_json::to_value(&scopes)
+                    .map_err(|_| Error::InternalServerError)?;
+                Self::grant_consent_in_transaction(
+                    &tx, app_id, user.id, tenant_id, &scopes_json,
+                )
+                .await
+                .map_err(|attempt| match attempt {
+                    GrantConsentAttempt::UniqueRace => Error::Conflict(
+                        "OAuth consent changed concurrently; retry the operation".to_string(),
+                    ),
+                    GrantConsentAttempt::Fatal(error) => error,
                 })?;
-            let granted_scopes = consent.scopes_list();
-            if !scopes
-                .iter()
-                .all(|scope| scope_matches(&granted_scopes, scope))
-            {
-                return Err(Error::Unauthorized(
-                    "OAuth authorization scopes exceed current user consent".to_string(),
-                ));
             }
         }
 
@@ -2939,6 +2972,30 @@ mod tests {
         .expect("insert revocation token")
     }
 
+    async fn authorization_subject(
+        db: &DatabaseConnection,
+        user: &users::Model,
+    ) -> AuthorizationSession {
+        let expires_at = Utc::now() + chrono::Duration::minutes(10);
+        let session = crate::models::sessions::ActiveModel::new(
+            user.tenant_id,
+            user.id,
+            Uuid::new_v4().to_string(),
+            expires_at,
+            None,
+            None,
+        )
+        .insert(db)
+        .await
+        .expect("direct session");
+        AuthorizationSession {
+            user_id: user.id,
+            session_id: session.id,
+            access_expires_at: expires_at,
+            require_email_verification: false,
+        }
+    }
+
     #[tokio::test]
     #[serial]
     async fn authorization_code_issuance_rechecks_consent_and_revocation() {
@@ -2952,17 +3009,19 @@ mod tests {
         .insert(&db)
         .await
         .expect("create consent subject");
+        let subject = authorization_subject(&db, &user).await;
         let redirect_uri = "https://partner.example.com/callback";
         let scopes = vec!["openid".to_string()];
         let issue = || {
             OAuthAppService::generate_authorization_code(
                 &db,
                 app.id,
-                user.id,
+                subject,
                 tenant.id,
                 redirect_uri.to_string(),
                 scopes.clone(),
                 "challenge".to_string(),
+                false,
             )
         };
 
@@ -3035,6 +3094,65 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    async fn revoked_session_cannot_approve_consent_or_issue_code() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let app = insert_revocation_app(&db, tenant.id, "revoked-authorization-session").await;
+        let user = users::ActiveModel::new(tenant.id, "revoked-auth@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("user");
+        let subject = authorization_subject(&db, &user).await;
+        crate::models::sessions::Entity::update_many()
+            .col_expr(crate::models::sessions::Column::RevokedAt, Expr::value(Utc::now()))
+            .filter(crate::models::sessions::Column::Id.eq(subject.session_id))
+            .exec(&db)
+            .await
+            .expect("revoke session");
+
+        let result = OAuthAppService::generate_authorization_code(
+            &db, app.id, subject, tenant.id,
+            "https://partner.example.com/callback".to_string(),
+            vec!["openid".to_string()], "challenge".to_string(), true,
+        )
+        .await;
+        assert!(matches!(result, Err(Error::Unauthorized(_))));
+        assert_eq!(OAuthConsents::find().count(&db).await.expect("consents"), 0);
+        assert_eq!(oauth_authorization_codes::Entity::find().count(&db).await.expect("codes"), 0);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn failed_code_insert_rolls_back_new_consent() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let app = insert_revocation_app(&db, tenant.id, "atomic-authorization").await;
+        let user = users::ActiveModel::new(tenant.id, "atomic-auth@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("user");
+        let subject = authorization_subject(&db, &user).await;
+        db.execute_unprepared(
+            "CREATE TRIGGER fail_authorization_code BEFORE INSERT ON oauth_authorization_codes
+             BEGIN SELECT RAISE(ABORT, 'simulated code write failure'); END;",
+        )
+        .await
+        .expect("inject code write failure");
+        let issue = || OAuthAppService::generate_authorization_code(
+            &db, app.id, subject, tenant.id,
+            "https://partner.example.com/callback".to_string(),
+            vec!["openid".to_string()], "challenge".to_string(), true,
+        );
+        assert!(issue().await.is_err());
+        assert_eq!(OAuthConsents::find().count(&db).await.expect("consents"), 0);
+        db.execute_unprepared("DROP TRIGGER fail_authorization_code")
+            .await
+            .expect("remove injected failure");
+        assert!(issue().await.is_ok());
+        assert_eq!(OAuthConsents::find().count(&db).await.expect("consents"), 1);
+        assert_eq!(oauth_authorization_codes::Entity::find().count(&db).await.expect("codes"), 1);
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn consent_regrant_invalidates_only_its_pending_codes() {
         let (db, tenant) = test_db_with_tenant().await;
         let app = insert_revocation_app(&db, tenant.id, "regrant-code-fence").await;
@@ -3068,14 +3186,16 @@ mod tests {
             .expect("read unrelated code")
             .expect("unrelated code");
         assert!(unrelated.used_at.is_none());
+        let subject = authorization_subject(&db, &user).await;
         let raw = OAuthAppService::generate_authorization_code(
             &db,
             app.id,
-            user.id,
+            subject,
             tenant.id,
             "https://partner.example.com/callback".to_string(),
             scopes,
             "challenge".to_string(),
+            false,
         )
         .await
         .expect("new epoch admits a new code");
@@ -3104,6 +3224,7 @@ mod tests {
         .insert(&db)
         .await
         .expect("create authorization subject");
+        let subject = authorization_subject(&db, &user).await;
         let user_id = user.id;
         OAuthAppService::grant_consent_strict(
             &db,
@@ -3119,11 +3240,12 @@ mod tests {
             OAuthAppService::generate_authorization_code(
                 &db,
                 app.id,
-                user_id,
+                subject,
                 tenant_id,
                 "https://partner.example.com/callback".to_string(),
                 vec!["openid".to_string()],
                 "challenge".to_string(),
+                false,
             )
         };
         assert!(matches!(issue(Uuid::new_v4()).await, Err(Error::NotFound)));

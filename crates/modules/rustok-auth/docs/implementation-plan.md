@@ -176,6 +176,13 @@ gates in the [Page Builder backlog](../../../../docs/modules/page-builder-backlo
    exhaustively at the GraphQL boundary); `AuthSettingsOverrides::apply` is
    live runtime wiring, not dead code.
 
+## OAuth authorization session fence (source only)
+
+Authorization issuance rechecks the direct session, its subject, credential
+expiry and email policy under app -> user -> session locking. Browser approval
+and code persistence now commit together; rejected or failed code issuance
+cannot leave a new grant behind. Source regressions authored, unrun.
+
 ## OAuth consent and grant fences (source only)
 
 Consent re-grant invalidates pending codes in its transaction; code exchange

@@ -772,7 +772,7 @@ impl AuthLifecycleService {
         }
     }
 
-    async fn find_session_by_id_for_update_in_tx(
+    pub(crate) async fn find_session_by_id_for_update_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: uuid::Uuid,
         session_id: uuid::Uuid,
