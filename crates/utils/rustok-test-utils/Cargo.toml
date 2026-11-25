@@ -12,7 +12,12 @@ description = "Test utilities for RusToK - fixtures, mocks, and helpers for test
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[features]
+jwt = ["dep:aws-lc-rs", "dep:pem"]
+
 [dependencies]
+aws-lc-rs = { workspace = true, optional = true }
+pem = { workspace = true, optional = true }
 async-trait.workspace = true
 chrono.workspace = true
 rustok-core.workspace = true

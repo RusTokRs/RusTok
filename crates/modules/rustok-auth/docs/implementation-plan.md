@@ -56,7 +56,11 @@ bootstrap and all consumer/fixture cutover. A one-time POSIX dev/test tool
 now provisions four independent RSA pairs outside the checkout without
 replacing an existing keyring or touching persisted security state. Its
 source regression is authored but unrun; host/test consumers still need
-coordinated migration. The file-source entry point now
+coordinated migration. The shared `rustok-test-utils` JWT feature generates
+fresh independent RSA pairs in memory without embedded private keys or
+external executables. Auth document bootstrap and server reset/verification
+regressions use it; remaining constructors and rotation fixtures still need
+migration. The file-source entry point now
 constructs and validates only the actual complete candidate, without
 instantiating default signing inputs, with typed source exclusivity
 owned by Auth, not a redundant startup signer. Independent MAC root validation

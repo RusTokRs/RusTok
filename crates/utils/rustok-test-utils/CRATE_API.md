@@ -28,6 +28,10 @@
   - `UserFixture`: Creates test users (`admin`, `super_admin`, `customer`, `manager`).
   - `TenantFixture`: Creates multi-tenant workspace records.
   - `ProductFixture` & `NodeFixture`: Creates catalog products and CMS content nodes.
+- `jwt` (opt-in feature): Fresh RSA key pairs and complete JWT keyring document fixtures.
+  - `JwtKeyringFixture::generate()` / `document(generation)`
+  - `RsaKeyPairFixture::generate()` / `ring(kid)` / `public_pem()`
+  - No embedded private keys, global signer cache, production wiring or external executable.
 - `helpers`: Security context generators, test IDs, and assertion macros.
   - `super_admin_context()`, `admin_context()`, `manager_context()`, `customer_context()`, `user_context(role, id)`
   - `unique_test_id()`, `unique_email()`, `unique_slug()`

@@ -310,6 +310,8 @@ moka = { version = "0.12", features = ["future"] }
 # smartstring dependency (RUSTSEC-2026-0249) as the default string type.
 rhai = { version = "1.27.0", features = ["compact_str"] }
 argon2 = "0.6"
+aws-lc-rs = "1.18"
+pem = "3.0"
 jsonwebtoken = { version = "11.1.0", features = ["aws_lc_rs"] }
 rand = "0.10.1"
 password-hash = "0.6"

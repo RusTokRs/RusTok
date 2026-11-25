@@ -14145,6 +14145,7 @@ dependencies = [
  "rustok-api",
  "rustok-core",
  "rustok-telemetry",
+ "rustok-test-utils",
  "sea-orm",
  "sea-orm-migration",
  "serde",
@@ -18667,7 +18668,9 @@ name = "rustok-test-utils"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "aws-lc-rs",
  "chrono",
+ "pem",
  "rustok-core",
  "rustok-events",
  "rustok-outbox",

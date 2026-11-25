@@ -25,6 +25,8 @@ pub mod db;
 pub mod events;
 pub mod fixtures;
 pub mod helpers;
+#[cfg(feature = "jwt")]
+pub mod jwt;
 
 pub use db::{
     assert_postgres_column_contract, assert_postgres_column_missing, assert_postgres_table_missing,

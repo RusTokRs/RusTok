@@ -345,15 +345,16 @@ mod tests {
     }
 
     #[test]
-    fn auth_config_defaults_to_hs256() {
-        let config = auth_config_from_parts(secret(), 900, AuthSettingsOverrides::default())
-            .expect("auth config");
+    fn auth_config_from_complete_rsa_document_preserves_host_policy() {
+        let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
+        let (generation, config) = auth_config_from_host_document(
+            secret(), 900, None, fixture.document(7).to_string().as_bytes(),
+        ).expect("auth config");
 
-        assert_eq!(config.algorithm().unwrap(), JwtAlgorithm::HS256);
+        assert_eq!(generation, 7);
+        assert_eq!(config.algorithm().unwrap(), JwtAlgorithm::RS256);
         assert_eq!(config.access_expiration, 900);
         assert_eq!(config.refresh_expiration, 60 * 60 * 24 * 30);
-        assert!(config.rsa_private_key_pem().unwrap().is_none());
-        assert!(config.rsa_public_key_pem().unwrap().is_none());
     }
 
     #[test]
@@ -394,9 +395,15 @@ mod tests {
         );
     }
 
+    fn rsa_test_config(root: String, document: &serde_json::Value) -> AuthConfig {
+        auth_config_from_host_document(root, 900, None, document.to_string().as_bytes())
+            .expect("complete RSA test keyring").1
+    }
+
     #[test]
     fn password_reset_token_is_bound_to_credential_state() {
-        let config = AuthConfig::new(secret());
+        let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
+        let config = rsa_test_config(secret(), &fixture.document(1));
         let tenant_id = uuid::Uuid::new_v4();
         let token = encode_password_reset_token(
             &config,
@@ -425,7 +432,9 @@ mod tests {
 
     #[test]
     fn reset_binding_rejects_legacy_and_different_secrets() {
-        let config = AuthConfig::new(secret());
+        let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
+        let document = fixture.document(1);
+        let config = rsa_test_config(secret(), &document);
         let tag = password_reset_credential_fingerprint(&config, "hash").unwrap();
         assert!(password_reset_credential_matches(&config, "hash", &tag));
         assert!(!password_reset_credential_matches(&config, "hash", &format!("v2:{tag}")));
@@ -436,7 +445,7 @@ mod tests {
             let token = rustok_auth::encode_password_reset_token(&config, tenant, &subject, 900).unwrap();
             assert!(decode_password_reset_token(&config, &token).is_err());
         }
-        let other = AuthConfig::new("another-secret-at-least-thirty-two-bytes".to_string());
+        let other = rsa_test_config("another-secret-at-least-thirty-two-bytes".to_string(), &document);
         assert!(!password_reset_credential_matches(&other, "hash", &tag));
         let weak = AuthConfig::new("short".to_string());
         assert!(!password_reset_credential_matches(&weak, "hash", &tag));
@@ -444,7 +453,8 @@ mod tests {
 
     #[test]
     fn email_verification_token_is_bound_to_user_id() {
-        let config = AuthConfig::new(secret());
+        let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
+        let config = rsa_test_config(secret(), &fixture.document(1));
         let tenant_id = uuid::Uuid::new_v4();
         let user_id = uuid::Uuid::new_v4();
         let token =

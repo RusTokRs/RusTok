@@ -8,6 +8,9 @@ and schema assertions, event-bus/transport doubles, fixtures, identity
 helpers, and common assertions. It is used by the server and multiple domain
 modules and must remain confined to test dependencies; it owns no production
 runtime or domain behavior.
+The opt-in JWT fixture module generates independent RSA pairs in memory;
+Auth owns validation of the resulting document. Initial Auth and server
+consumers are migrated; broader fixture migration and execution remain open.
 
 ## Boundary
 
@@ -40,7 +43,7 @@ runtime or domain behavior.
 
 ## Verification
 
-- `cargo test -p rustok-test-utils`
+- `cargo test -p rustok-test-utils --features jwt`
 - `scripts/verify/verify-code-quality.sh` (test-utils remains dev-only for
   consumers)
 - Targeted server test migration checks from the server test plan.

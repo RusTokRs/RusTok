@@ -1130,7 +1130,10 @@ mod tests {
 
     #[test]
     fn document_bootstrap_uses_only_file_keys_and_host_policy() {
-        let bytes = document(7, "file-key", "first-independent-signing-key-at-least-32-bytes");
+        let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
+        let mut doc = fixture.document(7);
+        doc["access"]["keyring"]["active_kid"] = serde_json::json!("file-key");
+        let bytes = serde_json::to_vec(&doc).unwrap();
         let (generation, config) = build_auth_config_from_document(
             secret(), 900,
             AuthSettingsOverrides {
@@ -1160,6 +1163,65 @@ mod tests {
         }
         assert!(build_auth_config_from_document(secret(), 0, Default::default(), &bytes).is_err());
         assert!(build_auth_config_from_document(secret(), 900, Default::default(), b"{}").is_err());
+    }
+
+    #[test]
+    fn complete_rsa_document_round_trips_every_purpose_and_rejects_key_reuse() {
+        use crate::jwt::*;
+        use rustok_core::UserRole;
+        use uuid::Uuid;
+
+        let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
+        let document = fixture.document(1);
+        let (generation, config) = build_auth_config_from_document(
+            secret(), 900, Default::default(), document.to_string().as_bytes(),
+        ).unwrap();
+        assert_eq!(generation, 1);
+        let user = Uuid::new_v4();
+        let tenant = Uuid::new_v4();
+        let access = encode_access_token(&config, user, tenant, UserRole::Customer, Uuid::new_v4()).unwrap();
+        let oauth = encode_oauth_access_token(&config, OauthAccessTokenInput {
+            app_id: user,
+            tenant_id: tenant,
+            role: UserRole::Customer,
+            client_id: Uuid::new_v4(),
+            scopes: &["catalog:read".to_string()],
+            grant_type: "client_credentials",
+            expires_in_secs: 900,
+            token_id: Uuid::new_v4(),
+        }).unwrap();
+        let reset = encode_password_reset_token(&config, tenant, "a@example.com", 900).unwrap();
+        let email = encode_email_verification_token(&config, tenant, "a@example.com", 900).unwrap();
+        let invite = encode_invite_token(&config, tenant, "a@example.com", UserRole::Customer, None, 900).unwrap();
+        for (token, kid) in [
+            (&access, "access"), (&oauth, "access"), (&reset, "password-reset"),
+            (&email, "email-verification"), (&invite, "invite"),
+        ] {
+            let header = jsonwebtoken::decode_header(token).unwrap();
+            assert_eq!(header.alg, Algorithm::RS256);
+            assert_eq!(header.kid.as_deref(), Some(kid));
+        }
+        assert!(decode_access_token(&config, &access).is_ok());
+        assert!(decode_access_token(&config, &oauth).is_ok());
+        assert!(decode_password_reset_token(&config, &reset).is_ok());
+        assert!(decode_email_verification_token(&config, &email).is_ok());
+        assert!(decode_invite_token(&config, &invite).is_ok());
+        assert!(decode_access_token(&config, &reset).is_err());
+        assert!(decode_password_reset_token(&config, &email).is_err());
+
+        let mut reused = document.clone();
+        reused["invite"] = document["access"].clone();
+        reused["invite"]["keyring"]["active_kid"] = serde_json::json!("different-kid");
+        assert!(build_auth_config_from_document(
+            secret(), 900, Default::default(), reused.to_string().as_bytes(),
+        ).is_err());
+        for purpose in ["access", "password_reset", "email_verification", "invite"] {
+            let mut incomplete = document.clone();
+            incomplete[purpose].as_object_mut().unwrap().remove("rsa_private_key_pem");
+            assert!(build_auth_config_from_document(
+                secret(), 900, Default::default(), incomplete.to_string().as_bytes(),
+            ).is_err());
+        }
     }
 
     #[test]

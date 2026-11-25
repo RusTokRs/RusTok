@@ -10,6 +10,8 @@ For full public interface and operational contract definitions, see [CRATE_API.m
 
 - Provide reusable test database setup helpers.
 - Provide shared fixtures and builder-style test data factories.
+- Generate isolated RSA JWT keyring fixtures under the opt-in `jwt` feature,
+  without embedded private keys or a production runtime dependency.
 - Provide mock event infrastructure and common test helpers.
 - Keep cross-module test scaffolding out of production crates.
 

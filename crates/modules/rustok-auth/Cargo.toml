@@ -46,6 +46,7 @@ default = []
 graphql = ["dep:async-graphql", "dep:http", "dep:rustok-telemetry", "rustok-api/server"]
 
 [dev-dependencies]
+rustok-test-utils = { workspace = true, features = ["jwt"] }
 tokio = { workspace = true, features = ["full", "test-util"] }
 
 [lints]
