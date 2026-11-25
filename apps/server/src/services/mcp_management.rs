@@ -633,6 +633,7 @@ impl McpManagementService {
             let _ = require_client(db, tenant_id, client_id).await?;
         }
 
+        validate_scaffold_slug_for_rust_type(&input.request.slug)?;
         let mut request = input.request;
         request.write_files = false;
         let preview = generate_module_scaffold(&request)
@@ -1426,6 +1427,21 @@ fn clamp_limit(limit: Option<u64>, default: u64, max: u64) -> u64 {
     limit.unwrap_or(default).clamp(1, max)
 }
 
+fn validate_scaffold_slug_for_rust_type(slug: &str) -> Result<()> {
+    let slug = slug.trim();
+    if !slug
+        .chars()
+        .next()
+        .is_some_and(|first| first.is_ascii_lowercase())
+    {
+        return Err(Error::BadRequest(
+            "Scaffold slug must start with a lowercase ASCII letter so its generated Rust module type is valid"
+                .to_string(),
+        ));
+    }
+    Ok(())
+}
+
 fn validate_token_expiry(expires_at: Option<&DateTime<Utc>>) -> Result<()> {
     if expires_at.is_some_and(|expires_at| expires_at <= &Utc::now()) {
         return Err(Error::BadRequest(
@@ -1514,7 +1530,8 @@ fn map_db_err(_err: sea_orm::DbErr) -> Error {
 mod tests {
     use super::{
         dedupe, scaffold_apply_error_requires_recovery, scaffold_status_error,
-        token_preview, validate_token_expiry, MCP_SCAFFOLD_STATUS_APPLYING,
+        token_preview, validate_scaffold_slug_for_rust_type, validate_token_expiry,
+        MCP_SCAFFOLD_STATUS_APPLYING,
         MCP_SCAFFOLD_STATUS_RECOVERY_REQUIRED,
     };
     use crate::error::Error;
@@ -1560,6 +1577,16 @@ mod tests {
             error,
             Error::BadRequest(message) if message.contains("manual workspace reconciliation")
         ));
+    }
+
+    #[test]
+    fn scaffold_slug_must_produce_a_valid_rust_module_identifier() {
+        assert!(validate_scaffold_slug_for_rust_type("newsletter").is_ok());
+        assert!(validate_scaffold_slug_for_rust_type("newsletter_2").is_ok());
+        assert!(validate_scaffold_slug_for_rust_type("  newsletter ").is_ok());
+        assert!(validate_scaffold_slug_for_rust_type("123-newsletter").is_err());
+        assert!(validate_scaffold_slug_for_rust_type("_newsletter").is_err());
+        assert!(validate_scaffold_slug_for_rust_type("---").is_err());
     }
 
     #[test]
