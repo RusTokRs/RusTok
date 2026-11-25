@@ -1789,6 +1789,29 @@ consumer with its downstream owner unavailable.
 [Taxonomy client](../../crates/modules/rustok-taxonomy/ports/src/grpc/client.rs),
 [mounted Commerce regression](../../apps/server/tests/product_remote_storefront_http.rs).
 
+## P-BOOTSTRAP-STATE-ADMISSION — Validate a bootstrap candidate before persisting it
+
+- **Category:** Startup and durable configuration.
+- **Logic dimensions:** Preconditions, side-effect completeness, order of operations.
+- **Observed defect:** The API host created the initial `platform_state` row
+  before comparing the module manifest with the compiled registry. Startup
+  rejected the invalid composition, but the next startup loaded the same
+  persisted revision and ignored the corrected manifest file.
+- **Canonical solution:** Validate the candidate at the first-write boundary.
+  The owner still serializes competing initializers. Existing installations
+  load their active snapshot from the database.
+
+```rust
+ManifestManager::validate(&bootstrap)?;
+ManifestManager::validate_with_registry(&bootstrap, &crate::modules::build_registry())?;
+let bootstrap_json = Self::manifest_snapshot_json(&bootstrap)?;
+let snapshot = owner.ensure_active_snapshot(&bootstrap_json, "bootstrap").await?;
+```
+
+Detection: `rg -n 'ensure_active_snapshot\(' apps/server` finds initialization
+calls. Check that a rejected first start leaves no active row and can be
+retried with a corrected manifest. [Host composition](../../apps/server/src/services/platform_composition.rs).
+
 ## P-UNRECOGNIZED-TO-SINK — Input a reader does not recognise never reaches the sink
 
 - **Category:** Output containment and fail-open fallbacks.

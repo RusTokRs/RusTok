@@ -246,7 +246,9 @@ defined by the [Settings and Configuration Architecture](./settings.md).
 
 ## Runtime Control Plane and Lifecycle
 
-The active runtime composition of modules is stored in `platform_state`; `modules.toml` is used as a bootstrap/dev input.
+The active runtime composition of modules is stored in `platform_state`. On
+first startup, RusToK validates the bootstrap manifest and checks it against
+the compiled module registry before creating the active snapshot.
 Composition changes are performed as atomic control-plane operations: the manifest is validated against the registry, `platform_state`
 is updated via revision/CAS, and the build job receives `manifest_ref = platform_state:<revision>` in the same DB transaction.
 The manifest hash is a SHA-256 of the canonical JSON of the full snapshot, including settings/build/source/dependency metadata.

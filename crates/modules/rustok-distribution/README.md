@@ -18,6 +18,9 @@ distribution build.
   registry source, and machine-readable composition manifest consumed only in
   immutable static-distribution CI workspaces.
 - Provide the same selected registry to HTTP hosts and standalone operations.
+- Register the baseline Social Graph owner with its Index integration so its
+  runtime dependencies match the module manifest in headless builds. The
+  server's `mod-social_graph` feature also enables GraphQL and the broker consumer.
 - Keep routing, lifecycle, command providers and domain logic outside this crate.
 - Keep executable hosts capability-neutral: they call
   `build_runtime_extensions(...)` and never import selected bridge types.

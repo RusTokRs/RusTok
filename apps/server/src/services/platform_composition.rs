@@ -193,6 +193,11 @@ impl PlatformCompositionService {
             Ok(snapshot) => snapshot,
             Err(ModuleCompositionError::MissingActiveComposition) => {
                 let bootstrap = Self::bootstrap_manifest()?;
+                ManifestManager::validate(&bootstrap)?;
+                ManifestManager::validate_with_registry(
+                    &bootstrap,
+                    &crate::modules::build_registry(),
+                )?;
                 let bootstrap_json = Self::manifest_snapshot_json(&bootstrap)?;
                 owner
                     .ensure_active_snapshot(&bootstrap_json, "bootstrap")

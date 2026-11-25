@@ -1,7 +1,7 @@
 use rustok_build::NoopBuildEventPublisher;
 use rustok_build::build::Entity as BuildEntity;
 use rustok_core::ModuleRegistry;
-use rustok_modules::{ModuleCommandContext, ModuleCompositionError};
+use rustok_modules::{ModuleCommandContext, ModuleCompositionError, ModuleControlPlane};
 use rustok_outbox::SysEventsMigration;
 use rustok_server::modules::{ManifestDiff, ManifestModuleSpec, ModulesManifest};
 use rustok_server::services::platform_composition::{
@@ -34,6 +34,14 @@ async fn setup_db(include_builds: bool) -> DatabaseConnection {
     ))
     .await
     .expect("create platform_state");
+
+    let snapshot = PlatformCompositionService::manifest_snapshot_json(&ModulesManifest::default())
+        .expect("encode the composition fixture");
+    ModuleControlPlane::new(db.clone())
+        .composition()
+        .ensure_active_snapshot(&snapshot, "test-bootstrap")
+        .await
+        .expect("seed the composition fixture");
 
     SysEventsMigration
         .up(&SchemaManager::new(&db))
