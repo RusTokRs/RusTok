@@ -1491,3 +1491,7 @@ integration tests; MySQL support is out of scope.
 - The browser adapter now shares one authoritative-intent classification between DOM emission and transport admission. Strict view-state intents cannot leak through DOM listeners while recovery or a peer conflict fences the draft.
 - A successful HTTP response without the matching committed operation receipt is non-current and cannot adopt revision/hash/draft metadata, clear a parked save warning, or navigate. The pending envelope remains available for read-only receipt recovery.
 - Added mounted-browser regressions for mismatched receipts and strict peer fencing; updated affected source contract assertions. Build, tests, lint, formatting and mounted verification remain pending with the maintainer.
+
+2026-11-25 Fly iframe origin parity follow-up (source only; not executed):
+- Rust and the classic browser adapter now reject malformed authority delimiters, credentials, paths (even when the URL parser normalizes them away), queries and fragments before canonicalizing explicit HTTP(S) origins. Host case, default ports, IPv6 and the sandboxed opaque origin remain supported.
+- Added matched Rust and mounted-browser regressions. Scoped checks, formatting, lint and browser execution remain pending.

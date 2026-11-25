@@ -82,6 +82,11 @@ intent without posting. This is intentionally a safety gate, not automatic retry
 Timeout notifications use the same authoritative/read-only request ordering rule as response
 and error notifications. A newer selection request cannot hide the timeout of a pending write.
 
+Expected iframe origins use the same explicit HTTP(S) origin grammar as Fly Web:
+canonical host and default port normalization are supported, while paths (including
+dot segments), credentials, malformed authority delimiters, queries and fragments
+are rejected before URL parsing. The literal sandboxed origin `"null"` remains valid.
+
 Same-origin navigation/intent-endpoint admission rejects raw backslashes and ASCII control
 or whitespace characters before URL resolution, including the `about:blank`/srcdoc fallback
 that previously treated ambiguous root-relative paths as safe.

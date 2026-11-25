@@ -9,6 +9,7 @@ const adapterPath = resolve(
 
 type FlyAdapter = {
   lifecycleState: 'created' | 'started' | 'stopped';
+  expectedOrigin: string;
   start: () => FlyAdapter;
   stop: () => FlyAdapter;
 };
@@ -200,4 +201,48 @@ test('autoMount false supports an idempotent one-shot adapter lifecycle', async 
   await expect(root).toHaveAttribute('data-fly-browser-mounted', 'false');
   await expect(root).toHaveAttribute('data-fly-canvas-connected', 'false');
   await expect(page.locator('[data-fly-browser-overlay]')).toHaveCount(0);
+});
+
+test('manual mount canonicalizes concrete origins and rejects non-origin syntax', async ({ page }) => {
+  await loadManualBrowser(page);
+  const observed = await page.evaluate(() => {
+    const scope = globalThis as BrowserScope;
+    const root = document.querySelector('#fly-root');
+    if (!(root instanceof HTMLElement)) throw new Error('missing editor root');
+    const cases = [
+      ' https://ADMIN.example:443/ ',
+      'http://localhost:3000/',
+      'HTTPS://[::1]:443/',
+      'null',
+      '*',
+      'https://admin.example/path',
+      'https://admin.example/a/..',
+      'https://admin.example/%2e',
+      'https:///admin.example',
+      'https:admin.example',
+      'https://@admin.example',
+      'https://admin.example?',
+      'https://admin.example#',
+      'https://admin.example\\',
+      'https://ad\nmin.example',
+      'ftp://admin.example'
+    ];
+    return cases.map((origin) => {
+      root.dataset.flyExpectedOrigin = origin;
+      try {
+        const adapter = scope.FlyBrowser?.mountAll?.({})[0];
+        if (!adapter) throw new Error('missing adapter');
+        const canonical = adapter.expectedOrigin;
+        adapter.stop();
+        return canonical;
+      } catch (error) {
+        if (typeof error !== 'object' || error === null || !('code' in error)) throw error;
+        return String(error.code);
+      }
+    });
+  });
+  expect(observed).toEqual([
+    'https://admin.example', 'http://localhost:3000', 'https://[::1]', 'null',
+    ...Array(12).fill('EXPECTED_ORIGIN_REQUIRED')
+  ]);
 });

@@ -49,6 +49,20 @@ pub fn normalize_expected_origin(origin: &str) -> Option<String> {
         return Some(OPAQUE_ORIGIN.to_string());
     }
 
+    // WHATWG URL parsing can repair missing slashes, strip embedded controls,
+    // and collapse dot segments. Reject non-origin syntax before normalization.
+    let (scheme, rest) = origin.split_once("://")?;
+    if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
+        return None;
+    }
+    let authority = rest.strip_suffix('/').unwrap_or(rest);
+    if authority.is_empty()
+        || authority.contains(['/', '\\', '?', '#', '@'])
+        || authority.chars().any(|c| c.is_control() || c.is_whitespace())
+    {
+        return None;
+    }
+
     let parsed = Url::parse(origin).ok()?;
     if !matches!(parsed.scheme(), "http" | "https")
         || parsed.host_str().is_none()
@@ -58,18 +72,6 @@ pub fn normalize_expected_origin(origin: &str) -> Option<String> {
         || !parsed.username().is_empty()
         || parsed.password().is_some()
     {
-        return None;
-    }
-
-    let authority = origin
-        .split_once("://")
-        .map(|(_, rest)| {
-            rest.split(|character| matches!(character, '/' | '?' | '#'))
-                .next()
-                .unwrap_or_default()
-        })
-        .unwrap_or_default();
-    if authority.contains('@') {
         return None;
     }
 
@@ -177,11 +179,24 @@ mod tests {
             normalize_expected_origin("http://localhost:3000/").as_deref(),
             Some("http://localhost:3000")
         );
+        assert_eq!(
+            normalize_expected_origin("HTTPS://[::1]:443/").as_deref(),
+            Some("https://[::1]")
+        );
         for origin in [
             "https://admin.example/path",
             "https://admin.example?x=1",
             "https://admin.example#fragment",
             "https://user@admin.example",
+            "https://@admin.example",
+            "https:///admin.example",
+            "https:admin.example",
+            "https://admin.example/a/..",
+            "https://admin.example/%2e",
+            "https://admin.example\\",
+            "https://ad\nmin.example",
+            "https://admin.example?",
+            "https://admin.example#",
             "ftp://admin.example",
         ] {
             assert_eq!(normalize_expected_origin(origin), None, "accepted {origin}");

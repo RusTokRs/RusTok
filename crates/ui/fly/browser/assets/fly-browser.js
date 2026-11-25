@@ -391,8 +391,19 @@ function forwardAbortSignal(signal, controller, abort) {
 function normalizeExpectedOrigin(value) {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
-  if (!trimmed || trimmed === "*") return null;
-  return trimmed;
+  if (trimmed === "null") return trimmed;
+  // Match Fly Web's explicit HTTP(S) origin grammar before the URL parser
+  // repairs malformed authority delimiters or collapses a non-origin path.
+  const match = /^https?:\/\/([^/?#\\@]+)\/?$/i.exec(trimmed);
+  if (!match || /[\s\u0000-\u001f\u007f-\u009f]/u.test(match[1])) return null;
+  try {
+    const parsed = new URL(trimmed);
+    if (!parsed.hostname || parsed.username || parsed.password ||
+        parsed.pathname !== "/" || parsed.search || parsed.hash) return null;
+    return parsed.origin;
+  } catch (_) {
+    return null;
+  }
 }
 
 function draftStorageKey(pageId) {
