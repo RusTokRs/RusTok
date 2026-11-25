@@ -249,8 +249,8 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
                 client_id: command.client_id,
                 request: command.request,
                 created_by: Some(context.actor_id),
-                actor_id: None,
-                actor_type: None,
+                actor_id: Some(context.actor_id.to_string()),
+                actor_type: Some("human_user".to_string()),
             },
         )
         .await
@@ -272,8 +272,8 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
                 confirm: command.confirm,
                 expected_client_id: None,
                 applied_by: Some(context.actor_id),
-                actor_id: None,
-                actor_type: None,
+                actor_id: Some(context.actor_id.to_string()),
+                actor_type: Some("human_user".to_string()),
             },
         )
         .await
