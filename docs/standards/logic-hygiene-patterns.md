@@ -698,6 +698,21 @@ They now capture any transport error into an `action_error` reactive signal and 
   [Pricing service regression](../../crates/modules/rustok-commerce/tests/pricing_service_test/price_list.rs).
   Regression sources authored, not executed.
 
+### P-CHANNEL-PRICE-ALIAS-IDENTITY — resolve before selecting a price row
+
+- **Category:** identity / scoped mutation.
+- **Observed defect:** Direct base-price writers verified a Channel UUID/slug
+  but searched using the submitted nullable tuple. A later request using
+  another alias inserted a second row for the same channel/currency/tier.
+- **Canonical correction:** Resolve the tenant Channel, match its UUID or
+  current slug-only row, and share that predicate with discount preview.
+  Reject multiple matches; preserve the existing row ID and scope. Keep
+  unscoped and other-channel rows separate and list override scope exact.
+- **Evidence:** [Pricing commands](../../crates/modules/rustok-pricing/src/services/pricing/commands.rs),
+  [shared predicate](../../crates/modules/rustok-pricing/src/services/pricing/queries.rs),
+  [regression](../../crates/modules/rustok-commerce/tests/pricing_service_test/price_set.rs).
+  Historical duplicates require reconciliation; regression source unexecuted.
+
 ## 1. Core Philosophy: The 6 Universal Logic Dimensions
 
 Under [AGENTS.md §4](../../AGENTS.md), verify the affected behavior and its owner contract across the **6 Universal Logic Dimensions**. Use source matches to find code to inspect. A match alone cannot establish a behavioral defect:

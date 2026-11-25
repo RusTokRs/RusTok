@@ -573,7 +573,14 @@ impl PricingService {
             None => (None, channel_id, normalized_channel_slug),
         };
 
-        validate_channel_scope_in_tx(txn, tenant_id, channel_id, channel_slug.as_deref()).await?;
+        let resolved_channel = resolve_channel_identity(
+            txn, tenant_id, channel_id, channel_slug.as_deref(),
+        ).await?;
+        let scope = if price_list_id.is_none() {
+            super::queries::base_price_channel_filter(resolved_channel.as_ref())
+        } else {
+            super::queries::exact_price_channel_filter(channel_id, channel_slug.clone())
+        };
         validate_price_tier_quantities(min_quantity, max_quantity)?;
 
         // INVARIANT: the Variant lock and (when selected) price-list lock above
@@ -586,14 +593,7 @@ impl PricingService {
                 entities::price::Column::PriceListId,
                 price_list_id,
             ))
-            .filter(super::queries::optional_uuid_filter(
-                entities::price::Column::ChannelId,
-                channel_id,
-            ))
-            .filter(super::queries::optional_string_filter(
-                entities::price::Column::ChannelSlug,
-                channel_slug.clone(),
-            ))
+            .filter(scope)
             .filter(super::queries::optional_int_filter(
                 entities::price::Column::MinQuantity,
                 min_quantity,
@@ -645,8 +645,8 @@ impl PricingService {
                     compare_at_amount.and_then(crate::services::bootstrap::legacy_amount_units)
                 );
                 price_active.price_list_id = Set(price_list_id);
-                price_active.channel_id = Set(channel_id);
-                price_active.channel_slug = Set(channel_slug.clone());
+                // An alias-based update must preserve the existing row scope.
+                // The requested identity was already verified under the SKU lock.
                 price_active.min_quantity = Set(min_quantity);
                 price_active.max_quantity = Set(max_quantity);
                 price_active.update(txn).await?
@@ -735,14 +735,17 @@ impl PricingService {
             let normalized_currency = normalize_resolution_currency(&price_input.currency_code)?;
             let normalized_channel_slug =
                 normalize_channel_slug(price_input.channel_slug.as_deref());
-            let resolved_channel_id = resolve_channel_id_in_tx(
+            let resolved_channel = resolve_channel_identity(
                 &txn,
                 tenant_id,
                 price_input.channel_id,
                 normalized_channel_slug.as_deref(),
             )
             .await?;
-            admit_batch_price_identity(&mut seen, resolved_channel_id, &normalized_currency)?;
+            admit_batch_price_identity(
+                &mut seen, resolved_channel.as_ref().map(|channel| channel.id), &normalized_currency,
+            )?;
+            let scope = super::queries::base_price_channel_filter(resolved_channel.as_ref());
 
             if price_input.amount < Decimal::ZERO {
                 return Err(CommerceError::InvalidPrice(
@@ -763,24 +766,17 @@ impl PricingService {
                 &normalized_currency,
             )?;
 
-            prepared.push((price_input, normalized_currency, normalized_channel_slug));
+            prepared.push((price_input, normalized_currency, normalized_channel_slug, scope));
         }
 
         let mut last_catalog_price_event = None;
-        for (price_input, normalized_currency, normalized_channel_slug) in prepared {
+        for (price_input, normalized_currency, normalized_channel_slug, scope) in prepared {
             let existing_rows = entities::price::Entity::find()
                 .filter(entities::price::Column::VariantId.eq(variant_id))
                 .filter(entities::price::Column::CurrencyCode.eq(&normalized_currency))
                 .filter(entities::price::Column::RegionId.is_null())
                 .filter(entities::price::Column::PriceListId.is_null())
-                .filter(super::queries::optional_uuid_filter(
-                    entities::price::Column::ChannelId,
-                    price_input.channel_id,
-                ))
-                .filter(super::queries::optional_string_filter(
-                    entities::price::Column::ChannelSlug,
-                    normalized_channel_slug.clone(),
-                ))
+                .filter(scope)
                 .filter(entities::price::Column::MinQuantity.is_null())
                 .filter(entities::price::Column::MaxQuantity.is_null())
                 .limit(2)
@@ -795,8 +791,7 @@ impl PricingService {
                     let mut price_active: entities::price::ActiveModel = price.into();
                     price_active.amount = Set(price_input.amount);
                     price_active.compare_at_amount = Set(price_input.compare_at_amount);
-                    price_active.channel_id = Set(price_input.channel_id);
-                    price_active.channel_slug = Set(normalized_channel_slug.clone());
+                    // Preserve the stored scope when a different alias selects it.
                     price_active.legacy_amount = Set(
                         crate::services::bootstrap::legacy_amount_units(price_input.amount),
                     );

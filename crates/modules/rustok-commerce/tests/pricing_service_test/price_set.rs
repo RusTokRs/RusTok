@@ -990,3 +990,58 @@ async fn test_price_reads_are_tenant_scoped() {
         .unwrap();
     assert_eq!(owned_price, Some(dec!(42.00)));
 }
+
+#[tokio::test]
+async fn test_base_price_authoring_and_discount_preview_share_channel_identity() {
+    let (db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (_, variant_id) = create_test_product(&catalog, tenant_id).await;
+    let channel_id = Uuid::new_v4();
+    seed_pricing_channel(&db, tenant_id, channel_id, "web-store").await;
+    service
+        .set_price_tier_with_channel(
+            tenant_id, actor_id, variant_id, "USD", dec!(80), None,
+            None, Some("web-store".into()), None, None,
+        )
+        .await
+        .unwrap();
+    let original = service.get_variant_prices(tenant_id, variant_id).await.unwrap()
+        .into_iter().find(|row| row.channel_slug.as_deref() == Some("web-store")).unwrap();
+
+    service
+        .set_price_tier_with_channel(
+            tenant_id, actor_id, variant_id, "USD", dec!(90), None,
+            Some(channel_id), None, None, None,
+        )
+        .await
+        .unwrap();
+    service
+        .set_prices(
+            tenant_id, actor_id, variant_id,
+            vec![rustok_commerce_foundation::dto::PriceInput {
+                currency_code: "USD".into(), channel_id: Some(channel_id),
+                channel_slug: Some("WEB-STORE".into()), amount: dec!(100), compare_at_amount: None,
+            }],
+        )
+        .await
+        .unwrap();
+    let preview = service.preview_percentage_discount_with_channel(
+        variant_id, "USD", dec!(10), Some(channel_id), None,
+    ).await.unwrap();
+    assert_eq!(preview.current_amount, dec!(100));
+    assert_eq!(preview.adjusted_amount, dec!(90));
+    let saved = service.apply_percentage_discount_with_channel(
+        tenant_id, actor_id, variant_id, "USD", dec!(10), Some(channel_id), None,
+    ).await.unwrap();
+    assert_eq!(saved.adjusted_amount, preview.adjusted_amount);
+
+    let rows: Vec<_> = service.get_variant_prices(tenant_id, variant_id).await.unwrap()
+        .into_iter().filter(|row| row.channel_id == Some(channel_id)
+            || row.channel_slug.as_deref() == Some("web-store")).collect();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].id, original.id);
+    assert_eq!(rows[0].amount, dec!(90));
+    assert_eq!(rows[0].channel_slug, original.channel_slug);
+    assert_eq!(rows[0].channel_id, original.channel_id);
+}

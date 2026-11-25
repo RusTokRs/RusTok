@@ -34,8 +34,13 @@ ID and slug aliases), and uses the same bounded stored-row ambiguity check as
 single-price authoring. Duplicate inputs are validation errors; multiple exact
 stored matches return the existing `PRICING_PRICE_AMBIGUOUS` conflict and
 abort the entire transaction. The batch still advances the catalog Variant
-predecessor once for successful unscoped changes. Existing stored channel
-representations and cross-command alias reconciliation are unchanged.
+predecessor once for successful unscoped changes. Direct single/batch base-price writes and base discount preview now match a
+tenant-resolved channel by its UUID or its current slug-only representation,
+including historical ID-only rows. Multiple matching representations are
+conflicts; an update preserves the existing row identity and scope rather
+than inserting a duplicate or reassigning the channel. Unscoped rows and
+other channels remain distinct. Price-list overrides retain their exact
+inherited scope. Historical duplicates are not automatically merged.
 Focused regression sources are authored, not executed.
 
 Direct embedded Pricing base-price authoring advances the Product-owned Variant

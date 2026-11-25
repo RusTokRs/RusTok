@@ -496,6 +496,19 @@ impl PricingService {
             ));
         }
         let currency_code = normalize_resolution_currency(currency_code)?;
+        let scope = if price_list_id.is_none() {
+            let variant = rustok_commerce_foundation::entities::product_variant::Entity::find_by_id(variant_id)
+                .one(&self.db)
+                .await?
+                .ok_or(CommerceError::VariantNotFound(variant_id))?;
+            let channel = super::scope::resolve_channel_identity(
+                &self.db, variant.tenant_id, channel_id, channel_slug,
+            )
+            .await?;
+            base_price_channel_filter(channel.as_ref())
+        } else {
+            exact_price_channel_filter(channel_id, normalize_channel_slug(channel_slug))
+        };
         let mut prices = price::Entity::find()
             .filter(price::Column::VariantId.eq(variant_id))
             .filter(price::Column::CurrencyCode.eq(&currency_code))
@@ -504,11 +517,7 @@ impl PricingService {
                 price::Column::PriceListId,
                 price_list_id,
             ))
-            .filter(optional_uuid_filter(price::Column::ChannelId, channel_id))
-            .filter(optional_string_filter(
-                price::Column::ChannelSlug,
-                normalize_channel_slug(channel_slug),
-            ))
+            .filter(scope)
             .filter(price::Column::MinQuantity.is_null())
             .filter(price::Column::MaxQuantity.is_null())
             .limit(2)
@@ -591,6 +600,32 @@ pub(crate) async fn resolve_requested_price_list_id(
     }
 
     Ok(Some(price_list_id))
+}
+
+/// Base price identity is the tenant-resolved Channel, not its wire spelling.
+pub(super) fn base_price_channel_filter(
+    channel: Option<&rustok_channel::entities::channel::Model>,
+) -> Condition {
+    match channel {
+        Some(channel) => Condition::any()
+            .add(price::Column::ChannelId.eq(channel.id))
+            .add(
+                Condition::all()
+                    .add(price::Column::ChannelId.is_null())
+                    .add(price::Column::ChannelSlug.eq(&channel.slug)),
+            ),
+        None => exact_price_channel_filter(None, None),
+    }
+}
+
+/// List overrides retain the exact inherited scope required by storage.
+pub(super) fn exact_price_channel_filter(
+    channel_id: Option<Uuid>,
+    channel_slug: Option<String>,
+) -> Condition {
+    Condition::all()
+        .add(optional_uuid_filter(price::Column::ChannelId, channel_id))
+        .add(optional_string_filter(price::Column::ChannelSlug, channel_slug))
 }
 
 pub(crate) fn optional_int_filter(column: price::Column, value: Option<i32>) -> sea_orm::Condition {
