@@ -23,6 +23,9 @@
 ## Primary Public Types and Signatures
 - `pub struct TenantModule`
 - Public tenant DTOs/services from `services`.
+- `TenantService::list_active_tenant_ids_after(after: Option<Uuid>, limit: u64)`:
+  returns a live, active-only UUID keyset page (limit clamped to 1..=100), ordered
+  ascending with an exclusive cursor. It does not authorize subsequent effects.
 - `TenantModule` implements `RusToKModule` with `ModuleKind::Core`.
 
 ## Events

@@ -187,6 +187,69 @@ async fn tenant_crud_flow() {
 }
 
 #[tokio::test]
+async fn active_tenant_id_cursor_survives_deletion_and_activation_changes() {
+    use rustok_tenant::entities::tenant;
+    use sea_orm::{ActiveModelTrait, Set};
+    use uuid::Uuid;
+
+    let db = setup_db().await;
+    let service = TenantService::new(db.clone());
+    for i in 1..=5_u128 {
+        let mut model = tenant::ActiveModel::new(
+            &format!("Cursor Tenant {i}"),
+            &format!("cursor-tenant-{i}"),
+        );
+        model.id = Set(Uuid::from_u128(i));
+        model.is_active = Set(i != 3);
+        model.insert(&db).await.expect("insert tenant");
+    }
+
+    assert_eq!(
+        service.list_active_tenant_ids_after(None, 0).await.unwrap(),
+        vec![Uuid::from_u128(1)]
+    );
+    let first = service
+        .list_active_tenant_ids_after(None, 2)
+        .await
+        .expect("first page");
+    assert_eq!(first, vec![Uuid::from_u128(1), Uuid::from_u128(2)]);
+
+    tenant::Entity::delete_by_id(Uuid::from_u128(1))
+        .exec(&db)
+        .await
+        .expect("delete earlier tenant");
+    let third = tenant::Entity::find_by_id(Uuid::from_u128(3))
+        .one(&db)
+        .await
+        .expect("load tenant")
+        .expect("tenant exists");
+    let mut third: tenant::ActiveModel = third.into();
+    third.is_active = Set(true);
+    third.update(&db).await.expect("activate later tenant");
+    let fourth = tenant::Entity::find_by_id(Uuid::from_u128(4))
+        .one(&db)
+        .await
+        .expect("load tenant")
+        .expect("tenant exists");
+    let mut fourth: tenant::ActiveModel = fourth.into();
+    fourth.is_active = Set(false);
+    fourth.update(&db).await.expect("deactivate later tenant");
+
+    let second = service
+        .list_active_tenant_ids_after(first.last().copied(), 2)
+        .await
+        .expect("second page");
+    assert_eq!(second, vec![Uuid::from_u128(3), Uuid::from_u128(5)]);
+    assert!(
+        service
+            .list_active_tenant_ids_after(second.last().copied(), 2)
+            .await
+            .expect("end of enumeration")
+            .is_empty()
+    );
+}
+
+#[tokio::test]
 async fn duplicate_domain_is_a_named_conflict_on_create_and_update() {
     let db = setup_db().await;
     let service = TenantService::new(db.clone());

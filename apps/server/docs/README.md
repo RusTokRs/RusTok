@@ -1157,7 +1157,12 @@ before the event forwarder. The Outbox relay supervisor owns and gracefully drai
 - `settings.rustok.runtime.background_workers` governs only maintenance workers on top of the already published HTTP/GraphQL surface. In `development.yaml`, for standalone admin debug, `workflow_cron_enabled`, `seo_bulk_enabled`, `seo_sitemap_enabled`, and `seo_index_repair_enabled` are disabled so that maintenance loops do not saturate the local PostgreSQL pool; the production/default runtime keeps them enabled.
 - The generic module-work host supplies artifact queues with an active-tenant
   enumerator from `rustok-tenant` and a server-composed CAS-backed Rhai/WASM
-  executor before artifact registrations run. The runtime CAS is obtained from
+  executor before artifact registrations run. Enumeration reads bounded active-ID
+  pages ordered by UUID, using the last returned ID as an exclusive cursor.
+  Deletion of an earlier tenant cannot shift subsequent pages; there is no
+  separate count or offset. This is not a snapshot or authorization decision:
+  activation behind the cursor is picked up on the next sweep. Owner and host
+  regression tests were authored but not executed. The runtime CAS is obtained from
   the same operation-scoped `ModuleControlPlane` as artifact capability,
   installation, audit, and sandbox-policy services, so the server does not
   create an independent artifact staging identity source. Executor registration

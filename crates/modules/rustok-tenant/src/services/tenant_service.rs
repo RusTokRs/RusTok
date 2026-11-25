@@ -375,6 +375,32 @@ impl TenantService {
         Ok((items, total))
     }
 
+    /// Bounded keyset projection for host-owned background enumeration.
+    /// Only active IDs strictly after the previous UUID are returned in
+    /// ascending order. This is not an admission check or a snapshot: callers
+    /// must recheck authorization at the effect boundary, and tenants becoming
+    /// active behind the cursor are discovered on the next sweep.
+    #[instrument(skip(self))]
+    pub async fn list_active_tenant_ids_after(
+        &self,
+        after: Option<Uuid>,
+        limit: u64,
+    ) -> TenantResult<Vec<Uuid>> {
+        let mut query = tenant::Entity::find()
+            .filter(tenant::Column::IsActive.eq(true))
+            .order_by_asc(tenant::Column::Id);
+        if let Some(id) = after {
+            query = query.filter(tenant::Column::Id.gt(id));
+        }
+        Ok(query
+            .select_only()
+            .column(tenant::Column::Id)
+            .limit(limit.clamp(1, 100))
+            .into_tuple::<Uuid>()
+            .all(&self.db)
+            .await?)
+    }
+
     #[instrument(skip(self), fields(tenant_id = %tenant_id))]
     pub async fn list_tenant_modules(
         &self,

@@ -38,6 +38,11 @@ domain contract and must not dissolve into middleware or host-specific logic.
   `m20261103_000003_tenant_identity_index` installs this index.
 
 - `apps/server` owns only the middleware resolution entry point, cache infrastructure and runtime bootstrap around the tenant resolver path;
+- Host artifact delivery enumeration uses `TenantService::list_active_tenant_ids_after`:
+  the owner filters active tenants in the database, selects only IDs, and returns
+  at most 100 strictly ascending UUIDs after an exclusive cursor. It is a live
+  projection, not a snapshot or authorization decision. Activation behind the
+  cursor is observed on the next sweep; administrative offset pagination is unchanged.
 - tenant context is resolved by `uuid`, `slug` or `host` before entering business logic; the module-owned `TenantReadPort` covers read projection lookup by id/slug/domain for host resolver/provisioning consumers; `apps/server` resolver uses this port on the cache-miss path instead of raw entity lookup, and installer provisioning/verification uses slug projection before create-candidate decisions and verify step;
 - outbox relay/dispatch infrastructure remains a host/runtime concern, but `rustok-tenant` always inserts each owner lifecycle event through `TransactionalEventBus::publish_root_in_tx` before the state transaction commits;
 - `TenantService::new` is the only service constructor; lifecycle publication cannot be disabled by omitted host wiring;
