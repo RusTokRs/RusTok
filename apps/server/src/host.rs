@@ -708,7 +708,7 @@ impl JwtRuntimeSupervisor {
             Ok(rustok_auth::JwtAdmission::Admitted) => {}
             // Do not mark the file processed: the same candidate must retry
             // after the old database lease horizon has drained.
-            Ok(rustok_auth::JwtAdmission::Draining) => return Ok(()),
+            Ok(rustok_auth::JwtAdmission::Draining | rustok_auth::JwtAdmission::AwaitingReplicas) => return Ok(()),
             Err(rustok_auth::AuthError::Validation(_)) => {
                 source.digest = digest;
                 tracing::warn!("JWT keyring generation rejected by durable fence");
@@ -716,7 +716,11 @@ impl JwtRuntimeSupervisor {
             }
             Err(error) => return Err(crate::auth::auth_err(error)),
         }
-        publisher.publish(generation, candidate).map_err(crate::auth::auth_err)?;
+        if !fence.activate(publisher, generation, candidate).await.map_err(crate::auth::auth_err)? {
+            // The current local lease remains intact. Retry this exact file
+            // until a matching grant is obtained or a newer file arrives.
+            return Ok(());
+        }
         source.digest = digest;
         tracing::info!(generation, "JWT keyring generation published");
         Ok(())

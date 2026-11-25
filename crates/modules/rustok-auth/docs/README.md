@@ -257,31 +257,54 @@ lease for JWT signing and verification. Renewal confirms the exact durable
 generation and canonical metadata. Auth checks a ten-second local monotonic
 deadline before and after crypto; the DB records a conservative fifteen-second
 maximum lease horizon. The host supervisor runs every two seconds from
-bootstrap through serving. On a generation change the database closes old
-renewal for up to 60 seconds and returns Draining until all old lease horizons
-have elapsed. The same candidate is retried without requiring a file edit.
-Only then can the durable CAS commit the new generation. A disconnected or
+bootstrap through serving. For an incompatible generation change the database
+closes old renewal for up to 60 seconds and returns Draining until all old
+lease horizons have elapsed. The same candidate is retried without requiring
+a file edit. Compatible generations can use the rolling path below. A disconnected or
 stale host cannot extend its local JWT authority; it can converge after
 receiving the committed document. An abandoned drain expires and permits
 the still-current generation to resume renewing.
 
-This is a conservative barrier, not a zero-downtime replica ACK protocol:
-every generation change may briefly interrupt JWT operations. It assumes a
+The fallback drain may briefly interrupt JWT operations. It assumes a
 single authoritative database primary, disciplined clock rates with no forward
 DB clock jump, and no host suspend that stops the monotonic clock. Stop all
-older/unmanaged host binaries and apply both Auth migrations before cutover.
+older/unmanaged host binaries and apply the Auth migrations before cutover.
 A database error terminates the host; static mode exits when its lease is
 denied. File-backed stale hosts keep polling with JWT crypto fenced after
 expiry. The host's critical `jwt_cluster_lease` readiness check samples the
 same local gate after awaited dependency probes, returning 503 when the lease
 is unavailable. In-flight business transactions already authorized are not cancelled.
-Root rotation, rollback of the database itself, explicit replica membership,
-non-disruptive staging/promotion and emergency distributed revocation remain
-separate work. Keys removed before first enrollment are not known to the ledger.
+Root rotation, rollback of the database itself and emergency distributed
+revocation remain separate work. Keys removed before first enrollment are
+not known to the ledger.
+
+### Rolling replica admission
+
+Every process registers its UUID incarnation and exact prepared verifier
+metadata with each lease. Grants for older generations remain until their
+database-clock deadlines, including after a process changes generation.
+Add a new verification-only key to a generation retaining the current
+signer; distribute it before promoting the new signer in the next document.
+Retain the previous signer as verification history for the full remaining
+JWT lifetime. Both generations must verify each other's signer for the
+entire overlap plus a safety margin, and existing live verification
+deadlines and legacy mapping must be preserved. A compatible promotion
+waits for all outstanding older incompatible grants to expire without
+closing renewal for the current generation (AwaitingReplicas). A new
+local lease and the new keys are installed atomically. An incompatible
+change or removal of still-valid history uses the existing drain path.
+Unchanged waiting files retry automatically.
+
+The registry is bounded to 256 outstanding process/generation grants and
+4 MiB. Old anonymous leases from migration must expire before rolling
+admission. Delayed file distribution or capacity pressure may fence
+individual replicas; this is not a universal zero-downtime guarantee.
+Use the trusted primary, disciplined clocks and compatible upgraded hosts.
 Source regressions are authored, unrun.
 
-See [durable generation fence ADR](../../../../DECISIONS/2026-11-25-jwt-generation-fence.md)
-and [cluster lease barrier ADR](../../../../DECISIONS/2026-11-25-jwt-cluster-lease.md).
+See [durable generation fence ADR](../../../../DECISIONS/2026-11-25-jwt-generation-fence.md),
+[cluster lease barrier ADR](../../../../DECISIONS/2026-11-25-jwt-cluster-lease.md)
+and [rolling replica admission ADR](../../../../DECISIONS/2026-11-25-jwt-rolling-admission.md).
 
 ## JWT principal and invite admission
 

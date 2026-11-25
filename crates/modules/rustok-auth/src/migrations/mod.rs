@@ -17,6 +17,7 @@ mod m20261101_000002_add_oauth_token_authorization_code;
 mod m20261101_000003_add_oauth_token_kind_and_consent_epoch;
 mod m20261125_000002_create_auth_jwt_generation_fence;
 mod m20261125_000003_add_auth_jwt_cluster_lease;
+mod m20261125_000004_add_auth_jwt_replica_grants;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -40,6 +41,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20261101_000003_add_oauth_token_kind_and_consent_epoch::Migration),
         Box::new(m20261125_000002_create_auth_jwt_generation_fence::Migration),
         Box::new(m20261125_000003_add_auth_jwt_cluster_lease::Migration),
+        Box::new(m20261125_000004_add_auth_jwt_replica_grants::Migration),
     ]
 }
 

@@ -74,9 +74,9 @@ async business IO is not cancelled by a crypto lease expiry.
 Apply the additional Auth migration, stop all older/unmanaged host writers,
 and then start upgraded replicas. Do not mix versions that ignore the
 lease columns. Every generation change can briefly interrupt JWT operations;
-this is a deliberate correctness-first barrier. A non-disruptive staged
-promotion with explicit replica registration/ACK and a distributed emergency
-revocation policy remain follow-up work. No protection against database
+this is a deliberate correctness-first barrier. The later [rolling replica admission](2026-11-25-jwt-rolling-admission.md)
+extends this fallback with registered grants and compatible staged promotion.
+A distributed emergency revocation policy remains follow-up work. No protection against database
 restore, hostile administrator, root compromise or arbitrary clock jumps.
 No new dependencies or event infrastructure.
 

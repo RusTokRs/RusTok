@@ -121,6 +121,7 @@ impl JwtLeaseReadiness {
 /// not this handle. The four prepared rings and generation move together.
 pub struct JwtKeyringPublisher {
     config: AuthConfig,
+    incarnation: uuid::Uuid,
 }
 
 #[derive(Deserialize)]
@@ -387,7 +388,7 @@ impl AuthConfig {
             lease_required,
             lease_until: None,
         })));
-        let publisher = JwtKeyringPublisher { config: self.clone() };
+        let publisher = JwtKeyringPublisher { config: self.clone(), incarnation: uuid::Uuid::new_v4() };
         Ok((self, publisher))
     }
 
@@ -452,6 +453,10 @@ impl JwtKeyringPublisher {
         Ok(JwtLeaseReadiness { current: current.clone() })
     }
 
+    pub(crate) fn incarnation(&self) -> uuid::Uuid {
+        self.incarnation
+    }
+
     pub(crate) fn lease_root(&self) -> &str {
         self.config.secret()
     }
@@ -500,6 +505,19 @@ impl JwtKeyringPublisher {
     /// Candidate preparation and host policy checks happen before this call.
     /// Recheck the process generation and key continuity under the write fence.
     pub fn publish(&self, generation: u64, candidate: AuthConfig) -> Result<()> {
+        self.publish_inner(generation, candidate, None).map(|_| ())
+    }
+
+    /// Only the Auth fence may install a deadline obtained for this candidate.
+    pub(crate) fn publish_granted(
+        &self, generation: u64, candidate: AuthConfig, deadline: Instant,
+    ) -> Result<bool> {
+        self.publish_inner(generation, candidate, Some(deadline))
+    }
+
+    fn publish_inner(
+        &self, generation: u64, candidate: AuthConfig, deadline: Option<Instant>,
+    ) -> Result<bool> {
         if !matches!(&candidate.key_state, JwtKeySource::Fixed(_))
             || self.config.secret() != candidate.secret()
             || self.config.issuer != candidate.issuer
@@ -527,8 +545,13 @@ impl JwtKeyringPublisher {
             guard.keys.prepared(self.config.secret())?.validate_successor(next)?;
         }
         let lease_required = guard.lease_required;
-        *guard = VersionedJwtKeys { generation, keys, lease_required, lease_until: None };
-        Ok(())
+        if let Some(deadline) = deadline {
+            if !lease_required || Instant::now() >= deadline {
+                return Ok(false);
+            }
+        }
+        *guard = VersionedJwtKeys { generation, keys, lease_required, lease_until: deadline };
+        Ok(true)
     }
 }
 
