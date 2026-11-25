@@ -20,18 +20,6 @@ use crate::services::tenant_cache_generation_status::{
     TenantCacheGenerationListenerSnapshot, TenantCacheGenerationListenerStatus,
 };
 
-/// Prevent event delivery until the canonical tenant generation listener is ready.
-///
-/// The invalidation transport exposes a transport-wide receiver count that may include receivers
-/// for other channels. This gate uses the context-owned listener state immediately before
-/// downstream delivery: local-only mode requires its canonical local listener, while Redis-backed
-/// mode requires the Redis subscriber and durable reconciliation to be healthy. A retry can
-/// therefore resume after the listener recovers without rotating the same event generation again.
-///
-/// With the Pages module enabled, the same delivery gate also runs the Pages cache invalidation
-/// handler synchronously before downstream transport acceptance. `ServerPagesCachePort` shares a
-/// bounded event-id dedupe across the gate and the asynchronous module listener, so relay retries
-/// and later listener delivery cannot rotate the same Pages event twice in one process.
 fn tenant_generation_listener_ready(
     redis_configured: bool,
     snapshot: &TenantCacheGenerationListenerSnapshot,
@@ -48,6 +36,18 @@ fn tenant_generation_listener_ready(
     }
 }
 
+/// Prevent event delivery until the canonical tenant generation listener is ready.
+///
+/// The invalidation transport exposes a transport-wide receiver count that may include receivers
+/// for other channels. This gate uses the context-owned listener state immediately before
+/// downstream delivery: local-only mode requires its canonical local listener, while Redis-backed
+/// mode requires the Redis subscriber and durable reconciliation to be healthy. A retry can
+/// therefore resume after the listener recovers without rotating the same event generation again.
+///
+/// With the Pages module enabled, the same delivery gate also runs the Pages cache invalidation
+/// handler synchronously before downstream transport acceptance. `ServerPagesCachePort` shares a
+/// bounded event-id dedupe across the gate and the asynchronous module listener, so relay retries
+/// and later listener delivery cannot rotate the same Pages event twice in one process.
 #[derive(Clone)]
 pub struct TenantGenerationDeliveryGate {
     inner: Arc<dyn EventTransport>,
@@ -78,7 +78,7 @@ impl TenantGenerationDeliveryGate {
         }
     }
 
-    async fn ensure_local_listener_ready(&self) -> Result<()> {
+    async fn ensure_listener_ready(&self) -> Result<()> {
         let redis_configured = self.cache.redis_configuration_present();
         let snapshot = tenant_cache_generation_listener_snapshot(&self.ctx).await;
         if tenant_generation_listener_ready(redis_configured, &snapshot) {

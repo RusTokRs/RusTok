@@ -702,10 +702,7 @@ impl McpManagementService {
             Ok(Ok(response)) => response,
             Ok(Err(error)) => {
                 let reason = error.to_string();
-                if matches!(
-                    &error,
-                    rustok_mcp::alloy_scaffold::AlloyScaffoldError::FileWrite { .. }
-                ) {
+                if scaffold_apply_error_requires_recovery(&error) {
                     tracing::error!(
                         draft_id = %draft_id,
                         error = %error,
@@ -1262,6 +1259,15 @@ fn validate_slug(slug: &str) -> Result<()> {
     Ok(())
 }
 
+fn scaffold_apply_error_requires_recovery(
+    error: &rustok_mcp::alloy_scaffold::AlloyScaffoldError,
+) -> bool {
+    matches!(
+        error,
+        rustok_mcp::alloy_scaffold::AlloyScaffoldError::FileWrite { .. }
+    )
+}
+
 fn scaffold_status_error(draft_id: Uuid, status: &str) -> Error {
     match status {
         MCP_SCAFFOLD_STATUS_APPLIED => Error::BadRequest(format!(
@@ -1316,7 +1322,40 @@ fn map_db_err(_err: sea_orm::DbErr) -> Error {
 
 #[cfg(test)]
 mod tests {
-    use super::{dedupe, token_preview};
+    use super::{
+        dedupe, scaffold_apply_error_requires_recovery, scaffold_status_error, token_preview,
+        MCP_SCAFFOLD_STATUS_RECOVERY_REQUIRED,
+    };
+    use crate::error::Error;
+    use rustok_mcp::alloy_scaffold::AlloyScaffoldError;
+    use std::path::PathBuf;
+    use uuid::Uuid;
+
+    #[test]
+    fn partial_scaffold_file_write_requires_manual_reconciliation() {
+        let error = AlloyScaffoldError::FileWrite {
+            path: PathBuf::from("crates/modules/example/Cargo.toml"),
+            source: std::io::Error::new(std::io::ErrorKind::Other, "disk full"),
+        };
+        assert!(scaffold_apply_error_requires_recovery(&error));
+
+        let preflight_error = AlloyScaffoldError::TargetAlreadyExists {
+            path: PathBuf::from("crates/modules/example"),
+        };
+        assert!(!scaffold_apply_error_requires_recovery(&preflight_error));
+    }
+
+    #[test]
+    fn recovery_required_scaffold_drafts_cannot_be_reapplied() {
+        let error = scaffold_status_error(
+            Uuid::new_v4(),
+            MCP_SCAFFOLD_STATUS_RECOVERY_REQUIRED,
+        );
+        assert!(matches!(
+            error,
+            Error::BadRequest(message) if message.contains("manual workspace reconciliation")
+        ));
+    }
 
     #[test]
     fn dedupe_sorts_and_trims_values() {
