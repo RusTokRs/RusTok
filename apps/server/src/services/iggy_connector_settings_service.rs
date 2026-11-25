@@ -5,7 +5,7 @@ use rustok_iggy_connector::{IggyConnectorConfigurationSnapshot, IggyConnectorSet
 use rustok_secrets::{
     EnvResolver, MountedFileResolver, SecretAccessPolicy, SecretRef, SecretResolverRegistry,
 };
-use sea_orm::{ActiveModelTrait, EntityTrait, Set};
+use sea_orm::{EntityTrait, Set, sea_query::OnConflict};
 use url::Url;
 use uuid::Uuid;
 
@@ -99,40 +99,38 @@ impl IggyConnectorSettingsService {
         let now: chrono::DateTime<chrono::FixedOffset> = chrono::Utc::now().into();
         let addresses_json = serde_json::to_value(&normalized_addresses)
             .map_err(|error| IggyConnectorSettingsError::InvalidConfiguration(error.to_string()))?;
-        match Entity::find_by_id(SINGLETON_ID).one(ctx.db()).await? {
-            Some(row) => {
-                let mut active: iggy_connector_settings::ActiveModel = row.into();
-                active.mode = Set(mode.to_string());
-                active.external_addresses = Set(addresses_json);
-                active.external_username = Set(username);
-                active.password_resolver = Set(nonempty(resolver));
-                active.password_key = Set(nonempty(key));
-                active.secret_tenant_id = Set(Some(actor_tenant_id));
-                active.tls_enabled = Set(input.tls_enabled);
-                active.tls_domain = Set(tls_domain);
-                active.updated_by = Set(Some(actor_id));
-                active.updated_at = Set(now);
-                active.update(ctx.db()).await?;
-            }
-            None => {
-                iggy_connector_settings::ActiveModel {
-                    id: Set(SINGLETON_ID),
-                    mode: Set(mode.to_string()),
-                    external_addresses: Set(addresses_json),
-                    external_username: Set(username),
-                    password_resolver: Set(nonempty(resolver)),
-                    password_key: Set(nonempty(key)),
-                    secret_tenant_id: Set(Some(actor_tenant_id)),
-                    tls_enabled: Set(input.tls_enabled),
-                    tls_domain: Set(tls_domain),
-                    updated_by: Set(Some(actor_id)),
-                    created_at: Set(now),
-                    updated_at: Set(chrono::Utc::now().into()),
-                }
-                .insert(ctx.db())
-                .await?;
-            }
-        }
+        Entity::insert(iggy_connector_settings::ActiveModel {
+            id: Set(SINGLETON_ID),
+            mode: Set(mode.to_string()),
+            external_addresses: Set(addresses_json),
+            external_username: Set(username),
+            password_resolver: Set(nonempty(resolver)),
+            password_key: Set(nonempty(key)),
+            secret_tenant_id: Set(Some(actor_tenant_id)),
+            tls_enabled: Set(input.tls_enabled),
+            tls_domain: Set(tls_domain),
+            updated_by: Set(Some(actor_id)),
+            created_at: Set(now),
+            updated_at: Set(now),
+        })
+        .on_conflict(
+            OnConflict::column(iggy_connector_settings::Column::Id)
+                .update_columns([
+                    iggy_connector_settings::Column::Mode,
+                    iggy_connector_settings::Column::ExternalAddresses,
+                    iggy_connector_settings::Column::ExternalUsername,
+                    iggy_connector_settings::Column::PasswordResolver,
+                    iggy_connector_settings::Column::PasswordKey,
+                    iggy_connector_settings::Column::SecretTenantId,
+                    iggy_connector_settings::Column::TlsEnabled,
+                    iggy_connector_settings::Column::TlsDomain,
+                    iggy_connector_settings::Column::UpdatedBy,
+                    iggy_connector_settings::Column::UpdatedAt,
+                ])
+                .to_owned(),
+        )
+        .exec_without_returning(ctx.db())
+        .await?;
         Ok(())
     }
 
@@ -346,20 +344,31 @@ fn validate_external_fields(
 }
 
 fn validate_address(address: &str) -> Result<(), IggyConnectorSettingsError> {
-    let url = Url::parse(&format!("tcp://{}", address.trim())).map_err(|_| {
-        IggyConnectorSettingsError::InvalidConfiguration(format!(
-            "invalid external Iggy address `{address}`; expected host:port"
-        ))
-    })?;
-    if url.host_str().is_none()
-        || url.port().is_none()
-        || url.username() != ""
+    let invalid = || {
+        // Do not echo the submitted value: a mistakenly supplied URL may
+        // contain credentials or other sensitive information.
+        IggyConnectorSettingsError::InvalidConfiguration(
+            "invalid external Iggy address; expected host:port with a nonzero port".to_string(),
+        )
+    };
+    let address = address.trim();
+    if address.chars().any(|character| {
+        character.is_whitespace()
+            || character.is_control()
+            || matches!(character, '@' | '/' | '?' | '#' | '\\')
+    }) {
+        return Err(invalid());
+    }
+    let url = Url::parse(&format!("tcp://{address}")).map_err(|_| invalid())?;
+    if url.host_str().is_none_or(str::is_empty)
+        || matches!(url.port(), None | Some(0))
+        || !url.username().is_empty()
         || url.password().is_some()
-        || url.path() != ""
+        || !url.path().is_empty()
+        || url.query().is_some()
+        || url.fragment().is_some()
     {
-        return Err(IggyConnectorSettingsError::InvalidConfiguration(format!(
-            "invalid external Iggy address `{address}`; expected host:port"
-        )));
+        return Err(invalid());
     }
     Ok(())
 }
@@ -486,4 +495,37 @@ fn nonempty(value: String) -> Option<String> {
 
 fn normalize_optional(value: Option<String>) -> Option<String> {
     value.and_then(|value| nonempty(value.trim().to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn external_addresses_require_bare_host_and_nonzero_port() {
+        for address in ["broker.example:8090", "127.0.0.1:8090", "[::1]:8090"] {
+            assert!(validate_address(address).is_ok(), "{address}");
+        }
+        for address in [
+            "broker.example",
+            "broker.example:0",
+            "broker.example:65536",
+            "broker.example:8090?option=value",
+            "broker.example:8090#fragment",
+            "broker.example:8090/path",
+            "tcp://broker.example:8090",
+            "@broker.example:8090",
+            "bro ker.example:8090",
+            "broker.example:80\n90",
+        ] {
+            assert!(validate_address(address).is_err(), "{address}");
+        }
+    }
+
+    #[test]
+    fn invalid_address_diagnostics_do_not_echo_credentials() {
+        let error = validate_address("user:secret@broker.example:8090")
+            .expect_err("credentials must be rejected");
+        assert!(!error.to_string().contains("secret"));
+    }
 }

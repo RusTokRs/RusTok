@@ -1,5 +1,17 @@
 # Server App — Implementation Plan
 
+## Global event configuration persistence follow-up (2026-11-25)
+
+Source changes remove the read-before-insert race in both global settings
+tables and reject malformed external Iggy addresses without echoing input.
+Regression sources cover concurrent and repeated profile persistence and
+endpoint admission. Maintainer verification remains pending:
+`cargo check -p rustok-server`, targeted `cargo test -p rustok-server --lib`
+for event-delivery and Iggy settings, and the remediation gate. PostgreSQL
+concurrent first-save behavior and real broker connectivity remain unverified;
+this change does not make Iggy readiness and profile persistence one
+cross-table transaction.
+
 ### Workflow durable cron admission / outcome review refinement (2026-11-23)
 
 Cron now atomically checks the current firing attempt and locked workflow

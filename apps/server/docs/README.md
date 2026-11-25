@@ -1,5 +1,16 @@
 # Documentation: `apps/server`
 
+## Global event configuration persistence (2026-11-25)
+
+Event-delivery profile and Iggy connector saves use a database-level singleton
+upsert, preserving the original creation timestamp and replacing the mutable
+configuration and actor together. Concurrent first saves no longer race through
+a separate existence check. This retains the existing last-writer-wins policy;
+it is not a cross-table compare-and-swap or a live transport reconfiguration.
+External Iggy addresses accept bare host:port (including bracketed IPv6) with
+a nonzero port, not URL credentials, paths, query strings or fragments. Invalid
+address errors omit the submitted value.
+
 ### Workflow durable cron admission / outcome review refinement (2026-11-23)
 
 Cron now atomically checks the current firing attempt and locked workflow
