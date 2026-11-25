@@ -38,7 +38,10 @@ the editor in a read-only conflict state; storage errors expose a manual JSON-co
 localStorage record ceiling is 2 MiB and this is recovery, not live collaborative editing.
 The default file-backed SSR editor store now uses a persistent per-user state directory and
 30-day sliding retention; containers must mount that path persistently, and multi-replica hosts
-must use a shared KV backend. Dioxus palette/layer drag sources now use native HTML5 dragstart/
+must use a shared KV backend. Its age-based stale-lock recovery retains a documented race if a
+live operation crosses the stale threshold; replace it with OS-level advisory locking for the
+file backend, or use the shared atomic KV backend under multi-replica or sustained contention.
+Dioxus palette/layer drag sources now use native HTML5 dragstart/
 dragend, failed drops cancel the Fly drag, iframe dropEffect is explicit, and parent pointer
 events no longer cancel a cross-iframe drag. Selected-layer move now selects and begins moving
 as one rollback-safe browser intent. The existing independent-connection PostgreSQL save-race
