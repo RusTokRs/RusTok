@@ -711,6 +711,65 @@ fn controller_on_the_second_page() -> AdminCanvasController {
 }
 
 #[test]
+fn page_reorder_ssr_forms_post_numeric_indices_and_respect_page_boundaries() {
+    let second_page_html = render_admin_with(
+        controller_on_the_second_page(),
+        CapabilityState::full(),
+        &[],
+    );
+    let second_forms = intent_forms(&second_page_html)
+        .into_iter()
+        .filter(|(intent, _)| *intent == "move_page")
+        .collect::<Vec<_>>();
+    assert_eq!(second_forms.len(), 2, "both adjacent moves should be rendered");
+
+    let second_results = second_forms
+        .iter()
+        .map(|(_, start)| {
+            let page_index = opening_tag(&second_page_html[*start..], "name=\"page_index\"", "<input");
+            let target_index = opening_tag(&second_page_html[*start..], "name=\"target_index\"", "<input");
+            assert_eq!(attribute(page_index, "type"), Some("number"));
+            assert_eq!(attribute(page_index, "value"), Some("1"));
+            assert_eq!(attribute(target_index, "type"), Some("number"));
+            (
+                attribute(target_index, "value").unwrap_or_default().to_string(),
+                form_can_be_submitted(&second_page_html, *start),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(second_results, [("0".to_string(), true), ("2".to_string(), false)]);
+
+    let mut first_page = controller_on_the_second_page();
+    first_page
+        .dispatch(UiIntent::ActivatePage {
+            page_id: Some("home".to_string()),
+            page_index: 0,
+        })
+        .expect("open first page");
+    let first_page_html = render_admin_with(first_page, CapabilityState::full(), &[]);
+    let first_forms = intent_forms(&first_page_html)
+        .into_iter()
+        .filter(|(intent, _)| *intent == "move_page")
+        .collect::<Vec<_>>();
+    assert_eq!(first_forms.len(), 2);
+    let first_results = first_forms
+        .iter()
+        .map(|(_, start)| {
+            let page_index = opening_tag(&first_page_html[*start..], "name=\"page_index\"", "<input");
+            let target_index = opening_tag(&first_page_html[*start..], "name=\"target_index\"", "<input");
+            assert_eq!(attribute(page_index, "type"), Some("number"));
+            assert_eq!(attribute(page_index, "value"), Some("0"));
+            assert_eq!(attribute(target_index, "type"), Some("number"));
+            (
+                attribute(target_index, "value").unwrap_or_default().to_string(),
+                form_can_be_submitted(&first_page_html, *start),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(first_results, [("0".to_string(), false), ("2".to_string(), true)]);
+}
+
+#[test]
 fn open_page_form_is_how_the_default_runtime_changes_the_page() {
     let html = render_admin_with(
         controller_on_the_second_page(),

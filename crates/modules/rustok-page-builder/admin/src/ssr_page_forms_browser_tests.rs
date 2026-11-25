@@ -548,6 +548,21 @@ fn move_page_envelope_activates_the_page_where_it_lands() {
 }
 
 #[test]
+fn move_page_ssr_form_posts_numeric_indices_and_activates_the_landed_page() {
+    let mut controller = controller();
+
+    let request = intent(
+        &controller,
+        BrowserIntentKind::MovePage,
+        json!({ "page_index": 1, "target_index": 0 }),
+    );
+    dispatch_browser_intent(&mut controller, request).expect("move page form");
+
+    assert_eq!(page_ids(&controller), ["about", "home"]);
+    assert_eq!(active_page(&controller), (0, Some("about".to_string())));
+}
+
+#[test]
 fn a_page_form_without_its_required_field_is_rejected_by_the_form_resolver() {
     let mut controller = controller();
 
