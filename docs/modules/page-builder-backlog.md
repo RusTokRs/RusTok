@@ -149,6 +149,14 @@ distinct single-key alias admission while preserving nested shadowing. Four regr
 authored; compilation, tests, lint and remediation gate not run. Binding transform
 semantics and unresolved producer input ownership remain open.
 
+Fly binding follow-up (2026-11-25, source-only): single-writer component-slot
+ownership is enforced at upsert, validation and materialization; HTML/CSS names compare
+case-insensitively and replace authored case variants. Ambiguous imported writers are
+skipped with blocking diagnostics. Number transforms preserve JSON numeric identity,
+explicit null fallback is distinct from absent fallback, and symbolId is structural.
+Four focused regressions authored; compilation, tests, lint and remediation gate not
+run. Unresolved computed producer ownership and scoped repeater bindings remain open.
+
 Reduced-motion follow-up: the shared Fly browser asset now uses instant scrolling for
 `scroll_to` when the target document requests reduced motion, including in the presence of
 CSS `scroll-behavior: smooth`; animations use the same document preference. The Node runtime
