@@ -40,7 +40,7 @@ const RATE_LIMIT_REDIS_SCRIPT_SOURCE: &str = r#"
 local current = redis.call('INCR', KEYS[1])
 local ttl = redis.call('PTTL', KEYS[1])
 if ttl == -1 then
-    redis.call('EXPIRE', KEYS[1], ARGV[1])
+    redis.call('PEXPIRE', KEYS[1], ARGV[1])
     ttl = redis.call('PTTL', KEYS[1])
 end
 if ttl < 0 then
@@ -101,14 +101,19 @@ const MAX_RATE_LIMIT_WINDOW: Duration = Duration::from_secs(365 * 24 * 60 * 60);
 
 fn normalize_rate_limit_config(mut config: RateLimitConfig) -> RateLimitConfig {
     if config.enabled {
-        let normalized = config
+        let bounded = config
             .window
             .clamp(MIN_RATE_LIMIT_WINDOW, MAX_RATE_LIMIT_WINDOW);
+        // Redis expiry has millisecond precision. Round up once for both
+        // backends so switching storage cannot shorten the configured window.
+        let millis = bounded.as_millis()
+            + u128::from(bounded.subsec_nanos() % 1_000_000 != 0);
+        let normalized = Duration::from_millis(millis as u64);
         if normalized != config.window {
             tracing::warn!(
                 configured_window_ms = %config.window.as_millis(),
-                normalized_window_secs = normalized.as_secs(),
-                "Active rate-limit window is outside the supported range; normalizing it"
+                normalized_window_ms = %normalized.as_millis(),
+                "Normalizing active rate-limit window to supported bounds and precision"
             );
             config.window = normalized;
         }
@@ -226,7 +231,12 @@ impl RateLimiter {
     }
 
     pub fn window_secs(&self) -> u64 {
-        self.config.window.as_secs()
+        rate_limit_reset_after(self.config.window)
+    }
+
+    /// Auth credentials share one IP-only budget across REST and GraphQL.
+    pub(crate) fn uses_trusted_auth_dimensions(&self, configured: bool) -> bool {
+        configured && self.namespace != "auth"
     }
 
     pub fn enabled(&self) -> bool {
@@ -334,7 +344,7 @@ impl RateLimiter {
             Lazy::new(|| Script::new(RATE_LIMIT_REDIS_SCRIPT_SOURCE));
 
         let redis_key = redis_rate_limit_key(key_prefix, key);
-        let window_secs = bounded_redis_window_seconds(self.config.window);
+        let window_ms = bounded_redis_window_millis(self.config.window);
         let mut connection = self
             .redis_connection(client, connection)
             .await
@@ -345,14 +355,22 @@ impl RateLimiter {
             "redis rate-limit script",
             RATE_LIMIT_REDIS_SCRIPT
                 .key(redis_key.as_str())
-                .arg(window_secs)
+                .arg(window_ms)
                 .invoke_async(&mut connection),
         )
         .await
         .map_err(RateLimitCheckError::BackendUnavailable)?;
 
-        let current = current.max(0) as usize;
-        let reset_after = (ttl.max(0) as u64).saturating_add(999) / 1_000;
+        let current = usize::try_from(current)
+            .ok()
+            .filter(|count| *count > 0)
+            .ok_or_else(|| RateLimitCheckError::BackendUnavailable(
+                "invalid Redis rate-limit counter".to_string(),
+            ))?;
+        let ttl = u64::try_from(ttl).map_err(|_| {
+            RateLimitCheckError::BackendUnavailable("invalid Redis rate-limit expiry".to_string())
+        })?;
+        let reset_after = ttl.div_ceil(1_000);
         let retry_after = reset_after.max(1);
 
         if current > self.config.max_requests {
@@ -705,8 +723,8 @@ fn redis_rate_limit_key(key_prefix: &str, identity: &str) -> String {
     )
 }
 
-fn bounded_redis_window_seconds(window: Duration) -> i64 {
-    window.as_secs().clamp(1, i64::MAX as u64) as i64
+fn bounded_redis_window_millis(window: Duration) -> i64 {
+    window.as_millis().clamp(1, i64::MAX as u128) as i64
 }
 
 fn rate_limit_reset_after(remaining: Duration) -> u64 {
@@ -802,7 +820,7 @@ pub async fn rate_limit_middleware(
         &headers,
         &request,
         state.auth_config.as_ref(),
-        state.trusted_auth_dimensions,
+        state.limiter.uses_trusted_auth_dimensions(state.trusted_auth_dimensions),
         &RequestTrustSettings::default(),
     );
 
@@ -855,7 +873,7 @@ pub async fn rate_limit_for_paths(
         state.auth_config.as_ref(),
         // The Auth namespace shares an IP-only budget with GraphQL. A valid
         // JWT must not partition the credential budget by tenant or app.
-        state.trusted_auth_dimensions && policy.limiter.namespace() != "auth",
+        policy.limiter.uses_trusted_auth_dimensions(state.trusted_auth_dimensions),
         &state.request_trust,
     );
 
@@ -967,6 +985,27 @@ mod window_bounds_tests {
         );
     }
 
+    #[test]
+    fn fractional_windows_share_the_same_memory_and_redis_precision() {
+        let config = RateLimitConfig {
+            max_requests: 1,
+            window: Duration::from_nanos(1_500_000_001),
+            enabled: true,
+        };
+        let memory = RateLimiter::new(config.clone());
+        let redis = RateLimiter::with_redis(
+            config,
+            redis::Client::open("redis://127.0.0.1/").unwrap(),
+            "rate-limit-test".to_string(),
+        );
+
+        assert_eq!(memory.config.window, Duration::from_millis(1501));
+        assert_eq!(memory.config.window, redis.config.window);
+        assert_eq!(bounded_redis_window_millis(redis.config.window), 1501);
+        assert_eq!(memory.window_secs(), 2);
+        assert_eq!(redis.window_secs(), 2);
+    }
+
     #[tokio::test]
     async fn zero_length_memory_window_cannot_reset_the_counter_on_every_request() {
         let limiter = RateLimiter::new(RateLimitConfig::new(1, 0));
@@ -986,7 +1025,7 @@ mod diagnostic_tests {
     #[test]
     fn redis_rate_limit_script_repairs_counters_without_expiry() {
         assert!(RATE_LIMIT_REDIS_SCRIPT_SOURCE.contains("if ttl == -1 then"));
-        assert!(RATE_LIMIT_REDIS_SCRIPT_SOURCE.contains("redis.call('EXPIRE'"));
+        assert!(RATE_LIMIT_REDIS_SCRIPT_SOURCE.contains("redis.call('PEXPIRE'"));
         assert!(RATE_LIMIT_REDIS_SCRIPT_SOURCE.contains("redis.call('PTTL'"));
         assert!(RATE_LIMIT_REDIS_SCRIPT_SOURCE.contains("if ttl < 0 then"));
         assert!(RATE_LIMIT_REDIS_SCRIPT_SOURCE.contains("redis.error_reply"));

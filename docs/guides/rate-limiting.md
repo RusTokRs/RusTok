@@ -17,19 +17,19 @@ This limiter is an HTTP-layer control. It does not replace `rustok-core::securit
 ## Current Contract
 
 - client identity starts from IP address;
-- IP priority is `X-Forwarded-For` -> `X-Real-IP` -> `ip:unknown`;
+- IP identity comes from the socket peer or the verified trusted-proxy chain; absent peer identity falls back to `ip:unknown`;
 - spoofable headers such as `X-User-ID` are ignored;
 - rate-limit violations return `429 Too Many Requests`;
 - responses expose `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset`.
 
 ## Trusted Dimensions
 
-When `rustok.rate_limit.trusted_auth_dimensions=true`, the limiter keeps the base IP bucket and extends it only from verified bearer-token claims:
+When `rustok.rate_limit.trusted_auth_dimensions=true`, the API and OAuth namespaces extend the IP key only from verified bearer-token claims:
 
 - direct bearer token -> `ip + tenant`
 - OAuth bearer token -> `ip + tenant + oauth_app`
 
-Requests without a valid bearer token stay on the plain IP bucket. This is especially important for `/api/oauth/token` and `/api/oauth/revoke`, where client input is not trusted before verification.
+The Auth namespace always uses an IP-only key shared with GraphQL credential mutations, regardless of this setting. Runtime guardrails report the effective policy. Requests without a valid bearer token stay on the plain IP bucket. This is especially important for `/api/oauth/token` and `/api/oauth/revoke`, where client input is not trusted before verification.
 
 ## Namespaces
 
@@ -110,8 +110,10 @@ Repository preset:
 
 Startup validation:
 
-- if `rustok.rate_limit.enabled=true` and `backend=redis`, server now fails fast unless `RUSTOK_REDIS_URL` or `REDIS_URL` is set;
+- if `rustok.rate_limit.enabled=true` and `backend=redis`, server fails fast unless `rustok.cache.redis_url`, `RUSTOK_REDIS_URL` or `REDIS_URL` is configured;
 - if rate limiting is disabled, server no longer requires Redis just because `backend=redis` is configured for a future rollout.
+
+Active windows are bounded to 1 second through 365 days and rounded up to millisecond precision for both backends. Redis uses `PEXPIRE`; reset and retry headers round up to whole seconds.
 
 ## Response Contract
 
@@ -132,9 +134,9 @@ Retry-After: 42
 X-RateLimit-Limit: 20
 X-RateLimit-Remaining: 0
 X-RateLimit-Reset: 42
-Content-Type: text/plain
+Content-Type: application/json
 
-Rate limit exceeded
+{"error":"rate_limit_exceeded","message":"Rate limit exceeded"}
 ```
 
 ## Verification
@@ -153,4 +155,4 @@ cargo check -p rustok-server --bin rustok-server
 
 - By default the limiter keys requests by the real peer/socket IP and falls back to `ip:unknown`.
 - `Forwarded` / `X-Forwarded-*` participate in IP derivation only when `settings.rustok.runtime.request_trust.forwarded_headers_mode=trusted_only` and the peer IP matches `trusted_proxy_cidrs`.
-- The middleware now selects exactly one policy per request in priority order `oauth -> readiness -> auth -> api`, so `/api/auth/*` no longer consumes multiple limiter buckets for a single call. Public `/health/ready` uses the distributed `api` bucket.
+- The middleware now selects exactly one policy per request in priority order `oauth -> auth -> readiness -> api`, so `/api/auth/*` no longer consumes multiple limiter buckets for a single call. Public `/health/ready` uses the distributed `api` bucket.

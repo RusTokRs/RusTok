@@ -484,7 +484,8 @@ async fn collect_rate_limit_snapshot(
             enabled: limiter.enabled(),
             max_requests: limiter.max_requests(),
             window_seconds: limiter.window_secs(),
-            trusted_auth_dimensions: namespace_policy.trusted_auth_dimensions,
+            trusted_auth_dimensions: limiter
+                .uses_trusted_auth_dimensions(namespace_policy.trusted_auth_dimensions),
             memory_warning_entries: namespace_policy.memory_warning_entries,
             memory_critical_entries: namespace_policy.memory_critical_entries,
         },
@@ -572,8 +573,22 @@ fn severity_rank(status: RuntimeGuardrailStatus) -> u8 {
 
 #[cfg(test)]
 mod host_mode_tests {
-    use super::runtime_host_mode_label;
+    use super::{collect_rate_limit_snapshot, runtime_guardrail_policy_from_settings, runtime_host_mode_label};
+    use crate::common::settings::RustokSettings;
+    use crate::middleware::rate_limit::{RateLimitConfig, RateLimiter};
     use crate::common::settings::RuntimeHostMode;
+
+    #[tokio::test]
+    async fn guardrails_report_effective_auth_dimension_policy() {
+        let mut settings = RustokSettings::default();
+        settings.rate_limit.trusted_auth_dimensions = true;
+        let policy = runtime_guardrail_policy_from_settings(&settings);
+        for (namespace, expected) in [("auth", false), ("api", true), ("oauth", true)] {
+            let limiter = RateLimiter::new_with_namespace(RateLimitConfig::default(), namespace);
+            let snapshot = collect_rate_limit_snapshot(namespace, &limiter, &policy).await;
+            assert_eq!(snapshot.policy.trusted_auth_dimensions, expected);
+        }
+    }
 
     #[test]
     fn runtime_guardrails_report_the_exact_host_mode() {

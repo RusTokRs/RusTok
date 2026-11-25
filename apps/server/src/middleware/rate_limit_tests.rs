@@ -385,9 +385,10 @@ async fn redis_operation_timeout_bounds_stalled_backend_work() {
 }
 
 #[test]
-fn redis_window_seconds_saturate_at_i64_max() {
-    assert_eq!(bounded_redis_window_seconds(Duration::MAX), i64::MAX);
-    assert_eq!(bounded_redis_window_seconds(Duration::ZERO), 1);
+fn redis_window_millis_saturate_at_i64_max() {
+    assert_eq!(bounded_redis_window_millis(Duration::MAX), i64::MAX);
+    assert_eq!(bounded_redis_window_millis(Duration::ZERO), 1);
+    assert_eq!(bounded_redis_window_millis(Duration::from_millis(1500)), 1500);
 }
 
 #[test]
@@ -404,7 +405,7 @@ fn rate_limited_response_includes_contract_headers() {
 
 #[test]
 fn rate_limit_backend_unavailable_response_includes_contract_headers_and_status() {
-    let response = rate_limit_backend_unavailable_response("redis connection timeout");
+    let response = rate_limit_backend_unavailable_response();
 
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(response.headers()["retry-after"], "1");
