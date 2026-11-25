@@ -91,16 +91,7 @@ pub fn ProductEditorPage(
 
     // Variable Product Specific
 
-    // Digital Product Specific
-    let (digital_file_url, set_digital_file_url) = signal(String::new());
-    let (digital_download_limit, set_digital_download_limit) = signal("10".to_string());
-    let (digital_expiry_days, set_digital_expiry_days) = signal("365".to_string());
-
-    // Bundle Product Specific
-    let (bundle_components_str, set_bundle_components_str) = signal(String::new());
-    let (bundle_type, set_bundle_type) = signal("fixed".to_string());
-    let (bundle_discount_type, set_bundle_discount_type) = signal("none".to_string());
-    let (bundle_discount_value, set_bundle_discount_value) = signal("0".to_string());
+    // Bundle composition is owned by rustok-product-bundles. Digital fulfillment has no owner yet.
 
     // SEO
     let (meta_title, set_meta_title) = signal(String::new());
@@ -643,6 +634,19 @@ pub fn ProductEditorPage(
             }
         }
 
+        let kind = active_kind.get_untracked();
+        let original_kind = loaded_product
+            .get_untracked()
+            .and_then(|product| product.product_type.as_deref().map(ProductKind::parse));
+        if !kind.can_select_for_product(is_editing, original_kind) {
+            set_error_msg.set(Some(if is_ru {
+                "Цифровая выдача не поддерживается для новых товаров в текущей конфигурации.".to_string()
+            } else {
+                "Digital products are not available for new products in the current configuration.".to_string()
+            }));
+            return;
+        }
+
         let attribute_types = effective_form_resource
             .get_untracked()
             .and_then(Result::ok)
@@ -673,7 +677,6 @@ pub fn ProductEditorPage(
         let loc = save_locale.clone();
         let base_route = base_route_for_save.clone();
         let edit_id_opt = save_edit_id.clone();
-        let kind = active_kind.get_untracked();
         let nav = navigate.clone();
 
         let mt = meta_title.get_untracked().trim().to_string();
@@ -1008,14 +1011,23 @@ pub fn ProductEditorPage(
                         let switcher_locale = locale.clone();
                         move |kind| {
                             let is_active = move || active_kind.get() == kind;
+                            let is_unavailable = move || {
+                                let original_kind = loaded_product.get().and_then(|product| {
+                                    product.product_type.as_deref().map(ProductKind::parse)
+                                });
+                                !kind.can_select_for_product(is_editing, original_kind)
+                            };
                             let label = kind.label(switcher_locale.as_deref());
                             let desc = kind.description(switcher_locale.as_deref());
                             view! {
                                 <button
                                     type="button"
+                                    disabled=is_unavailable
                                     class=move || {
                                         if is_active() {
                                             "flex flex-col items-start p-3 rounded-xl border-2 border-primary bg-primary/5 text-left transition"
+                                        } else if is_unavailable() {
+                                            "flex flex-col items-start p-3 rounded-xl border border-border bg-muted/30 text-left opacity-50 cursor-not-allowed"
                                         } else {
                                             "flex flex-col items-start p-3 rounded-xl border border-border bg-background hover:border-primary/40 text-left transition"
                                         }
@@ -1166,124 +1178,32 @@ pub fn ProductEditorPage(
                             }.into_any(),
 
                             ProductKind::Bundle => view! {
-                                <div class="space-y-4">
-                                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                        <div class="space-y-1.5">
-                                            <label class="text-xs font-medium text-foreground">
-                                                {if is_ru { "Тип комплекта" } else { "Kit Type" }}
-                                            </label>
-                                            <select
-                                                prop:value=move || bundle_type.get()
-                                                on:change=move |ev| set_bundle_type.set(event_target_value(&ev))
-                                                class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary"
-                                            >
-                                                <option value="fixed">{if is_ru { "Фиксированный состав" } else { "Fixed Composition" }}</option>
-                                                <option value="flexible">{if is_ru { "Настраиваемый сет" } else { "Flexible / Configurable" }}</option>
-                                            </select>
-                                        </div>
-
-                                        <div class="space-y-1.5">
-                                            <label class="text-xs font-medium text-foreground">
-                                                {if is_ru { "Тип скидки комплекта" } else { "Bundle Discount" }}
-                                            </label>
-                                            <select
-                                                prop:value=move || bundle_discount_type.get()
-                                                on:change=move |ev| set_bundle_discount_type.set(event_target_value(&ev))
-                                                class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary"
-                                            >
-                                                <option value="none">{if is_ru { "Без скидки" } else { "None" }}</option>
-                                                <option value="percentage">{if is_ru { "Процентная (%)" } else { "Percentage (%)" }}</option>
-                                                <option value="fixed_amount">{if is_ru { "Фиксированная сумма" } else { "Fixed Amount" }}</option>
-                                            </select>
-                                        </div>
-
-                                        <div class="space-y-1.5">
-                                            <label class="text-xs font-medium text-foreground">
-                                                {if is_ru { "Размер скидки" } else { "Discount Value" }}
-                                            </label>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                step="0.5"
-                                                prop:value=move || bundle_discount_value.get()
-                                                on:input=move |ev| set_bundle_discount_value.set(event_target_value(&ev))
-                                                class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground font-mono outline-none focus:border-primary"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div class="space-y-1.5">
-                                        <div class="flex items-center justify-between">
-                                            <label class="text-xs font-medium text-foreground">
-                                                {if is_ru { "Компоненты набора" } else { "Bundle Components" }}
-                                            </label>
-                                            <a
-                                                href="/admin/bundles"
-                                                class="text-xs text-primary hover:underline font-medium inline-flex items-center gap-1"
-                                                target="_blank"
-                                            >
-                                                {if is_ru { "Управление комплектами →" } else { "Open Bundles Manager →" }}
-                                            </a>
-                                        </div>
-                                        <textarea
-                                            rows="3"
-                                            placeholder=if is_ru { "ID или SKU товаров, входящих в набор..." } else { "IDs or SKUs of items included in this kit..." }
-                                            prop:value=move || bundle_components_str.get()
-                                            on:input=move |ev| set_bundle_components_str.set(event_target_value(&ev))
-                                            class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground font-mono outline-none focus:border-primary"
-                                        />
-                                        <p class="text-[11px] text-muted-foreground">
-                                            {if is_ru {
-                                                "При покупке комплекта остатки списываются с каждого входящего товара отдельно. Для расширенной настройки состава используйте раздел комплектов."
-                                            } else {
-                                                "Inventory will be deducted from each individual component upon bundle purchase. Use the Bundles module for advanced configuration."
-                                            }}
-                                        </p>
-                                    </div>
+                                <div class="space-y-3">
+                                    <p class="text-xs text-muted-foreground">
+                                        {if is_ru {
+                                            "Состав комплекта, его скидки и правила списания остатков управляются отдельным модулем «Комплекты». Поля этого редактора не сохраняют состав комплекта."
+                                        } else {
+                                            "Bundle composition, discounts and component inventory rules are owned by the separate Product Bundles module. This editor does not save bundle configuration."
+                                        }}
+                                    </p>
+                                    <a
+                                        href="/admin/bundles"
+                                        class="text-xs text-primary hover:underline font-medium inline-flex items-center gap-1"
+                                        target="_blank"
+                                    >
+                                        {if is_ru { "Открыть управление комплектами →" } else { "Open Bundles Manager →" }}
+                                    </a>
                                 </div>
                             }.into_any(),
 
                             ProductKind::Digital => view! {
-                                <div class="space-y-4">
-                                    <div class="space-y-1.5">
-                                        <label class="text-xs font-medium text-foreground">
-                                            {if is_ru { "URL файла для скачивания *" } else { "Downloadable File URL *" }}
-                                        </label>
-                                        <input
-                                            type="text"
-                                            placeholder="https://cdn.rustok.io/downloads/file.zip"
-                                            prop:value=move || digital_file_url.get()
-                                            on:input=move |ev| set_digital_file_url.set(event_target_value(&ev))
-                                            class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground font-mono outline-none focus:border-primary"
-                                        />
-                                    </div>
-                                    <div class="grid grid-cols-2 gap-4">
-                                        <div class="space-y-1.5">
-                                            <label class="text-xs font-medium text-foreground">
-                                                {if is_ru { "Лимит скачиваний" } else { "Download Limit" }}
-                                            </label>
-                                            <input
-                                                type="number"
-                                                min="1"
-                                                prop:value=move || digital_download_limit.get()
-                                                on:input=move |ev| set_digital_download_limit.set(event_target_value(&ev))
-                                                class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary"
-                                            />
-                                        </div>
-                                        <div class="space-y-1.5">
-                                            <label class="text-xs font-medium text-foreground">
-                                                {if is_ru { "Срок действия ссылки (дней)" } else { "Link Expiry (Days)" }}
-                                            </label>
-                                            <input
-                                                type="number"
-                                                min="1"
-                                                prop:value=move || digital_expiry_days.get()
-                                                on:input=move |ev| set_digital_expiry_days.set(event_target_value(&ev))
-                                                class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
+                                <p class="text-xs text-muted-foreground">
+                                    {if is_ru {
+                                        "Цифровая выдача пока не поддерживается модулем товаров. URL файла, лимит скачиваний и срок действия здесь не сохраняются. Существующие цифровые товары можно редактировать только как записи каталога."
+                                    } else {
+                                        "Digital fulfillment is not supported by the Product module yet. File URLs, download limits and expiry settings are not saved here. Existing digital products can only be edited as catalog records."
+                                    }}
+                                </p>
                             }.into_any(),
                         }}
                     </div>

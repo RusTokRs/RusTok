@@ -2227,6 +2227,20 @@ impl ProductKind {
         }
     }
 
+    /// Digital fulfillment has no owning module yet, so new digital products are not offered.
+    pub fn is_available_for_creation(&self) -> bool {
+        !matches!(self, Self::Digital)
+    }
+
+    /// Digital products may remain editable only when the existing record is already digital.
+    pub fn can_select_for_product(
+        &self,
+        is_editing: bool,
+        original_kind: Option<Self>,
+    ) -> bool {
+        self.is_available_for_creation() || (is_editing && original_kind == Some(*self))
+    }
+
     pub fn label(&self, locale: Option<&str>) -> &'static str {
         match self {
             Self::Simple => {
@@ -2302,9 +2316,9 @@ impl ProductKind {
             }
             Self::Digital => {
                 if locale == Some("ru") {
-                    "Цифровой контент, файлы для скачивания или виртуальные услуги"
+                    "Цифровая выдача пока не поддерживается модулем товаров"
                 } else {
-                    "Downloadable digital files, keys, or virtual services"
+                    "Digital fulfillment is not supported by the Product module yet"
                 }
             }
         }
@@ -3889,6 +3903,18 @@ mod tests {
             }
             ProductAdminOpenProductViewModel::Ready { .. } => panic!("expected empty view-model"),
         }
+    }
+
+    #[test]
+    fn digital_products_are_not_offered_for_creation_without_a_fulfillment_owner() {
+        assert!(ProductKind::Simple.is_available_for_creation());
+        assert!(ProductKind::Variable.is_available_for_creation());
+        assert!(ProductKind::Bundle.is_available_for_creation());
+        assert!(!ProductKind::Digital.is_available_for_creation());
+        assert!(ProductKind::Digital.can_select_for_product(true, Some(ProductKind::Digital)));
+        assert!(!ProductKind::Digital.can_select_for_product(true, Some(ProductKind::Simple)));
+        assert!(!ProductKind::Digital.can_select_for_product(false, None));
+        assert_eq!(ProductKind::parse("digital"), ProductKind::Digital);
     }
 
     #[test]
