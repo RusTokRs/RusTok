@@ -238,12 +238,7 @@ const __flyBindSsrAdapter = (adapter) => {
       ? event.target.closest("[data-fly-component-picker]")
       : null;
     if (!(picker instanceof HTMLSelectElement)) return;
-    adapter.selectedId = picker.value || null;
-    adapter.drawSelection();
-    adapter.root.dispatchEvent(new CustomEvent("fly:select", {
-      bubbles: true,
-      detail: { componentId: adapter.selectedId, source: "ssr-inspector" },
-    }));
+    adapter.select(picker.value || null, "ssr-inspector");
   }, __flyLifecycleOptions);
   adapter.root.addEventListener("submit", (event) => {
     const form = event.target instanceof Element
@@ -471,5 +466,19 @@ mod tests {
         );
         assert!(!PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS.contains("leptos"));
         assert!(!PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS.contains("dioxus"));
+    }
+}
+
+
+#[cfg(test)]
+mod selection_contract_tests {
+    use super::PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS;
+
+    #[test]
+    fn inspector_picker_uses_the_adapter_selection_path() {
+        assert!(PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS
+            .contains("adapter.select(picker.value || null, \"ssr-inspector\");"));
+        assert!(!PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS
+            .contains("adapter.selectedId = picker.value || null;"));
     }
 }

@@ -17,3 +17,9 @@ fn nested_component_drag_uses_one_nearest_component_target() {
     assert!(contains("this.root.addEventListener(\"dragend\", () => this.cancelDrag()"));
     assert!(!contains("element.addEventListener(\"dragstart\", (event) => { if (!componentId) return;"));
 }
+
+
+#[test]
+fn browser_selection_is_forwarded_as_a_read_only_intent() {
+    assert!(contains("void this.emitIntent(\"select\", { component_id: next });"));
+}

@@ -1129,6 +1129,11 @@ export class FlyBrowserAdapter {
         detail: { componentId: next, source },
       }),
     );
+    // Keep the controller selection in sync with the browser adapter. This is
+    // a read-only intent and does not create a document revision or save.
+    if (this.postIntents && this.intentEndpoint) {
+      void this.emitIntent("select", { component_id: next });
+    }
   }
 
   onMessage(event) {

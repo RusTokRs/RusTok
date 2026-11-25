@@ -2581,13 +2581,11 @@ pub fn FlyEditorWorkspace(
     });
 
     let layers_editor = editor;
-    let select_instance = intent_instance.clone();
     let on_select = Callback::new(move |component_id: Option<String>| {
-        if let Some(on_intent) = on_intent {
-            on_intent.run(BrowserIntentEnvelope::select(
-                &select_instance,
-                component_id.as_deref(),
-            ));
+        // In intent mode the browser adapter owns DOM selection and sends the
+        // non-mutating select intent. Dispatching here as well would race the
+        // browser request and make server selection depend on arrival order.
+        if on_intent.is_some() {
             return;
         }
         let apply_result = layers_editor
