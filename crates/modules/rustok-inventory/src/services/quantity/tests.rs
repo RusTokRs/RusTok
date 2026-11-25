@@ -266,6 +266,24 @@ fn quantity_product_response_and_visible_projection_sum_without_order_dependent_
 }
 
 #[test]
+fn availability_keeps_existing_items_at_zero_when_they_have_no_levels() {
+    let item = Uuid::new_v4();
+    let variant = Uuid::new_v4();
+    let binding = std::collections::HashMap::from([(item, variant)]);
+
+    let existing_item_without_levels = available_by_variant(&binding, std::iter::empty())
+        .expect("an existing item with no levels has an authoritative zero");
+    assert_eq!(existing_item_without_levels.get(&variant), Some(&0));
+
+    let missing_item = available_by_variant(
+        &std::collections::HashMap::new(),
+        std::iter::empty(),
+    )
+    .expect("a missing item has no Inventory-owned quantity");
+    assert!(missing_item.is_empty());
+}
+
+#[test]
 fn expected_quantity_snapshot_rejects_stale_values() {
     assert!(ensure_expected_quantity_matches(8, Some(8)).is_ok());
     assert!(ensure_expected_quantity_matches(9, Some(8)).is_err());

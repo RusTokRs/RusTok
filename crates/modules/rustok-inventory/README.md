@@ -75,6 +75,18 @@ handoff is recovered with the same IDs or parked for reconciliation, never infer
 advice. See the [source-only contract and remaining gates](docs/implementation-plan.md#reservation-adoption-into-order-2026-10-31-source-work).
 Tests and Rust/database/runtime verification are not claimed complete; step 8 remains open.
 
+## Product catalog projection contract
+
+Inventory reads used by Product preserve the legacy Product quantity only when no
+Inventory item identity exists. Once an Inventory item exists, its levels are
+authoritative: no levels or no channel-visible levels mean an explicit quantity
+of zero, not permission to fall back to the legacy Product counter.
+
+Public-channel availability proves every requested ProductVariant belongs to
+the requested tenant before querying tenant-less Inventory items and levels.
+Malformed non-empty location channel allowlists fail closed, matching Product's
+catalog visibility policy.
+
 ## Purpose
 
 `rustok-inventory` is the default inventory submodule of the `Ecommerce` family.

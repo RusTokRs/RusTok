@@ -665,7 +665,11 @@ pub(super) fn available_by_variant<'a>(
     item_to_variant: &std::collections::HashMap<Uuid, Uuid>,
     levels: impl IntoIterator<Item = &'a inventory_level::Model>,
 ) -> Result<std::collections::HashMap<Uuid, i32>, DbErr> {
-    let mut quantities = std::collections::HashMap::<Uuid, i64>::new();
+    let mut quantities = item_to_variant
+        .values()
+        .copied()
+        .map(|variant_id| (variant_id, 0_i64))
+        .collect::<std::collections::HashMap<Uuid, i64>>();
     for level in levels {
         let variant_id = item_to_variant
             .get(&level.inventory_item_id)

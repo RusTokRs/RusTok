@@ -4,6 +4,21 @@ use rustok_api::{PortContext, PortError, PortErrorKind};
 use rustok_core::{error::Error as CoreError, field_schema::CustomFieldsSchema};
 use sea_orm::{DbBackend, FromQueryResult};
 
+fn resolve_variant_inventory_quantity(
+    variant_id: Uuid,
+    legacy_quantity: i32,
+    inventory_quantities: &HashMap<Uuid, i32>,
+) -> i32 {
+    inventory_quantities
+        .get(&variant_id)
+        .copied()
+        .unwrap_or(legacy_quantity)
+}
+
+fn inventory_policy_allows_backorder(policy: &str) -> bool {
+    policy.trim().eq_ignore_ascii_case("continue")
+}
+
 struct ProductProjectionRead<'a> {
     locale: &'a str,
     fallback_locale: Option<&'a str>,
@@ -925,10 +940,11 @@ impl CatalogService {
                     locale,
                     variant_title_fallback_locale,
                 );
-                let available_inventory = available_inventory_by_variant
-                    .get(&variant.id)
-                    .copied()
-                    .unwrap_or(0);
+                let available_inventory = resolve_variant_inventory_quantity(
+                    variant.id,
+                    variant.inventory_quantity,
+                    &available_inventory_by_variant,
+                );
 
                 VariantResponse {
                     id: variant.id,
@@ -950,7 +966,7 @@ impl CatalogService {
                     prices: price_responses,
                     inventory_quantity: available_inventory,
                     inventory_policy: variant.inventory_policy.clone(),
-                    in_stock: available_inventory > 0 || variant.inventory_policy == "continue",
+                    in_stock: available_inventory > 0 || inventory_policy_allows_backorder(&variant.inventory_policy),
                     weight: variant.weight,
                     weight_unit: variant.weight_unit,
                     position: variant.position,
@@ -1153,10 +1169,11 @@ impl CatalogService {
             PLATFORM_FALLBACK_LOCALE,
             PLATFORM_FALLBACK_LOCALE,
         );
-        let available_inventory = available_inventory_by_variant
-            .get(&variant.id)
-            .copied()
-            .unwrap_or(0);
+        let available_inventory = resolve_variant_inventory_quantity(
+            variant.id,
+            variant.inventory_quantity,
+            &available_inventory_by_variant,
+        );
 
         Ok(VariantResponse {
             id: variant.id,
@@ -1178,7 +1195,7 @@ impl CatalogService {
             prices: price_responses,
             inventory_quantity: available_inventory,
             inventory_policy: variant.inventory_policy.clone(),
-            in_stock: available_inventory > 0 || variant.inventory_policy == "continue",
+            in_stock: available_inventory > 0 || inventory_policy_allows_backorder(&variant.inventory_policy),
             weight: variant.weight,
             weight_unit: variant.weight_unit,
             position: variant.position,
@@ -1201,6 +1218,36 @@ mod tests {
             locale: locale.to_owned(),
             alt_text: alt_text.map(str::to_owned),
         }
+    }
+
+    #[test]
+    fn legacy_inventory_is_used_only_when_inventory_has_no_item_identity() {
+        let variant_id = Uuid::new_v4();
+        let missing_inventory = HashMap::new();
+        assert_eq!(
+            resolve_variant_inventory_quantity(variant_id, 7, &missing_inventory),
+            7,
+        );
+
+        let authoritative_zero = HashMap::from([(variant_id, 0)]);
+        assert_eq!(
+            resolve_variant_inventory_quantity(variant_id, 7, &authoritative_zero),
+            0,
+        );
+
+        let authoritative_stock = HashMap::from([(variant_id, 12)]);
+        assert_eq!(
+            resolve_variant_inventory_quantity(variant_id, 7, &authoritative_stock),
+            12,
+        );
+    }
+
+    #[test]
+    fn backorder_policy_is_case_insensitive_and_trimmed_in_catalog_projection() {
+        assert!(inventory_policy_allows_backorder("continue"));
+        assert!(inventory_policy_allows_backorder(" CONTINUE "));
+        assert!(inventory_policy_allows_backorder("Continue"));
+        assert!(!inventory_policy_allows_backorder("deny"));
     }
 
     #[test]

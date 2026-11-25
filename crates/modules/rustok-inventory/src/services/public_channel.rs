@@ -1,10 +1,13 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use rustok_commerce_foundation::{
-    entities::{inventory_item, inventory_level, stock_location},
+    entities::{inventory_item, inventory_level, product_variant, stock_location},
     error::{CommerceError, CommerceResult},
 };
-use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect,
+};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -28,11 +31,12 @@ pub fn extract_allowed_channel_slugs(metadata: &Value) -> Vec<String> {
 
     let mut normalized = BTreeSet::new();
     for value in values {
-        if let Some(slug) = value
-            .as_str()
-            .and_then(|value| normalize_public_channel_slug(Some(value)))
-        {
-            normalized.insert(slug);
+        if let Some(raw_slug) = value.as_str() {
+            if let Some(slug) = normalize_public_channel_slug(Some(raw_slug))
+                .filter(|slug| slug.as_str() == raw_slug)
+            {
+                normalized.insert(slug);
+            }
         }
     }
 
@@ -61,7 +65,45 @@ pub fn is_metadata_visible_for_public_channel(
     public_channel_slug: Option<&str>,
 ) -> bool {
     let allowed_channel_slugs = extract_allowed_channel_slugs(metadata);
+    let explicit_allowlist = metadata
+        .as_object()
+        .and_then(|object| object.get("channel_visibility"))
+        .and_then(Value::as_object)
+        .and_then(|object| object.get("allowed_channel_slugs"));
+    let malformed_nonempty_allowlist = match explicit_allowlist {
+        Some(Value::Array(values)) => !values.is_empty() && allowed_channel_slugs.is_empty(),
+        Some(_) => true,
+        None => false,
+    };
+    if malformed_nonempty_allowlist {
+        return false;
+    }
+
     is_allowlist_visible_for_public_channel(&allowed_channel_slugs, public_channel_slug)
+}
+
+async fn require_tenant_variant_identities<C: ConnectionTrait>(
+    conn: &C,
+    tenant_id: Uuid,
+    variant_ids: &[Uuid],
+) -> Result<(), sea_orm::DbErr> {
+    let requested = variant_ids.iter().copied().collect::<BTreeSet<_>>();
+    let expected = requested.iter().copied().collect::<Vec<_>>();
+    let actual = product_variant::Entity::find()
+        .select_only()
+        .column(product_variant::Column::Id)
+        .filter(product_variant::Column::TenantId.eq(tenant_id))
+        .filter(product_variant::Column::Id.is_in(requested.iter().copied()))
+        .order_by_asc(product_variant::Column::Id)
+        .into_tuple::<Uuid>()
+        .all(conn)
+        .await?;
+    if actual != expected {
+        return Err(sea_orm::DbErr::Custom(
+            "Inventory variant identities are not all owned by the requested tenant".into(),
+        ));
+    }
+    Ok(())
 }
 
 /// Validates request-level storefront inventory semantics before any DB lookup.
@@ -202,6 +244,10 @@ where
         return Ok(HashMap::new());
     }
 
+    // INVARIANT: prove every Product Variant belongs to this tenant before querying
+    // tenant-less Inventory items or levels. A foreign/stale ID is not empty stock.
+    require_tenant_variant_identities(db, tenant_id, variant_ids).await?;
+
     let inventory_items = inventory_item::Entity::find()
         .filter(inventory_item::Column::VariantId.is_in(variant_ids.iter().copied()))
         .all(db)
@@ -332,10 +378,10 @@ mod tests {
     }
 
     #[test]
-    fn metadata_visibility_uses_normalized_allowlist() {
+    fn metadata_visibility_uses_canonical_allowlist_and_normalized_request() {
         let metadata = serde_json::json!({
             "channel_visibility": {
-                "allowed_channel_slugs": ["Web"]
+                "allowed_channel_slugs": ["web"]
             }
         });
 
@@ -348,6 +394,72 @@ mod tests {
             Some("mobile")
         ));
         assert!(!is_metadata_visible_for_public_channel(&metadata, None));
+    }
+
+    #[test]
+    fn malformed_nonempty_channel_allowlists_fail_closed() {
+        let invalid_values = serde_json::json!({
+            "channel_visibility": { "allowed_channel_slugs": ["", 42, null] }
+        });
+        let noncanonical_values = serde_json::json!({
+            "channel_visibility": { "allowed_channel_slugs": ["WEB"] }
+        });
+        let wrong_shape = serde_json::json!({
+            "channel_visibility": { "allowed_channel_slugs": "web" }
+        });
+        let null_values = serde_json::json!({
+            "channel_visibility": { "allowed_channel_slugs": null }
+        });
+        let valid_values = serde_json::json!({
+            "channel_visibility": { "allowed_channel_slugs": ["web"] }
+        });
+
+        for metadata in [&invalid_values, &noncanonical_values, &wrong_shape, &null_values] {
+            assert!(!is_metadata_visible_for_public_channel(metadata, Some("web")));
+            assert!(!is_metadata_visible_for_public_channel(metadata, None));
+        }
+        assert!(is_metadata_visible_for_public_channel(&valid_values, Some("web")));
+        assert!(!is_metadata_visible_for_public_channel(&valid_values, Some("mobile")));
+        assert!(is_metadata_visible_for_public_channel(
+            &serde_json::json!({ "channel_visibility": { "allowed_channel_slugs": [] } }),
+            None,
+        ));
+        assert!(is_metadata_visible_for_public_channel(&serde_json::json!({}), Some("web")));
+    }
+
+    #[tokio::test]
+    async fn public_channel_stock_reads_prove_tenant_variant_identity_before_inventory_lookup() {
+        use sea_orm::{ConnectionTrait, Database, DatabaseBackend, Statement};
+
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("connect tenant identity fixture");
+        db.execute_raw(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            "CREATE TABLE product_variants (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL)",
+        ))
+        .await
+        .expect("create Product identity table");
+        let tenant_id = Uuid::new_v4();
+        let foreign_tenant_id = Uuid::new_v4();
+        let foreign_variant_id = Uuid::new_v4();
+        db.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "INSERT INTO product_variants (id, tenant_id) VALUES (?, ?)",
+            [foreign_variant_id.into(), foreign_tenant_id.into()],
+        ))
+        .await
+        .expect("insert foreign Product identity");
+
+        let error = load_available_inventory_by_variant_for_public_channel(
+            &db,
+            tenant_id,
+            &[foreign_variant_id],
+            Some("web"),
+        )
+        .await
+        .expect_err("foreign Variant must fail before tenantless Inventory lookup");
+        assert!(error.to_string().contains("tenant-owned"));
     }
 
     #[test]
