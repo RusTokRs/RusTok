@@ -1274,7 +1274,7 @@ mod tests {
 
         use super::super::compose_application_router;
         use crate::{
-            auth::{AuthConfig, encode_access_token},
+            auth::encode_access_token,
             common::settings::{RuntimeHostMode, RustokSettings},
             graphql::schema::{Mutation, Query, Subscription},
             middleware::{
@@ -1523,7 +1523,7 @@ mod tests {
             runtime_context.shared_insert(rustok_storage::StorageRuntime::in_memory());
 
             let auth_config =
-                AuthConfig::new("translation-router-test-secret-with-32-bytes".to_string());
+                crate::auth::test_auth_config("translation-router-test-secret-with-32-bytes".to_string());
             // Mirror production host composition (`app_runtime` bootstrap):
             // build the real shared runtime extensions for the generated
             // registry so optional module routers find the provider

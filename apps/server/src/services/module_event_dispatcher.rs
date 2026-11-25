@@ -1015,7 +1015,6 @@ mod tests {
         build_shared_runtime_extensions_with_host_providers,
     };
     use crate::common::settings::RustokSettings;
-    use rustok_auth::AuthConfig;
     use rustok_core::{EventBus, ModuleRegistry};
     use rustok_index::IndexModule;
     use rustok_search::SearchModule;
@@ -1075,7 +1074,7 @@ mod tests {
             &registry,
             &settings,
             runtime_ctx.clone(),
-            AuthConfig::new("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
+            crate::auth::test_auth_config("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
         )
         .expect("host runtime extensions should initialize");
 

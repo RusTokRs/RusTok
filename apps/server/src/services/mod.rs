@@ -518,7 +518,6 @@ pub mod module_event_dispatcher {
         use sea_orm::Database;
 
         use super::build_shared_runtime_extensions_with_host_providers;
-        use crate::auth::AuthConfig;
         use crate::common::settings::RustokSettings;
         use crate::services::server_runtime_context::ServerRuntimeContext;
 
@@ -541,7 +540,7 @@ pub mod module_event_dispatcher {
                 &registry,
                 &settings,
                 runtime_ctx,
-                AuthConfig::new("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
+                crate::auth::test_auth_config("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
             )
             .expect("host Index runtime should compose");
 

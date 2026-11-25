@@ -305,7 +305,7 @@ mod tests {
         let cache_service = CacheService::from_url(None);
         let provider = ServerAuthAdminMutationProvider::new(
             db.clone(),
-            crate::auth::AuthConfig::new("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
+            crate::auth::test_auth_config("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
             cache_service.clone(),
         );
         let writer = ServerRbacGraphqlRoleWriter {
@@ -345,7 +345,7 @@ mod tests {
         let cache_service = CacheService::from_url(None);
         let provider = ServerAuthAdminMutationProvider::new(
             db.clone(),
-            crate::auth::AuthConfig::new("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
+            crate::auth::test_auth_config("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
             cache_service.clone(),
         );
         let writer = ServerRbacGraphqlRoleWriter {

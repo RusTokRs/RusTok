@@ -628,7 +628,7 @@ mod tests {
         let mut settings = RustokSettings::default();
         settings.features.invites_enabled = false;
         let ctx = ServerRuntimeContext::new(db, settings);
-        let config = AuthConfig::new("invite-feature-gate-secret-for-tests".to_string());
+        let config = crate::auth::test_auth_config("invite-feature-gate-secret-for-tests".to_string());
 
         let error = AuthLifecycleService::accept_invite_once_runtime(
             &ctx,

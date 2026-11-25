@@ -1230,7 +1230,7 @@ mod tests {
 
     #[test]
     fn invite_ledger_expiration_matches_signed_jwt_second_precision() {
-        let config = crate::auth::AuthConfig::new("aB3!zY7@qW8#eR2$".repeat(4));
+        let config = crate::auth::test_auth_config("aB3!zY7@qW8#eR2$".repeat(4));
         let token = crate::auth::encode_invite_token(
             &config,
             uuid::Uuid::new_v4(),
@@ -1252,7 +1252,7 @@ mod tests {
 
     #[test]
     fn administrative_password_policy_honors_configured_minimum() {
-        let config = crate::auth::AuthConfig::new("aB3!zY7@qW8#eR2$".repeat(4))
+        let config = crate::auth::test_auth_config("aB3!zY7@qW8#eR2$".repeat(4))
             .with_min_password_length(20);
         assert!(matches!(
             super::validate_admin_password(&config, "ValidPass123!"),
