@@ -6,6 +6,7 @@ use sea_orm::{
     Statement, TransactionTrait, sea_query::Expr,
 };
 use sha2::{Digest, Sha256};
+use std::sync::OnceLock;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
