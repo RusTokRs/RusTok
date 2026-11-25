@@ -59,6 +59,13 @@ verified against a running server.
 
 - `PagesAdmin`
 
+## SSR operation receipt recovery
+
+Committed receipt replay loads the owner-scoped draft again after observing the
+receipt. This prevents a concurrent commit between the initial draft read and
+receipt lookup from pairing a committed acknowledgement with pre-commit draft
+metadata. Unknown receipts remain read-only and do not resubmit operations.
+
 ## Known Limitations / Pending Implementation
 
 - **A failed draft save is not retried on its own.** When the save that follows an applied edit is

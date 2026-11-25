@@ -1495,3 +1495,7 @@ integration tests; MySQL support is out of scope.
 2026-11-25 Fly iframe origin parity follow-up (source only; not executed):
 - Rust and the classic browser adapter now reject malformed authority delimiters, credentials, paths (even when the URL parser normalizes them away), queries and fragments before canonicalizing explicit HTTP(S) origins. Host case, default ports, IPv6 and the sandboxed opaque origin remain supported.
 - Added matched Rust and mounted-browser regressions. Scoped checks, formatting, lint and browser execution remain pending.
+
+2026-11-25 Pages SSR receipt replay ordering follow-up (source only; not executed):
+- Both explicit receipt resolution and duplicate-operation replay now reload the owner-scoped draft after observing a committed receipt, through the same helper as commit-time replay. A pre-commit snapshot cannot be returned as the committed result when receipt lookup races a writer.
+- Added a regression for the pre-commit read / post-commit receipt interleaving. Tests, compilation and formatting remain pending.

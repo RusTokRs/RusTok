@@ -14,7 +14,7 @@ use rustok_page_builder::runtime_context::{
 };
 use rustok_page_builder_admin::{
     AdminCanvasController, BrowserIntentDispatchError, BrowserIntentDispatchResult,
-    BrowserIntentEffect, DurableSsrDraftSessionStore, PageBuilderAdminFacade,
+    BrowserIntentEffect, DraftSessionOwner, DurableSsrDraftSessionStore, PageBuilderAdminFacade,
     PageBuilderAdminFacadeError, SsrDraftOperationCommit, SsrDraftSessionError,
     SsrDraftSessionSnapshot, SsrDraftSessionStore, dispatch_browser_intent,
     validate_browser_capability_access,
@@ -206,9 +206,13 @@ pub async fn dispatch_pages_browser_intent_with_store(
         let receipt = draft_store.lookup_operation_receipt(
             token, &snapshot.page_id, snapshot.owner.as_ref(), operation_id, None,
         )?;
-        return operation_response_from_receipt(
-            &session, operation_id, receipt.as_ref(), receipt.is_some(),
-        );
+        return match receipt {
+            Some(receipt) => replay_committed_operation(
+                draft_store, token, &snapshot.page_id, snapshot.owner.as_ref(),
+                operation_id, &receipt,
+            ),
+            None => operation_response_from_receipt(&session, operation_id, None, false),
+        };
     }
 
     let operation_hash = envelope.operation_id.as_deref()
@@ -245,8 +249,9 @@ pub async fn dispatch_pages_browser_intent_with_store(
             Some(request_hash),
         )?;
         if let Some(receipt) = receipt {
-            return operation_response_from_receipt(
-                session, operation_id, Some(&receipt), true,
+            return replay_committed_operation(
+                draft_store, &session.token, &snapshot.page_id, snapshot.owner.as_ref(),
+                operation_id, &receipt,
             );
         }
     }
@@ -508,10 +513,10 @@ pub async fn dispatch_pages_browser_intent_with_store(
                 Ok(response)
             }
             SsrDraftOperationCommit::Replayed(receipt) => {
-                let session = draft_store
-                    .load(token, &snapshot.page_id, snapshot.owner.as_ref())?
-                    .ok_or(PagesBrowserIntentError::DraftUnavailable)?;
-                operation_response_from_receipt(&session, operation_id, Some(&receipt), true)
+                replay_committed_operation(
+                    draft_store, token, &snapshot.page_id, snapshot.owner.as_ref(),
+                    operation_id, &receipt,
+                )
             }
         }
     } else if capabilities.edit {
@@ -716,6 +721,22 @@ fn compact_operation_receipt(
     // A receipt only needs to remember whether this committed operation left a
     // persistence failure that must still be surfaced after a reload.
     Ok(json!({ "save_failure": save_failure }))
+}
+
+/// Observe the committed receipt before loading its response snapshot. A
+/// snapshot read before the receipt lookup may predate a concurrent commit.
+fn replay_committed_operation(
+    draft_store: &dyn SsrDraftSessionStore,
+    token: &str,
+    page_id: &str,
+    owner: Option<&DraftSessionOwner>,
+    operation_id: &str,
+    receipt: &Value,
+) -> Result<PagesBrowserIntentResponse, PagesBrowserIntentError> {
+    let session = draft_store
+        .load(token, page_id, owner)?
+        .ok_or(PagesBrowserIntentError::DraftUnavailable)?;
+    operation_response_from_receipt(&session, operation_id, Some(receipt), true)
 }
 
 fn operation_response_from_receipt(
@@ -1343,6 +1364,36 @@ mod tests {
         assert!(replay.operation_replayed);
         assert!(replay.reload);
         assert_eq!(replay.draft_generation, 9);
+    }
+
+    #[test]
+    fn committed_receipt_replay_reloads_a_snapshot_read_before_the_commit() {
+        let store = rustok_page_builder_admin::InMemorySsrDraftSessionStore::default();
+        let first = store.commit(None, None, controller("home"), None)
+            .expect("create draft");
+        let old = store.load(&first.token, "home", None)
+            .expect("load").expect("draft before commit");
+        let context = json!({ "latest": true });
+        let hash = "a".repeat(64);
+        let receipt = json!({ "save_failure": null });
+        let committed = store.commit_with_operation_receipt(
+            &first.token, first.generation, first.controller.clone(),
+            context.clone(), None, "operation-123", &hash, receipt,
+        ).expect("commit operation");
+        let SsrDraftOperationCommit::Committed(committed) = committed else {
+            panic!("first operation must commit");
+        };
+        let receipt = store.lookup_operation_receipt(
+            &first.token, "home", None, "operation-123", Some(&hash),
+        ).expect("lookup").expect("committed receipt");
+        let response = replay_committed_operation(
+            &store, &old.token, "home", None, "operation-123", &receipt,
+        ).expect("replay");
+        assert!(response.draft_generation > old.generation);
+        assert_eq!(response.draft_generation, committed.generation);
+        assert_eq!(response.runtime_context, context);
+        assert_eq!(response.operation_status.as_deref(), Some("committed"));
+        assert!(response.operation_replayed && response.reload);
     }
 
     #[test]
