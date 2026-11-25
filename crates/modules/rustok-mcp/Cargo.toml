@@ -31,10 +31,18 @@ tracing.workspace = true
 chrono.workspace = true
 async-graphql = { workspace = true, optional = true }
 alloy = { path = "../alloy" }
+base64 = { workspace = true, optional = true }
+rand = { workspace = true, optional = true }
+sea-orm = { workspace = true, optional = true }
+sea-orm-migration = { workspace = true, optional = true }
+hex = { workspace = true, optional = true }
 
 [features]
 default = []
-graphql = ["dep:async-graphql", "rustok-api/server"]
+migrations = ["dep:sea-orm-migration"]
+persistence = ["migrations", "dep:base64", "dep:hex", "dep:rand", "dep:sea-orm"]
+auth-context = ["rustok-api/server"]
+graphql = ["auth-context", "dep:async-graphql"]
 
 [dev-dependencies]
 rustok-sandbox = { workspace = true, features = ["rhai"] }

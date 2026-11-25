@@ -44,8 +44,6 @@ mod composition {
     mod m20260315_000001_create_user_field_definitions;
     mod m20260316_000001_create_platform_settings;
     mod m20260317_000001_create_flex_standalone_tables;
-    mod m20260319_000001_create_mcp_management_tables;
-    mod m20260320_000001_create_mcp_scaffold_drafts;
     mod m20260403_000001_create_ai_control_plane_tables;
     mod m20260403_000003_expand_ai_control_plane_for_multiprovider;
     mod m20260403_000004_expand_ai_control_plane_for_direct_locale;
@@ -358,6 +356,7 @@ mod composition {
             super::ModuleMigrationSource::new(&rustok_translation::TranslationModule),
             super::ModuleMigrationSource::new(&rustok_ai::AiModule),
             super::ModuleMigrationSource::new(&rustok_iggy_connector::IggyConnectorModule),
+            super::ModuleMigrationSource::new(&rustok_mcp::McpModule),
         ]
     }
 
@@ -459,8 +458,6 @@ mod composition {
             Box::new(m20260315_000001_create_user_field_definitions::Migration),
             Box::new(m20260316_000001_create_platform_settings::Migration),
             Box::new(m20260317_000001_create_flex_standalone_tables::Migration),
-            Box::new(m20260319_000001_create_mcp_management_tables::Migration),
-            Box::new(m20260320_000001_create_mcp_scaffold_drafts::Migration),
             Box::new(m20260403_000001_create_ai_control_plane_tables::Migration),
             Box::new(m20260403_000003_expand_ai_control_plane_for_multiprovider::Migration),
             Box::new(m20260403_000004_expand_ai_control_plane_for_direct_locale::Migration),
@@ -1036,6 +1033,32 @@ mod composition {
                     "server migrator must collect migration dependencies for {slug}"
                 );
             }
+        }
+
+        #[test]
+        fn migrator_retains_mcp_names_and_order_from_the_owner() {
+            const MANAGEMENT: &str = "m20260319_000001_create_mcp_management_tables";
+            const SCAFFOLD_DRAFTS: &str = "m20260320_000001_create_mcp_scaffold_drafts";
+
+            let inventory = Migrator::inventory().expect("valid migration inventory");
+            let position = |name| {
+                inventory
+                    .entries()
+                    .iter()
+                    .position(|entry| entry.migration == name)
+                    .expect("published migration ID must be present")
+            };
+            let management_position = position(MANAGEMENT);
+            let drafts_position = position(SCAFFOLD_DRAFTS);
+            assert!(position("m20250101_000001_create_tenants") < management_position);
+            assert!(position("m20250101_000002_create_users") < management_position);
+            assert!(management_position < drafts_position);
+
+            let owner = crate::MigrationOwner::Module {
+                slug: "mcp".to_owned(),
+            };
+            assert_eq!(inventory.entries()[management_position].owner, owner);
+            assert_eq!(inventory.entries()[drafts_position].owner, owner);
         }
 
         #[test]

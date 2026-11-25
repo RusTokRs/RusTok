@@ -1,6 +1,6 @@
 # Documentation `rustok-mcp`
 
-`rustok-mcp` is a thin adapter crate for MCP integration in RusToK over `rmcp`.
+`rustok-mcp` owns MCP integration and persisted MCP management in RusToK. The protocol adapter uses `rmcp`.
 It holds the RusToK-specific tool/runtime layer, without replacing the official MCP
 spec or turning into a provider/model host.
 
@@ -8,7 +8,7 @@ spec or turning into a provider/model host.
 
 - publish the canonical MCP adapter contract for RusToK;
 - keep tool surface, runtime binding, access policy and audit hooks over `rmcp`;
-- connect Alloy-related MCP capabilities and the persisted server-side control plane with runtime session flow.
+- connect Alloy-related MCP capabilities and the persisted MCP control plane with runtime session flow.
 
 ## Responsibilities
 
@@ -22,19 +22,17 @@ spec or turning into a provider/model host.
 - MCP-module-owned admin UI for reviewing Alloy drafts, reading MCP audit and read-side
   clients/policies/token previews: Next package
   `apps/next-admin/packages/rustok-mcp` and Leptos FFA crate `crates/modules/rustok-mcp/admin`;
-- typed `McpManagementPort` in the owner crate and DB-provider in `apps/server`, which
-  delegates management reads/writes to the canonical transactional `McpManagementService`;
-- owner-owned REST/control-plane request and response DTOs for MCP remote transport,
-  clients, policy, tokens, audit and scaffold drafts; `apps/server` only maps persisted rows
-  and Axum request boundaries to those owner contracts;
-- owner-owned GraphQL query/mutation/types behind feature `graphql`; server only connects roots and implements the DB-provider;
+- typed `McpManagementPort` and the embedded persistence provider for clients, policies, tokens, audit and scaffold drafts;
+- module-owned SeaORM entities and schema migrations with stable published names;
+- owner-owned REST/control-plane request and response DTOs;
+- owner-owned GraphQL query/mutation/types behind feature `graphql`; the server connects the roots and registers the embedded owner;
 - no ownership over provider-specific AI orchestration and over the MCP spec itself.
 
 ## Integration
 
 - protocol, security and authorization semantics come from official MCP/rmcp documents, not from the local docs folder;
 - `rustok-ai` uses `rustok-mcp` as the MCP tool boundary, without extending it to a model host;
-- `apps/server` holds the persisted MCP management/control plane and runtime bridges for tokens, policy and scaffold drafts;
+- `apps/server` supplies the database, authenticated request context, delegated principal facts, effective module availability and authorized workspace publication;
 - HTTP handlers in `apps/server` import MCP DTOs and actor parsing from `rustok-mcp`
   instead of defining package-local REST contracts;
 - Alloy connects as a capability via runtime state, not as a separate MCP transport stack.
@@ -42,8 +40,7 @@ spec or turning into a provider/model host.
   expose tenant-owned Alloy script reads, CRUD, validation, or execution,
   because it cannot construct the owner-scoped Alloy runtime required for
   tenant binding and actor provenance. Script authoring remains on the
-  host-composed Alloy HTTP and GraphQL surfaces until a remote owner-composed
-  MCP adapter is implemented.
+  host-composed Alloy HTTP and GraphQL surfaces and on the authenticated host-composed JSON/SSE tool surface.
 - admitted artifacts can call only the host-configured `rustok` server alias.
   The server derives their service identity from exact installation scope,
   applies the MCP owner policy, persists redacted audit evidence before the

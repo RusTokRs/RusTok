@@ -24,12 +24,6 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
     #[sea_orm(
-        belongs_to = "super::tenants::Entity",
-        from = "Column::TenantId",
-        to = "super::tenants::Column::Id"
-    )]
-    Tenant,
-    #[sea_orm(
         belongs_to = "super::mcp_clients::Entity",
         from = "Column::ClientId",
         to = "super::mcp_clients::Column::Id"
@@ -41,12 +35,6 @@ pub enum Relation {
         to = "super::mcp_tokens::Column::Id"
     )]
     McpToken,
-}
-
-impl Related<super::tenants::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::Tenant.def()
-    }
 }
 
 impl Related<super::mcp_clients::Entity> for Entity {

@@ -536,7 +536,7 @@ mod tests {
         request.write_files = true;
         let error =
             generate_module_scaffold(&request).expect_err("staging must reject direct writes");
-        assert!(error.contains("alloy_apply_module_scaffold"));
+        assert_eq!(error, crate::AlloyScaffoldError::DirectWriteForbidden);
     }
 
     #[test]

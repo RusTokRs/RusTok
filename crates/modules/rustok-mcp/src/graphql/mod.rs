@@ -8,7 +8,10 @@ use async_graphql::{Context, FieldError, Result};
 use rustok_api::{AuthContext, Permission, graphql::GraphQLError, has_effective_permission};
 use rustok_core::ModuleRuntimeExtensions;
 
-use crate::{McpManagementContext, McpManagementMutationError, McpManagementRuntime};
+use crate::{
+    McpManagementAuthorityError, McpManagementContext, McpManagementMutationError,
+    McpManagementRuntime,
+};
 
 pub use mutation::McpMutation;
 pub use query::McpQuery;
@@ -44,25 +47,26 @@ fn runtime(ctx: &Context<'_>) -> Result<McpManagementRuntime> {
 }
 
 fn management_context(auth: &AuthContext) -> McpManagementContext {
-    McpManagementContext {
-        actor_id: auth.user_id,
-        tenant_id: auth.tenant_id,
-    }
+    McpManagementContext::from_auth_context(auth)
 }
 
 fn map_error(error: McpManagementMutationError) -> FieldError {
     match error {
-        McpManagementMutationError::Forbidden(message) => {
+        McpManagementMutationError::Forbidden(message)
+        | McpManagementMutationError::Authority(McpManagementAuthorityError::Forbidden(message)) => {
             <FieldError as GraphQLError>::permission_denied(&message)
         }
         McpManagementMutationError::Validation(message)
-        | McpManagementMutationError::Conflict(message) => {
+        | McpManagementMutationError::Conflict(message)
+        | McpManagementMutationError::Authority(McpManagementAuthorityError::Invalid(message)) => {
             <FieldError as GraphQLError>::bad_user_input(&message)
         }
-        McpManagementMutationError::NotFound(message) => {
+        McpManagementMutationError::NotFound(message)
+        | McpManagementMutationError::Authority(McpManagementAuthorityError::NotFound(message)) => {
             <FieldError as GraphQLError>::not_found(&message)
         }
-        McpManagementMutationError::Internal(message) => {
+        McpManagementMutationError::Internal(message)
+        | McpManagementMutationError::Authority(McpManagementAuthorityError::Internal(message)) => {
             <FieldError as GraphQLError>::internal_error(&message)
         }
     }

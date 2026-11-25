@@ -44,7 +44,7 @@ fn build_permission_ownership(
     Ok(ownership)
 }
 
-fn permission_ownership(
+pub(super) fn permission_ownership(
     ctx: &ServerRuntimeContext,
     registry: &ModuleRegistry,
 ) -> Result<Arc<BTreeMap<String, String>>> {
@@ -69,19 +69,29 @@ pub async fn permission_availability_for(
         return Ok(None);
     };
     let ownership = permission_ownership(ctx, &registry)?;
-    let policy = EffectiveModulePolicyService::resolve_cached(
+    resolve_permission_availability(
         ctx.db(),
         &registry,
-        tenant_id,
         &ctx.effective_policy_cache(),
+        &ownership,
+        tenant_id,
     )
     .await
-    .map_err(|error| Error::Message(format!("module policy resolution failed: {error}")))?;
+    .map(Some)
+}
+
+pub(super) async fn resolve_permission_availability(
+    db: &sea_orm::DatabaseConnection,
+    registry: &ModuleRegistry,
+    cache: &rustok_modules::ModuleEffectivePolicyCache,
+    ownership: &BTreeMap<String, String>,
+    tenant_id: uuid::Uuid,
+) -> Result<PermissionAvailability> {
+    let policy = EffectiveModulePolicyService::resolve_cached(db, registry, tenant_id, cache)
+        .await
+        .map_err(|error| Error::Message(format!("module policy resolution failed: {error}")))?;
     let enabled: BTreeSet<String> = policy.into_enabled_modules().into_iter().collect();
-    Ok(Some(PermissionAvailability::new(
-        (*ownership).clone(),
-        enabled,
-    )))
+    Ok(PermissionAvailability::new(ownership.clone(), enabled))
 }
 
 /// GraphQL provider registered with the RBAC owner queries/mutations.

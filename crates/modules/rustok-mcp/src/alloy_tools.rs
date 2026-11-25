@@ -435,7 +435,10 @@ mod tests {
         .await
         .expect_err("confirm=false must be rejected");
 
-        assert!(error.contains("confirm=true"));
+        assert!(matches!(
+            error,
+            crate::AlloyScaffoldError::Validation(message) if message.contains("confirm=true")
+        ));
     }
 
     struct FakeDraftStore {

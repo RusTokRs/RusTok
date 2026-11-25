@@ -605,8 +605,7 @@ pub fn compose_application_router(
     ));
 
     let router = router
-        .layer(axum_middleware::from_fn_with_state(
-            middleware_runtime_ctx.clone(),
+        .layer(axum_middleware::from_fn(
             middleware::mcp_scaffold_workspace::authorize_workspace,
         ))
         .layer(axum_middleware::from_fn_with_state(

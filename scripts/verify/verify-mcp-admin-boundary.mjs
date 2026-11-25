@@ -51,7 +51,7 @@ const mcpAdminCargoPath = "crates/modules/rustok-mcp/admin/Cargo.toml";
 const managementContractPath = "crates/modules/rustok-mcp/src/management.rs";
 const mcpAccessContractPath = "crates/modules/rustok-mcp/src/access.rs";
 const serverMcpControllerPath = "apps/server/src/controllers/mcp.rs";
-const managementProviderPath = "apps/server/src/services/mcp_management_mutation_provider.rs";
+const managementProviderPath = "crates/modules/rustok-mcp/src/persistence/management.rs";
 const runtimeRegistrationPath = "apps/server/src/services/module_event_dispatcher.rs";
 const aiNextPackagePath = "apps/next-admin/packages/rustok-ai/src/index.tsx";
 const aiLeptosUiPath = "crates/modules/rustok-ai/admin/src/ui/leptos.rs";
@@ -73,7 +73,7 @@ for (const [file, description] of [
   [managementContractPath, "expected MCP management port contract"],
   [mcpAccessContractPath, "expected MCP access contract"],
   [serverMcpControllerPath, "expected server MCP controller adapter"],
-  [managementProviderPath, "expected server MCP management provider"],
+  [managementProviderPath, "expected MCP owner management provider"],
   [runtimeRegistrationPath, "expected host runtime provider registration"],
   [mcpPlanPath, "expected MCP implementation plan"],
   [centralRegistryPath, "expected central module registry"],
@@ -149,10 +149,9 @@ assertContains(transportMod, "pub mod graphql_adapter;", `${transportModPath}: t
 assertContains(nativeAdapter, "#[server", `${nativeAdapterPath}: native adapter must expose server functions for Leptos FFA`);
 assertContains(nativeAdapter, "mcp_scaffold_drafts_native", `${nativeAdapterPath}: native adapter must own drafts endpoint`);
 assertContains(nativeAdapter, "expect_context::<rustok_api::HostRuntimeContext>()", `${nativeAdapterPath}: native adapter must consume neutral host runtime context`);
-assertContains(nativeAdapter, "runtime_ctx.db_clone()", `${nativeAdapterPath}: native adapter must read DB from neutral host runtime context`);
 assertContains(nativeAdapter, "shared_get::<Arc<rustok_core::ModuleRuntimeExtensions>>()", `${nativeAdapterPath}: native adapter must read module runtime extensions from typed host handles`);
 for (const marker of [
-  "mcp_native_context",
+  "mcp_management_context",
   "mcp_audit_events_native",
   "mcp_clients_native",
   "mcp_client_details_native",
@@ -163,22 +162,25 @@ for (const marker of [
   "mcp_deactivate_client_native",
   "McpManagementRuntime",
   "ensure_mcp_read",
-  "SELECT id, client_id, actor_id, actor_type, action, outcome",
-  "SELECT id, slug, display_name, description, actor_type, is_active",
-  "SELECT allowed_tools, denied_tools, granted_permissions, granted_scopes",
-  "SELECT id, token_name, token_preview, last_used_at, expires_at, revoked_at",
   "ensure_mcp_manage",
   "mcp:manage required",
+  ".list_scaffold_drafts(",
+  ".list_audit_events(",
+  ".list_clients(",
+  ".get_client(",
   ".stage_scaffold_draft(",
   ".apply_scaffold_draft(",
   "StageMcpScaffoldDraftCommand",
   "ApplyMcpScaffoldDraftCommand",
 ]) {
-  assertContains(nativeAdapter, marker, `${nativeAdapterPath}: native adapter must keep DB-backed runtime marker ${marker}`);
+  assertContains(nativeAdapter, marker, `${nativeAdapterPath}: native adapter must use the owner port ${marker}`);
 }
 for (const marker of [
   "generate_module_scaffold",
   "apply_staged_scaffold",
+  "sea_orm",
+  "runtime_ctx.db_clone()",
+  "SELECT ",
   "INSERT INTO mcp_scaffold_drafts",
   "UPDATE mcp_scaffold_drafts",
   "INSERT INTO mcp_audit_logs",
@@ -273,11 +275,14 @@ assertContains(serverMcpController, "CreateMcpClientRequest", `${serverMcpContro
 assertContains(serverMcpController, "McpClientSummaryResponse", `${serverMcpControllerPath}: controller must consume owner response DTOs`);
 assertContains(serverMcpController, "McpActorType::from_str", `${serverMcpControllerPath}: controller must delegate actor parsing to rustok-mcp`);
 assertNotContains(serverMcpController, '"human_user" => Ok(McpActorType::HumanUser)', `${serverMcpControllerPath}: actor parsing must not be duplicated in server`);
-assertContains(managementProvider, "impl McpManagementPort", `${managementProviderPath}: server must implement MCP management port`);
+assertContains(managementProvider, "impl McpManagementPort", `${managementProviderPath}: MCP owner must implement its management port`);
 assertContains(managementProvider, "McpManagementService::create_client", `${managementProviderPath}: provider must delegate to canonical management service`);
 assertContains(managementProvider, "McpManagementService::rotate_token", `${managementProviderPath}: provider must preserve canonical token security logic`);
 assertContains(managementProvider, "McpManagementService::stage_scaffold_draft", `${managementProviderPath}: provider must delegate scaffold staging to the canonical management service`);
 assertContains(managementProvider, "McpManagementService::apply_scaffold_draft", `${managementProviderPath}: provider must preserve canonical scaffold claim/recovery logic`);
+assertNotContains(readRepo(mcpAdminCargoPath), "sea-orm", `${mcpAdminCargoPath}: persistence dependencies belong to the MCP owner`);
+assertNotContains(serverMcpController, "crate::models::mcp_", `${serverMcpControllerPath}: REST must call the owner port`);
+assertContains(managementProvider, "impl McpManagementPort for McpPersistence", `${managementProviderPath}: runtime and management must share owner persistence`);
 assertContains(runtimeRegistration, "McpManagementRuntime::new", `${runtimeRegistrationPath}: host must register MCP management runtime`);
 
 for (const marker of [

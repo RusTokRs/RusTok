@@ -844,18 +844,9 @@ pub fn build_shared_runtime_extensions_with_host_providers(
     );
     extensions.insert(AuthLifecycleRuntime::new(auth_lifecycle_provider.clone()));
     extensions.insert(AuthUserBackfillRuntime::new(auth_lifecycle_provider));
-    let mcp_management_provider = Arc::new(
-        crate::services::mcp_management_mutation_provider::ServerMcpManagementMutationProvider::new(
-            db.clone(),
-        ),
-    );
-    let mcp_management_provider = Arc::new(
-        crate::services::mcp_management_guard::GuardedMcpManagementProvider::new(
-            db.clone(),
-            mcp_management_provider,
-        ),
-    );
-    extensions.insert(McpManagementRuntime::new(mcp_management_provider));
+    let mcp = crate::services::mcp_host::compose(&runtime_ctx, registry)?;
+    extensions.insert(McpManagementRuntime::new(mcp.clone()));
+    extensions.insert(mcp);
 
     #[cfg(all(feature = "mod-notifications", feature = "mod-profiles"))]
     {

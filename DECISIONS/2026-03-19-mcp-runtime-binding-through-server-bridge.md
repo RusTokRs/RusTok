@@ -3,6 +3,8 @@
 - Date: 2026-03-19
 - Status: Accepted
 
+The [MCP management owner boundary](./2026-07-10-mcp-management-owner-boundary.md#ownership-refinement-2026-11-25) refines the placement of the persistence implementation. This record preserves the original decision and workflow.
+
 ## Context
 
 RusToK already had:

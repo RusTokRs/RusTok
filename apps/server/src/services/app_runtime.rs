@@ -140,9 +140,6 @@ pub async fn bootstrap_app_runtime(
         runtime_ctx.shared_insert(crate::services::build_control::ServerBuildControl::shared(
             runtime_ctx.clone(),
         ));
-        runtime_ctx.shared_insert(
-            crate::services::mcp_runtime::DbBackedMcpRuntimeBridge::shared(runtime_ctx.clone()),
-        );
         sync_manifest_managed_apps_for_all_tenants(runtime_ctx.db(), &manifest)
             .await
             .map_err(|error| {

@@ -14,6 +14,11 @@ const MCP_SCAFFOLD_STAGING_PREFIX: &str = ".rustok-mcp-scaffold-staging-";
 const MCP_SCAFFOLD_STAGING_MARKER: &str = ".rustok-mcp-scaffold-staging";
 const MCP_SCAFFOLD_STAGING_MARKER_VERSION: &str = "rustok-mcp-scaffold-staging-v1";
 
+pub(super) async fn lock_process_scaffold_workspace() -> tokio::sync::MutexGuard<'static, ()> {
+    static APPLY_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    APPLY_LOCK.lock().await
+}
+
 /// An exclusive OS lock shared with the native xtask scaffold transaction.
 /// Keep the file handle alive for the complete filesystem apply operation.
 pub struct McpScaffoldWorkspaceLock {

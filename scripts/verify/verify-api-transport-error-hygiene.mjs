@@ -37,8 +37,8 @@ const serverError = read('apps/server/src/error.rs');
 requireText(serverError, 'StatusCode::INTERNAL_SERVER_ERROR,', 'apps/server/src/error.rs');
 requireText(serverError, '"internal_error",', 'apps/server/src/error.rs');
 requireText(serverError, '"Internal server error",', 'apps/server/src/error.rs');
-requireText(serverError, 'Self::Database(error) => {', 'apps/server/src/error.rs (database error sanitization)');
-requireText(serverError, 'tracing::error!(error = %error, "server database operation failed");', 'apps/server/src/error.rs (database error log)');
+requireText(serverError, 'Self::Database(_error) => {', 'apps/server/src/error.rs (database error sanitization)');
+requireText(serverError, 'error_code = "server_database_operation_failed"', 'apps/server/src/error.rs (database error log)');
 
 const rustokWeb = read('crates/libs/rustok-web/src/lib.rs');
 requireText(rustokWeb, 'pub struct ErrorBody {', 'crates/libs/rustok-web (canonical ErrorBody)');
@@ -98,9 +98,9 @@ requireText(audiencePolicy, 'ProfileSummaryLoader::for_audience(db, audience)', 
 const adminEvents = read('apps/server/src/controllers/admin_events.rs');
 requireText(adminEvents, 'let limit = query.limit.clamp(1, 200);', 'admin_events.rs limit clamping');
 
-const mcpManagement = read('apps/server/src/services/mcp_management.rs');
-requireText(mcpManagement, 'fn clamp_limit(limit: Option<u64>, default: u64, max: u64) -> u64', 'mcp_management.rs clamp_limit');
-requireText(mcpManagement, 'limit.unwrap_or(default).clamp(1, max)', 'mcp_management.rs clamp expression');
+const mcpManagement = read('crates/modules/rustok-mcp/src/persistence/service.rs');
+requireText(mcpManagement, 'fn clamp_limit(limit: Option<u64>, default: u64, max: u64) -> u64', 'MCP persistence service clamp_limit');
+requireText(mcpManagement, 'limit.unwrap_or(default).clamp(1, max)', 'MCP persistence service clamp expression');
 
 // ── 5. CC-06.05: MCP Tool Schema Validation ─────────────────────────────────
 const mcpTools = read('crates/modules/rustok-mcp/src/tools.rs');

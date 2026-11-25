@@ -28,7 +28,7 @@ ssr = [
   "dep:leptos_axum",
   "dep:rustok-api",
   "dep:rustok-core",
-  "dep:rustok-mcp",
+  "rustok-mcp/auth-context",
   "dep:uuid",
   "rustok-api/server",
 ]

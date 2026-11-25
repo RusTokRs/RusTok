@@ -87,11 +87,7 @@ pub mod marketplace_catalog_adapter;
 pub mod marketplace_catalog_cache;
 #[cfg(feature = "commerce-marketplace-financial")]
 pub mod marketplace_financial_worker;
-pub mod mcp_management;
-pub mod mcp_management_authority;
-pub mod mcp_management_guard;
-pub mod mcp_management_mutation_provider;
-pub mod mcp_runtime;
+pub mod mcp_host;
 pub mod mcp_scaffold_workspace;
 
 #[cfg(feature = "mod-forum")]

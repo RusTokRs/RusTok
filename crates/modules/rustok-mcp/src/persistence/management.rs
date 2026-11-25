@@ -1,10 +1,11 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use sea_orm::DatabaseConnection;
+use rustok_api::{Permission, has_effective_permission};
 
-use crate::error::Error as ServerError;
+use super::authority::Authority;
+use super::{McpPersistence, McpPersistenceError};
 
-use rustok_mcp::{
+use crate::{
     ApplyMcpScaffoldDraftCommand, CreateMcpClientCommand, McpAuditEventRecord,
     McpClientDetailsRecord, McpClientRecord, McpManagementContext, McpManagementMutationError,
     McpManagementPort, McpPolicyRecord, McpScaffoldDraftRecord, McpTokenRecord,
@@ -12,28 +13,59 @@ use rustok_mcp::{
     UpdateMcpPolicyCommand,
 };
 
-use super::mcp_management::{
+use super::service::{
     ApplyMcpScaffoldDraftInput, CreateMcpClientInput, McpAuditFilters, McpManagementService,
     RotateMcpTokenInput, StageMcpScaffoldDraftInput, UpdateMcpPolicyInput,
 };
 
-pub struct ServerMcpManagementMutationProvider {
-    db: DatabaseConnection,
-}
-
-impl ServerMcpManagementMutationProvider {
-    pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+impl McpPersistence {
+    fn manager_permissions(
+        &self,
+        context: &McpManagementContext,
+    ) -> Result<Vec<Permission>, McpManagementMutationError> {
+        let permissions = match context.request_actor_id {
+            Some(actor_id) => self
+                .host
+                .request_permissions(context.tenant_id, actor_id)
+                .ok_or_else(|| {
+                    McpManagementMutationError::Validation(
+                        "MCP management requires a request-bound effective permission snapshot"
+                            .to_string(),
+                    )
+                })?,
+            None => context.permissions.clone(),
+        };
+        ensure_permission(context, &permissions, Permission::MCP_MANAGE)?;
+        Ok(permissions)
     }
 }
 
+fn ensure_permission(
+    context: &McpManagementContext,
+    permissions: &[Permission],
+    required: Permission,
+) -> Result<(), McpManagementMutationError> {
+    if context.tenant_id.is_nil() || context.actor_id.is_nil() {
+        return Err(McpManagementMutationError::Forbidden(
+            "MCP management requires a tenant-bound principal".to_string(),
+        ));
+    }
+    if !has_effective_permission(permissions, &required) {
+        return Err(McpManagementMutationError::Forbidden(format!(
+            "{required} permission is required"
+        )));
+    }
+    Ok(())
+}
+
 #[async_trait]
-impl McpManagementPort for ServerMcpManagementMutationProvider {
+impl McpManagementPort for McpPersistence {
     async fn list_clients(
         &self,
         context: &McpManagementContext,
         limit: Option<u64>,
     ) -> Result<Vec<McpClientRecord>, McpManagementMutationError> {
+        ensure_permission(context, &context.permissions, Permission::MCP_READ)?;
         McpManagementService::list_clients(&self.db, context.tenant_id, limit)
             .await
             .map(|clients| clients.iter().map(client_record).collect())
@@ -45,6 +77,7 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
         context: &McpManagementContext,
         client_id: uuid::Uuid,
     ) -> Result<Option<McpClientDetailsRecord>, McpManagementMutationError> {
+        ensure_permission(context, &context.permissions, Permission::MCP_READ)?;
         let details =
             McpManagementService::get_client_details(&self.db, context.tenant_id, client_id)
                 .await
@@ -68,6 +101,7 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
         outcome: Option<String>,
         limit: Option<u64>,
     ) -> Result<Vec<McpAuditEventRecord>, McpManagementMutationError> {
+        ensure_permission(context, &context.permissions, Permission::MCP_READ)?;
         McpManagementService::list_audit_events(
             &self.db,
             context.tenant_id,
@@ -87,6 +121,7 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
         context: &McpManagementContext,
         limit: Option<u64>,
     ) -> Result<Vec<McpScaffoldDraftRecord>, McpManagementMutationError> {
+        ensure_permission(context, &context.permissions, Permission::MCP_MANAGE)?;
         McpManagementService::list_scaffold_drafts(&self.db, context.tenant_id, limit)
             .await
             .map(|drafts| drafts.into_iter().map(scaffold_draft_record).collect())
@@ -98,6 +133,7 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
         context: &McpManagementContext,
         draft_id: uuid::Uuid,
     ) -> Result<Option<McpScaffoldDraftRecord>, McpManagementMutationError> {
+        ensure_permission(context, &context.permissions, Permission::MCP_MANAGE)?;
         McpManagementService::get_scaffold_draft(&self.db, context.tenant_id, draft_id)
             .await
             .map(|draft| draft.map(scaffold_draft_record))
@@ -109,6 +145,16 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
         context: &McpManagementContext,
         command: CreateMcpClientCommand,
     ) -> Result<McpTokenSecretResult, McpManagementMutationError> {
+        let permissions = self.manager_permissions(context)?;
+        Authority::validate_create_client(
+            self.host.as_ref(),
+            context.tenant_id,
+            &permissions,
+            command.actor_type,
+            command.delegated_user_id,
+            &command.granted_permissions,
+        )
+        .await?;
         let result = McpManagementService::create_client(
             &self.db,
             context.tenant_id,
@@ -125,9 +171,9 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
                 granted_permissions: command.granted_permissions,
                 granted_scopes: command.granted_scopes,
                 metadata: command.metadata,
-                created_by: Some(context.actor_id),
+                created_by: context.human_actor_id(),
                 audit_actor_id: Some(context.actor_id.to_string()),
-                audit_actor_type: Some("human_user".to_string()),
+                audit_actor_type: Some(context.actor_type.as_str().to_string()),
             },
         )
         .await
@@ -146,6 +192,14 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
         context: &McpManagementContext,
         command: RotateMcpTokenCommand,
     ) -> Result<McpTokenSecretResult, McpManagementMutationError> {
+        let permissions = self.manager_permissions(context)?;
+        let delegated = Authority::token_rotation_delegation(
+            &self.db,
+            self.host.as_ref(),
+            context.tenant_id,
+            command.client_id,
+        )
+        .await?;
         let result = McpManagementService::rotate_token(
             &self.db,
             context.tenant_id,
@@ -154,11 +208,13 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
                 token_name: command.token_name,
                 expires_at: parse_optional_datetime(command.expires_at)?,
                 metadata: command.metadata,
-                created_by: Some(context.actor_id),
+                created_by: context.human_actor_id(),
                 audit_actor_id: Some(context.actor_id.to_string()),
-                audit_actor_type: Some("human_user".to_string()),
+                audit_actor_type: Some(context.actor_type.as_str().to_string()),
                 revoke_existing_tokens: command.revoke_existing_tokens,
             },
+            &permissions,
+            delegated.as_deref(),
         )
         .await
         .map_err(mutation_error)?;
@@ -176,6 +232,16 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
         context: &McpManagementContext,
         command: UpdateMcpPolicyCommand,
     ) -> Result<McpPolicyRecord, McpManagementMutationError> {
+        let permissions = self.manager_permissions(context)?;
+        Authority::validate_policy_update(
+            &self.db,
+            self.host.as_ref(),
+            context.tenant_id,
+            &permissions,
+            command.client_id,
+            &command.granted_permissions,
+        )
+        .await?;
         let policy = McpManagementService::update_policy(
             &self.db,
             context.tenant_id,
@@ -186,9 +252,9 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
                 granted_permissions: command.granted_permissions,
                 granted_scopes: command.granted_scopes,
                 metadata: command.metadata,
-                updated_by: Some(context.actor_id),
+                updated_by: context.human_actor_id(),
                 audit_actor_id: Some(context.actor_id.to_string()),
-                audit_actor_type: Some("human_user".to_string()),
+                audit_actor_type: Some(context.actor_type.as_str().to_string()),
             },
         )
         .await
@@ -203,13 +269,14 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
         token_id: uuid::Uuid,
         reason: Option<String>,
     ) -> Result<(), McpManagementMutationError> {
+        ensure_permission(context, &context.permissions, Permission::MCP_MANAGE)?;
         McpManagementService::revoke_token(
             &self.db,
             context.tenant_id,
             token_id,
-            Some(context.actor_id),
+            context.human_actor_id(),
             Some(context.actor_id.to_string()),
-            Some("human_user".to_string()),
+            Some(context.actor_type.as_str().to_string()),
             reason,
         )
         .await
@@ -223,13 +290,14 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
         client_id: uuid::Uuid,
         reason: Option<String>,
     ) -> Result<(), McpManagementMutationError> {
+        ensure_permission(context, &context.permissions, Permission::MCP_MANAGE)?;
         McpManagementService::deactivate_client(
             &self.db,
             context.tenant_id,
             client_id,
-            Some(context.actor_id),
+            context.human_actor_id(),
             Some(context.actor_id.to_string()),
-            Some("human_user".to_string()),
+            Some(context.actor_type.as_str().to_string()),
             reason,
         )
         .await
@@ -242,15 +310,16 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
         context: &McpManagementContext,
         command: StageMcpScaffoldDraftCommand,
     ) -> Result<McpScaffoldDraftRecord, McpManagementMutationError> {
+        ensure_permission(context, &context.permissions, Permission::MCP_MANAGE)?;
         McpManagementService::stage_scaffold_draft(
             &self.db,
             context.tenant_id,
             StageMcpScaffoldDraftInput {
                 client_id: command.client_id,
                 request: command.request,
-                created_by: Some(context.actor_id),
+                created_by: context.human_actor_id(),
                 actor_id: Some(context.actor_id.to_string()),
-                actor_type: Some("human_user".to_string()),
+                actor_type: Some(context.actor_type.as_str().to_string()),
             },
         )
         .await
@@ -263,17 +332,19 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
         context: &McpManagementContext,
         command: ApplyMcpScaffoldDraftCommand,
     ) -> Result<McpScaffoldDraftRecord, McpManagementMutationError> {
+        ensure_permission(context, &context.permissions, Permission::MCP_MANAGE)?;
         McpManagementService::apply_scaffold_draft(
             &self.db,
+            self.host.as_ref(),
             context.tenant_id,
             command.draft_id,
             ApplyMcpScaffoldDraftInput {
                 workspace_root: command.workspace_root,
                 confirm: command.confirm,
                 expected_client_id: None,
-                applied_by: Some(context.actor_id),
+                applied_by: context.human_actor_id(),
                 actor_id: Some(context.actor_id.to_string()),
-                actor_type: Some("human_user".to_string()),
+                actor_type: Some(context.actor_type.as_str().to_string()),
             },
         )
         .await
@@ -299,7 +370,7 @@ fn parse_optional_datetime(
         .transpose()
 }
 
-fn client_record(client: &crate::models::mcp_clients::Model) -> McpClientRecord {
+fn client_record(client: &super::models::mcp_clients::Model) -> McpClientRecord {
     McpClientRecord {
         id: client.id,
         tenant_id: client.tenant_id,
@@ -320,7 +391,7 @@ fn client_record(client: &crate::models::mcp_clients::Model) -> McpClientRecord 
 }
 
 fn policy_record(
-    policy: &crate::models::mcp_policies::Model,
+    policy: &super::models::mcp_policies::Model,
 ) -> Result<McpPolicyRecord, McpManagementMutationError> {
     let decoded = (|| {
         Ok::<_, String>((
@@ -332,7 +403,7 @@ fn policy_record(
     })()
     .map_err(|error| {
         tracing::error!(%error, client_id = %policy.client_id, "Persisted MCP policy is invalid");
-        mutation_error(ServerError::InternalServerError)
+        mutation_error(McpPersistenceError::InternalServerError)
     })?;
     Ok(McpPolicyRecord {
         id: policy.id,
@@ -348,7 +419,7 @@ fn policy_record(
     })
 }
 
-fn token_record(token: &crate::models::mcp_tokens::Model) -> McpTokenRecord {
+fn token_record(token: &super::models::mcp_tokens::Model) -> McpTokenRecord {
     McpTokenRecord {
         id: token.id,
         client_id: token.client_id,
@@ -363,7 +434,7 @@ fn token_record(token: &crate::models::mcp_tokens::Model) -> McpTokenRecord {
     }
 }
 
-fn audit_record(event: &crate::models::mcp_audit_logs::Model) -> McpAuditEventRecord {
+fn audit_record(event: &super::models::mcp_audit_logs::Model) -> McpAuditEventRecord {
     McpAuditEventRecord {
         id: event.id,
         client_id: event.client_id,
@@ -382,7 +453,7 @@ fn audit_record(event: &crate::models::mcp_audit_logs::Model) -> McpAuditEventRe
 }
 
 fn scaffold_draft_record(
-    draft: crate::models::mcp_scaffold_drafts::Model,
+    draft: super::models::mcp_scaffold_drafts::Model,
 ) -> McpScaffoldDraftRecord {
     McpScaffoldDraftRecord {
         id: draft.id,
@@ -400,31 +471,29 @@ fn scaffold_draft_record(
     }
 }
 
-fn mutation_error(error: ServerError) -> McpManagementMutationError {
+fn mutation_error(error: McpPersistenceError) -> McpManagementMutationError {
     match error {
-        ServerError::Forbidden(message) => McpManagementMutationError::Forbidden(message),
-        ServerError::BadRequest(message) | ServerError::Validation(message) => {
-            McpManagementMutationError::Validation(message)
-        }
-        ServerError::NotFound => {
+        McpPersistenceError::Authority(error) => error.into(),
+        McpPersistenceError::Forbidden(message) => McpManagementMutationError::Forbidden(message),
+        McpPersistenceError::BadRequest(message) => McpManagementMutationError::Validation(message),
+        McpPersistenceError::NotFound => {
             McpManagementMutationError::NotFound("MCP management resource not found".to_string())
         }
-        ServerError::InternalServerError => {
+        McpPersistenceError::InternalServerError => {
             McpManagementMutationError::Internal("MCP management operation failed".to_string())
         }
-        ServerError::Message(message) => McpManagementMutationError::Internal(message),
-        other => {
-            tracing::error!(error = %other, "Unexpected MCP management provider error");
-            McpManagementMutationError::Internal("MCP management operation failed".to_string())
+        McpPersistenceError::Message(message) => McpManagementMutationError::Internal(message),
+        McpPersistenceError::Unauthorized(message) => {
+            McpManagementMutationError::Forbidden(message)
         }
     }
 }
 
 #[cfg(test)]
 mod provider_error_tests {
+    use super::McpPersistenceError as Error;
     use super::mutation_error;
-    use crate::error::Error;
-    use rustok_mcp::McpManagementMutationError;
+    use crate::McpManagementMutationError;
 
     #[test]
     fn maps_forbidden_errors_to_permission_denied_variant() {

@@ -74,6 +74,7 @@ composition = [
     "dep:rustok-ai",
     "dep:rustok-outbox",
     "dep:rustok-iggy-connector",
+    "dep:rustok-mcp",
 ]
 
 [dependencies]
@@ -137,6 +138,7 @@ rustok-translation = { workspace = true, optional = true }
 rustok-ai = { workspace = true, optional = true, features = ["server"] }
 rustok-outbox = { workspace = true, optional = true }
 rustok-iggy-connector = { workspace = true, optional = true, features = ["migrations"] }
+rustok-mcp = { workspace = true, optional = true, features = ["migrations"] }
 
 
 [dev-dependencies]

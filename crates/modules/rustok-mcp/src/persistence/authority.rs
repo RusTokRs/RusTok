@@ -1,25 +1,12 @@
 use std::str::FromStr;
 
+use crate::{McpActorType, McpManagementAuthorityError};
 use rustok_api::{Permission, has_effective_permission};
-use rustok_mcp::McpActorType;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
-use crate::models::{mcp_clients, mcp_policies, users};
-
-use super::rbac_service::RbacService;
-
-#[derive(Debug, thiserror::Error)]
-pub enum McpManagementAuthorityError {
-    #[error("invalid MCP management authority request: {0}")]
-    Invalid(String),
-    #[error("MCP management authority denied: {0}")]
-    Forbidden(String),
-    #[error("MCP management resource not found: {0}")]
-    NotFound(String),
-    #[error("MCP management authority validation failed: {0}")]
-    Internal(String),
-}
+use super::models::{mcp_clients, mcp_policies};
+use super::{McpDelegatedPrincipal, McpHostServices};
 
 /// Seal an internal failure: the detail is logged server-side and the
 /// client only receives a generic internal-error payload.
@@ -31,18 +18,19 @@ fn internal_error<E: std::fmt::Display>(
     McpManagementAuthorityError::Internal("Internal error".to_string())
 }
 
-pub struct McpManagementAuthorityService;
+pub struct Authority;
 
-impl McpManagementAuthorityService {
+impl Authority {
     pub async fn validate_create_client(
-        db: &DatabaseConnection,
+        host: &dyn McpHostServices,
         tenant_id: Uuid,
         manager_permissions: &[Permission],
         actor_type: McpActorType,
         delegated_user_id: Option<Uuid>,
         granted_permissions: &[String],
     ) -> Result<(), McpManagementAuthorityError> {
-        let delegated = delegated_permissions(db, tenant_id, actor_type, delegated_user_id).await?;
+        let delegated =
+            delegated_permissions(host, tenant_id, actor_type, delegated_user_id).await?;
         validate_all_authorities(
             granted_permissions,
             manager_permissions,
@@ -52,15 +40,20 @@ impl McpManagementAuthorityService {
 
     pub async fn validate_policy_update(
         db: &DatabaseConnection,
+        host: &dyn McpHostServices,
         tenant_id: Uuid,
         manager_permissions: &[Permission],
         client_id: Uuid,
         granted_permissions: &[String],
     ) -> Result<(), McpManagementAuthorityError> {
         let client = require_client(db, tenant_id, client_id).await?;
-        let delegated =
-            delegated_permissions(db, tenant_id, client.actor_type(), client.delegated_user_id)
-                .await?;
+        let delegated = delegated_permissions(
+            host,
+            tenant_id,
+            client.actor_type(),
+            client.delegated_user_id,
+        )
+        .await?;
         validate_all_authorities(
             granted_permissions,
             manager_permissions,
@@ -72,25 +65,30 @@ impl McpManagementAuthorityService {
     /// policy was constrained at creation/update time, but the delegated user
     /// may since have been disabled or had permissions removed.
     pub async fn validate_runtime_policy(
-        db: &DatabaseConnection,
+        host: &dyn McpHostServices,
         tenant_id: Uuid,
         client: &mcp_clients::Model,
-        policy: &mcp_policies::Model,
+        policy: Option<&mcp_policies::Model>,
     ) -> Result<(), McpManagementAuthorityError> {
         // INVARIANT: In-memory verification ensuring client and policy match the active tenant.
         if client.tenant_id != tenant_id
-            || policy.tenant_id != tenant_id
-            || policy.client_id != client.id
+            || policy.is_some_and(|policy| {
+                policy.tenant_id != tenant_id || policy.client_id != client.id
+            })
         {
             return Err(McpManagementAuthorityError::Forbidden(
                 "MCP policy does not match its tenant-bound client".to_string(),
             ));
         }
 
-        let delegated =
-            delegated_permissions(db, tenant_id, client.actor_type(), client.delegated_user_id)
-                .await?;
-        if let Some(delegated) = delegated {
+        let delegated = delegated_permissions(
+            host,
+            tenant_id,
+            client.actor_type(),
+            client.delegated_user_id,
+        )
+        .await?;
+        if let (Some(policy), Some(delegated)) = (policy, delegated) {
             let granted_permissions = policy.granted_permissions_list().map_err(|error| {
                 internal_error("decode persisted MCP granted permissions", error)
             })?;
@@ -103,34 +101,39 @@ impl McpManagementAuthorityService {
         Ok(())
     }
 
-    pub async fn validate_token_rotation(
+    pub async fn token_rotation_delegation(
         db: &DatabaseConnection,
+        host: &dyn McpHostServices,
         tenant_id: Uuid,
-        manager_permissions: &[Permission],
         client_id: Uuid,
-    ) -> Result<(), McpManagementAuthorityError> {
+    ) -> Result<Option<Vec<Permission>>, McpManagementAuthorityError> {
         let client = require_client(db, tenant_id, client_id).await?;
-        let delegated =
-            delegated_permissions(db, tenant_id, client.actor_type(), client.delegated_user_id)
-                .await?;
-        let policy = mcp_policies::Entity::find_by_client_scoped(db, tenant_id, client.id)
+        delegated_permissions(
+            host,
+            tenant_id,
+            client.actor_type(),
+            client.delegated_user_id,
+        )
+        .await
+    }
+
+    pub async fn validate_token_rotation(
+        txn: &DatabaseTransaction,
+        client: &mcp_clients::Model,
+        manager_permissions: &[Permission],
+        delegated_permissions: Option<&[Permission]>,
+    ) -> Result<(), McpManagementAuthorityError> {
+        let policy = mcp_policies::Entity::find_by_client_scoped(txn, client.tenant_id, client.id)
             .await
             .map_err(|error| internal_error("load MCP policy", error))?;
-
         if let Some(policy) = policy {
-            // INVARIANT: In-memory verification confirming database-scoped MCP policy matches the tenant.
-            if policy.tenant_id != tenant_id {
-                return Err(McpManagementAuthorityError::Forbidden(
-                    "MCP policy belongs to another tenant".to_string(),
-                ));
-            }
             let granted_permissions = policy.granted_permissions_list().map_err(|error| {
                 internal_error("decode persisted MCP granted permissions", error)
             })?;
             validate_all_authorities(
                 &granted_permissions,
                 manager_permissions,
-                delegated.as_deref(),
+                delegated_permissions,
             )?;
         }
         Ok(())
@@ -151,7 +154,7 @@ async fn require_client(
 }
 
 async fn delegated_permissions(
-    db: &DatabaseConnection,
+    host: &dyn McpHostServices,
     tenant_id: Uuid,
     actor_type: McpActorType,
     delegated_user_id: Option<Uuid>,
@@ -165,26 +168,19 @@ async fn delegated_permissions(
         return Ok(None);
     };
 
-    let user = users::Entity::find_by_id(user_id)
-        .filter(users::Column::TenantId.eq(tenant_id))
-        .one(db)
+    match host
+        .delegated_principal(tenant_id, user_id)
         .await
-        .map_err(|error| internal_error("load delegated MCP user", error))?
-        .ok_or_else(|| {
-            McpManagementAuthorityError::Invalid(
-                "delegated MCP user does not exist in the current tenant".to_string(),
-            )
-        })?;
-    if !user.is_active() {
-        return Err(McpManagementAuthorityError::Invalid(
+        .map_err(|error| internal_error("resolve delegated MCP principal", error))?
+    {
+        McpDelegatedPrincipal::Missing => Err(McpManagementAuthorityError::Invalid(
+            "delegated MCP user does not exist in the current tenant".to_string(),
+        )),
+        McpDelegatedPrincipal::Inactive => Err(McpManagementAuthorityError::Invalid(
             "delegated MCP user must be active".to_string(),
-        ));
+        )),
+        McpDelegatedPrincipal::Active(permissions) => Ok(Some(permissions)),
     }
-
-    RbacService::get_user_permissions_authoritative(db, &tenant_id, &user_id)
-        .await
-        .map(Some)
-        .map_err(|error| internal_error("resolve delegated MCP permissions", error))
 }
 
 fn validate_all_authorities(
@@ -221,7 +217,8 @@ fn validate_grants(
 
 #[cfg(test)]
 mod tests {
-    use super::{McpManagementAuthorityError, validate_grants};
+    use super::validate_grants;
+    use crate::McpManagementAuthorityError;
     use rustok_api::Permission;
 
     #[test]
