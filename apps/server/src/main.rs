@@ -15,6 +15,19 @@ const MIN_STACK_SIZE: usize = 2 * 1024 * 1024;
 const MAX_STACK_SIZE: usize = 64 * 1024 * 1024;
 
 fn main() -> eyre::Result<()> {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if is_validate_jwt_keyring_command(&args) {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        runtime.block_on(rustok_server::host::validate_jwt_keyring_bootstrap())?;
+        println!("JWT keyring document validated");
+        return Ok(());
+    }
+    if !args.is_empty() {
+        return Err(eyre::eyre!("Unknown rustok-server command"));
+    }
+
     let telemetry_cfg = telemetry_config();
     let has_otel = telemetry_cfg.otel.is_some();
     let _telemetry = rustok_telemetry::init(telemetry_cfg)?;
@@ -35,6 +48,10 @@ fn main() -> eyre::Result<()> {
         runtime.block_on(rustok_telemetry::otel::shutdown());
     }
     Ok(result?)
+}
+
+fn is_validate_jwt_keyring_command(args: &[String]) -> bool {
+    args.len() == 1 && args[0] == "validate-jwt-keyring"
 }
 
 fn parse_thread_stack_size(raw: Option<&str>) -> usize {
@@ -104,6 +121,16 @@ fn telemetry_config() -> TelemetryConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn keyring_validation_command_requires_exact_invocation() {
+        assert!(is_validate_jwt_keyring_command(&["validate-jwt-keyring".to_string()]));
+        assert!(!is_validate_jwt_keyring_command(&[]));
+        assert!(!is_validate_jwt_keyring_command(&[
+            "validate-jwt-keyring".to_string(), "extra".to_string(),
+        ]));
+        assert!(!is_validate_jwt_keyring_command(&["validate".to_string()]));
+    }
 
     #[test]
     fn thread_stack_size_defaults_to_8mb() {

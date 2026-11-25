@@ -79,6 +79,23 @@ impl std::fmt::Debug for JwtConfig {
     }
 }
 
+/// Validates the same complete JWT bootstrap used by the executable host.
+///
+/// This command is intentionally database-free so development migrations can
+/// fail closed before changing application schema.
+pub async fn validate_jwt_keyring_bootstrap() -> Result<()> {
+    let config = load_config().await?;
+    let production = crate::common::is_production_security_mode();
+    let rustok_settings = RustokSettings::from_settings(&Some(config.settings.clone()))
+        .map_err(|error| Error::BadRequest(format!("Invalid rustok settings: {error}")))?;
+    let prepared = prepare_jwt_bootstrap(&config, production).await?;
+    validate_oauth_metadata_issuer(
+        &prepared.auth_config,
+        crate::routes::oauth_surface_enabled(rustok_settings.runtime.host_mode, &rustok_settings),
+    )?;
+    Ok(())
+}
+
 /// Starts the HTTP-only Axum host.
 pub async fn run() -> Result<()> {
     // Poll this future before the first asynchronous startup operation so
@@ -104,14 +121,8 @@ pub async fn run() -> Result<()> {
     // applying migrations, so a bad issuer/secret cannot mutate persistent state.
     let rustok_settings = RustokSettings::from_settings(&Some(config.settings.clone()))
         .map_err(|error| Error::BadRequest(format!("Invalid rustok settings: {error}")))?;
-    let keyring_path = jwt_keyring_file_path()?;
-    let bytes = read_jwt_keyring_file(&keyring_path).await?;
-    let digest: [u8; 32] = sha256_digest(&[&bytes]);
-    let (generation, auth_config) = crate::auth::auth_config_from_host_document(
-        config.auth.jwt.secret.clone(), config.auth.jwt.expiration,
-        Some(&config.settings), &bytes,
-    )?;
-    validate_auth_deployment(&auth_config, production)?;
+    let prepared = prepare_jwt_bootstrap(&config, production).await?;
+    let PreparedJwtBootstrap { generation, auth_config, keyring_path, digest } = prepared;
     validate_oauth_metadata_issuer(
         &auth_config,
         crate::routes::oauth_surface_enabled(rustok_settings.runtime.host_mode, &rustok_settings),
@@ -599,6 +610,25 @@ fn required_jwt_keyring_file_path_from(value: Option<&str>) -> Result<PathBuf> {
 fn jwt_keyring_file_path() -> Result<PathBuf> {
     let value = std::env::var(JWT_KEYRING_FILE_ENV).ok();
     required_jwt_keyring_file_path_from(value.as_deref())
+}
+
+struct PreparedJwtBootstrap {
+    generation: u64,
+    auth_config: crate::auth::AuthConfig,
+    keyring_path: PathBuf,
+    digest: [u8; 32],
+}
+
+async fn prepare_jwt_bootstrap(config: &HostConfig, production: bool) -> Result<PreparedJwtBootstrap> {
+    let keyring_path = jwt_keyring_file_path()?;
+    let bytes = read_jwt_keyring_file(&keyring_path).await?;
+    let digest = sha256_digest(&[&bytes]);
+    let (generation, auth_config) = crate::auth::auth_config_from_host_document(
+        config.auth.jwt.secret.clone(), config.auth.jwt.expiration,
+        Some(&config.settings), &bytes,
+    )?;
+    validate_auth_deployment(&auth_config, production)?;
+    Ok(PreparedJwtBootstrap { generation, auth_config, keyring_path, digest })
 }
 
 async fn read_jwt_keyring_file(path: &Path) -> Result<Vec<u8>> {
