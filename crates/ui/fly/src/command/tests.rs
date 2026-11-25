@@ -86,6 +86,32 @@ fn style_patch_merges_and_can_remove_individual_properties() {
 }
 
 #[test]
+fn composed_style_replacement_is_atomic_and_reversible() {
+    let mut editor = editor();
+    let before = editor.document().clone();
+    let initial_sequence = editor.revision().command_sequence;
+    editor
+        .apply(EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: ComponentPatch::default()
+                .merge_style(json!("color: blue"))
+                .merge_style(json!({"width": "320px"})),
+        })
+        .expect("composed style replacement");
+    let after = editor.document().clone();
+    assert_eq!(
+        after.component("hero").unwrap().style,
+        Some(json!({"width": "320px"}))
+    );
+    assert_eq!(editor.history().undo_len(), 1);
+    assert_eq!(editor.revision().command_sequence, initial_sequence + 1);
+    editor.undo().expect("undo style replacement");
+    assert_eq!(editor.document(), &before);
+    editor.redo().expect("redo style replacement");
+    assert_eq!(editor.document(), &after);
+}
+
+#[test]
 fn dynamic_commands_participate_in_history() {
     let mut editor = editor();
     editor

@@ -401,3 +401,7 @@ Validated no-op commands (empty batches and idempotent document changes) no long
 history entries or advance the document revision. A no-op still validates the resulting project,
 and an empty batch still requires edit permission at the UI capability gate; it cannot mutate a
 read-only session or silently clear redo history.
+
+Composed component style patches preserve sequential merge semantics: a non-object style
+replaces the entire slot, and subsequent object merges cannot restore discarded properties.
+The composed patch remains a single atomic, reversible editor command.
