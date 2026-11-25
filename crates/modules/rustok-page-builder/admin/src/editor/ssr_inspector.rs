@@ -454,8 +454,8 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                 <div class="grid grid-cols-2 gap-2 border-t border-border pt-3">
                                     <form class="grid gap-2" data-fly-intent-form="move_page">
                                         <fieldset class="contents" disabled=!(move_page_enabled && can_move_up)>
-                                            <input type="hidden" name="page_index" value=active_page_index/>
-                                            <input type="hidden" name="target_index" value=up_target/>
+                                            <input type="number" name="page_index" value=active_page_index hidden=true/>
+                                            <input type="number" name="target_index" value=up_target hidden=true/>
                                             <button type="submit" class="w-fit rounded border border-border px-2 py-1 text-xs">
                                                 {move_page_up.clone()}
                                             </button>
@@ -463,8 +463,8 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                     </form>
                                     <form class="grid gap-2" data-fly-intent-form="move_page">
                                         <fieldset class="contents" disabled=!(move_page_enabled && can_move_down)>
-                                            <input type="hidden" name="page_index" value=active_page_index/>
-                                            <input type="hidden" name="target_index" value=down_target/>
+                                            <input type="number" name="page_index" value=active_page_index hidden=true/>
+                                            <input type="number" name="target_index" value=down_target hidden=true/>
                                             <button type="submit" class="w-fit rounded border border-border px-2 py-1 text-xs">
                                                 {move_page_down.clone()}
                                             </button>
