@@ -1510,7 +1510,7 @@ async fn revoke_handler_inner(
                 error_description: "Unknown client_id".to_string(),
             })?;
 
-    // Public PKCE clients (first-party and mobile) cannot keep a client secret.
+    // First-party/mobile PKCE clients use public-client semantics for revocation.
     // Service clients always require one; other confidential clients require it
     // whenever a secret hash is configured.
     if oauth_revocation_requires_client_secret(&app) {
@@ -2240,8 +2240,8 @@ mod tests {
             encode_component(client_id),
             encode_component(client_secret),
         );
-        HeaderValue::from_str(&format!("Basic {}", STANDARD.encode(credentials.as_bytes())))
-            .expect("valid Basic authorization header")
+        let header = format!("Basic {}", STANDARD.encode(credentials.as_bytes()));
+        HeaderValue::from_bytes(header.as_bytes()).expect("valid Basic authorization header")
     }
 
     #[test]
@@ -2330,10 +2330,11 @@ mod tests {
 
         let mut malformed_form = HeaderMap::new();
         use base64::{Engine as _, engine::general_purpose::STANDARD};
+        let malformed_header =
+            format!("Basic {}", STANDARD.encode(b"client%ZZ:secret"));
         malformed_form.insert(
             AUTHORIZATION,
-            HeaderValue::from_str(&format!("Basic {}", STANDARD.encode(b"client%ZZ:secret")))
-                .unwrap(),
+            HeaderValue::from_bytes(malformed_header.as_bytes()).unwrap(),
         );
         assert_eq!(
             parse_basic_client_credentials(&malformed_form)
