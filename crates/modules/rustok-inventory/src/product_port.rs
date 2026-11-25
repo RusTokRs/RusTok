@@ -16,8 +16,8 @@
 use async_trait::async_trait;
 use rustok_api::{PortContext, PortError};
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, DbErr,
+    EntityTrait, QueryFilter, QueryOrder, QuerySelect, Select,
 };
 use uuid::Uuid;
 
@@ -141,7 +141,23 @@ pub(crate) async fn find_variant_info_from_conn<C: ConnectionTrait>(
     tenant_id: Uuid,
     variant_id: Uuid,
 ) -> Result<Option<InventoryProductVariantInfo>, DbErr> {
-    Ok(product_variant::Entity::find_by_id(variant_id)
+    read_variant_info(conn, variant_info_query(tenant_id, variant_id)).await
+}
+
+/// New allocations must serialize their policy/identity read with Product edits and
+/// deletion before acquiring an Inventory item lock. Release/adoption paths
+/// retain nonlocking Product reads, avoiding inversion of their item lock order.
+pub(crate) async fn find_variant_info_for_reservation(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    variant_id: Uuid,
+) -> Result<Option<InventoryProductVariantInfo>, DbErr> {
+    let query = reservation_variant_query(txn.get_database_backend(), tenant_id, variant_id)?;
+    read_variant_info(txn, query).await
+}
+
+fn variant_info_query(tenant_id: Uuid, variant_id: Uuid) -> Select<product_variant::Entity> {
+    product_variant::Entity::find_by_id(variant_id)
         .filter(product_variant::Column::TenantId.eq(tenant_id))
         .select_only()
         .column(product_variant::Column::Id)
@@ -149,6 +165,27 @@ pub(crate) async fn find_variant_info_from_conn<C: ConnectionTrait>(
         .column(product_variant::Column::TenantId)
         .column(product_variant::Column::Sku)
         .column(product_variant::Column::InventoryPolicy)
+}
+
+fn reservation_variant_query(
+    backend: DbBackend,
+    tenant_id: Uuid,
+    variant_id: Uuid,
+) -> Result<Select<product_variant::Entity>, DbErr> {
+    let query = variant_info_query(tenant_id, variant_id);
+    match backend {
+        DbBackend::Postgres | DbBackend::MySql => Ok(query.lock_exclusive()),
+        // SQLite's write transaction/snapshot exclusion rejects conflicting writers.
+        DbBackend::Sqlite => Ok(query),
+        _ => Err(DbErr::Custom("Inventory reservation isolation is unsupported".into())),
+    }
+}
+
+async fn read_variant_info<C: ConnectionTrait>(
+    conn: &C,
+    query: Select<product_variant::Entity>,
+) -> Result<Option<InventoryProductVariantInfo>, DbErr> {
+    Ok(query
         .into_tuple::<(Uuid, Uuid, Uuid, Option<String>, String)>()
         .one(conn)
         .await?
@@ -221,4 +258,34 @@ pub async fn list_tenant_variant_ids_from_conn<C: ConnectionTrait>(
         .map_err(|_| crate::ports_impl::storage_unavailable())?;
 
     Ok(ids)
+}
+
+#[cfg(test)]
+mod reservation_variant_tests {
+    use super::*;
+    use sea_orm::QueryTrait;
+
+    #[test]
+    fn reservation_policy_query_locks_only_the_tenant_scoped_variant() {
+        let tenant = Uuid::from_u128(1);
+        let variant = Uuid::from_u128(2);
+        for backend in [DbBackend::Postgres, DbBackend::MySql] {
+            let sql = reservation_variant_query(backend, tenant, variant)
+                .unwrap()
+                .build(backend)
+                .to_string();
+            assert!(sql.contains("FOR UPDATE"), "{sql}");
+            assert!(sql.contains("tenant_id") && sql.contains("inventory_policy"), "{sql}");
+            assert!(!sql.contains("JOIN"), "{sql}");
+            assert!(!variant_info_query(tenant, variant)
+                .build(backend)
+                .to_string()
+                .contains("FOR UPDATE"));
+        }
+        assert!(!reservation_variant_query(DbBackend::Sqlite, tenant, variant)
+            .unwrap()
+            .build(DbBackend::Sqlite)
+            .to_string()
+            .contains("FOR UPDATE"));
+    }
 }

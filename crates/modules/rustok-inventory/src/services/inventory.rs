@@ -456,7 +456,13 @@ impl InventoryService {
         );
 
         let txn = self.db.begin().await?;
-        let variant = self.load_variant(&txn, tenant_id, variant_id).await?;
+        // Lock Product's current policy before any Inventory item lock. A policy-only
+        // Product edit does not necessarily touch the Inventory item.
+        let variant = crate::product_port::find_variant_info_for_reservation(
+            &txn, tenant_id, variant_id,
+        )
+        .await?
+        .ok_or(CommerceError::VariantNotFound(variant_id))?;
 
         if quantity == 0 {
             // INVARIANT: `inventory_item` has no tenant column; the tenant boundary
