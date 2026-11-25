@@ -4,21 +4,6 @@ use rustok_api::{PortContext, PortError, PortErrorKind};
 use rustok_core::{error::Error as CoreError, field_schema::CustomFieldsSchema};
 use sea_orm::{DbBackend, FromQueryResult};
 
-fn resolve_variant_inventory_quantity(
-    variant_id: Uuid,
-    legacy_quantity: i32,
-    inventory_quantities: &HashMap<Uuid, i32>,
-) -> i32 {
-    inventory_quantities
-        .get(&variant_id)
-        .copied()
-        .unwrap_or(legacy_quantity)
-}
-
-fn inventory_policy_allows_backorder(policy: &str) -> bool {
-    policy.trim().eq_ignore_ascii_case("continue")
-}
-
 struct ProductProjectionRead<'a> {
     locale: &'a str,
     fallback_locale: Option<&'a str>,
