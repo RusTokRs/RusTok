@@ -21,6 +21,12 @@ For full public interface and contract definitions, see [CRATE_API.md](CRATE_API
 - Builds native catalog schema services from `HostRuntimeContext` DB and typed `TransactionalEventBus` host handles without a package-local framework runtime or framework-specific outbox adapter.
 - Participates in manifest-driven admin composition through `rustok-module.toml`.
 - Uses registry-backed shipping-profile selection so catalog operators work with typed product bindings instead of raw slug text.
+- Bundle composition, discounts and component inventory rules are owned by the optional
+  `rustok-product-bundles` module and are configured at `/admin/bundles`; the Product editor
+  does not collect unsaved bundle fields.
+- Digital fulfillment has no owning module yet. Existing digital products remain readable/editable
+  as catalog records, but new digital-product creation is blocked and no file/download settings
+  are presented as if they were persisted.
 - Ships package-owned `admin/locales/en.ftl` and `admin/locales/ru.ftl` bundles declared through `[provides.admin_ui.i18n]`.
 - Embeds owner-side product SEO editing through `rustok-seo-panel` so product metadata stays inside the product screen.
 
@@ -96,10 +102,11 @@ and preserves its compare-at and secondary-currency prices. Missing SKU/price va
 display placeholders are never submitted as business data.
 
 Variant controls are snapshotted before bootstrap/IO. Empty base-price input leaves prices alone,
-not an implicit free USD row; zero and decimal precision remain valid. Invalid local scalars and
-unsupported SKU/barcode clears are refused before sending. Full nullable Variant patches and
-immutable pending-request recovery for existing-row updates remain separate gaps; those
-retained-key helpers are not durable snapshot recovery. Source regression tests are authored but unrun
+not an implicit free USD row; removing the primary-currency price requires the explicit Clear action.
+Zero and decimal precision remain valid. Invalid local scalars are refused before sending;
+SKU/barcode/shipping-profile clears remain explicit nullable patches, while untouched fields stay
+Keep. Full nullable Variant form coverage and immutable pending-request recovery for existing-row
+updates remain separate gaps; retained-key helpers are not durable snapshot recovery. Source regression tests are authored but unrun
 without Cargo/rustc. Source guards are not compilation, database or mounted-client evidence. Whole-screen multi-command
 atomicity is not claimed: Product document/category/EAV/publication remains the atomic Save scope.
 

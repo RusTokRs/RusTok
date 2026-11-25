@@ -79,9 +79,8 @@ pub(crate) fn effective_axis_policy_label(
     )
 }
 
-/// Local scalar admission for the independently saved Variant controls. This does
-/// not implement nullable patches: refuse an unsupported clear instead of showing
-/// success while the transport silently treats it as an omitted field.
+/// Local scalar admission for the independently saved Variant controls.
+/// Keep/Clear intent is preserved; only concrete Set values require scalar validation.
 pub(crate) fn validate_editor_variant_draft(
     draft: &crate::model::VariantUpdateDraft,
 ) -> Result<(), String> {
@@ -2097,6 +2096,24 @@ pub fn build_variant_row_view_models(
         .collect()
 }
 
+/// Returns the amount and compare-at value belonging to the selected currency.
+pub fn variant_price_editor_fields_for_currency(
+    variant: &crate::model::ProductVariant,
+    currency_code: &str,
+) -> (String, String) {
+    variant
+        .prices
+        .iter()
+        .find(|price| price.currency_code.eq_ignore_ascii_case(currency_code))
+        .map(|price| {
+            (
+                price.amount.clone(),
+                price.compare_at_amount.clone().unwrap_or_default(),
+            )
+        })
+        .unwrap_or_default()
+}
+
 /// Builds a sparse row-editor update from the exact target Variant snapshot.
 ///
 /// The first price's currency is local to that Variant; the product-wide fallback
@@ -2110,12 +2127,33 @@ pub fn build_variant_row_update_draft(
     fallback_currency: &str,
     shipping_profile_slug: String,
 ) -> crate::model::VariantUpdateDraft {
+    build_variant_row_update_draft_with_price_clear(
+        original,
+        sku,
+        amount,
+        inventory_quantity,
+        fallback_currency,
+        shipping_profile_slug,
+        false,
+    )
+}
+
+/// The row editor clears a price only through its explicit clear-price action.
+pub fn build_variant_row_update_draft_with_price_clear(
+    original: &crate::model::ProductVariant,
+    sku: String,
+    amount: String,
+    inventory_quantity: i32,
+    fallback_currency: &str,
+    shipping_profile_slug: String,
+    clear_primary_price: bool,
+) -> crate::model::VariantUpdateDraft {
     let primary_price = original.prices.first();
     let compare_at_amount = primary_price
         .filter(|_| !amount.trim().is_empty())
         .and_then(|price| price.compare_at_amount.clone())
         .unwrap_or_default();
-    crate::model::VariantUpdateDraft::from_editor_state(
+    crate::model::VariantUpdateDraft::from_editor_state_with_price_clear(
         original,
         sku,
         original.barcode.clone().unwrap_or_default(),
@@ -2127,6 +2165,7 @@ pub fn build_variant_row_update_draft(
         compare_at_amount,
         inventory_quantity,
         original.inventory_policy.clone(),
+        clear_primary_price,
     )
 }
 
@@ -2186,6 +2225,20 @@ impl ProductKind {
             "digital" | "virtual" => Self::Digital,
             _ => Self::Simple,
         }
+    }
+
+    /// Digital fulfillment has no owning module yet, so new digital products are not offered.
+    pub fn is_available_for_creation(&self) -> bool {
+        !matches!(self, Self::Digital)
+    }
+
+    /// Digital products may remain editable only when the existing record is already digital.
+    pub fn can_select_for_product(
+        &self,
+        is_editing: bool,
+        original_kind: Option<Self>,
+    ) -> bool {
+        self.is_available_for_creation() || (is_editing && original_kind == Some(*self))
     }
 
     pub fn label(&self, locale: Option<&str>) -> &'static str {
@@ -2263,9 +2316,9 @@ impl ProductKind {
             }
             Self::Digital => {
                 if locale == Some("ru") {
-                    "Цифровой контент, файлы для скачивания или виртуальные услуги"
+                    "Цифровая выдача пока не поддерживается модулем товаров"
                 } else {
-                    "Downloadable digital files, keys, or virtual services"
+                    "Digital fulfillment is not supported by the Product module yet"
                 }
             }
         }
@@ -3853,6 +3906,18 @@ mod tests {
     }
 
     #[test]
+    fn digital_products_are_not_offered_for_creation_without_a_fulfillment_owner() {
+        assert!(ProductKind::Simple.is_available_for_creation());
+        assert!(ProductKind::Variable.is_available_for_creation());
+        assert!(ProductKind::Bundle.is_available_for_creation());
+        assert!(!ProductKind::Digital.is_available_for_creation());
+        assert!(ProductKind::Digital.can_select_for_product(true, Some(ProductKind::Digital)));
+        assert!(!ProductKind::Digital.can_select_for_product(true, Some(ProductKind::Simple)));
+        assert!(!ProductKind::Digital.can_select_for_product(false, None));
+        assert_eq!(ProductKind::parse("digital"), ProductKind::Digital);
+    }
+
+    #[test]
     fn admin_status_labels_and_badges_are_framework_agnostic() {
         assert_eq!(localized_product_status(Some("en"), "ACTIVE"), "Active");
         assert!(product_admin_status_badge_container_class("ACTIVE").starts_with("inline-flex"));
@@ -4176,6 +4241,34 @@ mod tests {
     }
 
     #[test]
+    fn variant_price_editor_uses_the_selected_currency_snapshot() {
+        let mut product = product_detail();
+        product.variants[0].prices = vec![
+            crate::model::ProductPrice {
+                currency_code: "USD".to_owned(),
+                amount: "12.50".to_owned(),
+                compare_at_amount: Some("15.00".to_owned()),
+                on_sale: true,
+            },
+            crate::model::ProductPrice {
+                currency_code: "EUR".to_owned(),
+                amount: "11.50".to_owned(),
+                compare_at_amount: Some("13.00".to_owned()),
+                on_sale: true,
+            },
+        ];
+
+        assert_eq!(
+            variant_price_editor_fields_for_currency(&product.variants[0], "EUR"),
+            ("11.50".to_owned(), "13.00".to_owned())
+        );
+        assert_eq!(
+            variant_price_editor_fields_for_currency(&product.variants[0], "GBP"),
+            (String::new(), String::new())
+        );
+    }
+
+    #[test]
     fn variant_row_update_preserves_target_currency_compare_at_and_secondary_prices() {
         let mut product = product_detail();
         product.variants[0].prices = vec![
@@ -4212,6 +4305,49 @@ mod tests {
         assert_eq!(draft.prices[1].amount, "10.00");
         assert_eq!(draft.prices[1].compare_at_amount.as_deref(), Some("12.00"));
         assert!(draft.inventory_quantity.is_none());
+    }
+
+    #[test]
+    fn variant_row_empty_price_is_unchanged_until_explicitly_cleared() {
+        let mut product = product_detail();
+        product.variants[0].prices = vec![
+            crate::model::ProductPrice {
+                currency_code: "EUR".to_owned(),
+                amount: "12.00".to_owned(),
+                compare_at_amount: None,
+                on_sale: false,
+            },
+            crate::model::ProductPrice {
+                currency_code: "USD".to_owned(),
+                amount: "10.00".to_owned(),
+                compare_at_amount: None,
+                on_sale: false,
+            },
+        ];
+
+        let unchanged = build_variant_row_update_draft(
+            &product.variants[0],
+            product.variants[0].sku.clone().unwrap_or_default(),
+            String::new(),
+            product.variants[0].inventory_quantity,
+            "USD",
+            String::new(),
+        );
+        assert!(!unchanged.prices_changed);
+        assert!(unchanged.prices.is_empty());
+
+        let cleared = build_variant_row_update_draft_with_price_clear(
+            &product.variants[0],
+            product.variants[0].sku.clone().unwrap_or_default(),
+            String::new(),
+            product.variants[0].inventory_quantity,
+            "USD",
+            String::new(),
+            true,
+        );
+        assert!(cleared.prices_changed);
+        assert_eq!(cleared.prices.len(), 1);
+        assert_eq!(cleared.prices[0].currency_code, "USD");
     }
 
     #[test]

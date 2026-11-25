@@ -373,6 +373,14 @@ pub(crate) fn parse_inventory_quantity(value: &str) -> Result<i32, String> {
         .map_err(|_| "Inventory must be a non-negative 32-bit integer".into())
 }
 
+/// Preserve the last valid quantity while marking an invalid in-progress input as unsavable.
+pub(crate) fn inventory_input_state(current: i32, raw: &str) -> (i32, bool) {
+    match parse_inventory_quantity(raw) {
+        Ok(quantity) => (quantity, true),
+        Err(_) => (current, false),
+    }
+}
+
 pub(crate) fn normalize_standalone_variant(
     mut draft: VariantDraft,
     axes: &[crate::model::VariantAxisConfig],
@@ -436,6 +444,15 @@ mod assignment_tests {
         for value in ["", "-1", "1.5", "NaN", "2147483648"] {
             assert!(parse_inventory_quantity(value).is_err());
         }
+    }
+
+    #[test]
+    fn invalid_inventory_input_keeps_last_valid_value_and_requires_correction() {
+        for raw in ["", "-1", "1.5", "2147483648"] {
+            assert_eq!(inventory_input_state(7, raw), (7, false), "{raw:?}");
+        }
+        assert_eq!(inventory_input_state(7, "0"), (0, true));
+        assert_eq!(inventory_input_state(7, "2147483647"), (i32::MAX, true));
     }
 
     #[test]

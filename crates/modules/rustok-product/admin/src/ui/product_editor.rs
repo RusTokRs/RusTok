@@ -10,7 +10,7 @@ use super::variant_create::ProductVariantCreateSection;
 use crate::catalog_transport;
 use crate::core::{
     ProductAttributeEditorState, ProductKind, build_product_image_view_models, slugify,
-    validate_editor_variant_draft,
+    validate_editor_variant_draft, variant_price_editor_fields_for_currency,
 };
 use crate::model::{
     CatalogCategorySummary, ProductDetail, ProductDraft, ProductEffectiveForm, ProductImageDraft,
@@ -78,27 +78,20 @@ pub fn ProductEditorPage(
     let (currency_code, set_currency_code) = signal("USD".to_string());
     let (amount, set_amount) = signal(String::new());
     let (compare_at_amount, set_compare_at_amount) = signal(String::new());
+    let (clear_primary_price, set_clear_primary_price) = signal(false);
 
     // Simple Product Specific
     let (sku, set_sku) = signal(String::new());
     let (barcode, set_barcode) = signal(String::new());
     let (variant_shipping_profile_slug, set_variant_shipping_profile_slug) = signal(String::new());
     let (inventory_quantity, set_inventory_quantity) = signal(0_i32);
+    let (inventory_quantity_text, set_inventory_quantity_text) = signal("0".to_string());
     let (inventory_quantity_valid, set_inventory_quantity_valid) = signal(true);
-    let (inventory_policy, set_inventory_policy) = signal("DENY".to_string());
+    let (inventory_policy, set_inventory_policy) = signal("deny".to_string());
 
     // Variable Product Specific
 
-    // Digital Product Specific
-    let (digital_file_url, set_digital_file_url) = signal(String::new());
-    let (digital_download_limit, set_digital_download_limit) = signal("10".to_string());
-    let (digital_expiry_days, set_digital_expiry_days) = signal("365".to_string());
-
-    // Bundle Product Specific
-    let (bundle_components_str, set_bundle_components_str) = signal(String::new());
-    let (bundle_type, set_bundle_type) = signal("fixed".to_string());
-    let (bundle_discount_type, set_bundle_discount_type) = signal("none".to_string());
-    let (bundle_discount_value, set_bundle_discount_value) = signal("0".to_string());
+    // Bundle composition is owned by rustok-product-bundles. Digital fulfillment has no owner yet.
 
     // SEO
     let (meta_title, set_meta_title) = signal(String::new());
@@ -290,12 +283,14 @@ pub fn ProductEditorPage(
                     .set(detail.variants.first().map(|variant| variant.id.clone()));
                 set_amount.set(String::new());
                 set_compare_at_amount.set(String::new());
+                set_clear_primary_price.set(false);
                 if let Some(variant) = detail.variants.first() {
                     set_sku.set(variant.sku.clone().unwrap_or_default());
                     set_barcode.set(variant.barcode.clone().unwrap_or_default());
                     set_variant_shipping_profile_slug
                         .set(variant.shipping_profile_slug.clone().unwrap_or_default());
                     set_inventory_quantity.set(variant.inventory_quantity);
+                    set_inventory_quantity_text.set(variant.inventory_quantity.to_string());
                     set_inventory_quantity_valid.set(variant.inventory_quantity >= 0);
                     set_inventory_policy.set(variant.inventory_policy.clone());
                     if let Some(price) = variant.prices.first() {
@@ -639,6 +634,19 @@ pub fn ProductEditorPage(
             }
         }
 
+        let kind = active_kind.get_untracked();
+        let original_kind = loaded_product
+            .get_untracked()
+            .and_then(|product| product.product_type.as_deref().map(ProductKind::parse));
+        if !kind.can_select_for_product(is_editing, original_kind) {
+            set_error_msg.set(Some(if is_ru {
+                "Цифровая выдача не поддерживается для новых товаров в текущей конфигурации.".to_string()
+            } else {
+                "Digital products are not available for new products in the current configuration.".to_string()
+            }));
+            return;
+        }
+
         let attribute_types = effective_form_resource
             .get_untracked()
             .and_then(Result::ok)
@@ -669,7 +677,6 @@ pub fn ProductEditorPage(
         let loc = save_locale.clone();
         let base_route = base_route_for_save.clone();
         let edit_id_opt = save_edit_id.clone();
-        let kind = active_kind.get_untracked();
         let nav = navigate.clone();
 
         let mt = meta_title.get_untracked().trim().to_string();
@@ -833,7 +840,7 @@ pub fn ProductEditorPage(
             ));
             return;
         }
-        let draft = crate::model::VariantUpdateDraft::from_editor_state(
+        let draft = crate::model::VariantUpdateDraft::from_editor_state_with_price_clear(
             &target_variant,
             sku.get_untracked(),
             barcode.get_untracked(),
@@ -843,11 +850,15 @@ pub fn ProductEditorPage(
             variant_compare,
             inventory_quantity.get_untracked(),
             inventory_policy.get_untracked(),
+            clear_primary_price.get_untracked(),
         );
-        if draft.inventory_quantity.is_some() && !inventory_quantity_valid.get_untracked() {
+        if !inventory_quantity_valid.get_untracked() {
             set_error_msg.set(Some(
                 "Inventory must be a non-negative 32-bit integer.".to_string(),
             ));
+            return;
+        }
+        if !draft.has_changes() {
             return;
         }
         if let Err(message) = validate_editor_variant_draft(&draft) {
@@ -1000,13 +1011,22 @@ pub fn ProductEditorPage(
                         let switcher_locale = locale.clone();
                         move |kind| {
                             let is_active = move || active_kind.get() == kind;
+                            let is_unavailable = move || {
+                                let original_kind = loaded_product.get().and_then(|product| {
+                                    product.product_type.as_deref().map(ProductKind::parse)
+                                });
+                                !kind.can_select_for_product(is_editing, original_kind)
+                            };
                             let label = kind.label(switcher_locale.as_deref());
                             let desc = kind.description(switcher_locale.as_deref());
                             view! {
                                 <button
                                     type="button"
+                                    disabled=is_unavailable
                                     class=move || {
-                                        if is_active() {
+                                        if is_unavailable() {
+                                            "flex flex-col items-start p-3 rounded-xl border border-border bg-muted/30 text-left opacity-50 cursor-not-allowed"
+                                        } else if is_active() {
                                             "flex flex-col items-start p-3 rounded-xl border-2 border-primary bg-primary/5 text-left transition"
                                         } else {
                                             "flex flex-col items-start p-3 rounded-xl border border-border bg-background hover:border-primary/40 text-left transition"
@@ -1158,124 +1178,32 @@ pub fn ProductEditorPage(
                             }.into_any(),
 
                             ProductKind::Bundle => view! {
-                                <div class="space-y-4">
-                                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                        <div class="space-y-1.5">
-                                            <label class="text-xs font-medium text-foreground">
-                                                {if is_ru { "Тип комплекта" } else { "Kit Type" }}
-                                            </label>
-                                            <select
-                                                prop:value=move || bundle_type.get()
-                                                on:change=move |ev| set_bundle_type.set(event_target_value(&ev))
-                                                class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary"
-                                            >
-                                                <option value="fixed">{if is_ru { "Фиксированный состав" } else { "Fixed Composition" }}</option>
-                                                <option value="flexible">{if is_ru { "Настраиваемый сет" } else { "Flexible / Configurable" }}</option>
-                                            </select>
-                                        </div>
-
-                                        <div class="space-y-1.5">
-                                            <label class="text-xs font-medium text-foreground">
-                                                {if is_ru { "Тип скидки комплекта" } else { "Bundle Discount" }}
-                                            </label>
-                                            <select
-                                                prop:value=move || bundle_discount_type.get()
-                                                on:change=move |ev| set_bundle_discount_type.set(event_target_value(&ev))
-                                                class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary"
-                                            >
-                                                <option value="none">{if is_ru { "Без скидки" } else { "None" }}</option>
-                                                <option value="percentage">{if is_ru { "Процентная (%)" } else { "Percentage (%)" }}</option>
-                                                <option value="fixed_amount">{if is_ru { "Фиксированная сумма" } else { "Fixed Amount" }}</option>
-                                            </select>
-                                        </div>
-
-                                        <div class="space-y-1.5">
-                                            <label class="text-xs font-medium text-foreground">
-                                                {if is_ru { "Размер скидки" } else { "Discount Value" }}
-                                            </label>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                step="0.5"
-                                                prop:value=move || bundle_discount_value.get()
-                                                on:input=move |ev| set_bundle_discount_value.set(event_target_value(&ev))
-                                                class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground font-mono outline-none focus:border-primary"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div class="space-y-1.5">
-                                        <div class="flex items-center justify-between">
-                                            <label class="text-xs font-medium text-foreground">
-                                                {if is_ru { "Компоненты набора" } else { "Bundle Components" }}
-                                            </label>
-                                            <a
-                                                href="/admin/bundles"
-                                                class="text-xs text-primary hover:underline font-medium inline-flex items-center gap-1"
-                                                target="_blank"
-                                            >
-                                                {if is_ru { "Управление комплектами →" } else { "Open Bundles Manager →" }}
-                                            </a>
-                                        </div>
-                                        <textarea
-                                            rows="3"
-                                            placeholder=if is_ru { "ID или SKU товаров, входящих в набор..." } else { "IDs or SKUs of items included in this kit..." }
-                                            prop:value=move || bundle_components_str.get()
-                                            on:input=move |ev| set_bundle_components_str.set(event_target_value(&ev))
-                                            class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground font-mono outline-none focus:border-primary"
-                                        />
-                                        <p class="text-[11px] text-muted-foreground">
-                                            {if is_ru {
-                                                "При покупке комплекта остатки списываются с каждого входящего товара отдельно. Для расширенной настройки состава используйте раздел комплектов."
-                                            } else {
-                                                "Inventory will be deducted from each individual component upon bundle purchase. Use the Bundles module for advanced configuration."
-                                            }}
-                                        </p>
-                                    </div>
+                                <div class="space-y-3">
+                                    <p class="text-xs text-muted-foreground">
+                                        {if is_ru {
+                                            "Состав комплекта, его скидки и правила списания остатков управляются отдельным модулем «Комплекты». Поля этого редактора не сохраняют состав комплекта."
+                                        } else {
+                                            "Bundle composition, discounts and component inventory rules are owned by the separate Product Bundles module. This editor does not save bundle configuration."
+                                        }}
+                                    </p>
+                                    <a
+                                        href="/admin/bundles"
+                                        class="text-xs text-primary hover:underline font-medium inline-flex items-center gap-1"
+                                        target="_blank"
+                                    >
+                                        {if is_ru { "Открыть управление комплектами →" } else { "Open Bundles Manager →" }}
+                                    </a>
                                 </div>
                             }.into_any(),
 
                             ProductKind::Digital => view! {
-                                <div class="space-y-4">
-                                    <div class="space-y-1.5">
-                                        <label class="text-xs font-medium text-foreground">
-                                            {if is_ru { "URL файла для скачивания *" } else { "Downloadable File URL *" }}
-                                        </label>
-                                        <input
-                                            type="text"
-                                            placeholder="https://cdn.rustok.io/downloads/file.zip"
-                                            prop:value=move || digital_file_url.get()
-                                            on:input=move |ev| set_digital_file_url.set(event_target_value(&ev))
-                                            class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground font-mono outline-none focus:border-primary"
-                                        />
-                                    </div>
-                                    <div class="grid grid-cols-2 gap-4">
-                                        <div class="space-y-1.5">
-                                            <label class="text-xs font-medium text-foreground">
-                                                {if is_ru { "Лимит скачиваний" } else { "Download Limit" }}
-                                            </label>
-                                            <input
-                                                type="number"
-                                                min="1"
-                                                prop:value=move || digital_download_limit.get()
-                                                on:input=move |ev| set_digital_download_limit.set(event_target_value(&ev))
-                                                class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary"
-                                            />
-                                        </div>
-                                        <div class="space-y-1.5">
-                                            <label class="text-xs font-medium text-foreground">
-                                                {if is_ru { "Срок действия ссылки (дней)" } else { "Link Expiry (Days)" }}
-                                            </label>
-                                            <input
-                                                type="number"
-                                                min="1"
-                                                prop:value=move || digital_expiry_days.get()
-                                                on:input=move |ev| set_digital_expiry_days.set(event_target_value(&ev))
-                                                class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
+                                <p class="text-xs text-muted-foreground">
+                                    {if is_ru {
+                                        "Цифровая выдача пока не поддерживается модулем товаров. URL файла, лимит скачиваний и срок действия здесь не сохраняются. Существующие цифровые товары можно редактировать только как записи каталога."
+                                    } else {
+                                        "Digital fulfillment is not supported by the Product module yet. File URLs, download limits and expiry settings are not saved here. Existing digital products can only be edited as catalog records."
+                                    }}
+                                </p>
                             }.into_any(),
                         }}
                     </div>
@@ -1311,8 +1239,8 @@ pub fn ProductEditorPage(
                         </h2>
                         {is_editing.then(|| view! {
                             <div class="space-y-2 text-xs text-muted-foreground">
-                                <p>{if is_ru { "Цены, SKU, штрихкод, профиль доставки и остаток сохраняются отдельной командой, не кнопками документа. Пустая цена оставляет базовые цены без изменений." }
-                                    else { "Price, SKU, barcode, shipping profile and stock use a separate command, not document Save/Publish. An empty price leaves base prices unchanged." }}</p>
+                                <p>{if is_ru { "Цены, SKU, штрихкод, профиль доставки и остаток сохраняются отдельной командой, не кнопками документа. Пустая цена не меняет базовые цены; для удаления цены в основной валюте используйте «Очистить основную цену»." }
+                                    else { "Price, SKU, barcode, shipping profile and stock use a separate command, not document Save/Publish. An empty price leaves base prices unchanged; use Clear primary price to remove the primary-currency price." }}</p>
                                 <p>{if is_ru { "Вариант: " } else { "Variant target: " }}
                                     <code>{move || variant_target_id.get().unwrap_or_else(|| "—".to_string())}</code>
                                 </p>
@@ -1321,6 +1249,16 @@ pub fn ProductEditorPage(
                                     disabled=move || is_busy.get() || axes_locked.get() || variant_locked.get() || variant_target_id.get().is_none()
                                     on:click=save_variant>
                                     {if is_ru { "Сохранить только этот вариант" } else { "Save only this variant" }}
+                                </button>
+                                <button type="button"
+                                    class="h-9 px-3 rounded-xl border border-border text-foreground disabled:opacity-50"
+                                    disabled=move || is_busy.get() || axes_locked.get() || variant_locked.get() || variant_target_id.get().is_none()
+                                    on:click=move |_| {
+                                        set_amount.set(String::new());
+                                        set_compare_at_amount.set(String::new());
+                                        set_clear_primary_price.set(true);
+                                    }>
+                                    {if is_ru { "Очистить основную цену" } else { "Clear primary price" }}
                                 </button>
                             </div>
                         })}
@@ -1371,11 +1309,17 @@ pub fn ProductEditorPage(
                                 <input
                                     type="number"
                                     min="0"
-                                    prop:value=move || inventory_quantity.get()
+                                    prop:value=move || inventory_quantity_text.get()
                                     on:input=move |ev| {
-                                        if let Ok(num) = event_target_value(&ev).parse::<i32>() {
-                                            set_inventory_quantity.set(num);
-                                        }
+                                        let raw = event_target_value(&ev);
+                                        set_inventory_quantity_text.set(raw.clone());
+                                        let (quantity, valid) =
+                                            crate::core::initial_catalog::inventory_input_state(
+                                                inventory_quantity.get_untracked(),
+                                                &raw,
+                                            );
+                                        set_inventory_quantity.set(quantity);
+                                        set_inventory_quantity_valid.set(valid);
                                     }
                                     class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground font-mono outline-none focus:border-primary"
                                 />
@@ -1389,8 +1333,8 @@ pub fn ProductEditorPage(
                                     on:change=move |ev| set_inventory_policy.set(event_target_value(&ev))
                                     class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary"
                                 >
-                                    <option value="DENY">{if is_ru { "Запретить заказ при отсутствии" } else { "Deny when out of stock" }}</option>
-                                    <option value="CONTINUE">{if is_ru { "Разрешить предзаказ" } else { "Allow backorders" }}</option>
+                                    <option value="deny">{if is_ru { "Запретить заказ при отсутствии" } else { "Deny when out of stock" }}</option>
+                                    <option value="continue">{if is_ru { "Разрешить предзаказ" } else { "Allow backorders" }}</option>
                                 </select>
                             </div>
                         </div>
@@ -1402,7 +1346,22 @@ pub fn ProductEditorPage(
                                 </label>
                                 <select
                                     prop:value=move || currency_code.get()
-                                    on:change=move |ev| set_currency_code.set(event_target_value(&ev))
+                                    on:change=move |ev| {
+                                        let next_currency = event_target_value(&ev);
+                                        if is_editing {
+                                            if let Some(variant) = loaded_product.get_untracked().and_then(|product| {
+                                                let target_id = variant_target_id.get_untracked()?;
+                                                product.variants.into_iter().find(|variant| variant.id == target_id)
+                                            }) {
+                                                let (next_amount, next_compare_at) =
+                                                    variant_price_editor_fields_for_currency(&variant, &next_currency);
+                                                set_amount.set(next_amount);
+                                                set_compare_at_amount.set(next_compare_at);
+                                            }
+                                        }
+                                        set_currency_code.set(next_currency);
+                                        set_clear_primary_price.set(false);
+                                    }
                                     class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary"
                                 >
                                     <option value="USD">"USD - US Dollar"</option>
@@ -1419,7 +1378,10 @@ pub fn ProductEditorPage(
                                     step="0.01"
                                     placeholder="0.00"
                                     prop:value=move || amount.get()
-                                    on:input=move |ev| set_amount.set(event_target_value(&ev))
+                                    on:input=move |ev| {
+                                        set_amount.set(event_target_value(&ev));
+                                        set_clear_primary_price.set(false);
+                                    }
                                     class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground font-mono outline-none focus:border-primary font-bold"
                                 />
                             </div>
@@ -1432,7 +1394,10 @@ pub fn ProductEditorPage(
                                     step="0.01"
                                     placeholder="0.00"
                                     prop:value=move || compare_at_amount.get()
-                                    on:input=move |ev| set_compare_at_amount.set(event_target_value(&ev))
+                                    on:input=move |ev| {
+                                        set_compare_at_amount.set(event_target_value(&ev));
+                                        set_clear_primary_price.set(false);
+                                    }
                                     class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground font-mono outline-none focus:border-primary"
                                 />
                             </div>

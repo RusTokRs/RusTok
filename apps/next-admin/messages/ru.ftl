@@ -986,6 +986,7 @@ product-variantCreate-projectionUnavailable = Product не удалось заг
 product-variantCreate-sku = SKU
 product-variantCreate-barcode = Штрихкод
 product-variantCreate-shippingProfile = Код профиля доставки (необязательно)
+product-variantUpdate-clearPrimaryPrice = Очистить основную цену
 product-variantCreate-currency = Валюта
 product-variantCreate-amount = Цена
 product-variantCreate-compareAt = Цена до скидки (необязательно)

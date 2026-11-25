@@ -995,6 +995,7 @@ product-variantCreate-projectionUnavailable = The Product could not be loaded. S
 product-variantCreate-sku = SKU
 product-variantCreate-barcode = Barcode
 product-variantCreate-shippingProfile = Shipping profile slug (optional)
+product-variantUpdate-clearPrimaryPrice = Clear primary price
 product-variantCreate-currency = Currency
 product-variantCreate-amount = Amount
 product-variantCreate-compareAt = Compare-at amount (optional)
