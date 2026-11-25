@@ -338,6 +338,7 @@ fn write_catalog(document: &mut ProjectDocument, catalog: TranslationCatalog) ->
             .extensions
             .insert(FLY_TRANSLATIONS_FIELD.to_string(), Value::Array(entries));
     }
+    document.invalidate_caches();
     Ok(())
 }
 
