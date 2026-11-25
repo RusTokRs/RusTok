@@ -11,6 +11,9 @@ versioned with the host workspace, so until it is extracted (see the `rustok-ui-
 
 ### Fixed
 
+- **Leptos SSR history controls.** Undo and Redo are now exposed through the existing
+  browser-intent transport before WASM hydration; controls that still require Leptos handlers
+  remain hidden until hydration.
 - **Resize constraint enforcement.** Invalid explicit minimum/maximum pairs now leave the
   affected gesture unchanged instead of silently discarding the maximum. Patch generation
   rechecks changed dimensions and aspect-ratio constraints at the persistence boundary.

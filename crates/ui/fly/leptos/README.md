@@ -42,3 +42,7 @@ The optional `controlled_capabilities` signal updates command affordances in a c
 Leptos workspace without remounting. Page tabs, palette, theme tokens, component properties,
 scoped styles, assets, Undo and Redo now read the current effective policy instead of a stale
 first-mount capability snapshot. Dispatch-time authorization still applies.
+
+In the default SSR/browser-JS mode, Undo and Redo remain available through the
+`intent:undo` and `intent:redo` browser controls. The edit/preview mode switch and panels
+that require Leptos event handlers stay hidden until WASM hydration.
