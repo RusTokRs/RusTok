@@ -215,6 +215,7 @@ struct QuantityPlan {
     before: i32,
     after: i32,
     target: Option<(Level, i32)>,
+    expected_levels: Vec<Level>,
 }
 
 pub(super) async fn write_quantity(
@@ -500,6 +501,7 @@ impl QuantityPlan {
             before,
             after,
             target: None,
+            expected_levels: Vec::new(),
         };
         if before == after {
             return Ok(plan);
@@ -514,8 +516,9 @@ impl QuantityPlan {
             return Err(QuantityWriteBlocker::LocationUnavailable.into());
         }
         let target = levels
-            .into_iter()
+            .iter()
             .find(|level| level.location_id == candidate.id)
+            .cloned()
             .ok_or(QuantityWriteBlocker::LocationUnavailable)?;
         let stocked = stocked_target(
             before,
@@ -525,6 +528,13 @@ impl QuantityPlan {
             inventory_policy_allows_backorder(&plan.inventory_policy),
         )?;
         validate_event_quantities(before, after)?;
+        // Preserve the complete locked predecessor, including other warehouses.
+        // Only the selected physical stock counter may change in this command.
+        plan.expected_levels = levels;
+        let expected_target = plan.expected_levels.iter_mut()
+            .find(|level| level.id == target.id)
+            .ok_or(QuantityWriteBlocker::StateUnverified)?;
+        expected_target.stocked_quantity = stocked;
         plan.target = Some((target, stocked));
         Ok(plan)
     }
@@ -573,6 +583,15 @@ impl QuantityPlan {
                 .exec(txn)
                 .await?;
             if updated.rows_affected != 1 {
+                return Err(QuantityWriteBlocker::ConcurrentChange.into());
+            }
+            // Exact-one affected row alone does not prove the effect (for example,
+            // a trigger may rewrite counters or change another original level).
+            let saved = current_read(txn, level_query(level.inventory_item_id))
+                .into_model::<Level>()
+                .all(txn)
+                .await?;
+            if saved != self.expected_levels {
                 return Err(QuantityWriteBlocker::ConcurrentChange.into());
             }
             crate::source_history::record_changed(

@@ -798,3 +798,34 @@ async fn product_inventory_bootstrap_refuses_foreign_sku_before_creating_locatio
     txn.commit().await.unwrap();
     assert_eq!(snapshot(&db).await, before);
 }
+
+#[tokio::test]
+async fn quantity_rejects_rewritten_saved_counters_before_event_or_product_commit() {
+    for product_path in [false, true] {
+        let (db, catalog) = setup().await;
+        let f = fixture(&db, &catalog).await;
+        counters(&db, f.level, 10, 2, 0).await;
+        db.execute_raw(Statement::from_string(DbBackend::Sqlite,
+            "CREATE TRIGGER rewrite_quantity AFTER UPDATE OF stocked_quantity ON inventory_levels BEGIN UPDATE inventory_levels SET incoming_quantity = NEW.incoming_quantity + 1 WHERE id = NEW.id; END"
+        )).await.unwrap();
+        let before = snapshot(&db).await;
+        if product_path {
+            let revision = before.variants.iter().find(|row| row.id == f.variant).unwrap().index_revision;
+            let error = catalog.update_variant(f.tenant, f.actor, f.variant, UpdateVariantInput {
+                expected_revision: Some(revision.to_string()),
+                expected_inventory_quantity: Some(8),
+                inventory_quantity: Some(12),
+                barcode: Patch::Set("must-roll-back".into()),
+                ..Default::default()
+            }).await.unwrap_err();
+            assert!(matches!(error, CommerceError::InventoryQuantityBlocked(
+                rustok_product::ProductInventoryQuantityBlocker::ConcurrentChange
+            )));
+        } else {
+            let error = service(&db).set_inventory(f.tenant, f.actor, f.variant, 12)
+                .await.unwrap_err();
+            assert!(matches!(error, QuantityWriteError::Rejected(B::ConcurrentChange)));
+        }
+        assert_eq!(snapshot(&db).await, before);
+    }
+}

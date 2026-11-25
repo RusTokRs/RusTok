@@ -57,6 +57,15 @@ No incomplete result is returned as a valid stock total. The bounds limit
 each query, not the total memory of an arbitrary caller batch. Tests are
 authored, not executed.
 
+Physical quantity set/adjust now retains the complete locked level snapshot
+and verifies the saved ordered level identities and counters against the
+planned successor before source history and event publication. Exact-one
+affected rows alone are not proof that the planned quantity persisted.
+Unexpected counter changes (including other original levels) refuse the
+caller transaction. The no-op path is unchanged; Product's quantity hook
+shares the verification. Regression source is authored, not executed.
+This does not introduce a durable receipt or a new cross-owner revision.
+
 ## Purpose
 
 - inventory service logic;

@@ -791,6 +791,19 @@ They now capture any transport error into an `action_error` reactive signal and 
   [regression](../../crates/modules/rustok-inventory/src/services/quantity/tests.rs).
   Source-only evidence, not executed.
 
+### P-INVENTORY-EXACT-SAVED-QUANTITY — verify the persisted successor
+
+- **Category:** transactional effect / event integrity.
+- **Observed defect:** A successful conditional counter update could return
+  one affected row while storage rewrote counters, leaving the planned
+  availability, event and actual persisted state inconsistent.
+- **Canonical correction:** Retain the complete bounded locked predecessor,
+  change only the target stocked counter in the expected successor, and
+  verify the saved levels before publishing source history or events.
+- **Evidence:** [quantity writer](../../crates/modules/rustok-inventory/src/services/quantity.rs),
+  [regression](../../crates/modules/rustok-commerce/tests/inventory_quantity_writes.rs).
+  Regression source authored, not executed.
+
 ## 1. Core Philosophy: The 6 Universal Logic Dimensions
 
 Under [AGENTS.md §4](../../AGENTS.md), verify the affected behavior and its owner contract across the **6 Universal Logic Dimensions**. Use source matches to find code to inspect. A match alone cannot establish a behavioral defect:
