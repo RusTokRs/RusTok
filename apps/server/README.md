@@ -102,23 +102,30 @@ Production also requires an independently provisioned JWT authority via
 [offline import and recovery contract](../../crates/modules/rustok-auth/docs/README.md#independent-jwt-authority)
 before starting a new production host; no automatic fallback is allowed.
 
-`auth.jwt.secret` is the independent host MAC root and still supplies the
-pre-cutover HS256 default derivation source. The accepted [RS256-only target](../../DECISIONS/2026-11-25-rs256-only-jwt.md)
-requires four independent RSA pairs. Complete generation-bearing file
-provisioning is available today. The full development Compose stack now
-requires a pre-provisioned private directory with `jwt.json` (see the
-[root quick start](../../README.md#local-stack-launch)); the directory is
-mounted read-only to preserve visibility of atomic file replacement. The
-executable's remaining static startup path has not yet been removed; do not deploy the future cutover until the
-provisioning and retained-state requirements are satisfied. Optional runtime
-overrides live under `settings.auth`:
+`auth.jwt.secret` is the independent host MAC root for host MAC proofs,
+OAuth consent CSRF, credential binding and durable authority/witness
+authentication. It is never JWT signing or verification material.
 
-- `refresh_expiration`, `issuer`, `audience`
-- `algorithm`: `HS256` or `RS256`
-- `rsa_private_key_env`, `rsa_public_key_env`: preferred production key sources
-- `rsa_private_key_pem`, `rsa_public_key_pem`: development/test fallback values
+The executable requires `RUSTOK_JWT_KEYRING_FILE` in every environment. The
+file must contain a complete generation-bearing document with four distinct
+RSA pairs: access (including OAuth access), password reset, email verification
+and invite. All four rings must be RS256; missing files, missing pairs,
+invalid history and key reuse fail closed. There is no static/default HS256
+fallback and no inline, environment or `settings.auth.algorithm` crypto
+override. `settings.auth` is limited to policy fields:
+`refresh_expiration`, `issuer`, `audience` and `min_password_length`.
 
-When the OAuth surface is mounted (`settings.features.oauth_enabled` is true and the host mode is not
+The host validates the document before connecting to the application database
+or applying migrations, then admits the generation through the durable fence
+before publishing the signer. Production still requires the independent
+authority and witness; development uses the same admission interface with its
+local fence. Full development Compose runs the Auth-owned
+`validate-jwt-keyring` command in the migration container before any
+application migration. Both migration and server containers mount the
+dedicated keyring directory read-only so atomic replacement remains visible.
+See the [root quick start](../../README.md#local-stack-launch).
+
+ (`settings.features.oauth_enabled` is true and the host mode is not
 `worker` or `registry_only`), `settings.auth.issuer` must be an absolute root URL:
 HTTPS in production, or HTTPS / `http://localhost` / `http://127.0.0.1` in
 development. Userinfo, path, query, and fragment components are rejected.
