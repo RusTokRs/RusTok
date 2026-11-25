@@ -697,6 +697,12 @@ impl McpManagementService {
                 &workspace_root,
                 &staged_draft.preview.crate_name,
                 &staged_draft.preview.crate_path,
+                &staged_draft
+                    .preview
+                    .files
+                    .iter()
+                    .map(|file| file.path.clone())
+                    .collect::<Vec<_>>(),
             )
             .await
         {

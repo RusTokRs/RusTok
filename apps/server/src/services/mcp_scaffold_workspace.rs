@@ -1,4 +1,5 @@
-use std::path::{Component, Path, PathBuf};
+use std::collections::HashSet;
+use std::path::{Component, Path};
 
 use rustok_api::HostAuthority;
 
@@ -51,16 +52,19 @@ pub async fn validate_mcp_scaffold_target_path(
     workspace_root: &str,
     crate_name: &str,
     crate_path: &str,
+    file_paths: &[String],
 ) -> Result<()> {
     let workspace_root = workspace_root.to_owned();
     let crate_name = crate_name.to_owned();
     let crate_path = crate_path.to_owned();
+    let file_paths = file_paths.to_vec();
 
     tokio::task::spawn_blocking(move || {
         validate_mcp_scaffold_target_path_blocking(
             &workspace_root,
             &crate_name,
             &crate_path,
+            &file_paths,
         )
     })
     .await
@@ -77,6 +81,7 @@ fn validate_mcp_scaffold_target_path_blocking(
     workspace_root: &str,
     crate_name: &str,
     crate_path: &str,
+    file_paths: &[String],
 ) -> Result<()> {
     let name_path = Path::new(crate_name);
     let mut name_components = name_path.components();
@@ -89,11 +94,37 @@ fn validate_mcp_scaffold_target_path_blocking(
     }
 
     let expected_relative_path = Path::new("crates").join("modules").join(crate_name);
-    if Path::new(crate_path) != expected_relative_path {
+    if Path::new(crate_path) != expected_relative_path.as_path() {
         return Err(Error::BadRequest(
             "MCP scaffold target must be crates/modules/<crate_name> within the authorized workspace"
                 .to_string(),
         ));
+    }
+
+    if file_paths.is_empty() {
+        return Err(Error::BadRequest(
+            "MCP scaffold preview must contain at least one file".to_string(),
+        ));
+    }
+    let mut seen_file_paths = HashSet::with_capacity(file_paths.len());
+    for file_path in file_paths {
+        let path = Path::new(file_path);
+        if path.as_os_str().is_empty()
+            || path.is_absolute()
+            || path
+                .components()
+                .any(|component| !matches!(component, Component::Normal(_)))
+        {
+            return Err(Error::BadRequest(
+                "MCP scaffold file paths must be relative and cannot traverse parent directories"
+                    .to_string(),
+            ));
+        }
+        if !seen_file_paths.insert(file_path.as_str()) {
+            return Err(Error::BadRequest(
+                "MCP scaffold preview contains duplicate file paths".to_string(),
+            ));
+        }
     }
 
     let canonical_root = std::fs::canonicalize(workspace_root).map_err(|error| {
@@ -104,7 +135,7 @@ fn validate_mcp_scaffold_target_path_blocking(
     let mut current = canonical_root.clone();
 
     for (index, component) in components.iter().enumerate() {
-        let Component::Normal(segment) = component else {
+        let Component::Normal(segment) = *component else {
             return Err(Error::BadRequest(
                 "MCP scaffold target contains an unsafe path component".to_string(),
             ));
@@ -181,6 +212,7 @@ mod tests {
             &root_string,
             "rustok-example",
             "crates/modules/rustok-example",
+            &["Cargo.toml".to_string(), "src/lib.rs".to_string()],
         )
         .is_ok());
         assert!(matches!(
@@ -188,6 +220,7 @@ mod tests {
                 &root_string,
                 "../outside",
                 "crates/modules/../outside",
+                &["Cargo.toml".to_string()],
             ),
             Err(Error::BadRequest(_))
         ));
@@ -196,6 +229,17 @@ mod tests {
                 &root_string,
                 "rustok-example",
                 "../outside",
+                &["Cargo.toml".to_string()],
+            ),
+            Err(Error::BadRequest(_))
+        ));
+
+        assert!(matches!(
+            super::validate_mcp_scaffold_target_path_blocking(
+                &root_string,
+                "rustok-example",
+                "crates/modules/rustok-example",
+                &["Cargo.toml".to_string(), "Cargo.toml".to_string()],
             ),
             Err(Error::BadRequest(_))
         ));
@@ -209,7 +253,10 @@ mod tests {
         let root = workspace("symlink");
         let root_string = root.to_string_lossy().into_owned();
         let modules = root.join("crates/modules");
-        let outside = root.join("outside");
+        let outside = std::env::temp_dir().join(format!(
+            "rustok-mcp-scaffold-outside-{}",
+            Uuid::new_v4()
+        ));
         std::fs::create_dir_all(&outside).expect("outside directory");
 
         std::os::unix::fs::symlink(&outside, &modules).expect("modules symlink");
@@ -218,6 +265,7 @@ mod tests {
                 &root_string,
                 "rustok-example",
                 "crates/modules/rustok-example",
+                &["Cargo.toml".to_string()],
             ),
             Err(Error::BadRequest(_))
         ));
@@ -234,11 +282,13 @@ mod tests {
                 &root_string,
                 "rustok-example",
                 "crates/modules/rustok-example",
+                &["Cargo.toml".to_string()],
             ),
             Err(Error::BadRequest(_))
         ));
 
         let _ = std::fs::remove_dir_all(root);
+        let _ = std::fs::remove_dir_all(outside);
     }
 
     #[tokio::test]
