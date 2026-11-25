@@ -606,7 +606,12 @@ pub fn apply_theme_command(
             .map_err(crate::FlyError::Decode)?;
     }
     tokens.sort_by(|left, right| left.name.cmp(&right.name));
-    tokens.dedup_by(|next, kept| next.name == kept.name);
+    if let Some(duplicate) = tokens.windows(2).find(|pair| pair[0].name == pair[1].name) {
+        return Err(crate::FlyError::Decode(format!(
+            "design token `{}` is defined more than once",
+            duplicate[0].name
+        )));
+    }
     if tokens.is_empty() {
         document.project.extensions.remove(FLY_THEME_FIELD);
     } else {
@@ -619,6 +624,7 @@ pub fn apply_theme_command(
             serde_json::json!({ "tokens": Value::Object(map) }),
         );
     }
+    document.invalidate_caches();
     Ok(())
 }
 
@@ -845,5 +851,48 @@ mod command_tests {
                 Some("var(--primary)")
             );
         }
+    }
+
+    #[test]
+    fn direct_theme_commands_invalidate_the_cached_project_hash() {
+        let mut document = document_with_theme(json!({ "tokens": {} }));
+        let before = document.hash();
+        apply_theme_command(
+            &mut document,
+            &ThemeCommand::Upsert {
+                token: DesignToken {
+                    name: "brand".to_string(),
+                    value: "#0b5fff".to_string(),
+                },
+            },
+        )
+        .expect("upsert theme token");
+        assert_ne!(document.hash(), before);
+    }
+
+    #[test]
+    fn replacing_theme_tokens_rejects_duplicate_names_without_mutation() {
+        let mut document = document_with_theme(json!({
+            "tokens": { "brand": "#0b5fff" }
+        }));
+        let before = document.clone();
+        let error = apply_theme_command(
+            &mut document,
+            &ThemeCommand::Replace {
+                tokens: vec![
+                    DesignToken {
+                        name: "brand".to_string(),
+                        value: "#0b5fff".to_string(),
+                    },
+                    DesignToken {
+                        name: "brand".to_string(),
+                        value: "#ff0000".to_string(),
+                    },
+                ],
+            },
+        )
+        .expect_err("duplicate token names must be rejected");
+        assert!(error.to_string().contains("defined more than once"));
+        assert_eq!(document, before);
     }
 }
