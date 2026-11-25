@@ -77,9 +77,10 @@ closed. No secrets or fingerprints are written to application diagnostics.
 
 ## Non-goals
 
-This is durable publication admission, not a replica readiness barrier or
-a per-request check of the shared generation. Already-running stale replicas
-may continue signing until separately coordinated. Distributed emergency
+This decision alone is durable publication admission, not a replica readiness
+barrier or a per-request check of the shared generation. The subsequent
+[cluster lease barrier](2026-11-25-jwt-cluster-lease.md) extends it with bounded
+local crypto authority and a conservative generation drain. Distributed emergency
 revocation, root rotation, algorithm migration, trusted-clock rollback
 protection and cancellation of already-authorized business IO remain separate.
 

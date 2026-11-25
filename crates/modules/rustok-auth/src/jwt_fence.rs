@@ -1,5 +1,6 @@
 //! Durable admission of complete JWT generations. No key material is persisted.
 use std::collections::BTreeMap;
+use std::time::{Duration, Instant};
 
 use hkdf::Hkdf;
 use hmac::{Hmac, KeyInit, Mac};
@@ -7,12 +8,21 @@ use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
-use crate::{AuthConfig, AuthError, JwtAlgorithm};
+use crate::{AuthConfig, AuthError, JwtAlgorithm, JwtKeyringPublisher};
 use crate::error::Result;
 
 const MAX_ENROLLED_KEYS: usize = 8192;
 const MAX_LEDGER_BYTES: usize = 4 * 1024 * 1024;
 const MAX_CAS_ATTEMPTS: usize = 8;
+const LOCAL_LEASE: Duration = Duration::from_secs(10);
+const DB_LEASE_MS: i64 = 15_000;
+const DRAIN_MS: i64 = 60_000;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum JwtAdmission {
+    Admitted,
+    Draining,
+}
 
 fn rejected() -> AuthError {
     AuthError::Validation("JWT generation rejected by durable fence".into())
@@ -144,9 +154,9 @@ struct FenceMac {
 }
 
 impl FenceMac {
-    fn new(config: &AuthConfig) -> Result<Self> {
+    fn new(root: &str) -> Result<Self> {
         let hkdf = Hkdf::<Sha256>::new(
-            Some(b"rustok/auth/jwt-generation-fence/v1"), config.secret().as_bytes(),
+            Some(b"rustok/auth/jwt-generation-fence/v1"), root.as_bytes(),
         );
         let mut identity = [0_u8; 32];
         let mut state = [0_u8; 32];
@@ -179,6 +189,9 @@ struct StoredFence {
     generation: i64,
     payload: String,
     tag: String,
+    lease_until_ms: i64,
+    drain_until_ms: i64,
+    now_ms: i64,
 }
 
 impl StoredFence {
@@ -212,18 +225,27 @@ impl JwtGenerationFence {
 
     async fn load(&self) -> Result<StoredFence> {
         let backend = self.db.get_database_backend();
-        if !matches!(backend, DbBackend::Postgres | DbBackend::Sqlite) {
-            return Err(unavailable());
-        }
+        let clock = match backend {
+            DbBackend::Postgres => "CAST(EXTRACT(EPOCH FROM clock_timestamp()) * 1000 AS BIGINT)",
+            DbBackend::Sqlite => "CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)",
+            _ => return Err(unavailable()),
+        };
         let row = self.db.query_one_raw(Statement::from_string(
             backend,
-            "SELECT generation, payload, tag FROM auth_jwt_generation_fence WHERE id = 1".to_string(),
+            format!("SELECT generation, payload, tag, lease_until_ms, drain_until_ms, {clock} AS now_ms FROM auth_jwt_generation_fence WHERE id = 1"),
         )).await.map_err(|_| unavailable())?.ok_or_else(unavailable)?;
-        Ok(StoredFence {
+        let stored = StoredFence {
             generation: row.try_get("", "generation").map_err(|_| unavailable())?,
             payload: row.try_get("", "payload").map_err(|_| unavailable())?,
             tag: row.try_get("", "tag").map_err(|_| unavailable())?,
-        })
+            lease_until_ms: row.try_get("", "lease_until_ms").map_err(|_| unavailable())?,
+            drain_until_ms: row.try_get("", "drain_until_ms").map_err(|_| unavailable())?,
+            now_ms: row.try_get("", "now_ms").map_err(|_| unavailable())?,
+        };
+        if stored.now_ms <= 0 || stored.lease_until_ms < 0 || stored.drain_until_ms < 0 {
+            return Err(unavailable());
+        }
+        Ok(stored)
     }
 
     /// Refuse configuration-source downgrade after the first file enrollment.
@@ -231,25 +253,75 @@ impl JwtGenerationFence {
         if self.load().await?.is_empty() { Ok(()) } else { Err(rejected()) }
     }
 
+    /// Renew only the exact local generation. A grant is bounded from before
+    /// DB IO; an expired/delayed grant cannot revive a local deadline.
+    pub async fn renew(&self, publisher: &JwtKeyringPublisher) -> Result<bool> {
+        let mac = FenceMac::new(publisher.lease_root())?;
+        let (generation, snapshot) = publisher.lease_metadata(|identity| mac.identity(identity))?;
+        let generation_sql = i64::try_from(generation).map_err(|_| rejected())?;
+        let started = Instant::now();
+        let stored = self.load().await?;
+        let admitted = match stored.ledger(&mac)? {
+            None => generation == 0,
+            Some(ledger) => generation == ledger.generation && snapshot == ledger.current,
+        };
+        if !admitted || stored.drain_until_ms > stored.now_ms {
+            return Ok(false);
+        }
+        let until = stored.now_ms.checked_add(DB_LEASE_MS).ok_or_else(unavailable)?;
+        let backend = self.db.get_database_backend();
+        let sql = match backend {
+            DbBackend::Postgres => "UPDATE auth_jwt_generation_fence SET lease_until_ms = CASE WHEN lease_until_ms < $1 THEN $1 ELSE lease_until_ms END WHERE id = 1 AND generation = $2 AND tag = $3 AND drain_until_ms = $4",
+            DbBackend::Sqlite => "UPDATE auth_jwt_generation_fence SET lease_until_ms = CASE WHEN lease_until_ms < ?1 THEN ?1 ELSE lease_until_ms END WHERE id = 1 AND generation = ?2 AND tag = ?3 AND drain_until_ms = ?4",
+            _ => return Err(unavailable()),
+        };
+        let updated = self.db.execute_raw(Statement::from_sql_and_values(
+            backend, sql, vec![until.into(), generation_sql.into(), stored.tag.into(), stored.drain_until_ms.into()],
+        )).await.map_err(|_| unavailable())?;
+        if updated.rows_affected() != 1 {
+            return Ok(false);
+        }
+        publisher.install_lease(generation, started.checked_add(LOCAL_LEASE).ok_or_else(unavailable)?)
+    }
+
     /// Admit before local publication. Same generation is idempotent only for
     /// the same canonical snapshot, including cutoffs and legacy mapping.
-    pub async fn admit(&self, generation: u64, candidate: &AuthConfig) -> Result<()> {
+    pub async fn admit(&self, generation: u64, candidate: &AuthConfig) -> Result<JwtAdmission> {
         let generation_sql = i64::try_from(generation).map_err(|_| rejected())?;
         if generation_sql <= 0 {
             return Err(rejected());
         }
         crate::validate_auth_config(candidate)?;
-        let mac = FenceMac::new(candidate)?;
+        let mac = FenceMac::new(candidate.secret())?;
         let snapshot = candidate.fence_snapshot(|identity| mac.identity(identity))?;
         for _ in 0..MAX_CAS_ATTEMPTS {
             let stored = self.load().await?;
             let next = match stored.ledger(&mac)? {
                 None => Ledger::enroll(generation, snapshot.clone()),
                 Some(ledger) if generation == ledger.generation => {
-                    return if snapshot == ledger.current { Ok(()) } else { Err(rejected()) };
+                    return if snapshot == ledger.current { Ok(JwtAdmission::Admitted) } else { Err(rejected()) };
                 }
                 Some(ledger) => ledger.advance(generation, snapshot.clone(), chrono::Utc::now().timestamp())?,
             };
+            if stored.lease_until_ms > stored.now_ms {
+                if stored.drain_until_ms > stored.now_ms {
+                    return Ok(JwtAdmission::Draining);
+                }
+                let until = stored.now_ms.checked_add(DRAIN_MS).ok_or_else(unavailable)?;
+                let backend = self.db.get_database_backend();
+                let sql = match backend {
+                    DbBackend::Postgres => "UPDATE auth_jwt_generation_fence SET drain_until_ms = $1 WHERE id = 1 AND generation = $2 AND tag = $3 AND drain_until_ms = $4",
+                    DbBackend::Sqlite => "UPDATE auth_jwt_generation_fence SET drain_until_ms = ?1 WHERE id = 1 AND generation = ?2 AND tag = ?3 AND drain_until_ms = ?4",
+                    _ => return Err(unavailable()),
+                };
+                let updated = self.db.execute_raw(Statement::from_sql_and_values(
+                    backend, sql, vec![until.into(), stored.generation.into(), stored.tag.into(), stored.drain_until_ms.into()],
+                )).await.map_err(|_| unavailable())?;
+                if updated.rows_affected() == 1 {
+                    return Ok(JwtAdmission::Draining);
+                }
+                continue;
+            }
             let payload = serde_json::to_string(&next).map_err(|_| unavailable())?;
             if payload.len() > MAX_LEDGER_BYTES {
                 return Err(rejected());
@@ -257,15 +329,15 @@ impl JwtGenerationFence {
             let tag = hex::encode(mac.state_mac(&payload)?.finalize().into_bytes());
             let backend = self.db.get_database_backend();
             let sql = match backend {
-                DbBackend::Postgres => "UPDATE auth_jwt_generation_fence SET generation = $1, payload = $2, tag = $3 WHERE id = 1 AND generation = $4",
-                DbBackend::Sqlite => "UPDATE auth_jwt_generation_fence SET generation = ?1, payload = ?2, tag = ?3 WHERE id = 1 AND generation = ?4",
+                DbBackend::Postgres => "UPDATE auth_jwt_generation_fence SET generation = $1, payload = $2, tag = $3, lease_until_ms = 0, drain_until_ms = 0 WHERE id = 1 AND generation = $4 AND tag = $5 AND lease_until_ms = $6 AND drain_until_ms = $7",
+                DbBackend::Sqlite => "UPDATE auth_jwt_generation_fence SET generation = ?1, payload = ?2, tag = ?3, lease_until_ms = 0, drain_until_ms = 0 WHERE id = 1 AND generation = ?4 AND tag = ?5 AND lease_until_ms = ?6 AND drain_until_ms = ?7",
                 _ => return Err(unavailable()),
             };
             let updated = self.db.execute_raw(Statement::from_sql_and_values(
-                backend, sql, vec![generation_sql.into(), payload.into(), tag.into(), stored.generation.into()],
+                backend, sql, vec![generation_sql.into(), payload.into(), tag.into(), stored.generation.into(), stored.tag.into(), stored.lease_until_ms.into(), stored.drain_until_ms.into()],
             )).await.map_err(|_| unavailable())?;
             if updated.rows_affected() == 1 {
-                return Ok(());
+                return Ok(JwtAdmission::Admitted);
             }
         }
         Err(unavailable())
@@ -308,11 +380,79 @@ mod tests {
 
     async fn database() -> DatabaseConnection {
         let db = Database::connect("sqlite::memory:").await.unwrap();
-        let migration = crate::migrations::migrations().into_iter()
-            .find(|migration| migration.name() == "m20261125_000002_create_auth_jwt_generation_fence")
-            .unwrap();
-        migration.up(&SchemaManager::new(&db)).await.unwrap();
+        for name in [
+            "m20261125_000002_create_auth_jwt_generation_fence",
+            "m20261125_000003_add_auth_jwt_cluster_lease",
+        ] {
+            let migration = crate::migrations::migrations().into_iter()
+                .find(|migration| migration.name() == name).unwrap();
+            migration.up(&SchemaManager::new(&db)).await.unwrap();
+        }
         db
+    }
+
+    #[tokio::test]
+    async fn cluster_drain_fences_old_holders_before_advancing() {
+        use crate::{decode_access_token, encode_access_token};
+        use rustok_core::UserRole;
+        use uuid::Uuid;
+        let db = database().await;
+        let fence = JwtGenerationFence::new(db.clone());
+        let first = config(ROOT, "old", OLD, None, None);
+        let second = config(ROOT, "new", NEW, None, None);
+        assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
+        let (live_a, a) = first.clone().into_cluster_jwt(1).unwrap();
+        let (live_b, b) = first.into_cluster_jwt(1).unwrap();
+        let issue = |cfg: &AuthConfig| encode_access_token(
+            cfg, Uuid::new_v4(), Uuid::new_v4(), UserRole::Customer, Uuid::new_v4(),
+        );
+        assert!(issue(&live_a).is_err());
+        assert!(fence.renew(&a).await.unwrap());
+        assert!(fence.renew(&b).await.unwrap());
+        let old = issue(&live_a).unwrap();
+        assert!(decode_access_token(&live_b, &old).is_ok());
+        assert_eq!(fence.admit(2, &second).await.unwrap(), JwtAdmission::Draining);
+        assert!(!fence.renew(&a).await.unwrap());
+        assert!(!fence.renew(&b).await.unwrap());
+        // Simulate all local leases and the conservative DB deadline expiring.
+        a.revoke_lease();
+        b.revoke_lease();
+        db.execute_unprepared("UPDATE auth_jwt_generation_fence SET lease_until_ms = 0 WHERE id = 1")
+            .await.unwrap();
+        assert!(issue(&live_a).is_err());
+        assert!(decode_access_token(&live_b, &old).is_err());
+        assert_eq!(fence.admit(2, &second).await.unwrap(), JwtAdmission::Admitted);
+        assert!(!fence.renew(&a).await.unwrap());
+        a.publish(2, second.clone()).unwrap();
+        assert!(issue(&live_a).is_err());
+        assert!(fence.renew(&a).await.unwrap());
+        assert!(issue(&live_a).is_ok());
+        assert!(decode_access_token(&live_a, &old).is_err());
+        assert!(issue(&live_b).is_err());
+        b.publish(2, second).unwrap();
+        assert!(fence.renew(&b).await.unwrap());
+        assert!(decode_access_token(&live_b, &issue(&live_a).unwrap()).is_ok());
+    }
+
+    #[tokio::test]
+    async fn static_lease_blocks_first_enrollment_and_expired_drain_recovers() {
+        let db = database().await;
+        let fence = JwtGenerationFence::new(db.clone());
+        let first = config(ROOT, "old", OLD, None, None);
+        let (_, static_runtime) = AuthConfig::new(ROOT.into()).into_cluster_jwt(0).unwrap();
+        assert!(fence.renew(&static_runtime).await.unwrap());
+        assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Draining);
+        assert!(!fence.renew(&static_runtime).await.unwrap());
+        db.execute_unprepared("UPDATE auth_jwt_generation_fence SET drain_until_ms = 0 WHERE id = 1")
+            .await.unwrap();
+        assert!(fence.renew(&static_runtime).await.unwrap());
+        assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Draining);
+        static_runtime.revoke_lease();
+        db.execute_unprepared("UPDATE auth_jwt_generation_fence SET lease_until_ms = 0 WHERE id = 1")
+            .await.unwrap();
+        assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
+        assert!(!fence.renew(&static_runtime).await.unwrap());
+        assert!(fence.ensure_static_allowed().await.is_err());
     }
 
     #[tokio::test]
@@ -363,7 +503,7 @@ mod tests {
     #[test]
     fn same_reuse_identity_cannot_change_exact_verifier() {
         let config = config(ROOT, "old", OLD, None, None);
-        let mac = FenceMac::new(&config).unwrap();
+        let mac = FenceMac::new(config.secret()).unwrap();
         let current = config.fence_snapshot(|identity| mac.identity(identity)).unwrap();
         let mut next = current.clone();
         next.get_mut("JWT").unwrap().keys.get_mut("old").unwrap()

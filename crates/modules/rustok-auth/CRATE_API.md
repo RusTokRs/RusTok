@@ -26,6 +26,7 @@
 - **Configuration**: `AuthConfig`, `build_auth_config`, `validate_auth_config`.
 - **Process-local key rotation**: `AuthConfig::prepare_jwt_document`, `AuthConfig::into_live_jwt`, `JwtKeyringPublisher::prepare_document`, `publish`, `generation`. Crypto getters return fallible owned values; `inspect_hs256_secrets` visits material without copying it. The publisher is host-owned, never a request capability.
 - **Durable generation admission**: `JwtGenerationFence::new`, `admit`, and `ensure_static_allowed`. The Auth-owned database singleton must admit a complete candidate before host startup/publication. The store retains authenticated metadata, never signing key material.
+- **Cluster JWT lease**: `AuthConfig::into_cluster_jwt`, `JwtGenerationFence::renew`, `JwtAdmission::{Admitted, Draining}`. HTTP hosts gate crypto by a bounded monotonic lease, retry draining admissions, and revoke local authority on shutdown.
 
 ## Domain Collaborations
 

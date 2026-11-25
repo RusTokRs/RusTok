@@ -1,4 +1,5 @@
 use std::sync::{Arc, OnceLock, RwLock};
+use std::time::Instant;
 
 use jsonwebtoken::{Algorithm, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
@@ -91,6 +92,8 @@ enum JwtKeySource {
 struct VersionedJwtKeys {
     generation: u64,
     keys: Arc<JwtKeyState>,
+    lease_required: bool,
+    lease_until: Option<Instant>,
 }
 
 /// Host-only publication capability. Request consumers receive AuthConfig,
@@ -197,6 +200,29 @@ impl AuthConfig {
         }
     }
 
+    /// Only JWT operations use the lease gate; candidate validation and
+    /// metadata inspection never require a request-serving lease.
+    pub(crate) fn with_jwt_operation<T>(
+        &self, operation: impl FnOnce(&ValidatedJwtKeyrings) -> Result<T>,
+    ) -> Result<T> {
+        match &self.key_state {
+            JwtKeySource::Fixed(keys) => operation(keys.prepared(self.secret())?),
+            JwtKeySource::Live(current) => {
+                let guard = current.read().map_err(|_| keyring_runtime_error())?;
+                let authorized = || !guard.lease_required
+                    || guard.lease_until.is_some_and(|deadline| Instant::now() < deadline);
+                if !authorized() {
+                    return Err(keyring_runtime_error());
+                }
+                let result = operation(guard.keys.prepared(self.secret())?);
+                if !authorized() {
+                    return Err(keyring_runtime_error());
+                }
+                result
+            }
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn prepared_jwt(&self) -> Result<&ValidatedJwtKeyrings> {
         match &self.key_state {
@@ -214,6 +240,11 @@ impl AuthConfig {
     }
 
     fn edit_key_inputs(&mut self, edit: impl FnOnce(&mut JwtKeyInputs)) -> Result<()> {
+        if let JwtKeySource::Live(current) = &self.key_state {
+            if current.read().map_err(|_| keyring_runtime_error())?.lease_required {
+                return Err(invalid_rotation());
+            }
+        }
         let mut keys = self.key_snapshot()?;
         let state = Arc::make_mut(&mut keys);
         state.prepared = OnceLock::new();
@@ -307,8 +338,18 @@ impl AuthConfig {
 
     /// Convert a validated fixed candidate into a shared process-local runtime.
     /// Call before cloning into the host's transports and providers.
-    pub fn into_live_jwt(mut self, generation: u64) -> Result<(Self, JwtKeyringPublisher)> {
-        if generation == 0 || !matches!(&self.key_state, JwtKeySource::Fixed(_)) {
+    pub fn into_live_jwt(self, generation: u64) -> Result<(Self, JwtKeyringPublisher)> {
+        self.into_jwt_runtime(generation, false)
+    }
+
+    /// HTTP host composition: generation zero is static mode. JWT operations
+    /// fail closed until a matching durable lease is installed.
+    pub fn into_cluster_jwt(self, generation: u64) -> Result<(Self, JwtKeyringPublisher)> {
+        self.into_jwt_runtime(generation, true)
+    }
+
+    fn into_jwt_runtime(mut self, generation: u64, lease_required: bool) -> Result<(Self, JwtKeyringPublisher)> {
+        if (!lease_required && generation == 0) || !matches!(&self.key_state, JwtKeySource::Fixed(_)) {
             return Err(invalid_rotation());
         }
         validate_auth_config(&self)?;
@@ -316,6 +357,8 @@ impl AuthConfig {
         self.key_state = JwtKeySource::Live(Arc::new(RwLock::new(VersionedJwtKeys {
             generation,
             keys,
+            lease_required,
+            lease_until: None,
         })));
         let publisher = JwtKeyringPublisher { config: self.clone() };
         Ok((self, publisher))
@@ -371,6 +414,47 @@ impl JwtKeyringPublisher {
         }
     }
 
+    pub(crate) fn lease_root(&self) -> &str {
+        self.config.secret()
+    }
+
+    pub(crate) fn lease_metadata(
+        &self, fingerprint: impl Fn(&[u8; 32]) -> Result<String>,
+    ) -> Result<(u64, crate::jwt_fence::Snapshot)> {
+        let JwtKeySource::Live(current) = &self.config.key_state else {
+            return Err(invalid_rotation());
+        };
+        let guard = current.read().map_err(|_| keyring_runtime_error())?;
+        if !guard.lease_required {
+            return Err(invalid_rotation());
+        }
+        let snapshot = guard.keys.prepared(self.config.secret())?.fence_snapshot(fingerprint)?;
+        Ok((guard.generation, snapshot))
+    }
+
+    pub(crate) fn install_lease(&self, generation: u64, deadline: Instant) -> Result<bool> {
+        let JwtKeySource::Live(current) = &self.config.key_state else {
+            return Err(invalid_rotation());
+        };
+        let mut guard = current.write().map_err(|_| keyring_runtime_error())?;
+        if !guard.lease_required || guard.generation != generation || Instant::now() >= deadline {
+            return Ok(false);
+        }
+        if guard.lease_until.is_none_or(|previous| deadline > previous) {
+            guard.lease_until = Some(deadline);
+        }
+        Ok(true)
+    }
+
+    /// Clear local authority on host shutdown or supervisor cancellation.
+    pub fn revoke_lease(&self) {
+        if let JwtKeySource::Live(current) = &self.config.key_state {
+            if let Ok(mut guard) = current.write() {
+                guard.lease_until = None;
+            }
+        }
+    }
+
     pub fn prepare_document(&self, bytes: &[u8]) -> Result<(u64, AuthConfig)> {
         self.config.prepare_jwt_document(bytes)
     }
@@ -398,8 +482,14 @@ impl JwtKeyringPublisher {
         if generation <= guard.generation {
             return Err(invalid_rotation());
         }
-        guard.keys.prepared(self.config.secret())?.validate_successor(next)?;
-        *guard = VersionedJwtKeys { generation, keys };
+        // A cluster runtime cannot use this candidate until the database
+        // grants a lease for its exact metadata. It may legitimately skip
+        // intervening generations already validated by the durable ledger.
+        if !guard.lease_required {
+            guard.keys.prepared(self.config.secret())?.validate_successor(next)?;
+        }
+        let lease_required = guard.lease_required;
+        *guard = VersionedJwtKeys { generation, keys, lease_required, lease_until: None };
         Ok(())
     }
 }

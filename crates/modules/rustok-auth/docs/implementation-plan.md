@@ -199,7 +199,10 @@ the optional complete file document is checked before startup and polled by the 
 Auth-owned durable generation admission now persists the current metadata and
 lifetime identity bindings before startup or local publication; source regressions
 cover rollback, conflicts, terminal removal, staging and restart of the store.
-Cross-replica publication/readiness and emergency revocation remain open.
+A database-serialized cluster lease/drain barrier now fences stale HTTP hosts
+at the JWT crypto boundary, including static-to-file enrollment. Explicit
+replica readiness, non-disruptive staged promotion and emergency revocation
+remain open; real multi-replica runtime evidence is pending.
 Scoped checks are pending. See the
 [owner contract](README.md#jwt-keyring-and-rotation).
 

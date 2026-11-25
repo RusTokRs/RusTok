@@ -431,7 +431,7 @@ fn prepared_header(ring: &ValidatedJwtKeyring, purpose: JwtPurpose) -> Header {
 fn encode_for_purpose<T: Serialize>(
     config: &AuthConfig, purpose: JwtPurpose, claims: &T,
 ) -> Result<String> {
-    config.with_prepared_jwt(|prepared| {
+    config.with_jwt_operation(|prepared| {
         let ring = prepared.for_purpose(purpose);
         encode(&prepared_header(ring, purpose), claims, ring.signing_key())
             .map_err(|_| AuthError::TokenEncodingFailed)
@@ -484,7 +484,7 @@ fn decode_for_purpose<T: DeserializeOwned>(
     purpose: JwtPurpose,
 ) -> Result<T> {
     let header = auth_jwt_header(token)?;
-    config.with_prepared_jwt(|prepared| {
+    config.with_jwt_operation(|prepared| {
         let selected = prepared.for_purpose(purpose);
         if header.alg != jwt_algorithm(selected.algorithm())
             || header.typ != purpose.typ()

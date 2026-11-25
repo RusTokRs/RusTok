@@ -108,6 +108,7 @@ RusToK provides a sandboxed, extensible module runtime supporting native Rust cr
 
 ### Domain Module Documentation
 
+- [ADR: JWT cluster lease barrier](../DECISIONS/2026-11-25-jwt-cluster-lease.md) — bounded crypto leases and database-serialized generation drain.
 - [ADR: Durable JWT generation fence](../DECISIONS/2026-11-25-jwt-generation-fence.md) — authenticated persistent generation and lifetime key identity admission.
 - [ADR: Process-local JWT keyring publication](../DECISIONS/2026-11-25-jwt-hot-rotation.md) — versioned host file, shared runtime fence and atomic key publication.
 - [ADR: Immutable prepared JWT keyring snapshots](../DECISIONS/2026-11-25-jwt-prepared-keyring.md) — once-only preparation, shared immutable keys and candidate replacement.

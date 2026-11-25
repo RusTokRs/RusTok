@@ -214,7 +214,7 @@ independent high-entropy material or use the documented derived defaults):
 
 For RS256 entries provide the matching private and public PEM fields alongside
 the keyring. Every update is a complete snapshot, not a patch. Replace the
-mounted file atomically and increase `generation`. The host checks every five
+mounted file atomically and increase `generation`. The host checks every two
 seconds, validates all four rings and production secret policy before publication,
 then replaces the generation and prepared keys together under a write fence.
 Existing AuthConfig clones share the live source. Synchronous signing and
@@ -250,15 +250,36 @@ the host during admission; a crash after durable commit but before local
 publication can recover by restarting with the committed generation. A
 rejected candidate retains the local snapshot.
 
-This is not a replica barrier: unchanged files and already-running replicas
-are not checked against the database per JWT operation. Multi-replica readiness
-and emergency distributed revocation remain open. In-flight business
-transactions that already authenticated are not cancelled by publication.
-Keys removed before first enrollment are not known to the ledger.
-Root rotation, database rollback protection and trusted-clock rollback
-protection are outside this contract. Source regressions are authored, unrun.
+### Cluster JWT lease and drain barrier
 
-See [durable generation fence ADR](../../../../DECISIONS/2026-11-25-jwt-generation-fence.md).
+All upgraded HTTP hosts (including static mode) require a current database
+lease for JWT signing and verification. Renewal confirms the exact durable
+generation and canonical metadata. Auth checks a ten-second local monotonic
+deadline before and after crypto; the DB records a conservative fifteen-second
+maximum lease horizon. The host supervisor runs every two seconds from
+bootstrap through serving. On a generation change the database closes old
+renewal for up to 60 seconds and returns Draining until all old lease horizons
+have elapsed. The same candidate is retried without requiring a file edit.
+Only then can the durable CAS commit the new generation. A disconnected or
+stale host cannot extend its local JWT authority; it can converge after
+receiving the committed document. An abandoned drain expires and permits
+the still-current generation to resume renewing.
+
+This is a conservative barrier, not a zero-downtime replica ACK protocol:
+every generation change may briefly interrupt JWT operations. It assumes a
+single authoritative database primary, disciplined clock rates with no forward
+DB clock jump, and no host suspend that stops the monotonic clock. Stop all
+older/unmanaged host binaries and apply both Auth migrations before cutover.
+A database error terminates the host; static mode exits when its lease is
+denied. File-backed stale hosts keep polling with JWT crypto fenced after
+expiry. In-flight business transactions already authorized are not cancelled.
+Root rotation, rollback of the database itself, explicit replica membership,
+non-disruptive staging/promotion and emergency distributed revocation remain
+separate work. Keys removed before first enrollment are not known to the ledger.
+Source regressions are authored, unrun.
+
+See [durable generation fence ADR](../../../../DECISIONS/2026-11-25-jwt-generation-fence.md)
+and [cluster lease barrier ADR](../../../../DECISIONS/2026-11-25-jwt-cluster-lease.md).
 
 ## JWT principal and invite admission
 

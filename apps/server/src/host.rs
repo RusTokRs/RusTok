@@ -25,7 +25,7 @@ const DEFAULT_JWT_ISSUER: &str = "rustok";
 const DEFAULT_JWT_AUDIENCE: &str = "rustok-admin";
 const MIN_PRODUCTION_HS256_SECRET_BYTES: usize = 64;
 const JWT_KEYRING_FILE_ENV: &str = "RUSTOK_JWT_KEYRING_FILE";
-const JWT_RELOAD_INTERVAL: Duration = Duration::from_secs(5);
+const JWT_RELOAD_INTERVAL: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Deserialize)]
 struct HostConfig {
@@ -163,19 +163,41 @@ pub async fn run() -> Result<()> {
     // The database is the durable admission authority. Do not expose a
     // listener or compose request consumers before the startup fence succeeds.
     let fence = rustok_auth::JwtGenerationFence::new(db.clone());
-    let (auth_config, reload) = if let Some((path, generation, digest)) = reload_source {
-        fence.admit(generation, &auth_config).await.map_err(crate::auth::auth_err)?;
-        let (live, publisher) = auth_config.into_live_jwt(generation).map_err(crate::auth::auth_err)?;
-        tracing::info!(generation, "JWT keyring runtime initialized");
-        (live, Some(JwtFileReload { path, publisher, digest, fence }))
+    let generation = if let Some((_, generation, _)) = &reload_source {
+        loop {
+            let admission = tokio::select! {
+                biased;
+                _ = &mut shutdown_signal => return Ok(()),
+                result = fence.admit(*generation, &auth_config) => result.map_err(crate::auth::auth_err)?,
+            };
+            if admission == rustok_auth::JwtAdmission::Admitted {
+                break *generation;
+            }
+            tokio::select! {
+                biased;
+                _ = &mut shutdown_signal => return Ok(()),
+                _ = tokio::time::sleep(JWT_RELOAD_INTERVAL) => {}
+            }
+        }
     } else {
         fence.ensure_static_allowed().await.map_err(crate::auth::auth_err)?;
-        (auth_config, None)
+        0
     };
+    let (auth_config, publisher) = auth_config.into_cluster_jwt(generation)
+        .map_err(crate::auth::auth_err)?;
+    let supervisor = JwtRuntimeSupervisor {
+        source: reload_source.map(|(path, _, digest)| JwtFileSource { path, digest }),
+        publisher, fence,
+    };
+    if !supervisor.fence.renew(&supervisor.publisher).await.map_err(crate::auth::auth_err)? {
+        return Err(Error::Message("JWT cluster lease denied at startup".into()));
+    }
+    tracing::info!(generation, "JWT keyring runtime initialized");
 
     let runtime_ctx = ServerRuntimeContext::new(db, rustok_settings.clone());
 
     let result = with_runtime_shutdown(&runtime_ctx, async {
+        let mut supervisor = Box::pin(supervisor.run(production));
         let startup = async {
             initialize_server_context(&runtime_ctx, &config.auth.jwt.secret, &database_uri)
                 .await?;
@@ -207,6 +229,7 @@ pub async fn run() -> Result<()> {
                 return Ok(());
             }
             result = startup => result?,
+            result = &mut supervisor => return result,
         };
 
         let serve = async {
@@ -218,15 +241,11 @@ pub async fn run() -> Result<()> {
             .await
             .map_err(Error::Io)
         };
-        if let Some(reload) = reload {
-            // Reload work belongs to the HTTP host lifetime. No detached
-            // task survives shutdown, and no lock is held across await.
-            tokio::select! {
-                result = serve => result,
-                result = reload.run(production) => result,
-            }
-        } else {
-            serve.await
+        // The supervisor covers bootstrap and serving. Dropping it revokes
+        // local JWT authority; the DB deadline still conservatively drains.
+        tokio::select! {
+            result = serve => result,
+            result = &mut supervisor => result,
         }
     })
     .await;
@@ -615,61 +634,89 @@ async fn read_jwt_keyring_file(path: &Path) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
-struct JwtFileReload {
+struct JwtFileSource {
     path: PathBuf,
-    publisher: rustok_auth::JwtKeyringPublisher,
     digest: [u8; 32],
+}
+
+struct JwtRuntimeSupervisor {
+    source: Option<JwtFileSource>,
+    publisher: rustok_auth::JwtKeyringPublisher,
     fence: rustok_auth::JwtGenerationFence,
 }
 
-impl JwtFileReload {
+impl Drop for JwtRuntimeSupervisor {
+    fn drop(&mut self) {
+        self.publisher.revoke_lease();
+    }
+}
+
+impl JwtRuntimeSupervisor {
     async fn run(mut self, production: bool) -> Result<()> {
         let mut interval = tokio::time::interval(JWT_RELOAD_INTERVAL);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             interval.tick().await;
-            let bytes = match read_jwt_keyring_file(&self.path).await {
-                Ok(bytes) => bytes,
-                Err(_) => {
-                    tracing::warn!("JWT keyring reload source unavailable; retaining active generation");
-                    continue;
-                }
-            };
-            let digest: [u8; 32] = sha256_digest(&[&bytes]);
-            if digest == self.digest {
-                continue;
+            if let Some(source) = self.source.as_mut() {
+                Self::poll_source(source, &self.publisher, &self.fence, production).await?;
             }
-            // A rejected document is retried only after a new file revision.
-            // The last-known-good keyring stays active on every failure.
-            self.digest = digest;
-            let (generation, candidate) = match self.publisher.prepare_document(&bytes) {
-                Ok(candidate) => candidate,
-                Err(_) => {
-                    tracing::warn!("JWT keyring reload rejected; retaining active generation");
-                    continue;
-                }
-            };
-            if generation <= self.publisher.generation().map_err(crate::auth::auth_err)?
-                || validate_auth_deployment(&candidate, production).is_err()
-            {
-                tracing::warn!("JWT keyring reload rejected; retaining active generation");
-                continue;
+            let granted = self.fence.renew(&self.publisher).await.map_err(crate::auth::auth_err)?;
+            if !granted && self.source.is_none() {
+                return Err(Error::Message("Static JWT cluster lease denied".into()));
             }
-
-            // Durable commit precedes the local write fence. Rejection is safe
-            // to retain; an unknown commit result is not. Do not continue
-            // serving after an unavailable authority or a post-commit failure.
-            match self.fence.admit(generation, &candidate).await {
-                Ok(()) => {}
-                Err(rustok_auth::AuthError::Validation(_)) => {
-                    tracing::warn!("JWT keyring generation rejected by durable fence");
-                    continue;
-                }
-                Err(error) => return Err(crate::auth::auth_err(error)),
-            }
-            self.publisher.publish(generation, candidate).map_err(crate::auth::auth_err)?;
-            tracing::info!(generation, "JWT keyring generation published");
+            // A draining or stale file-backed host keeps polling to converge;
+            // its JWT operations fail closed when its previous lease expires.
         }
+    }
+
+    async fn poll_source(
+        source: &mut JwtFileSource,
+        publisher: &rustok_auth::JwtKeyringPublisher,
+        fence: &rustok_auth::JwtGenerationFence,
+        production: bool,
+    ) -> Result<()> {
+        let bytes = match read_jwt_keyring_file(&source.path).await {
+            Ok(bytes) => bytes,
+            Err(_) => {
+                tracing::warn!("JWT keyring reload source unavailable");
+                return Ok(());
+            }
+        };
+        let digest = sha256_digest(&[&bytes]);
+        if digest == source.digest {
+            return Ok(());
+        }
+        let (generation, candidate) = match publisher.prepare_document(&bytes) {
+            Ok(candidate) => candidate,
+            Err(_) => {
+                source.digest = digest;
+                tracing::warn!("JWT keyring reload rejected");
+                return Ok(());
+            }
+        };
+        if generation <= publisher.generation().map_err(crate::auth::auth_err)?
+            || validate_auth_deployment(&candidate, production).is_err()
+        {
+            source.digest = digest;
+            tracing::warn!("JWT keyring reload rejected");
+            return Ok(());
+        }
+        match fence.admit(generation, &candidate).await {
+            Ok(rustok_auth::JwtAdmission::Admitted) => {}
+            // Do not mark the file processed: the same candidate must retry
+            // after the old database lease horizon has drained.
+            Ok(rustok_auth::JwtAdmission::Draining) => return Ok(()),
+            Err(rustok_auth::AuthError::Validation(_)) => {
+                source.digest = digest;
+                tracing::warn!("JWT keyring generation rejected by durable fence");
+                return Ok(());
+            }
+            Err(error) => return Err(crate::auth::auth_err(error)),
+        }
+        publisher.publish(generation, candidate).map_err(crate::auth::auth_err)?;
+        source.digest = digest;
+        tracing::info!(generation, "JWT keyring generation published");
+        Ok(())
     }
 }
 
