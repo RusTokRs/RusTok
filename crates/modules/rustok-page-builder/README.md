@@ -62,7 +62,7 @@ rebuild still checks retained hashes and fails closed if a corrected materializa
   `srcset` would silently change which image the browser picks). CSS image(), src(),
   image-set() and -webkit-image-set() quoted candidates are also checked against the same
   image-resource policy.
-  Policy v4 shares Fly URL shape, CSS property-name, srcset and CSS resource-string admission,
+  Policy v5 shares Fly URL shape, CSS property-name, srcset and CSS resource-string admission,
   and validates project theme tokens before publication in addition to canonical, Open Graph
   and Twitter metadata URLs in every locale.
   After the policy hash changes, exact

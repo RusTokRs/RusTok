@@ -128,8 +128,8 @@ pub fn validate_token_value(name: &str, value: &str) -> Result<(), String> {
         .chars()
         .filter(|character| !character.is_ascii_whitespace())
         .collect::<String>();
-    let image_set_strings = crate::css_resource_string_ranges(value);
-    if !matches!(image_set_strings, Some(ref ranges) if ranges.is_empty()) {
+    let resource_strings = crate::css_resource_string_ranges(value);
+    if !matches!(resource_strings, Some(ref ranges) if ranges.is_empty()) {
         return Err(format!(
             "design token {name} uses a quoted CSS resource that is not allowed in theme tokens"
         ));

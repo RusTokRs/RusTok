@@ -7,7 +7,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
-pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT: &str = "page_builder_static_publish_policy_v4";
+pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT: &str = "page_builder_static_publish_policy_v5";
 
 const ALLOWED_TAGS: &[&str] = &[
     "a",
@@ -1620,10 +1620,10 @@ mod tests {
     }
 
     #[test]
-    fn v3_policy_evidence_is_not_current_after_v4_cutover() {
+    fn v4_policy_evidence_is_not_current_after_v5_cutover() {
         let policy = PageBuilderStaticPublishPolicy::default();
         let evidence = PageBuilderStaticPublishPolicyEvidence {
-            format: "page_builder_static_publish_policy_v3".to_string(),
+            format: "page_builder_static_publish_policy_v4".to_string(),
             policy_hash: policy.policy_hash().expect("current hash"),
         };
         assert!(evidence.verify_integrity().is_err());

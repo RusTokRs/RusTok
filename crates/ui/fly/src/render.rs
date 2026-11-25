@@ -1283,7 +1283,9 @@ pub fn css_resource_string_ranges(value: &str) -> Option<Vec<std::ops::Range<usi
                 let open = cursor + function.len() - 1;
                 let close = css_function_close(value, open)?;
                 collect_css_string_ranges(value, open + 1, close, &mut ranges)?;
-                cursor = close + 1;
+                // Continue scanning inside this function so nested image()/src() calls
+                // are handled by their own grammar rather than as arbitrary strings.
+                cursor = open + 1;
                 continue;
             }
         }
@@ -1337,19 +1339,33 @@ fn collect_css_string_ranges(
     ranges: &mut Vec<std::ops::Range<usize>>,
 ) -> Option<()> {
     let mut cursor = start;
+    let mut nested_depth = 0usize;
     while cursor < end {
         match value.as_bytes()[cursor] {
             b'\'' | b'"' => {
                 let after = skip_css_string(value, cursor)?;
                 if after > end { return None; }
-                ranges.push(cursor + 1..after - 1);
+                if nested_depth == 0 {
+                    ranges.push(cursor + 1..after - 1);
+                }
                 cursor = after;
+            }
+            b'(' => {
+                nested_depth = nested_depth.checked_add(1)?;
+                cursor += 1;
+            }
+            b')' => {
+                if nested_depth == 0 {
+                    return None;
+                }
+                nested_depth -= 1;
+                cursor += 1;
             }
             b'\\' => return None,
             _ => cursor += 1,
         }
     }
-    Some(())
+    (nested_depth == 0).then_some(())
 }
 
 /// Decide whether a single CSS declaration may be emitted.
@@ -2215,19 +2231,18 @@ mod tests {
 
     #[test]
     fn css_resource_string_scanner_ignores_literals_and_finds_nested_functions() {
-        let css = r#"content: "image-set('not-a-resource')"; background-image: IMAGE-SET("/hero.png" 1x, url("/hero@2x.png") 2x, type("image/avif")); -webkit-image-set('/webkit.png' 1x); background: image("https://cdn.example/hero.png", red); background: cross-fade(image("/fade.png"), src("/source.png"))"#;
+        let css = r#"content: "image-set('not-a-resource')"; background-image: IMAGE-SET("/hero.png" 1x, url("/hero@2x.png") 2x, type("image/avif")); -webkit-image-set('/webkit.png' 1x); background: image("https://cdn.example/hero.png", red); background: cross-fade(image("/fade.png"), src("/source.png")); font: src("/font.woff2" format("woff2"))"#;
         let ranges = css_resource_string_ranges(css).expect("valid CSS string boundaries");
         let values = ranges.iter().map(|range| &css[range.clone()]).collect::<Vec<_>>();
         assert_eq!(
             values,
             [
                 "/hero.png",
-                "/hero@2x.png",
-                "image/avif",
                 "/webkit.png",
                 "https://cdn.example/hero.png",
                 "/fade.png",
-                "/source.png"
+                "/source.png",
+                "/font.woff2"
             ]
         );
         assert!(css_resource_string_ranges(r#"content: "image-set('/literal.png')""#)
