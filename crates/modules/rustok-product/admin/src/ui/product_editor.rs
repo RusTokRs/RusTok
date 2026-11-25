@@ -855,6 +855,9 @@ pub fn ProductEditorPage(
             ));
             return;
         }
+        if !draft.has_changes() {
+            return;
+        }
         if let Err(message) = validate_editor_variant_draft(&draft) {
             set_error_msg.set(Some(message));
             return;
@@ -1316,8 +1319,8 @@ pub fn ProductEditorPage(
                         </h2>
                         {is_editing.then(|| view! {
                             <div class="space-y-2 text-xs text-muted-foreground">
-                                <p>{if is_ru { "Цены, SKU, штрихкод, профиль доставки и остаток сохраняются отдельной командой, не кнопками документа. Пустая цена оставляет базовые цены без изменений." }
-                                    else { "Price, SKU, barcode, shipping profile and stock use a separate command, not document Save/Publish. An empty price leaves base prices unchanged." }}</p>
+                                <p>{if is_ru { "Цены, SKU, штрихкод, профиль доставки и остаток сохраняются отдельной командой, не кнопками документа. Пустая цена не меняет базовые цены; для удаления цены в основной валюте используйте «Очистить основную цену»." }
+                                    else { "Price, SKU, barcode, shipping profile and stock use a separate command, not document Save/Publish. An empty price leaves base prices unchanged; use Clear primary price to remove the primary-currency price." }}</p>
                                 <p>{if is_ru { "Вариант: " } else { "Variant target: " }}
                                     <code>{move || variant_target_id.get().unwrap_or_else(|| "—".to_string())}</code>
                                 </p>
