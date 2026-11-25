@@ -270,6 +270,94 @@ async fn test_create_product_success() {
 }
 
 #[tokio::test]
+async fn public_handle_fallback_is_stable_across_locales_and_respects_publication() {
+    use rustok_product::services::catalog::helpers::find_published_product_id_by_handle;
+
+    let (db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let handle = unique_slug("shared-localized-handle");
+    let mut products = Vec::new();
+    for locale in ["zh", "de"] {
+        let mut input = create_test_product_input();
+        input.translations[0].locale = locale.to_owned();
+        input.translations[0].handle = Some(handle.clone());
+        let product = service
+            .create_product(tenant_id, actor_id, input)
+            .await
+            .expect("create localized product");
+        service
+            .publish_product(tenant_id, actor_id, product.id)
+            .await
+            .expect("publish localized product");
+        products.push(product.id);
+    }
+
+    for (locale, fallback, expected) in [
+        ("it", "en", products[1]),
+        ("zh", "de", products[0]),
+        ("it", "zh", products[0]),
+    ] {
+        assert_eq!(
+            find_published_product_id_by_handle(
+                &db, tenant_id, &handle, locale, fallback, None,
+            )
+            .await
+            .expect("resolve public handle"),
+            Some(expected)
+        );
+    }
+
+    service
+        .unpublish_product(tenant_id, actor_id, products[1])
+        .await
+        .expect("unpublish preferred fallback");
+    assert_eq!(
+        find_published_product_id_by_handle(&db, tenant_id, &handle, "it", "en", None)
+            .await
+            .expect("resolve remaining public handle"),
+        Some(products[0])
+    );
+    assert_eq!(
+        find_published_product_id_by_handle(&db, Uuid::new_v4(), &handle, "it", "en", None)
+            .await
+            .expect("resolve for unrelated tenant"),
+        None
+    );
+}
+
+#[tokio::test]
+async fn tags_only_edit_uses_a_stable_stored_locale_without_overriding_explicit_order() {
+    use rustok_product::services::catalog::helpers::resolve_tag_locale_for_update;
+
+    let (db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let mut input = create_test_product_input();
+    input.translations[0].locale = "zh".to_owned();
+    let mut second = input.translations[0].clone();
+    second.locale = "de".to_owned();
+    input.translations.push(second);
+    let translations = input.translations.clone();
+    let product = service
+        .create_product(tenant_id, Uuid::new_v4(), input)
+        .await
+        .expect("create multilingual product");
+
+    assert_eq!(
+        resolve_tag_locale_for_update(&db, tenant_id, product.id, None)
+            .await
+            .expect("stored locale"),
+        "de"
+    );
+    assert_eq!(
+        resolve_tag_locale_for_update(&db, tenant_id, product.id, Some(&translations))
+            .await
+            .expect("explicit locale order"),
+        "zh"
+    );
+}
+
+#[tokio::test]
 async fn test_shipping_profile_slug_round_trips_through_catalog_service() {
     let (_db, service) = setup().await;
     let service =

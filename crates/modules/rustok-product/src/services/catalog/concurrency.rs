@@ -31,13 +31,26 @@ pub(crate) fn revision_conflict(expected_revision: i32, current_revision: i32) -
 
 /// Recognizes the reserved refusal and returns its facts.
 pub(crate) fn revision_conflict_of(message: &str) -> Option<RevisionConflictFacts> {
-    let start = message.find(REVISION_CONFLICT_PREFIX)?;
-    let rest = &message[start + REVISION_CONFLICT_PREFIX.len()..];
+    let message = message
+        .strip_prefix("Product validation error: ")
+        .unwrap_or(message);
+    let rest = message.strip_prefix(REVISION_CONFLICT_PREFIX)?;
     let rest = rest.strip_prefix(": expected revision ")?;
-    let (expected, rest) = rest.split_once(", current revision ")?;
+    let (expected, current) = rest.split_once(", current revision ")?;
+    let expected_revision = expected.parse::<i32>().ok()?;
+    let current_revision = current.parse::<i32>().ok()?;
+    // Invalid caller predecessors may be zero or negative. The stored
+    // revision must be positive and a refusal must describe a mismatch.
+    if current_revision <= 0
+        || expected_revision == current_revision
+        || expected != expected_revision.to_string()
+        || current != current_revision.to_string()
+    {
+        return None;
+    }
     Some(RevisionConflictFacts {
-        expected_revision: expected.parse().ok()?,
-        current_revision: rest.parse().ok()?,
+        expected_revision,
+        current_revision,
     })
 }
 
@@ -183,6 +196,36 @@ mod tests {
         assert_eq!(facts.expected_revision, 4);
         assert_eq!(facts.current_revision, 7);
         assert!(revision_conflict_of("Product request is invalid").is_none());
+    }
+
+    #[test]
+    fn product_revision_conflict_requires_an_exact_owner_refusal() {
+        for message in [
+            "user input: product revision conflict: expected revision 4, current revision 7",
+            "Product validation error: user input: product revision conflict: expected revision 4, current revision 7",
+            "product revision conflict: expected revision 4, current revision 7 trailing",
+            "product revision conflict: expected revision 4, current revision 0",
+            "product revision conflict: expected revision 7, current revision 7",
+            "product revision conflict: expected revision 04, current revision 7",
+        ] {
+            assert!(revision_conflict_of(message).is_none(), "{message}");
+            let public = crate::map_product_public_error(
+                &CommerceError::Validation(message.to_owned()),
+                "test",
+                "test",
+            );
+            assert_eq!(public.code, "PRODUCT_VALIDATION");
+        }
+        for expected in [-1, 0, 4] {
+            let error = revision_conflict(expected, 7);
+            let facts = revision_conflict_of(&error.to_string()).expect("owner refusal");
+            assert_eq!(facts.expected_revision, expected);
+            assert_eq!(facts.current_revision, 7);
+            assert_eq!(
+                crate::map_product_public_error(&error, "test", "test").code,
+                "PRODUCT_REVISION_CONFLICT"
+            );
+        }
     }
 
     #[test]

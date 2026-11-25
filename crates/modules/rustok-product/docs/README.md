@@ -61,6 +61,16 @@
   the composed `rustok-ai` consumer has live unavailable/deadline fallback
   evidence. `transport_verified` remains closed because Commerce checkout is a
   hard dependency and no external Product adapter has live execution evidence.
+- Public Product handle lookup tries the requested locale, then the configured fallback
+  locale, then other locales in lexicographic locale order (stable Product/translation
+  IDs break ties). Tenant, publication and channel visibility checks still apply before
+  selecting a candidate. A tags-only edit with no submitted translations chooses the
+  lexicographically first stored Product locale; supplied translation order retains
+  precedence. This avoids unspecified database row order on both backends.
+- Product editorial revision refusal classification requires the complete owner
+  message, not a matching substring in arbitrary validation text. The shared public
+  error and command-port classifiers retain their existing codes for genuine conflicts.
+  Focused source regressions for these changes were authored but not run.
 - Canonical vocabulary and attach semantics for product tags live in
   `rustok-taxonomy` + `product_tags`, and the public contract uses a first-class
   `tags` field instead of legacy `metadata.tags`.
