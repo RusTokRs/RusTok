@@ -13,7 +13,7 @@
 
 ### Exported Components & Pages
 
-- `RolesPage` (default export & alias `RolesAdminPage`): Server component loading roles with system fallback and rendering the full RBAC view.
+- `RolesPage` (default export & alias `RolesAdminPage`): Server component loading tenant roles and platform permissions catalog (failing closed with an explicit error state on API error) and rendering the full RBAC view.
 - `RbacView`: Client container managing tab switching (Roles, Permissions Table), metrics cards, dialog states, and dynamic permissions fetching.
 - `RolesTable`: Data table displaying roles, system vs custom badges, permission totals, inactive counts, and expansion drawers.
 - `PermissionsTable`: Filterable matrix table displaying all platform permissions, associated modules, and granted roles.

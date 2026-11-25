@@ -66,7 +66,12 @@ export function EditRoleDialog({
     const cleanName = name.trim();
 
     if (!cleanName) {
-      toast.error('Role name is required');
+      toast.error(t('toast-error'));
+      return;
+    }
+
+    if (!isSuperAdmin && platformPermissions.length === 0) {
+      toast.error(t('catalog-load-error'));
       return;
     }
 
@@ -76,7 +81,7 @@ export function EditRoleDialog({
         {
           slug: role.slug,
           name: cleanName,
-          description: description.trim() || undefined,
+          description: description.trim() || null,
           permissions: isSuperAdmin ? undefined : selectedPermissions
         },
         { token, tenantSlug }

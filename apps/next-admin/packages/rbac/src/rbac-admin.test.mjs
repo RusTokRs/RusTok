@@ -199,6 +199,40 @@ test('updateRole validates slug and preserves super_admin permission immutabilit
   assert.deepEqual(capturedVars.input.permissions, ['content:delete']);
 });
 
+test('updateRole rejects blank name and preserves explicit null description clearing', async () => {
+  await assert.rejects(
+    async () => api.updateRole({ slug: 'editor', name: '   ' }),
+    /Role name cannot be empty/,
+  );
+
+  await api.updateRole({
+    slug: 'editor',
+    name: '  Content Editor  ',
+    description: '   ',
+  });
+  assert.deepEqual(calls.at(-1)?.variables, {
+    input: {
+      slug: 'editor',
+      name: 'Content Editor',
+      description: null,
+      permissions: undefined,
+    },
+  });
+});
+
+test('roles-page fails closed without hardcoded fallback permissions and permissions-table is localized', () => {
+  const rolesPageSource = readFileSync(new URL('./pages/roles-page.tsx', import.meta.url), 'utf8');
+  assert.equal(rolesPageSource.includes('FALLBACK_SYSTEM_ROLES'), false);
+  assert.equal(rolesPageSource.includes('content:manage'), false);
+
+  const assignDialogSource = readFileSync(
+    new URL('./components/assign-role-dialog.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.equal(assignDialogSource.includes("t('btn.cancel')"), false);
+  assert.equal(assignDialogSource.includes("t('btn-cancel')"), true);
+});
+
 test('deleteRole protects super_admin identity from deletion', async () => {
   let capturedVars = null;
   const api = createApiModule(async (query, vars) => {

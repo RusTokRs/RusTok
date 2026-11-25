@@ -1,4 +1,10 @@
-import { listRoles, type GqlOpts, type RoleInfo } from '../api/roles';
+import {
+  listPlatformPermissions,
+  listRoles,
+  type GqlOpts,
+  type PlatformPermissionItem,
+  type RoleInfo
+} from '../api/roles';
 import { RbacView } from '../components/rbac-view';
 
 interface RolesPageProps {
@@ -6,82 +12,43 @@ interface RolesPageProps {
   tenantSlug?: string | null;
 }
 
-const FALLBACK_SYSTEM_ROLES: RoleInfo[] = [
-  {
-    slug: 'super_admin',
-    displayName: 'Super Admin',
-    isSystem: true,
-    permissions: [
-      'users:manage',
-      'tenants:manage',
-      'modules:manage',
-      'settings:manage',
-      'products:manage',
-      'orders:manage',
-      'inventory:manage',
-      'content:manage',
-      'workflows:manage',
-      'ai:manage'
-    ]
-  },
-  {
-    slug: 'admin',
-    displayName: 'Admin',
-    isSystem: true,
-    permissions: [
-      'users:manage',
-      'settings:manage',
-      'products:manage',
-      'orders:manage',
-      'inventory:manage',
-      'content:manage',
-      'workflows:manage',
-      'modules:read',
-      'logs:read'
-    ]
-  },
-  {
-    slug: 'manager',
-    displayName: 'Manager',
-    isSystem: true,
-    permissions: [
-      'products:read',
-      'products:create',
-      'products:update',
-      'orders:read',
-      'orders:update',
-      'inventory:read',
-      'inventory:update',
-      'content:manage'
-    ]
-  },
-  {
-    slug: 'customer',
-    displayName: 'Customer',
-    isSystem: true,
-    permissions: [
-      'products:read',
-      'categories:read',
-      'orders:read',
-      'orders:create',
-      'comments:create'
-    ]
-  }
-];
-
 export default async function RolesPage({ token, tenantSlug }: RolesPageProps) {
   const opts: GqlOpts = { token, tenantSlug };
-  let roles: RoleInfo[] = [];
+  const [rolesResult, catalogResult] = await Promise.allSettled([
+    listRoles(opts),
+    listPlatformPermissions(opts)
+  ]);
 
-  try {
-    roles = await listRoles(opts);
-  } catch (error) {
-    console.error(
-      'Failed to query RBAC roles from API, falling back to system defaults:',
-      error
-    );
-    roles = FALLBACK_SYSTEM_ROLES;
+  let roles: RoleInfo[] = [];
+  let initialError: string | null = null;
+  if (rolesResult.status === 'fulfilled') {
+    roles = rolesResult.value;
+  } else {
+    initialError =
+      rolesResult.reason instanceof Error
+        ? rolesResult.reason.message
+        : 'Failed to load RBAC roles';
   }
 
-  return <RbacView roles={roles} token={token} tenantSlug={tenantSlug} />;
+  let initialPlatformPermissions: PlatformPermissionItem[] = [];
+  let initialPermissionsError: string | null = null;
+  if (catalogResult.status === 'fulfilled') {
+    initialPlatformPermissions = catalogResult.value;
+  } else {
+    initialPermissionsError =
+      catalogResult.reason instanceof Error
+        ? catalogResult.reason.message
+        : 'Failed to load platform permissions catalog';
+  }
+
+  return (
+    <RbacView
+      roles={roles}
+      initialPlatformPermissions={initialPlatformPermissions}
+      initialError={initialError}
+      initialPermissionsError={initialPermissionsError}
+      token={token}
+      tenantSlug={tenantSlug}
+    />
+  );
 }

@@ -1,11 +1,13 @@
 'use client';
 
 import * as React from 'react';
+import { useTranslations } from '@rustok/next-fluent/client';
 import {
   DataTableStatic,
   type DataTableStaticColumn
 } from '@/widgets/data-table';
 import { Badge } from '@/shared/ui/shadcn/badge';
+import { Button } from '@/shared/ui/shadcn/button';
 import { Input } from '@/shared/ui/shadcn/input';
 import {
   Select,
@@ -15,11 +17,21 @@ import {
   SelectValue
 } from '@/shared/ui/shadcn/select';
 import { IconSearch, IconKey, IconFilter } from '@tabler/icons-react';
-import type { RoleInfo } from '../api/roles';
-import type { PermissionRecord } from '../types';
+import type { PlatformPermissionItem, RoleInfo } from '../api/roles';
 
 interface PermissionsTableProps {
   roles: RoleInfo[];
+  platformPermissions?: PlatformPermissionItem[];
+}
+
+interface CatalogPermissionRow {
+  slug: string;
+  resource: string;
+  action: string;
+  module: string;
+  moduleStatus: string;
+  description?: string | null;
+  roles: Array<{ slug: string; displayName: string }>;
 }
 
 const ROLE_BADGE_VARIANT: Record<
@@ -32,32 +44,63 @@ const ROLE_BADGE_VARIANT: Record<
   customer: 'outline'
 };
 
-export function PermissionsTable({ roles }: PermissionsTableProps) {
+function splitPermission(perm: string): { resource: string; action: string } {
+  const sepIdx = perm.lastIndexOf(':');
+  if (sepIdx !== -1) {
+    return {
+      resource: perm.slice(0, sepIdx),
+      action: perm.slice(sepIdx + 1)
+    };
+  }
+  const dotIdx = perm.lastIndexOf('.');
+  if (dotIdx !== -1) {
+    return {
+      resource: perm.slice(0, dotIdx),
+      action: perm.slice(dotIdx + 1)
+    };
+  }
+  return { resource: 'core', action: perm };
+}
+
+export function PermissionsTable({
+  roles,
+  platformPermissions = []
+}: PermissionsTableProps) {
+  const t = useTranslations('rbac');
   const [search, setSearch] = React.useState('');
   const [selectedModule, setSelectedModule] = React.useState('all');
 
-  // Extract all distinct permissions from all roles
-  const permissions = React.useMemo<PermissionRecord[]>(() => {
-    const map = new Map<string, PermissionRecord>();
+  const permissions = React.useMemo<CatalogPermissionRow[]>(() => {
+    const map = new Map<string, CatalogPermissionRow>();
+
+    for (const item of platformPermissions) {
+      map.set(item.permission, {
+        slug: item.permission,
+        resource: item.resource,
+        action: item.action,
+        module: item.moduleSlug || item.resource,
+        moduleStatus: item.moduleStatus || 'core',
+        description: item.description,
+        roles: []
+      });
+    }
 
     for (const role of roles) {
       for (const perm of role.permissions) {
-        if (!map.has(perm)) {
-          const sepIdx =
-            perm.indexOf(':') !== -1 ? perm.indexOf(':') : perm.indexOf('.');
-          const mod = sepIdx !== -1 ? perm.slice(0, sepIdx) : 'core';
-          const act = sepIdx !== -1 ? perm.slice(sepIdx + 1) : perm;
+        const existing = map.get(perm);
+        const roleRef = { slug: role.slug, displayName: role.displayName };
+        if (!existing) {
+          const parsed = splitPermission(perm);
           map.set(perm, {
             slug: perm,
-            module: mod,
-            action: act,
-            roles: [role.displayName]
+            resource: parsed.resource,
+            action: parsed.action,
+            module: parsed.resource,
+            moduleStatus: 'core',
+            roles: [roleRef]
           });
-        } else {
-          const existing = map.get(perm)!;
-          if (!existing.roles.includes(role.displayName)) {
-            existing.roles.push(role.displayName);
-          }
+        } else if (!existing.roles.some((r) => r.slug === role.slug)) {
+          existing.roles.push(roleRef);
         }
       }
     }
@@ -65,7 +108,7 @@ export function PermissionsTable({ roles }: PermissionsTableProps) {
     return Array.from(map.values()).sort((a, b) =>
       a.slug.localeCompare(b.slug)
     );
-  }, [roles]);
+  }, [roles, platformPermissions]);
 
   const modules = React.useMemo(() => {
     const mods = new Set(permissions.map((p) => p.module));
@@ -80,72 +123,94 @@ export function PermissionsTable({ roles }: PermissionsTableProps) {
       const matchesSearch =
         !q ||
         perm.slug.toLowerCase().includes(q) ||
+        perm.resource.toLowerCase().includes(q) ||
         perm.module.toLowerCase().includes(q) ||
         perm.action.toLowerCase().includes(q) ||
-        perm.roles.some((r) => r.toLowerCase().includes(q));
+        (perm.description?.toLowerCase().includes(q) ?? false) ||
+        perm.roles.some(
+          (r) =>
+            r.displayName.toLowerCase().includes(q) ||
+            r.slug.toLowerCase().includes(q)
+        );
 
       return matchesModule && matchesSearch;
     });
   }, [permissions, selectedModule, search]);
 
-  // The shared static table owns the header, the row loop and the empty state; this component only
-  // declares what a permission column shows.
-  const columns: DataTableStaticColumn<PermissionRecord>[] = [
+  const columns: DataTableStaticColumn<CatalogPermissionRow>[] = [
     {
       id: 'module',
-      header: 'Module',
-      headerClassName: 'w-[140px]',
+      header: t('perms-col-module'),
+      headerClassName: 'w-[180px]',
       cell: (perm) => (
-        <Badge variant='outline' className='font-mono text-xs capitalize'>
-          {perm.module}
-        </Badge>
+        <div className='flex items-center gap-1.5'>
+          <Badge variant='outline' className='font-mono text-xs'>
+            {perm.module}
+          </Badge>
+          {perm.moduleStatus === 'disabled' && (
+            <Badge variant='secondary' className='text-[10px]'>
+              {t('module-disabled')}
+            </Badge>
+          )}
+        </div>
       )
     },
     {
       id: 'slug',
-      header: 'Permission Key',
-      headerClassName: 'min-w-[220px]',
+      header: t('perms-col-permission'),
+      headerClassName: 'min-w-[240px]',
       cell: (perm) => (
-        <div className='flex items-center gap-2'>
-          <IconKey className='text-muted-foreground h-3.5 w-3.5 flex-shrink-0' />
-          <span className='text-foreground font-mono text-xs font-semibold'>
-            {perm.slug}
-          </span>
+        <div className='space-y-0.5'>
+          <div className='flex items-center gap-2'>
+            <IconKey className='text-muted-foreground h-3.5 w-3.5 flex-shrink-0' />
+            <span className='text-foreground font-mono text-xs font-semibold'>
+              {perm.slug}
+            </span>
+          </div>
+          {perm.description && (
+            <p className='text-muted-foreground text-xs'>{perm.description}</p>
+          )}
         </div>
       )
     },
     {
-      id: 'action',
-      header: 'Action',
-      headerClassName: 'w-[120px]',
+      id: 'resource',
+      header: t('perms-col-resource'),
+      headerClassName: 'w-[160px]',
       cell: (perm) => (
-        <Badge variant='secondary' className='font-mono text-xs'>
-          {perm.action}
-        </Badge>
+        <div className='flex items-center gap-1.5'>
+          <span className='font-mono text-xs'>{perm.resource}</span>
+          <Badge variant='secondary' className='font-mono text-xs'>
+            {perm.action}
+          </Badge>
+        </div>
       )
     },
     {
       id: 'roles',
-      header: 'Granted to Roles',
-      cell: (perm) => (
-        <div className='flex flex-wrap gap-1.5'>
-          {perm.roles.map((roleName) => (
-            <Badge
-              key={roleName}
-              variant={
-                roleName.toLowerCase().includes('admin')
-                  ? 'default'
-                  : 'secondary'
-              }
-              className='text-xs'
-            >
-              {roleName}
-            </Badge>
-          ))}
-        </div>
-      )
+      header: t('perms-col-roles'),
+      cell: (perm) =>
+        perm.roles.length > 0 ? (
+          <div className='flex flex-wrap gap-1.5'>
+            {perm.roles.map((roleRef) => (
+              <Badge
+                key={roleRef.slug}
+                variant={ROLE_BADGE_VARIANT[roleRef.slug] ?? 'secondary'}
+                className='text-xs'
+              >
+                {roleRef.displayName}
+              </Badge>
+            ))}
+          </div>
+        ) : (
+          <span className='text-muted-foreground text-xs'>
+            {t('perms-unassigned')}
+          </span>
+        )
     }
   ];
+
+  const hasFilter = search.trim().length > 0 || selectedModule !== 'all';
 
   return (
     <div className='space-y-4'>
@@ -154,7 +219,7 @@ export function PermissionsTable({ roles }: PermissionsTableProps) {
         <div className='relative max-w-sm flex-1'>
           <IconSearch className='text-muted-foreground absolute top-2.5 left-2.5 h-4 w-4' />
           <Input
-            placeholder='Search permissions or roles...'
+            placeholder={t('perms-search-placeholder')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className='pl-9'
@@ -164,12 +229,12 @@ export function PermissionsTable({ roles }: PermissionsTableProps) {
         <div className='flex items-center gap-2'>
           <IconFilter className='text-muted-foreground h-4 w-4' />
           <Select value={selectedModule} onValueChange={setSelectedModule}>
-            <SelectTrigger className='w-[180px]'>
-              <SelectValue placeholder='All modules' />
+            <SelectTrigger className='w-[200px]'>
+              <SelectValue placeholder={t('perms-col-module')} />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value='all'>
-                All Modules ({modules.length})
+                {t('perms-col-module')} ({modules.length})
               </SelectItem>
               {modules.map((mod) => (
                 <SelectItem key={mod} value={mod}>
@@ -178,6 +243,19 @@ export function PermissionsTable({ roles }: PermissionsTableProps) {
               ))}
             </SelectContent>
           </Select>
+          {hasFilter && (
+            <Button
+              type='button'
+              variant='ghost'
+              size='sm'
+              onClick={() => {
+                setSearch('');
+                setSelectedModule('all');
+              }}
+            >
+              {t('perms-clear-filter')}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -187,15 +265,16 @@ export function PermissionsTable({ roles }: PermissionsTableProps) {
         columns={columns}
         getRowKey={(perm) => perm.slug}
         className='bg-card overflow-hidden rounded-xl shadow-sm'
-        emptyState='No permissions found matching the filter.'
+        emptyState={t('perms-empty')}
       />
 
       <div className='text-muted-foreground flex items-center justify-between px-1 text-xs'>
         <span>
-          Showing {filteredPermissions.length} of {permissions.length} total
-          permissions
+          {t('perms-showing-count', {
+            shown: filteredPermissions.length,
+            total: permissions.length
+          })}
         </span>
-        <span>{modules.length} active modules</span>
       </div>
     </div>
   );
