@@ -950,7 +950,7 @@ mod tests {
         let mut state = EditorSessionState::new(sample_controller(), "Missing", "Saved");
         state.prepare_server_preview_request().expect("preview");
 
-        state.dispatch_intent(UiIntent::Undo).expect("undo intent");
+        state.dispatch_intent(UiIntent::RequestSave).expect("save intent");
 
         assert!(!state.preview_in_progress);
         assert!(state.preview_request.is_none());
