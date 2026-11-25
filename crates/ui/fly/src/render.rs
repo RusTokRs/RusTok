@@ -2521,7 +2521,7 @@ mod tests {
                 {"id": "link", "type": "link", "attributes": {"href": true}, "content": "Link"}
             ]}}]
         })).expect("document");
-        let rendered = render_page(&document, PageSelection::First, &RenderPolicy::default()).expect("render");
+        let rendered = render_page(&document, &PageSelection::First, &RenderPolicy::default()).expect("render");
         assert!(!rendered.html.contains(" src"), "{}", rendered.html);
         assert!(!rendered.html.contains(" href"), "{}", rendered.html);
         assert!(rendered.html.contains("alt=\"Image\""));
