@@ -188,6 +188,8 @@ repeater that may produce the same form more than once is left unexpanded with a
 Scoped conditions, including those in nested repeaters, can prove that at most one copy survives.
 Consumers must honor runtime error diagnostics before publishing.
 
+Page identities remain optional for legacy documents, but a page patch that sets `id` must supply a non-empty string; use `PagePatch.remove_fields` to clear an ID. Public document mutation helpers invalidate the cached project hash and component index, and compound theme/symbol commands publish changes only after validation succeeds.
+
 History budgets both undo and redo snapshots plus commands using a serialized-size estimate. It
 preserves one oversized entry, and recomputes the accounting after deserialization. The estimate
 is not an exact heap measurement and may count shared snapshots more than once.
@@ -242,6 +244,7 @@ the owner of the missing half.
   `fly:action`; without the asset the buttons stay inert by design. Interactive primitives
   such as tabs (`switch_tab`), accordion (`toggle_accordion`), and slider / carousel (`switch_slide`
   with swipe/touch gestures and dot indicators) are implemented in `builtin_blocks` and `fly-actions.js`.
+  A `switch_slide` action must choose exactly one selector (`target_slide`, `direction`, or `index`);
   Runtime target lookup stays inside the nearest landing body (or `body` for a standalone
   document) and prefers renderer-owned component hooks over an authored HTML ID. Custom actions
   prevent accidental form submit/reset; native actions retain their own browser behavior.
@@ -279,7 +282,8 @@ the owner of the missing half.
   `fly-dioxus`) ship an editable token panel on the same command. Renaming a token
   (`ThemeCommand::Rename`) automatically rewrites all `var(--old_name)` occurrences across
   component styles, style catalog rules, and sibling token definitions with full undo/redo
-  reversibility, and `find_token_usages` provides pre-flight usage discovery. Site-wide style
+  reversibility, and `find_token_usages` provides pre-flight usage discovery. `ThemeCommand::Replace`
+  rejects duplicate token names rather than silently discarding one. Site-wide style
   inheritance remains cascade-driven by design. Owner: `fly` theme model.
 - **Collaboration is out of scope for the engine.** No presence, locking, OT/CRDT, or merge:
   concurrent editors coordinate through the consumer's revision checks. Editor-minted ids are
