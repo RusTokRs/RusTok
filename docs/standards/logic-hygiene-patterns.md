@@ -744,6 +744,20 @@ They now capture any transport error into an `action_error` reactive signal and 
   [regressions](../../crates/modules/rustok-commerce/tests/inventory_quantity_writes.rs).
   Source regressions authored, not executed.
 
+### P-RESERVATION-CLAIM-COVERAGE — counters do not replace active claims
+
+- **Category:** reservation integrity / current-state admission.
+- **Observed defect:** Anonymous reserve could increase a counter already
+  below the total live ledger claims, including keyed reservations. A bounded
+  aggregate that omitted overflow groups could also misrepresent them as zero.
+- **Canonical correction:** Under the shared item lock, read the exact level
+  and prove its counter covers all active claims at that location. Refuse
+  aggregate overflow explicitly, match original counters on update, and
+  preserve existing allocation history. Do not automatically repair counters.
+- **Evidence:** [Inventory service](../../crates/modules/rustok-inventory/src/services/inventory.rs),
+  [regression](../../crates/modules/rustok-commerce/tests/inventory_quantity_release.rs).
+  Regression source authored, not executed.
+
 ## 1. Core Philosophy: The 6 Universal Logic Dimensions
 
 Under [AGENTS.md §4](../../AGENTS.md), verify the affected behavior and its owner contract across the **6 Universal Logic Dimensions**. Use source matches to find code to inspect. A match alone cannot establish a behavioral defect:

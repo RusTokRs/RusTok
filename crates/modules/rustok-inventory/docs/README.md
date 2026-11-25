@@ -23,6 +23,16 @@ entry point independently verifies the same ownership. Product retains its
 caller-owned transaction; no new warehouse fallback is introduced. Focused
 integration regressions are authored, not executed.
 
+Anonymous reserve verifies that the selected level's saved reserved counter
+covers all active claims, including keyed consumer allocations, under the
+shared item lock. The shared claim aggregate explicitly refuses sums above
+i32::MAX before casting; missing groups represent zero only after that check.
+The selected level uses a current locking read with a bounded identity check;
+the counter update matches the original item, location and counters. This
+prevents additional allocation against underreported claims, without releasing
+or repairing existing reservations. Regression sources are authored, unrun;
+real database concurrency and ambiguous commit recovery remain unverified.
+
 ## Purpose
 
 - inventory service logic;

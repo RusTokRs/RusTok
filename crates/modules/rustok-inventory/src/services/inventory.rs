@@ -494,16 +494,27 @@ impl InventoryService {
             load_quantity_reservation_rows(&txn, state.inventory_item.id).await?,
         )?;
 
-        if state.level.reserved_quantity < 0
-            || state
-                .level
-                .reserved_quantity
-                .checked_add(quantity)
-                .is_none()
+        if state.level.stocked_quantity < 0
+            || state.level.reserved_quantity < 0
+            || state.level.incoming_quantity < 0
+            || state.level.reserved_quantity.checked_add(quantity).is_none()
         {
             return Err(CommerceError::Validation(
                 "Inventory reserved quantity exceeds the supported range or is inconsistent"
                     .to_string(),
+            ));
+        }
+
+        // The item lock serializes all native allocation writers. A physical
+        // counter is not permission to spend units already claimed by another
+        // consumer: include every active claim, not just the anonymous pool.
+        let claims = load_active_reservation_claims(
+            &txn, state.inventory_item.id, &[state.location.id],
+        ).await?;
+        let claimed = claims.get(&state.location.id).copied().unwrap_or(0);
+        if claimed > i64::from(state.level.reserved_quantity) {
+            return Err(CommerceError::Validation(
+                "Active reservation claims exceed the saved reserved counter; reconcile saved history".into(),
             ));
         }
 
@@ -519,7 +530,12 @@ impl InventoryService {
                 entities::inventory_level::Column::UpdatedAt,
                 Expr::value(Utc::now()),
             )
-            .filter(entities::inventory_level::Column::Id.eq(state.level.id));
+            .filter(entities::inventory_level::Column::Id.eq(state.level.id))
+            .filter(entities::inventory_level::Column::InventoryItemId.eq(state.inventory_item.id))
+            .filter(entities::inventory_level::Column::LocationId.eq(state.location.id))
+            .filter(entities::inventory_level::Column::StockedQuantity.eq(state.level.stocked_quantity))
+            .filter(entities::inventory_level::Column::ReservedQuantity.eq(state.level.reserved_quantity))
+            .filter(entities::inventory_level::Column::IncomingQuantity.eq(state.level.incoming_quantity));
 
         if !inventory_policy_allows_backorder(&variant.inventory_policy) {
             level_update = level_update.filter(
@@ -782,12 +798,21 @@ impl InventoryService {
     where
         C: sea_orm::ConnectionTrait,
     {
-        if let Some(level) = entities::inventory_level::Entity::find()
+        let query = entities::inventory_level::Entity::find()
             .filter(entities::inventory_level::Column::InventoryItemId.eq(inventory_item.id))
-            .filter(entities::inventory_level::Column::LocationId.eq(location.id))
-            .one(conn)
-            .await?
-        {
+            .filter(entities::inventory_level::Column::LocationId.eq(location.id));
+        let query = if conn.get_database_backend() == DbBackend::Sqlite {
+            query
+        } else {
+            query.lock_exclusive()
+        };
+        let mut levels = query.limit(2).all(conn).await?;
+        if levels.len() > 1 {
+            return Err(CommerceError::Validation(
+                "Inventory level identity is ambiguous; reconcile saved state".into(),
+            ));
+        }
+        if let Some(level) = levels.pop() {
             return Ok(level);
         }
 
@@ -878,6 +903,22 @@ async fn load_active_reservation_claims(
     // Aggregate every claim at the locked exact locations, including any number of keyed rows.
     // Do not cap/materialize another consumer's ledger or mistake it for releasable pool units.
     let sum = Expr::col(entities::reservation_item::Column::Quantity).sum();
+    // A filtered-out overflow group must never be interpreted as zero claims
+    // by reserve. Keep the bound before MySQL's signed cast.
+    if claims()
+        .select_only()
+        .column(entities::reservation_item::Column::LocationId)
+        .group_by(entities::reservation_item::Column::LocationId)
+        .having(sum.clone().gt(i32::MAX))
+        .into_tuple::<Uuid>()
+        .one(txn)
+        .await?
+        .is_some()
+    {
+        return Err(CommerceError::Validation(
+            "Active reservation claims exceed the supported counter range; reconcile saved history".into(),
+        ));
+    }
     let sum_result = if txn.get_database_backend() == DbBackend::MySql {
         // MySQL exposes SUM(integer) as DECIMAL. Admit only an exact representable group below,
         // then decode its signed integer cast; never clamp a quantity into the plan.
