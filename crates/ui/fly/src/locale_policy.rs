@@ -440,6 +440,7 @@ mod tests {
         let mut document = document(json!({
             "pages": [{ "component": { "id": "root", "type": "wrapper" } }]
         }));
+        let before_set_hash = document.hash();
         set_project_locale_policy(
             &mut document,
             &ProjectLocalePolicy {
@@ -452,11 +453,14 @@ mod tests {
             },
         )
         .expect("set locale policy");
+        assert_ne!(document.hash(), before_set_hash);
+        let before_clear_hash = document.hash();
         let policy = ProjectLocalePolicy::from_document(&document).expect("locale policy");
         assert_eq!(policy.default_locale.as_deref(), Some("ru-RU"));
         assert_eq!(policy.supported_locales, vec!["ru-RU", "en"]);
         assert_eq!(policy.extensions["providerFuture"], true);
         clear_project_locale_policy(&mut document);
+        assert_ne!(document.hash(), before_clear_hash);
         assert!(!document.project.extensions.contains_key(FLY_LOCALES_FIELD));
     }
 
