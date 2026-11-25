@@ -129,6 +129,20 @@ pub async fn run() -> Result<()> {
         crate::routes::oauth_surface_enabled(rustok_settings.runtime.host_mode, &rustok_settings),
     )?;
 
+    // Refuse invalid independent authority before app DB migrations and
+    // honor early shutdown while opening the authority.
+    let authority = rustok_auth::JwtAuthorityConfig::from_env()
+        .map_err(crate::auth::auth_err)?;
+    let independent_fence = match authority {
+        Some(authority) => Some(tokio::select! {
+            biased;
+            _ = &mut shutdown_signal => return Ok(()),
+            result = authority.open(auth_config.secret()) => result.map_err(crate::auth::auth_err)?,
+        }),
+        None if !production => None,
+        None => return Err(Error::Message("Independent JWT authority is required in production".into())),
+    };
+
     let db = tokio::select! {
         biased;
         _ = &mut shutdown_signal => {
@@ -161,14 +175,7 @@ pub async fn run() -> Result<()> {
     }
 
     // Production never takes JWT authority from the restorable application DB.
-    let authority = rustok_auth::JwtAuthorityConfig::from_env()
-        .map_err(crate::auth::auth_err)?;
-    let fence = match authority {
-        Some(authority) => authority.open(auth_config.secret()).await
-            .map_err(crate::auth::auth_err)?,
-        None if !production => rustok_auth::JwtGenerationFence::new(db.clone()),
-        None => return Err(Error::Message("Independent JWT authority is required in production".into())),
-    };
+    let fence = independent_fence.unwrap_or_else(|| rustok_auth::JwtGenerationFence::new(db.clone()));
     let generation = if let Some((_, generation, _)) = &reload_source {
         loop {
             let admission = tokio::select! {

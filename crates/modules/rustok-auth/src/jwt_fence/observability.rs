@@ -20,7 +20,7 @@ const OUTCOMES: &[(&str, &str)] = &[
     ("renew", "granted"), ("renew", "denied"), ("renew", "error"),
     ("activate", "applied"), ("activate", "denied"), ("activate", "error"),
     ("grant", "revoked"), ("grant", "not_admitted"), ("grant", "draining"),
-    ("grant", "capacity"), ("grant", "contention"),
+    ("grant", "capacity"), ("grant", "contention"), ("grant", "static_conflict"),
     ("admit", "admitted"), ("admit", "draining"), ("admit", "awaiting_replicas"),
     ("admit", "rejected"), ("admit", "error"),
     ("ack", "complete"), ("ack", "deferred"), ("ack", "error"),
@@ -135,7 +135,7 @@ impl JwtGenerationFence {
     pub fn operational_metrics(&self, publisher: &JwtKeyringPublisher) -> Result<JwtOperationalMetrics> {
         Ok(JwtOperationalMetrics {
             fence: self.clone(),
-            mac: Arc::new(FenceMac::new(publisher.lease_root())?),
+            mac: Arc::new(self.checked_mac(publisher.lease_root())?),
             local: publisher.lease_readiness()?,
         })
     }

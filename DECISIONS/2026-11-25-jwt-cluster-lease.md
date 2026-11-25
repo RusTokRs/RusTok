@@ -24,7 +24,8 @@ after each synchronous JWT encode/decode under the existing runtime read
 fence. Local publication clears the lease. The host supervisor renews only
 after confirming the exact canonical current generation and metadata
 against the durable authority. Static mode can lease only while the authority
-is empty. Standalone fixed AuthConfig constructors remain unmanaged for
+is empty and all live registered static grants match the exact key metadata;
+an outstanding anonymous lease prevents a static grant until expiry. Standalone fixed AuthConfig constructors remain unmanaged for
 embedders; they are not the HTTP host composition path.
 
 ## Authority and concurrency

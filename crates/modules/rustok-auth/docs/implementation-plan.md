@@ -44,6 +44,11 @@ obsolete fake session; its stale generated standalone lockfile was removed and i
 screenshot is historical, not verification of this migration. Preserve the release
 gates in the [Page Builder backlog](../../../../docs/modules/page-builder-backlog.md).
 
+JWT follow-up source review: bind reads and every CAS to authority identity,
+authenticate the caller root even for an empty ledger, reject incompatible
+static grants and malformed registry identifiers, latch observed lease expiry,
+and validate authority before application migration. Focused regressions unrun.
+
 Independent JWT authority: production requires a pinned external PostgreSQL store;
 Auth CLI imports the offline ledger once and revokes against that same store.
 Application DB rollback cannot erase its key history. Independent authority

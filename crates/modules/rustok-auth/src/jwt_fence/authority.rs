@@ -10,7 +10,7 @@
 //! Independent JWT authority composition and one-time offline import.
 use std::time::Duration;
 use hmac::{Hmac, KeyInit, Mac};
-use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement, TransactionTrait};
+use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement, TransactionTrait, Value};
 use sea_orm_migration::SchemaManager;
 use sha2::Sha256;
 use uuid::Uuid;
@@ -45,15 +45,32 @@ impl AuthorityBinding {
         Ok(Self { id: id.to_string(), proof: hex::encode(proof.finalize().into_bytes()) })
     }
 
-    /// Check identity in the same read as the ledger, even after pool reconnect.
-    pub(super) fn bind_read(&self, backend: DbBackend, sql: String) -> Result<Statement> {
-        let suffix = match backend {
-            DbBackend::Postgres => " AND EXISTS (SELECT 1 FROM auth_jwt_authority_identity WHERE id = 1 AND authority_id = $1 AND proof = $2)",
-            DbBackend::Sqlite => " AND EXISTS (SELECT 1 FROM auth_jwt_authority_identity WHERE id = 1 AND authority_id = ?1 AND proof = ?2)",
+    /// Authenticate the caller even when the ledger is empty.
+    pub(super) fn verify_mac(&self, mac: &FenceMac) -> Result<()> {
+        let id = Uuid::parse_str(&self.id).map_err(|_| unavailable())?;
+        let expected = hex::decode(&self.proof).map_err(|_| unavailable())?;
+        let mut proof = Hmac::<Sha256>::new_from_slice(&mac.authority).map_err(|_| unavailable())?;
+        proof.update(id.as_bytes());
+        proof.verify_slice(&expected).map_err(|_| rejected())
+    }
+
+    /// Check the identity atomically in reads and conditional mutations,
+    /// including after a reconnect between a read and its CAS.
+    pub(super) fn bind_statement(&self, backend: DbBackend, sql: &str, mut values: Vec<Value>) -> Result<Statement> {
+        let prefix = match backend {
+            DbBackend::Postgres => "$",
+            DbBackend::Sqlite => "?",
             _ => return Err(unavailable()),
         };
-        Ok(Statement::from_sql_and_values(backend, sql + suffix,
-            vec![self.id.clone().into(), self.proof.clone().into()]))
+        let (first, second) = (values.len() + 1, values.len() + 2);
+        let condition = format!(" AND EXISTS (SELECT 1 FROM auth_jwt_authority_identity WHERE id = 1 AND authority_id = {prefix}{first} AND proof = {prefix}{second})");
+        let sql = match sql.split_once(" RETURNING ") {
+            Some((before, returning)) => format!("{before}{condition} RETURNING {returning}"),
+            None => format!("{sql}{condition}"),
+        };
+        values.push(self.id.clone().into());
+        values.push(self.proof.clone().into());
+        Ok(Statement::from_sql_and_values(backend, sql, values))
     }
 }
 
@@ -230,6 +247,27 @@ mod tests {
         assert_eq!(reopened.load().await.unwrap().generation, 2);
         destination.execute_unprepared("DELETE FROM auth_jwt_authority_identity").await.unwrap();
         assert!(reopened.load().await.is_err());
+    }
+
+    #[tokio::test]
+    async fn empty_bound_authority_rejects_wrong_root_and_cas_rechecks_pin() {
+        let source = database().await;
+        let destination = Database::connect("sqlite::memory:").await.unwrap();
+        let id = Uuid::new_v4();
+        import_bound(&source, destination.clone(), id, ROOT).await.unwrap();
+        let independent = open_bound(destination.clone(), id, ROOT).await.unwrap();
+        let candidate = config("incorrect-root-at-least-thirty-two-bytes", "new", NEW, None, None);
+        assert!(independent.admit(1, &candidate).await.is_err());
+        let (_, publisher) = candidate.into_cluster_jwt(0).unwrap();
+        assert!(independent.renew(&publisher).await.is_err());
+        assert!(independent.load().await.unwrap().is_empty());
+        // Simulate the marker disappearing between the read and the CAS.
+        let update = independent.statement(DbBackend::Sqlite,
+            "UPDATE auth_jwt_generation_fence SET drain_until_ms = ?1 WHERE id = 1 AND generation = ?2 RETURNING drain_until_ms",
+            vec![42_i64.into(), 0_i64.into()]).unwrap();
+        destination.execute_unprepared("DELETE FROM auth_jwt_authority_identity").await.unwrap();
+        assert!(destination.query_one_raw(update).await.unwrap().is_none());
+        assert_eq!(JwtGenerationFence::new(destination).load().await.unwrap().drain_until_ms, 0);
     }
 
     #[tokio::test]

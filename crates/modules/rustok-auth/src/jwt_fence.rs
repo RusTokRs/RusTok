@@ -6,7 +6,7 @@ use crate::jwt_clock::{ClockGuard, ClockSample, LeaseDeadline, KEY_CLOCK_MARGIN_
 
 use hkdf::Hkdf;
 use hmac::{Hmac, KeyInit, Mac};
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, Value};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
@@ -310,8 +310,13 @@ impl StoredFence {
         }
         let mut grants: ReplicaGrants = serde_json::from_str(&self.replica_grants)
             .map_err(|_| unavailable())?;
-        if grants.len() > MAX_GRANTS || grants.values().any(|grant| {
-            grant.until_ms <= 0 || grant.until_ms > self.lease_until_ms
+        if grants.len() > MAX_GRANTS || grants.iter().any(|(key, grant)| {
+            let valid_key = key.split_once(':').is_some_and(|(incarnation, generation)| {
+                uuid::Uuid::parse_str(incarnation).ok().is_some_and(|id| {
+                    !id.is_nil() && id.to_string() == incarnation
+                }) && generation == grant.generation.to_string()
+            });
+            !valid_key || grant.until_ms <= 0 || grant.until_ms > self.lease_until_ms
                 || i64::try_from(grant.generation).ok().is_none_or(|g| g > self.generation)
         }) {
             return Err(unavailable());
@@ -353,6 +358,21 @@ impl JwtGenerationFence {
         Self { db, metrics: OperationMetrics::default(), clock: Arc::new(ClockGuard::new()), binding: None }
     }
 
+    fn checked_mac(&self, root: &str) -> Result<FenceMac> {
+        let mac = FenceMac::new(root)?;
+        if let Some(binding) = &self.binding {
+            binding.verify_mac(&mac)?;
+        }
+        Ok(mac)
+    }
+
+    fn statement(&self, backend: DbBackend, sql: &str, values: Vec<Value>) -> Result<Statement> {
+        match &self.binding {
+            Some(binding) => binding.bind_statement(backend, sql, values),
+            None => Ok(Statement::from_sql_and_values(backend, sql, values)),
+        }
+    }
+
     async fn load(&self) -> Result<StoredFence> {
         self.load_at(ClockSample::now()).await
     }
@@ -378,10 +398,7 @@ impl JwtGenerationFence {
             _ => return Err(unavailable()),
         };
         let sql = format!("SELECT generation, payload, tag, lease_until_ms, drain_until_ms, untracked_until_ms, replica_grants, {clock} AS now_ms FROM auth_jwt_generation_fence WHERE id = 1");
-        let statement = match &self.binding {
-            Some(binding) => binding.bind_read(backend, sql)?,
-            None => Statement::from_string(backend, sql),
-        };
+        let statement = self.statement(backend, &sql, vec![])?;
         let row = self.db.query_one_raw(statement).await.map_err(|_| unavailable())?.ok_or_else(unavailable)?;
         let stored = StoredFence {
             generation: row.try_get("", "generation").map_err(|_| unavailable())?,
@@ -418,7 +435,7 @@ impl JwtGenerationFence {
         {
             return Err(rejected());
         }
-        let mac = FenceMac::new(root)?;
+        let mac = self.checked_mac(root)?;
         for _ in 0..MAX_CAS_ATTEMPTS {
             let stored = self.load_raw().await?;
             let mut ledger = stored.ledger(&mac)?.ok_or_else(rejected)?;
@@ -449,10 +466,10 @@ impl JwtGenerationFence {
                 DbBackend::Sqlite => "UPDATE auth_jwt_generation_fence SET payload = ?1, tag = ?2 WHERE id = 1 AND generation = ?3 AND tag = ?4 RETURNING lease_until_ms",
                 _ => return Err(unavailable()),
             };
-            let updated = self.db.query_one_raw(Statement::from_sql_and_values(
+            let updated = self.db.query_one_raw(self.statement(
                 backend, sql, vec![payload.into(), tag.into(), stored.generation.into(),
                     stored.tag.into()],
-            )).await.map_err(|_| unavailable())?;
+            )?).await.map_err(|_| unavailable())?;
             if let Some(row) = updated {
                 let existing_lease_until_ms: i64 = row.try_get("", "lease_until_ms")
                     .map_err(|_| unavailable())?;
@@ -484,7 +501,7 @@ impl JwtGenerationFence {
         if !publisher.clock_healthy()? {
             return Err(unavailable());
         }
-        let mac = FenceMac::new(publisher.lease_root())?;
+        let mac = self.checked_mac(publisher.lease_root())?;
         let (generation, snapshot) = publisher.lease_metadata(|identity| mac.identity(identity))?;
         let Some(deadline) = self.grant(publisher, generation, snapshot, &mac, true).await? else {
             return Ok(false);
@@ -517,7 +534,7 @@ impl JwtGenerationFence {
             return Err(rejected());
         }
         crate::validate_auth_config(&candidate)?;
-        let mac = FenceMac::new(candidate.secret())?;
+        let mac = self.checked_mac(candidate.secret())?;
         let snapshot = candidate.fence_snapshot(|identity| mac.identity(identity))?;
         let Some(deadline) = self.grant(publisher, generation, snapshot, &mac, false).await? else {
             return Ok(false);
@@ -562,11 +579,11 @@ impl JwtGenerationFence {
                 DbBackend::Sqlite => "UPDATE auth_jwt_generation_fence SET lease_until_ms = ?1, replica_grants = ?2 WHERE id = 1 AND generation = ?3 AND tag = ?4 AND drain_until_ms = ?5 AND lease_until_ms = ?6 AND replica_grants = ?7",
                 _ => return Err(unavailable()),
             };
-            let updated = self.db.execute_raw(Statement::from_sql_and_values(
+            let updated = self.db.execute_raw(self.statement(
                 backend, sql, vec![horizon.into(), encoded.into(), stored.generation.into(),
                     stored.tag.into(), stored.drain_until_ms.into(), stored.lease_until_ms.into(),
                     stored.replica_grants.into()],
-            )).await.map_err(|_| unavailable())?;
+            )?).await.map_err(|_| unavailable())?;
             if updated.rows_affected() == 1 {
                 return Ok(true);
             }
@@ -606,6 +623,14 @@ impl JwtGenerationFence {
                 return Ok(None);
             }
             let mut grants = stored.live_grants()?;
+            // Generation zero has no durable snapshot yet. Do not authorize
+            // a different static key set while prior holders can use JWTs.
+            if generation == 0 && (stored.untracked_until_ms > stored.now_ms
+                || grants.values().any(|grant| grant.snapshot != snapshot))
+            {
+                self.metrics.record("grant", "static_conflict");
+                return Ok(None);
+            }
             if already_applied {
                 // Renewal observes the locally installed generation, so it
                 // can retry an ACK lost to CAS contention during activation.
@@ -639,11 +664,11 @@ impl JwtGenerationFence {
                 DbBackend::Sqlite => "UPDATE auth_jwt_generation_fence SET lease_until_ms = ?1, replica_grants = ?2 WHERE id = 1 AND generation = ?3 AND tag = ?4 AND drain_until_ms = ?5 AND lease_until_ms = ?6 AND replica_grants = ?7",
                 _ => return Err(unavailable()),
             };
-            let updated = self.db.execute_raw(Statement::from_sql_and_values(
+            let updated = self.db.execute_raw(self.statement(
                 backend, sql, vec![horizon.into(), encoded.into(),
                     generation_sql.into(), stored.tag.into(), stored.drain_until_ms.into(),
                     stored.lease_until_ms.into(), stored.replica_grants.into()],
-            )).await.map_err(|_| unavailable())?;
+            )?).await.map_err(|_| unavailable())?;
             if updated.rows_affected() == 1 {
                 if !self.clock.healthy_at(ClockSample::now()) {
                     return Err(unavailable());
@@ -676,7 +701,7 @@ impl JwtGenerationFence {
             return Err(rejected());
         }
         crate::validate_auth_config(candidate)?;
-        let mac = FenceMac::new(candidate.secret())?;
+        let mac = self.checked_mac(candidate.secret())?;
         let snapshot = candidate.fence_snapshot(|identity| mac.identity(identity))?;
         for _ in 0..MAX_CAS_ATTEMPTS {
             let stored = self.load().await?;
@@ -730,9 +755,9 @@ impl JwtGenerationFence {
                     DbBackend::Sqlite => "UPDATE auth_jwt_generation_fence SET drain_until_ms = ?1 WHERE id = 1 AND generation = ?2 AND tag = ?3 AND drain_until_ms = ?4",
                     _ => return Err(unavailable()),
                 };
-                let updated = self.db.execute_raw(Statement::from_sql_and_values(
+                let updated = self.db.execute_raw(self.statement(
                     backend, sql, vec![until.into(), stored.generation.into(), stored.tag.into(), stored.drain_until_ms.into()],
-                )).await.map_err(|_| unavailable())?;
+                )?).await.map_err(|_| unavailable())?;
                 if updated.rows_affected() == 1 {
                     return Ok(JwtAdmission::Draining);
                 }
@@ -747,11 +772,11 @@ impl JwtGenerationFence {
                 DbBackend::Sqlite => "UPDATE auth_jwt_generation_fence SET generation = ?1, payload = ?2, tag = ?3, lease_until_ms = ?4, drain_until_ms = 0, untracked_until_ms = 0, replica_grants = ?5 WHERE id = 1 AND generation = ?6 AND tag = ?7 AND lease_until_ms = ?8 AND drain_until_ms = ?9 AND replica_grants = ?10",
                 _ => return Err(unavailable()),
             };
-            let updated = self.db.execute_raw(Statement::from_sql_and_values(
+            let updated = self.db.execute_raw(self.statement(
                 backend, sql, vec![generation_sql.into(), payload.into(), tag.into(), retained_horizon.into(),
                     encoded.into(), stored.generation.into(), stored.tag.into(), stored.lease_until_ms.into(),
                     stored.drain_until_ms.into(), stored.replica_grants.into()],
-            )).await.map_err(|_| unavailable())?;
+            )?).await.map_err(|_| unavailable())?;
             if updated.rows_affected() == 1 {
                 return Ok(JwtAdmission::Admitted);
             }
@@ -1031,6 +1056,45 @@ mod tests {
         b.publish(2, second).unwrap();
         assert!(fence.renew(&b).await.unwrap());
         assert!(decode_access_token(&live_b, &issue(&live_a).unwrap()).is_ok());
+    }
+
+    #[tokio::test]
+    async fn static_grants_require_exact_compatible_metadata() {
+        let db = database().await;
+        let fence = JwtGenerationFence::new(db.clone());
+        let first = config(ROOT, "old", OLD, None, None);
+        let second = config(ROOT, "new", NEW, None, None);
+        let (_, a) = first.clone().into_cluster_jwt(0).unwrap();
+        let (_, b) = first.into_cluster_jwt(0).unwrap();
+        let (_, c) = second.into_cluster_jwt(0).unwrap();
+        assert!(fence.renew(&a).await.unwrap());
+        assert!(fence.renew(&b).await.unwrap());
+        assert!(!fence.renew(&c).await.unwrap());
+        assert!(!c.lease_readiness().unwrap().is_ready());
+        a.revoke_lease();
+        b.revoke_lease();
+        db.execute_unprepared("UPDATE auth_jwt_generation_fence SET lease_until_ms = 0, replica_grants = '{}' WHERE id = 1").await.unwrap();
+        assert!(fence.renew(&c).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn malformed_registry_keys_are_refused_before_expiry_or_ack() {
+        let db = database().await;
+        let fence = JwtGenerationFence::new(db.clone());
+        let first = config(ROOT, "old", OLD, None, None);
+        assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
+        let (_, publisher) = first.into_cluster_jwt(1).unwrap();
+        assert!(fence.renew(&publisher).await.unwrap());
+        let stored = fence.load().await.unwrap();
+        let mut grants = stored.live_grants().unwrap();
+        let key = grants.keys().next().unwrap().clone();
+        let grant = grants.remove(&key).unwrap();
+        grants.insert("invalid-incarnation:1".to_string(), grant);
+        db.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+            "UPDATE auth_jwt_generation_fence SET replica_grants = ?1 WHERE id = 1",
+            vec![serde_json::to_string(&grants).unwrap().into()],
+        )).await.unwrap();
+        assert!(fence.renew(&publisher).await.is_err());
     }
 
     #[tokio::test]

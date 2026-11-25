@@ -18,7 +18,8 @@ A check on the next supervisor tick does not protect resumed request threads.
 
 Every managed local JWT lease has both monotonic and wall-clock deadlines,
 computed from the same sample before the authority read. Both must remain
-strictly in the future before and after crypto. The runtime and authority
+strictly in the future before and after crypto. Once observed expired, the
+same grant cannot reopen after a small backward wall-clock step. The runtime and authority
 each anchor wall time to monotonic elapsed time for their lifetime. A
 backward reading relative to the anchor or divergence exceeding one second
 latches a fault. A lease also retains the authority's shared fault latch.

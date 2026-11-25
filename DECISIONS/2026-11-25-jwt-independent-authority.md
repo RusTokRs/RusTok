@@ -27,8 +27,9 @@ it does not detect all application data rollback.
 Pin deployment identity using a non-nil UUID (`RUSTOK_JWT_AUTHORITY_ID`)
 and a purpose-separated root MAC on that UUID. Supply the URI through
 secret management as `RUSTOK_JWT_AUTHORITY_DATABASE_URL`. Both settings
-are mandatory together. Every bound authority read checks the marker in
-the same SQL statement as the ledger; missing/wrong identity, unavailable
+are mandatory together. Every bound authority read and conditional mutation checks the marker in
+the same SQL statement as the ledger; callers must match the pinned root
+before using even an empty ledger; missing/wrong identity, unavailable
 DB or inconsistent ledger refuses authority. Production refuses absent
 settings. Development-only hosts may use the application DB if both
 settings are absent; that mode lacks rollback protection. The revocation

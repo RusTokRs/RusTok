@@ -361,6 +361,11 @@ host with a false time source. Independently synchronize hosts to UTC within
 [clock discontinuity ADR](../../../../DECISIONS/2026-11-25-jwt-clock-discontinuity.md) for assumptions, recovery and
 verification. Source regressions are unrun.
 
+A lease that has been observed expired cannot reopen on a backward wall-clock
+step. A fresh grant is required. Generation-zero replicas must present identical
+canonical key metadata while any registered static grant is live; anonymous
+outstanding grants also block static renewal until expiry.
+
 ### Independent JWT authority
 
 Production requires an independently administered PostgreSQL database outside
@@ -368,7 +373,8 @@ the application backup/restore domain. Set `RUSTOK_JWT_AUTHORITY_DATABASE_URL`
 and a stable, non-nil `RUSTOK_JWT_AUTHORITY_ID` UUID through trusted deployment
 configuration. Partial configuration is refused. The UUID is authenticated
 with the stable host MAC root and verified with the ledger on every authority
-read. No host creates or reseeds the independent store automatically.
+read and CAS write; callers must match the pinned root even at generation zero.
+No host creates or reseeds the independent store automatically.
 Development hosts may use the application DB only if both settings are absent;
 that mode has no rollback protection. Revocation CLI always requires the
 independent settings.

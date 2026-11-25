@@ -117,20 +117,29 @@ impl ClockGuard {
 pub(crate) struct LeaseDeadline {
     expires: ClockSample,
     pub(crate) authority: Arc<ClockGuard>,
+    expired: Arc<AtomicBool>,
 }
 
 impl LeaseDeadline {
     pub(crate) fn new(start: ClockSample, duration: Duration, authority: Arc<ClockGuard>) -> Option<Self> {
-        Some(Self { expires: start.checked_add(duration)?, authority })
+        Some(Self { expires: start.checked_add(duration)?, authority, expired: Arc::new(AtomicBool::new(false)) })
     }
 
     pub(crate) fn remaining(&self, now: ClockSample) -> Duration {
-        if !self.authority.healthy_at(now) {
+        if self.expired.load(Ordering::Acquire) || !self.authority.healthy_at(now) {
             return Duration::ZERO;
         }
         let mono = self.expires.mono.saturating_duration_since(now.mono);
         let wall = self.expires.wall.duration_since(now.wall).unwrap_or(Duration::ZERO);
-        mono.min(wall)
+        let remaining = mono.min(wall);
+        if remaining.is_zero() {
+            self.expired.store(true, Ordering::Release);
+        }
+        if self.expired.load(Ordering::Acquire) || self.authority.faulted() {
+            Duration::ZERO
+        } else {
+            remaining
+        }
     }
 
     pub(crate) fn later_than(&self, other: &Self) -> bool {
@@ -204,7 +213,13 @@ mod tests {
             wall: start.wall + Duration::from_millis(9_500),
         };
         assert_eq!(lease.remaining(wall_first), Duration::ZERO);
-        assert_eq!(lease.remaining(mono_first), Duration::ZERO);
+        let earlier_wall = ClockSample {
+            mono: start.mono + Duration::from_millis(9_600),
+            wall: start.wall + Duration::from_millis(9_600),
+        };
+        assert_eq!(lease.clone().remaining(earlier_wall), Duration::ZERO);
+        let fresh_lease = LeaseDeadline::new(start, Duration::from_secs(10), guard.clone()).unwrap();
+        assert_eq!(fresh_lease.remaining(mono_first), Duration::ZERO);
         assert!(!guard.faulted());
     }
 }

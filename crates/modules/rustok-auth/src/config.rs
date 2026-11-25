@@ -545,7 +545,9 @@ impl JwtKeyringPublisher {
             guard.authority_clock = Some(deadline.authority.clone());
             guard.lease_until = Some(deadline);
         }
-        Ok(true)
+        // A delayed older grant must not report a successful renewal if
+        // the retained newer deadline has already been observed expired.
+        Ok(guard.permits_crypto_at(now))
     }
 
     /// Permanently close this local generation after observing a durable
