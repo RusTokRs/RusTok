@@ -296,8 +296,12 @@ fn receipt_is_prepared(response: &Value) -> bool {
     response.get("prepared_save").and_then(Value::as_bool) == Some(true)
 }
 
+fn has_prepared_save(receipts: &[SsrDraftOperationReceipt]) -> bool {
+    receipts.iter().any(|receipt| receipt_is_prepared(&receipt.response))
+}
+
 fn ensure_no_prepared_save(receipts: &[SsrDraftOperationReceipt]) -> Result<(), SsrDraftSessionError> {
-    if receipts.iter().any(|receipt| receipt_is_prepared(&receipt.response)) {
+    if has_prepared_save(receipts) {
         return Err(SsrDraftSessionError::OperationReceiptPending);
     }
     Ok(())
@@ -479,13 +483,13 @@ impl InMemorySsrDraftSessionStore {
         Self::prune_locked(&mut entries, now);
         // Replacing an existing cache entry does not consume another slot.
         if !entries.contains_key(&snapshot.token) {
-            Self::evict_oldest(&mut entries, self.maximum_entries);
+            Self::evict_oldest(&mut entries, self.maximum_entries)?;
             if let Some(owner) = snapshot.owner.as_ref() {
                 Self::evict_oldest_for_owner(
                     &mut entries,
                     owner,
                     MAX_DRAFT_SESSIONS_PER_OWNER.saturating_sub(1),
-                );
+                )?;
             }
         }
         entries.insert(
@@ -544,17 +548,21 @@ impl InMemorySsrDraftSessionStore {
         before.saturating_sub(entries.len())
     }
 
-    fn evict_oldest(entries: &mut HashMap<String, DraftEntry>, maximum_entries: usize) {
+    fn evict_oldest(entries: &mut HashMap<String, DraftEntry>, maximum_entries: usize)
+        -> Result<(), SsrDraftSessionError>
+    {
         while entries.len() >= maximum_entries {
             let Some(oldest) = entries
                 .iter()
+                .filter(|(_, entry)| !has_prepared_save(&entry.operation_receipts))
                 .min_by_key(|(_, entry)| entry.expires_at.get())
                 .map(|(token, _)| token.clone())
             else {
-                break;
+                return Err(SsrDraftSessionError::OperationReceiptPending);
             };
             entries.remove(&oldest);
         }
+        Ok(())
     }
 
     /// Enforces the per-owner session cap: keeps at most `keep` live entries
@@ -563,24 +571,28 @@ impl InMemorySsrDraftSessionStore {
         entries: &mut HashMap<String, DraftEntry>,
         owner: &DraftSessionOwner,
         keep: usize,
-    ) {
-        let mut owned: Vec<(String, u64)> = entries
+    ) -> Result<(), SsrDraftSessionError> {
+        let mut owned: Vec<(String, u64, bool)> = entries
             .iter()
             .filter(|(_, entry)| entry.owner.as_ref() == Some(owner))
-            .map(|(token, entry)| (token.clone(), entry.expires_at.get()))
+            .map(|(token, entry)| (
+                token.clone(), entry.expires_at.get(),
+                has_prepared_save(&entry.operation_receipts),
+            ))
             .collect();
+        if owned.iter().filter(|(_, _, prepared)| *prepared).count() > keep {
+            return Err(SsrDraftSessionError::OperationReceiptPending);
+        }
         while owned.len() > keep {
-            let Some(index) = owned
-                .iter()
-                .enumerate()
-                .min_by_key(|(_, (_, expires_at))| *expires_at)
+            let index = owned.iter().enumerate()
+                .filter(|(_, (_, _, prepared))| !prepared)
+                .min_by_key(|(_, (_, expires_at, _))| *expires_at)
                 .map(|(index, _)| index)
-            else {
-                break;
-            };
-            let (token, _) = owned.swap_remove(index);
+                .ok_or(SsrDraftSessionError::OperationReceiptPending)?;
+            let (token, _, _) = owned.swap_remove(index);
             entries.remove(&token);
         }
+        Ok(())
     }
 
     /// Shared commit path. `runtime_context: None` keeps the context already
@@ -640,13 +652,13 @@ impl InMemorySsrDraftSessionStore {
             }
         }
 
-        Self::evict_oldest(&mut entries, self.maximum_entries);
+        Self::evict_oldest(&mut entries, self.maximum_entries)?;
         if let Some(owner) = owner {
             Self::evict_oldest_for_owner(
                 &mut entries,
                 owner,
                 MAX_DRAFT_SESSIONS_PER_OWNER.saturating_sub(1),
-            );
+            )?;
         }
         let token = Self::fresh_token(&entries);
         let generation = 1;
@@ -1355,6 +1367,8 @@ impl FileSsrDraftSessionStore {
                 || current.generation != generation
                 || record_age(path, current.expires_at_unix_secs) != expected_age
                 || current.owner.as_ref() != owner
+                || (current.expires_at_unix_secs > current_unix_secs()
+                    && has_prepared_save(&current.operation_receipts))
             {
                 return Ok(false);
             }
@@ -1492,7 +1506,7 @@ impl FileSsrDraftSessionStore {
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
             Err(err) => return Err(SsrDraftSessionError::Io(err.to_string())),
         };
-        let mut owned: Vec<(PathBuf, String, u64, RecordAge)> = Vec::new();
+        let mut owned: Vec<(PathBuf, String, u64, RecordAge, bool)> = Vec::new();
         for entry in entries.flatten() {
             let path = entry.path();
             let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
@@ -1509,14 +1523,19 @@ impl FileSsrDraftSessionStore {
             };
             if record.owner.as_ref() == Some(owner) && record.token != keep_token {
                 let age = record_age(&path, record.expires_at_unix_secs);
-                owned.push((path, record.token, record.generation, age));
+                let prepared = record.expires_at_unix_secs > current_unix_secs()
+                    && has_prepared_save(&record.operation_receipts);
+                owned.push((path, record.token, record.generation, age, prepared));
             }
         }
         if owned.len() >= MAX_DRAFT_SESSIONS_PER_OWNER {
-            owned.sort_by_key(|(_, _, _, age)| *age);
+            owned.sort_by_key(|(_, _, _, age, prepared)| (*prepared, *age));
             let excess = owned.len() + 1 - MAX_DRAFT_SESSIONS_PER_OWNER;
+            if owned.iter().filter(|(_, _, _, _, prepared)| !prepared).count() < excess {
+                return Err(SsrDraftSessionError::OperationReceiptPending);
+            }
             let mut removed = 0;
-            for (path, token, generation, age) in owned.into_iter().take(excess) {
+            for (path, token, generation, age, _) in owned.into_iter().take(excess) {
                 if self.remove_record_if_unchanged(
                     &path,
                     &token,
@@ -1688,7 +1707,7 @@ impl FileSsrDraftSessionStore {
         &self,
         partition: &Path,
         now: u64,
-        surviving: &mut Vec<(PathBuf, String, u64, RecordAge, Option<DraftSessionOwner>)>,
+        surviving: &mut Vec<(PathBuf, String, u64, RecordAge, Option<DraftSessionOwner>, bool)>,
     ) -> Result<usize, SsrDraftSessionError> {
         let entries = match fs::read_dir(partition) {
             Ok(entries) => entries,
@@ -1737,7 +1756,8 @@ impl FileSsrDraftSessionStore {
             match record {
                 Some(record) if record.expires_at_unix_secs > now => {
                     let age = record_age(&path, record.expires_at_unix_secs);
-                    surviving.push((path, record.token, record.generation, age, record.owner));
+                    let prepared = has_prepared_save(&record.operation_receipts);
+                    surviving.push((path, record.token, record.generation, age, record.owner, prepared));
                 }
                 // Expired or unreadable: decided again under the token lock.
                 _ => {
@@ -2065,6 +2085,7 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
             u64,
             RecordAge,
             Option<DraftSessionOwner>,
+            bool,
         )> = Vec::new();
         for entry in entries.flatten() {
             let path = entry.path();
@@ -2099,16 +2120,18 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
         // Global cap first (oldest evicted), then the per-owner cap on the
         // survivors (audit §2.5) — mirroring the KV backend.
         if surviving.len() > self.maximum_entries {
-            surviving.sort_by_key(|(_, _, _, age, _)| *age);
-            let excess = surviving.len() - self.maximum_entries;
+            surviving.sort_by_key(|(_, _, _, age, _, prepared)| (*prepared, *age));
+            let excess = (surviving.len() - self.maximum_entries)
+                .min(surviving.iter().filter(|(_, _, _, _, _, prepared)| !prepared).count());
             let evicted: Vec<(
                 PathBuf,
                 String,
                 u64,
                 RecordAge,
                 Option<DraftSessionOwner>,
+                bool,
             )> = surviving.drain(..excess).collect();
-            for (path, token, generation, age, owner) in evicted {
+            for (path, token, generation, age, owner, _) in evicted {
                 match self.remove_record_if_unchanged(
                     &path,
                     &token,
@@ -2125,9 +2148,9 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
 
         let mut per_owner: HashMap<
             String,
-            Vec<(PathBuf, String, u64, RecordAge, Option<DraftSessionOwner>)>,
+            Vec<(PathBuf, String, u64, RecordAge, Option<DraftSessionOwner>, bool)>,
         > = HashMap::new();
-        for (path, token, generation, age, owner) in &surviving {
+        for (path, token, generation, age, owner, prepared) in &surviving {
             if let Some(owner) = owner {
                 per_owner
                     .entry(format!("{}:{}", owner.tenant_id, owner.user_id))
@@ -2138,14 +2161,16 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
                         *generation,
                         *age,
                         Some(owner.clone()),
+                        *prepared,
                     ));
             }
         }
         for (_, mut owned) in per_owner {
             if owned.len() > MAX_DRAFT_SESSIONS_PER_OWNER {
-                owned.sort_by_key(|(_, _, _, age, _)| *age);
-                let excess = owned.len() - MAX_DRAFT_SESSIONS_PER_OWNER;
-                for (path, token, generation, age, owner) in owned.into_iter().take(excess) {
+                owned.sort_by_key(|(_, _, _, age, _, prepared)| (*prepared, *age));
+                let excess = (owned.len() - MAX_DRAFT_SESSIONS_PER_OWNER)
+                    .min(owned.iter().filter(|(_, _, _, _, _, prepared)| !prepared).count());
+                for (path, token, generation, age, owner, _) in owned.into_iter().take(excess) {
                     match self.remove_record_if_unchanged(
                         &path,
                         &token,
@@ -2381,7 +2406,7 @@ impl PersistentDraftSessionBackend for ExternalKvDraftSessionBackend {
     ) -> Result<usize, SsrDraftSessionError> {
         let keys = self.driver.scan_keys(&self.prefix)?;
         let mut surviving = Vec::new();
-        let mut per_owner: HashMap<String, Vec<(String, u64)>> = HashMap::new();
+        let mut per_owner: HashMap<String, Vec<(String, u64, bool)>> = HashMap::new();
         let mut deletions: BTreeSet<String> = BTreeSet::new();
         // Generation each key held when it was scanned. A key is deleted
         // only while it still holds that generation, so a session committed
@@ -2400,21 +2425,23 @@ impl PersistentDraftSessionBackend for ExternalKvDraftSessionBackend {
                 if record.expires_at_unix_secs <= now_unix_secs {
                     deletions.insert(key);
                 } else {
+                    let prepared = has_prepared_save(&record.operation_receipts);
                     if let Some(owner) = record.owner.as_ref() {
                         per_owner
                             .entry(format!("{}:{}", owner.tenant_id, owner.user_id))
                             .or_default()
-                            .push((key.clone(), record.expires_at_unix_secs));
+                            .push((key.clone(), record.expires_at_unix_secs, prepared));
                     }
-                    surviving.push((key, record.expires_at_unix_secs));
+                    surviving.push((key, record.expires_at_unix_secs, prepared));
                 }
             }
         }
 
         if surviving.len() > max_entries {
-            surviving.sort_by_key(|(_, expires)| *expires);
-            let excess = surviving.len() - max_entries;
-            for (key, _) in surviving.into_iter().take(excess) {
+            surviving.sort_by_key(|(_, expires, prepared)| (*prepared, *expires));
+            let excess = (surviving.len() - max_entries)
+                .min(surviving.iter().filter(|(_, _, prepared)| !prepared).count());
+            for (key, _, _) in surviving.into_iter().take(excess) {
                 deletions.insert(key);
             }
         }
@@ -2424,9 +2451,10 @@ impl PersistentDraftSessionBackend for ExternalKvDraftSessionBackend {
         // cap are deduped by `deletions`, so each prune is counted once.
         for (_, mut owned) in per_owner {
             if owned.len() > MAX_DRAFT_SESSIONS_PER_OWNER {
-                owned.sort_by_key(|(_, expires)| *expires);
-                let excess = owned.len() - MAX_DRAFT_SESSIONS_PER_OWNER;
-                for (key, _) in owned.into_iter().take(excess) {
+                owned.sort_by_key(|(_, expires, prepared)| (*prepared, *expires));
+                let excess = (owned.len() - MAX_DRAFT_SESSIONS_PER_OWNER)
+                    .min(owned.iter().filter(|(_, _, prepared)| !prepared).count());
+                for (key, _, _) in owned.into_iter().take(excess) {
                     deletions.insert(key);
                 }
             }
@@ -3786,6 +3814,47 @@ mod tests {
         assert_eq!(store.admit_operation_receipt(
             &original.token, "home", None, done.generation, "other-op", &"b".repeat(64),
         ).expect("unfenced"), None);
+    }
+
+    #[test]
+    fn prepared_save_is_not_evicted_to_make_room_for_another_session() {
+        let store = InMemorySsrDraftSessionStore::new(Duration::from_secs(3600), 1);
+        let first = store.commit(None, None, controller("home"), None).expect("create");
+        let hash = "a".repeat(64);
+        store.commit_with_operation_receipt(
+            &first.token, first.generation, first.controller.clone(), json!({}),
+            None, "save-op", &hash, json!({"prepared_save": true}),
+        ).expect("prepare");
+        assert!(matches!(store.commit(None, None, controller("other"), None),
+            Err(SsrDraftSessionError::OperationReceiptPending)));
+        assert!(store.load(&first.token, "home", None).expect("load").is_some());
+    }
+
+    fn assert_prepared_survives_capacity_prune(store: &dyn SsrDraftSessionStore) {
+        let first = store.commit(None, None, controller("home"), None).expect("create");
+        let hash = "a".repeat(64);
+        store.commit_with_operation_receipt(
+            &first.token, first.generation, first.controller.clone(), json!({}),
+            None, "save-op", &hash, json!({"prepared_save": true}),
+        ).expect("prepare");
+        let other = store.commit(None, None, controller("other"), None).expect("other");
+        store.prune().expect("prune");
+        assert!(store.load(&first.token, "home", None).expect("load").is_some());
+        assert!(store.load(&other.token, "other", None).expect("load").is_none());
+    }
+
+    #[test]
+    fn prepared_save_survives_capacity_prune_in_file_and_kv_stores() {
+        let dir = std::env::temp_dir().join(format!("fly-prepared-prune-{}", Uuid::new_v4()));
+        let file = FileSsrDraftSessionStore::new(&dir, Duration::from_secs(3600), 1)
+            .expect("file");
+        assert_prepared_survives_capacity_prune(&file);
+        std::fs::remove_dir_all(dir).expect("cleanup");
+        let durable = DurableSsrDraftSessionStore::distributed(
+            InMemorySsrDraftSessionStore::new(Duration::from_secs(3600), 1),
+            Arc::new(MemoryKvDriver::new()), Duration::from_secs(3600), 1,
+        );
+        assert_prepared_survives_capacity_prune(&durable);
     }
 
     #[test]

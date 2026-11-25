@@ -1525,3 +1525,6 @@ integration tests; MySQL support is out of scope.
 
 2026-11-25 Durable draft cache publication and prepared restart (source only; not executed):
 - Stage ordinary commits outside the cache, read authoritative backend state and avoid evicting unrelated cache entries on replacement. Added regressions for divergent cached generations and cold restart with two competing finalizations of a prepared receipt. No runtime execution claimed.
+
+2026-11-25 Prepared checkpoint retention (source only; not executed):
+- Protect live prepared receipts from memory/file/KV capacity eviction, select ordinary candidates first, recheck file protection under the token lock, and reject bounded admission when only prepared slots remain. Keep normal TTL expiry and explicit removal. Added memory admission and persistent capacity-prune regressions.

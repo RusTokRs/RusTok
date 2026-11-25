@@ -400,3 +400,9 @@ Durable draft commits stage candidates outside the memory cache and publish
 only after persistent CAS. Loads return the owner-scoped backend snapshot,
 never a speculative or divergent cached generation. Replacing an existing
 cache entry does not evict an unrelated draft.
+
+Live prepared saves are protected from capacity eviction in memory, file and
+KV stores. The memory and file owner-admission paths reject new sessions when
+only protected slots remain; periodic pruning may temporarily exceed the cap
+rather than discard recovery state. Normal TTL expiry and explicit removal
+still apply; no indefinite retention is implied.
