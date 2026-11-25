@@ -1269,15 +1269,23 @@ inside its crate owner:
   aborts the pass with no deletions. Policy eligibility is only one
   gate — deletion still requires the reconciler's two-phase
   mark/grace/claim over the admission reference set.
-- **Tenant data-object GC.** `tenants_with_candidates` discovers tenants
-  holding queued candidates. When at least one tenant has work, the worker
-  loads one `ArtifactDataObjectLedgerRetentionSnapshot` and
+- **Tenant data-object GC.** `tenants_with_candidates_after` discovers a
+  bounded page of tenants holding queued candidates in ascending UUID order.
+  The host retains the exclusive cursor across maintenance passes and wraps
+  after a short or empty page, so persistent retention-held candidates or a
+  large backlog in early tenants cannot starve later tenants. A discovery or
+  retention-snapshot failure preserves the cursor and retries that page;
+  an individual tenant-sweep failure does not block later tenants and is
+  retried after the cursor wraps. The cursor is process-local, while candidate
+  rows remain durable across restart. When a page has work, the worker loads
+  one `ArtifactDataObjectLedgerRetentionSnapshot` and
   `sweep_tenant_with_ledger_retention_snapshot` reuses it for every tenant in
-  that pass (a snapshot load failure deletes nothing). The sweep derives
+  that page (a snapshot load failure deletes nothing). The sweep derives
   per-object rules from the queue timestamp plus a fixed 7-day grace window
   and retains any namespace under an active data-object hold wholesale
   (over-retention is the safe direction while a namespace is under
   investigation).
+
 - **Admission reverification.** Enabled only when
   `RUSTOK_MODULE_MAINTENANCE_VERIFICATION_ENDPOINT` (https, mTLS via the
   `RUSTOK_MODULE_MAINTENANCE_VERIFICATION_*` client-identity variables)
@@ -1291,11 +1299,15 @@ inside its crate owner:
   `RUSTOK_MODULE_MAINTENANCE_CAPABILITY_POLICY_REVISION` name the
   current policy; admissions whose durable evidence carries different
   revisions (or undecodable evidence) are listed by
-  `list_stale_candidates` and re-verified as owner commands under
+  `list_stale_candidates_after` and re-verified as owner commands under
   `RUSTOK_MODULE_MAINTENANCE_ACTOR_ID`, with a deterministic per-candidate
-  idempotency key so retries replay instead of re-verifying. Invalid
-  configuration disables the leg loudly at startup; it never lets stale
-  evidence pass for fresh.
+  idempotency key so retries replay instead of re-verifying. The owner returns
+  the last installation ID examined, not just the last stale candidate, so the
+  host can continue beyond both a 32-candidate page and the 8,192-row scan
+  budget. Failed candidates remain eligible but do not pin the first page:
+  the host advances after a successful scan and retries them after wrap. A
+  scan error preserves the cursor. Invalid configuration disables the leg
+  loudly at startup; it never lets stale evidence pass for fresh.
 
 Without initialized durable storage the worker is not spawned and
 startup logs an error: blob and data-object garbage collection are off.
