@@ -1748,10 +1748,18 @@ mod tests {
                 &config, t, u, s, &client, redirect, None, &displayed, None, challenge, Some(&token),
             ));
         }
-        let weak = crate::auth::AuthConfig::new("short".to_string());
-        assert!(issue_consent_csrf(
-            &weak, tenant, user, session, &client, redirect, None, &displayed, None, challenge,
-        ).is_none());
+        let weak_fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
+        let weak_document = weak_fixture.document(1).to_string();
+        assert!(
+            crate::auth::auth_config_from_host_document(
+                "short".to_string(),
+                900,
+                None,
+                weak_document.as_bytes(),
+            )
+            .is_err(),
+            "a weak independent MAC root must fail before runtime publication",
+        );
         assert!(!verify_consent_csrf(
             &config, tenant, user, Uuid::new_v4(), &client, redirect, None,
             &displayed, None, challenge, Some(token.as_str()),

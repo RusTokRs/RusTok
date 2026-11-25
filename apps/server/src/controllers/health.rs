@@ -1419,8 +1419,11 @@ mod tests {
         settings.runtime.host_mode = crate::common::settings::RuntimeHostMode::RegistryOnly;
         let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
         assert!(jwt_cluster_lease_check(&ctx).is_none());
-        let (_, publisher) = rustok_auth::AuthConfig::new("lease-readiness-test-root-at-least-32-bytes".into())
-            .into_cluster_jwt(0).unwrap();
+        let (_, publisher) = crate::auth::test_auth_config(
+            "lease-readiness-test-root-at-least-32-bytes".to_string(),
+        )
+        .into_cluster_jwt(1)
+        .unwrap();
         ctx.shared_insert(publisher.lease_readiness().unwrap());
         let response = collect_readiness(ctx, ModuleRegistry::new()).await;
         let lease = response.checks.iter().find(|check| check.name == "jwt_cluster_lease").unwrap();

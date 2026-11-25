@@ -1622,12 +1622,19 @@ mod tests {
         access_expiration: u64,
         refresh_expiration: u64,
     ) -> AuthConfig {
-        // Token keys fail closed below 32 bytes; pad the per-test label so
-        // each test keeps a distinct secret without repeating a full key.
-        AuthConfig::new(format!("{secret}:test-only-secret-padding-for-length"))
+        // Each isolated test gets independent RSA purpose keys and a distinct
+        // independent MAC root; tests sharing a runtime clone this config.
+        crate::auth::test_auth_config(format!("{secret}:test-only-secret-padding-for-length"))
             .with_expiration(access_expiration, refresh_expiration)
             .with_issuer("rustok-test")
             .with_audience("rustok-test")
+    }
+
+    fn unleased_test_auth_config(secret: &str) -> AuthConfig {
+        let (config, _publisher) = test_auth_config(secret, 3600, 3600)
+            .into_cluster_jwt(1)
+            .expect("prepare valid RS256 runtime without granting a lease");
+        config
     }
 
     #[test]
@@ -2332,8 +2339,7 @@ mod tests {
             db.clone(),
             crate::common::settings::RustokSettings::default(),
         );
-        let config = AuthConfig::new("register-atomic-secret-key-for-tests!".to_string())
-            .with_rs256("not-a-valid-private-key", "not-a-valid-public-key");
+        let config = unleased_test_auth_config("register-atomic-secret-key-for-tests!");
 
         let result = AuthLifecycleService::register_runtime(
             &ctx,
@@ -2376,8 +2382,7 @@ mod tests {
             .await
             .expect("failed to create user");
 
-        let config = AuthConfig::new("login-atomic-secret-key-for-tests-32b!".to_string())
-            .with_rs256("not-a-valid-private-key", "not-a-valid-public-key");
+        let config = unleased_test_auth_config("login-atomic-secret-key-for-tests-32b!");
 
         let result = AuthLifecycleService::login_with_config(
             &db,
