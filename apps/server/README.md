@@ -125,15 +125,13 @@ application migration. Both migration and server containers mount the
 dedicated keyring directory read-only so atomic replacement remains visible.
 See the [root quick start](../../README.md#local-stack-launch).
 
- (`settings.features.oauth_enabled` is true and the host mode is not
+When `settings.features.oauth_enabled` is true and the host mode is not
 `worker` or `registry_only`), `settings.auth.issuer` must be an absolute root URL:
 HTTPS in production, or HTTPS / `http://localhost` / `http://127.0.0.1` in
 development. Userinfo, path, query, and fragment components are rejected.
 OAuth discovery advertises this exact JWT issuer; it never derives an issuer
 from request Host or forwarded headers.
 
-When `algorithm` is `RS256`, both RSA keys are required and boot-time config
-assembly must fail instead of silently falling back to `HS256`.
 
 ## Request trust and client IP
 
@@ -207,14 +205,15 @@ the `Secure` flag is enabled only when trusted proxy context reports HTTPS.
   lose a non-transactional event. Business mutations requiring atomic publication
   must use `TransactionalEventBus`. Search lag and worker readiness do not cover
   all failure modes; see the server implementation plan.
-- First-party in-place refresh rotation retains only the immediately previous
-  token digest. Older revoked generations are rejected as unknown but cannot
-  trigger full-lineage theft revocation. A replay inside the 30-second race
-  window is rejected without revoking the live session, but the server does
-  not replay the successful refresh response; if that response was lost, the
-  client cannot recover its replacement cookie from the old token. Durable
-  rotation history, idempotent response recovery, and incident reconciliation
-  remain open; see the implementation plan.
+- First-party in-place refresh rotation records each superseded refresh-token
+  digest in `session_refresh_history` in the same transaction as the rotation.
+  Reuse of any recorded generation after the 30-second concurrency grace
+  revokes the session; a replay inside that grace window is rejected without
+  revoking the live session. The migration backfills only the last previous
+  digest retained by legacy session rows, so older pre-migration generations
+  cannot be reconstructed. The server still does not replay a successful
+  refresh response after a lost acknowledgement; idempotent response recovery
+  and incident reconciliation remain open; see the implementation plan.
 - OAuth refresh-token reuse now propagates failed revocation persistence as
   `server_error`, allowing the caller to retry after a storage outage instead of
   falsely reporting only an invalid grant. Its 30-second grace window suppresses
