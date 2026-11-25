@@ -184,13 +184,13 @@ pub fn apply_mcp_scaffold_atomically(
     let marker_path = staging_root.join(MCP_SCAFFOLD_STAGING_MARKER);
     let mut published = false;
     let result = (|| {
-        let marker_content = format!("{MCP_SCAFFOLD_STAGING_MARKER_VERSION}\\n{staging_id}\\n");
+        let marker_content = format!("{MCP_SCAFFOLD_STAGING_MARKER_VERSION}\n{staging_id}\n");
         std::fs::write(&marker_path, marker_content).map_err(|error| {
             rustok_mcp::AlloyScaffoldError::Workspace(format!(
                 "Failed to mark private MCP scaffold staging directory: {error}"
             ))
         })?;
-        std::fs::write(staging_root.join("Cargo.toml"), "[workspace]\\n").map_err(|error| {
+        std::fs::write(staging_root.join("Cargo.toml"), "[workspace]\n").map_err(|error| {
             rustok_mcp::AlloyScaffoldError::Workspace(format!(
                 "Failed to initialize private MCP scaffold workspace: {error}"
             ))
@@ -376,7 +376,7 @@ fn cleanup_stale_mcp_scaffold_staging_dirs(
                         marker_path.display()
                     ))
                 })?;
-                let expected = format!("{MCP_SCAFFOLD_STAGING_MARKER_VERSION}\\n{staging_id}\\n");
+                let expected = format!("{MCP_SCAFFOLD_STAGING_MARKER_VERSION}\n{staging_id}\n");
                 if marker != expected {
                     return Err(rustok_mcp::AlloyScaffoldError::FileWrite(format!(
                         "MCP scaffold staging marker is invalid at {}; preserve it for manual reconciliation",
@@ -713,6 +713,92 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(root);
         let _ = std::fs::remove_dir_all(outside);
+    }
+
+    #[test]
+    fn mcp_scaffold_uses_native_workspace_lock_and_refuses_pending_recovery() {
+        let root = workspace("native-lock");
+        let root_string = root.to_string_lossy().into_owned();
+
+        let lock = super::lock_mcp_scaffold_workspace_blocking(&root_string)
+            .expect("native workspace lock");
+        assert!(root.join(".rustok/scaffold/lock").is_file());
+        drop(lock);
+
+        std::fs::create_dir_all(root.join(".rustok/scaffold/active"))
+            .expect("native recovery marker");
+        assert!(matches!(
+            super::lock_mcp_scaffold_workspace_blocking(&root_string),
+            Err(Error::BadRequest(message)) if message.contains("cargo xtask scaffold --recover")
+        ));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn mcp_scaffold_is_published_atomically_from_private_staging() {
+        let root = workspace("atomic");
+        let root_string = root.to_string_lossy().into_owned();
+        let modules_root = root.join("crates/modules");
+        std::fs::create_dir_all(&modules_root).expect("modules directory");
+
+        let stale_id = Uuid::new_v4().to_string();
+        let stale_staging = modules_root.join(format!(
+            "{}{}",
+            super::MCP_SCAFFOLD_STAGING_PREFIX,
+            stale_id
+        ));
+        std::fs::create_dir(&stale_staging).expect("stale staging directory");
+        std::fs::write(
+            stale_staging.join(super::MCP_SCAFFOLD_STAGING_MARKER),
+            format!(
+                "{}\\n{}\\n",
+                super::MCP_SCAFFOLD_STAGING_MARKER_VERSION,
+                stale_id
+            ),
+        )
+        .expect("staging marker");
+        std::fs::write(stale_staging.join("partial.txt"), "partial")
+            .expect("stale partial file");
+
+        let request = rustok_mcp::ScaffoldModuleRequest {
+            slug: "atomic-example".to_string(),
+            name: "Atomic Example".to_string(),
+            description: "A scaffold used to verify atomic publication".to_string(),
+            dependencies: Vec::new(),
+            with_graphql: false,
+            with_rest: false,
+            write_files: false,
+        };
+        let preview =
+            rustok_mcp::generate_module_scaffold(&request).expect("scaffold preview");
+        let draft = rustok_mcp::StagedModuleScaffold {
+            draft_id: Uuid::new_v4().to_string(),
+            request,
+            preview,
+            status: rustok_mcp::ModuleScaffoldDraftStatus::Staged,
+        };
+        let lock = super::lock_mcp_scaffold_workspace_blocking(&root_string)
+            .expect("native workspace lock");
+
+        let response =
+            super::apply_mcp_scaffold_atomically(&draft, &root_string, lock)
+                .expect("atomic scaffold apply");
+        let target = root.join(&response.crate_path);
+        assert!(target.join("Cargo.toml").is_file());
+        assert!(target.join("src/lib.rs").is_file());
+        assert!(
+            std::fs::read_dir(&modules_root)
+                .expect("modules listing")
+                .all(|entry| !entry
+                    .expect("modules entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(super::MCP_SCAFFOLD_STAGING_PREFIX)),
+            "successful apply must clean both stale and current private staging directories"
+        );
+
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[tokio::test]
