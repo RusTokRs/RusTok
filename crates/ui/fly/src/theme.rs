@@ -541,6 +541,17 @@ pub fn apply_theme_command(
     document: &mut ProjectDocument,
     command: &ThemeCommand,
 ) -> crate::FlyResult<()> {
+    let mut candidate = document.clone();
+    apply_theme_command_inner(&mut candidate, command)?;
+    candidate.invalidate_caches();
+    *document = candidate;
+    Ok(())
+}
+
+fn apply_theme_command_inner(
+    document: &mut ProjectDocument,
+    command: &ThemeCommand,
+) -> crate::FlyResult<()> {
     let mut tokens = decode_theme_tokens(document)
         .map_err(|message| crate::FlyError::Decode(format!("invalid flyTheme: {message}")))?;
     match command {
@@ -624,7 +635,6 @@ pub fn apply_theme_command(
             serde_json::json!({ "tokens": Value::Object(map) }),
         );
     }
-    document.invalidate_caches();
     Ok(())
 }
 
@@ -893,6 +903,28 @@ mod command_tests {
         )
         .expect_err("duplicate token names must be rejected");
         assert!(error.to_string().contains("defined more than once"));
+        assert_eq!(document, before);
+    }
+
+    #[test]
+    fn failed_token_rename_does_not_partially_rewrite_references() {
+        let long_value = format!("{} var(--old)", "a".repeat(245));
+        let mut document = document_with_theme(json!({
+            "tokens": {
+                "old": "#0b5fff",
+                "sibling": long_value
+            }
+        }));
+        let before = document.clone();
+        let error = apply_theme_command(
+            &mut document,
+            &ThemeCommand::Rename {
+                old_name: "old".to_string(),
+                new_name: "a".repeat(64),
+            },
+        )
+        .expect_err("expanded token value must exceed the size limit");
+        assert!(error.to_string().contains("value must be 1..=256 characters"));
         assert_eq!(document, before);
     }
 }
