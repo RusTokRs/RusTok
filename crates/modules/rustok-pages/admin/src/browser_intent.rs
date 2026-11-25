@@ -886,14 +886,12 @@ fn begin_consumer_save(
 ) -> Result<(fly::ProjectHash, SaveAttempt), PagesBrowserIntentError> {
     let revision = controller.editor().revision();
     let hash = revision.project_hash;
-    if request.expected_hash.as_deref() != Some(hash.hex().as_str())
-        || request.command_sequence != revision.command_sequence
-    {
-        return Err(fly::FlyError::InvalidSaveState(
-            "save effect does not match the current document snapshot".to_string(),
-        ).into());
-    }
-    let attempt = controller.mark_save_started_with_id()?;
+    let expected_hash = request.expected_hash.as_deref()
+        .filter(|expected| *expected == hash.hex().as_str())
+        .map(|_| hash);
+    let attempt = controller.begin_save_request(
+        &request.request, expected_hash, request.command_sequence,
+    )?;
     Ok((hash, attempt))
 }
 

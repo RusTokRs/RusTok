@@ -393,7 +393,10 @@ impl AdminEditorRuntime {
                     runtime_context,
                     scenario_id,
                 )));
-                self.execute_request(request, None);
+                let sequence = self.controller.with_untracked(|controller| {
+                    controller.editor().revision().command_sequence
+                });
+                self.execute_request(request, None, sequence);
             }
             Err(error) => self.fail(error),
         }
@@ -501,7 +504,7 @@ impl AdminEditorRuntime {
                             scenario,
                         )));
                     }
-                    self.execute_request(request, expected_hash);
+                    self.execute_request(request, expected_hash, command_sequence);
                 }
             }
         }
@@ -528,8 +531,8 @@ impl AdminEditorRuntime {
             AdminCanvasEffect::Request {
                 request,
                 expected_hash,
-                ..
-            } => self.execute_request(request, expected_hash),
+                command_sequence,
+            } => self.execute_request(request, expected_hash, command_sequence),
         }
     }
 
@@ -537,6 +540,7 @@ impl AdminEditorRuntime {
         &self,
         request: PageBuilderCapabilityRequest,
         expected_hash: Option<ProjectHash>,
+        command_sequence: u64,
     ) {
         let capability = request.capability();
         if capability == BuilderCapabilityKind::Publish && self.reject_peer_write_conflict() {
@@ -561,7 +565,9 @@ impl AdminEditorRuntime {
             if self.facade.is_some() || self.on_request.is_some() {
                 let start = self
                     .controller
-                    .try_update(|controller| controller.mark_save_started_with_id());
+                    .try_update(|controller| {
+                        controller.begin_save_request(&request, expected_hash, command_sequence)
+                    });
                 match start {
                     Some(Ok(attempt_id)) => Some(attempt_id),
                     Some(Err(error)) => {

@@ -1503,3 +1503,7 @@ integration tests; MySQL support is out of scope.
 2026-11-25 Pages SSR save attempt correlation follow-up (source only; not executed):
 - Finished the SSR consumer migration to the correlated AdminCanvasController save API. Preserve the effect hash/sequence, validate before I/O, begin the attempt, and correlate success, failure and conflict with that exact attempt.
 - Fixed missing receipt regression fixture references and added a save-effect identity regression. Compilation and tests remain pending.
+
+2026-11-25 Save effect admission parity follow-up (source only; not executed):
+- SSR Pages, Leptos and Dioxus share controller admission of the exact persistence effect (consumer page, CAS revision, hash, sequence and serialized payload) before starting transport; both framework adapters retain the emitted command sequence.
+- Session reducer ignores inactive save acknowledgements before touching error feedback. Added focused controller and reducer regressions; compilation, formatting and tests remain pending.

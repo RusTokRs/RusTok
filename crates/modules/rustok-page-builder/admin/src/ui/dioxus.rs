@@ -139,6 +139,7 @@ where
             EditorSessionEffect::ExecuteRequest {
                 request,
                 expected_hash,
+                command_sequence,
                 preview_attempt_id,
             } => {
                 let preview_attempt_id = if let PageBuilderCapabilityRequest::Preview(input) = &request {
@@ -209,11 +210,15 @@ where
                         session.write().fail("Save request has no submitted project hash");
                         continue;
                     }
-                    let start = { session.write().mark_save_started_with_id() };
+                    let start = {
+                        session.write().controller.begin_save_request(
+                            &request, expected_hash, command_sequence,
+                        )
+                    };
                     match start {
                         Ok(attempt) => Some(attempt),
                         Err(error) => {
-                            session.write().fail(error);
+                            session.write().fail(error.to_string());
                             continue;
                         }
                     }
@@ -1051,6 +1056,7 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                                 effects.push(EditorSessionEffect::ExecuteRequest {
                                     request,
                                     expected_hash,
+                                    command_sequence,
                                     preview_attempt_id: None,
                                 });
                             }

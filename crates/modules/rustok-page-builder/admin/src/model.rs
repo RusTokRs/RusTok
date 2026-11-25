@@ -183,6 +183,36 @@ impl AdminCanvasController {
         Ok(outgoing)
     }
 
+    /// Bind a transport attempt to the exact emitted persistence effect.
+    /// Reject stale or mismatched payloads before invoking the consumer.
+    pub fn begin_save_request(
+        &mut self,
+        request: &PageBuilderCapabilityRequest,
+        expected_hash: Option<ProjectHash>,
+        command_sequence: u64,
+    ) -> Result<SaveAttempt, AdminCanvasError> {
+        let PageBuilderCapabilityRequest::Publish(input) = request else {
+            return Err(AdminCanvasError::Authoring("expected a save request".to_string()));
+        };
+        let revision = self.editor.revision();
+        if input.page_id != self.page_id
+            || input.revision_id != self.revision_id
+            || expected_hash != Some(revision.project_hash)
+            || command_sequence != revision.command_sequence
+            || input.project_data != GrapesJsCodec::encode_value(self.editor.document())?
+        {
+            return Err(AdminCanvasError::Authoring(
+                "save request no longer matches the active document snapshot".to_string(),
+            ));
+        }
+        if self.ui.state.has_blocking_diagnostics() {
+            return Err(AdminCanvasError::Authoring(
+                "save blocked by validation diagnostics".to_string(),
+            ));
+        }
+        self.mark_save_started_with_id()
+    }
+
     pub fn mark_save_started(&mut self) -> Result<(), AdminCanvasError> {
         self.mark_save_started_with_id().map(|_| ())
     }
@@ -749,6 +779,38 @@ mod tests {
         assert_eq!(controller.editor(), before.editor());
         assert_eq!(controller.ui(), before.ui());
         assert_eq!(controller.revision_id(), before.revision_id());
+    }
+
+    #[test]
+    fn save_request_admission_binds_payload_revision_and_sequence() {
+        let mut controller = controller();
+        let effects = controller.dispatch(UiIntent::RequestSave).expect("save effect");
+        let AdminCanvasEffect::Request { request, expected_hash, command_sequence } = &effects[0] else {
+            panic!("expected persistence effect");
+        };
+        for field in ["page", "revision", "payload", "hash", "sequence"] {
+            let mut candidate = request.clone();
+            let PageBuilderCapabilityRequest::Publish(input) = &mut candidate else {
+                panic!("expected publish");
+            };
+            let mut hash = *expected_hash;
+            let mut sequence = *command_sequence;
+            match field {
+                "page" => input.page_id = "other".to_string(),
+                "revision" => input.revision_id = "old".to_string(),
+                "payload" => input.project_data = json!({"pages": []}),
+                "hash" => hash = None,
+                "sequence" => sequence += 1,
+                _ => unreachable!(),
+            }
+            let before = controller.clone();
+            assert!(controller.begin_save_request(&candidate, hash, sequence).is_err(), "{field}");
+            assert_eq!(controller, before);
+        }
+        let attempt = controller.begin_save_request(request, *expected_hash, *command_sequence)
+            .expect("current effect");
+        assert_eq!(controller.active_save_attempt().as_ref(), Some(&attempt));
+        assert!(controller.mark_save_failed_for_attempt(&attempt).expect("retire"));
     }
 
     #[test]

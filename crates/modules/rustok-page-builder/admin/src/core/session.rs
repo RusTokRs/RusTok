@@ -599,11 +599,12 @@ impl EditorSessionState {
                             AdminCanvasEffect::Request {
                                 request,
                                 expected_hash,
-                                ..
+                                command_sequence,
                             } => {
                                 effects.push(EditorSessionEffect::ExecuteRequest {
                                     request,
                                     expected_hash,
+                                    command_sequence,
                                     preview_attempt_id: None,
                                 });
                             }
@@ -623,6 +624,7 @@ impl EditorSessionState {
                         effects.push(EditorSessionEffect::ExecuteRequest {
                             request,
                             expected_hash: Some(hash),
+                            command_sequence: self.controller.editor().revision().command_sequence,
                             preview_attempt_id: self.preview_request.as_ref().map(PreviewAttempt::id),
                         });
                     }
@@ -641,17 +643,14 @@ impl EditorSessionState {
                 expected_hash,
                 attempt,
             } => {
-                if let Err(err) = self.handle_publish_response(
-                    &page_id,
-                    &revision_id,
-                    expected_hash,
-                    &attempt,
-                ) {
-                    // A peer-write fence already carries the actionable conflict message.
-                    // Do not replace it with the less useful "inactive request" response.
-                    if !self.controller.ui().state.dirty.save_conflict {
-                        self.fail(err);
-                    }
+                // An inactive response must not overwrite current session feedback.
+                if self.controller.active_save_attempt().as_ref() == Some(&attempt) {
+                    let _ = self.handle_publish_response(
+                        &page_id,
+                        &revision_id,
+                        expected_hash,
+                        &attempt,
+                    );
                 }
             }
             EditorSessionAction::SaveFailed { attempt, message } => {
@@ -716,6 +715,7 @@ pub enum EditorSessionEffect {
     ExecuteRequest {
         request: PageBuilderCapabilityRequest,
         expected_hash: Option<ProjectHash>,
+        command_sequence: u64,
         preview_attempt_id: Option<uuid::Uuid>,
     },
 }
@@ -772,6 +772,14 @@ mod tests {
         ).is_err());
         assert_eq!(session.controller.active_save_attempt().as_ref(), Some(&retry));
         assert_eq!(session.last_error.as_deref(), Some("network failure"));
+        session.dispatch(EditorSessionAction::SaveAcknowledged {
+            page_id: "home".to_string(),
+            revision_id: "stale-revision".to_string(),
+            expected_hash: Some(hash),
+            attempt: first,
+        });
+        assert_eq!(session.last_error.as_deref(), Some("network failure"));
+        assert_eq!(session.controller.active_save_attempt().as_ref(), Some(&retry));
         session.handle_publish_response_for_attempt(
             "home", "rev-2", Some(hash), &retry,
         ).expect("accepted response");

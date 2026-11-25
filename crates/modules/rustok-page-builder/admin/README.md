@@ -218,6 +218,13 @@ For the formal Rust API contract and guarantees, see [`CRATE_API.md`](CRATE_API.
 
 ## Snapshot-bound save acknowledgements
 
+Before invoking any persistence transport, SSR Pages, Leptos and Dioxus use
+`AdminCanvasController::begin_save_request` to bind the emitted save effect to
+the live page, CAS revision, command sequence, project hash and exact encoded
+project data. Stale or mismatched effects are rejected before I/O and cannot
+start an attempt. Session reducer acknowledgements for inactive attempts do not
+replace current error feedback.
+
 A successful Page Builder publish response acknowledges exactly the hash captured when the
 request began. Newer local edits remain dirty, while the persisted revision becomes the base for
 the next save. A local edit during an in-flight request is **not** a remote revision conflict.
