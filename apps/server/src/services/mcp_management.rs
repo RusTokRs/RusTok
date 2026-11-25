@@ -691,6 +691,30 @@ impl McpManagementService {
                 return Err(Error::BadRequest(reason));
             }
         };
+
+        if let Err(error) =
+            crate::services::mcp_scaffold_workspace::validate_mcp_scaffold_target_path(
+                &workspace_root,
+                &staged_draft.preview.crate_name,
+                &staged_draft.preview.crate_path,
+            )
+            .await
+        {
+            let reason = error.to_string();
+            Self::mark_scaffold_apply_failed(
+                db,
+                tenant_id,
+                &draft,
+                input.applied_by,
+                input.actor_id.clone(),
+                input.actor_type.clone(),
+                &workspace_root,
+                &reason,
+            )
+            .await?;
+            return Err(error);
+        }
+
         // Scaffold generation writes several files synchronously. Keep that filesystem
         // work off Tokio's async workers; a panic or partial write is quarantined below.
         let apply_workspace_root = workspace_root.clone();
