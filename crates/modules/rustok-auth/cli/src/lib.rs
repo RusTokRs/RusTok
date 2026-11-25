@@ -33,6 +33,10 @@ impl CommandProvider for AuthCommandProvider {
                 "Create an OAuth application for an explicitly selected tenant",
             ),
             CommandDescriptor::new("auth", "sessions-cleanup", "Remove expired auth sessions"),
+            CommandDescriptor::new(
+                "auth", "jwt-revoke",
+                "Irreversibly revoke an enrolled JWT key across the deployment",
+            ),
         ]
     }
 
@@ -40,6 +44,11 @@ impl CommandProvider for AuthCommandProvider {
         match (request.namespace.as_str(), request.name.as_str()) {
             ("oauth", "create-app") => self.create_app(request.args).await,
             ("auth", "sessions-cleanup") => self.cleanup_sessions().await,
+            ("auth", "jwt-revoke") if request.dry_run => Err(CliCoreError::DryRunNotSupported {
+                namespace: request.namespace,
+                name: request.name,
+            }),
+            ("auth", "jwt-revoke") => self.revoke_jwt(request.args).await,
             _ => Err(CliCoreError::UnknownCommand {
                 namespace: request.namespace,
                 name: request.name,
@@ -69,6 +78,22 @@ impl AuthCommandProvider {
                 "client_secret": created.client_secret,
             })),
         )
+    }
+
+    async fn revoke_jwt(&self, args: serde_json::Value) -> CliCoreResult<CommandOutcome> {
+        let (purpose, kid) = jwt_revocation_options(&args)?;
+        // The stable root is never accepted as a command-line argument or
+        // returned in output. The Auth owner authenticates it against the ledger.
+        let root = std::env::var("RUSTOK_JWT_REVOCATION_ROOT").map_err(|_| {
+            CliCoreError::InvalidInput {
+                message: "RUSTOK_JWT_REVOCATION_ROOT is required".into(),
+            }
+        })?;
+        let db = db_clone(self.runtime.require_host().map_err(command_failed)?);
+        let receipt = rustok_auth::JwtGenerationFence::new(db)
+            .revoke_key(&root, purpose, kid).await.map_err(command_failed)?;
+        let data = serde_json::to_value(receipt).map_err(command_failed)?;
+        Ok(CommandOutcome::success("JWT key revocation recorded").with_data(data))
     }
 
     async fn cleanup_sessions(&self) -> CliCoreResult<CommandOutcome> {
@@ -205,6 +230,27 @@ fn required_tenant_id(options: &serde_json::Map<String, serde_json::Value>) -> C
     Ok(tenant_id)
 }
 
+fn jwt_revocation_options(args: &serde_json::Value) -> CliCoreResult<(&str, &str)> {
+    let invalid = || CliCoreError::InvalidInput {
+        message: "auth jwt-revoke requires --purpose access|password-reset|email-verification|invite --kid <id> --confirm and no other arguments".into(),
+    };
+    let opts = args.get("options").and_then(serde_json::Value::as_object).ok_or_else(invalid)?;
+    if opts.len() != 3 || opts.get("confirm").and_then(serde_json::Value::as_bool) != Some(true)
+        || args.get("positionals").and_then(serde_json::Value::as_array).is_some_and(|p| !p.is_empty())
+    {
+        return Err(invalid());
+    }
+    let purpose = option(opts, "purpose").ok_or_else(invalid)?;
+    let kid = option(opts, "kid").ok_or_else(invalid)?;
+    if !matches!(purpose, "access" | "password-reset" | "email-verification" | "invite")
+        || kid.is_empty() || kid.len() > 64
+        || !kid.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    {
+        return Err(invalid());
+    }
+    Ok((purpose, kid))
+}
+
 fn options(args: &serde_json::Value) -> CliCoreResult<&serde_json::Map<String, serde_json::Value>> {
     args.get("options")
         .and_then(serde_json::Value::as_object)
@@ -249,6 +295,35 @@ mod tests {
     use rustok_cli_core::CliCoreError;
     use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
     use uuid::Uuid;
+
+    #[tokio::test]
+    async fn direct_provider_cannot_execute_dry_run_revocation() {
+        use rustok_cli_core::{CommandProvider, CommandRequest};
+        let provider = super::AuthCommandProvider {
+            runtime: rustok_runtime::RuntimeComposition::without_database(serde_json::Value::Null),
+        };
+        let result = provider.execute(CommandRequest::new(
+            "auth", "jwt-revoke",
+            serde_json::json!({"options":{"purpose":"access","kid":"key-1","confirm":true}}),
+            true,
+        )).await;
+        assert!(matches!(result, Err(CliCoreError::DryRunNotSupported { .. })));
+    }
+
+    #[test]
+    fn jwt_revocation_requires_exact_target_and_confirmation() {
+        let args = serde_json::json!({"options":{"purpose":"access","kid":"key-1","confirm":true}});
+        assert_eq!(super::jwt_revocation_options(&args).unwrap(), ("access", "key-1"));
+        for args in [
+            serde_json::json!({"options":{"purpose":"access","kid":"key-1"}}),
+            serde_json::json!({"options":{"purpose":"access","kid":"key-1","confirm":"true"}}),
+            serde_json::json!({"options":{"purpose":"all","kid":"key-1","confirm":true}}),
+            serde_json::json!({"options":{"purpose":"access","kid":"*","confirm":true}}),
+            serde_json::json!({"options":{"purpose":"access","kid":"key-1","confirm":true,"root":"secret"}}),
+        ] {
+            assert!(super::jwt_revocation_options(&args).is_err());
+        }
+    }
 
     #[test]
     fn oauth_create_app_requires_explicit_tenant_id() {

@@ -798,9 +798,17 @@ pub async fn find_published_product_id_any_locale(
 pub async fn find_first_published_product(
     db: &DatabaseConnection,
     tenant_id: Uuid,
-    translations: Vec<entities::product_translation::Model>,
+    mut translations: Vec<entities::product_translation::Model>,
     public_channel_slug: Option<&str>,
 ) -> CommerceResult<Option<Uuid>> {
+    // Handles are unique per tenant and locale, not across locales. Preserve
+    // the caller's requested/fallback tiers and make each tier deterministic.
+    translations.sort_unstable_by(|a, b| {
+        a.locale
+            .cmp(&b.locale)
+            .then_with(|| a.product_id.cmp(&b.product_id))
+            .then_with(|| a.id.cmp(&b.id))
+    });
     for translation in translations {
         let product = entities::product::Entity::find_by_id(translation.product_id)
             .filter(entities::product::Column::TenantId.eq(tenant_id))
@@ -840,7 +848,8 @@ where
         .all(conn)
         .await?;
 
-    if let Some(translation) = existing.first() {
+    // Tags-only patches have no submitted translation order.
+    if let Some(translation) = existing.iter().min_by(|a, b| a.locale.cmp(&b.locale)) {
         return Ok(translation.locale.clone());
     }
 

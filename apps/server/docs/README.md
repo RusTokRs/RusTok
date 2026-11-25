@@ -657,8 +657,12 @@ be recovered from the old refresh token.
 GraphQL request-preparation policies classify only the operation selected by
 `operationName` (or the sole operation when no name is required). The selected
 operation is an execution selector, not an authorization grant: field permissions
-remain enforced by server-owned policy. Fragment-spread classification is
-cycle-safe because host preflight runs before GraphQL's normal document validation.
+remain enforced by server-owned policy. Preflight classifies the parsed
+executable document even when the request has no source text (for example,
+a server-supplied pre-parsed document); empty source is not a policy exemption.
+A request with neither source nor a parsed document fails parsing.
+Fragment-spread classification is cycle-safe because host preflight runs
+before GraphQL's normal document validation.
 
 ## Runtime surface
 
@@ -995,10 +999,11 @@ before the event forwarder. The Outbox relay supervisor owns and gracefully drai
 - OAuth discovery metadata also uses `ServerAuthRuntime` as the single source of auth config.
 - OAuth REST token, authorize/consent, browser-session, and revoke handlers extract `ServerAuthRuntime`
   or `ServerRuntimeContext`; host-wide context does not participate in OAuth request state.
+- Optional JWT hot reload uses one trusted complete versioned file (`RUSTOK_JWT_KEYRING_FILE`). Startup and reload share production policy validation; all host AuthConfig clones share the published keys. The host supervisor polls and renews the cluster JWT lease every two seconds through bootstrap and serving. Durable generation and lifetime identity admission precede publication; compatible staged generations can overlap using exact registered replica grants, while incompatible changes use the lease drain. Expired local leases fail the critical readiness check; emergency revocation via the trusted Auth CLI changes the authenticated ledger and fences affected local JWT runtimes on renewal independently of the mounted file. See [Auth owner contract](../../../crates/modules/rustok-auth/docs/README.md#cluster-jwt-lease-and-drain-barrier). Source regressions unrun.
 - Auth derives separate host MAC keys for OAuth CSRF and password reset via HKDF-SHA256 and uses library HMAC-SHA256. MAC v5 and reset fingerprint v2 invalidate outstanding previous forms/links; JWT signing and session storage are unchanged. Deploy host instances together. Source regressions unrun.
 - OAuth browser confirmation MAC v4 binds the current direct session and bounds the expiry. JWT validation rejects future or inconsistent issuance times and future `nbf`; duration conversion is checked. RS256 configuration still requires a strong symmetric secret for host MACs. Source regressions unrun.
 - OAuth RFC 7009 revocation revalidates the authenticated client snapshot (identity, active state, app type, and secret hash) under the app mutation lock before looking up any token. Unknown tokens still succeed for authenticated clients. Source regression unrun.
-- OAuth authorization locks app, subject and direct session in that order, rechecks email policy and credential expiry, and commits browser approval and code issuance together. A stale session cannot grant consent or issue codes. Source regressions unrun.
+- OAuth authorization locks app, subject and direct session in that order, rechecks email policy and credential expiry, and commits browser approval and code issuance together. A stale session cannot grant consent or issue codes. Redirect registration and authorization admission reject callback query names reserved for OAuth responses (`code`, `state`, `error`, `error_description`, `error_uri`), including percent-encoded names. Legacy conflicting callbacks must be corrected before issuing new codes; unrelated query parameters are preserved. Source regressions unrun.
 - OAuth consent re-grant invalidates pending codes for that app, tenant and subject in the same transaction. Code exchange rejects a newer consent epoch and rechecks the refresh grant if a refresh credential was prepared. OAuth replay grace uses the exact elapsed duration and rejects future timestamps. Source regressions unrun.
 - OAuth access JWTs are registered credentials: issuance writes a `token_kind = access`
   row whose id is the JWT `jti`, and the extractor requires that row to be active,
@@ -1007,12 +1012,16 @@ before the event forwarder. The Outbox relay supervisor owns and gracefully drai
   family, so an already-issued access JWT is fenced before its signed TTL. Delegated
   rows also capture the consent epoch (`consent_granted_at`); a consent revoke/re-grant
   cannot resurrect older tokens. Code exchange locks the active app and delegated
-  subject in the persistence transaction, then rechecks the client-secret hash,
+  subject in the persistence transaction, then rechecks the authenticated client
+  identity, app type, active state and client-secret hash,
   authorization-code grant, current scopes, registered redirect URI, subject status,
   and password-change epoch before consuming the code. Refresh rotation similarly
-  locks the app and subject and rechecks the client-secret hash, refresh grant,
-  current scopes, subject status, and password-change epoch before consuming the
-  refresh token. Client-credentials issuance locks and rechecks its app before
+  locks the app and subject and rechecks the same client authentication snapshot, refresh grant,
+  current scopes, subject status, password-change epoch and the original
+  refresh-family absolute deadline before consuming the refresh token. The
+  family root is resolved again inside the transaction, so waiting for app or
+  subject locks cannot extend the lifetime of the lineage.
+  Client-credentials issuance locks and rechecks its app before
   persisting the access row. The OAuth authorization-code **creation**
   service independently reserves the same app-then-user mutation fences,
   revalidates active app/subject, authorization-code grant, registered redirect,

@@ -143,23 +143,68 @@ pub fn apply_binding_command(
 
 pub fn materialize_bindings(document: &ProjectDocument, context: &Value) -> BindingMaterialization {
     let catalog = BindingCatalog::from_document(document);
+    materialize_global_bindings(document, context, &catalog, &BTreeSet::new())
+}
+
+/// Pipeline-only preparation: retain global binding semantics and defer
+/// alias-dependent bindings until each repeater instance has its own context.
+pub(crate) fn prepare_scoped_bindings(
+    document: &ProjectDocument,
+    context: &Value,
+) -> (BindingMaterialization, ScopedBindings) {
+    let catalog = BindingCatalog::from_document(document);
+    let scopes = crate::dynamic::repeater_binding_scopes(document);
+    let (conflicts, _) = binding_conflicts(&catalog);
+    let mut scoped = ScopedBindings::default();
+    let mut excluded = BTreeSet::new();
+    for (index, binding) in catalog.bindings.iter().enumerate() {
+        // Malformed paths must not resolve to a fallback just because they name an alias.
+        if !is_valid_runtime_context_path(&binding.path) || !is_scoped_binding(binding, &scopes) {
+            continue;
+        }
+        excluded.insert(index);
+        if conflicts.contains(&index) {
+            continue; // global conflict pass reports/counts the entire catalog
+        }
+        if let Err(reason) = validate_scoped_binding_target(&binding.target) {
+            scoped.unresolved += 1;
+            scoped.diagnostics.push(binding_diagnostic(
+                ValidationSeverity::Error, "runtime_scoped_binding_target_invalid",
+                format!("binding `{}`: {reason}", binding.id),
+            ));
+            continue;
+        }
+        scoped.definitions.entry(binding.component_id.clone()).or_default().push(binding.clone());
+    }
+    (materialize_global_bindings(document, context, &catalog, &excluded), scoped)
+}
+
+fn materialize_global_bindings(
+    document: &ProjectDocument,
+    context: &Value,
+    catalog: &BindingCatalog,
+    excluded: &BTreeSet<usize>,
+) -> BindingMaterialization {
     let mut materialized = document.clone();
     let mut diagnostics = Vec::new();
     let mut applied_bindings = 0usize;
     let mut fallback_bindings = 0usize;
     let mut unresolved_bindings = 0usize;
 
-    let (conflicts, conflict_diagnostics) = binding_conflicts(&catalog);
+    let (conflicts, conflict_diagnostics) = binding_conflicts(catalog);
     diagnostics.extend(conflict_diagnostics);
     for (index, binding) in catalog.bindings.iter().enumerate() {
         if conflicts.contains(&index) {
             unresolved_bindings += 1;
             continue;
         }
+        if excluded.contains(&index) {
+            continue;
+        }
         if !is_valid_runtime_context_path(&binding.path) {
             unresolved_bindings = unresolved_bindings.saturating_add(1);
             diagnostics.push(binding_diagnostic(
-                ValidationSeverity::Warning,
+                ValidationSeverity::Error,
                 "runtime_binding_path_invalid",
                 format!(
                     "binding `{}` has an invalid context path `{}`",
@@ -171,40 +216,19 @@ pub fn materialize_bindings(document: &ProjectDocument, context: &Value) -> Bind
         if let Err(error) = validate_binding_target(&binding.target) {
             unresolved_bindings = unresolved_bindings.saturating_add(1);
             diagnostics.push(binding_diagnostic(
-                ValidationSeverity::Warning,
+                ValidationSeverity::Error,
                 "runtime_binding_target_invalid",
                 format!("binding `{}` has an invalid target: {error}", binding.id),
             ));
             continue;
         }
-        let resolved = resolve_context_path(context, &binding.path).cloned();
-        let (source, used_fallback) = match resolved {
-            Some(value) => (Some(value), false),
-            None => (binding.fallback.clone(), binding.fallback.is_some()),
-        };
-        let Some(source) = source else {
-            unresolved_bindings = unresolved_bindings.saturating_add(1);
-            diagnostics.push(binding_diagnostic(
-                ValidationSeverity::Info,
-                "runtime_binding_unresolved",
-                format!(
-                    "binding `{}` path `{}` did not resolve and has no fallback",
-                    binding.id, binding.path
-                ),
-            ));
-            continue;
-        };
-        let Some(value) = transform_value(source, binding.transform) else {
-            unresolved_bindings = unresolved_bindings.saturating_add(1);
-            diagnostics.push(binding_diagnostic(
-                ValidationSeverity::Warning,
-                "runtime_binding_transform_failed",
-                format!(
-                    "binding `{}` could not apply transform `{:?}`",
-                    binding.id, binding.transform
-                ),
-            ));
-            continue;
+        let (value, used_fallback) = match resolve_binding_value(binding, context) {
+            Ok(value) => value,
+            Err(diagnostic) => {
+                unresolved_bindings += 1;
+                diagnostics.push(diagnostic);
+                continue;
+            }
         };
         let Some(component) = materialized.component_mut(&binding.component_id) else {
             unresolved_bindings = unresolved_bindings.saturating_add(1);
@@ -231,6 +255,125 @@ pub fn materialize_bindings(document: &ProjectDocument, context: &Value) -> Bind
         applied_bindings,
         fallback_bindings,
         unresolved_bindings,
+    }
+}
+
+fn resolve_binding_value(binding: &RuntimeBinding, context: &Value) -> Result<(Value, bool), ValidationDiagnostic> {
+    let resolved = resolve_context_path(context, &binding.path).cloned();
+    let (source, used_fallback) = match resolved {
+        Some(value) => (Some(value), false),
+        None => (binding.fallback.clone(), binding.fallback.is_some()),
+    };
+    let source = source.ok_or_else(|| binding_diagnostic(
+        ValidationSeverity::Info, "runtime_binding_unresolved",
+        format!("binding `{}` path `{}` did not resolve and has no fallback", binding.id, binding.path),
+    ))?;
+    let value = transform_value(source, binding.transform).ok_or_else(|| binding_diagnostic(
+        ValidationSeverity::Warning, "runtime_binding_transform_failed",
+        format!("binding `{}` could not apply transform `{:?}`", binding.id, binding.transform),
+    ))?;
+    Ok((value, used_fallback))
+}
+
+fn is_scoped_binding(binding: &RuntimeBinding, scopes: &BTreeMap<String, BTreeSet<String>>) -> bool {
+    let path = binding.path.trim();
+    let path = path.strip_prefix('$').unwrap_or(path);
+    let path = path.strip_prefix('.').unwrap_or(path);
+    let alias = path.split(['.', '[']).next().unwrap_or_default();
+    scopes.get(&binding.component_id).is_some_and(|aliases| aliases.contains(alias))
+}
+
+/// Identity and interaction contracts are proved/remapped before scoped
+/// writes run. Do not introduce identities or provider contracts afterwards.
+fn validate_scoped_binding_target(target: &BindingTarget) -> Result<(), String> {
+    validate_binding_target(target)?;
+    match target {
+        BindingTarget::Field { name } if name == "content" => Ok(()),
+        BindingTarget::Style { name } if crate::css_property_allowed(name) => Ok(()),
+        BindingTarget::Attribute { name } => {
+            let name = name.to_ascii_lowercase();
+            if name.starts_with("on") || name.starts_with("data-fly-")
+                || matches!(name.as_str(), "id" | "style" | "action" | "formaction" | "usemap" | "srcdoc" | "xlink:href" | "ping" | "background")
+                || crate::id_reference::ID_REFERENCE_ATTRIBUTES.contains(&name.as_str())
+                || !name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | ':'))
+            {
+                Err("scoped binding cannot write an identity, interaction or forbidden attribute".to_string())
+            } else {
+                Ok(())
+            }
+        }
+        _ => Err("scoped binding supports content, safe CSS property names and non-identity attributes only".to_string()),
+    }
+}
+
+#[derive(Default)]
+pub(crate) struct ScopedBindings {
+    definitions: BTreeMap<String, Vec<RuntimeBinding>>,
+    writes: BTreeMap<String, Vec<(BindingTarget, Value, bool)>>,
+    diagnostics: Vec<ValidationDiagnostic>,
+    applied: usize,
+    fallbacks: usize,
+    unresolved: usize,
+}
+
+impl ScopedBindings {
+    /// Capture values in the instance's lexical scope; defer writes until all
+    /// template interpolation is complete so bound strings stay literal.
+    pub(crate) fn capture(&mut self, source_id: &str, instance_id: &str, context: &Value) {
+        let Some(bindings) = self.definitions.get(source_id) else {
+            return;
+        };
+        for binding in bindings {
+            match resolve_binding_value(binding, context) {
+                Ok((value, fallback)) => {
+                    if matches!(&binding.target, BindingTarget::Attribute {name} if name.eq_ignore_ascii_case("href"))
+                        && value.as_str().is_some_and(|value| value.trim_start().starts_with('#'))
+                    {
+                        self.unresolved += 1;
+                        self.diagnostics.push(binding_diagnostic(
+                            ValidationSeverity::Error, "runtime_scoped_binding_target_invalid",
+                            format!("binding `{}` cannot introduce a fragment reference after identity remapping", binding.id),
+                        ));
+                        continue;
+                    }
+                    self.writes.entry(instance_id.to_string()).or_default().push((binding.target.clone(), value, fallback));
+                }
+                Err(diagnostic) => {
+                    self.unresolved += 1;
+                    self.diagnostics.push(diagnostic);
+                }
+            }
+        }
+    }
+
+    pub(crate) fn finish(mut self, document: &mut ProjectDocument, global: &mut BindingMaterialization) {
+        // One mutable walk, not one index rebuild for every generated binding.
+        let mut pending = document.project_mut().pages.iter_mut()
+            .filter_map(|page| page.component.as_mut()).collect::<Vec<_>>();
+        while let Some(node) = pending.pop() {
+            let Some(component) = node.as_object_mut() else { continue; };
+            if let Some(writes) = component.id.as_deref().and_then(|id| self.writes.remove(id)) {
+                for (target, value, fallback) in writes {
+                    apply_value(component, &target, value);
+                    self.applied += 1;
+                    self.fallbacks += usize::from(fallback);
+                }
+            }
+            if let Some(children) = component.children_mut() {
+                pending.extend(children.iter_mut());
+            }
+        }
+        for (id, writes) in self.writes {
+            self.unresolved += writes.len();
+            self.diagnostics.push(binding_diagnostic(
+                ValidationSeverity::Error, "runtime_binding_target_missing",
+                format!("scoped binding instance `{id}` disappeared before application"),
+            ));
+        }
+        global.applied_bindings += self.applied;
+        global.fallback_bindings += self.fallbacks;
+        global.unresolved_bindings += self.unresolved;
+        global.diagnostics.extend(self.diagnostics);
     }
 }
 
@@ -526,6 +669,24 @@ mod tests {
                 .and_then(Value::as_str),
             Some("First")
         );
+    }
+
+    #[test]
+    fn invalid_scoped_path_is_not_deferred_or_resolved_to_fallback() {
+        let source = GrapesJsCodec::decode_value(json!({
+            "pages": [{"component": {"id": "root", "type": "wrapper", "components": [
+                {"id": "title", "type": "text", "content": "Original"}
+            ]}}],
+            "flyRuntimeRepeaters": [{"id": "items", "component_id": "title", "path": "items"}],
+            "flyRuntimeBindings": [{"id": "invalid", "component_id": "title",
+                "path": "item.[0]", "target": "field", "name": "content", "fallback": "Wrong"}]
+        })).expect("source");
+        let result = crate::materialize_project_with_runtime_context(&source, &json!({"items": [1, 2]}));
+        assert_eq!(result.applied_bindings, 0);
+        assert_eq!(result.fallback_bindings, 0);
+        assert_eq!(result.unresolved_bindings, 1);
+        assert!(result.diagnostics.iter().any(|d| d.code == "runtime_binding_path_invalid" && d.severity == ValidationSeverity::Error));
+        assert_eq!(result.document.component("title--items-0").unwrap().extensions["content"], "Original");
     }
 
     #[test]

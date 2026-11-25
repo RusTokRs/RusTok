@@ -7,6 +7,7 @@
 ## Platform Capability Bindings
 
 - **Core Module Registration**: Exposes `AuthModule` implementing `RusToKModule` (slug `"auth"`, kind `ModuleKind::Core`) and `MigrationSource`.
+- **Emergency revocation**: `JwtGenerationFence::revoke_key` returns a `JwtRevocationReceipt` for a previously enrolled purpose/kid, authenticates the stable root and persists an irreversible ban. Trusted deployment operator use only; lease renewal enforces the ban.
 - **Token & JWT Lifecycle**:
   - `encode_access_token`, `decode_access_token`
   - `encode_invite_token`, `decode_invite_token`
@@ -24,6 +25,9 @@
   - `AuthUserBackfillReadPort` / `AuthUserBackfillRuntime`
   - `AuthUserBootstrapDbWriter`, `AuthUserBackfillDbReader`
 - **Configuration**: `AuthConfig`, `build_auth_config`, `validate_auth_config`.
+- **Process-local key rotation**: `AuthConfig::prepare_jwt_document`, `AuthConfig::into_live_jwt`, `JwtKeyringPublisher::prepare_document`, `publish`, `generation`. Crypto getters return fallible owned values; `inspect_hs256_secrets` visits material without copying it. The publisher is host-owned, never a request capability.
+- **Durable generation admission**: `JwtGenerationFence::new`, `admit`, and `ensure_static_allowed`. The Auth-owned database singleton must admit a complete candidate before host startup/publication. The store retains authenticated metadata, never signing key material.
+- **Cluster JWT lease**: `AuthConfig::into_cluster_jwt`, `JwtGenerationFence::renew`, `JwtAdmission::{Admitted, Draining, AwaitingReplicas}`. HTTP hosts gate crypto by a bounded monotonic lease, retry draining/awaiting admissions, and revoke local authority on shutdown. `JwtGenerationFence::activate` acquires a registered candidate grant before atomically exchanging the local keys and lease, then ACKs replacement for that incarnation. `JwtKeyringPublisher::lease_readiness` returns a read-only view of the same gate for host health checks.
 
 ## Domain Collaborations
 

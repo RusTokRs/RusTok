@@ -53,6 +53,11 @@ Non-ADR plans and research documents do not belong in this registry.
 
 | ADR | Title | Decision status | Implementation status | Relations |
 | --- | --- | --- | --- | --- |
+| [2026-11-25](./2026-11-25-jwt-emergency-revocation.md) | JWT emergency key revocation | Accepted | In progress | Extends [JWT rolling replica admission](./2026-11-25-jwt-rolling-admission.md) |
+| [2026-11-25](./2026-11-25-jwt-rolling-admission.md) | JWT rolling replica admission | Accepted | In progress | Extends [JWT cluster lease barrier](./2026-11-25-jwt-cluster-lease.md) |
+| [2026-11-25](./2026-11-25-jwt-cluster-lease.md) | JWT cluster lease barrier | Accepted | In progress | Extends [Durable JWT generation fence](./2026-11-25-jwt-generation-fence.md) |
+| [2026-11-25](./2026-11-25-jwt-generation-fence.md) | Durable JWT generation fence | Accepted | In progress | Extends [Process-local JWT keyring publication](./2026-11-25-jwt-hot-rotation.md) |
+| [2026-11-25](./2026-11-25-jwt-hot-rotation.md) | Process-local JWT keyring publication | Accepted | In progress | Extends [Immutable prepared JWT keyring snapshots](./2026-11-25-jwt-prepared-keyring.md) |
 | [2026-11-25](./2026-11-25-jwt-prepared-keyring.md) | Immutable prepared JWT keyring snapshots | Accepted | In progress | Extends [JWT purpose keyrings](./2026-11-25-jwt-purpose-keyrings.md) |
 | [2026-11-25](./2026-11-25-jwt-purpose-keyrings.md) | JWT purpose keyrings and cryptographic separation | Accepted | In progress | Extends and supersedes shared-key scope of [JWT keyring](./2026-11-25-jwt-keyring.md) |
 | [2026-11-25](./2026-11-25-jwt-keyring.md) | JWT keyring and controlled verification retirement | Accepted | In progress | Extends Auth lifecycle invalidation |

@@ -108,6 +108,11 @@ RusToK provides a sandboxed, extensible module runtime supporting native Rust cr
 
 ### Domain Module Documentation
 
+- [ADR: JWT emergency key revocation](../DECISIONS/2026-11-25-jwt-emergency-revocation.md) — irreversible identity bans and bounded lease enforcement.
+- [ADR: JWT rolling replica admission](../DECISIONS/2026-11-25-jwt-rolling-admission.md) — registered grants and compatible staged signer promotion.
+- [ADR: JWT cluster lease barrier](../DECISIONS/2026-11-25-jwt-cluster-lease.md) — bounded crypto leases and database-serialized generation drain.
+- [ADR: Durable JWT generation fence](../DECISIONS/2026-11-25-jwt-generation-fence.md) — authenticated persistent generation and lifetime key identity admission.
+- [ADR: Process-local JWT keyring publication](../DECISIONS/2026-11-25-jwt-hot-rotation.md) — versioned host file, shared runtime fence and atomic key publication.
 - [ADR: Immutable prepared JWT keyring snapshots](../DECISIONS/2026-11-25-jwt-prepared-keyring.md) — once-only preparation, shared immutable keys and candidate replacement.
 - [ADR: JWT purpose keyrings and cryptographic separation](../DECISIONS/2026-11-25-jwt-purpose-keyrings.md) — independent access, reset, verification and invite keys.
 - [ADR: JWT keyring and controlled verification retirement](../DECISIONS/2026-11-25-jwt-keyring.md) — active signing key, exact key ID selection and bounded verification retirement.

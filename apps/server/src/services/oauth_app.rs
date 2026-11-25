@@ -618,6 +618,13 @@ impl OAuthAppService {
                 "OAuth redirect URI is no longer registered".to_string(),
             ));
         }
+        // Legacy persisted redirect URIs may predate registration validation.
+        // Reject ambiguous callbacks before any consent or code is written.
+        if !Url::parse(&redirect_uri).is_ok_and(|url| redirect_response_query_is_unambiguous(&url)) {
+            return Err(Error::BadRequest(
+                "OAuth redirect URI contains reserved response parameters or is invalid".to_string(),
+            ));
+        }
         let allowed_scopes = app.scopes_list();
         if scopes.is_empty()
             || scopes.iter().any(|scope| {
@@ -2026,6 +2033,9 @@ fn validate_redirect_uri(
     if url.fragment().is_some() {
         return Err(invalid("fragment component is not allowed"));
     }
+    if !redirect_response_query_is_unambiguous(&url) {
+        return Err(invalid("query contains reserved OAuth response parameters"));
+    }
     if !url.username().is_empty() || url.password().is_some() {
         return Err(invalid("user info is not allowed"));
     }
@@ -2065,6 +2075,18 @@ fn validate_redirect_uri(
     }
 
     Ok(())
+}
+
+/// OAuth response parameters belong exclusively to the authorization server.
+/// Query names are decoded before comparison, including percent-encoded names.
+pub(crate) fn redirect_response_query_is_unambiguous(url: &Url) -> bool {
+    url.fragment().is_none()
+        && !url.query_pairs().any(|(name, _)| {
+            matches!(
+                name.as_ref(),
+                "code" | "state" | "error" | "error_description" | "error_uri"
+            )
+        })
 }
 
 fn is_private_use_redirect_scheme(scheme: &str) -> bool {
@@ -2429,6 +2451,20 @@ mod tests {
         );
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn redirect_uris_reserve_oauth_response_parameters() {
+        for name in ["code", "state", "error", "error_description", "error_uri", "%63ode", "st%61te"] {
+            let uri = format!("https://client.example.com/callback?locale=en&{name}=stale");
+            assert!(validate_redirect_uri("third_party", &uri, false).is_err());
+            assert!(!super::redirect_response_query_is_unambiguous(&reqwest::Url::parse(&uri).unwrap()));
+        }
+        assert!(validate_redirect_uri(
+            "third_party", "https://client.example.com/callback?locale=en&tag=a&tag=b", false
+        ).is_ok());
+        let fragment = reqwest::Url::parse("https://client.example.com/callback#state=stale").unwrap();
+        assert!(!super::redirect_response_query_is_unambiguous(&fragment));
     }
 
     #[test]

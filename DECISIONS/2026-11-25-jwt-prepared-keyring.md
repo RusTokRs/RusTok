@@ -10,7 +10,7 @@ Auth compiles all four purpose keyrings as a single immutable snapshot before ho
 
 Cryptographic configuration fields are private. A shared immutable key state owns both raw key inputs and a OnceLock containing either the complete prepared snapshot or its construction error. Cloning a configuration shares the raw secret material and initialization result; cryptographic edits use a single copy-on-write boundary. The host builder initializes eagerly; direct constructors used by embedders initialize on first use. Changes through the RSA builder or settings override detach the unpublished candidate from the old cache before mutation. A failed override never publishes a partial configuration; existing clones retain their original snapshot. Non-key policy fields do not participate in key preparation.
 
-The existing JWT library still builds backend signer/verifier objects internally when signing or decoding. This change does not replace its audited signature and claim validation or assert zero per-request crypto allocation. No process-global cache, hot reload, distributed generation fence or rollback authority is introduced.
+The existing JWT library still builds backend signer/verifier objects internally when signing or decoding. This change does not replace its audited signature and claim validation or assert zero per-request crypto allocation. This original fixed-snapshot decision is extended by [process-local JWT rotation](2026-11-25-jwt-hot-rotation.md); no process-global cache is introduced.
 
 ## Verification
 

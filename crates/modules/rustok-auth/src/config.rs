@@ -1,4 +1,5 @@
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, OnceLock, RwLock};
+use std::time::Instant;
 
 use jsonwebtoken::{Algorithm, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
@@ -9,7 +10,7 @@ use crate::credentials::{
 };
 use crate::error::{AuthError, Result};
 use crate::jwt_keyring::{
-    JwtKeyring, SpecialJwtKeyrings, ValidatedJwtKeyrings, rsa_signing_key, verification_key,
+    JwtKeyring, SpecialJwtKeyring, SpecialJwtKeyrings, ValidatedJwtKeyrings, rsa_signing_key, verification_key,
 };
 
 const DEFAULT_ACCESS_EXPIRATION_SECS: u64 = 900; // 15 minutes
@@ -56,7 +57,8 @@ pub enum JwtAlgorithm {
 /// it uses (YAML, environment variables, etc.). `rustok-auth` never reads config files.
 #[derive(Clone)]
 pub struct AuthConfig {
-    key_state: Arc<JwtKeyState>,
+    root: Arc<str>,
+    key_state: JwtKeySource,
     pub access_expiration: u64,
     pub refresh_expiration: u64,
     pub issuer: String,
@@ -73,13 +75,84 @@ struct JwtKeyState {
 }
 
 #[derive(Clone)]
-struct JwtKeyInputs {
-    secret: String,
-    jwt_keyring: JwtKeyring,
-    special_jwt_keyrings: SpecialJwtKeyrings,
-    algorithm: JwtAlgorithm,
-    rsa_private_key_pem: Option<String>,
-    rsa_public_key_pem: Option<String>,
+pub(crate) struct JwtKeyInputs {
+    pub(crate) jwt_keyring: JwtKeyring,
+    pub(crate) special_jwt_keyrings: SpecialJwtKeyrings,
+    pub(crate) algorithm: JwtAlgorithm,
+    pub(crate) rsa_private_key_pem: Option<String>,
+    pub(crate) rsa_public_key_pem: Option<String>,
+}
+
+#[derive(Clone)]
+enum JwtKeySource {
+    Fixed(Arc<JwtKeyState>),
+    Live(Arc<RwLock<VersionedJwtKeys>>),
+}
+
+struct VersionedJwtKeys {
+    generation: u64,
+    keys: Arc<JwtKeyState>,
+    lease_required: bool,
+    lease_until: Option<Instant>,
+    emergency_fenced: bool,
+}
+
+impl VersionedJwtKeys {
+    fn permits_crypto_at(&self, now: Instant) -> bool {
+        !self.emergency_fenced && (!self.lease_required || self.lease_until.is_some_and(|deadline| now < deadline))
+    }
+}
+
+/// Read-only readiness view of the exact lease gate used by JWT operations.
+/// It does not expose key material, generation mutation, or renewal authority.
+#[derive(Clone)]
+pub struct JwtLeaseReadiness {
+    current: Arc<RwLock<VersionedJwtKeys>>,
+}
+
+impl JwtLeaseReadiness {
+    pub fn is_ready(&self) -> bool {
+        self.current.read().is_ok_and(|guard| {
+            guard.lease_required && guard.permits_crypto_at(Instant::now())
+        })
+    }
+}
+
+/// Host-only publication capability. Request consumers receive AuthConfig,
+/// not this handle. The four prepared rings and generation move together.
+pub struct JwtKeyringPublisher {
+    config: AuthConfig,
+    incarnation: uuid::Uuid,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct JwtKeyringDocument {
+    schema_version: u16,
+    generation: u64,
+    access: SpecialJwtKeyring,
+    password_reset: SpecialJwtKeyring,
+    email_verification: SpecialJwtKeyring,
+    invite: SpecialJwtKeyring,
+}
+
+pub const MAX_JWT_KEYRING_DOCUMENT_BYTES: usize = 256 * 1024;
+
+impl JwtKeyState {
+    fn prepared(&self, root: &str) -> Result<&ValidatedJwtKeyrings> {
+        self.prepared
+            .get_or_init(|| ValidatedJwtKeyrings::prepare(&self.inputs, root))
+            .as_ref()
+            .map_err(Clone::clone)
+    }
+}
+
+fn keyring_runtime_error() -> AuthError {
+    AuthError::Internal("JWT keyring runtime state is unavailable".to_string())
+}
+
+fn invalid_rotation() -> AuthError {
+    AuthError::Internal("JWT keyring rotation candidate is incompatible".to_string())
 }
 
 impl Clone for JwtKeyState {
@@ -98,85 +171,144 @@ impl std::fmt::Debug for AuthConfig {
         formatter
             .debug_struct("AuthConfig")
             .field("secret", &"<redacted>")
-            .field("jwt_keyring", &self.key_state.inputs.jwt_keyring)
-            .field("special_jwt_keyrings", &self.key_state.inputs.special_jwt_keyrings)
+            .field("key_material", &"<redacted>")
             .field("access_expiration", &self.access_expiration)
             .field("refresh_expiration", &self.refresh_expiration)
             .field("issuer", &self.issuer)
             .field("audience", &self.audience)
-            .field("algorithm", &self.key_state.inputs.algorithm)
-            .field(
-                "rsa_private_key_pem",
-                &self.key_state.inputs.rsa_private_key_pem.as_ref().map(|_| "<redacted>"),
-            )
-            .field(
-                "rsa_public_key_pem",
-                &self.key_state.inputs.rsa_public_key_pem.as_ref().map(|_| "<redacted>"),
-            )
             .field("min_password_length", &self.min_password_length)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
 impl AuthConfig {
     /// Stable host MAC root, distinct from the active JWT signing material.
     pub fn secret(&self) -> &str {
-        &self.key_state.inputs.secret
+        &self.root
     }
 
-    pub fn algorithm(&self) -> &JwtAlgorithm {
-        &self.key_state.inputs.algorithm
+    fn key_snapshot(&self) -> Result<Arc<JwtKeyState>> {
+        match &self.key_state {
+            JwtKeySource::Fixed(keys) => Ok(keys.clone()),
+            JwtKeySource::Live(current) => current.read()
+                .map(|current| current.keys.clone())
+                .map_err(|_| keyring_runtime_error()),
+        }
     }
 
-    pub fn rsa_private_key_pem(&self) -> Option<&str> {
-        self.key_state.inputs.rsa_private_key_pem.as_deref()
+    /// Inspect current access algorithm without retaining a stale raw configuration.
+    pub fn algorithm(&self) -> Result<JwtAlgorithm> {
+        Ok(self.key_snapshot()?.inputs.algorithm.clone())
     }
 
-    pub fn rsa_public_key_pem(&self) -> Option<&str> {
-        self.key_state.inputs.rsa_public_key_pem.as_deref()
+    pub fn rsa_private_key_pem(&self) -> Result<Option<String>> {
+        Ok(self.key_snapshot()?.inputs.rsa_private_key_pem.clone())
     }
 
-    pub(crate) fn jwt_keyring(&self) -> &JwtKeyring {
-        &self.key_state.inputs.jwt_keyring
+    pub fn rsa_public_key_pem(&self) -> Result<Option<String>> {
+        Ok(self.key_snapshot()?.inputs.rsa_public_key_pem.clone())
     }
 
-    pub(crate) fn special_jwt_keyrings(&self) -> &SpecialJwtKeyrings {
-        &self.key_state.inputs.special_jwt_keyrings
+    /// Run a synchronous cryptographic operation under a read fence.
+    /// Publication waits for in-flight crypto, but never for async DB/network IO.
+    pub(crate) fn with_prepared_jwt<T>(
+        &self, operation: impl FnOnce(&ValidatedJwtKeyrings) -> Result<T>,
+    ) -> Result<T> {
+        match &self.key_state {
+            JwtKeySource::Fixed(keys) => operation(keys.prepared(self.secret())?),
+            JwtKeySource::Live(current) => {
+                let guard = current.read().map_err(|_| keyring_runtime_error())?;
+                operation(guard.keys.prepared(self.secret())?)
+            }
+        }
     }
 
-    /// Once per immutable key configuration, including concurrent first use.
-    /// Failure is cached too; an invalid configuration cannot sign or verify.
+    /// Only JWT operations use the lease gate; candidate validation and
+    /// metadata inspection never require a request-serving lease.
+    pub(crate) fn with_jwt_operation<T>(
+        &self, operation: impl FnOnce(&ValidatedJwtKeyrings) -> Result<T>,
+    ) -> Result<T> {
+        self.with_jwt_operation_at(Instant::now, operation)
+    }
+
+    fn with_jwt_operation_at<T>(
+        &self, now: impl Fn() -> Instant,
+        operation: impl FnOnce(&ValidatedJwtKeyrings) -> Result<T>,
+    ) -> Result<T> {
+        match &self.key_state {
+            JwtKeySource::Fixed(keys) => operation(keys.prepared(self.secret())?),
+            JwtKeySource::Live(current) => {
+                let guard = current.read().map_err(|_| keyring_runtime_error())?;
+                let authorized = || guard.permits_crypto_at(now());
+                if !authorized() {
+                    return Err(keyring_runtime_error());
+                }
+                let result = operation(guard.keys.prepared(self.secret())?);
+                if !authorized() {
+                    return Err(keyring_runtime_error());
+                }
+                result
+            }
+        }
+    }
+
+    #[cfg(test)]
     pub(crate) fn prepared_jwt(&self) -> Result<&ValidatedJwtKeyrings> {
-        self.key_state.prepared.get_or_init(|| ValidatedJwtKeyrings::prepare(self))
-            .as_ref().map_err(Clone::clone)
+        match &self.key_state {
+            JwtKeySource::Fixed(keys) => keys.prepared(self.secret()),
+            JwtKeySource::Live(_) => Err(invalid_rotation()),
+        }
     }
 
-    fn edit_key_inputs(&mut self) -> &mut JwtKeyInputs {
-        let state = Arc::make_mut(&mut self.key_state);
+    #[cfg(test)]
+    pub(crate) fn fixed_inputs(&self) -> Result<&JwtKeyInputs> {
+        match &self.key_state {
+            JwtKeySource::Fixed(keys) => Ok(&keys.inputs),
+            JwtKeySource::Live(_) => Err(invalid_rotation()),
+        }
+    }
+
+    fn edit_key_inputs(&mut self, edit: impl FnOnce(&mut JwtKeyInputs)) -> Result<()> {
+        if let JwtKeySource::Live(current) = &self.key_state {
+            if current.read().map_err(|_| keyring_runtime_error())?.lease_required {
+                return Err(invalid_rotation());
+            }
+        }
+        let mut keys = self.key_snapshot()?;
+        let state = Arc::make_mut(&mut keys);
         state.prepared = OnceLock::new();
-        &mut state.inputs
+        edit(&mut state.inputs);
+        self.key_state = JwtKeySource::Fixed(keys);
+        Ok(())
     }
 
     #[cfg(test)]
     pub(crate) fn set_test_jwt_keyring(&mut self, ring: JwtKeyring) {
-        self.edit_key_inputs().jwt_keyring = ring;
+        self.edit_key_inputs(|inputs| inputs.jwt_keyring = ring).unwrap();
     }
 
     #[cfg(test)]
     pub(crate) fn set_test_special_jwt_keyrings(&mut self, rings: SpecialJwtKeyrings) {
-        self.edit_key_inputs().special_jwt_keyrings = rings;
+        self.edit_key_inputs(|inputs| inputs.special_jwt_keyrings = rings).unwrap();
     }
 
-    /// Host production policy checks these secrets without exposing them in diagnostics.
-    pub fn explicit_hs256_secrets(&self) -> impl Iterator<Item = &str> {
-        crate::jwt_keyring::explicit_hs256_secrets(self)
+    /// Inspect all current explicit HS256 material without exporting a secret copy.
+    /// The visitor must not retain or log the material.
+    pub fn inspect_hs256_secrets(
+        &self, mut inspect: impl FnMut(&str) -> Result<()>,
+    ) -> Result<()> {
+        let keys = self.key_snapshot()?;
+        for secret in crate::jwt_keyring::explicit_hs256_secrets(&keys.inputs, self.secret()) {
+            inspect(secret)?;
+        }
+        Ok(())
     }
 
     pub fn new(secret: String) -> Self {
         Self {
-            key_state: Arc::new(JwtKeyState {
+            root: Arc::from(secret),
+            key_state: JwtKeySource::Fixed(Arc::new(JwtKeyState {
                 inputs: JwtKeyInputs {
-                    secret,
                     jwt_keyring: JwtKeyring::default(),
                     special_jwt_keyrings: SpecialJwtKeyrings::default(),
                     algorithm: JwtAlgorithm::HS256,
@@ -184,13 +316,82 @@ impl AuthConfig {
                     rsa_public_key_pem: None,
                 },
                 prepared: OnceLock::new(),
-            }),
+            })),
             access_expiration: DEFAULT_ACCESS_EXPIRATION_SECS,
             refresh_expiration: DEFAULT_REFRESH_EXPIRATION_SECS,
             issuer: "rustok".to_string(),
             audience: "rustok-admin".to_string(),
             min_password_length: DEFAULT_MIN_PASSWORD_LENGTH_CHARS,
         }
+    }
+
+    /// Parse a complete versioned key document against this immutable policy.
+    /// Never mutate the live runtime while preparing a candidate.
+    pub fn prepare_jwt_document(&self, bytes: &[u8]) -> Result<(u64, Self)> {
+        if bytes.len() > MAX_JWT_KEYRING_DOCUMENT_BYTES {
+            return Err(invalid_rotation());
+        }
+        let doc: JwtKeyringDocument = serde_json::from_slice(bytes)
+            .map_err(|_| invalid_rotation())?;
+        if doc.schema_version != 1 || doc.generation == 0 {
+            return Err(invalid_rotation());
+        }
+        let mut candidate = self.clone();
+        candidate.key_state = JwtKeySource::Fixed(Arc::new(JwtKeyState {
+            inputs: JwtKeyInputs {
+                algorithm: doc.access.algorithm,
+                jwt_keyring: doc.access.keyring,
+                rsa_private_key_pem: doc.access.rsa_private_key_pem,
+                rsa_public_key_pem: doc.access.rsa_public_key_pem,
+                special_jwt_keyrings: SpecialJwtKeyrings {
+                    password_reset: doc.password_reset,
+                    email_verification: doc.email_verification,
+                    invite: doc.invite,
+                },
+            },
+            prepared: OnceLock::new(),
+        }));
+        validate_auth_config(&candidate)?;
+        Ok((doc.generation, candidate))
+    }
+
+    pub(crate) fn fence_snapshot(
+        &self,
+        fingerprint: impl Fn(&[u8; 32]) -> Result<String>,
+    ) -> Result<crate::jwt_fence::Snapshot> {
+        if !matches!(&self.key_state, JwtKeySource::Fixed(_)) {
+            return Err(invalid_rotation());
+        }
+        self.with_prepared_jwt(|prepared| prepared.fence_snapshot(fingerprint))
+    }
+
+    /// Convert a validated fixed candidate into a shared process-local runtime.
+    /// Call before cloning into the host's transports and providers.
+    pub fn into_live_jwt(self, generation: u64) -> Result<(Self, JwtKeyringPublisher)> {
+        self.into_jwt_runtime(generation, false)
+    }
+
+    /// HTTP host composition: generation zero is static mode. JWT operations
+    /// fail closed until a matching durable lease is installed.
+    pub fn into_cluster_jwt(self, generation: u64) -> Result<(Self, JwtKeyringPublisher)> {
+        self.into_jwt_runtime(generation, true)
+    }
+
+    fn into_jwt_runtime(mut self, generation: u64, lease_required: bool) -> Result<(Self, JwtKeyringPublisher)> {
+        if (!lease_required && generation == 0) || !matches!(&self.key_state, JwtKeySource::Fixed(_)) {
+            return Err(invalid_rotation());
+        }
+        validate_auth_config(&self)?;
+        let keys = self.key_snapshot()?;
+        self.key_state = JwtKeySource::Live(Arc::new(RwLock::new(VersionedJwtKeys {
+            generation,
+            keys,
+            lease_required,
+            lease_until: None,
+            emergency_fenced: false,
+        })));
+        let publisher = JwtKeyringPublisher { config: self.clone(), incarnation: uuid::Uuid::new_v4() };
+        Ok((self, publisher))
     }
 
     pub fn with_expiration(mut self, access: u64, refresh: u64) -> Self {
@@ -214,16 +415,159 @@ impl AuthConfig {
         private_key_pem: impl Into<String>,
         public_key_pem: impl Into<String>,
     ) -> Self {
-        let inputs = self.edit_key_inputs();
-        inputs.algorithm = JwtAlgorithm::RS256;
-        inputs.rsa_private_key_pem = Some(private_key_pem.into());
-        inputs.rsa_public_key_pem = Some(public_key_pem.into());
+        // A builder creates a detached fixed configuration, never a publication.
+        // On an unavailable live source keep the failing source rather than
+        // constructing a default signer.
+        if let Err(error) = self.edit_key_inputs(|inputs| {
+            inputs.algorithm = JwtAlgorithm::RS256;
+            inputs.rsa_private_key_pem = Some(private_key_pem.into());
+            inputs.rsa_public_key_pem = Some(public_key_pem.into());
+        }) {
+            tracing::error!(%error, "Cannot detach JWT configuration");
+        }
         self
     }
 
     pub fn with_min_password_length(mut self, min_password_length: usize) -> Self {
         self.min_password_length = min_password_length;
         self
+    }
+}
+
+impl JwtKeyringPublisher {
+    pub fn generation(&self) -> Result<u64> {
+        match &self.config.key_state {
+            JwtKeySource::Live(current) => current.read()
+                .map(|current| current.generation)
+                .map_err(|_| keyring_runtime_error()),
+            JwtKeySource::Fixed(_) => Err(invalid_rotation()),
+        }
+    }
+
+    /// Obtain a read-only view for the host readiness probe.
+    pub fn lease_readiness(&self) -> Result<JwtLeaseReadiness> {
+        let JwtKeySource::Live(current) = &self.config.key_state else {
+            return Err(invalid_rotation());
+        };
+        if !current.read().map_err(|_| keyring_runtime_error())?.lease_required {
+            return Err(invalid_rotation());
+        }
+        Ok(JwtLeaseReadiness { current: current.clone() })
+    }
+
+    pub(crate) fn incarnation(&self) -> uuid::Uuid {
+        self.incarnation
+    }
+
+    pub(crate) fn lease_root(&self) -> &str {
+        self.config.secret()
+    }
+
+    pub(crate) fn lease_metadata(
+        &self, fingerprint: impl Fn(&[u8; 32]) -> Result<String>,
+    ) -> Result<(u64, crate::jwt_fence::Snapshot)> {
+        let JwtKeySource::Live(current) = &self.config.key_state else {
+            return Err(invalid_rotation());
+        };
+        let guard = current.read().map_err(|_| keyring_runtime_error())?;
+        if !guard.lease_required {
+            return Err(invalid_rotation());
+        }
+        let snapshot = guard.keys.prepared(self.config.secret())?.fence_snapshot(fingerprint)?;
+        Ok((guard.generation, snapshot))
+    }
+
+    pub(crate) fn install_lease(&self, generation: u64, deadline: Instant) -> Result<bool> {
+        let JwtKeySource::Live(current) = &self.config.key_state else {
+            return Err(invalid_rotation());
+        };
+        let mut guard = current.write().map_err(|_| keyring_runtime_error())?;
+        if !guard.lease_required || guard.emergency_fenced || guard.generation != generation || Instant::now() >= deadline {
+            return Ok(false);
+        }
+        if guard.lease_until.is_none_or(|previous| deadline > previous) {
+            guard.lease_until = Some(deadline);
+        }
+        Ok(true)
+    }
+
+    /// Permanently close this local generation after observing a durable
+    /// emergency revocation. A delayed grant cannot reopen the same gate.
+    pub(crate) fn fence_revoked_generation(&self, generation: u64) -> Result<()> {
+        let JwtKeySource::Live(current) = &self.config.key_state else {
+            return Err(invalid_rotation());
+        };
+        let mut guard = current.write().map_err(|_| keyring_runtime_error())?;
+        if guard.generation == generation {
+            guard.lease_until = None;
+            guard.emergency_fenced = true;
+        }
+        Ok(())
+    }
+
+    /// Clear local authority on host shutdown or supervisor cancellation.
+    pub fn revoke_lease(&self) {
+        if let JwtKeySource::Live(current) = &self.config.key_state {
+            if let Ok(mut guard) = current.write() {
+                guard.lease_until = None;
+            }
+        }
+    }
+
+    pub fn prepare_document(&self, bytes: &[u8]) -> Result<(u64, AuthConfig)> {
+        self.config.prepare_jwt_document(bytes)
+    }
+
+    /// Candidate preparation and host policy checks happen before this call.
+    /// Recheck the process generation and key continuity under the write fence.
+    pub fn publish(&self, generation: u64, candidate: AuthConfig) -> Result<()> {
+        self.publish_inner(generation, candidate, None).map(|_| ())
+    }
+
+    /// Only the Auth fence may install a deadline obtained for this candidate.
+    pub(crate) fn publish_granted(
+        &self, generation: u64, candidate: AuthConfig, deadline: Instant,
+    ) -> Result<bool> {
+        self.publish_inner(generation, candidate, Some(deadline))
+    }
+
+    fn publish_inner(
+        &self, generation: u64, candidate: AuthConfig, deadline: Option<Instant>,
+    ) -> Result<bool> {
+        if !matches!(&candidate.key_state, JwtKeySource::Fixed(_))
+            || self.config.secret() != candidate.secret()
+            || self.config.issuer != candidate.issuer
+            || self.config.audience != candidate.audience
+            || self.config.access_expiration != candidate.access_expiration
+            || self.config.refresh_expiration != candidate.refresh_expiration
+            || self.config.min_password_length != candidate.min_password_length
+        {
+            return Err(invalid_rotation());
+        }
+        validate_auth_config(&candidate)?;
+        let keys = candidate.key_snapshot()?;
+        let next = keys.prepared(candidate.secret())?;
+        let JwtKeySource::Live(current) = &self.config.key_state else {
+            return Err(invalid_rotation());
+        };
+        let mut guard = current.write().map_err(|_| keyring_runtime_error())?;
+        if generation <= guard.generation {
+            return Err(invalid_rotation());
+        }
+        // A cluster runtime cannot use this candidate until the database
+        // grants a lease for its exact metadata. It may legitimately skip
+        // intervening generations already validated by the durable ledger.
+        if !guard.lease_required {
+            guard.keys.prepared(self.config.secret())?.validate_successor(next)?;
+        }
+        let lease_required = guard.lease_required;
+        if let Some(deadline) = deadline {
+            if !lease_required || Instant::now() >= deadline {
+                return Ok(false);
+            }
+        }
+        *guard = VersionedJwtKeys { generation, keys, lease_required, lease_until: deadline, emergency_fenced: false };
+        Ok(true)
     }
 }
 
@@ -274,6 +618,9 @@ impl std::fmt::Debug for AuthSettingsOverrides {
 impl AuthSettingsOverrides {
     /// Apply overrides on top of a base `AuthConfig`.
     pub fn apply(self, config: &mut AuthConfig) -> Result<()> {
+        if matches!(&config.key_state, JwtKeySource::Live(_)) {
+            return Err(invalid_rotation());
+        }
         let mut candidate = config.clone();
         self.apply_with_env(&mut candidate, &mut read_auth_env)?;
         validate_auth_config(&candidate)?;
@@ -290,13 +637,15 @@ impl AuthSettingsOverrides {
             if name.trim().is_empty() {
                 return Err(AuthError::Internal("JWT keyring environment name is empty".to_string()));
             }
-            config.edit_key_inputs().jwt_keyring = JwtKeyring::from_json(&env_resolver(&name)?)?;
+            let ring = JwtKeyring::from_json(&env_resolver(&name)?)?;
+            config.edit_key_inputs(|inputs| inputs.jwt_keyring = ring)?;
         }
         if let Some(name) = self.jwt_special_keyrings_env {
             if name.trim().is_empty() {
                 return Err(AuthError::Internal("Special JWT keyring environment name is empty".to_string()));
             }
-            config.edit_key_inputs().special_jwt_keyrings = SpecialJwtKeyrings::from_json(&env_resolver(&name)?)?;
+            let rings = SpecialJwtKeyrings::from_json(&env_resolver(&name)?)?;
+            config.edit_key_inputs(|inputs| inputs.special_jwt_keyrings = rings)?;
         }
         if let Some(v) = self.refresh_expiration {
             config.refresh_expiration = v;
@@ -308,17 +657,19 @@ impl AuthSettingsOverrides {
             config.audience = v;
         }
         if let Some(v) = self.algorithm {
-            config.edit_key_inputs().algorithm = v;
+            config.edit_key_inputs(|inputs| inputs.algorithm = v)?;
         }
         if self.rsa_private_key_pem.is_some() || self.rsa_private_key_env.is_some() {
-            config.edit_key_inputs().rsa_private_key_pem = resolve_key_material(
+            let pem = resolve_key_material(
                 self.rsa_private_key_pem, self.rsa_private_key_env, env_resolver,
             )?;
+            config.edit_key_inputs(|inputs| inputs.rsa_private_key_pem = pem)?;
         }
         if self.rsa_public_key_pem.is_some() || self.rsa_public_key_env.is_some() {
-            config.edit_key_inputs().rsa_public_key_pem = resolve_key_material(
+            let pem = resolve_key_material(
                 self.rsa_public_key_pem, self.rsa_public_key_env, env_resolver,
             )?;
+            config.edit_key_inputs(|inputs| inputs.rsa_public_key_pem = pem)?;
         }
         if let Some(v) = self.min_password_length {
             config.min_password_length = v;
@@ -393,7 +744,7 @@ pub fn validate_auth_config(config: &AuthConfig) -> Result<()> {
     tracing::debug!(
         issuer = %config.issuer,
         audience = %config.audience,
-        algorithm = ?config.algorithm(),
+        algorithm = ?config.algorithm()?,
         "Validating auth configuration"
     );
     if config.issuer.trim().is_empty() {
@@ -441,8 +792,7 @@ pub fn validate_auth_config(config: &AuthConfig) -> Result<()> {
         )));
     }
 
-    config.prepared_jwt()?;
-    Ok(())
+    config.with_prepared_jwt(|_| Ok(()))
 }
 
 pub(crate) fn validate_rs256_key_pair(private_key_pem: &str, public_key_pem: &str) -> Result<()> {
@@ -469,6 +819,41 @@ pub(crate) fn validate_rs256_key_pair(private_key_pem: &str, public_key_pem: &st
 mod tests {
     use super::*;
 
+
+    #[test]
+    fn cluster_lease_gate_rejects_crypto_at_or_after_deadline() {
+        use std::cell::Cell;
+        use std::time::Duration;
+        let (config, publisher) = AuthConfig::new(secret()).into_cluster_jwt(0).unwrap();
+        let readiness = publisher.lease_readiness().unwrap();
+        assert!(!readiness.is_ready());
+        let start = Instant::now();
+        let deadline = start.checked_add(Duration::from_secs(60)).unwrap();
+        assert!(!publisher.install_lease(1, deadline).unwrap());
+        assert!(!publisher.install_lease(0, start).unwrap());
+        assert!(publisher.install_lease(0, deadline).unwrap());
+        assert!(readiness.is_ready());
+
+        // The post-operation fence must discard a result even if crypto
+        // started before expiry. Simulate the clock without sleeping.
+        let clock = Cell::new(start);
+        let calls = Cell::new(0);
+        let result = config.with_jwt_operation_at(|| clock.get(), |_| {
+            calls.set(calls.get() + 1);
+            clock.set(deadline);
+            Ok(123_u32)
+        });
+        assert!(result.is_err());
+        assert_eq!(calls.get(), 1);
+        assert!(config.with_jwt_operation_at(|| deadline, |_| {
+            panic!("expired lease must not enter crypto");
+            #[allow(unreachable_code)]
+            Ok(())
+        }).is_err());
+        publisher.revoke_lease();
+        assert!(!readiness.is_ready());
+        assert!(config.with_jwt_operation(|_| Ok(())).is_err());
+    }
 
     #[test]
     fn auth_overrides_reject_unknown_security_settings() {
@@ -556,11 +941,126 @@ mod tests {
         }
     }
 
+    fn document(generation: u64, kid: &str, secret: &str) -> Vec<u8> {
+        serde_json::to_vec(&serde_json::json!({
+            "schema_version": 1,
+            "generation": generation,
+            "access": {"keyring": {"active_kid": kid, "active_hs256_secret": secret}},
+            "password_reset": {"keyring": {"active_kid": "reset-default"}},
+            "email_verification": {"keyring": {"active_kid": "verify-default"}},
+            "invite": {"keyring": {"active_kid": "invite-default"}}
+        })).unwrap()
+    }
+
+    #[test]
+    fn live_rotation_updates_existing_clones_and_rejects_rollback() {
+        use crate::{encode_access_token, decode_access_token};
+        use rustok_core::UserRole;
+        use uuid::Uuid;
+        let base = AuthConfig::new(secret());
+        let (generation, first) = base.prepare_jwt_document(&document(
+            1, "one", "first-independent-signing-key-at-least-32-bytes",
+        )).unwrap();
+        let (live, publisher) = first.into_live_jwt(generation).unwrap();
+        let clone = live.clone();
+        let issue = |config: &AuthConfig| encode_access_token(
+            config, Uuid::new_v4(), Uuid::new_v4(), UserRole::Customer, Uuid::new_v4(),
+        ).unwrap();
+        let old = issue(&clone);
+        let (g, next) = publisher.prepare_document(&document(
+            2, "two", "second-independent-signing-key-at-least-32-bytes",
+        )).unwrap();
+        publisher.publish(g, next.clone()).unwrap();
+        assert_eq!(publisher.generation().unwrap(), 2);
+        assert!(decode_access_token(&clone, &old).is_err());
+        let fresh = issue(&clone);
+        assert!(decode_access_token(&live, &fresh).is_ok());
+        assert!(decode_access_token(&next, &fresh).is_ok());
+        assert!(publisher.publish(1, next.clone()).is_err());
+        assert!(publisher.publish(2, next).is_err());
+        assert!(publisher.prepare_document(b"{}").is_err());
+        assert_eq!(publisher.generation().unwrap(), 2);
+        assert!(decode_access_token(&clone, &fresh).is_ok());
+
+        let (g, reused) = publisher.prepare_document(&document(
+            3, "two", "changed-independent-signing-key-at-least-32-bytes",
+        )).unwrap();
+        assert!(publisher.publish(g, reused).is_err());
+        assert_eq!(publisher.generation().unwrap(), 2);
+    }
+
+    #[test]
+    fn live_rotation_supports_stage_promote_and_retire() {
+        use crate::{decode_access_token, encode_access_token};
+        use rustok_core::UserRole;
+        use uuid::Uuid;
+        let old_secret = "first-independent-signing-key-at-least-32-bytes";
+        let new_secret = "second-independent-signing-key-at-least-32-bytes";
+        let base = AuthConfig::new(secret());
+        let (generation, first) = base.prepare_jwt_document(&document(1, "one", old_secret)).unwrap();
+        let (live, publisher) = first.into_live_jwt(generation).unwrap();
+        let existing_clone = live.clone();
+        let issue = || encode_access_token(
+            &existing_clone, Uuid::new_v4(), Uuid::new_v4(), UserRole::Customer, Uuid::new_v4(),
+        ).unwrap();
+        let old = issue();
+        let until = chrono::Utc::now().timestamp() + 3600;
+        let with_history = |generation, active_kid, active_secret, history_kid, history_secret| {
+            let mut value: serde_json::Value = serde_json::from_slice(
+                &document(generation, active_kid, active_secret)
+            ).unwrap();
+            value["access"]["keyring"]["verification_keys"] = serde_json::json!([{
+                "kid": history_kid, "material": history_secret, "verify_until": until
+            }]);
+            serde_json::to_vec(&value).unwrap()
+        };
+        let (g, staged) = publisher.prepare_document(
+            &with_history(2, "one", old_secret, "two", new_secret)
+        ).unwrap();
+        publisher.publish(g, staged).unwrap();
+        assert_eq!(jsonwebtoken::decode_header(&issue()).unwrap().kid.as_deref(), Some("one"));
+        let (g, promoted) = publisher.prepare_document(
+            &with_history(3, "two", new_secret, "one", old_secret)
+        ).unwrap();
+        publisher.publish(g, promoted).unwrap();
+        let fresh = issue();
+        assert_eq!(jsonwebtoken::decode_header(&fresh).unwrap().kid.as_deref(), Some("two"));
+        assert!(decode_access_token(&live, &old).is_ok());
+        assert!(decode_access_token(&live, &fresh).is_ok());
+        let (g, retired) = publisher.prepare_document(&document(4, "two", new_secret)).unwrap();
+        publisher.publish(g, retired).unwrap();
+        assert!(decode_access_token(&existing_clone, &old).is_err());
+        assert!(decode_access_token(&existing_clone, &fresh).is_ok());
+        assert_eq!(publisher.generation().unwrap(), 4);
+    }
+
+    #[test]
+    fn live_rotation_serializes_concurrent_publishers() {
+        let base = AuthConfig::new(secret());
+        let (g, first) = base.prepare_jwt_document(&document(
+            1, "one", "first-independent-signing-key-at-least-32-bytes",
+        )).unwrap();
+        let (_, publisher) = first.into_live_jwt(g).unwrap();
+        let (g2, second) = publisher.prepare_document(&document(
+            2, "two", "second-independent-signing-key-at-least-32-bytes",
+        )).unwrap();
+        let (g3, third) = publisher.prepare_document(&document(
+            3, "three", "third-independent-signing-key-at-least-32-bytes",
+        )).unwrap();
+        std::thread::scope(|scope| {
+            let a = scope.spawn(|| publisher.publish(g2, second));
+            let b = scope.spawn(|| publisher.publish(g3, third));
+            let _second_result = a.join().unwrap();
+            b.join().unwrap().unwrap();
+        });
+        assert_eq!(publisher.generation().unwrap(), 3);
+    }
+
     #[test]
     fn prepared_snapshot_is_shared_and_crypto_mutation_detaches() {
         let original = AuthConfig::new(secret());
         let before_first_use = original.clone();
-        assert!(Arc::ptr_eq(&original.key_state, &before_first_use.key_state));
+        assert!(Arc::ptr_eq(&original.key_snapshot().unwrap(), &before_first_use.key_snapshot().unwrap()));
         let prepared = original.prepared_jwt().unwrap();
         assert!(std::ptr::eq(prepared, before_first_use.prepared_jwt().unwrap()));
         let policy_only = original.clone().with_issuer("other-issuer");
@@ -568,7 +1068,7 @@ mod tests {
         let rsa = original.clone().with_rs256(
             crate::jwt::TEST_RSA_PRIVATE_KEY, crate::jwt::TEST_RSA_PUBLIC_KEY,
         );
-        assert!(!Arc::ptr_eq(&original.key_state, &rsa.key_state));
+        assert!(!Arc::ptr_eq(&original.key_snapshot().unwrap(), &rsa.key_snapshot().unwrap()));
         let rsa_prepared = rsa.prepared_jwt().unwrap();
         assert!(!std::ptr::eq(prepared, rsa_prepared));
         assert!(std::ptr::eq(prepared, original.prepared_jwt().unwrap()));
@@ -635,7 +1135,7 @@ mod tests {
             })
             .expect("auth config");
 
-        assert_eq!(config.algorithm(), &JwtAlgorithm::HS256);
+        assert_eq!(config.algorithm().unwrap(), JwtAlgorithm::HS256);
         assert_eq!(config.access_expiration, 900);
         assert_eq!(config.refresh_expiration, DEFAULT_REFRESH_EXPIRATION_SECS);
         assert_eq!(
@@ -702,11 +1202,11 @@ mod tests {
         .expect("auth config");
 
         assert_eq!(
-            config.rsa_private_key_pem(),
+            config.rsa_private_key_pem().unwrap().as_deref(),
             Some(crate::jwt::TEST_RSA_PRIVATE_KEY)
         );
         assert_eq!(
-            config.rsa_public_key_pem(),
+            config.rsa_public_key_pem().unwrap().as_deref(),
             Some(crate::jwt::TEST_RSA_PUBLIC_KEY)
         );
     }

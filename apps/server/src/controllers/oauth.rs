@@ -27,7 +27,9 @@ use uuid::Uuid;
 use crate::common::RustokSettings;
 use crate::context::TenantContext;
 use crate::extractors::auth::{CurrentUser, resolve_current_user_from_access_token};
-use crate::services::oauth_app::{AuthorizationSession, OAuthAppService};
+use crate::services::oauth_app::{
+    AuthorizationSession, OAuthAppService, redirect_response_query_is_unambiguous,
+};
 use crate::services::oauth_token_service::OAuthTokenService;
 use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext};
 
@@ -978,10 +980,15 @@ async fn validate_authorize_request(
         });
     }
 
-    if Url::parse(&redirect_uri).is_err() {
+    let parsed_redirect = Url::parse(&redirect_uri).map_err(|_| TokenErrorResponse {
+        error: "invalid_request".to_string(),
+        error_description: "redirect_uri is not a valid absolute URI".to_string(),
+    })?;
+    if !redirect_response_query_is_unambiguous(&parsed_redirect) {
         return Err(TokenErrorResponse {
             error: "invalid_request".to_string(),
-            error_description: "redirect_uri is not a valid absolute URI".to_string(),
+            error_description: "redirect_uri contains reserved OAuth response parameters or a fragment"
+                .to_string(),
         });
     }
 
@@ -2072,6 +2079,30 @@ mod tests {
         assert!(headers[0].1.contains("error=access_denied"));
         assert!(headers[0].1.contains("state=state-123"));
         assert!(headers[1].1.contains("Max-Age=0"));
+    }
+
+    #[test]
+    fn redirect_helpers_preserve_unrelated_query_parameters() {
+        let settings = trusted_settings();
+        let peer_ip = IpAddr::V4(Ipv4Addr::new(10, 1, 2, 3));
+        let headers = HeaderMap::new();
+        let uri = "https://client.example.com/callback?locale=en&tag=a&tag=b";
+        let (status, response) = redirect_with_code(
+            uri, "code-value", Some("state-value"), &headers, peer_ip, &settings,
+        );
+        assert_eq!(status, StatusCode::FOUND);
+        assert_eq!(
+            response[0].1,
+            "https://client.example.com/callback?locale=en&tag=a&tag=b&code=code-value&state=state-value"
+        );
+        let (status, response) = redirect_with_error(
+            uri, "access_denied", "Denied", Some("state-value"), &headers, peer_ip, &settings,
+        );
+        assert_eq!(status, StatusCode::FOUND);
+        assert_eq!(
+            response[0].1,
+            "https://client.example.com/callback?locale=en&tag=a&tag=b&error=access_denied&error_description=Denied&state=state-value"
+        );
     }
 
     #[test]

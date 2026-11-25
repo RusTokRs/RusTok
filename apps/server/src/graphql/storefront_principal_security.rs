@@ -81,12 +81,10 @@ impl Extension for StorefrontPrincipalPolicyExtension {
         next: NextPrepareRequest<'_>,
     ) -> ServerResult<Request> {
         let mut request = next.run(ctx, request).await?;
-        if !request.query.trim().is_empty() {
-            let operation_name = request.operation_name.clone();
-            let document = request.parsed_query()?;
-            if document_contains_storefront(document, operation_name.as_deref()) {
-                request.data.insert(StorefrontOperationRequested);
-            }
+        let operation_name = request.operation_name.clone();
+        let document = request.parsed_query()?;
+        if document_contains_storefront(document, operation_name.as_deref()) {
+            request.data.insert(StorefrontOperationRequested);
         }
         Ok(request)
     }

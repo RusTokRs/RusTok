@@ -253,6 +253,15 @@ pub fn materialize_context(document: &ProjectDocument, input: &Value) -> Context
     let mut unresolved_computed = catalog.computed.len().saturating_sub(order.len());
     diagnostics.extend(graph_diagnostics);
 
+    // Computed slots belong to producers, not host input or schema defaults.
+    // Clear stale values even for failed or blocked producers without shifting
+    // neighboring array slots.
+    for computed in &catalog.computed {
+        if let Some(segments) = parse_context_path(&computed.path) {
+            remove_path_segments(&mut context, &segments, false);
+        }
+    }
+
     // All declared producers are settled before consumers, even when an input
     // or a schema default already populated the producer's target.
     for index in order {
@@ -566,14 +575,14 @@ pub fn remove_context_path(root: &mut Value, path: &str) -> bool {
     let Some(segments) = parse_context_path(path) else {
         return false;
     };
-    remove_path_segments(root, &segments)
+    remove_path_segments(root, &segments, true)
 }
 
 pub fn is_valid_context_path(path: &str) -> bool {
     parse_context_path(path).is_some()
 }
 
-fn remove_path_segments(current: &mut Value, segments: &[ContextPathSegment]) -> bool {
+fn remove_path_segments(current: &mut Value, segments: &[ContextPathSegment], shift_indices: bool) -> bool {
     let Some((first, rest)) = segments.split_first() else {
         return false;
     };
@@ -586,7 +595,7 @@ fn remove_path_segments(current: &mut Value, segments: &[ContextPathSegment]) ->
                 return object.remove(key).is_some();
             }
             match object.get_mut(key) {
-                Some(child) => remove_path_segments(child, rest),
+                Some(child) => remove_path_segments(child, rest, shift_indices),
                 None => false,
             }
         }
@@ -596,13 +605,17 @@ fn remove_path_segments(current: &mut Value, segments: &[ContextPathSegment]) ->
             };
             if rest.is_empty() {
                 if *index < array.len() {
-                    array.remove(*index);
+                    if shift_indices {
+                        array.remove(*index);
+                    } else {
+                        array[*index] = Value::Null;
+                    }
                     return true;
                 }
                 return false;
             }
             match array.get_mut(*index) {
-                Some(child) => remove_path_segments(child, rest),
+                Some(child) => remove_path_segments(child, rest, shift_indices),
                 None => false,
             }
         }
@@ -1649,6 +1662,26 @@ mod tests {
             assert_eq!(result.computed_fallbacks, 1);
             assert_eq!(result.unresolved_computed, 0);
         }
+    }
+
+    #[test]
+    fn failed_computed_producers_do_not_expose_stale_input_or_shift_array_slots() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{"component": {"id": "root", "type": "wrapper"}}],
+            "flyRuntimeComputed": [
+                {"id": "consumer", "path": "label", "expression": {"op": "path", "path": "total"}, "fallback": "Unavailable"},
+                {"id": "producer", "path": "total", "expression": {"op": "path", "path": "missing"}},
+                {"id": "array-producer", "path": "items[0]", "expression": {"op": "path", "path": "missing"}}
+            ]
+        })).expect("document");
+        let input = json!({"total": 999, "label": "Stale", "items": [123, "keep"]});
+        let result = materialize_context(&document, &input);
+        assert!(result.context.get("total").is_none());
+        assert_eq!(result.context["label"], "Unavailable");
+        assert_eq!(result.context["items"], json!([null, "keep"]));
+        assert_eq!(result.unresolved_computed, 2);
+        assert_eq!(result.computed_fallbacks, 1);
+        assert_eq!(input["total"], 999);
     }
 
     #[test]

@@ -100,7 +100,10 @@ it never provisions a service or adds grants. Human transport authentication is 
 JWT purpose keyrings, immutable prepared snapshots, key selection and retirement are source-implemented;
 the two-key RS256 rotation regression is source-authored. Scoped compilation,
 regression execution and coordinated replica rollout evidence are pending.
-Configuration is startup-scoped; algorithm migration remains open.
+Optional process-local file-backed hot reload, durable generation fencing and
+identity tombstones are source-implemented;
+cluster lease/drain fencing and compatible rolling replica admission are
+source-implemented, including emergency enrolled-key revocation; algorithm and host root migration remain open.
 See [JWT rotation](docs/README.md#jwt-keyring-and-rotation).
 
 

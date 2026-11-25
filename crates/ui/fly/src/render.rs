@@ -770,6 +770,20 @@ fn render_component(
         {
             continue;
         }
+        // URL attributes must be strings, including srcset. Check before
+        // the generic scalar and boolean emission path.
+        if name == "srcset" {
+            if let Some(value) = value.as_str().filter(|value| srcset_allowed(value, policy)) {
+                write_attribute(output, &name, value);
+            }
+            continue;
+        }
+        if let Some(kind) = UrlAttributeKind::for_attribute(&name) {
+            if let Some(value) = value.as_str().filter(|value| url_allowed(value, kind, policy)) {
+                write_attribute(output, &name, value);
+            }
+            continue;
+        }
         if let Value::Bool(enabled) = value {
             if *enabled {
                 output.push(' ');
@@ -780,25 +794,6 @@ fn render_component(
         let Some(value) = scalar_string(value) else {
             continue;
         };
-        if name == "srcset" {
-            // `srcset` carries a list of image candidate URLs. The static
-            // publish policy validates the full grammar (descriptors,
-            // uniqueness, no `data:`) before an artifact exists; the renderer
-            // re-checks every candidate URL against the same resource policy
-            // that governs `src`, so an unvalidated draft cannot smuggle one
-            // through a preview render. A malformed or disallowed candidate
-            // drops the whole attribute — a partial `srcset` would silently
-            // change which image the browser picks (audit §3.1).
-            if srcset_allowed(&value, policy) {
-                write_attribute(output, &name, &value);
-            }
-            continue;
-        }
-        if let Some(kind) = UrlAttributeKind::for_attribute(&name)
-            && !url_allowed(&value, kind, policy)
-        {
-            continue;
-        }
         write_attribute(output, &name, &value);
     }
 
@@ -2516,6 +2511,24 @@ mod tests {
             "html: {}",
             rendered.html
         );
+    }
+
+    #[test]
+    fn non_string_urls_are_not_emitted_as_bare_attributes_or_numeric_paths() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{"id": "home", "component": {"id": "root", "type": "wrapper", "components": [
+                {"id": "image", "type": "image", "attributes": {"src": 42, "srcset": true, "alt": "Image"}},
+                {"id": "link", "type": "link", "attributes": {"href": true}, "content": "Link"}
+            ]}}]
+        })).expect("document");
+        let rendered = render_page(&document, &PageSelection::First, &RenderPolicy::default()).expect("render");
+        assert!(!rendered.html.contains(" src"), "{}", rendered.html);
+        assert!(!rendered.html.contains(" href"), "{}", rendered.html);
+        assert!(rendered.html.contains("alt=\"Image\""));
+        let diagnostics = crate::validate_component_public_urls(&document);
+        for name in ["src", "srcset", "href"] {
+            assert!(diagnostics.iter().any(|d| d.code == "runtime_public_url_invalid" && d.severity == crate::ValidationSeverity::Error && d.path.ends_with(&format!(".{name}"))));
+        }
     }
 
     #[test]

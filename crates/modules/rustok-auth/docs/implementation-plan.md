@@ -187,15 +187,25 @@ regressions and locked Cargo dependency updates authored, unrun.
 JWT purpose keyrings, key IDs, verification retirement and access-only initial
 missing-ID migration are source-implemented. A two-key RS256 staging/promotion/
 retirement regression is authored. Scoped compilation, regression execution
-and multi-replica rollout evidence are pending; algorithm migration and hot reload
-remain separate work. Reissue pre-cutover shared-key special links.
+and multi-replica rollout evidence are pending; algorithm migration remains separate work. Reissue pre-cutover shared-key special links.
 Follow-up source review adds canonical RSA modulus identity, private/public
 pair enforcement at signing, strict JOSE header admission and post-signature
 retirement fencing. Zero-duration issuance and timestamp truncation are rejected;
 regressions authored but not executed.
 Immutable prepared JWT snapshots are source-implemented: all-purpose admission,
 shared once-only initialization, private key configuration and candidate detachment.
-No hot reload or distributed publication is implemented. Scoped checks are pending. See the
+Process-local hot reload now shares a publication fence across all AuthConfig clones;
+the optional complete file document is checked before startup and polled by the host.
+Auth-owned durable generation admission now persists the current metadata and
+lifetime identity bindings before startup or local publication; source regressions
+cover rollback, conflicts, terminal removal, staging and restart of the store.
+A database-serialized cluster lease/drain barrier now fences stale HTTP hosts
+at the JWT crypto boundary, including static-to-file enrollment. Rolling
+replica grants now acknowledge actual verifier metadata, permit compatible
+staging/promotion without a global drain, and wait for incompatible older
+grants to expire or be acknowledged after local application. Emergency revocation now records permanent enrolled identity bans in the authenticated ledger and fences observed local generations via lease renewal; real multi-replica
+runtime evidence is pending.
+Scoped checks are pending. See the
 [owner contract](README.md#jwt-keyring-and-rotation).
 
 ## JWT and CSRF hardening (source only)

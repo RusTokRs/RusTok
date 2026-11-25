@@ -3,10 +3,10 @@ use crate::{
     FormProviderEndpointResolver, InternalLinkMaterialization, LocalePolicyMaterialization,
     LocalizedPageMetadataMaterialization, ProjectDocument, RuntimeMaterialization,
     TranslationMaterialization, ValidationDiagnostic, extract_runtime_context_contract,
-    materialize_bindings, materialize_component_actions,
+    materialize_component_actions,
     materialize_component_actions_with_providers, materialize_context,
     materialize_internal_page_links, materialize_localized_page_metadata,
-    materialize_project_locale_context, materialize_project_translations, materialize_runtime,
+    materialize_project_locale_context, materialize_project_translations,
     materialize_runtime_locale_context, validate_component_actions, validate_component_public_urls,
     validate_internal_page_links,
 };
@@ -124,25 +124,28 @@ fn materialize_project_with_runtime_context_and_providers(
         (localized_input_context.clone(), 0, 0, 0, 0, 0)
     };
 
-    // Runtime bindings are allowed to target component fields such as flyPageLink, flyAction,
-    // flyForm, and tagName. Apply them before structural runtime expansion so repeaters clone the
-    // bound contract rather than the authoring template.
-    let BindingMaterialization {
-        document: bound_document,
-        diagnostics: binding_diagnostics,
-        applied_bindings,
-        fallback_bindings,
-        unresolved_bindings,
-    } = materialize_bindings(&localized_document, &effective_context);
-    diagnostics.extend(binding_diagnostics);
-
+    // Global bindings still run before identity/form proofs. Alias-dependent
+    // bindings capture per-instance values and write only after interpolation.
+    let (mut bindings, mut scoped) =
+        crate::binding::prepare_scoped_bindings(&localized_document, &effective_context);
     let RuntimeMaterialization {
-        document: dynamic_document,
+        document: mut dynamic_document,
         diagnostics: dynamic_diagnostics,
         evaluated_conditions,
         hidden_components,
         repeated_nodes,
-    } = materialize_runtime(&bound_document, &effective_context);
+    } = crate::dynamic::materialize_runtime_with_scoped_bindings(
+        &bindings.document, &effective_context, Some(&mut scoped),
+    );
+    scoped.finish(&mut dynamic_document, &mut bindings);
+    let BindingMaterialization {
+        diagnostics: binding_diagnostics,
+        applied_bindings,
+        fallback_bindings,
+        unresolved_bindings,
+        ..
+    } = bindings;
+    diagnostics.extend(binding_diagnostics);
     diagnostics.extend(dynamic_diagnostics);
 
     // Bindings and repeaters may introduce or duplicate runtime navigation, action, and form
@@ -722,6 +725,66 @@ mod tests {
                 .iter()
                 .any(|diagnostic| diagnostic.code == "runtime_context_field_path_invalid")
         );
+    }
+
+    #[test]
+    fn repeater_bindings_use_each_instance_context_without_reinterpolating_data() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{"component": {"id": "root", "type": "wrapper", "components": [
+                {"id": "card", "type": "section", "components": [
+                    {"id": "title", "type": "text", "content": "Template"},
+                    {"id": "tag", "type": "text", "content": "Tag"}
+                ]}
+            ]}}],
+            "flyRuntimeRepeaters": [
+                {"id": "cards", "component_id": "card", "path": "items"},
+                {"id": "tags", "component_id": "tag", "path": "item.tags"}
+            ],
+            "flyRuntimeBindings": [
+                {"id": "card-index", "component_id": "card", "path": "index", "target": "attribute", "name": "title"},
+                {"id": "title", "component_id": "title", "path": "$.item.name", "target": "field", "name": "content", "fallback": "Missing"},
+                {"id": "tag", "component_id": "tag", "path": "item", "target": "field", "name": "content"}
+            ]
+        })).expect("document");
+        let result = materialize_project_with_runtime_context(&document, &json!({
+            "item": {"name": "Wrong global"},
+            "items": [{"name": "{{item.name}}", "tags": ["A", "B"]}, {"tags": ["C"]}]
+        }));
+        assert_eq!(result.applied_bindings, 7);
+        assert_eq!(result.fallback_bindings, 1);
+        assert_eq!(result.unresolved_bindings, 0);
+        let first = result.document.component("title--cards-0").expect("first");
+        assert_eq!(first.extensions["content"], "{{item.name}}");
+        let second = result.document.component("title--cards-1").expect("second");
+        assert_eq!(second.extensions["content"], "Missing");
+        assert_eq!(result.document.component("card--cards-1").unwrap().attributes["title"], 1);
+        for (id, expected) in [("tag--cards-0--tags-0", "A"), ("tag--cards-0--tags-1", "B"), ("tag--cards-1--tags-0", "C")] {
+            assert_eq!(result.document.component(id).expect(id).extensions["content"], expected);
+        }
+    }
+
+    #[test]
+    fn scoped_bindings_skip_hidden_instances_and_reject_identity_writes() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{"component": {"id": "root", "type": "wrapper", "components": [
+                {"id": "card", "type": "section", "components": [{"id": "title", "type": "text"}]}
+            ]}}],
+            "flyRuntimeRepeaters": [{"id": "cards", "component_id": "card", "path": "items"}],
+            "flyRuntimeConditions": [{"id": "visible", "component_id": "title", "path": "item.visible", "operator": "truthy"}],
+            "flyRuntimeBindings": [
+                {"id": "title", "component_id": "title", "path": "item.name", "target": "field", "name": "content"},
+                {"id": "id", "component_id": "card", "path": "item.name", "target": "attribute", "name": "id"}
+            ]
+        })).expect("document");
+        assert!(crate::validate_binding_definitions(&document).iter().any(|d| d.code == "runtime_scoped_binding_target_invalid"));
+        let result = materialize_project_with_runtime_context(&document, &json!({
+            "items": [{"name": "Hidden", "visible": false}, {"name": "Shown", "visible": true}]
+        }));
+        assert_eq!(result.applied_bindings, 1);
+        assert_eq!(result.unresolved_bindings, 1);
+        assert!(result.document.component("title--cards-0").is_none());
+        assert_eq!(result.document.component("title--cards-1").unwrap().extensions["content"], "Shown");
+        assert!(result.diagnostics.iter().any(|d| d.code == "runtime_scoped_binding_target_invalid" && d.severity == ValidationSeverity::Error));
     }
 
     #[test]

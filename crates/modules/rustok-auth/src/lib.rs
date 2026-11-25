@@ -26,6 +26,7 @@ pub mod error;
 pub mod graphql;
 pub mod jwt;
 pub mod jwt_keyring;
+mod jwt_fence;
 pub mod lifecycle;
 pub mod migrations;
 pub mod module;
@@ -50,7 +51,8 @@ pub use admin_mutations::{
 pub use backfill::AuthUserBackfillDbReader;
 pub use bootstrap::{AuthUserBootstrapDbWriter, AuthUserBootstrapRecord, AuthUserBootstrapRequest};
 pub use config::{
-    AuthConfig, AuthSettingsOverrides, JwtAlgorithm, build_auth_config, build_auth_config_with_env,
+    AuthConfig, AuthSettingsOverrides, JwtAlgorithm, JwtKeyringPublisher, JwtLeaseReadiness,
+    MAX_JWT_KEYRING_DOCUMENT_BYTES, build_auth_config, build_auth_config_with_env,
     validate_auth_config,
 };
 pub use credentials::{
@@ -60,6 +62,7 @@ pub use credentials::{
 };
 pub use crypto::{AuthMacPurpose, auth_purpose_mac};
 pub use error::AuthError;
+pub use jwt_fence::{JwtAdmission, JwtGenerationFence, JwtRevocationReceipt};
 pub use jwt::{
     Claims, EmailVerificationClaims, InviteClaims, OauthAccessTokenInput, PasswordResetClaims,
     decode_access_token, decode_email_verification_token, decode_invite_token,
