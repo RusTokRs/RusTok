@@ -180,7 +180,13 @@ impl JwtKeyringDocument {
             return Err(invalid_rotation());
         }
         let doc: Self = serde_json::from_slice(bytes).map_err(|_| invalid_rotation())?;
-        if doc.generation == 0 || i64::try_from(doc.generation).is_err() {
+        if doc.generation == 0
+            || i64::try_from(doc.generation).is_err()
+            || doc.access.algorithm != JwtAlgorithm::RS256
+            || doc.password_reset.algorithm != JwtAlgorithm::RS256
+            || doc.email_verification.algorithm != JwtAlgorithm::RS256
+            || doc.invite.algorithm != JwtAlgorithm::RS256
+        {
             return Err(invalid_rotation());
         }
         Ok((doc.generation, JwtKeyInputs {
@@ -1222,6 +1228,31 @@ mod tests {
             assert!(build_auth_config_from_document(
                 secret(), 900, Default::default(), incomplete.to_string().as_bytes(),
             ).is_err());
+        }
+    }
+
+    #[test]
+    fn generation_bearing_document_rejects_non_rs256_purpose_rings() {
+        let fixture = JwtKeyringFixture::generate().unwrap();
+        let document = fixture.document(1);
+        for purpose in ["access", "password_reset", "email_verification", "invite"] {
+            let mut legacy = document.clone();
+            legacy[purpose]["algorithm"] = serde_json::json!("HS256");
+            assert!(
+                build_auth_config_from_document(
+                    secret(), 900, Default::default(), legacy.to_string().as_bytes(),
+                ).is_err(),
+                "{purpose} must reject HS256",
+            );
+
+            let mut missing = document.clone();
+            missing[purpose].as_object_mut().unwrap().remove("algorithm");
+            assert!(
+                build_auth_config_from_document(
+                    secret(), 900, Default::default(), missing.to_string().as_bytes(),
+                ).is_err(),
+                "{purpose} must require an explicit RS256 declaration",
+            );
         }
     }
 

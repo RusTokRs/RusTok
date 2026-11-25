@@ -23,7 +23,7 @@ use crate::{
 
 const DEFAULT_JWT_ISSUER: &str = "rustok";
 const DEFAULT_JWT_AUDIENCE: &str = "rustok-admin";
-const MIN_PRODUCTION_HS256_SECRET_BYTES: usize = 64;
+const MIN_PRODUCTION_MAC_ROOT_BYTES: usize = 64;
 const JWT_KEYRING_FILE_ENV: &str = "RUSTOK_JWT_KEYRING_FILE";
 const JWT_RELOAD_INTERVAL: Duration = Duration::from_secs(2);
 
@@ -105,23 +105,13 @@ pub async fn run() -> Result<()> {
     let rustok_settings = RustokSettings::from_settings(&Some(config.settings.clone()))
         .map_err(|error| Error::BadRequest(format!("Invalid rustok settings: {error}")))?;
     let keyring_path = jwt_keyring_file_path()?;
-    let (auth_config, reload_source) = if let Some(path) = keyring_path {
-        let bytes = read_jwt_keyring_file(&path).await?;
-        let digest: [u8; 32] = sha256_digest(&[&bytes]);
-        let (generation, candidate) = crate::auth::auth_config_from_host_document(
-            config.auth.jwt.secret.clone(), config.auth.jwt.expiration,
-            Some(&config.settings), &bytes,
-        )?;
-        validate_auth_deployment(&candidate, production)?;
-        (candidate, Some((path, generation, digest)))
-    } else {
-        let candidate = crate::auth::auth_config_from_host_settings(
-            config.auth.jwt.secret.clone(), config.auth.jwt.expiration,
-            Some(&config.settings),
-        )?;
-        validate_auth_deployment(&candidate, production)?;
-        (candidate, None)
-    };
+    let bytes = read_jwt_keyring_file(&keyring_path).await?;
+    let digest: [u8; 32] = sha256_digest(&[&bytes]);
+    let (generation, auth_config) = crate::auth::auth_config_from_host_document(
+        config.auth.jwt.secret.clone(), config.auth.jwt.expiration,
+        Some(&config.settings), &bytes,
+    )?;
+    validate_auth_deployment(&auth_config, production)?;
     validate_oauth_metadata_issuer(
         &auth_config,
         crate::routes::oauth_surface_enabled(rustok_settings.runtime.host_mode, &rustok_settings),
@@ -174,30 +164,25 @@ pub async fn run() -> Result<()> {
 
     // Production never takes JWT authority from the restorable application DB.
     let fence = independent_fence.unwrap_or_else(|| rustok_auth::JwtGenerationFence::new(db.clone()));
-    let generation = if let Some((_, generation, _)) = &reload_source {
-        loop {
-            let admission = tokio::select! {
-                biased;
-                _ = &mut shutdown_signal => return Ok(()),
-                result = fence.admit(*generation, &auth_config) => result.map_err(crate::auth::auth_err)?,
-            };
-            if admission == rustok_auth::JwtAdmission::Admitted {
-                break *generation;
-            }
-            tokio::select! {
-                biased;
-                _ = &mut shutdown_signal => return Ok(()),
-                _ = tokio::time::sleep(JWT_RELOAD_INTERVAL) => {}
-            }
+    loop {
+        let admission = tokio::select! {
+            biased;
+            _ = &mut shutdown_signal => return Ok(()),
+            result = fence.admit(generation, &auth_config) => result.map_err(crate::auth::auth_err)?,
+        };
+        if admission == rustok_auth::JwtAdmission::Admitted {
+            break;
         }
-    } else {
-        fence.ensure_static_allowed().await.map_err(crate::auth::auth_err)?;
-        0
-    };
+        tokio::select! {
+            biased;
+            _ = &mut shutdown_signal => return Ok(()),
+            _ = tokio::time::sleep(JWT_RELOAD_INTERVAL) => {}
+        }
+    }
     let (auth_config, publisher) = auth_config.into_cluster_jwt(generation)
         .map_err(crate::auth::auth_err)?;
     let supervisor = JwtRuntimeSupervisor {
-        source: reload_source.map(|(path, _, digest)| JwtFileSource { path, digest }),
+        source: JwtFileSource { path: keyring_path, digest },
         publisher, fence,
     };
     if !supervisor.fence.renew(&supervisor.publisher).await.map_err(crate::auth::auth_err)? {
@@ -446,26 +431,19 @@ fn validate_auth_deployment(config: &crate::auth::AuthConfig, production: bool) 
         ));
     }
 
-    // The root protects host MACs and derived JWT keys even for RS256 access.
-    // Explicit HS256 keys from every purpose (including history) must meet the
-    // same production policy.
-    // Inspect the actual candidate, including every purpose and history key.
-    config.inspect_hs256_secrets(|secret| {
-        if secret.bytes().filter(|b| !b.is_ascii_whitespace()).count()
-            < MIN_PRODUCTION_HS256_SECRET_BYTES
-        {
-            return Err(rustok_auth::AuthError::Validation(format!(
-                "Production HS256/root secret must contain at least {MIN_PRODUCTION_HS256_SECRET_BYTES} bytes"
-            )));
-        }
-        if jwt_secret_looks_like_placeholder(secret) {
-            return Err(rustok_auth::AuthError::Validation(
-                "Production HS256/root secret looks like a placeholder or low-diversity value"
-                    .to_string(),
-            ));
-        }
-        Ok(())
-    }).map_err(crate::auth::auth_err)?;
+    let mac_root = config.secret();
+    if mac_root.bytes().filter(|byte| !byte.is_ascii_whitespace()).count()
+        < MIN_PRODUCTION_MAC_ROOT_BYTES
+    {
+        return Err(Error::BadRequest(format!(
+            "Production MAC root must contain at least {MIN_PRODUCTION_MAC_ROOT_BYTES} non-whitespace bytes"
+        )));
+    }
+    if mac_root_looks_like_placeholder(mac_root) {
+        return Err(Error::BadRequest(
+            "Production MAC root looks like a placeholder or low-diversity value".to_string(),
+        ));
+    }
     rustok_auth::validate_auth_config(config).map_err(crate::auth::auth_err)?;
 
     Ok(())
@@ -505,7 +483,7 @@ fn validate_database_deployment(database_uri: &str, production: bool) -> Result<
     Ok(())
 }
 
-fn jwt_secret_looks_like_placeholder(secret: &str) -> bool {
+fn mac_root_looks_like_placeholder(secret: &str) -> bool {
     let normalized = secret.trim().to_ascii_lowercase();
     const PLACEHOLDER_MARKERS: &[&str] = &[
         "change_me",
@@ -609,12 +587,18 @@ async fn connect_database(
     Database::connect(options).await.map_err(Error::Database)
 }
 
-fn jwt_keyring_file_path() -> Result<Option<PathBuf>> {
-    match std::env::var(JWT_KEYRING_FILE_ENV) {
-        Ok(value) if !value.trim().is_empty() => Ok(Some(PathBuf::from(value))),
-        Err(std::env::VarError::NotPresent) => Ok(None),
-        _ => Err(Error::BadRequest("Invalid JWT keyring file path".to_string())),
-    }
+fn required_jwt_keyring_file_path_from(value: Option<&str>) -> Result<PathBuf> {
+    let value = value
+        .filter(|value| !value.trim().is_empty() && value.trim() == *value)
+        .ok_or_else(|| Error::BadRequest(format!(
+            "{JWT_KEYRING_FILE_ENV} is required and must be a non-empty path"
+        )))?;
+    Ok(PathBuf::from(value))
+}
+
+fn jwt_keyring_file_path() -> Result<PathBuf> {
+    let value = std::env::var(JWT_KEYRING_FILE_ENV).ok();
+    required_jwt_keyring_file_path_from(value.as_deref())
 }
 
 async fn read_jwt_keyring_file(path: &Path) -> Result<Vec<u8>> {
@@ -641,7 +625,7 @@ struct JwtFileSource {
 }
 
 struct JwtRuntimeSupervisor {
-    source: Option<JwtFileSource>,
+    source: JwtFileSource,
     publisher: rustok_auth::JwtKeyringPublisher,
     fence: rustok_auth::JwtGenerationFence,
 }
@@ -660,13 +644,8 @@ impl JwtRuntimeSupervisor {
             interval.tick().await;
             // Check the durable revocation/lease authority even when the
             // file has not changed, before potentially slow file processing.
-            let granted = self.fence.renew(&self.publisher).await.map_err(crate::auth::auth_err)?;
-            if !granted && self.source.is_none() {
-                return Err(Error::Message("Static JWT cluster lease denied".into()));
-            }
-            if let Some(source) = self.source.as_mut() {
-                Self::poll_source(source, &self.publisher, &self.fence, production).await?;
-            }
+            let _granted = self.fence.renew(&self.publisher).await.map_err(crate::auth::auth_err)?;
+            Self::poll_source(&mut self.source, &self.publisher, &self.fence, production).await?;
             // A draining or stale file-backed host keeps polling to converge;
             // its JWT operations fail closed when its previous lease expires.
         }
@@ -854,11 +833,22 @@ async fn wait_for_shutdown_signal() {
 #[cfg(test)]
 mod tests {
     use super::{
-        HostConfig, application_router, resolve_database_uri, validate_auth_deployment,
-        validate_https_deployment,
+        HostConfig, application_router, required_jwt_keyring_file_path_from,
+        resolve_database_uri, validate_auth_deployment, validate_https_deployment,
     };
     use crate::common::settings::RuntimeHostMode;
     use crate::auth::test_auth_config;
+
+    #[test]
+    fn jwt_keyring_file_path_is_mandatory_and_canonical() {
+        for invalid in [None, Some(""), Some("   "), Some(" /run/rustok-jwt/jwt.json"), Some("/run/rustok-jwt/jwt.json ")] {
+            assert!(required_jwt_keyring_file_path_from(invalid).is_err());
+        }
+        assert_eq!(
+            required_jwt_keyring_file_path_from(Some("/run/rustok-jwt/jwt.json")).unwrap(),
+            std::path::PathBuf::from("/run/rustok-jwt/jwt.json"),
+        );
+    }
 
     #[test]
     fn jwt_config_debug_redacts_root() {
@@ -1166,29 +1156,6 @@ mod tests {
             .with_audience("rustok-production-admin");
         validate_auth_deployment(&config, true)
             .expect("explicit claims and a high-entropy secret satisfy production policy");
-    }
-
-    #[test]
-    fn production_rejects_short_special_jwt_key_material() {
-        let config = rustok_auth::build_auth_config_with_env(
-            "aB3!zY7@qW8#eR2$".repeat(5),
-            900,
-            crate::auth::AuthSettingsOverrides {
-                issuer: Some("https://api.example.com".into()),
-                audience: Some("rustok-production-admin".into()),
-                jwt_special_keyrings_env: Some("SPECIAL_KEYS".into()),
-                ..Default::default()
-            },
-            |_| Ok(serde_json::json!({
-                "invite": {"keyring": {
-                    "active_kid": "invite-next",
-                    "active_hs256_secret": "distinct-special-signing-key-with-32-bytes"
-                }}
-            }).to_string()),
-        ).expect("owner accepts the development key-strength floor");
-        let error = validate_auth_deployment(&config, true)
-            .expect_err("production must validate all purpose keys");
-        assert!(error.to_string().contains("at least 64 bytes"));
     }
 
     #[test]
