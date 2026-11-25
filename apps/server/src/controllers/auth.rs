@@ -15,7 +15,7 @@ use rustok_web::json_response;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use std::net::SocketAddr;
 
-use crate::auth::{encode_email_verification_token, encode_password_reset_token};
+use crate::auth::encode_email_verification_token;
 use crate::common::{RequestContext, RustokSettings};
 use crate::extractors::{auth::CurrentUser, tenant::CurrentTenant};
 use crate::models::{
@@ -24,9 +24,8 @@ use crate::models::{
 };
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService, AuthTokens};
 use crate::services::email::{
-    EMAIL_VERIFICATION_TOKEN_TTL_SECS, PASSWORD_RESET_TOKEN_TTL_SECS, email_service_from_ctx,
-    password_reset_url, spawn_email_verification, spawn_email_verification_send,
-    spawn_password_reset_email,
+    EMAIL_VERIFICATION_TOKEN_TTL_SECS, email_service_from_ctx, spawn_email_verification,
+    spawn_email_verification_send,
 };
 use crate::services::server_runtime_context::ServerAuthRuntime;
 pub use rustok_auth::{
@@ -603,60 +602,20 @@ async fn request_reset(
     request_context: RequestContext,
     Json(params): Json<RequestResetParams>,
 ) -> Result<Response> {
-    let email = params.email.trim();
     tracing::debug!("auth::request_reset entry");
     let config = ctx
         .auth_config()
         .cloned()
         .ok_or(Error::InternalServerError)?;
-
-    let user = Users::find_by_email(ctx.runtime_ctx().db(), tenant.id, email).await?;
-    crate::auth::mask_auth_lookup_timing().await?;
-
-    let reset_token = user
-        .as_ref()
-        .map(|record| {
-            encode_password_reset_token(
-                &config,
-                tenant.id,
-                &record.email,
-                &record.password_hash,
-                PASSWORD_RESET_TOKEN_TTL_SECS,
-            )
-        })
-        .transpose()?;
-
-    if let Some(reset_token_value) = reset_token.as_ref() {
-        let runtime_ctx = ctx.runtime_ctx();
-        let email_service = match email_service_from_ctx(
-            runtime_ctx,
-            request_context.locale.as_str(),
-        ) {
-            Ok(service) => service,
-            Err(_) => {
-                tracing::warn!(
-                    "Password reset email could not be prepared; keeping the public response generic"
-                );
-                return Ok(json_response(ResetRequestResponse { status: "ok" }));
-            }
-        };
-        let reset_url = match password_reset_url(runtime_ctx, reset_token_value) {
-            Ok(url) => url,
-            Err(_) => {
-                tracing::warn!(
-                    "Password reset URL could not be prepared; keeping the public response generic"
-                );
-                return Ok(json_response(ResetRequestResponse { status: "ok" }));
-            }
-        };
-        let recipient = user
-            .as_ref()
-            .map(|record| record.email.clone())
-            .unwrap_or_else(|| params.email.clone());
-
-        let _email_task =
-            spawn_password_reset_email(runtime_ctx, email_service, recipient, reset_url);
-    }
+    AuthLifecycleService::request_password_reset_runtime(
+        ctx.runtime_ctx(),
+        &config,
+        tenant.id,
+        &params.email,
+        request_context.locale.as_str(),
+    )
+    .await
+    .map_err(Error::from)?;
 
     Ok(json_response(ResetRequestResponse { status: "ok" }))
 }

@@ -960,6 +960,7 @@ before the event forwarder. The Outbox relay supervisor owns and gracefully drai
 - Auth REST handlers extract a narrow `ServerAuthRuntime`; password reset and verification endpoints
   additionally receive `ServerEmailRuntime`. The controller receives explicit config, DB, and mailer
   dependencies, and JSON response formatting goes through `rustok_web::json_response`.
+- Password recovery requests share one lifecycle service for REST and GraphQL/native. Account-dependent token, mailer and URL preparation failures keep the generic public response; inactive accounts do not receive unusable reset links. Confirmation atomically compares the observed mailbox, tenant, active status and password hash before updating credentials and revoking sessions. Source regression authored; checks pending.
 - Module guard and server channel contract are typed through `ServerRuntimeContext`; no
   framework-global application context is a request/channel contract for server-owned runtime paths.
 - OAuth discovery metadata also uses `ServerAuthRuntime` as the single source of auth config.

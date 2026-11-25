@@ -176,6 +176,16 @@ gates in the [Page Builder backlog](../../../../docs/modules/page-builder-backlo
    exhaustively at the GraphQL boundary); `AuthSettingsOverrides::apply` is
    live runtime wiring, not dead code.
 
+## Password recovery parity (source only)
+
+REST and GraphQL/native recovery requests delegate to the same host lifecycle
+service. Account-dependent preparation failures preserve the generic response;
+inactive accounts do not receive unusable reset links. Confirmation now includes
+the exact observed mailbox in its atomic credential CAS, preventing a concurrent
+mailbox change from authorizing a stale reset. Run `cargo test -p rustok-server
+--lib auth_password_reset` plus mounted REST and GraphQL recovery checks.
+Compilation, regressions and remediation gate remain maintainer-run.
+
 ## GraphQL credential throttling remediation (source only)
 
 The credential limiter now accounts for separate aliased resolver calls, ignores
