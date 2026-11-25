@@ -49,6 +49,10 @@ RusToK provides comprehensive custom metrics for monitoring application health, 
 
 ## Custom Metrics
 
+### JWT operational metrics
+
+See the [Auth owner contract](../../crates/modules/rustok-auth/docs/README.md#operational-observability) for local lease state, authenticated cluster observations, bounded operation counters, ACK timing and initial alerts. Scrape each replica with host-read authority; never sum replicated cluster gauges.
+
 ### EventBus Metrics
 
 Track event processing, throughput, and queue health.

@@ -87,6 +87,7 @@ pub async fn metrics(
                 payload.push_str(&render_search_metrics(&ctx).await);
             }
             payload.push_str(&render_runtime_guardrail_metrics(&ctx).await);
+            payload.push_str(&render_jwt_operational_metrics(&ctx).await);
 
             Ok((
                 StatusCode::OK,
@@ -108,6 +109,22 @@ pub fn router() -> crate::routes::ServerRouter {
     axum::Router::new()
         .route("/metrics", get(metrics))
         .route("/metrics/", get(metrics))
+}
+
+async fn render_jwt_operational_metrics(ctx: &ServerRuntimeContext) -> String {
+    let Some(metrics) = ctx.shared_get::<rustok_auth::JwtOperationalMetrics>() else {
+        return "# TYPE rustok_auth_jwt_collection_status gauge\nrustok_auth_jwt_collection_status 0\n".to_string();
+    };
+    let cluster = match tokio::time::timeout(
+        std::time::Duration::from_secs(2), metrics.cluster_snapshot(),
+    ).await {
+        Ok(Ok(snapshot)) => Some(snapshot),
+        Ok(Err(_)) | Err(_) => {
+            warn!("failed to collect JWT operational metrics");
+            None
+        }
+    };
+    metrics.render(cluster.as_ref())
 }
 
 async fn sync_rate_limit_metrics(ctx: &ServerRuntimeContext) {

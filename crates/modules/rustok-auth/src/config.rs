@@ -111,6 +111,19 @@ pub struct JwtLeaseReadiness {
 }
 
 impl JwtLeaseReadiness {
+    /// Sample the real lease gate under a single read fence.
+    pub(crate) fn operational_state(&self) -> Option<(u64, bool, bool, f64)> {
+        let guard = self.current.read().ok()?;
+        let now = Instant::now();
+        let ready = guard.lease_required && guard.permits_crypto_at(now);
+        let remaining = if ready {
+            guard.lease_until?.saturating_duration_since(now).as_secs_f64()
+        } else {
+            0.0
+        };
+        Some((guard.generation, ready, guard.emergency_fenced, remaining))
+    }
+
     pub fn is_ready(&self) -> bool {
         self.current.read().is_ok_and(|guard| {
             guard.lease_required && guard.permits_crypto_at(Instant::now())

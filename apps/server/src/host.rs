@@ -198,6 +198,10 @@ pub async fn run() -> Result<()> {
     runtime_ctx.shared_insert(
         supervisor.publisher.lease_readiness().map_err(crate::auth::auth_err)?,
     );
+    runtime_ctx.shared_insert(
+        supervisor.fence.operational_metrics(&supervisor.publisher)
+            .map_err(crate::auth::auth_err)?,
+    );
 
     let result = with_runtime_shutdown(&runtime_ctx, async {
         let mut supervisor = Box::pin(supervisor.run(production));
@@ -683,18 +687,21 @@ impl JwtRuntimeSupervisor {
         let bytes = match read_jwt_keyring_file(&source.path).await {
             Ok(bytes) => bytes,
             Err(_) => {
+                fence.record_reload(rustok_auth::JwtReloadOutcome::SourceUnavailable);
                 tracing::warn!("JWT keyring reload source unavailable");
                 return Ok(());
             }
         };
         let digest = sha256_digest(&[&bytes]);
         if digest == source.digest {
+            fence.record_reload(rustok_auth::JwtReloadOutcome::Unchanged);
             return Ok(());
         }
         let (generation, candidate) = match publisher.prepare_document(&bytes) {
             Ok(candidate) => candidate,
             Err(_) => {
                 source.digest = digest;
+                fence.record_reload(rustok_auth::JwtReloadOutcome::Rejected);
                 tracing::warn!("JWT keyring reload rejected");
                 return Ok(());
             }
@@ -703,6 +710,7 @@ impl JwtRuntimeSupervisor {
             || validate_auth_deployment(&candidate, production).is_err()
         {
             source.digest = digest;
+            fence.record_reload(rustok_auth::JwtReloadOutcome::Rejected);
             tracing::warn!("JWT keyring reload rejected");
             return Ok(());
         }
@@ -710,9 +718,17 @@ impl JwtRuntimeSupervisor {
             Ok(rustok_auth::JwtAdmission::Admitted) => {}
             // Do not mark the file processed: the same candidate must retry
             // after the old database lease horizon has drained.
-            Ok(rustok_auth::JwtAdmission::Draining | rustok_auth::JwtAdmission::AwaitingReplicas) => return Ok(()),
+            Ok(rustok_auth::JwtAdmission::Draining) => {
+                fence.record_reload(rustok_auth::JwtReloadOutcome::WaitingDrain(generation));
+                return Ok(());
+            }
+            Ok(rustok_auth::JwtAdmission::AwaitingReplicas) => {
+                fence.record_reload(rustok_auth::JwtReloadOutcome::WaitingReplicas(generation));
+                return Ok(());
+            }
             Err(rustok_auth::AuthError::Validation(_)) => {
                 source.digest = digest;
+                fence.record_reload(rustok_auth::JwtReloadOutcome::Rejected);
                 tracing::warn!("JWT keyring generation rejected by durable fence");
                 return Ok(());
             }
@@ -721,9 +737,11 @@ impl JwtRuntimeSupervisor {
         if !fence.activate(publisher, generation, candidate).await.map_err(crate::auth::auth_err)? {
             // The current local lease remains intact. Retry this exact file
             // until a matching grant is obtained or a newer file arrives.
+            fence.record_reload(rustok_auth::JwtReloadOutcome::WaitingGrant(generation));
             return Ok(());
         }
         source.digest = digest;
+        fence.record_reload(rustok_auth::JwtReloadOutcome::Published);
         tracing::info!(generation, "JWT keyring generation published");
         Ok(())
     }

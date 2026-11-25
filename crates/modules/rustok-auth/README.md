@@ -105,6 +105,9 @@ identity tombstones are source-implemented;
 cluster lease/drain fencing and compatible rolling replica admission are
 source-implemented, including emergency enrolled-key revocation; algorithm and host root migration remain open.
 See [JWT rotation](docs/README.md#jwt-keyring-and-rotation).
+Operational JWT metrics and initial alerts are source-implemented; see
+[operational observability](docs/README.md#operational-observability).
+Compilation, metrics regressions and live scrape/alert evidence remain pending.
 
 
 Context/configuration and revocation-double definitions are uncompiled/unrun. Actual canonical

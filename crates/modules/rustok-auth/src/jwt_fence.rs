@@ -11,6 +11,10 @@ use sha2::Sha256;
 use crate::{AuthConfig, AuthError, JwtAlgorithm, JwtKeyringPublisher};
 use crate::error::Result;
 
+mod observability;
+pub use observability::{JwtClusterObservation, JwtOperationalMetrics, JwtReloadOutcome};
+use observability::OperationMetrics;
+
 const MAX_ENROLLED_KEYS: usize = 8192;
 const MAX_LEDGER_BYTES: usize = 4 * 1024 * 1024;
 const MAX_CAS_ATTEMPTS: usize = 8;
@@ -272,8 +276,10 @@ impl FenceMac {
 /// Auth-owned database authority. Call only from trusted deployment composition.
 /// The store admits a snapshot; it does not distribute secrets or publish keys
 /// into a process. No database access is added to the JWT request path.
+#[derive(Clone)]
 pub struct JwtGenerationFence {
     db: DatabaseConnection,
+    metrics: OperationMetrics,
 }
 
 struct StoredFence {
@@ -334,7 +340,7 @@ impl StoredFence {
 
 impl JwtGenerationFence {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self { db, metrics: OperationMetrics::default() }
     }
 
     async fn load(&self) -> Result<StoredFence> {
@@ -435,6 +441,14 @@ impl JwtGenerationFence {
     /// Renew only the exact local generation. A grant is bounded from before
     /// DB IO; an expired/delayed grant cannot revive a local deadline.
     pub async fn renew(&self, publisher: &JwtKeyringPublisher) -> Result<bool> {
+        let result = self.renew_inner(publisher).await;
+        self.metrics.record("renew", match &result {
+            Ok(true) => "granted", Ok(false) => "denied", Err(_) => "error",
+        });
+        result
+    }
+
+    async fn renew_inner(&self, publisher: &JwtKeyringPublisher) -> Result<bool> {
         let mac = FenceMac::new(publisher.lease_root())?;
         let (generation, snapshot) = publisher.lease_metadata(|identity| mac.identity(identity))?;
         let Some(deadline) = self.grant(publisher, generation, snapshot, &mac, true).await? else {
@@ -446,6 +460,16 @@ impl JwtGenerationFence {
     /// Obtain a grant for the exact admitted candidate before exchanging
     /// local keys and lease in a single write-fenced operation.
     pub async fn activate(
+        &self, publisher: &JwtKeyringPublisher, generation: u64, candidate: AuthConfig,
+    ) -> Result<bool> {
+        let result = self.activate_inner(publisher, generation, candidate).await;
+        self.metrics.record("activate", match &result {
+            Ok(true) => "applied", Ok(false) => "denied", Err(_) => "error",
+        });
+        result
+    }
+
+    async fn activate_inner(
         &self, publisher: &JwtKeyringPublisher, generation: u64, candidate: AuthConfig,
     ) -> Result<bool> {
         if generation <= publisher.generation()? || candidate.secret() != publisher.lease_root() {
@@ -462,7 +486,12 @@ impl JwtGenerationFence {
         }
         // Only after the local write fence has drained old crypto and
         // installed the new generation may this incarnation ACK replacement.
-        self.acknowledge(publisher, generation, &mac).await?;
+        let started = Instant::now();
+        let ack = self.acknowledge(publisher, generation, &mac).await;
+        self.metrics.record_ack(started.elapsed(), match &ack {
+            Ok(true) => "complete", Ok(false) => "deferred", Err(_) => "error",
+        });
+        ack?;
         Ok(true)
     }
 
@@ -471,7 +500,7 @@ impl JwtGenerationFence {
     /// renewal cannot reinstall an older grant after this ACK.
     async fn acknowledge(
         &self, publisher: &JwtKeyringPublisher, applied: u64, mac: &FenceMac,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let prefix = format!("{}:", publisher.incarnation());
         for _ in 0..MAX_CAS_ATTEMPTS {
             let stored = self.load().await?;
@@ -481,7 +510,7 @@ impl JwtGenerationFence {
             let before = grants.len();
             grants.retain(|key, grant| !key.starts_with(&prefix) || grant.generation >= applied);
             if grants.len() == before {
-                return Ok(());
+                return Ok(true);
             }
             let horizon = grants.values().map(|grant| grant.until_ms)
                 .chain(std::iter::once(stored.untracked_until_ms)).max().unwrap_or(0);
@@ -498,12 +527,12 @@ impl JwtGenerationFence {
                     stored.replica_grants.into()],
             )).await.map_err(|_| unavailable())?;
             if updated.rows_affected() == 1 {
-                return Ok(());
+                return Ok(true);
             }
         }
         // Contention does not invalidate the installed lease. Renewal will
         // retry the ACK; until then the old grant conservatively remains.
-        Ok(())
+        Ok(false)
     }
 
     async fn grant(
@@ -520,13 +549,19 @@ impl JwtGenerationFence {
                 if already_applied {
                     publisher.fence_revoked_generation(generation)?;
                 }
+                self.metrics.record("grant", "revoked");
                 return Ok(None);
             }
             let admitted = match ledger {
                 None => generation == 0,
                 Some(ledger) => generation == ledger.generation && snapshot == ledger.current,
             };
-            if !admitted || stored.drain_until_ms > stored.now_ms {
+            if !admitted {
+                self.metrics.record("grant", "not_admitted");
+                return Ok(None);
+            }
+            if stored.drain_until_ms > stored.now_ms {
+                self.metrics.record("grant", "draining");
                 return Ok(None);
             }
             let mut grants = stored.live_grants()?;
@@ -537,6 +572,7 @@ impl JwtGenerationFence {
                 grants.retain(|key, grant| !key.starts_with(&prefix) || grant.generation >= generation);
             }
             if !grants.contains_key(&key) && grants.len() >= MAX_GRANTS {
+                self.metrics.record("grant", "capacity");
                 return Ok(None);
             }
             let until = stored.now_ms.checked_add(DB_LEASE_MS).ok_or_else(unavailable)?;
@@ -551,6 +587,7 @@ impl JwtGenerationFence {
             });
             let encoded = serde_json::to_string(&grants).map_err(|_| unavailable())?;
             if encoded.len() > MAX_GRANT_BYTES {
+                self.metrics.record("grant", "capacity");
                 return Ok(None);
             }
             let horizon = grants.values().map(|grant| grant.until_ms)
@@ -570,12 +607,25 @@ impl JwtGenerationFence {
                 return Ok(Some(started.checked_add(LOCAL_LEASE).ok_or_else(unavailable)?));
             }
         }
+        self.metrics.record("grant", "contention");
         Ok(None)
     }
 
     /// Admit before local publication. Same generation is idempotent only for
     /// the same canonical snapshot, including cutoffs and legacy mapping.
     pub async fn admit(&self, generation: u64, candidate: &AuthConfig) -> Result<JwtAdmission> {
+        let result = self.admit_inner(generation, candidate).await;
+        self.metrics.record("admit", match &result {
+            Ok(JwtAdmission::Admitted) => "admitted",
+            Ok(JwtAdmission::Draining) => "draining",
+            Ok(JwtAdmission::AwaitingReplicas) => "awaiting_replicas",
+            Err(AuthError::Validation(_)) => "rejected",
+            Err(_) => "error",
+        });
+        result
+    }
+
+    async fn admit_inner(&self, generation: u64, candidate: &AuthConfig) -> Result<JwtAdmission> {
         let generation_sql = i64::try_from(generation).map_err(|_| rejected())?;
         if generation_sql <= 0 {
             return Err(rejected());
@@ -670,12 +720,12 @@ mod tests {
     use sea_orm::Database;
     use sea_orm_migration::SchemaManager;
 
-    const ROOT: &str = "stable-host-root-for-fence-tests-only-32bytes";
-    const OLD: &str = "first-independent-signing-key-at-least-32-bytes";
-    const NEW: &str = "second-independent-signing-key-at-least-32-bytes";
+    pub(super) const ROOT: &str = "stable-host-root-for-fence-tests-only-32bytes";
+    pub(super) const OLD: &str = "first-independent-signing-key-at-least-32-bytes";
+    pub(super) const NEW: &str = "second-independent-signing-key-at-least-32-bytes";
     const THIRD: &str = "third-independent-signing-key-at-least-32-bytes";
 
-    fn config(root: &str, kid: &str, material: &str, history: Option<(&str, &str, i64)>,
+    pub(super) fn config(root: &str, kid: &str, material: &str, history: Option<(&str, &str, i64)>,
         legacy: Option<(&str, i64)>) -> AuthConfig {
         let mut access = serde_json::json!({"active_kid": kid, "active_hs256_secret": material});
         if let Some((kid, material, until)) = history {
@@ -698,7 +748,7 @@ mod tests {
         ).unwrap().1
     }
 
-    async fn database() -> DatabaseConnection {
+    pub(super) async fn database() -> DatabaseConnection {
         let db = Database::connect("sqlite::memory:").await.unwrap();
         for name in [
             "m20261125_000002_create_auth_jwt_generation_fence",

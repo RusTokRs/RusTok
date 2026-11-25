@@ -44,6 +44,12 @@ obsolete fake session; its stale generated standalone lockfile was removed and i
 screenshot is historical, not verification of this migration. Preserve the release
 gates in the [Page Builder backlog](../../../../docs/modules/page-builder-backlog.md).
 
+JWT operational observability: authenticated cluster gauges, local lease state,
+bounded operation counters, ACK-attempt timing, pending generation age and
+initial alerts are source-implemented. Compilation, tests, promtool and
+independent-replica scrape/failure evidence remain pending.
+See [owner contract](README.md#operational-observability).
+
 ## FFA/FBA boundary
 
 - FFA status: `phase_b_ready`

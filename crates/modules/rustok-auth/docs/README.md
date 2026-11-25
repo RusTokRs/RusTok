@@ -340,6 +340,52 @@ See [emergency revocation ADR](../../../../DECISIONS/2026-11-25-jwt-emergency-re
 [cluster lease barrier ADR](../../../../DECISIONS/2026-11-25-jwt-cluster-lease.md)
 and [rolling replica admission ADR](../../../../DECISIONS/2026-11-25-jwt-rolling-admission.md).
 
+### Operational observability
+
+The existing host-authorized metrics endpoint exports `rustok_auth_jwt_*`.
+The Auth owner reads the same authority row and authenticates its ledger;
+the read never renews a lease or modifies the database. The host bounds the
+diagnostic query to two seconds. Failure exports `collection_status=0`
+and NaN for unknown cluster gauges; local metrics remain available.
+No key IDs, fingerprints, paths, replica UUIDs, tenant IDs or secrets are exported.
+
+- `local_generation`, `local_ready`, `local_emergency_fenced`,
+  `local_state_available` and `local_lease_remaining_seconds` sample the
+  actual local crypto gate after DB IO.
+- `durable_generation` and signed `generation_lag` compare independent
+  database and local samples. Static mode has generation zero.
+- `current_grants`, `stale_grants`, `current_grant_replicas` and
+  `stale_grant_replicas` count unexpired conservative grants and distinct
+  incarnations within each class. An incarnation may be in both classes.
+  A grant is not proof of local installation or an online replica.
+- `revoked_bindings` counts durable lifetime revocations (a gauge).
+  `current_revoked` and `revoked_grants` identify current and outstanding
+  material affected by revocation, including independent CLI operations.
+- `drain_remaining_seconds`, `untracked_remaining_seconds` and
+  `lease_horizon_remaining_seconds` use database time.
+- `operations_total{operation,outcome}` has bounded labels for renewal,
+  activation, grant denial, admission, ACK and reload. Counters are local,
+  reset on restart, and can overlap (e.g. renewal denial and its reason).
+- `ack_attempt_duration_seconds_sum/count` measures the immediate
+  post-installation ACK attempt, including deferred/error results, not
+  cluster-wide convergence. Later renewal cleanup is reflected in the
+  outstanding grant gauges.
+- `pending_generation` and `pending_seconds` track continuous local waiting
+  for the same generation across drain, replica and grant retries. Clear on
+  source loss, rejection, unchanged processed file or publication. This
+  excludes pre-listener startup waiting.
+
+Scrape each target with the deployment's existing host-read authority.
+Use max, not sum, for the replicated database gauges; local gauges and
+counters are per target. Sustained negative lag may indicate regression,
+but transient negative values may be a sampling race. Monitor missing
+targets and scrape failure via up and deployment inventory. Initial
+Prometheus rules cover unavailable collection, closed gate, generation
+lag, revoked current material and waiting rotation. They are operational
+signals, not authorization. No new migration or public API is required.
+Compilation, regressions, promtool and independent-replica runtime scrape
+evidence remain pending.
+
 ## JWT principal and invite admission
 
 Access JWT encoders and decoders enforce the canonical `AuthPrincipalKind`
