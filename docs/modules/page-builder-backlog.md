@@ -166,6 +166,12 @@ intentionally rejected pending integration with repeater identity proofs.
 Two pipeline regressions authored; tests, build, lint and remediation gate not run.
 Unresolved computed producer ownership and repeat-materialization protection remain open.
 
+Fly source-review correction (2026-11-25): computed producers clear stale target
+values before evaluation without shifting indexed siblings; malformed scoped paths
+use the same blocking admission as global bindings; URL attributes and srcset require
+strings in both SSR and runtime validation (before generic scalar/boolean rendering).
+Three regressions authored. Build, tests, lint and remediation gate not run.
+
 Reduced-motion follow-up: the shared Fly browser asset now uses instant scrolling for
 `scroll_to` when the target document requests reduced motion, including in the presence of
 CSS `scroll-behavior: smooth`; animations use the same document preference. The Node runtime

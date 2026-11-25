@@ -158,7 +158,8 @@ pub(crate) fn prepare_scoped_bindings(
     let mut scoped = ScopedBindings::default();
     let mut excluded = BTreeSet::new();
     for (index, binding) in catalog.bindings.iter().enumerate() {
-        if !is_scoped_binding(binding, &scopes) {
+        // Malformed paths must not resolve to a fallback just because they name an alias.
+        if !is_valid_runtime_context_path(&binding.path) || !is_scoped_binding(binding, &scopes) {
             continue;
         }
         excluded.insert(index);
@@ -203,7 +204,7 @@ fn materialize_global_bindings(
         if !is_valid_runtime_context_path(&binding.path) {
             unresolved_bindings = unresolved_bindings.saturating_add(1);
             diagnostics.push(binding_diagnostic(
-                ValidationSeverity::Warning,
+                ValidationSeverity::Error,
                 "runtime_binding_path_invalid",
                 format!(
                     "binding `{}` has an invalid context path `{}`",
@@ -215,7 +216,7 @@ fn materialize_global_bindings(
         if let Err(error) = validate_binding_target(&binding.target) {
             unresolved_bindings = unresolved_bindings.saturating_add(1);
             diagnostics.push(binding_diagnostic(
-                ValidationSeverity::Warning,
+                ValidationSeverity::Error,
                 "runtime_binding_target_invalid",
                 format!("binding `{}` has an invalid target: {error}", binding.id),
             ));
@@ -580,6 +581,24 @@ mod tests {
                 .and_then(Value::as_str),
             Some("First")
         );
+    }
+
+    #[test]
+    fn invalid_scoped_path_is_not_deferred_or_resolved_to_fallback() {
+        let source = GrapesJsCodec::decode_value(json!({
+            "pages": [{"component": {"id": "root", "type": "wrapper", "components": [
+                {"id": "title", "type": "text", "content": "Original"}
+            ]}}],
+            "flyRuntimeRepeaters": [{"id": "items", "component_id": "title", "path": "items"}],
+            "flyRuntimeBindings": [{"id": "invalid", "component_id": "title",
+                "path": "item.[0]", "target": "field", "name": "content", "fallback": "Wrong"}]
+        })).expect("source");
+        let result = crate::materialize_project_with_runtime_context(&source, &json!({"items": [1, 2]}));
+        assert_eq!(result.applied_bindings, 0);
+        assert_eq!(result.fallback_bindings, 0);
+        assert_eq!(result.unresolved_bindings, 1);
+        assert!(result.diagnostics.iter().any(|d| d.code == "runtime_binding_path_invalid" && d.severity == ValidationSeverity::Error));
+        assert_eq!(result.document.component("title--items-0").unwrap().extensions["content"], "Original");
     }
 
     #[test]

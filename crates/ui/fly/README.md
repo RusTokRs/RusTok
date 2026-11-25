@@ -198,6 +198,8 @@ A single path write may add at most 10,000 array slots across all nested arrays;
 invalid writes leave the original context unchanged. Equivalent path spellings are
 compared structurally for duplicate field/computed targets and self-references.
 Computed values are evaluated in structural dependency order rather than declaration order.
+Computed targets discard stale host/default values before evaluation; failed object
+slots remain absent, and existing array slots become null without shifting siblings.
 Fallbacks are available to dependent expressions, overlapping write targets and cycles
 are rejected, and the dependency graph is limited to 100,000 edges. Repeater aliases
 must be distinct single context keys in each scope; nested shadowing remains supported.

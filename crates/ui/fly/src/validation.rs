@@ -961,16 +961,16 @@ fn check_component_public_urls(
         let Some(kind) = UrlAttributeKind::for_attribute(&normalized_name) else {
             continue;
         };
-        let Some(value) = scalar_attribute_value(value) else {
+        let Some(value) = value.as_str() else {
             diagnostics.push(diagnostic(
-                ValidationSeverity::Warning,
+                ValidationSeverity::Error,
                 "runtime_public_url_invalid",
                 format!("{path}.attributes.{name}"),
-                format!("URL attribute `{name}` must be a scalar string, number, or boolean"),
+                format!("URL attribute `{name}` must be a string"),
             ));
             continue;
         };
-        if !public_url_allowed(&value, kind) {
+        if !public_url_allowed(value, kind) {
             diagnostics.push(diagnostic(
                 ValidationSeverity::Error,
                 "runtime_public_url_invalid",
@@ -987,15 +987,6 @@ fn check_component_public_urls(
 /// two could silently diverge. Both now share `safe_url`.
 fn public_url_allowed(value: &str, kind: UrlAttributeKind) -> bool {
     safe_url::url_allowed(value, kind, &UrlPolicy::permissive())
-}
-
-fn scalar_attribute_value(value: &Value) -> Option<String> {
-    match value {
-        Value::String(value) => Some(value.clone()),
-        Value::Number(value) => Some(value.to_string()),
-        Value::Bool(value) => Some(value.to_string()),
-        _ => None,
-    }
 }
 
 fn validate_assets(document: &ProjectDocument, report: &mut ValidationReport) {
