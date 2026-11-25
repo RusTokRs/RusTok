@@ -287,9 +287,9 @@ pub(super) fn validate_action_contract(
             direction,
             index,
         } => validate_identifier(slider_id, "slider id").and_then(|_| {
-            let selector_count = usize::from(target_slide.is_some())
-                + usize::from(direction.is_some())
-                + usize::from(index.is_some());
+            let selector_count = target_slide.is_some() as usize
+                + direction.is_some() as usize
+                + index.is_some() as usize;
             if selector_count != 1 {
                 return Err(
                     "switch_slide requires exactly one of target_slide, direction, or index"
