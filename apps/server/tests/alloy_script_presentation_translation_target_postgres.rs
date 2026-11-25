@@ -276,8 +276,8 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
 
     let first_connection = connect_postgres(database_url).await?;
     let second_connection = connect_postgres(database_url).await?;
-    let first_provider = registered_provider(first_connection.clone(), auth_config.clone()))?;
-    let second_provider = registered_provider(second_connection.clone(), auth_config.clone()))?;
+    let first_provider = registered_provider(first_connection.clone(), auth_config.clone())?;
+    let second_provider = registered_provider(second_connection.clone(), auth_config.clone())?;
 
     let initial_patch = patch_from_snapshot(&source_updated, "Description FR initial", "initial");
     let initial_receipt = first_provider
@@ -621,7 +621,7 @@ async fn verify_legacy_und_and_change_state_backfill(
         .into());
     }
 
-    let provider = registered_provider(database.clone(), auth_config.clone()))?;
+    let provider = registered_provider(database.clone(), auth_config.clone())?;
     let listed = provider
         .list_resources(read_context(tenant_id, "legacy-list"), list_request()?)
         .await?;
