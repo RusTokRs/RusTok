@@ -836,7 +836,11 @@ before GraphQL's normal document validation.
   shutdown snapshot. Repeated startup of a terminated task now emits a stable
   error diagnostic and retains the old handle for shutdown accounting; modes
   without tasks (`Disabled`, `Unavailable`, `NotApplicableOutbox`) remain
-  idempotent and do not impede event delivery.
+  idempotent and do not impede event delivery. The scanner's read-only
+  connect and scan futures are now supervised by the shared stop-watch
+  helper, so stalled broker I/O does not delay graceful shutdown. The
+  publisher remains outside the cancelled loop and clears its evaluation
+  on exit. No broker acknowledgements or persisted offsets are involved.
 - Social Graph Index position and poison-receipt observers have independent
   single-owner startup reservations and a shared admission lock that the
   shutdown drain also acquires before snapshotting observer JoinHandles.
