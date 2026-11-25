@@ -122,7 +122,8 @@ const MCP_SCAFFOLD_STATUS_APPLYING: &str = "applying";
 const MCP_SCAFFOLD_STATUS_APPLIED: &str = "applied";
 const MCP_SCAFFOLD_STATUS_RECOVERY_REQUIRED: &str = "recovery_required";
 
-static MCP_SCAFFOLD_APPLY_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+static MCP_SCAFFOLD_APPLY_LOCK: OnceLock<std::sync::Arc<tokio::sync::Mutex<()>>> =
+    OnceLock::new();
 
 impl McpManagementService {
     #[tracing::instrument(
@@ -664,9 +665,10 @@ impl McpManagementService {
         // The host workspace is shared by all tenants in this process. Serialize
         // filesystem applies so two drafts cannot both pass the target-exists
         // check and interleave writes to the same crate directory.
-        let workspace_apply_lock =
-            MCP_SCAFFOLD_APPLY_LOCK.get_or_init(|| tokio::sync::Mutex::new(()));
-        let workspace_apply_guard = workspace_apply_lock.lock().await;
+        let workspace_apply_lock = MCP_SCAFFOLD_APPLY_LOCK
+            .get_or_init(|| std::sync::Arc::new(tokio::sync::Mutex::new(())))
+            .clone();
+        let workspace_apply_guard = workspace_apply_lock.lock_owned().await;
 
         let draft = Self::claim_scaffold_draft_for_apply(
             db,
@@ -851,12 +853,43 @@ impl McpManagementService {
 
         let finalize_result = async {
             let txn = db.begin().await.map_err(map_db_err)?;
-            let mut active: mcp_scaffold_drafts::ActiveModel = draft.clone().into();
-            active.status = Set(MCP_SCAFFOLD_STATUS_APPLIED.to_string());
-            active.workspace_root = Set(Some(workspace_root.clone()));
-            active.applied_at = Set(Some(Utc::now().into()));
-            active.updated_at = Set(Utc::now().into());
-            let updated = active.update(&txn).await.map_err(map_db_err)?;
+            let now: sea_orm::entity::prelude::DateTimeWithTimeZone = Utc::now().into();
+            let result = mcp_scaffold_drafts::Entity::update_many()
+                .filter(mcp_scaffold_drafts::Column::Id.eq(draft.id))
+                .filter(mcp_scaffold_drafts::Column::TenantId.eq(tenant_id))
+                .filter(mcp_scaffold_drafts::Column::Status.eq(MCP_SCAFFOLD_STATUS_APPLYING))
+                .col_expr(
+                    mcp_scaffold_drafts::Column::Status,
+                    Expr::value(MCP_SCAFFOLD_STATUS_APPLIED),
+                )
+                .col_expr(
+                    mcp_scaffold_drafts::Column::WorkspaceRoot,
+                    Expr::value(Some(workspace_root.clone())),
+                )
+                .col_expr(
+                    mcp_scaffold_drafts::Column::AppliedAt,
+                    Expr::value(Some(now.clone())),
+                )
+                .col_expr(
+                    mcp_scaffold_drafts::Column::UpdatedAt,
+                    Expr::value(now),
+                )
+                .exec(&txn)
+                .await
+                .map_err(map_db_err)?;
+
+            if result.rows_affected == 0 {
+                return Err(Error::BadRequest(
+                    "Scaffold draft state changed before apply finalization".to_string(),
+                ));
+            }
+
+            let updated = mcp_scaffold_drafts::Entity::find_by_id(draft.id)
+                .filter(mcp_scaffold_drafts::Column::TenantId.eq(tenant_id))
+                .one(&txn)
+                .await
+                .map_err(map_db_err)?
+                .ok_or(Error::NotFound)?;
 
             Self::record_audit_event_txn(
                 &txn,
@@ -1014,15 +1047,40 @@ impl McpManagementService {
         actor_id: Option<String>,
         actor_type: Option<String>,
         workspace_root: &str,
-        host_authority_actor_id: Option<Uuid>,
         reason: &str,
     ) -> Result<()> {
         let txn = db.begin().await.map_err(map_db_err)?;
-        let mut active: mcp_scaffold_drafts::ActiveModel = draft.clone().into();
-        active.status = Set(MCP_SCAFFOLD_STATUS_STAGED.to_string());
-        active.workspace_root = Set(Some(workspace_root.to_string()));
-        active.updated_at = Set(Utc::now().into());
-        let updated = active.update(&txn).await.map_err(map_db_err)?;
+        let result = mcp_scaffold_drafts::Entity::update_many()
+            .filter(mcp_scaffold_drafts::Column::Id.eq(draft.id))
+            .filter(mcp_scaffold_drafts::Column::TenantId.eq(tenant_id))
+            .filter(mcp_scaffold_drafts::Column::Status.eq(MCP_SCAFFOLD_STATUS_APPLYING))
+            .col_expr(
+                mcp_scaffold_drafts::Column::Status,
+                Expr::value(MCP_SCAFFOLD_STATUS_STAGED),
+            )
+            .col_expr(
+                mcp_scaffold_drafts::Column::WorkspaceRoot,
+                Expr::value(Some(workspace_root.to_string())),
+            )
+            .col_expr(
+                mcp_scaffold_drafts::Column::UpdatedAt,
+                Expr::value(Utc::now()),
+            )
+            .exec(&txn)
+            .await
+            .map_err(map_db_err)?;
+
+        if result.rows_affected == 0 {
+            txn.rollback().await.map_err(map_db_err)?;
+            return Ok(());
+        }
+
+        let updated = mcp_scaffold_drafts::Entity::find_by_id(draft.id)
+            .filter(mcp_scaffold_drafts::Column::TenantId.eq(tenant_id))
+            .one(&txn)
+            .await
+            .map_err(map_db_err)?
+            .ok_or(Error::NotFound)?;
 
         Self::record_audit_event_txn(
             &txn,
@@ -1064,6 +1122,7 @@ impl McpManagementService {
         actor_id: Option<String>,
         actor_type: Option<String>,
         workspace_root: &str,
+        host_authority_actor_id: Option<Uuid>,
         reason: &str,
     ) -> Result<()> {
         let txn = db.begin().await.map_err(map_db_err)?;
