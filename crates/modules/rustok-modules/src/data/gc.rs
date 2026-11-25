@@ -135,18 +135,36 @@ impl SeaOrmArtifactDataObjectGcService {
         Ok(result)
     }
 
-    /// Lists tenants that currently hold queued object-GC candidates, for
-    /// the platform maintenance worker that sweeps tenant-by-tenant. The
-    /// scan is global (platform-operated maintenance needs the tenant
-    /// inventory before any tenant scope exists) but returns only tenant
-    /// identifiers; every subsequent candidate read happens inside the
-    /// tenant-scoped sweep transaction. `limit` must be in
-    /// `1..=MAX_ARTIFACT_OBJECT_GC_TENANT_SCAN`.
+    /// Lists the first bounded page of tenants that hold queued object-GC
+    /// candidates. This convenience entry point preserves the original
+    /// first-page behavior; maintenance workers should use
+    /// `tenants_with_candidates_after` and retain its cursor across passes.
     pub async fn tenants_with_candidates(
         &self,
         limit: u32,
     ) -> Result<Vec<Uuid>, ArtifactDataError> {
-        if limit == 0 || limit > MAX_ARTIFACT_OBJECT_GC_TENANT_SCAN {
+        self.tenants_with_candidates_after(None, limit).await
+    }
+
+    /// Lists a bounded keyset page of tenants with queued object-GC candidates.
+    ///
+    /// The global inventory scan runs under the transaction-local platform
+    /// owner scope and returns only tenant IDs; candidate reads and deletion
+    /// remain inside each tenant-scoped sweep. Results are unique and ordered
+    /// by UUID. When `after` is present, only IDs strictly greater than that
+    /// cursor are returned. The caller should retain the last ID from a full
+    /// page and wrap to `None` after a short or empty page. This is a live
+    /// inventory, not a snapshot: candidates inserted behind the cursor are
+    /// discovered after the next wrap.
+    pub async fn tenants_with_candidates_after(
+        &self,
+        after: Option<Uuid>,
+        limit: u32,
+    ) -> Result<Vec<Uuid>, ArtifactDataError> {
+        if limit == 0
+            || limit > MAX_ARTIFACT_OBJECT_GC_TENANT_SCAN
+            || after.is_some_and(|cursor| cursor.is_nil())
+        {
             return Err(ArtifactDataError::InvalidObject);
         }
         // The candidates table is tenant-RLS-scoped on PostgreSQL; the
@@ -158,15 +176,23 @@ impl SeaOrmArtifactDataObjectGcService {
             .map_err(storage_error)?;
         let backend =
             SupportedBackend::new(transaction.get_database_backend()).map_err(storage_error)?;
+        let mut values = Vec::with_capacity(2);
+        let after_clause = if let Some(cursor) = after {
+            values.push(backend.uuid_value(cursor));
+            format!("WHERE tenant_id > {}", backend.placeholder(values.len()))
+        } else {
+            String::new()
+        };
+        values.push(i64::from(limit).into());
+        let limit_placeholder = backend.placeholder(values.len());
         let rows = transaction
             .query_all_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT DISTINCT tenant_id FROM module_artifact_data_object_gc_candidates \
-                     ORDER BY tenant_id LIMIT {}",
-                    backend.placeholder(1),
+                     {after_clause} ORDER BY tenant_id LIMIT {limit_placeholder}"
                 ),
-                vec![i64::from(limit).into()],
+                values,
             ))
             .await
             .map_err(storage_error)?;

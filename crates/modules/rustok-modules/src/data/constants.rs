@@ -19,8 +19,9 @@ pub(crate) const MAX_ARTIFACT_OBJECT_UPLOAD_CHUNKS_PER_SESSION: u64 = 1_024;
 pub(crate) const MAX_ARTIFACT_OBJECT_CONTENT_TYPE_BYTES: usize = 128;
 pub(crate) const MAX_SANDBOX_ARTIFACT_OBJECT_BYTES: usize = 44 * 1024;
 pub(crate) const MAX_ARTIFACT_OBJECT_GC_BATCH_SIZE: u32 = 100;
-/// Bounds one platform tenant-discovery scan for object GC; the
-/// maintenance worker repeats the scan each pass instead of paging.
+/// Bounds one platform tenant-discovery keyset page for object GC. The
+/// maintenance worker retains an exclusive UUID cursor across passes so
+/// persistent holds or large backlogs in early tenants cannot starve later IDs.
 pub(crate) const MAX_ARTIFACT_OBJECT_GC_TENANT_SCAN: u32 = 256;
 /// Grace window between a data object becoming a GC candidate and its
 /// bytes becoming retention-eligible (unless a durable hold retains the
