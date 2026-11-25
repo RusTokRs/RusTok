@@ -13,6 +13,16 @@ and the anonymous release prerequisite. Current context, canonical transactional
 Search refetch are wired in source; regression sources remain uncompiled/unrun. Rust digests,
 actual SQL/relay/Iggy/restart/Search, generic Index and Product step 8 are not certified.
 
+Product initial stock bootstrap admits the complete bounded SKU batch
+(distinct nonnil identities, actor and nonnegative quantities) before creating
+a location. It proves the tenant-owned SKU and parent under the existing
+Variant lock, then re-reads and locks the actual active tenant-owned location
+before creating item/level/history rows. A stale, foreign or archived location
+model is not proof of permission to allocate stock. The direct bootstrap
+entry point independently verifies the same ownership. Product retains its
+caller-owned transaction; no new warehouse fallback is introduced. Focused
+integration regressions are authored, not executed.
+
 ## Purpose
 
 - inventory service logic;

@@ -728,6 +728,21 @@ They now capture any transport error into an `action_error` reactive signal and 
   [regression](../../crates/modules/rustok-commerce/tests/pricing_service_test/price_set.rs).
   Historical invalid money requires reconciliation; regressions authored, unrun.
 
+### P-INVENTORY-BOOTSTRAP-OWNERSHIP — supplied location snapshots are not authority
+
+- **Category:** transactional ownership / lock ordering.
+- **Observed defect:** Initial inventory bootstrap inserted tenant-less
+  item and level records using a supplied warehouse snapshot, without
+  proving the SKU parent tenant or current active warehouse ownership.
+- **Canonical correction:** Admit the entire bounded SKU batch and lock
+  verified tenant-owned variants before location creation or locking.
+  The low-level writer repeats the SKU proof and verifies the saved
+  active location by tenant and ID before any bookkeeping write.
+- **Evidence:** [Inventory bootstrap](../../crates/modules/rustok-inventory/src/services/bootstrap.rs),
+  [Product adapter](../../crates/modules/rustok-inventory/src/product_inventory_port.rs),
+  [regressions](../../crates/modules/rustok-commerce/tests/inventory_quantity_writes.rs).
+  Source regressions authored, not executed.
+
 ## 1. Core Philosophy: The 6 Universal Logic Dimensions
 
 Under [AGENTS.md §4](../../AGENTS.md), verify the affected behavior and its owner contract across the **6 Universal Logic Dimensions**. Use source matches to find code to inspect. A match alone cannot establish a behavioral defect:

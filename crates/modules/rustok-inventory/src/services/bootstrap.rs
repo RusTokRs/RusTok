@@ -5,7 +5,7 @@ pub use deletion::{CatalogDeletionBlocker, CatalogDeletionError, MAX_CATALOG_DEL
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, Set,
-    Statement,
+    QuerySelect, Statement,
 };
 use std::collections::HashMap;
 use tracing::instrument;
@@ -117,7 +117,7 @@ impl BootstrapService {
         Ok(location)
     }
 
-    #[instrument(skip(conn))]
+    #[instrument(skip(conn, location, input))]
     pub async fn create_initial_records_in_tx(
         conn: &sea_orm::DatabaseTransaction,
         location: &entities::stock_location::Model,
@@ -142,6 +142,27 @@ impl BootstrapService {
                 "available_quantity cannot be negative".to_string(),
             ));
         }
+        if location.tenant_id.is_nil() {
+            return Err(sea_orm::DbErr::Custom("location.tenant_id cannot be nil".into()));
+        }
+        // INVARIANT: prove and lock the SKU (including its parent tenant) before
+        // locking Inventory's location. The supplied model is not ownership proof.
+        crate::product_port::find_variant_info_for_reservation(
+            conn, location.tenant_id, input.variant_id,
+        )
+        .await?
+        .ok_or_else(|| sea_orm::DbErr::Custom("Initial inventory SKU ownership could not be verified".into()))?;
+        let location_query = entities::stock_location::Entity::find_by_id(location.id)
+            .filter(entities::stock_location::Column::TenantId.eq(location.tenant_id))
+            .filter(entities::stock_location::Column::DeletedAt.is_null());
+        let location_query = match conn.get_database_backend() {
+            sea_orm::DatabaseBackend::Postgres | sea_orm::DatabaseBackend::MySql => location_query.lock_exclusive(),
+            sea_orm::DatabaseBackend::Sqlite => location_query,
+            _ => return Err(sea_orm::DbErr::Custom("Initial inventory isolation is unsupported".into())),
+        };
+        let location = location_query.one(conn).await?.ok_or_else(|| {
+            sea_orm::DbErr::Custom("Initial inventory location is missing, foreign or archived".into())
+        })?;
         let sku = input.sku.and_then(|sku| {
             let trimmed = sku.trim();
             if trimmed.is_empty() {

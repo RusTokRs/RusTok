@@ -740,3 +740,61 @@ async fn quantity_negative_legacy_event_snapshot_is_explicit_and_rolls_back_prod
     native_refused(&db, &f, 0, B::EventUnrepresentable).await;
     product_refused(&db, &catalog, &f, 0, B::EventUnrepresentable).await;
 }
+
+#[tokio::test]
+async fn initial_inventory_refuses_foreign_or_archived_location_snapshots() {
+    let (db, catalog) = setup().await;
+    let f = fixture(&db, &catalog).await;
+    let other = fixture(&db, &catalog).await;
+    let location = stock_location::Entity::find_by_id(f.location)
+        .one(&db).await.unwrap().unwrap();
+    let mut forged = stock_location::Entity::find_by_id(other.location)
+        .one(&db).await.unwrap().unwrap();
+    forged.tenant_id = f.tenant;
+    for (candidate, variant, expected) in [
+        (location.clone(), other.variant, "SKU ownership"),
+        (forged, f.variant, "location is missing, foreign or archived"),
+    ] {
+        let before = snapshot(&db).await;
+        let txn = db.begin().await.unwrap();
+        let error = BootstrapService::create_initial_records_in_tx(
+            &txn, &candidate, f.actor, rustok_inventory::InitialInventory {
+                variant_id: variant, sku: None, available_quantity: 1,
+            },
+        ).await.unwrap_err();
+        assert!(error.to_string().contains(expected), "{error}");
+        txn.rollback().await.unwrap();
+        assert_eq!(snapshot(&db).await, before);
+    }
+    let mut archived: stock_location::ActiveModel = location.clone().into();
+    archived.deleted_at = Set(Some(Utc::now().into()));
+    archived.update(&db).await.unwrap();
+    let before = snapshot(&db).await;
+    let txn = db.begin().await.unwrap();
+    let error = BootstrapService::create_initial_records_in_tx(
+        &txn, &location, f.actor, rustok_inventory::InitialInventory {
+            variant_id: f.variant, sku: None, available_quantity: 1,
+        },
+    ).await.unwrap_err();
+    assert!(error.to_string().contains("location is missing, foreign or archived"));
+    txn.rollback().await.unwrap();
+    assert_eq!(snapshot(&db).await, before);
+}
+
+#[tokio::test]
+async fn product_inventory_bootstrap_refuses_foreign_sku_before_creating_location() {
+    let (db, catalog) = setup().await;
+    let f = fixture(&db, &catalog).await;
+    let before = snapshot(&db).await;
+    let txn = db.begin().await.unwrap();
+    let port = rustok_inventory::in_process_product_inventory_port(db.clone());
+    let error = port.bootstrap_variants_in_tx(
+        &txn, Uuid::new_v4(), f.actor, vec![rustok_product::ports::ProductInitialInventory {
+            variant_id: f.variant, sku: None, available_quantity: 1,
+        }],
+    ).await.unwrap_err();
+    assert!(matches!(error, CommerceError::VariantNotFound(id) if id == f.variant));
+    // The rejection must precede all writes, even if the caller commits.
+    txn.commit().await.unwrap();
+    assert_eq!(snapshot(&db).await, before);
+}
