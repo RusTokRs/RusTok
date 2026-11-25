@@ -1,5 +1,14 @@
 # Server App — Implementation Plan
 
+## Registry direct-session admission (2026-11-25)
+
+Aligned registry controller and middleware admission with the canonical
+`AuthPrincipalKind` classifier and non-nil identity requirements. Added
+regressions for inconsistent grants, required/optional controller authority,
+and rejection before artifact authorization database access. Maintainer
+verification remains pending: `cargo check -p rustok-server`,
+`cargo test -p rustok-server --lib registry` and remediation gate.
+
 ## Default SuperAdmin bootstrap identity and conflict recovery (2026-11-25)
 
 Source changes align lookup with the canonical normalized account identity and

@@ -1,4 +1,4 @@
-use rustok_api::Permission;
+use rustok_api::{AuthPrincipalKind, Permission};
 use rustok_api::context::{AuthContext, AuthContextExtension, has_effective_permission};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -112,6 +112,19 @@ impl RegistryPrincipalRef {
     }
 }
 
+/// Registry V2 accepts direct, session-backed users only. Reuse the canonical
+/// grant classifier rather than inferring a user from a missing OAuth client.
+pub(crate) fn is_registry_session(auth: &AuthContext) -> bool {
+    !auth.user_id.is_nil()
+        && !auth.tenant_id.is_nil()
+        && AuthPrincipalKind::from_authenticated_facts(
+            &auth.grant_type,
+            auth.client_id,
+            auth.session_id,
+        )
+        .is_some_and(AuthPrincipalKind::is_direct_user)
+}
+
 impl RegistryAuthority {
     pub fn from_auth(auth: &AuthContextExtension) -> Self {
         Self::from_auth_context(&auth.0)
@@ -127,7 +140,55 @@ impl RegistryAuthority {
         }
     }
 
+    /// Construct request authority only for a valid direct session.
+    pub(crate) fn from_session(auth: &AuthContext) -> Option<Self> {
+        is_registry_session(auth).then(|| Self::from_auth_context(auth))
+    }
+
     pub fn requires_user_session(&self) -> bool {
         self.principal.is_user()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn registry_session_requires_canonical_direct_grant_and_non_nil_identity() {
+        let mut auth = AuthContext {
+            user_id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            client_id: None,
+            permissions: vec![Permission::MODULES_MANAGE],
+            scopes: Vec::new(),
+            grant_type: "direct".to_string(),
+        };
+        assert!(RegistryAuthority::from_session(&auth).unwrap().can_manage_modules);
+        auth.permissions.clear();
+        assert!(!RegistryAuthority::from_session(&auth).unwrap().can_manage_modules);
+
+        let valid = auth.clone();
+        for (grant, client, session) in [
+            ("direct", None, Uuid::nil()),
+            ("direct", Some(Uuid::new_v4()), Uuid::new_v4()),
+            ("authorization_code", Some(Uuid::new_v4()), Uuid::nil()),
+            ("authorization_code", Some(Uuid::new_v4()), Uuid::new_v4()),
+            ("client_credentials", Some(Uuid::new_v4()), Uuid::nil()),
+            ("client_credentials", None, Uuid::new_v4()),
+            ("unknown", None, Uuid::new_v4()),
+        ] {
+            auth.grant_type = grant.to_string();
+            auth.client_id = client;
+            auth.session_id = session;
+            assert!(RegistryAuthority::from_session(&auth).is_none(), "{grant}");
+        }
+        auth = valid.clone();
+        auth.user_id = Uuid::nil();
+        assert!(RegistryAuthority::from_session(&auth).is_none());
+        auth = valid;
+        auth.tenant_id = Uuid::nil();
+        assert!(RegistryAuthority::from_session(&auth).is_none());
     }
 }

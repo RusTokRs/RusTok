@@ -1,5 +1,14 @@
 # Documentation: `apps/server`
 
+## Registry direct-session admission (2026-11-25)
+
+Registry V2 controller and publication/artifact/owner-transfer middleware now
+share the canonical direct-session grant classifier. Invalid identities,
+ambiguous grant facts and OAuth delegated/service grants cannot construct
+request authority through these entry points. Direct sessions continue to use
+request-effective permissions; runner credentials and public catalog reads
+remain separate. No persisted principal format is changed.
+
 ## Default SuperAdmin bootstrap identity and conflict recovery (2026-11-25)
 
 The configured email is normalized by the Auth owner before tenant provisioning
