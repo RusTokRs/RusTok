@@ -2529,12 +2529,16 @@ async fn transfer_owner(
                 Error::Unauthorized("Registry owner transfer requires authentication".into())
             })?;
         let authority = authority_from_auth(&headers, auth, "Registry owner transfer operations")?;
+        let new_owner = crate::services::registry_principal::RegistryPrincipalRef::user(
+            request.new_owner_user_id,
+        )
+        .ok_or_else(|| Error::BadRequest(
+            "Registry owner transfer requires a non-nil new_owner_user_id".to_string(),
+        ))?;
         RegistryGovernanceService::new(ctx.db_clone())
             .transfer_registry_slug_owner(
                 &request.slug,
-                &crate::services::registry_principal::RegistryPrincipalRef::user(
-                    request.new_owner_user_id,
-                ),
+                &new_owner,
                 reason,
                 reason_code,
                 &authority,
@@ -3154,6 +3158,11 @@ fn validate_owner_transfer_request(
     request: &RegistryOwnerTransferRequest,
 ) -> Result<Vec<String>, Error> {
     validate_registry_slug(&request.slug)?;
+    if request.new_owner_user_id.is_nil() {
+        return Err(Error::BadRequest(
+            "Registry owner transfer requires a non-nil new_owner_user_id".to_string(),
+        ));
+    }
 
     let mut warnings = Vec::new();
     if request
@@ -3654,6 +3663,19 @@ mod marketplace_registry_tests {
             showcase_admin_surfaces: Vec::new(),
             settings_schema: std::collections::HashMap::new(),
         }
+    }
+
+    #[test]
+    fn owner_transfer_rejects_nil_new_owner_before_dry_run_or_live_mutation() {
+        let request = super::RegistryOwnerTransferRequest {
+            schema_version: 1,
+            dry_run: true,
+            slug: "valid-module".to_string(),
+            new_owner_user_id: uuid::Uuid::nil(),
+            reason: None,
+            reason_code: None,
+        };
+        assert!(super::validate_owner_transfer_request(&request).is_err());
     }
 
     #[test]

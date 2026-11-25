@@ -7,7 +7,11 @@ share the canonical direct-session grant classifier. Invalid identities,
 ambiguous grant facts and OAuth delegated/service grants cannot construct
 request authority through these entry points. Direct sessions continue to use
 request-effective permissions; runner credentials and public catalog reads
-remain separate. No persisted principal format is changed.
+remain separate. Persisted principal JSON is validated against the canonical
+structured shape; malformed or legacy string payloads fail the marketplace
+projection instead of being rewritten to a synthetic `legacy:unknown` label.
+Registry authority cannot be built through unchecked public constructors.
+Owner-transfer requests reject nil target identities before dry-run or mutation.
 
 ## Default SuperAdmin bootstrap identity and conflict recovery (2026-11-25)
 

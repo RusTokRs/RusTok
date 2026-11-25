@@ -82,8 +82,8 @@ impl RegistryGovernanceService {
                 reason: normalized_reason,
                 reason_code: normalized_reason_code,
                 context,
-                actor_principal: authority.principal.to_json_value(),
-                actor_can_manage_modules: authority.can_manage_modules,
+                actor_principal: authority.principal().to_json_value(),
+                actor_can_manage_modules: authority.can_manage_modules(),
             })
             .await
             .map_err(anyhow::Error::new)
@@ -112,8 +112,8 @@ impl RegistryGovernanceService {
                 reason: normalized_reason,
                 reason_code: normalized_reason_code,
                 context,
-                actor_principal: authority.principal.to_json_value(),
-                actor_can_manage_modules: authority.can_manage_modules,
+                actor_principal: authority.principal().to_json_value(),
+                actor_can_manage_modules: authority.can_manage_modules(),
             })
             .await
             .map_err(anyhow::Error::new)
@@ -146,8 +146,8 @@ impl RegistryGovernanceService {
                 slug: slug.to_string(),
                 new_owner_principal: new_owner.to_json_value(),
                 context,
-                actor_principal: authority.principal.to_json_value(),
-                actor_can_manage_modules: authority.can_manage_modules,
+                actor_principal: authority.principal().to_json_value(),
+                actor_can_manage_modules: authority.can_manage_modules(),
                 reason: normalized_reason,
                 reason_code: normalized_reason_code,
             })
@@ -165,8 +165,8 @@ impl RegistryGovernanceService {
         authority: Option<&RegistryAuthority>,
     ) -> anyhow::Result<Option<ModuleGovernancePublishRequestStatusSnapshot>> {
         let actor = authority.map(|authority| ModuleGovernanceActorContext {
-            principal: authority.principal.to_json_value(),
-            can_manage_modules: authority.can_manage_modules,
+            principal: authority.principal().to_json_value(),
+            can_manage_modules: authority.can_manage_modules(),
         });
         self.release_service()
             .publish_request_status_snapshot(request_id, actor.as_ref())

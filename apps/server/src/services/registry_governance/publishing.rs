@@ -45,12 +45,12 @@ impl RegistryGovernanceService {
                 request_id: request.request.id.clone(),
                 expected_revision: request.request.revision,
                 context: input.context,
-                actor_can_manage_modules: authority.can_manage_modules,
+                actor_can_manage_modules: authority.can_manage_modules(),
                 evidence_reference: input.evidence_reference,
                 signature_digest_sha256: input.signature_digest_sha256,
                 signer_identity: input.signer_identity,
                 policy_revision: input.policy_revision,
-                actor_principal: authority.principal.to_json_value(),
+                actor_principal: authority.principal().to_json_value(),
             })
             .await
             .map_err(anyhow::Error::new)?;
@@ -77,8 +77,8 @@ impl RegistryGovernanceService {
         let command = module_publish_request_create_command(
             request,
             context,
-            authority.principal.to_json_value(),
-            authority.can_manage_modules,
+            authority.principal().to_json_value(),
+            authority.can_manage_modules(),
         )?;
         let request_id = self
             .publication_service()
@@ -139,8 +139,8 @@ impl RegistryGovernanceService {
             request_id: request.request.id.clone(),
             expected_revision: request.request.revision,
             context,
-            actor_principal: authority.principal.to_json_value(),
-            actor_can_manage_modules: authority.can_manage_modules,
+            actor_principal: authority.principal().to_json_value(),
+            actor_can_manage_modules: authority.can_manage_modules(),
             checksum_sha256: checksum,
             artifact_size,
             content_type: artifact.content_type.clone(),
@@ -201,9 +201,9 @@ impl RegistryGovernanceService {
                 provenance_policy_revision: input.provenance_policy_revision,
                 quarantine_review_reference: input.quarantine_review_reference,
                 quarantine_policy_revision: input.quarantine_policy_revision,
-                quarantine_approved_by_principal: authority.principal.to_json_value(),
-                actor_principal: authority.principal.to_json_value(),
-                actor_can_manage_modules: authority.can_manage_modules,
+                quarantine_approved_by_principal: authority.principal().to_json_value(),
+                actor_principal: authority.principal().to_json_value(),
+                actor_can_manage_modules: authority.can_manage_modules(),
             })
             .await
             .map_err(anyhow::Error::new)
@@ -233,8 +233,8 @@ impl RegistryGovernanceService {
                 expected_revision: request.request.revision,
                 context: input.context,
                 build_request_id: input.build_request_id,
-                actor_principal: authority.principal.to_json_value(),
-                actor_can_manage_modules: authority.can_manage_modules,
+                actor_principal: authority.principal().to_json_value(),
+                actor_can_manage_modules: authority.can_manage_modules(),
             })
             .await
             .map_err(anyhow::Error::new)
@@ -271,7 +271,7 @@ impl RegistryGovernanceService {
         let effective_publisher = request
             .effective_publisher_principal
             .clone()
-            .unwrap_or_else(|| authority.principal.to_json_value());
+            .unwrap_or_else(|| authority.principal().to_json_value());
         let approval_override = if !override_stages.is_empty() {
             let reason = reason
                 .map(str::trim)
@@ -321,8 +321,8 @@ impl RegistryGovernanceService {
                     request_id: request.request.id.clone(),
                     expected_revision: request.request.revision,
                     context: context.clone(),
-                    actor_can_manage_modules: authority.can_manage_modules,
-                    actor_principal: authority.principal.to_json_value(),
+                    actor_can_manage_modules: authority.can_manage_modules(),
+                    actor_principal: authority.principal().to_json_value(),
                 })
                 .await
                 .map_err(anyhow::Error::new)?
@@ -335,9 +335,9 @@ impl RegistryGovernanceService {
                 request_id: request.request.id.clone(),
                 expected_revision,
                 context,
-                actor_principal: authority.principal.to_json_value(),
+                actor_principal: authority.principal().to_json_value(),
                 publisher_principal: effective_publisher,
-                allow_owner_rebind: authority.can_manage_modules,
+                allow_owner_rebind: authority.can_manage_modules(),
                 approval_override,
             })
             .await
@@ -375,7 +375,7 @@ impl RegistryGovernanceService {
                 request_id: request.request.id.clone(),
                 expected_revision: request.request.revision,
                 context,
-                actor_principal: authority.principal.to_json_value(),
+                actor_principal: authority.principal().to_json_value(),
                 reason: normalized_reason,
                 reason_code: normalized_reason_code,
             })
@@ -414,7 +414,7 @@ impl RegistryGovernanceService {
                 request_id: request.request.id.clone(),
                 expected_revision: request.request.revision,
                 context,
-                actor_principal: authority.principal.to_json_value(),
+                actor_principal: authority.principal().to_json_value(),
                 reason: normalized_reason,
                 reason_code: normalized_reason_code,
             })
@@ -452,7 +452,7 @@ impl RegistryGovernanceService {
                 request_id: request.request.id.clone(),
                 expected_revision: request.request.revision,
                 context,
-                actor_principal: authority.principal.to_json_value(),
+                actor_principal: authority.principal().to_json_value(),
                 reason: normalized_reason,
                 reason_code: normalized_reason_code,
             })
@@ -490,7 +490,7 @@ impl RegistryGovernanceService {
                 request_id: request.request.id.clone(),
                 expected_revision: request.request.revision,
                 context,
-                actor_principal: authority.principal.to_json_value(),
+                actor_principal: authority.principal().to_json_value(),
                 reason: normalized_reason,
                 reason_code: normalized_reason_code,
             })

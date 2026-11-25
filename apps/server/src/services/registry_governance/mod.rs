@@ -274,7 +274,7 @@ impl RegistryGovernanceService {
 }
 
 fn authority_actor(authority: &RegistryAuthority) -> &str {
-    authority.principal.label()
+    authority.principal().label()
 }
 
 pub(crate) fn normalize_reason_code(

@@ -210,7 +210,7 @@ fn map_marketplace_entry(
         has_admin_ui: entry.has_admin_ui,
         has_storefront_ui: entry.has_storefront_ui,
         ui_classification: entry.ui_classification,
-        registry_lifecycle: entry.registry_lifecycle.map(map_registry_lifecycle),
+        registry_lifecycle: entry.registry_lifecycle.map(map_registry_lifecycle).transpose()?,
         compatible: entry.compatible,
         recommended_admin_surfaces: entry.recommended_admin_surfaces,
         showcase_admin_surfaces: entry.showcase_admin_surfaces,
@@ -223,8 +223,8 @@ fn map_marketplace_entry(
 
 fn map_registry_lifecycle(
     snapshot: rustok_modules::ModuleGovernanceLifecycleSnapshot,
-) -> RegistryModuleLifecycle {
-    RegistryModuleLifecycle {
+) -> Result<RegistryModuleLifecycle, ModuleMarketplaceError> {
+    Ok(RegistryModuleLifecycle {
         moderation_policy: RegistryModerationPolicyLifecycle {
             mode: snapshot.moderation_policy.mode,
             live_publish_supported: snapshot.moderation_policy.live_publish_supported,
@@ -233,30 +233,32 @@ fn map_registry_lifecycle(
             restriction_reason_code: snapshot.moderation_policy.restriction_reason_code,
             restriction_reason: snapshot.moderation_policy.restriction_reason,
         },
-        owner_binding: snapshot.owner_binding.map(|owner| RegistryOwnerLifecycle {
-            owner: principal_label(&owner.owner_principal),
-            bound_by: principal_label(&owner.bound_by_principal),
-            bound_at: owner.bound_at,
-            updated_at: owner.updated_at,
-        }),
+        owner_binding: snapshot.owner_binding.map(|owner| {
+            Ok::<_, ModuleMarketplaceError>(RegistryOwnerLifecycle {
+                owner: principal_label(&owner.owner_principal)?,
+                bound_by: principal_label(&owner.bound_by_principal)?,
+                bound_at: owner.bound_at,
+                updated_at: owner.updated_at,
+            })
+        }).transpose()?,
         latest_request: snapshot
             .latest_request
-            .map(|request| RegistryPublishRequestLifecycle {
+            .map(|request| Ok::<_, ModuleMarketplaceError>(RegistryPublishRequestLifecycle {
                 id: request.id,
                 revision: request.revision,
                 status: request.status,
-                requested_by: principal_label(&request.requested_by_principal),
-                publisher: optional_principal_label(request.publisher_principal.as_ref()),
-                approved_by: optional_principal_label(request.approved_by_principal.as_ref()),
-                rejected_by: optional_principal_label(request.rejected_by_principal.as_ref()),
+                requested_by: principal_label(&request.requested_by_principal)?,
+                publisher: optional_principal_label(request.publisher_principal.as_ref())?,
+                approved_by: optional_principal_label(request.approved_by_principal.as_ref())?,
+                rejected_by: optional_principal_label(request.rejected_by_principal.as_ref())?,
                 rejection_reason: request.rejection_reason,
                 changes_requested_by: optional_principal_label(
                     request.changes_requested_by_principal.as_ref(),
-                ),
+                )?,
                 changes_requested_reason: request.changes_requested_reason,
                 changes_requested_reason_code: request.changes_requested_reason_code,
                 changes_requested_at: request.changes_requested_at,
-                held_by: optional_principal_label(request.held_by_principal.as_ref()),
+                held_by: optional_principal_label(request.held_by_principal.as_ref())?,
                 held_reason: request.held_reason,
                 held_reason_code: request.held_reason_code,
                 held_at: request.held_at,
@@ -266,31 +268,31 @@ fn map_registry_lifecycle(
                 created_at: request.created_at,
                 updated_at: request.updated_at,
                 published_at: request.published_at,
-            }),
+            })).transpose()?,
         latest_release: snapshot
             .latest_release
-            .map(|release| RegistryReleaseLifecycle {
+            .map(|release| Ok::<_, ModuleMarketplaceError>(RegistryReleaseLifecycle {
                 version: release.version,
                 status: release.status,
-                publisher: principal_label(&release.publisher_principal),
+                publisher: principal_label(&release.publisher_principal)?,
                 checksum_sha256: release.checksum_sha256,
                 published_at: release.published_at,
                 yanked_reason: release.yanked_reason,
-                yanked_by: optional_principal_label(release.yanked_by_principal.as_ref()),
+                yanked_by: optional_principal_label(release.yanked_by_principal.as_ref())?,
                 yanked_at: release.yanked_at,
-            }),
+            })).transpose()?,
         recent_events: snapshot
             .recent_events
             .into_iter()
-            .map(|event| RegistryGovernanceEventLifecycle {
+            .map(|event| Ok::<_, ModuleMarketplaceError>(RegistryGovernanceEventLifecycle {
                 id: event.id,
                 event_type: event.event_type,
-                actor: principal_label(&event.actor_principal),
-                publisher: optional_principal_label(event.publisher_principal.as_ref()),
-                payload: map_registry_event_payload(event.payload),
+                actor: principal_label(&event.actor_principal)?,
+                publisher: optional_principal_label(event.publisher_principal.as_ref())?,
+                payload: map_registry_event_payload(event.payload)?,
                 created_at: event.created_at,
-            })
-            .collect(),
+            }))
+            .collect::<Result<Vec<_>, ModuleMarketplaceError>>()?,
         follow_up_gates: snapshot
             .follow_up_gates
             .into_iter()
@@ -306,13 +308,13 @@ fn map_registry_lifecycle(
             .into_iter()
             .map(map_registry_governance_action)
             .collect(),
-    }
+    })
 }
 
 fn map_registry_event_payload(
     payload: rustok_modules::ModuleGovernanceEventPayload,
-) -> RegistryGovernanceEventPayloadLifecycle {
-    RegistryGovernanceEventPayloadLifecycle {
+) -> Result<RegistryGovernanceEventPayloadLifecycle, ModuleMarketplaceError> {
+    Ok(RegistryGovernanceEventPayloadLifecycle {
         reason: payload.reason,
         reason_code: payload.reason_code,
         detail: payload.detail,
@@ -320,14 +322,14 @@ fn map_registry_event_payload(
         stage_key: payload.stage_key,
         attempt_number: payload.attempt_number,
         owner_transition: payload.owner_transition.map(|transition| {
-            RegistryOwnerTransitionLifecycle {
+            Ok::<_, ModuleMarketplaceError>(RegistryOwnerTransitionLifecycle {
                 previous_owner: optional_principal_label(
                     transition.previous_owner_principal.as_ref(),
-                ),
-                new_owner: optional_principal_label(transition.new_owner_principal.as_ref()),
-                bound_by: optional_principal_label(transition.bound_by_principal.as_ref()),
-            }
-        }),
+                )?,
+                new_owner: optional_principal_label(transition.new_owner_principal.as_ref())?,
+                bound_by: optional_principal_label(transition.bound_by_principal.as_ref())?,
+            })
+        }).transpose()?,
         warnings: payload.warnings,
         errors: payload.errors,
         mode: payload.mode,
@@ -340,7 +342,7 @@ fn map_registry_event_payload(
                 detail: check.detail,
             })
             .collect(),
-    }
+    })
 }
 
 pub(crate) fn map_registry_follow_up_gate(
@@ -428,6 +430,12 @@ fn validation_stage_mapping_preserves_execution_policy() {
 
 #[cfg(test)]
 #[test]
+fn principal_projection_rejects_legacy_string_payloads() {
+    assert!(principal_label(&serde_json::json!("user:legacy")).is_err());
+}
+
+#[cfg(test)]
+#[test]
 fn governance_event_payload_mapping_preserves_automated_checks() {
     let payload = map_registry_event_payload(rustok_modules::ModuleGovernanceEventPayload {
         automated_checks: vec![rustok_modules::ModuleGovernanceAutomatedCheck {
@@ -436,7 +444,8 @@ fn governance_event_payload_mapping_preserves_automated_checks() {
             detail: Some("Artifact contract validation passed.".to_string()),
         }],
         ..Default::default()
-    });
+    })
+    .expect("principal-free payload should map");
 
     assert_eq!(payload.automated_checks.len(), 1);
     assert_eq!(payload.automated_checks[0].key, "artifact_contract");
@@ -447,12 +456,16 @@ fn governance_event_payload_mapping_preserves_automated_checks() {
     );
 }
 
-fn principal_label(value: &serde_json::Value) -> String {
-    RegistryPrincipalRef::from_json_value(value).display_label
+fn principal_label(value: &serde_json::Value) -> Result<String, ModuleMarketplaceError> {
+    RegistryPrincipalRef::from_json_value(value)
+        .map(|principal| principal.label().to_string())
+        .map_err(|_| ModuleMarketplaceError::InvalidContract)
 }
 
-fn optional_principal_label(value: Option<&serde_json::Value>) -> Option<String> {
-    value.map(principal_label)
+fn optional_principal_label(
+    value: Option<&serde_json::Value>,
+) -> Result<Option<String>, ModuleMarketplaceError> {
+    value.map(principal_label).transpose()
 }
 
 fn map_setting_fields(

@@ -5,8 +5,11 @@
 Aligned registry controller and middleware admission with the canonical
 `AuthPrincipalKind` classifier and non-nil identity requirements. Added
 regressions for inconsistent grants, required/optional controller authority,
-and rejection before artifact authorization database access. Maintainer
-verification remains pending: `cargo check -p rustok-server`,
+and rejection before artifact authorization database access. The follow-up
+also seals unchecked authority constructors, validates persisted principal
+invariants without legacy runtime fallback, and rejects nil owner-transfer
+targets. Regression sources cover canonical principal round-trips, malformed
+principal rejection, and nil owner targets. Maintainer verification remains pending: `cargo check -p rustok-server`,
 `cargo test -p rustok-server --lib registry` and remediation gate.
 
 ## Default SuperAdmin bootstrap identity and conflict recovery (2026-11-25)
