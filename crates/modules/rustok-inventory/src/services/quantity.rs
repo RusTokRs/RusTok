@@ -660,7 +660,8 @@ fn available_quantity(
 }
 
 /// Shared projection arithmetic, including the Product response after this writer commits.
-/// Visibility/tenant selection belongs to the calling owner projection; absence is not inferred.
+/// Visibility/tenant selection belongs to the caller. Every supplied Inventory item receives
+/// an explicit quantity (zero when it has no levels); missing item identities are not synthesized.
 pub(super) fn available_by_variant<'a>(
     item_to_variant: &std::collections::HashMap<Uuid, Uuid>,
     levels: impl IntoIterator<Item = &'a inventory_level::Model>,

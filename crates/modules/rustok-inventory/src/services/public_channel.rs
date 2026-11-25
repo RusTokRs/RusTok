@@ -266,7 +266,7 @@ where
         .all(db)
         .await?;
     if levels.is_empty() {
-        return Ok(HashMap::new());
+        return super::quantity::available_by_variant(&item_to_variant, std::iter::empty());
     }
 
     let locations = stock_location::Entity::find()

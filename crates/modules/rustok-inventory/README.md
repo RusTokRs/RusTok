@@ -82,6 +82,11 @@ Inventory item identity exists. Once an Inventory item exists, its levels are
 authoritative: no levels or no channel-visible levels mean an explicit quantity
 of zero, not permission to fall back to the legacy Product counter.
 
+All Inventory Product identity reads prove both the Variant tenant and
+its parent Product tenant. Reservation reads lock only the Variant, then perform
+a nonlocking parent proof to preserve Product's parent-before-Variant lock order.
+Batch identity and cursor reads use Product's canonical 256-SKU bound.
+
 Public-channel availability proves every requested ProductVariant belongs to
 the requested tenant before querying tenant-less Inventory items and levels.
 Malformed non-empty location channel allowlists fail closed, matching Product's

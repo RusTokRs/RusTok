@@ -966,7 +966,8 @@ impl CatalogService {
                     prices: price_responses,
                     inventory_quantity: available_inventory,
                     inventory_policy: variant.inventory_policy.clone(),
-                    in_stock: available_inventory > 0 || inventory_policy_allows_backorder(&variant.inventory_policy),
+                    in_stock: available_inventory > 0
+                        || inventory_policy_allows_backorder(&variant.inventory_policy),
                     weight: variant.weight,
                     weight_unit: variant.weight_unit,
                     position: variant.position,
@@ -1195,7 +1196,8 @@ impl CatalogService {
             prices: price_responses,
             inventory_quantity: available_inventory,
             inventory_policy: variant.inventory_policy.clone(),
-            in_stock: available_inventory > 0 || inventory_policy_allows_backorder(&variant.inventory_policy),
+            in_stock: available_inventory > 0
+                || inventory_policy_allows_backorder(&variant.inventory_policy),
             weight: variant.weight,
             weight_unit: variant.weight_unit,
             position: variant.position,
