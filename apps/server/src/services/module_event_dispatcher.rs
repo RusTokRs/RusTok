@@ -317,29 +317,20 @@ fn enrich_runtime_extensions_after_event_start(
 
     #[cfg(feature = "commerce-marketplace-financial")]
     {
-        let financial_runtime = ctx
-            .shared_get::<rustok_commerce::MarketplaceFinancialRuntime>()
-            .unwrap_or_else(|| {
-                let runtime =
-                    rustok_commerce::MarketplaceFinancialRuntime::in_process(ctx.db_clone());
-                ctx.shared_insert(runtime.clone());
-                runtime
-            });
-        let event_bus = crate::services::event_bus::transactional_event_bus_from_context(ctx);
-        ctx.shared_insert(event_bus.clone());
+        let financial_runtime = ctx.shared_get_or_insert_with(|| {
+            rustok_commerce::MarketplaceFinancialRuntime::in_process(ctx.db_clone())
+        });
+        let event_bus = ctx.shared_get_or_insert_with(|| {
+            crate::services::event_bus::transactional_event_bus_from_context(ctx)
+        });
         enriched.insert(financial_runtime.clone());
         enriched.insert(event_bus);
 
         #[cfg(feature = "mod-payment")]
         {
-            let observers = ctx
-                .shared_get::<rustok_payment::PaymentProviderEventObservers>()
-                .unwrap_or_else(|| {
-                    let observers =
-                        financial_runtime.payment_provider_event_observers(ctx.db_clone());
-                    ctx.shared_insert(observers.clone());
-                    observers
-                });
+            let observers = ctx.shared_get_or_insert_with(|| {
+                financial_runtime.payment_provider_event_observers(ctx.db_clone())
+            });
             enriched.insert(observers);
         }
     }
