@@ -1714,12 +1714,10 @@ mod tests {
         }));
         document.project_mut().extensions.insert(
             FLY_THEME_FIELD.to_string(),
-            json!({"tokens": {"brand": "url(/safe.png)"}}),
+            json!({"tokens": {"brand": "#0b5fff"}}),
         );
         let error = validate_static_publish_document(&document).expect_err("resource property var()");
         assert!(error.diagnostics().iter().any(|diagnostic| {
-            diagnostic.code == "landing_theme_invalid"
-        }) || error.diagnostics().iter().any(|diagnostic| {
             diagnostic.code == "landing_css_var_reference_resource_property"
         }));
     }
