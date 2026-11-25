@@ -290,25 +290,8 @@ impl BootstrapService {
             ));
         }
 
-        let inventory_items = entities::inventory_item::Entity::find()
-            .filter(entities::inventory_item::Column::VariantId.is_in(variant_ids.iter().copied()))
-            .all(conn)
-            .await?;
-        if inventory_items.is_empty() {
-            return Ok(HashMap::new());
-        }
-
-        let item_to_variant: HashMap<Uuid, Uuid> = inventory_items
-            .iter()
-            .map(|item| (item.id, item.variant_id))
-            .collect();
-        let levels = entities::inventory_level::Entity::find()
-            .filter(
-                entities::inventory_level::Column::InventoryItemId
-                    .is_in(item_to_variant.keys().copied()),
-            )
-            .all(conn)
-            .await?;
+        let item_to_variant = super::quantity::load_projection_item_bindings(conn, variant_ids).await?;
+        let levels = super::quantity::load_projection_levels(conn, &item_to_variant).await?;
 
         super::quantity::available_by_variant(&item_to_variant, &levels)
     }

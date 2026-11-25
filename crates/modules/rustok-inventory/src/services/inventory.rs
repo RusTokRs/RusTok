@@ -44,6 +44,32 @@ where
     }
 }
 
+fn unique_inventory_item(
+    variant_id: Uuid,
+    mut items: Vec<entities::inventory_item::Model>,
+) -> CommerceResult<Option<entities::inventory_item::Model>> {
+    if items.len() > 1 || items.iter().any(|item| item.id.is_nil() || item.variant_id != variant_id) {
+        return Err(CommerceError::Validation(
+            "Inventory item identity is ambiguous or invalid; reconcile saved state".into(),
+        ));
+    }
+    Ok(items.pop())
+}
+
+async fn find_unique_inventory_item<C: ConnectionTrait>(
+    conn: &C,
+    variant_id: Uuid,
+    lock: bool,
+) -> CommerceResult<Option<entities::inventory_item::Model>> {
+    let query = if lock {
+        inventory_item_write_query(conn, variant_id)
+    } else {
+        entities::inventory_item::Entity::find()
+            .filter(entities::inventory_item::Column::VariantId.eq(variant_id))
+    };
+    unique_inventory_item(variant_id, query.limit(2).all(conn).await?)
+}
+
 pub struct InventoryService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
@@ -423,10 +449,8 @@ impl InventoryService {
 
         // INVARIANT: `inventory_item` has no tenant column; the tenant boundary is
         // the variant loaded tenant-scoped above (`load_variant`).
-        let available = if let Some(inventory_item) = entities::inventory_item::Entity::find()
-            .filter(entities::inventory_item::Column::VariantId.eq(variant_id))
-            .one(&self.db)
-            .await?
+        let available = if let Some(inventory_item) =
+            find_unique_inventory_item(&self.db, variant_id, false).await?
         {
             self.available_quantity(&self.db, inventory_item.id).await?
         } else {
@@ -467,10 +491,8 @@ impl InventoryService {
         if quantity == 0 {
             // INVARIANT: `inventory_item` has no tenant column; the tenant boundary
             // is the variant loaded tenant-scoped above (`load_variant`).
-            let available = if let Some(inventory_item) = entities::inventory_item::Entity::find()
-                .filter(entities::inventory_item::Column::VariantId.eq(variant_id))
-                .one(&txn)
-                .await?
+            let available = if let Some(inventory_item) =
+                find_unique_inventory_item(&txn, variant_id, false).await?
             {
                 self.available_quantity(&txn, inventory_item.id).await?
             } else {
@@ -620,10 +642,8 @@ impl InventoryService {
         if quantity == 0 {
             // INVARIANT: `inventory_item` has no tenant column; the tenant boundary
             // is the variant loaded tenant-scoped above (`load_variant`).
-            let available = if let Some(inventory_item) = entities::inventory_item::Entity::find()
-                .filter(entities::inventory_item::Column::VariantId.eq(variant_id))
-                .one(&txn)
-                .await?
+            let available = if let Some(inventory_item) =
+                find_unique_inventory_item(&txn, variant_id, false).await?
             {
                 self.available_quantity(&txn, inventory_item.id).await?
             } else {
@@ -638,9 +658,7 @@ impl InventoryService {
         }
 
         // INVARIANT: tenant proof above precedes the shared item lock and every ledger read.
-        let Some(inventory_item) = inventory_item_write_query(&txn, variant_id)
-            .one(&txn)
-            .await?
+        let Some(inventory_item) = find_unique_inventory_item(&txn, variant_id, true).await?
         else {
             return Err(insufficient_reserved_release_error(quantity, 0));
         };
@@ -766,9 +784,7 @@ impl InventoryService {
     {
         // INVARIANT: `inventory_item` has no tenant column; the tenant boundary is
         // the caller-provided variant, which is loaded tenant-scoped.
-        if let Some(item) = inventory_item_write_query(conn, variant.variant_id)
-            .one(conn)
-            .await?
+        if let Some(item) = find_unique_inventory_item(conn, variant.variant_id, true).await?
         {
             return Ok(item);
         }

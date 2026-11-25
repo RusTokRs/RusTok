@@ -1,7 +1,7 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use rustok_commerce_foundation::{
-    entities::{inventory_item, inventory_level, product, product_variant, stock_location},
+    entities::{product, product_variant, stock_location},
     error::{CommerceError, CommerceResult},
 };
 use sea_orm::{
@@ -250,41 +250,29 @@ where
     // tenant-less Inventory items or levels. A foreign/stale ID is not empty stock.
     require_tenant_variant_identities(db, tenant_id, variant_ids).await?;
 
-    let inventory_items = inventory_item::Entity::find()
-        .filter(inventory_item::Column::VariantId.is_in(variant_ids.iter().copied()))
-        .all(db)
-        .await?;
-    if inventory_items.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    let item_to_variant: HashMap<Uuid, Uuid> = inventory_items
-        .iter()
-        .map(|item| (item.id, item.variant_id))
-        .collect();
-
-    let levels = inventory_level::Entity::find()
-        .filter(inventory_level::Column::InventoryItemId.is_in(item_to_variant.keys().copied()))
-        .all(db)
-        .await?;
+    let item_to_variant = super::quantity::load_projection_item_bindings(db, variant_ids).await?;
+    let levels = super::quantity::load_projection_levels(db, &item_to_variant).await?;
     if levels.is_empty() {
         return super::quantity::available_by_variant(&item_to_variant, std::iter::empty());
     }
 
-    let locations = stock_location::Entity::find()
-        .filter(stock_location::Column::TenantId.eq(tenant_id))
-        .filter(stock_location::Column::DeletedAt.is_null())
-        .filter(stock_location::Column::Id.is_in(levels.iter().map(|level| level.location_id)))
-        .all(db)
-        .await?;
-
-    let visible_location_ids: HashSet<Uuid> = locations
-        .into_iter()
-        .filter(|location| {
-            is_metadata_visible_for_public_channel(&location.metadata, public_channel_slug)
-        })
-        .map(|location| location.id)
-        .collect();
+    let location_ids: Vec<_> = levels.iter().map(|level| level.location_id)
+        .collect::<BTreeSet<_>>().into_iter().collect();
+    let mut visible_location_ids = HashSet::new();
+    for chunk in location_ids.chunks(256) {
+        let locations = stock_location::Entity::find()
+            .filter(stock_location::Column::TenantId.eq(tenant_id))
+            .filter(stock_location::Column::DeletedAt.is_null())
+            .filter(stock_location::Column::Id.is_in(chunk.iter().copied()))
+            .limit((chunk.len() + 1) as u64)
+            .all(db)
+            .await?;
+        for location in locations {
+            if is_metadata_visible_for_public_channel(&location.metadata, public_channel_slug) {
+                visible_location_ids.insert(location.id);
+            }
+        }
+    }
 
     super::quantity::available_by_variant(
         &item_to_variant,

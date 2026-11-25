@@ -775,6 +775,21 @@ They now capture any transport error into an `action_error` reactive signal and 
   [regressions](../../crates/modules/rustok-inventory/src/services/quantity/tests.rs).
   Source-only evidence; tests not executed.
 
+### P-INVENTORY-BOUNDED-IDENTITY-READ — refuse ambiguity and truncation
+
+- **Category:** identity / bounded projection.
+- **Observed defect:** Native inventory reads and reservation selection
+  could choose the first item for a SKU; catalog quantity projections
+  materialized unbounded rows before checking arithmetic bounds.
+- **Canonical correction:** Probe at most two native item matches and
+  refuse ambiguity. Share chunked projection loaders with an overflow
+  sentinel and per-item original level bound before channel filtering.
+  Never return a truncated projection as authoritative stock.
+- **Evidence:** [Inventory service](../../crates/modules/rustok-inventory/src/services/inventory.rs),
+  [projection loaders](../../crates/modules/rustok-inventory/src/services/quantity.rs),
+  [regression](../../crates/modules/rustok-inventory/src/services/quantity/tests.rs).
+  Source-only evidence, not executed.
+
 ## 1. Core Philosophy: The 6 Universal Logic Dimensions
 
 Under [AGENTS.md §4](../../AGENTS.md), verify the affected behavior and its owner contract across the **6 Universal Logic Dimensions**. Use source matches to find code to inspect. A match alone cannot establish a behavioral defect:

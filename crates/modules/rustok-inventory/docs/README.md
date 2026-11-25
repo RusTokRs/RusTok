@@ -45,6 +45,18 @@ visibility and identity selection of each caller is unchanged, and the
 projection's per-item reduction bound is not a database query row limit.
 Regression sources are authored or corrected, not executed.
 
+Native availability checks, zero-quantity reserve/release, positive anonymous
+release and reserve item selection now use a bounded two-row identity probe.
+Multiple or invalid items are refusals rather than arbitrary first matches;
+missing-item semantics remain unchanged. Global and channel Product projections
+share chunked item/level loaders: at most 256 requested SKU identities per
+item query and at most 16 items per level query with an explicit overflow
+sentinel and per-item 4096 original-level bound. Public location reads are
+chunked as well. Excess original levels refuse before visibility filtering.
+No incomplete result is returned as a valid stock total. The bounds limit
+each query, not the total memory of an arbitrary caller batch. Tests are
+authored, not executed.
+
 ## Purpose
 
 - inventory service logic;

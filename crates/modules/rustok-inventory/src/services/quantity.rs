@@ -659,6 +659,71 @@ fn available_quantity(
     i32::try_from(total).map_err(|_| QuantityWriteBlocker::QuantityUnrepresentable.into())
 }
 
+/// Bound each query without truncating a projection or selecting an arbitrary
+/// item. A missing item remains absent, but duplicate identities are refusals.
+pub(super) async fn load_projection_item_bindings<C: ConnectionTrait>(
+    conn: &C,
+    variant_ids: &[Uuid],
+) -> Result<std::collections::HashMap<Uuid, Uuid>, DbErr> {
+    let requested: Vec<_> = variant_ids.iter().copied().collect::<BTreeSet<_>>().into_iter().collect();
+    if requested.iter().any(Uuid::is_nil) {
+        return Err(DbErr::Custom("Inventory availability variant identity is invalid".into()));
+    }
+    let mut bindings = std::collections::HashMap::new();
+    let mut seen_variants = BTreeSet::new();
+    for chunk in requested.chunks(256) {
+        let items = inventory_item::Entity::find()
+            .filter(inventory_item::Column::VariantId.is_in(chunk.iter().copied()))
+            .limit((chunk.len() + 1) as u64)
+            .all(conn)
+            .await?;
+        if items.len() > chunk.len() {
+            return Err(DbErr::Custom("Inventory availability item identity is ambiguous".into()));
+        }
+        for item in items {
+            if item.id.is_nil() || !chunk.contains(&item.variant_id)
+                || !seen_variants.insert(item.variant_id)
+                || bindings.insert(item.id, item.variant_id).is_some()
+            {
+                return Err(DbErr::Custom("Inventory availability item identity is unverified".into()));
+            }
+        }
+    }
+    Ok(bindings)
+}
+
+/// Bound row materialization per query and reject excessive original levels
+/// before applying public-channel visibility, rather than hiding excess rows.
+pub(super) async fn load_projection_levels<C: ConnectionTrait>(
+    conn: &C,
+    bindings: &std::collections::HashMap<Uuid, Uuid>,
+) -> Result<Vec<inventory_level::Model>, DbErr> {
+    let mut items: Vec<_> = bindings.keys().copied().collect();
+    items.sort_unstable();
+    let mut levels = Vec::new();
+    for chunk in items.chunks(16) {
+        let bound = chunk.len() * MAX_QUANTITY_LEVELS;
+        let rows = inventory_level::Entity::find()
+            .filter(inventory_level::Column::InventoryItemId.is_in(chunk.iter().copied()))
+            .limit((bound + 1) as u64)
+            .all(conn)
+            .await?;
+        if rows.len() > bound {
+            return Err(DbErr::Custom("Inventory availability exceeds the level read bound".into()));
+        }
+        let mut counts = std::collections::HashMap::<Uuid, usize>::new();
+        for row in &rows {
+            let count = counts.entry(row.inventory_item_id).or_default();
+            *count += 1;
+            if *count > MAX_QUANTITY_LEVELS {
+                return Err(DbErr::Custom("Inventory availability exceeds the level read bound".into()));
+            }
+        }
+        levels.extend(rows);
+    }
+    Ok(levels)
+}
+
 /// Shared projection arithmetic, including the Product response after this writer commits.
 /// Visibility/tenant selection belongs to the caller. Every supplied Inventory item receives
 /// an explicit quantity (zero when it has no levels); missing item identities are not synthesized.
