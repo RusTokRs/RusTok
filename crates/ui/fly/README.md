@@ -171,6 +171,16 @@ crates/ui/fly/
   document validation share bounded srcset candidate checks, including numeric descriptor
   uniqueness, positive density/width and one descriptor family.
 
+## Runtime binding ownership
+
+Each component slot has one runtime binding owner. HTML attribute and CSS property
+names compare ASCII case-insensitively; field names remain case-sensitive.
+Ambiguous imported bindings report blocking diagnostics and none of the conflicting
+writers execute. Attribute/style writes replace authored case variants. Numeric
+transforms retain the original JSON number, and an explicit null fallback survives
+serialization. Fallback is used only for a missing path, not a present null or a
+failed transform. Structural symbol identity cannot be bound.
+
 ## Runtime materialization bounds
 
 Runtime context paths are bounded to 2048 bytes, 64 segments and array index 9999.

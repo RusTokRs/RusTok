@@ -1,9 +1,8 @@
 //! Deployment-owned JWT key selection. Only the active key can sign.
 use std::borrow::Cow;
 
-use chrono::Utc;
 use hkdf::Hkdf;
-use jsonwebtoken::DecodingKey;
+use jsonwebtoken::{DecodingKey, EncodingKey, crypto::aws_lc::DEFAULT_PROVIDER};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
@@ -141,16 +140,16 @@ impl JwtKeyring {
         &'a self,
         kid: Option<&str>,
         active_material: &'a str,
-    ) -> Option<&'a str> {
-        let now = Utc::now().timestamp();
-        let kid = match kid {
-            Some(kid) => kid,
+        now: i64,
+    ) -> Option<(&'a str, Option<i64>)> {
+        let (kid, legacy_until) = match kid {
+            Some(kid) => (kid, None),
             None => {
                 let legacy = self.legacy_without_kid.as_ref()?;
                 if now >= legacy.verify_until {
                     return None;
                 }
-                &legacy.kid
+                (legacy.kid.as_str(), Some(legacy.verify_until))
             }
         };
         if !valid_kid(kid) || !self.signing_id_is_valid() {
@@ -162,10 +161,11 @@ impl JwtKeyring {
             return None;
         }
         if kid == self.active_kid {
-            return previous.is_none().then_some(active_material);
+            return previous.is_none().then_some((active_material, legacy_until));
         }
         let key = previous?;
-        (now < key.verify_until).then_some(key.material.as_str())
+        let cutoff = legacy_until.map_or(key.verify_until, |until| until.min(key.verify_until));
+        (now < cutoff).then_some((key.material.as_str(), Some(cutoff)))
     }
 }
 
@@ -333,7 +333,8 @@ impl<'a> PurposeKeyringRef<'a> {
 }
 
 // Compare HMAC's effective block-sized key, not textual representations.
-// For RSA, jsonwebtoken extracts the RSA DER from the supported PEM forms.
+// For RSA, compare canonical public moduli rather than PEM/DER representations.
+// Reusing a modulus with a different exponent is also unsafe.
 fn hmac_identity(material: &[u8]) -> [u8; 64] {
     let mut block = [0_u8; 64];
     if material.len() > block.len() {
@@ -354,7 +355,8 @@ fn key_identity(algorithm: &JwtAlgorithm, material: &str) -> Result<[u8; 32]> {
         JwtAlgorithm::RS256 => {
             digest.update(b"RS256");
             let key = verification_key(algorithm, material)?;
-            digest.update(key.try_get_as_bytes().map_err(|_| invalid_config())?);
+            let (modulus, _) = rsa_public_components(&key)?;
+            digest.update(modulus);
         }
     }
     let mut identity = [0_u8; 32];
@@ -443,6 +445,42 @@ pub(crate) fn explicit_hs256_secrets(config: &AuthConfig) -> impl Iterator<Item 
     )
 }
 
+/// Use the same crypto backend as the JWT verifier; no local ASN.1 parser.
+/// AWS-LC returns the unsigned big-endian RSA components.
+fn rsa_public_components(key: &DecodingKey) -> Result<(Vec<u8>, Vec<u8>)> {
+    let der = key.try_get_as_bytes().map_err(|_| invalid_config())?;
+    let (modulus, exponent) = (DEFAULT_PROVIDER.key_utils.rsa_pub_components_from_public_key)(der)
+        .map_err(|_| invalid_config())?;
+    // RS256 requires a modulus of at least 2048 bits (RFC 7518).
+    let first = modulus.first().copied().ok_or_else(invalid_config)?;
+    let bits = modulus.len().saturating_mul(8).saturating_sub(first.leading_zeros() as usize);
+    if first == 0 || bits < 2048 || exponent.is_empty() {
+        return Err(invalid_config());
+    }
+    Ok((modulus, exponent))
+}
+
+/// Verify the private key belongs to the exact public key selected for
+/// isolation, including configurations constructed without the startup builder.
+pub(crate) fn rsa_signing_key(private_pem: &str, public_pem: &str) -> Result<EncodingKey> {
+    let pem = private_pem.trim();
+    if !(pem.starts_with("-----BEGIN PRIVATE KEY-----")
+        || pem.starts_with("-----BEGIN RSA PRIVATE KEY-----"))
+    {
+        return Err(invalid_config());
+    }
+    let encoding = EncodingKey::from_rsa_pem(pem.as_bytes()).map_err(|_| invalid_config())?;
+    let decoding = verification_key(&JwtAlgorithm::RS256, public_pem)?;
+    let public = rsa_public_components(&decoding)?;
+    let from_private = (DEFAULT_PROVIDER.key_utils.rsa_pub_components_from_private_key)(
+        encoding.as_bytes(),
+    ).map_err(|_| invalid_config())?;
+    if from_private != public {
+        return Err(invalid_config());
+    }
+    Ok(encoding)
+}
+
 pub(crate) fn verification_key(algorithm: &JwtAlgorithm, material: &str) -> Result<DecodingKey> {
     match algorithm {
         JwtAlgorithm::HS256 if hs256_secret_has_min_length(material) => {
@@ -458,7 +496,36 @@ pub(crate) fn verification_key(algorithm: &JwtAlgorithm, material: &str) -> Resu
             {
                 return Err(invalid_config());
             }
-            DecodingKey::from_rsa_pem(pem.as_bytes()).map_err(|_| invalid_config())
+            let key = DecodingKey::from_rsa_pem(pem.as_bytes()).map_err(|_| invalid_config())?;
+            rsa_public_components(&key)?;
+            Ok(key)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn retirement_and_legacy_cutoffs_are_exclusive() {
+        let ring = JwtKeyring::from_json(r#"{
+            "active_kid":"next",
+            "verification_keys":[{"kid":"old","material":"old-material","verify_until":200}],
+            "legacy_without_kid":{"kid":"old","verify_until":150}
+        }"#).unwrap();
+        assert_eq!(ring.select(Some("old"), "new-material", 199), Some(("old-material", Some(200))));
+        assert!(ring.select(Some("old"), "new-material", 200).is_none());
+        assert_eq!(ring.select(None, "new-material", 149), Some(("old-material", Some(150))));
+        assert!(ring.select(None, "new-material", 150).is_none());
+        assert_eq!(ring.select(Some("next"), "new-material", 200), Some(("new-material", None)));
+    }
+
+    #[test]
+    fn effective_hmac_aliases_have_same_identity() {
+        let secret = "distinct-material-at-least-32-bytes";
+        let padded = format!("{secret}\0\0");
+        assert_eq!(key_identity(&JwtAlgorithm::HS256, secret).unwrap(),
+            key_identity(&JwtAlgorithm::HS256, &padded).unwrap());
     }
 }
