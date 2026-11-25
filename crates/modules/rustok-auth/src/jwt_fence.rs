@@ -26,6 +26,7 @@ fn unavailable() -> AuthError {
 #[serde(deny_unknown_fields)]
 pub(crate) struct KeyMetadata {
     pub(crate) identity: String,
+    pub(crate) verification_identity: String,
     pub(crate) verify_until: Option<i64>,
 }
 
@@ -95,7 +96,9 @@ impl Ledger {
                 let seen = self.seen.get(purpose).and_then(|keys| keys.get(kid));
                 match (previous, seen) {
                     (Some(before), Some(binding)) => {
-                        if key.identity != binding.identity || key.identity != before.identity {
+                        if key.identity != binding.identity || key.identity != before.identity
+                            || key.verification_identity != before.verification_identity
+                        {
                             return Err(rejected());
                         }
                         match (before.verify_until, key.verify_until) {
@@ -355,6 +358,45 @@ mod tests {
         assert!(fence.admit(4, &demoted).await.is_err());
         fence.admit(4, &config(ROOT, "new", NEW, None, None)).await.unwrap();
         assert!(fence.admit(5, &promoted).await.is_err());
+    }
+
+    #[test]
+    fn same_reuse_identity_cannot_change_exact_verifier() {
+        let config = config(ROOT, "old", OLD, None, None);
+        let mac = FenceMac::new(&config).unwrap();
+        let current = config.fence_snapshot(|identity| mac.identity(identity)).unwrap();
+        let mut next = current.clone();
+        next.get_mut("JWT").unwrap().keys.get_mut("old").unwrap()
+            .verification_identity = "changed-exact-verifier".into();
+        assert!(current != next);
+        assert!(Ledger::enroll(1, current).advance(2, next, 1).is_err());
+    }
+
+    #[tokio::test]
+    async fn missing_or_tampered_authority_is_not_reenrolled() {
+        let db = database().await;
+        let fence = JwtGenerationFence::new(db.clone());
+        let first = config(ROOT, "old", OLD, None, None);
+        fence.admit(1, &first).await.unwrap();
+        db.execute_unprepared(
+            "UPDATE auth_jwt_generation_fence SET tag = '0000000000000000000000000000000000000000000000000000000000000000' WHERE id = 1",
+        ).await.unwrap();
+        assert!(matches!(fence.admit(1, &first).await, Err(AuthError::Internal(_))));
+        assert!(fence.ensure_static_allowed().await.is_err());
+        db.execute_unprepared("DELETE FROM auth_jwt_generation_fence WHERE id = 1")
+            .await.unwrap();
+        assert!(fence.ensure_static_allowed().await.is_err());
+        assert!(matches!(fence.admit(2, &first).await, Err(AuthError::Internal(_))));
+    }
+
+    #[tokio::test]
+    async fn pre_enrollment_history_cannot_become_a_signer() {
+        let fence = JwtGenerationFence::new(database().await);
+        let until = chrono::Utc::now().timestamp() + 3600;
+        let first = config(ROOT, "old", OLD, Some(("new", NEW, until)), None);
+        fence.admit(1, &first).await.unwrap();
+        let promoted = config(ROOT, "new", NEW, Some(("old", OLD, until)), None);
+        assert!(fence.admit(2, &promoted).await.is_err());
     }
 
     #[tokio::test]

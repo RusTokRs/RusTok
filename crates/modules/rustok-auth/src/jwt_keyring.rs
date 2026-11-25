@@ -327,6 +327,27 @@ fn key_identity(algorithm: &JwtAlgorithm, material: &str) -> Result<[u8; 32]> {
     Ok(identity)
 }
 
+/// Exact verification identity is stricter than the RSA modulus reuse identity.
+fn verification_identity(
+    algorithm: &JwtAlgorithm,
+    key: &DecodingKey,
+    reuse_identity: [u8; 32],
+) -> Result<[u8; 32]> {
+    if *algorithm == JwtAlgorithm::HS256 {
+        return Ok(reuse_identity);
+    }
+    let (modulus, exponent) = rsa_public_components(key)?;
+    let mut digest = Sha256::new();
+    digest.update(b"RS256-verification");
+    digest.update((modulus.len() as u64).to_be_bytes());
+    digest.update(modulus);
+    digest.update((exponent.len() as u64).to_be_bytes());
+    digest.update(exponent);
+    let mut identity = [0_u8; 32];
+    identity.copy_from_slice(&digest.finalize());
+    Ok(identity)
+}
+
 /// Prepared key material never changes. History contains decoding keys only.
 /// The active signer and its verification key are constructed together.
 pub(crate) struct ValidatedJwtKeyring {
@@ -335,6 +356,7 @@ pub(crate) struct ValidatedJwtKeyring {
     signing_key: EncodingKey,
     active_verification_key: DecodingKey,
     active_identity: [u8; 32],
+    active_verification_identity: [u8; 32],
     history: HashMap<String, PreparedVerificationKey>,
     legacy_without_kid: Option<LegacyKey>,
 }
@@ -342,6 +364,7 @@ pub(crate) struct ValidatedJwtKeyring {
 struct PreparedVerificationKey {
     key: DecodingKey,
     identity: [u8; 32],
+    verification_identity: [u8; 32],
     verify_until: i64,
 }
 
@@ -404,6 +427,9 @@ impl ValidatedJwtKeyring {
             )?,
         };
         let active_verification_key = verification_key(selected.algorithm, &active)?;
+        let active_verification_identity = verification_identity(
+            selected.algorithm, &active_verification_key, active_identity,
+        )?;
         let mut history = HashMap::with_capacity(selected.ring.verification_keys.len());
         for previous in &selected.ring.verification_keys {
             let identity = key_identity(selected.algorithm, &previous.material)?;
@@ -413,8 +439,9 @@ impl ValidatedJwtKeyring {
                 return Err(invalid_config());
             }
             let key = verification_key(selected.algorithm, &previous.material)?;
+            let verification_identity = verification_identity(selected.algorithm, &key, identity)?;
             if history.insert(previous.kid.clone(), PreparedVerificationKey {
-                key, identity, verify_until: previous.verify_until,
+                key, identity, verification_identity, verify_until: previous.verify_until,
             }).is_some() {
                 return Err(invalid_config());
             }
@@ -425,6 +452,7 @@ impl ValidatedJwtKeyring {
             signing_key,
             active_verification_key,
             active_identity,
+            active_verification_identity,
             history,
             legacy_without_kid: selected.ring.legacy_without_kid.clone(),
         })
@@ -470,11 +498,13 @@ impl ValidatedJwtKeyrings {
             let mut keys = BTreeMap::new();
             keys.insert(ring.active_kid.clone(), KeyMetadata {
                 identity: fingerprint(&ring.active_identity)?,
+                verification_identity: fingerprint(&ring.active_verification_identity)?,
                 verify_until: None,
             });
             for (kid, history) in &ring.history {
                 keys.insert(kid.clone(), KeyMetadata {
                     identity: fingerprint(&history.identity)?,
+                    verification_identity: fingerprint(&history.verification_identity)?,
                     verify_until: Some(history.verify_until),
                 });
             }
@@ -498,20 +528,22 @@ impl ValidatedJwtKeyrings {
             if old.algorithm != new.algorithm {
                 return Err(invalid_config());
             }
-            let old_keys = std::iter::once((old.active_kid.as_str(), old.active_identity, None))
-                .chain(old.history.iter().map(|(kid, key)| {
-                    (kid.as_str(), key.identity, Some(key.verify_until))
-                }));
-            for (kid, identity, cutoff) in old_keys {
+            let old_keys = std::iter::once((
+                old.active_kid.as_str(), old.active_identity, old.active_verification_identity, None,
+            )).chain(old.history.iter().map(|(kid, key)| {
+                (kid.as_str(), key.identity, key.verification_identity, Some(key.verify_until))
+            }));
+            for (kid, identity, verification, cutoff) in old_keys {
                 for target in JwtPurpose::ALL {
                     let ring = next.for_purpose(target);
-                    let new_keys = std::iter::once((ring.active_kid.as_str(), ring.active_identity, None))
-                        .chain(ring.history.iter().map(|(kid, key)| {
-                            (kid.as_str(), key.identity, Some(key.verify_until))
-                        }));
-                    for (new_kid, new_identity, new_cutoff) in new_keys {
+                    let new_keys = std::iter::once((
+                        ring.active_kid.as_str(), ring.active_identity, ring.active_verification_identity, None,
+                    )).chain(ring.history.iter().map(|(kid, key)| {
+                        (kid.as_str(), key.identity, key.verification_identity, Some(key.verify_until))
+                    }));
+                    for (new_kid, new_identity, new_verification, new_cutoff) in new_keys {
                         if target == purpose && kid == new_kid {
-                            if identity != new_identity {
+                            if identity != new_identity || verification != new_verification {
                                 return Err(invalid_config());
                             }
                             if cutoff.is_some_and(|until| until <= now)

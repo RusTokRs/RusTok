@@ -21,6 +21,9 @@ remains the source of secret material; the database contains the current
 canonical key metadata, historical ID/identity bindings and an authenticated
 state envelope, not signing or verification key material. Identity fingerprints
 and envelope tags use separate HKDF-derived keys from the stable host MAC root.
+RSA reuse identity binds the canonical modulus; exact verification identity
+also binds the canonical public exponent, so keeping a modulus cannot mask a
+changed verifier.
 The envelope binds its generation. The root and the database must remain stable
 for this authority. This does not protect against rollback of the database
 itself or compromise of the root or database administrator.
@@ -91,6 +94,6 @@ bounded metadata preserves the existing secret distribution contract.
 
 Source regressions cover same-generation replay/conflict, rollback across
 store recreation, permanent tombstones, promotion and retirement, cutoff
-and legacy restrictions, root mismatch, and concurrent admission.
+and legacy restrictions, root mismatch, corruption/missing-state rejection, exact verifier continuity, and concurrent admission.
 Run scoped Auth/host compilation, SQLite regressions, PostgreSQL migration
 and independent-pool contention and restart tests before deployment.

@@ -65,8 +65,9 @@ Staging, promotion and retirement are operator-coordinated. The generation
 floor and absent-key tombstones are not durable; this decision is not a
 multi-replica barrier, a restart anti-rollback guarantee or emergency distributed
 revocation. A local crypto fence does not cancel already-authorized async
-business transactions. Durable generation authority and convergence evidence
-are required before claiming those properties.
+business transactions. Durable generation admission is extended by the
+[durable JWT generation fence](2026-11-25-jwt-generation-fence.md). Replica
+convergence evidence remains required before claiming distributed properties.
 
 ## Verification
 

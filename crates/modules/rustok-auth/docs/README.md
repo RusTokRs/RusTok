@@ -197,7 +197,7 @@ See [purpose keyring ADR](../../../../DECISIONS/2026-11-25-jwt-purpose-keyrings.
 
 Set `RUSTOK_JWT_KEYRING_FILE` to a trusted secret-manager-mounted JSON file.
 Do not combine this source with startup JWT algorithm, RSA or keyring overrides.
-The file is limited to 256 KiB and requires a positive generation and a complete
+The file is limited to 256 KiB and requires a generation from 1 through 2^63-1 and a complete
 set of four purpose entries. Example shape (replace placeholders with actual
 independent high-entropy material or use the documented derived defaults):
 
@@ -234,7 +234,8 @@ MAC root. It does not store signing keys, raw HMAC secrets or PEMs. A candidate
 must be admitted durably before a local publication, including startup. An
 identical canonical generation can restart; older or conflicting generations
 cannot. Removing a key ID or material is terminal, even if a later document
-renames the material or places it in another purpose. An active key moved to
+renames the material or places it in another purpose. RSA modulus reuse and
+exact modulus/exponent continuity are checked separately. An active key moved to
 history cannot sign again; newly staged verification keys can be promoted once
 before expiry. Initial history is conservatively verification-only; enroll
 before staging a future signer. Retained deadlines can only shorten; a removed
