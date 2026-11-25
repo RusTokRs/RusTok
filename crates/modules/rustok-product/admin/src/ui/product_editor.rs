@@ -10,7 +10,7 @@ use super::variant_create::ProductVariantCreateSection;
 use crate::catalog_transport;
 use crate::core::{
     ProductAttributeEditorState, ProductKind, build_product_image_view_models, slugify,
-    validate_editor_variant_draft,
+    validate_editor_variant_draft, variant_price_editor_fields_for_currency,
 };
 use crate::model::{
     CatalogCategorySummary, ProductDetail, ProductDraft, ProductEffectiveForm, ProductImageDraft,
@@ -1426,7 +1426,22 @@ pub fn ProductEditorPage(
                                 </label>
                                 <select
                                     prop:value=move || currency_code.get()
-                                    on:change=move |ev| set_currency_code.set(event_target_value(&ev))
+                                    on:change=move |ev| {
+                                        let next_currency = event_target_value(&ev);
+                                        if is_editing {
+                                            if let Some(variant) = loaded_product.get_untracked().and_then(|product| {
+                                                let target_id = variant_target_id.get_untracked()?;
+                                                product.variants.into_iter().find(|variant| variant.id == target_id)
+                                            }) {
+                                                let (next_amount, next_compare_at) =
+                                                    variant_price_editor_fields_for_currency(&variant, &next_currency);
+                                                set_amount.set(next_amount);
+                                                set_compare_at_amount.set(next_compare_at);
+                                            }
+                                        }
+                                        set_currency_code.set(next_currency);
+                                        set_clear_primary_price.set(false);
+                                    }
                                     class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary"
                                 >
                                     <option value="USD">"USD - US Dollar"</option>

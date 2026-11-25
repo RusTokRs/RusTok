@@ -2096,6 +2096,24 @@ pub fn build_variant_row_view_models(
         .collect()
 }
 
+/// Returns the amount and compare-at value belonging to the selected currency.
+pub fn variant_price_editor_fields_for_currency(
+    variant: &crate::model::ProductVariant,
+    currency_code: &str,
+) -> (String, String) {
+    variant
+        .prices
+        .iter()
+        .find(|price| price.currency_code.eq_ignore_ascii_case(currency_code))
+        .map(|price| {
+            (
+                price.amount.clone(),
+                price.compare_at_amount.clone().unwrap_or_default(),
+            )
+        })
+        .unwrap_or_default()
+}
+
 /// Builds a sparse row-editor update from the exact target Variant snapshot.
 ///
 /// The first price's currency is local to that Variant; the product-wide fallback
@@ -4194,6 +4212,34 @@ mod tests {
         assert_eq!(rows[1].options_summary, "color: Black · size: M");
         assert_eq!(rows[1].price, "120.00 USD");
         assert_eq!(rows[1].stock, "15");
+    }
+
+    #[test]
+    fn variant_price_editor_uses_the_selected_currency_snapshot() {
+        let mut product = product_detail();
+        product.variants[0].prices = vec![
+            crate::model::ProductPrice {
+                currency_code: "USD".to_owned(),
+                amount: "12.50".to_owned(),
+                compare_at_amount: Some("15.00".to_owned()),
+                on_sale: true,
+            },
+            crate::model::ProductPrice {
+                currency_code: "EUR".to_owned(),
+                amount: "11.50".to_owned(),
+                compare_at_amount: Some("13.00".to_owned()),
+                on_sale: true,
+            },
+        ];
+
+        assert_eq!(
+            variant_price_editor_fields_for_currency(&product.variants[0], "EUR"),
+            ("11.50".to_owned(), "13.00".to_owned())
+        );
+        assert_eq!(
+            variant_price_editor_fields_for_currency(&product.variants[0], "GBP"),
+            (String::new(), String::new())
+        );
     }
 
     #[test]
