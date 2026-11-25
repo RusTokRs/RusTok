@@ -8,7 +8,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use uuid::Uuid;
 
 fn test_auth_config() -> AuthConfig {
-    AuthConfig::new("rate-limit-test-secret-with-sufficient-length".to_string())
+    crate::auth::test_auth_config("rate-limit-test-secret-with-sufficient-length".to_string())
         .with_expiration(3600, 3600)
         .with_issuer("rustok")
         .with_audience("rustok-admin")

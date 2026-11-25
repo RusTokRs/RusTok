@@ -1,5 +1,7 @@
 #![cfg(feature = "mod-flex")]
 
+mod support;
+
 use std::{
     collections::{BTreeMap, HashMap},
     error::Error,
@@ -101,7 +103,8 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         )
         .await?;
 
-    let seed_provider = registered_provider(seed_connection.clone())?;
+    let auth_config = support::test_auth_config();
+    let seed_provider = registered_provider(seed_connection.clone(), auth_config.clone())?;
     let listed = seed_provider
         .list_resources(
             read_context(tenant_id, "seed-list"),
@@ -213,8 +216,8 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
 
     let first_connection = connect_postgres(database_url).await?;
     let second_connection = connect_postgres(database_url).await?;
-    let first_provider = registered_provider(first_connection.clone())?;
-    let second_provider = registered_provider(second_connection.clone())?;
+    let first_provider = registered_provider(first_connection.clone(, auth_config.clone()))?;
+    let second_provider = registered_provider(second_connection.clone(, auth_config.clone()))?;
     let first_snapshot = first_provider
         .read_resource(
             read_context(tenant_id, "replica-one-read"),
@@ -284,7 +287,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     second_connection.close().await?;
 
     let observer_connection = connect_postgres(database_url).await?;
-    let observer_provider = registered_provider(observer_connection.clone())?;
+    let observer_provider = registered_provider(observer_connection.clone(, auth_config.clone()))?;
     let applied = observer_provider
         .read_resource(
             read_context(tenant_id, "observer-read"),
@@ -509,7 +512,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     observer_connection.close().await?;
 
     let deletion_connection = connect_postgres(database_url).await?;
-    let deletion_provider = registered_provider(deletion_connection.clone())?;
+    let deletion_provider = registered_provider(deletion_connection.clone(, auth_config.clone()))?;
     let deletion_changes = deletion_provider
         .read_changes(
             read_context(tenant_id, "deletion-cursor"),
@@ -588,7 +591,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     Ok(())
 }
 
-fn registered_provider(db: DatabaseConnection) -> TestResult<Arc<dyn TranslationTargetProvider>> {
+fn registered_provider(db: DatabaseConnection, auth_config: AuthConfig) -> TestResult<Arc<dyn TranslationTargetProvider>> {
     let registry = ModuleRegistry::new().register(FlexModule);
     let settings = RustokSettings::default();
     let runtime_ctx = ServerRuntimeContext::new(db, settings.clone());
@@ -596,7 +599,7 @@ fn registered_provider(db: DatabaseConnection) -> TestResult<Arc<dyn Translation
         &registry,
         &settings,
         runtime_ctx,
-        AuthConfig::new("test-secret-key-for-flex-schema-copy-evidence-32bytes!".to_string()),
+        auth_config,
     )?;
     let targets = translation_target_registry(&extensions)
         .ok_or_else(|| test_error("host composition did not publish TranslationTargetRegistry"))?;

@@ -1,5 +1,7 @@
 #![cfg(feature = "mod-commerce")]
 
+mod support;
+
 use std::{error::Error, sync::Arc, time::Duration};
 
 use rustok_api::{PortActor, PortContext, PortErrorKind, TenantLocale};
@@ -84,7 +86,8 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         )
         .await?;
 
-    let provider = registered_provider(seed_connection.clone());
+    let auth_config = support::test_auth_config();
+    let provider = registered_provider(seed_connection.clone(), auth_config.clone());
     let list_request = ListTranslationResourcesRequest {
         source_locale: TenantLocale::new("en")?,
         target_locale: TenantLocale::new("fr")?,
@@ -142,8 +145,8 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
 
     let first_connection = connect_postgres(database_url).await?;
     let second_connection = connect_postgres(database_url).await?;
-    let first_provider = registered_provider(first_connection.clone());
-    let second_provider = registered_provider(second_connection.clone());
+    let first_provider = registered_provider(first_connection.clone(, auth_config.clone()));
+    let second_provider = registered_provider(second_connection.clone(, auth_config.clone()));
 
     let first_patch = patch(
         &initial,
@@ -430,7 +433,7 @@ fn owner_service(db: DatabaseConnection) -> CollectionTranslationService {
     CollectionTranslationService::new(db, event_bus)
 }
 
-fn registered_provider(db: DatabaseConnection) -> Arc<dyn TranslationTargetProvider> {
+fn registered_provider(db: DatabaseConnection, auth_config: AuthConfig) -> Arc<dyn TranslationTargetProvider> {
     let registry = ModuleRegistry::new().register(CommerceModule);
     let settings = RustokSettings::default();
     let runtime = ServerRuntimeContext::new(db, settings.clone());
@@ -438,7 +441,7 @@ fn registered_provider(db: DatabaseConnection) -> Arc<dyn TranslationTargetProvi
         &registry,
         &settings,
         runtime,
-        AuthConfig::new("test-secret-key-for-commerce-translation-32bytes!".to_string()),
+        auth_config,
     )
     .expect("host composition must succeed");
     let targets = translation_target_registry(&extensions).expect("Translation registry");
