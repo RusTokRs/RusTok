@@ -3423,3 +3423,24 @@ before setup and before returning success.
 Focused source regressions cover preserved counters, Arc identity, one
 maintenance task per namespace, and shutdown before/after registration.
 Compilation, formatting and tests were not run at the maintainer's request.
+
+## Server follow-up — single-owner event delivery runtime (2026-11-25)
+
+EventRuntime initialization now serializes construction per host context and
+reuses a published runtime rather than replacing its relay/listener bus or
+re-reading the desired profile. Shutdown fences direct initialization before
+taking worker snapshots. Pending profile/configuration reads are stoppable;
+an Iggy connection already being constructed retains its owner startup path.
+The durable publisher transport comes from the same atomic resolver used by
+early EventBus and transactional callers. Non-transactional or non-outbox
+preinstalled transports fail event runtime startup. Registry-only composition
+no longer replaces a concurrently registered transport. The operator settings
+service is the canonical active-profile reader used by both GraphQL operations.
+
+An already constructed but unpublished Iggy connector is explicitly shut down
+on ordinary listener-start failure or stop before publication; this does not
+claim cancellation safety inside the connector's own constructor.
+
+Focused source regressions cover reuse without desired-policy reads, stopped
+initialization, and active-profile reporting. Compilation, formatting and tests
+were not run at the maintainer's request.

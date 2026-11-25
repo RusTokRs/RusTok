@@ -138,8 +138,7 @@ pub async fn bootstrap_app_runtime(
         .and_then(|_| ManifestManager::validate_with_registry(&manifest, &registry))
         .map_err(|error| Error::BadRequest(format!("modules.toml validation failed: {error}")))?;
     if !settings.runtime.is_registry_only() {
-        let event_runtime = build_event_runtime(&runtime_ctx).await?;
-        runtime_ctx.shared_insert(event_runtime.transport.clone());
+        build_event_runtime(&runtime_ctx).await?;
         runtime_ctx.shared_insert(transactional_event_bus_from_context(&runtime_ctx));
         spawn_module_event_dispatcher(&runtime_ctx, &registry, runtime_extensions.clone())?;
         runtime_ctx.shared_insert(crate::services::build_control::ServerBuildControl::shared(
@@ -194,26 +193,10 @@ pub async fn bootstrap_app_runtime(
     }
 
     if settings.runtime.is_registry_only() {
-        use rustok_outbox::OutboxTransport;
-
-        // Registry-only mode does not start the event runtime or relay, but GraphQL
-        // schema construction still requires the canonical durable write transport and event bus.
-        if runtime_ctx
-            .shared_get::<std::sync::Arc<dyn rustok_core::events::EventTransport>>()
-            .is_none()
-        {
-            runtime_ctx.shared_insert(std::sync::Arc::new(OutboxTransport::new(
-                runtime_ctx.db_clone(),
-            ))
-                as std::sync::Arc<dyn rustok_core::events::EventTransport>);
-        }
-
-        if runtime_ctx
-            .shared_get::<rustok_outbox::TransactionalEventBus>()
-            .is_none()
-        {
-            runtime_ctx.shared_insert(transactional_event_bus_from_context(&runtime_ctx));
-        }
+        // Registry-only does not start the delivery graph. Resolve the same
+        // canonical outbox transport as normal bootstrap and early publishers.
+        let event_bus = transactional_event_bus_from_context(&runtime_ctx);
+        runtime_ctx.shared_get_or_insert(event_bus);
     }
 
     initialize_module_work_runtime(&runtime_ctx, &registry, runtime_extensions.as_ref()).await?;

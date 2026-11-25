@@ -374,7 +374,11 @@ the driver mapping.
   selected forwarder transport.
 - **Remediation:** Resolve typed shared transports via the runtime's
   atomic get-or-insert API and return only the registered winner.
-  Preserve the existing transport and lifecycle contracts.
+  Preserve the existing transport and lifecycle contracts. The complete
+  event delivery factory must reuse the published runtime graph too: replacing
+  the listener bus while the dispatcher retains its prior subscription
+  disconnects relay delivery. Serialize construction and return the existing
+  graph before reading mutable desired deployment settings.
 - **Verification:** Source-level concurrency and configured-transport
   identity regressions authored, not run.
 

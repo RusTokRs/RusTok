@@ -980,6 +980,14 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     let bootstrap_initialization = ServerBootstrapInitializationLock::ensure(runtime_ctx);
     let _bootstrap_guard = bootstrap_initialization.lock().await;
 
+    // Direct event-runtime construction can bypass router bootstrap. Wait
+    // for its publication owner before taking worker snapshots.
+    // Lock order matches router startup: bootstrap -> event runtime.
+    let event_initialization =
+        crate::services::event_transport_factory::EventRuntimeInitializationLock::ensure(runtime_ctx);
+    let event_guard = event_initialization.lock().await;
+    drop(event_guard);
+
     // Router bootstrap holds the lock above, but this public startup function
     // can also be invoked directly. It uses the artifact maintenance lock
     // across *all* additional worker registration. Wait for that caller to

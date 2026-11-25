@@ -64,10 +64,7 @@ impl SettingsQuery {
         let configuration = crate::services::event_delivery_settings_service::EventDeliverySettingsService::configuration(runtime_ctx)
             .await
             .map_err(|error| graphql_settings_internal_error("Unable to read event delivery configuration", error))?;
-        let active_profile = runtime_ctx
-            .shared_get::<std::sync::Arc<crate::services::event_transport_factory::EventRuntime>>()
-            .map(|runtime| runtime.delivery_profile)
-            .unwrap_or(configuration.active_profile);
+        let active_profile = configuration.active_profile;
         let iggy = crate::services::iggy_connector_settings_service::IggyConnectorSettingsService::configuration(runtime_ctx)
             .await
             .map_err(|error| graphql_settings_internal_error("Unable to read Iggy connector configuration", error))?;

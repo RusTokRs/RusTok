@@ -16,12 +16,14 @@ use rustok_modules::{
     ArtifactEventDeliveryConfig, ArtifactEventProjectionTransport, ModuleControlPlane,
 };
 use rustok_outbox::{
-    OutboxRelay, OutboxRelayPort, OutboxRelayRunOnceRequest, OutboxTransport, RelayConfig,
+    OutboxRelay, OutboxRelayPort, OutboxRelayRunOnceRequest, RelayConfig,
 };
 use tokio::task::JoinHandle;
 
 use crate::common::settings::EventDeliveryProfile;
+use crate::services::event_bus::shared_event_transport;
 use crate::services::event_delivery_settings_service::EventDeliverySettingsService;
+use crate::services::stop_handle::{StopHandle, await_worker_startup_or_stop};
 use crate::services::rbac_cache_invalidation::start_rbac_cache_invalidation_listener;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use crate::services::tenant_cache_generation::{
@@ -89,11 +91,45 @@ pub fn event_local_delivery_metrics_snapshot() -> EventLocalDeliveryMetricsSnaps
     }
 }
 
+/// Serialize initialization of the complete delivery graph per host.
+#[derive(Clone, Default)]
+pub(crate) struct EventRuntimeInitializationLock(Arc<tokio::sync::Mutex<()>>);
+
+impl EventRuntimeInitializationLock {
+    pub(crate) fn ensure(ctx: &ServerRuntimeContext) -> Self {
+        ctx.shared_get_or_insert_with(Self::default)
+    }
+
+    pub(crate) async fn lock(&self) -> tokio::sync::MutexGuard<'_, ()> {
+        self.0.lock().await
+    }
+}
+
+fn event_runtime_shutdown_error() -> Error {
+    Error::Message("server shutdown started during event runtime initialization".to_string())
+}
+
 pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRuntime> {
-    let settings = ctx.settings();
-    let delivery_profile = EventDeliverySettingsService::desired_profile(ctx)
+    let stop = StopHandle::ensure(ctx);
+    let initialization = EventRuntimeInitializationLock::ensure(ctx);
+    let _guard = await_worker_startup_or_stop(&stop, initialization.lock())
         .await
-        .map_err(|error| Error::BadRequest(error.to_string()))?;
+        .ok_or_else(event_runtime_shutdown_error)?;
+
+    // Desired policy applies only after a controlled restart. Do not replace
+    // a live relay, its listener bus or its connector during a bootstrap retry.
+    if let Some(runtime) = ctx.shared_get::<Arc<EventRuntime>>() {
+        return Ok((*runtime).clone());
+    }
+
+    let settings = ctx.settings();
+    let delivery_profile = await_worker_startup_or_stop(
+        &stop,
+        EventDeliverySettingsService::desired_profile(ctx),
+    )
+    .await
+    .ok_or_else(event_runtime_shutdown_error)?
+    .map_err(|error| Error::BadRequest(error.to_string()))?;
     let channel_capacity = settings.events.channel_capacity;
     let cache = ctx.shared_get::<CacheService>().ok_or_else(|| {
         Error::BadRequest("CacheService must be initialized before the event runtime".to_string())
@@ -106,10 +142,6 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
     let mut iggy_transport_handle: Option<Arc<IggyTransport>> = None;
     let runtime = match delivery_profile {
         EventDeliveryProfile::Outbox | EventDeliveryProfile::OutboxIggy => {
-            // Keep the application-facing transport concrete: it advertises
-            // transactional writes, so TransactionalEventBus appends into
-            // the caller's database transaction through the trait method.
-            let outbox_transport = Arc::new(OutboxTransport::new(ctx.db_clone()));
             // Validate local DB-backed components before connecting/starting the external
             // Iggy transport. A bad retention policy or artifact projector must not leave
             // a broker process or connector alive after bootstrap fails.
@@ -122,6 +154,15 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
                         "Failed to initialize durable artifact event projection: {error}"
                     ))
                 })?;
+            // Early publishers may already have initialized the durable outbox.
+            let outbox_transport = shared_event_transport(ctx);
+            if !outbox_transport.supports_transactional_writes()
+                || outbox_transport.reliability_level() != ReliabilityLevel::Outbox
+            {
+                return Err(Error::BadRequest(
+                    "registered event transport is not a transactional outbox".to_string(),
+                ));
+            }
             let (relay_target, listener_bus, iggy_mode) = match delivery_profile {
                 EventDeliveryProfile::Outbox => {
                     let local = MemoryTransport::with_capacity(channel_capacity);
@@ -134,10 +175,13 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
                     )
                 }
                 EventDeliveryProfile::OutboxIggy => {
-                    let iggy_config =
-                        crate::services::iggy_connector_settings_service::IggyConnectorSettingsService::resolved_config(ctx)
-                            .await
-                            .map_err(|error| Error::BadRequest(error.to_string()))?;
+                    let iggy_config = await_worker_startup_or_stop(
+                        &stop,
+                        crate::services::iggy_connector_settings_service::IggyConnectorSettingsService::resolved_config(ctx),
+                    )
+                    .await
+                    .ok_or_else(event_runtime_shutdown_error)?
+                    .map_err(|error| Error::BadRequest(error.to_string()))?;
                     let iggy_transport = Arc::new(
                         IggyTransport::new(iggy_config.clone()).await.map_err(|error| {
                             Error::BadRequest(format!(
@@ -203,7 +247,10 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
     // All fallible transport/projector/configuration work has completed. Start the
     // generation listeners before returning the runtime, so no relay can publish into
     // an unobserved cache-generation channel.
-    start_tenant_cache_generation_listener(ctx, cache.clone()).await?;
+    if let Err(error) = start_tenant_cache_generation_listener(ctx, cache.clone()).await {
+        shutdown_unpublished_iggy(iggy_transport_handle.as_ref()).await;
+        return Err(error);
+    }
     if let Err(error) = start_rbac_cache_invalidation_listener(ctx, cache.clone()).await {
         let tasks =
             crate::services::tenant_cache_generation::take_listener_tasks_for_shutdown(ctx).await;
@@ -220,6 +267,7 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
                 }
             }
         }
+        shutdown_unpublished_iggy(iggy_transport_handle.as_ref()).await;
         return Err(error);
     }
     crate::services::cache_redis_status_monitor::start_cache_redis_status_monitor(
@@ -228,14 +276,27 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
     )
     .await;
 
+    if stop.is_stopping() {
+        shutdown_unpublished_iggy(iggy_transport_handle.as_ref()).await;
+        return Err(event_runtime_shutdown_error());
+    }
     if let Some(iggy_transport) = iggy_transport_handle {
         ctx.shared_insert(iggy_transport);
     }
-    // Module listeners are started immediately after this function returns, while the historical
-    // bootstrap stored EventRuntime only afterwards. Seed the shared runtime here so listener
-    // startup always resolves the exact delivery bus paired with the configured transport.
+    // Module listeners and relay startup resolve this exact published graph.
     ctx.shared_insert(Arc::new(runtime.clone()));
     Ok(runtime)
+}
+
+async fn shutdown_unpublished_iggy(transport: Option<&Arc<IggyTransport>>) {
+    if let Some(transport) = transport {
+        if transport.shutdown().await.is_err() {
+            tracing::warn!(
+                error_code = "event_runtime_unpublished_iggy_shutdown_failed",
+                "Failed to shut down unpublished Iggy transport"
+            );
+        }
+    }
 }
 
 /// Turns the configured retention policy into the worker's runtime shape.
@@ -785,6 +846,56 @@ mod tests {
         let mut dispatcher = EventDispatcher::new(bus);
         dispatcher.register(RootListener { handled, fail });
         dispatcher.start_with_contract_delivery().unwrap()
+    }
+
+    #[tokio::test]
+    async fn existing_event_runtime_is_reused_without_rereading_desired_policy() {
+        // A disconnected DB proves that reuse does not query desired settings.
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            crate::common::settings::RustokSettings::default(),
+        );
+        let transport = shared_event_transport(&ctx);
+        let published = Arc::new(EventRuntime {
+            delivery_profile: EventDeliveryProfile::Outbox,
+            iggy_mode: None,
+            transport: transport.clone(),
+            listener_bus: MemoryTransport::with_capacity(8).event_bus(),
+            relay_config: None,
+            outbox_retention: None,
+            channel_capacity: 8,
+            relay_fallback_active: false,
+        });
+        ctx.shared_insert(published.clone());
+
+        let (first, second) = tokio::join!(build_event_runtime(&ctx), build_event_runtime(&ctx));
+        for result in [first, second] {
+            let runtime = result.expect("published event runtime must be reused");
+            assert!(Arc::ptr_eq(&runtime.transport, &transport));
+            assert_eq!(runtime.delivery_profile, EventDeliveryProfile::Outbox);
+        }
+        assert!(Arc::ptr_eq(
+            &ctx.shared_get::<Arc<EventRuntime>>().unwrap(),
+            &published,
+        ));
+        StopHandle::ensure(&ctx).stop().await;
+        assert!(build_event_runtime(&ctx).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn stopped_event_runtime_initialization_does_not_wait_for_busy_owner() {
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            crate::common::settings::RustokSettings::default(),
+        );
+        let initialization = EventRuntimeInitializationLock::ensure(&ctx);
+        let _guard = initialization.lock().await;
+        StopHandle::ensure(&ctx).stop().await;
+        let result = tokio::time::timeout(Duration::from_secs(1), build_event_runtime(&ctx))
+            .await
+            .expect("stopped initializer must not wait for initialization lock");
+        assert!(result.is_err());
+        assert!(!ctx.shared_contains::<Arc<EventRuntime>>());
     }
 
     #[tokio::test]
