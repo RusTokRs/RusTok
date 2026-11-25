@@ -80,19 +80,20 @@ JOSE kid assertion, added distinct keyed snapshot identity assertions, and
 hardened one-time provisioning directory durability and dev mount scope.
 Scoped execution remains pending. The file-source entry point now
 constructs and validates only the actual complete candidate, without
-instantiating default signing inputs, with typed source exclusivity
-owned by Auth, not a redundant startup signer. Independent MAC root validation
-now rejects PEM key material and weak roots at preparation, host proofs and
-fence MAC derivation; durable domains are unchanged. Candidate activation
-rejects mismatched local policy and unmanaged publishers before grant mutation;
-all startup key environment references use the same strict resolver. Remove the remaining HS256 JWT
+instantiating default signing inputs; the complete generation-bearing file is
+the only production JWT key source. `AuthSettingsOverrides` is policy-only;
+algorithm selectors, inline PEM values and environment-backed key references
+are not accepted. Independent MAC root validation now rejects PEM key material
+and weak roots at preparation, host proofs and fence MAC derivation; durable
+domains are unchanged. Candidate activation rejects mismatched local policy and
+unmanaged publishers before grant mutation. Remove the remaining HS256 JWT
 implementation and canonicalize persisted RSA-only metadata. Retained-state
 conversion and verification are explicit blockers to deployment where needed.
 Scoped compilation, regression execution and independent-replica rollout
 remain pending. Before root MAC rotation, complete the remaining pre-release
 zero-legacy cleanup: remaining canonical unreleased token contracts and review
-of configuration defaults/aliases. RSA inline/environment key sources are
-mutually exclusive and empty or invalid explicit sources fail closed.
+of configuration defaults/aliases. No inline or environment-backed JWT key
+sources remain; a complete document is required for every production runtime.
 The keyring document has no schema-version
 tag and enforces the same generation range as the durable fence. Mandatory kid for
 every purpose and removal of raw-root JWT history are source-implemented.

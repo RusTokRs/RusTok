@@ -270,12 +270,11 @@ transitional algorithm field remain pending.
 ### Process-local hot reload
 
 `RUSTOK_JWT_KEYRING_FILE` is mandatory and must identify a trusted
-secret-manager-mounted JSON file. Do not combine it with startup JWT algorithm,
-RSA or keyring overrides. Auth owns source exclusivity and validates only the
-complete file candidate;
-the file bootstrap does not instantiate or prepare unused startup signing inputs.
-File policy overrides are applied independently of key environment resolution.
-Every startup key environment source rejects invalid variable names before lookup.
+secret-manager-mounted JSON file. No startup algorithm, inline RSA PEM, keyring or environment-backed key
+source is accepted; those fields are unknown and fail closed. Auth validates
+the complete document as one candidate. `AuthSettingsOverrides` contains
+policy fields only and is applied separately from key preparation. There is
+no startup key environment resolver or alternate key source.
 The file is limited to 256 KiB and requires a generation from 1 through 2^63-1 and a complete
 set of four purpose entries. The document has one unversioned format;
 obsolete schema tags and unknown fields are rejected. Generation is a
