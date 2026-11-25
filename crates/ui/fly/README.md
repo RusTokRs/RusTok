@@ -373,9 +373,10 @@ the owner of the missing half.
   url(), image(), src() and image-set() strings. Token mutations
   are editor commands (`EditorCommand::Theme`), and both adapter workspaces (`fly-leptos`,
   `fly-dioxus`) ship an editable token panel on the same command. Renaming a token
-  (`ThemeCommand::Rename`) automatically rewrites all `var(--old_name)` occurrences across
-  component styles, style catalog rules, and sibling token definitions with full undo/redo
-  reversibility, and `find_token_usages` provides pre-flight usage discovery. `ThemeCommand::Replace`
+  (`ThemeCommand::Rename`) rewrites exact custom-property arguments in CSS `var()` functions,
+  including nested fallbacks, across component styles, style catalog rules, and sibling token
+  definitions. Quoted strings, comments and unrelated text remain untouched. Renames retain
+  full undo/redo reversibility, and `find_token_usages` provides pre-flight usage discovery. `ThemeCommand::Replace`
   rejects duplicate token names rather than silently discarding one. Site-wide style
   inheritance remains cascade-driven by design. Owner: `fly` theme model.
 - **Collaboration is out of scope for the engine.** No presence, locking, OT/CRDT, or merge:

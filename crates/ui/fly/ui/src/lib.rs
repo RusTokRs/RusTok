@@ -61,7 +61,9 @@ pub use layers::{
 pub use machine::{FlyUiStateMachine, UiEffect, UiIntent};
 pub use messages::{EditorMessages, PagePropertiesUpdate};
 pub use palette_access::PaletteBlockAccess;
-pub use resize::{ResizeHandle, ResizePolicy, ResizeResult, ResizeSession};
+pub use resize::{
+    MAX_RESIZE_DIMENSION_PX, ResizeHandle, ResizePolicy, ResizeResult, ResizeSession,
+};
 pub use state::{
     CanvasRect, CapabilityState, DirtyState, EditorPolicy, FlyUiState, OverlayState,
     PageNavigationState, PanelKind, PanelState, Presentation, SelectionState, ViewportState,

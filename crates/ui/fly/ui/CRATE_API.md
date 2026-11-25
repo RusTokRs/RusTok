@@ -19,7 +19,7 @@ Framework-neutral visual editor state machine, user intents, capability ceilings
 
 ### Viewport, Layout & Drag-and-Drop
 - `DragState`, `DropPosition`, `HitTestCandidate`: Drag-and-drop hit testing and insertion calculations.
-- `ResizeSession`, `ResizeHandle`, `ResizePolicy`: Element resizing state and constraints. Non-finite minima and explicit maxima below the minimum fail closed; the generated component patch rechecks the changed dimensions and aspect ratio before emitting style changes.
+- `ResizeSession`, `ResizeHandle`, `ResizePolicy`, `MAX_RESIZE_DIMENSION_PX`: Element resizing state and constraints. Non-finite minima and explicit maxima below the minimum fail closed; the generated component patch rechecks the changed dimensions and aspect ratio before emitting style changes. The Page Builder uses the shared 100,000px dimension cap in both browser preview and SSR commit validation.
 - `ResponsiveBreakpoint`, `ViewportPreset`, `DeviceClass`: Responsive preview dimensions and zoom normalizers.
 
 ## 2. Invariants & Business Rules

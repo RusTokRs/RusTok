@@ -4,9 +4,11 @@ use leptos::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use fly::ComponentPatch;
 #[cfg(any(target_arch = "wasm32", test))]
-use fly_ui::{CanvasRect, ResizeHandle, ViewportState};
+use fly_ui::{
+    CanvasRect, ResizeHandle, ResizePolicy, ViewportState, MAX_RESIZE_DIMENSION_PX,
+};
 #[cfg(target_arch = "wasm32")]
-use fly_ui::{ResizePolicy, ResizeResult, ResizeSession};
+use fly_ui::{ResizeResult, ResizeSession};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
@@ -26,6 +28,16 @@ struct SvgRectGeometry {
 struct SvgPoint {
     x: f64,
     y: f64,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn page_builder_resize_policy() -> ResizePolicy {
+    ResizePolicy {
+        grid_size: Some(4.0),
+        maximum_width: Some(MAX_RESIZE_DIMENSION_PX),
+        maximum_height: Some(MAX_RESIZE_DIMENSION_PX),
+        ..ResizePolicy::default()
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -130,10 +142,7 @@ pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
                                     start_rect: rect,
                                     start_x: 0.0,
                                     start_y: 0.0,
-                                    policy: ResizePolicy {
-                                        grid_size: Some(4.0),
-                                        ..ResizePolicy::default()
-                                    },
+                                    policy: page_builder_resize_policy(),
                                 };
                                 let Some(result) =
                                     resize.update_by_arrow_key(&event.key(), event.shift_key())
@@ -181,10 +190,7 @@ pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
                                     handle,
                                     rect,
                                     &event,
-                                    ResizePolicy {
-                                        grid_size: Some(4.0),
-                                        ..ResizePolicy::default()
-                                    },
+                                    page_builder_resize_policy(),
                                     f64::from(zoom),
                                 );
                                 let Some(element) = event
@@ -446,6 +452,16 @@ pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn page_builder_resize_policy_matches_server_dimension_limit() {
+        let policy = page_builder_resize_policy();
+        assert_eq!(policy.minimum_width, 24.0);
+        assert_eq!(policy.minimum_height, 20.0);
+        assert_eq!(policy.maximum_width, Some(MAX_RESIZE_DIMENSION_PX));
+        assert_eq!(policy.maximum_height, Some(MAX_RESIZE_DIMENSION_PX));
+        assert_eq!(policy.grid_size, Some(4.0));
+    }
 
     #[test]
     fn resize_geometry_uses_svg_attributes_and_bounded_cursor_classes() {

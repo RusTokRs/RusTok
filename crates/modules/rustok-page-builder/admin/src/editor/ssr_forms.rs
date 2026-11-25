@@ -9,7 +9,7 @@ use fly::{
     FLY_PAGE_METADATA_FIELD, PageCommand, PageLocator, PageMetadata, PagePatch, RuntimeBinding,
     TranslationCommand, TranslationEntry, blank_page,
 };
-use fly_ui::UiIntent;
+use fly_ui::{MAX_RESIZE_DIMENSION_PX, UiIntent};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -234,7 +234,11 @@ impl AdminCanvasController {
                 .as_str()
                 .and_then(|value| value.strip_suffix("px"))
                 .and_then(|value| value.parse::<f64>().ok())
-                .filter(|value| value.is_finite() && *value >= minimum && *value <= 100_000.0)
+                .filter(|value| {
+                    value.is_finite()
+                        && *value >= minimum
+                        && *value <= MAX_RESIZE_DIMENSION_PX
+                })
                 .ok_or_else(|| format!("resize property {property} must be a bounded pixel value"))?;
             normalized.insert(property, Value::String(format!("{}px", (value * 100.0).round() / 100.0)));
         }
@@ -678,8 +682,28 @@ mod selected_resize_tests {
         ).is_err());
         assert!(controller.ssr_selected_style_patch_intent(
             None,
-            ComponentPatch::default().merge_style(json!({"height": "1000000px"}))
+            ComponentPatch::default().merge_style(json!({
+                "height": format!("{}px", MAX_RESIZE_DIMENSION_PX + 1.0)
+            }))
         ).is_err());
+
+        let mut maximum_controller = controller();
+        maximum_controller.dispatch(UiIntent::Select(Some("hero".to_string())))
+            .expect("select");
+        let maximum_intent = maximum_controller.ssr_selected_style_patch_intent(
+            None,
+            ComponentPatch::default().merge_style(json!({
+                "width": format!("{}px", MAX_RESIZE_DIMENSION_PX)
+            }))
+        ).expect("maximum resize intent");
+        maximum_controller.dispatch(maximum_intent).expect("maximum resize");
+        let maximum_style = maximum_controller.editor().document().component("hero")
+            .and_then(|component| component.style.as_ref())
+            .expect("style");
+        assert_eq!(
+            maximum_style["width"],
+            format!("{}px", MAX_RESIZE_DIMENSION_PX)
+        );
         assert!(controller.ssr_selected_style_patch_intent(
             Some("footer"),
             ComponentPatch::default().merge_style(json!({"width": "320px"}))

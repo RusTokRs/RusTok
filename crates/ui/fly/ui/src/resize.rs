@@ -93,6 +93,11 @@ pub struct ResizeResult {
 /// A single pointer gesture is bounded independently of optional component size policy.
 const MAX_RESIZE_POINTER_DELTA_PX: f64 = 1_000_000.0;
 
+/// Maximum persisted dimension used by the Page Builder resize surface.
+///
+/// General Fly resize sessions may opt into different limits through ResizePolicy.
+pub const MAX_RESIZE_DIMENSION_PX: f64 = 100_000.0;
+
 impl ResizeSession {
     pub fn update(&self, pointer_x: f64, pointer_y: f64) -> ResizeResult {
         // Browser geometry can become invalid during iframe disposal or a
