@@ -27,6 +27,9 @@ auth:
 
 settings:
   auth:
+    # Optional hot-reload source (environment RUSTOK_JWT_KEYRING_FILE):
+    # mount a complete versioned secret document; do not combine with the startup
+    # crypto overrides below. See the Auth owner docs for the JSON contract.
     # Optional startup JWT keyring; provision its JSON through the secret manager.
     # jwt_keyring_env: RUSTOK_JWT_KEYRING
     # Optional separate internal-link keyrings, independently rotated.

@@ -6,7 +6,7 @@ use jsonwebtoken::{DecodingKey, EncodingKey, crypto::aws_lc::DEFAULT_PROVIDER};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-use crate::config::{AuthConfig, JwtAlgorithm, hs256_secret_has_min_length, validate_rs256_key_pair};
+use crate::config::{JwtAlgorithm, JwtKeyInputs, hs256_secret_has_min_length, validate_rs256_key_pair};
 use crate::error::{AuthError, Result};
 
 const MAX_VERIFICATION_KEYS: usize = 16;
@@ -172,14 +172,14 @@ impl JwtPurpose {
 
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct SpecialJwtKeyring {
+pub(crate) struct SpecialJwtKeyring {
     #[serde(default)]
-    algorithm: JwtAlgorithm,
-    keyring: JwtKeyring,
+    pub(crate) algorithm: JwtAlgorithm,
+    pub(crate) keyring: JwtKeyring,
     #[serde(default)]
-    rsa_private_key_pem: Option<String>,
+    pub(crate) rsa_private_key_pem: Option<String>,
     #[serde(default)]
-    rsa_public_key_pem: Option<String>,
+    pub(crate) rsa_public_key_pem: Option<String>,
 }
 
 impl SpecialJwtKeyring {
@@ -198,9 +198,9 @@ impl SpecialJwtKeyring {
 #[derive(Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct SpecialJwtKeyrings {
-    password_reset: SpecialJwtKeyring,
-    email_verification: SpecialJwtKeyring,
-    invite: SpecialJwtKeyring,
+    pub(crate) password_reset: SpecialJwtKeyring,
+    pub(crate) email_verification: SpecialJwtKeyring,
+    pub(crate) invite: SpecialJwtKeyring,
 }
 
 impl Default for SpecialJwtKeyrings {
@@ -239,20 +239,25 @@ pub(crate) struct PurposeKeyringRef<'a> {
 }
 
 impl<'a> PurposeKeyringRef<'a> {
-    pub(crate) fn for_config(config: &'a AuthConfig, purpose: JwtPurpose) -> Self {
+    #[cfg(test)]
+    pub(crate) fn for_config(config: &'a crate::config::AuthConfig, purpose: JwtPurpose) -> Self {
+        Self::for_inputs(config.fixed_inputs().unwrap(), config.secret(), purpose)
+    }
+
+    fn for_inputs(inputs: &'a JwtKeyInputs, root: &'a str, purpose: JwtPurpose) -> Self {
         let special = match purpose {
             JwtPurpose::Access => None,
-            JwtPurpose::PasswordReset => Some(&config.special_jwt_keyrings().password_reset),
-            JwtPurpose::EmailVerification => Some(&config.special_jwt_keyrings().email_verification),
-            JwtPurpose::Invite => Some(&config.special_jwt_keyrings().invite),
+            JwtPurpose::PasswordReset => Some(&inputs.special_jwt_keyrings.password_reset),
+            JwtPurpose::EmailVerification => Some(&inputs.special_jwt_keyrings.email_verification),
+            JwtPurpose::Invite => Some(&inputs.special_jwt_keyrings.invite),
         };
         let (algorithm, ring, rsa_private, rsa_public) = match special {
             Some(special) => (&special.algorithm, &special.keyring,
                 special.rsa_private_key_pem.as_deref(), special.rsa_public_key_pem.as_deref()),
-            None => (config.algorithm(), config.jwt_keyring(),
-                config.rsa_private_key_pem(), config.rsa_public_key_pem()),
+            None => (&inputs.algorithm, &inputs.jwt_keyring,
+                inputs.rsa_private_key_pem.as_deref(), inputs.rsa_public_key_pem.as_deref()),
         };
-        Self { algorithm, ring, rsa_private, rsa_public, root: config.secret(), purpose }
+        Self { algorithm, ring, rsa_private, rsa_public, root, purpose }
     }
 
     pub(crate) fn active_material(&self) -> Result<Cow<'a, str>> {
@@ -329,12 +334,14 @@ pub(crate) struct ValidatedJwtKeyring {
     active_kid: String,
     signing_key: EncodingKey,
     active_verification_key: DecodingKey,
+    active_identity: [u8; 32],
     history: HashMap<String, PreparedVerificationKey>,
     legacy_without_kid: Option<LegacyKey>,
 }
 
 struct PreparedVerificationKey {
     key: DecodingKey,
+    identity: [u8; 32],
     verify_until: i64,
 }
 
@@ -377,15 +384,17 @@ impl ValidatedJwtKeyring {
     }
 
     fn prepare(
-        config: &AuthConfig,
+        inputs: &JwtKeyInputs,
+        root: &str,
         purpose: JwtPurpose,
         identities: &mut HashSet<[u8; 32]>,
         root_identity: [u8; 32],
     ) -> Result<Self> {
-        let selected = PurposeKeyringRef::for_config(config, purpose);
+        let selected = PurposeKeyringRef::for_inputs(inputs, root, purpose);
         selected.validate()?;
         let active = selected.active_material()?;
-        if !identities.insert(key_identity(selected.algorithm, &active)?) {
+        let active_identity = key_identity(selected.algorithm, &active)?;
+        if !identities.insert(active_identity) {
             return Err(invalid_config());
         }
         let signing_key = match selected.algorithm {
@@ -405,7 +414,7 @@ impl ValidatedJwtKeyring {
             }
             let key = verification_key(selected.algorithm, &previous.material)?;
             if history.insert(previous.kid.clone(), PreparedVerificationKey {
-                key, verify_until: previous.verify_until,
+                key, identity, verify_until: previous.verify_until,
             }).is_some() {
                 return Err(invalid_config());
             }
@@ -415,6 +424,7 @@ impl ValidatedJwtKeyring {
             active_kid: selected.ring.active_kid.clone(),
             signing_key,
             active_verification_key,
+            active_identity,
             history,
             legacy_without_kid: selected.ring.legacy_without_kid.clone(),
         })
@@ -431,14 +441,14 @@ pub(crate) struct ValidatedJwtKeyrings {
 }
 
 impl ValidatedJwtKeyrings {
-    pub(crate) fn prepare(config: &AuthConfig) -> Result<Self> {
-        if !hs256_secret_has_min_length(config.secret()) {
+    pub(crate) fn prepare(inputs: &JwtKeyInputs, root: &str) -> Result<Self> {
+        if !hs256_secret_has_min_length(root) {
             return Err(invalid_config());
         }
-        let root_identity = key_identity(&JwtAlgorithm::HS256, config.secret())?;
+        let root_identity = key_identity(&JwtAlgorithm::HS256, root)?;
         let mut identities = HashSet::new();
         let mut prepare = |purpose| ValidatedJwtKeyring::prepare(
-            config, purpose, &mut identities, root_identity,
+            inputs, root, purpose, &mut identities, root_identity,
         );
         Ok(Self {
             access: prepare(JwtPurpose::Access)?,
@@ -446,6 +456,48 @@ impl ValidatedJwtKeyrings {
             email_verification: prepare(JwtPurpose::EmailVerification)?,
             invite: prepare(JwtPurpose::Invite)?,
         })
+    }
+
+    /// Preserve identity across adjacent generations. Algorithm migration
+    /// and durable tombstones across absent generations are separate work.
+    pub(crate) fn validate_successor(&self, next: &Self) -> Result<()> {
+        let now = chrono::Utc::now().timestamp();
+        for purpose in JwtPurpose::ALL {
+            let old = self.for_purpose(purpose);
+            let new = next.for_purpose(purpose);
+            if old.algorithm != new.algorithm {
+                return Err(invalid_config());
+            }
+            let old_keys = std::iter::once((old.active_kid.as_str(), old.active_identity, None))
+                .chain(old.history.iter().map(|(kid, key)| {
+                    (kid.as_str(), key.identity, Some(key.verify_until))
+                }));
+            for (kid, identity, cutoff) in old_keys {
+                for target in JwtPurpose::ALL {
+                    let ring = next.for_purpose(target);
+                    let new_keys = std::iter::once((ring.active_kid.as_str(), ring.active_identity, None))
+                        .chain(ring.history.iter().map(|(kid, key)| {
+                            (kid.as_str(), key.identity, Some(key.verify_until))
+                        }));
+                    for (new_kid, new_identity, new_cutoff) in new_keys {
+                        if target == purpose && kid == new_kid {
+                            if identity != new_identity {
+                                return Err(invalid_config());
+                            }
+                            if cutoff.is_some_and(|until| until <= now)
+                                && new_cutoff.is_none_or(|until| until > now)
+                            {
+                                return Err(invalid_config());
+                            }
+                        }
+                        if identity == new_identity && (target != purpose || kid != new_kid) {
+                            return Err(invalid_config());
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     pub(crate) fn for_purpose(&self, purpose: JwtPurpose) -> &ValidatedJwtKeyring {
@@ -460,10 +512,10 @@ impl ValidatedJwtKeyrings {
 
 /// Host production policy applies to the root and all explicitly supplied
 /// symmetric material. Derived keys inherit root strength.
-pub(crate) fn explicit_hs256_secrets(config: &AuthConfig) -> impl Iterator<Item = &str> {
-    std::iter::once(config.secret()).chain(
+pub(crate) fn explicit_hs256_secrets<'a>(inputs: &'a JwtKeyInputs, root: &'a str) -> impl Iterator<Item = &'a str> {
+    std::iter::once(root).chain(
         JwtPurpose::ALL.into_iter().flat_map(move |purpose| {
-            let selected = PurposeKeyringRef::for_config(config, purpose);
+            let selected = PurposeKeyringRef::for_inputs(inputs, root, purpose);
             (*selected.algorithm == JwtAlgorithm::HS256)
                 .then_some(selected.ring)
                 .into_iter()
@@ -533,6 +585,7 @@ pub(crate) fn verification_key(algorithm: &JwtAlgorithm, material: &str) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::AuthConfig;
 
     #[test]
     fn retirement_and_legacy_cutoffs_are_exclusive() {

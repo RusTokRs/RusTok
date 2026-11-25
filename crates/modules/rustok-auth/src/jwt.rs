@@ -431,9 +431,11 @@ fn prepared_header(ring: &ValidatedJwtKeyring, purpose: JwtPurpose) -> Header {
 fn encode_for_purpose<T: Serialize>(
     config: &AuthConfig, purpose: JwtPurpose, claims: &T,
 ) -> Result<String> {
-    let ring = config.prepared_jwt()?.for_purpose(purpose);
-    encode(&prepared_header(ring, purpose), claims, ring.signing_key())
-        .map_err(|_| AuthError::TokenEncodingFailed)
+    config.with_prepared_jwt(|prepared| {
+        let ring = prepared.for_purpose(purpose);
+        encode(&prepared_header(ring, purpose), claims, ring.signing_key())
+            .map_err(|_| AuthError::TokenEncodingFailed)
+    })
 }
 
 #[cfg(test)]
@@ -482,22 +484,24 @@ fn decode_for_purpose<T: DeserializeOwned>(
     purpose: JwtPurpose,
 ) -> Result<T> {
     let header = auth_jwt_header(token)?;
-    let selected = config.prepared_jwt()?.for_purpose(purpose);
-    if header.alg != jwt_algorithm(selected.algorithm())
-        || header.typ != purpose.typ()
-        || (purpose != JwtPurpose::Access && header.kid.is_none())
-    {
-        return Err(AuthError::InvalidAccessToken);
-    }
-    let (key, cutoff) = selected.select(header.kid.as_deref(), Utc::now().timestamp())
-        .ok_or(AuthError::InvalidAccessToken)?;
-    let validation = strict_jwt_validation(config, selected.algorithm());
-    let claims = decode::<T>(token, key, &validation)
-        .map_err(|_| AuthError::InvalidAccessToken)?.claims;
-    if cutoff.is_some_and(|until| Utc::now().timestamp() >= until) {
-        return Err(AuthError::InvalidAccessToken);
-    }
-    Ok(claims)
+    config.with_prepared_jwt(|prepared| {
+        let selected = prepared.for_purpose(purpose);
+        if header.alg != jwt_algorithm(selected.algorithm())
+            || header.typ != purpose.typ()
+            || (purpose != JwtPurpose::Access && header.kid.is_none())
+        {
+            return Err(AuthError::InvalidAccessToken);
+        }
+        let (key, cutoff) = selected.select(header.kid.as_deref(), Utc::now().timestamp())
+            .ok_or(AuthError::InvalidAccessToken)?;
+        let validation = strict_jwt_validation(config, selected.algorithm());
+        let claims = decode::<T>(token, key, &validation)
+            .map_err(|_| AuthError::InvalidAccessToken)?.claims;
+        if cutoff.is_some_and(|until| Utc::now().timestamp() >= until) {
+            return Err(AuthError::InvalidAccessToken);
+        }
+        Ok(claims)
+    })
 }
 
 // ─── Validation ──────────────────────────────────────────────────────

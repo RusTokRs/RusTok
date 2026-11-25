@@ -183,7 +183,8 @@ Prefer explicit independent secrets for operational rotations. Remove
 expired history; never reuse IDs or key material. The exclusive cutoff is
 checked both during selection and after signature verification. HS256 verification material
 is cryptographically capable of signing; use RSA for distribution to
-untrusted verifiers. Configuration is startup-scoped, not hot reload. Auth request paths reuse
+untrusted verifiers. Startup environment configuration remains supported. An optional
+versioned file source supports process-local hot reload (below). Auth request paths reuse
 prepared encoding/decoding keys and indexed verification history; the JWT library
 still constructs its internal crypto providers per operation.
 A source regression now exercises staging, promotion, retirement and exact
@@ -191,6 +192,46 @@ key selection using two independent RS256 key pairs, including OAuth access and
 bounded missing-ID migration. It is not yet executed. Algorithm migration and
 multi-replica execution evidence are pending.
 See [purpose keyring ADR](../../../../DECISIONS/2026-11-25-jwt-purpose-keyrings.md).
+
+### Process-local hot reload
+
+Set `RUSTOK_JWT_KEYRING_FILE` to a trusted secret-manager-mounted JSON file.
+Do not combine this source with startup JWT algorithm, RSA or keyring overrides.
+The file is limited to 256 KiB and requires a positive generation and a complete
+set of four purpose entries. Example shape (replace placeholders with actual
+independent high-entropy material or use the documented derived defaults):
+
+```json
+{
+  "schema_version": 1,
+  "generation": 1,
+  "access": {"algorithm": "HS256", "keyring": {"active_kid": "access-1"}},
+  "password_reset": {"algorithm": "HS256", "keyring": {"active_kid": "reset-1"}},
+  "email_verification": {"algorithm": "HS256", "keyring": {"active_kid": "verify-1"}},
+  "invite": {"algorithm": "HS256", "keyring": {"active_kid": "invite-1"}}
+}
+```
+
+For RS256 entries provide the matching private and public PEM fields alongside
+the keyring. Every update is a complete snapshot, not a patch. Replace the
+mounted file atomically and increase `generation`. The host checks every five
+seconds, validates all four rings and production secret policy before publication,
+then replaces the generation and prepared keys together under a write fence.
+Existing AuthConfig clones share the live source. Synchronous signing and
+verification hold a read fence; no fence is held through database or network IO.
+Failed reads, invalid documents, stale generations and incompatible successor
+keys retain the last-known-good snapshot. A rejected file revision is retried
+when its contents change. Never reuse an ID or key material: adjacent snapshots
+enforce identity continuity, purpose separation, and no reactivation of expired
+history. The root MAC secret and issuer/audience/TTL/password policy are not
+rotated here.
+
+This is process-local only: the generation floor is not durable across
+restarts, removal history is not persisted, and no replica barrier, distributed
+emergency revocation or automatic convergence proof exists. Deploy coordinated
+staging before promotion; a failed replica must not be assumed current. In-flight
+business transactions that already authenticated are not cancelled by a local
+keyring publication. Source tests are authored but unrun.
 
 ## JWT principal and invite admission
 
