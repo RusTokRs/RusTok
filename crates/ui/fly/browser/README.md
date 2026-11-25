@@ -18,7 +18,11 @@ SSR-first browser adapter assets and protocol contracts for Fly editors.
   renderer-owned hooks preferred to authored IDs. Tab panels may sit outside a nested tablist
   header; discovery stops at landing, explicit group, enclosing panel or competing-group
   boundaries, and a missing target leaves selection unchanged. Clicks and swipes cannot inherit a
-  group from the host or change a nested landing. Scroll actions use instant scrolling when the
+  group from the host or change a nested landing. Accordion targets must belong to the trigger's
+  nearest accordion and may not contain the trigger itself. Sliders prioritize the explicit active
+  marker over visibility and reject malformed or ambiguous selectors. Swipe state is document-local
+  and completes only for the initiating touch. Animation lookup accepts only own allow-listed names.
+  Scroll actions use instant scrolling when the
   target document requests reduced motion, even if its CSS specifies smooth scrolling. It emits
   host events but does not implement Cart, Product or Pricing rules.
 

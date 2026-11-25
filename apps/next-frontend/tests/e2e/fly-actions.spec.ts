@@ -537,3 +537,56 @@ test('scroll actions respect reduced motion even when the page enables smooth sc
   expect(result.scrollY).toBeGreaterThan(0);
   expect(result.focused).toBe(true);
 });
+
+
+test('accordion targets cannot escape into a nested group or hide their own trigger', async ({ page }) => {
+  await mount(page, `<main data-fly-page-body>${accordion('faq')}</main>`);
+  const trigger = page.getByTestId('faq-second');
+  for (const target_id of ['faq-nested-panel', 'group']) {
+    await page.getByTestId('faq').evaluate((el) => { el.id = 'group'; });
+    await trigger.evaluate((el, id) => el.setAttribute('data-fly-action', JSON.stringify({
+      kind: 'toggle_accordion', target_id: id, exclusive: true,
+    })), target_id);
+    await trigger.click();
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByTestId('faq-first')).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByTestId('faq-panel-1')).toBeVisible();
+    await expect(page.getByTestId('faq-nested-panel')).toBeVisible();
+  }
+});
+
+test('slider navigation prefers the active marker and rejects ambiguous or invalid selectors', async ({ page }) => {
+  await mount(page, `<main data-fly-page-body>${slider('carousel')}</main>`);
+  await page.getByTestId('carousel-slide-1').evaluate((el) => el.classList.remove('is-active'));
+  await page.getByTestId('carousel-slide-2').evaluate((el) => {
+    el.removeAttribute('hidden');
+    el.setAttribute('aria-hidden', 'false');
+    el.classList.add('is-active');
+  });
+  await page.getByTestId('carousel-next').click();
+  await expect(page.getByTestId('carousel-slide-1')).toBeVisible();
+  await expect(page.getByTestId('carousel-slide-2')).toBeHidden();
+
+  for (const selector of [{ direction: 'invalid' }, { direction: 'next', index: 0 }, { index: -1 }, {}]) {
+    await page.getByTestId('carousel-next').evaluate((el, value) => el.setAttribute('data-fly-action', JSON.stringify({
+      kind: 'switch_slide', slider_id: 'self', ...value,
+    })), selector);
+    await page.getByTestId('carousel-next').click();
+    await expect(page.getByTestId('carousel-slide-1')).toBeVisible();
+    await expect(page.getByTestId('carousel-slide-2')).toBeHidden();
+  }
+});
+
+test('a touch ending with a different identifier cannot navigate the slider', async ({ page }) => {
+  await mount(page, `<main data-fly-page-body>${slider('swipe')}</main>`);
+  await page.getByTestId('swipe').evaluate((target) => {
+    const start = new Event('touchstart', { bubbles: true });
+    Object.defineProperty(start, 'touches', { value: [{ identifier: 1, clientX: 120, clientY: 0 }] });
+    target.dispatchEvent(start);
+    const end = new Event('touchend', { bubbles: true });
+    Object.defineProperty(end, 'changedTouches', { value: [{ identifier: 2, clientX: 0, clientY: 0 }] });
+    target.dispatchEvent(end);
+  });
+  await expect(page.getByTestId('swipe-slide-1')).toBeVisible();
+  await expect(page.getByTestId('swipe-slide-2')).toBeHidden();
+});

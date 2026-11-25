@@ -556,6 +556,42 @@ async fn test_set_prices_persists_decimal_and_legacy_cents_for_new_scoped_row() 
 }
 
 #[tokio::test]
+async fn test_set_prices_rejects_inexact_compare_at_and_rolls_back_batch() {
+    let (_db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (_, variant_id) = create_test_product(&catalog, tenant_id).await;
+    let before = service.get_price(tenant_id, variant_id, "USD").await.unwrap();
+
+    let result = service
+        .set_prices(
+            tenant_id,
+            actor_id,
+            variant_id,
+            vec![
+                rustok_commerce_foundation::dto::PriceInput {
+                    currency_code: "USD".into(),
+                    channel_id: None,
+                    channel_slug: None,
+                    amount: dec!(50.00),
+                    compare_at_amount: None,
+                },
+                rustok_commerce_foundation::dto::PriceInput {
+                    currency_code: "EUR".into(),
+                    channel_id: None,
+                    channel_slug: None,
+                    amount: dec!(10.00),
+                    compare_at_amount: Some(dec!(12.001)),
+                },
+            ],
+        )
+        .await;
+    assert!(matches!(result, Err(CommerceError::InvalidPrice(_))));
+    assert_eq!(service.get_price(tenant_id, variant_id, "USD").await.unwrap(), before);
+    assert_eq!(service.get_price(tenant_id, variant_id, "EUR").await.unwrap(), None);
+}
+
+#[tokio::test]
 async fn test_set_prices_rolls_back_existing_row_updates_when_any_price_is_invalid() {
     let (_db, service, catalog) = setup().await;
     let tenant_id = Uuid::new_v4();

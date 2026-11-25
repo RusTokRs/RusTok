@@ -101,6 +101,18 @@ duplicate initial price scopes before inserting any rows.
 
 Product source imports only those owner bootstrap contracts. It does not import foreign Inventory/Pricing ORM entities and does not issue direct SQL against their tables.
 
+## Exact price admission
+
+Product create, SKU create and SKU update reject a base or compare-at amount
+that cannot be represented exactly in its currency's minor units, before the
+owner write transaction. Pricing bootstrap independently enforces the same
+platform money primitive before insert or base-price replacement, and direct
+Pricing single/batch authoring uses the existing resolver precision validator.
+Computed discounts retain currency-aware rounding; authored money is never
+silently rounded to make an otherwise unquotable row acceptable.
+Existing legacy two-decimal mirrors are unchanged. Source regressions are
+authored but not executed; historical invalid price rows are not rewritten.
+
 ## Atomicity
 
 The owner bootstrap methods accept the same SeaORM transaction connection used by `ProductWriteTransaction`. Product variant state, initial inventory, initial prices, the Product event, and the outbox write therefore share one transaction boundary in the embedded profile.

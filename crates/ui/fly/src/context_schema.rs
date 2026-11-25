@@ -316,9 +316,30 @@ pub fn materialize_context(document: &ProjectDocument, input: &Value) -> Context
         }
     }
 
+    let (type_mismatches, field_diagnostics) = validate_context_fields(&catalog, &context);
+    diagnostics.extend(field_diagnostics);
+
+    ContextMaterialization {
+        context,
+        diagnostics,
+        defaults_applied,
+        computed_applied,
+        computed_fallbacks,
+        unresolved_computed,
+        type_mismatches,
+    }
+}
+
+/// Validate the supplied values without applying defaults or evaluating computed producers.
+/// Materialization and migration share this exact field contract.
+pub(crate) fn validate_context_fields(
+    catalog: &ContextSchemaCatalog,
+    context: &Value,
+) -> (usize, Vec<ValidationDiagnostic>) {
+    let mut diagnostics = Vec::new();
     let mut type_mismatches = 0usize;
     for field in &catalog.fields {
-        match resolve_context_path(&context, &field.path) {
+        match resolve_context_path(context, &field.path) {
             Some(value) => {
                 if !field.kind.accepts(value) {
                     type_mismatches = type_mismatches.saturating_add(1);
@@ -362,15 +383,7 @@ pub fn materialize_context(document: &ProjectDocument, input: &Value) -> Context
         }
     }
 
-    ContextMaterialization {
-        context,
-        diagnostics,
-        defaults_applied,
-        computed_applied,
-        computed_fallbacks,
-        unresolved_computed,
-        type_mismatches,
-    }
+    (type_mismatches, diagnostics)
 }
 
 pub fn validate_context_definitions(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {

@@ -13,6 +13,14 @@ currencies suppress the summary. Equal minimum amounts use stable SKU and
 price IDs so the compare-at/sale metadata does not depend on database row
 order. Focused regression tests are authored; execution remains unverified.
 
+Product initial/base price writes and direct Pricing single/batch authoring
+validate exact currency minor-unit precision for both amount and compare-at
+amount before row mutation. This uses the same platform money contract as
+resolution, rather than accepting prices that subsequent quote reads reject.
+New PriceUpdated amounts are encoded without rounding. Calculated discount
+rounding and the retained two-decimal legacy mirror are unchanged.
+Focused regressions are authored but not executed.
+
 Admin SKU price upserts return the exact persisted row captured in the owner
 transaction, after successful commit, rather than searching the variant's
 prices again. Regional rows and concurrent later writes cannot substitute

@@ -1,9 +1,11 @@
 use crate::{
-    ContextMaterialization, ProjectDocument, RuntimeContextCompatibilityPolicy,
-    RuntimeContextCompatibilityReport, RuntimeContextContractChangeKind, ValidationDiagnostic,
-    ValidationSeverity, diff_runtime_context_contracts_with_policy, materialize_context,
-    remove_context_path,
+    ContextMaterialization, ContextSchemaCatalog, ProjectDocument, RuntimeContextCompatibilityPolicy,
+    RuntimeContextCompatibilityReport, RuntimeContextContractChangeKind, RuntimeContextPreflightPolicy,
+    ValidationDiagnostic, ValidationSeverity, diff_runtime_context_contracts_with_policy,
+    materialize_context, remove_context_path,
 };
+use crate::context_contract::{deduplicate_diagnostics, promote_context_diagnostic};
+use crate::context_schema::validate_context_fields;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -15,6 +17,8 @@ pub struct RuntimeContextMigrationPolicy {
     /// target contract, so it is an explicit choice. Dropped paths are reported either way.
     pub drop_removed_paths: bool,
     /// Apply the target contract's defaults and computed values to the migrated payload.
+    /// When disabled, validate the supplied field values without running computed producers.
+    /// Field validation is mandatory in both modes.
     pub apply_target_defaults: bool,
     /// Keep migrating when the target contract breaks compatibility with the source contract.
     pub tolerate_breaking_changes: bool,
@@ -47,7 +51,8 @@ pub struct RuntimeContextMigration {
 }
 
 impl RuntimeContextMigration {
-    /// No error-severity diagnostic: the migrated payload is valid under the target contract.
+    /// No blocking compatibility or payload diagnostic. Computed producers are evaluated
+    /// only when the migration policy requests materialization.
     pub fn is_accepted(&self) -> bool {
         !self
             .diagnostics
@@ -92,14 +97,16 @@ pub fn migrate_runtime_context(
     let materialization = if policy.apply_target_defaults {
         materialize_context(target, &migrated)
     } else {
+        let catalog = ContextSchemaCatalog::from_document(target);
+        let (type_mismatches, diagnostics) = validate_context_fields(&catalog, &migrated);
         ContextMaterialization {
             context: migrated,
-            diagnostics: Vec::new(),
+            diagnostics,
             defaults_applied: 0,
             computed_applied: 0,
             computed_fallbacks: 0,
             unresolved_computed: 0,
-            type_mismatches: 0,
+            type_mismatches,
         }
     };
 
@@ -112,7 +119,10 @@ pub fn migrate_runtime_context(
             }
         }
     }
-    diagnostics.extend(materialization.diagnostics.iter().cloned());
+    // Compatibility tolerance applies only to contract changes, never to invalid payloads.
+    diagnostics.extend(materialization.diagnostics.iter().cloned().map(|diagnostic| {
+        promote_context_diagnostic(diagnostic, RuntimeContextPreflightPolicy::default())
+    }));
     for path in &dropped_paths {
         diagnostics.push(migration_diagnostic(
             ValidationSeverity::Warning,
@@ -124,8 +134,9 @@ pub fn migrate_runtime_context(
         ));
     }
 
+    deduplicate_diagnostics(&mut diagnostics);
     RuntimeContextMigration {
-        context: materialization.context.clone(),
+        context: materialization.context,
         compatibility,
         dropped_paths,
         defaults_applied: materialization.defaults_applied,
@@ -148,5 +159,111 @@ fn migration_diagnostic(
         code: code.to_string(),
         path: path.to_string(),
         message: message.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::GrapesJsCodec;
+    use serde_json::json;
+
+    fn field_document() -> ProjectDocument {
+        GrapesJsCodec::decode_value(json!({
+            "pages": [{ "component": { "id": "root", "type": "wrapper" } }],
+            "flyRuntimeContextSchema": [
+                { "id": "count", "path": "count", "kind": "number", "required": true },
+                { "id": "items", "path": "items", "kind": "array", "item_kind": "string" },
+                { "id": "currency", "path": "currency", "kind": "string", "default": "EUR" }
+            ]
+        }))
+        .expect("document")
+    }
+
+    #[test]
+    fn migration_validates_fields_with_and_without_materialization() {
+        let document = field_document();
+        let input = json!({ "count": "wrong", "items": [1, 2, "valid"] });
+        for apply_target_defaults in [true, false] {
+            let migration = migrate_runtime_context(
+                &document,
+                &document,
+                &input,
+                RuntimeContextMigrationPolicy {
+                    apply_target_defaults,
+                    tolerate_breaking_changes: true,
+                    ..Default::default()
+                },
+            );
+            assert!(!migration.is_accepted());
+            assert_eq!(migration.type_mismatches, 3);
+            assert_eq!(migration.defaults_applied, if apply_target_defaults { 1 } else { 0 });
+            if !apply_target_defaults {
+                assert_eq!(migration.context, input);
+            }
+            assert!(migration.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == "runtime_context_array_item_type_mismatch"
+                    && diagnostic.severity == ValidationSeverity::Error
+            }));
+        }
+    }
+
+    #[test]
+    fn missing_required_field_is_not_accepted_even_without_contract_changes() {
+        let document = field_document();
+        for apply_target_defaults in [true, false] {
+            let migration = migrate_runtime_context(
+                &document,
+                &document,
+                &json!({}),
+                RuntimeContextMigrationPolicy {
+                    apply_target_defaults,
+                    ..Default::default()
+                },
+            );
+            assert!(!migration.is_accepted());
+            assert!(migration.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == "runtime_context_required_missing"
+                    && diagnostic.severity == ValidationSeverity::Error
+            }));
+        }
+    }
+
+    #[test]
+    fn valid_unmaterialized_payload_is_preserved() {
+        let document = field_document();
+        let input = json!({ "count": 3, "items": ["valid"] });
+        let migration = migrate_runtime_context(
+            &document,
+            &document,
+            &input,
+            RuntimeContextMigrationPolicy {
+                apply_target_defaults: false,
+                ..Default::default()
+            },
+        );
+        assert!(migration.is_accepted());
+        assert_eq!(migration.context, input);
+        assert_eq!(migration.defaults_applied, 0);
+    }
+
+    #[test]
+    fn unresolved_computed_producer_blocks_materialized_migration() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{ "component": { "id": "root", "type": "wrapper" } }],
+            "flyRuntimeComputed": [{
+                "id": "label", "path": "label",
+                "expression": { "op": "path", "path": "missing" }
+            }]
+        }))
+        .expect("document");
+        let migration = migrate_runtime_context(
+            &document,
+            &document,
+            &json!({}),
+            RuntimeContextMigrationPolicy::default(),
+        );
+        assert!(!migration.is_accepted());
+        assert_eq!(migration.unresolved_computed, 1);
     }
 }

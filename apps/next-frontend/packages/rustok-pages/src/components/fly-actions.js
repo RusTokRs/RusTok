@@ -284,10 +284,17 @@
     }
   }
 
+  function accordionTarget(element, action, accordionRoot, root) {
+    return findTarget(action, element, accordionRoot, function (candidate) {
+      return !candidate.contains(element) &&
+        closestInPage(candidate, ACCORDION_ROOT, root) === accordionRoot;
+    });
+  }
+
   function toggleAccordion(element, action) {
     var root = pageRoot(element);
     var accordionRoot = closestInPage(element, ACCORDION_ROOT, root);
-    var target = findTarget(action, element, accordionRoot);
+    var target = accordionTarget(element, action, accordionRoot, root);
     if (!target) return;
     var isExpanded = element.getAttribute("aria-expanded") === "true";
     var willExpand = !isExpanded;
@@ -303,7 +310,7 @@
         if (otherTrigger === element || !belongsToPage(otherTrigger, root) ||
             closestInPage(otherTrigger, ACCORDION_ROOT, root) !== accordionRoot ||
             !otherAction || otherAction.kind !== "toggle_accordion") continue;
-        var otherTarget = findTarget(otherAction, otherTrigger, accordionRoot);
+        var otherTarget = accordionTarget(otherTrigger, otherAction, accordionRoot, root);
         if (!otherTarget) continue;
         otherTrigger.setAttribute("aria-expanded", "false");
         otherTrigger.classList.remove("is-expanded");
@@ -344,24 +351,32 @@
     }
     if (slides.length === 0) return;
 
-    var currentIndex = -1;
-    for (var j = 0; j < slides.length; j++) {
-      if (slides[j].classList.contains("is-active") ||
-          (!slides[j].hidden && slides[j].ownerDocument.defaultView.getComputedStyle(slides[j]).display !== "none")) {
-        currentIndex = j;
-        break;
-      }
+    // An explicitly active slide wins over an earlier visible slide. Visibility is
+    // only a fallback for authored carousels without an active marker.
+    var currentIndex = slides.findIndex(function (slide) {
+      return slide.classList.contains("is-active");
+    });
+    if (currentIndex === -1) {
+      currentIndex = slides.findIndex(function (slide) {
+        return !slide.hidden && slide.getAttribute("aria-hidden") !== "true" &&
+          slide.ownerDocument.defaultView.getComputedStyle(slide).display !== "none";
+      });
     }
     if (currentIndex === -1) currentIndex = 0;
 
+    // Match the Rust action contract: exactly one selector, with a valid wire type.
+    var selectors = [action.direction, action.index, action.target_slide].filter(function (value) {
+      return value !== null && value !== undefined;
+    });
+    if (selectors.length !== 1) return;
     var nextIndex = currentIndex;
     if (action.direction === "next") {
       nextIndex = (currentIndex + 1) % slides.length;
     } else if (action.direction === "prev") {
       nextIndex = (currentIndex - 1 + slides.length) % slides.length;
-    } else if (typeof action.index === "number" && Number.isInteger(action.index)) {
+    } else if (Number.isSafeInteger(action.index) && action.index >= 0) {
       nextIndex = Math.max(0, Math.min(action.index, slides.length - 1));
-    } else if (action.target_slide) {
+    } else if (typeof action.target_slide === "string" && action.target_slide) {
       var found = false;
       for (var a = 0; a < TARGET_ATTRIBUTES.length && !found; a++) {
         for (var s = 0; s < slides.length; s++) {
@@ -373,6 +388,8 @@
         }
       }
       if (!found) return;
+    } else {
+      return;
     }
 
     var displayHint = slides[currentIndex].ownerDocument.defaultView.getComputedStyle(slides[currentIndex]).display;
@@ -464,8 +481,9 @@
   function animateTarget(element, action) {
     var target = findTarget(action, element);
     if (!target) return;
+    if (typeof action.animation !== "string" ||
+        !Object.prototype.hasOwnProperty.call(ANIMATIONS, action.animation)) return;
     var keyframes = ANIMATIONS[action.animation];
-    if (!keyframes) return;
     var duration = Number(action.duration_ms);
     if (!Number.isFinite(duration) || duration <= 0) duration = 300;
     duration = Math.min(10000, Math.max(50, duration));
@@ -531,46 +549,51 @@
     }
   }
 
-  var touchStartX = 0;
-  var touchStartY = 0;
-  var touchSlider = null;
-  var touchPageRoot = null;
-
-  function onTouchStart(event) {
-    touchSlider = null;
-    touchPageRoot = null;
-    if (!event.touches || event.touches.length !== 1) return;
-    var target = event.target;
-    if (!target || typeof target.closest !== "function") return;
-    touchPageRoot = pageRoot(target);
-    touchSlider = closestInPage(target, SLIDER_ROOT, touchPageRoot);
-    touchStartX = event.touches[0].clientX;
-    touchStartY = event.touches[0].clientY;
-  }
-
-  function cancelTouch() {
-    touchSlider = null;
-    touchPageRoot = null;
-  }
-
-  function onTouchEnd(event) {
-    if (!belongsToPage(touchSlider, touchPageRoot) ||
-        !event.changedTouches || event.changedTouches.length !== 1) {
-      cancelTouch();
-      return;
-    }
-    var deltaX = event.changedTouches[0].clientX - touchStartX;
-    var deltaY = event.changedTouches[0].clientY - touchStartY;
-    if (Math.abs(deltaX) > 40 && Math.abs(deltaX) > Math.abs(deltaY)) {
-      var direction = deltaX < 0 ? "next" : "prev";
-      switchSlide(touchSlider, { direction: direction });
-    }
-    cancelTouch();
-  }
-
   function start(doc) {
     var documentRef = doc || document;
     if (documentRef[ADAPTER_KEY]) return documentRef[ADAPTER_KEY];
+    // Gesture state belongs to this mounted document, not the global script instance.
+    var touchStartX = 0;
+    var touchStartY = 0;
+    var touchIdentifier = null;
+    var touchSlider = null;
+    var touchPageRoot = null;
+
+    function onTouchStart(event) {
+      touchSlider = null;
+      touchPageRoot = null;
+      if (!event.touches || event.touches.length !== 1) return;
+      var target = event.target;
+      if (!target || typeof target.closest !== "function") return;
+      touchPageRoot = pageRoot(target);
+      touchSlider = closestInPage(target, SLIDER_ROOT, touchPageRoot);
+      touchIdentifier = event.touches[0].identifier;
+      touchStartX = event.touches[0].clientX;
+      touchStartY = event.touches[0].clientY;
+    }
+
+    function cancelTouch() {
+      touchSlider = null;
+      touchPageRoot = null;
+      touchIdentifier = null;
+    }
+
+    function onTouchEnd(event) {
+      if (!belongsToPage(touchSlider, touchPageRoot) ||
+          !event.changedTouches || event.changedTouches.length !== 1 ||
+          event.changedTouches[0].identifier !== touchIdentifier) {
+        cancelTouch();
+        return;
+      }
+      var deltaX = event.changedTouches[0].clientX - touchStartX;
+      var deltaY = event.changedTouches[0].clientY - touchStartY;
+      if (Math.abs(deltaX) > 40 && Math.abs(deltaX) > Math.abs(deltaY)) {
+        var direction = deltaX < 0 ? "next" : "prev";
+        switchSlide(touchSlider, { slider_id: "self", direction: direction });
+      }
+      cancelTouch();
+    }
+
     documentRef.addEventListener("click", onClick);
     documentRef.addEventListener("touchstart", onTouchStart, { passive: true });
     documentRef.addEventListener("touchend", onTouchEnd, { passive: true });

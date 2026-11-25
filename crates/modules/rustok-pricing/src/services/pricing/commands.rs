@@ -532,6 +532,8 @@ impl PricingService {
             ));
         }
 
+        validate_price_precision(amount, compare_at_amount, &currency_code)?;
+
         let existing = entities::price::Entity::find()
             .filter(entities::price::Column::VariantId.eq(variant_id))
             .filter(entities::price::Column::CurrencyCode.eq(&currency_code))
@@ -602,7 +604,7 @@ impl PricingService {
 
         let old_cents =
             old_amount.and_then(|amount| money::to_minor_units(amount, &currency_code).ok());
-        let new_cents = money::to_minor_units(amount, &currency_code).map_err(|error| {
+        let new_cents = money::to_minor_units_exact(amount, &currency_code).map_err(|error| {
             CommerceError::Validation(format!(
                 "price amount {amount} has no minor-unit form in {currency_code}: {error}"
             ))
@@ -671,6 +673,12 @@ impl PricingService {
                 ));
             }
 
+            validate_price_precision(
+                price_input.amount,
+                price_input.compare_at_amount,
+                &normalized_currency,
+            )?;
+
             let existing = entities::price::Entity::find()
                 .filter(entities::price::Column::VariantId.eq(variant_id))
                 .filter(entities::price::Column::CurrencyCode.eq(&normalized_currency))
@@ -735,7 +743,7 @@ impl PricingService {
 
             let old_cents = old_amount
                 .and_then(|amount| money::to_minor_units(amount, &normalized_currency).ok());
-            let new_cents = money::to_minor_units(price_input.amount, &normalized_currency)
+            let new_cents = money::to_minor_units_exact(price_input.amount, &normalized_currency)
                 .map_err(|error| {
                     CommerceError::Validation(format!(
                         "price amount {} has no minor-unit form in {normalized_currency}: {error}",
