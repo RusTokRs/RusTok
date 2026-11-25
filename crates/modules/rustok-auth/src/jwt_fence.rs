@@ -75,10 +75,7 @@ pub(crate) struct KeyMetadata {
     pub(crate) identity: String,
     pub(crate) verification_identity: String,
     pub(crate) verify_until: Option<i64>,
-    // Omit the override for homogeneous rings: legacy serialized metadata
-    // and its MAC/witness checkpoint retain the same representation.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) algorithm: Option<JwtAlgorithm>,
+    pub(crate) algorithm: JwtAlgorithm,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -96,19 +93,17 @@ pub(crate) struct RingMetadata {
     pub(crate) legacy: Option<LegacyMetadata>,
 }
 
-impl RingMetadata {
-    fn key_algorithm<'a>(&'a self, key: &'a KeyMetadata) -> &'a JwtAlgorithm {
-        key.algorithm.as_ref().unwrap_or(&self.algorithm)
+impl KeyMetadata {
+    fn same_verifier(&self, candidate: &Self) -> bool {
+        self.algorithm == candidate.algorithm
+            && self.identity == candidate.identity
+            && self.verification_identity == candidate.verification_identity
     }
+}
 
+impl RingMetadata {
     fn active(&self) -> Option<(&String, &KeyMetadata)> {
         self.keys.iter().find(|(_, key)| key.verify_until.is_none())
-    }
-
-    fn same_verifier(&self, key: &KeyMetadata, other: &Self, candidate: &KeyMetadata) -> bool {
-        self.key_algorithm(key) == other.key_algorithm(candidate)
-            && key.identity == candidate.identity
-            && key.verification_identity == candidate.verification_identity
     }
 }
 
@@ -137,7 +132,6 @@ fn rolling_compatible(old: &Snapshot, next: &Snapshot, now_ms: i64, horizon_ms: 
         if before.legacy != after.legacy {
             return false;
         }
-        let matches = |a: &KeyMetadata, b: &KeyMetadata| before.same_verifier(a, after, b);
         // Every currently accepted old verifier remains accepted, with no
         // shortened history deadline. The outgoing signer covers overlap.
         for (kid, key) in &before.keys {
@@ -145,7 +139,7 @@ fn rolling_compatible(old: &Snapshot, next: &Snapshot, now_ms: i64, horizon_ms: 
                 continue;
             }
             let Some(other) = after.keys.get(kid) else { return false; };
-            if !matches(key, other) {
+            if !key.same_verifier(other) {
                 return false;
             }
             match (key.verify_until, other.verify_until) {
@@ -157,7 +151,7 @@ fn rolling_compatible(old: &Snapshot, next: &Snapshot, now_ms: i64, horizon_ms: 
         // Every new signer was already a verifier on the older holder.
         for (kid, signer) in after.keys.iter().filter(|(_, key)| key.verify_until.is_none()) {
             let Some(other) = before.keys.get(kid) else { return false; };
-            if !matches(other, signer) || other.verify_until.is_some_and(|cutoff| cutoff <= until) {
+            if !other.same_verifier(signer) || other.verify_until.is_some_and(|cutoff| cutoff <= until) {
                 return false;
             }
         }
@@ -219,7 +213,7 @@ impl Ledger {
                 let (old_kid, old_signer) = old.active().ok_or_else(unavailable)?;
                 let (new_kid, new_signer) = ring.active().ok_or_else(rejected)?;
                 let staged = old.keys.get(new_kid).ok_or_else(rejected)?;
-                if !old.same_verifier(staged, ring, new_signer)
+                if !staged.same_verifier(new_signer)
                     || staged.verify_until.is_none_or(|cutoff| cutoff <= now)
                 {
                     return Err(rejected());
@@ -231,7 +225,7 @@ impl Ledger {
                     .is_some_and(|binding| binding.revoked_at_ms.is_some());
                 if !revoked {
                     let historical = ring.keys.get(old_kid).ok_or_else(rejected)?;
-                    if !old.same_verifier(old_signer, ring, historical)
+                    if !old_signer.same_verifier(historical)
                         || historical.verify_until.is_none_or(|cutoff| cutoff <= now)
                     {
                         return Err(rejected());
@@ -249,7 +243,7 @@ impl Ledger {
                 let seen = self.seen.get(purpose).and_then(|keys| keys.get(kid));
                 match (previous, seen) {
                     (Some(before), Some(binding)) => {
-                        if key.identity != binding.identity || !old.same_verifier(before, ring, key)
+                        if key.identity != binding.identity || !before.same_verifier(key)
                         {
                             return Err(rejected());
                         }
@@ -985,13 +979,30 @@ mod tests {
     }
 
     #[test]
-    fn homogeneous_metadata_preserves_old_serialization_and_inherits_algorithm() {
+    fn key_metadata_requires_explicit_algorithm() {
         let old = r#"{"identity":"material","verification_identity":"verifier","verify_until":null}"#;
-        let key: KeyMetadata = serde_json::from_str(old).unwrap();
-        assert!(key.algorithm.is_none());
-        assert_eq!(serde_json::to_string(&key).unwrap(), old);
-        let ring = RingMetadata { algorithm: JwtAlgorithm::RS256, keys: BTreeMap::new(), legacy: None };
-        assert_eq!(ring.key_algorithm(&key), &JwtAlgorithm::RS256);
+        assert!(serde_json::from_str::<KeyMetadata>(old).is_err());
+        let null = r#"{"identity":"material","verification_identity":"verifier","verify_until":null,"algorithm":null}"#;
+        assert!(serde_json::from_str::<KeyMetadata>(null).is_err());
+        let canonical = r#"{"identity":"material","verification_identity":"verifier","verify_until":null,"algorithm":"RS256"}"#;
+        let key: KeyMetadata = serde_json::from_str(canonical).unwrap();
+        assert!(key.algorithm == JwtAlgorithm::RS256);
+        assert_eq!(serde_json::to_string(&key).unwrap(), canonical);
+        let mut different = key.clone();
+        different.algorithm = JwtAlgorithm::HS256;
+        assert!(!key.same_verifier(&different));
+    }
+
+    #[test]
+    fn prepared_snapshot_records_every_key_algorithm() {
+        let cfg = config(ROOT, "old", OLD, Some(("new", NEW, 4_000_000_000)), None);
+        let snapshot = cfg.fence_snapshot(|_| Ok("identity".to_string())).unwrap();
+        let ring = snapshot.get("JWT").unwrap();
+        assert_eq!(ring.keys.len(), 2);
+        assert!(ring.keys.values().all(|key| key.algorithm == JwtAlgorithm::HS256));
+        let serialized = serde_json::to_string(&snapshot).unwrap();
+        let decoded: Snapshot = serde_json::from_str(&serialized).unwrap();
+        assert!(snapshot == decoded);
     }
 
     pub(super) async fn database() -> DatabaseConnection {

@@ -51,8 +51,15 @@ and validate authority before application migration. Focused regressions unrun.
 
 JWT algorithm migration: mixed per-key verification algorithms, exact JOSE
 algorithm pinning, staged managed promotion, replica compatibility, revocation
-and witness persistence are source-implemented. Scoped compilation, regression
-execution and independent-replica rollout remain pending.
+and witness persistence are source-implemented. The persisted algorithm field
+is now mandatory per key; the legacy homogeneous metadata reader is removed.
+Scoped compilation, regression execution and independent-replica rollout
+remain pending. Before root MAC rotation, complete the remaining pre-release
+zero-legacy cleanup: mandatory kid for access, no raw-root JWT history,
+canonical unreleased token and keyring document contracts, and review of
+configuration defaults/aliases. Preserve key rotation, terminal tombstones,
+lease fencing and witness security. Do not silently reset non-disposable
+authority or witness state; follow the owner cutover contract.
 
 JWT rollback witness: source-implemented exact authenticated checkpoint,
 monotonic mutation revision, witness-first commit, offline recovery, verified

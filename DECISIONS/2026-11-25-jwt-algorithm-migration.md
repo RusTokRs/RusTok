@@ -1,8 +1,9 @@
 # JWT algorithm migration
 
 - Date: 2026-11-25
-- Decision status: Accepted
+- Decision status: Superseded
 - Implementation status: In progress
+- Superseded by: [Canonical JWT algorithm metadata](2026-11-25-jwt-canonical-algorithm-metadata.md)
 - Owners: Auth; server host composition
 - Extends: [JWT purpose keyrings](2026-11-25-jwt-purpose-keyrings.md), [durable JWT generation fence](2026-11-25-jwt-generation-fence.md), [rolling replica admission](2026-11-25-jwt-rolling-admission.md) and [JWT rollback witness](2026-11-25-jwt-rollback-witness.md)
 - Supersedes: the previous prohibition on active algorithm changes in durable admission.

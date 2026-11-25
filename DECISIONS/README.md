@@ -53,7 +53,8 @@ Non-ADR plans and research documents do not belong in this registry.
 
 | ADR | Title | Decision status | Implementation status | Relations |
 | --- | --- | --- | --- | --- |
-| [2026-11-25](./2026-11-25-jwt-algorithm-migration.md) | JWT algorithm migration | Accepted | In progress | Extends [JWT rolling replica admission](./2026-11-25-jwt-rolling-admission.md) |
+| [2026-11-25](./2026-11-25-jwt-canonical-algorithm-metadata.md) | Canonical JWT algorithm metadata | Accepted | In progress | Supersedes [JWT algorithm migration](./2026-11-25-jwt-algorithm-migration.md) |
+| [2026-11-25](./2026-11-25-jwt-algorithm-migration.md) | JWT algorithm migration | Superseded | In progress | Superseded by [Canonical JWT algorithm metadata](./2026-11-25-jwt-canonical-algorithm-metadata.md) |
 | [2026-11-25](./2026-11-25-jwt-rollback-witness.md) | JWT authority rollback witness | Accepted | In progress | Extends [Independent JWT authority](./2026-11-25-jwt-independent-authority.md) |
 | [2026-11-25](./2026-11-25-jwt-independent-authority.md) | Independent JWT authority | Accepted | In progress | Extends [JWT clock discontinuity protection](./2026-11-25-jwt-clock-discontinuity.md) |
 | [2026-11-25](./2026-11-25-jwt-clock-discontinuity.md) | JWT clock discontinuity protection | Accepted | In progress | Extends [JWT cluster lease barrier](./2026-11-25-jwt-cluster-lease.md) and [emergency revocation](./2026-11-25-jwt-emergency-revocation.md) |

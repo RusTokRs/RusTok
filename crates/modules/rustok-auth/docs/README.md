@@ -216,11 +216,19 @@ promotion preserve all accepted verification keys, legacy mapping and
 deadlines through overlap. An incompatible candidate uses the bounded drain,
 not a guaranteed zero-downtime cutover.
 
-Upgrade every server and operator binary before publishing mixed metadata.
-Existing homogeneous metadata is backward readable without re-enrollment.
+Every persisted key entry explicitly records its algorithm, even in a
+homogeneous ring. Missing or null algorithm metadata is rejected; there is no
+previous-format reader. Stop all Auth hosts and operators for this pre-release
+format cutover. Only demonstrably disposable development authority and witness
+state may be re-created together, with fresh JWT signing material and
+invalidation of outstanding development tokens. Preserve non-disposable state;
+do not reset, overwrite or bypass authenticated ledger/checkpoint history.
+If such state exists, the cutover is blocked pending an explicit authenticated
+offline transformation that retains all identities, revocations and revisions.
 Only managed durable generations may change the active algorithm; unmanaged
-process-local publication refuses it. Keep the root and witness unchanged.
-See the [algorithm migration ADR](../../../../DECISIONS/2026-11-25-jwt-algorithm-migration.md).
+process-local publication refuses it. Keep the root and witness unchanged
+during normal algorithm rotation.
+See the [canonical JWT algorithm metadata ADR](../../../../DECISIONS/2026-11-25-jwt-canonical-algorithm-metadata.md).
 
 ### Process-local hot reload
 

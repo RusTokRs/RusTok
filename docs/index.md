@@ -108,7 +108,7 @@ RusToK provides a sandboxed, extensible module runtime supporting native Rust cr
 
 ### Domain Module Documentation
 
-- [ADR: JWT algorithm migration](../DECISIONS/2026-11-25-jwt-algorithm-migration.md) — exact per-key algorithm binding and staged managed promotion.
+- [ADR: Canonical JWT algorithm metadata](../DECISIONS/2026-11-25-jwt-canonical-algorithm-metadata.md) — mandatory persisted algorithms, exact per-key binding and staged managed promotion.
 - [ADR: JWT authority rollback witness](../DECISIONS/2026-11-25-jwt-rollback-witness.md) — authenticated full-state checkpoint, witness-first commits and offline recovery.
 - [ADR: Independent JWT authority](../DECISIONS/2026-11-25-jwt-independent-authority.md) — separate restore domain, pinned identity and offline cutover.
 - [ADR: JWT clock discontinuity protection](../DECISIONS/2026-11-25-jwt-clock-discontinuity.md) — dual lease deadlines, bounded DB clock samples and sticky local fencing.

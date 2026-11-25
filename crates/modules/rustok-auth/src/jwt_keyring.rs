@@ -515,16 +515,14 @@ impl ValidatedJwtKeyrings {
                 identity: fingerprint(&ring.active_identity)?,
                 verification_identity: fingerprint(&ring.active_verification_identity)?,
                 verify_until: None,
-                algorithm: None,
+                algorithm: ring.algorithm.clone(),
             });
             for (kid, history) in &ring.history {
                 keys.insert(kid.clone(), KeyMetadata {
                     identity: fingerprint(&history.identity)?,
                     verification_identity: fingerprint(&history.verification_identity)?,
                     verify_until: Some(history.verify_until),
-                    // Preserve the exact serialized shape of homogeneous
-                    // ledgers and grants across a binary upgrade.
-                    algorithm: (history.algorithm != ring.algorithm).then(|| history.algorithm.clone()),
+                    algorithm: history.algorithm.clone(),
                 });
             }
             let legacy = ring.legacy_without_kid.as_ref().map(|legacy| LegacyMetadata {
