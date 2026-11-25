@@ -99,8 +99,8 @@ the token lock descriptor for the full read-check-write operation. A stable
 contended descriptor before releasing the guard, and `prune` unlinks only idle
 token lock files while holding it. The OS releases held locks when a process exits;
 there is no age-based stale-lock breaking. Per-owner capacity checks also take a
-stable owner-key lock, while candidate records are revalidated under their own
-token locks before eviction. All writers sharing a directory must use the same
+stable owner-key lock held across the capacity scan and new-record write, while
+candidate records are revalidated under their own token locks before eviction. All writers sharing a directory must use the same
 protocol, so drain old-version writers before rolling out this change.
 The underlying filesystem must propagate OS file locks; use the shared KV backend
 when that guarantee is unavailable.

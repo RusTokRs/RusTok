@@ -43,8 +43,8 @@ token operation. A stable directory guard serializes lock-file open/reap, so a w
 an open descriptor while cleanup can unlink the token file. Process exit releases held locks;
 there is no mtime-based stale-lock breaking. `prune` removes only idle token lock files, and
 temporary-write cleanup plus capacity eviction recheck under the owning token lock; per-owner
-create scans serialize on a stable owner-key lock so simultaneous creates cannot exceed the
-eight-session cap. All writers
+create scans and the subsequent record write serialize under a stable owner-key lock so
+simultaneous creates cannot exceed the eight-session cap. All writers
 sharing the file directory must use the new protocol; drain pre-upgrade writers during rollout.
 The filesystem must propagate OS file locks; otherwise use the shared atomic KV backend.
 Focused regressions cover descriptor-drop/unwind release, pruning with a waiting writer, stale

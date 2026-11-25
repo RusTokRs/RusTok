@@ -1320,45 +1320,42 @@ impl FileSsrDraftSessionStore {
         ensure_private_dir(&partition).map_err(|e| SsrDraftSessionError::Io(e.to_string()))?;
         let file_name = Self::record_file_name(&record.token);
         let target_path = partition.join(&file_name);
-        if !target_path.is_file() {
-            self.enforce_owner_cap(&partition, &record.owner, &record.token)?;
+        let is_new_record = !target_path.is_file();
+        let write_record = || {
+            if is_new_record {
+                if let Some(owner) = record.owner.as_ref() {
+                    // The owner lock covers the capacity scan, candidate
+                    // revalidation/eviction and this write as one operation.
+                    self.enforce_owner_cap_under_lock(&partition, owner, &record.token)?;
+                }
+            }
+            atomic_write_file(&target_path, &json_bytes)
+                .map_err(|error| SsrDraftSessionError::Io(error.to_string()))?;
+            if record.owner.is_some() {
+                // An attributed commit adopts an unattributed session: it now
+                // lives in the tenant partition only.
+                remove_file_if_present(&self.dir.join(UNATTRIBUTED_PARTITION).join(&file_name))
+                    .map_err(|error| SsrDraftSessionError::Io(error.to_string()))?;
+            }
+            Ok(())
+        };
+        if is_new_record {
+            if let Some(owner) = record.owner.as_ref() {
+                let owner_lock_token = owner_cap_lock_token(owner);
+                self.with_lock(&owner_lock_token, write_record)
+            } else {
+                write_record()
+            }
+        } else {
+            write_record()
         }
-        atomic_write_file(&target_path, &json_bytes)
-            .map_err(|e| SsrDraftSessionError::Io(e.to_string()))?;
-        if record.owner.is_some() {
-            // An attributed commit adopts an unattributed session: it now
-            // lives in the tenant partition only.
-            remove_file_if_present(&self.dir.join(UNATTRIBUTED_PARTITION).join(&file_name))
-                .map_err(|e| SsrDraftSessionError::Io(e.to_string()))?;
-        }
-        Ok(())
     }
 
     /// Deletes the oldest same-owner records beyond
-    /// [`MAX_DRAFT_SESSIONS_PER_OWNER`] (audit §2.5). Only runs when this
-    /// record is new — updating an existing session does not change counts.
-    /// An owner's records all live in that owner's tenant `partition`.
-    /// Fails, before anything is written, when an excess record cannot be
-    /// deleted.
-    fn enforce_owner_cap(
-        &self,
-        partition: &Path,
-        owner: &Option<DraftSessionOwner>,
-        keep_token: &str,
-    ) -> Result<(), SsrDraftSessionError> {
-        let Some(owner) = owner.as_ref() else {
-            return Ok(());
-        };
-        // Serialize the scan-and-evict decision per owner. The current new
-        // token lock is already held by save_record_locked; this owner lock is
-        // acquired before any candidate token locks, so concurrent creates
-        // cannot both observe a free slot and exceed the cap.
-        let owner_lock_token = owner_cap_lock_token(owner);
-        self.with_lock(&owner_lock_token, || {
-            self.enforce_owner_cap_under_lock(partition, owner, keep_token)
-        })
-    }
-
+    /// [`MAX_DRAFT_SESSIONS_PER_OWNER`] (audit §2.5). The caller holds both
+    /// the new session's token lock and the stable owner-key lock across this
+    /// scan, any candidate evictions and the new record write. This prevents
+    /// concurrent creates from observing the same free slot.
     fn enforce_owner_cap_under_lock(
         &self,
         partition: &Path,
