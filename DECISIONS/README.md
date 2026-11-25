@@ -53,6 +53,7 @@ Non-ADR plans and research documents do not belong in this registry.
 
 | ADR | Title | Decision status | Implementation status | Relations |
 | --- | --- | --- | --- | --- |
+| [2026-11-25](./2026-11-25-session-refresh-history.md) | Direct session refresh history | Accepted | In progress | Extends [Auth lifecycle invalidation](./2026-02-26-auth-lifecycle-unification-session-invalidation.md) |
 | [2026-11-25](./2026-11-25-taxonomy-native-composition.md) | Compose native Product and Groups Taxonomy adapters in Distribution | Accepted | In progress | Extends [Canonical FBA owner ports](./2026-11-11-canonical-fba-owner-ports.md); supersedes [Groups Taxonomy integration](./2026-11-12-groups-taxonomy-port-architecture.md) and the Taxonomy adapter placement and runtime dependency from [Inventory and Taxonomy decoupling](./2026-11-11-inventory-taxonomy-sovereignty-and-product-decoupling.md) |
 | [2026-11-25](./2026-11-25-oauth-browser-authorization-csrf.md) | OAuth browser authorization CSRF boundary | Accepted | Implemented | Extends [OAuth Access-Token Revocation Fence](./2026-11-01-oauth-access-token-revocation-fence.md) |
 | [2026-11-24](./2026-11-24-installer-http-job-crash-quarantine.md) | Installer HTTP job crash quarantine | Accepted | In progress | Extends [Durable side-effect recovery](./2026-11-12-durable-side-effect-recovery.md) and [Module release rollback safety](./2026-08-06-module-release-rollback-safety.md) |

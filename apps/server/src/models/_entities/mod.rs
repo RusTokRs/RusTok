@@ -25,6 +25,7 @@ pub mod platform_state;
 pub mod product_field_definitions;
 pub mod role_permissions;
 pub mod roles;
+pub mod session_refresh_history;
 pub mod sessions;
 pub mod tenant_modules;
 pub mod tenants;

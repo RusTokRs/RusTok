@@ -563,6 +563,13 @@ misleading `invalid_client` / HTTP 401 responses.
 All `/api/oauth/*` responses, including consent HTML, authorization redirects,
 userinfo, and failures, carry `Cache-Control: no-store` and `Pragma: no-cache`.
 
+Direct-session rotation records the outgoing hash and its rotation time in
+`session_refresh_history` atomically with replacement. Replay of any recorded
+generation outside grace revokes the current tenant-scoped session. The previous
+hash remains a projection for logout with the immediately preceding cookie;
+history is deleted by the session foreign-key cascade. Migration and regressions
+are authored, unrun.
+
 Cookie-session login, registration and refresh use the remaining persisted
 refresh-session lifetime for cookie Max-Age. The absolute 90-day lineage cap
 is not extended when a session is rotated, and unrepresentable persisted

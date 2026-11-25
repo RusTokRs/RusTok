@@ -2,6 +2,15 @@
   "schema_version": 1,
   "contracts": [
     {
+      "id": "auth-session-refresh-history",
+      "migration": "m20261125_000001_create_session_refresh_history",
+      "mode": "fixture",
+      "owner": "rustok-auth",
+      "reason": "Preserve the last available historical refresh digest and its exact rotation timestamp. Older overwritten digests cannot be reconstructed.",
+      "setup_sql": "INSERT INTO tenants (id, name, slug) VALUES ('d1310000-0000-0000-0000-000000000001', 'Refresh history fixture', 'refresh-history-fixture'); INSERT INTO users (id, tenant_id, email, password_hash) VALUES ('d1310000-0000-0000-0000-000000000002', 'd1310000-0000-0000-0000-000000000001', 'refresh-history@example.com', 'fixture-hash'); INSERT INTO sessions (id, tenant_id, user_id, token_hash, expires_at, previous_token_hash, previous_token_revoked_at) VALUES ('d1310000-0000-0000-0000-000000000003', 'd1310000-0000-0000-0000-000000000001', 'd1310000-0000-0000-0000-000000000002', 'fixture-current-digest', CURRENT_TIMESTAMP + INTERVAL '1 day', 'fixture-old-digest', '2026-01-01T00:00:00Z')",
+      "assertion_sql": "SELECT EXISTS (SELECT 1 FROM session_refresh_history WHERE session_id = 'd1310000-0000-0000-0000-000000000003'::uuid AND token_hash = 'fixture-old-digest' AND rotated_at = '2026-01-01T00:00:00Z'::timestamptz) AS passed"
+    },
+    {
       "id": "social-graph-relations-bootstrap",
       "migration": "m20260723_000001_create_social_graph_relations",
       "mode": "none",

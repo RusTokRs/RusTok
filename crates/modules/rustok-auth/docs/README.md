@@ -93,6 +93,15 @@ satisfy the platform multilingual storage contract. Their translation-table cuto
 is an explicit release-plan priority in this module's implementation plan; transports
 must not introduce a competing JSON or request-local fallback in the meantime.
 
+## Direct session refresh history
+
+The host records each rotated refresh digest and its timestamp in `session_refresh_history`
+inside the refresh transaction. The session remains the tenant and revocation authority;
+all historical digests are rejected, and replay outside the 30-second per-token grace
+revokes a live session. The previous-token columns are a last-rotation projection for
+logout with a stale cookie, not the replay authority. History cascades on session deletion.
+See [the ADR](../../../../DECISIONS/2026-11-25-session-refresh-history.md).
+
 ## GraphQL credential throttling
 
 The Auth-owned rate-limit extension charges each distinct root credential mutation

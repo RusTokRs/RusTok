@@ -176,6 +176,16 @@ gates in the [Page Builder backlog](../../../../docs/modules/page-builder-backlo
    exhaustively at the GraphQL boundary); `AuthSettingsOverrides::apply` is
    live runtime wiring, not dead code.
 
+## Direct session refresh history (source only)
+
+The platform migration preserves the available previous digest and timestamp; every
+subsequent rotation records immutable history in the same transaction. Replays of any
+recorded generation outside grace revoke only the tenant-scoped session. The current
+session and previous-cookie logout contract are preserved. Older overwritten digests
+cannot be recovered. Apply the migration before deploying the new host, with old host
+writers stopped. Regression definitions, PostgreSQL backfill, cascade, rollback and
+concurrency checks remain unrun.
+
 ## Password recovery parity (source only)
 
 REST and GraphQL/native recovery requests delegate to the same host lifecycle

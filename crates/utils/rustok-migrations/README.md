@@ -30,6 +30,14 @@ The crate does not depend on `apps/server`. The HTTP host owns request runtime
 only; operational schema changes are invoked through the platform CLI or the
 installer workflow.
 
+## Direct session refresh history
+
+`m20261125_000001_create_session_refresh_history` adds session-owned replay evidence and
+backfills the last available rotated digest. The table is portable PostgreSQL/SQLite
+storage with a session deletion cascade; rollback drops historical evidence and must
+not be used with live new-version sessions. The backfill fixture is declared in the
+platform backfill register. Runtime migration checks are pending.
+
 ## SQLite unit-test schema
 
 `identity::migrations()` is available without default features and returns the
