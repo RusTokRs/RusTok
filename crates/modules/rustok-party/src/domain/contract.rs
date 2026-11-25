@@ -89,6 +89,13 @@ impl Contract {
         credit_limit: Option<Decimal>,
         payment_term_days: Option<u32>,
     ) -> PartyResult<Self> {
+        if tenant_id.is_nil() {
+            return Err(PartyError::Validation("Tenant ID cannot be nil".into()));
+        }
+        if party_id.is_nil() {
+            return Err(PartyError::Validation("Party ID cannot be nil".into()));
+        }
+
         let contract_number = contract_number.into().trim().to_string();
         let title = title.into().trim().to_string();
 
@@ -200,5 +207,49 @@ mod tests {
             None,
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_contract_rejects_nil_ids_and_negative_credit_limit() {
+        let start = NaiveDate::from_ymd_opt(2026, 1, 1).unwrap();
+        assert!(
+            Contract::new(
+                Uuid::nil(),
+                Uuid::new_v4(),
+                "CNT-003",
+                "Test",
+                start,
+                None,
+                None,
+                None
+            )
+            .is_err()
+        );
+        assert!(
+            Contract::new(
+                Uuid::new_v4(),
+                Uuid::nil(),
+                "CNT-004",
+                "Test",
+                start,
+                None,
+                None,
+                None
+            )
+            .is_err()
+        );
+        assert!(
+            Contract::new(
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                "CNT-005",
+                "Test",
+                start,
+                None,
+                Some(Decimal::new(-1, 0)),
+                None
+            )
+            .is_err()
+        );
     }
 }

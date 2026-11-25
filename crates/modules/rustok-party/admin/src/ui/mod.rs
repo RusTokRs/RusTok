@@ -15,6 +15,7 @@ use rustok_grid::column::GridColumnDef;
 use rustok_grid::filter::GridFilterType;
 use rustok_grid::pagination::GridPagination;
 use rustok_grid_leptos::prelude::*;
+use rustok_ui_core::UiRouteContext;
 
 use crate::core::{PartyAdminTableRow, filter_rows};
 use crate::i18n::t;
@@ -23,6 +24,8 @@ pub use PartyAdminPage as PartyAdmin;
 
 #[component]
 pub fn PartyAdminPage() -> impl IntoView {
+    let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let locale = route_context.locale;
     let (search_query, set_search_query) = signal(String::new());
     let pagination = RwSignal::new(GridPagination::default());
 
@@ -57,14 +60,26 @@ pub fn PartyAdminPage() -> impl IntoView {
     });
 
     // Columns specification for shared DataGrid
+    let locale_ref = locale.as_deref();
     let columns = vec![
         GridColumnDef::checkbox(),
-        GridColumnDef::new("title", t(None, "party-col-title", "Title"))
+        GridColumnDef::new("title", t(locale_ref, "party-col-title", "Title"))
             .filter(GridFilterType::text()),
-        GridColumnDef::new("status", t(None, "party-col-status", "Status")),
-        GridColumnDef::new("created_at", t(None, "party-col-created", "Created At")),
-        GridColumnDef::new("actions", t(None, "party-col-actions", "Actions")),
+        GridColumnDef::new("status", t(locale_ref, "party-col-status", "Status")),
+        GridColumnDef::new("created_at", t(locale_ref, "party-col-created", "Created At")),
+        GridColumnDef::new("actions", t(locale_ref, "party-col-actions", "Actions")),
     ];
+    let action_edit = t(locale_ref, "party-action-edit", "Edit");
+    let action_delete = t(locale_ref, "party-action-delete", "Delete");
+    let page_title = t(locale_ref, "party-title", "Counterparty & Legal Entities");
+    let page_description = t(
+        locale_ref,
+        "party-description",
+        "Counterparty & Legal Entities capability module for RusToK",
+    );
+    let action_create = t(locale_ref, "party-action-create", "Create New");
+    let search_placeholder = t(locale_ref, "party-search-placeholder", "Search records...");
+    let empty_message = t(locale_ref, "party-empty", "No records found");
 
     let cell_renderer = Callback::new(move |(row, col_id): (PartyAdminTableRow, String)| {
         match col_id.as_str() {
@@ -82,6 +97,8 @@ pub fn PartyAdminPage() -> impl IntoView {
             "actions" => {
                 let edit_id = row.id.clone();
                 let delete_id = row.id.clone();
+                let edit_label = action_edit.clone();
+                let delete_label = action_delete.clone();
                 view! {
                     <div class="flex items-center gap-2">
                         // RBAC-guarded action buttons
@@ -93,7 +110,7 @@ pub fn PartyAdminPage() -> impl IntoView {
                                 tracing::info!(id = %edit_id, "edit action triggered");
                             }
                         >
-                            {t(None, "party-action-edit", "Edit")}
+                            {edit_label}
                         </button>
                         <button
                             type="button"
@@ -103,7 +120,7 @@ pub fn PartyAdminPage() -> impl IntoView {
                                 tracing::info!(id = %delete_id, "delete action triggered");
                             }
                         >
-                            {t(None, "party-action-delete", "Delete")}
+                            {delete_label}
                         </button>
                     </div>
                 }.into_any()
@@ -117,8 +134,8 @@ pub fn PartyAdminPage() -> impl IntoView {
             // Header with RBAC create button & title
             <div class="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
                 <div>
-                    <h1 class="text-2xl font-bold tracking-tight text-foreground">"Counterparty & Legal Entities"</h1>
-                    <p class="text-sm text-muted-foreground">"Counterparty & Legal Entities capability module for RusToK"</p>
+                    <h1 class="text-2xl font-bold tracking-tight text-foreground">{page_title}</h1>
+                    <p class="text-sm text-muted-foreground">{page_description}</p>
                 </div>
                 <div class="flex items-center gap-2">
                     <button
@@ -128,7 +145,7 @@ pub fn PartyAdminPage() -> impl IntoView {
                             tracing::info!("create new party record initiated");
                         }
                     >
-                        {t(None, "party-action-create", "Create New")}
+                        {action_create}
                     </button>
                 </div>
             </div>
@@ -138,7 +155,7 @@ pub fn PartyAdminPage() -> impl IntoView {
                 <div class="relative w-72">
                     <input
                         type="text"
-                        placeholder={t(None, "party-search-placeholder", "Search records...")}
+                        placeholder=search_placeholder
                         prop:value=move || search_query.get()
                         on:input=move |ev| set_search_query.set(event_target_value(&ev))
                         class="w-full text-xs rounded-lg border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary transition-all"
@@ -157,7 +174,7 @@ pub fn PartyAdminPage() -> impl IntoView {
                     data=Signal::derive(move || filtered_rows.get())
                     key_fn=|row: &PartyAdminTableRow| row.id.clone()
                     cell_renderer=cell_renderer
-                    empty_message=t(None, "party-empty", "No records found")
+                    empty_message=empty_message
                     pagination=pagination
                     on_row_click=Callback::new(|_: PartyAdminTableRow| ())
                 />

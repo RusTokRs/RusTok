@@ -30,8 +30,8 @@ pub mod services;
 #[cfg(test)]
 mod contract_tests;
 
-pub mod entities;
-pub mod migrations;
+mod entities;
+mod migrations;
 
 pub use domain::{
     BankAccount, Contract, ContractStatus, Party, PartyKind, PartyStatus, TaxDetails,

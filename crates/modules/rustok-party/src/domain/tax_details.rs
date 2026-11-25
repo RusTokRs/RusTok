@@ -35,7 +35,9 @@ impl TaxDetails {
         kpp: Option<String>,
         ogrn: Option<String>,
     ) -> PartyResult<Self> {
-        let inn = inn.into();
+        let inn = inn.into().trim().to_string();
+        let kpp = kpp.map(|value| value.trim().to_string());
+        let ogrn = ogrn.map(|value| value.trim().to_string());
         validate_inn_10(&inn)?;
 
         if let Some(ref k) = kpp {
@@ -59,7 +61,8 @@ impl TaxDetails {
         inn: impl Into<String>,
         ogrnip: Option<String>,
     ) -> PartyResult<Self> {
-        let inn = inn.into();
+        let inn = inn.into().trim().to_string();
+        let ogrnip = ogrnip.map(|value| value.trim().to_string());
         validate_inn_12(&inn)?;
 
         if let Some(ref o) = ogrnip {
@@ -78,9 +81,12 @@ impl TaxDetails {
 
 /// Validates a 10-digit INN for Russian legal entities using Russian Federal Tax Service checksum formula.
 pub fn validate_inn_10(inn: &str) -> PartyResult<()> {
-    if inn.len() != 10 || !inn.chars().all(|c| c.is_ascii_digit()) {
+    if inn.len() != 10
+        || !inn.chars().all(|c| c.is_ascii_digit())
+        || inn.bytes().all(|b| b == b'0')
+    {
         return Err(PartyError::Validation(format!(
-            "Legal entity INN must be exactly 10 numeric digits, got '{inn}'"
+            "Legal entity INN must be a valid 10-digit number, got '{inn}'"
         )));
     }
 
@@ -112,9 +118,12 @@ pub fn validate_inn_10(inn: &str) -> PartyResult<()> {
 
 /// Validates a 12-digit INN for individuals and sole proprietors using Russian Federal Tax Service checksum formula.
 pub fn validate_inn_12(inn: &str) -> PartyResult<()> {
-    if inn.len() != 12 || !inn.chars().all(|c| c.is_ascii_digit()) {
+    if inn.len() != 12
+        || !inn.chars().all(|c| c.is_ascii_digit())
+        || inn.bytes().all(|b| b == b'0')
+    {
         return Err(PartyError::Validation(format!(
-            "Individual/sole proprietor INN must be exactly 12 numeric digits, got '{inn}'"
+            "Individual/sole proprietor INN must be a valid 12-digit number, got '{inn}'"
         )));
     }
 
@@ -163,9 +172,12 @@ pub fn validate_inn_12(inn: &str) -> PartyResult<()> {
 
 /// Validates a 9-character Tax Registration Reason Code (КПП).
 pub fn validate_kpp(kpp: &str) -> PartyResult<()> {
-    if kpp.len() != 9 || !kpp.chars().all(|c| c.is_ascii_alphanumeric()) {
+    if kpp.len() != 9
+        || !kpp.chars().all(|c| c.is_ascii_alphanumeric())
+        || kpp.bytes().all(|b| b == b'0')
+    {
         return Err(PartyError::Validation(format!(
-            "KPP must be exactly 9 alphanumeric characters, got '{kpp}'"
+            "KPP must be 9 alphanumeric characters and non-zero, got '{kpp}'"
         )));
     }
     Ok(())
@@ -173,9 +185,12 @@ pub fn validate_kpp(kpp: &str) -> PartyResult<()> {
 
 /// Validates a 13-digit Primary State Registration Number (ОГРН) for Russian legal entities.
 pub fn validate_ogrn_13(ogrn: &str) -> PartyResult<()> {
-    if ogrn.len() != 13 || !ogrn.chars().all(|c| c.is_ascii_digit()) {
+    if ogrn.len() != 13
+        || !ogrn.chars().all(|c| c.is_ascii_digit())
+        || ogrn.bytes().all(|b| b == b'0')
+    {
         return Err(PartyError::Validation(format!(
-            "OGRN must be exactly 13 numeric digits, got '{ogrn}'"
+            "OGRN must be a valid 13-digit number, got '{ogrn}'"
         )));
     }
 
@@ -200,9 +215,12 @@ pub fn validate_ogrn_13(ogrn: &str) -> PartyResult<()> {
 
 /// Validates a 15-digit Primary State Registration Number (ОГРНИП) for Russian sole proprietors.
 pub fn validate_ogrnip_15(ogrnip: &str) -> PartyResult<()> {
-    if ogrnip.len() != 15 || !ogrnip.chars().all(|c| c.is_ascii_digit()) {
+    if ogrnip.len() != 15
+        || !ogrnip.chars().all(|c| c.is_ascii_digit())
+        || ogrnip.bytes().all(|b| b == b'0')
+    {
         return Err(PartyError::Validation(format!(
-            "OGRNIP must be exactly 15 numeric digits, got '{ogrnip}'"
+            "OGRNIP must be a valid 15-digit number, got '{ogrnip}'"
         )));
     }
 
@@ -256,5 +274,14 @@ mod tests {
         // Сбербанк OGRN: 1027700132195
         assert!(validate_ogrn_13("1027700132195").is_ok());
         assert!(validate_ogrn_13("1027700132190").is_err());
+    }
+
+    #[test]
+    fn test_all_zero_tax_identifiers_rejected() {
+        assert!(validate_inn_10("0000000000").is_err());
+        assert!(validate_inn_12("000000000000").is_err());
+        assert!(validate_kpp("000000000").is_err());
+        assert!(validate_ogrn_13("0000000000000").is_err());
+        assert!(validate_ogrnip_15("000000000000000").is_err());
     }
 }
