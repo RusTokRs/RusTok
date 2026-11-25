@@ -15,6 +15,8 @@ type PeerScope = typeof globalThis & {
   __flyPeerAdapter?: {
     emitIntent: (intent: string, payload: Record<string, unknown>) => Promise<unknown>;
     stop: () => void;
+    resolvePendingOperation: () => Promise<unknown>;
+    retryPendingOperation: () => Promise<unknown>;
   };
   FlyBrowser?: {
     mount: (root: Element, options?: Record<string, unknown>) =>
@@ -287,4 +289,123 @@ test('an in-flight response cannot replace a peer-write fence', async ({ page })
   });
   await expect(page.locator('#fly-root')).toHaveAttribute('data-fly-browser-problem', 'FLY_PEER_WRITE_CONFLICT');
   await expect(page.locator('#fly-root')).toHaveAttribute('data-fly-revision', 'rev-1');
+});
+
+
+test('strict receipt recovery rejects concurrent retry and ignores an unknown receipt baseline', async ({ page }) => {
+  const source = await readFile(adapterPath, 'utf8');
+  await mountEditor(page, 'same-page', source);
+  const result = await page.evaluate(async () => {
+    const scope = globalThis as PeerScope;
+    scope.__flyPeerAdapter?.stop();
+    const root = document.querySelector('#fly-root') as HTMLElement;
+    root.dataset.flyDraftContract = 'rendered';
+    root.dataset.flyRenderedDraftToken = 'draft-1';
+    sessionStorage.setItem('fly:ssr-draft:same-page', JSON.stringify({ token: 'draft-1', generation: 1 }));
+    const original = {
+      protocol: 'fly_iframe', instance_id: 'editor', intent: 'save', payload: {},
+      page_id: 'same-page', revision: 'rev-1', project_hash: 'hash-1',
+      draft_token: 'draft-1', draft_generation: 1, operation_id: 'operation-1'
+    };
+    const storageKey = 'fly:ssr-pending-operation:same-page';
+    sessionStorage.setItem(storageKey, JSON.stringify({ at: Date.now(), request: original }));
+    const requests: Array<{ intent: string; operation_id: string }> = [];
+    const responses: Array<(response: Response) => void> = [];
+    globalThis.fetch = (_input, init) => {
+      requests.push(JSON.parse(String(init?.body)));
+      return new Promise<Response>((resolve) => responses.push(resolve));
+    };
+    const adapter = scope.FlyBrowser?.mount(root, { intentEndpoint: '/fly-intent' });
+    if (!adapter) throw new Error('missing adapter');
+    scope.__flyPeerAdapter = adapter;
+    await Promise.resolve(); // Mount schedules one recovery lookup.
+    await adapter.resolvePendingOperation();
+    await adapter.retryPendingOperation();
+    await adapter.emitIntent('select', { component_id: 'hero' });
+    if (requests.length !== 1) throw new Error('concurrent draft operation was posted');
+    const responseEvent = new Promise<void>((resolve) => root.addEventListener(
+      'fly:browser-intent-response', () => resolve(), { once: true }
+    ));
+    responses[0](new Response(JSON.stringify({
+      operation_id: 'operation-1', operation_status: 'unknown',
+      result: { revision_id: 'unconfirmed', project_hash: 'unconfirmed', dirty: false },
+      draft_token: 'draft-1', draft_generation: 9
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    await responseEvent;
+    const afterUnknown = {
+      revision: root.dataset.flyRevision,
+      draft: JSON.parse(sessionStorage.getItem('fly:ssr-draft:same-page')!),
+      pending: JSON.parse(sessionStorage.getItem(storageKey)!).request.operation_id
+    };
+    const lookup = adapter.resolvePendingOperation();
+    if (requests.length !== 2) throw new Error('second lookup was not sent');
+    responses[1](new Response(JSON.stringify({
+      operation_id: 'operation-1', operation_status: 'committed',
+      result: { revision_id: 'rev-2', project_hash: 'hash-2', dirty: false },
+      draft_token: 'draft-1', draft_generation: 2
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    await lookup;
+    return {
+      requests: requests.map(({ intent, operation_id }) => ({ intent, operation_id })),
+      afterUnknown,
+      pending: sessionStorage.getItem(storageKey),
+      revision: root.dataset.flyRevision
+    };
+  });
+  expect(result).toEqual({
+    requests: [
+      { intent: 'resolve_operation', operation_id: 'operation-1' },
+      { intent: 'resolve_operation', operation_id: 'operation-1' }
+    ],
+    afterUnknown: { revision: 'rev-1', draft: { token: 'draft-1', generation: 1 }, pending: 'operation-1' },
+    pending: null,
+    revision: 'rev-2'
+  });
+});
+
+test('strict draft view requests use the same receipt-ordered transport as edits', async ({ page }) => {
+  const source = await readFile(adapterPath, 'utf8');
+  await mountEditor(page, 'same-page', source);
+  const observed = await page.evaluate(async () => {
+    const scope = globalThis as PeerScope;
+    scope.__flyPeerAdapter?.stop();
+    const root = document.querySelector('#fly-root') as HTMLElement;
+    root.dataset.flyDraftContract = 'rendered';
+    root.dataset.flyRenderedDraftToken = 'draft-1';
+    sessionStorage.setItem('fly:ssr-draft:same-page', JSON.stringify({ token: 'draft-1', generation: 1 }));
+    const requests: Array<{ intent: string; draft_generation: number; operation_id: string }> = [];
+    let finish: (response: Response) => void = () => {};
+    globalThis.fetch = (_input, init) => {
+      const request = JSON.parse(String(init?.body));
+      requests.push(request);
+      return new Promise<Response>((resolve) => { finish = resolve; });
+    };
+    const adapter = scope.FlyBrowser?.mount(root, { intentEndpoint: '/fly-intent' });
+    if (!adapter) throw new Error('missing adapter');
+    const select = adapter.emitIntent('select', { component_id: 'hero' });
+    const save = adapter.emitIntent('save', {});
+    const before = requests.length;
+    const reply = (generation: number) => new Response(JSON.stringify({
+      operation_id: requests[requests.length - 1].operation_id,
+      operation_status: 'committed',
+      result: { revision_id: 'rev-1', project_hash: 'hash-1', dirty: false },
+      draft_token: 'draft-1', draft_generation: generation
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+    finish(reply(2));
+    await select;
+    finish(reply(3));
+    await save;
+    return {
+      before,
+      requests: requests.map(({ intent, draft_generation, operation_id }) =>
+        ({ intent, draft_generation, hasReceipt: Boolean(operation_id) }))
+    };
+  });
+  expect(observed).toEqual({
+    before: 1,
+    requests: [
+      { intent: 'select', draft_generation: 1, hasReceipt: true },
+      { intent: 'save', draft_generation: 2, hasReceipt: true }
+    ]
+  });
 });

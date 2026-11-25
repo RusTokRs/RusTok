@@ -550,6 +550,7 @@ function writeSaveFailure(pageId, failure) {
           SAVE_FAILURE_MAX_ERROR_LENGTH,
         ),
         intent: nonEmptyString(failure.intent) || "save",
+        expected_revision: nonEmptyString(failure.expected_revision),
       }),
     );
   } catch (_) {
@@ -640,6 +641,7 @@ function reportSaveFailure(adapter, failure, request) {
     },
     SAVE_FAILED_CODE,
   );
+  adapter.root.dataset.flySaveFailed = "true";
 }
 
 // Settles the problem region after a successful intent response.
@@ -1123,6 +1125,7 @@ export class FlyBrowserAdapter {
     delete this.root.dataset.flyQueuedIntentsDiscarded;
     this.root.querySelector(RESOURCE_STATUS_SELECTOR)?.remove();
     clearBrowserProblem(this);
+    clearPendingOperationNotice(this);
     this.lastSequence = null;
     this.geometry.clear();
     this.selectedId = null;
@@ -1630,13 +1633,20 @@ export class FlyBrowserAdapter {
       showPendingOperationNotice(this, "invalid");
       return null;
     }
-    const operationId = this.pendingOperation.request?.operation_id;
+    const pendingRequest = this.pendingOperation.request;
+    const operationId = pendingRequest?.operation_id;
     if (typeof operationId !== "string" || !operationId) {
       this.pendingOperationUnresolved = true;
       showPendingOperationNotice(this, "invalid");
       return null;
     }
     this.pendingOperationUnresolved = true;
+    // Never resolve an old envelope against a different draft's receipt namespace.
+    if (pendingRequest.page_id !== this.pageId ||
+        pendingRequest.draft_token !== this.draftSession?.token) {
+      showPendingOperationNotice(this, "unavailable");
+      return null;
+    }
     return this.postIntent({
       intent: "resolve_operation",
       payload: {},
@@ -1662,7 +1672,6 @@ export class FlyBrowserAdapter {
       showPendingOperationNotice(this, "unavailable");
       return null;
     }
-    showPendingOperationNotice(this, "checking");
     return this.postIntent(request, {
       preserveOriginalRequest: true,
       retryPending: true,
@@ -1854,6 +1863,8 @@ export class FlyBrowserAdapter {
       !this.requiresOperationReceipts ||
       !this.pendingOperation?.request ||
       request.operation_id !== this.pendingOperation.request.operation_id ||
+      request.page_id !== this.pendingOperation.request.page_id ||
+      request.draft_token !== this.pendingOperation.request.draft_token ||
       this.pendingResolutionInFlight || this.authoritativeInFlight
     )) return null;
 
@@ -1869,7 +1880,11 @@ export class FlyBrowserAdapter {
       return this.rejectPendingIntent(request, limit, observed);
     }
 
-    const authoritative = !READ_ONLY_INTENTS.has(request.intent);
+    // The strict Pages host commits draft context and generation even for
+    // selection/hover requests. Serialize and receipt those requests as well;
+    // only resolve_operation is a pure lookup that cannot advance the draft.
+    const authoritative = !READ_ONLY_INTENTS.has(request.intent) ||
+      (this.requiresOperationReceipts && !resolvesOperation);
     if (authoritative && this.peerWriteConflict) {
       return this.rejectPeerWriteIntent(request);
     }
@@ -1883,10 +1898,10 @@ export class FlyBrowserAdapter {
     }
     const queuedSignal = normalizedTransportOptions(requestOptions).signal;
     if (queuedSignal?.aborted) return null;
-    if (retryPending && (this.authoritativeInFlight || this.pendingResolutionInFlight)) {
-      showPendingOperationNotice(this, "checking");
-      return null;
+    if (authoritative && this.pendingResolutionInFlight) {
+      return this.rejectPendingOperation(request);
     }
+    if (retryPending && this.authoritativeInFlight) return null;
     if (authoritative && this.authoritativeInFlight) {
       // A second write must not race the first with the same observed draft
       // generation/revision. Preserve the clicked target and payload while
@@ -1934,6 +1949,7 @@ export class FlyBrowserAdapter {
         request: JSON.parse(JSON.stringify(request)),
       };
       if (!retryPending) this.pendingOperationUnresolved = false;
+      else showPendingOperationNotice(this, "checking");
     }
     if (authoritative) this.authoritativeInFlight = true;
     if (resolvesOperation) {
@@ -2116,7 +2132,8 @@ export class FlyBrowserAdapter {
       }
       // A response to an earlier read/intent cannot rebase this stale canvas.
       // Only a fresh server-bound mount can clear the peer-write fence.
-      if (current && response.ok && isObject(result) && !this.peerWriteConflict) {
+      if (current && response.ok && isObject(result) && !this.peerWriteConflict &&
+          (!resolvesOperation || resolvedPendingReceipt)) {
         const state = isObject(result.result) ? result.result : result;
         if (typeof state.revision_id === "string") {
           this.root.dataset.flyRevision = state.revision_id;

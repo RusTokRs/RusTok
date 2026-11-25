@@ -102,7 +102,12 @@ explicit status-check and same-request retry controls; it never automatically
 retries the mutation. A restored pending envelope immediately shows its recovery
 notice and starts a receipt lookup. Lookups and retries of the same operation are
 mutually exclusive, and only a matching receipt may clear the pending envelope.
-Selection and hover cannot supersede recovery. Confirmed clean writes notify peers
+Selection and hover cannot supersede recovery. The editable Pages server also commits
+draft generation for view-state intents, so strict transport serializes and receipts
+all such requests, not only document commands. A receipt lookup is the only pure
+lookup and cannot advance the draft base until a matching committed receipt arrives.
+Recovery refuses a different draft token, and the parked conflict retains the expected
+revision across reloads. Confirmed clean writes notify peers
 even when the SSR response requires reload; dirty draft-only changes do not.
 HTTP revision-conflict responses fence the editor, and late responses cannot replace
 a peer-write warning. The host must render an owner-bound draft token before
