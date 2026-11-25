@@ -126,12 +126,11 @@ dedicated keyring directory read-only so atomic replacement remains visible.
 See the [root quick start](../../README.md#local-stack-launch).
 
 When `settings.features.oauth_enabled` is true and the host mode is not
-`worker` or `registry_only`), `settings.auth.issuer` must be an absolute root URL:
+`worker` or `registry_only`, `settings.auth.issuer` must be an absolute root URL:
 HTTPS in production, or HTTPS / `http://localhost` / `http://127.0.0.1` in
 development. Userinfo, path, query, and fragment components are rejected.
 OAuth discovery advertises this exact JWT issuer; it never derives an issuer
 from request Host or forwarded headers.
-
 
 ## Request trust and client IP
 
