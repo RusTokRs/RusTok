@@ -50,6 +50,8 @@ pub fn DioxusIsolatedCanvas(
     let mut ready = use_signal(|| false);
     let mut pointer = use_signal(|| None::<String>);
     let mut resize_preview = use_signal(|| None::<ResizeResult>);
+    // Geometry and pointer state belong to one rendered iframe document only.
+    let mut active_instance_id = use_signal(|| instance_id.clone());
 
     let (viewport, selected_id, hovered_id, insertion_rect, selected_can_resize) = {
         let current = session.read();
@@ -65,7 +67,18 @@ pub fn DioxusIsolatedCanvas(
                     .is_some_and(|selected| !selected.is_root && !selected.is_locked),
         )
     };
-    let geometry_snapshot = geometry.read().clone();
+    let instance_is_current =
+        active_instance_id.read().as_str() == instance_id.as_str();
+    let geometry_snapshot = if instance_is_current {
+        geometry.read().clone()
+    } else {
+        BTreeMap::new()
+    };
+    let insertion_rect = if instance_is_current {
+        insertion_rect
+    } else {
+        None
+    };
     let selected_rect = selected_id.as_ref().and_then(|id| {
         geometry_snapshot
             .get(id)
@@ -77,11 +90,15 @@ pub fn DioxusIsolatedCanvas(
             .map(|item| canvas_rect(item.rect))
     });
     let zoom = f64::from(viewport.zoom.max(0.01));
-    let preview_rect = resize_preview
-        .read()
-        .as_ref()
-        .map(|result| result.rect)
-        .or(selected_rect);
+    let preview_rect = if instance_is_current {
+        resize_preview
+            .read()
+            .as_ref()
+            .map(|result| result.rect)
+            .or(selected_rect)
+    } else {
+        None
+    };
     let rendered_width = (f64::from(viewport.width) * zoom).ceil() as u32;
     let rendered_height = (f64::from(viewport.height) * zoom).ceil() as u32;
     let view_box = format!("0 0 {} {}", viewport.width, viewport.height);
@@ -99,8 +116,34 @@ pub fn DioxusIsolatedCanvas(
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
     let mut listener_root_id = use_signal(|| None::<String>);
 
+    use_effect(use_reactive!(|instance_id| {
+        if active_instance_id.peek().as_str() == instance_id.as_str() {
+            return;
+        }
+        active_instance_id.set(instance_id.clone());
+        ready.set(false);
+        geometry.set(BTreeMap::new());
+        geometry_limit.set(None);
+        pointer.set(None);
+        resize_preview.set(None);
+        on_ui_intent.call(UiIntent::SetSelectedOverlay(None));
+        on_ui_intent.call(UiIntent::SetHoveredOverlay(None));
+        if session.read().controller.ui().state.drag.is_some() {
+            on_ui_intent.call(UiIntent::CancelDrag);
+        }
+        #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
+        cancel_resize_session(
+            resize_session,
+            resize_preview,
+            captured_element,
+            None,
+            true,
+            on_error,
+        );
+    }));
+
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
-    let next_resize_context = selected_can_resize
+    let next_resize_context = (instance_is_current && selected_can_resize)
         .then(|| selected_id.clone().zip(selected_rect))
         .flatten()
         .map(|(component_id, rect)| (component_id, rect, zoom));
@@ -148,7 +191,10 @@ pub fn DioxusIsolatedCanvas(
         let mut geometry_limit = geometry_limit;
         let mut ready = ready;
         let mut pointer = pointer;
+        let mut active_instance_id = active_instance_id;
+        let expected_instance_for_load = expected_instance.clone();
         move |_| {
+            active_instance_id.set(expected_instance_for_load.clone());
             ready.set(false);
             geometry.set(BTreeMap::new());
             geometry_limit.set(None);
@@ -421,13 +467,18 @@ pub fn DioxusIsolatedCanvas(
 
     let class = "absolute inset-0 border-0 bg-white";
     let expected_origin = fly_web::OPAQUE_ORIGIN.to_string();
-    let pointer_label = pointer.read().clone().unwrap_or_default();
-    let geometry_limit_message = geometry_limit.read().as_ref().map(|limit| {
+    let pointer_label = if instance_is_current {
+        pointer.read().clone().unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let geometry_limit_message = instance_is_current
+        .then(|| geometry_limit.read().as_ref().map(|limit| {
         format!(
             "Canvas geometry limit reached: {} components observed, limit {}. Selection and drag/drop overlays are unavailable until the page is simplified.",
             limit.observed, limit.limit
-        )
-    });
+        }))
+        .flatten();
 
     rsx! {
         div {
@@ -564,7 +615,7 @@ pub fn DioxusIsolatedCanvas(
                         }
                     }
                 }
-                if !*ready.read() {
+                if !instance_is_current || !*ready.read() {
                     div {
                         class: "absolute inset-0 flex items-center justify-center bg-background/70 text-sm text-muted-foreground pointer-events-none",
                         role: "status",
