@@ -1,14 +1,14 @@
 use fly::{
     AssetDescriptor, AssetKind, ComponentChildren, ComponentNode, ComponentObject,
-    FLY_EMBED_FIELD, FLY_PAGE_METADATA_FIELD, FLY_RICH_TEXT_FIELD, FLY_THEME_FIELD,
-    ProjectDocument, StyleRuleDescriptor, StyleRuleScope,
+    FLY_EMBED_FIELD, FLY_PAGE_METADATA_FIELD, FLY_RICH_TEXT_FIELD, FLY_SYMBOLS_FIELD,
+    FLY_THEME_FIELD, ProjectDocument, StyleRuleDescriptor, StyleRuleScope,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
-pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT: &str = "page_builder_static_publish_policy_v6";
+pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT: &str = "page_builder_static_publish_policy_v7";
 
 const ALLOWED_TAGS: &[&str] = &[
     "a",
@@ -296,7 +296,20 @@ pub fn validate_static_publish_document(
     policy.verify_integrity()?;
 
     let mut diagnostics = Vec::new();
-    for (page_index, page) in document.project().pages.iter().enumerate() {
+    let materialized = match fly::resolve_symbol_instances(document) {
+        Ok(materialized) => materialized,
+        Err(error) => {
+            reject(
+                &mut diagnostics,
+                "landing_symbol_resolution_failed",
+                FLY_SYMBOLS_FIELD,
+                format!("symbol catalog cannot be materialized safely: {error}"),
+            );
+            return Err(PageBuilderStaticPublishPolicyError::Rejected { diagnostics });
+        }
+    };
+
+    for (page_index, page) in materialized.project().pages.iter().enumerate() {
         if let Some(root) = page.component.as_ref() {
             validate_component_node(
                 root,
@@ -306,10 +319,10 @@ pub fn validate_static_publish_document(
             );
         }
     }
-    validate_style_rules(document, &policy, &mut diagnostics);
-    validate_assets(document, &policy, &mut diagnostics);
-    validate_page_metadata(document, &policy, &mut diagnostics);
-    validate_theme(document, &mut diagnostics);
+    validate_style_rules(&materialized, &policy, &mut diagnostics);
+    validate_assets(&materialized, &policy, &mut diagnostics);
+    validate_page_metadata(&materialized, &policy, &mut diagnostics);
+    validate_theme(&materialized, &mut diagnostics);
 
     if !diagnostics.is_empty() {
         return Err(PageBuilderStaticPublishPolicyError::Rejected { diagnostics });
@@ -1638,6 +1651,65 @@ mod tests {
     }
 
     #[test]
+    fn static_policy_checks_materialized_symbol_content() {
+        let mut document = document(json!({
+            "id": "root",
+            "type": "wrapper",
+            "components": [{
+                "id": "instance",
+                "type": "symbol",
+                "symbolId": "shared"
+            }]
+        }));
+        document.project_mut().extensions.insert(
+            FLY_SYMBOLS_FIELD.to_string(),
+            json!([{
+                "id": "shared",
+                "components": [
+                    {
+                        "id": "embedded",
+                        "type": "wrapper",
+                        "flyEmbed": {
+                            "provider": "youtube",
+                            "url": "https://www.youtube.com/embed/demo",
+                            "title": "Video"
+                        }
+                    },
+                    {
+                        "id": "rich",
+                        "type": "wrapper",
+                        "flyRichText": {
+                            "capability": "richtext",
+                            "payload": {
+                                "type": "doc",
+                                "content": [{
+                                    "type": "paragraph",
+                                    "content": [{
+                                        "type": "text",
+                                        "text": "Insecure link",
+                                        "marks": [{
+                                            "type": "link",
+                                            "attrs": {"href": "http://insecure.example/page"}
+                                        }]
+                                    }]
+                                }]
+                            }
+                        }
+                    }
+                ]
+            }]),
+        );
+
+        let error = validate_static_publish_document(&document).expect_err("unsafe symbol content");
+        assert!(error.diagnostics().iter().any(|diagnostic| {
+            diagnostic.code == "landing_embed_forbidden"
+        }));
+        assert!(error.diagnostics().iter().any(|diagnostic| {
+            diagnostic.code == "landing_rich_text_link_url_rejected"
+        }));
+    }
+
+    #[test]
     fn static_policy_accepts_https_rich_text_links() {
         let document = document(json!({
             "id": "root",
@@ -1758,10 +1830,10 @@ mod tests {
     }
 
     #[test]
-    fn v5_policy_evidence_is_not_current_after_v6_cutover() {
+    fn v6_policy_evidence_is_not_current_after_v7_cutover() {
         let policy = PageBuilderStaticPublishPolicy::default();
         let evidence = PageBuilderStaticPublishPolicyEvidence {
-            format: "page_builder_static_publish_policy_v5".to_string(),
+            format: "page_builder_static_publish_policy_v6".to_string(),
             policy_hash: policy.policy_hash().expect("current hash"),
         };
         assert!(evidence.verify_integrity().is_err());
