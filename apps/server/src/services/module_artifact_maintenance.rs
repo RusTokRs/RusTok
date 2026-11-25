@@ -221,6 +221,10 @@ pub fn spawn_module_artifact_maintenance_handle(
         // process restart starts at the first page; the durable candidate rows
         // remain authoritative and no tenant is lost when this cursor resets.
         let mut data_object_gc_tenant_cursor = None;
+        // Admission reverification also scans bounded pages. Keep the last
+        // examined installation ID so a persistent stale prefix or a large
+        // fresh prefix cannot monopolize every maintenance pass.
+        let mut admission_reverification_cursor = None;
         let mut ticker = tokio::time::interval(interval);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
@@ -429,16 +433,23 @@ pub fn spawn_module_artifact_maintenance_handle(
                                 config.trust_policy,
                             );
                             match service
-                                .list_stale_candidates(ADMISSION_REVERIFICATIONS_PER_PASS)
+                                .list_stale_candidates_after(
+                                    admission_reverification_cursor,
+                                    ADMISSION_REVERIFICATIONS_PER_PASS,
+                                )
                                 .await
                             {
-                                Ok(candidates) => {
-                                    for candidate in candidates {
+                                Ok(page) => {
+                                    let next_cursor =
+                                        if page.has_more { page.next_cursor } else { None };
+                                    let mut stopped_during_page = false;
+                                    for candidate in page.candidates {
                                         // Never start another external trust
                                         // reverification once the host is
                                         // stopping. The current call completes
                                         // before this check is reached.
                                         if !may_admit_next_worker_operation(&stop_rx) {
+                                            stopped_during_page = true;
                                             break;
                                         }
                                         let idempotency_key = reverification_idempotency_key(
@@ -495,8 +506,17 @@ pub fn spawn_module_artifact_maintenance_handle(
                                             }
                                         }
                                     }
+                                    // Failed candidates remain stale and are
+                                    // retried after wrap; advancing this page
+                                    // lets later installations receive a turn.
+                                    if !stopped_during_page
+                                        && may_admit_next_worker_operation(&stop_rx)
+                                    {
+                                        admission_reverification_cursor = next_cursor;
+                                    }
                                 }
                                 Err(err) => {
+                                    // A failed scan must retry the same page.
                                     error!(
                                         worker = "module_artifact_maintenance",
                                         instance_id,
