@@ -750,6 +750,7 @@ impl CommerceCatalogMutation {
         ctx: &Context<'_>,
         idempotency_key: String,
         id: Uuid,
+        expected_revision: String,
     ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_commerce_permission(
@@ -768,7 +769,7 @@ impl CommerceCatalogMutation {
         )?;
         product_command_runtime(ctx)?
             .command_port()
-            .delete_variant(port_context.clone(), id)
+            .delete_variant(port_context.clone(), id, expected_revision)
             .await
             .map_err(|error| {
                 product_command_port_error(&port_context, error, "delete_product_variant")
