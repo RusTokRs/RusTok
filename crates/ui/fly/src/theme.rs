@@ -346,75 +346,13 @@ pub struct TokenUsage {
     pub snippet: String,
 }
 
-/// Replaces exact occurrences of `--{old_name}` with `--{new_name}` in CSS values (e.g. `var(--old_name)`),
-/// respecting identifier boundary characters so `--old-name-dark` is not touched.
+/// Replaces references to `--{old_name}` in actual CSS `var()` functions.
+/// Quoted strings, comments, unrelated custom-property text and longer identifiers are untouched.
 pub fn replace_token_in_css_value(value: &str, old_name: &str, new_name: &str) -> (String, usize) {
-    let target = format!("--{old_name}");
-    let replacement = format!("--{new_name}");
-    let mut result = String::with_capacity(value.len());
-    let mut count = 0;
-    let mut last_copied = 0;
-
-    let is_ident_char = |ch: char| -> bool {
-        ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' || ch >= '\u{0080}'
-    };
-
-    for (idx, _) in value.match_indices(&target) {
-        if idx < last_copied {
-            continue;
-        }
-        let before_is_ident = value[..idx].chars().next_back().is_some_and(is_ident_char);
-        let after_idx = idx + target.len();
-        let after_is_ident = value[after_idx..].chars().next().is_some_and(is_ident_char);
-
-        if !before_is_ident && !after_is_ident {
-            result.push_str(&value[last_copied..idx]);
-            result.push_str(&replacement);
-            count += 1;
-            last_copied = after_idx;
-        }
+    if validate_token_name(old_name).is_err() || validate_token_name(new_name).is_err() {
+        return (value.to_string(), 0);
     }
-    result.push_str(&value[last_copied..]);
-    (result, count)
-}
-
-fn find_usages_in_opaque_value(
-    value: &Value,
-    token_name: &str,
-    usages: &mut Vec<TokenUsage>,
-    fallback_id: &str,
-) {
-    match value {
-        Value::Object(map) => {
-            let comp_id = map.get("id").and_then(Value::as_str).unwrap_or(fallback_id);
-            if let Some(Value::Object(style_map)) = map.get("style") {
-                for (prop, val) in style_map {
-                    if let Some(css_val) = val.as_str() {
-                        let (_, count) =
-                            replace_token_in_css_value(css_val, token_name, token_name);
-                        if count > 0 {
-                            usages.push(TokenUsage {
-                                location: TokenUsageLocation::ComponentStyle {
-                                    component_id: comp_id.to_string(),
-                                    property: prop.clone(),
-                                },
-                                snippet: format!("{prop}: {css_val}"),
-                            });
-                        }
-                    }
-                }
-            }
-            if let Some(components) = map.get("components") {
-                find_usages_in_opaque_value(components, token_name, usages, comp_id);
-            }
-        }
-        Value::Array(items) => {
-            for item in items {
-                find_usages_in_opaque_value(item, token_name, usages, fallback_id);
-            }
-        }
-        _ => {}
-    }
+    crate::render::rewrite_css_var_references(value, old_name, new_name)
 }
 
 /// Inspect all component styles, style catalog rules, and sibling theme tokens to find usages of `--{token_name}`.
@@ -501,7 +439,10 @@ pub fn rename_token_references(
     old_name: &str,
     new_name: &str,
 ) -> usize {
-    if old_name == new_name {
+    if old_name == new_name
+        || validate_token_name(old_name).is_err()
+        || validate_token_name(new_name).is_err()
+    {
         return 0;
     }
     let mut total_replacements = 0;
@@ -953,6 +894,17 @@ mod command_tests {
                 Some("var(--primary)")
             );
         }
+    }
+
+    #[test]
+    fn token_rewrite_only_changes_actual_var_references() {
+        let value = r#"content: "--brand"; font-family: "--brand"; color: VAR( --brand ); border-color: var(--other, var(--brand)); /* var(--brand) */"#;
+        let (rewritten, count) = replace_token_in_css_value(value, "brand", "primary");
+        assert_eq!(count, 2);
+        assert_eq!(
+            rewritten,
+            r#"content: "--brand"; font-family: "--brand"; color: VAR( --primary ); border-color: var(--other, var(--primary)); /* var(--brand) */"#
+        );
     }
 
     #[test]

@@ -180,8 +180,12 @@ pub fn absolute_url_has_authority(value: &str, scheme: &str) -> bool {
     // explicit authority requirement before parsing the host and port.
     !authority.is_empty()
         && !authority.starts_with(':')
+        && !authority.contains('@')
         && Url::parse(value).is_ok_and(|url| {
-            matches!(url.scheme(), "http" | "https") && url.has_host()
+            matches!(url.scheme(), "http" | "https")
+                && url.has_host()
+                && url.username().is_empty()
+                && url.password().is_none()
         })
 }
 
@@ -401,6 +405,9 @@ mod tests {
             "https://example.test:abc/a",
             "https://[invalid]/a",
             "https://@/a",
+            "https://user:pass@example.test/a",
+            "https://user@example.test/a",
+            "https://example.test@attacker.test/a",
             "https:///example.test/a",
         ] {
             assert!(normalize_safe_url(value, "URL").is_err(), "{value}");

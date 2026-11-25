@@ -9,6 +9,22 @@ versioned with the host workspace, so until it is extracted (see the `rustok-ui-
 
 ## [Unreleased]
 
+### Fixed
+
+- **Resize constraint enforcement.** Invalid explicit minimum/maximum pairs now leave the
+  affected gesture unchanged instead of silently discarding the maximum. Patch generation
+  rechecks changed dimensions and aspect-ratio constraints at the persistence boundary.
+- **Safe absolute URLs.** HTTP(S) URLs containing userinfo credentials are rejected by the
+  shared URL admission helper, including links, assets, and page-head URLs.
+- **Theme-token rename precision.** Renaming updates exact custom-property arguments in CSS
+  `var()` functions (including nested fallbacks), without changing quoted literals, comments,
+  or unrelated custom-property text.
+- **Inline-only rendering parity.** When style hooks are disabled, validated theme tokens are
+  attached to the rendered root as inheritable custom properties, and embed component styles
+  are preserved in the inline style path.
+- **Computed format validation.** Every format placeholder is validated, including empty
+  placeholders and an unclosed placeholder that follows an earlier valid one.
+
 ### Added
 
 - **Slider / Carousel interactive primitive (`slider` and `switch_slide`).**

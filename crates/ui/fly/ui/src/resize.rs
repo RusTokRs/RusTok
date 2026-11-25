@@ -146,13 +146,19 @@ impl ResizeSession {
         {
             // Constrain one scale, not two independent dimensions. Snapping and
             // clamping both dimensions separately can destroy the aspect ratio.
-            let (min_width, max_width) =
-                dimension_bounds(self.policy.minimum_width, self.policy.maximum_width);
-            let (min_height, max_height) =
-                dimension_bounds(self.policy.minimum_height, self.policy.maximum_height);
+            let Some((min_width, max_width)) =
+                dimension_bounds(self.policy.minimum_width, self.policy.maximum_width)
+            else {
+                return unchanged();
+            };
+            let Some((min_height, max_height)) =
+                dimension_bounds(self.policy.minimum_height, self.policy.maximum_height)
+            else {
+                return unchanged();
+            };
             let min_scale = (min_width / rect.width).max(min_height / rect.height);
             let max_scale = (max_width / rect.width).min(max_height / rect.height);
-            if !min_scale.is_finite() || min_scale > max_scale {
+            if !min_scale.is_finite() || max_scale.is_nan() || min_scale > max_scale {
                 return unchanged();
             }
 
@@ -165,8 +171,8 @@ impl ResizeSession {
                 return unchanged();
             }
             let scale = scale.clamp(min_scale, max_scale);
-            rect.width *= scale;
-            rect.height *= scale;
+            rect.width = (rect.width * scale).clamp(min_width, max_width);
+            rect.height = (rect.height * scale).clamp(min_height, max_height);
         } else {
             // Do not normalize an untouched axis: the preview and persisted patch
             // must describe the same dimensions, including off-grid starting sizes.
@@ -175,22 +181,28 @@ impl ResizeSession {
                 if !width.is_finite() {
                     return unchanged();
                 }
-                rect.width = clamp_dimension(
+                let Some(width) = clamp_dimension(
                     width,
                     self.policy.minimum_width,
                     self.policy.maximum_width,
-                );
+                ) else {
+                    return unchanged();
+                };
+                rect.width = width;
             }
             if height_delta != 0.0 {
                 let height = snap(rect.height + height_delta, self.policy.grid_size);
                 if !height.is_finite() {
                     return unchanged();
                 }
-                rect.height = clamp_dimension(
+                let Some(height) = clamp_dimension(
                     height,
                     self.policy.minimum_height,
                     self.policy.maximum_height,
-                );
+                ) else {
+                    return unchanged();
+                };
+                rect.height = height;
             }
         }
         // The opposite edges belong to the initial rectangle, before aspect-ratio
@@ -205,11 +217,20 @@ impl ResizeSession {
         if !rect.is_valid() {
             return unchanged();
         }
+        let width_changed = self.handle.changes_width()
+            && (rect.width - self.start_rect.width).abs() > f64::EPSILON;
+        let height_changed = self.handle.changes_height()
+            && (rect.height - self.start_rect.height).abs() > f64::EPSILON;
+        if self.policy.preserve_aspect_ratio
+            && self.handle.changes_width()
+            && self.handle.changes_height()
+            && width_changed != height_changed
+        {
+            return unchanged();
+        }
         ResizeResult {
-            width_changed: self.handle.changes_width()
-                && (rect.width - self.start_rect.width).abs() > f64::EPSILON,
-            height_changed: self.handle.changes_height()
-                && (rect.height - self.start_rect.height).abs() > f64::EPSILON,
+            width_changed,
+            height_changed,
             rect,
         }
     }
@@ -232,14 +253,57 @@ impl ResizeSession {
 
     pub fn component_patch(&self, result: ResizeResult) -> ComponentPatch {
         let mut style = Map::new();
-        // ResizeResult is public and deserializable. Do not trust adapter-supplied
-        // flags or geometry to bypass the same validity boundary as update().
-        if result.rect.is_valid() {
-            if result.width_changed && self.handle.changes_width() {
-                style.insert("width".to_string(), Value::String(px(result.rect.width)));
-            }
-            if result.height_changed && self.handle.changes_height() {
-                style.insert("height".to_string(), Value::String(px(result.rect.height)));
+        // ResizeResult is public and deserializable. Recheck the policy at the
+        // persistence boundary so forged or stale results cannot bypass bounds.
+        if self.start_rect.is_valid() && result.rect.is_valid() {
+            let width_within_bounds = if result.width_changed && self.handle.changes_width() {
+                dimension_bounds(self.policy.minimum_width, self.policy.maximum_width)
+                    .is_some_and(|(minimum, maximum)| {
+                        result.rect.width >= minimum && result.rect.width <= maximum
+                    })
+            } else {
+                true
+            };
+            let height_within_bounds = if result.height_changed && self.handle.changes_height() {
+                dimension_bounds(self.policy.minimum_height, self.policy.maximum_height)
+                    .is_some_and(|(minimum, maximum)| {
+                        result.rect.height >= minimum && result.rect.height <= maximum
+                    })
+            } else {
+                true
+            };
+            let aspect_ratio_valid = if self.policy.preserve_aspect_ratio
+                && self.handle.changes_width()
+                && self.handle.changes_height()
+                && (result.width_changed || result.height_changed)
+            {
+                if !result.width_changed
+                    || !result.height_changed
+                    || self.start_rect.width <= 0.0
+                    || self.start_rect.height <= 0.0
+                    || result.rect.width <= 0.0
+                    || result.rect.height <= 0.0
+                {
+                    false
+                } else {
+                    let start_ratio = self.start_rect.width / self.start_rect.height;
+                    let result_ratio = result.rect.width / result.rect.height;
+                    start_ratio.is_finite()
+                        && result_ratio.is_finite()
+                        && (result_ratio - start_ratio).abs()
+                            <= 1e-9 * start_ratio.abs().max(1.0)
+                }
+            } else {
+                true
+            };
+
+            if width_within_bounds && height_within_bounds && aspect_ratio_valid {
+                if result.width_changed && self.handle.changes_width() {
+                    style.insert("width".to_string(), Value::String(px(result.rect.width)));
+                }
+                if result.height_changed && self.handle.changes_height() {
+                    style.insert("height".to_string(), Value::String(px(result.rect.height)));
+                }
             }
         }
         ComponentPatch {
@@ -256,21 +320,22 @@ fn snap(value: f64, grid_size: Option<f64>) -> f64 {
     }
 }
 
-fn dimension_bounds(minimum: f64, maximum: Option<f64>) -> (f64, f64) {
-    let minimum = if minimum.is_finite() {
-        minimum.max(0.0)
-    } else {
-        0.0
+fn dimension_bounds(minimum: f64, maximum: Option<f64>) -> Option<(f64, f64)> {
+    if !minimum.is_finite() {
+        return None;
+    }
+    let minimum = minimum.max(0.0);
+    let maximum = match maximum {
+        Some(maximum) if maximum.is_finite() && maximum >= minimum => maximum,
+        Some(_) => return None,
+        None => f64::INFINITY,
     };
-    let maximum = maximum
-        .filter(|maximum| maximum.is_finite() && *maximum >= minimum)
-        .unwrap_or(f64::INFINITY);
-    (minimum, maximum)
+    Some((minimum, maximum))
 }
 
-fn clamp_dimension(value: f64, minimum: f64, maximum: Option<f64>) -> f64 {
-    let (minimum, maximum) = dimension_bounds(minimum, maximum);
-    value.clamp(minimum, maximum)
+fn clamp_dimension(value: f64, minimum: f64, maximum: Option<f64>) -> Option<f64> {
+    let (minimum, maximum) = dimension_bounds(minimum, maximum)?;
+    Some(value.clamp(minimum, maximum))
 }
 
 fn px(value: f64) -> String {
@@ -439,6 +504,57 @@ mod tests {
         assert_eq!(result.rect, resize.start_rect);
         assert!(!result.width_changed);
         assert!(!result.height_changed);
+    }
+
+    #[test]
+    fn invalid_explicit_maximums_leave_the_affected_resize_unchanged() {
+        let mut width = session(ResizeHandle::East);
+        width.policy.minimum_width = 240.0;
+        width.policy.maximum_width = Some(200.0);
+        let result = width.update(250.0, 20.0);
+        assert_eq!(result.rect, width.start_rect);
+        assert!(!result.width_changed);
+
+        let mut height = session(ResizeHandle::South);
+        height.policy.minimum_height = 120.0;
+        height.policy.maximum_height = Some(80.0);
+        let result = height.update(10.0, 120.0);
+        assert_eq!(result.rect, height.start_rect);
+        assert!(!result.height_changed);
+    }
+
+    #[test]
+    fn component_patch_enforces_explicit_bounds_and_aspect_ratio() {
+        let mut width = session(ResizeHandle::East);
+        width.policy.maximum_width = Some(220.0);
+        let outside_maximum = ResizeResult {
+            rect: CanvasRect {
+                width: 232.0,
+                ..width.start_rect
+            },
+            width_changed: true,
+            height_changed: false,
+        };
+        assert_eq!(
+            width.component_patch(outside_maximum).style,
+            Some(Value::Object(Map::new()))
+        );
+
+        let mut corner = session(ResizeHandle::SouthEast);
+        corner.policy.preserve_aspect_ratio = true;
+        let wrong_ratio = ResizeResult {
+            rect: CanvasRect {
+                width: 232.0,
+                height: 110.0,
+                ..corner.start_rect
+            },
+            width_changed: true,
+            height_changed: true,
+        };
+        assert_eq!(
+            corner.component_patch(wrong_ratio).style,
+            Some(Value::Object(Map::new()))
+        );
     }
 
     #[test]

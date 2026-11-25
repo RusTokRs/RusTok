@@ -544,14 +544,22 @@ pub fn render_page_with_rich_text_and_embed_registry(
     // Action targets get an unforgeable hook. A plain HTML id is added only when it would not
     // collide with an authored id or the HTML id a form will receive at materialization.
     let identities = RenderIdentities::new(root, action_target_ids(document));
-    let theme_tokens = crate::decode_theme_tokens(document)
-        .map(|tokens| {
-            tokens
-                .into_iter()
-                .map(|token| format!("--{}", token.name))
-                .collect::<BTreeSet<_>>()
-        })
-        .unwrap_or_default();
+    let decoded_theme_tokens = crate::decode_theme_tokens(document).unwrap_or_default();
+    let theme_tokens = decoded_theme_tokens
+        .iter()
+        .map(|token| token.css_variable())
+        .collect::<BTreeSet<_>>();
+    // Inline-only rendering has no :root stylesheet, so place validated custom properties
+    // on the rendered root element where they inherit into every descendant.
+    let inline_theme_style = if policy.emit_style_hooks {
+        String::new()
+    } else {
+        decoded_theme_tokens
+            .iter()
+            .map(|token| format!("{}:{}", token.css_variable(), token.value))
+            .collect::<Vec<_>>()
+            .join(";")
+    };
     let mut html = String::new();
     render_node(
         root,
@@ -559,6 +567,8 @@ pub fn render_page_with_rich_text_and_embed_registry(
         0,
         policy,
         &theme_tokens,
+        &inline_theme_style,
+        true,
         rich_text,
         embeds,
         &identities,
@@ -709,6 +719,8 @@ fn render_node(
     index: usize,
     policy: &RenderPolicy,
     theme_tokens: &BTreeSet<String>,
+    inline_theme_style: &str,
+    is_root: bool,
     rich_text: Option<&dyn crate::RichTextHtmlRenderer>,
     embeds: &crate::EmbedProviderRegistry,
     identities: &RenderIdentities,
@@ -721,6 +733,8 @@ fn render_node(
             index,
             policy,
             theme_tokens,
+            inline_theme_style,
+            is_root,
             rich_text,
             embeds,
             identities,
@@ -739,6 +753,8 @@ fn render_component(
     index: usize,
     policy: &RenderPolicy,
     theme_tokens: &BTreeSet<String>,
+    inline_theme_style: &str,
+    is_root: bool,
     rich_text: Option<&dyn crate::RichTextHtmlRenderer>,
     embeds: &crate::EmbedProviderRegistry,
     identities: &RenderIdentities,
@@ -747,7 +763,17 @@ fn render_component(
     let component_id = component.id.as_deref();
     if let Some(raw_embed) = component.extensions.get(crate::FLY_EMBED_FIELD) {
         render_embed(
-            component, raw_embed, parent_id, index, policy, embeds, identities, output,
+            component,
+            raw_embed,
+            parent_id,
+            index,
+            policy,
+            theme_tokens,
+            inline_theme_style,
+            is_root,
+            embeds,
+            identities,
+            output,
         );
         return;
     }
@@ -825,19 +851,14 @@ fn render_component(
         write_attribute(output, &name, &value);
     }
 
-    if !policy.emit_style_hooks
-        && let Some(style) = component.style.as_ref().and_then(Value::as_object)
-    {
-        let declarations = style
-            .iter()
-            .filter_map(|(name, value)| {
-                safe_style_with_tokens(name, value, policy, theme_tokens)
-            })
-            .collect::<Vec<_>>()
-            .join(";");
-        if !declarations.is_empty() {
-            write_attribute(output, "style", &declarations);
-        }
+    if let Some(declarations) = inline_style_declarations(
+        component,
+        policy,
+        theme_tokens,
+        is_root.then_some(inline_theme_style),
+        None,
+    ) {
+        write_attribute(output, "style", &declarations);
     }
 
     output.push('>');
@@ -878,6 +899,8 @@ fn render_component(
                 child_index,
                 policy,
                 theme_tokens,
+                inline_theme_style,
+                false,
                 rich_text,
                 embeds,
                 identities,
@@ -893,12 +916,39 @@ fn render_component(
 /// Render an embed component: sandboxed iframe for a validated spec, a plain link or escaped
 /// title otherwise. Embeds never contribute arbitrary attributes to the iframe; the provider
 /// gate in `embed.rs` is the only way a URL reaches `src`.
+fn inline_style_declarations(
+    component: &ComponentObject,
+    policy: &RenderPolicy,
+    theme_tokens: &BTreeSet<String>,
+    root_theme_style: Option<&str>,
+    additional_declaration: Option<&str>,
+) -> Option<String> {
+    let mut declarations = Vec::new();
+    if !policy.emit_style_hooks {
+        if let Some(root_style) = root_theme_style.filter(|style| !style.is_empty()) {
+            declarations.push(root_style.to_string());
+        }
+        if let Some(style) = component.style.as_ref().and_then(Value::as_object) {
+            declarations.extend(style.iter().filter_map(|(name, value)| {
+                safe_style_with_tokens(name, value, policy, theme_tokens)
+            }));
+        }
+    }
+    if let Some(additional) = additional_declaration.filter(|value| !value.is_empty()) {
+        declarations.push(additional.to_string());
+    }
+    (!declarations.is_empty()).then(|| declarations.join(";"))
+}
+
 fn render_embed(
     component: &ComponentObject,
     raw_spec: &Value,
     parent_id: Option<&str>,
     index: usize,
     policy: &RenderPolicy,
+    theme_tokens: &BTreeSet<String>,
+    inline_theme_style: &str,
+    is_root: bool,
     embeds: &crate::EmbedProviderRegistry,
     identities: &RenderIdentities,
     output: &mut String,
@@ -929,9 +979,18 @@ fn render_embed(
     write_attribute(output, "class", "fly-embed");
     match crate::decode_embed_spec_with_registry(raw_spec, embeds) {
         Ok(spec) if url_allowed(&spec.url, UrlAttributeKind::Resource, policy) => {
-            if let Some(ratio) = spec.aspect_ratio.as_deref() {
-                let ratio = ratio.replace('/', " / ");
-                write_attribute(output, "style", &format!("aspect-ratio:{ratio}"));
+            let aspect_ratio = spec
+                .aspect_ratio
+                .as_deref()
+                .map(|ratio| format!("aspect-ratio:{}", ratio.replace('/', " / ")));
+            if let Some(style) = inline_style_declarations(
+                component,
+                policy,
+                theme_tokens,
+                is_root.then_some(inline_theme_style),
+                aspect_ratio.as_deref(),
+            ) {
+                write_attribute(output, "style", &style);
             }
             output.push_str("><iframe");
             write_attribute(output, "src", &spec.url);
@@ -942,6 +1001,15 @@ fn render_embed(
             output.push_str(" allowfullscreen></iframe></div>");
         }
         _ => {
+            if let Some(style) = inline_style_declarations(
+                component,
+                policy,
+                theme_tokens,
+                is_root.then_some(inline_theme_style),
+                None,
+            ) {
+                write_attribute(output, "style", &style);
+            }
             output.push('>');
             let raw_title = raw_spec
                 .get("title")
@@ -1301,20 +1369,24 @@ pub fn css_property_allowed(name: &str) -> bool {
 ///
 /// Strings are ignored, nested fallbacks are scanned, and malformed or escaped var()
 /// expressions fail closed. The caller decides which custom properties are in scope.
-pub fn css_var_references(value: &str) -> Option<Vec<String>> {
+fn css_var_reference_ranges(value: &str) -> Option<Vec<std::ops::Range<usize>>> {
     if value.contains('\\') {
         return None;
     }
     let lowered = value.to_ascii_lowercase();
-    let mut references = Vec::new();
+    let mut ranges = Vec::new();
     let mut cursor = 0usize;
     while cursor < value.len() {
         match value.as_bytes()[cursor] {
-            b'\\'' | b'"' => {
+            b'\'' | b'"' => {
                 cursor = skip_css_string(value, cursor)?;
                 continue;
             }
             _ => {}
+        }
+        if value.as_bytes().get(cursor..cursor + 2) == Some(&b"/*"[..]) {
+            cursor = skip_css_comment(value, cursor)?;
+            continue;
         }
 
         if lowered[cursor..].starts_with("var(") {
@@ -1326,11 +1398,15 @@ pub fn css_var_references(value: &str) -> Option<Vec<String>> {
                 let open = cursor + 3;
                 let close = css_function_close(value, open)?;
                 let arguments = &value[open + 1..close];
-                let name = arguments.split(',').next()?.trim();
+                let first_argument_end = arguments.find(',').unwrap_or(arguments.len());
+                let first_argument = &arguments[..first_argument_end];
+                let name = first_argument.trim();
                 if !valid_css_custom_property_name(name) {
                     return None;
                 }
-                references.push(name.to_string());
+                let leading_whitespace = first_argument.len() - first_argument.trim_start().len();
+                let name_start = open + 1 + leading_whitespace;
+                ranges.push(name_start..name_start + name.len());
                 // Continue through fallbacks to find nested var() references.
                 cursor = open + 1;
                 continue;
@@ -1339,7 +1415,46 @@ pub fn css_var_references(value: &str) -> Option<Vec<String>> {
 
         cursor += value[cursor..].chars().next()?.len_utf8();
     }
-    Some(references)
+    Some(ranges)
+}
+
+/// Return all custom-property references in CSS var() functions.
+///
+/// Strings and comments are ignored, nested fallbacks are scanned, and malformed or escaped
+/// var() expressions fail closed. The caller decides which custom properties are in scope.
+pub fn css_var_references(value: &str) -> Option<Vec<String>> {
+    let ranges = css_var_reference_ranges(value)?;
+    Some(
+        ranges
+            .into_iter()
+            .map(|range| value[range].to_string())
+            .collect(),
+    )
+}
+
+/// Rewrite only the first custom-property argument of actual CSS var() functions.
+pub(crate) fn rewrite_css_var_references(
+    value: &str,
+    old_name: &str,
+    new_name: &str,
+) -> (String, usize) {
+    let Some(ranges) = css_var_reference_ranges(value) else {
+        return (value.to_string(), 0);
+    };
+    let target = format!("--{old_name}");
+    let replacement = format!("--{new_name}");
+    let matches = ranges
+        .into_iter()
+        .filter(|range| &value[range.start..range.end] == target.as_str())
+        .collect::<Vec<_>>();
+    if matches.is_empty() {
+        return (value.to_string(), 0);
+    }
+    let mut rewritten = value.to_string();
+    for range in matches.iter().rev() {
+        rewritten.replace_range(range.start..range.end, &replacement);
+    }
+    (rewritten, matches.len())
 }
 
 /// Whether a CSS declaration can load or reference an external resource.
@@ -1454,11 +1569,23 @@ fn skip_css_string(value: &str, start: usize) -> Option<usize> {
     None
 }
 
+fn skip_css_comment(value: &str, start: usize) -> Option<usize> {
+    if value.as_bytes().get(start..start + 2) != Some(&b"/*"[..]) {
+        return None;
+    }
+    let end = value.get(start + 2..)?.find("*/")?;
+    Some(start + 2 + end + 2)
+}
+
 fn css_function_close(value: &str, open: usize) -> Option<usize> {
     if value.as_bytes().get(open) != Some(&b'(') { return None; }
     let mut depth = 1usize;
     let mut cursor = open + 1;
     while cursor < value.len() {
+        if value.as_bytes().get(cursor..cursor + 2) == Some(&b"/*"[..]) {
+            cursor = skip_css_comment(value, cursor)?;
+            continue;
+        }
         match value.as_bytes()[cursor] {
             b'\'' | b'"' => cursor = skip_css_string(value, cursor)?,
             b'\\' => return None,
@@ -2463,6 +2590,15 @@ mod tests {
     }
 
     #[test]
+    fn css_var_reference_scanner_ignores_strings_and_comments_and_scans_nested_fallbacks() {
+        let value = r#"content: "var(--literal)"; color: var(--brand, VAR( --fallback )); /* var(--comment) */"#;
+        assert_eq!(
+            css_var_references(value),
+            Some(vec!["--brand".to_string(), "--fallback".to_string()])
+        );
+    }
+
+    #[test]
     fn style_hooks_can_be_disabled_with_project_css() {
         let rendered = render_page(
             &document(),
@@ -2475,6 +2611,53 @@ mod tests {
         .expect("render page");
         assert!(!rendered.html.contains("data-fly-style-id"));
         assert!(rendered.css.is_empty());
+    }
+
+    #[test]
+    fn inline_style_mode_preserves_theme_tokens_and_embed_component_styles() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "flyTheme": { "tokens": { "brand": "#0b5fff" } },
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "style": { "color": "var(--brand)" },
+                    "components": [{
+                        "id": "embed",
+                        "type": "wrapper",
+                        "style": { "border-color": "var(--brand)" },
+                        "flyEmbed": {
+                            "provider": "youtube",
+                            "url": "https://www.youtube.com/embed/demo",
+                            "title": "Video"
+                        }
+                    }]
+                }
+            }]
+        }))
+        .expect("document");
+        let rendered = render_page(
+            &document,
+            &PageSelection::First,
+            &RenderPolicy {
+                emit_style_hooks: false,
+                ..RenderPolicy::default()
+            },
+        )
+        .expect("render page");
+
+        assert!(rendered.css.is_empty());
+        assert!(
+            rendered.html.contains(r#"style="--brand:#0b5fff;color:var(--brand)""#),
+            "{}",
+            rendered.html
+        );
+        assert!(
+            rendered.html.contains(r#"style="border-color:var(--brand)""#),
+            "{}",
+            rendered.html
+        );
+        assert!(rendered.html.contains("<iframe"), "{}", rendered.html);
     }
 
     #[test]
