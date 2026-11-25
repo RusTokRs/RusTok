@@ -367,9 +367,10 @@ the owner of the missing half.
   and custom code stay out by design, while `raw_html` stays escaped (above). Owner: `fly` embed registry.
 - **Design tokens exist with usage checks and reference rewriting.**
   A project carries a `flyTheme` extension (`fly::theme`): validated tokens render as `:root`
-  custom properties and style declarations reference them with `var(--name)`. Theme values reject
-  resource-bearing url(), image(), src() and image-set() strings so a variable cannot bypass
-  the declaration URL policy. Token mutations
+  custom properties and style declarations reference them with `var(--name)`. References must
+  target declared Fly tokens; var() is disallowed in resource-bearing properties because host
+  CSS can override custom properties through the cascade. Theme values also reject resource-bearing
+  url(), image(), src() and image-set() strings. Token mutations
   are editor commands (`EditorCommand::Theme`), and both adapter workspaces (`fly-leptos`,
   `fly-dioxus`) ship an editable token panel on the same command. Renaming a token
   (`ThemeCommand::Rename`) automatically rewrites all `var(--old_name)` occurrences across

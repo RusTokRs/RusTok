@@ -3,9 +3,10 @@
 //! A project may carry a `flyTheme` extension: `{ "tokens": { "brand": "#0b5fff", ... } }`.
 //! Fly decodes and validates it here — token names become `--{name}` custom properties and
 //! token values stay inside the safe CSS value subset; resource-bearing url(), image(), src(),
-//! and image-set() forms are refused so a variable cannot bypass declaration URL checks.
-//! The renderer emits one `:root { ... }` rule ahead of the project styles. Style declarations reference tokens
-//! with the standard `var(--brand)` syntax, which the declaration sanitizer already admits.
+//! and image-set() forms are refused. var() references must target declared Fly tokens, and
+//! are forbidden in resource-bearing CSS properties because the embedding page can override
+//! custom properties through the cascade. The renderer emits one `:root { ... }` rule ahead
+//! of project styles; safe declarations reference tokens with standard var(--brand) syntax.
 //!
 //! Before this module, projects had per-component declarations and class rules only: no
 //! variables, no site-wide theme (audit P0-3). Tokens are project data, not style rules,
