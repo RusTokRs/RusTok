@@ -101,9 +101,13 @@ pub async fn apply_scaffold_draft(
 pub async fn mcp_scaffold_drafts_native() -> Result<Vec<McpScaffoldDraftPayload>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (db, auth) = mcp_native_context().await?;
-        ensure_mcp_manage(&auth)?;
-        list_scaffold_drafts(&db, auth.tenant_id).await
+        let (context, runtime) = mcp_management_context(ensure_mcp_manage).await?;
+        let drafts = runtime
+            .port()
+            .list_scaffold_drafts(&context, Some(20))
+            .await
+            .map_err(server_error)?;
+        drafts.into_iter().map(scaffold_draft_payload).collect()
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -121,9 +125,13 @@ pub async fn mcp_scaffold_drafts_native() -> Result<Vec<McpScaffoldDraftPayload>
 pub async fn mcp_audit_events_native() -> Result<Vec<McpAuditEventPayload>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (db, auth) = mcp_native_context().await?;
-        ensure_mcp_read(&auth)?;
-        list_audit_events(&db, auth.tenant_id).await
+        let (context, runtime) = mcp_management_context(ensure_mcp_read).await?;
+        let events = runtime
+            .port()
+            .list_audit_events(&context, None, None, Some(30))
+            .await
+            .map_err(server_error)?;
+        Ok(events.into_iter().map(audit_event_payload).collect())
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -141,9 +149,13 @@ pub async fn mcp_audit_events_native() -> Result<Vec<McpAuditEventPayload>, Serv
 pub async fn mcp_clients_native() -> Result<Vec<McpClientPayload>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (db, auth) = mcp_native_context().await?;
-        ensure_mcp_read(&auth)?;
-        list_clients(&db, auth.tenant_id).await
+        let (context, runtime) = mcp_management_context(ensure_mcp_read).await?;
+        let clients = runtime
+            .port()
+            .list_clients(&context, Some(50))
+            .await
+            .map_err(server_error)?;
+        Ok(clients.into_iter().map(client_payload).collect())
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -162,9 +174,13 @@ pub async fn mcp_client_details_native(
     #[cfg(feature = "ssr")]
     {
         let client_id = parse_non_nil_uuid(&client_id, "client_id")?;
-        let (db, auth) = mcp_native_context().await?;
-        ensure_mcp_read(&auth)?;
-        get_client_details(&db, auth.tenant_id, client_id).await
+        let (context, runtime) = mcp_management_context(ensure_mcp_read).await?;
+        let details = runtime
+            .port()
+            .get_client(&context, client_id)
+            .await
+            .map_err(server_error)?;
+        Ok(details.map(client_details_payload))
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -185,7 +201,7 @@ pub async fn mcp_create_client_native(
 ) -> Result<McpTokenSecretPayload, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (context, runtime) = mcp_mutation_context().await?;
+        let (context, runtime) = mcp_management_context(ensure_mcp_manage).await?;
         let result = runtime
             .port()
             .create_client(
@@ -228,7 +244,7 @@ pub async fn mcp_rotate_token_native(
 ) -> Result<McpTokenSecretPayload, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (context, runtime) = mcp_mutation_context().await?;
+        let (context, runtime) = mcp_management_context(ensure_mcp_manage).await?;
         let result = runtime
             .port()
             .rotate_token(
@@ -262,7 +278,7 @@ pub async fn mcp_rotate_token_native(
 pub async fn mcp_update_policy_native(input: UpdateMcpPolicyPayload) -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (context, runtime) = mcp_mutation_context().await?;
+        let (context, runtime) = mcp_management_context(ensure_mcp_manage).await?;
         runtime
             .port()
             .update_policy(
@@ -300,7 +316,7 @@ pub async fn mcp_revoke_token_native(
 ) -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (context, runtime) = mcp_mutation_context().await?;
+        let (context, runtime) = mcp_management_context(ensure_mcp_manage).await?;
         runtime
             .port()
             .revoke_token(
@@ -331,7 +347,7 @@ pub async fn mcp_deactivate_client_native(
 ) -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (context, runtime) = mcp_mutation_context().await?;
+        let (context, runtime) = mcp_management_context(ensure_mcp_manage).await?;
         runtime
             .port()
             .deactivate_client(
@@ -361,7 +377,7 @@ pub async fn mcp_stage_scaffold_draft_native(
 ) -> Result<McpScaffoldDraftPayload, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (context, runtime) = mcp_mutation_context().await?;
+        let (context, runtime) = mcp_management_context(ensure_mcp_manage).await?;
         let client_id = input
             .client_id
             .map(|value| parse_non_nil_uuid(&value, "client_id"))
@@ -406,7 +422,7 @@ pub async fn mcp_apply_scaffold_draft_native(
 ) -> Result<McpScaffoldDraftPayload, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (context, runtime) = mcp_mutation_context().await?;
+        let (context, runtime) = mcp_management_context(ensure_mcp_manage).await?;
         runtime
             .port()
             .apply_scaffold_draft(
@@ -428,21 +444,6 @@ pub async fn mcp_apply_scaffold_draft_native(
             "mcp/apply-scaffold-draft requires the `ssr` feature",
         ))
     }
-}
-
-#[cfg(feature = "ssr")]
-async fn mcp_native_context()
--> Result<(sea_orm::DatabaseConnection, rustok_api::AuthContext), ServerFnError> {
-    let auth = leptos_axum::extract::<rustok_api::AuthContext>()
-        .await
-        .map_err(ServerFnError::new)?;
-    if auth.tenant_id.is_nil() || auth.user_id.is_nil() {
-        return Err(ServerFnError::new(
-            "Unauthorized: tenant_id or user_id is nil",
-        ));
-    }
-    let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
-    Ok((runtime_ctx.db_clone(), auth))
 }
 
 #[cfg(feature = "ssr")]
@@ -470,7 +471,9 @@ fn ensure_mcp_read(auth: &rustok_api::AuthContext) -> Result<(), ServerFnError> 
 }
 
 #[cfg(feature = "ssr")]
-async fn mcp_mutation_context() -> Result<
+async fn mcp_management_context(
+    authorize: fn(&rustok_api::AuthContext) -> Result<(), ServerFnError>,
+) -> Result<
     (
         rustok_mcp::McpManagementContext,
         rustok_mcp::McpManagementRuntime,
@@ -487,7 +490,7 @@ async fn mcp_mutation_context() -> Result<
             "Unauthorized: tenant_id or user_id is nil",
         ));
     }
-    ensure_mcp_manage(&auth)?;
+    authorize(&auth)?;
     let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
     let extensions = runtime_ctx
         .shared_get::<Arc<rustok_core::ModuleRuntimeExtensions>>()
@@ -501,10 +504,7 @@ async fn mcp_mutation_context() -> Result<
             )
         })?;
     Ok((
-        rustok_mcp::McpManagementContext {
-            actor_id: auth.user_id,
-            tenant_id: auth.tenant_id,
-        },
+        rustok_mcp::McpManagementContext::from_auth_context(&auth),
         runtime,
     ))
 }
@@ -550,179 +550,6 @@ fn secret_payload(result: rustok_mcp::McpTokenSecretResult) -> McpTokenSecretPay
 }
 
 #[cfg(feature = "ssr")]
-async fn list_audit_events(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: uuid::Uuid,
-) -> Result<Vec<McpAuditEventPayload>, ServerFnError> {
-    use sea_orm::{ConnectionTrait, Statement};
-
-    let backend = db.get_database_backend();
-    let rows = db
-        .query_all_raw(Statement::from_sql_and_values(
-            backend,
-            format!(
-                "SELECT id, client_id, actor_id, actor_type, action, outcome, tool_name, reason, correlation_id, created_at FROM mcp_audit_logs WHERE tenant_id = {} ORDER BY created_at DESC LIMIT {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2)
-            ),
-            vec![tenant_id.into(), 30_i64.into()],
-        ))
-        .await
-        .map_err(server_error)?;
-
-    rows.into_iter().map(map_audit_row).collect()
-}
-
-#[cfg(feature = "ssr")]
-async fn list_clients(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: uuid::Uuid,
-) -> Result<Vec<McpClientPayload>, ServerFnError> {
-    use sea_orm::{ConnectionTrait, Statement};
-
-    let backend = db.get_database_backend();
-    let rows = db
-        .query_all_raw(Statement::from_sql_and_values(
-            backend,
-            format!(
-                "SELECT id, slug, display_name, description, actor_type, is_active, last_used_at, created_at FROM mcp_clients WHERE tenant_id = {} ORDER BY created_at DESC LIMIT {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2)
-            ),
-            vec![tenant_id.into(), 50_i64.into()],
-        ))
-        .await
-        .map_err(server_error)?;
-
-    rows.into_iter().map(map_client_row).collect()
-}
-
-#[cfg(feature = "ssr")]
-async fn get_client_details(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: uuid::Uuid,
-    client_id: uuid::Uuid,
-) -> Result<Option<McpClientDetailsPayload>, ServerFnError> {
-    use sea_orm::{ConnectionTrait, Statement};
-
-    let backend = db.get_database_backend();
-    let client = db
-        .query_one_raw(Statement::from_sql_and_values(
-            backend,
-            format!(
-                "SELECT id, slug, display_name, description, actor_type, is_active, last_used_at, created_at FROM mcp_clients WHERE id = {} AND tenant_id = {} LIMIT 1",
-                placeholder(backend, 1),
-                placeholder(backend, 2)
-            ),
-            vec![client_id.into(), tenant_id.into()],
-        ))
-        .await
-        .map_err(server_error)?;
-    let Some(client) = client else {
-        return Ok(None);
-    };
-
-    let policy = db
-        .query_one_raw(Statement::from_sql_and_values(
-            backend,
-            format!(
-                "SELECT allowed_tools, denied_tools, granted_permissions, granted_scopes, updated_at FROM mcp_policies WHERE client_id = {} AND tenant_id = {} LIMIT 1",
-                placeholder(backend, 1),
-                placeholder(backend, 2)
-            ),
-            vec![client_id.into(), tenant_id.into()],
-        ))
-        .await
-        .map_err(server_error)?
-        .map(map_policy_row)
-        .transpose()?;
-
-    let tokens = db
-        .query_all_raw(Statement::from_sql_and_values(
-            backend,
-            format!(
-                "SELECT id, token_name, token_preview, last_used_at, expires_at, revoked_at, created_at FROM mcp_tokens WHERE client_id = {} AND tenant_id = {} ORDER BY created_at DESC",
-                placeholder(backend, 1),
-                placeholder(backend, 2)
-            ),
-            vec![client_id.into(), tenant_id.into()],
-        ))
-        .await
-        .map_err(server_error)?
-        .into_iter()
-        .map(map_token_row)
-        .collect::<Result<Vec<_>, _>>()?;
-
-    Ok(Some(McpClientDetailsPayload {
-        client: map_client_row(client)?,
-        policy,
-        tokens,
-    }))
-}
-
-#[cfg(feature = "ssr")]
-async fn list_scaffold_drafts(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: uuid::Uuid,
-) -> Result<Vec<McpScaffoldDraftPayload>, ServerFnError> {
-    use sea_orm::{ConnectionTrait, Statement};
-
-    let backend = db.get_database_backend();
-    let rows = db
-        .query_all_raw(Statement::from_sql_and_values(
-            backend,
-            format!(
-                "SELECT id, client_id, slug, crate_name, status, request_payload, preview_payload, workspace_root, applied_at, created_at, updated_at FROM mcp_scaffold_drafts WHERE tenant_id = {} ORDER BY created_at DESC LIMIT {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2)
-            ),
-            vec![tenant_id.into(), 20_i64.into()],
-        ))
-        .await
-        .map_err(server_error)?;
-
-    rows.into_iter().map(map_draft_row).collect()
-}
-
-#[cfg(feature = "ssr")]
-fn map_draft_row(row: sea_orm::QueryResult) -> Result<McpScaffoldDraftPayload, ServerFnError> {
-    let request_json = row
-        .try_get::<serde_json::Value>("", "request_payload")
-        .map_err(server_error)?;
-    let preview_json = row
-        .try_get::<serde_json::Value>("", "preview_payload")
-        .map_err(server_error)?;
-    Ok(McpScaffoldDraftPayload {
-        id: row
-            .try_get::<uuid::Uuid>("", "id")
-            .map_err(server_error)?
-            .to_string(),
-        client_id: row
-            .try_get::<Option<uuid::Uuid>>("", "client_id")
-            .map_err(server_error)?
-            .map(|value| value.to_string()),
-        slug: row.try_get("", "slug").map_err(server_error)?,
-        crate_name: row.try_get("", "crate_name").map_err(server_error)?,
-        status: status_for_ui(&row.try_get::<String>("", "status").map_err(server_error)?),
-        request_json: serde_json::to_string(&request_json).map_err(server_error)?,
-        preview_json: serde_json::to_string(&preview_json).map_err(server_error)?,
-        workspace_root: row.try_get("", "workspace_root").map_err(server_error)?,
-        applied_at: row
-            .try_get::<Option<chrono::DateTime<chrono::FixedOffset>>>("", "applied_at")
-            .map_err(server_error)?
-            .map(|value| value.to_rfc3339()),
-        created_at: row
-            .try_get::<chrono::DateTime<chrono::FixedOffset>>("", "created_at")
-            .map_err(server_error)?
-            .to_rfc3339(),
-        updated_at: row
-            .try_get::<chrono::DateTime<chrono::FixedOffset>>("", "updated_at")
-            .map_err(server_error)?
-            .to_rfc3339(),
-    })
-}
-
-#[cfg(feature = "ssr")]
 fn scaffold_draft_payload(
     record: rustok_mcp::McpScaffoldDraftRecord,
 ) -> Result<McpScaffoldDraftPayload, ServerFnError> {
@@ -742,111 +569,67 @@ fn scaffold_draft_payload(
 }
 
 #[cfg(feature = "ssr")]
-fn map_audit_row(row: sea_orm::QueryResult) -> Result<McpAuditEventPayload, ServerFnError> {
-    Ok(McpAuditEventPayload {
-        id: row
-            .try_get::<uuid::Uuid>("", "id")
-            .map_err(server_error)?
-            .to_string(),
-        client_id: row
-            .try_get::<Option<uuid::Uuid>>("", "client_id")
-            .map_err(server_error)?
-            .map(|value| value.to_string()),
-        actor_id: row.try_get("", "actor_id").map_err(server_error)?,
-        actor_type: row.try_get("", "actor_type").map_err(server_error)?,
-        action: row.try_get("", "action").map_err(server_error)?,
-        outcome: row.try_get("", "outcome").map_err(server_error)?,
-        tool_name: row.try_get("", "tool_name").map_err(server_error)?,
-        reason: row.try_get("", "reason").map_err(server_error)?,
-        correlation_id: row.try_get("", "correlation_id").map_err(server_error)?,
-        created_at: row
-            .try_get::<chrono::DateTime<chrono::FixedOffset>>("", "created_at")
-            .map_err(server_error)?
-            .to_rfc3339(),
-    })
+fn audit_event_payload(record: rustok_mcp::McpAuditEventRecord) -> McpAuditEventPayload {
+    McpAuditEventPayload {
+        id: record.id.to_string(),
+        client_id: record.client_id.map(|value| value.to_string()),
+        actor_id: record.actor_id,
+        actor_type: record.actor_type,
+        action: record.action,
+        outcome: record.outcome,
+        tool_name: record.tool_name,
+        reason: record.reason,
+        correlation_id: record.correlation_id,
+        created_at: record.created_at.to_rfc3339(),
+    }
 }
 
 #[cfg(feature = "ssr")]
-fn map_client_row(row: sea_orm::QueryResult) -> Result<McpClientPayload, ServerFnError> {
-    Ok(McpClientPayload {
-        id: row
-            .try_get::<uuid::Uuid>("", "id")
-            .map_err(server_error)?
-            .to_string(),
-        slug: row.try_get("", "slug").map_err(server_error)?,
-        display_name: row.try_get("", "display_name").map_err(server_error)?,
-        description: row.try_get("", "description").map_err(server_error)?,
-        actor_type: row.try_get("", "actor_type").map_err(server_error)?,
-        is_active: row.try_get("", "is_active").map_err(server_error)?,
-        last_used_at: optional_timestamp(&row, "last_used_at")?,
-        created_at: timestamp(&row, "created_at")?,
-    })
+fn client_payload(record: rustok_mcp::McpClientRecord) -> McpClientPayload {
+    use rustok_mcp::McpActorType;
+
+    let actor_type = match record.actor_type {
+        McpActorType::HumanUser => "human_user",
+        McpActorType::ServiceClient => "service_client",
+        McpActorType::ModelAgent => "model_agent",
+    };
+    McpClientPayload {
+        id: record.id.to_string(),
+        slug: record.slug,
+        display_name: record.display_name,
+        description: record.description,
+        actor_type: actor_type.to_string(),
+        is_active: record.is_active,
+        last_used_at: record.last_used_at.map(|value| value.to_rfc3339()),
+        created_at: record.created_at.to_rfc3339(),
+    }
 }
 
 #[cfg(feature = "ssr")]
-fn map_policy_row(row: sea_orm::QueryResult) -> Result<McpPolicyPayload, ServerFnError> {
-    Ok(McpPolicyPayload {
-        allowed_tools: json_string_list(&row, "allowed_tools")?,
-        denied_tools: json_string_list(&row, "denied_tools")?,
-        granted_permissions: json_string_list(&row, "granted_permissions")?,
-        granted_scopes: json_string_list(&row, "granted_scopes")?,
-        updated_at: timestamp(&row, "updated_at")?,
-    })
-}
-
-#[cfg(feature = "ssr")]
-fn map_token_row(row: sea_orm::QueryResult) -> Result<McpTokenPayload, ServerFnError> {
-    let expires_at = row
-        .try_get::<Option<chrono::DateTime<chrono::FixedOffset>>>("", "expires_at")
-        .map_err(server_error)?;
-    let revoked_at = row
-        .try_get::<Option<chrono::DateTime<chrono::FixedOffset>>>("", "revoked_at")
-        .map_err(server_error)?;
-    let is_active = revoked_at.is_none()
-        && expires_at
-            .as_ref()
-            .is_none_or(|expires_at| expires_at.timestamp() > chrono::Utc::now().timestamp());
-
-    Ok(McpTokenPayload {
-        id: row
-            .try_get::<uuid::Uuid>("", "id")
-            .map_err(server_error)?
-            .to_string(),
-        token_name: row.try_get("", "token_name").map_err(server_error)?,
-        token_preview: row.try_get("", "token_preview").map_err(server_error)?,
-        is_active,
-        last_used_at: optional_timestamp(&row, "last_used_at")?,
-        expires_at: expires_at.map(|value| value.to_rfc3339()),
-        created_at: timestamp(&row, "created_at")?,
-    })
-}
-
-#[cfg(feature = "ssr")]
-fn json_string_list(
-    row: &sea_orm::QueryResult,
-    column: &str,
-) -> Result<Vec<String>, ServerFnError> {
-    let value = row
-        .try_get::<serde_json::Value>("", column)
-        .map_err(server_error)?;
-    serde_json::from_value(value).map_err(server_error)
-}
-
-#[cfg(feature = "ssr")]
-fn timestamp(row: &sea_orm::QueryResult, column: &str) -> Result<String, ServerFnError> {
-    row.try_get::<chrono::DateTime<chrono::FixedOffset>>("", column)
-        .map(|value| value.to_rfc3339())
-        .map_err(server_error)
-}
-
-#[cfg(feature = "ssr")]
-fn optional_timestamp(
-    row: &sea_orm::QueryResult,
-    column: &str,
-) -> Result<Option<String>, ServerFnError> {
-    row.try_get::<Option<chrono::DateTime<chrono::FixedOffset>>>("", column)
-        .map(|value| value.map(|value| value.to_rfc3339()))
-        .map_err(server_error)
+fn client_details_payload(record: rustok_mcp::McpClientDetailsRecord) -> McpClientDetailsPayload {
+    McpClientDetailsPayload {
+        client: client_payload(record.client),
+        policy: record.policy.map(|policy| McpPolicyPayload {
+            allowed_tools: policy.allowed_tools,
+            denied_tools: policy.denied_tools,
+            granted_permissions: policy.granted_permissions,
+            granted_scopes: policy.granted_scopes,
+            updated_at: policy.updated_at.to_rfc3339(),
+        }),
+        tokens: record
+            .tokens
+            .into_iter()
+            .map(|token| McpTokenPayload {
+                id: token.id.to_string(),
+                token_name: token.token_name,
+                token_preview: token.token_preview,
+                is_active: token.is_active,
+                last_used_at: token.last_used_at.map(|value| value.to_rfc3339()),
+                expires_at: token.expires_at.map(|value| value.to_rfc3339()),
+                created_at: token.created_at.to_rfc3339(),
+            })
+            .collect(),
+    }
 }
 
 #[cfg(feature = "ssr")]
@@ -854,14 +637,6 @@ fn status_for_ui(value: &str) -> String {
     match value {
         "applied" => "APPLIED".to_string(),
         _ => "STAGED".to_string(),
-    }
-}
-
-#[cfg(feature = "ssr")]
-fn placeholder(backend: sea_orm::DbBackend, index: usize) -> String {
-    match backend {
-        sea_orm::DbBackend::Sqlite => format!("?{index}"),
-        _ => format!("${index}"),
     }
 }
 
