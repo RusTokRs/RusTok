@@ -95,6 +95,12 @@ pub enum FlyError {
     MaximumDepthExceeded { maximum: usize },
     #[error("project component count exceeds the maximum of {maximum}")]
     MaximumNodesExceeded { maximum: usize },
+    #[error("project page count exceeds the maximum of {maximum}")]
+    MaximumPagesExceeded { maximum: usize },
+    #[error("project asset count exceeds the maximum of {maximum}")]
+    MaximumAssetsExceeded { maximum: usize },
+    #[error("project style-rule count exceeds the maximum of {maximum}")]
+    MaximumStyleRulesExceeded { maximum: usize },
     #[error("undo history is empty")]
     UndoHistoryEmpty,
     #[error("redo history is empty")]

@@ -404,6 +404,21 @@ fn count_opaque_component_children(
 /// Fail closed before recursive render helpers inspect an untrusted/programmatically-built tree.
 pub(crate) fn ensure_render_component_limits(document: &ProjectDocument) -> FlyResult<()> {
     let limits = crate::ValidationLimits::default();
+    if document.project.pages.len() > crate::DEFAULT_MAXIMUM_PAGES {
+        return Err(FlyError::MaximumPagesExceeded {
+            maximum: crate::DEFAULT_MAXIMUM_PAGES,
+        });
+    }
+    if document.project.assets.len() > crate::DEFAULT_MAXIMUM_ASSETS {
+        return Err(FlyError::MaximumAssetsExceeded {
+            maximum: crate::DEFAULT_MAXIMUM_ASSETS,
+        });
+    }
+    if document.project.styles.len() > crate::DEFAULT_MAXIMUM_STYLE_RULES {
+        return Err(FlyError::MaximumStyleRulesExceeded {
+            maximum: crate::DEFAULT_MAXIMUM_STYLE_RULES,
+        });
+    }
     let mut pending = Vec::new();
 
     for value in document
@@ -2736,6 +2751,57 @@ mod tests {
         assert!(matches!(
             render_page(&document, &PageSelection::First, &RenderPolicy::default()),
             Err(FlyError::MaximumNodesExceeded { maximum }) if maximum == limits.maximum_nodes
+        ));
+    }
+
+
+
+
+    #[test]
+    fn renderer_rejects_excessive_project_collections_before_traversal() {
+        let page_items = (0..=crate::DEFAULT_MAXIMUM_PAGES)
+            .map(|index| json!({ "id": format!("page-{index}") }))
+            .collect::<Vec<_>>();
+        let pages = GrapesJsCodec::decode_value(json!({ "pages": page_items }))
+            .expect("pages document");
+        assert!(matches!(
+            render_page(&pages, &PageSelection::First, &RenderPolicy::default()),
+            Err(FlyError::MaximumPagesExceeded { maximum })
+                if maximum == crate::DEFAULT_MAXIMUM_PAGES
+        ));
+
+        let assets = (0..=crate::DEFAULT_MAXIMUM_ASSETS)
+            .map(|index| json!({ "id": format!("asset-{index}") }))
+            .collect::<Vec<_>>();
+        let assets_document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": { "id": "root", "type": "wrapper" }
+            }],
+            "assets": assets
+        }))
+        .expect("assets document");
+        assert!(matches!(
+            render_page(&assets_document, &PageSelection::First, &RenderPolicy::default()),
+            Err(FlyError::MaximumAssetsExceeded { maximum })
+                if maximum == crate::DEFAULT_MAXIMUM_ASSETS
+        ));
+
+        let styles = (0..=crate::DEFAULT_MAXIMUM_STYLE_RULES)
+            .map(|index| json!({ "selectors": [format!(".rule-{index}")], "style": {} }))
+            .collect::<Vec<_>>();
+        let styles_document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": { "id": "root", "type": "wrapper" }
+            }],
+            "styles": styles
+        }))
+        .expect("styles document");
+        assert!(matches!(
+            render_page(&styles_document, &PageSelection::First, &RenderPolicy::default()),
+            Err(FlyError::MaximumStyleRulesExceeded { maximum })
+                if maximum == crate::DEFAULT_MAXIMUM_STYLE_RULES
         ));
     }
 

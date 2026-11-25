@@ -75,6 +75,13 @@ pub const DEFAULT_MAXIMUM_NODES: usize = 10_000;
 /// so anything deeper is a sign of a generated or hostile document.
 pub const DEFAULT_MAXIMUM_DEPTH: usize = 64;
 
+/// Default ceiling on pages, assets and style rules in one project.
+/// These are separate from the component-node budget because empty pages and opaque
+/// provider collections still consume memory and traversal time.
+pub const DEFAULT_MAXIMUM_PAGES: usize = 10_000;
+pub const DEFAULT_MAXIMUM_ASSETS: usize = 10_000;
+pub const DEFAULT_MAXIMUM_STYLE_RULES: usize = 10_000;
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ValidationLimits {
     pub maximum_nodes: usize,
@@ -107,9 +114,39 @@ pub fn validate_project_with_embed_registry(
     embeds: &EmbedProviderRegistry,
 ) -> ValidationReport {
     let mut report = ValidationReport::default();
+    validate_pages(document, &mut report);
+    if report.page_count > DEFAULT_MAXIMUM_PAGES {
+        return report;
+    }
+    if document.project.assets.len() > DEFAULT_MAXIMUM_ASSETS {
+        report.asset_count = document.project.assets.len();
+        report.diagnostics.push(diagnostic(
+            ValidationSeverity::Error,
+            "maximum_assets_exceeded",
+            "assets",
+            format!(
+                "project contains {} assets, exceeding maximum {}",
+                report.asset_count, DEFAULT_MAXIMUM_ASSETS
+            ),
+        ));
+        return report;
+    }
+    if document.project.styles.len() > DEFAULT_MAXIMUM_STYLE_RULES {
+        report.style_rule_count = document.project.styles.len();
+        report.diagnostics.push(diagnostic(
+            ValidationSeverity::Error,
+            "maximum_style_rules_exceeded",
+            "styles",
+            format!(
+                "project contains {} style rules, exceeding maximum {}",
+                report.style_rule_count, DEFAULT_MAXIMUM_STYLE_RULES
+            ),
+        ));
+        return report;
+    }
+
     // Reuses the document-resident index if already built, avoiding a redundant tree walk.
     let index = document.component_index();
-    validate_pages(document, &mut report);
     validate_theme_tokens(document, &mut report);
     // Typed checks, opaque checks and URL-attribute checks all happen in this one traversal.
     validate_components(document, registries, embeds, limits, &mut report);
@@ -338,6 +375,18 @@ fn validate_theme_tokens(document: &ProjectDocument, report: &mut ValidationRepo
 
 fn validate_pages(document: &ProjectDocument, report: &mut ValidationReport) {
     report.page_count = document.project.pages.len();
+    if report.page_count > DEFAULT_MAXIMUM_PAGES {
+        report.diagnostics.push(diagnostic(
+            ValidationSeverity::Error,
+            "maximum_pages_exceeded",
+            "pages",
+            format!(
+                "project contains {} pages, exceeding maximum {}",
+                report.page_count, DEFAULT_MAXIMUM_PAGES
+            ),
+        ));
+        return;
+    }
     if document.project.pages.is_empty() {
         report.diagnostics.push(ValidationDiagnostic {
             severity: ValidationSeverity::Error,
@@ -2030,6 +2079,70 @@ mod tests {
         assert!(report.diagnostics.iter().any(|diagnostic| {
             diagnostic.code == "symbol_catalog_depth_exceeded"
         }));
+    }
+
+
+
+
+    #[test]
+    fn validation_rejects_excessive_page_asset_and_style_collections_before_walks() {
+        let registries = RegistrySet::with_builtins();
+        let page_items = (0..=DEFAULT_MAXIMUM_PAGES)
+            .map(|index| json!({ "id": format!("page-{index}") }))
+            .collect::<Vec<_>>();
+        let pages = GrapesJsCodec::decode_value(json!({ "pages": page_items }))
+            .expect("pages document");
+        let pages_report = validate_project(
+            &pages,
+            &registries,
+            ValidationLimits::default(),
+        );
+        assert!(pages_report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "maximum_pages_exceeded"
+        }));
+        assert_eq!(pages_report.page_count, DEFAULT_MAXIMUM_PAGES + 1);
+
+        let assets = (0..=DEFAULT_MAXIMUM_ASSETS)
+            .map(|index| json!({ "id": format!("asset-{index}") }))
+            .collect::<Vec<_>>();
+        let assets_document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": { "id": "root", "type": "wrapper" }
+            }],
+            "assets": assets
+        }))
+        .expect("assets document");
+        let assets_report = validate_project(
+            &assets_document,
+            &registries,
+            ValidationLimits::default(),
+        );
+        assert!(assets_report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "maximum_assets_exceeded"
+        }));
+        assert_eq!(assets_report.asset_count, DEFAULT_MAXIMUM_ASSETS + 1);
+
+        let styles = (0..=DEFAULT_MAXIMUM_STYLE_RULES)
+            .map(|index| json!({ "selectors": [format!(".rule-{index}")], "style": {} }))
+            .collect::<Vec<_>>();
+        let styles_document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": { "id": "root", "type": "wrapper" }
+            }],
+            "styles": styles
+        }))
+        .expect("styles document");
+        let styles_report = validate_project(
+            &styles_document,
+            &registries,
+            ValidationLimits::default(),
+        );
+        assert!(styles_report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "maximum_style_rules_exceeded"
+        }));
+        assert_eq!(styles_report.style_rule_count, DEFAULT_MAXIMUM_STYLE_RULES + 1);
     }
 
 

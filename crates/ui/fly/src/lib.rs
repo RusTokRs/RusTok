@@ -230,7 +230,8 @@ pub use translation::{
     materialize_project_translations, validate_translation_definitions,
 };
 pub use validation::{
-    DEFAULT_MAXIMUM_DEPTH, DEFAULT_MAXIMUM_NODES, MAXIMUM_IDENTIFIER_LENGTH, ValidationDiagnostic,
+    DEFAULT_MAXIMUM_ASSETS, DEFAULT_MAXIMUM_DEPTH, DEFAULT_MAXIMUM_NODES, DEFAULT_MAXIMUM_PAGES,
+    DEFAULT_MAXIMUM_STYLE_RULES, MAXIMUM_IDENTIFIER_LENGTH, ValidationDiagnostic,
     ValidationLimits, ValidationReport, ValidationSeverity, validate_component_public_urls,
     validate_identifier, validate_patch_incremental,
     validate_patch_incremental_with_embed_registry, validate_project,
