@@ -704,6 +704,7 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                             &*persistence_status.peek(),
                             DraftRecoveryStatus::Restored { .. }
                                 | DraftRecoveryStatus::Merged { .. }
+                                | DraftRecoveryStatus::SaveError(_)
                         ) {
                             persistence_status.set(DraftRecoveryStatus::Ready);
                         }
@@ -810,30 +811,31 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                 project_data: submitted_project_data,
             });
             if let Some(store) = store.as_ref() {
-                let mut cleanup_error = store
-                    .clear_if_unchanged(&consumed_records)
-                    .err();
-                if !current_session.read().controller.editor().revision().dirty {
-                    if let Err(error) = store.clear_current() {
-                        cleanup_error.get_or_insert(error);
-                    }
-                    if let Some(error) = cleanup_error {
-                        status.set(DraftRecoveryStatus::SaveError(error));
-                        persisted.set(false);
-                    } else if !matches!(&*status.peek(), DraftRecoveryStatus::Error(_)) {
-                        status.set(DraftRecoveryStatus::Ready);
-                        persisted.set(true);
-                    } else {
-                        // The server save is confirmed, but an unreadable local record remains.
-                        persisted.set(false);
-                    }
-                } else {
-                    if let Some(error) = cleanup_error
-                        && !matches!(&*status.peek(), DraftRecoveryStatus::Error(_))
-                    {
-                        status.set(DraftRecoveryStatus::SaveError(error));
-                    }
+                if matches!(&*status.peek(), DraftRecoveryStatus::Error(_)) {
+                    // The server save is confirmed, but a fatal/unreadable local record remains.
+                    // Do not consume or clear any recovery records without explicit user action.
                     persisted.set(false);
+                } else {
+                    let mut cleanup_error = store
+                        .clear_if_unchanged(&consumed_records)
+                        .err();
+                    if !current_session.read().controller.editor().revision().dirty {
+                        if let Err(error) = store.clear_current() {
+                            cleanup_error.get_or_insert(error);
+                        }
+                        if let Some(error) = cleanup_error {
+                            status.set(DraftRecoveryStatus::SaveError(error));
+                            persisted.set(false);
+                        } else {
+                            status.set(DraftRecoveryStatus::Ready);
+                            persisted.set(true);
+                        }
+                    } else {
+                        if let Some(error) = cleanup_error {
+                            status.set(DraftRecoveryStatus::SaveError(error));
+                        }
+                        persisted.set(false);
+                    }
                 }
             }
             if !*conflict.peek() {
