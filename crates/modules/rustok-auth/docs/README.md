@@ -699,12 +699,13 @@ and composition, but must not duplicate auth policy or token semantics.
 
 The executable host assembles `AuthConfig` only through
 `build_auth_config_from_document`, which consumes the mandatory complete
-generation-bearing file. `AuthSettingsOverrides` applies issuer, audience,
-TTL and password policy separately; the host does not construct or prepare
-an unused default signer. The generic `build_auth_config`,
-`build_auth_config_with_env` and `AuthConfig::new` APIs remain transitional
-library surfaces and are not executable-host bootstrap paths. They are
-scheduled for removal with the remaining HS256 implementation.
+generation-bearing file. `AuthSettingsOverrides` is policy-only: issuer,
+audience, refresh TTL and password policy cannot select or supply JWT keys.
+Generic default builders, environment-backed key sources, inline RSA PEM
+overrides and the `with_rs256` builder have been removed. Unknown algorithm
+or key-source fields fail deserialization. The `AuthConfig::new` constructor
+is compiled only for crate tests and is not a production API. The complete
+generation-bearing document is the sole production source of JWT material.
 
  and signs and verifies a probe at
 startup. Malformed or mismatched key pairs therefore fail configuration assembly

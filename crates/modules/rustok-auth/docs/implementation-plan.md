@@ -65,8 +65,10 @@ ledger and public-only history. Explicit cross-algorithm negative coverage is
 retained until the algorithm removal. Local lease gates, immutable snapshot concurrency and process-local
 rotation now exercise the same RSA fixture contract. JWT primitive tests now use independent RSA fixtures for positive signing
 and verification, including exact JOSE checks and cross-purpose rejection.
-Embedded test RSA keys in the Auth owner sources are removed. Explicit HS256
-negative and existing startup-source tests remain until consumer cutover.
+Embedded test RSA keys in the Auth owner sources are removed. Generic Auth
+builders, environment-backed key sources and inline RSA overrides are removed;
+the complete generation-bearing document is the sole production key source.
+Explicit HS256 negative coverage remains until physical algorithm removal.
 Server host-policy, runtime-context, OAuth confirmation and extractor tests
 now exercise complete RSA fixtures, with issuance using the same runtime's
 configuration. Full development Compose now mounts the explicitly

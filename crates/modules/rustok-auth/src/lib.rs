@@ -53,9 +53,7 @@ pub use backfill::AuthUserBackfillDbReader;
 pub use bootstrap::{AuthUserBootstrapDbWriter, AuthUserBootstrapRecord, AuthUserBootstrapRequest};
 pub use config::{
     AuthConfig, AuthSettingsOverrides, JwtAlgorithm, JwtKeyringPublisher, JwtLeaseReadiness,
-    MAX_JWT_KEYRING_DOCUMENT_BYTES, build_auth_config, build_auth_config_from_document,
-    build_auth_config_with_env,
-    validate_auth_config,
+    MAX_JWT_KEYRING_DOCUMENT_BYTES, build_auth_config_from_document, validate_auth_config,
 };
 pub use credentials::{
     DEFAULT_MIN_PASSWORD_LENGTH_CHARS, MAX_MIN_PASSWORD_LENGTH_CHARS, MAX_PASSWORD_LENGTH_BYTES,

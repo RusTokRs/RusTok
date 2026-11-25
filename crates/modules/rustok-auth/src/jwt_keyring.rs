@@ -67,10 +67,6 @@ pub(crate) fn valid_kid(kid: &str) -> bool {
 }
 
 impl JwtKeyring {
-    pub(crate) fn from_json(value: &str) -> Result<Self> {
-        serde_json::from_str(value).map_err(|_| invalid_config())
-    }
-
     fn with_default_kid(kid: &str) -> Self {
         Self { active_kid: kid.to_string(), ..Self::default() }
     }
@@ -212,9 +208,6 @@ impl std::fmt::Debug for SpecialJwtKeyrings {
 }
 
 impl SpecialJwtKeyrings {
-    pub(crate) fn from_json(value: &str) -> Result<Self> {
-        serde_json::from_str(value).map_err(|_| invalid_config())
-    }
 }
 
 pub(crate) struct PurposeKeyringRef<'a> {
@@ -619,7 +612,6 @@ pub(crate) fn verification_key(algorithm: &JwtAlgorithm, material: &str) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::AuthConfig;
 
     #[test]
     fn retirement_cutoff_is_exclusive() {
@@ -643,13 +635,7 @@ mod tests {
     #[test]
     fn public_pem_cannot_be_configured_as_hmac_material() {
         let pair = rustok_test_utils::jwt::RsaKeyPairFixture::generate().unwrap();
-        let mut config = AuthConfig::new("root-test-material-with-at-least-32-bytes".into());
-        config.set_test_jwt_keyring(JwtKeyring::from_json(&serde_json::json!({
-            "active_kid": "hs",
-            "verification_keys": [{"kid":"wrong","algorithm":"HS256",
-                "material":pair.public_pem(),"verify_until":200}]
-        }).to_string()).unwrap());
-        assert!(crate::validate_auth_config(&config).is_err());
+        assert!(verification_key(&JwtAlgorithm::HS256, pair.public_pem()).is_err());
     }
 
     #[test]
