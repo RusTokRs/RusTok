@@ -879,8 +879,11 @@ fn invert_insert_and_remove_are_reciprocal() {
 }
 
 #[test]
-fn incremental_patch_validation_produces_identical_diagnostics_to_full_validation() {
+fn cached_patch_validation_produces_identical_diagnostics_to_full_validation() {
     let mut editor = editor();
+    editor
+        .apply(EditorCommand::Select { component_id: Some("hero".to_string()) })
+        .expect("warm validation cache");
     let incremental_report = editor
         .apply(EditorCommand::Patch {
             component_id: "hero".to_string(),
@@ -1335,4 +1338,60 @@ fn duplicate_form_identity_is_refused_without_redirecting_provider_submission() 
         .expect_err("duplicate form");
     assert!(error.to_string().contains("form id `contact`"), "{error}");
     assert_eq!(editor, before);
+}
+
+#[test]
+fn cached_validation_cannot_admit_invalid_action_or_corrupt_redo() {
+    let mut editor = editor();
+    editor.apply(EditorCommand::Patch {
+        component_id: "hero".to_string(),
+        patch: ComponentPatch::default().merge_style(json!({"color": "blue"})),
+    }).expect("valid edit");
+    editor.undo().expect("undo");
+    editor.apply(EditorCommand::Select { component_id: Some("hero".to_string()) })
+        .expect("warm validation cache");
+    let before = editor.clone();
+    let error = editor.apply(EditorCommand::Patch {
+        component_id: "hero".to_string(),
+        patch: ComponentPatch::default().set_field(
+            crate::FLY_ACTION_FIELD,
+            json!({"kind": "not_a_supported_action"}),
+        ),
+    }).expect_err("invalid action must be rejected even after cache hit");
+    assert!(matches!(error, FlyError::Validation(_)));
+    assert_eq!(editor.document(), before.document());
+    assert_eq!(editor.history(), before.history());
+    assert_eq!(editor.revision(), before.revision());
+    assert_eq!(editor.selection(), before.selection());
+    editor.redo().expect("failed patch leaves redo available");
+}
+
+#[test]
+fn cached_validation_cannot_admit_registered_but_illegal_child_type() {
+    let document = GrapesJsCodec::decode_value(json!({
+        "pages": [{
+            "id": "home",
+            "component": {
+                "id": "root", "type": "wrapper",
+                "components": [{
+                    "id": "list", "type": "list",
+                    "components": [{ "id": "item", "type": "list_item" }]
+                }]
+            }
+        }]
+    })).expect("document");
+    let mut editor = FlyEditor::new(document, RegistrySet::with_builtins());
+    assert!(editor.apply(EditorCommand::Select {
+        component_id: Some("item".to_string()),
+    }).expect("warm validation cache").is_valid());
+    let before = editor.clone();
+    let error = editor.apply(EditorCommand::Patch {
+        component_id: "item".to_string(),
+        patch: ComponentPatch::default().set_component_type("text"),
+    }).expect_err("registered type is not necessarily a legal child");
+    assert!(matches!(error, FlyError::Validation(ref diagnostics)
+        if diagnostics.iter().any(|d| d.code == "invalid_component_child")));
+    assert_eq!(editor.document(), before.document());
+    assert_eq!(editor.history(), before.history());
+    assert_eq!(editor.revision(), before.revision());
 }

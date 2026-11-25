@@ -236,6 +236,8 @@ Consumers must honor runtime error diagnostics before publishing.
 
 Page identities remain optional for legacy documents, but a page patch that sets `id` must supply a non-empty string; use `PagePatch.remove_fields` to clear an ID. Public document mutation helpers invalidate the cached project hash and component index, and compound theme/symbol commands publish changes only after validation succeeds.
 
+Mutating commands, including component patches, run the same full project validation before committing. A cached report is reused only for selection or an empty transaction; it cannot authorize a changed document. The patch-target validation API delegates to the canonical validator until dependency-complete incremental verification is available.
+
 History budgets both undo and redo snapshots plus commands using a serialized-size estimate. It
 preserves one oversized entry, and recomputes the accounting after deserialization. The estimate
 is not an exact heap measurement and may count shared snapshots more than once.

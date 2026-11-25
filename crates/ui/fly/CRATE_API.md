@@ -24,7 +24,7 @@ Fly Visual Editor Engine: framework-neutral visual editor engine, AST models, de
 - `RenderPolicy`, `RenderedPage`, `render_page`, `render_page_with_embed_registry`, `render_page_with_rich_text_and_embed_registry`: Server-side HTML/CSS rendering with built-in or host-provided embed catalogs.
 - `escape_css_attribute`: Allow-list escape of a value written into a double-quoted CSS attribute selector inside a `<style>` element. Used by the renderer and by framework adapters that style a component by its id.
 - `DynamicCatalog`, `RuntimeCondition`, `RuntimeRepeater`: Dynamic condition and iteration rendering with safety bounds.
-- `validate_project_with_embed_registry`, `validate_patch_incremental_with_embed_registry`: Full and incremental validation against the same host provider catalog.
+- `validate_project_with_embed_registry`, `validate_patch_incremental_with_embed_registry`: Canonical full validation against the host provider catalog. The patch-target entrypoint checks target existence and delegates to full validation; a prior report does not prove project-wide invariants.
 - `render_page_with_runtime_context_with_embed_registry`, `render_page_with_runtime_context_with_providers_and_embed_registry`: Runtime rendering with the same host embed catalog, optionally alongside provider form endpoints.
 
 ## 2. Invariants & Business Rules

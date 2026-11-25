@@ -3,7 +3,7 @@ use crate::{
     AssetDescriptor, FlyError, FlyResult, ProjectDocument, ProjectSnapshot, RegistrySet,
     UniqueIdGenerator, ValidationLimits, ValidationReport, apply_binding_command,
     apply_context_command, apply_dynamic_command, apply_page_command, apply_style_rule_command,
-    apply_symbol_command, apply_translation_command, extend_with_runtime_validation,
+    apply_symbol_command, apply_translation_command,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -118,9 +118,11 @@ impl FlyEditor {
     }
 
     pub fn validate(&self) -> ValidationReport {
-        extend_with_runtime_validation(
+        crate::validate_project_with_embed_registry(
             &self.document,
-            crate::validate_project_with_embed_registry(&self.document, &self.registries, self.validation_limits, &self.embed_registry),
+            &self.registries,
+            self.validation_limits,
+            &self.embed_registry,
         )
     }
 
@@ -160,70 +162,18 @@ impl FlyEditor {
         // Keep even ID allocation transactional: a refused edit must not advance editor state.
         let mut generator = self.id_generator.clone();
 
-        // Fast path: incremental validation for non-structural patch commands when last_report is valid.
-        // When incremental validation declines, the already-applied working copy is handed to the
-        // full path below instead of being cloned and applied a second time.
-        let mut speculative = None;
-        if let EditorCommand::Patch { component_id, .. } = &command
-            && let Some(prev_report) = &self.last_report
-            && prev_report.is_valid()
-        {
-            let component_id = component_id.clone();
-            let mut after = (*self.document).clone();
-            Self::apply_to_document(&mut after, &mut command, &mut generator, false)?;
-            if let Some(inc_report) = crate::validate_patch_incremental_with_embed_registry(
-                &after,
-                &component_id,
-                prev_report,
-                &self.registries,
-                self.validation_limits,
-                &self.embed_registry,
-            ) {
-                let errors = inc_report.errors().cloned().collect::<Vec<_>>();
-                if !errors.is_empty() {
-                    return Err(FlyError::Validation(errors));
-                }
-                if after == *self.document {
-                    self.last_report = Some(inc_report.clone());
-                    return Ok(inc_report);
-                }
-                let inverse = invert_command(&self.document, &command);
-                self.id_generator = generator;
-                let after = Arc::new(after);
-                let history_after = Arc::clone(&after);
-                let before = std::mem::replace(&mut self.document, after);
-                self.selection = self
-                    .selection
-                    .take()
-                    .filter(|id| self.document.contains_component(id));
-                self.history.push(HistoryEntry {
-                    command,
-                    before,
-                    after: history_after,
-                    inverse,
-                });
-                self.revision.mark_changed(&self.document);
-                self.last_report = Some(inc_report.clone());
-                return Ok(inc_report);
-            }
-            speculative = Some(after);
-        }
-
-        // One speculative copy to mutate. A command must not leave a partially applied document
-        // behind when validation rejects it, so the working copy is unavoidable — but it is now
-        // the only deep copy on this path.
-        let mut after = match speculative {
-            Some(after) => after,
-            None => {
-                let mut after = (*self.document).clone();
-                Self::apply_to_document(&mut after, &mut command, &mut generator, false)?;
-                after
-            }
-        };
+        // A patch can change project-wide invariants (form identity, action targets,
+        // parent/child contracts, layout slots and runtime bindings). The prior report
+        // cannot prove those invariants after a mutation. Use one speculative document
+        // and one canonical validation path for every mutating command.
+        let mut after = (*self.document).clone();
+        Self::apply_to_document(&mut after, &mut command, &mut generator, false)?;
         after.ensure_stable_ids(&mut generator);
-        let report = extend_with_runtime_validation(
+        let report = crate::validate_project_with_embed_registry(
             &after,
-            crate::validate_project_with_embed_registry(&after, &self.registries, self.validation_limits, &self.embed_registry),
+            &self.registries,
+            self.validation_limits,
+            &self.embed_registry,
         );
         let errors = report.errors().cloned().collect::<Vec<_>>();
         if !errors.is_empty() {
