@@ -126,6 +126,7 @@ fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] {
     outer.finalize().into()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn consent_csrf_mac(
     config: &crate::auth::AuthConfig,
     tenant_id: Uuid,
@@ -133,17 +134,28 @@ fn consent_csrf_mac(
     client_id: &str,
     redirect_uri: &str,
     scope: Option<&str>,
+    effective_scopes: &[String],
     state: Option<&str>,
     code_challenge: &str,
     expires_at: i64,
 ) -> String {
     let mut payload = Vec::new();
-    payload.extend_from_slice(b"rustok:oauth:consent-csrf:v2");
+    payload.extend_from_slice(b"rustok:oauth:consent-csrf:v3");
     append_csrf_mac_field(&mut payload, &tenant_id.to_string());
     append_csrf_mac_field(&mut payload, &user_id.to_string());
     append_csrf_mac_field(&mut payload, client_id);
     append_csrf_mac_field(&mut payload, redirect_uri);
     append_optional_csrf_mac_field(&mut payload, scope);
+    // Bind the effective scope set displayed on GET, not just the optional
+    // query parameter. Omitted scope is resolved from mutable client policy.
+    // Ordering and duplicate entries do not change the granted authority.
+    let mut scopes = effective_scopes.iter().map(String::as_str).collect::<Vec<_>>();
+    scopes.sort_unstable();
+    scopes.dedup();
+    payload.extend_from_slice(&(scopes.len() as u64).to_be_bytes());
+    for scope in scopes {
+        append_csrf_mac_field(&mut payload, scope);
+    }
     append_optional_csrf_mac_field(&mut payload, state);
     append_csrf_mac_field(&mut payload, code_challenge);
     append_csrf_mac_field(&mut payload, &expires_at.to_string());
@@ -159,6 +171,7 @@ fn issue_consent_csrf(
     client_id: &str,
     redirect_uri: &str,
     scope: Option<&str>,
+    effective_scopes: &[String],
     state: Option<&str>,
     code_challenge: &str,
 ) -> String {
@@ -172,6 +185,7 @@ fn issue_consent_csrf(
             client_id,
             redirect_uri,
             scope,
+            effective_scopes,
             state,
             code_challenge,
             expires_at,
@@ -187,6 +201,7 @@ fn verify_consent_csrf(
     client_id: &str,
     redirect_uri: &str,
     scope: Option<&str>,
+    effective_scopes: &[String],
     state: Option<&str>,
     code_challenge: &str,
     presented: Option<&str>,
@@ -212,6 +227,7 @@ fn verify_consent_csrf(
         client_id,
         redirect_uri,
         scope,
+        effective_scopes,
         state,
         code_challenge,
         expires_at,
@@ -696,6 +712,7 @@ pub(crate) async fn authorize_browser_handler(
         &req.client_id,
         &req.redirect_uri,
         req.scope.as_deref(),
+        &validated.requested_scopes,
         req.state.as_deref(),
         &req.code_challenge,
     );
@@ -782,6 +799,7 @@ pub(crate) async fn consent_handler(
             &req.client_id,
             &req.redirect_uri,
             req.scope.as_deref(),
+            &validated.requested_scopes,
             req.state.as_deref(),
             &req.code_challenge,
             req.consent_csrf.as_deref(),
@@ -1086,8 +1104,11 @@ fn map_code_issuance_error(error: crate::error::Error) -> TokenErrorResponse {
             "access_denied",
             "OAuth subject or consent is no longer authorized",
         ),
-        other => {
-            tracing::error!(error = %other, "Failed to issue OAuth authorization code");
+        _ => {
+            tracing::error!(
+                error_code = "oauth_authorization_code_issuance_failed",
+                "Failed to issue OAuth authorization code"
+            );
             ("server_error", "Failed to generate authorization code")
         }
     };
@@ -1709,6 +1730,54 @@ mod tests {
             super::hmac_sha256(key, &first),
             super::hmac_sha256(key, &second)
         );
+    }
+
+    #[test]
+    fn consent_confirmation_binds_the_effective_scopes_even_when_scope_is_omitted() {
+        let config = crate::auth::AuthConfig::new("test-oauth-consent-secret-with-32-bytes".to_string());
+        let tenant = Uuid::new_v4();
+        let user = Uuid::new_v4();
+        let client = Uuid::new_v4().to_string();
+        let redirect = "https://example.com/callback";
+        let challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
+        let allowed = vec!["profile".to_string(), "catalog:read".to_string()];
+        let displayed = validate_authorization_scopes(None, &allowed).unwrap();
+        let token = issue_consent_csrf(
+            &config, tenant, user, &client, redirect, None, &displayed, None, challenge,
+        );
+        let verify = |effective: &[String]| {
+            verify_consent_csrf(
+                &config, tenant, user, &client, redirect, None, effective, None,
+                challenge, Some(token.as_str()),
+            )
+        };
+        assert!(verify(&displayed));
+
+        let expanded = vec!["profile".to_string(), "catalog:read".to_string(), "catalog:write".to_string()];
+        let expanded = validate_authorization_scopes(None, &expanded).unwrap();
+        assert!(!verify(&expanded), "new scopes require a new confirmation");
+
+        let narrowed = validate_authorization_scopes(None, &allowed[..1]).unwrap();
+        assert!(!verify(&narrowed), "a changed scope set requires a new confirmation");
+
+        let reordered = vec!["catalog:read".to_string(), "profile".to_string(), "profile".to_string()];
+        assert!(verify(&reordered), "equivalent scope sets have the same binding");
+
+        // An explicit unchanged request still works when unrelated client
+        // permissions change, but is not interchangeable with an omitted scope.
+        let explicit = validate_authorization_scopes(Some("profile"), &allowed).unwrap();
+        let explicit_token = issue_consent_csrf(
+            &config, tenant, user, &client, redirect, Some("profile"), &explicit, None, challenge,
+        );
+        let still_explicit = validate_authorization_scopes(Some("profile"), &expanded).unwrap();
+        assert!(verify_consent_csrf(
+            &config, tenant, user, &client, redirect, Some("profile"), &still_explicit, None,
+            challenge, Some(explicit_token.as_str()),
+        ));
+        assert!(!verify_consent_csrf(
+            &config, tenant, user, &client, redirect, None, &still_explicit, None,
+            challenge, Some(explicit_token.as_str()),
+        ));
     }
 
     #[test]

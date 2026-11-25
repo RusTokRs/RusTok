@@ -3388,3 +3388,23 @@ namespaces. This does not add a search indexing requirement.
 Focused source regressions cover heartbeat cancellation/completion, continued
 execution after heartbeat termination, and search limiter readiness. Tests,
 compilation and formatting were not run at the maintainer's request.
+
+## Server follow-up — OAuth confirmation scope binding and session cookie failure (2026-11-25)
+
+OAuth browser confirmation now authenticates the effective scope set in
+addition to the original optional scope parameter. If a client policy change
+expands or narrows omitted/default scopes between GET and POST, the old form
+is rejected and the user must confirm again. Reordering or duplication of
+equivalent scope entries does not invalidate the set. Code issuance retains
+its transactional app/user/consent checks; the MAC version bump intentionally
+invalidates outstanding v2 forms. Issuance failure logs use a bounded error code.
+
+First-party login, registration, refresh and logout responses use one
+fallible Set-Cookie attachment path. Header encoding failures return an
+internal error instead of falsely reporting success; generated credential
+headers are marked sensitive. This does not roll back a committed auth
+mutation if response construction fails.
+
+Focused regressions are authored for changed/equivalent scope sets, omitted
+versus explicit scope, and invalid/valid session cookie headers. Compilation,
+formatting and tests were not run at the maintainer's request.
