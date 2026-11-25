@@ -163,16 +163,35 @@ impl PaymentProviderEventRecoveryService {
         worker_id: &str,
         limit: Option<u64>,
     ) -> PaymentResult<PaymentProviderEventRecoveryReport> {
+        self.run_with_admission(tenant_id, worker_id, limit, || true)
+            .await
+    }
+
+    /// Recheck host admission before discovery and before each new event claim.
+    /// An admitted event finishes its apply and journal transition; stopping
+    /// leaves all unstarted events eligible for the next recovery sweep.
+    /// The report counts only events actually admitted for recovery.
+    pub async fn run_with_admission(
+        &self,
+        tenant_id: Uuid,
+        worker_id: &str,
+        limit: Option<u64>,
+        mut may_admit: impl FnMut() -> bool + Send,
+    ) -> PaymentResult<PaymentProviderEventRecoveryReport> {
+        let mut report = PaymentProviderEventRecoveryReport::default();
+        if !may_admit() {
+            return Ok(report);
+        }
         let events = self
             .journal
             .list_retryable(tenant_id, limit.unwrap_or(DEFAULT_RECOVERY_BATCH_LIMIT))
             .await?;
-        let mut report = PaymentProviderEventRecoveryReport {
-            scanned: events.len(),
-            ..Default::default()
-        };
 
         for event in events {
+            if !may_admit() {
+                break;
+            }
+            report.scanned += 1;
             let lease_owner = format!("{worker_id}:{}:{}", event.id, Uuid::new_v4());
             match self.resume(tenant_id, event.id, lease_owner).await {
                 Ok(PaymentProviderEventRecoveryOutcome::Processed(_)) => report.processed += 1,
@@ -255,5 +274,106 @@ fn safe_recovery_error_code(error: &PaymentError) -> &'static str {
         PaymentError::PaymentCollectionNotFound(_)
         | PaymentError::PaymentNotFound(_)
         | PaymentError::RefundNotFound(_) => "payment.webhook_recovery_owner_missing",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::{
+        PROVIDER_EVENT_RECEIVED, PaymentProviderEventApplyError, PaymentProviderEventContext,
+        ReceiveProviderEvent, VerifiedProviderEvent,
+    };
+    use sea_orm::{ConnectionTrait, Database, Schema};
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    struct StopAfterApply(Arc<AtomicBool>);
+
+    #[async_trait::async_trait]
+    impl PaymentProviderEventApplier for StopAfterApply {
+        async fn apply(
+            &self,
+            _context: PaymentProviderEventContext,
+            _event: PaymentProviderWebhookResult,
+        ) -> Result<(), PaymentProviderEventApplyError> {
+            self.0.store(false, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn stop_during_apply_finishes_current_event_and_leaves_remaining_unclaimed() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let backend = db.get_database_backend();
+        let table = Schema::new(backend).create_table_from_entity(provider_event::Entity);
+        db.execute_raw(backend.build(&table)).await.unwrap();
+
+        let admitting = Arc::new(AtomicBool::new(true));
+        let recovery = PaymentProviderEventRecoveryService::new(
+            db,
+            Arc::new(StopAfterApply(admitting.clone())),
+        );
+        let tenant_id = Uuid::new_v4();
+        let mut ids = Vec::new();
+        for index in 0..2 {
+            let event = recovery
+                .journal()
+                .receive_verified(
+                    ReceiveProviderEvent {
+                        tenant_id,
+                        provider_id: "manual".to_string(),
+                        delivery_id: format!("delivery-{index}"),
+                        idempotency_key: format!("event-{index}"),
+                        raw_payload: b"{}".to_vec(),
+                        signature_verified: true,
+                    },
+                    VerifiedProviderEvent {
+                        event_type: "payment.captured".to_string(),
+                        external_reference: None,
+                        event_metadata: serde_json::json!({}),
+                    },
+                )
+                .await
+                .unwrap();
+            ids.push(event.id);
+        }
+
+        let report = recovery
+            .run_with_admission(tenant_id, "test-worker", Some(50), || {
+                admitting.load(Ordering::SeqCst)
+            })
+            .await
+            .unwrap();
+        assert_eq!(report.scanned, 1);
+        assert_eq!(report.processed, 1);
+        assert_eq!(report.errors, 0);
+
+        let mut pending = 0;
+        for id in ids {
+            let event = recovery.journal().get(tenant_id, id).await.unwrap();
+            if event.status == PROVIDER_EVENT_RECEIVED {
+                assert_eq!(event.attempt_count, 0);
+                assert!(event.lease_owner.is_none());
+                pending += 1;
+            } else {
+                assert_eq!(event.status, PROVIDER_EVENT_PROCESSED);
+                assert_eq!(event.attempt_count, 1);
+                assert!(event.lease_owner.is_none());
+            }
+        }
+        assert_eq!(pending, 1);
+
+        let stopped = recovery
+            .run_with_admission(tenant_id, "test-worker", Some(50), || false)
+            .await
+            .unwrap();
+        assert_eq!(stopped.scanned, 0);
+
+        let resumed = recovery
+            .run(tenant_id, "test-worker", Some(50))
+            .await
+            .unwrap();
+        assert_eq!(resumed.scanned, 1);
+        assert_eq!(resumed.processed, 1);
     }
 }

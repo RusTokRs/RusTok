@@ -49,6 +49,11 @@
 - Webhook delivery ID and replay/idempotency keys are strictly validated and tracked to prevent double-crediting.
 - Amounts must be strictly positive; currencies must be 3-letter ISO codes.
 
+- `PaymentProviderEventRecoveryService::run_with_admission`: accepts a synchronous
+  admission predicate before discovery and each new claim; admitted events finish
+  normally and unstarted rows remain eligible for recovery. Reports count admitted
+  events. `run` retains its full-batch behavior.
+
 ### Events / Outbox Side Effects
 - Emits `PaymentCollectionCreated`, `PaymentAuthorized`, `PaymentCaptured`, `PaymentFailed` domain events.
 - Emits `RefundCreated`, `RefundCompleted`, `RefundFailed` domain events.

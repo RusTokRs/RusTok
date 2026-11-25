@@ -1589,7 +1589,9 @@ for caller identity, bounded IO, operator permissions and unexecuted runtime gat
   timeouts remain visible to operators. Durable owner-managed work is still
   responsible for retry after an interrupted provider operation.
   Payment provider recovery additionally checks the shutdown signal between
-  tenant work items, without cancelling a recovery operation already underway.
+  tenant work items and before each owner-managed provider-event claim, without
+  cancelling an event already admitted for apply and journal completion.
+  Unstarted events remain eligible for recovery on the next run.
   Tenant enumeration uses a bounded, UUID-ordered keyset cursor instead of
   offset pagination, so deletions of earlier tenant rows do not shift pending
   recovery work out of the current sweep.

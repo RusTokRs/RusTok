@@ -25,6 +25,17 @@
 - transport, GraphQL and UI surfaces are published through `rustok-commerce` until a separate module-owned surface is established for the domain;
 - cross-module contract changes must be synchronized with `rustok-commerce` and neighboring split modules.
 
+## Provider-event recovery lifecycle
+
+The owner recovery service exposes `run_with_admission` for host workers.
+The host supplies a synchronous admission predicate, evaluated before
+discovery and each new event claim. An admitted event finishes its apply
+and journal transition; a stopped sweep leaves unstarted rows untouched.
+The report's scanned count covers admitted events, not the fetched batch.
+The ordinary `run` entry point retains its full-batch behavior for callers
+without a host shutdown signal. This is process-local graceful stop, not a
+new lease, replay policy or process-crash guarantee.
+
 ## Verification
 
 - cargo xtask module validate payment
