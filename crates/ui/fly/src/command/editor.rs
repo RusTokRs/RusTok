@@ -74,7 +74,7 @@ impl FlyEditor {
         self
     }
 
-    /// Use a host-provided embed catalog for both incremental and full validation.
+    /// Use a host-provided embed catalog for command and history validation.
     ///
     /// Pass the same registry to the corresponding render function so validation and rendering
     /// enforce one provider/host/path policy.
@@ -118,8 +118,12 @@ impl FlyEditor {
     }
 
     pub fn validate(&self) -> ValidationReport {
+        self.validate_document(&self.document)
+    }
+
+    fn validate_document(&self, document: &ProjectDocument) -> ValidationReport {
         crate::validate_project_with_embed_registry(
-            &self.document,
+            document,
             &self.registries,
             self.validation_limits,
             &self.embed_registry,
@@ -169,12 +173,7 @@ impl FlyEditor {
         let mut after = (*self.document).clone();
         Self::apply_to_document(&mut after, &mut command, &mut generator, false)?;
         after.ensure_stable_ids(&mut generator);
-        let report = crate::validate_project_with_embed_registry(
-            &after,
-            &self.registries,
-            self.validation_limits,
-            &self.embed_registry,
-        );
+        let report = self.validate_document(&after);
         let errors = report.errors().cloned().collect::<Vec<_>>();
         if !errors.is_empty() {
             return Err(FlyError::Validation(errors));
@@ -214,6 +213,8 @@ impl FlyEditor {
     }
 
     pub fn undo(&mut self) -> FlyResult<&ProjectDocument> {
+        let entry = self.history.peek_undo().ok_or(FlyError::UndoHistoryEmpty)?;
+        let report = self.validate_history_transition(&entry.after, &entry.before, "undo")?;
         let (entry, size) = self.history.pop_undo()?;
         self.document = Arc::clone(&entry.before);
         self.history.push_redo(entry, size);
@@ -222,11 +223,13 @@ impl FlyEditor {
             .take()
             .filter(|id| self.document.contains_component(id));
         self.revision.mark_changed(&self.document);
-        self.last_report = None;
+        self.last_report = Some(report);
         Ok(&self.document)
     }
 
     pub fn redo(&mut self) -> FlyResult<&ProjectDocument> {
+        let entry = self.history.peek_redo().ok_or(FlyError::RedoHistoryEmpty)?;
+        let report = self.validate_history_transition(&entry.before, &entry.after, "redo")?;
         let (entry, size) = self.history.pop_redo()?;
         self.document = Arc::clone(&entry.after);
         self.history.push_undo(entry, size);
@@ -235,8 +238,32 @@ impl FlyEditor {
             .take()
             .filter(|id| self.document.contains_component(id));
         self.revision.mark_changed(&self.document);
-        self.last_report = None;
+        self.last_report = Some(report);
         Ok(&self.document)
+    }
+
+    /// History is serialized independently of the live document. Verify its
+    /// endpoint and the current host policy before moving either stack.
+    fn validate_history_transition(
+        &self,
+        expected: &ProjectDocument,
+        candidate: &ProjectDocument,
+        operation: &str,
+    ) -> FlyResult<ValidationReport> {
+        if expected != self.document.as_ref() {
+            return Err(FlyError::Validation(vec![crate::ValidationDiagnostic {
+                severity: crate::ValidationSeverity::Error,
+                code: "history_base_mismatch".to_string(),
+                path: format!("history.{operation}"),
+                message: "history entry does not belong to the current document state".to_string(),
+            }]));
+        }
+        let report = self.validate_document(candidate);
+        let errors = report.errors().cloned().collect::<Vec<_>>();
+        if !errors.is_empty() {
+            return Err(FlyError::Validation(errors));
+        }
+        Ok(report)
     }
 
     fn apply_to_document(

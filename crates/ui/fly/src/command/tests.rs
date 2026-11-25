@@ -1395,3 +1395,65 @@ fn cached_validation_cannot_admit_registered_but_illegal_child_type() {
     assert_eq!(editor.history(), before.history());
     assert_eq!(editor.revision(), before.revision());
 }
+
+#[test]
+fn undo_and_redo_reject_disconnected_deserialized_history_without_mutation() {
+    let mut original = editor();
+    original.apply(EditorCommand::Patch {
+        component_id: "hero".to_string(),
+        patch: ComponentPatch::default().merge_style(json!({"color": "blue"})),
+    }).expect("edit");
+    for redo in [false, true] {
+        let mut source = original.clone();
+        if redo {
+            source.undo().expect("undo");
+        }
+        let mut stored = serde_json::to_value(&source).expect("serialize");
+        let (stack, endpoint) = if redo { ("redo", "before") } else { ("undo", "after") };
+        // Replace the expected endpoint with a valid but unrelated document.
+        stored["history"][stack][0][endpoint] =
+            serde_json::to_value(editor().document()).expect("endpoint");
+        if redo {
+            stored["history"][stack][0][endpoint] =
+                serde_json::to_value(original.document()).expect("different endpoint");
+        }
+        let mut restored: FlyEditor = serde_json::from_value(stored).expect("restore");
+        let before = restored.clone();
+        let error = if redo { restored.redo() } else { restored.undo() }
+            .expect_err("disconnected history");
+        assert!(matches!(error, FlyError::Validation(ref diagnostics)
+            if diagnostics.iter().any(|d| d.code == "history_base_mismatch")));
+        assert_eq!(restored, before);
+    }
+}
+
+#[test]
+fn history_transitions_respect_current_validation_limits() {
+    let mut source = editor();
+    source.apply(EditorCommand::Insert {
+        parent_id: Some("root".to_string()),
+        index: 1,
+        component: ComponentNode::Object(Box::new(crate::ComponentObject {
+            id: Some("extra".to_string()),
+            component_type: Some("section".to_string()),
+            ..Default::default()
+        })),
+    }).expect("insert");
+    let mut redo = source.clone();
+    redo.undo().expect("undo while policy allows");
+    let limits = crate::ValidationLimits {
+        maximum_nodes: 2,
+        ..Default::default()
+    };
+    let mut redo = redo.with_validation_limits(limits);
+    let before = redo.clone();
+    assert!(matches!(redo.redo(), Err(FlyError::Validation(_))));
+    assert_eq!(redo, before);
+
+    source.apply(EditorCommand::Remove { component_id: "extra".to_string() })
+        .expect("remove");
+    let mut undo = source.with_validation_limits(limits);
+    let before = undo.clone();
+    assert!(matches!(undo.undo(), Err(FlyError::Validation(_))));
+    assert_eq!(undo, before);
+}

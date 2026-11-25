@@ -336,6 +336,14 @@ impl History {
         self.enforce_budget();
     }
 
+    pub(super) fn peek_undo(&self) -> Option<&HistoryEntry> {
+        self.undo.back()
+    }
+
+    pub(super) fn peek_redo(&self) -> Option<&HistoryEntry> {
+        self.redo.back()
+    }
+
     pub(super) fn pop_undo(&mut self) -> FlyResult<(HistoryEntry, usize)> {
         let entry = self.undo.pop_back().ok_or(FlyError::UndoHistoryEmpty)?;
         let size = self.undo_sizes.pop_back().unwrap_or_default();

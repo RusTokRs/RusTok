@@ -360,3 +360,8 @@ assets and history buttons without a full remount. Back-end authorization remain
 Dioxus PageBuilderAdmin also forwards FlyEditorWorkspace's own validation/runtime errors through
 its `on_error` callback into the session's accessible Page Builder error alert. Previously
 invalid token input and editor-local errors could be silently lost because `on_error` was unset.
+
+Contribution registry installation is atomic at both the host and controller boundaries:
+all installers must succeed on a candidate registry before it replaces the active registry.
+Undo and redo also reject disconnected or currently invalid history snapshots without
+changing the controller's document, revision, or history.

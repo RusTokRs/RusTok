@@ -244,7 +244,9 @@ History budgets both undo and redo snapshots plus commands using a serialized-si
 preserves one oversized entry, and recomputes the accounting after deserialization. The estimate
 is not an exact heap measurement and may count shared snapshots more than once.
 Batch transactions and content patches that remove scalar text children do not claim a
-local inverse; undo and redo restore the retained before/after snapshots. Style inverses
+local inverse; undo and redo restore the retained before/after snapshots only when
+the entry is connected to the current document and the destination satisfies current validation
+limits and provider policy. Rejection leaves both stacks, selection and revision unchanged. Style inverses
 restore the complete original style slot, including absence.
 
 Snapshot capture verifies canonical payload round-trip, derives the fingerprint from that

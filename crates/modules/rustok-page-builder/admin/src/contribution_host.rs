@@ -321,9 +321,14 @@ impl PageBuilderContributionHostContext {
     }
 
     pub fn install_registries(&self, registries: &mut RegistrySet) -> Result<(), String> {
-        for extension in self.extensions.iter() {
-            extension.install(registries)?;
+        if self.extensions.is_empty() {
+            return Ok(());
         }
+        let mut candidate = registries.clone();
+        for extension in self.extensions.iter() {
+            extension.install(&mut candidate)?;
+        }
+        *registries = candidate;
         Ok(())
     }
 
@@ -408,5 +413,40 @@ impl PageBuilderContributionHostContext {
 
     pub fn is_empty(&self) -> bool {
         self.extensions.is_empty()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn manifest(id: &str) -> ModuleContributionManifest {
+        ModuleContributionManifest {
+            module_id: id.to_string(),
+            owner_provider: format!("provider.{id}"),
+            owner_version: "1".to_string(),
+            target_providers: Default::default(),
+            dependencies: Default::default(),
+            required_permissions: Default::default(),
+            admin: Vec::new(),
+            storefront: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn host_installation_rolls_back_all_extensions_on_failure() {
+        let host = PageBuilderContributionHostContext::new(vec![
+            PageBuilderContributionHostExtension::new(manifest("first"), |registries| {
+                *registries = RegistrySet::default();
+                Ok(())
+            }),
+            PageBuilderContributionHostExtension::new(manifest("second"), |_| {
+                Err("second installer failed".to_string())
+            }),
+        ]).expect("host");
+        let mut registries = RegistrySet::with_builtins();
+        let before = registries.clone();
+        assert!(host.install_registries(&mut registries).is_err());
+        assert_eq!(registries, before);
     }
 }

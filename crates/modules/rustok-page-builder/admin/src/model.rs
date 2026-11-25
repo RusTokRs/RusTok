@@ -696,7 +696,9 @@ impl AdminCanvasController {
         &mut self,
         installer: impl FnOnce(&mut RegistrySet) -> Result<(), String>,
     ) -> Result<(), AdminCanvasError> {
-        installer(self.editor.registries_mut()).map_err(AdminCanvasError::Authoring)?;
+        let mut candidate = self.editor.registries().clone();
+        installer(&mut candidate).map_err(AdminCanvasError::Authoring)?;
+        *self.editor.registries_mut() = candidate;
         let report = self.editor.validate();
         self.synchronize(report);
         Ok(())
@@ -733,6 +735,20 @@ mod tests {
             }),
         )
         .expect("controller")
+    }
+
+    #[test]
+    fn failed_contribution_installation_preserves_controller_state() {
+        let mut controller = controller();
+        let before = controller.clone();
+        let result = controller.install_contribution_registries(|registries| {
+            *registries = RegistrySet::default();
+            Err("installer failed after mutation".to_string())
+        });
+        assert!(matches!(result, Err(AdminCanvasError::Authoring(_))));
+        assert_eq!(controller.editor(), before.editor());
+        assert_eq!(controller.ui(), before.ui());
+        assert_eq!(controller.revision_id(), before.revision_id());
     }
 
     #[test]
