@@ -46,11 +46,26 @@ pub fn auth_config_from_host_settings(
     access_expiration: u64,
     settings: Option<&serde_json::Value>,
 ) -> Result<AuthConfig> {
+    auth_config_from_parts(secret, access_expiration, parse_auth_settings(settings)?)
+}
+
+fn parse_auth_settings(settings: Option<&serde_json::Value>) -> Result<AuthSettingsOverrides> {
     let app_settings = settings
         .map(|value| serde_json::from_value::<AppSettings>(value.clone()))
         .transpose()?;
-    let auth_settings = app_settings.and_then(|s| s.auth).unwrap_or_default();
-    auth_config_from_parts(secret, access_expiration, auth_settings)
+    Ok(app_settings.and_then(|s| s.auth).unwrap_or_default())
+}
+
+/// The file source supplies all JWT keys; never build an unused startup signer.
+pub(crate) fn auth_config_from_host_document(
+    secret: String,
+    access_expiration: u64,
+    settings: Option<&serde_json::Value>,
+    bytes: &[u8],
+) -> Result<(u64, AuthConfig)> {
+    rustok_auth::build_auth_config_from_document(
+        secret, access_expiration, parse_auth_settings(settings)?, bytes,
+    ).map_err(auth_err)
 }
 
 fn auth_config_from_parts(

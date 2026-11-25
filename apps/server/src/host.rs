@@ -105,24 +105,22 @@ pub async fn run() -> Result<()> {
     let rustok_settings = RustokSettings::from_settings(&Some(config.settings.clone()))
         .map_err(|error| Error::BadRequest(format!("Invalid rustok settings: {error}")))?;
     let keyring_path = jwt_keyring_file_path()?;
-    if keyring_path.is_some() {
-        validate_keyring_file_source(&config.settings)?;
-    }
-    let base_auth_config = crate::auth::auth_config_from_host_settings(
-        config.auth.jwt.secret.clone(),
-        config.auth.jwt.expiration,
-        Some(&config.settings),
-    )?;
     let (auth_config, reload_source) = if let Some(path) = keyring_path {
         let bytes = read_jwt_keyring_file(&path).await?;
         let digest: [u8; 32] = sha256_digest(&[&bytes]);
-        let (generation, candidate) = base_auth_config.prepare_jwt_document(&bytes)
-            .map_err(crate::auth::auth_err)?;
+        let (generation, candidate) = crate::auth::auth_config_from_host_document(
+            config.auth.jwt.secret.clone(), config.auth.jwt.expiration,
+            Some(&config.settings), &bytes,
+        )?;
         validate_auth_deployment(&candidate, production)?;
         (candidate, Some((path, generation, digest)))
     } else {
-        validate_auth_deployment(&base_auth_config, production)?;
-        (base_auth_config, None)
+        let candidate = crate::auth::auth_config_from_host_settings(
+            config.auth.jwt.secret.clone(), config.auth.jwt.expiration,
+            Some(&config.settings),
+        )?;
+        validate_auth_deployment(&candidate, production)?;
+        (candidate, None)
     };
     validate_oauth_metadata_issuer(
         &auth_config,
@@ -619,23 +617,6 @@ fn jwt_keyring_file_path() -> Result<Option<PathBuf>> {
     }
 }
 
-fn validate_keyring_file_source(settings: &serde_json::Value) -> Result<()> {
-    if let Some(auth) = settings.get("auth").and_then(serde_json::Value::as_object) {
-        for field in [
-            "algorithm", "jwt_keyring_env", "jwt_special_keyrings_env",
-            "rsa_private_key_pem", "rsa_public_key_pem",
-            "rsa_private_key_env", "rsa_public_key_env",
-        ] {
-            if auth.get(field).is_some_and(|value| !value.is_null()) {
-                return Err(Error::BadRequest(
-                    "JWT keyring file cannot be combined with startup key overrides".to_string(),
-                ));
-            }
-        }
-    }
-    Ok(())
-}
-
 async fn read_jwt_keyring_file(path: &Path) -> Result<Vec<u8>> {
     const MAX: usize = rustok_auth::MAX_JWT_KEYRING_DOCUMENT_BYTES;
     let metadata = tokio::fs::metadata(path).await
@@ -879,17 +860,7 @@ mod tests {
     use crate::common::settings::RuntimeHostMode;
 
     #[test]
-    fn jwt_file_source_cannot_be_combined_with_startup_crypto_overrides() {
-        assert!(super::validate_keyring_file_source(&serde_json::json!({
-            "auth": {"issuer": "https://api.example.com", "min_password_length": 15}
-        })).is_ok());
-        for field in ["algorithm", "jwt_keyring_env", "jwt_special_keyrings_env",
-            "rsa_private_key_pem", "rsa_public_key_pem", "rsa_private_key_env",
-            "rsa_public_key_env"] {
-            let mut value = serde_json::json!({"auth": {}});
-            value["auth"][field] = serde_json::json!("configured");
-            assert!(super::validate_keyring_file_source(&value).is_err());
-        }
+    fn jwt_config_debug_redacts_root() {
         let rendered = format!("{:?}", super::JwtConfig {
             secret: "sensitive-root-value".to_string(), expiration: 900,
         });

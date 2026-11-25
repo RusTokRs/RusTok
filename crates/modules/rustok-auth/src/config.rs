@@ -695,6 +695,16 @@ impl std::fmt::Debug for AuthSettingsOverrides {
 }
 
 impl AuthSettingsOverrides {
+    fn has_key_overrides(&self) -> bool {
+        self.algorithm.is_some()
+            || self.jwt_keyring_env.is_some()
+            || self.jwt_special_keyrings_env.is_some()
+            || self.rsa_private_key_pem.is_some()
+            || self.rsa_public_key_pem.is_some()
+            || self.rsa_private_key_env.is_some()
+            || self.rsa_public_key_env.is_some()
+    }
+
     /// Apply overrides on top of a base `AuthConfig`.
     pub fn apply(self, config: &mut AuthConfig) -> Result<()> {
         if matches!(&config.key_state, JwtKeySource::Live(_)) {
@@ -769,6 +779,28 @@ pub fn build_auth_config(
     auth_settings: AuthSettingsOverrides,
 ) -> Result<AuthConfig> {
     build_auth_config_with_env(secret, access_expiration, auth_settings, read_auth_env)
+}
+
+/// Build from the complete file source without preparing an unused startup
+/// keyring. The file is the exclusive source of JWT signing and verification
+/// material; host settings supply only immutable policy and the MAC root.
+pub fn build_auth_config_from_document(
+    secret: String,
+    access_expiration: u64,
+    auth_settings: AuthSettingsOverrides,
+    bytes: &[u8],
+) -> Result<(u64, AuthConfig)> {
+    if auth_settings.has_key_overrides() {
+        return Err(AuthError::Validation(
+            "JWT keyring file cannot be combined with startup key overrides".to_string(),
+        ));
+    }
+    let mut policy = AuthConfig::new(secret);
+    policy.access_expiration = access_expiration;
+    auth_settings.apply_with_env(&mut policy, &mut |_| Err(invalid_rotation()))?;
+    // Only the complete candidate, not the unused constructor defaults,
+    // enters key preparation and full validation.
+    policy.prepare_jwt_document(bytes)
 }
 
 fn read_auth_env(name: &str) -> Result<String> {
@@ -1057,6 +1089,40 @@ mod tests {
             "email_verification": {"keyring": {"active_kid": "verify-default"}},
             "invite": {"keyring": {"active_kid": "invite-default"}}
         })).unwrap()
+    }
+
+    #[test]
+    fn document_bootstrap_uses_only_file_keys_and_host_policy() {
+        let bytes = document(7, "file-key", "first-independent-signing-key-at-least-32-bytes");
+        let (generation, config) = build_auth_config_from_document(
+            secret(), 900,
+            AuthSettingsOverrides {
+                issuer: Some("https://issuer.example".to_string()),
+                min_password_length: Some(15),
+                ..Default::default()
+            },
+            &bytes,
+        ).unwrap();
+        assert_eq!(generation, 7);
+        assert_eq!(config.issuer, "https://issuer.example");
+        assert_eq!(config.min_password_length, 15);
+        assert_eq!(config.access_expiration, 900);
+        let token = crate::encode_access_token(&config, uuid::Uuid::new_v4(),
+            uuid::Uuid::new_v4(), rustok_core::UserRole::Customer, uuid::Uuid::new_v4()).unwrap();
+        assert_eq!(jsonwebtoken::decode_header(&token).unwrap().kid.as_deref(), Some("file-key"));
+        for settings in [
+            AuthSettingsOverrides { algorithm: Some(JwtAlgorithm::RS256), ..Default::default() },
+            AuthSettingsOverrides { jwt_keyring_env: Some("UNUSED".into()), ..Default::default() },
+            AuthSettingsOverrides { jwt_special_keyrings_env: Some("UNUSED".into()), ..Default::default() },
+            AuthSettingsOverrides { rsa_private_key_pem: Some("unused".into()), ..Default::default() },
+            AuthSettingsOverrides { rsa_public_key_pem: Some("unused".into()), ..Default::default() },
+            AuthSettingsOverrides { rsa_private_key_env: Some("UNUSED".into()), ..Default::default() },
+            AuthSettingsOverrides { rsa_public_key_env: Some("UNUSED".into()), ..Default::default() },
+        ] {
+            assert!(build_auth_config_from_document(secret(), 900, settings, &bytes).is_err());
+        }
+        assert!(build_auth_config_from_document(secret(), 0, Default::default(), &bytes).is_err());
+        assert!(build_auth_config_from_document(secret(), 900, Default::default(), b"{}").is_err());
     }
 
     #[test]

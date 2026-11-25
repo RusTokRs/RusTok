@@ -229,6 +229,8 @@ The cutover does not authorize data deletion.
 
 Set `RUSTOK_JWT_KEYRING_FILE` to a trusted secret-manager-mounted JSON file.
 Do not combine this source with startup JWT algorithm, RSA or keyring overrides.
+Auth owns typed source exclusivity and validates only the complete file candidate;
+the host does not prepare an unused startup signer before loading the file.
 The file is limited to 256 KiB and requires a generation from 1 through 2^63-1 and a complete
 set of four purpose entries. The document has one unversioned format;
 obsolete schema tags and unknown fields are rejected. Generation is a
