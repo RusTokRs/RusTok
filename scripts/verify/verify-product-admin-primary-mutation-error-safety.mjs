@@ -193,6 +193,7 @@ for (const marker of [
   "error = %error",
   "internal_message = %",
   "parsed_error = ?",
+  "correlation_id = %self.correlation_id",
 ]) {
   forbidText(mutationBlock, marker, `${paths.safety}: complete mutation error payload`);
 }
@@ -228,7 +229,7 @@ for (const marker of [
 }
 for (const marker of [
   "retained_caller_key(&slot, operation, intent)",
-  "mark_lifecycle_succeeded(&slot)",
+  "mark_lifecycle_succeeded(slot)",
   "product_lifecycle_graphql::create_product(",
 ]) {
   requireText(retry, marker, `${paths.retry}: retained lifecycle idempotency identity`);

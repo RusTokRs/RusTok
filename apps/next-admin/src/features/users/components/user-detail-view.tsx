@@ -120,6 +120,8 @@ export default function UserDetailView({ userId }: { userId: string }) {
           tenantSlug
         );
         updatedUser = data.updateUser;
+        setUser(updatedUser);
+        setEditName(updatedUser.name ?? '');
       }
 
       if (roleChanged) {
@@ -203,7 +205,11 @@ export default function UserDetailView({ userId }: { userId: string }) {
             <Button
               size='sm'
               variant='outline'
-              onClick={() => setIsEditing(false)}
+              onClick={() => {
+                setEditName(user.name ?? '');
+                setEditRole(user.role?.toLowerCase() ?? 'customer');
+                setIsEditing(false);
+              }}
             >
               {t('detail.cancel')}
             </Button>
@@ -235,6 +241,11 @@ export default function UserDetailView({ userId }: { userId: string }) {
                   onChange={(e) => setEditRole(e.target.value)}
                   className='border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none'
                 >
+                  {editRole && !roles.some((r) => r.slug === editRole) && (
+                    <option key={editRole} value={editRole}>
+                      {editRole}
+                    </option>
+                  )}
                   {roles.map((r) => (
                     <option key={r.slug} value={r.slug}>
                       {r.displayName} ({r.slug})
