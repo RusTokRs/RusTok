@@ -1045,3 +1045,48 @@ async fn test_base_price_authoring_and_discount_preview_share_channel_identity()
     assert_eq!(rows[0].channel_slug, original.channel_slug);
     assert_eq!(rows[0].channel_id, original.channel_id);
 }
+
+#[tokio::test]
+async fn invalid_stored_price_predecessor_refuses_single_and_batch_events() {
+    use rustok_product::entities::product_variant;
+    let (db, service, catalog, transport) = setup_with_transport().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (_, variant_id) = create_test_product(&catalog, tenant_id).await;
+    service.set_price(tenant_id, actor_id, variant_id, "USD", dec!(10), None)
+        .await.unwrap();
+
+    let row = entities::price::Entity::find()
+        .filter(entities::price::Column::VariantId.eq(variant_id))
+        .filter(entities::price::Column::CurrencyCode.eq("USD"))
+        .filter(entities::price::Column::ChannelId.is_null())
+        .filter(entities::price::Column::ChannelSlug.is_null())
+        .one(&db).await.unwrap().unwrap();
+    let id = row.id;
+    // Historical money that fits the decimal column but not USD minor units.
+    let mut corrupt: entities::price::ActiveModel = row.into();
+    corrupt.amount = Set(dec!(10.001));
+    corrupt.update(&db).await.unwrap();
+    let revision = product_variant::Entity::find_by_id(variant_id)
+        .one(&db).await.unwrap().unwrap().index_revision;
+    transport.clear();
+
+    assert!(service.set_price(tenant_id, actor_id, variant_id, "USD", dec!(12), None)
+        .await.is_err());
+    assert!(service.set_prices(tenant_id, actor_id, variant_id, vec![
+        rustok_commerce_foundation::dto::PriceInput {
+            currency_code: "EUR".into(), channel_id: None, channel_slug: None,
+            amount: dec!(20), compare_at_amount: None,
+        },
+        rustok_commerce_foundation::dto::PriceInput {
+            currency_code: "USD".into(), channel_id: None, channel_slug: None,
+            amount: dec!(12), compare_at_amount: None,
+        },
+    ]).await.is_err());
+
+    assert_eq!(entities::price::Entity::find_by_id(id).one(&db).await.unwrap().unwrap().amount, dec!(10.001));
+    assert_eq!(service.get_price(tenant_id, variant_id, "EUR").await.unwrap(), None);
+    assert_eq!(product_variant::Entity::find_by_id(variant_id)
+        .one(&db).await.unwrap().unwrap().index_revision, revision);
+    assert!(transport.events_of_type("PriceUpdated").is_empty());
+}

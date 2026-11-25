@@ -17,8 +17,16 @@ Product initial/base price writes and direct Pricing single/batch authoring
 validate exact currency minor-unit precision for both amount and compare-at
 amount before row mutation. This uses the same platform money contract as
 resolution, rather than accepting prices that subsequent quote reads reject.
-New PriceUpdated amounts are encoded without rounding. Calculated discount
-rounding and the retained two-decimal legacy mirror are unchanged.
+PriceUpdated predecessor and successor amounts are encoded without rounding.
+A missing predecessor is represented by None only for an insert; a stored
+amount that cannot be represented exactly aborts ordinary authoring, rather
+than emitting a fabricated amount or claiming absence. Both writers validate
+the persisted successor currency, amount and compare-at against the authored
+values before publishing and use the saved row's scope for the catalog revision.
+Earlier writes in a failed batch roll back with its events. Historical invalid
+amounts need explicit reconciliation; ordinary authoring does not repair them
+by falsifying event history. Calculated discount rounding and the retained
+two-decimal legacy mirror are unchanged.
 The canonical decimal columns retain NUMERIC(16,6), whose maximum is
 9999999999.999999. The Pricing owner validates both currency minor-unit
 exactness and this narrower storage range for amount and compare-at amount.

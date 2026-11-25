@@ -713,6 +713,19 @@ They now capture any transport error into an `action_error` reactive signal and 
   [regression](../../crates/modules/rustok-commerce/tests/pricing_service_test/price_set.rs).
   Historical duplicates require reconciliation; regression source unexecuted.
 
+### P-PRICE-EVENT-FACTS — encode exact stored predecessor and successor
+
+- **Category:** event integrity / transactional state.
+- **Observed defect:** PriceUpdated rounded the previous stored amount and
+  converted failures into absence, while the successor was taken from input.
+- **Canonical correction:** only a missing row yields a missing predecessor;
+  invalid stored money refuses ordinary mutation. Verify exact persisted
+  successor money and currency before publishing, derive catalog scope from
+  the saved row, and retain the single transaction and revision advance.
+- **Evidence:** [Pricing commands](../../crates/modules/rustok-pricing/src/services/pricing/commands.rs),
+  [regression](../../crates/modules/rustok-commerce/tests/pricing_service_test/price_set.rs).
+  Historical invalid money requires reconciliation; regressions authored, unrun.
+
 ## 1. Core Philosophy: The 6 Universal Logic Dimensions
 
 Under [AGENTS.md §4](../../AGENTS.md), verify the affected behavior and its owner contract across the **6 Universal Logic Dimensions**. Use source matches to find code to inspect. A match alone cannot establish a behavioral defect:

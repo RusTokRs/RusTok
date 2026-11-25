@@ -20,6 +20,45 @@ mod entities {
     pub use rustok_commerce_foundation::entities::product_variant;
 }
 
+/// An existing row must supply a truthful predecessor for PriceUpdated.
+/// Absence is represented by None, never by a failed money conversion.
+fn price_event_predecessor(
+    existing: Option<&entities::price::Model>,
+    currency: &str,
+) -> CommerceResult<Option<i64>> {
+    existing
+        .map(|price| {
+            if price.currency_code != currency {
+                return Err(resolution::invalid_data("Stored price currency differs from event currency").into_commerce());
+            }
+            validate_price_precision(price.amount, None, currency)
+                .map_err(|_| resolution::invalid_data("Stored price cannot supply an exact event predecessor").into_commerce())?;
+            money::to_minor_units_exact(price.amount, currency)
+                .map_err(|_| resolution::invalid_data("Stored price cannot supply an exact event predecessor").into_commerce())
+        })
+        .transpose()
+}
+
+/// Capture the persisted money, not a possibly altered request value.
+/// Refuse any storage divergence before publishing the event or advancing Product.
+fn price_event_successor(
+    saved: &entities::price::Model,
+    currency: &str,
+    amount: Decimal,
+    compare_at_amount: Option<Decimal>,
+) -> CommerceResult<i64> {
+    if saved.currency_code != currency
+        || saved.amount != amount
+        || saved.compare_at_amount != compare_at_amount
+    {
+        return Err(resolution::invalid_data("Saved price differs from authored money").into_commerce());
+    }
+    validate_price_precision(saved.amount, saved.compare_at_amount, currency)
+        .map_err(|_| resolution::invalid_data("Saved price cannot supply an exact event successor").into_commerce())?;
+    money::to_minor_units_exact(saved.amount, currency)
+        .map_err(|_| resolution::invalid_data("Saved price cannot supply an exact event successor").into_commerce())
+}
+
 /// A single authoring command must not choose an arbitrary stored row.
 fn unique_existing_price(
     mut rows: Vec<entities::price::Model>,
@@ -632,7 +671,7 @@ impl PricingService {
         }
         validate_price_precision(amount, compare_at_amount, &currency_code)?;
 
-        let old_amount = existing.as_ref().map(|price| price.amount);
+        let old_cents = price_event_predecessor(existing.as_ref(), &currency_code)?;
 
         let saved = match existing {
             Some(price) => {
@@ -673,13 +712,7 @@ impl PricingService {
             }
         };
 
-        let old_cents =
-            old_amount.and_then(|amount| money::to_minor_units(amount, &currency_code).ok());
-        let new_cents = money::to_minor_units_exact(amount, &currency_code).map_err(|error| {
-            CommerceError::Validation(format!(
-                "price amount {amount} has no minor-unit form in {currency_code}: {error}"
-            ))
-        })?;
+        let new_cents = price_event_successor(&saved, &currency_code, amount, compare_at_amount)?;
 
         let event = DomainEvent::PriceUpdated {
             variant_id,
@@ -784,9 +817,9 @@ impl PricingService {
                 .await?;
             let existing = unique_existing_price(existing_rows)?;
 
-            let old_amount = existing.as_ref().map(|p| p.amount);
+            let old_cents = price_event_predecessor(existing.as_ref(), &normalized_currency)?;
 
-            match existing {
+            let saved = match existing {
                 Some(price) => {
                     let mut price_active: entities::price::ActiveModel = price.into();
                     price_active.amount = Set(price_input.amount);
@@ -798,7 +831,7 @@ impl PricingService {
                     price_active.legacy_compare_at_amount = Set(price_input
                         .compare_at_amount
                         .and_then(crate::services::bootstrap::legacy_amount_units));
-                    price_active.update(&txn).await?;
+                    price_active.update(&txn).await?
                 }
                 None => {
                     let price = entities::price::ActiveModel {
@@ -820,19 +853,13 @@ impl PricingService {
                         min_quantity: Set(None),
                         max_quantity: Set(None),
                     };
-                    price.insert(&txn).await?;
+                    price.insert(&txn).await?
                 }
-            }
+            };
 
-            let old_cents = old_amount
-                .and_then(|amount| money::to_minor_units(amount, &normalized_currency).ok());
-            let new_cents = money::to_minor_units_exact(price_input.amount, &normalized_currency)
-                .map_err(|error| {
-                    CommerceError::Validation(format!(
-                        "price amount {} has no minor-unit form in {normalized_currency}: {error}",
-                        price_input.amount
-                    ))
-                })?;
+            let new_cents = price_event_successor(
+                &saved, &normalized_currency, price_input.amount, price_input.compare_at_amount,
+            )?;
 
             let event = DomainEvent::PriceUpdated {
                 variant_id,
@@ -848,7 +875,13 @@ impl PricingService {
             let price_event_id = self.event_bus
                 .publish_in_tx_with_envelope_id(&txn, tenant_id, Some(actor_id), event)
                 .await?;
-            if price_input.channel_id.is_none() && normalized_channel_slug.is_none() {
+            if saved.price_list_id.is_none()
+                && saved.channel_id.is_none()
+                && saved.channel_slug.is_none()
+                && saved.region_id.is_none()
+                && saved.min_quantity.is_none()
+                && saved.max_quantity.is_none()
+            {
                 last_catalog_price_event = Some(price_event_id);
             }
         }
@@ -943,6 +976,33 @@ mod batch_price_admission_tests {
             min_quantity: None,
             max_quantity: None,
         }
+    }
+
+    #[test]
+    fn event_predecessor_distinguishes_absence_from_invalid_stored_money() {
+        assert_eq!(price_event_predecessor(None, "USD").unwrap(), None);
+        let mut price = row(1);
+        assert_eq!(price_event_predecessor(Some(&price), "USD").unwrap(), Some(1000));
+        price.amount = Decimal::ZERO;
+        assert_eq!(price_event_predecessor(Some(&price), "USD").unwrap(), Some(0));
+        for invalid in [Decimal::new(10001, 3), Decimal::new(-1, 0), Decimal::new(10_000_000_000, 0)] {
+            price.amount = invalid;
+            assert!(price_event_predecessor(Some(&price), "USD").is_err());
+        }
+        price.amount = Decimal::ONE;
+        assert!(price_event_predecessor(Some(&price), "EUR").is_err());
+    }
+
+    #[test]
+    fn event_successor_requires_saved_money_to_match_the_authored_money() {
+        let mut price = row(1);
+        price.currency_code = "KWD".into();
+        price.amount = Decimal::new(79994, 3);
+        price.compare_at_amount = Some(Decimal::new(99996, 3));
+        assert_eq!(price_event_successor(&price, "KWD", price.amount, price.compare_at_amount).unwrap(), 79994);
+        assert!(price_event_successor(&price, "KWD", Decimal::new(79995, 3), price.compare_at_amount).is_err());
+        assert!(price_event_successor(&price, "KWD", price.amount, None).is_err());
+        assert!(price_event_successor(&price, "USD", price.amount, price.compare_at_amount).is_err());
     }
 
     #[test]
