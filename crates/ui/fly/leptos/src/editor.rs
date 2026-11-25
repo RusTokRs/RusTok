@@ -924,9 +924,16 @@ pub fn FlyStyleRules(
     view! {
         <section class="fly-style-rules">
             <h3>{messages.responsive_styles}</h3>
-            <div class="fly-style-rules__row">
+            <form
+                class="fly-style-rules__row"
+                data-fly-intent-form=intent_mode.then_some("upsert_style_rule")
+                on:submit=move |event| event.prevent_default()
+            >
+                <input type="hidden" name="scope_kind" value="media"/>
                 <label>{breakpoint_label.clone()}</label>
                 <select
+                    name="scope_value"
+                    disabled=!styles_enabled
                     attr:aria-label=breakpoint_label
                     prop:value=move || breakpoint_id.get()
                     on:change=move |event| {
@@ -948,6 +955,8 @@ pub fn FlyStyleRules(
                 </select>
                 <label>{property_label.clone()}</label>
                 <select
+                    name="property"
+                    disabled=!styles_enabled
                     attr:aria-label=property_label.clone()
                     prop:value=move || media_property.get()
                     on:change=move |event| {
@@ -968,6 +977,7 @@ pub fn FlyStyleRules(
                     }).collect_view()}
                 </select>
                 <input
+                    name="value"
                     attr:aria-label=messages.style_value.clone()
                     prop:value=move || media_value.get()
                     disabled=!styles_enabled
@@ -975,7 +985,6 @@ pub fn FlyStyleRules(
                 />
                 <button
                     type="submit"
-                    form="fly-style-media-apply"
                     disabled=!styles_enabled
                     on:click=move |_| {
                         on_upsert.run(ScopedStyleChange {
@@ -992,7 +1001,8 @@ pub fn FlyStyleRules(
                 {preview_button}
                 <button
                     type="submit"
-                    form="fly-style-media-clear"
+                    name="remove"
+                    value="true"
                     disabled=!styles_enabled
                     on:click=move |_| {
                         on_upsert.run(ScopedStyleChange {
@@ -1006,11 +1016,18 @@ pub fn FlyStyleRules(
                 >
                     {clear_label.clone()}
                 </button>
-            </div>
+            </form>
             <h3>{messages.interaction_states}</h3>
-            <div class="fly-style-rules__row">
+            <form
+                class="fly-style-rules__row"
+                data-fly-intent-form=intent_mode.then_some("upsert_style_rule")
+                on:submit=move |event| event.prevent_default()
+            >
+                <input type="hidden" name="scope_kind" value="state"/>
                 <label>{state_label.clone()}</label>
                 <select
+                    name="scope_value"
+                    disabled=!styles_enabled
                     attr:aria-label=state_label
                     prop:value=move || state_pseudo.get()
                     on:change=move |event| {
@@ -1032,6 +1049,8 @@ pub fn FlyStyleRules(
                 </select>
                 <label>{property_label.clone()}</label>
                 <select
+                    name="property"
+                    disabled=!styles_enabled
                     attr:aria-label=property_label
                     prop:value=move || state_property.get()
                     on:change=move |event| {
@@ -1054,6 +1073,7 @@ pub fn FlyStyleRules(
                     }).collect_view()}
                 </select>
                 <input
+                    name="value"
                     attr:aria-label=messages.style_value.clone()
                     prop:value=move || state_value.get()
                     disabled=!styles_enabled
@@ -1061,7 +1081,6 @@ pub fn FlyStyleRules(
                 />
                 <button
                     type="submit"
-                    form="fly-style-state-apply"
                     disabled=!styles_enabled
                     on:click=move |_| {
                         on_upsert.run(ScopedStyleChange {
@@ -1079,7 +1098,8 @@ pub fn FlyStyleRules(
                 </button>
                 <button
                     type="submit"
-                    form="fly-style-state-clear"
+                    name="remove"
+                    value="true"
                     disabled=!styles_enabled
                     on:click=move |_| {
                         on_upsert.run(ScopedStyleChange {
@@ -1095,64 +1115,6 @@ pub fn FlyStyleRules(
                 >
                     {clear_label}
                 </button>
-            </div>
-            <form
-                id="fly-style-media-apply"
-                hidden=true
-                data-fly-intent-form=intent_mode.then_some("upsert_style_rule")
-                on:submit=move |event| event.prevent_default()
-            >
-                <input type="hidden" name="scope_kind" value="media"/>
-                <input
-                    type="hidden"
-                    name="scope_value"
-                    prop:value=move || match current_media_scope(breakpoint_id.get()) {
-                        fly::StyleRuleScope::Media { query } => query,
-                        _ => String::new(),
-                    }
-                />
-                <input type="hidden" name="property" prop:value=move || media_property.get()/>
-                <input type="hidden" name="value" prop:value=move || media_value.get()/>
-            </form>
-            <form
-                id="fly-style-media-clear"
-                hidden=true
-                data-fly-intent-form=intent_mode.then_some("upsert_style_rule")
-                on:submit=move |event| event.prevent_default()
-            >
-                <input type="hidden" name="scope_kind" value="media"/>
-                <input
-                    type="hidden"
-                    name="scope_value"
-                    prop:value=move || match current_media_scope(breakpoint_id.get()) {
-                        fly::StyleRuleScope::Media { query } => query,
-                        _ => String::new(),
-                    }
-                />
-                <input type="hidden" name="property" prop:value=move || media_property.get()/>
-                <input type="checkbox" name="remove" checked=true hidden=true/>
-            </form>
-            <form
-                id="fly-style-state-apply"
-                hidden=true
-                data-fly-intent-form=intent_mode.then_some("upsert_style_rule")
-                on:submit=move |event| event.prevent_default()
-            >
-                <input type="hidden" name="scope_kind" value="state"/>
-                <input type="hidden" name="scope_value" prop:value=move || state_pseudo.get()/>
-                <input type="hidden" name="property" prop:value=move || state_property.get()/>
-                <input type="hidden" name="value" prop:value=move || state_value.get()/>
-            </form>
-            <form
-                id="fly-style-state-clear"
-                hidden=true
-                data-fly-intent-form=intent_mode.then_some("upsert_style_rule")
-                on:submit=move |event| event.prevent_default()
-            >
-                <input type="hidden" name="scope_kind" value="state"/>
-                <input type="hidden" name="scope_value" prop:value=move || state_pseudo.get()/>
-                <input type="hidden" name="property" prop:value=move || state_property.get()/>
-                <input type="checkbox" name="remove" checked=true hidden=true/>
             </form>
         </section>
     }
