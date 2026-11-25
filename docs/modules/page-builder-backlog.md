@@ -1510,3 +1510,6 @@ integration tests; MySQL support is out of scope.
 
 2026-11-25 Drag candidate history fence (source only; not executed):
 - Clear drag candidates and insertion geometry when a successful controller mutation changes the document sequence, including undo/redo and recovered merges. Keep interaction state intact on a rejected or idempotent command. Added undo/redo and rollback regression.
+
+2026-11-25 Browser pending operation ownership follow-up (source only; not executed):
+- Keep the tab/page recovery slot non-overwriting across mounted roots, and clear or retry only the exact stored envelope. Verify receipt namespace, advancing generation and usable editor state; do not return unconfirmed success to promise consumers. Added mounted regressions for cross-root ownership and malformed committed receipts.

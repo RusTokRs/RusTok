@@ -544,3 +544,99 @@ test('strict peer fence rejects view-state intents before emitting them', async 
   });
   expect(observed).toEqual({ posted: [], emitted: [] });
 });
+
+
+test('strict pending storage cannot be overwritten by another mounted root or cleared by an older response', async ({ page }) => {
+  const source = await readFile(adapterPath, 'utf8');
+  await mountEditor(page, 'same-page', source);
+  const observed = await page.evaluate(async () => {
+    const scope = globalThis as PeerScope;
+    scope.__flyPeerAdapter?.stop();
+    const root = document.querySelector('#fly-root') as HTMLElement;
+    root.dataset.flyDraftContract = 'rendered';
+    root.dataset.flyRenderedDraftToken = 'draft-1';
+    const draftKey = 'fly:ssr-draft:same-page';
+    const pendingKey = 'fly:ssr-pending-operation:same-page';
+    sessionStorage.setItem(draftKey, JSON.stringify({ token: 'draft-1', generation: 1 }));
+    const otherRoot = root.cloneNode(true) as HTMLElement;
+    otherRoot.id = 'other-root';
+    otherRoot.querySelector('iframe')!.id = 'other-frame';
+    document.body.append(otherRoot);
+    const requests: Array<{ operation_id: string; intent: string }> = [];
+    let finish: (response: Response) => void = () => {};
+    globalThis.fetch = (_input, init) => {
+      requests.push(JSON.parse(String(init?.body)));
+      return new Promise<Response>((resolve) => { finish = resolve; });
+    };
+    const first = scope.FlyBrowser?.mount(root, { intentEndpoint: '/fly-intent' });
+    const second = scope.FlyBrowser?.mount(otherRoot, { intentEndpoint: '/fly-intent' });
+    if (!first || !second) throw new Error('missing adapters');
+    const firstSave = first.emitIntent('save', {});
+    const parked = sessionStorage.getItem(pendingKey)!;
+    const emitted: string[] = [];
+    otherRoot.addEventListener('fly:browser-intent', (event) => {
+      emitted.push((event as CustomEvent<{ intent: string }>).detail.intent);
+    });
+    await second.emitIntent('save', {});
+    const preserved = sessionStorage.getItem(pendingKey) === parked;
+    // Simulate a different mount having resolved the first operation and
+    // reserved its successor before the original HTTP response arrives.
+    const successor = JSON.parse(parked);
+    successor.request.operation_id = 'successor';
+    successor.request.draft_generation = 2;
+    sessionStorage.setItem(pendingKey, JSON.stringify(successor));
+    finish(new Response(JSON.stringify({
+      operation_id: requests[0].operation_id, operation_status: 'committed',
+      result: { revision_id: 'rev-1', project_hash: 'hash-1', dirty: false },
+      draft_token: 'draft-1', draft_generation: 2
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    await firstSave;
+    const after = JSON.parse(sessionStorage.getItem(pendingKey)!).request.operation_id;
+    await second.retryPendingOperation();
+    first.stop();
+    second.stop();
+    return { preserved, after, emitted, posted: requests.map((request) => request.intent) };
+  });
+  expect(observed).toEqual({ preserved: true, after: 'successor', emitted: [], posted: ['save'] });
+});
+
+test('a matching operation ID with a different draft or unchanged generation is not a receipt', async ({ page }) => {
+  const source = await readFile(adapterPath, 'utf8');
+  await mountEditor(page, 'same-page', source);
+  const observed = await page.evaluate(async () => {
+    const scope = globalThis as PeerScope;
+    scope.__flyPeerAdapter?.stop();
+    const root = document.querySelector('#fly-root') as HTMLElement;
+    root.dataset.flyDraftContract = 'rendered';
+    root.dataset.flyRenderedDraftToken = 'draft-1';
+    const key = 'fly:ssr-pending-operation:same-page';
+    sessionStorage.setItem('fly:ssr-draft:same-page', JSON.stringify({ token: 'draft-1', generation: 1 }));
+    const responses: Array<(response: Response) => void> = [];
+    const requests: Array<{ operation_id: string }> = [];
+    globalThis.fetch = (_input, init) => {
+      requests.push(JSON.parse(String(init?.body)));
+      return new Promise<Response>((resolve) => responses.push(resolve));
+    };
+    const adapter = scope.FlyBrowser?.mount(root, { intentEndpoint: '/fly-intent' });
+    if (!adapter) throw new Error('missing adapter');
+    const reply = (token: string, generation: number) => new Response(JSON.stringify({
+      operation_id: requests[0].operation_id, operation_status: 'committed',
+      result: { revision_id: 'rev-wrong', project_hash: 'hash-wrong', dirty: false },
+      draft_token: token, draft_generation: generation
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+    const save = adapter.emitIntent('save', {});
+    responses[0](reply('different-draft', 2));
+    const result = await save;
+    await Promise.resolve();
+    const lookup = new Promise<void>((resolve) => root.addEventListener(
+      'fly:browser-intent-response', () => resolve(), { once: true }
+    ));
+    responses[1](reply('draft-1', 1));
+    await lookup;
+    const state = { result, pending: Boolean(sessionStorage.getItem(key)),
+      revision: root.dataset.flyRevision, requests: requests.length };
+    adapter.stop();
+    return state;
+  });
+  expect(observed).toEqual({ result: null, pending: true, revision: 'rev-1', requests: 2 });
+});

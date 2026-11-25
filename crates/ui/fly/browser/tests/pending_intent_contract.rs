@@ -34,7 +34,9 @@ fn strict_receipt_fence_blocks_view_state_intents_before_dom_dispatch() {
 fn strict_draft_operation_identity_survives_reload_and_is_reconciled_without_auto_retry() {
     let source = include_str!("../assets/fly-browser.js");
     assert!(source.contains("PENDING_OPERATION_PREFIX"));
-    assert!(source.contains("writePendingOperation(this.pageId, request)"));
+    assert!(source.contains("writePendingOperation(this.pageId, request, retryPending)"));
+    assert!(source.contains("samePendingRequest(readPendingOperation(pageId)?.request, request)"));
+    assert!(source.contains("isCommittedOperationReceipt(result, this.pendingOperation.request)"));
     assert!(source.contains("readPendingOperation(this.pageId)"));
     assert!(source.contains("this.resolvePendingOperation()"));
     assert!(source.contains("this.retryPendingOperation()"));
