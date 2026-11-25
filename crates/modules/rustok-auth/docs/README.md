@@ -118,15 +118,18 @@ prepares all four rings as one immutable snapshot; clones share both the raw
 key inputs and the prepared result. Direct
 constructors prepare on first use. Key configuration changes detach the candidate
 before mutation; invalid candidates never replace the prior snapshot. Only Auth-emitted JOSE
-fields are accepted; unknown fields, duplicate IDs and explicit null IDs fail
-closed even during the missing-ID migration.
+fields are accepted; unknown fields, duplicate IDs and missing or null IDs
+fail closed for every JWT purpose.
 
 Unknown fields in `settings.auth` fail configuration deserialization rather than
 silently falling back to JWT defaults. Correct misspelled or obsolete override
 names before startup.
 
 Set `settings.auth.jwt_keyring_env` to the environment variable holding access
-ring JSON. Access uses the existing `algorithm` and RSA settings. Set
+ring JSON. Access uses the existing `algorithm` and RSA settings. Each RSA
+key has one explicit source: inline PEM or its environment reference, never
+both. Empty material, invalid environment names and missing environment
+values fail closed rather than falling back to another source. Set
 `settings.auth.jwt_special_keyrings_env` to a separate environment variable holding
 an object with optional `password_reset`, `email_verification` and `invite`
 entries. Each entry has `algorithm` (HS256 by default), `keyring`, and, for RS256,

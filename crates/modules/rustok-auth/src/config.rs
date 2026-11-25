@@ -802,9 +802,14 @@ fn resolve_key_material<F>(
 where
     F: FnMut(&str) -> Result<String>,
 {
+    if inline_pem.is_some() && env_name.is_some() {
+        return Err(AuthError::Internal(
+            "RSA key must have exactly one configured source".to_string(),
+        ));
+    }
     if let Some(env_name) = env_name {
-        if env_name.trim().is_empty() {
-            return Err(AuthError::Internal("RSA key environment name is empty".to_string()));
+        if env_name.trim().is_empty() || env_name.trim() != env_name || env_name.contains('=') || env_name.contains('\0') {
+            return Err(AuthError::Internal("RSA key environment name is invalid".to_string()));
         }
         let value = env_resolver(&env_name)?;
         if value.trim().is_empty() {
@@ -815,7 +820,10 @@ where
         return Ok(Some(value));
     }
 
-    Ok(inline_pem.filter(|pem| !pem.trim().is_empty()))
+    if inline_pem.as_ref().is_some_and(|pem| pem.trim().is_empty()) {
+        return Err(AuthError::Internal("Inline RSA key must not be empty".to_string()));
+    }
+    Ok(inline_pem)
 }
 
 /// Validate auth config invariants owned by `rustok-auth`.
@@ -1309,6 +1317,38 @@ mod tests {
                 "min_password_length {invalid} must be rejected"
             );
         }
+    }
+
+    #[test]
+    fn rsa_key_source_is_exclusive_and_explicit() {
+        let mut no_lookup = |_: &str| -> Result<String> {
+            panic!("invalid or inline key configuration must not read the environment")
+        };
+        assert!(resolve_key_material(
+            Some("inline".to_string()), Some("RSA_KEY".to_string()), &mut no_lookup,
+        ).is_err());
+        for invalid in ["", " ", " RSA_KEY", "RSA_KEY ", "RSA=KEY", "RSA\0KEY"] {
+            assert!(resolve_key_material(None, Some(invalid.to_string()), &mut no_lookup).is_err());
+        }
+        for blank in ["", " \n "] {
+            assert!(resolve_key_material(Some(blank.to_string()), None, &mut no_lookup).is_err());
+        }
+        assert_eq!(
+            resolve_key_material(Some("inline".to_string()), None, &mut no_lookup).unwrap(),
+            Some("inline".to_string()),
+        );
+        assert_eq!(resolve_key_material(None, None, &mut no_lookup).unwrap(), None);
+        assert!(resolve_key_material(
+            None, Some("RSA_KEY".to_string()), &mut |_| Ok(" ".to_string()),
+        ).is_err());
+        assert!(build_auth_config_with_env(
+            secret(), 900,
+            AuthSettingsOverrides {
+                rsa_private_key_pem: Some(" ".to_string()),
+                ..Default::default()
+            },
+            |_| panic!("unexpected lookup"),
+        ).is_err());
     }
 
     #[test]

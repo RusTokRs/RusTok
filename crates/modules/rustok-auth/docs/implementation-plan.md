@@ -56,7 +56,9 @@ is now mandatory per key; the legacy homogeneous metadata reader is removed.
 Scoped compilation, regression execution and independent-replica rollout
 remain pending. Before root MAC rotation, complete the remaining pre-release
 zero-legacy cleanup: remaining canonical unreleased token contracts and review
-of configuration defaults/aliases. The keyring document has no schema-version
+of configuration defaults/aliases. RSA inline/environment key sources are
+mutually exclusive and empty or invalid explicit sources fail closed.
+The keyring document has no schema-version
 tag and enforces the same generation range as the durable fence. Mandatory kid for
 every purpose and removal of raw-root JWT history are source-implemented.
 Access grant type and scopes are now required; invite issuance nonce is
