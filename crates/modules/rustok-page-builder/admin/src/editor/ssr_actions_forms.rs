@@ -445,6 +445,10 @@ pub fn SsrActionsFormsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                 {option("show", "Show target", &action_values.mode)}
                                 {option("hide", "Hide target", &action_values.mode)}
                             </select>
+                            <label class="flex items-center gap-2 text-xs">
+                                <input type="checkbox" name="exclusive" value="true" checked=action_values.exclusive/>
+                                <span>Exclusive accordion</span>
+                            </label>
                         </div>
                         <div class="grid grid-cols-2 gap-2">
                             <input name="slider_id" value=action_values.slider_id placeholder="Slider id (carousel)" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
