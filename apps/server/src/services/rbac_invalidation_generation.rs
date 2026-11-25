@@ -90,9 +90,18 @@ impl RbacInvalidationGenerationWatchdogHandle {
 struct RbacInvalidationGenerationWatchdogStartLock(Arc<tokio::sync::Mutex<()>>);
 
 #[derive(Clone, Default)]
-pub(crate) struct RbacInvalidationGenerationState(Arc<RwLock<Option<u64>>>);
+pub(crate) struct RbacInvalidationGenerationState(
+    Arc<RwLock<Option<u64>>>,
+    Arc<tokio::sync::Mutex<()>>,
+);
 
 impl RbacInvalidationGenerationState {
+    /// Serialize checkpoint reads, cache invalidation and acknowledgement across
+    /// the local/Redis consumers, reconciliation worker and durable watchdog.
+    pub(crate) async fn lock_reconciliation(&self) -> tokio::sync::MutexGuard<'_, ()> {
+        self.1.lock().await
+    }
+
     pub(crate) fn current(&self) -> Option<u64> {
         *self
             .0
@@ -169,6 +178,7 @@ async fn run_rbac_invalidation_generation_watchdog(
 
     loop {
         interval.tick().await;
+        let _reconciliation = state.lock_reconciliation().await;
         match read_rbac_invalidation_generation(&db).await {
             Ok(generation) => {
                 let applied_before = state.current();

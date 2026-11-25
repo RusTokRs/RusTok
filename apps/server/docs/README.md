@@ -654,6 +654,14 @@ for a likely concurrent duplicate, but the request still receives `invalid_grant
 the replacement token is not replayed, so a lost successful response cannot
 be recovered from the old refresh token.
 
+RBAC cache invalidation serializes local and Redis event application, periodic
+reconciliation and durable watchdog recovery through one runtime-owned gate.
+A tracker offset from before a database restore cannot advance a lower
+durable checkpoint; events beyond the recovered checkpoint trigger a full
+cache clear against the database generation until the tracker catches up.
+This protects local checkpoint ordering, not in-flight request snapshots
+or cross-replica delivery latency.
+
 GraphQL request-preparation policies classify only the operation selected by
 `operationName` (or the sole operation when no name is required). The selected
 operation is an execution selector, not an authorization grant: field permissions

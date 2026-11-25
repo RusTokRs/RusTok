@@ -371,16 +371,7 @@ impl RateLimiter {
         .await
         .map_err(RateLimitCheckError::BackendUnavailable)?;
 
-        let current = usize::try_from(current)
-            .ok()
-            .filter(|count| *count > 0)
-            .ok_or_else(|| RateLimitCheckError::BackendUnavailable(
-                "invalid Redis rate-limit counter".to_string(),
-            ))?;
-        let ttl = u64::try_from(ttl).map_err(|_| {
-            RateLimitCheckError::BackendUnavailable("invalid Redis rate-limit expiry".to_string())
-        })?;
-        let reset_after = ttl.div_ceil(1_000);
+        let (current, reset_after) = decode_redis_rate_limit_result(current, ttl)?;
         let retry_after = reset_after.max(1);
 
         if current > self.config.max_requests {
@@ -731,6 +722,22 @@ fn redis_rate_limit_key(key_prefix: &str, identity: &str) -> String {
         "{key_prefix}:v1:sha256:{}",
         hex::encode(Sha256::digest(identity.as_bytes()))
     )
+}
+
+fn decode_redis_rate_limit_result(
+    current: i64,
+    ttl: i64,
+) -> Result<(usize, u64), RateLimitCheckError> {
+    let current = usize::try_from(current)
+        .ok()
+        .filter(|count| *count > 0)
+        .ok_or_else(|| {
+            RateLimitCheckError::BackendUnavailable("invalid Redis rate-limit counter".to_string())
+        })?;
+    let ttl = u64::try_from(ttl).map_err(|_| {
+        RateLimitCheckError::BackendUnavailable("invalid Redis rate-limit expiry".to_string())
+    })?;
+    Ok((current, ttl.div_ceil(1_000)))
 }
 
 fn bounded_redis_window_millis(window: Duration) -> i64 {
