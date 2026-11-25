@@ -17,8 +17,9 @@ would leave those providers on obsolete signing and verification material.
 ## Decision
 
 Auth owns a shared process-local runtime for all four prepared purpose rings.
-The host optionally supplies one bounded versioned secret file instead of the
-startup cryptographic overrides. Fixed configuration remains supported for
+The host optionally supplies one bounded generation-bearing secret file instead of the
+startup cryptographic overrides. The canonical unversioned document and its
+generation bounds are specified by [Canonical JWT keyring document](2026-11-25-jwt-canonical-keyring-document.md). Fixed configuration remains supported for
 embedders and deployments without the file. Before any host clone is composed,
 the file is fully parsed and all purpose rings and host production policy are
 validated. The host owns the sole publication capability; transports retain

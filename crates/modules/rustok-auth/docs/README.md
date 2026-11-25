@@ -190,7 +190,7 @@ expired history; never reuse IDs or key material. The exclusive cutoff is
 checked both during selection and after signature verification. HS256 verification material
 is cryptographically capable of signing; use RSA for distribution to
 untrusted verifiers. Startup environment configuration remains supported. An optional
-versioned file source supports process-local hot reload (below). Auth request paths reuse
+generation-bearing file source supports process-local hot reload (below). Auth request paths reuse
 prepared encoding/decoding keys and indexed verification history; the JWT library
 still constructs its internal crypto providers per operation.
 A source regression now exercises staging, promotion, retirement and exact
@@ -240,12 +240,15 @@ See the [canonical JWT algorithm metadata ADR](../../../../DECISIONS/2026-11-25-
 Set `RUSTOK_JWT_KEYRING_FILE` to a trusted secret-manager-mounted JSON file.
 Do not combine this source with startup JWT algorithm, RSA or keyring overrides.
 The file is limited to 256 KiB and requires a generation from 1 through 2^63-1 and a complete
-set of four purpose entries. Example shape (replace placeholders with actual
+set of four purpose entries. The document has one unversioned format;
+obsolete schema tags and unknown fields are rejected. Generation is a
+monotonic security-state identifier, not a format version.
+See the [canonical keyring document ADR](../../../../DECISIONS/2026-11-25-jwt-canonical-keyring-document.md).
+Example shape (replace placeholders with actual
 independent high-entropy material or use the documented derived defaults):
 
 ```json
 {
-  "schema_version": 1,
   "generation": 1,
   "access": {"algorithm": "HS256", "keyring": {"active_kid": "access-1"}},
   "password_reset": {"algorithm": "HS256", "keyring": {"active_kid": "reset-1"}},
@@ -280,8 +283,8 @@ renames the material or places it in another purpose. RSA modulus reuse and
 exact modulus/exponent continuity are checked separately. An active key moved to
 history cannot sign again; newly staged verification keys can be promoted once
 before expiry. Initial history is conservatively verification-only; enroll
-before staging a future signer. Retained deadlines can only shorten; a removed
-missing-ID mapping cannot be enabled again. The 8192-identity ledger limit
+before staging a future signer. Retained deadlines can only shorten.
+The 8192-identity ledger limit
 fails closed rather than forgetting retired identities.
 
 The first file enrollment prevents subsequent static-mode startup against

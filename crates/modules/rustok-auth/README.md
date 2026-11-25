@@ -110,8 +110,9 @@ non-disposable security state. See the [cutover contract](docs/README.md#managed
 All JWT purposes require an exact key ID; missing-ID access and raw-root
 verification bridges are removed. Access grant type/scopes and invite nonce
 are mandatory; previously accepted missing fields are rejected.
-Zero-legacy cleanup remains open for other unreleased token/document formats
-and config compatibility.
+The keyring document uses one unversioned format with a bounded monotonic
+generation. Zero-legacy cleanup remains open for other unreleased token
+formats and config compatibility.
 Host root rotation remains open.
 Clock discontinuity detection and dual-deadline leases are source-implemented;
 independent clock fault-injection and suspend evidence remain pending.

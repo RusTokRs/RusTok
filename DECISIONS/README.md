@@ -53,6 +53,7 @@ Non-ADR plans and research documents do not belong in this registry.
 
 | ADR | Title | Decision status | Implementation status | Relations |
 | --- | --- | --- | --- | --- |
+| [2026-11-25](./2026-11-25-jwt-canonical-keyring-document.md) | Canonical JWT keyring document | Accepted | In progress | Extends [JWT hot rotation](./2026-11-25-jwt-hot-rotation.md), [durable JWT generation fence](./2026-11-25-jwt-generation-fence.md) and [canonical JWT claims](./2026-11-25-jwt-canonical-claims.md) |
 | [2026-11-25](./2026-11-25-jwt-canonical-claims.md) | Canonical JWT claims | Accepted | In progress | Extends [Mandatory JWT key identity](./2026-11-25-jwt-mandatory-key-identity.md) |
 | [2026-11-25](./2026-11-25-jwt-mandatory-key-identity.md) | Mandatory JWT key identity | Accepted | In progress | Partially supersedes [JWT keyring](./2026-11-25-jwt-keyring.md), [JWT purpose keyrings](./2026-11-25-jwt-purpose-keyrings.md), [JWT generation fence](./2026-11-25-jwt-generation-fence.md), [JWT rolling admission](./2026-11-25-jwt-rolling-admission.md), [JWT emergency revocation](./2026-11-25-jwt-emergency-revocation.md) and [canonical JWT algorithm metadata](./2026-11-25-jwt-canonical-algorithm-metadata.md) |
 | [2026-11-25](./2026-11-25-jwt-canonical-algorithm-metadata.md) | Canonical JWT algorithm metadata | Accepted | In progress | Supersedes [JWT algorithm migration](./2026-11-25-jwt-algorithm-migration.md) |

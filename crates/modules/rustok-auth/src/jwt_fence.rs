@@ -856,7 +856,7 @@ mod tests {
             }]);
         }
         let doc = serde_json::json!({
-            "schema_version": 1, "generation": 1,
+            "generation": 1,
             "access": {"keyring": access},
             "password_reset": {"keyring": {"active_kid": "reset"}},
             "email_verification": {"keyring": {"active_kid": "email"}},
@@ -869,7 +869,7 @@ mod tests {
 
     pub(super) fn algorithm_config(access: serde_json::Value) -> AuthConfig {
         let doc = serde_json::json!({
-            "schema_version": 1, "generation": 1,
+            "generation": 1,
             "access": access,
             "password_reset": {"keyring": {"active_kid": "reset"}},
             "email_verification": {"keyring": {"active_kid": "email"}},

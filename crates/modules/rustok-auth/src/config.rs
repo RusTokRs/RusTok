@@ -159,7 +159,6 @@ pub struct JwtKeyringPublisher {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct JwtKeyringDocument {
-    schema_version: u16,
     generation: u64,
     access: SpecialJwtKeyring,
     password_reset: SpecialJwtKeyring,
@@ -356,7 +355,7 @@ impl AuthConfig {
         }
     }
 
-    /// Parse a complete versioned key document against this immutable policy.
+    /// Parse a complete generation-bearing key document against this immutable policy.
     /// Never mutate the live runtime while preparing a candidate.
     pub fn prepare_jwt_document(&self, bytes: &[u8]) -> Result<(u64, Self)> {
         if bytes.len() > MAX_JWT_KEYRING_DOCUMENT_BYTES {
@@ -364,7 +363,7 @@ impl AuthConfig {
         }
         let doc: JwtKeyringDocument = serde_json::from_slice(bytes)
             .map_err(|_| invalid_rotation())?;
-        if doc.schema_version != 1 || doc.generation == 0 {
+        if doc.generation == 0 || i64::try_from(doc.generation).is_err() {
             return Err(invalid_rotation());
         }
         let mut candidate = self.clone();
@@ -409,7 +408,10 @@ impl AuthConfig {
     }
 
     fn into_jwt_runtime(mut self, generation: u64, lease_required: bool) -> Result<(Self, JwtKeyringPublisher)> {
-        if (!lease_required && generation == 0) || !matches!(&self.key_state, JwtKeySource::Fixed(_)) {
+        if (!lease_required && generation == 0)
+            || i64::try_from(generation).is_err()
+            || !matches!(&self.key_state, JwtKeySource::Fixed(_))
+        {
             return Err(invalid_rotation());
         }
         validate_auth_config(&self)?;
@@ -610,7 +612,7 @@ impl JwtKeyringPublisher {
             return Err(invalid_rotation());
         };
         let mut guard = current.write().map_err(|_| keyring_runtime_error())?;
-        if generation <= guard.generation {
+        if generation <= guard.generation || i64::try_from(generation).is_err() {
             return Err(invalid_rotation());
         }
         // A cluster runtime cannot use this candidate until the database
@@ -1041,13 +1043,42 @@ mod tests {
 
     fn document(generation: u64, kid: &str, secret: &str) -> Vec<u8> {
         serde_json::to_vec(&serde_json::json!({
-            "schema_version": 1,
             "generation": generation,
             "access": {"keyring": {"active_kid": kid, "active_hs256_secret": secret}},
             "password_reset": {"keyring": {"active_kid": "reset-default"}},
             "email_verification": {"keyring": {"active_kid": "verify-default"}},
             "invite": {"keyring": {"active_kid": "invite-default"}}
         })).unwrap()
+    }
+
+    #[test]
+    fn keyring_document_is_unversioned_and_generation_is_bounded() {
+        let base = AuthConfig::new(secret());
+        let material = "first-independent-signing-key-at-least-32-bytes";
+        let max = i64::MAX as u64;
+        for generation in [1, max] {
+            assert_eq!(base.prepare_jwt_document(&document(
+                generation, "one", material,
+            )).unwrap().0, generation);
+        }
+        for generation in [0, max + 1, u64::MAX] {
+            assert!(base.prepare_jwt_document(&document(
+                generation, "one", material,
+            )).is_err());
+        }
+        let mut obsolete: serde_json::Value =
+            serde_json::from_slice(&document(1, "one", material)).unwrap();
+        obsolete["schema_version"] = serde_json::json!(1);
+        assert!(base.prepare_jwt_document(&serde_json::to_vec(&obsolete).unwrap()).is_err());
+        assert!(base.clone().into_live_jwt(max + 1).is_err());
+        assert!(base.clone().into_cluster_jwt(max + 1).is_err());
+        assert!(base.clone().into_cluster_jwt(0).is_ok());
+        let (generation, first) = base.prepare_jwt_document(
+            &document(1, "one", material),
+        ).unwrap();
+        let (_, publisher) = first.clone().into_live_jwt(generation).unwrap();
+        assert!(publisher.publish(max + 1, first).is_err());
+        assert_eq!(publisher.generation().unwrap(), generation);
     }
 
     #[test]
