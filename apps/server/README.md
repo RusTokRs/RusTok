@@ -150,6 +150,11 @@ When `X-Forwarded-Host` or `X-Forwarded-Proto` is present but malformed,
 it is not silently replaced by a conflicting RFC `Forwarded` value.
 RFC `Forwarded` remains a fallback only when the corresponding `X-Forwarded-*`
 header is absent; forwarded schemes other than `http` and `https` are ignored.
+RFC Forwarded elements are split from the trusted end with quoted delimiters
+preserved. Duplicate parameter names and malformed selected elements are
+rejected; malformed forwarded host values do not fall back to the direct Host.
+A valid element with no host still permits the direct Host fallback. Duplicate
+direct Host fields are never authoritative, even with trusted forwarding.
 
 **Ingress requirement:** the edge proxy must discard untrusted incoming
 forwarded headers or append the actual observed client IP. A proxy that

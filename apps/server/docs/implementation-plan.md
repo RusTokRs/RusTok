@@ -1,5 +1,15 @@
 # Server App — Implementation Plan
 
+## Forwarded authority parsing follow-up (2026-11-25)
+
+Source changes reject duplicate RFC Forwarded parameters, preserve quoted
+delimiters and avoid direct-host fallback after malformed forwarding. Added
+regressions for duplicate/malformed authority, quoted extension delimiters
+and duplicate Host fields. Maintainer verification remains pending:
+`cargo check -p rustok-server`, `cargo test -p rustok-server --lib request_trust`,
+tenant/channel/OAuth boundary checks and the remediation gate. No compilation
+or live proxy evidence is claimed.
+
 ## Redis rate-limit recovery and acquisition deadlines (2026-11-25)
 
 Source changes bound shared connection-slot contention and repair persistent

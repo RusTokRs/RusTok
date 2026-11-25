@@ -1,5 +1,14 @@
 # Documentation: `apps/server`
 
+## Forwarded authority parsing (2026-11-25)
+
+The shared request-trust boundary preserves quoted RFC Forwarded delimiters,
+rejects duplicate parameter names and malformed selected elements, and
+distinguishes missing forwarded host from invalid forwarded host. Ambiguous
+direct Host fields are rejected consistently for tenant and channel selection.
+Proxy CIDR trust, rightmost-hop selection and X-Forwarded-* precedence are
+unchanged; the edge must still append or replace untrusted forwarding facts.
+
 ## Redis rate-limit recovery and acquisition deadlines (2026-11-25)
 
 The two-second Redis connection acquisition deadline includes time waiting for
