@@ -246,8 +246,8 @@ pub fn apply_mcp_scaffold_atomically(
                 final_target.display().to_string(),
             ));
         }
-        if let Err(error) = std::fs::rename(&staged_target, &final_target) {
-            if path_exists(&final_target)? {
+        if let Err(error) = rename_directory_noreplace(&staged_target, &final_target) {
+            if error.kind() == std::io::ErrorKind::AlreadyExists || path_exists(&final_target)? {
                 return Err(rustok_mcp::AlloyScaffoldError::TargetAlreadyExists(
                     final_target.display().to_string(),
                 ));
@@ -284,6 +284,83 @@ pub fn apply_mcp_scaffold_atomically(
             ))),
         },
     }
+}
+
+/// Atomically move a completed directory only if the destination does not
+/// already exist. Plain rename replaces an empty directory on Unix, which
+/// would violate the scaffold target's create-only contract.
+#[cfg(target_os = "linux")]
+fn rename_directory_noreplace(from: &Path, to: &Path) -> std::io::Result<()> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    let from = CString::new(from.as_os_str().as_bytes()).map_err(|error| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, error)
+    })?;
+    let to = CString::new(to.as_os_str().as_bytes()).map_err(|error| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, error)
+    })?;
+
+    const RENAME_NOREPLACE: libc::c_uint = 1;
+    let result = unsafe {
+        libc::syscall(
+            libc::SYS_renameat2,
+            libc::AT_FDCWD,
+            from.as_ptr(),
+            libc::AT_FDCWD,
+            to.as_ptr(),
+            RENAME_NOREPLACE,
+        )
+    };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn rename_directory_noreplace(from: &Path, to: &Path) -> std::io::Result<()> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    unsafe extern "C" {
+        fn renamex_np(
+            from: *const libc::c_char,
+            to: *const libc::c_char,
+            flags: libc::c_uint,
+        ) -> libc::c_int;
+    }
+
+    const RENAME_EXCL: libc::c_uint = 0x0000_0004;
+    let from = CString::new(from.as_os_str().as_bytes()).map_err(|error| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, error)
+    })?;
+    let to = CString::new(to.as_os_str().as_bytes()).map_err(|error| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, error)
+    })?;
+
+    let result = unsafe { renamex_np(from.as_ptr(), to.as_ptr(), RENAME_EXCL) };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(windows)]
+fn rename_directory_noreplace(from: &Path, to: &Path) -> std::io::Result<()> {
+    // Windows MoveFile semantics used by std::fs::rename fail when the
+    // destination already exists instead of replacing an empty directory.
+    std::fs::rename(from, to)
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
+fn rename_directory_noreplace(_from: &Path, _to: &Path) -> std::io::Result<()> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "atomic no-replace directory rename is not supported on this platform",
+    ))
 }
 
 fn ensure_apply_directory(path: &Path) -> std::result::Result<(), rustok_mcp::AlloyScaffoldError> {
@@ -757,6 +834,28 @@ mod tests {
             super::lock_mcp_scaffold_workspace_blocking(&root_string),
             Err(Error::BadRequest(message)) if message.contains("cargo xtask scaffold --recover")
         ));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn atomic_directory_publish_never_replaces_an_existing_empty_target() {
+        let root = workspace("rename-noreplace");
+        let source = root.join("source");
+        let target = root.join("target");
+        std::fs::create_dir(&source).expect("source directory");
+        std::fs::create_dir(&target).expect("empty target directory");
+
+        assert!(super::rename_directory_noreplace(&source, &target).is_err());
+        assert!(source.is_dir(), "source must remain available after collision");
+        assert!(target.is_dir(), "existing target must remain untouched");
+        assert!(
+            std::fs::read_dir(&target)
+                .expect("existing target listing")
+                .next()
+                .is_none(),
+            "an empty destination must not be replaced"
+        );
 
         let _ = std::fs::remove_dir_all(root);
     }

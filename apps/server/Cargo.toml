@@ -157,6 +157,7 @@ mod-ai        = ["dep:rustok-ai", "rustok-distribution/mod-ai"]
 ai-translation = ["mod-ai", "mod-translation", "rustok-distribution/ai-translation"]
 
 [dependencies]
+libc.workspace = true
 rustok-core = { workspace = true, features = ["redis-cache", "server"] }
 rustok-modules.workspace = true
 rustok-sandbox = { workspace = true, features = ["rhai", "wasm-component"] }
