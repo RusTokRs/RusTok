@@ -1,7 +1,7 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use rustok_commerce_foundation::{
-    entities::{inventory_item, inventory_level, product_variant, stock_location},
+    entities::{inventory_item, inventory_level, product, product_variant, stock_location},
     error::{CommerceError, CommerceResult},
 };
 use sea_orm::{
@@ -90,9 +90,11 @@ async fn require_tenant_variant_identities<C: ConnectionTrait>(
     let requested = variant_ids.iter().copied().collect::<BTreeSet<_>>();
     let expected = requested.iter().copied().collect::<Vec<_>>();
     let actual = product_variant::Entity::find()
+        .inner_join(product::Entity)
         .select_only()
         .column(product_variant::Column::Id)
         .filter(product_variant::Column::TenantId.eq(tenant_id))
+        .filter(product::Column::TenantId.eq(tenant_id))
         .filter(product_variant::Column::Id.is_in(requested.iter().copied()))
         .order_by_asc(product_variant::Column::Id)
         .into_tuple::<Uuid>()
@@ -436,20 +438,34 @@ mod tests {
             .expect("connect tenant identity fixture");
         db.execute_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
-            "CREATE TABLE product_variants (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL)",
+            "CREATE TABLE products (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL)",
         ))
         .await
         .expect("create Product identity table");
+        db.execute_raw(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            "CREATE TABLE product_variants (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL, product_id TEXT NOT NULL)",
+        ))
+        .await
+        .expect("create ProductVariant identity table");
         let tenant_id = Uuid::new_v4();
         let foreign_tenant_id = Uuid::new_v4();
+        let foreign_product_id = Uuid::new_v4();
         let foreign_variant_id = Uuid::new_v4();
         db.execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
-            "INSERT INTO product_variants (id, tenant_id) VALUES (?, ?)",
-            [foreign_variant_id.into(), foreign_tenant_id.into()],
+            "INSERT INTO products (id, tenant_id) VALUES (?, ?)",
+            [foreign_product_id.into(), foreign_tenant_id.into()],
         ))
         .await
         .expect("insert foreign Product identity");
+        db.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "INSERT INTO product_variants (id, tenant_id, product_id) VALUES (?, ?, ?)",
+            [foreign_variant_id.into(), tenant_id.into(), foreign_product_id.into()],
+        ))
+        .await
+        .expect("insert tenant Variant with foreign parent");
 
         let error = load_available_inventory_by_variant_for_public_channel(
             &db,
