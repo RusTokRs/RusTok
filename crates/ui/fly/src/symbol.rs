@@ -83,12 +83,13 @@ impl SymbolDescriptor {
 pub fn set_symbol_descriptors(document: &mut ProjectDocument, symbols: Vec<Value>) {
     if symbols.is_empty() {
         document.project.extensions.remove(FLY_SYMBOLS_FIELD);
-        return;
+    } else {
+        document
+            .project
+            .extensions
+            .insert(FLY_SYMBOLS_FIELD.to_string(), Value::Array(symbols));
     }
-    document
-        .project
-        .extensions
-        .insert(FLY_SYMBOLS_FIELD.to_string(), Value::Array(symbols));
+    document.invalidate_caches();
 }
 
 /// Applies [`SymbolCommand`] to the document's definition catalog.
@@ -97,6 +98,17 @@ pub fn set_symbol_descriptors(document: &mut ProjectDocument, symbols: Vec<Value
 /// definition; upserts fail closed on malformed definitions and on reference
 /// cycles they would introduce.
 pub fn apply_symbol_command(
+    document: &mut ProjectDocument,
+    command: &crate::SymbolCommand,
+) -> FlyResult<()> {
+    let mut candidate = document.clone();
+    apply_symbol_command_inner(&mut candidate, command)?;
+    candidate.invalidate_caches();
+    *document = candidate;
+    Ok(())
+}
+
+fn apply_symbol_command_inner(
     document: &mut ProjectDocument,
     command: &crate::SymbolCommand,
 ) -> FlyResult<()> {
@@ -1307,4 +1319,59 @@ mod tests {
     }
 
 
+
+    #[test]
+    fn direct_symbol_commands_invalidate_cached_hashes() {
+        let mut document = document_with(object("root", "wrapper", vec![]), Vec::new());
+        let before = document.hash();
+        apply_symbol_command(
+            &mut document,
+            &SymbolCommand::Upsert {
+                symbol: symbol_json("cta", vec![plain_component_json("cta-1")]),
+            },
+        )
+        .expect("upsert symbol");
+        assert_ne!(document.hash(), before);
+    }
+
+    #[test]
+    fn failed_symbol_upsert_does_not_leave_asset_or_definition_mutations() {
+        let existing = json!({
+            "id": "symbol-b",
+            "components": [{
+                "id": "symbol-b-root",
+                "type": "wrapper",
+                "symbolId": "symbol-a"
+            }]
+        });
+        let mut document = document_with(
+            object("root", "wrapper", vec![]),
+            vec![existing],
+        );
+        let before = document.clone();
+        let before_hash = document.hash();
+        let mut symbol = symbol_json(
+            "symbol-a",
+            vec![json!({
+                "id": "symbol-a-root",
+                "type": "wrapper",
+                "symbolId": "symbol-b"
+            })],
+        );
+        symbol["assets"] = json!([{
+            "id": "symbol-asset",
+            "src": "/assets/symbol.png"
+        }]);
+
+        let error = apply_symbol_command(
+            &mut document,
+            &SymbolCommand::Upsert { symbol },
+        )
+        .expect_err("cycle must be rejected");
+        assert!(matches!(error, FlyError::SymbolCycle(_)));
+        assert_eq!(document, before);
+        assert_eq!(document.hash(), before_hash);
+        assert!(document.project.assets.is_empty());
+        assert!(!SymbolDescriptor::catalog_from_document(&document).contains_key("symbol-a"));
+    }
 }
