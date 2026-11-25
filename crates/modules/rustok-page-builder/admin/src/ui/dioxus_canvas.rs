@@ -192,7 +192,7 @@ pub fn DioxusIsolatedCanvas(
         let mut ready = ready;
         let mut pointer = pointer;
         let mut active_instance_id = active_instance_id;
-        let expected_instance_for_load = expected_instance.clone();
+        let expected_instance_for_load = instance_id.clone();
         move |_| {
             active_instance_id.set(expected_instance_for_load.clone());
             ready.set(false);
