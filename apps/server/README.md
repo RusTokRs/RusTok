@@ -133,6 +133,9 @@ an untrusted peer cannot supply an authoritative forwarding header. If both
 header formats are present, `X-Forwarded-For` takes precedence. For
 forwarded host and scheme, the host consumes the most recently appended
 (rightmost) value instead of trusting a potentially spoofed first value.
+The selected value is decoded only after isolating it from the preceding
+chain: opaque bytes in caller-controlled earlier values do not invalidate a
+valid proxy-appended host or scheme. An opaque nearest value remains invalid.
 When `X-Forwarded-Host` or `X-Forwarded-Proto` is present but malformed,
 it is not silently replaced by a conflicting RFC `Forwarded` value.
 RFC `Forwarded` remains a fallback only when the corresponding `X-Forwarded-*`

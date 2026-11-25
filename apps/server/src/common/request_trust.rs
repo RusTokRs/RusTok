@@ -81,8 +81,11 @@ fn last_forwarded_header_value(headers: &HeaderMap, name: &str) -> Option<String
     values
         .iter()
         .next_back()
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.rsplit(',').next())
+        // Only the proxy-appended value is authoritative. An opaque byte
+        // in an earlier caller-controlled value must not poison that suffix.
+        .and_then(|value| value.as_bytes().rsplit(|byte| *byte == b',').next())
+        .filter(|entry| entry.is_ascii())
+        .and_then(|entry| std::str::from_utf8(entry).ok())
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
@@ -103,14 +106,8 @@ fn parse_forwarded_pair<'a>(forwarded: &'a str, key: &str) -> Option<&'a str> {
 }
 
 fn last_forwarded_pair(headers: &HeaderMap, key: &str) -> Option<String> {
-    let values = headers.get_all(FORWARDED);
-    values
-        .iter()
-        .next_back()
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.rsplit(',').next())
-        .and_then(|entry| parse_forwarded_pair(entry, key))
-        .map(ToOwned::to_owned)
+    let entry = last_forwarded_header_value(headers, FORWARDED.as_str())?;
+    parse_forwarded_pair(&entry, key).map(ToOwned::to_owned)
 }
 
 fn parse_forwarded_for_ip(value: &str) -> Option<IpAddr> {
@@ -403,6 +400,102 @@ mod tests {
             extract_effective_proto(&headers, peer, &settings).as_deref(),
             Some("https"),
         );
+    }
+
+    #[test]
+    fn opaque_earlier_values_do_not_poison_proxy_appended_host_and_proto() {
+        let peer = Some(IpAddr::from([10, 1, 2, 3]));
+        let settings = trusted_settings();
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-forwarded-host",
+            HeaderValue::from_bytes(b"\xff, tenant.example.test").unwrap(),
+        );
+        headers.insert(
+            "x-forwarded-proto",
+            HeaderValue::from_bytes(b"\xff, https").unwrap(),
+        );
+        assert_eq!(
+            extract_effective_host(&headers, peer, &settings).as_deref(),
+            Some("tenant.example.test")
+        );
+        assert_eq!(
+            extract_effective_proto(&headers, peer, &settings).as_deref(),
+            Some("https")
+        );
+        assert!(secure_cookie_required_for_environment(
+            &headers, peer, &settings, false,
+        ));
+
+        // Separate header fields from the trusted proxy are equivalent.
+        headers.insert("x-forwarded-host", HeaderValue::from_bytes(b"\xff").unwrap());
+        headers.append(
+            "x-forwarded-host",
+            HeaderValue::from_static("tenant.example.test"),
+        );
+        headers.insert("x-forwarded-proto", HeaderValue::from_bytes(b"\xff").unwrap());
+        headers.append("x-forwarded-proto", HeaderValue::from_static("https"));
+        assert_eq!(
+            extract_effective_host(&headers, peer, &settings).as_deref(),
+            Some("tenant.example.test")
+        );
+        assert_eq!(
+            extract_effective_proto(&headers, peer, &settings).as_deref(),
+            Some("https")
+        );
+
+        // Invalid nearest values must not select earlier or conflicting values.
+        headers.insert(
+            FORWARDED,
+            HeaderValue::from_static("host=other.example.test;proto=https"),
+        );
+        headers.insert(
+            "x-forwarded-host",
+            HeaderValue::from_bytes(b"tenant.example.test, \xff").unwrap(),
+        );
+        headers.insert(
+            "x-forwarded-proto",
+            HeaderValue::from_bytes(b"https, \xff").unwrap(),
+        );
+        assert_eq!(extract_effective_host(&headers, peer, &settings), None);
+        assert_eq!(extract_effective_proto(&headers, peer, &settings), None);
+    }
+
+    #[test]
+    fn opaque_earlier_rfc_forwarded_values_do_not_poison_last_element() {
+        let peer = Some(IpAddr::from([10, 1, 2, 3]));
+        let settings = trusted_settings();
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            FORWARDED,
+            HeaderValue::from_bytes(
+                b"for=\xff, for=203.0.113.8;host=tenant.example.test;proto=https",
+            )
+            .unwrap(),
+        );
+        assert_eq!(
+            extract_effective_host(&headers, peer, &settings).as_deref(),
+            Some("tenant.example.test")
+        );
+        assert_eq!(
+            extract_effective_proto(&headers, peer, &settings).as_deref(),
+            Some("https")
+        );
+        assert_eq!(
+            extract_effective_host(&headers, peer, &RequestTrustSettings::default()),
+            None
+        );
+        assert_eq!(
+            extract_effective_proto(&headers, peer, &RequestTrustSettings::default()),
+            None
+        );
+
+        headers.insert(
+            FORWARDED,
+            HeaderValue::from_bytes(b"host=tenant.example.test;proto=https, for=\xff").unwrap(),
+        );
+        assert_eq!(extract_effective_host(&headers, peer, &settings), None);
+        assert_eq!(extract_effective_proto(&headers, peer, &settings), None);
     }
 
     #[test]
