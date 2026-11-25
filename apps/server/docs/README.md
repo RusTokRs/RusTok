@@ -461,7 +461,11 @@ HTTP(S) origins without URL credentials, paths, queries or fragments;
 invalid configuration entries are ignored with a bounded error code.
 Unspecified bind addresses (IPv4 `0.0.0.0` and IPv6 `[::]`) are
 rejected even when supplied as explicit CORS entries: they are network
-listeners, not browser-authorized origins.
+listeners, not browser-authorized origins. Explicit environment and settings
+entries reach the same origin validator without bind-host rewriting.
+Validation rejects raw non-origin components before URL normalization can
+erase them (including dot-segment paths, backslashes and control characters).
+The development-only bind-host fallback retains loopback normalization.
 This changes only cross-origin browser permission; it is not an HTTP
 authorization or same-origin request gate.
 

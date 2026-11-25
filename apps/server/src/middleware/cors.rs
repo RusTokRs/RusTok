@@ -56,7 +56,28 @@ fn validated_cors_origin(configured: &str) -> Option<HeaderValue> {
     if configured == "0.0.0.0" || configured.starts_with("0.0.0.0:") {
         return None;
     }
-    let normalized = normalize_host_origin(configured);
+    // Validate the original spelling before URL parsing can normalize away
+    // path segments, backslashes or ASCII control characters.
+    if configured
+        .chars()
+        .any(|ch| ch.is_control() || ch.is_whitespace() || ch == '\\')
+    {
+        return None;
+    }
+    let (normalized, authority) = if let Some((scheme, authority)) = configured.split_once("://") {
+        if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
+            return None;
+        }
+        (configured.to_owned(), authority)
+    } else {
+        (normalize_host_origin(configured), configured)
+    };
+    let authority = authority.strip_suffix('/').unwrap_or(authority);
+    if authority.is_empty()
+        || authority.chars().any(|ch| matches!(ch, '/' | '?' | '#' | '@'))
+    {
+        return None;
+    }
     let url = url::Url::parse(&normalized).ok()?;
     if !matches!(url.scheme(), "http" | "https")
         || matches!(url.host(), Some(url::Host::Ipv4(ip)) if ip.is_unspecified())
@@ -101,7 +122,9 @@ fn cors_origins_from_configuration(
             .split(',')
             .map(str::trim)
             .filter(|part| !part.is_empty())
-            .map(normalize_host_origin)
+            // Preserve explicit origin spelling until the security validator.
+            // Bind-host normalization is only for the development fallback.
+            .map(ToOwned::to_owned)
             .collect();
         if !origins.is_empty() {
             return Some(origins);
@@ -397,11 +420,44 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn explicit_environment_origins_do_not_promote_bind_addresses_to_loopback() {
+        let origins = cors_origins_from_configuration(
+            Some("0.0.0.0, 0.0.0.0:5150, http://[::]:5150, https://admin.example.com"),
+            Some("0.0.0.0:5150"),
+            true,
+        )
+        .expect("explicit origins");
+
+        for origin in ["http://127.0.0.1:5150", "http://localhost:5150"] {
+            assert_eq!(
+                preflight_allowed_origin(true, Some(&origins), origin).await,
+                None
+            );
+        }
+        assert_eq!(
+            preflight_allowed_origin(true, Some(&origins), "https://admin.example.com").await,
+            Some("https://admin.example.com".to_string())
+        );
+
+        let dev_origins = cors_origins_from_configuration(None, Some("0.0.0.0:5150"), false)
+            .expect("development bind-host fallback");
+        assert_eq!(
+            preflight_allowed_origin(false, Some(&dev_origins), "http://127.0.0.1:5150").await,
+            Some("http://127.0.0.1:5150".to_string())
+        );
+    }
+
     #[test]
     fn cors_origin_validation_rejects_url_credentials_and_non_origin_parts() {
         for invalid in [
             "https://user:password@trusted.example.com",
             "https://trusted.example.com/admin",
+            "https://trusted.example.com/admin/..",
+            "https://trusted.example.com/.",
+            "https://trusted.example.com\\",
+            "https://trusted.exam\nple.com",
+            "https://@trusted.example.com",
             "https://trusted.example.com?token=secret",
             "https://trusted.example.com/#fragment",
             "ftp://trusted.example.com",
@@ -417,7 +473,7 @@ mod tests {
             );
         }
         assert_eq!(
-            validated_cors_origin("https://TRUSTED.EXAMPLE.COM:443/")
+            validated_cors_origin("HTTPS://TRUSTED.EXAMPLE.COM:443/")
                 .as_ref()
                 .and_then(|value| value.to_str().ok()),
             Some("https://trusted.example.com")
