@@ -69,7 +69,7 @@ const standaloneDeps = entries(section(standalone, 'workspace.dependencies'));
 const workspaceDeps = entries(section(workspace, 'workspace.dependencies'));
 
 // 2. Everything the Fly crates inherit from `[workspace.package]` must be present.
-for (const key of ['version', 'edition', 'license']) {
+for (const key of ['version', 'edition', 'license', 'repository', 'rust-version']) {
   if (!standalonePackage.has(key)) {
     failures.push(`standalone-Cargo.toml [workspace.package] is missing \`${key}\``);
   }
@@ -102,7 +102,9 @@ const manifests = [
 // an assertion: a dependency may only be absent from the template if the crate declares it
 // `optional = true`, so that an extracted build can switch it off. Exempting a mandatory
 // dependency would mean the template cannot build, which is exactly what this gate exists to
-// prevent.
+// prevent. Optionality is necessary but not sufficient: Cargo still resolves inherited
+// optional dependencies, so extraction must remove or resolve the platform dependency.
+// This source gate does not certify that an exported workspace builds.
 const standaloneUnavailable = new Set(['rustok-ui-i18n']);
 
 // `[package]` fields also use `<key>.workspace = true`, but they are inherited from
@@ -236,4 +238,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('Fly standalone workspace template is consistent with the host workspace.');
+console.log('Fly standalone workspace template pins and lint policy are consistent with the host workspace. Export build not verified.');

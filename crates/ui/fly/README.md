@@ -22,14 +22,17 @@ RusToK Page Builder admin integrates both `fly-leptos` and `fly-dioxus`: Leptos 
 ### Extraction readiness
 
 This directory is laid out so it can become an independent repository
-(`github.com/rustok/fly`). Both of the blockers that previously prevented it are resolved:
+(`github.com/rustok/fly`). The runtime dependency has been inverted, but manifest extraction still requires preparation:
 
 - **Platform i18n dependency — inverted.** Locale identity goes through the `LocaleResolver`
   trait (`src/locale_resolver.rs`). `rustok-ui-i18n` is now an optional dependency behind the
   `platform-i18n` feature, which is **on by default**, so host builds are unchanged.
-- **Workspace template — completed.** `standalone-Cargo.toml` supplies `[workspace.package]`,
+- **Workspace template — source-checked.** `standalone-Cargo.toml` supplies `[workspace.package]`,
   `[workspace.dependencies]` and `[workspace.lints]`, and
-  `scripts/verify/verify-fly-standalone-workspace.mjs` fails when it drifts from the host.
+  `scripts/verify/verify-fly-standalone-workspace.mjs` checks inherited pins and lint policy.
+  It does not build an extracted workspace. Cargo resolves inherited optional dependencies
+  even when their features are disabled; a standalone export must resolve or remove the
+  platform dependency and its feature wiring before Cargo can load the manifests.
 
 ### What a standalone build gives up
 
@@ -364,9 +367,17 @@ the owner of the missing half.
 See [Extraction readiness](#extraction-readiness) first, in particular what a standalone build
 gives up on locale fallback.
 
-Rename `standalone-Cargo.toml` to `Cargo.toml` and build the root crate with
-`default-features = false`.
-All sub-crates reference each other using purely relative paths (`path = ".."`, `path = "../ui"`, `path = "../web"`), ensuring zero coupling to the host project.
+The workspace template is a manifest fragment, not a replacement for Fly's root package manifest.
+Merge its workspace tables into the existing root `Cargo.toml`, retaining the package,
+dependencies, targets and features. Before building outside RusToK, provide a resolvable
+`rustok-ui-i18n` workspace dependency or remove the platform-specific dependency and
+feature-gated implementation from the export. Merely passing `--no-default-features` does
+not resolve a missing inherited dependency, and disabling the root feature alone does not
+prevent a sibling crate from enabling it.
+
+The standalone structural resolver is already implemented; producing and verifying a
+self-contained export (including all sibling packages) remains an explicit delivery gap.
+All sub-crates reference each other using purely relative paths (`path = ".."`, `path = "../ui"`, `path = "../web"`).
 
 Validated no-op commands (empty batches and idempotent document changes) no longer create
 history entries or advance the document revision. A no-op still validates the resulting project,

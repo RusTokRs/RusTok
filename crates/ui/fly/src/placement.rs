@@ -43,7 +43,8 @@ impl ProjectDocument {
 
     pub fn component_child_count(&self, component_id: &str) -> Option<usize> {
         self.component(component_id)
-            .map(|component| component.children().len())
+            .and_then(|component| component.components.as_nodes())
+            .map(|children| children.len())
     }
 
     pub fn root_child_count(&self) -> Option<usize> {
@@ -52,7 +53,8 @@ impl ProjectDocument {
             .iter()
             .find_map(|page| page.component.as_ref())
             .and_then(ComponentNode::as_object)
-            .map(|root| root.children().len())
+            .and_then(|root| root.components.as_nodes())
+            .map(|children| children.len())
     }
 
     pub fn child_count_for_parent(&self, parent_component_id: Option<&str>) -> Option<usize> {
@@ -125,6 +127,12 @@ impl RegistrySet {
         }
 
         if let Some(moving_component_id) = moving_component_id {
+            let Some(location) = document.component_location(moving_component_id) else {
+                return PlacementDecision::rejected("moving component does not exist");
+            };
+            if location.depth == 0 {
+                return PlacementDecision::rejected("moving a page root is not supported");
+            }
             if parent_component_id == Some(moving_component_id) {
                 return PlacementDecision::rejected("a component cannot contain itself");
             }
@@ -313,6 +321,50 @@ mod tests {
             assert_eq!(implicit, explicit);
             assert_eq!(implicit.legal, legal);
         }
+    }
+
+    #[test]
+    fn placement_rejects_opaque_children_instead_of_treating_them_as_empty() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": "opaque provider content"
+                }
+            }]
+        }))
+        .expect("document");
+        let registries = RegistrySet::with_builtins();
+        assert_eq!(document.root_child_count(), None);
+        assert_eq!(document.component_child_count("root"), None);
+        for parent in [None, Some("root")] {
+            assert!(
+                !registries
+                    .evaluate_placement(&document, None, "text", parent, 0)
+                    .legal
+            );
+        }
+    }
+
+    #[test]
+    fn placement_rejects_missing_and_immovable_sources() {
+        let document = document();
+        let registries = RegistrySet::with_builtins();
+        for source in ["missing", "root"] {
+            for parent in [None, Some("section-b")] {
+                assert!(
+                    !registries
+                        .evaluate_placement(&document, Some(source), "section", parent, 0)
+                        .legal
+                );
+            }
+        }
+        assert!(
+            registries
+                .evaluate_placement(&document, Some("section-a"), "section", None, 2)
+                .legal
+        );
     }
 
     #[test]
