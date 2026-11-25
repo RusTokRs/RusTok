@@ -460,6 +460,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn mixed_algorithm_checkpoint_persists_and_revocation_cannot_be_bypassed() {
+        use super::super::tests::{algorithm_config, rsa_config};
+        use serde_json::json;
+        let (authority, witness_db, id, fence) = deployment().await;
+        let until = chrono::Utc::now().timestamp() + 3600;
+        let first = config(ROOT, "old", OLD, None, None);
+        let staged = algorithm_config(json!({"keyring":{
+            "active_kid":"old", "active_hs256_secret":OLD,
+            "verification_keys":[{"kid":"rsa","algorithm":"RS256",
+                "material":crate::jwt::TEST_RSA_PUBLIC_KEY,"verify_until":until}]
+        }}));
+        let promoted = rsa_config(json!([{"kid":"old","algorithm":"HS256",
+            "material":OLD,"verify_until":until}]));
+        assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
+        assert_eq!(fence.admit(2, &staged).await.unwrap(), JwtAdmission::Admitted);
+        assert_eq!(fence.admit(3, &promoted).await.unwrap(), JwtAdmission::Admitted);
+        let after = fence.load().await.unwrap();
+        let mut reopened = bound(authority, id, ROOT).unwrap();
+        reopened.witness = Some(Witness::new(witness_db));
+        assert_eq!(reopened.load().await.unwrap().revision, after.revision);
+        assert_eq!(reopened.admit(3, &promoted).await.unwrap(), JwtAdmission::Admitted);
+        assert!(reopened.revoke_key(ROOT, "access", "old").await.unwrap().newly_revoked);
+        assert!(reopened.admit(4, &staged).await.is_err());
+        assert!(reopened.admit(4, &promoted).await.is_err());
+        assert_eq!(reopened.admit(4, &rsa_config(json!([]))).await.unwrap(), JwtAdmission::Admitted);
+        assert!(reopened.admit(5, &promoted).await.is_err());
+    }
+
+    #[tokio::test]
     async fn recovery_refuses_authority_ahead_of_witness() {
         let (authority, _, _, fence) = deployment().await;
         authority.execute_unprepared("UPDATE auth_jwt_generation_fence SET witness_revision = 1 WHERE id = 1").await.unwrap();

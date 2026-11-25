@@ -75,6 +75,10 @@ pub(crate) struct KeyMetadata {
     pub(crate) identity: String,
     pub(crate) verification_identity: String,
     pub(crate) verify_until: Option<i64>,
+    // Omit the override for homogeneous rings: legacy serialized metadata
+    // and its MAC/witness checkpoint retain the same representation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) algorithm: Option<JwtAlgorithm>,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -90,6 +94,22 @@ pub(crate) struct RingMetadata {
     pub(crate) algorithm: JwtAlgorithm,
     pub(crate) keys: BTreeMap<String, KeyMetadata>,
     pub(crate) legacy: Option<LegacyMetadata>,
+}
+
+impl RingMetadata {
+    fn key_algorithm<'a>(&'a self, key: &'a KeyMetadata) -> &'a JwtAlgorithm {
+        key.algorithm.as_ref().unwrap_or(&self.algorithm)
+    }
+
+    fn active(&self) -> Option<(&String, &KeyMetadata)> {
+        self.keys.iter().find(|(_, key)| key.verify_until.is_none())
+    }
+
+    fn same_verifier(&self, key: &KeyMetadata, other: &Self, candidate: &KeyMetadata) -> bool {
+        self.key_algorithm(key) == other.key_algorithm(candidate)
+            && key.identity == candidate.identity
+            && key.verification_identity == candidate.verification_identity
+    }
 }
 
 pub(crate) type Snapshot = BTreeMap<String, RingMetadata>;
@@ -114,12 +134,10 @@ fn rolling_compatible(old: &Snapshot, next: &Snapshot, now_ms: i64, horizon_ms: 
     }
     for (purpose, before) in old {
         let Some(after) = next.get(purpose) else { return false; };
-        if before.algorithm != after.algorithm || before.legacy != after.legacy {
+        if before.legacy != after.legacy {
             return false;
         }
-        let matches = |a: &KeyMetadata, b: &KeyMetadata| {
-            a.identity == b.identity && a.verification_identity == b.verification_identity
-        };
+        let matches = |a: &KeyMetadata, b: &KeyMetadata| before.same_verifier(a, after, b);
         // Every currently accepted old verifier remains accepted, with no
         // shortened history deadline. The outgoing signer covers overlap.
         for (kid, key) in &before.keys {
@@ -139,7 +157,7 @@ fn rolling_compatible(old: &Snapshot, next: &Snapshot, now_ms: i64, horizon_ms: 
         // Every new signer was already a verifier on the older holder.
         for (kid, signer) in after.keys.iter().filter(|(_, key)| key.verify_until.is_none()) {
             let Some(other) = before.keys.get(kid) else { return false; };
-            if !matches(signer, other) || other.verify_until.is_some_and(|cutoff| cutoff <= until) {
+            if !matches(other, signer) || other.verify_until.is_some_and(|cutoff| cutoff <= until) {
                 return false;
             }
         }
@@ -195,7 +213,30 @@ impl Ledger {
         for (purpose, ring) in &next {
             let old = self.current.get(purpose).ok_or_else(rejected)?;
             if old.algorithm != ring.algorithm {
-                return Err(rejected());
+                // A different algorithm is a signer promotion, not a
+                // header-selected fallback. It must have been staged as a
+                // live verifier in the previous committed generation.
+                let (old_kid, old_signer) = old.active().ok_or_else(unavailable)?;
+                let (new_kid, new_signer) = ring.active().ok_or_else(rejected)?;
+                let staged = old.keys.get(new_kid).ok_or_else(rejected)?;
+                if !old.same_verifier(staged, ring, new_signer)
+                    || staged.verify_until.is_none_or(|cutoff| cutoff <= now)
+                {
+                    return Err(rejected());
+                }
+                // Normally keep the outgoing signer for the overlap and
+                // remaining JWT TTL. A revoked signer must instead be absent
+                // and the existing incompatible-transition drain applies.
+                let revoked = self.seen.get(purpose).and_then(|keys| keys.get(old_kid))
+                    .is_some_and(|binding| binding.revoked_at_ms.is_some());
+                if !revoked {
+                    let historical = ring.keys.get(old_kid).ok_or_else(rejected)?;
+                    if !old.same_verifier(old_signer, ring, historical)
+                        || historical.verify_until.is_none_or(|cutoff| cutoff <= now)
+                    {
+                        return Err(rejected());
+                    }
+                }
             }
             match (&old.legacy, &ring.legacy) {
                 (_, None) => {}
@@ -208,8 +249,7 @@ impl Ledger {
                 let seen = self.seen.get(purpose).and_then(|keys| keys.get(kid));
                 match (previous, seen) {
                     (Some(before), Some(binding)) => {
-                        if key.identity != binding.identity || key.identity != before.identity
-                            || key.verification_identity != before.verification_identity
+                        if key.identity != binding.identity || !old.same_verifier(before, ring, key)
                         {
                             return Err(rejected());
                         }
@@ -852,6 +892,106 @@ mod tests {
         AuthConfig::new(root.to_string()).prepare_jwt_document(
             &serde_json::to_vec(&doc).unwrap(),
         ).unwrap().1
+    }
+
+    pub(super) fn algorithm_config(access: serde_json::Value) -> AuthConfig {
+        let doc = serde_json::json!({
+            "schema_version": 1, "generation": 1,
+            "access": access,
+            "password_reset": {"keyring": {"active_kid": "reset"}},
+            "email_verification": {"keyring": {"active_kid": "email"}},
+            "invite": {"keyring": {"active_kid": "invite"}},
+        });
+        AuthConfig::new(ROOT.to_string()).prepare_jwt_document(
+            &serde_json::to_vec(&doc).unwrap(),
+        ).unwrap().1
+    }
+
+    pub(super) fn rsa_config(history: serde_json::Value) -> AuthConfig {
+        algorithm_config(serde_json::json!({
+            "algorithm": "RS256",
+            "rsa_private_key_pem": crate::jwt::TEST_RSA_PRIVATE_KEY,
+            "rsa_public_key_pem": crate::jwt::TEST_RSA_PUBLIC_KEY,
+            "keyring": {"active_kid": "rsa", "verification_keys": history}
+        }))
+    }
+
+    #[tokio::test]
+    async fn mixed_algorithm_promotion_waits_for_replicas_and_cannot_reactivate_retired_signer() {
+        use crate::{decode_access_token, encode_access_token};
+        use rustok_core::UserRole;
+        use uuid::Uuid;
+        use serde_json::json;
+        let fence = JwtGenerationFence::new(database().await);
+        let until = chrono::Utc::now().timestamp() + 3600;
+        let first = config(ROOT, "old", OLD, None, None);
+        let staged = algorithm_config(json!({"keyring":{
+            "active_kid":"old", "active_hs256_secret": OLD,
+            "verification_keys":[{"kid":"rsa","algorithm":"RS256",
+                "material":crate::jwt::TEST_RSA_PUBLIC_KEY,"verify_until":until}]
+        }}));
+        let promoted = rsa_config(json!([{"kid":"old","algorithm":"HS256",
+            "material":OLD,"verify_until":until}]));
+        assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
+        assert!(fence.admit(2, &promoted).await.is_err());
+        let (live_a, a) = first.clone().into_cluster_jwt(1).unwrap();
+        let (live_b, b) = first.into_cluster_jwt(1).unwrap();
+        assert!(fence.renew(&a).await.unwrap());
+        assert!(fence.renew(&b).await.unwrap());
+        let issue = |cfg: &AuthConfig| encode_access_token(
+            cfg, Uuid::new_v4(), Uuid::new_v4(), UserRole::Customer, Uuid::new_v4(),
+        ).unwrap();
+        let old = issue(&live_a);
+        assert_eq!(fence.admit(2, &staged).await.unwrap(), JwtAdmission::Admitted);
+        assert!(fence.activate(&a, 2, staged.clone()).await.unwrap());
+        assert_eq!(fence.admit(3, &promoted).await.unwrap(), JwtAdmission::AwaitingReplicas);
+        assert!(fence.activate(&b, 2, staged.clone()).await.unwrap());
+        // Removing the outgoing signer is not a valid algorithm promotion.
+        assert!(fence.admit(3, &rsa_config(json!([]))).await.is_err());
+        assert_eq!(fence.admit(3, &promoted).await.unwrap(), JwtAdmission::Admitted);
+        assert!(fence.activate(&a, 3, promoted.clone()).await.unwrap());
+        let fresh = issue(&live_a);
+        assert_eq!(jsonwebtoken::decode_header(&fresh).unwrap().alg, jsonwebtoken::Algorithm::RS256);
+        assert!(decode_access_token(&live_b, &fresh).is_ok());
+        assert!(decode_access_token(&live_a, &old).is_ok());
+        assert!(fence.activate(&b, 3, promoted).await.unwrap());
+        // A rollback to the previous active HMAC key is permanently refused.
+        assert!(fence.admit(4, &staged).await.is_err());
+
+        // A planned reverse migration uses a NEW symmetric key, not a downgrade
+        // to the retired key. Retain both old verifiers at the existing cutoff.
+        let rsa_staged = rsa_config(json!([
+            {"kid":"old","algorithm":"HS256","material":OLD,"verify_until":until},
+            {"kid":"new","algorithm":"HS256","material":NEW,"verify_until":until}
+        ]));
+        let hs_promoted = algorithm_config(json!({"keyring":{
+            "active_kid":"new","active_hs256_secret":NEW,
+            "verification_keys":[
+                {"kid":"old","material":OLD,"verify_until":until},
+                {"kid":"rsa","algorithm":"RS256","material":crate::jwt::TEST_RSA_PUBLIC_KEY,"verify_until":until}
+            ]
+        }}));
+        assert_eq!(fence.admit(4, &rsa_staged).await.unwrap(), JwtAdmission::Admitted);
+        assert!(fence.activate(&a, 4, rsa_staged.clone()).await.unwrap());
+        assert_eq!(fence.admit(5, &hs_promoted).await.unwrap(), JwtAdmission::AwaitingReplicas);
+        assert!(fence.activate(&b, 4, rsa_staged).await.unwrap());
+        assert_eq!(fence.admit(5, &hs_promoted).await.unwrap(), JwtAdmission::Admitted);
+        assert!(fence.activate(&a, 5, hs_promoted).await.unwrap());
+        let newest = issue(&live_a);
+        assert_eq!(jsonwebtoken::decode_header(&newest).unwrap().alg, jsonwebtoken::Algorithm::HS256);
+        assert!(decode_access_token(&live_b, &newest).is_ok());
+        assert!(decode_access_token(&live_a, &fresh).is_ok());
+        assert!(decode_access_token(&live_a, &old).is_ok());
+    }
+
+    #[test]
+    fn homogeneous_metadata_preserves_old_serialization_and_inherits_algorithm() {
+        let old = r#"{"identity":"material","verification_identity":"verifier","verify_until":null}"#;
+        let key: KeyMetadata = serde_json::from_str(old).unwrap();
+        assert!(key.algorithm.is_none());
+        assert_eq!(serde_json::to_string(&key).unwrap(), old);
+        let ring = RingMetadata { algorithm: JwtAlgorithm::RS256, keys: BTreeMap::new(), legacy: None };
+        assert_eq!(ring.key_algorithm(&key), &JwtAlgorithm::RS256);
     }
 
     pub(super) async fn database() -> DatabaseConnection {

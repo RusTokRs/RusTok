@@ -486,15 +486,19 @@ fn decode_for_purpose<T: DeserializeOwned>(
     let header = auth_jwt_header(token)?;
     config.with_jwt_operation(|prepared| {
         let selected = prepared.for_purpose(purpose);
-        if header.alg != jwt_algorithm(selected.algorithm())
-            || header.typ != purpose.typ()
+        if header.typ != purpose.typ()
             || (purpose != JwtPurpose::Access && header.kid.is_none())
         {
             return Err(AuthError::InvalidAccessToken);
         }
-        let (key, cutoff) = selected.select(header.kid.as_deref(), Utc::now().timestamp())
+        let (algorithm, key, cutoff) = selected.select(header.kid.as_deref(), Utc::now().timestamp())
             .ok_or(AuthError::InvalidAccessToken)?;
-        let validation = strict_jwt_validation(config, selected.algorithm());
+        // The trusted purpose and exact kid determine the algorithm. The
+        // untrusted JOSE alg is an equality check, never a key selector.
+        if header.alg != jwt_algorithm(algorithm) {
+            return Err(AuthError::InvalidAccessToken);
+        }
+        let validation = strict_jwt_validation(config, algorithm);
         let claims = decode::<T>(token, key, &validation)
             .map_err(|_| AuthError::InvalidAccessToken)?.claims;
         if cutoff.is_some_and(|until| Utc::now().timestamp() >= until) {
@@ -886,6 +890,58 @@ mod tests {
         assert!(decode_password_reset_token(&retired, &reset).is_ok());
         // Immutable snapshots continue to behave according to their own cutoffs.
         assert!(decode_access_token(&promoted, &old_token).is_ok());
+    }
+
+    #[test]
+    fn mixed_history_pins_algorithm_and_legacy_mapping_to_exact_key() {
+        use serde_json::json;
+        use crate::jwt_keyring::JwtKeyring;
+        let mut old = test_config();
+        let secret = "independent-hmac-migration-secret-at-least-32-bytes";
+        let cutoff = Utc::now().timestamp() + 3600;
+        old.set_test_jwt_keyring(JwtKeyring::from_json(&json!({
+            "active_kid":"hs","active_hs256_secret":secret
+        }).to_string()).unwrap());
+        let issue = |config: &AuthConfig| encode_access_token(config, Uuid::new_v4(),
+            Uuid::new_v4(), UserRole::Customer, Uuid::new_v4()).unwrap();
+        let old_token = issue(&old);
+        let claims = decode_access_token(&old, &old_token).unwrap();
+        let mut mixed = test_config().with_rs256(TEST_RSA_PRIVATE_KEY, TEST_RSA_PUBLIC_KEY);
+        let history = |until| json!({
+            "active_kid":"rsa",
+            "verification_keys":[{"kid":"hs","algorithm":"HS256","material":secret,"verify_until":until}],
+            "legacy_without_kid":{"kid":"hs","verify_until":until}
+        });
+        mixed.set_test_jwt_keyring(JwtKeyring::from_json(&history(cutoff).to_string()).unwrap());
+        let rsa_token = issue(&mixed);
+        assert!(decode_access_token(&mixed, &old_token).is_ok());
+        assert!(decode_access_token(&mixed, &rsa_token).is_ok());
+        let mut header = jwt_header(&old, JwtPurpose::Access);
+        header.kid = None;
+        let legacy = encode(&header, &claims, encoding_key(&old, JwtPurpose::Access).unwrap()).unwrap();
+        assert!(decode_access_token(&mixed, &legacy).is_ok());
+        // RSA public material must never serve as a selected HMAC verifier.
+        header.kid = Some("rsa".into());
+        let forged = encode(&header, &claims, &EncodingKey::from_secret(TEST_RSA_PUBLIC_KEY.as_bytes())).unwrap();
+        assert!(decode_access_token(&mixed, &forged).is_err());
+        header.alg = Algorithm::RS256;
+        header.kid = Some("hs".into());
+        let wrong_algorithm = encode(&header, &claims, encoding_key(&mixed, JwtPurpose::Access).unwrap()).unwrap();
+        assert!(decode_access_token(&mixed, &wrong_algorithm).is_err());
+        header.kid = None;
+        let wrong_legacy = encode(&header, &claims, encoding_key(&mixed, JwtPurpose::Access).unwrap()).unwrap();
+        assert!(decode_access_token(&mixed, &wrong_legacy).is_err());
+        let mut seen = Vec::new();
+        mixed.inspect_hs256_secrets(|value| {
+            seen.push(value == secret);
+            Ok(())
+        }).unwrap();
+        assert!(seen.contains(&true));
+        let mut retired = mixed.clone();
+        retired.set_test_jwt_keyring(JwtKeyring::from_json(&history(Utc::now().timestamp()-1).to_string()).unwrap());
+        assert!(decode_access_token(&retired, &old_token).is_err());
+        assert!(decode_access_token(&retired, &legacy).is_err());
+        assert!(decode_access_token(&retired, &rsa_token).is_ok());
     }
 
     #[test]

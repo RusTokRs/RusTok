@@ -103,7 +103,8 @@ regression execution and coordinated replica rollout evidence are pending.
 Optional process-local file-backed hot reload, durable generation fencing and
 identity tombstones are source-implemented;
 cluster lease/drain fencing and compatible rolling replica admission are
-source-implemented, including emergency enrolled-key revocation; algorithm and host root migration remain open.
+source-implemented, including emergency enrolled-key revocation and managed staged
+HS256/RS256 migration. Host root migration remains open.
 Clock discontinuity detection and dual-deadline leases are source-implemented;
 independent clock fault-injection and suspend evidence remain pending.
 Independent production JWT authority and explicit offline import are source-implemented;

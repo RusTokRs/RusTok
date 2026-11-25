@@ -133,8 +133,9 @@ Each ring object accepts:
 - `active_hs256_secret`: optional independent signing secret for HS256.
   If omitted, HKDF-SHA256 derives an independent purpose key from the host
   MAC root. The raw root is never an active JWT key.
-- `verification_keys`: up to 16 objects with `kid`, `material` (actual HS256
-  signing secret or RSA public PEM), and exclusive Unix-second `verify_until`.
+- `verification_keys`: up to 16 objects with `kid`, optional `algorithm` (HS256
+  or RS256; omission inherits the active ring algorithm), `material` (actual
+  HS256 signing secret or RSA public PEM), and exclusive Unix-second `verify_until`.
 - `legacy_without_kid`: access-only bounded migration setting with `kid` and
   `verify_until`. Special rings reject this setting.
 
@@ -189,9 +190,37 @@ prepared encoding/decoding keys and indexed verification history; the JWT librar
 still constructs its internal crypto providers per operation.
 A source regression now exercises staging, promotion, retirement and exact
 key selection using two independent RS256 key pairs, including OAuth access and
-bounded missing-ID migration. It is not yet executed. Algorithm migration and
-multi-replica execution evidence are pending.
+bounded missing-ID migration. Mixed-algorithm verification and managed staged
+promotion are also source-implemented; compile and multi-replica execution
+evidence remain pending.
 See [purpose keyring ADR](../../../../DECISIONS/2026-11-25-jwt-purpose-keyrings.md).
+
+### Managed algorithm migration
+
+For HS256 to RS256, stage a historical verifier with a fresh kid,
+`algorithm: "RS256"`, RSA public PEM and a future `verify_until`, while
+the active HS256 signer remains unchanged. After all live replica grants
+can verify the new key, publish the next generation with the RSA pair
+and staged kid active, and retain the old signer in history with
+`algorithm: "HS256"`. The old HMAC secret is still sensitive signing material.
+Use a cutoff covering the old token TTL plus replica overlap. Retire it in
+a later generation. A reverse RS256 to HS256 migration must stage a fresh
+independent HMAC secret; demoted or revoked keys never become signers again.
+A revoked outgoing key must be removed and the existing drain applies.
+
+The decoder selects a single key by purpose and kid, then requires JOSE
+alg to match that key. Historical HMAC secrets remain subject to production
+policy even when the active signer is RSA. Do not configure public bytes
+as symmetric secrets; PEM-shaped HMAC material is rejected. For a rolling
+promotion preserve all accepted verification keys, legacy mapping and
+deadlines through overlap. An incompatible candidate uses the bounded drain,
+not a guaranteed zero-downtime cutover.
+
+Upgrade every server and operator binary before publishing mixed metadata.
+Existing homogeneous metadata is backward readable without re-enrollment.
+Only managed durable generations may change the active algorithm; unmanaged
+process-local publication refuses it. Keep the root and witness unchanged.
+See the [algorithm migration ADR](../../../../DECISIONS/2026-11-25-jwt-algorithm-migration.md).
 
 ### Process-local hot reload
 

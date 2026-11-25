@@ -49,6 +49,11 @@ authenticate the caller root even for an empty ledger, reject incompatible
 static grants and malformed registry identifiers, latch observed lease expiry,
 and validate authority before application migration. Focused regressions unrun.
 
+JWT algorithm migration: mixed per-key verification algorithms, exact JOSE
+algorithm pinning, staged managed promotion, replica compatibility, revocation
+and witness persistence are source-implemented. Scoped compilation, regression
+execution and independent-replica rollout remain pending.
+
 JWT rollback witness: source-implemented exact authenticated checkpoint,
 monotonic mutation revision, witness-first commit, offline recovery, verified
 TLS and sticky local mismatch fencing. Production requires a third independent
@@ -216,7 +221,7 @@ regressions and locked Cargo dependency updates authored, unrun.
 JWT purpose keyrings, key IDs, verification retirement and access-only initial
 missing-ID migration are source-implemented. A two-key RS256 staging/promotion/
 retirement regression is authored. Scoped compilation, regression execution
-and multi-replica rollout evidence are pending; algorithm migration remains separate work. Reissue pre-cutover shared-key special links.
+and multi-replica rollout evidence are pending; managed algorithm migration is now source-implemented. Reissue pre-cutover shared-key special links.
 Follow-up source review adds canonical RSA modulus identity, private/public
 pair enforcement at signing, strict JOSE header admission and post-signature
 retirement fencing. Zero-duration issuance and timestamp truncation are rejected;

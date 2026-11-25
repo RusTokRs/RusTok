@@ -27,8 +27,17 @@ pub struct JwtKeyring {
 #[serde(deny_unknown_fields)]
 struct VerificationKey {
     kid: String,
+    /// Omitted means the active ring algorithm (legacy homogeneous format).
+    #[serde(default)]
+    algorithm: Option<JwtAlgorithm>,
     material: String,
     verify_until: i64,
+}
+
+impl VerificationKey {
+    fn algorithm<'a>(&'a self, active: &'a JwtAlgorithm) -> &'a JwtAlgorithm {
+        self.algorithm.as_ref().unwrap_or(active)
+    }
 }
 
 #[derive(Clone, Deserialize)]
@@ -77,9 +86,12 @@ impl JwtKeyring {
         Self { active_kid: kid.to_string(), ..Self::default() }
     }
 
-    fn explicit_hs256_secrets(&self) -> impl Iterator<Item = &str> {
-        self.active_hs256_secret.as_deref().into_iter()
-            .chain(self.verification_keys.iter().map(|key| key.material.as_str()))
+    fn explicit_hs256_secrets<'a>(&'a self, active: &'a JwtAlgorithm) -> impl Iterator<Item = &'a str> {
+        self.active_hs256_secret.as_deref().into_iter().chain(
+            self.verification_keys.iter()
+                .filter(move |key| *key.algorithm(active) == JwtAlgorithm::HS256)
+                .map(|key| key.material.as_str()),
+        )
     }
 
     pub(crate) fn validate(
@@ -107,7 +119,7 @@ impl JwtKeyring {
             {
                 return Err(invalid_config());
             }
-            verification_key(algorithm, &key.material)?;
+            verification_key(key.algorithm(algorithm), &key.material)?;
         }
         if let Some(legacy) = &self.legacy_without_kid {
             if !valid_kid(&legacy.kid) || legacy.verify_until <= 0 {
@@ -362,6 +374,7 @@ pub(crate) struct ValidatedJwtKeyring {
 }
 
 struct PreparedVerificationKey {
+    algorithm: JwtAlgorithm,
     key: DecodingKey,
     identity: [u8; 32],
     verification_identity: [u8; 32],
@@ -384,7 +397,7 @@ impl ValidatedJwtKeyring {
     /// Exact ID lookup; retirement remains a live clock check, never cached.
     pub(crate) fn select(
         &self, kid: Option<&str>, now: i64,
-    ) -> Option<(&DecodingKey, Option<i64>)> {
+    ) -> Option<(&JwtAlgorithm, &DecodingKey, Option<i64>)> {
         let (kid, legacy_until) = match kid {
             Some(kid) => (kid, None),
             None => {
@@ -399,11 +412,11 @@ impl ValidatedJwtKeyring {
             return None;
         }
         if kid == self.active_kid {
-            return Some((&self.active_verification_key, legacy_until));
+            return Some((&self.algorithm, &self.active_verification_key, legacy_until));
         }
         let previous = self.history.get(kid)?;
         let cutoff = legacy_until.map_or(previous.verify_until, |until| until.min(previous.verify_until));
-        (now < cutoff).then_some((&previous.key, Some(cutoff)))
+        (now < cutoff).then_some((&previous.algorithm, &previous.key, Some(cutoff)))
     }
 
     fn prepare(
@@ -432,16 +445,18 @@ impl ValidatedJwtKeyring {
         )?;
         let mut history = HashMap::with_capacity(selected.ring.verification_keys.len());
         for previous in &selected.ring.verification_keys {
-            let identity = key_identity(selected.algorithm, &previous.material)?;
+            let algorithm = previous.algorithm(selected.algorithm);
+            let identity = key_identity(algorithm, &previous.material)?;
             if (identity == root_identity && purpose != JwtPurpose::Access)
                 || !identities.insert(identity)
             {
                 return Err(invalid_config());
             }
-            let key = verification_key(selected.algorithm, &previous.material)?;
-            let verification_identity = verification_identity(selected.algorithm, &key, identity)?;
+            let key = verification_key(algorithm, &previous.material)?;
+            let verification_identity = verification_identity(algorithm, &key, identity)?;
             if history.insert(previous.kid.clone(), PreparedVerificationKey {
-                key, identity, verification_identity, verify_until: previous.verify_until,
+                algorithm: algorithm.clone(), key, identity, verification_identity,
+                verify_until: previous.verify_until,
             }).is_some() {
                 return Err(invalid_config());
             }
@@ -500,12 +515,16 @@ impl ValidatedJwtKeyrings {
                 identity: fingerprint(&ring.active_identity)?,
                 verification_identity: fingerprint(&ring.active_verification_identity)?,
                 verify_until: None,
+                algorithm: None,
             });
             for (kid, history) in &ring.history {
                 keys.insert(kid.clone(), KeyMetadata {
                     identity: fingerprint(&history.identity)?,
                     verification_identity: fingerprint(&history.verification_identity)?,
                     verify_until: Some(history.verify_until),
+                    // Preserve the exact serialized shape of homogeneous
+                    // ledgers and grants across a binary upgrade.
+                    algorithm: (history.algorithm != ring.algorithm).then(|| history.algorithm.clone()),
                 });
             }
             let legacy = ring.legacy_without_kid.as_ref().map(|legacy| LegacyMetadata {
@@ -518,8 +537,9 @@ impl ValidatedJwtKeyrings {
         Ok(result)
     }
 
-    /// Preserve identity across adjacent generations. Algorithm migration
-    /// and durable tombstones across absent generations are separate work.
+    /// Preserve identity across adjacent unmanaged generations. Active
+    /// algorithm migration requires the durable fence and its tombstones;
+    /// fixed configs may still verify a mixed-algorithm history.
     pub(crate) fn validate_successor(&self, next: &Self) -> Result<()> {
         let now = chrono::Utc::now().timestamp();
         for purpose in JwtPurpose::ALL {
@@ -578,10 +598,7 @@ pub(crate) fn explicit_hs256_secrets<'a>(inputs: &'a JwtKeyInputs, root: &'a str
     std::iter::once(root).chain(
         JwtPurpose::ALL.into_iter().flat_map(move |purpose| {
             let selected = PurposeKeyringRef::for_inputs(inputs, root, purpose);
-            (*selected.algorithm == JwtAlgorithm::HS256)
-                .then_some(selected.ring)
-                .into_iter()
-                .flat_map(JwtKeyring::explicit_hs256_secrets)
+            selected.ring.explicit_hs256_secrets(selected.algorithm)
         }),
     )
 }
@@ -624,7 +641,10 @@ pub(crate) fn rsa_signing_key(private_pem: &str, public_pem: &str) -> Result<Enc
 
 pub(crate) fn verification_key(algorithm: &JwtAlgorithm, material: &str) -> Result<DecodingKey> {
     match algorithm {
-        JwtAlgorithm::HS256 if hs256_secret_has_min_length(material) => {
+        // An RSA public PEM is public information, never an HMAC secret.
+        // Reject PEM-shaped material even if it meets the length floor.
+        JwtAlgorithm::HS256 if hs256_secret_has_min_length(material)
+            && !material.contains("-----BEGIN ") => {
             Ok(DecodingKey::from_secret(material.as_bytes()))
         }
         JwtAlgorithm::HS256 => Err(invalid_config()),
@@ -658,11 +678,22 @@ mod tests {
             "legacy_without_kid":{"kid":"old","verify_until":150}
         }"#).unwrap());
         let ring = config.prepared_jwt().unwrap().for_purpose(JwtPurpose::Access);
-        assert_eq!(ring.select(Some("old"), 199).map(|(_, cutoff)| cutoff), Some(Some(200)));
+        assert_eq!(ring.select(Some("old"), 199).map(|(_, _, cutoff)| cutoff), Some(Some(200)));
         assert!(ring.select(Some("old"), 200).is_none());
-        assert_eq!(ring.select(None, 149).map(|(_, cutoff)| cutoff), Some(Some(150)));
+        assert_eq!(ring.select(None, 149).map(|(_, _, cutoff)| cutoff), Some(Some(150)));
         assert!(ring.select(None, 150).is_none());
-        assert_eq!(ring.select(Some("next"), 200).map(|(_, cutoff)| cutoff), Some(None));
+        assert_eq!(ring.select(Some("next"), 200).map(|(_, _, cutoff)| cutoff), Some(None));
+    }
+
+    #[test]
+    fn public_pem_cannot_be_configured_as_hmac_material() {
+        let mut config = AuthConfig::new("root-test-material-with-at-least-32-bytes".into());
+        config.set_test_jwt_keyring(JwtKeyring::from_json(&serde_json::json!({
+            "active_kid": "hs",
+            "verification_keys": [{"kid":"wrong","algorithm":"HS256",
+                "material":crate::jwt::TEST_RSA_PUBLIC_KEY,"verify_until":200}]
+        }).to_string()).unwrap());
+        assert!(crate::validate_auth_config(&config).is_err());
     }
 
     #[test]
