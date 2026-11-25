@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
-use rustok_graphql::GraphqlHttpError;
+use rustok_graphql::{GraphqlHttpError, GraphqlOperationError};
 
 use super::product_lifecycle_graphql;
 use crate::lifecycle_retry_identity::{
@@ -73,6 +73,35 @@ fn mark_lifecycle_succeeded(slot: &str) {
     registry.remove(slot);
 }
 
+fn mark_lifecycle_rejected(slot: &str) {
+    retry_registry()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .remove(slot);
+}
+
+fn finish_lifecycle_result<T>(
+    slot: &str,
+    result: Result<T, GraphqlOperationError>,
+) -> Result<T, GraphqlHttpError> {
+    match result {
+        Ok(value) => {
+            mark_lifecycle_succeeded(slot);
+            Ok(value)
+        }
+        Err(error) => {
+            let durable_rejection = error.extensions.as_ref().is_some_and(|extensions| {
+                extensions.outcome.as_deref() == Some("rejected")
+                    && extensions.retryable == Some(false)
+            });
+            if durable_rejection {
+                mark_lifecycle_rejected(slot);
+            }
+            Err(error.error)
+        }
+    }
+}
+
 fn draft_intent(
     operation: ProductAdminLifecycleOperation,
     tenant_id: &str,
@@ -118,10 +147,7 @@ pub(crate) async fn create_product(
         draft,
     )
     .await;
-    if result.is_ok() {
-        mark_lifecycle_succeeded(&slot);
-    }
-    result
+    finish_lifecycle_result(&slot, result)
 }
 
 pub(crate) async fn update_product(
@@ -146,10 +172,7 @@ pub(crate) async fn update_product(
         draft,
     )
     .await;
-    if result.is_ok() {
-        mark_lifecycle_succeeded(&slot);
-    }
-    result
+    finish_lifecycle_result(&slot, result)
 }
 
 pub(crate) async fn change_product_status(
@@ -174,10 +197,7 @@ pub(crate) async fn change_product_status(
         idempotency_key,
     )
     .await;
-    if result.is_ok() {
-        mark_lifecycle_succeeded(&slot);
-    }
-    result
+    finish_lifecycle_result(&slot, result)
 }
 
 pub(crate) async fn delete_product(
@@ -200,10 +220,7 @@ pub(crate) async fn delete_product(
         idempotency_key,
     )
     .await;
-    if result.is_ok() {
-        mark_lifecycle_succeeded(&slot);
-    }
-    result
+    finish_lifecycle_result(&slot, result)
 }
 
 fn effective_optional_text(value: Option<&str>) -> Option<&str> {
@@ -285,10 +302,7 @@ pub(crate) async fn update_product_variant(
         draft,
     )
     .await;
-    if result.is_ok() {
-        mark_lifecycle_succeeded(&slot);
-    }
-    result
+    finish_lifecycle_result(&slot, result)
 }
 
 #[expect(dead_code, reason = "Product variant deletion transport pending UI caller integration")]
@@ -319,10 +333,7 @@ pub(crate) async fn delete_product_variant(
         idempotency_key,
     )
     .await;
-    if result.is_ok() {
-        mark_lifecycle_succeeded(&slot);
-    }
-    result
+    finish_lifecycle_result(&slot, result)
 }
 
 pub(crate) async fn add_product_image(
@@ -350,10 +361,7 @@ pub(crate) async fn add_product_image(
         draft,
     )
     .await;
-    if result.is_ok() {
-        mark_lifecycle_succeeded(&slot);
-    }
-    result
+    finish_lifecycle_result(&slot, result)
 }
 
 pub(crate) async fn update_product_image(
@@ -381,10 +389,7 @@ pub(crate) async fn update_product_image(
         draft,
     )
     .await;
-    if result.is_ok() {
-        mark_lifecycle_succeeded(&slot);
-    }
-    result
+    finish_lifecycle_result(&slot, result)
 }
 
 pub(crate) async fn delete_product_image(
@@ -410,10 +415,7 @@ pub(crate) async fn delete_product_image(
         idempotency_key,
     )
     .await;
-    if result.is_ok() {
-        mark_lifecycle_succeeded(&slot);
-    }
-    result
+    finish_lifecycle_result(&slot, result)
 }
 
 pub(crate) async fn reorder_product_images(
@@ -440,10 +442,7 @@ pub(crate) async fn reorder_product_images(
         idempotency_key,
     )
     .await;
-    if result.is_ok() {
-        mark_lifecycle_succeeded(&slot);
-    }
-    result
+    finish_lifecycle_result(&slot, result)
 }
 
 #[cfg(test)]
@@ -534,6 +533,64 @@ mod variant_retry_tests {
 
         assert_eq!(first, retry);
         assert_ne!(first, refreshed);
+    }
+
+    #[test]
+    fn terminal_graphql_rejection_rotates_retry_key() {
+        let slot = "product-terminal-rejection-retry-test";
+        let intent = "same-variant-delete-intent".to_owned();
+        let first = retained_caller_key(
+            slot,
+            ProductAdminLifecycleOperation::DeleteVariant,
+            intent.clone(),
+        );
+        let error = GraphqlOperationError {
+            error: GraphqlHttpError::Graphql("request rejected".to_owned()),
+            extensions: Some(rustok_graphql::GraphqlErrorExtensions {
+                code: Some("PRODUCT_VARIANT_INVENTORY_BLOCKED".to_owned()),
+                retryable: Some(false),
+                outcome: Some("rejected".to_owned()),
+            }),
+        };
+
+        assert!(finish_lifecycle_result::<()>(slot, Err(error)).is_err());
+        let retry = retained_caller_key(
+            slot,
+            ProductAdminLifecycleOperation::DeleteVariant,
+            intent,
+        );
+
+        assert_ne!(first, retry);
+        mark_lifecycle_rejected(slot);
+    }
+
+    #[test]
+    fn unknown_graphql_outcome_retains_retry_key_for_recovery() {
+        let slot = "product-unknown-outcome-retry-test";
+        let intent = "same-product-update-intent".to_owned();
+        let first = retained_caller_key(
+            slot,
+            ProductAdminLifecycleOperation::UpdateProduct,
+            intent.clone(),
+        );
+        let error = GraphqlOperationError {
+            error: GraphqlHttpError::Network,
+            extensions: Some(rustok_graphql::GraphqlErrorExtensions {
+                code: None,
+                retryable: Some(true),
+                outcome: Some("unknown".to_owned()),
+            }),
+        };
+
+        assert!(finish_lifecycle_result::<()>(slot, Err(error)).is_err());
+        let retry = retained_caller_key(
+            slot,
+            ProductAdminLifecycleOperation::UpdateProduct,
+            intent,
+        );
+
+        assert_eq!(first, retry);
+        mark_lifecycle_rejected(slot);
     }
 
 }

@@ -1,4 +1,7 @@
-use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphql, graphql_url};
+use rustok_graphql::{
+    GraphqlHttpError, GraphqlOperationError, GraphqlRequest,
+    execute_with_metadata as execute_graphql, graphql_url,
+};
 use rustok_ui_core::normalize_ui_text as optional_text;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -351,8 +354,8 @@ impl MutationErrorContext {
         self
     }
 
-    fn map_error(&self, error: GraphqlHttpError) -> GraphqlHttpError {
-        let (error_kind, code, public_error, technical_failure) = match &error {
+    fn map_error(&self, error: GraphqlOperationError) -> GraphqlOperationError {
+        let (error_kind, code, public_error, technical_failure) = match &error.error {
             GraphqlHttpError::Network => (
                 "network",
                 "product.admin_graphql_network_unavailable",
@@ -378,7 +381,7 @@ impl MutationErrorContext {
                 false,
             ),
         };
-        let error_payload_length = match &error {
+        let error_payload_length = match &error.error {
             GraphqlHttpError::Http(value) | GraphqlHttpError::Graphql(value) => {
                 Some(value.chars().count())
             }
@@ -432,7 +435,10 @@ impl MutationErrorContext {
             );
         }
 
-        public_error
+        GraphqlOperationError {
+            error: public_error,
+            extensions: error.extensions,
+        }
     }
 }
 
@@ -441,7 +447,7 @@ async fn request<V, T>(
     variables: V,
     token: Option<String>,
     tenant_slug: Option<String>,
-) -> Result<T, GraphqlHttpError>
+) -> Result<T, GraphqlOperationError>
 where
     V: Serialize,
     T: for<'de> Deserialize<'de>,
@@ -463,7 +469,7 @@ pub(crate) async fn create_product(
     actor_id: String,
     idempotency_key: String,
     draft: ProductDraft,
-) -> Result<ProductDetail, GraphqlHttpError> {
+) -> Result<ProductDetail, GraphqlOperationError> {
     let context = MutationErrorContext::new(
         "create_product",
         token.as_deref(),
@@ -494,7 +500,7 @@ pub(crate) async fn update_product(
     id: String,
     idempotency_key: String,
     draft: ProductDraft,
-) -> Result<ProductDetail, GraphqlHttpError> {
+) -> Result<ProductDetail, GraphqlOperationError> {
     let context = MutationErrorContext::new(
         "update_product",
         token.as_deref(),
@@ -545,7 +551,7 @@ pub(crate) async fn change_product_status(
     id: String,
     status: &str,
     idempotency_key: String,
-) -> Result<ProductDetail, GraphqlHttpError> {
+) -> Result<ProductDetail, GraphqlOperationError> {
     let context = MutationErrorContext::new(
         "change_product_status",
         token.as_deref(),
@@ -588,7 +594,7 @@ pub(crate) async fn delete_product(
     actor_id: String,
     id: String,
     idempotency_key: String,
-) -> Result<bool, GraphqlHttpError> {
+) -> Result<bool, GraphqlOperationError> {
     let context = MutationErrorContext::new(
         "delete_product",
         token.as_deref(),
@@ -619,7 +625,7 @@ pub(crate) async fn update_product_variant(
     variant_id: String,
     idempotency_key: String,
     draft: crate::model::VariantUpdateDraft,
-) -> Result<crate::model::ProductVariant, GraphqlHttpError> {
+) -> Result<crate::model::ProductVariant, GraphqlOperationError> {
     let context = MutationErrorContext::new(
         "update_product_variant",
         token.as_deref(),
@@ -696,7 +702,7 @@ pub(crate) async fn delete_product_variant(
     variant_id: String,
     expected_revision: String,
     idempotency_key: String,
-) -> Result<bool, GraphqlHttpError> {
+) -> Result<bool, GraphqlOperationError> {
     let context = MutationErrorContext::new(
         "delete_product_variant",
         token.as_deref(),
@@ -729,7 +735,7 @@ pub(crate) async fn add_product_image(
     product_id: String,
     idempotency_key: String,
     draft: crate::model::ProductImageDraft,
-) -> Result<crate::model::ProductImage, GraphqlHttpError> {
+) -> Result<crate::model::ProductImage, GraphqlOperationError> {
     let context = MutationErrorContext::new(
         "add_product_image",
         token.as_deref(),
@@ -771,7 +777,7 @@ pub(crate) async fn update_product_image(
     image_id: String,
     idempotency_key: String,
     draft: crate::model::UpdateProductImageDraft,
-) -> Result<crate::model::ProductImage, GraphqlHttpError> {
+) -> Result<crate::model::ProductImage, GraphqlOperationError> {
     let context = MutationErrorContext::new(
         "update_product_image",
         token.as_deref(),
@@ -812,7 +818,7 @@ pub(crate) async fn delete_product_image(
     product_id: String,
     image_id: String,
     idempotency_key: String,
-) -> Result<bool, GraphqlHttpError> {
+) -> Result<bool, GraphqlOperationError> {
     let context = MutationErrorContext::new(
         "delete_product_image",
         token.as_deref(),
@@ -846,7 +852,7 @@ pub(crate) async fn reorder_product_images(
     product_id: String,
     image_ids: Vec<String>,
     idempotency_key: String,
-) -> Result<bool, GraphqlHttpError> {
+) -> Result<bool, GraphqlOperationError> {
     let context = MutationErrorContext::new(
         "reorder_product_images",
         token.as_deref(),
