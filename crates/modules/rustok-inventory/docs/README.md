@@ -66,6 +66,15 @@ caller transaction. The no-op path is unchanged; Product's quantity hook
 shares the verification. Regression source is authored, not executed.
 This does not introduce a durable receipt or a new cross-owner revision.
 
+The exported channel availability check and native service now resolve the
+current tenant-owned SKU and parent before applying backorder policy. The
+compatibility projection-input policy is not authorization: stale or forged
+continue cannot bypass the current Product policy or a missing SKU. Negative
+request quantities refuse before storage reads. The positive backorder result
+remains advisory availability, not a warehouse allocation or a reservation
+receipt; actual allocation retains its own locked channel eligibility checks.
+Regression source authored, not executed.
+
 ## Purpose
 
 - inventory service logic;

@@ -806,6 +806,20 @@ They now capture any transport error into an `action_error` reactive signal and 
   [regression](../../crates/modules/rustok-commerce/tests/inventory_quantity_writes.rs).
   Regression source authored, not executed.
 
+### P-BACKORDER-OWNER-PROOF — caller policy snapshots do not authorize availability
+
+- **Category:** ownership / stale policy admission.
+- **Observed defect:** The exported channel availability check returned
+  true for a caller-supplied continue policy before proving SKU ownership
+  or checking current Product policy.
+- **Canonical correction:** Validate request shape, resolve the tenant-owned
+  SKU and parent, and use current owner policy for advisory availability.
+  Preserve the separate locked allocation contract and do not treat a
+  compatibility projection input as authorization.
+- **Evidence:** [public channel check](../../crates/modules/rustok-inventory/src/services/public_channel.rs),
+  [regression](../../crates/modules/rustok-commerce/tests/inventory_reservation_channel.rs).
+  Source regression authored, not executed.
+
 ## 1. Core Philosophy: The 6 Universal Logic Dimensions
 
 Under [AGENTS.md §4](../../AGENTS.md), verify the affected behavior and its owner contract across the **6 Universal Logic Dimensions**. Use source matches to find code to inspect. A match alone cannot establish a behavioral defect:

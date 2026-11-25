@@ -408,14 +408,10 @@ impl InventoryService {
             channel_slug = ?public_channel_slug,
             "checking variant availability for channel"
         );
-        let variant = self.load_variant(&self.db, tenant_id, variant_id).await?;
-        let available = super::public_channel::check_variant_availability_for_public_channel(
+        let available = super::public_channel::check_current_variant_availability_for_public_channel(
             &self.db,
             tenant_id,
-            super::public_channel::PublicChannelInventoryVariantProjectionInput {
-                variant_id: variant.id(),
-                inventory_policy: &variant.inventory_policy,
-            },
+            variant_id,
             requested_quantity,
             public_channel_slug,
         )

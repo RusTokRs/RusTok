@@ -132,24 +132,43 @@ pub async fn check_variant_availability_for_public_channel(
     requested_quantity: i32,
     public_channel_slug: Option<&str>,
 ) -> CommerceResult<bool> {
+    // The projection input is retained for source compatibility, not authority.
+    // Its policy can be stale or supplied by an untrusted caller.
+    check_current_variant_availability_for_public_channel(
+        db, tenant_id, variant.variant_id, requested_quantity, public_channel_slug,
+    ).await
+}
+
+pub(super) async fn check_current_variant_availability_for_public_channel(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    variant_id: Uuid,
+    requested_quantity: i32,
+    public_channel_slug: Option<&str>,
+) -> CommerceResult<bool> {
     if tenant_id.is_nil() {
         return Err(CommerceError::Validation(
             "tenant_id cannot be nil".to_string(),
         ));
     }
-    if variant.variant_id.is_nil() {
+    if variant_id.is_nil() {
         return Err(CommerceError::Validation(
             "variant_id cannot be nil".to_string(),
         ));
     }
-    if check_public_channel_inventory_request(variant.inventory_policy, requested_quantity)? {
+    // Validate quantity before any lookup, regardless of the saved policy.
+    check_public_channel_inventory_request("deny", requested_quantity)?;
+    let variant = crate::product_port::find_variant_info_from_conn(db, tenant_id, variant_id)
+        .await?
+        .ok_or(CommerceError::VariantNotFound(variant_id))?;
+    if check_public_channel_inventory_request(&variant.inventory_policy, requested_quantity)? {
         return Ok(true);
     }
 
     let available_inventory = load_available_inventory_for_variant_in_public_channel(
         db,
         tenant_id,
-        variant.variant_id,
+        variant_id,
         public_channel_slug,
     )
     .await?;
