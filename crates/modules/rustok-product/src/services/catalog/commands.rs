@@ -113,6 +113,14 @@ fn validate_variant_prices(prices: &[PriceInput]) -> CommerceResult<()> {
                 "Compare-at price cannot be lower than the base price".to_owned(),
             ));
         }
+        // The Pricing resolver requires exact currency minor units.
+        for amount in [Some(price.amount), price.compare_at_amount].into_iter().flatten() {
+            rustok_core::money::to_minor_units_exact(amount, &currency).map_err(|_| {
+                CommerceError::Validation(
+                    "Variant prices must be exactly representable in their currency minor units".into(),
+                )
+            })?;
+        }
         let channel_slug = normalize_public_channel_slug(price.channel_slug.as_deref());
         let key = (price.channel_id, channel_slug, currency);
         if !seen.insert(key) {
@@ -3369,6 +3377,27 @@ mod tests {
                 compare_at_amount,
             }];
             assert!(validate_variant_prices(&prices).is_err());
+        }
+    }
+
+    #[test]
+    fn validate_variant_prices_requires_exact_currency_minor_units() {
+        for (currency, amount, compare_at, valid) in [
+            ("USD", Decimal::new(1999, 3), None, false),
+            ("USD", Decimal::new(199, 2), Some(Decimal::new(2001, 3)), false),
+            ("JPY", Decimal::new(101, 1), None, false),
+            ("JPY", Decimal::new(10, 0), None, true),
+            ("KWD", Decimal::new(1999, 3), Some(Decimal::new(2001, 3)), true),
+            ("USD", Decimal::MAX, None, false),
+        ] {
+            let price = PriceInput {
+                currency_code: currency.to_owned(),
+                channel_id: None,
+                channel_slug: None,
+                amount,
+                compare_at_amount: compare_at,
+            };
+            assert_eq!(validate_variant_prices(&[price]).is_ok(), valid, "{currency}");
         }
     }
 

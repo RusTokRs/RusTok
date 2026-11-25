@@ -62,6 +62,13 @@ fn validate_initial_price(price: &InitialPrice) -> Result<(), sea_orm::DbErr> {
             "currency_code must be a 3-letter ASCII alphabetic code".into(),
         ));
     }
+    // The legacy two-decimal mirror is not the canonical currency precision.
+    for amount in [Some(price.amount), price.compare_at_amount].into_iter().flatten() {
+        rustok_core::money::to_minor_units_exact(amount, trimmed_currency)
+            .map_err(|_| sea_orm::DbErr::Custom(
+                "price is not exactly representable in its currency minor units".into(),
+            ))?;
+    }
     Ok(())
 }
 
@@ -285,6 +292,16 @@ mod tests {
     fn initial_price_rejects_compare_at_below_base_amount() {
         let price = initial_price(Decimal::new(1200, 2), Some(Decimal::new(1199, 2)));
         assert!(validate_initial_price(&price).is_err());
+    }
+
+    #[test]
+    fn initial_price_rejects_unquotable_money_before_replacement() {
+        let mut price = initial_price(Decimal::new(1999, 3), None);
+        assert!(validate_initial_prices(&[price.clone()]).is_err());
+        price.currency_code = "KWD".to_owned();
+        assert!(validate_initial_prices(&[price.clone()]).is_ok());
+        price.compare_at_amount = Some(Decimal::new(20001, 4));
+        assert!(validate_initial_prices(&[price]).is_err());
     }
 
     #[test]
