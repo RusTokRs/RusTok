@@ -172,12 +172,17 @@ pub async fn bootstrap_app_runtime(
                 "server shutdown started during manifest-managed app synchronization".to_string(),
             ));
         }
-        middleware::tenant::init_tenant_cache_infrastructure(&runtime_ctx, &cache_service).await?;
-        if stop.is_stopping() {
+        let Some(tenant_cache_result) = await_worker_startup_or_stop(
+            &stop,
+            middleware::tenant::init_tenant_cache_infrastructure(&runtime_ctx, &cache_service),
+        )
+        .await
+        else {
             return Err(Error::Message(
-                "server shutdown started during tenant cache infrastructure initialization".to_string(),
+                "server shutdown started while initializing tenant cache infrastructure".to_string(),
             ));
-        }
+        };
+        tenant_cache_result?;
         runtime_ctx.shared_insert(
             rustok_content_orchestration::build_content_orchestration_service(
                 runtime_ctx.db_clone(),
