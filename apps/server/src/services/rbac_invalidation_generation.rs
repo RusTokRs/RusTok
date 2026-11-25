@@ -100,8 +100,8 @@ impl RbacInvalidationGenerationState {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    /// Record a generation already applied to this process. Stale or duplicate
-    /// observations are harmless and never lower the local checkpoint.
+    /// Record an incrementally applied generation. Stale or duplicate event
+    /// observations never lower the local checkpoint.
     pub(crate) fn observe_applied(&self, generation: u64) -> u64 {
         let mut current = self
             .0
@@ -114,6 +114,17 @@ impl RbacInvalidationGenerationState {
                 generation
             }
         }
+    }
+
+    /// Record the durable generation covered by a completed full cache clear.
+    ///
+    /// Unlike an incremental event, a full recovery is authoritative after a
+    /// database restore and may move the checkpoint backwards.
+    pub(crate) fn record_full_cache_recovery(&self, generation: u64) {
+        *self
+            .0
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(generation);
     }
 }
 
@@ -153,7 +164,6 @@ async fn run_rbac_invalidation_generation_watchdog(
     state: RbacInvalidationGenerationState,
 ) {
     rbac_invalidation_metrics::set_watchdog_running(true);
-    let mut last_regressed_database_generation: Option<u64> = None;
     let mut interval = tokio::time::interval(RBAC_DURABLE_GENERATION_RECONCILE_INTERVAL);
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
@@ -164,25 +174,22 @@ async fn run_rbac_invalidation_generation_watchdog(
                 let applied_before = state.current();
                 rbac_invalidation_metrics::update_generations(generation, applied_before);
                 match applied_before {
-                    Some(current) if generation == current => {
-                        last_regressed_database_generation = None;
-                    }
+                    Some(current) if generation == current => {}
                     Some(current) if generation < current => {
-                        if last_regressed_database_generation != Some(generation) {
-                            tracing::error!(
-                                previous = current,
-                                current = generation,
-                                "Durable RBAC invalidation generation regressed; clearing all permission snapshots"
-                            );
-                            rustok_telemetry::metrics::record_event_error(
-                                RBAC_DURABLE_GENERATION_CHANNEL,
-                                "generation_regressed",
-                            );
-                            rbac_invalidation_metrics::record_recovery("generation_regressed");
-                            rbac_invalidation_metrics::record_full_clear("generation_regressed");
-                            invalidate_all_user_permissions_cache().await;
-                            last_regressed_database_generation = Some(generation);
-                        }
+                        tracing::error!(
+                            previous = current,
+                            current = generation,
+                            "Durable RBAC invalidation generation regressed; clearing all permission snapshots"
+                        );
+                        rustok_telemetry::metrics::record_event_error(
+                            RBAC_DURABLE_GENERATION_CHANNEL,
+                            "generation_regressed",
+                        );
+                        rbac_invalidation_metrics::record_recovery("generation_regressed");
+                        rbac_invalidation_metrics::record_full_clear("generation_regressed");
+                        invalidate_all_user_permissions_cache().await;
+                        state.record_full_cache_recovery(generation);
+                        rbac_invalidation_metrics::update_generations(generation, state.current());
                     }
                     previous => {
                         let reason = if previous.is_some() {
@@ -205,9 +212,8 @@ async fn run_rbac_invalidation_generation_watchdog(
                         rbac_invalidation_metrics::record_recovery(reason);
                         rbac_invalidation_metrics::record_full_clear(reason);
                         invalidate_all_user_permissions_cache().await;
-                        state.observe_applied(generation);
+                        state.record_full_cache_recovery(generation);
                         rbac_invalidation_metrics::update_generations(generation, state.current());
-                        last_regressed_database_generation = None;
                     }
                 }
             }
@@ -374,11 +380,17 @@ mod tests {
     use sea_orm::TransactionTrait;
 
     #[test]
-    fn applied_generation_state_is_monotonic() {
+    fn applied_generation_state_is_monotonic_until_full_recovery_resets_a_database_epoch() {
         let state = RbacInvalidationGenerationState::default();
         assert_eq!(state.current(), None);
         assert_eq!(state.observe_applied(4), 4);
         assert_eq!(state.observe_applied(3), 4);
+        assert_eq!(state.observe_applied(5), 5);
+
+        state.record_full_cache_recovery(2);
+        assert_eq!(state.current(), Some(2));
+        assert_eq!(state.observe_applied(3), 3);
+        assert_eq!(state.observe_applied(4), 4);
         assert_eq!(state.observe_applied(5), 5);
         assert_eq!(state.current(), Some(5));
     }

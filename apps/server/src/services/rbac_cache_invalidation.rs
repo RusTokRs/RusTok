@@ -223,7 +223,8 @@ impl RbacCacheInvalidationListener {
         let recovered_through = self.read_generation().await?;
         invalidate_all_user_permissions_cache().await;
         acknowledge_rbac_recovery(&self.tracker, recovered_through)?;
-        self.durable_state.observe_applied(recovered_through);
+        self.durable_state
+            .record_full_cache_recovery(recovered_through);
         Ok(recovered_through)
     }
 
@@ -234,16 +235,29 @@ impl RbacCacheInvalidationListener {
             .last_generation(RBAC_PERMISSION_INVALIDATION_CHANNEL);
         let process_current = self.durable_state.current();
 
-        if process_current.is_some_and(|current| current >= recovered_through) {
-            if tracker_current.is_none_or(|current| current < recovered_through) {
+        if let Some(current) = process_current {
+            if recovered_through < current {
+                // A database restore can lower the durable generation. A full
+                // cache clear makes the lower value authoritative again.
+                invalidate_all_user_permissions_cache().await;
                 acknowledge_rbac_recovery(&self.tracker, recovered_through)?;
+                self.durable_state
+                    .record_full_cache_recovery(recovered_through);
+                return Ok(Some(recovered_through));
             }
-            return Ok(None);
+
+            if recovered_through == current {
+                if tracker_current.is_none_or(|current| current < recovered_through) {
+                    acknowledge_rbac_recovery(&self.tracker, recovered_through)?;
+                }
+                return Ok(None);
+            }
         }
 
         invalidate_all_user_permissions_cache().await;
         acknowledge_rbac_recovery(&self.tracker, recovered_through)?;
-        self.durable_state.observe_applied(recovered_through);
+        self.durable_state
+            .record_full_cache_recovery(recovered_through);
         Ok(Some(recovered_through))
     }
 
@@ -270,12 +284,11 @@ impl RbacCacheInvalidationListener {
                 acknowledge_rbac_applied_generation(&self.tracker, generation)?;
                 self.durable_state.observe_applied(generation);
             }
-            CacheInvalidationObservation::Duplicate { generation } => {
-                self.durable_state.observe_applied(generation);
-            }
-            CacheInvalidationObservation::Stale { last, .. } => {
-                self.durable_state.observe_applied(last);
-            }
+            // A duplicate or stale tracker offset may belong to the
+            // pre-restore database generation. It is not proof that the
+            // current cache has applied that old high-water mark.
+            CacheInvalidationObservation::Duplicate { .. }
+            | CacheInvalidationObservation::Stale { .. } => {}
             CacheInvalidationObservation::UnverifiedFirst { .. }
             | CacheInvalidationObservation::Gap { .. } => {
                 if let Some(current) = self
@@ -815,6 +828,38 @@ mod tests {
         assert_eq!(
             tracker.last_generation(RBAC_PERMISSION_INVALIDATION_CHANNEL),
             Some(7)
+        );
+    }
+
+    #[tokio::test]
+    async fn duplicate_and_stale_offsets_do_not_restore_a_pre_restore_checkpoint() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let durable_state = RbacInvalidationGenerationState::default();
+        durable_state.observe_applied(5);
+        let listener = RbacCacheInvalidationListener::new(db, durable_state.clone());
+        listener
+            .tracker
+            .seed(RBAC_PERMISSION_INVALIDATION_CHANNEL, 5)
+            .unwrap();
+
+        durable_state.record_full_cache_recovery(2);
+        for generation in [5, 4] {
+            let message = VersionedCacheInvalidation::new(
+                RBAC_PERMISSION_INVALIDATION_CHANNEL,
+                RBAC_PERMISSION_INVALIDATE_ALL_KEY,
+                generation,
+                1,
+            )
+            .unwrap()
+            .to_message()
+            .unwrap();
+            listener.handle_message(message).await.unwrap();
+        }
+
+        assert_eq!(
+            durable_state.current(),
+            Some(2),
+            "old tracker offsets must not move a post-restore cache checkpoint forward"
         );
     }
 
