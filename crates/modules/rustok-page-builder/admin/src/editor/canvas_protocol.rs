@@ -1,5 +1,5 @@
 use crate::editor::CanvasComponentGeometry;
-use fly_web::{BrowserPoint, FLY_IFRAME_PROTOCOL, PointerSample};
+use fly_web::{BrowserPoint, FLY_IFRAME_PROTOCOL, MAX_IFRAME_MESSAGE_BYTES, PointerSample};
 use fly_ui::KeyStroke;
 use serde::{Deserialize, Serialize};
 
@@ -69,6 +69,9 @@ pub fn decode_canvas_message(
     expected_instance_id: &str,
     last_sequence: Option<u64>,
 ) -> Option<(u64, CanvasBridgeMessage)> {
+    if payload.len() > MAX_IFRAME_MESSAGE_BYTES {
+        return None;
+    }
     let envelope = serde_json::from_str::<CanvasBridgeEnvelope>(payload).ok()?;
     if !envelope.is_accepted(expected_instance_id, last_sequence) {
         return None;
@@ -160,4 +163,23 @@ mod tests {
         let (_, message) = decode_canvas_message(&payload, "canvas-a", Some(5)).expect("decode");
         assert!(matches!(message, CanvasBridgeMessage::KeyStroke { .. }));
     }
+
+    #[test]
+    fn decoder_rejects_oversized_messages_before_deserialization() {
+        let envelope = CanvasBridgeEnvelope {
+            protocol: FLY_IFRAME_PROTOCOL.to_string(),
+            instance_id: "canvas-a".to_string(),
+            sequence: 1,
+            message: CanvasBridgeMessage::Ready,
+        };
+        let payload = serde_json::to_string(&envelope).expect("serialize envelope");
+        // serde_json accepts trailing whitespace, so without the byte guard this remains valid.
+        let oversized = format!(
+            "{payload}{}",
+            " ".repeat(MAX_IFRAME_MESSAGE_BYTES.saturating_sub(payload.len()) + 1)
+        );
+        assert!(oversized.len() > MAX_IFRAME_MESSAGE_BYTES);
+        assert!(decode_canvas_message(&oversized, "canvas-a", None).is_none());
+    }
+
 }

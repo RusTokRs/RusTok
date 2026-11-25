@@ -11,6 +11,17 @@ use serde::{Deserialize, Serialize};
 
 pub const FLY_IFRAME_PROTOCOL: &str = "fly_iframe";
 
+/// Maximum UTF-8 payload size accepted by the iframe bridge (inbound and outbound).
+///
+/// Canvas geometry snapshots are bounded independently by the component-count limit. This
+/// protocol ceiling prevents a compromised or malformed frame from forcing unbounded JSON
+/// deserialization and keeps host messages within the same explicit resource budget.
+pub const MAX_IFRAME_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
+
+pub(crate) fn iframe_message_payload_within_limit(payload: &str) -> bool {
+    payload.len() <= MAX_IFRAME_MESSAGE_BYTES
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub struct BrowserPoint {
     pub x: f64,

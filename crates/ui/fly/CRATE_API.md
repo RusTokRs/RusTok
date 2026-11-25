@@ -12,7 +12,7 @@ Fly Visual Editor Engine: framework-neutral visual editor engine, AST models, de
 - `History`, `HistoryEntry`: Undo/redo history manager with configurable serialized-size budget (`DEFAULT_HISTORY_MEMORY_BUDGET_BYTES`), accounting for both snapshot stacks and commands.
 - `ProjectDocument::clone_as_page(&mut IdGenerator) -> FlyResult<ProjectDocument>` and `ProjectFragment::remap_ids(&mut IdGenerator) -> FlyResult<BTreeMap<String, String>>`: reissue owned identities and references; ambiguous source identities fail before consuming the generator.
 - `EditorCommand`: Atomic document manipulation commands (`InsertComponent`, `RemoveComponent`, `UpdateAttributes`, `PatchStyleRule`, etc.).
-- `PageCommand`, `PageLocator`, `PagePatch`: Page add/remove/move/patch operations; page identity is optional for legacy documents, but an explicit `id` patch must be a non-empty string and is cleared only through `remove_fields`.
+- `PageCommand`, `PageLocator`, `PagePatch`: Page add/remove/move/patch operations; page identity is optional for legacy documents, but an explicit id on add or patch must be a valid identifier and is cleared only through `remove_fields`.
 - `ProjectBundle`, `BundleInspection`: Exportable, versioned project archive (`encode_project_bundle`, `decode_project_bundle`, `inspect_project_bundle`).
 - `AuditReport`, `AuditDiagnostic`: Preflight page auditing models for accessibility, broken links, and SEO metadata.
 - `DesignToken`, `ThemeCommand`: Design token management (`Upsert`, `Remove`, `Rename` with automatic usage rewriting, `Replace`), `find_token_usages`, and reversible history tracking.

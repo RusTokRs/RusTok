@@ -15,7 +15,8 @@ mod foundation;
 pub use foundation::{
     AutoScrollDelta, AutoScrollPolicy, BrowserDropTarget, BrowserHitTarget, BrowserPoint,
     BrowserRect, CleanupRegistry, CoordinateTransform, DropAxis, DropZonePolicy,
-    FLY_IFRAME_PROTOCOL, IframeBridgeEnvelope, IframeBridgeMessage, PointerKind, PointerSample,
+    FLY_IFRAME_PROTOCOL, IframeBridgeEnvelope, IframeBridgeMessage, MAX_IFRAME_MESSAGE_BYTES,
+    PointerKind, PointerSample,
     auto_scroll_delta, hit_test_drop_targets, normalize_hit_targets, resolve_drop_position,
 };
 

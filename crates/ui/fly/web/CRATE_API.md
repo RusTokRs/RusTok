@@ -13,6 +13,7 @@ Framework-neutral browser runtime, geometric transforms, hit-testing, and iframe
 
 ### Iframe Protocol & Origin Security
 - `FLY_IFRAME_PROTOCOL`: Protocol version identifier (`"fly_iframe"`).
+- `MAX_IFRAME_MESSAGE_BYTES`: 4 MiB UTF-8 payload ceiling enforced before inbound JSON parsing and outbound `postMessage`.
 - `IframeBridgeEnvelope`, `IframeBridgeMessage`: postMessage protocol envelope with sequence verification and replay defense.
 - `OPAQUE_ORIGIN`: Opaque iframe origin constant (`"null"`).
 - `normalize_expected_origin(...)`, `outbound_target_origin(...)`: Origin sanitizers preventing cross-origin data leakage.
@@ -25,6 +26,7 @@ Framework-neutral browser runtime, geometric transforms, hit-testing, and iframe
 ## 2. Invariants & Business Rules
 - **Safe Code Boundary**: The crate denies unsafe code (`#![deny(unsafe_code)]`).
 - **Origin Boundary Enforcement**: Inbound postMessage events are validated against expected origins; outbound messages translate opaque origins (`"null"`) to `*` to satisfy browser security specifications.
+- **Bounded Iframe Messages**: Inbound and outbound bridge payloads are capped at 4 MiB before parsing or posting.
 - **Framework Neutrality**: Pure browser runtime and math primitives without dependencies on Leptos, Dioxus, or React.
 - **Fail-Closed Geometry**: Non-finite coordinates (NaN, Inf) or degenerate transforms hit nothing and produce no drop positions.
 
@@ -39,5 +41,5 @@ Framework-neutral browser runtime, geometric transforms, hit-testing, and iframe
 - Bounded text payload limits (`MAX_INLINE_TEXT_BYTES`) protect against memory exhaustion.
 
 ## 5. Contract Tests & Verification
-- Unit test suite: 30 tests covering candidate ranking, coordinate transform roundtripping, auto-scroll bounds, origin normalization, and inline edit grant security.
+- Unit test suite covers candidate ranking, coordinate transform roundtripping, auto-scroll bounds, origin normalization, bounded iframe payloads, and inline edit grant security.
 - `src/contract_tests.rs`: Direct verification of package metadata, geometric contracts, origin sanitization, and cleanup registry mechanics.

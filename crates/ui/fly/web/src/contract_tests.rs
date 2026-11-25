@@ -67,4 +67,17 @@ fn test_cleanup_registry_contract() {
 
     cleanup.cleanup();
     assert!(cleanup.is_empty());
+
+#[test]
+fn iframe_message_payload_limit_is_enforced_in_utf8_bytes() {
+    let at_limit = "é".repeat(MAX_IFRAME_MESSAGE_BYTES / 2);
+    assert_eq!(at_limit.len(), MAX_IFRAME_MESSAGE_BYTES);
+    assert!(crate::foundation::iframe_message_payload_within_limit(&at_limit));
+
+    let over_limit = format!("{at_limit}é");
+    assert!(!crate::foundation::iframe_message_payload_within_limit(
+        &over_limit
+    ));
+}
+
 }
