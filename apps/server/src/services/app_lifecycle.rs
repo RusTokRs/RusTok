@@ -1911,6 +1911,24 @@ fn spawn_seo_bulk_worker_handle(
     }
 }
 
+/// Runs the database-only reaper pass until it completes or host shutdown is
+/// signalled. Each candidate is committed in its own transaction, so cancelling
+/// the pass preserves completed requeues and leaves uncommitted expired leases
+/// eligible for discovery on the next run.
+async fn run_remote_executor_reaper_pass<F>(
+    stop_rx: &mut tokio::sync::watch::Receiver<bool>,
+    pass: F,
+) -> Option<F::Output>
+where
+    F: std::future::Future,
+{
+    tokio::select! {
+        biased;
+        _ = stop_rx.changed() => None,
+        result = pass => Some(result),
+    }
+}
+
 async fn remote_executor_reaper_loop(
     runtime_ctx: ServerRuntimeContext,
     scan_interval_ms: u64,
@@ -1925,7 +1943,18 @@ async fn remote_executor_reaper_loop(
             return;
         }
 
-        match governance.requeue_expired_remote_validation_claims().await {
+        let Some(result) = run_remote_executor_reaper_pass(
+            &mut stop_rx,
+            governance.requeue_expired_remote_validation_claims(),
+        )
+        .await
+        else {
+            tracing::info!(
+                "Remote executor reaper stopped during an active pass; committed requeues remain durable"
+            );
+            return;
+        };
+        match result {
             Ok(requeued) if requeued > 0 => tracing::info!(
                 requeued,
                 "Remote executor reaper requeued expired validation stage claims"
@@ -3115,5 +3144,36 @@ mod installer_job_task_registry_tests {
             "aborting the timed-out JoinSet must drop the in-flight task"
         );
         assert!(!registry.spawn(async {}), "drained registry stays closed");
+    }
+}
+
+#[cfg(test)]
+mod remote_executor_reaper_shutdown_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn stop_cancels_an_in_flight_reaper_pass() {
+        let (stop_tx, mut stop_rx) = tokio::sync::watch::channel(false);
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(async move {
+            let pass = async move {
+                let _ = started_tx.send(());
+                std::future::pending::<usize>().await
+            };
+            run_remote_executor_reaper_pass(&mut stop_rx, pass).await
+        });
+
+        started_rx.await.expect("reaper pass started");
+        stop_tx.send(true).expect("send stop signal");
+        assert!(task.await.expect("join reaper task").is_none());
+    }
+
+    #[tokio::test]
+    async fn completed_reaper_pass_returns_its_result() {
+        let (_stop_tx, mut stop_rx) = tokio::sync::watch::channel(false);
+        assert_eq!(
+            run_remote_executor_reaper_pass(&mut stop_rx, async { 7_usize }).await,
+            Some(7)
+        );
     }
 }
