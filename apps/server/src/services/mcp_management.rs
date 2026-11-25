@@ -122,6 +122,8 @@ const MCP_SCAFFOLD_STATUS_APPLYING: &str = "applying";
 const MCP_SCAFFOLD_STATUS_APPLIED: &str = "applied";
 const MCP_SCAFFOLD_STATUS_RECOVERY_REQUIRED: &str = "recovery_required";
 
+static MCP_SCAFFOLD_APPLY_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+
 impl McpManagementService {
     #[tracing::instrument(
         skip(db, input),
@@ -659,6 +661,13 @@ impl McpManagementService {
             )
             .await?;
 
+        // The host workspace is shared by all tenants in this process. Serialize
+        // filesystem applies so two drafts cannot both pass the target-exists
+        // check and interleave writes to the same crate directory.
+        let workspace_apply_lock =
+            MCP_SCAFFOLD_APPLY_LOCK.get_or_init(|| tokio::sync::Mutex::new(()));
+        let workspace_apply_guard = workspace_apply_lock.lock().await;
+
         let draft = Self::claim_scaffold_draft_for_apply(
             db,
             tenant_id,
@@ -669,6 +678,19 @@ impl McpManagementService {
             &workspace_root,
         )
         .await?;
+
+        let host_authority_actor_id = crate::host_authority::current_host_authority()
+            .map(|authority| authority.actor_id());
+        let mut recovery_guard = ScaffoldApplyRecoveryGuard::new(
+            db.clone(),
+            tenant_id,
+            draft.clone(),
+            input.applied_by,
+            input.actor_id.clone(),
+            input.actor_type.clone(),
+            workspace_root.clone(),
+            host_authority_actor_id,
+        );
 
         let staged_draft = match draft.to_staged_draft() {
             Ok(staged_draft) => staged_draft,
@@ -688,21 +710,23 @@ impl McpManagementService {
                     &reason,
                 )
                 .await?;
+                recovery_guard.disarm();
                 return Err(Error::BadRequest(reason));
             }
         };
 
+        let file_paths = staged_draft
+            .preview
+            .files
+            .iter()
+            .map(|file| file.path.clone())
+            .collect::<Vec<_>>();
         if let Err(error) =
             crate::services::mcp_scaffold_workspace::validate_mcp_scaffold_target_path(
                 &workspace_root,
                 &staged_draft.preview.crate_name,
                 &staged_draft.preview.crate_path,
-                &staged_draft
-                    .preview
-                    .files
-                    .iter()
-                    .map(|file| file.path.clone())
-                    .collect::<Vec<_>>(),
+                &file_paths,
             )
             .await
         {
@@ -718,6 +742,7 @@ impl McpManagementService {
                 &reason,
             )
             .await?;
+            recovery_guard.disarm();
             return Err(error);
         }
 
@@ -725,6 +750,7 @@ impl McpManagementService {
         // work off Tokio's async workers; a panic or partial write is quarantined below.
         let apply_workspace_root = workspace_root.clone();
         let apply_result = match tokio::task::spawn_blocking(move || {
+            let _workspace_apply_guard = workspace_apply_guard;
             apply_staged_scaffold(&staged_draft, &apply_workspace_root)
         })
         .await
@@ -739,7 +765,7 @@ impl McpManagementService {
                         "MCP scaffold filesystem write failed; workspace may contain partial files"
                     );
                     let recovery_reason = "Scaffold filesystem write failed; the target workspace may contain partial files and requires manual reconciliation";
-                    if let Err(mark_error) = Self::mark_scaffold_apply_recovery_required(
+                    match Self::mark_scaffold_apply_recovery_required(
                         db,
                         tenant_id,
                         &draft,
@@ -747,15 +773,17 @@ impl McpManagementService {
                         input.actor_id.clone(),
                         input.actor_type.clone(),
                         &workspace_root,
+                        host_authority_actor_id,
                         recovery_reason,
                     )
                     .await
                     {
-                        tracing::error!(
+                        Ok(()) => recovery_guard.disarm(),
+                        Err(mark_error) => tracing::error!(
                             draft_id = %draft_id,
                             error = ?mark_error,
                             "Failed to persist MCP scaffold recovery-required state"
-                        );
+                        ),
                     }
                     return Err(Error::InternalServerError);
                 }
@@ -771,6 +799,7 @@ impl McpManagementService {
                     &reason,
                 )
                 .await?;
+                recovery_guard.disarm();
                 return Err(Error::BadRequest(reason));
             }
             Err(join_error) if join_error.is_cancelled() => {
@@ -786,6 +815,7 @@ impl McpManagementService {
                     reason,
                 )
                 .await?;
+                recovery_guard.disarm();
                 return Err(Error::InternalServerError);
             }
             Err(join_error) => {
@@ -795,7 +825,7 @@ impl McpManagementService {
                     "MCP scaffold apply worker panicked; workspace may contain partial files"
                 );
                 let recovery_reason = "Scaffold apply worker panicked; the target workspace may contain partial files and requires manual reconciliation";
-                if let Err(mark_error) = Self::mark_scaffold_apply_recovery_required(
+                match Self::mark_scaffold_apply_recovery_required(
                     db,
                     tenant_id,
                     &draft,
@@ -803,15 +833,17 @@ impl McpManagementService {
                     input.actor_id.clone(),
                     input.actor_type.clone(),
                     &workspace_root,
+                    host_authority_actor_id,
                     recovery_reason,
                 )
                 .await
                 {
-                    tracing::error!(
+                    Ok(()) => recovery_guard.disarm(),
+                    Err(mark_error) => tracing::error!(
                         draft_id = %draft_id,
                         error = ?mark_error,
                         "Failed to persist MCP scaffold recovery-required state"
-                    );
+                    ),
                 }
                 return Err(Error::InternalServerError);
             }
@@ -826,8 +858,6 @@ impl McpManagementService {
             active.updated_at = Set(Utc::now().into());
             let updated = active.update(&txn).await.map_err(map_db_err)?;
 
-            let host_authority_actor_id = crate::host_authority::current_host_authority()
-                .map(|authority| authority.actor_id());
             Self::record_audit_event_txn(
                 &txn,
                 RecordMcpAuditEventInput {
@@ -869,7 +899,7 @@ impl McpManagementService {
             Ok(updated) => updated,
             Err(error) => {
                 let recovery_reason = "Scaffold files were written but database finalization failed; the target workspace requires manual reconciliation";
-                if let Err(mark_error) = Self::mark_scaffold_apply_recovery_required(
+                match Self::mark_scaffold_apply_recovery_required(
                     db,
                     tenant_id,
                     &draft,
@@ -877,20 +907,23 @@ impl McpManagementService {
                     input.actor_id.clone(),
                     input.actor_type.clone(),
                     &workspace_root,
+                    host_authority_actor_id,
                     recovery_reason,
                 )
                 .await
                 {
-                    tracing::error!(
+                    Ok(()) => recovery_guard.disarm(),
+                    Err(mark_error) => tracing::error!(
                         draft_id = %draft_id,
                         error = ?mark_error,
                         "Failed to persist MCP scaffold recovery-required state after finalization failure"
-                    );
+                    ),
                 }
                 return Err(error);
             }
         };
 
+        recovery_guard.disarm();
         Ok((updated, apply_result))
     }
 
@@ -981,6 +1014,7 @@ impl McpManagementService {
         actor_id: Option<String>,
         actor_type: Option<String>,
         workspace_root: &str,
+        host_authority_actor_id: Option<Uuid>,
         reason: &str,
     ) -> Result<()> {
         let txn = db.begin().await.map_err(map_db_err)?;
@@ -1065,8 +1099,6 @@ impl McpManagementService {
             .map_err(map_db_err)?
             .ok_or(Error::NotFound)?;
 
-        let host_authority_actor_id = crate::host_authority::current_host_authority()
-            .map(|authority| authority.actor_id());
         Self::record_audit_event_txn(
             &txn,
             RecordMcpAuditEventInput {
@@ -1348,6 +1380,97 @@ fn map_db_err(_err: sea_orm::DbErr) -> Error {
         "MCP management database operation failed"
     );
     Error::InternalServerError
+}
+
+struct ScaffoldApplyRecoveryGuard {
+    db: DatabaseConnection,
+    tenant_id: Uuid,
+    draft: mcp_scaffold_drafts::Model,
+    applied_by: Option<Uuid>,
+    actor_id: Option<String>,
+    actor_type: Option<String>,
+    workspace_root: String,
+    host_authority_actor_id: Option<Uuid>,
+    armed: bool,
+}
+
+impl ScaffoldApplyRecoveryGuard {
+    fn new(
+        db: DatabaseConnection,
+        tenant_id: Uuid,
+        draft: mcp_scaffold_drafts::Model,
+        applied_by: Option<Uuid>,
+        actor_id: Option<String>,
+        actor_type: Option<String>,
+        workspace_root: String,
+        host_authority_actor_id: Option<Uuid>,
+    ) -> Self {
+        Self {
+            db,
+            tenant_id,
+            draft,
+            applied_by,
+            actor_id,
+            actor_type,
+            workspace_root,
+            host_authority_actor_id,
+            armed: true,
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for ScaffoldApplyRecoveryGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+
+        let db = self.db.clone();
+        let tenant_id = self.tenant_id;
+        let draft = self.draft.clone();
+        let applied_by = self.applied_by;
+        let actor_id = self.actor_id.clone();
+        let actor_type = self.actor_type.clone();
+        let workspace_root = self.workspace_root.clone();
+        let host_authority_actor_id = self.host_authority_actor_id;
+        let draft_id = draft.id;
+        let reason = "Scaffold apply task was cancelled before finalization; the target workspace may contain partial files and requires manual reconciliation";
+
+        match tokio::runtime::Handle::try_current() {
+            Ok(handle) => {
+                handle.spawn(async move {
+                    if let Err(error) = McpManagementService::mark_scaffold_apply_recovery_required(
+                        &db,
+                        tenant_id,
+                        &draft,
+                        applied_by,
+                        actor_id,
+                        actor_type,
+                        &workspace_root,
+                        host_authority_actor_id,
+                        reason,
+                    )
+                    .await
+                    {
+                        tracing::error!(
+                            draft_id = %draft_id,
+                            error = ?error,
+                            "Failed to quarantine cancelled MCP scaffold apply"
+                        );
+                    }
+                });
+            }
+            Err(error) => tracing::error!(
+                draft_id = %draft_id,
+                %error,
+                "Cannot quarantine cancelled MCP scaffold apply without an active Tokio runtime"
+            ),
+        }
+    }
 }
 
 #[cfg(test)]
