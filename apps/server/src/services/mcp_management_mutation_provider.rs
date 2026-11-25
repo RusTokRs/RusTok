@@ -249,8 +249,8 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
                 client_id: command.client_id,
                 request: command.request,
                 created_by: Some(context.actor_id),
-                audit_actor_id: Some(context.actor_id.to_string()),
-                audit_actor_type: Some("human_user".to_string()),
+                actor_id: Some(context.actor_id.to_string()),
+                actor_type: Some("human_user".to_string()),
             },
         )
         .await
