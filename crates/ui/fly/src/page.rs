@@ -104,6 +104,7 @@ impl ProjectDocument {
 
     pub fn page_mut(&mut self, locator: &PageLocator) -> FlyResult<&mut ProjectPage> {
         let index = locator.resolve(self)?;
+        self.invalidate_caches();
         self.project
             .pages
             .get_mut(index)
@@ -391,6 +392,18 @@ mod tests {
                 .component_rule("hero-a", &StyleRuleScope::Base)
                 .is_none()
         );
+    }
+
+    #[test]
+    fn mutable_page_access_invalidates_document_hash_cache() {
+        let mut document = document();
+        let before = document.hash();
+        document
+            .page_mut(&PageLocator::by_id("a"))
+            .expect("mutable page")
+            .extensions
+            .insert("customField".to_string(), json!("updated"));
+        assert_ne!(document.hash(), before);
     }
 
     #[test]
