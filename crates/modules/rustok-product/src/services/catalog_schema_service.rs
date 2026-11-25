@@ -156,6 +156,22 @@ impl CreateProductAttributeInput {
                 "attribute requires at least one translation".into(),
             ));
         }
+        let mut seen_locales = std::collections::BTreeSet::new();
+        for translation in &self.translations {
+            validate_unique_translation_locale(&mut seen_locales, &translation.locale)?;
+            validate_translation_label("attribute label", &translation.label)?;
+            validate_optional_translation_text(
+                "attribute help_text",
+                translation.help_text.as_deref(),
+                4096,
+            )?;
+            if let Some(label) = translation.facet_label.as_deref() {
+                validate_translation_label("attribute facet_label", label)?;
+            }
+            if let Some(label) = translation.seo_label.as_deref() {
+                validate_translation_label("attribute seo_label", label)?;
+            }
+        }
         Ok(())
     }
 }
@@ -206,13 +222,10 @@ impl CreateProductAttributeOptionInput {
                 "attribute option requires at least one translation".into(),
             ));
         }
+        let mut seen_locales = std::collections::BTreeSet::new();
         for translation in &self.translations {
-            validate_locale(&translation.locale)?;
-            if translation.label.trim().is_empty() {
-                return Err(CommerceError::Validation(
-                    "attribute option label must not be empty".into(),
-                ));
-            }
+            validate_unique_translation_locale(&mut seen_locales, &translation.locale)?;
+            validate_translation_label("attribute option label", &translation.label)?;
         }
         Ok(())
     }
@@ -329,6 +342,16 @@ impl CreateProductAttributeSchemaInput {
             return Err(CommerceError::Validation(
                 "schema requires at least one translation".into(),
             ));
+        }
+        let mut seen_locales = std::collections::BTreeSet::new();
+        for translation in &self.translations {
+            validate_unique_translation_locale(&mut seen_locales, &translation.locale)?;
+            validate_translation_label("schema name", &translation.name)?;
+            validate_optional_translation_text(
+                "schema description",
+                translation.description.as_deref(),
+                4096,
+            )?;
         }
         Ok(())
     }
@@ -1436,11 +1459,54 @@ where
 }
 
 fn validate_locale(locale: &str) -> CommerceResult<()> {
-    let locale = locale.trim();
-    if locale.is_empty() || locale.len() > 32 {
+    if locale.is_empty() || locale.len() > 32 || locale.trim() != locale {
         return Err(CommerceError::Validation(
-            "locale must be 1..32 characters".into(),
+            "locale must be a canonical BCP 47 tag of at most 32 characters".into(),
         ));
+    }
+
+    let canonical = rustok_api::TenantLocale::new(locale).map_err(|_| {
+        CommerceError::Validation("locale must be a valid canonical BCP 47 tag".into())
+    })?;
+    if canonical.as_str() != locale {
+        return Err(CommerceError::Validation(
+            "locale must use canonical BCP 47 casing and separators".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_unique_translation_locale(
+    seen_locales: &mut std::collections::BTreeSet<String>,
+    locale: &str,
+) -> CommerceResult<()> {
+    validate_locale(locale)?;
+    if !seen_locales.insert(locale.to_owned()) {
+        return Err(CommerceError::Validation(format!(
+            "translation locale {locale} must be unique"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_translation_label(field: &str, value: &str) -> CommerceResult<()> {
+    if value.trim().is_empty() || value.chars().count() > 255 || value.contains('\0') {
+        return Err(CommerceError::Validation(format!(
+            "{field} must be 1..255 characters and contain no NUL"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_optional_translation_text(
+    field: &str,
+    value: Option<&str>,
+    max_chars: usize,
+) -> CommerceResult<()> {
+    if value.is_some_and(|value| value.chars().count() > max_chars || value.contains('\0')) {
+        return Err(CommerceError::Validation(format!(
+            "{field} must not exceed {max_chars} characters or contain NUL"
+        )));
     }
     Ok(())
 }
@@ -1504,13 +1570,10 @@ fn validate_group_translations(
             "attribute group requires at least one translation".into(),
         ));
     }
+    let mut seen_locales = std::collections::BTreeSet::new();
     for translation in translations {
-        validate_locale(&translation.locale)?;
-        if translation.label.trim().is_empty() || translation.label.len() > 255 {
-            return Err(CommerceError::Validation(
-                "attribute group label must be 1..255 characters".into(),
-            ));
-        }
+        validate_unique_translation_locale(&mut seen_locales, &translation.locale)?;
+        validate_translation_label("attribute group label", &translation.label)?;
     }
     Ok(())
 }
@@ -1533,6 +1596,54 @@ mod tests {
             nested = serde_json::json!({ "nested": nested });
         }
         assert!(validate_bounded_json("metadata", &nested).is_err());
+    }
+
+    #[test]
+    fn locale_validation_requires_canonical_bcp47_tags() {
+        assert!(validate_locale("en-US").is_ok());
+        assert!(validate_locale("ru-RU").is_ok());
+        assert!(validate_locale("en_us").is_err());
+        assert!(validate_locale("EN").is_err());
+        assert!(validate_locale(" en-US ").is_err());
+    }
+
+    fn valid_attribute_input(locale: &str) -> CreateProductAttributeInput {
+        CreateProductAttributeInput {
+            code: "color".to_owned(),
+            value_type: AttributeValueType::Text,
+            scope: "product".to_owned(),
+            is_localized: true,
+            is_filterable: false,
+            is_searchable: false,
+            is_sortable: false,
+            is_comparable: false,
+            show_on_storefront: true,
+            show_in_admin_grid: false,
+            search_weight: 0,
+            filter_display: None,
+            facet_mode: None,
+            position: 0,
+            validation: serde_json::json!({}),
+            default_value: None,
+            metadata: serde_json::json!({}),
+            translations: vec![AttributeTranslationInput {
+                locale: locale.to_owned(),
+                label: "Color".to_owned(),
+                help_text: None,
+                facet_label: None,
+                seo_label: None,
+            }],
+        }
+    }
+
+    #[test]
+    fn create_attribute_rejects_noncanonical_and_duplicate_translation_locales() {
+        assert!(valid_attribute_input("en-US").validate().is_ok());
+        assert!(valid_attribute_input("en_us").validate().is_err());
+
+        let mut duplicate = valid_attribute_input("en-US");
+        duplicate.translations.push(duplicate.translations[0].clone());
+        assert!(duplicate.validate().is_err());
     }
 
     #[test]
