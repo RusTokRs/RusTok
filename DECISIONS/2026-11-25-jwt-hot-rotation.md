@@ -1,8 +1,18 @@
 # Process-local JWT keyring publication
 
-- Status: Accepted
-- Implementation status: In progress (source implementation; compilation and runtime evidence pending)
-- Extends [immutable prepared JWT snapshots](2026-11-25-jwt-prepared-keyring.md).
+- Date: 2026-11-25
+- Decision status: Accepted
+- Implementation status: In progress
+- Owners: Auth; server host composition
+- Extends: [Immutable prepared JWT snapshots](2026-11-25-jwt-prepared-keyring.md)
+- Supersedes: None
+- Superseded by: None
+
+## Context
+
+Immutable prepared snapshots protect a single configuration, but the server
+clones AuthConfig into long-lived providers. Replacing only a host variable
+would leave those providers on obsolete signing and verification material.
 
 ## Decision
 
@@ -25,6 +35,28 @@ unavailable candidates retain the last-known-good snapshot. No stale raw
 initial signer is retained by the live configuration after replacement.
 No request, secret or key material is written to logs. No lock spans async
 business IO.
+
+## Sources of truth and ownership
+
+The trusted deployment file is the source for candidate key material and
+generation. Auth's validated process-local snapshot is the sole crypto runtime
+authority. The host owns file IO, production validation and publication timing;
+Auth owns parsing, cryptographic admission and the publication fence.
+
+## Invariants and concurrency boundary
+
+A reader holds exactly one prepared snapshot for a synchronous cryptographic
+operation. A writer compares generations and successor identity under the
+same lock before replacing the entire value. The lock is not a database
+transaction. There is no new persisted state or event projection. Tenant,
+channel and locale are not keyring selection inputs; token purpose and existing
+signed tenant/issuer/audience claims remain the authority boundaries.
+
+## Failure semantics
+
+Startup fails if the configured source cannot be admitted. Reload failures
+retain the admitted process snapshot. The generation floor is not persistent.
+No secret payload or raw key is logged.
 
 ## Scope and rollout
 

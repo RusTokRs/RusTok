@@ -2,7 +2,7 @@
 
 use std::{net::SocketAddr, path::{Path, PathBuf}, time::Duration};
 
-use sha2::{Digest, Sha256};
+use rustok_api::sha256_digest;
 use tokio::io::AsyncReadExt;
 
 use sea_orm::{ConnectOptions, Database};
@@ -64,10 +64,19 @@ struct AuthConfig {
     jwt: JwtConfig,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct JwtConfig {
     secret: String,
     expiration: u64,
+}
+
+impl std::fmt::Debug for JwtConfig {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.debug_struct("JwtConfig")
+            .field("secret", &"<redacted>")
+            .field("expiration", &self.expiration)
+            .finish()
+    }
 }
 
 /// Starts the HTTP-only Axum host.
@@ -106,7 +115,7 @@ pub async fn run() -> Result<()> {
     )?;
     let (auth_config, reload) = if let Some(path) = keyring_path {
         let bytes = read_jwt_keyring_file(&path).await?;
-        let digest: [u8; 32] = Sha256::digest(&bytes).into();
+        let digest: [u8; 32] = sha256_digest(&[&bytes]);
         let (generation, candidate) = base_auth_config.prepare_jwt_document(&bytes)
             .map_err(crate::auth::auth_err)?;
         validate_auth_deployment(&candidate, production)?;
@@ -614,7 +623,7 @@ impl JwtFileReload {
                     continue;
                 }
             };
-            let digest: [u8; 32] = Sha256::digest(&bytes).into();
+            let digest: [u8; 32] = sha256_digest(&[&bytes]);
             if digest == self.digest {
                 continue;
             }
@@ -753,6 +762,24 @@ mod tests {
         validate_https_deployment,
     };
     use crate::common::settings::RuntimeHostMode;
+
+    #[test]
+    fn jwt_file_source_cannot_be_combined_with_startup_crypto_overrides() {
+        assert!(super::validate_keyring_file_source(&serde_json::json!({
+            "auth": {"issuer": "https://api.example.com", "min_password_length": 15}
+        })).is_ok());
+        for field in ["algorithm", "jwt_keyring_env", "jwt_special_keyrings_env",
+            "rsa_private_key_pem", "rsa_public_key_pem", "rsa_private_key_env",
+            "rsa_public_key_env"] {
+            let mut value = serde_json::json!({"auth": {}});
+            value["auth"][field] = serde_json::json!("configured");
+            assert!(super::validate_keyring_file_source(&value).is_err());
+        }
+        let rendered = format!("{:?}", super::JwtConfig {
+            secret: "sensitive-root-value".to_string(), expiration: 900,
+        });
+        assert!(!rendered.contains("sensitive-root-value"));
+    }
 
     #[tokio::test]
     async fn host_shutdown_runs_after_success_and_preserves_startup_error() {

@@ -334,7 +334,7 @@ impl AuthConfig {
     ) -> Self {
         // A builder creates a detached fixed configuration, never a publication.
         // On an unavailable live source keep the failing source rather than
-        // constructing a default signer. The fallible builder is preferred.
+        // constructing a default signer.
         if let Err(error) = self.edit_key_inputs(|inputs| {
             inputs.algorithm = JwtAlgorithm::RS256;
             inputs.rsa_private_key_pem = Some(private_key_pem.into());
@@ -775,6 +775,51 @@ mod tests {
         )).unwrap();
         assert!(publisher.publish(g, reused).is_err());
         assert_eq!(publisher.generation().unwrap(), 2);
+    }
+
+    #[test]
+    fn live_rotation_supports_stage_promote_and_retire() {
+        use crate::{decode_access_token, encode_access_token};
+        use rustok_core::UserRole;
+        use uuid::Uuid;
+        let old_secret = "first-independent-signing-key-at-least-32-bytes";
+        let new_secret = "second-independent-signing-key-at-least-32-bytes";
+        let base = AuthConfig::new(secret());
+        let (generation, first) = base.prepare_jwt_document(&document(1, "one", old_secret)).unwrap();
+        let (live, publisher) = first.into_live_jwt(generation).unwrap();
+        let existing_clone = live.clone();
+        let issue = || encode_access_token(
+            &existing_clone, Uuid::new_v4(), Uuid::new_v4(), UserRole::Customer, Uuid::new_v4(),
+        ).unwrap();
+        let old = issue();
+        let until = chrono::Utc::now().timestamp() + 3600;
+        let with_history = |generation, active_kid, active_secret, history_kid, history_secret| {
+            let mut value: serde_json::Value = serde_json::from_slice(
+                &document(generation, active_kid, active_secret)
+            ).unwrap();
+            value["access"]["keyring"]["verification_keys"] = serde_json::json!([{
+                "kid": history_kid, "material": history_secret, "verify_until": until
+            }]);
+            serde_json::to_vec(&value).unwrap()
+        };
+        let (g, staged) = publisher.prepare_document(
+            &with_history(2, "one", old_secret, "two", new_secret)
+        ).unwrap();
+        publisher.publish(g, staged).unwrap();
+        assert_eq!(jsonwebtoken::decode_header(&issue()).unwrap().kid.as_deref(), Some("one"));
+        let (g, promoted) = publisher.prepare_document(
+            &with_history(3, "two", new_secret, "one", old_secret)
+        ).unwrap();
+        publisher.publish(g, promoted).unwrap();
+        let fresh = issue();
+        assert_eq!(jsonwebtoken::decode_header(&fresh).unwrap().kid.as_deref(), Some("two"));
+        assert!(decode_access_token(&live, &old).is_ok());
+        assert!(decode_access_token(&live, &fresh).is_ok());
+        let (g, retired) = publisher.prepare_document(&document(4, "two", new_secret)).unwrap();
+        publisher.publish(g, retired).unwrap();
+        assert!(decode_access_token(&existing_clone, &old).is_err());
+        assert!(decode_access_token(&existing_clone, &fresh).is_ok());
+        assert_eq!(publisher.generation().unwrap(), 4);
     }
 
     #[test]
