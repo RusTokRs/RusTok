@@ -40,15 +40,6 @@ pub struct EmailVerificationClaims {
 // Thin wrappers that convert `rustok_auth::AuthError` to the server error bridge.
 // All server code imports from `crate::auth`, never directly from `rustok_auth`.
 
-/// Build `AuthConfig` from the host configuration snapshot.
-pub fn auth_config_from_host_settings(
-    secret: String,
-    access_expiration: u64,
-    settings: Option<&serde_json::Value>,
-) -> Result<AuthConfig> {
-    auth_config_from_parts(secret, access_expiration, parse_auth_settings(settings)?)
-}
-
 fn parse_auth_settings(settings: Option<&serde_json::Value>) -> Result<AuthSettingsOverrides> {
     let app_settings = settings
         .map(|value| serde_json::from_value::<AppSettings>(value.clone()))
@@ -66,14 +57,6 @@ pub(crate) fn auth_config_from_host_document(
     rustok_auth::build_auth_config_from_document(
         secret, access_expiration, parse_auth_settings(settings)?, bytes,
     ).map_err(auth_err)
-}
-
-fn auth_config_from_parts(
-    secret: String,
-    access_expiration: u64,
-    auth_settings: AuthSettingsOverrides,
-) -> Result<AuthConfig> {
-    rustok_auth::build_auth_config(secret, access_expiration, auth_settings).map_err(auth_err)
 }
 
 /// Fresh, complete RSA configuration for an isolated server test runtime.
@@ -368,30 +351,37 @@ mod tests {
     }
 
     #[test]
-    fn auth_config_rejects_rs256_without_keys() {
-        let result = auth_config_from_parts(
-            secret(),
-            900,
-            AuthSettingsOverrides {
-                algorithm: Some(JwtAlgorithm::RS256),
-                ..AuthSettingsOverrides::default()
-            },
-        );
-
-        assert!(result.is_err());
-    }
-
-    #[test]
     fn auth_config_rejects_malformed_nested_auth_settings() {
         let settings = serde_json::json!({
             "auth": {
                 "algorithm": "RS999"
             }
         });
+        let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
+        let document = fixture.document(1).to_string();
 
-        let result = auth_config_from_host_settings(secret(), 900, Some(&settings));
+        let result = auth_config_from_host_document(
+            secret(), 900, Some(&settings), document.as_bytes(),
+        );
 
         assert!(matches!(result, Err(crate::error::Error::Json(_))));
+    }
+
+    #[test]
+    fn auth_config_rejects_startup_algorithm_overrides_with_file_source() {
+        let settings = serde_json::json!({
+            "auth": {
+                "algorithm": "RS256"
+            }
+        });
+        let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
+        let document = fixture.document(1).to_string();
+
+        let result = auth_config_from_host_document(
+            secret(), 900, Some(&settings), document.as_bytes(),
+        );
+
+        assert!(result.is_err());
     }
 
     #[test]
@@ -457,8 +447,12 @@ mod tests {
         }
         let other = rsa_test_config("another-secret-at-least-thirty-two-bytes".to_string(), &document);
         assert!(!password_reset_credential_matches(&other, "hash", &tag));
-        let weak = AuthConfig::new("short".to_string());
-        assert!(!password_reset_credential_matches(&weak, "hash", &tag));
+        assert!(
+            auth_config_from_host_document(
+                "short".to_string(), 900, None, document.to_string().as_bytes(),
+            ).is_err(),
+            "a weak MAC root must fail during Auth preparation",
+        );
     }
 
     #[test]
