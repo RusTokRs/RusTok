@@ -1667,6 +1667,7 @@ mod tests {
             FLY_RUNTIME_CONTEXT_SCHEMA_FIELD.to_string(),
             serde_json::json!([{ "providerSchema": true }]),
         );
+        let before_hash = document.hash();
         apply_context_command(
             &mut document,
             &ContextCommand::UpsertField {
@@ -1682,6 +1683,7 @@ mod tests {
             },
         )
         .expect("upsert field");
+        assert_ne!(document.hash(), before_hash);
         let entries = document.project.extensions[FLY_RUNTIME_CONTEXT_SCHEMA_FIELD]
             .as_array()
             .expect("schema entries");
