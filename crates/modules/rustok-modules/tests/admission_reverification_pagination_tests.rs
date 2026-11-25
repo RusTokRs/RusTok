@@ -166,6 +166,16 @@ async fn reverification_cursor_pages_past_persistent_stale_candidates() {
         .expect("end of stale inventory");
     assert!(end.candidates.is_empty());
     assert!(!end.has_more);
+    assert!(
+        store
+            .list_stale_admission_reverification_candidates_after(
+                &current_policy,
+                Some(Uuid::nil()),
+                CANDIDATE_PAGE,
+            )
+            .await
+            .is_err()
+    );
 }
 
 #[tokio::test]

@@ -729,7 +729,7 @@ pub struct ArtifactAdmissionReverificationCommand {
 
 /// One durable admission whose stored verification evidence does not
 /// reflect the current trust/capability policy revision, as surfaced by
-/// [`ArtifactAdmissionReverificationService::list_stale_candidates`].
+/// [`ArtifactAdmissionReverificationService::list_stale_candidates_after`].
 /// `expected_revision` is the compare-and-swap input
 /// [`ArtifactAdmissionReverificationCommand`] requires; a concurrent
 /// admission write simply makes the follow-up command conflict and the
@@ -4558,12 +4558,14 @@ impl SeaOrmArtifactInstallationStore {
         after: Option<Uuid>,
         limit: u32,
     ) -> Result<ArtifactAdmissionReverificationPage, ModuleInstallationError> {
-        if limit == 0
-            || limit > MAX_ADMISSION_REVERIFICATION_CANDIDATES
-            || after.is_some_and(|cursor| cursor.is_nil())
-        {
+        if limit == 0 || limit > MAX_ADMISSION_REVERIFICATION_CANDIDATES {
             return Err(ModuleInstallationError::AdmissionRevisionConflict(
-                "admission reverification candidate limit or cursor is invalid".into(),
+                "admission reverification candidate limit is outside the supported range".into(),
+            ));
+        }
+        if after.is_some_and(|cursor| cursor.is_nil()) {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "admission reverification cursor must be non-nil".into(),
             ));
         }
         let (transaction, backend) = self.begin_platform_blob_gc_transaction().await?;
