@@ -435,6 +435,7 @@ mod tests {
     #[test]
     fn bindings_resolve_indexed_context_paths() {
         let mut document = document();
+        let before_hash = document.hash();
         apply_binding_command(
             &mut document,
             &BindingCommand::Upsert {
@@ -452,6 +453,7 @@ mod tests {
             },
         )
         .expect("binding");
+        assert_ne!(document.hash(), before_hash);
         let materialized =
             materialize_bindings(&document, &json!({ "items": [{ "title": "First" }] }));
         assert_eq!(materialized.applied_bindings, 1);
