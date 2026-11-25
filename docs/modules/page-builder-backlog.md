@@ -1519,3 +1519,6 @@ integration tests; MySQL support is out of scope.
 
 2026-11-25 Prepared SSR save checkpoint (source only; not executed):
 - Reserve the draft generation and persist the post-command controller before external Pages save; complete the same receipt with a second CAS. Fence other operations and ordinary commits while preparation exists. Retry resumes the prepared controller and Pages' stable save key; lookup remains read-only. Unknown outcomes retain preparation; browser retry rejections preserve the original identity. Added store lifecycle and pending lookup regressions. Format 2 requires upgraded readers; mounted and restart execution pending.
+
+2026-11-25 Prepared save observation follow-up (source only; not executed):
+- Preserve prepared operation identity when a post-commit revision observation or prepare/finalization CAS fails; classify these outcomes as unknown rather than deterministic rejection. Explicit superseded receipt remains a revision conflict. Added focused regressions.

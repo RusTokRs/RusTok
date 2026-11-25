@@ -263,7 +263,7 @@ pub async fn dispatch_pages_browser_intent_with_store(
                 )?.ok_or(PagesBrowserIntentError::DraftUnavailable)?;
                 return finish_prepared_save(
                     &snapshot, draft_store, prepared, operation_id, request_hash, capabilities,
-                ).await;
+                ).await.map_err(prepared_save_error);
             }
             return replay_committed_operation(
                 draft_store, &session.token, &snapshot.page_id, snapshot.owner.as_ref(),
@@ -448,11 +448,11 @@ pub async fn dispatch_pages_browser_intent_with_store(
             match draft_store.commit_with_operation_receipt(
                 token, generation, controller, runtime_context, snapshot.owner.as_ref(),
                 operation_id, request_hash, json!({ "prepared_save": true }),
-            )? {
+            ).map_err(|error| prepared_save_error(error.into()))? {
                 SsrDraftOperationCommit::Committed(prepared) => {
                     return finish_prepared_save(
                         &snapshot, draft_store, prepared, operation_id, request_hash, capabilities,
-                    ).await;
+                    ).await.map_err(prepared_save_error);
                 }
                 SsrDraftOperationCommit::Replayed(receipt) => {
                     return replay_committed_operation(
@@ -782,6 +782,20 @@ fn compact_operation_receipt(
     // A receipt only needs to remember whether this committed operation left a
     // persistence failure that must still be surfaced after a reload.
     Ok(json!({ "save_failure": save_failure }))
+}
+
+/// After a prepare CAS was attempted, an error is not proof that the
+/// original operation never ran. Keep the browser's exact pending envelope.
+fn prepared_save_error(error: PagesBrowserIntentError) -> PagesBrowserIntentError {
+    if matches!(&error, PagesBrowserIntentError::Facade(facade)
+        if facade.stable_code.as_deref() == Some(BROWSER_SAVE_OUTCOME_UNKNOWN_CODE))
+    {
+        return error;
+    }
+    PageBuilderAdminFacadeError::with_stable_code(
+        format!("Prepared save could not be confirmed: {error}"),
+        BROWSER_SAVE_OUTCOME_UNKNOWN_CODE,
+    ).into()
 }
 
 fn receipt_is_prepared(receipt: &Value) -> bool {
@@ -1605,6 +1619,15 @@ mod tests {
         assert!(replay.operation_replayed);
         assert!(replay.reload);
         assert_eq!(replay.draft_generation, 9);
+    }
+
+    #[test]
+    fn errors_after_prepare_do_not_claim_a_precommit_rejection() {
+        let error = prepared_save_error(SsrDraftSessionError::RecordTooLarge {
+            bytes: 21, maximum: 20,
+        }.into());
+        assert!(matches!(error, PagesBrowserIntentError::Facade(error)
+            if error.stable_code.as_deref() == Some(BROWSER_SAVE_OUTCOME_UNKNOWN_CODE)));
     }
 
     #[test]

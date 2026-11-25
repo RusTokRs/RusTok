@@ -520,14 +520,16 @@ fn page_builder_permissions_from_effective(effective: &[String]) -> Vec<Permissi
 #[cfg(feature = "ssr")]
 fn facade_service_error(error: PageBuilderServiceError) -> PageBuilderAdminFacadeError {
     let message = error.to_string();
-    if message.contains(REVISION_CONFLICT) {
-        return PageBuilderAdminFacadeError::with_stable_code(message, REVISION_CONFLICT);
-    }
+    // A recovery error may contain the text of a lower-level conflict.
+    // Its explicit unknown-outcome classification takes precedence.
     if message.contains(BROWSER_SAVE_OUTCOME_UNKNOWN_CODE) {
         return PageBuilderAdminFacadeError::with_stable_code(
             message,
             BROWSER_SAVE_OUTCOME_UNKNOWN_CODE,
         );
+    }
+    if message.contains(REVISION_CONFLICT) {
+        return PageBuilderAdminFacadeError::with_stable_code(message, REVISION_CONFLICT);
     }
     PageBuilderAdminFacadeError::new(message)
 }
@@ -701,7 +703,7 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
             }
         };
         let saved_revision = persisted_revision(&saved_page)
-            .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))?;
+            .map_err(post_commit_observation_error)?;
 
         // The initial read above is needed for locale and permission checks, but it cannot
         // prove that a replayed receipt is still current: another session may commit after
@@ -713,11 +715,9 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
             page_id.to_string(),
         )
         .await
-        .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))?
-        .ok_or_else(|| {
-            PageBuilderServiceError::Runtime("Pages document no longer exists".into())
-        })?;
-        ensure_document_readable(&current_page)?;
+        .map_err(post_commit_observation_error)?
+        .ok_or_else(|| post_commit_observation_error("Pages document no longer exists"))?;
+        ensure_document_readable(&current_page).map_err(post_commit_observation_error)?;
         ensure_receipt_not_superseded(
             revision_id,
             &page_revision(&current_page),
@@ -782,6 +782,16 @@ impl PageBuilderPreviewRenderingPort for PagesPageBuilderRenderer {
 }
 
 
+/// Once a save/receipt has succeeded, an unavailable observation cannot
+/// establish that the write failed. Preserve the prepared operation so a
+/// later retry can recover the same idempotent receipt.
+#[cfg(feature = "ssr")]
+fn post_commit_observation_error(error: impl std::fmt::Display) -> PageBuilderServiceError {
+    PageBuilderServiceError::Runtime(format!(
+        "{BROWSER_SAVE_OUTCOME_UNKNOWN_CODE}: unable to verify committed page: {error}"
+    ))
+}
+
 /// A retry may replay an older successful receipt after a later session has saved.
 /// Do not present that old acknowledgement as the current document revision.
 #[cfg(feature = "ssr")]
@@ -807,6 +817,13 @@ fn ensure_receipt_not_superseded(
 #[cfg(all(test, feature = "ssr"))]
 mod ssr_save_receipt_revision_tests {
     use super::*;
+
+    #[test]
+    fn post_commit_observation_failure_remains_unknown_even_with_nested_conflict_text() {
+        let error = post_commit_observation_error("REVISION_CONFLICT: observation failed");
+        let facade = facade_service_error(error);
+        assert_eq!(facade.stable_code.as_deref(), Some(BROWSER_SAVE_OUTCOME_UNKNOWN_CODE));
+    }
 
     #[test]
     fn a_receipt_is_current_only_when_the_fresh_page_read_matches_its_committed_revision() {

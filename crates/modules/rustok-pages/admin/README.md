@@ -121,3 +121,6 @@ metadata. Unknown receipts remain read-only and do not resubmit operations.
 Strict SSR persistence checkpoints the post-command controller before Pages I/O.
 An explicit retry uses the prepared controller and the Pages idempotency key
 rather than reapplying the original command. Unknown outcomes keep preparation.
+
+If the final revision observation or checkpoint completion fails, the transport
+returns an unknown outcome instead of treating the original write as rejected.
