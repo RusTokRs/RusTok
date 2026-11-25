@@ -223,7 +223,9 @@ async fn initialize_module_work_runtime(
     registry: &ModuleRegistry,
     extensions: &ModuleRuntimeExtensions,
 ) -> Result<()> {
-    use crate::services::app_lifecycle::{ModuleWorkSchedulerInitializationLock, StopHandle};
+    use crate::services::app_lifecycle::{
+        ModuleWorkSchedulerInitializationLock, StopHandle, await_worker_startup_or_stop,
+    };
 
     // Registration can await, so a check-then-spawn permits competing bootstraps
     // to leave an untracked scheduler running. Cancellation releases this guard.
@@ -300,9 +302,16 @@ async fn initialize_module_work_runtime(
         host
     };
     let scheduler = rustok_runtime::ModuleWorkScheduler::new();
-    registrations
-        .register_all(&host, &scheduler)
-        .await
+    // Registration only builds an unpublished in-memory scheduler. If shutdown
+    // wins, drop that preparation future and release the startup lock instead
+    // of making shutdown wait for an unbounded module callback.
+    let Some(registration_result) =
+        await_worker_startup_or_stop(&stop, registrations.register_all(&host, &scheduler)).await
+    else {
+        tracing::info!("Shutdown requested during module work registration; skipping startup");
+        return Ok(());
+    };
+    registration_result
         .map_err(|error| Error::Message(format!("module work registration failed: {error}")))?;
     // Registration can overlap shutdown. Do not create a new scheduler after
     // it completes if shutdown has already been requested.
@@ -958,9 +967,7 @@ mod tests {
         use crate::services::app_lifecycle::{
             ModuleWorkSchedulerHandle, StopHandle, shutdown_runtime_workers,
         };
-        use std::future::{Future, poll_fn};
         use std::sync::atomic::Ordering;
-        use std::task::Poll;
 
         let (ctx, registry, extensions, registration) = blocking_module_work_fixture().await;
         let (first_ctx, first_registry, first_extensions) =
@@ -970,19 +977,15 @@ mod tests {
                 .await
         });
         registration.wait_until_entered().await;
-        let mut shutdown = Box::pin(shutdown_runtime_workers(&ctx));
-        // First poll publishes stop and yields. The second must still be waiting
-        // for the initializer's lock rather than completing the drain early.
-        let state = poll_fn(|cx| Poll::Ready(shutdown.as_mut().poll(cx))).await;
-        assert!(state.is_pending());
+
+        tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            shutdown_runtime_workers(&ctx),
+        )
+        .await
+        .expect("shutdown should cancel unpublished module work registration");
         assert!(StopHandle::ensure(&ctx).is_stopping());
-        let state = poll_fn(|cx| Poll::Ready(shutdown.as_mut().poll(cx))).await;
-        assert!(state.is_pending());
-        registration.release.add_permits(1);
         first.await.unwrap().unwrap();
-        tokio::time::timeout(std::time::Duration::from_secs(2), shutdown)
-            .await
-            .unwrap();
         assert!(!ctx.shared_contains::<ModuleWorkSchedulerHandle>());
 
         // A later bootstrap cannot restart the scheduler in this stopped context.
@@ -994,7 +997,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn shutdown_deadline_bounds_wait_for_stuck_module_work_registration() {
+    async fn shutdown_cancels_stuck_module_work_registration_behind_bootstrap_lock() {
         use crate::services::app_lifecycle::{
             ModuleWorkSchedulerHandle, ServerBootstrapInitializationLock, shutdown_runtime_workers,
         };
