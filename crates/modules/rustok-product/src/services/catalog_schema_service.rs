@@ -1285,6 +1285,37 @@ where
     C: ConnectionTrait,
 {
     if matches!(&patch.value, ProductAttributeValuePatchValue::Clear)
+        && definition.is_localized
+    {
+        let Some(value) = IdRow::find_by_statement(Statement::from_sql_and_values(
+            conn.get_database_backend(),
+            "SELECT id FROM product_attribute_values WHERE tenant_id = $1 AND product_id = $2 AND attribute_id = $3",
+            vec![tenant_id.into(), product_id.into(), patch.attribute_id.into()],
+        ))
+        .one(conn)
+        .await?
+        else {
+            return Ok(());
+        };
+
+        // A localized clear is scoped to the requested locale. Keep the shared
+        // value row while any other locale still has a translation.
+        conn.execute_raw(Statement::from_sql_and_values(
+            conn.get_database_backend(),
+            "DELETE FROM product_attribute_value_translations WHERE tenant_id = $1 AND value_id = $2 AND locale = $3",
+            vec![tenant_id.into(), value.id.into(), locale.into()],
+        ))
+        .await?;
+        conn.execute_raw(Statement::from_sql_and_values(
+            conn.get_database_backend(),
+            "DELETE FROM product_attribute_values WHERE tenant_id = $1 AND product_id = $2 AND attribute_id = $3 AND id = $4 AND NOT EXISTS (SELECT 1 FROM product_attribute_value_translations WHERE tenant_id = $1 AND value_id = $4)",
+            vec![tenant_id.into(), product_id.into(), patch.attribute_id.into(), value.id.into()],
+        ))
+        .await?;
+        return Ok(());
+    }
+
+    if matches!(&patch.value, ProductAttributeValuePatchValue::Clear)
         || matches!(
             &patch.value,
             ProductAttributeValuePatchValue::Multiselect(option_ids) if option_ids.is_empty()
