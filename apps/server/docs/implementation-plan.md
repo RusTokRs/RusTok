@@ -1,5 +1,15 @@
 # Server App — Implementation Plan
 
+## Redis rate-limit recovery and acquisition deadlines (2026-11-25)
+
+Source changes bound shared connection-slot contention and repair persistent
+counter TTLs before operations that may fail. Added a stalled-initializer
+regression and extended the existing isolated Redis regression to cover
+integer overflow and wrong-type keys. Maintainer verification remains pending:
+`cargo check -p rustok-server`, `cargo test -p rustok-server --lib rate_limit`,
+the ignored real-Redis test using `RUSTOK_CACHE_REAL_REDIS_URL`, and the
+remediation gate. No compilation or runtime evidence is claimed.
+
 ## HTTP observability response integrity follow-up (2026-11-25)
 
 Source changes enforce fail-closed readiness response normalization, preserve

@@ -37,14 +37,17 @@ const RATE_LIMIT_REDIS_OPERATION_TIMEOUT: Duration = Duration::from_secs(2);
 // Repair legacy or restored counters that exist without an expiry. A counter
 // that cannot be given a TTL must fail closed rather than rate-limit forever.
 const RATE_LIMIT_REDIS_SCRIPT_SOURCE: &str = r#"
--- A corrupt nonpositive or noncanonical counter must not advance toward
--- an admissible count on repeated requests. Give persistent corrupt keys a
--- recovery deadline, but reject them until they expire.
+-- Repair a persistent key before GET or INCR can fail. Redis does not
+-- roll back script writes on error. Never extend an existing expiry.
+local previous_ttl = redis.call('PTTL', KEYS[1])
+if previous_ttl == -1 then
+    if redis.call('PEXPIRE', KEYS[1], ARGV[1]) ~= 1 then
+        return redis.error_reply('rate-limit key expiry could not be established')
+    end
+end
+-- Corrupt counters must not advance toward an admissible count.
 local previous = redis.call('GET', KEYS[1])
 if previous and not string.match(previous, '^[1-9][0-9]*$') then
-    if redis.call('PTTL', KEYS[1]) == -1 then
-        redis.call('PEXPIRE', KEYS[1], ARGV[1])
-    end
     return redis.error_reply('invalid rate-limit counter')
 end
 local current = redis.call('INCR', KEYS[1])
@@ -227,16 +230,14 @@ impl RateLimiter {
         client: &redis::Client,
         connection: &Arc<OnceCell<redis::aio::ConnectionManager>>,
     ) -> Result<redis::aio::ConnectionManager, String> {
-        let manager = connection
-            .get_or_try_init(|| async {
-                redis_with_timeout(
-                    RATE_LIMIT_REDIS_OPERATION_TIMEOUT,
-                    "redis rate-limit connection",
-                    client.get_connection_manager(),
-                )
-                .await
-            })
-            .await?;
+        // Bound acquisition including time queued behind another initializer.
+        // Failed or cancelled initialization leaves the shared slot retryable.
+        let manager = redis_with_timeout(
+            RATE_LIMIT_REDIS_OPERATION_TIMEOUT,
+            "redis rate-limit connection",
+            connection.get_or_try_init(|| client.get_connection_manager()),
+        )
+        .await?;
         Ok(manager.clone())
     }
 

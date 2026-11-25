@@ -384,6 +384,46 @@ async fn redis_operation_timeout_bounds_stalled_backend_work() {
     assert!(error.contains("timed out"));
 }
 
+#[tokio::test]
+async fn redis_connection_timeout_includes_waiting_for_initializer() {
+    let client = redis::Client::open("redis://127.0.0.1:6379/").expect("Redis client");
+    let limiter = RateLimiter::with_redis(
+        RateLimitConfig::new(5, 60),
+        client.clone(),
+        "rate-limit-initializer-test".to_string(),
+    );
+    let RateLimiterBackend::Redis { connection, .. } = &limiter.backend else {
+        panic!("expected Redis backend");
+    };
+
+    let held_slot = Arc::clone(connection);
+    let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+    let initializer = tokio::spawn(async move {
+        held_slot
+            .get_or_try_init(|| async move {
+                started_tx.send(()).expect("initializer started");
+                std::future::pending::<Result<redis::aio::ConnectionManager, String>>().await
+            })
+            .await
+            .map(|_| ())
+    });
+    started_rx.await.expect("initialization slot acquired");
+
+    let result = tokio::time::timeout(
+        RATE_LIMIT_REDIS_OPERATION_TIMEOUT + Duration::from_secs(2),
+        limiter.redis_connection(&client, connection),
+    )
+    .await;
+    initializer.abort();
+    assert!(initializer.await.expect_err("initializer cancelled").is_cancelled());
+
+    let Err(error) = result.expect("waiting for initializer must also be bounded") else {
+        panic!("stalled initialization cannot succeed");
+    };
+    assert!(error.contains("timed out"));
+    assert!(connection.get().is_none());
+}
+
 #[test]
 fn redis_window_millis_saturate_at_i64_max() {
     assert_eq!(bounded_redis_window_millis(Duration::MAX), i64::MAX);
@@ -453,6 +493,58 @@ async fn real_redis_rate_limit_preserves_precision_and_rejects_corrupt_counters(
         .await
         .unwrap();
     assert!(ttl > 0 && ttl <= 60_000);
+
+    // Overflow must not leave persistent counters blocked indefinitely.
+    for invalid in ["9223372036854775807", "9223372036854775808"] {
+        let _: () = redis::cmd("SET")
+            .arg(&key)
+            .arg(invalid)
+            .query_async(&mut connection)
+            .await
+            .unwrap();
+        for _ in 0..2 {
+            assert!(matches!(
+                limiter.check_rate_limit("client").await,
+                Err(RateLimitCheckError::BackendUnavailable(_))
+            ));
+        }
+        let stored: String = redis::cmd("GET")
+            .arg(&key)
+            .query_async(&mut connection)
+            .await
+            .unwrap();
+        assert_eq!(stored, invalid);
+        let ttl: i64 = redis::cmd("PTTL")
+            .arg(&key)
+            .query_async(&mut connection)
+            .await
+            .unwrap();
+        assert!(ttl > 0 && ttl <= 60_000);
+    }
+
+    // GET can also fail on a restored wrong-type key.
+    let _: u64 = redis::cmd("DEL")
+        .arg(&key)
+        .query_async(&mut connection)
+        .await
+        .unwrap();
+    let _: u64 = redis::cmd("RPUSH")
+        .arg(&key)
+        .arg("invalid-counter")
+        .query_async(&mut connection)
+        .await
+        .unwrap();
+    assert!(matches!(
+        limiter.check_rate_limit("client").await,
+        Err(RateLimitCheckError::BackendUnavailable(_))
+    ));
+    let ttl: i64 = redis::cmd("PTTL")
+        .arg(&key)
+        .query_async(&mut connection)
+        .await
+        .unwrap();
+    assert!(ttl > 0 && ttl <= 60_000);
+
     let deleted: u64 = redis::cmd("DEL")
         .arg(&key)
         .query_async(&mut connection)

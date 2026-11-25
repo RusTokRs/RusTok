@@ -1,5 +1,15 @@
 # Documentation: `apps/server`
 
+## Redis rate-limit recovery and acquisition deadlines (2026-11-25)
+
+The two-second Redis connection acquisition deadline includes time waiting for
+the shared initialization slot as well as the connection attempt. Failed or
+cancelled initialization leaves the slot retryable; no memory fallback is
+introduced. The atomic counter script assigns a recovery TTL to a persistent
+key before reading or incrementing it, so wrong-type and overflowing counters
+fail closed without blocking that identity indefinitely. Existing positive
+TTLs are not extended. Redis command execution retains its separate deadline.
+
 ## HTTP observability response integrity (2026-11-25)
 
 Readiness GET responses cannot promote an HTTP failure to success based on
