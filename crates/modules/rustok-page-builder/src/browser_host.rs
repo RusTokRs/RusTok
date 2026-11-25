@@ -17,7 +17,7 @@ pub struct PageBuilderBrowserModuleDescriptor {
 pub const PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS: &str = r#"
 const __flyDraftQueryKey = "fly_draft";
 const __flyObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
-const __flyFormPayload = (form) => {
+const __flyFormPayload = (form, submitter) => {
   const payload = {};
   for (const [name, value] of new FormData(form).entries()) {
     if (Object.hasOwn(payload, name)) {
@@ -37,6 +37,9 @@ const __flyFormPayload = (form) => {
     } else if (Number.isFinite(Number(number.value))) {
       payload[number.name] = Number(number.value);
     }
+  }
+  if (submitter instanceof HTMLButtonElement && submitter.name) {
+    payload[submitter.name] = submitter.value === "true" ? true : submitter.value;
   }
   return payload;
 };
@@ -251,7 +254,7 @@ const __flyBindSsrAdapter = (adapter) => {
     event.preventDefault();
     const intent = form.dataset.flyIntentForm;
     if (!intent) return;
-    const payload = __flyFormPayload(form);
+    const payload = __flyFormPayload(form, event.submitter);
     if (!payload.component_id && adapter.selectedId) payload.component_id = adapter.selectedId;
     void adapter.emitIntent(intent, payload);
   }, __flyLifecycleOptions);
@@ -489,5 +492,13 @@ mod selection_contract_tests {
     fn hydrated_workspace_forms_are_left_to_leptos() {
         assert!(PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS
             .contains("form.closest(\"[data-fly-wasm-hydrated='true']\")"));
+    }
+
+    #[test]
+    fn submitter_name_and_boolean_value_are_included_in_form_payload() {
+        assert!(PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS
+            .contains("__flyFormPayload(form, event.submitter)"));
+        assert!(PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS
+            .contains("payload[submitter.name] = submitter.value === \"true\" ? true : submitter.value"));
     }
 }
