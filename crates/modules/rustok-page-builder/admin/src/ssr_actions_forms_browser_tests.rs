@@ -133,3 +133,84 @@ fn stale_action_form_mutation_is_rejected_before_dispatch() {
     let error = dispatch_browser_intent(&mut controller, request).expect_err("stale hash");
     assert!(error.to_string().contains("project hash conflict"));
 }
+
+#[test]
+fn switch_slide_form_rejects_missing_malformed_and_ambiguous_selectors_atomically() {
+    let invalid_payloads = [
+        json!({
+            "component_id": "cta",
+            "kind": "switch_slide",
+            "slider_id": "carousel"
+        }),
+        json!({
+            "component_id": "cta",
+            "kind": "switch_slide",
+            "slider_id": "carousel",
+            "direction": "sideways"
+        }),
+        json!({
+            "component_id": "cta",
+            "kind": "switch_slide",
+            "slider_id": "carousel",
+            "index": "not-an-index"
+        }),
+        json!({
+            "component_id": "cta",
+            "kind": "switch_slide",
+            "slider_id": "carousel",
+            "direction": "next",
+            "index": "1"
+        }),
+        json!({
+            "component_id": "cta",
+            "kind": "switch_slide",
+            "slider_id": "carousel",
+            "direction": "prev",
+            "target_slide": "slide-2"
+        }),
+    ];
+
+    for payload in invalid_payloads {
+        let mut controller = controller();
+        let before = controller.clone();
+        let request = intent(&controller, "set_component_action", payload);
+        assert!(
+            dispatch_browser_intent(&mut controller, request).is_err(),
+            "invalid slide selector payload must be rejected"
+        );
+        assert_eq!(
+            controller, before,
+            "a rejected slide action must not mutate the document"
+        );
+    }
+}
+
+#[test]
+fn switch_slide_form_accepts_each_supported_selector_individually() {
+    for payload in [
+        json!({
+            "component_id": "cta",
+            "kind": "switch_slide",
+            "slider_id": "carousel",
+            "direction": "next"
+        }),
+        json!({
+            "component_id": "cta",
+            "kind": "switch_slide",
+            "slider_id": "carousel",
+            "index": "1"
+        }),
+        json!({
+            "component_id": "cta",
+            "kind": "switch_slide",
+            "slider_id": "carousel",
+            "target_slide": "slide-2"
+        }),
+    ] {
+        let mut controller = controller();
+        let request = intent(&controller, "set_component_action", payload);
+        let result =
+            dispatch_browser_intent(&mut controller, request).expect("valid slide selector");
+        assert!(result.dirty);
+    }
+}
