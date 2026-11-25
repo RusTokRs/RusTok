@@ -94,14 +94,17 @@ nodes and repeated parent IDs no longer break the recursion guard. Regressions a
 but not executed.
 
 Fly cache and move follow-up (2026-11-25, source-only): indexed mutable component access
-and the new raw-project mutable accessor invalidate both document caches before returning
+and the raw-project mutable accessor invalidate both document caches before returning
 a borrow; page access and structural editor commands use that accessor. Move commands
 resolve the implicit first-page root and explicit root ID as the same insertion parent;
 same-parent inverses account for pre-removal slot semantics. Four regressions are authored.
-**OPEN:** migrate all direct raw-project writes to the invalidating accessor and make
-`ProjectDocument.project` private (including consumer reads and source guards); the public
-field remains an invalidation bypass. Full workspace reference discovery was unavailable;
-scoped compilation, remediation gate, tests and lint were not run in this pass.
+**CLOSED (2026-11-25):** `ProjectDocument.project` is private; `project()` is read-only and
+`project_mut()` invalidates both caches before exposing a mutable borrow. Internal Fly
+consumers now use the accessors, and direct downstream reads/writes were migrated across
+Fly UI, Page Builder and Pages. Cargo.lock reverse dependencies were audited; Blog and
+Forum admin consumers had no direct field access. Two compile-fail doctests guard the
+privacy and read-only boundary. Rust compilation, tests, lint, remediation gate and mounted
+browser verification remain with the maintainer and were not run in this pass.
 
 Fly history and snapshot follow-up (2026-11-25, source-only): batch transactions no longer
 publish local inverses computed from the wrong intermediate state; content patches with

@@ -287,7 +287,7 @@ caps. The `fly` crate has no cross-page store: consumer modules such as
 
 - **Project access is cache-safe.** `ProjectDocument::project()` exposes a read-only view;
   `project_mut()` and `component_mut()` invalidate both derived caches before returning a mutable
-  borrow. The raw `project` field is crate-private, preventing downstream code from bypassing this invariant.
+  borrow. The raw `project` field is private, preventing downstream code from bypassing this invariant.
 
 `CHANGELOG.md` carries the release-level *Known gaps*. This section lists the boundaries an
 integrator can hit today, each implemented to a stated point and deliberately no further. An

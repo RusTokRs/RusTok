@@ -4,6 +4,28 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
+/// A canonical GrapesJS document with private storage and cache-safe accessors.
+///
+/// The project is intentionally not a public field. Read it through
+/// `ProjectDocument::project` and mutate it through `ProjectDocument::project_mut`.
+///
+/// Direct field access is rejected outside this crate:
+///
+/// ```compile_fail
+/// use fly::ProjectDocument;
+/// fn bypass(document: &ProjectDocument) {
+///     let _ = &document.project;
+/// }
+/// ```
+///
+/// The read accessor is immutable:
+///
+/// ```compile_fail
+/// use fly::ProjectDocument;
+/// fn mutate(document: &ProjectDocument) {
+///     document.project().pages.clear();
+/// }
+/// ```
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ProjectDocument {
     project: GrapesProject,
