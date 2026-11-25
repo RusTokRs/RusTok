@@ -40,9 +40,10 @@ fn tenant_generation_listener_ready(
 ///
 /// The invalidation transport exposes a transport-wide receiver count that may include receivers
 /// for other channels. This gate uses the context-owned listener state immediately before
-/// downstream delivery: local-only mode requires its canonical local listener, while Redis-backed
-/// mode requires the Redis subscriber and durable reconciliation to be healthy. A retry can
-/// therefore resume after the listener recovers without rotating the same event generation again.
+/// downstream delivery: the local effective-policy cache is fenced synchronously, local-only mode
+/// requires its canonical local listener, and Redis-backed mode requires the Redis subscriber and
+/// durable reconciliation to be healthy. A retry can therefore resume after the listener recovers
+/// without rotating the same event generation again.
 ///
 /// With the Pages module enabled, the same delivery gate also runs the Pages cache invalidation
 /// handler synchronously before downstream transport acceptance. `ServerPagesCachePort` shares a
@@ -94,7 +95,11 @@ impl TenantGenerationDeliveryGate {
 #[async_trait]
 impl EventTransport for TenantGenerationDeliveryGate {
     async fn publish(&self, envelope: EventEnvelope) -> Result<()> {
-        self.ensure_local_listener_ready().await?;
+        crate::services::tenant_cache_generation::invalidate_effective_policy_cache_for_event(
+            &self.ctx,
+            &envelope,
+        );
+        self.ensure_listener_ready().await?;
         #[cfg(feature = "mod-pages")]
         if self.pages_handler.handles(&envelope.event) {
             self.pages_handler.handle(&envelope).await?;
@@ -165,6 +170,7 @@ mod tests {
     use super::*;
     use rustok_core::events::MemoryTransport;
     use rustok_events::DomainEvent;
+    use rustok_modules::{ModuleEffectivePolicyCache, PolicyCacheReadStamp};
     #[cfg(feature = "mod-pages")]
     use rustok_pages::{PAGES_CACHE_ENTITY_KIND, PageCacheGenerationSnapshot, PagesCacheReadPort};
     use uuid::Uuid;
@@ -209,6 +215,32 @@ mod tests {
             } else {
                 Ok(())
             }
+        }
+
+        fn reliability_level(&self) -> ReliabilityLevel {
+            ReliabilityLevel::Outbox
+        }
+
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+    }
+
+    struct PolicyCacheStampCheckingTransport {
+        cache: ModuleEffectivePolicyCache,
+        tenant_id: Uuid,
+        before: PolicyCacheReadStamp,
+    }
+
+    #[async_trait]
+    impl EventTransport for PolicyCacheStampCheckingTransport {
+        async fn publish(&self, _envelope: EventEnvelope) -> Result<()> {
+            assert_ne!(
+                self.cache.stamp(self.tenant_id),
+                self.before,
+                "local effective-policy cache must be invalidated before downstream delivery"
+            );
+            Ok(())
         }
 
         fn reliability_level(&self) -> ReliabilityLevel {
@@ -281,6 +313,31 @@ mod tests {
         );
         assert!(tenant_generation_listener_ready(true, &healthy));
         assert!(!tenant_generation_listener_ready(false, &healthy));
+    }
+
+    #[tokio::test]
+    async fn local_effective_policy_cache_is_invalidated_before_downstream_delivery() {
+        let cache = CacheService::from_url(None);
+        let ctx = context().await;
+        let policy_cache = ModuleEffectivePolicyCache::new();
+        ctx.shared_insert(policy_cache.clone());
+        crate::services::tenant_cache_generation::start_tenant_cache_generation_listener(
+            &ctx,
+            cache.clone(),
+        )
+        .await
+        .unwrap();
+
+        let tenant_id = Uuid::from_u128(42);
+        let before = policy_cache.stamp(tenant_id);
+        let downstream = Arc::new(PolicyCacheStampCheckingTransport {
+            cache: policy_cache,
+            tenant_id,
+            before,
+        });
+        let gate = TenantGenerationDeliveryGate::new(downstream, ctx, cache);
+
+        gate.publish(tenant_event(42)).await.unwrap();
     }
 
     #[tokio::test]
