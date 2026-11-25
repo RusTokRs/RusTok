@@ -8,7 +8,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
-pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT: &str = "page_builder_static_publish_policy_v8";
+pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT: &str = "page_builder_static_publish_policy_v9";
 
 const ALLOWED_TAGS: &[&str] = &[
     "a",
@@ -378,6 +378,7 @@ fn validate_css_var_references(
             for (name, value) in declarations {
                 if let Some(value) = value.as_str() {
                     validate_css_var_reference_value(
+                        name,
                         value,
                         &format!("styles[{style_index}].style.{name}"),
                         allowed_tokens,
@@ -403,6 +404,7 @@ fn validate_component_css_var_references(
         for (name, value) in declarations {
             if let Some(value) = value.as_str() {
                 validate_css_var_reference_value(
+                    name,
                     value,
                     &format!("{path}.style.{name}"),
                     allowed_tokens,
@@ -425,6 +427,7 @@ fn validate_component_css_var_references(
 }
 
 fn validate_css_var_reference_value(
+    property: &str,
     value: &str,
     path: &str,
     allowed_tokens: &BTreeSet<String>,
@@ -439,6 +442,15 @@ fn validate_css_var_reference_value(
         );
         return;
     };
+
+    if !references.is_empty() && fly::css_property_may_load_resource(property) {
+        reject(
+            diagnostics,
+            "landing_css_var_reference_resource_property",
+            path,
+            format!("CSS var() is not allowed in resource-bearing property {property}"),
+        );
+    }
 
     for reference in references {
         if !allowed_tokens.contains(&reference) {
@@ -1694,6 +1706,25 @@ mod tests {
     }
 
     #[test]
+    fn static_policy_rejects_variables_in_resource_bearing_properties() {
+        let mut document = document(json!({
+            "id": "root",
+            "type": "wrapper",
+            "style": {"background-image": "var(--brand)"}
+        }));
+        document.project_mut().extensions.insert(
+            FLY_THEME_FIELD.to_string(),
+            json!({"tokens": {"brand": "url(/safe.png)"}}),
+        );
+        let error = validate_static_publish_document(&document).expect_err("resource property var()");
+        assert!(error.diagnostics().iter().any(|diagnostic| {
+            diagnostic.code == "landing_theme_invalid"
+        }) || error.diagnostics().iter().any(|diagnostic| {
+            diagnostic.code == "landing_css_var_reference_resource_property"
+        }));
+    }
+
+    #[test]
     fn static_policy_accepts_declared_css_variable_references() {
         let mut document = document(json!({
             "id": "root",
@@ -1962,10 +1993,10 @@ mod tests {
     }
 
     #[test]
-    fn v7_policy_evidence_is_not_current_after_v8_cutover() {
+    fn v8_policy_evidence_is_not_current_after_v9_cutover() {
         let policy = PageBuilderStaticPublishPolicy::default();
         let evidence = PageBuilderStaticPublishPolicyEvidence {
-            format: "page_builder_static_publish_policy_v7".to_string(),
+            format: "page_builder_static_publish_policy_v8".to_string(),
             policy_hash: policy.policy_hash().expect("current hash"),
         };
         assert!(evidence.verify_integrity().is_err());
