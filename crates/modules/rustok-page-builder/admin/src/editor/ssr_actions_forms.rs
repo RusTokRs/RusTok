@@ -664,11 +664,7 @@ impl ActionValues {
                 values.kind = "toggle_accordion".to_string();
                 values.target_id = target_id.clone();
                 values.exclusive = *exclusive;
-                values.mode = if *exclusive {
-                    "exclusive".to_string()
-                } else {
-                    "toggle".to_string()
-                };
+                values.mode = "toggle".to_string();
             }
             Some(ComponentAction::SwitchSlide {
                 slider_id,
