@@ -853,7 +853,9 @@ pub async fn rate_limit_for_paths(
         &headers,
         &request,
         state.auth_config.as_ref(),
-        state.trusted_auth_dimensions,
+        // The Auth namespace shares an IP-only budget with GraphQL. A valid
+        // JWT must not partition the credential budget by tenant or app.
+        state.trusted_auth_dimensions && policy.limiter.namespace() != "auth",
         &state.request_trust,
     );
 

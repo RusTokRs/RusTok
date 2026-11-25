@@ -99,8 +99,10 @@ The Auth-owned rate-limit extension charges each distinct root credential mutati
 response key in the selected operation. Different aliases are separate charges;
 merged selections of the same field are not. Root fragment traversal is iterative
 and each named fragment is visited once per operation, even before schema validation.
-The normal GraphQL validator still rejects invalid documents. Existing tenant,
-actor, surface and backend-failure semantics remain unchanged.
+The normal GraphQL validator still rejects invalid documents. REST and GraphQL
+share an IP-only Auth namespace budget; authenticated password change and logout
+also consume it. Tenant, actor and mutation names do not partition the budget.
+Backend-failure semantics remain unchanged.
 
 ## Responsibility Zone
 

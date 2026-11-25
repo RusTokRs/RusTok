@@ -186,6 +186,14 @@ mailbox change from authorizing a stale reset. Run `cargo test -p rustok-server
 --lib auth_password_reset` plus mounted REST and GraphQL recovery checks.
 Compilation, regressions and remediation gate remain maintainer-run.
 
+## Shared Auth throttling budget (source only)
+
+REST and GraphQL use the same per-IP key in the shared Auth limiter, including
+one unknown-IP bucket. Trusted bearer claims cannot partition this strict budget;
+GraphQL password changes and logout now consume it as well. General API and OAuth
+key dimensions remain unchanged. Source key and shared-counter regressions are
+unrun; mounted middleware/GraphQL and Redis verification remain pending.
+
 ## GraphQL credential throttling remediation (source only)
 
 The credential limiter now accounts for separate aliased resolver calls, ignores

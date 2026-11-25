@@ -9,7 +9,7 @@ use async_graphql::parser::types::{ExecutableDocument, OperationType, Selection,
 use async_graphql::{ErrorExtensions, FieldError, Pos, Request, Response, ServerResult};
 use async_trait::async_trait;
 use http::{HeaderMap, header};
-use rustok_api::{AuthContext, TenantContext};
+use rustok_api::TenantContext;
 use rustok_telemetry::metrics;
 
 const TRUSTED_CLIENT_IP_HEADER: &str = "x-rustok-trusted-client-ip";
@@ -36,13 +36,10 @@ pub trait AuthGraphqlRateLimiter: Send + Sync {
 #[derive(Clone)]
 pub struct AuthGraphqlRateLimiterHandle(pub Arc<dyn AuthGraphqlRateLimiter>);
 
-/// Credential surfaces reachable without an authenticated session.
-///
-/// The set is a closed list on purpose: these are the GraphQL counterparts of
-/// the REST endpoints behind the dedicated auth rate limiter, and leaving one
-/// out would reopen a per-IP credential-guessing path that bypasses it.
-/// Authenticated session-management fields are covered by the account lockout
-/// and the general API limiter, so they are not charged here.
+/// Credential surfaces, including authenticated password changes and logout.
+/// The set mirrors credential operations behind the dedicated REST auth limiter.
+/// Each invocation consumes the shared per-IP budget, regardless of credentials,
+/// tenant, or transport.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum AuthGraphqlSurface {
     SignIn,
@@ -51,6 +48,8 @@ enum AuthGraphqlSurface {
     ForgotPassword,
     ResetPassword,
     AcceptInvite,
+    ChangePassword,
+    Logout,
 }
 
 impl AuthGraphqlSurface {
@@ -62,6 +61,8 @@ impl AuthGraphqlSurface {
             (OperationType::Mutation, "forgotPassword") => Some(Self::ForgotPassword),
             (OperationType::Mutation, "resetPassword") => Some(Self::ResetPassword),
             (OperationType::Mutation, "acceptInvite") => Some(Self::AcceptInvite),
+            (OperationType::Mutation, "changePassword") => Some(Self::ChangePassword),
+            (OperationType::Mutation, "logout") => Some(Self::Logout),
             _ => None,
         }
     }
@@ -74,6 +75,8 @@ impl AuthGraphqlSurface {
             Self::ForgotPassword => "forgot_password",
             Self::ResetPassword => "reset_password",
             Self::AcceptInvite => "accept_invite",
+            Self::ChangePassword => "change_password",
+            Self::Logout => "logout",
         }
     }
 }
@@ -152,23 +155,13 @@ fn extract_client_ip(headers: Option<&HeaderMap>) -> Option<IpAddr> {
         .and_then(|value| value.parse().ok())
 }
 
-fn build_rate_limit_key(
-    tenant: &TenantContext,
-    auth: Option<&AuthContext>,
-    headers: Option<&HeaderMap>,
-    surface: AuthGraphqlSurface,
-) -> String {
-    let actor = auth
-        .map(|auth| format!("user:{}", auth.user_id))
-        .or_else(|| extract_client_ip(headers).map(|ip| format!("ip:{ip}")))
-        .unwrap_or_else(|| "anonymous".to_string());
-
-    format!(
-        "tenant:{}:auth:graphql:{}:{}",
-        tenant.id,
-        surface.name(),
-        actor
-    )
+fn build_rate_limit_key(headers: Option<&HeaderMap>) -> String {
+    // Match the host's IP-only auth namespace, including the unknown-IP
+    // bucket. Never let a bearer token or a different mutation select a
+    // fresh budget.
+    extract_client_ip(headers)
+        .map(|ip| format!("ip:{ip}"))
+        .unwrap_or_else(|| "ip:unknown".to_string())
 }
 
 fn error_response(error: FieldError) -> Response {
@@ -237,11 +230,9 @@ impl Extension for AuthGraphqlRateLimitPolicyExtension {
                     .extend_with(|_, ext| ext.set("code", "INTERNAL_SERVER_ERROR")),
             );
         };
-        let auth = ctx.data_opt::<AuthContext>();
-        let headers = ctx.data_opt::<HeaderMap>();
+        let key = build_rate_limit_key(ctx.data_opt::<HeaderMap>());
 
         for surface in &policy.0 {
-            let key = build_rate_limit_key(tenant, auth, headers, *surface);
             match limiter.0.check_rate_limit(&key).await {
                 Ok(()) => {}
                 Err(AuthGraphqlRateLimitError::Exceeded(exceeded)) => {
@@ -298,22 +289,8 @@ impl Extension for AuthGraphqlRateLimitPolicyExtension {
 mod tests {
     use super::*;
     use async_graphql::parser::parse_query;
-    use uuid::Uuid;
-
-    fn tenant(id: Uuid) -> TenantContext {
-        TenantContext {
-            id,
-            name: "Tenant".to_string(),
-            slug: "tenant".to_string(),
-            domain: None,
-            settings: serde_json::json!({}),
-            default_locale: "en".to_string(),
-            is_active: true,
-        }
-    }
-
     #[test]
-    fn classifies_every_credential_surface_and_ignores_session_management() {
+    fn classifies_public_and_authenticated_credential_surfaces() {
         let document = parse_query(
             r#"
                 mutation AuthFlow {
@@ -328,7 +305,12 @@ mod tests {
 
         assert_eq!(
             auth_graphql_fields(&document, None),
-            vec![AuthGraphqlSurface::SignIn, AuthGraphqlSurface::RefreshToken]
+            vec![
+                AuthGraphqlSurface::SignIn,
+                AuthGraphqlSurface::RefreshToken,
+                AuthGraphqlSurface::ChangePassword,
+                AuthGraphqlSurface::Logout,
+            ]
         );
     }
 
@@ -421,54 +403,18 @@ mod tests {
     }
 
     #[test]
-    fn builds_tenant_scoped_ip_and_user_keys() {
-        let tenant_id = Uuid::new_v4();
-        let tenant = tenant(tenant_id);
-
+    fn uses_the_same_ip_key_as_rest() {
         let mut headers = HeaderMap::new();
         headers.insert(TRUSTED_CLIENT_IP_HEADER, "203.0.113.7".parse().unwrap());
-        let ip_key =
-            build_rate_limit_key(&tenant, None, Some(&headers), AuthGraphqlSurface::SignIn);
-        assert_eq!(
-            ip_key,
-            format!("tenant:{tenant_id}:auth:graphql:sign_in:ip:203.0.113.7")
-        );
-
-        let auth = AuthContext {
-            user_id: Uuid::new_v4(),
-            session_id: Uuid::new_v4(),
-            tenant_id,
-            permissions: Vec::new(),
-            client_id: None,
-            scopes: Vec::new(),
-            grant_type: "direct".to_string(),
-        };
-        let user_key = build_rate_limit_key(
-            &tenant,
-            Some(&auth),
-            None,
-            AuthGraphqlSurface::ResetPassword,
-        );
-        assert_eq!(
-            user_key,
-            format!(
-                "tenant:{tenant_id}:auth:graphql:reset_password:user:{}",
-                auth.user_id
-            )
-        );
+        assert_eq!(build_rate_limit_key(Some(&headers)), "ip:203.0.113.7");
+        assert_eq!(build_rate_limit_key(None), "ip:unknown");
     }
 
     #[test]
     fn raw_forwarded_headers_do_not_define_the_actor_key() {
-        let tenant_id = Uuid::new_v4();
-        let tenant = tenant(tenant_id);
         let mut headers = HeaderMap::new();
         headers.insert("x-forwarded-for", "203.0.113.99".parse().unwrap());
-
-        assert_eq!(
-            build_rate_limit_key(&tenant, None, Some(&headers), AuthGraphqlSurface::SignUp),
-            format!("tenant:{tenant_id}:auth:graphql:sign_up:anonymous")
-        );
+        assert_eq!(build_rate_limit_key(Some(&headers)), "ip:unknown");
     }
 
     #[test]
