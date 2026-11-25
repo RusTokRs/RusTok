@@ -1623,3 +1623,22 @@ Unmatched-route and embedded-admin rewrite diagnostics now use the fixed
 representation `Content-Length` on HEAD responses while keeping the body empty.
 Focused regressions were added; tests, compilation and formatting were not run
 at the maintainer's request.
+
+## Server follow-up — installer heartbeat ownership and search limiter readiness (2026-11-25)
+
+The installer heartbeat now runs as a sibling future inside the runtime-owned
+executor task rather than a detached Tokio task. Completion or forced
+cancellation drops the heartbeat even while its database call is pending.
+Heartbeat termination or panic does not cancel an admitted installer operation;
+the existing status CAS and quarantine policy remain unchanged. A database
+operation already submitted before cancellation may still commit, but cannot
+revive a non-running row.
+
+Readiness now checks the independent search rate limiter alongside API, Auth
+and OAuth when rate limiting is enabled on applicable host profiles. Missing
+search limiter state is a critical readiness failure, as with other limiter
+namespaces. This does not add a search indexing requirement.
+
+Focused source regressions cover heartbeat cancellation/completion, continued
+execution after heartbeat termination, and search limiter readiness. Tests,
+compilation and formatting were not run at the maintainer's request.
