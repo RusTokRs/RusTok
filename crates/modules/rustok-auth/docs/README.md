@@ -274,8 +274,7 @@ denied. File-backed stale hosts keep polling with JWT crypto fenced after
 expiry. The host's critical `jwt_cluster_lease` readiness check samples the
 same local gate after awaited dependency probes, returning 503 when the lease
 is unavailable. In-flight business transactions already authorized are not cancelled.
-Root rotation, rollback of the database itself and emergency distributed
-revocation remain separate work. Keys removed before first enrollment are
+Root rotation and rollback of the database itself remain separate work. Keys removed before first enrollment are
 not known to the ledger.
 
 ### Rolling replica admission
@@ -302,9 +301,39 @@ The registry is bounded to 256 outstanding process/generation grants and
 admission. Delayed file distribution or capacity pressure may fence
 individual replicas; this is not a universal zero-downtime guarantee.
 Use the trusted primary, disciplined clocks and compatible upgraded hosts.
+### Emergency distributed revocation
+
+From the trusted operator environment connected to the same authoritative
+database, inject the stable host MAC root via the secret manager as
+`RUSTOK_JWT_REVOCATION_ROOT` and execute:
+
+```sh
+rustok-cli auth jwt-revoke --purpose access --kid access-1 --confirm
+```
+
+Supported purposes are access, password-reset, email-verification and invite.
+The target must have been enrolled in the lifetime ledger. Revocation is
+permanent, idempotent, and does not require a replacement file. The receipt
+reports the first database-clock revocation time and the conservative
+outstanding lease horizon (milliseconds since Unix epoch), not an immediate
+cluster-wide completion guarantee. Do not pass the root on the command line.
+
+The authenticated ledger denies new grants and admission containing revoked
+material. A replica observing revocation fences its whole local JWT runtime
+and readiness, including if its file is unchanged; disconnected replicas
+expire their local lease. Existing grants can remain usable for up to ten
+seconds from their local grant start under the documented clock assumptions.
+Recovery requires a higher complete generation without the revoked key or
+its legacy mapping, and a conservative drain of incompatible outstanding
+grants. Retain only uncompromised material. Already-authorized business IO
+is not cancelled. Static generation zero is not an enrolled identity
+authority. Stop older binaries before use; unmanaged embedders, root
+compromise and database rollback are outside the contract.
+
 Source regressions are authored, unrun.
 
-See [durable generation fence ADR](../../../../DECISIONS/2026-11-25-jwt-generation-fence.md),
+See [emergency revocation ADR](../../../../DECISIONS/2026-11-25-jwt-emergency-revocation.md),
+[durable generation fence ADR](../../../../DECISIONS/2026-11-25-jwt-generation-fence.md),
 [cluster lease barrier ADR](../../../../DECISIONS/2026-11-25-jwt-cluster-lease.md)
 and [rolling replica admission ADR](../../../../DECISIONS/2026-11-25-jwt-rolling-admission.md).
 

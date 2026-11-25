@@ -28,6 +28,26 @@ pub enum JwtAdmission {
     AwaitingReplicas,
 }
 
+/// An irreversible, database-wide incident command receipt. The horizon is
+/// conservative, not confirmation that every in-flight operation has stopped.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub struct JwtRevocationReceipt {
+    pub generation: u64,
+    pub revoked_at_ms: i64,
+    pub existing_lease_until_ms: i64,
+    pub newly_revoked: bool,
+}
+
+fn revocation_purpose(purpose: &str) -> Result<&'static str> {
+    match purpose {
+        "access" => Ok("JWT"),
+        "password-reset" => Ok("rustok-reset+jwt"),
+        "email-verification" => Ok("rustok-email-verification+jwt"),
+        "invite" => Ok("rustok-invite+jwt"),
+        _ => Err(rejected()),
+    }
+}
+
 fn rejected() -> AuthError {
     AuthError::Validation("JWT generation rejected by durable fence".into())
 }
@@ -119,6 +139,8 @@ fn rolling_compatible(old: &Snapshot, next: &Snapshot, now_ms: i64, horizon_ms: 
 struct SeenKey {
     identity: String,
     ever_active: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    revoked_at_ms: Option<i64>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -131,11 +153,19 @@ struct Ledger {
 }
 
 impl Ledger {
+    fn contains_revoked(&self, snapshot: &Snapshot) -> bool {
+        snapshot.values().flat_map(|ring| ring.keys.values()).any(|key| {
+            self.seen.values().flat_map(|keys| keys.values()).any(|binding| {
+                binding.revoked_at_ms.is_some() && binding.identity == key.identity
+            })
+        })
+    }
+
     fn enroll(generation: u64, current: Snapshot) -> Self {
         let seen = current.iter().map(|(purpose, ring)| {
             let keys = ring.keys.iter().map(|(kid, key)| {
                 // Pre-enrollment history is not evidence of an unused signer.
-                (kid.clone(), SeenKey { identity: key.identity.clone(), ever_active: true })
+                (kid.clone(), SeenKey { identity: key.identity.clone(), ever_active: true, revoked_at_ms: None })
             }).collect();
             (purpose.clone(), keys)
         }).collect();
@@ -143,7 +173,7 @@ impl Ledger {
     }
 
     fn advance(mut self, generation: u64, next: Snapshot, now: i64) -> Result<Self> {
-        if generation <= self.generation || next.len() != self.current.len() {
+        if generation <= self.generation || next.len() != self.current.len() || self.contains_revoked(&next) {
             return Err(rejected());
         }
 
@@ -191,7 +221,7 @@ impl Ledger {
                 }
                 let binding = self.seen.entry(purpose.clone()).or_default()
                     .entry(kid.clone()).or_insert_with(|| SeenKey {
-                        identity: key.identity.clone(), ever_active: false,
+                        identity: key.identity.clone(), ever_active: false, revoked_at_ms: None,
                     });
                 binding.ever_active |= key.verify_until.is_none();
             }
@@ -337,6 +367,63 @@ impl JwtGenerationFence {
         if self.load().await?.is_empty() { Ok(()) } else { Err(rejected()) }
     }
 
+    /// Trusted operator command, not a request/tenant capability.
+    /// The supplied stable root must authenticate the enrolled authority.
+    /// The CAS updates only the envelope and tag, preserving all leases.
+    pub async fn revoke_key(
+        &self, root: &str, purpose: &str, kid: &str,
+    ) -> Result<JwtRevocationReceipt> {
+        let purpose = revocation_purpose(purpose)?;
+        if !crate::config::hs256_secret_has_min_length(root)
+            || kid.is_empty() || kid.len() > 64
+            || !kid.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        {
+            return Err(rejected());
+        }
+        let mac = FenceMac::new(root)?;
+        for _ in 0..MAX_CAS_ATTEMPTS {
+            let stored = self.load().await?;
+            let mut ledger = stored.ledger(&mac)?.ok_or_else(rejected)?;
+            let binding = ledger.seen.get_mut(purpose)
+                .and_then(|keys| keys.get_mut(kid)).ok_or_else(rejected)?;
+            if let Some(revoked_at_ms) = binding.revoked_at_ms {
+                return Ok(JwtRevocationReceipt {
+                    generation: ledger.generation, revoked_at_ms,
+                    existing_lease_until_ms: stored.lease_until_ms,
+                    newly_revoked: false,
+                });
+            }
+            binding.revoked_at_ms = Some(stored.now_ms);
+            let payload = serde_json::to_string(&ledger).map_err(|_| unavailable())?;
+            // Reserve enough envelope headroom for every possible revocation
+            // in admission; an emergency command must not prune identities.
+            if payload.len() > MAX_LEDGER_BYTES {
+                return Err(unavailable());
+            }
+            let tag = hex::encode(mac.state_mac(&payload)?.finalize().into_bytes());
+            let backend = self.db.get_database_backend();
+            let sql = match backend {
+                DbBackend::Postgres => "UPDATE auth_jwt_generation_fence SET payload = $1, tag = $2 WHERE id = 1 AND generation = $3 AND tag = $4 AND lease_until_ms = $5 AND replica_grants = $6 AND drain_until_ms = $7",
+                DbBackend::Sqlite => "UPDATE auth_jwt_generation_fence SET payload = ?1, tag = ?2 WHERE id = 1 AND generation = ?3 AND tag = ?4 AND lease_until_ms = ?5 AND replica_grants = ?6 AND drain_until_ms = ?7",
+                _ => return Err(unavailable()),
+            };
+            let updated = self.db.execute_raw(Statement::from_sql_and_values(
+                backend, sql, vec![payload.into(), tag.into(), stored.generation.into(),
+                    stored.tag.into(), stored.lease_until_ms.into(), stored.replica_grants.into(),
+                    stored.drain_until_ms.into()],
+            )).await.map_err(|_| unavailable())?;
+            if updated.rows_affected() == 1 {
+                tracing::warn!(generation = ledger.generation, "JWT emergency key revocation committed");
+                return Ok(JwtRevocationReceipt {
+                    generation: ledger.generation, revoked_at_ms: stored.now_ms,
+                    existing_lease_until_ms: stored.lease_until_ms,
+                    newly_revoked: true,
+                });
+            }
+        }
+        Err(unavailable())
+    }
+
     /// Renew only the exact local generation. A grant is bounded from before
     /// DB IO; an expired/delayed grant cannot revive a local deadline.
     pub async fn renew(&self, publisher: &JwtKeyringPublisher) -> Result<bool> {
@@ -420,7 +507,14 @@ impl JwtGenerationFence {
         for _ in 0..MAX_CAS_ATTEMPTS {
             let started = Instant::now();
             let stored = self.load().await?;
-            let admitted = match stored.ledger(mac)? {
+            let ledger = stored.ledger(mac)?;
+            if ledger.as_ref().is_some_and(|ledger| ledger.contains_revoked(&snapshot)) {
+                if already_applied {
+                    publisher.fence_revoked_generation(generation)?;
+                }
+                return Ok(None);
+            }
+            let admitted = match ledger {
                 None => generation == 0,
                 Some(ledger) => generation == ledger.generation && snapshot == ledger.current,
             };
@@ -486,9 +580,14 @@ impl JwtGenerationFence {
             let previous = stored.ledger(&mac)?;
             let grants = stored.live_grants()?;
             let horizon = stored.lease_until_ms.max(stored.now_ms.saturating_add(DB_LEASE_MS));
+            if previous.as_ref().is_some_and(|ledger| ledger.contains_revoked(&snapshot)) {
+                return Err(rejected());
+            }
             let rolling = stored.drain_until_ms <= stored.now_ms
                 && previous.as_ref().is_some_and(|ledger| {
-                    rolling_compatible(&ledger.current, &snapshot, stored.now_ms, horizon)
+                    !ledger.contains_revoked(&ledger.current)
+                        && !grants.values().any(|grant| ledger.contains_revoked(&grant.snapshot))
+                        && rolling_compatible(&ledger.current, &snapshot, stored.now_ms, horizon)
                 });
             let next = match previous {
                 None => Ledger::enroll(generation, snapshot.clone()),
@@ -500,7 +599,11 @@ impl JwtGenerationFence {
             // Reject an oversized ledger before closing renewal. A candidate
             // that cannot be persisted must not start an avoidable drain.
             let payload = serde_json::to_string(&next).map_err(|_| unavailable())?;
-            if payload.len() > MAX_LEDGER_BYTES {
+            // Each missing timestamp could grow the envelope by at most
+            // 40 bytes (field name, separator and signed i64 value).
+            let remaining_revocations = next.seen.values().flat_map(|keys| keys.values())
+                .filter(|binding| binding.revoked_at_ms.is_none()).count();
+            if payload.len().saturating_add(remaining_revocations.saturating_mul(40)) > MAX_LEDGER_BYTES {
                 return Err(rejected());
             }
             if rolling {
@@ -599,6 +702,82 @@ mod tests {
             migration.up(&SchemaManager::new(&db)).await.unwrap();
         }
         db
+    }
+
+    #[tokio::test]
+    async fn emergency_revocation_fences_current_and_stale_replicas_without_file_change() {
+        use crate::{decode_access_token, encode_access_token};
+        use rustok_core::UserRole;
+        use uuid::Uuid;
+        let db = database().await;
+        let fence = JwtGenerationFence::new(db.clone());
+        let until = chrono::Utc::now().timestamp() + 3600;
+        let first = config(ROOT, "old", OLD, None, None);
+        let staged = config(ROOT, "old", OLD, Some(("new", NEW, until)), None);
+        let clean = config(ROOT, "new", NEW, None, None);
+        assert!(fence.revoke_key(ROOT, "access", "old").await.is_err());
+        assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
+        let (live_a, a) = first.clone().into_cluster_jwt(1).unwrap();
+        let (live_b, b) = first.into_cluster_jwt(1).unwrap();
+        assert!(fence.renew(&a).await.unwrap());
+        assert!(fence.renew(&b).await.unwrap());
+        assert_eq!(fence.admit(2, &staged).await.unwrap(), JwtAdmission::Admitted);
+        assert!(fence.activate(&a, 2, staged.clone()).await.unwrap());
+        let issue = |cfg: &AuthConfig| encode_access_token(
+            cfg, Uuid::new_v4(), Uuid::new_v4(), UserRole::Customer, Uuid::new_v4(),
+        );
+        let token = issue(&live_a).unwrap();
+        assert!(decode_access_token(&live_b, &token).is_ok());
+        assert!(fence.revoke_key(ROOT, "access", "missing").await.is_err());
+        assert!(fence.revoke_key(ROOT, "unknown", "old").await.is_err());
+        assert!(fence.revoke_key("wrong-host-root-for-emergency-tests-32bytes", "access", "old").await.is_err());
+        let receipt = fence.revoke_key(ROOT, "access", "old").await.unwrap();
+        assert!(receipt.newly_revoked);
+        assert_eq!(receipt.generation, 2);
+        let reopened = JwtGenerationFence::new(db.clone());
+        let repeat = reopened.revoke_key(ROOT, "access", "old").await.unwrap();
+        assert!(!repeat.newly_revoked);
+        assert_eq!(receipt.revoked_at_ms, repeat.revoked_at_ms);
+        assert!(reopened.admit(2, &staged).await.is_err());
+        assert!(!reopened.renew(&a).await.unwrap());
+        assert!(!reopened.renew(&b).await.unwrap());
+        assert!(issue(&live_a).is_err());
+        assert!(decode_access_token(&live_b, &token).is_err());
+        assert!(!a.lease_readiness().unwrap().is_ready());
+        assert!(!a.install_lease(2, Instant::now() + LOCAL_LEASE).unwrap());
+        assert_eq!(reopened.admit(3, &clean).await.unwrap(), JwtAdmission::Draining);
+        db.execute_unprepared("UPDATE auth_jwt_generation_fence SET lease_until_ms = 0, replica_grants = '{}' WHERE id = 1")
+            .await.unwrap();
+        assert_eq!(reopened.admit(3, &clean).await.unwrap(), JwtAdmission::Admitted);
+        assert!(reopened.activate(&a, 3, clean.clone()).await.unwrap());
+        assert!(issue(&live_a).is_ok());
+        assert!(decode_access_token(&live_a, &token).is_err());
+        assert!(!reopened.renew(&b).await.unwrap());
+        assert!(reopened.admit(4, &config(ROOT, "renamed", OLD, None, None)).await.is_err());
+        assert!(reopened.admit(4, &staged).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn emergency_revocation_of_history_requires_removal_before_renewal() {
+        let db = database().await;
+        let fence = JwtGenerationFence::new(db.clone());
+        let until = chrono::Utc::now().timestamp() + 3600;
+        let first = config(ROOT, "new", NEW, Some(("old", OLD, until)), None);
+        assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
+        let (_, publisher) = first.clone().into_cluster_jwt(1).unwrap();
+        assert!(fence.renew(&publisher).await.unwrap());
+        assert!(fence.revoke_key(ROOT, "access", "old").await.unwrap().newly_revoked);
+        assert!(!fence.renew(&publisher).await.unwrap());
+        assert!(!publisher.lease_readiness().unwrap().is_ready());
+        assert!(fence.admit(2, &first).await.is_err());
+        let clean = config(ROOT, "new", NEW, None, None);
+        assert_eq!(fence.admit(2, &clean).await.unwrap(), JwtAdmission::Draining);
+        db.execute_unprepared("UPDATE auth_jwt_generation_fence SET lease_until_ms = 0, replica_grants = '{}' WHERE id = 1")
+            .await.unwrap();
+        assert_eq!(fence.admit(2, &clean).await.unwrap(), JwtAdmission::Admitted);
+        assert!(fence.activate(&publisher, 2, clean).await.unwrap());
+        assert!(publisher.lease_readiness().unwrap().is_ready());
+        assert!(fence.admit(3, &first).await.is_err());
     }
 
     #[tokio::test]

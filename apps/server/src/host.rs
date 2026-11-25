@@ -660,12 +660,14 @@ impl JwtRuntimeSupervisor {
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             interval.tick().await;
-            if let Some(source) = self.source.as_mut() {
-                Self::poll_source(source, &self.publisher, &self.fence, production).await?;
-            }
+            // Check the durable revocation/lease authority even when the
+            // file has not changed, before potentially slow file processing.
             let granted = self.fence.renew(&self.publisher).await.map_err(crate::auth::auth_err)?;
             if !granted && self.source.is_none() {
                 return Err(Error::Message("Static JWT cluster lease denied".into()));
+            }
+            if let Some(source) = self.source.as_mut() {
+                Self::poll_source(source, &self.publisher, &self.fence, production).await?;
             }
             // A draining or stale file-backed host keeps polling to converge;
             // its JWT operations fail closed when its previous lease expires.

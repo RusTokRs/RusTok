@@ -108,6 +108,7 @@ RusToK provides a sandboxed, extensible module runtime supporting native Rust cr
 
 ### Domain Module Documentation
 
+- [ADR: JWT emergency key revocation](../DECISIONS/2026-11-25-jwt-emergency-revocation.md) — irreversible identity bans and bounded lease enforcement.
 - [ADR: JWT rolling replica admission](../DECISIONS/2026-11-25-jwt-rolling-admission.md) — registered grants and compatible staged signer promotion.
 - [ADR: JWT cluster lease barrier](../DECISIONS/2026-11-25-jwt-cluster-lease.md) — bounded crypto leases and database-serialized generation drain.
 - [ADR: Durable JWT generation fence](../DECISIONS/2026-11-25-jwt-generation-fence.md) — authenticated persistent generation and lifetime key identity admission.

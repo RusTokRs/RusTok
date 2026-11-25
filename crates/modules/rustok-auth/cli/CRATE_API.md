@@ -8,6 +8,7 @@
 ### Commands
 - `oauth create-app`: registers a new OAuth application for an explicitly specified tenant.
 - `auth sessions-cleanup`: removes expired session and token records.
+- `auth jwt-revoke --purpose <purpose> --kid <id> --confirm`: permanently revokes an enrolled JWT key in the authoritative database. Requires the stable host MAC root in `RUSTOK_JWT_REVOCATION_ROOT`, never a command argument. The scope is deployment-wide, not tenant-scoped.
 
 ## Platform Capability Bindings
 - **CLI Runtime Dispatch**: Integrates into the host operator CLI runtime through `CommandProvider`.

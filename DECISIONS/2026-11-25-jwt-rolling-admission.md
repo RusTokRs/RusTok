@@ -80,8 +80,8 @@ This is a rolling compatible path, not a universal zero-downtime
 guarantee: delayed file distribution can fence individual replicas,
 capacity/contention can deny grants, incompatible removal drains,
 and an operator must provision a sufficient historical JWT TTL window.
-Distributed emergency revocation, clock discontinuity protection,
-database rollback protection and root/algorithm migration remain open.
+[Emergency key revocation](2026-11-25-jwt-emergency-revocation.md) extends this contract.
+Clock discontinuity protection, database rollback protection and root/algorithm migration remain open.
 
 ## Verification
 

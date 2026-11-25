@@ -7,6 +7,7 @@
 ## Platform Capability Bindings
 
 - **Core Module Registration**: Exposes `AuthModule` implementing `RusToKModule` (slug `"auth"`, kind `ModuleKind::Core`) and `MigrationSource`.
+- **Emergency revocation**: `JwtGenerationFence::revoke_key` returns a `JwtRevocationReceipt` for a previously enrolled purpose/kid, authenticates the stable root and persists an irreversible ban. Trusted deployment operator use only; lease renewal enforces the ban.
 - **Token & JWT Lifecycle**:
   - `encode_access_token`, `decode_access_token`
   - `encode_invite_token`, `decode_invite_token`

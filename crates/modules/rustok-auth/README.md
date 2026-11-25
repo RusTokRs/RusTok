@@ -103,7 +103,7 @@ regression execution and coordinated replica rollout evidence are pending.
 Optional process-local file-backed hot reload, durable generation fencing and
 identity tombstones are source-implemented;
 cluster lease/drain fencing and compatible rolling replica admission are
-source-implemented; emergency revocation and algorithm migration remain open.
+source-implemented, including emergency enrolled-key revocation; algorithm and host root migration remain open.
 See [JWT rotation](docs/README.md#jwt-keyring-and-rotation).
 
 

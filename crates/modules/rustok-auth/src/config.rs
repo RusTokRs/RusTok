@@ -94,11 +94,12 @@ struct VersionedJwtKeys {
     keys: Arc<JwtKeyState>,
     lease_required: bool,
     lease_until: Option<Instant>,
+    emergency_fenced: bool,
 }
 
 impl VersionedJwtKeys {
     fn permits_crypto_at(&self, now: Instant) -> bool {
-        !self.lease_required || self.lease_until.is_some_and(|deadline| now < deadline)
+        !self.emergency_fenced && (!self.lease_required || self.lease_until.is_some_and(|deadline| now < deadline))
     }
 }
 
@@ -387,6 +388,7 @@ impl AuthConfig {
             keys,
             lease_required,
             lease_until: None,
+            emergency_fenced: false,
         })));
         let publisher = JwtKeyringPublisher { config: self.clone(), incarnation: uuid::Uuid::new_v4() };
         Ok((self, publisher))
@@ -480,13 +482,27 @@ impl JwtKeyringPublisher {
             return Err(invalid_rotation());
         };
         let mut guard = current.write().map_err(|_| keyring_runtime_error())?;
-        if !guard.lease_required || guard.generation != generation || Instant::now() >= deadline {
+        if !guard.lease_required || guard.emergency_fenced || guard.generation != generation || Instant::now() >= deadline {
             return Ok(false);
         }
         if guard.lease_until.is_none_or(|previous| deadline > previous) {
             guard.lease_until = Some(deadline);
         }
         Ok(true)
+    }
+
+    /// Permanently close this local generation after observing a durable
+    /// emergency revocation. A delayed grant cannot reopen the same gate.
+    pub(crate) fn fence_revoked_generation(&self, generation: u64) -> Result<()> {
+        let JwtKeySource::Live(current) = &self.config.key_state else {
+            return Err(invalid_rotation());
+        };
+        let mut guard = current.write().map_err(|_| keyring_runtime_error())?;
+        if guard.generation == generation {
+            guard.lease_until = None;
+            guard.emergency_fenced = true;
+        }
+        Ok(())
     }
 
     /// Clear local authority on host shutdown or supervisor cancellation.
@@ -550,7 +566,7 @@ impl JwtKeyringPublisher {
                 return Ok(false);
             }
         }
-        *guard = VersionedJwtKeys { generation, keys, lease_required, lease_until: deadline };
+        *guard = VersionedJwtKeys { generation, keys, lease_required, lease_until: deadline, emergency_fenced: false };
         Ok(true)
     }
 }
