@@ -459,8 +459,16 @@ authorization or same-origin request gate.
 
 These host security gates use the shared production-security mode: every release
 binary remains fail-closed even if `RUSTOK_ENV` names `staging`; only debug
-builds may use development fallbacks. Host startup applies the same predicate
-to database, HTTPS/HSTS, JWT, and tenant-profile validation.
+builds may use development fallbacks. Host startup and router composition apply
+the same predicate to database, HTTPS/HSTS, JWT, tenant-profile validation and
+CORS, so a release build never regains local-origin fallbacks through a
+non-production environment label.
+
+When Redis rate limiting is enabled, startup accepts the same explicit
+`rustok.cache.redis_url` that `CacheService` uses, ahead of the
+`RUSTOK_REDIS_URL` / `REDIS_URL` environment fallback. A blank YAML value
+continues to defer to the environment resolver; rate limiting and cache
+construction therefore cannot disagree about whether a Redis target is configured.
 
 The module event dispatcher and its four startup-owned recovery workers
 (paid-order labels, marketplace financial, payment-provider events and
@@ -514,6 +522,8 @@ authorization. All those middleware use the shared bounded path vocabulary;
 custom methods in registry diagnostics use the bounded method vocabulary.
 The original request pathname still drives routing, security-header
 selection, request authorization, tenant/locale policy and rate-limit matching.
+The unmatched-route fallback and embedded-admin URI-rewrite diagnostics also
+use the same bounded path family rather than logging raw URL segments.
 
 HTTP edge settings are bounded before reaching Tokio and Tower:
 `RUSTOK_HTTP_REQUEST_TIMEOUT_SECONDS` defaults to 30 seconds and is capped at
@@ -1594,3 +1604,22 @@ open an arbitrary target after process loss. A stale job remains
 receipts; lease expiry never transfers ownership. Source regressions were
 authored, but tests, compilation and formatting were not run at the
 maintainer's request.
+
+
+## Server host follow-up — release CORS, Redis configuration and HTTP diagnostics (2026-11-25)
+
+The composed router now passes the shared release-aware production-security
+predicate into the HTTP edge/CORS stack. A release binary with
+`RUSTOK_ENV=staging` or `development` therefore remains on the explicit-origin
+policy instead of receiving development loopback origins.
+
+Redis rate-limit startup validation now accepts `rustok.cache.redis_url`,
+matching the URL precedence already used by `CacheService::from_url`; environment
+fallback remains available when the YAML value is absent or blank. The regression
+test covers a YAML-only Redis target with both Redis environment variables cleared.
+
+Unmatched-route and embedded-admin rewrite diagnostics now use the fixed
+`trace_path_family` vocabulary. Embedded static assets also publish the
+representation `Content-Length` on HEAD responses while keeping the body empty.
+Focused regressions were added; tests, compilation and formatting were not run
+at the maintainer's request.

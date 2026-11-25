@@ -37,7 +37,7 @@ pub(crate) mod routes_codegen {
 
 #[cfg(feature = "embed-admin-assets")]
 use axum::{
-    http::header::{ALLOW, CACHE_CONTROL, CONTENT_TYPE, ETAG, IF_NONE_MATCH},
+    http::header::{ALLOW, CACHE_CONTROL, CONTENT_LENGTH, CONTENT_TYPE, ETAG, IF_NONE_MATCH},
     response::Response as AxumResponse,
 };
 #[cfg(feature = "embed-admin-assets")]
@@ -156,7 +156,11 @@ fn admin_asset_response(
             match std::str::from_utf8(raw_bytes.as_slice()) {
                 Ok(html) => nonce_trusted_admin_elements(html, nonce).into_bytes(),
                 Err(error) => {
-                    tracing::error!(%error, path, "Embedded admin document is not valid UTF-8");
+                    tracing::error!(
+                        %error,
+                        path_group = crate::middleware::http_stack::trace_path_family(path),
+                        "Embedded admin document is not valid UTF-8"
+                    );
                     return (
                         axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                         "Admin UI document is invalid",
@@ -182,6 +186,8 @@ fn admin_asset_response(
     } else {
         "public, max-age=31536000, immutable"
     };
+
+    let content_length = response_bytes.len().to_string();
 
     if !is_document {
         let digest = hex::encode(Sha256::digest(response_bytes.as_slice()));
@@ -217,6 +223,7 @@ fn admin_asset_response(
             header_value(mime.as_ref(), "application/octet-stream"),
         );
         headers.insert(CACHE_CONTROL, header_value(cache_control, "no-cache"));
+        headers.insert(CONTENT_LENGTH, header_value(&content_length, "0"));
         headers.insert(ETAG, header_value(&etag, "\"0\""));
         return response;
     }
@@ -233,6 +240,7 @@ fn admin_asset_response(
         header_value(mime.as_ref(), "text/html; charset=utf-8"),
     );
     headers.insert(CACHE_CONTROL, header_value(cache_control, "no-cache"));
+    headers.insert(CONTENT_LENGTH, header_value(&content_length, "0"));
     response
 }
 
@@ -356,7 +364,10 @@ async fn dispatch_embedded_admin_fallback(
     };
 
     let Ok(rewritten_uri) = rewritten_uri else {
-        tracing::error!(%original_path, "Failed to rewrite embedded admin request URI");
+        tracing::error!(
+            path_group = crate::middleware::http_stack::trace_path_family(original_path),
+            "Failed to rewrite embedded admin request URI"
+        );
         return (
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             "Admin UI routing failed",
@@ -396,7 +407,8 @@ pub fn compose_application_router(
             middleware::registry_remote_claim::claim_atomic,
         ));
 
-    let is_production = crate::common::is_production_environment();
+    // Release binaries retain production security gates even with a staging/development label.
+    let is_production = crate::common::is_production_security_mode();
     let allowed_origins = middleware::cors::resolve_cors_allowed_origins_from_env().or_else(|| {
         settings_snapshot
             .pointer("/rustok/cors/allowed_origins")
@@ -1102,6 +1114,47 @@ mod tests {
             );
             assert_eq!(headers.get(ETAG).unwrap().to_str().unwrap(), etag);
         }
+    }
+
+    #[cfg(feature = "embed-admin-assets")]
+    #[tokio::test]
+    async fn admin_asset_head_response_preserves_get_length_without_a_body() {
+        use super::admin_asset_response;
+        use axum::http::header::CONTENT_LENGTH;
+
+        let content = b"console.log('head');";
+        let get_response = admin_asset_response(
+            "pkg/app.js",
+            std::borrow::Cow::Borrowed(content),
+            None,
+            None,
+            false,
+        );
+        let head_response = admin_asset_response(
+            "pkg/app.js",
+            std::borrow::Cow::Borrowed(content),
+            None,
+            None,
+            true,
+        );
+        let expected_length = content.len().to_string();
+
+        assert_eq!(head_response.status(), StatusCode::OK);
+        assert_eq!(
+            head_response.headers().get(CONTENT_LENGTH),
+            get_response.headers().get(CONTENT_LENGTH)
+        );
+        assert_eq!(
+            head_response
+                .headers()
+                .get(CONTENT_LENGTH)
+                .and_then(|value| value.to_str().ok()),
+            Some(expected_length.as_str())
+        );
+        let body = to_bytes(head_response.into_body(), 64)
+            .await
+            .expect("read HEAD response body");
+        assert!(body.is_empty());
     }
 
     #[cfg(feature = "embed-admin-assets")]

@@ -3346,3 +3346,26 @@ checks that publishing through one cache owner does not notify an independent
 owner, and the architecture guard rejects reintroduction of the global pointer.
 
 Tests and compilation were not run, as requested by the maintainer.
+
+
+## Follow-up code review — release-aware CORS and Redis config parity (2026-11-25)
+
+The main API router passed the environment-label predicate into the HTTP edge
+stack even though CORS origin resolution and host startup use the shared
+release-aware production-security mode. A release build labeled
+`staging`/`development` could therefore receive the development loopback
+allow-list. Router composition now uses `is_production_security_mode()`
+for the edge stack.
+
+Rate-limit settings validation also checked only environment Redis URLs,
+while `CacheService::from_url` already honors `rustok.cache.redis_url` first.
+YAML-only Redis deployments were rejected before runtime composition. Validation
+now accepts a nonblank configured cache URL before checking environment fallback,
+and a focused regression covers that configuration.
+
+The 404 fallback and embedded-admin URI rewrite failure path now log only the
+fixed HTTP path family. Static admin asset responses include the selected
+representation length for both GET and HEAD; HEAD keeps an empty body. Focused
+tests were authored for Redis-only YAML configuration and HEAD metadata.
+
+Tests, compilation and formatting were not run, as requested by the maintainer.
