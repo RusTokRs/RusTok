@@ -342,7 +342,7 @@ impl JwtGenerationFence {
     pub async fn renew(&self, publisher: &JwtKeyringPublisher) -> Result<bool> {
         let mac = FenceMac::new(publisher.lease_root())?;
         let (generation, snapshot) = publisher.lease_metadata(|identity| mac.identity(identity))?;
-        let Some(deadline) = self.grant(publisher, generation, snapshot, &mac).await? else {
+        let Some(deadline) = self.grant(publisher, generation, snapshot, &mac, true).await? else {
             return Ok(false);
         };
         publisher.install_lease(generation, deadline)
@@ -359,14 +359,61 @@ impl JwtGenerationFence {
         crate::validate_auth_config(&candidate)?;
         let mac = FenceMac::new(candidate.secret())?;
         let snapshot = candidate.fence_snapshot(|identity| mac.identity(identity))?;
-        let Some(deadline) = self.grant(publisher, generation, snapshot, &mac).await? else {
+        let Some(deadline) = self.grant(publisher, generation, snapshot, &mac, false).await? else {
             return Ok(false);
         };
-        publisher.publish_granted(generation, candidate, deadline)
+        if !publisher.publish_granted(generation, candidate, deadline)? {
+            return Ok(false);
+        }
+        // Only after the local write fence has drained old crypto and
+        // installed the new generation may this incarnation ACK replacement.
+        self.acknowledge(publisher, generation, &mac).await?;
+        Ok(true)
+    }
+
+    /// Remove only grants of this incarnation that can no longer be used.
+    /// Generation is monotonic under the local write fence; even a delayed
+    /// renewal cannot reinstall an older grant after this ACK.
+    async fn acknowledge(
+        &self, publisher: &JwtKeyringPublisher, applied: u64, mac: &FenceMac,
+    ) -> Result<()> {
+        let prefix = format!("{}:", publisher.incarnation());
+        for _ in 0..MAX_CAS_ATTEMPTS {
+            let stored = self.load().await?;
+            // Validate the durable envelope before modifying its grant registry.
+            let _ = stored.ledger(mac)?;
+            let mut grants = stored.live_grants()?;
+            let before = grants.len();
+            grants.retain(|key, grant| !key.starts_with(&prefix) || grant.generation >= applied);
+            if grants.len() == before {
+                return Ok(());
+            }
+            let horizon = grants.values().map(|grant| grant.until_ms)
+                .chain(std::iter::once(stored.untracked_until_ms)).max().unwrap_or(0);
+            let encoded = serde_json::to_string(&grants).map_err(|_| unavailable())?;
+            let backend = self.db.get_database_backend();
+            let sql = match backend {
+                DbBackend::Postgres => "UPDATE auth_jwt_generation_fence SET lease_until_ms = $1, replica_grants = $2 WHERE id = 1 AND generation = $3 AND tag = $4 AND drain_until_ms = $5 AND lease_until_ms = $6 AND replica_grants = $7",
+                DbBackend::Sqlite => "UPDATE auth_jwt_generation_fence SET lease_until_ms = ?1, replica_grants = ?2 WHERE id = 1 AND generation = ?3 AND tag = ?4 AND drain_until_ms = ?5 AND lease_until_ms = ?6 AND replica_grants = ?7",
+                _ => return Err(unavailable()),
+            };
+            let updated = self.db.execute_raw(Statement::from_sql_and_values(
+                backend, sql, vec![horizon.into(), encoded.into(), stored.generation.into(),
+                    stored.tag.into(), stored.drain_until_ms.into(), stored.lease_until_ms.into(),
+                    stored.replica_grants.into()],
+            )).await.map_err(|_| unavailable())?;
+            if updated.rows_affected() == 1 {
+                return Ok(());
+            }
+        }
+        // Contention does not invalidate the installed lease. Renewal will
+        // retry the ACK; until then the old grant conservatively remains.
+        Ok(())
     }
 
     async fn grant(
         &self, publisher: &JwtKeyringPublisher, generation: u64, snapshot: Snapshot, mac: &FenceMac,
+        already_applied: bool,
     ) -> Result<Option<Instant>> {
         let generation_sql = i64::try_from(generation).map_err(|_| rejected())?;
         let key = format!("{}:{generation}", publisher.incarnation());
@@ -381,6 +428,12 @@ impl JwtGenerationFence {
                 return Ok(None);
             }
             let mut grants = stored.live_grants()?;
+            if already_applied {
+                // Renewal observes the locally installed generation, so it
+                // can retry an ACK lost to CAS contention during activation.
+                let prefix = format!("{}:", publisher.incarnation());
+                grants.retain(|key, grant| !key.starts_with(&prefix) || grant.generation >= generation);
+            }
             if !grants.contains_key(&key) && grants.len() >= MAX_GRANTS {
                 return Ok(None);
             }
@@ -398,6 +451,8 @@ impl JwtGenerationFence {
             if encoded.len() > MAX_GRANT_BYTES {
                 return Ok(None);
             }
+            let horizon = grants.values().map(|grant| grant.until_ms)
+                .chain(std::iter::once(stored.untracked_until_ms)).max().unwrap_or(0);
             let backend = self.db.get_database_backend();
             let sql = match backend {
                 DbBackend::Postgres => "UPDATE auth_jwt_generation_fence SET lease_until_ms = $1, replica_grants = $2 WHERE id = 1 AND generation = $3 AND tag = $4 AND drain_until_ms = $5 AND lease_until_ms = $6 AND replica_grants = $7",
@@ -405,7 +460,7 @@ impl JwtGenerationFence {
                 _ => return Err(unavailable()),
             };
             let updated = self.db.execute_raw(Statement::from_sql_and_values(
-                backend, sql, vec![until.max(stored.lease_until_ms).into(), encoded.into(),
+                backend, sql, vec![horizon.into(), encoded.into(),
                     generation_sql.into(), stored.tag.into(), stored.drain_until_ms.into(),
                     stored.lease_until_ms.into(), stored.replica_grants.into()],
             )).await.map_err(|_| unavailable())?;
@@ -574,16 +629,12 @@ mod tests {
         assert_eq!(fence.admit(3, &promoted).await.unwrap(), JwtAdmission::AwaitingReplicas);
         assert!(fence.renew(&a).await.unwrap());
         assert!(fence.activate(&b, 2, staged).await.unwrap());
-        // Even a switched process's previous grant remains in the registry
-        // until its conservative expiry. Simulate only generation 1 expiry.
+        // Both incarnations have now applied the staged verifier set.
+        // The post-publication ACK removed only their own previous grants.
         let stored = fence.load().await.unwrap();
-        let mut grants = stored.live_grants().unwrap();
-        grants.retain(|_, grant| grant.generation != 1);
-        let encoded = serde_json::to_string(&grants).unwrap();
-        db.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
-            "UPDATE auth_jwt_generation_fence SET replica_grants = ?1 WHERE id = 1",
-            vec![encoded.into()],
-        )).await.unwrap();
+        let grants = stored.live_grants().unwrap();
+        assert_eq!(grants.len(), 2);
+        assert!(grants.values().all(|grant| grant.generation == 2));
         assert_eq!(fence.admit(3, &promoted).await.unwrap(), JwtAdmission::Admitted);
         assert!(fence.activate(&a, 3, promoted.clone()).await.unwrap());
         let fresh = issue(&live_a);
@@ -593,6 +644,46 @@ mod tests {
         assert!(decode_access_token(&live_a, &old).is_ok());
         assert!(fence.activate(&b, 3, promoted).await.unwrap());
         assert!(decode_access_token(&live_b, &fresh).is_ok());
+    }
+
+    #[tokio::test]
+    async fn candidate_grant_is_not_an_ack_until_local_publication() {
+        let db = database().await;
+        let fence = JwtGenerationFence::new(db.clone());
+        let until = chrono::Utc::now().timestamp() + 3600;
+        let first = config(ROOT, "old", OLD, None, None);
+        let staged = config(ROOT, "old", OLD, Some(("new", NEW, until)), None);
+        let promoted = config(ROOT, "new", NEW, Some(("old", OLD, until)), None);
+        assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
+        let (_, a) = first.clone().into_cluster_jwt(1).unwrap();
+        let (_, b) = first.into_cluster_jwt(1).unwrap();
+        assert!(fence.renew(&a).await.unwrap());
+        assert!(fence.renew(&b).await.unwrap());
+        assert_eq!(fence.admit(2, &staged).await.unwrap(), JwtAdmission::Admitted);
+
+        // Reserve the next lease but do not install it: this cannot remove
+        // either previous grant or authorize the promotion.
+        let mac = FenceMac::new(staged.secret()).unwrap();
+        let snapshot = staged.fence_snapshot(|identity| mac.identity(identity)).unwrap();
+        assert!(fence.grant(&a, 2, snapshot, &mac, false).await.unwrap().is_some());
+        assert_eq!(a.generation().unwrap(), 1);
+        assert_eq!(fence.admit(3, &promoted).await.unwrap(), JwtAdmission::AwaitingReplicas);
+        assert!(fence.activate(&a, 2, staged).await.unwrap());
+        assert_eq!(fence.admit(3, &promoted).await.unwrap(), JwtAdmission::AwaitingReplicas);
+        let stored = fence.load().await.unwrap();
+        let grants = stored.live_grants().unwrap();
+        assert!(grants.values().any(|grant| grant.generation == 1));
+        // A disconnected B cannot ACK; it stops locally and its old grant
+        // remains a barrier until the conservative database deadline.
+        b.revoke_lease();
+        let mut remaining = grants;
+        remaining.retain(|_, grant| grant.generation != 1);
+        let horizon = remaining.values().map(|grant| grant.until_ms).max().unwrap_or(0);
+        db.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+            "UPDATE auth_jwt_generation_fence SET replica_grants = ?1, lease_until_ms = ?2 WHERE id = 1",
+            vec![serde_json::to_string(&remaining).unwrap().into(), horizon.into()],
+        )).await.unwrap();
+        assert_eq!(fence.admit(3, &promoted).await.unwrap(), JwtAdmission::Admitted);
     }
 
     #[tokio::test]

@@ -281,16 +281,18 @@ not known to the ledger.
 ### Rolling replica admission
 
 Every process registers its UUID incarnation and exact prepared verifier
-metadata with each lease. Grants for older generations remain until their
-database-clock deadlines, including after a process changes generation.
+metadata with each lease. After installing a new generation under the
+local write fence, the same incarnation ACKs replacement and removes its
+older grants. Disconnected or unacknowledged grants remain until their
+database-clock deadlines. Reserving a candidate lease is not an ACK.
 Add a new verification-only key to a generation retaining the current
 signer; distribute it before promoting the new signer in the next document.
 Retain the previous signer as verification history for the full remaining
 JWT lifetime. Both generations must verify each other's signer for the
 entire overlap plus a safety margin, and existing live verification
 deadlines and legacy mapping must be preserved. A compatible promotion
-waits for all outstanding older incompatible grants to expire without
-closing renewal for the current generation (AwaitingReplicas). A new
+waits for all outstanding older incompatible grants to be acknowledged
+or expire without closing renewal for the current generation (AwaitingReplicas). A new
 local lease and the new keys are installed atomically. An incompatible
 change or removal of still-valid history uses the existing drain path.
 Unchanged waiting files retry automatically.

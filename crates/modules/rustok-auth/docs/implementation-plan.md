@@ -203,7 +203,7 @@ A database-serialized cluster lease/drain barrier now fences stale HTTP hosts
 at the JWT crypto boundary, including static-to-file enrollment. Rolling
 replica grants now acknowledge actual verifier metadata, permit compatible
 staging/promotion without a global drain, and wait for incompatible older
-grants to expire. Emergency revocation remains open; real multi-replica
+grants to expire or be acknowledged after local application. Emergency revocation remains open; real multi-replica
 runtime evidence is pending.
 Scoped checks are pending. See the
 [owner contract](README.md#jwt-keyring-and-rotation).

@@ -23,10 +23,12 @@ records outstanding grants by incarnation and generation, including the
 canonical four-purpose verification metadata and DB deadline. An outstanding
 grant is a conservative acknowledgement of the maximum crypto capability
 that can be enabled locally; a grant lost before local installation delays
-promotion but cannot make an unsafe promotion possible. Do not remove a
-grant on replacement, shutdown, or lost connection until its DB deadline.
-A new generation grant is acquired before atomically installing both keys
+promotion but cannot make an unsafe promotion possible. A new generation grant is acquired before atomically installing both keys
 and deadline; the old local gate remains intact if acquisition fails.
+Only after the local write fence has drained old crypto and installed the
+new generation does the same incarnation acknowledge replacement and
+remove its older grants via CAS. Renewal retries a contested ACK. Shutdown
+or lost connection alone cannot remove a grant before its DB deadline.
 
 A rolling transition must preserve every still-verifiable key and legacy
 mapping of the preceding snapshot, with no shortened historical cutoff.
@@ -40,7 +42,8 @@ Promotion of a staged signer must pass the same predicate against every
 outstanding lease, including older generations. If the immediate durable
 predecessor is compatible but a still-live older grant is not, return
 AwaitingReplicas without closing renewal of the current generation.
-Old-generation grants cannot renew and eventually expire. Incompatible
+Old-generation grants cannot renew and eventually expire unless their
+own incarnation acknowledges a newer applied generation. Incompatible
 changes use the existing conservative drain barrier. No assumption of
 a predetermined replica count or healthy disconnected replica is made.
 
@@ -83,7 +86,8 @@ database rollback protection and root/algorithm migration remain open.
 ## Verification
 
 Source regressions cover additive staging, wait for an old grant, promotion
-while staged replicas continue crypto, atomic local activation, stale
-renewal refusal, incompatible removal and legacy drain. Scoped compilation
+while staged replicas continue crypto, atomic local activation, ACK only
+after local installation, disconnected holder expiry, stale renewal refusal,
+incompatible removal and legacy drain. Scoped compilation
 and independent-pool PostgreSQL/network-partition runtime evidence remain
 pending.
