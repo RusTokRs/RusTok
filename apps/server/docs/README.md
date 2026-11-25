@@ -862,8 +862,8 @@ before GraphQL's normal document validation.
   fence instead of waiting indefinitely. The active-manifest read, storage and
   tenant-cache preparation, Alloy executor construction, and product/profile
   deployment-provider connects are stop-interruptible before publication.
-  Manifest-managed OAuth synchronization is allowed to finish its transaction
-  and then rechecks stop. Module-work registration cancels its unpublished
+  Manifest-managed OAuth synchronization is allowed to finish its database
+  work and then rechecks stop before starting further workers. Module-work registration cancels its unpublished
   scheduler preparation when stop wins, so a late callback cannot publish a
   new scheduler. `connect_runtime_workers_with_runtime` can also be called
   directly, without this router-bootstrap mutex. Its separate
