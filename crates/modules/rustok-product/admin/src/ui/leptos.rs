@@ -2035,6 +2035,7 @@ pub(super) fn ProductVariantsPanel(
 
                                 let original_for_delete = original_variant.clone();
                                 let on_variant_deleted_for_confirm = on_variant_deleted_for_rows.clone();
+                                let on_mutated_delete_reconcile = on_mutated_edit.clone();
                                 let product_id_for_delete = product_id_for_edit.clone();
                                 let variant_id_for_confirm = variant_id.clone();
                                 let cannot_delete_only_for_confirm = cannot_delete_only_label.clone();
@@ -2068,6 +2069,8 @@ pub(super) fn ProductVariantsPanel(
                                     let deleted_variant_id = original.id.clone();
                                     let expected_revision = original.revision.clone();
                                     let deleted_product_id = product_id_for_delete.clone();
+                                    let reconcile_product_id = product_id_for_delete.clone();
+                                    let reconcile_projection = on_mutated_delete_reconcile.clone();
 
                                     set_busy.set(true);
                                     set_error.set(None);
@@ -2085,10 +2088,19 @@ pub(super) fn ProductVariantsPanel(
                                                 set_editing_variant_id.set(None);
                                                 on_deleted.run((deleted_product_id, deleted_variant_id));
                                             }
-                                            Ok(false) => set_error.set(Some(
-                                                "Product variant deletion was not acknowledged.".into()
-                                            )),
-                                            Err(err) => set_error.set(Some(err.to_string())),
+                                            Ok(false) => {
+                                                set_error.set(Some(
+                                                    "Product variant deletion was not acknowledged.".into()
+                                                ));
+                                                reconcile_projection.run(reconcile_product_id.clone());
+                                            }
+                                            Err(err) => {
+                                                set_error.set(Some(err.to_string()));
+                                                // Reconcile after definitive conflicts and unknown
+                                                // outcomes. An unsettled owner receipt still replays
+                                                // the same request through the retained retry key.
+                                                reconcile_projection.run(reconcile_product_id.clone());
+                                            }
                                         }
                                         set_busy.set(false);
                                     });
