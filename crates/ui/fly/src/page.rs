@@ -126,7 +126,7 @@ pub fn blank_page(id: impl Into<String>, name: impl Into<String>) -> ProjectPage
 }
 
 pub fn apply_page_command(document: &mut ProjectDocument, command: &PageCommand) -> FlyResult<()> {
-    match command {
+    let result = match command {
         PageCommand::Add { index, page } => {
             if *index > document.project.pages.len() {
                 return Err(FlyError::InvalidPageIndex {
@@ -180,7 +180,11 @@ pub fn apply_page_command(document: &mut ProjectDocument, command: &PageCommand)
             apply_page_patch(page, patch.clone());
             Ok(())
         }
+    };
+    if result.is_ok() {
+        document.invalidate_caches();
     }
+    result
 }
 
 fn page_summary(index: usize, page: &ProjectPage) -> PageSummary {
@@ -386,6 +390,25 @@ mod tests {
             StyleRuleCatalog::from_document(&document)
                 .component_rule("hero-a", &StyleRuleScope::Base)
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn direct_page_commands_invalidate_document_hash_cache() {
+        let mut document = document();
+        let before = document.hash();
+        apply_page_command(
+            &mut document,
+            &PageCommand::Add {
+                index: 2,
+                page: Box::new(blank_page("c", "Page C")),
+            },
+        )
+        .expect("add page");
+        assert_ne!(
+            document.hash(),
+            before,
+            "a direct page command must invalidate the cached project hash"
         );
     }
 
