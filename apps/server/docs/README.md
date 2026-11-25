@@ -298,7 +298,14 @@ spelling; server translation queries use SeaQuery's expression trait.
 Invite acceptance and user-admin revocation share a transaction-scoped
 `auth_invites` row fence. The first committed transition wins; accepted invites
 cannot be retroactively revoked, and replayed revocations do not publish another
-`UserInviteRevoked` event.
+`UserInviteRevoked` event. Invite acceptance resolves the host module-availability
+snapshot before opening the transaction to avoid waiting for a second pooled
+connection while holding the first. This snapshot is not a transactional module
+policy fence; persisted issuer and role authority are checked in the transaction.
+Storage failures during role authority validation remain internal errors rather
+than being reported as invalid invitations. Administrative user creation and
+password replacement enforce the runtime's configured minimum password length,
+matching public account lifecycle operations.
 
 OAuth consent grants and revocations lock the app row and then the subject row,
 matching token issuance's lock order before reading or changing consent. This

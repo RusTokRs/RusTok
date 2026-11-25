@@ -178,6 +178,14 @@ fn map_auth_input_error(error: rustok_auth::AuthError) -> AuthAdminMutationError
     }
 }
 
+fn validate_admin_password(
+    config: &AuthConfig,
+    password: &str,
+) -> Result<(), AuthAdminMutationError> {
+    rustok_auth::validate_password_policy(password, config.min_password_length)
+        .map_err(map_auth_input_error)
+}
+
 fn map_custom_field_error(error: rustok_core::field_schema::FlexError) -> AuthAdminMutationError {
     match error {
         rustok_core::field_schema::FlexError::ValidationFailed(errors) => {
@@ -429,6 +437,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             self.ensure_role_assignment_allowed(context, &role).await?;
         }
 
+        validate_admin_password(&self.auth_config, &command.password)?;
         let locale = context
             .locale
             .as_deref()
@@ -448,7 +457,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             &command.email,
             &command.password,
             command.name,
-            rustok_auth::DEFAULT_MIN_PASSWORD_LENGTH_CHARS,
+            self.auth_config.min_password_length,
         )
         .await
         .map_err(map_lifecycle_error)?;
@@ -637,11 +646,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         // transaction holds the row lock.
         let new_password_hash = match command.password.as_deref() {
             Some(password) => {
-                rustok_auth::validate_password_policy(
-                    password,
-                    rustok_auth::DEFAULT_MIN_PASSWORD_LENGTH_CHARS,
-                )
-                .map_err(map_auth_input_error)?;
+                validate_admin_password(&self.auth_config, password)?;
                 Some(
                     hash_password_async(password.to_string())
                         .await
@@ -1243,6 +1248,17 @@ mod tests {
 
         assert_eq!(ledger_expiry.timestamp(), claims.exp as i64);
         assert_eq!(ledger_expiry.timestamp_subsec_nanos(), 0);
+    }
+
+    #[test]
+    fn administrative_password_policy_honors_configured_minimum() {
+        let config = crate::auth::AuthConfig::new("aB3!zY7@qW8#eR2$".repeat(4))
+            .with_min_password_length(20);
+        assert!(matches!(
+            super::validate_admin_password(&config, "ValidPass123!"),
+            Err(AuthAdminMutationError::Validation(_))
+        ));
+        assert!(super::validate_admin_password(&config, "ValidLongPassword123!").is_ok());
     }
 
     #[test]
