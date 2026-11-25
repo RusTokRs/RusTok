@@ -858,9 +858,12 @@ pub const DEFAULT_EDITOR_DRAFT_SESSION_TTL: Duration =
 const UNATTRIBUTED_PARTITION: &str = "_unattributed";
 /// Prefix of per-tenant partitions; the encoded tenant id follows.
 const TENANT_PARTITION_PREFIX: &str = "t-";
-/// Directory of the per-token advisory lock files, shared by all partitions
+/// Directory of the per-token OS file-lock files, shared by all partitions
 /// because a token is unique across tenants.
 const LOCKS_DIR: &str = "_locks";
+/// Stable directory guard. Token lock files may only be opened or removed while
+/// this file is exclusively locked; it is never removed itself.
+const LOCKS_DIR_GUARD_FILE: &str = ".guard.lock";
 /// Longest partition directory name accepted (file systems cap one path
 /// component at 255 bytes).
 const MAX_PARTITION_NAME_BYTES: usize = 200;
@@ -872,7 +875,9 @@ const MAX_TTL_REFRESH_SLACK_SECS: u64 = 5 * 60;
 ///
 /// Layout (audit §2.6): `<dir>/t-<tenant>/<token>.json` per tenant,
 /// `<dir>/_unattributed/<token>.json` for sessions without an owner, and
-/// `<dir>/_locks/<token>.lock`. On Unix every directory is created `0700` and
+/// `<dir>/_locks/<token>.lock` plus the stable `<dir>/_locks/.guard.lock`.
+/// Token locks use OS file locks; `prune` safely removes idle token lock files.
+/// On Unix every directory is created `0700` and
 /// every file `0600`; a storage directory that is a symbolic link, or that the
 /// process cannot restrict to its own user, is refused.
 #[derive(Clone)]
@@ -1197,6 +1202,43 @@ impl FileSsrDraftSessionStore {
         Ok(None)
     }
 
+    /// Deletes a record only if the exact generation and owner observed by a
+    /// prune/capacity scan are still present under the token lock. A concurrent
+    /// update makes the candidate stale and therefore ineligible for deletion.
+    fn remove_record_if_unchanged(
+        &self,
+        path: &Path,
+        token: &str,
+        generation: u64,
+        expected_age: RecordAge,
+        owner: Option<&DraftSessionOwner>,
+    ) -> Result<bool, SsrDraftSessionError> {
+        self.with_lock(token, || {
+            let content = match fs::read_to_string(path) {
+                Ok(content) => content,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+                Err(error) => return Err(SsrDraftSessionError::Io(error.to_string())),
+            };
+            let current = match PersistentDraftSessionRecord::decode_str(&content) {
+                Ok(record) => record,
+                // Corrupt or newer-format records are not eviction candidates.
+                Err(_) => return Ok(false),
+            };
+            if current.token != token
+                || current.generation != generation
+                || record_age(path, current.expires_at_unix_secs) != expected_age
+                || current.owner.as_ref() != owner
+            {
+                return Ok(false);
+            }
+            match fs::remove_file(path) {
+                Ok(()) => Ok(true),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+                Err(error) => Err(SsrDraftSessionError::Io(error.to_string())),
+            }
+        })
+    }
+
     /// Deletes the file of a session [`Self::read_located`] found to be over.
     /// A leftover is retried by the next read of the token or by `prune`.
     fn collect_dead_record(&self, path: &Path, token: &str, lock: TokenLock) -> DeadRecord {
@@ -1260,6 +1302,13 @@ impl FileSsrDraftSessionStore {
         &self,
         record: &PersistentDraftSessionRecord,
     ) -> Result<(), SsrDraftSessionError> {
+        self.with_lock(&record.token, || self.save_record_locked(record))
+    }
+
+    fn save_record_locked(
+        &self,
+        record: &PersistentDraftSessionRecord,
+    ) -> Result<(), SsrDraftSessionError> {
         self.ensure_available()?;
         Self::validate_token(&record.token)?;
         let json_bytes = serde_json::to_vec_pretty(record)
@@ -1303,7 +1352,7 @@ impl FileSsrDraftSessionStore {
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
             Err(err) => return Err(SsrDraftSessionError::Io(err.to_string())),
         };
-        let mut owned: Vec<(PathBuf, RecordAge)> = Vec::new();
+        let mut owned: Vec<(PathBuf, String, u64, RecordAge)> = Vec::new();
         for entry in entries.flatten() {
             let path = entry.path();
             let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
@@ -1320,17 +1369,31 @@ impl FileSsrDraftSessionStore {
             };
             if record.owner.as_ref() == Some(owner) && record.token != keep_token {
                 let age = record_age(&path, record.expires_at_unix_secs);
-                owned.push((path, age));
+                owned.push((path, record.token, record.generation, age));
             }
         }
         if owned.len() >= MAX_DRAFT_SESSIONS_PER_OWNER {
-            owned.sort_by_key(|(_, age)| *age);
+            owned.sort_by_key(|(_, _, _, age)| *age);
             let excess = owned.len() + 1 - MAX_DRAFT_SESSIONS_PER_OWNER;
-            for (path, _) in owned.into_iter().take(excess) {
-                // The cap is a bound, not a hint: a session that cannot be
-                // evicted must not be joined by one more.
-                remove_file_if_present(&path)
-                    .map_err(|err| SsrDraftSessionError::Io(err.to_string()))?;
+            let mut removed = 0;
+            for (path, token, generation, age) in owned.into_iter().take(excess) {
+                if self.remove_record_if_unchanged(
+                    &path,
+                    &token,
+                    generation,
+                    age,
+                    Some(owner),
+                )? {
+                    removed += 1;
+                }
+            }
+            // If another writer refreshed or moved a candidate after our scan,
+            // do not silently exceed the per-owner cap. The caller can retry
+            // against the new record set.
+            if removed < excess {
+                return Err(SsrDraftSessionError::Io(
+                    "per-owner draft capacity changed concurrently; retry the save".to_string(),
+                ));
             }
         }
         Ok(())
@@ -1429,7 +1492,7 @@ impl FileSsrDraftSessionStore {
                 runtime_context: record.runtime_context.clone(),
                 owner: record.owner.clone(),
             };
-            self.save_record(&record)?;
+            self.save_record_locked(&record)?;
             Ok(TokenLockCommit::Committed(snapshot))
         })
     }
@@ -1484,10 +1547,12 @@ impl FileSsrDraftSessionStore {
         &self,
         partition: &Path,
         now: u64,
-        surviving: &mut Vec<(PathBuf, RecordAge, Option<DraftSessionOwner>)>,
-    ) -> usize {
-        let Ok(entries) = fs::read_dir(partition) else {
-            return 0;
+        surviving: &mut Vec<(PathBuf, String, u64, RecordAge, Option<DraftSessionOwner>)>,
+    ) -> Result<usize, SsrDraftSessionError> {
+        let entries = match fs::read_dir(partition) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+            Err(error) => return Err(SsrDraftSessionError::Io(error.to_string())),
         };
         let mut pruned = 0;
         for entry in entries.flatten() {
@@ -1496,11 +1561,29 @@ impl FileSsrDraftSessionStore {
                 continue;
             };
             if file_name.contains(".tmp.") {
-                // A fresh temporary file belongs to a write in flight.
-                if file_is_older_than(&path, TOKEN_LOCK_STALE_AFTER)
-                    && fs::remove_file(&path).is_ok()
+                let Some((token, _)) = file_name.split_once(".tmp.") else {
+                    continue;
+                };
+                if !Self::is_safe_token(token) || !file_is_older_than(&path, TEMP_FILE_STALE_AFTER)
                 {
-                    pruned += 1;
+                    continue;
+                }
+                // The age check is only a candidate filter. A slow writer
+                // keeps the token lock, and the definitive age check plus
+                // unlink happen under that same lock.
+                match try_with_token_lock(&self.dir.join(LOCKS_DIR), token, || {
+                    if !file_is_older_than(&path, TEMP_FILE_STALE_AFTER) {
+                        return Ok(false);
+                    }
+                    match fs::remove_file(&path) {
+                        Ok(()) => Ok(true),
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+                        Err(error) => Err(SsrDraftSessionError::Io(error.to_string())),
+                    }
+                }) {
+                    Ok(Some(true)) => pruned += 1,
+                    Ok(Some(false)) | Ok(None) => {}
+                    Err(error) => return Err(error),
                 }
                 continue;
             }
@@ -1509,11 +1592,11 @@ impl FileSsrDraftSessionStore {
             };
             let record = fs::read_to_string(&path)
                 .ok()
-                .and_then(|c| PersistentDraftSessionRecord::decode_str(&c).ok());
+                .and_then(|content| PersistentDraftSessionRecord::decode_str(&content).ok());
             match record {
                 Some(record) if record.expires_at_unix_secs > now => {
                     let age = record_age(&path, record.expires_at_unix_secs);
-                    surviving.push((path, age, record.owner));
+                    surviving.push((path, record.token, record.generation, age, record.owner));
                 }
                 // Expired or unreadable: decided again under the token lock.
                 _ => {
@@ -1523,7 +1606,7 @@ impl FileSsrDraftSessionStore {
                 }
             }
         }
-        pruned
+        Ok(pruned)
     }
 }
 
@@ -1578,7 +1661,7 @@ impl PersistentDraftSessionBackend for FileSsrDraftSessionStore {
             if !matches {
                 return Ok(false);
             }
-            self.save_record(new_record)?;
+            self.save_record_locked(new_record)?;
             Ok(true)
         })
     }
@@ -1710,7 +1793,7 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
                 runtime_context: record.runtime_context.clone(),
                 owner: record.owner.clone(),
             };
-            self.save_record(&record)?;
+            self.save_record_locked(&record)?;
             Ok(SsrDraftOperationCommit::Committed(snapshot))
         })
     }
@@ -1800,7 +1883,13 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
         };
         let mut pruned = 0;
         let now = current_unix_secs();
-        let mut surviving: Vec<(PathBuf, RecordAge, Option<DraftSessionOwner>)> = Vec::new();
+        let mut surviving: Vec<(
+            PathBuf,
+            String,
+            u64,
+            RecordAge,
+            Option<DraftSessionOwner>,
+        )> = Vec::new();
         for entry in entries.flatten() {
             let path = entry.path();
             let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
@@ -1825,49 +1914,81 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
                 continue;
             }
             if name == LOCKS_DIR {
-                // Tokens are never reused, so the lock of a crashed holder
-                // would otherwise stay behind forever.
-                remove_stale_files(&path, TOKEN_LOCK_STALE_AFTER);
+                continue;
             } else if name == UNATTRIBUTED_PARTITION || name.starts_with(TENANT_PARTITION_PREFIX) {
-                pruned += self.prune_partition(&path, now, &mut surviving);
+                pruned += self.prune_partition(&path, now, &mut surviving)?;
             }
         }
 
         // Global cap first (oldest evicted), then the per-owner cap on the
         // survivors (audit §2.5) — mirroring the KV backend.
         if surviving.len() > self.maximum_entries {
-            surviving.sort_by_key(|(_, age, _)| *age);
+            surviving.sort_by_key(|(_, _, _, age, _)| *age);
             let excess = surviving.len() - self.maximum_entries;
-            let evicted: Vec<(PathBuf, RecordAge, Option<DraftSessionOwner>)> =
-                surviving.drain(..excess).collect();
-            for (path, _, _) in evicted {
-                if discard_file(&path, "evicted record") {
-                    pruned += 1;
+            let evicted: Vec<(
+                PathBuf,
+                String,
+                u64,
+                RecordAge,
+                Option<DraftSessionOwner>,
+            )> = surviving.drain(..excess).collect();
+            for (path, token, generation, age, owner) in evicted {
+                match self.remove_record_if_unchanged(
+                    &path,
+                    &token,
+                    generation,
+                    age,
+                    owner.as_ref(),
+                ) {
+                    Ok(true) => pruned += 1,
+                    Ok(false) | Err(SsrDraftSessionError::LockTimeout(_)) => {}
+                    Err(error) => return Err(error),
                 }
             }
         }
 
-        let mut per_owner: HashMap<String, Vec<(PathBuf, RecordAge)>> = HashMap::new();
-        for (path, age, owner) in &surviving {
+        let mut per_owner: HashMap<
+            String,
+            Vec<(PathBuf, String, u64, RecordAge, Option<DraftSessionOwner>)>,
+        > = HashMap::new();
+        for (path, token, generation, age, owner) in &surviving {
             if let Some(owner) = owner {
                 per_owner
                     .entry(format!("{}:{}", owner.tenant_id, owner.user_id))
                     .or_default()
-                    .push((path.clone(), *age));
+                    .push((
+                        path.clone(),
+                        token.clone(),
+                        *generation,
+                        *age,
+                        Some(owner.clone()),
+                    ));
             }
         }
         for (_, mut owned) in per_owner {
             if owned.len() > MAX_DRAFT_SESSIONS_PER_OWNER {
-                owned.sort_by_key(|(_, age)| *age);
+                owned.sort_by_key(|(_, _, _, age, _)| *age);
                 let excess = owned.len() - MAX_DRAFT_SESSIONS_PER_OWNER;
-                for (path, _) in owned.into_iter().take(excess) {
-                    if discard_file(&path, "evicted record") {
-                        pruned += 1;
+                for (path, token, generation, age, owner) in owned.into_iter().take(excess) {
+                    match self.remove_record_if_unchanged(
+                        &path,
+                        &token,
+                        generation,
+                        age,
+                        owner.as_ref(),
+                    ) {
+                        Ok(true) => pruned += 1,
+                        Ok(false) | Err(SsrDraftSessionError::LockTimeout(_)) => {}
+                        Err(error) => return Err(error),
                     }
                 }
             }
         }
 
+        // Lock files are stable inodes while a process owns them. Reap idle
+        // ones only after all record pruning is complete; active operations
+        // are left alone and waiters cannot race the unlink.
+        prune_token_lock_files(&self.dir.join(LOCKS_DIR))?;
         Ok(pruned)
     }
 }
@@ -2759,30 +2880,84 @@ fn ensure_record_size(bytes: usize) -> Result<(), SsrDraftSessionError> {
     Ok(())
 }
 
-/// How long a crashed holder's token lock may survive before waiters break it.
-const TOKEN_LOCK_STALE_AFTER: Duration = Duration::from_secs(30);
+/// How long an abandoned atomic-write temporary file must remain untouched
+/// before a prune pass considers collecting it. The owning token lock is
+/// still required before deletion, so a slow live writer is never mistaken
+/// for an abandoned one.
+const TEMP_FILE_STALE_AFTER: Duration = Duration::from_secs(30);
 
-/// How long a waiter polls for the token lock before giving up.
+/// How long a waiter polls for an OS-level token lock before giving up.
 const TOKEN_LOCK_WAIT: Duration = Duration::from_secs(2);
 
-/// Runs `action` while holding an advisory lock file for `token` in `dir`,
-/// making read-check-write sequences on one record atomic across processes
-/// and pods that share the directory (audit §4.1).
+#[cfg(not(target_arch = "wasm32"))]
+fn open_lock_file(path: &Path) -> Result<fs::File, std::io::Error> {
+    let mut options = OpenOptions::new();
+    options.read(true).write(true).create(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let file = options.open(path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(file)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn try_lock_file(file: &fs::File) -> Result<bool, std::io::Error> {
+    match file.try_lock() {
+        Ok(()) => Ok(true),
+        Err(std::fs::TryLockError::WouldBlock) => Ok(false),
+        Err(std::fs::TryLockError::Error(error)) => Err(error),
+    }
+}
+
+/// Acquires the stable lock-directory guard. A caller must hold it while
+/// opening a token lock file, and while unlinking one during pruning. A waiter
+/// never keeps a token descriptor open after a failed try-lock.
+#[cfg(not(target_arch = "wasm32"))]
+fn try_acquire_lock_directory_guard(
+    dir: &Path,
+) -> Result<Option<fs::File>, SsrDraftSessionError> {
+    let path = dir.join(LOCKS_DIR_GUARD_FILE);
+    let guard = open_lock_file(&path)
+        .map_err(|error| SsrDraftSessionError::Io(error.to_string()))?;
+    match try_lock_file(&guard).map_err(|error| SsrDraftSessionError::Io(error.to_string()))? {
+        true => Ok(Some(guard)),
+        false => Ok(None),
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn acquire_lock_directory_guard(
+    dir: &Path,
+    deadline: Instant,
+    token: &str,
+) -> Result<fs::File, SsrDraftSessionError> {
+    loop {
+        if let Some(guard) = try_acquire_lock_directory_guard(dir)? {
+            return Ok(guard);
+        }
+        if Instant::now() >= deadline {
+            return Err(SsrDraftSessionError::LockTimeout(token.to_string()));
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+/// Runs `action` while holding the OS file lock for `token`.
 ///
-/// The lock is a `O_EXCL`-created companion file; a holder that crashed leaves
-/// it behind, so waiters break locks older than [`TOKEN_LOCK_STALE_AFTER`].
-/// Two waiters can never both acquire from a clean state: the create itself is
-/// atomic, and after a stale break only one `create_new` succeeds. Each holder
-/// writes its identity into the lock and only removes a lock it still owns, so
-/// a broken-then-recreated lock is never deleted by its predecessor.
-///
-/// Residual race, accepted and bounded: a waiter that has already judged a
-/// lock stale can delete a freshly re-created lock file in the microseconds
-/// between its `metadata` and `remove_file` calls, briefly yielding two
-/// holders. It requires a crashed holder plus two concurrent waiters hitting
-/// that exact interleave; the holder identity keeps the aftermath consistent.
-/// When a filesystem dependency is permissible, `flock`/`fcntl` locks remove
-/// the window entirely — they die with the process.
+/// The stable directory guard serializes opening token lock files with their
+/// cleanup. A waiter that cannot acquire a token lock closes its descriptor
+/// before releasing the directory guard; therefore pruning can never unlink
+/// an inode that a waiter has already opened. The token descriptor itself
+/// remains locked for the complete read-check-write action. The operating
+/// system releases both locks when a process exits or crashes.
+#[cfg(not(target_arch = "wasm32"))]
 fn with_token_lock<T>(
     dir: &Path,
     token: &str,
@@ -2790,53 +2965,167 @@ fn with_token_lock<T>(
 ) -> Result<T, SsrDraftSessionError> {
     FileSsrDraftSessionStore::validate_token(token)?;
     let lock_path = dir.join(format!("{token}.lock"));
-    let holder = Uuid::new_v4().simple().to_string();
     let deadline = Instant::now() + TOKEN_LOCK_WAIT;
     loop {
-        match private_file_options().open(&lock_path) {
-            Ok(mut lock_file) => {
-                // Identify the holder inside the lock so release only ever
-                // removes a lock we still own. A failed identity write
-                // leaves an unverifiable lock: drop it and surface the I/O
-                // error instead of running the action unattributed.
-                if let Err(err) = lock_file.write_all(holder.as_bytes()) {
-                    discard_file(&lock_path, "token lock");
-                    return Err(SsrDraftSessionError::Io(err.to_string()));
-                }
-                drop(lock_file);
+        let directory_guard = acquire_lock_directory_guard(dir, deadline, token)?;
+        let token_lock = open_lock_file(&lock_path)
+            .map_err(|error| SsrDraftSessionError::Io(error.to_string()))?;
+        match try_lock_file(&token_lock)
+            .map_err(|error| SsrDraftSessionError::Io(error.to_string()))?
+        {
+            true => {
+                drop(directory_guard);
                 let result = action();
-                let still_ours = fs::read_to_string(&lock_path)
-                    .ok()
-                    .is_some_and(|content| content == holder);
-                if still_ours {
-                    // A lock that stays behind blocks this token until
-                    // waiters break it after `TOKEN_LOCK_STALE_AFTER`.
-                    discard_file(&lock_path, "token lock");
-                }
+                drop(token_lock);
                 return result;
             }
-            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
-                let stale = fs::metadata(&lock_path)
-                    .ok()
-                    .and_then(|meta| meta.modified().ok())
-                    .and_then(|modified| modified.elapsed().ok())
-                    .is_some_and(|age| age > TOKEN_LOCK_STALE_AFTER);
-                if stale {
-                    // Retrying is only sound once the stale lock is gone. A
-                    // lock that cannot be removed would be found stale again
-                    // on every pass, and this branch skips the deadline.
-                    remove_file_if_present(&lock_path)
-                        .map_err(|err| SsrDraftSessionError::Io(err.to_string()))?;
-                    continue;
-                }
+            false => {
+                drop(token_lock);
+                drop(directory_guard);
                 if Instant::now() >= deadline {
                     return Err(SsrDraftSessionError::LockTimeout(token.to_string()));
                 }
                 std::thread::sleep(Duration::from_millis(10));
             }
-            Err(err) => return Err(SsrDraftSessionError::Io(err.to_string())),
         }
     }
+}
+
+/// Attempts a token operation without waiting. Pruning uses this form so
+/// one busy editor cannot make a cleanup pass wait for every stale temporary
+/// file in its partition.
+#[cfg(not(target_arch = "wasm32"))]
+fn try_with_token_lock<T>(
+    dir: &Path,
+    token: &str,
+    action: impl FnOnce() -> Result<T, SsrDraftSessionError>,
+) -> Result<Option<T>, SsrDraftSessionError> {
+    FileSsrDraftSessionStore::validate_token(token)?;
+    let Some(directory_guard) = try_acquire_lock_directory_guard(dir)? else {
+        return Ok(None);
+    };
+    let lock_path = dir.join(format!("{token}.lock"));
+    let token_lock = open_lock_file(&lock_path)
+        .map_err(|error| SsrDraftSessionError::Io(error.to_string()))?;
+    match try_lock_file(&token_lock)
+        .map_err(|error| SsrDraftSessionError::Io(error.to_string()))?
+    {
+        true => {
+            drop(directory_guard);
+            let result = action();
+            drop(token_lock);
+            result.map(Some)
+        }
+        false => {
+            drop(token_lock);
+            drop(directory_guard);
+            Ok(None)
+        }
+    }
+}
+
+/// Removes idle per-token lock files without racing waiters or active holders.
+///
+/// Every token-lock opener first takes the directory guard. While pruning
+/// holds that guard, no new waiter can open a token file; a failed try-lock
+/// therefore means a live operation owns it, and a successful try-lock means
+/// it is safe to close and unlink the idle file before releasing the guard.
+#[cfg(not(target_arch = "wasm32"))]
+fn prune_token_lock_files(dir: &Path) -> Result<(), SsrDraftSessionError> {
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(SsrDraftSessionError::Io(error.to_string())),
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        let Some(token) = file_name.strip_suffix(".lock") else {
+            continue;
+        };
+        if !FileSsrDraftSessionStore::is_safe_token(token) {
+            continue;
+        }
+
+        let Some(directory_guard) = try_acquire_lock_directory_guard(dir)? else {
+            continue;
+        };
+        let token_lock = match open_lock_file(&path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                drop(directory_guard);
+                continue;
+            }
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    "draft session token lock could not be opened for pruning"
+                );
+                drop(directory_guard);
+                continue;
+            }
+        };
+        match try_lock_file(&token_lock) {
+            Ok(true) => {
+                // Close the unlocked handle before unlinking. The directory
+                // guard prevents any other writer from opening this path in
+                // the interval between close and remove.
+                drop(token_lock);
+                if let Err(error) = fs::remove_file(&path)
+                    && error.kind() != std::io::ErrorKind::NotFound
+                {
+                    tracing::warn!(
+                        error = %error,
+                        kind = "idle token lock",
+                        "draft session file could not be removed"
+                    );
+                }
+            }
+            Ok(false) => drop(token_lock),
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    "draft session token lock could not be checked during pruning"
+                );
+                drop(token_lock);
+            }
+        }
+        drop(directory_guard);
+    }
+    Ok(())
+}
+
+#[cfg(target_arch = "wasm32")]
+fn try_with_token_lock<T>(
+    _dir: &Path,
+    token: &str,
+    _action: impl FnOnce() -> Result<T, SsrDraftSessionError>,
+) -> Result<Option<T>, SsrDraftSessionError> {
+    FileSsrDraftSessionStore::validate_token(token)?;
+    Err(SsrDraftSessionError::Io(
+        "file-backed draft session locking is unavailable on wasm32".to_string(),
+    ))
+}
+
+#[cfg(target_arch = "wasm32")]
+fn with_token_lock<T>(
+    _dir: &Path,
+    token: &str,
+    _action: impl FnOnce() -> Result<T, SsrDraftSessionError>,
+) -> Result<T, SsrDraftSessionError> {
+    FileSsrDraftSessionStore::validate_token(token)?;
+    Err(SsrDraftSessionError::Io(
+        "file-backed draft session locking is unavailable on wasm32".to_string(),
+    ))
+}
+
+#[cfg(target_arch = "wasm32")]
+fn prune_token_lock_files(_dir: &Path) -> Result<(), SsrDraftSessionError> {
+    Err(SsrDraftSessionError::Io(
+        "file-backed draft session locking is unavailable on wasm32".to_string(),
+    ))
 }
 
 /// Whether the caller of [`FileSsrDraftSessionStore::read_located`] holds the
@@ -2890,29 +3179,10 @@ fn file_is_older_than(path: &Path, age: Duration) -> bool {
         .is_some_and(|elapsed| elapsed > age)
 }
 
-/// Removes the files in `dir` not modified for longer than `age`. A failure
-/// does not fail the caller: the files are leftovers, retried by the next run.
-fn remove_stale_files(dir: &Path, age: Duration) {
-    let entries = match fs::read_dir(dir) {
-        Ok(entries) => entries,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return,
-        Err(err) => {
-            tracing::warn!(error = %err, "draft session lock directory could not be read");
-            return;
-        }
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if file_is_older_than(&path, age) {
-            discard_file(&path, "stale token lock");
-        }
-    }
-}
-
 /// Removes a file that is no longer wanted, where a failure must not fail the
 /// caller's operation; returns whether this call removed it. A leftover is
-/// collected later (`prune`, or a waiter breaking a stale lock), and the
-/// failure is logged: storage that stops accepting deletions fills up.
+/// collected later by `prune`, and the failure is logged: storage that stops
+/// accepting deletions fills up.
 ///
 /// The path is deliberately not logged — record and lock file names are
 /// session tokens.
@@ -5127,12 +5397,14 @@ mod tests {
             0o600
         );
 
-        // Lock files are private too, while they exist.
+        // Token and directory guard files are private and remain as stable
+        // inodes until a later prune can safely reap them.
         with_token_lock(&dir.join(LOCKS_DIR), "tokLOCK01", || {
             assert_eq!(mode(&dir.join(LOCKS_DIR).join("tokLOCK01.lock")), 0o600);
             Ok(())
         })
         .expect("lock");
+        assert_eq!(mode(&dir.join(LOCKS_DIR).join(LOCKS_DIR_GUARD_FILE)), 0o600);
         let _ = fs::remove_dir_all(&dir);
     }
 
@@ -5158,25 +5430,89 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
-    #[cfg(unix)]
     #[test]
-    fn stale_token_lock_that_cannot_be_removed_fails_instead_of_retrying_forever() {
-        // A directory stands in for a lock file that cannot be deleted:
-        // `create_new` reports it as existing and `remove_file` refuses it.
-        // The waiter used to treat the failed removal as done and retry in a
-        // loop that never reached its deadline.
+    fn token_lock_rejects_a_non_file_lock_path() {
+        // A directory at the token lock path cannot be opened as a regular
+        // lock file, so the operation fails closed instead of running unlocked.
         let dir = temp_store_dir();
         let lock = dir.join("tokSTALE01.lock");
-        fs::create_dir_all(&lock).expect("undeletable lock");
-        let long_ago = SystemTime::now() - TOKEN_LOCK_STALE_AFTER - Duration::from_secs(60);
-        fs::File::open(&lock)
-            .expect("open lock")
-            .set_modified(long_ago)
-            .expect("age lock");
+        fs::create_dir_all(&lock).expect("lock path directory");
 
         let outcome = with_token_lock(&dir, "tokSTALE01", || Ok(()));
         assert!(matches!(outcome, Err(SsrDraftSessionError::Io(_))));
         fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[test]
+    fn token_lock_is_released_when_its_file_handle_is_dropped() {
+        let dir = temp_store_dir();
+        let path = dir.join("tokDROP01.lock");
+        let holder = open_lock_file(&path).expect("holder");
+        holder.lock().expect("acquire holder lock");
+        let contender = open_lock_file(&path).expect("contender");
+
+        assert!(matches!(
+            contender.try_lock(),
+            Err(std::fs::TryLockError::WouldBlock)
+        ));
+        drop(holder);
+        contender.try_lock().expect("drop releases OS lock");
+        drop(contender);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn prune_never_unlinks_a_token_lock_with_a_waiting_writer() {
+        let dir = temp_store_dir();
+        let store = file_store(&dir);
+        let lock_dir = dir.join(LOCKS_DIR);
+        let token = "tokWAIT01";
+        let lock_path = lock_dir.join(format!("{token}.lock"));
+        let holder = open_lock_file(&lock_path).expect("holder");
+        holder.lock().expect("hold token lock");
+
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (finished_tx, finished_rx) = std::sync::mpsc::channel();
+        let waiter_lock_dir = lock_dir.clone();
+        let waiter = std::thread::spawn(move || {
+            started_tx.send(()).expect("started");
+            with_token_lock(&waiter_lock_dir, token, || {
+                finished_tx.send(()).expect("finished");
+                Ok(())
+            })
+        });
+        started_rx.recv().expect("waiter started");
+        std::thread::sleep(Duration::from_millis(50));
+
+        store.prune().expect("prune while writer waits");
+        assert!(
+            lock_path.is_file(),
+            "prune must not unlink a lock held by an active writer"
+        );
+
+        drop(holder);
+        finished_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("waiter acquires the same stable lock inode");
+        waiter.join().expect("waiter thread").expect("waiter lock");
+        store.prune().expect("reap idle token lock");
+        assert!(!lock_path.exists(), "idle token lock is safely reaped");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn token_lock_is_released_when_an_operation_unwinds() {
+        let dir = temp_store_dir();
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            with_token_lock(&dir, "tokPANIC01", || -> Result<(), SsrDraftSessionError> {
+                panic!("simulate a process-local panic while the token lock is held");
+            })
+        }));
+        assert!(outcome.is_err());
+
+        with_token_lock(&dir, "tokPANIC01", || Ok(()))
+            .expect("unwinding drops the lock descriptor");
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[cfg(unix)]
@@ -5362,14 +5698,16 @@ mod tests {
         // deadline, so the TTL cannot be extended. The caller must hear about
         // it instead of losing the draft silently later (audit §6.7).
         let lock_path = dir.join(LOCKS_DIR).join(format!("{}.lock", created.token));
-        fs::write(&lock_path, "another-holder").expect("foreign lock");
+        let held_lock = open_lock_file(&lock_path).expect("open held lock");
+        held_lock.lock().expect("hold token lock");
         assert!(matches!(
             store.load(&created.token, "home", None),
             Err(SsrDraftSessionError::LockTimeout(_))
         ));
 
-        // Once the lock is released the same read succeeds and extends.
-        fs::remove_file(&lock_path).expect("release");
+        // Closing the owning descriptor releases the OS lock; the same read
+        // then succeeds and extends the record.
+        drop(held_lock);
         store
             .load(&created.token, "home", None)
             .expect("load")
@@ -5422,6 +5760,52 @@ mod tests {
     }
 
     #[test]
+    fn file_store_prune_candidate_does_not_delete_a_newer_generation() {
+        let dir = temp_store_dir();
+        let store = file_store(&dir);
+        let created = store
+            .commit(None, None, controller("home"), None)
+            .expect("create");
+        let path = dir
+            .join(UNATTRIBUTED_PARTITION)
+            .join(format!("{}.json", created.token));
+        let scanned = store
+            .load_record(&created.token, None)
+            .expect("load scanned record")
+            .expect("record");
+        let scanned_age = record_age(&path, scanned.expires_at_unix_secs);
+
+        let updated = store
+            .commit(
+                Some(&created.token),
+                Some(scanned.generation),
+                controller("home"),
+                None,
+            )
+            .expect("concurrent update");
+        assert_eq!(updated.generation, scanned.generation + 1);
+
+        assert!(!store
+            .remove_record_if_unchanged(
+                &path,
+                &created.token,
+                scanned.generation,
+                scanned_age,
+                None,
+            )
+            .expect("compare and delete"));
+        assert_eq!(
+            store
+                .load_record(&created.token, None)
+                .expect("load winner")
+                .expect("record")
+                .generation,
+            updated.generation
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn file_store_prune_spans_partitions_and_spares_writes_in_flight() {
         let dir = temp_store_dir();
         let store = file_store(&dir);
@@ -5439,16 +5823,18 @@ mod tests {
         expired.expires_at_unix_secs = current_unix_secs().saturating_sub(1);
         store.save_record(&expired).expect("expire record");
 
-        // A temporary file and a lock that were just created belong to an
-        // operation in flight and must survive the prune.
+        // A temporary file that is already older than the cleanup threshold
+        // still belongs to an in-flight operation while its token lock is held.
         let in_flight = dir.join("t-acme").join("tokNEW01.tmp.0123456789abcdef");
         fs::write(&in_flight, "partial").expect("tmp");
+        backdate(&in_flight, TEMP_FILE_STALE_AFTER + Duration::from_secs(5));
         let lock = dir.join(LOCKS_DIR).join("tokNEW01.lock");
-        fs::write(&lock, "holder").expect("lock");
+        let held_lock = open_lock_file(&lock).expect("open active lock");
+        held_lock.lock().expect("hold active lock");
 
         assert_eq!(store.prune().expect("prune"), 1);
         assert!(in_flight.is_file());
-        assert!(lock.is_file());
+        assert!(lock.is_file(), "an active OS lock must never be unlinked");
         assert_eq!(store.load(&stale.token, "home", None).expect("load"), None);
         assert!(
             store
@@ -5457,15 +5843,9 @@ mod tests {
                 .is_some()
         );
 
-        // Abandoned ones (older than the stale threshold) are collected.
-        let long_ago = SystemTime::now() - TOKEN_LOCK_STALE_AFTER - Duration::from_secs(5);
-        for path in [&in_flight, &lock] {
-            fs::File::options()
-                .write(true)
-                .open(path)
-                .and_then(|file| file.set_modified(long_ago))
-                .expect("backdate");
-        }
+        // Once the writer releases its token lock, the same stale temporary
+        // file can be safely collected.
+        drop(held_lock);
         assert_eq!(store.prune().expect("prune abandoned"), 1);
         assert!(!in_flight.exists());
         assert!(!lock.exists());
@@ -5502,15 +5882,16 @@ mod tests {
         // cannot delete anything: it reports the session as gone and leaves
         // the file alone.
         let lock = dir.join(LOCKS_DIR).join(format!("{}.lock", created.token));
-        fs::write(&lock, "holder").expect("hold the lock");
+        let held_lock = open_lock_file(&lock).expect("open held lock");
+        held_lock.lock().expect("hold token lock");
         assert_eq!(
             store.load(&created.token, "home", None).expect("load"),
             None
         );
         assert!(file.is_file());
 
-        // With the lock free the same read collects the file.
-        fs::remove_file(&lock).expect("release the lock");
+        // With the OS lock released the same read collects the file.
+        drop(held_lock);
         assert_eq!(
             store.load(&created.token, "home", None).expect("load"),
             None
@@ -5547,16 +5928,17 @@ mod tests {
         // deadline and writes generation 2 after the plain read below has
         // already seen generation 1 expired.
         let lock = dir.join(LOCKS_DIR).join(format!("{}.lock", created.token));
-        fs::write(&lock, "committing").expect("hold the lock");
+        let held_lock = open_lock_file(&lock).expect("open committing lock");
+        held_lock.lock().expect("hold token lock");
         record.generation = 2;
         record.expires_at_unix_secs = current_unix_secs() + 3600;
         let committed = serde_json::to_vec(&record).expect("json");
         let commit = {
-            let (file, lock) = (file.clone(), lock.clone());
+            let (file, held_lock) = (file.clone(), held_lock);
             std::thread::spawn(move || {
                 std::thread::sleep(Duration::from_millis(300));
                 fs::write(&file, committed).expect("commit");
-                fs::remove_file(&lock).expect("release the lock");
+                drop(held_lock);
             })
         };
 

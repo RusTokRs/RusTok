@@ -36,11 +36,18 @@ draft; after reload, records are merged against the latest server document using
 merging and stable-id array merging. Ambiguous or overlapping changes remain preserved and put
 the editor in a read-only conflict state; storage errors expose a manual JSON-copy path. The
 localStorage record ceiling is 2 MiB and this is recovery, not live collaborative editing.
-The default file-backed SSR editor store now uses a persistent per-user state directory and
+The default file-backed SSR editor store uses a persistent per-user state directory and
 30-day sliding retention; containers must mount that path persistently, and multi-replica hosts
-must use a shared KV backend. Its age-based stale-lock recovery retains a documented race if a
-live operation crosses the stale threshold; replace it with OS-level advisory locking for the
-file backend, or use the shared atomic KV backend under multi-replica or sustained contention.
+must use a shared KV backend. File mutations now use native OS file locks held for the full
+token operation. A stable directory guard serializes lock-file open/reap, so a waiter never keeps
+an open descriptor while cleanup can unlink the token file. Process exit releases held locks;
+there is no mtime-based stale-lock breaking. `prune` removes only idle token lock files, and
+temporary-write cleanup plus capacity eviction recheck under the owning token lock. All writers
+sharing the file directory must use the new protocol; drain pre-upgrade writers during rollout.
+The filesystem must propagate advisory locks; otherwise use the shared atomic KV backend.
+Focused regressions cover descriptor-drop/unwind release, pruning with a waiting writer, stale
+temporary cleanup under an active token lock, and generation-checked eviction; they are authored
+but not executed.
 Dioxus palette/layer drag sources now use native HTML5 dragstart/
 dragend, failed drops cancel the Fly drag, iframe dropEffect is explicit, and parent pointer
 events no longer cancel a cross-iframe drag. Selected-layer move now selects and begins moving
