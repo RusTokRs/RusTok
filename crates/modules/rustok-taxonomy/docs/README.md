@@ -65,11 +65,26 @@ identity/hierarchy and consumer attachment ownership are separate concerns.
   identities in that module, including the shared `parent_id = NULL` root
   partition;
 - Blog and Forum tag orchestration enters Taxonomy through the transaction-aware service helper, so module-local term creation records the same revision and change evidence as direct Taxonomy writes;
-- locale normalization and fallback must remain synchronized with the shared `rustok-content` contract;
+- locale normalization and fallback use `rustok-api::locale`;
+- `rustok-taxonomy-ports` publishes the authenticated term-name read adapter.
+  Its listener delegates to `TaxonomyService`, with a credential-bound tenant
+  allowlist and the same locale resolution as embedded reads.
 - new taxonomy consumers must use explicit typed module-owned relation/binding tables rather than generic polymorphic attachment storage;
 - custom fields are supplied by `flex`, not by a Taxonomy-local custom-field subsystem.
 
 ## Verification
+
+`cargo test -p rustok-taxonomy --features service --test owner_read` exercises
+the owner and gRPC provider on separate SQLite databases. To exercise both
+standalone processes, run the Product PostgreSQL projection fixture with
+`RUSTOK_TAXONOMY_TEST_SERVICE_BIN` set to the built Taxonomy binary and
+`RUSTOK_MIGRATION_SMOKE_ADMIN_URL` set to a disposable PostgreSQL service.
+
+```sh
+cargo build --locked -p rustok-taxonomy --features service --bin rustok-taxonomy-service
+cargo test --locked -p rustok-product --features service --test flex_schema_projection \
+  postgres_imports_versioned_flex_schemas_across_databases -- --ignored --nocapture
+```
 
 Current baseline:
 

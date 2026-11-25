@@ -15,5 +15,5 @@ fn taxonomy_module_matches_canonical_contract() {
     assert_eq!(module.slug(), "taxonomy");
     assert_eq!(module.name(), "Taxonomy");
     assert_eq!(module.kind(), ModuleKind::Optional);
-    assert_eq!(module.dependencies(), &["content", "outbox"]);
+    assert_eq!(module.dependencies(), &["outbox"]);
 }

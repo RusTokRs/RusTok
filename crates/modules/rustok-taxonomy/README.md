@@ -28,7 +28,8 @@ See [CRATE_API.md](CRATE_API.md) for the verified public crate API specification
 ## Interactions
 
 - Depends on `rustok-core` for module contracts and permission vocabulary.
-- Reuses locale normalization and fallback helpers from `rustok-content`.
+- Uses `rustok-api::locale` for normalization and fallback. Events and owner-operation
+  receipts use `rustok-outbox-storage` in the Taxonomy transaction.
 - Depends on the Core Outbox receipt primitive but not on the Translation
   control-plane crate; Translation reaches Taxonomy only through
   `rustok-translation-targets`.
@@ -42,6 +43,25 @@ See [CRATE_API.md](CRATE_API.md) for the verified public crate API specification
 The `rustok-taxonomy-ports` package publishes the tenant-scoped name read port
 used by Product for catalog projections. The in-process provider uses the
 canonical Taxonomy locale resolution.
+
+## Standalone term-name service
+
+Run on an externally migrated PostgreSQL database with access to the Taxonomy
+term and translation tables.
+
+```sh
+cargo run -p rustok-taxonomy --features service --bin rustok-taxonomy-service
+```
+
+Set `RUSTOK_TAXONOMY_DATABASE_URL`, `RUSTOK_TAXONOMY_TERM_NAMES_GRPC_BEARER_TOKEN`
+and `RUSTOK_TAXONOMY_TERM_NAMES_GRPC_TENANTS` (one to 128 distinct tenant UUIDs).
+Set `RUSTOK_TAXONOMY_SERVICE_TLS_CERT_PATH` and
+`RUSTOK_TAXONOMY_SERVICE_TLS_KEY_PATH` together. The default bind is
+`127.0.0.1:7446` and `RUSTOK_TAXONOMY_SERVICE_BIND` overrides it. For local
+testing, `RUSTOK_TAXONOMY_SERVICE_ALLOW_INSECURE_LOOPBACK=true` permits HTTP
+on an IP loopback address. The credential grants only tenant-scoped term names.
+Product selects the service in its standalone catalog configuration.
+[Product service configuration](../rustok-product/README.md#standalone-service-configuration)
 
 ## Entry points
 

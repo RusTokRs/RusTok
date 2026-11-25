@@ -9,7 +9,7 @@ use std::{
 use async_trait::async_trait;
 use rustok_api::{PortActor, PortContext, PortError, PortErrorKind, TenantLocale};
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
-use rustok_outbox::SysEventsMigration;
+use rustok_outbox_storage::SysEventsMigration;
 use rustok_test_utils::db::setup_test_db;
 use rustok_translation_targets::{
     FieldKey, ListTranslationResourcesRequest, OpaqueCursor, ReadTranslationResourceRequest,
@@ -545,7 +545,7 @@ async fn translation_target_applies_replays_and_tracks_an_exact_term_locale() {
         .expect("same Taxonomy idempotency request should replay");
     assert_eq!(replay, receipt);
 
-    let outbox_events = rustok_outbox::SysEvents::find()
+    let outbox_events = rustok_outbox_storage::SysEvents::find()
         .all(&database)
         .await
         .expect("global Taxonomy Tag translation should enqueue a Search reindex event");
@@ -696,7 +696,7 @@ async fn global_tag_update_and_delete_enqueue_search_reindex() {
         .await
         .expect("global Tag update should succeed");
 
-    let events_after_update = rustok_outbox::SysEvents::find()
+    let events_after_update = rustok_outbox_storage::SysEvents::find()
         .all(&database)
         .await
         .expect("Search reindex event should be durable after global Tag update");
@@ -713,7 +713,7 @@ async fn global_tag_update_and_delete_enqueue_search_reindex() {
         .await
         .expect("global Tag delete should succeed");
 
-    let events_after_delete = rustok_outbox::SysEvents::find()
+    let events_after_delete = rustok_outbox_storage::SysEvents::find()
         .all(&database)
         .await
         .expect("Search reindex event should be durable after global Tag delete");
@@ -917,7 +917,7 @@ async fn module_owned_translation_requires_owner_and_runs_owner_side_effect_hook
 
     assert_eq!(apply_calls.load(Ordering::SeqCst), 1);
 
-    let outbox_events = rustok_outbox::SysEvents::find()
+    let outbox_events = rustok_outbox_storage::SysEvents::find()
         .all(&database)
         .await
         .expect("module-owned Tag translation should not emit a global Search rebuild");

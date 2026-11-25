@@ -7,6 +7,16 @@ license.workspace = true
 description = "Scope-aware taxonomy dictionary for shared and module-local terms"
 repository.workspace = true
 readme = "README.md"
+autobins = false
+
+[[bin]]
+name = "rustok-taxonomy-service"
+path = "src/bin/service.rs"
+required-features = ["service"]
+
+[features]
+default = []
+service = ["dep:rustok-telemetry", "dep:tokio", "dep:tokio-stream", "dep:tonic", "dep:url", "rustok-taxonomy-ports/grpc-server"]
 
 [package.metadata.docs.rs]
 all-features = true
@@ -15,16 +25,14 @@ rustdoc-args = ["--cfg", "docsrs"]
 [dependencies]
 rustok-api.workspace = true
 rustok-taxonomy-ports.workspace = true
-rustok-groups.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
-rustok-content.workspace = true
 rustok-core.workspace = true
 rustok-events.workspace = true
-rustok-outbox.workspace = true
-rustok-product.workspace = true
+rustok-outbox-storage.workspace = true
 rustok-seo-targets = { workspace = true, features = ["server"] }
+rustok-telemetry = { workspace = true, optional = true }
 rustok-translation-targets.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
@@ -32,9 +40,15 @@ serde.workspace = true
 serde_json.workspace = true
 slug = "0.1"
 thiserror.workspace = true
+tokio = { workspace = true, optional = true }
+tokio-stream = { version = "0.1", features = ["net"], optional = true }
+tonic = { workspace = true, features = ["tls-ring"], optional = true }
 tracing.workspace = true
+url = { workspace = true, optional = true }
 uuid.workspace = true
 
 [dev-dependencies]
+rustok-product.workspace = true
 rustok-test-utils.workspace = true
+rustok-taxonomy-ports = { workspace = true, features = ["grpc-client"] }
 tokio.workspace = true

@@ -19,7 +19,7 @@ workspace = true
 async-graphql = { workspace = true, optional = true }
 async-trait.workspace = true
 chrono.workspace = true
-rustok-api.workspace = true
+rustok-api = { workspace = true, features = ["runtime"] }
 rustok-core.workspace = true
 rustok-moderation.workspace = true
 rustok-notifications.workspace = true

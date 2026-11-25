@@ -38,6 +38,7 @@ use uuid::Uuid;
 mod channel_convergence;
 mod flex_schema_refresh;
 mod index_refresh;
+mod taxonomy;
 
 const DEFAULT_BIND: &str = "127.0.0.1:7443";
 const DEFAULT_DATABASE_CONNECT_TIMEOUT_MS: u64 = 5_000;
@@ -249,6 +250,7 @@ async fn run() -> Result<()> {
     )?;
     let index_refresh = index_refresh::IndexRefresh::from_environment()?;
     let channel_convergence = channel_convergence::ChannelConvergence::from_environment()?;
+    let taxonomy = taxonomy::provider_from_environment()?;
     tracing::info!(
         bind = %config.bind,
         database_target = %config.database_target,
@@ -291,6 +293,10 @@ async fn run() -> Result<()> {
     let index_db = database.clone();
     let channel_db = database.clone();
     let provider = CatalogService::new(database, event_bus);
+    let provider = match taxonomy {
+        Some(taxonomy) => provider.with_taxonomy_term_names_port(Arc::new(taxonomy)),
+        None => provider,
+    };
     let provider = Arc::new(if config.use_flex_schema_projection {
         provider.with_projected_flex_schema()
     } else {

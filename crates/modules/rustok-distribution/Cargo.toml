@@ -16,7 +16,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 default = []
 mod-cart = ["dep:rustok-cart"]
 mod-customer = ["dep:rustok-customer"]
-mod-product = ["dep:rustok-product", "mod-taxonomy", "dep:chrono", "dep:hex", "dep:rust_decimal"]
+mod-product = ["dep:rustok-product", "mod-taxonomy", "dep:rustok-taxonomy-ports", "dep:chrono", "dep:hex", "dep:rust_decimal"]
 mod-product_relations = ["dep:rustok-product-relations", "mod-product"]
 mod-brand = ["dep:rustok-brand", "mod-product"]
 mod-product_bundles = ["dep:rustok-product-bundles", "mod-product"]
@@ -57,7 +57,7 @@ mod-navigation = ["dep:rustok-navigation"]
 mod-forms = ["dep:rustok-forms"]
 mod-newsletter = ["dep:rustok-newsletter", "rustok-newsletter/server"]
 mod-page_builder = ["dep:rustok-page-builder"]
-mod-taxonomy = ["dep:rustok-taxonomy", "mod-content"]
+mod-taxonomy = ["dep:rustok-taxonomy"]
 mod-alloy = ["dep:alloy"]
 mod-flex = []
 mod-docs = ["dep:rustok-docs", "mod-flex"]
@@ -137,6 +137,7 @@ rustok-navigation = { workspace = true, optional = true }
 rustok-forms = { workspace = true, optional = true }
 rustok-page-builder = { workspace = true, optional = true }
 rustok-taxonomy = { workspace = true, optional = true }
+rustok-taxonomy-ports = { workspace = true, optional = true }
 rustok-media = { workspace = true, optional = true }
 rustok-translation = { workspace = true, optional = true }
 rustok-seo = { workspace = true, optional = true }
@@ -154,6 +155,7 @@ tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+rustok-core = { workspace = true, features = ["server"] }
 rustok-product-ports = { workspace = true, features = ["grpc-client"] }
 rustok-test-utils.workspace = true
 sea-orm-migration.workspace = true

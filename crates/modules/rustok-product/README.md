@@ -100,6 +100,16 @@ does not currently expose these deletion operations without those collaborators.
 Catalog reads that must resolve stored tag relations report an unavailable
 dependency when Taxonomy is not wired.
 
+Set `RUSTOK_PRODUCT_TAXONOMY_GRPC_ENDPOINT` to the Taxonomy HTTPS origin and
+`RUSTOK_TAXONOMY_TERM_NAMES_GRPC_BEARER_TOKEN` to the dedicated read credential.
+Taxonomy's allowlist must include the Product tenants that use tags. For a
+private CA set `RUSTOK_PRODUCT_TAXONOMY_GRPC_CA_CERT_PATH` to its PEM certificate.
+An IP loopback HTTP endpoint requires
+`RUSTOK_PRODUCT_TAXONOMY_GRPC_ALLOW_INSECURE_LOOPBACK=true`.
+Both storefront list ports use the selected provider and fail on a provider outage
+when the page contains stored tag relations.
+[Taxonomy service](../rustok-taxonomy/README.md#standalone-term-name-service)
+
 Set `RUSTOK_PRODUCT_USE_FLEX_SCHEMA_PROJECTION=true` to select Product's local
 Flex schema projection. The service checks that the projection table is present
 at startup. Seed each tenant before routing traffic that needs field definitions.

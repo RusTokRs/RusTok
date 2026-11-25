@@ -8,10 +8,14 @@
 mod channel_index;
 mod generated_promotions;
 mod generation;
+#[cfg(all(feature = "mod-groups", feature = "mod-taxonomy"))]
+mod groups_taxonomy_port;
 #[cfg(feature = "mod-inventory")]
 pub mod inventory_index;
 #[cfg(feature = "mod-product")]
 pub mod product_index;
+#[cfg(feature = "mod-product")]
+mod product_taxonomy_port;
 
 use rustok_auth::AuthModule;
 use rustok_cache::CacheModule;
@@ -34,6 +38,8 @@ pub use generation::{
     GeneratedStaticDistributionManifest, GeneratedStaticDistributionSource,
     StaticDistributionGenerationError, generate_static_distribution,
 };
+#[cfg(feature = "mod-product")]
+pub use product_taxonomy_port::in_process_product_taxonomy_port;
 
 fn register_runtime_bridges(_extensions: &mut ModuleRuntimeExtensions) -> rustok_core::Result<()> {
     #[cfg(feature = "ai-translation")]
@@ -71,6 +77,12 @@ pub fn build_runtime_extensions(
 ) -> rustok_core::Result<ModuleRuntimeExtensions> {
     let mut extensions = registry.build_runtime_extensions()?;
     register_runtime_bridges(&mut extensions)?;
+    #[cfg(all(feature = "mod-groups", feature = "mod-taxonomy"))]
+    if registry.contains("groups") && registry.contains("taxonomy") {
+        extensions.insert(rustok_groups::ports::GroupTaxonomyPortFactory(
+            groups_taxonomy_port::in_process_group_taxonomy_port,
+        ));
+    }
     register_selected_index_bridges(&mut extensions)?;
     materialize_index_schema_sources(&mut extensions)?;
     Ok(extensions)

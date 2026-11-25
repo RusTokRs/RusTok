@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
-use rustok_content::resolve_by_locale_with_fallback;
+use rustok_api::locale::resolve_by_locale_with_fallback;
 use sea_orm::{
     ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
     QueryFilter, QueryOrder, QuerySelect, Select,

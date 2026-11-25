@@ -115,12 +115,41 @@ requireMarkers(migrationsPath, [
 requireMarkers('crates/modules/rustok-taxonomy/ports/src/lib.rs', [
   'pub trait TaxonomyTermNamesReadPort',
   'MAX_TAXONOMY_TERM_NAMES_PER_CALL',
+  'context.require_policy(PortCallPolicy::read())?',
+  'TAXONOMY_TERM_NAMES_READ_CLAIM',
 ]);
 requireMarkers('crates/modules/rustok-taxonomy/src/term_names.rs', [
   'impl TaxonomyTermNamesReadPort for TaxonomyService',
-  'context.require_policy(PortCallPolicy::read())?',
-  'TAXONOMY_TERM_NAMES_READ_CLAIM',
+  'authorize_term_names_read(&context)?',
   '.resolve_term_names(',
+]);
+
+const taxonomyRegistryPath = 'crates/modules/rustok-taxonomy/contracts/taxonomy-fba-registry.json';
+const taxonomyRegistry = JSON.parse(read(taxonomyRegistryPath));
+const namesPort = taxonomyRegistry.ports?.find(({ name }) => name === 'TaxonomyTermNamesReadPort');
+if (taxonomyRegistry.module !== 'taxonomy' ||
+    taxonomyRegistry.contract_version !== 'taxonomy.term_names_read.v1' ||
+    namesPort?.owner !== 'taxonomy' ||
+    namesPort.operations?.join(',') !== 'read_term_names' ||
+    namesPort.deadline_required !== true ||
+    namesPort.idempotency_required !== false ||
+    !taxonomyRegistry.consumers?.some(({ module, profile }) =>
+      module === 'product' && profile === 'catalog_term_names')) {
+  fail('Taxonomy registry must declare the embedded Product term-name contract');
+}
+requireMarkers('crates/modules/rustok-taxonomy/rustok-module.toml', [
+  'registry = "contracts/taxonomy-fba-registry.json"',
+  'contract_version = "taxonomy.term_names_read.v1"',
+  'port = "TaxonomyTermNamesReadPort"',
+  'profiles = ["embedded_native", "authenticated_grpc"]',
+]);
+requireMarkers('crates/modules/rustok-taxonomy/ports/proto/rustok/taxonomy/term_names.proto', [
+  'package rustok.taxonomy.v1;',
+  'rpc ReadTermNames(ReadTermNamesRequest) returns (ReadTermNamesResponse);',
+]);
+requireMarkers('crates/modules/rustok-product/src/bin/service.rs', [
+  'taxonomy::provider_from_environment()?',
+  'provider.with_taxonomy_term_names_port(Arc::new(taxonomy))',
 ]);
 
 const taxonomyPath = 'crates/modules/rustok-taxonomy/src/services.rs';

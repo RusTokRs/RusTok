@@ -14,6 +14,12 @@ profile selects this bridge. Composition evidence verifies the fail-closed
 deployment state: without the result keyring, the factory resolves to no
 machine provider and manual Translation workflows remain available.
 
+The `mod-product` profile builds the in-process Product Taxonomy adapter.
+When the registry includes both Groups and Taxonomy, the distribution publishes
+the Groups Taxonomy factory in the shared runtime extensions. Both native
+adapters delegate to Taxonomy owner methods, including when the caller supplies
+its transaction. A host may supply an explicit Groups provider in its runtime.
+
 `composition_identity()` publishes a canonical hash of the selected module
 registry. Trusted CLI and HTTP hosts bind this identity into the installer
 topology before preflight and apply, rather than accepting a host-local or

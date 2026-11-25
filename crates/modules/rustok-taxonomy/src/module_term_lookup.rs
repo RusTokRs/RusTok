@@ -1,5 +1,5 @@
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
-use rustok_content::normalize_locale_code;
+use rustok_api::locale::normalize_locale_code;
 use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use tracing::instrument;
 use uuid::Uuid;

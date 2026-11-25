@@ -120,8 +120,11 @@ for (const [value, label] of [
   ['pick_product_translation(items.as_slice(), locale, fallback_locale)', 'locale fallback projection'],
   ['.unwrap_or_default()', 'empty missing translation projection'],
   ['shipping_profile_slug_from_metadata(&product.metadata)', 'metadata-only shipping profile'],
-  ['Some(context),', 'owner tag projection'],
 ]) requireText(owner, value, label);
+if (!/\.load_product_tag_map\(\s*tenant_id,\s*&products,\s*locale,\s*Some\(fallback_locale\),\s*Some\(context\)\s*,?\s*\)/.test(owner)) {
+  failures.push("Product HTTP list must forward its context to tag projection");
+}
+
 
 requireText(ports, 'pub trait ProductStorefrontHttpReadPort', 'published Product owner HTTP port');
 const queryStart = owner.indexOf('fn legacy_storefront_http_products_query(');

@@ -2,7 +2,7 @@ use std::{sync::Arc, time::Duration};
 
 use flex::{FlexProductSchemaReadService, FlexVersionedAttachedSchemaReadPort};
 use flex_ports::grpc::{FlexAttachedSchemaGrpcService, GrpcFlexAttachedSchemaProvider};
-use rustok_api::{PortActor, PortContext, PortErrorKind};
+use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use rustok_events::{ContractEventPayload, DomainEvent, EventEnvelope, ProductIndexRefreshEvent};
 use rustok_outbox::OutboxRelay;
 use rustok_outbox_storage::{OutboxTransport, SysEvents, TransactionalEventBus};
@@ -45,7 +45,7 @@ fn context(tenant_id: Uuid) -> PortContext {
 async fn verify_projection(
     source: DatabaseConnection,
     target: DatabaseConnection,
-    target_url: Option<&str>,
+    standalone_urls: Option<(&str, &str)>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let tenant = Uuid::new_v4();
     let other_tenant = Uuid::new_v4();
@@ -202,11 +202,20 @@ async fn verify_projection(
     assert_eq!(store.apply(other_tenant, untouched).await?, Advanced);
 
     if cfg!(feature = "service")
-        && let Some(url) = target_url
+        && let Some((source_url, target_url)) = standalone_urls
     {
         let binary = option_env!("CARGO_BIN_EXE_rustok-product-catalog-service")
             .ok_or("Product service binary unavailable for the refresh test")?;
-        verify_standalone_refresh(binary, url, &source, &target, &endpoint, token, tenant).await?;
+        verify_standalone_refresh(
+            binary,
+            (source_url, target_url),
+            &source,
+            &target,
+            &endpoint,
+            token,
+            tenant,
+        )
+        .await?;
     }
 
     task.abort();
@@ -242,7 +251,7 @@ async fn cache_generation(db: &DatabaseConnection) -> Result<i64, sea_orm::DbErr
 
 async fn verify_standalone_refresh(
     binary: &str,
-    target_url: &str,
+    (source_url, target_url): (&str, &str),
     source: &DatabaseConnection,
     target: &DatabaseConnection,
     endpoint: &str,
@@ -335,12 +344,7 @@ async fn verify_standalone_refresh(
         .execute_unprepared("DELETE FROM product_flex_schema_projections")
         .await?;
 
-    let mut command = tokio::process::Command::new(binary);
-    for (key, _) in std::env::vars_os() {
-        if key.to_string_lossy().starts_with("RUSTOK_") {
-            command.env_remove(key);
-        }
-    }
+    let mut command = service_command(binary);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let bind = listener.local_addr()?;
     drop(listener);
@@ -413,8 +417,23 @@ async fn verify_standalone_refresh(
         patch
     );
 
+    let taxonomy = start_taxonomy_service(source, source_url, tenant).await?;
+    let commerce_host = std::env::var_os("RUSTOK_PRODUCT_TEST_COMMERCE_HOST_BIN");
+    if commerce_host.is_some() && taxonomy.is_none() {
+        return Err("The Commerce host test requires RUSTOK_TAXONOMY_TEST_SERVICE_BIN".into());
+    }
+    let term_id = taxonomy
+        .as_ref()
+        .map_or_else(Uuid::new_v4, |service| service.term_id);
     let catalog_endpoint = tonic::transport::Endpoint::from_shared(format!("http://{bind}"))?;
-    verify_standalone_storefront_lists(target, &embedded, catalog_endpoint.clone(), tenant).await?;
+    let tagged_lists = verify_standalone_storefront_lists(
+        target,
+        &embedded,
+        catalog_endpoint.clone(),
+        tenant,
+        term_id,
+    )
+    .await?;
     let auth = ProductCatalogGrpcBearerToken::new(attached_token)?;
     let remote = GrpcProductCatalogCommandProvider::connect(catalog_endpoint.clone())
         .await?
@@ -426,6 +445,18 @@ async fn verify_standalone_refresh(
         patch
     );
     child.kill().await?;
+    if let Some(taxonomy) = &taxonomy {
+        command
+            .env("RUSTOK_PRODUCT_TAXONOMY_GRPC_ENDPOINT", &taxonomy.endpoint)
+            .env(
+                "RUSTOK_PRODUCT_TAXONOMY_GRPC_ALLOW_INSECURE_LOOPBACK",
+                "true",
+            )
+            .env(
+                "RUSTOK_TAXONOMY_TERM_NAMES_GRPC_BEARER_TOKEN",
+                TAXONOMY_TEST_TOKEN,
+            );
+    }
     child = command
         .env("RUSTOK_PRODUCT_INDEX_REFRESH_TENANTS", tenant.to_string())
         .env("RUSTOK_PRODUCT_INDEX_REFRESH_POLL_MS", "100")
@@ -448,6 +479,24 @@ async fn verify_standalone_refresh(
             .await?,
         patch
     );
+    if let Some(mut taxonomy) = taxonomy {
+        let provider = GrpcProductCatalogReadProvider::connect(catalog_endpoint)
+            .await?
+            .with_bearer_token("catalog-fixture")?;
+        tagged_lists.check(&provider, tenant, true).await?;
+        if let Some(host) = commerce_host.as_deref() {
+            tagged_lists
+                .check_mounted(host, &format!("http://{bind}"), tenant, true)
+                .await?;
+        }
+        taxonomy.child.kill().await?;
+        tagged_lists.check(&provider, tenant, false).await?;
+        if let Some(host) = commerce_host.as_deref() {
+            tagged_lists
+                .check_mounted(host, &format!("http://{bind}"), tenant, false)
+                .await?;
+        }
+    }
     use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
     tokio::time::timeout(Duration::from_secs(10), async {
         loop {
@@ -470,12 +519,197 @@ async fn verify_standalone_refresh(
     Ok(())
 }
 
+const TAXONOMY_TEST_TOKEN: &str = "standalone-taxonomy-fixture";
+
+struct TaxonomyProcess {
+    child: tokio::process::Child,
+    endpoint: String,
+    term_id: Uuid,
+}
+
+fn service_command(binary: impl AsRef<std::ffi::OsStr>) -> tokio::process::Command {
+    let mut command = tokio::process::Command::new(binary);
+    for (key, _) in std::env::vars_os() {
+        if key.to_string_lossy().starts_with("RUSTOK_") {
+            command.env_remove(key);
+        }
+    }
+    command.kill_on_drop(true);
+    command
+}
+
+async fn start_taxonomy_service(
+    db: &DatabaseConnection,
+    database_url: &str,
+    tenant: Uuid,
+) -> Result<Option<TaxonomyProcess>, Box<dyn std::error::Error>> {
+    use rustok_core::MigrationSource;
+    use rustok_taxonomy::{
+        ModuleTermCreateInput, TaxonomyModule, TaxonomyService, TaxonomyTermKind,
+    };
+
+    let Some(binary) = std::env::var_os("RUSTOK_TAXONOMY_TEST_SERVICE_BIN") else {
+        return Ok(None);
+    };
+    let manager = SchemaManager::new(db);
+    for migration in rustok_outbox::OutboxModule
+        .migrations()
+        .into_iter()
+        .chain(TaxonomyModule.migrations())
+    {
+        migration.up(&manager).await?;
+    }
+    let owner = TaxonomyService::new(db.clone());
+    let transaction = db.begin().await?;
+    let term_id = owner
+        .create_module_term_in_tx(
+            &transaction,
+            tenant,
+            TaxonomyTermKind::Tag,
+            "product",
+            ModuleTermCreateInput {
+                locale: "en".into(),
+                name: "Remote tag".into(),
+                slug: Some("remote-tag".into()),
+                canonical_key: Some("remote-tag".into()),
+            },
+        )
+        .await?;
+    transaction.commit().await?;
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let bind = listener.local_addr()?;
+    drop(listener);
+    let mut child = service_command(binary)
+        .env("RUSTOK_TAXONOMY_DATABASE_URL", database_url)
+        .env("RUSTOK_TAXONOMY_SERVICE_BIND", bind.to_string())
+        .env("RUSTOK_TAXONOMY_SERVICE_ALLOW_INSECURE_LOOPBACK", "true")
+        .env(
+            "RUSTOK_TAXONOMY_TERM_NAMES_GRPC_BEARER_TOKEN",
+            TAXONOMY_TEST_TOKEN,
+        )
+        .env(
+            "RUSTOK_TAXONOMY_TERM_NAMES_GRPC_TENANTS",
+            tenant.to_string(),
+        )
+        .spawn()?;
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            if let Some(status) = child.try_wait()? {
+                return Err(std::io::Error::other(format!(
+                    "Taxonomy service exited before binding: {status}"
+                )));
+            }
+            if tokio::net::TcpStream::connect(bind).await.is_ok() {
+                return Ok::<_, std::io::Error>(());
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await??;
+    Ok(Some(TaxonomyProcess {
+        child,
+        endpoint: format!("http://{bind}"),
+        term_id,
+    }))
+}
+
+struct TaggedStorefrontLists {
+    product_id: Uuid,
+    http: LegacyStorefrontHttpProductsRequest,
+    graphql: LegacyStorefrontProductsRequest,
+}
+
+impl TaggedStorefrontLists {
+    async fn check(
+        &self,
+        provider: &GrpcProductCatalogReadProvider,
+        tenant: Uuid,
+        available: bool,
+    ) -> Result<(), PortError> {
+        let context = context(tenant).with_channel("web");
+        for response in [
+            provider
+                .list_legacy_storefront_http_products(context.clone(), self.http.clone())
+                .await,
+            provider
+                .list_legacy_storefront_products(context, self.graphql.clone())
+                .await,
+        ] {
+            if available {
+                let page = response?;
+                assert_eq!(page.items.len(), 1);
+                assert_eq!(page.items[0].tags, ["Remote tag"]);
+            } else {
+                let error = response.expect_err("Taxonomy outage must fail a tagged Product page");
+                assert_eq!(error.kind, PortErrorKind::Unavailable);
+                assert!(error.retryable);
+            }
+        }
+        Ok(())
+    }
+
+    async fn check_mounted(
+        &self,
+        host: &std::ffi::OsStr,
+        endpoint: &str,
+        tenant: Uuid,
+        taxonomy_available: bool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let child = service_command(host)
+            .args([
+                "--ignored",
+                "--exact",
+                "mounted_storefront_lists_use_the_selected_product_process",
+                "--nocapture",
+            ])
+            .env("RUSTOK_ENV", "test")
+            .env("RUSTOK_PRODUCT_CATALOG_PROVIDER", "grpc")
+            .env("RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT", endpoint)
+            .env(
+                "RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK",
+                "true",
+            )
+            .env(
+                "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN",
+                "catalog-fixture",
+            )
+            .env("RUSTOK_PRODUCT_TEST_TENANT_ID", tenant.to_string())
+            .env(
+                "RUSTOK_PRODUCT_TEST_PRODUCT_ID",
+                self.product_id.to_string(),
+            )
+            .env(
+                "RUSTOK_PRODUCT_TEST_TAXONOMY_AVAILABLE",
+                taxonomy_available.to_string(),
+            )
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()?;
+        let output =
+            tokio::time::timeout(Duration::from_secs(30), child.wait_with_output()).await??;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if !output.status.success() || !stdout.contains("PRODUCT_REMOTE_STOREFRONT_HTTP_OK") {
+            return Err(format!(
+                "Mounted Commerce storefront fixture failed:\n{stdout}\n{}",
+                String::from_utf8_lossy(&output.stderr)
+            )
+            .into());
+        }
+        println!(
+            "Mounted Commerce storefront verified with Taxonomy available={taxonomy_available}"
+        );
+        Ok(())
+    }
+}
+
 async fn verify_standalone_storefront_lists(
     db: &DatabaseConnection,
     embedded: &rustok_product::CatalogService,
     endpoint: tonic::transport::Endpoint,
     tenant: Uuid,
-) -> Result<(), Box<dyn std::error::Error>> {
+    term_id: Uuid,
+) -> Result<TaggedStorefrontLists, Box<dyn std::error::Error>> {
     use rustok_product::entities::{product, product_tag, product_translation};
     use sea_orm::{ActiveModelTrait, Schema, Set};
 
@@ -569,7 +803,7 @@ async fn verify_standalone_storefront_lists(
     assert_eq!(
         graphql.items,
         embedded
-            .list_legacy_storefront_products(context.clone(), graphql_request)
+            .list_legacy_storefront_products(context.clone(), graphql_request.clone())
             .await?
             .items,
     );
@@ -615,18 +849,18 @@ async fn verify_standalone_storefront_lists(
     product_tag::ActiveModel {
         tenant_id: Set(tenant),
         product_id: Set(visible[0]),
-        term_id: Set(Uuid::new_v4()),
+        term_id: Set(term_id),
         created_at: Set(now.into()),
     }
     .insert(db)
     .await?;
-    let unavailable = remote
-        .list_legacy_storefront_http_products(context, http_request)
-        .await
-        .expect_err("missing Taxonomy must not return an incomplete tagged Product");
-    assert_eq!(unavailable.kind, PortErrorKind::Unavailable);
-    assert!(unavailable.retryable);
-    Ok(())
+    let tagged = TaggedStorefrontLists {
+        product_id: visible[0],
+        http: http_request,
+        graphql: graphql_request,
+    };
+    tagged.check(&remote, tenant, false).await?;
+    Ok(tagged)
 }
 
 async fn verify_index_ledger_commit_order(
@@ -810,10 +1044,11 @@ async fn postgres_imports_versioned_flex_schemas_across_databases()
     create_postgres_database(&admin, &source_name).await?;
     let result = async {
         create_postgres_database(&admin, &target_name).await?;
-        let source = connect_postgres(&postgres_database_url(&admin_url, &source_name)).await?;
+        let source_url = postgres_database_url(&admin_url, &source_name);
+        let source = connect_postgres(&source_url).await?;
         let target_url = postgres_database_url(&admin_url, &target_name);
         let target = connect_postgres(&target_url).await?;
-        verify_projection(source, target, Some(&target_url)).await
+        verify_projection(source, target, Some((&source_url, &target_url))).await
     }
     .await;
     let source_cleanup = drop_postgres_database_if_exists(&admin, &source_name).await;

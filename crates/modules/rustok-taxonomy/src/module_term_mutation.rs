@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use rustok_content::normalize_locale_code;
+use rustok_api::locale::normalize_locale_code;
 use rustok_core::SecurityContext;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter,

@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package rustok.taxonomy.v1;
+
+service TermNamesService {
+  rpc ReadTermNames(ReadTermNamesRequest) returns (ReadTermNamesResponse);
+}
+
+message ReadTermNamesRequest {
+  string tenant_id = 1;
+  string locale = 2;
+  optional string fallback_locale = 3;
+  repeated string term_ids = 4;
+  string correlation_id = 5;
+  optional string traceparent = 6;
+  optional string causation_id = 7;
+  optional string channel = 8;
+  uint64 deadline_ms = 9;
+}
+
+message TermName {
+  string term_id = 1;
+  string name = 2;
+}
+
+message ReadTermNamesResponse {
+  repeated TermName names = 1;
+}

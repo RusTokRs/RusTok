@@ -99,6 +99,17 @@ fn selected_composition_identity_is_stable_and_contains_modules() {
     assert!(first.modules.iter().any(|module| module.slug == "security"));
 }
 
+#[cfg(all(feature = "mod-taxonomy", not(feature = "mod-content")))]
+#[test]
+fn selected_taxonomy_composes_without_content() {
+    let registry = super::build_registry();
+
+    assert!(registry.contains("taxonomy"));
+    assert!(registry.contains("outbox"));
+    assert!(!registry.contains("content"));
+    build_runtime_extensions(&registry).expect("Taxonomy should compose independently of Content");
+}
+
 #[test]
 fn source_schema_catalog_materializes_after_all_modules_register() {
     let registry = ModuleRegistry::new()

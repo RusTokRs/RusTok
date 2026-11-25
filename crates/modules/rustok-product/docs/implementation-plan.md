@@ -553,24 +553,28 @@ The modular host now binds the Commerce REST list port to the same gRPC
 connection as the other Product catalog reads. The existing GraphQL
 `storefrontProducts` port also delegates to the standalone owner. Both lists
 retain their own page limits and projection rules. The standalone Product
-process still needs a Taxonomy binding to serve pages with tagged products.
-If a selected page requires tag names, both RPCs return the existing typed
-unavailable error. The next deployment gate for these lists is an outgoing
-Taxonomy gRPC adapter and mounted Commerce verification.
+process can select the Taxonomy gRPC binding to serve pages with tagged products.
+Both RPCs report the existing typed unavailable error when the selected page
+requires tag names and Taxonomy is unavailable. Mounted Commerce verification
+remains a deployment gate.
 
 Product now reads term names through Taxonomy's published
 `TaxonomyTermNamesReadPort`. The embedded provider uses Taxonomy's existing
 tenant-scoped locale resolution. Product uses it for list, detail and Index tag
 projections, with bounded requests and no fallback after a bound provider fails.
 Product write responses still resolve names on the same native transaction as
-the uncommitted tag links and terms.
+the uncommitted tag links and terms. Distribution assembles this native provider
+from Product's transaction contract and Taxonomy owner methods.
+[Native Taxonomy composition](../../../../DECISIONS/2026-11-25-taxonomy-native-composition.md)
 
 The PostgreSQL 16 `flex_schema_projection` fixture ran both lists against the
 standalone binary and the embedded Product owner. It verified tenant and channel
 filtering before pagination, locale fallback, and the distinct shipping profile
 projections. It also exercised a denied read credential, a missing deadline,
-the REST page-size limit, and the retryable failure when tag names require a
-Taxonomy provider. This fixture calls the Product ports directly.
+and the REST page-size limit. With `RUSTOK_TAXONOMY_TEST_SERVICE_BIN` set, both
+Product list RPCs resolved the tag through the Taxonomy process on a separate
+PostgreSQL database. Both returned retryable `Unavailable` with the provider
+absent and after its shutdown. The fixture calls the Product ports directly.
 
 Flex GraphQL reads and writes Product attached fields through the selected
 embedded or authenticated gRPC ports. The read credential grants

@@ -78,7 +78,7 @@ async fn groups_storefront_directory_native(
         )
         .with_deadline(Duration::from_secs(5));
         let response = GroupSummaryReadPort::list_groups(
-            &GroupsService::new(runtime.db_clone()),
+            &GroupsService::from_host_runtime(&runtime),
             context,
             ListGroupsRequest {
                 page: filters.page.max(1),

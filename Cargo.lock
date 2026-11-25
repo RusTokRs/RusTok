@@ -15370,6 +15370,7 @@ dependencies = [
  "rustok-social-graph",
  "rustok-tasks",
  "rustok-taxonomy",
+ "rustok-taxonomy-ports",
  "rustok-tenant",
  "rustok-test-utils",
  "rustok-translation",
@@ -18552,14 +18553,13 @@ dependencies = [
  "async-trait",
  "chrono",
  "rustok-api",
- "rustok-content",
  "rustok-core",
  "rustok-events",
- "rustok-groups",
- "rustok-outbox",
+ "rustok-outbox-storage",
  "rustok-product",
  "rustok-seo-targets",
  "rustok-taxonomy-ports",
+ "rustok-telemetry",
  "rustok-test-utils",
  "rustok-translation-targets",
  "sea-orm",
@@ -18569,7 +18569,10 @@ dependencies = [
  "slug",
  "thiserror 2.0.21",
  "tokio",
+ "tokio-stream",
+ "tonic",
  "tracing",
+ "url",
  "uuid",
 ]
 
@@ -18578,8 +18581,16 @@ name = "rustok-taxonomy-ports"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "prost",
+ "protoc-bin-vendored",
  "rustok-api",
  "serde",
+ "serde_json",
+ "tokio",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
+ "url",
  "uuid",
 ]
 

@@ -22,7 +22,7 @@ use crate::domain::{
 use crate::dto::*;
 use crate::entities::{feature_binding, group, membership, translation};
 use crate::error::{GroupsError, GroupsResult};
-use crate::ports::taxonomy::{GroupTaxonomyPort, NoopGroupTaxonomyPort};
+use crate::ports::taxonomy::GroupTaxonomyPort;
 use crate::ports::{
     GroupAccessReadPort, GroupCommandPort, GroupMembershipReadPort, GroupSummaryReadPort,
 };
@@ -30,20 +30,29 @@ use crate::ports::{
 #[derive(Clone)]
 pub struct GroupsService {
     db: DatabaseConnection,
-    taxonomy_port: Arc<dyn GroupTaxonomyPort>,
+    taxonomy_port: Option<Arc<dyn GroupTaxonomyPort>>,
 }
 
 impl GroupsService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
             db,
-            taxonomy_port: Arc::new(NoopGroupTaxonomyPort),
+            taxonomy_port: None,
         }
     }
 
     pub fn with_taxonomy_port(mut self, port: Arc<dyn GroupTaxonomyPort>) -> Self {
-        self.taxonomy_port = port;
+        self.taxonomy_port = Some(port);
         self
+    }
+
+    fn taxonomy(&self) -> GroupsResult<&dyn GroupTaxonomyPort> {
+        self.taxonomy_port.as_deref().ok_or_else(|| {
+            GroupsError::Delegated(PortError::unavailable(
+                "groups.taxonomy_unavailable",
+                "Groups taxonomy provider is unavailable",
+            ))
+        })
     }
 
     pub async fn lock_membership_enforcement_target_by_id(
@@ -201,17 +210,23 @@ impl GroupsService {
             return Err(GroupsError::HandleConflict);
         }
 
-        if let Some(category_id) = input.category_id {
-            let valid = self
-                .taxonomy_port
-                .validate_category_exists((&transaction).into(), tenant_id, category_id)
-                .await?;
-            if !valid {
-                return Err(GroupsError::Validation(format!(
-                    "Group category {category_id} does not exist"
-                )));
-            }
-        }
+        let category = if let Some(category_id) = input.category_id {
+            let snapshot = self
+                .taxonomy()?
+                .load_categories(
+                    (&transaction).into(),
+                    tenant_id,
+                    &[category_id],
+                    &locale,
+                    None,
+                )
+                .await?
+                .remove(&category_id)
+                .ok_or_else(|| GroupsError::Validation("Group category does not exist".into()))?;
+            Some(GroupCategorySummary::from(snapshot))
+        } else {
+            None
+        };
 
         let now = Utc::now().fixed_offset();
         let group_id = Uuid::new_v4();
@@ -276,29 +291,6 @@ impl GroupsService {
         }
         .insert(&transaction)
         .await?;
-
-        let category = if let Some(cat_id) = input.category_id {
-            self.taxonomy_port
-                .load_categories(
-                    (&transaction).into(),
-                    tenant_id,
-                    &[cat_id],
-                    &locale,
-                    None,
-                )
-                .await
-                .ok()
-                .and_then(|mut m| m.remove(&cat_id))
-                .map(|snap| GroupCategorySummary {
-                    id: snap.id,
-                    name: snap.name,
-                    slug: snap.slug,
-                    icon_key: snap.icon_key,
-                    color: snap.color,
-                })
-        } else {
-            None
-        };
 
         let result = GroupDetails {
             summary: GroupSummary {
@@ -440,7 +432,7 @@ impl GroupsService {
         let categories = if category_ids.is_empty() {
             HashMap::new()
         } else {
-            self.taxonomy_port
+            self.taxonomy()?
                 .load_categories(
                     (&self.db).into(),
                     tenant_id,
@@ -448,21 +440,9 @@ impl GroupsService {
                     &effective_locale,
                     None,
                 )
-                .await
-                .unwrap_or_default()
+                .await?
                 .into_iter()
-                .map(|(id, snap)| {
-                    (
-                        id,
-                        GroupCategorySummary {
-                            id: snap.id,
-                            name: snap.name,
-                            slug: snap.slug,
-                            icon_key: snap.icon_key,
-                            color: snap.color,
-                        },
-                    )
-                })
+                .map(|(id, snapshot)| (id, snapshot.into()))
                 .collect::<HashMap<_, _>>()
         };
         let items = models
@@ -521,7 +501,7 @@ impl GroupsService {
             .then(|| selected.body.clone())
             .flatten();
         let category = if let Some(cat_id) = model.category_id {
-            self.taxonomy_port
+            self.taxonomy()?
                 .load_categories(
                     (&self.db).into(),
                     tenant_id,
@@ -529,16 +509,9 @@ impl GroupsService {
                     effective_locale,
                     None,
                 )
-                .await
-                .ok()
-                .and_then(|mut m| m.remove(&cat_id))
-                .map(|snap| GroupCategorySummary {
-                    id: snap.id,
-                    name: snap.name,
-                    slug: snap.slug,
-                    icon_key: snap.icon_key,
-                    color: snap.color,
-                })
+                .await?
+                .remove(&cat_id)
+                .map(GroupCategorySummary::from)
         } else {
             None
         };

@@ -51,7 +51,7 @@ impl RusToKModule for TaxonomyModule {
     }
 
     fn dependencies(&self) -> &[&'static str] {
-        &["content", "outbox"]
+        &["outbox"]
     }
 
     fn permissions(&self) -> Vec<Permission> {
@@ -107,7 +107,7 @@ mod tests {
         assert_eq!(module.slug(), "taxonomy");
         assert_eq!(module.name(), "Taxonomy");
         assert_eq!(module.kind(), ModuleKind::Optional);
-        assert_eq!(module.dependencies(), &["content", "outbox"]);
+        assert_eq!(module.dependencies(), &["outbox"]);
         assert!(!module.permissions().is_empty());
         assert!(!module.migrations().is_empty());
     }

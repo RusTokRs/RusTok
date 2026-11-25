@@ -27,6 +27,9 @@ distribution build.
   statement or existing repeatable-read transaction.
 - Bind ProductVariant replay through the Product owner port. The Index schema
   and mutation mapping are shared by the embedded and gRPC deployments.
+- Compose the native Taxonomy adapters for Product and Groups. The adapters keep
+  transaction-bound calls on the consumer's transaction while Taxonomy owns the
+  queries and mutations.
 
 ## Interactions
 

@@ -16,7 +16,7 @@ pub fn normalize_term_route_key(value: &str) -> Option<String> {
 /// Normalize a locale exactly as Taxonomy does for persisted translations and
 /// localized route keys.
 pub fn normalize_term_locale(value: &str) -> Option<String> {
-    rustok_content::normalize_locale_code(value)
+    rustok_api::locale::normalize_locale_code(value)
 }
 
 #[cfg(test)]

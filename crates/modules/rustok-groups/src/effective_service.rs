@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError};
+use rustok_api::{HostRuntimeContext, PortActorKind, PortCallPolicy, PortContext, PortError};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
     TransactionTrait,
@@ -24,6 +24,7 @@ use crate::membership_enforcement_transaction::{
 };
 use crate::ports::{
     GroupAccessReadPort, GroupCommandPort, GroupMembershipReadPort, GroupSummaryReadPort,
+    GroupTaxonomyPortFactory, SharedGroupTaxonomyPort,
 };
 use crate::service::GroupsService as CoreGroupsStore;
 
@@ -44,6 +45,19 @@ impl GroupsService {
         Self {
             legacy: CoreGroupsStore::new(db.clone()),
             db,
+        }
+    }
+
+    pub fn from_host_runtime(runtime: &HostRuntimeContext) -> Self {
+        let service = Self::new(runtime.db_clone());
+        let port = runtime.shared_get::<SharedGroupTaxonomyPort>().or_else(|| {
+            runtime
+                .shared_get::<GroupTaxonomyPortFactory>()
+                .map(|factory| (factory.0)(runtime.db_clone()))
+        });
+        match port {
+            Some(port) => service.with_taxonomy_port(port),
+            None => service,
         }
     }
 

@@ -9,13 +9,13 @@ use sea_orm::{
 use tracing::instrument;
 use uuid::Uuid;
 
-use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Patch, Resource};
-use rustok_content::{
-    available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
+use rustok_api::{
+    Action, PLATFORM_FALLBACK_LOCALE, Patch, Resource,
+    locale::{available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback},
 };
 use rustok_core::{PermissionScope, SecurityContext};
 use rustok_events::DomainEvent;
-use rustok_outbox::TransactionalEventBus;
+use rustok_outbox_storage::TransactionalEventBus;
 
 use crate::dto::{
     ApplyExactTaxonomyTranslationInput, CreateTaxonomyTermInput, ListTaxonomyTermsFilter,
@@ -1563,7 +1563,7 @@ mod tests {
     use super::*;
     use crate::TaxonomyModule;
 
-    use rustok_outbox::SysEventsMigration;
+    use rustok_outbox_storage::SysEventsMigration;
     use sea_orm_migration::MigrationTrait;
 
     async fn setup() -> (DatabaseConnection, TaxonomyService) {

@@ -391,18 +391,9 @@ pub fn attach_commerce_provider_registries(
     };
 
     #[cfg(feature = "mod-product")]
-    let product_taxonomy = {
-        #[cfg(feature = "mod-taxonomy")]
-        {
-            Some(rustok_taxonomy::in_process_product_taxonomy_port(
-                server.db_clone(),
-            ))
-        }
-        #[cfg(not(feature = "mod-taxonomy"))]
-        {
-            None
-        }
-    };
+    let product_taxonomy = Some(rustok_distribution::in_process_product_taxonomy_port(
+        server.db_clone(),
+    ));
 
     #[cfg(feature = "mod-product")]
     let host = {

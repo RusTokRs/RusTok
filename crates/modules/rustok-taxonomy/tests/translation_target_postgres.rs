@@ -2,7 +2,7 @@ use std::{env, error::Error as StdError, io, sync::Arc, time::Duration};
 
 use rustok_api::{PortActor, PortContext, PortErrorKind, TenantLocale};
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
-use rustok_outbox::SysEventsMigration;
+use rustok_outbox_storage::SysEventsMigration;
 use rustok_taxonomy::{
     CreateTaxonomyTermInput, ModuleTermCreateInput, TaxonomyModule, TaxonomyScopeType,
     TaxonomyService, TaxonomyTermKind, TaxonomyTranslationTargetProvider,

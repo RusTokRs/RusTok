@@ -14,13 +14,13 @@ implementation and generic shared-node service have been removed under the
 ## Purpose
 
 - publish a shared content/orchestration runtime contract;
-- keep locale normalization, rich-text validation and conversion semantics inside the module;
+- reuse platform locale selection and own rich-text validation and conversion semantics;
 - provide domain modules with a stable orchestration layer without reverting to shared product storage.
 
 ## Scope
 
 - `ContentOrchestrationService`, orchestration audit/idempotency and canonical URL state;
-- shared richtext policy and locale fallback helpers without shared domain-body
+- shared richtext policy and the platform locale re-exports without shared domain-body
   persistence;
 - opt-in same-origin delivery of the canonical browser frame artifacts selected
   from `packages/richtext/dist/asset-manifest.json` at build time;

@@ -7,7 +7,7 @@ const root=process.env.RUSTOK_VERIFY_REPO_ROOT??path.resolve(path.dirname(fileUR
 const read=p=>readFileSync(path.join(root,p),'utf8');
 const categories=read('crates/modules/rustok-product/src/services/catalog_schema_service/categories.rs');
 const owner=read('crates/modules/rustok-taxonomy/src/owner_category_read.rs');
-const taxonomyPort=read('crates/modules/rustok-taxonomy/src/product_taxonomy_port.rs');
+const taxonomyPort=read('crates/modules/rustok-distribution/src/product_taxonomy_port.rs');
 const errors=[];const need=(s,t)=>{if(!s.includes(t))errors.push(`Missing ${t}`)};
 const list=categories.slice(categories.indexOf('pub async fn list_categories('),categories.indexOf('pub async fn create_category_group('));
 need(list,'list_categories_from_taxonomy(self, tenant_id, &locale).await');

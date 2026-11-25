@@ -6,6 +6,10 @@ on:
       - "crates/modules/rustok-taxonomy/src/lib.rs"
       - "crates/modules/rustok-taxonomy/src/owner_category_sync.rs"
       - "crates/modules/rustok-taxonomy/tests/owner_category_sync.rs"
+      - "crates/modules/rustok-distribution/src/groups_taxonomy_port.rs"
+      - "crates/modules/rustok-distribution/src/product_taxonomy_port.rs"
+      - "crates/modules/rustok-distribution/tests/groups_taxonomy.rs"
+      - "crates/modules/rustok-distribution/tests/product_taxonomy.rs"
       - ".github/workflows/taxonomy-category-owner-sync.yml"
   push:
     branches:
@@ -14,6 +18,10 @@ on:
       - "crates/modules/rustok-taxonomy/src/lib.rs"
       - "crates/modules/rustok-taxonomy/src/owner_category_sync.rs"
       - "crates/modules/rustok-taxonomy/tests/owner_category_sync.rs"
+      - "crates/modules/rustok-distribution/src/groups_taxonomy_port.rs"
+      - "crates/modules/rustok-distribution/src/product_taxonomy_port.rs"
+      - "crates/modules/rustok-distribution/tests/groups_taxonomy.rs"
+      - "crates/modules/rustok-distribution/tests/product_taxonomy.rs"
       - ".github/workflows/taxonomy-category-owner-sync.yml"
   workflow_dispatch:
 
@@ -52,5 +60,7 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Run transactional Category owner sync contract
         run: cargo +1.96.0 test --locked -p rustok-taxonomy --test owner_category_sync -- --nocapture
+      - name: Run Product and Groups Taxonomy composition contracts
+        run: cargo +1.96.0 test --locked -p rustok-distribution --no-default-features --features mod-product,mod-groups --test product_taxonomy --test groups_taxonomy
       - name: Compile Taxonomy owner sync surface
         run: cargo +1.96.0 check --locked -p rustok-taxonomy --lib

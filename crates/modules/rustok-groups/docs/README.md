@@ -33,6 +33,17 @@ row, or another locale as a fallback.
 Application policy identity consists of policy ID, positive revision, and exact locale. Submitted
 applications preserve the exact immutable questions/rules snapshot seen by the candidate.
 
+## Categories
+
+Groups stores an optional Taxonomy category identity. When both modules are
+selected, the distribution binds the native provider for GraphQL and Leptos
+server functions. A categorized create loads the tenant's `groups` category
+inside the Groups transaction after checking for a completed command receipt.
+The result and receipt use the same category snapshot. Categorized operations
+return an explicit unavailable error when the provider is absent or its storage
+fails. Uncategorised groups can be used without Taxonomy.
+[Native Taxonomy composition](../../../../DECISIONS/2026-11-25-taxonomy-native-composition.md)
+
 ## Access and privacy
 
 - Public groups expose their public shell and configured public features.

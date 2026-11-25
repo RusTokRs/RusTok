@@ -4,14 +4,29 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Transport-neutral owner contracts for RusToK Taxonomy"
+description = "Published owner contracts and optional gRPC adapters for RusToK Taxonomy"
 repository.workspace = true
 
 [lints]
 workspace = true
 
+[features]
+default = []
+grpc-client = ["dep:prost", "dep:protoc-bin-vendored", "dep:serde_json", "dep:tokio", "dep:tonic", "dep:tonic-prost", "dep:tonic-prost-build", "dep:url", "tonic/tls-ring", "tonic/tls-webpki-roots"]
+grpc-server = ["dep:prost", "dep:protoc-bin-vendored", "dep:serde_json", "dep:tokio", "dep:tonic", "dep:tonic-prost", "dep:tonic-prost-build"]
+
 [dependencies]
 async-trait.workspace = true
+prost = { workspace = true, optional = true }
 rustok-api.workspace = true
 serde.workspace = true
+serde_json = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+tonic = { workspace = true, optional = true }
+tonic-prost = { workspace = true, optional = true }
+url = { workspace = true, optional = true }
 uuid.workspace = true
+
+[build-dependencies]
+protoc-bin-vendored = { workspace = true, optional = true }
+tonic-prost-build = { workspace = true, optional = true }

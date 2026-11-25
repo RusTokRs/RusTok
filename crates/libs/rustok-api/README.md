@@ -22,7 +22,7 @@
 - Provide host/API request, tenant, auth, channel, locale, permission and port contracts.
 - Provide the framework-independent manifest-to-runtime registry comparison contract used by the server composition root.
 - Provide GraphQL helper types and error helpers shared across modules.
-- Provide request-level locale and tenant resolution primitives that do not belong in domain crates.
+- Provide request-level locale and tenant resolution and shared selection of localized owner values.
 - Provide `HostRuntimeContext` for server-side Leptos/native adapters that need host-owned runtime handles without importing a host-wide application context.
 - Provide neutral port context/error primitives, policy helpers (`PortCallPolicy`) and typed error constructors for module-owned ports; `rustok-region` and migrated tenant, channel, product, customer, media, workflow, RBAC, tax, fulfillment, payment, pricing, cart, inventory, comments, search, order, index, email delivery, outbox relay, and page-builder publish paths use these shared primitives for FBA read/write boundaries.
 - Own neutral permission contracts (`Permission`, `Action`, `Resource`) and host request-locale policy contracts. Framework-neutral `Accept-Language` field parsing is delegated to `rustok-ui-i18n`; the legacy `extract_locale_tag_from_header` name remains a compatibility re-export.

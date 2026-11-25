@@ -81,7 +81,7 @@ pages = { crate = "rustok-pages", source = "path", path = "crates/modules/rustok
 navigation = { crate = "rustok-navigation", source = "path", path = "crates/modules/rustok-navigation", depends_on = ["channel", "outbox"] }
 forms = { crate = "rustok-forms", source = "path", path = "crates/modules/rustok-forms", depends_on = ["outbox", "email"] }
 page_builder = { crate = "rustok-page-builder", source = "path", path = "crates/modules/rustok-page-builder" }
-taxonomy = { crate = "rustok-taxonomy", source = "path", path = "crates/modules/rustok-taxonomy", depends_on = ["content", "outbox"] }
+taxonomy = { crate = "rustok-taxonomy", source = "path", path = "crates/modules/rustok-taxonomy", depends_on = ["outbox"] }
 media = { crate = "rustok-media", source = "path", path = "crates/modules/rustok-media", depends_on = ["outbox"] }
 seo = { crate = "rustok-seo", source = "path", path = "crates/modules/rustok-seo", depends_on = ["content"] }
 workflow = { crate = "rustok-workflow", source = "path", path = "crates/modules/rustok-workflow" }

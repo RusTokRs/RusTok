@@ -494,12 +494,7 @@ fn service(ctx: &Context<'_>) -> Result<GroupsService> {
     let runtime = ctx.data::<HostRuntimeContext>().map_err(|_| {
         <FieldError as GraphQLError>::internal_error("Groups runtime is not registered")
     })?;
-    let mut service = GroupsService::new(runtime.db_clone());
-    if let Some(port) = runtime.shared_get::<std::sync::Arc<dyn crate::ports::GroupTaxonomyPort>>()
-    {
-        service = service.with_taxonomy_port(port);
-    }
-    Ok(service)
+    Ok(GroupsService::from_host_runtime(runtime))
 }
 
 fn require_authenticated<'a>(ctx: &'a Context<'a>) -> Result<&'a AuthContext> {

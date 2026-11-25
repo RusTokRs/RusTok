@@ -25,6 +25,7 @@ const read = (relativePath) => {
 const router = read('crates/modules/rustok-commerce/src/controllers/store/mod.rs');
 const controller = read('crates/modules/rustok-commerce/src/controllers/store/products.rs');
 const ownerHttp = read('crates/modules/rustok-product/src/storefront_http_read_port.rs');
+const publishedProductPorts = read('crates/modules/rustok-product/ports/src/ports.rs');
 const productPorts = read('crates/modules/rustok-product/src/ports.rs');
 const productQueries = read('crates/modules/rustok-product/src/services/catalog/queries.rs');
 const failures = [];
@@ -144,8 +145,8 @@ for (const value of [
   'apply_public_channel_inventory_to_product(',
 ]) forbidText(detailHandler, value, 'stale concrete Product detail path');
 
+requireText(publishedProductPorts, 'pub trait ProductStorefrontHttpReadPort', 'published Product HTTP capability');
 for (const [value, label] of [
-  ['pub trait ProductStorefrontHttpReadPort', 'Product HTTP owner capability'],
   ['MAX_LEGACY_STOREFRONT_HTTP_PRODUCTS_PER_PAGE: u64 = 100', 'REST page-size compatibility'],
   ['product::Column::Status.eq(product::ProductStatus::Active)', 'owner active filter'],
   ['product::Column::PublishedAt.is_not_null()', 'owner published filter'],
@@ -156,8 +157,11 @@ for (const [value, label] of [
   ['.limit(per_page)', 'owner pagination limit'],
   ['.unwrap_or_default()', 'owner empty missing translation'],
   ['shipping_profile_slug_from_metadata(&product.metadata)', 'owner metadata-only shipping profile'],
-  ['Some(context),', 'owner tag projection'],
 ]) requireText(ownerHttp, value, label);
+if (!/\.load_product_tag_map\(\s*tenant_id,\s*&products,\s*locale,\s*Some\(fallback_locale\),\s*Some\(context\)\s*,?\s*\)/.test(ownerHttp)) {
+  failures.push("Product HTTP list must forward its context to tag projection");
+}
+
 
 for (const [value, label] of [
   ['async fn read_storefront_product_projection(', 'Product detail owner capability'],

@@ -125,6 +125,8 @@ pub mod module_event_dispatcher {
         spawn_module_event_dispatcher,
     };
     pub(crate) use super::module_event_dispatcher_base::take_module_dispatcher_for_shutdown;
+    #[cfg(any(feature = "mod-commerce", feature = "mod-payment", feature = "mod-product"))]
+    pub(crate) use super::module_event_dispatcher_base::take_dispatcher_started_worker_for_shutdown;
 
     /// Search source modules whose indexed documents are public discovery material.
     ///

@@ -16,7 +16,7 @@
 - **Module Slug**: `taxonomy`
 - **Module Name**: `Taxonomy`
 - **Module Kind**: `ModuleKind::Optional`
-- **Dependencies**: `["content", "outbox"]`
+- **Module dependencies**: `["outbox"]` for storage migrations and event delivery.
 - **Permissions**:
   - `TAXONOMY_CREATE`
   - `TAXONOMY_READ`
@@ -29,12 +29,15 @@
 - **Database Migrations**: Sea-ORM migrations defined in `src/migrations/mod.rs` (including route key registry and owner hierarchy migrations).
 
 ## Domain Collaborations
-- **Content**: Subscribes to content classification events and scopes taxonomy terms to content types.
-- **Outbox**: Emits taxonomy term lifecycle and translation sync events through `rustok_outbox::TransactionalEventBus`.
+- **Locale**: Resolves localized terms with the platform helpers in `rustok-api::locale`.
+- **Outbox**: Writes taxonomy lifecycle and translation synchronization events through `rustok_outbox_storage::TransactionalEventBus`.
 - **SEO & Translation Targets**: Implements targets for hierarchical category SEO and multi-locale term translations.
-- **Downstream Consumers**: Consumed by `product`, `forum`, `blog`, `profiles`, and `comments` for categories, tags, and terms.
+- **Downstream Consumers**: `product`, `groups`, `forum`, `blog`, `profiles`, and `comments` use Taxonomy categories, tags, or terms. Distribution composes the Product and Groups native adapters from these Taxonomy owner methods.
 
 ## Minimum Contract Set
+- `rustok-taxonomy-ports::TaxonomyTermNamesReadPort`: Bounded tenant-scoped name
+  resolution with embedded and authenticated gRPC providers. The standalone
+  `rustok-taxonomy-service` binary serves this read profile.
 - `TaxonomyService`: Canonical dictionary service for managing shared and module-local terms.
 - `TaxonomyOwnerReader` & `TaxonomyOwnerCategoryReader`: Read ports for owner categories and term hierarchies.
 - `TaxonomyOwnerReader::load_scoped_terms_in` and `TaxonomyService::resolve_term_id_for_module_in` read scoped vocabulary in the consuming owner's transaction.

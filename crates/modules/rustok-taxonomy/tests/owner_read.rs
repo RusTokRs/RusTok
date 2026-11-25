@@ -1,8 +1,11 @@
+use std::sync::Arc;
+
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_taxonomy::{
     CreateTaxonomyTermInput, ModuleTermCreateInput, TaxonomyModule, TaxonomyOwnerReader,
     TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
 };
+use rustok_taxonomy_ports::TaxonomyTermNamesReadPort;
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::TransactionTrait;
 use sea_orm_migration::prelude::SchemaManager;
@@ -350,6 +353,12 @@ async fn published_term_names_port_enforces_tenant_capability_and_bounds() {
         .await
         .unwrap();
     assert_eq!(names, [(term, String::from("Shoes"))].into_iter().collect());
+    assert_product_reads_taxonomy_names_from_another_database(
+        Arc::new(TaxonomyService::new(service.database().clone())),
+        tenant,
+        term,
+    )
+    .await;
 
     let mut user_context = context.clone();
     user_context.actor = PortActor::user(Uuid::new_v4().to_string());
@@ -368,4 +377,201 @@ async fn published_term_names_port_enforces_tenant_capability_and_bounds() {
         .await
         .unwrap_err();
     assert_eq!(error.code, "taxonomy.term_name_ids_invalid");
+}
+
+async fn assert_product_reads_taxonomy_names_from_another_database(
+    taxonomy: Arc<dyn TaxonomyTermNamesReadPort>,
+    tenant_id: Uuid,
+    term_id: Uuid,
+) {
+    use rustok_api::{PortActor, PortContext};
+    use rustok_outbox_storage::TransactionalEventBus;
+    use rustok_product::{
+        CatalogService, ProductStorefrontTagHydrationRequest, ProductStorefrontTagReadPort,
+        entities::{product, product_tag},
+    };
+    use rustok_test_utils::MockEventTransport;
+    use sea_orm::{ActiveModelTrait, Schema, Set};
+
+    let db = setup_test_db().await;
+    let manager = SchemaManager::new(&db);
+    let schema = Schema::new(db.get_database_backend());
+    manager
+        .create_table(schema.create_table_from_entity(product::Entity))
+        .await
+        .unwrap();
+    manager
+        .create_table(schema.create_table_from_entity(product_tag::Entity))
+        .await
+        .unwrap();
+    let product_id = Uuid::new_v4();
+    let now = chrono::Utc::now();
+    product::ActiveModel {
+        id: Set(product_id),
+        tenant_id: Set(tenant_id),
+        status: Set(product::ProductStatus::Active),
+        metadata: Set(serde_json::json!({})),
+        created_at: Set(now.into()),
+        updated_at: Set(now.into()),
+        revision: Set(1),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+    product_tag::ActiveModel {
+        product_id: Set(product_id),
+        term_id: Set(term_id),
+        tenant_id: Set(tenant_id),
+        created_at: Set(now.into()),
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+
+    let catalog = CatalogService::new(
+        db,
+        TransactionalEventBus::new(Arc::new(MockEventTransport::new())),
+    )
+    .with_taxonomy_term_names_port(taxonomy);
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::service("index"),
+        "de",
+        "tag-projection-test",
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    let names = catalog
+        .hydrate_storefront_product_tags(
+            context,
+            ProductStorefrontTagHydrationRequest {
+                product_ids: vec![product_id],
+                fallback_locale: "en".into(),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(names.items.len(), 1);
+    assert_eq!(names.items[0].product_id, product_id);
+    assert_eq!(names.items[0].tags, ["Shoes"]);
+}
+
+#[cfg(feature = "service")]
+#[tokio::test]
+async fn grpc_term_names_serves_product_and_enforces_credential_scope() {
+    use std::time::Duration;
+
+    use rustok_api::{PortActor, PortContext, PortErrorKind};
+    use rustok_taxonomy_ports::{
+        ReadTaxonomyTermNamesRequest, TAXONOMY_TERM_NAMES_READ_CLAIM,
+        grpc::{GrpcTaxonomyTermNamesProvider, TaxonomyTermNamesGrpcService},
+    };
+    use tokio::{net::TcpListener, sync::oneshot};
+    use tokio_stream::wrappers::TcpListenerStream;
+    use tonic::transport::Server;
+
+    let (_, owner) = setup().await;
+    let tenant = Uuid::new_v4();
+    let foreign_tenant = Uuid::new_v4();
+    let term = create_term(
+        &owner,
+        tenant,
+        TaxonomyScopeType::Module,
+        Some("product"),
+        "Shoes",
+        "shoes",
+    )
+    .await;
+    let foreign_term = create_term(
+        &owner,
+        foreign_tenant,
+        TaxonomyScopeType::Global,
+        None,
+        "Hidden",
+        "hidden",
+    )
+    .await;
+    let token = "test-taxonomy-term-names-token";
+    let service = TaxonomyTermNamesGrpcService::new(Arc::new(owner), token, [tenant])
+        .unwrap()
+        .into_server();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let endpoint = format!("http://{}", listener.local_addr().unwrap());
+    let (stop, shutdown) = oneshot::channel();
+    let server = tokio::spawn(
+        Server::builder()
+            .add_service(service)
+            .serve_with_incoming_shutdown(TcpListenerStream::new(listener), async {
+                shutdown.await.expect("test server should shut down");
+            }),
+    );
+    assert!(GrpcTaxonomyTermNamesProvider::new(&endpoint, token, false, None).is_err());
+    assert!(
+        GrpcTaxonomyTermNamesProvider::new("http://192.0.2.1:7446", token, true, None).is_err()
+    );
+
+    let client = GrpcTaxonomyTermNamesProvider::new(&endpoint, token, true, None).unwrap();
+    let context = PortContext::new(
+        tenant.to_string(),
+        PortActor::service("product"),
+        "de",
+        "taxonomy-grpc-test",
+    )
+    .with_claim(TAXONOMY_TERM_NAMES_READ_CLAIM)
+    .with_traceparent("00-12345678901234567890123456789012-1234567890123456-01")
+    .with_deadline(Duration::from_secs(2));
+    let request = ReadTaxonomyTermNamesRequest {
+        term_ids: vec![term, foreign_term, Uuid::new_v4()],
+        fallback_locale: Some("en".into()),
+    };
+    let names = client
+        .read_term_names(context.clone(), request.clone())
+        .await
+        .unwrap();
+    assert_eq!(names, [(term, "Shoes".into())].into_iter().collect());
+    let mut foreign = context.clone();
+    foreign.tenant_id = foreign_tenant.to_string();
+    let error = client
+        .read_term_names(foreign, request.clone())
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, PortErrorKind::Forbidden);
+    let invalid_token =
+        GrpcTaxonomyTermNamesProvider::new(&endpoint, "different-token", true, None).unwrap();
+    let error = invalid_token
+        .read_term_names(context.clone(), request.clone())
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, PortErrorKind::Forbidden);
+    let mut missing_deadline = context.clone();
+    missing_deadline.deadline_ms = None;
+    let error = client
+        .read_term_names(missing_deadline, request.clone())
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, "port.deadline_required");
+    let invalid_locale = PortContext {
+        locale: "-".into(),
+        ..context.clone()
+    };
+    let error = client
+        .read_term_names(invalid_locale, request.clone())
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, "taxonomy.term_names_context_invalid");
+
+    assert_product_reads_taxonomy_names_from_another_database(
+        Arc::new(client.clone()),
+        tenant,
+        term,
+    )
+    .await;
+    stop.send(()).unwrap();
+    server.await.unwrap().unwrap();
+    let error = client.read_term_names(context, request).await.unwrap_err();
+    assert!(matches!(
+        error.kind,
+        PortErrorKind::Unavailable | PortErrorKind::Timeout
+    ));
+    assert!(error.retryable);
 }

@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "module": "taxonomy",
+  "role": "provider",
+  "status": "boundary_ready",
+  "contract_version": "taxonomy.term_names_read.v1",
+  "ports": [
+    {
+      "name": "TaxonomyTermNamesReadPort",
+      "owner": "taxonomy",
+      "operations": [
+        "read_term_names"
+      ],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "idempotency_required": false,
+      "deadline_required": true
+    }
+  ],
+  "consumers": [
+    {
+      "module": "product",
+      "profile": "catalog_term_names",
+      "degraded_modes": [],
+      "fallback_profiles": []
+    }
+  ],
+  "evidence": {
+    "local_plan": "crates/modules/rustok-taxonomy/docs/implementation-plan.md",
+    "central_board": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-index-product-storefront-tag-hydration.mjs",
+    "owner_conformance_test": "crates/modules/rustok-taxonomy/tests/owner_read.rs",
+    "product_process_test": "crates/modules/rustok-product/tests/flex_schema_projection.rs",
+    "wire_schema": "crates/modules/rustok-taxonomy/ports/proto/rustok/taxonomy/term_names.proto"
+  }
+}

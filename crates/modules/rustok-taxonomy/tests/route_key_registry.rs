@@ -1,5 +1,5 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
-use rustok_outbox::SysEventsMigration;
+use rustok_outbox_storage::SysEventsMigration;
 use rustok_taxonomy::{
     CreateTaxonomyTermInput, ModuleTermCreateInput, ModuleTermUpdateInput,
     ResolveTaxonomyTermInput, TaxonomyError, TaxonomyModule, TaxonomyScopeType, TaxonomyService,

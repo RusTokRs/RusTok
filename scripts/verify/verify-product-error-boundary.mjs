@@ -33,7 +33,7 @@ export function run() {
   for (const variant of coreVariants) require(corePolicy.includes(`CoreError::${variant}`), `Core ${variant}: explicit owner policy required`);
   require(!/\b(?:other|_)\s*=>/.test(corePolicy), 'Core classification must not have a catch-all');
   require(!/to_string\(|format!/.test(corePolicy), 'Core error copy must be static');
-  const taxonomyPolicy = read('crates/modules/rustok-taxonomy/src/product_taxonomy_port.rs');
+  const taxonomyPolicy = read('crates/modules/rustok-distribution/src/product_taxonomy_port.rs');
   const syncPolicy = between(taxonomyPolicy, 'fn map_taxonomy_sync_error(', '/// A read projection');
   const readPolicy = between(taxonomyPolicy, 'fn map_taxonomy_read_error(', 'fn taxonomy_projection_error(');
   const taxonomyEnum = between(read('crates/modules/rustok-taxonomy/src/error.rs'), 'pub enum TaxonomyError', 'pub type TaxonomyResult');

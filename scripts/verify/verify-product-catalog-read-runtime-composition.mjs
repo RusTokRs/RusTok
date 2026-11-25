@@ -95,8 +95,11 @@ requireAll(httpPort, [
   "MAX_LEGACY_STOREFRONT_HTTP_PRODUCTS_PER_PAGE: u64 = 100",
   "context.require_policy(PortCallPolicy::read())?",
   "crate::services::catalog::helpers::product_channel_visibility_condition(",
-  "Some(context),",
 ], "Product optional Storefront HTTP capability");
+if (!/\.load_product_tag_map\(\s*tenant_id,\s*&products,\s*locale,\s*Some\(fallback_locale\),\s*Some\(context\)\s*,?\s*\)/.test(httpPort)) {
+  failures.push("Product HTTP list must forward its context to tag projection");
+}
+
 requireAll(tagPort, [
   "pub trait ProductStorefrontTagReadPort",
   "impl ProductStorefrontTagReadPort for CatalogService",

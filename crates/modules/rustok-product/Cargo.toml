@@ -19,7 +19,7 @@ required-features = ["service"]
 
 [features]
 default = []
-service = ["dep:rustok-telemetry", "dep:tokio-stream", "dep:tonic", "rustok-product-ports/grpc-server", "flex-ports/grpc-client", "rustok-channel-ports/grpc-client"]
+service = ["dep:rustok-telemetry", "dep:tokio-stream", "dep:tonic", "rustok-product-ports/grpc-server", "flex-ports/grpc-client", "rustok-channel-ports/grpc-client", "rustok-taxonomy-ports/grpc-client"]
 
 [package.metadata.docs.rs]
 all-features = true

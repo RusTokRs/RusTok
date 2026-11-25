@@ -771,6 +771,29 @@ committing the first.
 
 ---
 
+### P-PROVIDER-FABRICATED-REFERENCE — Resolve attached identities through the selected owner
+
+- **Category and logic dimensions:** Owner collaboration, preconditions, and failure propagation.
+- **Failure mode:** The Groups fallback accepted any category UUID, generated a placeholder
+  summary, and synthesized tag IDs. The directory also converted Taxonomy storage errors into
+  empty results. An unavailable or broken provider could therefore produce a successful write
+  or read with data the owning module had never issued.
+- **Remediation:** Permit operations that require no reference to run without a provider. For
+  operations with a reference, obtain the selected provider and propagate its failure. For native
+  writes, read the canonical snapshot once using the aggregate transaction and reuse it in the
+  result and receipt.
+
+```rust
+let category = self.taxonomy()?
+    .load_categories((&transaction).into(), tenant_id, &[category_id], &locale, None)
+    .await?
+    .remove(&category_id)
+    .ok_or_else(|| GroupsError::Validation("Group category does not exist".into()))?;
+```
+
+- **Detection:** `rg -n 'Noop.*TaxonomyPort|load_categories|unwrap_or_default' crates/modules/rustok-groups/src`.
+  Verify missing-provider, missing-identity, and provider-error paths against the composed host.
+
 ### Pattern 6: Zero Error Swallowing (`P-ANTI-SWALLOW`)
 * **Category:** Branch Completeness & Anti-Slop
 * **Problem:** Developers and AI agents frequently use `let _ = ...`, dummy `Ok(())` fallbacks, or `std::hint::black_box(...)` to silence compiler warnings and linter errors (such as `let_underscore_must_use = "deny"`), masking aborted rollbacks or unhandled failures.

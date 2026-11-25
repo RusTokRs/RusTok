@@ -491,7 +491,7 @@ pub async fn resolve_current_user_from_access_token(
             if !user.is_active() {
                 return Err((StatusCode::FORBIDDEN, "User is inactive"));
             }
-            if auth_runtime
+            if ctx
                 .runtime_ctx()
                 .settings()
                 .features

@@ -51,8 +51,9 @@ Server bootstrap owns deployment configuration, secret supply and provider const
 This is composition-root work; domain rules and transport mechanics remain with their
 owners. Current selectors are deliberately bounded:
 
-- `RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc` selects the remote catalog projection and SKU
-  identity ports on the same connection. Set `RUSTOK_PRODUCT_VARIANT_REPLAY_GRPC_BEARER_TOKEN`
+- `RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc` selects the remote catalog projection, SKU
+  identity, and REST and GraphQL storefront list ports on the same connection.
+  Set `RUSTOK_PRODUCT_VARIANT_REPLAY_GRPC_BEARER_TOKEN`
   on both processes to serve ProductVariant replay to Index. The catalog read
   selector leaves command placement to the command selector.
   Use a separate `RUSTOK_PRODUCT_LOCALE_REPLAY_GRPC_BEARER_TOKEN` to enable
@@ -64,6 +65,23 @@ Invalid selected-remote configuration or connection aborts startup. Index query
 admission and absence watermarks still require the shared database profile.
 See the [configuration reference](../../docs/operations/configuration-reference.md#51-fba-provider-selectors)
 and [FBA contract](../../docs/backend/module-backend-architecture.md#fba-contracts).
+
+### Mounted Product storefront evidence
+
+Build the host HTTP test executable with the Commerce profile selected.
+
+```sh
+cargo test --locked -p rustok-server --no-default-features --features mod-commerce \
+  --test product_remote_storefront_http --no-run
+```
+
+Set `RUSTOK_PRODUCT_TEST_COMMERCE_HOST_BIN` to the executable printed by Cargo
+before running the Product PostgreSQL fixture with `RUSTOK_TAXONOMY_TEST_SERVICE_BIN`.
+The fixture runs the host executable with the live Product credential and endpoint.
+It sends HTTP requests through the production router and middleware on loopback.
+The consumer uses a fresh SQLite database for platform state, while Product and
+Taxonomy use separate PostgreSQL databases and run in their own processes.
+[Provider fixture setup](../../crates/modules/rustok-taxonomy/docs/README.md#verification)
 
 ## Production container configuration
 

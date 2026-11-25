@@ -14,8 +14,8 @@ the [central implementation plan](../../../docs/modules/rich-text-implementation
 
 - Provide `ContentModule` metadata for the runtime registry.
 - Own shared content entities, shared migrations, and orchestration state.
-- Provide shared locale and slug helpers and the target executable richtext
-  policy used by domain modules.
+- Provide shared slug helpers and the executable richtext policy. The Content
+  locale facade re-exports the platform selection helpers from `rustok-api`.
 - Provide the first executable richtext policy: `article`, `discussion`, and
   `comment` profiles; strict tree/attribute/link validation; deterministic
   normalization; one escaped semantic HTML renderer; and one plain-text

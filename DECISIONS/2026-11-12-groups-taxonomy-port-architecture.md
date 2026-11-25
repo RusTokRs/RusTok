@@ -1,12 +1,12 @@
 # Groups and Taxonomy Storage Sovereignty and Group Taxonomy Port
 
 - Date: 2026-11-12
-- Decision status: Accepted
+- Decision status: Superseded
 - Implementation status: In progress
 - Owners: rustok-groups, rustok-taxonomy
 - Extends: [2026-09-18-canonical-native-module-reference-contract.md](./2026-09-18-canonical-native-module-reference-contract.md), [2026-11-11-inventory-taxonomy-sovereignty-and-product-decoupling.md](./2026-11-11-inventory-taxonomy-sovereignty-and-product-decoupling.md), [2026-11-11-blog-taxonomy-sovereignty-and-port-decoupling.md](./2026-11-11-blog-taxonomy-sovereignty-and-port-decoupling.md), [2026-11-12-forum-taxonomy-sovereignty-and-port-decoupling.md](./2026-11-12-forum-taxonomy-sovereignty-and-port-decoupling.md)
 - Supersedes: None
-- Superseded by: None
+- Superseded by: [Native Taxonomy composition](./2026-11-25-taxonomy-native-composition.md)
 
 ## Context
 

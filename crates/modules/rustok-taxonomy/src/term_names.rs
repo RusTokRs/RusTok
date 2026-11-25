@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
 
 use async_trait::async_trait;
-use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError};
+use rustok_api::{PortContext, PortError};
 use rustok_taxonomy_ports::{
-    MAX_TAXONOMY_TERM_NAMES_PER_CALL, ReadTaxonomyTermNamesRequest, TAXONOMY_TERM_NAMES_READ_CLAIM,
-    TaxonomyTermNamesReadPort,
+    MAX_TAXONOMY_TERM_NAMES_PER_CALL, ReadTaxonomyTermNamesRequest, TaxonomyTermNamesReadPort,
+    authorize_term_names_read,
 };
 use uuid::Uuid;
 
@@ -17,18 +17,7 @@ impl TaxonomyTermNamesReadPort for TaxonomyService {
         context: PortContext,
         request: ReadTaxonomyTermNamesRequest,
     ) -> Result<BTreeMap<Uuid, String>, PortError> {
-        context.require_policy(PortCallPolicy::read())?;
-        if context.actor.kind == PortActorKind::User
-            || !context
-                .claims
-                .iter()
-                .any(|claim| claim == TAXONOMY_TERM_NAMES_READ_CLAIM)
-        {
-            return Err(PortError::forbidden(
-                "taxonomy.term_names_forbidden",
-                "Taxonomy term name access is denied",
-            ));
-        }
+        authorize_term_names_read(&context)?;
         let tenant_id = Uuid::parse_str(&context.tenant_id)
             .ok()
             .filter(|tenant_id| !tenant_id.is_nil())

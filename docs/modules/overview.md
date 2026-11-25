@@ -109,7 +109,7 @@ It is important to distinguish:
 | `navigation` | `rustok-navigation` | `channel`, `outbox` |
 | `forms` | `rustok-forms` | `outbox`, `email` |
 | `page_builder` | `rustok-page-builder` | — |
-| `taxonomy` | `rustok-taxonomy` | `content`, `outbox` |
+| `taxonomy` | `rustok-taxonomy` | `outbox` |
 | `media` | `rustok-media` | `outbox` |
 | `seo` | `rustok-seo` | `content` |
 | `workflow` | `rustok-workflow` | — |

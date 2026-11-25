@@ -8,7 +8,7 @@ const read = p => readFileSync(path.join(root,p),'utf8');
 const source=read('crates/modules/rustok-product/src/services/catalog_schema_service/categories.rs');
 const policy=read('crates/modules/rustok-product/src/services/catalog_schema_service.rs');
 const sync=read('crates/modules/rustok-taxonomy/src/owner_category_sync.rs');
-const taxonomyPort=read('crates/modules/rustok-taxonomy/src/product_taxonomy_port.rs');
+const taxonomyPort=read('crates/modules/rustok-distribution/src/product_taxonomy_port.rs');
 const create=source.slice(source.indexOf('pub async fn create_category('),source.indexOf('pub async fn list_categories('));
 const errors=[];
 const need=(s,t)=>{if(!s.includes(t))errors.push(`Missing ${t}`)};

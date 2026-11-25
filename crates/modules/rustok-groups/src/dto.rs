@@ -10,6 +10,7 @@ use crate::domain::{
     GroupMembershipEnforcementSourceKind, GroupMembershipEnforcementState, GroupMembershipStatus,
     GroupRole, GroupStatus, GroupVisibility, normalize_feature_key, normalize_group_handle,
 };
+use crate::ports::GroupTaxonomyCategorySnapshot;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GroupCategorySummary {
@@ -18,6 +19,18 @@ pub struct GroupCategorySummary {
     pub slug: String,
     pub icon_key: Option<String>,
     pub color: Option<String>,
+}
+
+impl From<GroupTaxonomyCategorySnapshot> for GroupCategorySummary {
+    fn from(snapshot: GroupTaxonomyCategorySnapshot) -> Self {
+        Self {
+            id: snapshot.id,
+            name: snapshot.name,
+            slug: snapshot.slug,
+            icon_key: snapshot.icon_key,
+            color: snapshot.color,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

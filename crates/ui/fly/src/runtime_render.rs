@@ -3,7 +3,7 @@ use crate::{
     EmbedProviderRegistry, RenderedPage, RuntimeProjectMaterialization, ValidationDiagnostic,
     materialize_project_with_runtime_context,
     materialize_project_with_runtime_context_with_providers,
-    render_page_with_embed_registry, render_page_with_rich_text_and_embed_registry,
+    render_page_with_embed_registry,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -157,16 +157,7 @@ fn render_page_with_runtime_context_and_providers_and_embeds(
         }
         None => materialize_project_with_runtime_context(document, context),
     };
-    let page = match providers {
-        Some(providers) => render_page_with_rich_text_and_embed_registry(
-            &document,
-            selection,
-            policy,
-            Some(providers),
-            embeds,
-        )?,
-        None => render_page_with_embed_registry(&document, selection, policy, embeds)?,
-    };
+    let page = render_page_with_embed_registry(&document, selection, policy, embeds)?;
     Ok(RuntimeRenderResult {
         page,
         diagnostics,

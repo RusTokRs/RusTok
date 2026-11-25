@@ -38,8 +38,37 @@ catalog projections. The embedded provider requires a service or system actor,
 the term-name read claim and a deadline. It resolves up to 256 tenant-scoped IDs
 per request using the same locale fallback as native Taxonomy reads. Missing
 and foreign-tenant terms are omitted. Product retains its native transaction
-seam for reading names of terms written in the same transaction. Network
-binding and separate-process verification remain open.
+seam for reading names of terms written in the same transaction. The standalone
+term-name service and Product outgoing adapter use authenticated gRPC. The
+[Taxonomy FBA registry](../contracts/taxonomy-fba-registry.json) records the
+contract and its conformance tests. The `owner_read` suite passed with
+`--features service`. Product hydrated a tag through embedded and loopback gRPC
+providers with Product and Taxonomy on separate SQLite databases. The suite
+verified locale fallback, missing and foreign IDs, credential and tenant-scope
+refusal, deadline and batch bounds, and a retryable transport failure on shutdown.
+The standalone Product PostgreSQL fixture passed with the Taxonomy binary
+running on a separate database. The two Product storefront list ports returned
+the tag and reported retryable unavailability after Taxonomy stopped. The
+Taxonomy binary also rejected an unmigrated PostgreSQL database at startup.
+
+Taxonomy uses the shared locale selection in `rustok-api::locale`. The
+`mod-taxonomy` host and distribution features select Taxonomy independently of
+Content. Taxonomy uses `rustok-outbox-storage` for event and receipt persistence.
+The Outbox module supplies the storage migrations and delivery.
+The `rustok-distribution` library test
+`selected_taxonomy_composes_without_content` passed with only `mod-taxonomy`
+enabled. It verified the composition with Taxonomy and Outbox registered.
+Distribution composes the native Product and Groups adapters from Taxonomy's
+public owner methods and each consumer's local contract. Taxonomy builds
+independently of both consumer runtimes. Their shared database
+operations still execute on the caller's transaction. Moving those operations
+across processes requires a separate consistency contract.
+[Native Taxonomy composition](../../../../DECISIONS/2026-11-25-taxonomy-native-composition.md)
+
+Distribution's focused SQLite tests passed for the Product same-ID category
+write and route and presentation preservation. The Groups composition test
+passed with `mod-groups,mod-taxonomy`. It verified selected-provider resolution,
+foreign-tenant refusal, unavailable propagation, and command receipt replay.
 
 ## Category ownership contract
 

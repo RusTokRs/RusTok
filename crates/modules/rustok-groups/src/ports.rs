@@ -153,7 +153,7 @@ pub type SharedGroupLocalizationCommandPort = Arc<dyn GroupLocalizationCommandPo
 pub mod taxonomy;
 pub use taxonomy::{
     GroupTaxonomyCategorySnapshot, GroupTaxonomyConnection, GroupTaxonomyPort,
-    NoopGroupTaxonomyPort,
+    GroupTaxonomyPortFactory,
 };
 pub type SharedGroupTaxonomyPort = Arc<dyn GroupTaxonomyPort>;
 

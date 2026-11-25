@@ -6,7 +6,7 @@
 - Owners: rustok-product, rustok-inventory, rustok-taxonomy
 - Extends: [2026-09-18-canonical-native-module-reference-contract.md](./2026-09-18-canonical-native-module-reference-contract.md), [2026-11-05-pricing-entity-sovereignty-and-product-decoupling.md](./2026-11-05-pricing-entity-sovereignty-and-product-decoupling.md)
 - Supersedes: None
-- Superseded by: None
+- Superseded by: [Native Taxonomy composition](./2026-11-25-taxonomy-native-composition.md) for Taxonomy adapter placement and its runtime dependency
 
 ## Context
 

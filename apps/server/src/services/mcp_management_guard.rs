@@ -188,6 +188,7 @@ impl McpManagementPort for GuardedMcpManagementProvider {
         mut command: ApplyMcpScaffoldDraftCommand,
     ) -> Result<McpScaffoldDraftRecord, McpManagementMutationError> {
         command.workspace_root = authorize_mcp_scaffold_workspace(&command.workspace_root)
+            .await
             .map_err(|error| McpManagementMutationError::Validation(error.to_string()))?;
         self.inner.apply_scaffold_draft(context, command).await
     }

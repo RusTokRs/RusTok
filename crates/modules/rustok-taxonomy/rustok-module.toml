@@ -7,8 +7,14 @@ ownership = "first_party"
 trust_level = "verified"
 ui_classification = "capability_only"
 [dependencies]
-content = { version_req = ">=0.1.0" }
 outbox = { version_req = ">=0.1.0" }
 
 [crate]
 entry_type = "TaxonomyModule"
+
+[fba.provider]
+registry = "contracts/taxonomy-fba-registry.json"
+contract_version = "taxonomy.term_names_read.v1"
+status = "boundary_ready"
+port = "TaxonomyTermNamesReadPort"
+profiles = ["embedded_native", "authenticated_grpc"]

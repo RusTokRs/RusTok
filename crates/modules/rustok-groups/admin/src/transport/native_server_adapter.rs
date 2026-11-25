@@ -97,7 +97,7 @@ async fn groups_admin_directory_native(
         let page = filters.page.max(1);
         let per_page = filters.per_page.clamp(1, 100);
         let response = GroupSummaryReadPort::list_groups(
-            &GroupsService::new(runtime.db_clone()),
+            &GroupsService::from_host_runtime(&runtime),
             context,
             ListGroupsRequest {
                 page,

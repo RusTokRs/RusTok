@@ -1,13 +1,22 @@
-use rustok_core::MigrationSource;
-use rustok_outbox_storage::SysEventsMigration;
+#![cfg(feature = "mod-product")]
+
+use rustok_core::{MigrationSource, SecurityContext, UserRole};
+use rustok_distribution::in_process_product_taxonomy_port;
+use rustok_outbox::SysEventsMigration;
 use rustok_product::services::{
     CatalogCategoryKind, CategoryTranslationInput, CreateCatalogCategoryInput,
     ProductCatalogSchemaService,
 };
-use rustok_taxonomy::TaxonomyModule;
+use rustok_product::{CommerceError, ports::ProductTaxonomyCategoryTranslationInput};
+use rustok_taxonomy::{
+    SyncModuleCategoryInput, TaxonomyModule, TaxonomyOwnerCategoryReader, TaxonomyScopeType,
+    TaxonomyService, TaxonomyTermKind, sync_module_category_in_tx,
+};
+use rustok_test_utils::db::setup_test_db;
 use rustok_test_utils::mock_transactional_event_bus;
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, FromQueryResult, Statement,
+    TransactionTrait,
 };
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
@@ -236,9 +245,8 @@ async fn product_category_schema_and_service_use_canonical_same_id_taxonomy() ->
 
     // 3. Create parent and child categories using ProductCatalogSchemaService.
     let event_bus = mock_transactional_event_bus();
-    let service = ProductCatalogSchemaService::new(db.clone(), event_bus).with_taxonomy_port(
-        rustok_taxonomy::in_process_product_taxonomy_port(db.clone()),
-    );
+    let service = ProductCatalogSchemaService::new(db.clone(), event_bus)
+        .with_taxonomy_port(in_process_product_taxonomy_port(db.clone()));
     let actor_id = Uuid::new_v4();
 
     let parent_input = CreateCatalogCategoryInput {
@@ -344,4 +352,110 @@ async fn product_category_schema_and_service_use_canonical_same_id_taxonomy() ->
     assert_eq!(effective_form.category_id, child.id);
 
     Ok(())
+}
+
+#[tokio::test]
+async fn product_category_copy_preserves_taxonomy_presentation_and_routes() {
+    let db = setup_test_db().await;
+    let manager = SchemaManager::new(&db);
+    for migration in TaxonomyModule.migrations() {
+        migration.up(&manager).await.unwrap();
+    }
+    let tenant_id = Uuid::new_v4();
+    let category_id = Uuid::new_v4();
+    let canonical_key = format!("product-category-{category_id}");
+    let initial = SyncModuleCategoryInput {
+        category_id,
+        module_scope: "product".into(),
+        canonical_key: canonical_key.clone(),
+        locale: "en".into(),
+        name: "Shoes".into(),
+        slug: "shoes".into(),
+        aliases: vec!["boots".into()],
+        description: Some("Shoes description".into()),
+        parent_id: None,
+        position: 0,
+        icon_key: Some("headphones".into()),
+        color: Some("#123456".into()),
+    };
+    let txn = db.begin().await.unwrap();
+    sync_module_category_in_tx(&txn, tenant_id, initial)
+        .await
+        .unwrap();
+    txn.commit().await.unwrap();
+
+    let service = TaxonomyService::new(db.clone());
+    let security = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+    let before = service
+        .get_category_presentation(tenant_id, security.clone(), category_id)
+        .await
+        .unwrap();
+    let port = in_process_product_taxonomy_port(db.clone());
+    let input = ProductTaxonomyCategoryTranslationInput {
+        category_id,
+        module_scope: "product".into(),
+        canonical_key,
+        locale: "en".into(),
+        name: "Footwear".into(),
+        slug: "footwear".into(),
+        aliases: vec![],
+        description: None,
+        parent_id: None,
+        position: 0,
+    };
+    let txn = db.begin().await.unwrap();
+    port.sync_category_translation_in_tx(&txn, tenant_id, input.clone())
+        .await
+        .unwrap();
+    txn.commit().await.unwrap();
+
+    let txn = db.begin().await.unwrap();
+    let reclaim = port
+        .sync_category_translation_in_tx(
+            &txn,
+            tenant_id,
+            ProductTaxonomyCategoryTranslationInput {
+                slug: "shoes".into(),
+                ..input
+            },
+        )
+        .await;
+    assert!(matches!(reclaim, Err(CommerceError::Conflict(_))));
+    txn.rollback().await.unwrap();
+
+    let after = service
+        .get_category_presentation(tenant_id, security, category_id)
+        .await
+        .unwrap();
+    assert_eq!(after, before);
+    for (slug, is_alias) in [("boots", true), ("footwear", false), ("shoes", true)] {
+        let route = service
+            .resolve_term_route_for_module(
+                tenant_id,
+                TaxonomyTermKind::Category,
+                "product",
+                "en",
+                None,
+                slug,
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(route.term_id, category_id);
+        assert_eq!(route.alias_id.is_some(), is_alias);
+    }
+    let categories = TaxonomyOwnerCategoryReader::new(db)
+        .load_scoped_categories(
+            tenant_id,
+            TaxonomyScopeType::Module,
+            Some("product"),
+            Some(&[category_id]),
+            "en",
+            None,
+        )
+        .await
+        .unwrap();
+    assert_eq!(categories.len(), 1);
+    assert_eq!(categories[0].slug, "footwear");
+    assert_eq!(categories[0].name, "Footwear");
 }

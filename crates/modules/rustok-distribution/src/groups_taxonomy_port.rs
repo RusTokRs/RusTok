@@ -10,7 +10,7 @@
 
 //! Adapter implementing `rustok_groups::ports::GroupTaxonomyPort` for Social Groups.
 //!
-//! Provides category existence validation, category metadata resolution, term name lookup,
+//! Provides category metadata resolution, term name lookup,
 //! and group tag creation without exposing private Taxonomy entities or table structures to Groups.
 
 use std::collections::HashMap;
@@ -20,23 +20,23 @@ use async_trait::async_trait;
 use rustok_groups::error::GroupsError;
 use rustok_groups::ports::{
     GroupTaxonomyCategorySnapshot, GroupTaxonomyConnection, GroupTaxonomyPort,
+    SharedGroupTaxonomyPort,
+};
+use rustok_taxonomy::{
+    TaxonomyError, TaxonomyOwnerCategoryReader, TaxonomyScopeType, TaxonomyService,
+    TaxonomyTermKind,
 };
 use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use uuid::Uuid;
 
-use crate::error::TaxonomyError;
-use crate::owner_category_read::TaxonomyOwnerCategoryReader;
-use crate::services::TaxonomyService;
-use crate::{TaxonomyScopeType, TaxonomyTermKind};
-
 /// Adapter providing GroupTaxonomyPort backed by the native Taxonomy database.
-pub struct TaxonomyGroupTaxonomyPortAdapter {
+struct TaxonomyGroupTaxonomyPortAdapter {
     db: DatabaseConnection,
     service: TaxonomyService,
 }
 
 impl TaxonomyGroupTaxonomyPortAdapter {
-    pub fn new(db: DatabaseConnection) -> Self {
+    fn new(db: DatabaseConnection) -> Self {
         let service = TaxonomyService::new(db.clone());
         Self { db, service }
     }
@@ -44,72 +44,26 @@ impl TaxonomyGroupTaxonomyPortAdapter {
 
 fn map_taxonomy_error(err: TaxonomyError) -> GroupsError {
     match err {
-        TaxonomyError::Database(db_err) => GroupsError::Persistence(db_err.to_string()),
-        TaxonomyError::Validation(msg) => GroupsError::Validation(msg),
-        TaxonomyError::Forbidden(msg) => GroupsError::Forbidden(msg),
+        TaxonomyError::Database(error) => {
+            tracing::warn!(%error, "Groups taxonomy persistence failed");
+            GroupsError::Persistence("Groups taxonomy provider is unavailable".into())
+        }
+        TaxonomyError::Validation(_) => GroupsError::Validation("Invalid taxonomy request".into()),
+        TaxonomyError::Forbidden(_) => GroupsError::Forbidden("Taxonomy access denied".into()),
         TaxonomyError::TermNotFound(_) => GroupsError::NotFound,
-        TaxonomyError::DuplicateCanonicalKey(msg)
-        | TaxonomyError::DuplicateSlug(msg)
-        | TaxonomyError::DuplicateAlias(msg)
-        | TaxonomyError::Conflict(msg) => GroupsError::Conflict(msg),
-        TaxonomyError::TranslationRevisionExhausted { term_id, locale } => GroupsError::Conflict(
-            format!("Translation revision exhausted for term {term_id} locale {locale}"),
-        ),
-        TaxonomyError::Internal(msg) => GroupsError::Invariant(msg),
+        TaxonomyError::DuplicateCanonicalKey(_)
+        | TaxonomyError::DuplicateSlug(_)
+        | TaxonomyError::DuplicateAlias(_)
+        | TaxonomyError::Conflict(_)
+        | TaxonomyError::TranslationRevisionExhausted { .. } => {
+            GroupsError::Conflict("Taxonomy request conflicts with current state".into())
+        }
+        TaxonomyError::Internal(_) => GroupsError::Invariant("Taxonomy operation failed".into()),
     }
 }
 
 #[async_trait]
 impl GroupTaxonomyPort for TaxonomyGroupTaxonomyPortAdapter {
-    async fn validate_category_exists(
-        &self,
-        conn: GroupTaxonomyConnection<'_>,
-        tenant_id: Uuid,
-        category_id: Uuid,
-    ) -> Result<bool, GroupsError> {
-        let categories = match conn {
-            GroupTaxonomyConnection::Connection(c) => {
-                TaxonomyOwnerCategoryReader::load_scoped_categories_in(
-                    c,
-                    tenant_id,
-                    TaxonomyScopeType::Module,
-                    Some("groups"),
-                    Some(&[category_id]),
-                    rustok_api::PLATFORM_FALLBACK_LOCALE,
-                    Some(rustok_api::PLATFORM_FALLBACK_LOCALE),
-                )
-                .await
-            }
-            GroupTaxonomyConnection::Transaction(tx) => {
-                TaxonomyOwnerCategoryReader::load_scoped_categories_in(
-                    tx,
-                    tenant_id,
-                    TaxonomyScopeType::Module,
-                    Some("groups"),
-                    Some(&[category_id]),
-                    rustok_api::PLATFORM_FALLBACK_LOCALE,
-                    Some(rustok_api::PLATFORM_FALLBACK_LOCALE),
-                )
-                .await
-            }
-            GroupTaxonomyConnection::None => {
-                TaxonomyOwnerCategoryReader::load_scoped_categories_in(
-                    &self.db,
-                    tenant_id,
-                    TaxonomyScopeType::Module,
-                    Some("groups"),
-                    Some(&[category_id]),
-                    rustok_api::PLATFORM_FALLBACK_LOCALE,
-                    Some(rustok_api::PLATFORM_FALLBACK_LOCALE),
-                )
-                .await
-            }
-        }
-        .map_err(map_taxonomy_error)?;
-
-        Ok(!categories.is_empty())
-    }
-
     async fn load_categories(
         &self,
         conn: GroupTaxonomyConnection<'_>,
@@ -231,6 +185,6 @@ impl GroupTaxonomyPort for TaxonomyGroupTaxonomyPortAdapter {
 }
 
 /// Constructs an in-process `GroupTaxonomyPort` adapter backed by the native Taxonomy module.
-pub fn in_process_group_taxonomy_port(db: DatabaseConnection) -> Arc<dyn GroupTaxonomyPort> {
+pub(crate) fn in_process_group_taxonomy_port(db: DatabaseConnection) -> SharedGroupTaxonomyPort {
     Arc::new(TaxonomyGroupTaxonomyPortAdapter::new(db))
 }

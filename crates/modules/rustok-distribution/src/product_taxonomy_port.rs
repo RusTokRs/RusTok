@@ -18,32 +18,22 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use rustok_api::{PortContext, PortError};
-use rustok_taxonomy_ports::{ReadTaxonomyTermNamesRequest, TaxonomyTermNamesReadPort};
 use rustok_product::CommerceError;
 use rustok_product::ports::{
     ProductTaxonomyCategorySnapshot, ProductTaxonomyCategoryTranslationInput, ProductTaxonomyPort,
     TaxonomyConnection,
 };
+use rustok_taxonomy::{
+    SyncModuleCategoryInput, TaxonomyError, TaxonomyOwnerCategoryReader, TaxonomyScopeType,
+    TaxonomyService, TaxonomyTermKind, sync_module_category_copy_in_tx,
+};
+use rustok_taxonomy_ports::{ReadTaxonomyTermNamesRequest, TaxonomyTermNamesReadPort};
 use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use uuid::Uuid;
 
-use crate::error::TaxonomyError;
-use crate::owner_category_read::TaxonomyOwnerCategoryReader;
-use crate::owner_category_sync::{SyncModuleCategoryInput, sync_module_category_copy_in_tx};
-use crate::services::TaxonomyService;
-use crate::{TaxonomyScopeType, TaxonomyTermKind};
-
 /// Adapter providing ProductTaxonomyPort backed by the native Taxonomy database.
-pub struct TaxonomyProductTaxonomyPortAdapter {
-    _db: DatabaseConnection,
+struct TaxonomyProductTaxonomyPortAdapter {
     service: TaxonomyService,
-}
-
-impl TaxonomyProductTaxonomyPortAdapter {
-    pub fn new(db: DatabaseConnection) -> Self {
-        let service = TaxonomyService::new(db.clone());
-        Self { _db: db, service }
-    }
 }
 
 /// Sync accepts user intent; its authoritative domain refusals retain their class.
@@ -229,5 +219,7 @@ impl ProductTaxonomyPort for TaxonomyProductTaxonomyPortAdapter {
 
 /// Constructs an in-process `ProductTaxonomyPort` adapter backed by the native Taxonomy module.
 pub fn in_process_product_taxonomy_port(db: DatabaseConnection) -> Arc<dyn ProductTaxonomyPort> {
-    Arc::new(TaxonomyProductTaxonomyPortAdapter::new(db))
+    Arc::new(TaxonomyProductTaxonomyPortAdapter {
+        service: TaxonomyService::new(db),
+    })
 }
