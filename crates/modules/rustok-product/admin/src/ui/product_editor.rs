@@ -1024,10 +1024,10 @@ pub fn ProductEditorPage(
                                     type="button"
                                     disabled=is_unavailable
                                     class=move || {
-                                        if is_active() {
-                                            "flex flex-col items-start p-3 rounded-xl border-2 border-primary bg-primary/5 text-left transition"
-                                        } else if is_unavailable() {
+                                        if is_unavailable() {
                                             "flex flex-col items-start p-3 rounded-xl border border-border bg-muted/30 text-left opacity-50 cursor-not-allowed"
+                                        } else if is_active() {
+                                            "flex flex-col items-start p-3 rounded-xl border-2 border-primary bg-primary/5 text-left transition"
                                         } else {
                                             "flex flex-col items-start p-3 rounded-xl border border-border bg-background hover:border-primary/40 text-left transition"
                                         }

@@ -21,6 +21,12 @@ For full public interface and contract definitions, see [CRATE_API.md](CRATE_API
 - Builds native catalog schema services from `HostRuntimeContext` DB and typed `TransactionalEventBus` host handles without a package-local framework runtime or framework-specific outbox adapter.
 - Participates in manifest-driven admin composition through `rustok-module.toml`.
 - Uses registry-backed shipping-profile selection so catalog operators work with typed product bindings instead of raw slug text.
+- Bundle composition, discounts and component inventory rules are owned by the optional
+  `rustok-product-bundles` module and are configured at `/admin/bundles`; the Product editor
+  does not collect unsaved bundle fields.
+- Digital fulfillment has no owning module yet. Existing digital products remain readable/editable
+  as catalog records, but new digital-product creation is blocked and no file/download settings
+  are presented as if they were persisted.
 - Ships package-owned `admin/locales/en.ftl` and `admin/locales/ru.ftl` bundles declared through `[provides.admin_ui.i18n]`.
 - Embeds owner-side product SEO editing through `rustok-seo-panel` so product metadata stays inside the product screen.
 
