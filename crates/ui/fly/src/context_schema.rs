@@ -1516,6 +1516,7 @@ where
             .extensions
             .insert(field.to_string(), Value::Array(entries));
     }
+    document.invalidate_caches();
     Ok(())
 }
 
