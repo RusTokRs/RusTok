@@ -700,10 +700,8 @@ mod selected_resize_tests {
         let maximum_style = maximum_controller.editor().document().component("hero")
             .and_then(|component| component.style.as_ref())
             .expect("style");
-        assert_eq!(
-            maximum_style["width"],
-            format!("{}px", MAX_RESIZE_DIMENSION_PX)
-        );
+        let expected_width = format!("{}px", MAX_RESIZE_DIMENSION_PX);
+        assert_eq!(maximum_style["width"].as_str(), Some(expected_width.as_str()));
         assert!(controller.ssr_selected_style_patch_intent(
             Some("footer"),
             ComponentPatch::default().merge_style(json!({"width": "320px"}))
