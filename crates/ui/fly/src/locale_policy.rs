@@ -98,11 +98,14 @@ pub fn set_project_locale_policy(
         .project
         .extensions
         .insert(FLY_LOCALES_FIELD.to_string(), value);
+    document.invalidate_caches();
     Ok(())
 }
 
 pub fn clear_project_locale_policy(document: &mut ProjectDocument) {
-    document.project.extensions.remove(FLY_LOCALES_FIELD);
+    if document.project.extensions.remove(FLY_LOCALES_FIELD).is_some() {
+        document.invalidate_caches();
+    }
 }
 
 pub fn materialize_project_locale_context(
