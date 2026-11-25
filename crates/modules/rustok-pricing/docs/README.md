@@ -19,6 +19,13 @@ amount before row mutation. This uses the same platform money contract as
 resolution, rather than accepting prices that subsequent quote reads reject.
 New PriceUpdated amounts are encoded without rounding. Calculated discount
 rounding and the retained two-decimal legacy mirror are unchanged.
+The canonical decimal columns retain NUMERIC(16,6), whose maximum is
+9999999999.999999. The Pricing owner validates both currency minor-unit
+exactness and this narrower storage range for amount and compare-at amount.
+Product lifecycle adapters return invalid authored money as a typed validation
+refusal before bootstrap price persistence; bootstrap also independently checks
+the owner rule. Direct Pricing authoring and stored-price resolution use the
+same validation. No historical migration or price row is rewritten.
 Focused regressions are authored but not executed.
 
 Batch base-price authoring admits every input before row or event mutation,

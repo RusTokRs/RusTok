@@ -123,6 +123,14 @@ single catalog predecessor advance remain inside the Pricing transaction.
 This does not introduce a new Product write protocol or certify historical
 channel alias reconciliation. Regression sources remain unexecuted.
 
+Pricing also validates the actual NUMERIC(16,6) price-column range, not just
+the platform minor-unit i64 range. The Product adapter applies the owner
+validation to both initial creation and base-price replacement before Pricing
+row mutation; overflow is a Product validation refusal and aborts the enclosing
+transaction, rather than a database overflow. The bootstrap repeats the same
+owner check. Product does not duplicate the Pricing storage limit. Historical
+migrations and data are unchanged; source regressions are unexecuted.
+
 ## Atomicity
 
 The owner bootstrap methods accept the same SeaORM transaction connection used by `ProductWriteTransaction`. Product variant state, initial inventory, initial prices, the Product event, and the outbox write therefore share one transaction boundary in the embedded profile.

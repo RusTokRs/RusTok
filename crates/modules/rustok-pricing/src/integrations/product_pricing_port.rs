@@ -42,9 +42,26 @@ fn map_catalog_scope_error(error: PricingError) -> ProductError {
     match error {
         PricingError::Database(error) => ProductError::Database(error),
         PricingError::VariantNotFound(id) => ProductError::VariantNotFound(id),
-        PricingError::Validation(message) => ProductError::Validation(message),
+        PricingError::Validation(message) | PricingError::InvalidPrice(message) => {
+            ProductError::Validation(message)
+        }
         error => ProductError::Core(error.into()),
     }
+}
+
+/// Reject invalid authored money as a domain refusal before bootstrap can
+/// turn it into a storage error. The bootstrap independently checks the same
+/// owner rule for its direct callers.
+fn validate_catalog_price_precision(prices: &[InitialPrice]) -> Result<(), ProductError> {
+    for price in prices {
+        crate::services::pricing::types::validate_price_precision(
+            price.amount,
+            price.compare_at_amount,
+            &price.currency_code,
+        )
+        .map_err(map_catalog_scope_error)?;
+    }
+    Ok(())
 }
 
 /// Adapter providing ProductPricingPort backed by the native Pricing database.
@@ -66,6 +83,7 @@ impl ProductPricingPort for PricingProductPricingPortAdapter {
         tenant_id: Uuid,
         prices: Vec<InitialPrice>,
     ) -> Result<(), rustok_product::CommerceError> {
+        validate_catalog_price_precision(&prices)?;
         let mut validated_variants = HashSet::new();
         let mut identities = HashSet::new();
         for price in &prices {
@@ -111,6 +129,7 @@ impl ProductPricingPort for PricingProductPricingPortAdapter {
         variant_id: Uuid,
         prices: Vec<InitialPrice>,
     ) -> Result<(), rustok_product::CommerceError> {
+        validate_catalog_price_precision(&prices)?;
         crate::services::pricing::scope::load_variant_for_update_in_tx(txn, tenant_id, variant_id)
             .await
             .map_err(map_catalog_scope_error)?;
@@ -364,6 +383,30 @@ mod tests {
             min_quantity,
             max_quantity,
         }
+    }
+
+    #[test]
+    fn catalog_price_storage_overflow_is_a_product_validation_refusal() {
+        let mut price = InitialPrice {
+            variant_id: Uuid::from_u128(100),
+            channel_id: None,
+            channel_slug: None,
+            currency_code: "USD".to_owned(),
+            amount: Decimal::new(10_000_000_000, 0),
+            compare_at_amount: None,
+        };
+        assert!(matches!(
+            validate_catalog_price_precision(std::slice::from_ref(&price)),
+            Err(ProductError::Validation(_))
+        ));
+        price.amount = Decimal::ONE;
+        price.compare_at_amount = Some(Decimal::new(10_000_000_000, 0));
+        assert!(matches!(
+            validate_catalog_price_precision(std::slice::from_ref(&price)),
+            Err(ProductError::Validation(_))
+        ));
+        price.compare_at_amount = None;
+        assert!(validate_catalog_price_precision(&[price]).is_ok());
     }
 
     #[test]

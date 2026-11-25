@@ -664,6 +664,22 @@ They now capture any transport error into an `action_error` reactive signal and 
 - **Evidence:** [Pricing commands](../../crates/modules/rustok-pricing/src/services/pricing/commands.rs).
   Focused regression sources authored, not executed.
 
+### P-MONEY-STORAGE-RANGE — currency representability is not storage representability
+
+- **Category:** persistence admission / monetary integrity.
+- **Observed defect:** Pricing accepted major-unit values that fit the platform
+  currency minor-unit i64 but exceeded the narrower NUMERIC(16,6) price columns,
+  exposing callers to database overflow after validation.
+- **Canonical correction:** The storage owner intersects its real nonnegative
+  decimal range and scale with the exact currency rule. Apply it to both money
+  fields in authoring, bootstrap and stored-price validation. Product consumes
+  the typed owner refusal; it does not copy the storage bound. Do not round or
+  clamp submitted values to make them fit.
+- **Evidence:** [Pricing validation](../../crates/modules/rustok-pricing/src/services/pricing/types.rs),
+  [Pricing bootstrap](../../crates/modules/rustok-pricing/src/services/bootstrap.rs),
+  [Product adapter](../../crates/modules/rustok-pricing/src/integrations/product_pricing_port.rs).
+  Boundary regressions authored, not executed.
+
 ## 1. Core Philosophy: The 6 Universal Logic Dimensions
 
 Under [AGENTS.md §4](../../AGENTS.md), verify the affected behavior and its owner contract across the **6 Universal Logic Dimensions**. Use source matches to find code to inspect. A match alone cannot establish a behavioral defect:

@@ -355,6 +355,14 @@ pub(crate) fn validate_price_precision(
         ("Compare at price", compare_at_amount),
     ] {
         if let Some(value) = value {
+            // Both decimal money columns are NUMERIC(16,6) in the Pricing
+            // schema. The platform i64 minor-unit range alone is wider.
+            let storage_max = Decimal::new(9_999_999_999_999_999, 6);
+            if value < Decimal::ZERO || value > storage_max || value.normalize().scale() > 6 {
+                return Err(CommerceError::InvalidPrice(format!(
+                    "{label} is outside the Pricing decimal storage range"
+                )));
+            }
             money::to_minor_units_exact(value, currency_code).map_err(|error| {
                 CommerceError::InvalidPrice(format!(
                     "{label} {value} is not representable in {currency_code} minor units: {error}"
@@ -434,4 +442,27 @@ pub(crate) fn channel_scope_matches(
     }
 
     true
+}
+
+#[cfg(test)]
+mod price_storage_tests {
+    use super::*;
+
+    #[test]
+    fn price_money_must_fit_both_currency_and_decimal_storage() {
+        let outside = Decimal::new(10_000_000_000, 0);
+        for (currency, largest) in [
+            ("JPY", Decimal::new(9_999_999_999, 0)),
+            ("USD", Decimal::new(999_999_999_999, 2)),
+            ("KWD", Decimal::new(9_999_999_999_999, 3)),
+            ("CLF", Decimal::new(99_999_999_999_999, 4)),
+        ] {
+            assert!(money::to_minor_units_exact(outside, currency).is_ok());
+            assert!(validate_price_precision(largest, Some(largest), currency).is_ok());
+            assert!(validate_price_precision(outside, None, currency).is_err());
+            assert!(validate_price_precision(Decimal::ONE, Some(outside), currency).is_err());
+        }
+        assert!(validate_price_precision(Decimal::new(1000, 3), None, "JPY").is_ok());
+        assert!(validate_price_precision(Decimal::new(1001, 3), None, "USD").is_err());
+    }
 }

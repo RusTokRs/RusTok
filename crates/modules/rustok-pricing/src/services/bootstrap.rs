@@ -62,13 +62,13 @@ fn validate_initial_price(price: &InitialPrice) -> Result<(), sea_orm::DbErr> {
             "currency_code must be a 3-letter ASCII alphabetic code".into(),
         ));
     }
-    // The legacy two-decimal mirror is not the canonical currency precision.
-    for amount in [Some(price.amount), price.compare_at_amount].into_iter().flatten() {
-        rustok_core::money::to_minor_units_exact(amount, trimmed_currency)
-            .map_err(|_| sea_orm::DbErr::Custom(
-                "price is not exactly representable in its currency minor units".into(),
-            ))?;
-    }
+    // Enforce the same currency and storage domain as direct Pricing authoring.
+    super::pricing::types::validate_price_precision(
+        price.amount,
+        price.compare_at_amount,
+        trimmed_currency,
+    )
+    .map_err(|error| sea_orm::DbErr::Custom(error.to_string()))?;
     Ok(())
 }
 
@@ -302,6 +302,15 @@ mod tests {
         assert!(validate_initial_prices(&[price.clone()]).is_ok());
         price.compare_at_amount = Some(Decimal::new(20001, 4));
         assert!(validate_initial_prices(&[price]).is_err());
+    }
+
+    #[test]
+    fn initial_prices_refuse_decimal_storage_overflow_before_writes() {
+        let outside = Decimal::new(10_000_000_000, 0);
+        assert!(validate_initial_prices(&[initial_price(outside, None)]).is_err());
+        assert!(validate_initial_prices(&[initial_price(Decimal::ONE, Some(outside))]).is_err());
+        let largest = Decimal::new(999_999_999_999, 2);
+        assert!(validate_initial_prices(&[initial_price(largest, Some(largest))]).is_ok());
     }
 
     #[test]
