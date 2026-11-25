@@ -177,7 +177,8 @@ pub use registry::{
 pub use render::{
     AlternateLocaleLink, PageHead, PageSelection, RenderPolicy, RenderedPage,
     compose_document_html, document_html_stylesheet, document_html_with_style_nonce,
-    css_resource_string_ranges, css_var_references, css_property_allowed, escape_css_attribute,
+    css_property_may_load_resource, css_resource_string_ranges, css_var_references,
+    css_property_allowed, escape_css_attribute,
     render_page,
     render_page_with_embed_registry,
     render_page_with_rich_text, render_page_with_rich_text_and_embed_registry, resolve_page,

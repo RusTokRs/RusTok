@@ -1342,6 +1342,46 @@ pub fn css_var_references(value: &str) -> Option<Vec<String>> {
     Some(references)
 }
 
+/// Whether a CSS declaration can load or reference an external resource.
+///
+/// Custom-property substitution is deliberately disabled for these properties: the
+/// variable can be overridden by the embedding document's cascade after Fly validates it.
+pub fn css_property_may_load_resource(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "background"
+            | "background-image"
+            | "border-image"
+            | "border-image-source"
+            | "clip-path"
+            | "content"
+            | "cursor"
+            | "filter"
+            | "fill"
+            | "list-style"
+            | "list-style-image"
+            | "mask"
+            | "mask-image"
+            | "mask-border"
+            | "mask-border-source"
+            | "marker"
+            | "marker-end"
+            | "marker-mid"
+            | "marker-start"
+            | "offset-path"
+            | "shape-outside"
+            | "src"
+            | "stroke"
+            | "-webkit-background-image"
+            | "-webkit-border-image"
+            | "-webkit-border-image-source"
+            | "-webkit-mask"
+            | "-webkit-mask-image"
+            | "-webkit-mask-box-image"
+            | "-webkit-mask-box-image-source"
+    )
+}
+
 fn valid_css_custom_property_name(name: &str) -> bool {
     let Some(suffix) = name.strip_prefix("--") else {
         return false;
@@ -1499,9 +1539,10 @@ fn safe_style_with_tokens(
     }
     let value = scalar_string(value)?;
     let references = css_var_references(&value)?;
-    if references
-        .iter()
-        .any(|reference| !theme_tokens.contains(reference))
+    if (css_property_may_load_resource(name) && !references.is_empty())
+        || references
+            .iter()
+            .any(|reference| !theme_tokens.contains(reference))
     {
         return None;
     }
@@ -1944,7 +1985,8 @@ mod tests {
                     "style": {
                         "color": "var(--brand)",
                         "background-image": "var(--host-url)",
-                        "mask-image": "var(--brand, var(--external-url))"
+                        "mask-image": "var(--brand, var(--external-url))",
+                        "border-image-source": "var(--brand)"
                     },
                     "components": []
                 }
@@ -1956,6 +1998,7 @@ mod tests {
         assert!(page.css.contains("color:var(--brand)"), "css: {}", page.css);
         assert!(!page.css.contains("var(--host-url)"), "css: {}", page.css);
         assert!(!page.css.contains("var(--external-url)"), "css: {}", page.css);
+        assert!(!page.css.contains("border-image-source:var(--brand)"), "css: {}", page.css);
     }
 
     #[test]
