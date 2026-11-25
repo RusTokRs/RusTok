@@ -668,11 +668,11 @@ impl McpManagementService {
                 client_id: input.client_id,
                 token_id: None,
                 actor_id: input
-                    .audit_actor_id
+                    .actor_id
                     .clone()
                     .or_else(|| input.created_by.map(|value| value.to_string())),
                 actor_type: input
-                    .audit_actor_type
+                    .actor_type
                     .clone()
                     .or_else(|| input.created_by.map(|_| "human_user".to_string())),
                 action: "scaffold_draft_staged".to_string(),
