@@ -1,5 +1,16 @@
 # Server App — Implementation Plan
 
+## Default SuperAdmin bootstrap identity and conflict recovery (2026-11-25)
+
+Source changes align lookup with the canonical normalized account identity and
+handle the typed duplicate-email conflict after the creation transaction
+ends. Regressions cover normalized existing accounts, exact-identity conflict
+recovery and invalid email before tenant provisioning. The conflict regression
+models a committed winner; it does not establish PostgreSQL multi-replica
+contention behavior. Maintainer verification remains pending:
+`cargo check -p rustok-server`, `cargo test -p rustok-server --lib superadmin`,
+concurrent PostgreSQL startup verification and the remediation gate.
+
 ## External Iggy configuration validation parity (2026-11-25)
 
 Source changes reuse the connector's structural validation before accepting

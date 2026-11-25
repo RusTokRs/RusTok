@@ -1,5 +1,14 @@
 # Documentation: `apps/server`
 
+## Default SuperAdmin bootstrap identity and conflict recovery (2026-11-25)
+
+The configured email is normalized by the Auth owner before tenant provisioning
+and account lookup. A typed duplicate-email creation result is reconciled
+only by reading the exact tenant/email identity outside the failed creation
+transaction. Existing users retain their role, status, password and profile;
+other creation errors and conflicts without a matching identity remain errors.
+This is idempotent bootstrap, not account recovery or privilege elevation.
+
 ## External Iggy configuration validation parity (2026-11-25)
 
 External Iggy settings save, readiness and startup share connector-owned
