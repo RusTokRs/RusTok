@@ -317,9 +317,9 @@ fn enrich_runtime_extensions_after_event_start(
 
     #[cfg(feature = "commerce-marketplace-financial")]
     {
-        let financial_runtime = ctx.shared_get_or_insert_with(|| {
-            rustok_commerce::MarketplaceFinancialRuntime::in_process(ctx.db_clone())
-        });
+        let financial_runtime = ctx.shared_get_or_insert(
+            rustok_commerce::MarketplaceFinancialRuntime::in_process(ctx.db_clone()),
+        );
         let event_bus = ctx.shared_get_or_insert(
             crate::services::event_bus::transactional_event_bus_from_context(ctx),
         );
@@ -328,9 +328,9 @@ fn enrich_runtime_extensions_after_event_start(
 
         #[cfg(feature = "mod-payment")]
         {
-            let observers = ctx.shared_get_or_insert_with(|| {
-                financial_runtime.payment_provider_event_observers(ctx.db_clone())
-            });
+            let observers = ctx.shared_get_or_insert(
+                financial_runtime.payment_provider_event_observers(ctx.db_clone()),
+            );
             enriched.insert(observers);
         }
     }
