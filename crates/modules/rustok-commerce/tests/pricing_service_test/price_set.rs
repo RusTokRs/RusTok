@@ -1,6 +1,65 @@
 use super::*;
 
 #[tokio::test]
+async fn admin_upsert_returns_saved_base_price_not_a_regional_row() {
+    let (db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (_, variant_id) = create_test_product(&catalog, tenant_id).await;
+    let region_id = seed_pricing_region(&db, tenant_id, "USD").await;
+    let regional_id = Uuid::new_v4();
+
+    entities::price::ActiveModel {
+        id: Set(regional_id),
+        variant_id: Set(variant_id),
+        price_list_id: Set(None),
+        channel_id: Set(None),
+        channel_slug: Set(None),
+        currency_code: Set("USD".to_owned()),
+        region_id: Set(Some(region_id)),
+        amount: Set(dec!(45.00)),
+        compare_at_amount: Set(None),
+        legacy_amount: Set(Some(4500)),
+        legacy_compare_at_amount: Set(None),
+        min_quantity: Set(None),
+        max_quantity: Set(None),
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+
+    for amount in [dec!(79.99), dec!(89.99)] {
+        let saved = service
+            .upsert_admin_variant_price_with_channel(
+                tenant_id,
+                actor_id,
+                variant_id,
+                None,
+                "USD",
+                amount,
+                Some(dec!(99.99)),
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+        assert_eq!(saved.amount, amount);
+        assert_eq!(saved.compare_at_amount, Some(dec!(99.99)));
+        assert!(saved.on_sale);
+    }
+
+    let regional = entities::price::Entity::find_by_id(regional_id)
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(regional.region_id, Some(region_id));
+    assert_eq!(regional.amount, dec!(45.00));
+}
+
+#[tokio::test]
 async fn test_set_price_success() {
     let (_db, service, catalog) = setup().await;
     let tenant_id = Uuid::new_v4();

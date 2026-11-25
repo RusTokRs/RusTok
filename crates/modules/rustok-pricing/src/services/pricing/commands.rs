@@ -353,6 +353,7 @@ impl PricingService {
             max_quantity,
         )
         .await
+        .map(|_| ())
     }
 
     #[instrument(skip(self))]
@@ -371,61 +372,23 @@ impl PricingService {
         min_quantity: Option<i32>,
         max_quantity: Option<i32>,
     ) -> CommerceResult<AdminPricingPrice> {
-        self.require_embedded_variant_service_state()?;
-        let (effective_channel_id, effective_channel_slug) = match price_list_id {
-            Some(price_list_id) => {
-                let price_list =
-                    resolve_active_price_list(&self.db, tenant_id, price_list_id).await?;
-                validate_or_inherit_price_list_scope(&price_list, channel_id, channel_slug)?
-            }
-            None => (channel_id, normalize_channel_slug(channel_slug.as_deref())),
-        };
-
-        if let Some(price_list_id) = price_list_id {
-            self.set_price_list_tier_with_channel(
+        let saved = self
+            .set_scoped_price_tier(
                 tenant_id,
                 actor_id,
                 variant_id,
+                currency_code,
+                amount,
+                compare_at_amount,
                 price_list_id,
-                currency_code,
-                amount,
-                compare_at_amount,
-                effective_channel_id,
-                effective_channel_slug.clone(),
+                channel_id,
+                channel_slug,
                 min_quantity,
                 max_quantity,
             )
             .await?;
-        } else {
-            self.set_price_tier_with_channel(
-                tenant_id,
-                actor_id,
-                variant_id,
-                currency_code,
-                amount,
-                compare_at_amount,
-                effective_channel_id,
-                effective_channel_slug.clone(),
-                min_quantity,
-                max_quantity,
-            )
-            .await?;
-        }
 
-        self.get_variant_prices(tenant_id, variant_id)
-            .await?
-            .into_iter()
-            .find(|price| {
-                price.currency_code.eq_ignore_ascii_case(currency_code)
-                    && price.price_list_id == price_list_id
-                    && price.channel_id == effective_channel_id
-                    && normalize_channel_slug(price.channel_slug.as_deref())
-                        == effective_channel_slug
-                    && price.min_quantity == min_quantity
-                    && price.max_quantity == max_quantity
-            })
-            .map(super::projections::admin_pricing_price_from_model)
-            .ok_or_else(|| CommerceError::Validation("updated pricing row was not found".into()))
+        Ok(super::projections::admin_pricing_price_from_model(saved))
     }
 
     #[instrument(skip(self))]
@@ -474,9 +437,6 @@ impl PricingService {
         min_quantity: Option<i32>,
         max_quantity: Option<i32>,
     ) -> CommerceResult<()> {
-        let price_list = resolve_active_price_list(&self.db, tenant_id, price_list_id).await?;
-        let (channel_id, channel_slug) =
-            validate_or_inherit_price_list_scope(&price_list, channel_id, channel_slug)?;
         self.set_scoped_price_tier(
             tenant_id,
             actor_id,
@@ -484,13 +444,14 @@ impl PricingService {
             currency_code,
             amount,
             compare_at_amount,
-            Some(price_list.id),
+            Some(price_list_id),
             channel_id,
             channel_slug,
             min_quantity,
             max_quantity,
         )
         .await
+        .map(|_| ())
     }
 
     #[instrument(skip(self))]
@@ -508,7 +469,7 @@ impl PricingService {
         channel_slug: Option<String>,
         min_quantity: Option<i32>,
         max_quantity: Option<i32>,
-    ) -> CommerceResult<()> {
+    ) -> CommerceResult<entities::price::Model> {
         self.require_embedded_variant_service_state()?;
         if tenant_id.is_nil() || actor_id.is_nil() || variant_id.is_nil() {
             return Err(CommerceError::Validation(
@@ -600,7 +561,7 @@ impl PricingService {
 
         let old_amount = existing.as_ref().map(|price| price.amount);
 
-        match existing {
+        let saved = match existing {
             Some(price) => {
                 let mut price_active: entities::price::ActiveModel = price.into();
                 price_active.amount = Set(amount);
@@ -615,7 +576,7 @@ impl PricingService {
                 price_active.channel_slug = Set(channel_slug.clone());
                 price_active.min_quantity = Set(min_quantity);
                 price_active.max_quantity = Set(max_quantity);
-                price_active.update(&txn).await?;
+                price_active.update(&txn).await?
             }
             None => {
                 let price = entities::price::ActiveModel {
@@ -635,9 +596,9 @@ impl PricingService {
                     min_quantity: Set(min_quantity),
                     max_quantity: Set(max_quantity),
                 };
-                price.insert(&txn).await?;
+                price.insert(&txn).await?
             }
-        }
+        };
 
         let old_cents =
             old_amount.and_then(|amount| money::to_minor_units(amount, &currency_code).ok());
@@ -663,7 +624,7 @@ impl PricingService {
             .await?;
 
         txn.commit().await?;
-        Ok(())
+        Ok(saved)
     }
 
     /// Set multiple prices for a variant in a single atomic transaction.
