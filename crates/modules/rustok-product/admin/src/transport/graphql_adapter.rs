@@ -12,7 +12,7 @@ pub type ApiError = GraphqlHttpError;
 const BOOTSTRAP_QUERY: &str =
     "query ProductAdminBootstrap { currentTenant { id slug name } me { id email name } }";
 const PRODUCTS_QUERY: &str = "query ProductAdminProducts($tenantId: UUID!, $locale: String, $filter: ProductsFilter) { products(tenantId: $tenantId, locale: $locale, filter: $filter) { total page perPage hasNext items { id status title handle sellerId vendor productType shippingProfileSlug tags createdAt publishedAt } } }";
-const PRODUCT_QUERY: &str = "query ProductAdminProduct($tenantId: UUID!, $id: UUID!, $locale: String) { product(tenantId: $tenantId, id: $id, locale: $locale) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt revision translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title combinationIdentity axisValues { attributeId optionId code label } inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } variantAxes { id attributeId code name position allowedValues { optionId value position } } } }";
+const PRODUCT_QUERY: &str = "query ProductAdminProduct($tenantId: UUID!, $id: UUID!, $locale: String) { product(tenantId: $tenantId, id: $id, locale: $locale) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt revision translations { locale title handle description metaTitle metaDescription } variants { id revision sku barcode shippingProfileSlug title combinationIdentity axisValues { attributeId optionId code label } inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } variantAxes { id attributeId code name position allowedValues { optionId value position } } } }";
 const PRODUCT_PRICING_QUERY: &str = "query ProductAdminPricingProduct($tenantId: UUID!, $id: UUID!, $locale: String, $currencyCode: String, $quantity: Int) { adminPricingProduct(tenantId: $tenantId, id: $id, locale: $locale, currencyCode: $currencyCode, quantity: $quantity) { resolutionContext { currencyCode regionId priceListId channelId channelSlug quantity } resolvedAt variants { id prices { currencyCode amount compareAtAmount discountPercent onSale } effectivePrice { source { priceId kind ruleKind adjustmentPercent } currencyCode amount compareAtAmount discountPercent onSale priceListId channelId channelSlug } } } }";
 const SHIPPING_PROFILES_QUERY: &str = "query ProductAdminShippingProfiles($tenantId: UUID!, $filter: ShippingProfilesFilter) { shippingProfiles(tenantId: $tenantId, filter: $filter) { total page perPage hasNext items { id tenantId slug name description active metadata createdAt updatedAt } } }";
 const PRODUCT_ATTRIBUTES_QUERY: &str = "query ProductAdminAttributes($tenantId: UUID!, $locale: String!) { productAttributes(tenantId: $tenantId, locale: $locale) { total items { id code valueType scope isLocalized isFilterable isSearchable isSortable showOnStorefront label } } }";
@@ -398,4 +398,18 @@ pub(super) async fn fetch_product_attribute_values(
     )
     .await?;
     Ok(response.product_attribute_values)
+}
+
+
+#[cfg(test)]
+mod variant_revision_query_tests {
+    use super::PRODUCT_QUERY;
+
+    #[test]
+    fn product_detail_query_requests_variant_revision_for_optimistic_writes() {
+        assert!(
+            PRODUCT_QUERY.contains("variants { id revision sku"),
+            "variant revision must be loaded before SKU updates or deletions"
+        );
+    }
 }

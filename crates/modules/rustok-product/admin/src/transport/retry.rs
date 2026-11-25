@@ -217,6 +217,17 @@ fn variant_update_intent(
     )
 }
 
+fn variant_delete_intent(
+    tenant_id: &str,
+    user_id: &str,
+    variant_id: &str,
+    expected_revision: &str,
+) -> String {
+    format!(
+        "operation=delete-variant;tenant={tenant_id:?};actor={user_id:?};variant={variant_id:?};expected_revision={expected_revision:?}"
+    )
+}
+
 pub(crate) async fn update_product_variant(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -252,11 +263,15 @@ pub(crate) async fn delete_product_variant(
     tenant_id: String,
     user_id: String,
     variant_id: String,
+    expected_revision: String,
 ) -> Result<bool, GraphqlHttpError> {
     let operation = ProductAdminLifecycleOperation::DeleteVariant;
     let slot = lifecycle_slot(operation, &tenant_id, &user_id, Some(&variant_id));
-    let intent = format!(
-        "operation=delete-variant;tenant={tenant_id:?};actor={user_id:?};variant={variant_id:?}"
+    let intent = variant_delete_intent(
+        &tenant_id,
+        &user_id,
+        &variant_id,
+        &expected_revision,
     );
     let idempotency_key = retained_caller_key(&slot, operation, intent);
     let result = product_lifecycle_graphql::delete_product_variant(
@@ -265,6 +280,7 @@ pub(crate) async fn delete_product_variant(
         tenant_id,
         user_id,
         variant_id,
+        expected_revision,
         idempotency_key,
     )
     .await;
@@ -446,4 +462,14 @@ mod variant_retry_tests {
             variant_update_intent("tenant", "actor", "variant", &draft)
         );
     }
+    #[test]
+    fn variant_delete_attempt_identity_includes_the_expected_revision() {
+        let first = variant_delete_intent("tenant", "actor", "variant", "7");
+        let retry = variant_delete_intent("tenant", "actor", "variant", "7");
+        let refreshed = variant_delete_intent("tenant", "actor", "variant", "8");
+
+        assert_eq!(first, retry);
+        assert_ne!(first, refreshed);
+    }
+
 }
