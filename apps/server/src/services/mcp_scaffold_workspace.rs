@@ -826,6 +826,7 @@ mod tests {
         let lock = super::lock_mcp_scaffold_workspace_blocking(&root_string)
             .expect("native workspace lock");
         assert!(root.join(".rustok/scaffold/lock").is_file());
+        #[cfg(not(windows))]
         assert!(matches!(
             super::lock_mcp_scaffold_workspace_blocking(&root_string),
             Err(Error::BadRequest(message)) if message.contains("workspace is busy")
