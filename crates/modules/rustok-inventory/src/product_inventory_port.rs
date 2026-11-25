@@ -176,9 +176,10 @@ impl ProductInventoryPort for InventoryProductInventoryPortAdapter {
         actor_id: Uuid,
         variant_id: Uuid,
         quantity: i32,
+        expected_quantity: i32,
     ) -> Result<(), CommerceError> {
         BootstrapService::update_initial_quantity_in_tx(
-            txn, tenant_id, actor_id, variant_id, quantity,
+            txn, tenant_id, actor_id, variant_id, quantity, expected_quantity,
         )
         .await
         .map_err(map_quantity_write_error)

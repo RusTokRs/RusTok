@@ -264,3 +264,10 @@ fn quantity_product_response_and_visible_projection_sum_without_order_dependent_
     assert!(available_by_variant(&binding, &rows).is_err());
     assert!(available_by_variant(&std::collections::HashMap::new(), &rows).is_err());
 }
+
+#[test]
+fn expected_quantity_snapshot_rejects_stale_values() {
+    assert!(ensure_expected_quantity_matches(8, Some(8)).is_ok());
+    assert!(ensure_expected_quantity_matches(9, Some(8)).is_err());
+    assert!(ensure_expected_quantity_matches(8, None).is_ok());
+}

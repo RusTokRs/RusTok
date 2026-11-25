@@ -234,16 +234,18 @@ impl BootstrapService {
         actor_id: Uuid,
         variant_id: Uuid,
         quantity: i32,
+        expected_quantity: i32,
     ) -> Result<(), super::QuantityWriteError> {
         if quantity < 0 {
             return Err(super::quantity::QuantityWriteBlocker::InvalidRequest.into());
         }
-        super::quantity::write_quantity(
+        super::quantity::write_quantity_with_expected(
             txn,
             tenant_id,
             actor_id,
             variant_id,
             super::quantity::Change::Set(quantity),
+            Some(expected_quantity),
             None,
         )
         .await?;
@@ -452,7 +454,7 @@ mod tests {
         let actor = Uuid::new_v4();
         for (variant, quantity) in [(Uuid::nil(), 5), (Uuid::new_v4(), -1)] {
             let error = BootstrapService::update_initial_quantity_in_tx(
-                &txn, tenant, actor, variant, quantity,
+                &txn, tenant, actor, variant, quantity, 0,
             )
             .await
             .expect_err("invalid quantity input must fail before querying missing tables");
