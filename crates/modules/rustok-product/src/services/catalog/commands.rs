@@ -1470,7 +1470,7 @@ impl CatalogService {
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         lock_schema_for_product_write(&txn, tenant_id).await?;
 
-        let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
+        let product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
         let configured_axes =
             load_variant_axis_configuration_in(&txn, tenant_id, product_id).await?;
         validate_variant_axis_values_against_configuration(
@@ -1547,6 +1547,14 @@ impl CatalogService {
 
         if !input.axis_values.is_empty() {
             assign_variant_axis_values_in_tx(&txn, tenant_id, variant_id, &input.axis_values)
+                .await?;
+        }
+
+        if product.status == entities::product::ProductStatus::Active {
+            // A newly-created SKU is part of the live Product immediately. Do not commit it
+            // unless every required Variant EAV value/localization is present on every SKU.
+            ProductCatalogSchemaService::new(self.db.clone(), self.event_bus.clone())
+                .validate_product_publish_requirements_in(&txn, tenant_id, product_id)
                 .await?;
         }
 
