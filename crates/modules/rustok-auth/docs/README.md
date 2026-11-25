@@ -280,6 +280,14 @@ rotated here.
 
 ### Durable generation admission
 
+The Auth-owned fence migration inventory is shared by application schema
+installation, the independent authority import and Auth regression fixtures.
+The three pending migration identities remain append-only until the
+[consolidation admission guide](../../../../docs/guides/safe-database-migrations-and-squashing.md)
+is satisfied. Do not infer permission to reset a retained security database
+from the pre-release label. The implementation plan records the candidate
+range and remaining verification gates.
+
 Apply the Auth-owned migration before starting the host (including static
 configuration mode). The database singleton authenticates canonical key metadata
 and lifetime key ID/material bindings with keys derived from the stable host

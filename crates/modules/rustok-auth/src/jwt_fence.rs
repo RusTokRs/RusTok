@@ -986,16 +986,80 @@ mod tests {
 
     pub(super) async fn database() -> DatabaseConnection {
         let db = Database::connect("sqlite::memory:").await.unwrap();
-        for name in [
-            "m20261125_000002_create_auth_jwt_generation_fence",
-            "m20261125_000003_add_auth_jwt_cluster_lease",
-            "m20261125_000004_add_auth_jwt_replica_grants",
-        ] {
-            let migration = crate::migrations::migrations().into_iter()
-                .find(|migration| migration.name() == name).unwrap();
+        for migration in crate::migrations::jwt_fence_migrations() {
             migration.up(&SchemaManager::new(&db)).await.unwrap();
         }
         db
+    }
+
+    #[tokio::test]
+    async fn jwt_schema_fresh_install_and_unused_rollback_preserve_empty_contract() {
+        let db = database().await;
+        let manager = SchemaManager::new(&db);
+        let check_empty = || async {
+            let fence = JwtGenerationFence::new(db.clone());
+            let stored = fence.load().await.unwrap();
+            assert!(stored.is_empty());
+            assert_eq!(stored.lease_until_ms, 0);
+            assert_eq!(stored.drain_until_ms, 0);
+            assert_eq!(stored.untracked_until_ms, 0);
+            assert_eq!(stored.replica_grants, "{}");
+            assert!(stored.live_grants().unwrap().is_empty());
+        };
+        check_empty().await;
+        for migration in crate::migrations::jwt_fence_migrations().into_iter().rev() {
+            migration.down(&manager).await.unwrap();
+        }
+        assert!(!manager.has_table("auth_jwt_generation_fence").await.unwrap());
+        for migration in crate::migrations::jwt_fence_migrations() {
+            migration.up(&manager).await.unwrap();
+        }
+        check_empty().await;
+        assert!(db.execute_unprepared(
+            "INSERT INTO auth_jwt_generation_fence (id, generation, payload, tag) VALUES (2, 0, '', '')",
+        ).await.is_err());
+        assert!(db.execute_unprepared(
+            "UPDATE auth_jwt_generation_fence SET generation = -1 WHERE id = 1",
+        ).await.is_err());
+        assert!(db.execute_unprepared(
+            "UPDATE auth_jwt_generation_fence SET generation = 1 WHERE id = 1",
+        ).await.is_err());
+        for column in ["lease_until_ms", "drain_until_ms", "untracked_until_ms"] {
+            assert!(db.execute_unprepared(&format!(
+                "UPDATE auth_jwt_generation_fence SET {column} = -1 WHERE id = 1",
+            )).await.is_err());
+        }
+        check_empty().await;
+    }
+
+    #[tokio::test]
+    async fn jwt_schema_rollback_refuses_enrollment_and_exercised_static_lease() {
+        let db = database().await;
+        let manager = SchemaManager::new(&db);
+        let fence = JwtGenerationFence::new(db.clone());
+        let first = config(ROOT, "old", OLD, None);
+        let (_, publisher) = first.clone().into_cluster_jwt(0).unwrap();
+        assert!(fence.renew(&publisher).await.unwrap());
+        let before = fence.load().await.unwrap();
+        assert!(before.is_empty());
+        assert!(before.lease_until_ms > 0);
+        let last = crate::migrations::jwt_fence_migrations().pop().unwrap();
+        assert!(last.down(&manager).await.is_err());
+        let after = fence.load().await.unwrap();
+        assert_eq!(before.lease_until_ms, after.lease_until_ms);
+        assert_eq!(before.replica_grants, after.replica_grants);
+
+        let enrolled_db = database().await;
+        let enrolled = JwtGenerationFence::new(enrolled_db.clone());
+        assert_eq!(enrolled.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
+        let before = enrolled.load().await.unwrap();
+        let last = crate::migrations::jwt_fence_migrations().pop().unwrap();
+        assert!(last.down(&SchemaManager::new(&enrolled_db)).await.is_err());
+        let after = enrolled.load().await.unwrap();
+        assert_eq!(before.generation, after.generation);
+        assert_eq!(before.payload, after.payload);
+        assert_eq!(before.tag, after.tag);
+        assert_eq!(before.replica_grants, after.replica_grants);
     }
 
     #[tokio::test]

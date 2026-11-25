@@ -66,6 +66,27 @@ a mandatory non-nil UUID. Source regressions reject missing and null claims. Pre
 lease fencing and witness security. Do not silently reset non-disposable
 authority or witness state; follow the owner cutover contract.
 
+JWT migration consolidation is blocked by the repository-wide
+[admission guide](../../../../docs/guides/safe-database-migrations-and-squashing.md).
+The candidate range is the three Auth-owned 2026-11-25 fence migrations:
+`m20261125_000002_create_auth_jwt_generation_fence` creates the singleton,
+`m20261125_000003_add_auth_jwt_cluster_lease` adds the nonnegative lease/drain
+columns, and `m20261125_000004_add_auth_jwt_replica_grants` adds the grant
+registry and untracked horizon, including the existing lease-to-untracked
+backfill. A fresh baseline could create the final table and empty singleton
+directly, but a previously exercised authority must retain its ledger,
+leases, grants, identity tombstones and witness state. The witness revision
+DDL and offline import are separately controlled activation/recovery
+boundaries, not ordinary schema aliases. Keep all three migration identities
+unchanged until release/module/container seals, original/candidate PostgreSQL
+schema and data comparisons, installer/independent-store paths, rollback
+guards, retained-state disposition and trusted replacement admission are
+verified. The repository bootstrap record reports generation zero; empty
+GitHub Releases alone do not establish the complete stable boundary.
+The SQLite fixture now uses the same owner migration inventory as independent
+authority import. Fresh up/down/up and exercised-state rollback-refusal
+regressions are authored, unrun; they do not certify consolidation.
+
 JWT rollback witness: source-implemented exact authenticated checkpoint,
 monotonic mutation revision, witness-first commit, offline recovery, verified
 TLS and sticky local mismatch fencing. Production requires a third independent
