@@ -3,6 +3,8 @@ use fly::GrapesJsCodec;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
+#[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
+use std::{cell::Cell, rc::Rc};
 
 const RECOVERY_FORMAT: u8 = 1;
 const MAX_RECOVERY_RECORD_BYTES: usize = 2 * 1024 * 1024;
@@ -36,6 +38,12 @@ struct DraftRecoveryRecord {
     scope_hash: String,
     page_hash: String,
     writer_id: String,
+    /// Empty only for records written by the original fixed-key format.
+    #[serde(default)]
+    record_id: String,
+    /// Monotonic within one mounted writer; timestamps alone can tie within a millisecond.
+    #[serde(default)]
+    sequence: u64,
     base_revision_id: String,
     base_project_data: Value,
     draft_project_data: Value,
@@ -52,12 +60,49 @@ pub(crate) struct DraftRecoveryBootstrap {
     pub persisted: bool,
 }
 
+
+struct LoadedRecoveryRecord {
+    references: Vec<RecoveryRecordRef>,
+    record: DraftRecoveryRecord,
+}
+
+fn recovery_record_storage_key(prefix: &str, writer_id: &str, record_id: &str) -> String {
+    if record_id.is_empty() {
+        // Read compatibility for the original one-key-per-writer format.
+        format!("{prefix}{writer_id}")
+    } else {
+        format!("{prefix}{writer_id}:{record_id}")
+    }
+}
+
+fn valid_recovery_token(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+}
+
+fn recovery_record_is_newer(candidate: &DraftRecoveryRecord, current: &DraftRecoveryRecord) -> bool {
+    (
+        candidate.sequence,
+        candidate.updated_at_ms,
+        candidate.record_id.as_str(),
+    ) > (
+        current.sequence,
+        current.updated_at_ms,
+        current.record_id.as_str(),
+    )
+}
+
 #[derive(Clone)]
 pub(crate) struct DraftRecoveryStore {
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
     prefix: String,
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
-    current_key: String,
+    writer_id: String,
+    #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
+    sequence: Rc<Cell<u64>>,
 }
 
 impl DraftRecoveryStore {
@@ -79,8 +124,9 @@ impl DraftRecoveryStore {
             (js_sys::Math::random() * u64::MAX as f64) as u64
         );
         let store = Self {
-            current_key: format!("{prefix}{writer_id}"),
             prefix,
+            writer_id,
+            sequence: Rc::new(Cell::new(0)),
         };
         // Probe storage during initialization so quota/security failures are surfaced before edits.
         let _ = store.storage()?;
@@ -98,12 +144,19 @@ impl DraftRecoveryStore {
     }
 
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
-    fn load_records(&self) -> Result<Vec<(RecoveryRecordRef, DraftRecoveryRecord)>, String> {
+    fn load_records(&self) -> Result<Vec<LoadedRecoveryRecord>, String> {
         let storage = self.storage()?;
         let length = storage
             .length()
             .map_err(|error| format!("Cannot enumerate browser recovery storage: {error:?}"))?;
-        let mut records = Vec::new();
+        let scope_hash = self
+            .prefix
+            .strip_prefix(RECOVERY_KEY_PREFIX)
+            .and_then(|value| value.split(':').next())
+            .unwrap_or_default();
+        let page_hash = self.prefix.rsplit(':').nth(1).unwrap_or_default();
+        let mut by_writer = BTreeMap::<String, LoadedRecoveryRecord>::new();
+
         for index in 0..length {
             let Some(key) = storage
                 .key(index)
@@ -128,26 +181,44 @@ impl DraftRecoveryStore {
             }
             let record: DraftRecoveryRecord = serde_json::from_str(&raw)
                 .map_err(|error| format!("A local recovery record is invalid: {error}"))?;
-            let scope_hash = self
-                .prefix
-                .strip_prefix(RECOVERY_KEY_PREFIX)
-                .and_then(|value| value.split(':').next())
-                .unwrap_or_default();
-            let page_hash = self.prefix.rsplit(':').nth(1).unwrap_or_default();
             if record.format != RECOVERY_FORMAT
                 || record.scope_hash.as_str() != scope_hash
                 || record.page_hash.as_str() != page_hash
-                || key != format!("{}{}", self.prefix, record.writer_id)
+                || !valid_recovery_token(&record.writer_id)
+                || (!record.record_id.is_empty() && !valid_recovery_token(&record.record_id))
+                || key != recovery_record_storage_key(
+                    &self.prefix,
+                    &record.writer_id,
+                    &record.record_id,
+                )
             {
                 return Err("A local recovery record has an unsupported identity or format.".to_string());
             }
-            records.push((RecoveryRecordRef { key, raw }, record));
+
+            let reference = RecoveryRecordRef { key, raw };
+            match by_writer.entry(record.writer_id.clone()) {
+                std::collections::btree_map::Entry::Vacant(entry) => {
+                    entry.insert(LoadedRecoveryRecord {
+                        references: vec![reference],
+                        record,
+                    });
+                }
+                std::collections::btree_map::Entry::Occupied(mut entry) => {
+                    let loaded = entry.get_mut();
+                    loaded.references.push(reference);
+                    if recovery_record_is_newer(&record, &loaded.record) {
+                        loaded.record = record;
+                    }
+                }
+            }
         }
+
+        let mut records = by_writer.into_values().collect::<Vec<_>>();
         records.sort_by(|left, right| {
-            left.1
+            left.record
                 .updated_at_ms
-                .cmp(&right.1.updated_at_ms)
-                .then_with(|| left.1.writer_id.cmp(&right.1.writer_id))
+                .cmp(&right.record.updated_at_ms)
+                .then_with(|| left.record.writer_id.cmp(&right.record.writer_id))
         });
         Ok(records)
     }
@@ -171,16 +242,21 @@ impl DraftRecoveryStore {
                 .nth(1)
                 .unwrap_or_default()
                 .to_string();
-            let writer_id = self
-                .current_key
-                .strip_prefix(&self.prefix)
-                .unwrap_or_default()
-                .to_string();
+            let sequence = self.sequence.get().checked_add(1).ok_or_else(|| {
+                "The local recovery writer sequence is exhausted.".to_string()
+            })?;
+            let record_id = format!(
+                "{sequence:x}-{:x}-{:x}",
+                js_sys::Date::now().max(0.0) as u64,
+                (js_sys::Math::random() * u64::MAX as f64) as u64
+            );
             let record = DraftRecoveryRecord {
                 format: RECOVERY_FORMAT,
                 scope_hash,
                 page_hash,
-                writer_id,
+                writer_id: self.writer_id.clone(),
+                record_id: record_id.clone(),
+                sequence,
                 base_revision_id: base.revision_id.clone(),
                 base_project_data: base.project_data.clone(),
                 draft_project_data,
@@ -194,9 +270,33 @@ impl DraftRecoveryStore {
                     MAX_RECOVERY_RECORD_BYTES / 1024 / 1024
                 ));
             }
-            self.storage()?
-                .set_item(&self.current_key, &raw)
-                .map_err(|error| format!("Cannot persist local draft in browser storage: {error:?}"))
+
+            let storage = self.storage()?;
+            let key = recovery_record_storage_key(&self.prefix, &self.writer_id, &record_id);
+            storage
+                .set_item(&key, &raw)
+                .map_err(|error| format!("Cannot persist local draft in browser storage: {error:?}"))?;
+            self.sequence.set(sequence);
+
+            // Never overwrite a key another tab may have read. The new immutable record is
+            // committed first; older versions for this writer can then be retired safely.
+            match self.writer_record_keys(&storage) {
+                Ok(keys) => {
+                    for old_key in keys.into_iter().filter(|old_key| old_key != &key) {
+                        if let Err(error) = storage.remove_item(&old_key) {
+                            tracing::warn!(
+                                error = ?error,
+                                "Local draft was saved but an older immutable recovery record could not be retired"
+                            );
+                        }
+                    }
+                }
+                Err(error) => tracing::warn!(
+                    error = %error,
+                    "Local draft was saved but older immutable recovery records could not be enumerated"
+                ),
+            }
+            Ok(())
         }
         #[cfg(not(all(target_arch = "wasm32", feature = "dioxus-web")))]
         {
@@ -205,12 +305,36 @@ impl DraftRecoveryStore {
         }
     }
 
+    #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
+    fn writer_record_keys(&self, storage: &web_sys::Storage) -> Result<Vec<String>, String> {
+        let length = storage
+            .length()
+            .map_err(|error| format!("Cannot enumerate local drafts: {error:?}"))?;
+        let legacy_key = recovery_record_storage_key(&self.prefix, &self.writer_id, "");
+        let versioned_prefix = format!("{}{}:", self.prefix, self.writer_id);
+        let mut keys = Vec::new();
+        for index in 0..length {
+            if let Some(key) = storage
+                .key(index)
+                .map_err(|error| format!("Cannot enumerate local drafts: {error:?}"))?
+                && (key == legacy_key || key.starts_with(&versioned_prefix))
+            {
+                keys.push(key);
+            }
+        }
+        Ok(keys)
+    }
+
     pub(crate) fn clear_current(&self) -> Result<(), String> {
         #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
         {
-            self.storage()?
-                .remove_item(&self.current_key)
-                .map_err(|error| format!("Cannot clear the saved local draft: {error:?}"))
+            let storage = self.storage()?;
+            for key in self.writer_record_keys(&storage)? {
+                storage
+                    .remove_item(&key)
+                    .map_err(|error| format!("Cannot clear the saved local draft: {error:?}"))?;
+            }
+            Ok(())
         }
         #[cfg(not(all(target_arch = "wasm32", feature = "dioxus-web")))]
         {
@@ -226,6 +350,8 @@ impl DraftRecoveryStore {
         #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
         {
             let storage = self.storage()?;
+            // Each write has an immutable key. A peer can add a newer key, but cannot
+            // replace the bytes at a key we observed, so this comparison cannot race a newer save.
             for reference in references {
                 if storage
                     .get_item(&reference.key)
@@ -363,11 +489,12 @@ pub(crate) fn initialize_draft_recovery(
 
         let consumed_records = records
             .iter()
-            .map(|(reference, _)| reference.clone())
+            .flat_map(|loaded| loaded.references.iter().cloned())
             .collect::<Vec<_>>();
         let mut merged = base.project_data.clone();
         let mut conflicts = BTreeSet::new();
-        for (_, record) in &records {
+        for loaded in &records {
+            let record = &loaded.record;
             if record.base_revision_id.trim().is_empty()
                 || record.base_project_data.is_null()
                 || record.draft_project_data.is_null()
@@ -390,7 +517,10 @@ pub(crate) fn initialize_draft_recovery(
         }
         if !conflicts.is_empty() {
             let conflict_json = serde_json::to_string_pretty(
-                &records.iter().map(|(_, record)| record).collect::<Vec<_>>(),
+                &records
+                    .iter()
+                    .map(|loaded| &loaded.record)
+                    .collect::<Vec<_>>(),
             )
             .ok();
             return DraftRecoveryBootstrap {
@@ -673,4 +803,63 @@ mod tests {
         assert!(!conflicts.is_empty());
         assert!(conflicts.iter().any(|path| path.contains("id=a")));
     }
+
+
+    #[test]
+    fn recovery_record_keys_are_immutable_per_write_and_keep_legacy_reads() {
+        let prefix = "rustok:fly:draft:v1:scope:page:";
+        let writer = "writer-1";
+        let legacy = recovery_record_storage_key(prefix, writer, "");
+        let first = recovery_record_storage_key(prefix, writer, "1-a");
+        let second = recovery_record_storage_key(prefix, writer, "2-b");
+
+        assert_eq!(legacy, format!("{prefix}{writer}"));
+        assert_ne!(first, second);
+        assert_ne!(legacy, first);
+        assert!(first.starts_with(&format!("{prefix}{writer}:")));
+    }
+
+    #[test]
+    fn legacy_recovery_records_default_to_the_original_fixed_key_identity() {
+        let record: DraftRecoveryRecord = serde_json::from_value(json!({
+            "format": 1,
+            "scope_hash": "scope",
+            "page_hash": "page",
+            "writer_id": "writer-1",
+            "base_revision_id": "rev-1",
+            "base_project_data": { "pages": [] },
+            "draft_project_data": { "pages": [] },
+            "updated_at_ms": 100
+        }))
+        .expect("legacy recovery record");
+        assert_eq!(record.record_id, "");
+        assert_eq!(record.sequence, 0);
+        assert_eq!(
+            recovery_record_storage_key("prefix:", &record.writer_id, &record.record_id),
+            "prefix:writer-1"
+        );
+    }
+
+    #[test]
+    fn recovery_writer_sequence_wins_over_clock_skew_when_selecting_latest_record() {
+        let base = DraftRecoveryRecord {
+            format: RECOVERY_FORMAT,
+            scope_hash: "scope".to_string(),
+            page_hash: "page".to_string(),
+            writer_id: "writer-1".to_string(),
+            record_id: "1-a".to_string(),
+            sequence: 1,
+            base_revision_id: "rev-1".to_string(),
+            base_project_data: json!({ "pages": [] }),
+            draft_project_data: json!({ "pages": [] }),
+            updated_at_ms: 200,
+        };
+        let mut newer = base.clone();
+        newer.record_id = "2-b".to_string();
+        newer.sequence = 2;
+        newer.updated_at_ms = 100;
+        assert!(recovery_record_is_newer(&newer, &base));
+    }
+
+
 }

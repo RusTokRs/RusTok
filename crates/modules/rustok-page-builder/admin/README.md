@@ -30,16 +30,20 @@ For Dioxus hosts, configure
 `draft_recovery_scope` prop) with a stable, opaque value derived from the
 authenticated tenant and actor. Do not pass an email address or other direct
 identifier. This enables browser-local recovery in `localStorage`: each tab
-writes to its own writer key and records the server base revision/document plus
-the unsaved document. The host's `on_reload_requested` remains the authoritative
+writes immutable per-save records under its own writer identity and records the
+server base revision/document plus the unsaved document. Recovery selects only
+the latest sequence from each writer, while retaining older record references
+for safe cleanup if a tab was interrupted between writing and pruning. The host's
+`on_reload_requested` remains the authoritative
 refresh action; after reload, records from all tabs are reconciled against the
 latest server document using a conservative three-way merge. Object fields are
 merged recursively and arrays of uniquely identified objects are merged by
 stable `id`; simultaneous edits to the same value, ambiguous arrays and
 incompatible reorderings stop in a read-only conflict state. The local copies
 and conflicting paths remain visible until the author copies or explicitly
-discards them. Records are retired only after a confirmed save, using
-compare-before-delete so a newer tab write is not removed.
+discards them. Records are retired only after a confirmed save. Each save uses a fresh immutable
+storage key, so compare-before-delete cannot race a peer replacing the bytes of
+a record that was already read.
 
 Browser recovery is disabled when the host does not supply a scope. A single
 record is limited to 2 MiB to stay within common browser storage quotas; quota,

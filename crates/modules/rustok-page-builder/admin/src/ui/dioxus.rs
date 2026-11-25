@@ -354,8 +354,23 @@ fn write_conflict_active(
 }
 
 fn local_recovery_json(controller: &AdminCanvasController) -> String {
-    serde_json::to_string_pretty(controller.editor().document())
-        .unwrap_or_else(|error| format!("Could not serialize local draft: {error}"))
+    match GrapesJsCodec::encode_value(controller.editor().document()) {
+        Ok(project) => serde_json::to_string_pretty(&project)
+            .unwrap_or_else(|error| format!("Could not serialize local draft: {error}")),
+        Err(error) => format!("Could not serialize local draft: {error}"),
+    }
+}
+
+fn bind_workspace_intent_snapshot(
+    mut envelope: BrowserIntentEnvelope,
+    page_id: &str,
+    revision_id: &str,
+    project_hash: &str,
+) -> BrowserIntentEnvelope {
+    envelope.page_id = Some(page_id.to_string());
+    envelope.revision = Some(revision_id.to_string());
+    envelope.project_hash = Some(project_hash.to_string());
+    envelope
 }
 
 fn peer_conflict_blocks_ui_intent(intent: &UiIntent) -> bool {
@@ -926,6 +941,9 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
         session.write().fail(error);
     });
     let workspace_publish_confirmed = on_publish_confirmed.clone();
+    let intent_page_id = workspace_page_id.clone();
+    let intent_revision_id = workspace_revision_id.clone();
+    let intent_project_hash = workspace_project_hash.clone();
     let on_workspace_intent = EventHandler::new(move |envelope: BrowserIntentEnvelope| {
         let write_conflict = *peer_write_conflict.peek()
             || *save_outcome_unknown.peek()
@@ -943,11 +961,14 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
         let effects = {
             let mut state = session.write();
             let previous_hash = state.controller.editor().revision().project_hash;
-            // The trusted Dioxus callback owns the current host snapshot;
-            // typed Fly constructors do not know its revision.
-            let mut envelope = envelope;
-            envelope.revision = Some(state.controller.revision_id().to_string());
-            envelope.project_hash = Some(previous_hash.hex());
+            // The callback must carry the snapshot that rendered its workspace. Reading the
+            // live controller here would silently upgrade a stale event to the latest revision.
+            let envelope = bind_workspace_intent_snapshot(
+                envelope,
+                &intent_page_id,
+                &intent_revision_id,
+                &intent_project_hash,
+            );
             match crate::dispatch_browser_intent(&mut state.controller, envelope) {
                 Ok(result) => {
                     // A command from a stale workspace must never dispatch its
@@ -1528,7 +1549,71 @@ mod props_regression_tests {
         ).expect("controller");
         let recovered = local_recovery_json(&controller);
         assert!(recovered.contains("unsaved local work"));
-        assert!(serde_json::from_str::<Value>(&recovered).is_ok());
+        let decoded: Value = serde_json::from_str(&recovered).expect("recovery JSON");
+        let expected = GrapesJsCodec::encode_value(controller.editor().document())
+            .expect("GrapesJS project");
+        assert_eq!(decoded, expected);
+    }
+
+    #[test]
+    fn workspace_intents_are_bound_to_the_rendered_page_revision_and_hash() {
+        let document = json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{ "id": "hero", "type": "text", "content": "one" }]
+                }
+            }]
+        });
+        let rendered = AdminCanvasController::new("home", "rev-1", document.clone())
+            .expect("rendered controller");
+        let rendered_hash = rendered.editor().revision().project_hash.hex();
+        let envelope = bind_workspace_intent_snapshot(
+            BrowserIntentEnvelope::new(
+                "home",
+                fly_browser::BrowserIntentKind::RemoveSelected,
+                serde_json::json!({}),
+            ),
+            "home",
+            "rev-1",
+            &rendered_hash,
+        );
+
+        let mut newer_revision =
+            AdminCanvasController::new("home", "rev-2", document.clone())
+                .expect("newer revision");
+        assert!(matches!(
+            crate::dispatch_browser_intent(&mut newer_revision, envelope.clone()),
+            Err(crate::BrowserIntentDispatchError::RevisionConflict { .. })
+        ));
+
+        let changed_document = json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{ "id": "hero", "type": "text", "content": "two" }]
+                }
+            }]
+        });
+        let mut changed_snapshot =
+            AdminCanvasController::new("home", "rev-1", changed_document)
+                .expect("changed snapshot");
+        assert!(matches!(
+            crate::dispatch_browser_intent(&mut changed_snapshot, envelope.clone()),
+            Err(crate::BrowserIntentDispatchError::ProjectHashConflict { .. })
+        ));
+
+        let mut other_page =
+            AdminCanvasController::new("about", "rev-1", document)
+                .expect("other page");
+        assert!(matches!(
+            crate::dispatch_browser_intent(&mut other_page, envelope),
+            Err(crate::BrowserIntentDispatchError::PageScopeConflict { .. })
+        ));
     }
 
     #[test]

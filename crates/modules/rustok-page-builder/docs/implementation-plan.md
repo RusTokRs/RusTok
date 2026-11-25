@@ -408,8 +408,13 @@ and decision packets, not another production-consumer or provider-health archite
    review.
 8. Retain generic editor keyboard/focus/accessible-name/state/browser/screen-reader evidence on the built
    admin surface. Source semantics and the static guard are already ready.
-9. Add the first Dioxus host renderer after Dioxus enters the workspace. It must render
-   `PageBuilderBrowserModuleDescriptor` and reuse the canonical runtime DTO.
+9. The Dioxus Page Builder host renderer is now source-integrated under
+   `admin/src/ui/dioxus.rs` and `dioxus_canvas.rs`. It reuses the canonical
+   Page Builder capability/runtime DTOs and the `fly-dioxus` / `fly-web`
+   iframe bridge. It deliberately does not render `PageBuilderBrowserModuleDescriptor`,
+   which belongs to the classic SSR JavaScript adapter path. Remaining evidence:
+   Dioxus WASM compilation, mounted iframe/drag/resize behavior, save/recovery
+   interaction, and the complete adapter audit.
 10. Promote FFA/FBA only after observed Pages/Forum evidence and provider-health requirements are met.
 
 ## Verification
