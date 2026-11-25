@@ -41,6 +41,11 @@ locale and projection fingerprint, and records the actual typed result in the ex
 Archive inspects current canonical references under the exclusive tenant schema fence; no
 assignment/link is detached or deleted. Refusals are replayable decisions, unlike auth/admission/
 provider/storage/uncertain-commit failures. Restore retains row IDs without cascading to children.
+The active option directory excludes options whose parent attribute is archived, even when the
+child itself was not archived. Storefront index filter resolution verifies both UUID and code
+selectors against the active tenant/attribute dictionary, matching the direct SQL filter;
+missing, archived and mismatched options resolve to Never rather than an unproved index term.
+The focused dictionary/term regression is authored but unrun.
 
 Both admin clients persist their complete dictionary request/key/original locale in their existing
 caller-journal mechanism, independently of reads. The dedicated attribute scope cannot decode a

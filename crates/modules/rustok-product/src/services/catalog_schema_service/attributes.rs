@@ -307,6 +307,9 @@ impl ProductCatalogSchemaService {
                 SELECT o.id, o.attribute_id, o.code, o.position,
                        COALESCE(t.label, o.code) AS label
                 FROM product_attribute_options o
+                JOIN product_attributes a
+                  ON a.tenant_id = o.tenant_id AND a.id = o.attribute_id
+                 AND a.archived_at IS NULL
                 LEFT JOIN product_attribute_option_translations t
                   ON t.option_id = o.id AND t.locale = {locale_placeholder}
                 WHERE o.tenant_id = $1
@@ -488,18 +491,12 @@ async fn resolve_storefront_filter_predicate(
             product_attribute_datetime_term(definition.id, value)
         }
         ProductAttributeFilterValue::Option(raw_value) => {
-            let option_id = match Uuid::parse_str(raw_value.as_str()) {
-                Ok(option_id) if option_id.is_nil() => return Ok(ProductAttributeTermExpr::Never),
-                Ok(option_id) => option_id,
-                Err(_) => {
-                    let Some(option_id) =
-                        load_active_option_id(db, tenant_id, definition.id, raw_value.as_str())
-                            .await?
-                    else {
-                        return Ok(ProductAttributeTermExpr::Never);
-                    };
-                    option_id
-                }
+            // UUID and stable-code selectors require the same live dictionary proof
+            // as the direct SQL catalog filter; an ID is not proof of ownership.
+            let Some(option_id) =
+                load_active_option_id(db, tenant_id, definition.id, raw_value.as_str()).await?
+            else {
+                return Ok(ProductAttributeTermExpr::Never);
             };
             product_attribute_option_term(definition.id, option_id)
         }
@@ -513,31 +510,35 @@ async fn load_active_option_id(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     attribute_id: Uuid,
-    code: &str,
+    selector: &str,
 ) -> CommerceResult<Option<Uuid>> {
+    let (column, value): (&str, sea_orm::Value) = match Uuid::parse_str(selector) {
+        Ok(id) if id.is_nil() => return Ok(None),
+        Ok(id) => ("o.id", id.into()),
+        Err(_) => ("o.code", selector.to_owned().into()),
+    };
     let backend = db.get_database_backend();
     let tenant = crate::services::catalog::helpers::sql_placeholder(backend, 1);
     let attribute = crate::services::catalog::helpers::sql_placeholder(backend, 2);
-    let code_placeholder = crate::services::catalog::helpers::sql_placeholder(backend, 3);
+    let selector_placeholder = crate::services::catalog::helpers::sql_placeholder(backend, 3);
     let row =
         StorefrontAttributeFilterOptionRow::find_by_statement(Statement::from_sql_and_values(
             backend,
             format!(
                 r#"
-            SELECT id
-            FROM product_attribute_options
-            WHERE tenant_id = {tenant}
-              AND attribute_id = {attribute}
-              AND archived_at IS NULL
-              AND code = {code_placeholder}
+            SELECT o.id
+            FROM product_attribute_options o
+            JOIN product_attributes a
+              ON a.tenant_id = o.tenant_id AND a.id = o.attribute_id
+             AND a.archived_at IS NULL
+            WHERE o.tenant_id = {tenant}
+              AND o.attribute_id = {attribute}
+              AND o.archived_at IS NULL
+              AND {column} = {selector_placeholder}
             LIMIT 1
             "#
             ),
-            vec![
-                tenant_id.into(),
-                attribute_id.into(),
-                code.to_string().into(),
-            ],
+            vec![tenant_id.into(), attribute_id.into(), value],
         ))
         .one(db)
         .await?;
@@ -586,6 +587,99 @@ mod tests {
             .expect("receipt row should exist");
         row.try_get("", "status")
             .expect("receipt status should decode")
+    }
+
+    #[tokio::test]
+    async fn active_option_reads_and_index_terms_share_dictionary_ownership() {
+        use super::{ProductAttributeFilter, ProductAttributeTermExpr};
+
+        let (service, db) = receipt_test_service().await;
+        db.execute_unprepared(
+            "CREATE TABLE product_attributes (
+                 id TEXT, tenant_id TEXT, code TEXT, value_type TEXT,
+                 is_localized BOOLEAN, is_filterable BOOLEAN, scope TEXT, archived_at TEXT
+             );
+             CREATE TABLE product_attribute_options (
+                 id TEXT, tenant_id TEXT, attribute_id TEXT, code TEXT,
+                 position INTEGER, archived_at TEXT
+             );
+             CREATE TABLE product_attribute_option_translations (
+                 option_id TEXT, locale TEXT, label TEXT
+             );",
+        )
+        .await
+        .unwrap();
+        let tenant = Uuid::new_v4();
+        let other_tenant = Uuid::new_v4();
+        let color = Uuid::new_v4();
+        let size = Uuid::new_v4();
+        let archived_parent = Uuid::new_v4();
+        let foreign_parent = Uuid::new_v4();
+        for (id, owner, code, archived) in [
+            (color, tenant, "color", None),
+            (size, tenant, "size", None),
+            (archived_parent, tenant, "retired", Some("2026-01-01")),
+            (foreign_parent, other_tenant, "color", None),
+        ] {
+            db.execute_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "INSERT INTO product_attributes VALUES ($1, $2, $3, 'select', FALSE, TRUE, 'product', $4)",
+                vec![id.into(), owner.into(), code.into(), archived.map(str::to_owned).into()],
+            ))
+            .await
+            .unwrap();
+        }
+        let red = Uuid::new_v4();
+        let archived = Uuid::new_v4();
+        let wrong_attribute = Uuid::new_v4();
+        let hidden_child = Uuid::new_v4();
+        let foreign = Uuid::new_v4();
+        for (id, owner, attribute, code, archived_at) in [
+            (red, tenant, color, "red", None),
+            (archived, tenant, color, "blue", Some("2026-01-01")),
+            (wrong_attribute, tenant, size, "large", None),
+            (hidden_child, tenant, archived_parent, "old", None),
+            (foreign, other_tenant, foreign_parent, "red", None),
+        ] {
+            db.execute_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "INSERT INTO product_attribute_options VALUES ($1, $2, $3, $4, 0, $5)",
+                vec![id.into(), owner.into(), attribute.into(), code.into(), archived_at.map(str::to_owned).into()],
+            ))
+            .await
+            .unwrap();
+        }
+
+        let options = service
+            .list_attribute_options(tenant, &[color, archived_parent, foreign_parent], "en")
+            .await
+            .unwrap();
+        assert_eq!(options.iter().map(|option| option.id).collect::<Vec<_>>(), vec![red]);
+
+        for (selector, expected) in [
+            ("red".to_owned(), Some(red)),
+            (red.to_string(), Some(red)),
+            ("blue".to_owned(), None),
+            (archived.to_string(), None),
+            (wrong_attribute.to_string(), None),
+            (hidden_child.to_string(), None),
+            (foreign.to_string(), None),
+            (Uuid::new_v4().to_string(), None),
+            (Uuid::nil().to_string(), None),
+        ] {
+            let resolved = service.resolve_storefront_attribute_filter_terms(
+                tenant, "en", "en",
+                &[ProductAttributeFilter { code: "color".to_owned(), value: selector }],
+            ).await.unwrap();
+            assert_eq!(resolved.len(), 1);
+            match expected {
+                Some(id) => assert_eq!(
+                    resolved[0].predicate,
+                    ProductAttributeTermExpr::Term(super::product_attribute_option_term(color, id).unwrap()),
+                ),
+                None => assert!(matches!(&resolved[0].predicate, ProductAttributeTermExpr::Never)),
+            }
+        }
     }
 
     #[tokio::test]
