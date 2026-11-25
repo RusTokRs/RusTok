@@ -24,12 +24,12 @@ impl AuthMacPurpose {
 }
 
 fn derive_key(config: &AuthConfig, purpose: AuthMacPurpose) -> Result<[u8; 32]> {
-    if !hs256_secret_has_min_length(&config.secret) {
+    if !hs256_secret_has_min_length(config.secret()) {
         return Err(AuthError::Internal("Auth MAC secret is too short".to_string()));
     }
     let hkdf = Hkdf::<Sha256>::new(
         Some(b"rustok/auth/host-mac/v1"),
-        config.secret.as_bytes(),
+        config.secret().as_bytes(),
     );
     let mut key = [0_u8; 32];
     hkdf.expand(purpose.label(), &mut key)
@@ -82,7 +82,7 @@ mod tests {
         assert_eq!(tag, auth_purpose_mac(&config.clone(), csrf, payload).unwrap());
         assert_ne!(tag, auth_purpose_mac(&config, reset, payload).unwrap());
         assert_ne!(tag, auth_purpose_mac(&config, csrf, b"other payload").unwrap());
-        assert_ne!(tag, hmac_sha256(config.secret.as_bytes(), payload).unwrap());
+        assert_ne!(tag, hmac_sha256(config.secret().as_bytes(), payload).unwrap());
     }
 
     #[test]

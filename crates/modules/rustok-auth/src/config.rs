@@ -1,3 +1,5 @@
+use std::sync::{Arc, OnceLock};
+
 use jsonwebtoken::{Algorithm, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 
@@ -6,7 +8,9 @@ use crate::credentials::{
     MIN_PASSWORD_LENGTH_FLOOR_CHARS,
 };
 use crate::error::{AuthError, Result};
-use crate::jwt_keyring::{JwtKeyring, SpecialJwtKeyrings, rsa_signing_key, validate_purpose_keyrings, verification_key};
+use crate::jwt_keyring::{
+    JwtKeyring, SpecialJwtKeyrings, ValidatedJwtKeyrings, rsa_signing_key, verification_key,
+};
 
 const DEFAULT_ACCESS_EXPIRATION_SECS: u64 = 900; // 15 minutes
 const DEFAULT_REFRESH_EXPIRATION_SECS: u64 = 60 * 60 * 24 * 30; // 30 days
@@ -52,24 +56,41 @@ pub enum JwtAlgorithm {
 /// it uses (YAML, environment variables, etc.). `rustok-auth` never reads config files.
 #[derive(Clone)]
 pub struct AuthConfig {
-    pub secret: String,
-    /// Deployment JWT key selection; separate from the host MAC root.
-    pub jwt_keyring: JwtKeyring,
-    pub special_jwt_keyrings: SpecialJwtKeyrings,
+    key_state: Arc<JwtKeyState>,
     pub access_expiration: u64,
     pub refresh_expiration: u64,
     pub issuer: String,
     pub audience: String,
-    /// JWT signing algorithm. Defaults to `HS256`.
-    pub algorithm: JwtAlgorithm,
-    /// RSA private key in PEM format. Required when `algorithm = RS256` for token encoding.
-    pub rsa_private_key_pem: Option<String>,
-    /// RSA public key in PEM format. Required when `algorithm = RS256` for token decoding.
-    pub rsa_public_key_pem: Option<String>,
     /// Minimum password length (in chars) enforced for new credentials.
-    /// Hosts may raise it via settings; bounded by
-    /// `MIN_PASSWORD_LENGTH_FLOOR_CHARS..=MAX_MIN_PASSWORD_LENGTH_CHARS`.
     pub min_password_length: usize,
+}
+
+/// The immutable raw inputs and their once-only prepared result share the
+/// same ownership boundary. Request-context clones do not copy secrets.
+struct JwtKeyState {
+    inputs: JwtKeyInputs,
+    prepared: OnceLock<Result<ValidatedJwtKeyrings>>,
+}
+
+#[derive(Clone)]
+struct JwtKeyInputs {
+    secret: String,
+    jwt_keyring: JwtKeyring,
+    special_jwt_keyrings: SpecialJwtKeyrings,
+    algorithm: JwtAlgorithm,
+    rsa_private_key_pem: Option<String>,
+    rsa_public_key_pem: Option<String>,
+}
+
+impl Clone for JwtKeyState {
+    // Copy-on-write detaches a candidate without copying a prepared signer
+    // or its cached failure. Ordinary AuthConfig clones only clone the Arc.
+    fn clone(&self) -> Self {
+        Self {
+            inputs: self.inputs.clone(),
+            prepared: OnceLock::new(),
+        }
+    }
 }
 
 impl std::fmt::Debug for AuthConfig {
@@ -77,20 +98,20 @@ impl std::fmt::Debug for AuthConfig {
         formatter
             .debug_struct("AuthConfig")
             .field("secret", &"<redacted>")
-            .field("jwt_keyring", &self.jwt_keyring)
-            .field("special_jwt_keyrings", &self.special_jwt_keyrings)
+            .field("jwt_keyring", &self.key_state.inputs.jwt_keyring)
+            .field("special_jwt_keyrings", &self.key_state.inputs.special_jwt_keyrings)
             .field("access_expiration", &self.access_expiration)
             .field("refresh_expiration", &self.refresh_expiration)
             .field("issuer", &self.issuer)
             .field("audience", &self.audience)
-            .field("algorithm", &self.algorithm)
+            .field("algorithm", &self.key_state.inputs.algorithm)
             .field(
                 "rsa_private_key_pem",
-                &self.rsa_private_key_pem.as_ref().map(|_| "<redacted>"),
+                &self.key_state.inputs.rsa_private_key_pem.as_ref().map(|_| "<redacted>"),
             )
             .field(
                 "rsa_public_key_pem",
-                &self.rsa_public_key_pem.as_ref().map(|_| "<redacted>"),
+                &self.key_state.inputs.rsa_public_key_pem.as_ref().map(|_| "<redacted>"),
             )
             .field("min_password_length", &self.min_password_length)
             .finish()
@@ -98,6 +119,54 @@ impl std::fmt::Debug for AuthConfig {
 }
 
 impl AuthConfig {
+    /// Stable host MAC root, distinct from the active JWT signing material.
+    pub fn secret(&self) -> &str {
+        &self.key_state.inputs.secret
+    }
+
+    pub fn algorithm(&self) -> &JwtAlgorithm {
+        &self.key_state.inputs.algorithm
+    }
+
+    pub fn rsa_private_key_pem(&self) -> Option<&str> {
+        self.key_state.inputs.rsa_private_key_pem.as_deref()
+    }
+
+    pub fn rsa_public_key_pem(&self) -> Option<&str> {
+        self.key_state.inputs.rsa_public_key_pem.as_deref()
+    }
+
+    pub(crate) fn jwt_keyring(&self) -> &JwtKeyring {
+        &self.key_state.inputs.jwt_keyring
+    }
+
+    pub(crate) fn special_jwt_keyrings(&self) -> &SpecialJwtKeyrings {
+        &self.key_state.inputs.special_jwt_keyrings
+    }
+
+    /// Once per immutable key configuration, including concurrent first use.
+    /// Failure is cached too; an invalid configuration cannot sign or verify.
+    pub(crate) fn prepared_jwt(&self) -> Result<&ValidatedJwtKeyrings> {
+        self.key_state.prepared.get_or_init(|| ValidatedJwtKeyrings::prepare(self))
+            .as_ref().map_err(Clone::clone)
+    }
+
+    fn edit_key_inputs(&mut self) -> &mut JwtKeyInputs {
+        let state = Arc::make_mut(&mut self.key_state);
+        state.prepared = OnceLock::new();
+        &mut state.inputs
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_test_jwt_keyring(&mut self, ring: JwtKeyring) {
+        self.edit_key_inputs().jwt_keyring = ring;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_test_special_jwt_keyrings(&mut self, rings: SpecialJwtKeyrings) {
+        self.edit_key_inputs().special_jwt_keyrings = rings;
+    }
+
     /// Host production policy checks these secrets without exposing them in diagnostics.
     pub fn explicit_hs256_secrets(&self) -> impl Iterator<Item = &str> {
         crate::jwt_keyring::explicit_hs256_secrets(self)
@@ -105,16 +174,21 @@ impl AuthConfig {
 
     pub fn new(secret: String) -> Self {
         Self {
-            secret,
-            jwt_keyring: JwtKeyring::default(),
-            special_jwt_keyrings: SpecialJwtKeyrings::default(),
+            key_state: Arc::new(JwtKeyState {
+                inputs: JwtKeyInputs {
+                    secret,
+                    jwt_keyring: JwtKeyring::default(),
+                    special_jwt_keyrings: SpecialJwtKeyrings::default(),
+                    algorithm: JwtAlgorithm::HS256,
+                    rsa_private_key_pem: None,
+                    rsa_public_key_pem: None,
+                },
+                prepared: OnceLock::new(),
+            }),
             access_expiration: DEFAULT_ACCESS_EXPIRATION_SECS,
             refresh_expiration: DEFAULT_REFRESH_EXPIRATION_SECS,
             issuer: "rustok".to_string(),
             audience: "rustok-admin".to_string(),
-            algorithm: JwtAlgorithm::HS256,
-            rsa_private_key_pem: None,
-            rsa_public_key_pem: None,
             min_password_length: DEFAULT_MIN_PASSWORD_LENGTH_CHARS,
         }
     }
@@ -140,9 +214,10 @@ impl AuthConfig {
         private_key_pem: impl Into<String>,
         public_key_pem: impl Into<String>,
     ) -> Self {
-        self.algorithm = JwtAlgorithm::RS256;
-        self.rsa_private_key_pem = Some(private_key_pem.into());
-        self.rsa_public_key_pem = Some(public_key_pem.into());
+        let inputs = self.edit_key_inputs();
+        inputs.algorithm = JwtAlgorithm::RS256;
+        inputs.rsa_private_key_pem = Some(private_key_pem.into());
+        inputs.rsa_public_key_pem = Some(public_key_pem.into());
         self
     }
 
@@ -209,17 +284,18 @@ impl AuthSettingsOverrides {
     where
         F: FnMut(&str) -> Result<String>,
     {
+        // Each cryptographic edit goes through the single copy-on-write boundary.
         if let Some(name) = self.jwt_keyring_env {
             if name.trim().is_empty() {
                 return Err(AuthError::Internal("JWT keyring environment name is empty".to_string()));
             }
-            config.jwt_keyring = JwtKeyring::from_json(&env_resolver(&name)?)?;
+            config.edit_key_inputs().jwt_keyring = JwtKeyring::from_json(&env_resolver(&name)?)?;
         }
         if let Some(name) = self.jwt_special_keyrings_env {
             if name.trim().is_empty() {
                 return Err(AuthError::Internal("Special JWT keyring environment name is empty".to_string()));
             }
-            config.special_jwt_keyrings = SpecialJwtKeyrings::from_json(&env_resolver(&name)?)?;
+            config.edit_key_inputs().special_jwt_keyrings = SpecialJwtKeyrings::from_json(&env_resolver(&name)?)?;
         }
         if let Some(v) = self.refresh_expiration {
             config.refresh_expiration = v;
@@ -231,15 +307,15 @@ impl AuthSettingsOverrides {
             config.audience = v;
         }
         if let Some(v) = self.algorithm {
-            config.algorithm = v;
+            config.edit_key_inputs().algorithm = v;
         }
         if self.rsa_private_key_pem.is_some() || self.rsa_private_key_env.is_some() {
-            config.rsa_private_key_pem = resolve_key_material(
+            config.edit_key_inputs().rsa_private_key_pem = resolve_key_material(
                 self.rsa_private_key_pem, self.rsa_private_key_env, env_resolver,
             )?;
         }
         if self.rsa_public_key_pem.is_some() || self.rsa_public_key_env.is_some() {
-            config.rsa_public_key_pem = resolve_key_material(
+            config.edit_key_inputs().rsa_public_key_pem = resolve_key_material(
                 self.rsa_public_key_pem, self.rsa_public_key_env, env_resolver,
             )?;
         }
@@ -316,7 +392,7 @@ pub fn validate_auth_config(config: &AuthConfig) -> Result<()> {
     tracing::debug!(
         issuer = %config.issuer,
         audience = %config.audience,
-        algorithm = ?config.algorithm,
+        algorithm = ?config.algorithm(),
         "Validating auth configuration"
     );
     if config.issuer.trim().is_empty() {
@@ -358,13 +434,14 @@ pub fn validate_auth_config(config: &AuthConfig) -> Result<()> {
 
     // The host also uses this secret for CSRF and credential binding even
     // when JWT signatures use RSA. Never allow weak symmetric key material.
-    if !hs256_secret_has_min_length(&config.secret) {
+    if !hs256_secret_has_min_length(config.secret()) {
         return Err(AuthError::Internal(format!(
             "Auth secret must contain at least {MIN_HS256_SECRET_BYTES} non-whitespace bytes"
         )));
     }
 
-    validate_purpose_keyrings(config)
+    config.prepared_jwt()?;
+    Ok(())
 }
 
 pub(crate) fn validate_rs256_key_pair(private_key_pem: &str, public_key_pem: &str) -> Result<()> {
@@ -457,6 +534,44 @@ mod tests {
         }
     }
 
+    #[test]
+    fn prepared_snapshot_is_shared_and_crypto_mutation_detaches() {
+        let original = AuthConfig::new(secret());
+        let before_first_use = original.clone();
+        assert!(Arc::ptr_eq(&original.key_state, &before_first_use.key_state));
+        let prepared = original.prepared_jwt().unwrap();
+        assert!(std::ptr::eq(prepared, before_first_use.prepared_jwt().unwrap()));
+        let policy_only = original.clone().with_issuer("other-issuer");
+        assert!(std::ptr::eq(prepared, policy_only.prepared_jwt().unwrap()));
+        let rsa = original.clone().with_rs256(
+            crate::jwt::TEST_RSA_PRIVATE_KEY, crate::jwt::TEST_RSA_PUBLIC_KEY,
+        );
+        assert!(!Arc::ptr_eq(&original.key_state, &rsa.key_state));
+        let rsa_prepared = rsa.prepared_jwt().unwrap();
+        assert!(!std::ptr::eq(prepared, rsa_prepared));
+        assert!(std::ptr::eq(prepared, original.prepared_jwt().unwrap()));
+    }
+
+    #[test]
+    fn concurrent_first_use_and_failed_reconfiguration_are_isolated() {
+        let mut config = AuthConfig::new(secret());
+        let clone = config.clone();
+        std::thread::scope(|scope| {
+            let thread = scope.spawn(|| clone.prepared_jwt().unwrap() as *const _ as usize);
+            let first = config.prepared_jwt().unwrap() as *const _ as usize;
+            assert_eq!(thread.join().unwrap(), first);
+        });
+        let invalid = AuthSettingsOverrides {
+            algorithm: Some(JwtAlgorithm::RS256),
+            ..Default::default()
+        };
+        assert!(invalid.apply(&mut config).is_err());
+        assert!(std::ptr::eq(config.prepared_jwt().unwrap(), clone.prepared_jwt().unwrap()));
+        let invalid = AuthConfig::new("short".into());
+        assert!(invalid.prepared_jwt().is_err());
+        assert!(invalid.prepared_jwt().is_err());
+    }
+
     fn secret() -> String {
         "test-secret-key-for-unit-tests-only-32bytes!".to_string()
     }
@@ -498,7 +613,7 @@ mod tests {
             })
             .expect("auth config");
 
-        assert_eq!(config.algorithm, JwtAlgorithm::HS256);
+        assert_eq!(config.algorithm(), &JwtAlgorithm::HS256);
         assert_eq!(config.access_expiration, 900);
         assert_eq!(config.refresh_expiration, DEFAULT_REFRESH_EXPIRATION_SECS);
         assert_eq!(
@@ -565,11 +680,11 @@ mod tests {
         .expect("auth config");
 
         assert_eq!(
-            config.rsa_private_key_pem.as_deref(),
+            config.rsa_private_key_pem(),
             Some(crate::jwt::TEST_RSA_PRIVATE_KEY)
         );
         assert_eq!(
-            config.rsa_public_key_pem.as_deref(),
+            config.rsa_public_key_pem(),
             Some(crate::jwt::TEST_RSA_PUBLIC_KEY)
         );
     }

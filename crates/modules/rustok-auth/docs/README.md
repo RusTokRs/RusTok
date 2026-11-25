@@ -108,7 +108,11 @@ Source regressions unrun. Deploy all host instances together.
 Auth uses four independent rings: access (direct and OAuth), password reset,
 email verification, and invite. Each has one active key and bounded verification
 history. Special JWTs require a purpose-specific `typ` and `kid`; access retains
-the existing `JWT` type. The caller selects the ring before inspecting the header. Only Auth-emitted JOSE
+the existing `JWT` type. The caller selects the ring before inspecting the header. Host startup eagerly
+prepares all four rings as one immutable snapshot; clones share both the raw
+key inputs and the prepared result. Direct
+constructors prepare on first use. Key configuration changes detach the candidate
+before mutation; invalid candidates never replace the prior snapshot. Only Auth-emitted JOSE
 fields are accepted; unknown fields, duplicate IDs and explicit null IDs fail
 closed even during the missing-ID migration.
 
@@ -150,7 +154,8 @@ RSA keys must parse as actual public/private RSA material with a modulus of at
 least 2048 bits. The signing boundary checks that the private key matches the
 configured public key; isolation uses canonical RSA moduli, not PEM formatting.
 All explicit symmetric material is subject to production secret policy even
-with RSA access. Startup and selected-key use reject key material reuse across rings. Derived
+with RSA access. Snapshot preparation rejects key material reuse across rings before any key can
+be used. Derived
 keys isolate disclosure of a derived signing key, not compromise of the
 common root; use independent explicit material for stronger isolation.
 
@@ -174,7 +179,9 @@ Prefer explicit independent secrets for operational rotations. Remove
 expired history; never reuse IDs or key material. The exclusive cutoff is
 checked both during selection and after signature verification. HS256 verification material
 is cryptographically capable of signing; use RSA for distribution to
-untrusted verifiers. Configuration is startup-scoped, not hot reload.
+untrusted verifiers. Configuration is startup-scoped, not hot reload. Auth request paths reuse
+prepared encoding/decoding keys and indexed verification history; the JWT library
+still constructs its internal crypto providers per operation.
 Algorithm migration and multi-replica execution evidence are pending.
 See [purpose keyring ADR](../../../../DECISIONS/2026-11-25-jwt-purpose-keyrings.md).
 

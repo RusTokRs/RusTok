@@ -821,9 +821,19 @@ mod tests {
 
     #[test]
     fn nil_tenant_id_in_access_token_is_rejected() {
-        let config = crate::auth::AuthConfig::new(
+        const SIGNING_KEY: &str = "auth-context-independent-test-signing-key-32bytes";
+        let config = rustok_auth::build_auth_config_with_env(
             "test-secret-key-for-auth-context-32bytes-long".to_string(),
-        );
+            900,
+            crate::auth::AuthSettingsOverrides {
+                jwt_keyring_env: Some("TEST_JWT_RING".into()),
+                ..Default::default()
+            },
+            |_| Ok(serde_json::json!({
+                "active_kid": "test-access",
+                "active_hs256_secret": SIGNING_KEY
+            }).to_string()),
+        ).expect("valid test keyring");
         // The canonical encoder refuses nil identifiers, so forge the
         // token directly to exercise the decode-side guard (a token
         // could also arrive from a foreign issuer in RS256 setups).
@@ -845,11 +855,16 @@ mod tests {
             grant_type: "direct".to_string(),
             jti: None,
         };
-        let token = jsonwebtoken::encode(
-            &jsonwebtoken::Header::default(),
-            &claims,
-            &jsonwebtoken::EncodingKey::from_secret(config.secret.as_bytes()),
-        )
+        let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256);
+        header.kid = Some("test-access".into());
+        let key = jsonwebtoken::EncodingKey::from_secret(SIGNING_KEY.as_bytes());
+        // Positive control: the exact same key/header accepts a valid tenant.
+        let mut valid_claims = serde_json::to_value(&claims).unwrap();
+        let valid_tenant = Uuid::new_v4();
+        valid_claims["tenant_id"] = serde_json::json!(valid_tenant);
+        let valid = jsonwebtoken::encode(&header, &valid_claims, &key).unwrap();
+        assert_eq!(verified_tenant_id_from_access_token(&config, &valid), Ok(valid_tenant));
+        let token = jsonwebtoken::encode(&header, &claims, &key)
         .expect("forge access token");
 
         // The canonical decoder rejects nil tenant claims before the

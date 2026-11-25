@@ -97,7 +97,7 @@ it never provisions a service or adds grants. Human transport authentication is 
 
 ### Known Limitations / Pending Implementation
 
-JWT purpose keyrings, key selection and retirement are source-implemented;
+JWT purpose keyrings, immutable prepared snapshots, key selection and retirement are source-implemented;
 scoped compilation, RSA rotation and coordinated replica rollout evidence are
 pending. Configuration is startup-scoped; algorithm migration remains open.
 See [JWT rotation](docs/README.md#jwt-keyring-and-rotation).

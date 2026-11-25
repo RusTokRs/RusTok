@@ -332,11 +332,11 @@ mod tests {
         let config = auth_config_from_parts(secret(), 900, AuthSettingsOverrides::default())
             .expect("auth config");
 
-        assert_eq!(config.algorithm, JwtAlgorithm::HS256);
+        assert_eq!(config.algorithm(), &JwtAlgorithm::HS256);
         assert_eq!(config.access_expiration, 900);
         assert_eq!(config.refresh_expiration, 60 * 60 * 24 * 30);
-        assert!(config.rsa_private_key_pem.is_none());
-        assert!(config.rsa_public_key_pem.is_none());
+        assert!(config.rsa_private_key_pem().is_none());
+        assert!(config.rsa_public_key_pem().is_none());
     }
 
     #[test]

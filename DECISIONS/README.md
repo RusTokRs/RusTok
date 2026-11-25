@@ -53,6 +53,7 @@ Non-ADR plans and research documents do not belong in this registry.
 
 | ADR | Title | Decision status | Implementation status | Relations |
 | --- | --- | --- | --- | --- |
+| [2026-11-25](./2026-11-25-jwt-prepared-keyring.md) | Immutable prepared JWT keyring snapshots | Accepted | In progress | Extends [JWT purpose keyrings](./2026-11-25-jwt-purpose-keyrings.md) |
 | [2026-11-25](./2026-11-25-jwt-purpose-keyrings.md) | JWT purpose keyrings and cryptographic separation | Accepted | In progress | Extends and supersedes shared-key scope of [JWT keyring](./2026-11-25-jwt-keyring.md) |
 | [2026-11-25](./2026-11-25-jwt-keyring.md) | JWT keyring and controlled verification retirement | Accepted | In progress | Extends Auth lifecycle invalidation |
 | [2026-11-25](./2026-11-25-session-refresh-history.md) | Direct session refresh history | Accepted | In progress | Extends [Auth lifecycle invalidation](./2026-02-26-auth-lifecycle-unification-session-invalidation.md) |

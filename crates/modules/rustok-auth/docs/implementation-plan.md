@@ -191,7 +191,10 @@ remain separate work. Reissue pre-cutover shared-key special links.
 Follow-up source review adds canonical RSA modulus identity, private/public
 pair enforcement at signing, strict JOSE header admission and post-signature
 retirement fencing. Zero-duration issuance and timestamp truncation are rejected;
-regressions authored but not executed. See the
+regressions authored but not executed.
+Immutable prepared JWT snapshots are source-implemented: all-purpose admission,
+shared once-only initialization, private key configuration and candidate detachment.
+No hot reload or distributed publication is implemented. Scoped checks are pending. See the
 [owner contract](README.md#jwt-keyring-and-rotation).
 
 ## JWT and CSRF hardening (source only)
