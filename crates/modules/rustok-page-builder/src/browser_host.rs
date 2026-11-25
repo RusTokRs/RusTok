@@ -17,7 +17,7 @@ pub struct PageBuilderBrowserModuleDescriptor {
 pub const PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS: &str = r#"
 const __flyDraftQueryKey = "fly_draft";
 const __flyObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
-const __flyFormPayload = (form) => {
+const __flyFormPayload = (form, submitter) => {
   const payload = {};
   for (const [name, value] of new FormData(form).entries()) {
     if (Object.hasOwn(payload, name)) {
@@ -37,6 +37,9 @@ const __flyFormPayload = (form) => {
     } else if (Number.isFinite(Number(number.value))) {
       payload[number.name] = Number(number.value);
     }
+  }
+  if (submitter instanceof HTMLButtonElement && submitter.name) {
+    payload[submitter.name] = submitter.value === "true" ? true : submitter.value;
   }
   return payload;
 };
@@ -238,22 +241,20 @@ const __flyBindSsrAdapter = (adapter) => {
       ? event.target.closest("[data-fly-component-picker]")
       : null;
     if (!(picker instanceof HTMLSelectElement)) return;
-    adapter.selectedId = picker.value || null;
-    adapter.drawSelection();
-    adapter.root.dispatchEvent(new CustomEvent("fly:select", {
-      bubbles: true,
-      detail: { componentId: adapter.selectedId, source: "ssr-inspector" },
-    }));
+    adapter.select(picker.value || null, "ssr-inspector");
   }, __flyLifecycleOptions);
   adapter.root.addEventListener("submit", (event) => {
     const form = event.target instanceof Element
       ? event.target.closest("form[data-fly-intent-form]")
       : null;
     if (!(form instanceof HTMLFormElement)) return;
+    // Hydrated Fly controls submit through typed Leptos callbacks. The browser
+    // form transport is the SSR fallback and must not duplicate those mutations.
+    if (form.closest("[data-fly-wasm-hydrated='true']")) return;
     event.preventDefault();
     const intent = form.dataset.flyIntentForm;
     if (!intent) return;
-    const payload = __flyFormPayload(form);
+    const payload = __flyFormPayload(form, event.submitter);
     if (!payload.component_id && adapter.selectedId) payload.component_id = adapter.selectedId;
     void adapter.emitIntent(intent, payload);
   }, __flyLifecycleOptions);
@@ -471,5 +472,33 @@ mod tests {
         );
         assert!(!PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS.contains("leptos"));
         assert!(!PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS.contains("dioxus"));
+    }
+}
+
+
+#[cfg(test)]
+mod selection_contract_tests {
+    use super::PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS;
+
+    #[test]
+    fn inspector_picker_uses_the_adapter_selection_path() {
+        assert!(PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS
+            .contains("adapter.select(picker.value || null, \"ssr-inspector\");"));
+        assert!(!PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS
+            .contains("adapter.selectedId = picker.value || null;"));
+    }
+
+    #[test]
+    fn hydrated_workspace_forms_are_left_to_leptos() {
+        assert!(PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS
+            .contains("form.closest(\"[data-fly-wasm-hydrated='true']\")"));
+    }
+
+    #[test]
+    fn submitter_name_and_boolean_value_are_included_in_form_payload() {
+        assert!(PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS
+            .contains("__flyFormPayload(form, event.submitter)"));
+        assert!(PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS
+            .contains("payload[submitter.name] = submitter.value === \"true\" ? true : submitter.value"));
     }
 }

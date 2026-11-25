@@ -108,20 +108,42 @@ fn normalize_scale(scale: f64) -> f64 {
     }
 }
 
+fn contenteditable_value_is_editable(value: &str) -> Option<bool> {
+    if value.is_empty()
+        || value.eq_ignore_ascii_case("true")
+        || value.eq_ignore_ascii_case("plaintext-only")
+    {
+        Some(true)
+    } else if value.eq_ignore_ascii_case("false") {
+        Some(false)
+    } else {
+        // Invalid enumerated values inherit the nearest ancestor's state.
+        None
+    }
+}
+
 fn target_accepts_text_input(target: &EventTarget) -> bool {
     let Some(element) = target.dyn_ref::<Element>() else {
         return false;
     };
     let tag = element.tag_name().to_ascii_lowercase();
-    matches!(tag.as_str(), "input" | "textarea" | "select")
-        || element
-            .get_attribute("contenteditable")
-            .is_some_and(|value| value.is_empty() || value.eq_ignore_ascii_case("true"))
-        || element
-            .closest("[contenteditable='true']")
-            .ok()
-            .flatten()
-            .is_some()
+    if matches!(tag.as_str(), "input" | "textarea" | "select") {
+        return true;
+    }
+
+    // Walk the nearest contenteditable boundary rather than using
+    // closest("[contenteditable='true']"): a nested contenteditable="false"
+    // must override an editable ancestor, while plaintext-only is editable too.
+    let mut ancestor = Some(element.clone());
+    while let Some(candidate) = ancestor {
+        if let Some(value) = candidate.get_attribute("contenteditable")
+            && let Some(editable) = contenteditable_value_is_editable(&value)
+        {
+            return editable;
+        }
+        ancestor = candidate.parent_element();
+    }
+    false
 }
 
 #[cfg(test)]
@@ -150,5 +172,14 @@ mod tests {
         };
         assert_eq!(session.pointer_id, 7);
         assert_eq!(session.coordinate_scale, 0.8);
+    }
+
+    #[test]
+    fn contenteditable_values_follow_the_html_editing_state() {
+        assert_eq!(contenteditable_value_is_editable(""), Some(true));
+        assert_eq!(contenteditable_value_is_editable("true"), Some(true));
+        assert_eq!(contenteditable_value_is_editable("PLAINTEXT-ONLY"), Some(true));
+        assert_eq!(contenteditable_value_is_editable("false"), Some(false));
+        assert_eq!(contenteditable_value_is_editable("inherit"), None);
     }
 }

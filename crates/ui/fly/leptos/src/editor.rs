@@ -298,9 +298,8 @@ pub fn FlyThemeTokens(
 
 /// Editable design-token panel: lists the validated token projection, removes tokens,
 /// and upserts one token by name. Input is checked with the same `fly` validators the
-/// command path applies, so an invalid name/value is reported inline instead of being
-/// silently dropped; accepted edits go out as callbacks and the host/workspace turns
-/// them into `EditorCommand::Theme` (the only mutation path for `flyTheme`).
+/// command path applies. Hydrated workspaces use callbacks; the default SSR workspace
+/// exposes named `set_theme_token` and `remove_theme_token` forms for the browser host.
 #[component]
 pub fn FlyThemeTokenEditor(
     tokens: Vec<ThemeTokenItem>,
@@ -308,6 +307,7 @@ pub fn FlyThemeTokenEditor(
     on_remove: Callback<String>,
     #[prop(optional_no_strip)] capabilities: Option<CapabilityState>,
     #[prop(optional)] messages: Option<EditorMessages>,
+    #[prop(optional)] intent_mode: bool,
 ) -> impl IntoView {
     let messages = messages.unwrap_or_default();
     let can_styles = capabilities.map(|state| state.styles).unwrap_or(true);
@@ -330,16 +330,28 @@ pub fn FlyThemeTokenEditor(
             <dl class="fly-theme-tokens" aria-label=tokens_label>
                 {tokens
                     .into_iter()
-                    .map(|token| {
+                    .enumerate()
+                    .map(|(index, token)| {
                         let name_for_remove = token.name.clone();
+                        let name_for_form = token.name.clone();
+                        let remove_form_id = format!("fly-theme-remove-{index}");
                         let remove_label = remove_label.clone();
                         view! {
                             <div class="fly-theme-tokens__row">
                                 <dt><code>{token.css_variable.clone()}</code></dt>
                                 <dd>{token.value.clone()}</dd>
                                 <dd>
+                                    <form
+                                        id=remove_form_id.clone()
+                                        hidden=true
+                                        data-fly-intent-form=intent_mode.then_some("remove_theme_token")
+                                        on:submit=move |event| event.prevent_default()
+                                    >
+                                        <input type="hidden" name="name" value=name_for_form/>
+                                    </form>
                                     <button
-                                        type="button"
+                                        type="submit"
+                                        form=remove_form_id
                                         class="fly-theme-tokens__remove"
                                         disabled=!can_styles
                                         on:click=move |_| on_remove.run(name_for_remove.clone())
@@ -352,11 +364,16 @@ pub fn FlyThemeTokenEditor(
                     })
                     .collect_view()}
             </dl>
-            <div class="fly-theme-token-editor__form">
+            <form
+                class="fly-theme-token-editor__form"
+                data-fly-intent-form=intent_mode.then_some("set_theme_token")
+                on:submit=move |event| event.prevent_default()
+            >
                 <label>
                     {token_name_label}
                     <input
                         type="text"
+                        name="name"
                         disabled=!can_styles
                         placeholder="brand"
                         prop:value=move || token_name.get()
@@ -367,6 +384,7 @@ pub fn FlyThemeTokenEditor(
                     {token_value_label}
                     <input
                         type="text"
+                        name="value"
                         disabled=!can_styles
                         placeholder="#0b5fff"
                         prop:value=move || token_value.get()
@@ -374,9 +392,9 @@ pub fn FlyThemeTokenEditor(
                     />
                 </label>
                 <button
-                    type="button"
+                    type="submit"
                     disabled=!can_styles
-                    on:click=move |_| {
+                    on:click=move |event| {
                         let name = token_name.get_untracked().trim().to_string();
                         let value = token_value.get_untracked().trim().to_string();
                         match validate_token_name(&name)
@@ -386,7 +404,10 @@ pub fn FlyThemeTokenEditor(
                                 error.set(None);
                                 on_upsert.run(DesignToken { name, value });
                             }
-                            Err(message) => error.set(Some(message)),
+                            Err(message) => {
+                                error.set(Some(message));
+                                event.prevent_default();
+                            }
                         }
                     }
                 >
@@ -401,7 +422,7 @@ pub fn FlyThemeTokenEditor(
                             }
                         })
                 }}
-            </div>
+            </form>
         </div>
     }
 }
@@ -819,20 +840,25 @@ pub fn FlyStyleRules(
     #[prop(optional)] on_preview_breakpoint: Option<Callback<String>>,
     #[prop(optional_no_strip)] capabilities: Option<CapabilityState>,
     #[prop(optional)] messages: Option<EditorMessages>,
+    #[prop(optional)] intent_mode: bool,
 ) -> impl IntoView {
     let messages = messages.unwrap_or_else(EditorMessages::english);
     let styles_enabled = capabilities.map(|state| state.styles).unwrap_or(true);
     let breakpoints = builtin_responsive_breakpoints();
     let states = builtin_style_states();
     let descriptors = builtin_style_properties();
-    let Some(component_id) = component_id else {
-        return view! {
-            <section class="fly-style-rules">
-                <h3>{messages.responsive_styles}</h3>
-                <p class="fly-style-rules__empty">{messages.no_selection}</p>
-            </section>
+    let component_id = match component_id {
+        Some(component_id) => component_id,
+        None if intent_mode => String::new(),
+        None => {
+            return view! {
+                <section class="fly-style-rules">
+                    <h3>{messages.responsive_styles}</h3>
+                    <p class="fly-style-rules__empty">{messages.no_selection}</p>
+                </section>
+            }
+            .into_any();
         }
-        .into_any();
     };
     let media_property = RwSignal::new("padding".to_string());
     let state_property = RwSignal::new("padding".to_string());
@@ -887,6 +913,8 @@ pub fn FlyStyleRules(
         view! {
             <button
                 type="button"
+                data-fly-ssr-only="true"
+                hidden=intent_mode
                 disabled=!styles_enabled
                 on:click=move |_| preview.run(breakpoint_id.get_untracked())
             >
@@ -897,9 +925,16 @@ pub fn FlyStyleRules(
     view! {
         <section class="fly-style-rules">
             <h3>{messages.responsive_styles}</h3>
-            <div class="fly-style-rules__row">
+            <form
+                class="fly-style-rules__row"
+                data-fly-intent-form=intent_mode.then_some("upsert_style_rule")
+                on:submit=move |event| event.prevent_default()
+            >
+                <input type="hidden" name="scope_kind" value="media"/>
                 <label>{breakpoint_label.clone()}</label>
                 <select
+                    name="scope_value"
+                    disabled=!styles_enabled
                     attr:aria-label=breakpoint_label
                     prop:value=move || breakpoint_id.get()
                     on:change=move |event| {
@@ -921,6 +956,8 @@ pub fn FlyStyleRules(
                 </select>
                 <label>{property_label.clone()}</label>
                 <select
+                    name="property"
+                    disabled=!styles_enabled
                     attr:aria-label=property_label.clone()
                     prop:value=move || media_property.get()
                     on:change=move |event| {
@@ -941,13 +978,14 @@ pub fn FlyStyleRules(
                     }).collect_view()}
                 </select>
                 <input
+                    name="value"
                     attr:aria-label=messages.style_value.clone()
                     prop:value=move || media_value.get()
                     disabled=!styles_enabled
                     on:input=move |event| media_value.set(event_target_value(&event))
                 />
                 <button
-                    type="button"
+                    type="submit"
                     disabled=!styles_enabled
                     on:click=move |_| {
                         on_upsert.run(ScopedStyleChange {
@@ -963,7 +1001,9 @@ pub fn FlyStyleRules(
                 </button>
                 {preview_button}
                 <button
-                    type="button"
+                    type="submit"
+                    name="remove"
+                    value="true"
                     disabled=!styles_enabled
                     on:click=move |_| {
                         on_upsert.run(ScopedStyleChange {
@@ -977,11 +1017,18 @@ pub fn FlyStyleRules(
                 >
                     {clear_label.clone()}
                 </button>
-            </div>
+            </form>
             <h3>{messages.interaction_states}</h3>
-            <div class="fly-style-rules__row">
+            <form
+                class="fly-style-rules__row"
+                data-fly-intent-form=intent_mode.then_some("upsert_style_rule")
+                on:submit=move |event| event.prevent_default()
+            >
+                <input type="hidden" name="scope_kind" value="state"/>
                 <label>{state_label.clone()}</label>
                 <select
+                    name="scope_value"
+                    disabled=!styles_enabled
                     attr:aria-label=state_label
                     prop:value=move || state_pseudo.get()
                     on:change=move |event| {
@@ -1003,6 +1050,8 @@ pub fn FlyStyleRules(
                 </select>
                 <label>{property_label.clone()}</label>
                 <select
+                    name="property"
+                    disabled=!styles_enabled
                     attr:aria-label=property_label
                     prop:value=move || state_property.get()
                     on:change=move |event| {
@@ -1025,13 +1074,14 @@ pub fn FlyStyleRules(
                     }).collect_view()}
                 </select>
                 <input
+                    name="value"
                     attr:aria-label=messages.style_value.clone()
                     prop:value=move || state_value.get()
                     disabled=!styles_enabled
                     on:input=move |event| state_value.set(event_target_value(&event))
                 />
                 <button
-                    type="button"
+                    type="submit"
                     disabled=!styles_enabled
                     on:click=move |_| {
                         on_upsert.run(ScopedStyleChange {
@@ -1048,7 +1098,9 @@ pub fn FlyStyleRules(
                     {apply_label}
                 </button>
                 <button
-                    type="button"
+                    type="submit"
+                    name="remove"
+                    value="true"
                     disabled=!styles_enabled
                     on:click=move |_| {
                         on_upsert.run(ScopedStyleChange {
@@ -1064,7 +1116,7 @@ pub fn FlyStyleRules(
                 >
                     {clear_label}
                 </button>
-            </div>
+            </form>
         </section>
     }
     .into_any()
@@ -1787,12 +1839,13 @@ pub fn FlyAssets(
 /// [`EditorMessages`](fly_ui::EditorMessages) from its own message catalog for the
 /// current locale (English by default), keeping the adapters platform-neutral.
 ///
-/// When the host passes `on_intent`, the workspace runs in SSR intent mode instead:
-/// palette inserts, selection, and undo/redo are emitted as typed
-/// [`BrowserIntentEnvelope`]s for the host to POST to its intent endpoint, and the
-/// host re-renders with the server-returned document — the workspace mutates nothing
-/// locally. Design-token edits ride the same transport (`set_theme_token` /
-/// `remove_theme_token` intents).
+/// When the host passes `on_intent`, hydrated wasm-client builds use typed callbacks
+/// against the authoritative controller. Before hydration, the default SSR workspace keeps
+/// only controls with a browser transport: palette/layer selection plus named theme/style
+/// intent forms. Page, component-property, asset and inline-preview panels that require
+/// Leptos event handlers stay hidden until hydration; the Page Builder host supplies their
+/// SSR equivalents outside this workspace. The browser adapter yields mutation ownership
+/// to Leptos after hydration, preventing the same action from being submitted twice.
 #[component]
 pub fn FlyEditorWorkspace(
     document: ProjectDocument,
@@ -2280,6 +2333,9 @@ pub fn FlyEditorWorkspace(
         let intent_instance = intent_instance.clone();
         let apply_editor = editor;
         move |change: ScopedStyleChange| {
+            if change.component_id.trim().is_empty() {
+                return;
+            }
             if let Some(on_intent) = on_intent {
                 let (scope_kind, scope_value) = match &change.scope {
                     fly::StyleRuleScope::Media { query } => ("media", query.clone()),
@@ -2816,6 +2872,9 @@ pub fn FlyEditorWorkspace(
     };
 
     let palette_messages = theme_messages.clone();
+    let wasm_hydrated = RwSignal::new(false);
+    #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
+    Effect::new(move |_| wasm_hydrated.set(true));
 
     view! {
         <section
@@ -2823,9 +2882,16 @@ pub fn FlyEditorWorkspace(
             role="application"
             aria-label=workspace_title
             tabindex="0"
+            data-fly-wasm-hydrated=move || if wasm_hydrated.get() { "true" } else { "false" }
             on:keydown=on_workspace_keydown
         >
-            <div class="fly-editor__toolbar" role="toolbar" aria-label=toolbar_label>
+            <div
+                class="fly-editor__toolbar"
+                data-fly-ssr-only="true"
+                hidden=move || !wasm_hydrated.get()
+                role="toolbar"
+                aria-label=toolbar_label
+            >
                 <button
                     type="button"
                     disabled=move || {
@@ -2929,20 +2995,22 @@ pub fn FlyEditorWorkspace(
                     </button>
                 </div>
             </div>
-            {move || {
-                let active = active_page.get();
-                view! {
-                    <FlyPageTabs
-                        pages=page_summaries.get()
-                        active=active
-                        on_activate=on_activate
-                        on_add=on_add_page
-                        on_remove=on_remove_page
-                        capabilities=Some(effective_capabilities.get())
-                        messages=tabs_messages.clone()
-                    />
-                }
-            }}
+            <div data-fly-ssr-only="true" hidden=move || !wasm_hydrated.get()>
+                {move || {
+                    let active = active_page.get();
+                    view! {
+                        <FlyPageTabs
+                            pages=page_summaries.get()
+                            active=active
+                            on_activate=on_activate
+                            on_add=on_add_page
+                            on_remove=on_remove_page
+                            capabilities=Some(effective_capabilities.get())
+                            messages=tabs_messages.clone()
+                        />
+                    }
+                }}
+            </div>
             <div class="fly-editor__body">
                 {summary_assembly.map(|assembly| {
                     view! {
@@ -2970,28 +3038,31 @@ pub fn FlyEditorWorkspace(
                             on_remove=on_token_remove
                             capabilities=Some(effective_capabilities.get())
                             messages=theme_messages.clone()
+                            intent_mode=on_intent.is_some()
                         />
                     }
                 }}
-                {move || {
-                    let snapshot = properties_snapshot.get();
-                    match snapshot {
-                        (Some(summary), metadata, page_count) => view! {
-                            <FlyPageProperties
-                                summary=summary
-                                metadata=metadata
-                                page_count=page_count
-                                on_apply=on_apply_page_properties
-                                on_move=on_move_page
-                                capabilities=Some(effective_capabilities.get())
-                                messages=properties_messages.clone()
-                            />
-                        }
-                        .into_any(),
-                        _ => view! { <div class="fly-page-properties fly-page-properties--empty"></div> }
+                <div data-fly-ssr-only="true" hidden=move || !wasm_hydrated.get()>
+                    {move || {
+                        let snapshot = properties_snapshot.get();
+                        match snapshot {
+                            (Some(summary), metadata, page_count) => view! {
+                                <FlyPageProperties
+                                    summary=summary
+                                    metadata=metadata
+                                    page_count=page_count
+                                    on_apply=on_apply_page_properties
+                                    on_move=on_move_page
+                                    capabilities=Some(effective_capabilities.get())
+                                    messages=properties_messages.clone()
+                                />
+                            }
                             .into_any(),
-                    }
-                }}
+                            _ => view! { <div class="fly-page-properties fly-page-properties--empty"></div> }
+                                .into_any(),
+                        }
+                    }}
+                </div>
                 {move || {
                     let document = editor.with(|editor| editor.document().clone());
                     let selected = editor.with(|editor| editor.selection().map(ToString::to_string));
@@ -3004,33 +3075,37 @@ pub fn FlyEditorWorkspace(
                             page_index=page_index
                             messages=panel_messages.clone()
                         />
-                        <FlyCanvasPreview
-                            document=document
-                            page_index=Some(page_index)
-                            selected=selected
-                            on_select=Some(on_select)
-                            on_patch_content=Some(on_canvas_patch_content)
-                            interactive=Some(interactive_mode.get())
-                            viewport_width=preview_width.get()
-                            messages=Some(panel_messages.clone())
-                            csp_nonce=workspace_csp_nonce.clone()
-                        />
+                        <div data-fly-ssr-only="true" hidden=move || !wasm_hydrated.get()>
+                            <FlyCanvasPreview
+                                document=document
+                                page_index=Some(page_index)
+                                selected=selected
+                                on_select=Some(on_select)
+                                on_patch_content=Some(on_canvas_patch_content)
+                                interactive=Some(interactive_mode.get())
+                                viewport_width=preview_width.get()
+                                messages=Some(panel_messages.clone())
+                                csp_nonce=workspace_csp_nonce.clone()
+                            />
+                        </div>
                     }
                 }}
-                {
-                    let component_messages = component_messages.clone();
-                    move || {
-                        let view = selection_snapshot.get();
-                        view! {
-                            <FlyComponentProperties
-                                view=view
-                                on_patch=on_patch_property
-                                capabilities=Some(effective_capabilities.get())
-                                messages=component_messages.clone()
-                            />
+                <div data-fly-ssr-only="true" hidden=move || !wasm_hydrated.get()>
+                    {
+                        let component_messages = component_messages.clone();
+                        move || {
+                            let view = selection_snapshot.get();
+                            view! {
+                                <FlyComponentProperties
+                                    view=view
+                                    on_patch=on_patch_property
+                                    capabilities=Some(effective_capabilities.get())
+                                    messages=component_messages.clone()
+                                />
+                            }
                         }
                     }
-                }
+                </div>
                 {
                     let component_messages = component_messages.clone();
                     move || {
@@ -3046,26 +3121,29 @@ pub fn FlyEditorWorkspace(
                                 on_preview_breakpoint=on_preview_breakpoint
                                 capabilities=Some(effective_capabilities.get())
                                 messages=component_messages.clone()
+                                intent_mode=on_intent.is_some()
                             />
                         }
                     }
                 }
-                {move || {
-                    let assets = asset_snapshot.get();
-                    let selected_component =
-                        editor.with(|editor| editor.selection().map(ToString::to_string));
-                    view! {
-                        <FlyAssets
-                            assets=assets
-                            selected_component=selected_component
-                            on_upsert=on_upsert_asset
-                            on_remove=on_remove_asset
-                            on_apply=on_apply_asset
-                            capabilities=Some(effective_capabilities.get())
-                            messages=asset_messages.clone()
-                        />
-                    }
-                }}
+                <div data-fly-ssr-only="true" hidden=move || !wasm_hydrated.get()>
+                    {move || {
+                        let assets = asset_snapshot.get();
+                        let selected_component =
+                            editor.with(|editor| editor.selection().map(ToString::to_string));
+                        view! {
+                            <FlyAssets
+                                assets=assets
+                                selected_component=selected_component
+                                on_upsert=on_upsert_asset
+                                on_remove=on_remove_asset
+                                on_apply=on_apply_asset
+                                capabilities=Some(effective_capabilities.get())
+                                messages=asset_messages.clone()
+                            />
+                        }
+                    }}
+                </div>
             </div>
         </section>
     }
@@ -3311,6 +3389,60 @@ mod tests {
         assert!(intent.contains("data-fly-action=\"insert-block\""));
         assert!(intent.contains("data-fly-action=\"begin-block-drag\""));
         assert!(intent.contains("data-fly-action=\"select-component\""));
+    }
+
+    #[test]
+    fn ssr_workspace_hides_controls_that_require_wasm_hydration() {
+        let html = view! {
+            <FlyEditorWorkspace
+                document=sample_document()
+                page_index=0
+                on_intent=Callback::new(|_: BrowserIntentEnvelope| {})
+            />
+        }
+        .to_html();
+
+        assert!(html.contains("data-fly-wasm-hydrated=\"false\""));
+        assert!(html.contains("data-fly-ssr-only=\"true\""));
+        assert!(html.contains("hidden"));
+    }
+
+    #[test]
+    fn theme_token_editor_exposes_named_ssr_intent_forms() {
+        let html = view! {
+            <FlyThemeTokenEditor
+                tokens=vec![]
+                on_upsert=Callback::new(|_: DesignToken| {})
+                on_remove=Callback::new(|_: String| {})
+                intent_mode=true
+            />
+        }
+        .to_html();
+
+        assert!(html.contains("data-fly-intent-form=\"set_theme_token\""));
+        assert!(html.contains("name=\"name\""));
+        assert!(html.contains("name=\"value\""));
+    }
+
+    #[test]
+    fn style_rules_expose_named_ssr_intent_forms_even_before_selection() {
+        let html = view! {
+            <FlyStyleRules
+                component_id=None
+                rules=fly::StyleRuleCatalog::default()
+                on_upsert=Callback::new(|_: ScopedStyleChange| {})
+                on_preview_breakpoint=None
+                intent_mode=true
+            />
+        }
+        .to_html();
+
+        assert!(html.contains("data-fly-intent-form=\"upsert_style_rule\""));
+        assert!(html.contains("name=\"scope_kind\""));
+        assert!(html.contains("name=\"scope_value\""));
+        assert!(html.contains("name=\"property\""));
+        assert!(html.contains("name=\"value\""));
+        assert!(html.contains("name=\"remove\""));
     }
 
     #[test]

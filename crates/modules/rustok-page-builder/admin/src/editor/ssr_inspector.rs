@@ -30,6 +30,7 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
         let rename_page_enabled = runtime.form_enabled("rename_page");
         let remove_page_enabled = runtime.form_enabled("remove_page");
         let activate_page_enabled = runtime.form_enabled("activate_page");
+        let move_page_enabled = runtime.form_enabled("move_page");
         // The page the editor is on is kept in the draft session, and the host keeps a session
         // for a caller that may edit only. For anyone else the choice would be gone with the
         // next request, so the form is absent: a control is not rendered without its transport.
@@ -157,6 +158,16 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
             "page_builder.ssrInspector.removePage",
             "Remove page",
         );
+        let move_page_up = t(
+            locale.as_deref(),
+            "page_builder.ssrInspector.movePageUp",
+            "Move page up",
+        );
+        let move_page_down = t(
+            locale.as_deref(),
+            "page_builder.ssrInspector.movePageDown",
+            "Move page down",
+        );
         let page_id_placeholder = t(
             locale.as_deref(),
             "page_builder.ssrInspector.pageIdPlaceholder",
@@ -228,6 +239,7 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
             let pages = controller.editor().document().project.pages.clone();
             (components, pages, controller.active_page_index())
         });
+        let page_count = pages.len();
         let default_component = components.first().map(|component| component.id.clone());
         let runtime_context_json =
             serde_json::to_string_pretty(&runtime.runtime_context.get_untracked())
@@ -433,6 +445,34 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                             <button type="submit" class="w-fit rounded border border-destructive/40 px-2 py-1 text-xs text-destructive">{remove_page}</button>
                             </fieldset>
                         </form>
+                        {(page_count > 1).then(|| {
+                            let up_target = active_page_index.saturating_sub(1);
+                            let down_target = active_page_index.saturating_add(2).min(page_count);
+                            let can_move_up = active_page_index > 0;
+                            let can_move_down = active_page_index + 1 < page_count;
+                            view! {
+                                <div class="grid grid-cols-2 gap-2 border-t border-border pt-3">
+                                    <form class="grid gap-2" data-fly-intent-form="move_page">
+                                        <fieldset class="contents" disabled=!(move_page_enabled && can_move_up)>
+                                            <input type="number" name="page_index" value=active_page_index hidden=true/>
+                                            <input type="number" name="target_index" value=up_target hidden=true/>
+                                            <button type="submit" class="w-fit rounded border border-border px-2 py-1 text-xs">
+                                                {move_page_up.clone()}
+                                            </button>
+                                        </fieldset>
+                                    </form>
+                                    <form class="grid gap-2" data-fly-intent-form="move_page">
+                                        <fieldset class="contents" disabled=!(move_page_enabled && can_move_down)>
+                                            <input type="number" name="page_index" value=active_page_index hidden=true/>
+                                            <input type="number" name="target_index" value=down_target hidden=true/>
+                                            <button type="submit" class="w-fit rounded border border-border px-2 py-1 text-xs">
+                                                {move_page_down.clone()}
+                                            </button>
+                                        </fieldset>
+                                    </form>
+                                </div>
+                            }
+                        })}
                     </div>
                 </details>
             </section>

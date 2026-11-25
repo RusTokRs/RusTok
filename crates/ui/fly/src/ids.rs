@@ -6,8 +6,11 @@ pub trait IdGenerator {
     fn next_id(&mut self, hint: &str) -> String;
 }
 
-fn normalize_hint(hint: &str) -> String {
-    let normalized = hint
+const MAX_GENERATED_ID_LENGTH: usize = 128;
+const MAX_GENERATED_PREFIX_LENGTH: usize = 16;
+
+fn normalize_segment(value: &str, fallback: &str, maximum_length: usize) -> String {
+    let normalized = value
         .chars()
         .map(|character| {
             if character.is_ascii_alphanumeric() {
@@ -16,14 +19,27 @@ fn normalize_hint(hint: &str) -> String {
                 '-'
             }
         })
+        .collect::<String>();
+    let bounded = normalized
+        .trim_matches('-')
+        .chars()
+        .take(maximum_length)
         .collect::<String>()
         .trim_matches('-')
         .to_string();
-    if normalized.is_empty() {
-        "node".to_string()
+    if bounded.is_empty() {
+        fallback.to_string()
     } else {
-        normalized
+        bounded
     }
+}
+
+fn normalize_prefix(prefix: &str) -> String {
+    normalize_segment(prefix, "fly", MAX_GENERATED_PREFIX_LENGTH)
+}
+
+fn normalize_hint(hint: &str, maximum_length: usize) -> String {
+    normalize_segment(hint, "node", maximum_length)
 }
 
 fn base36(mut value: u128) -> String {
@@ -74,8 +90,9 @@ impl UniqueIdGenerator {
         let salt = now_nanos
             ^ (u64::from(std::process::id()) << 32)
             ^ instance.wrapping_mul(0x9e37_79b9_7f4a_7c15);
+        let prefix = normalize_prefix(&prefix.into());
         Self {
-            prefix: prefix.into(),
+            prefix,
             salt,
             next: 1,
         }
@@ -96,14 +113,20 @@ impl IdGenerator for UniqueIdGenerator {
             .unwrap_or_default();
         let counter = self.next;
         self.next = self.next.wrapping_add(1);
-        format!(
-            "{}-{}-{}-{}-{}",
-            self.prefix,
-            normalize_hint(hint),
-            base36(now_nanos),
-            base36(u128::from(counter)),
-            base36(u128::from(self.salt)),
-        )
+
+        // Deserialization can bypass new, so normalize the stored prefix at the
+        // boundary too. Allocate the remaining identifier budget to the hint.
+        let prefix = normalize_prefix(&self.prefix);
+        let timestamp = base36(now_nanos);
+        let counter = base36(u128::from(counter));
+        let salt = base36(u128::from(self.salt));
+        let fixed_length = prefix.len() + timestamp.len() + counter.len() + salt.len() + 4;
+        let hint = normalize_hint(
+            hint,
+            MAX_GENERATED_ID_LENGTH.saturating_sub(fixed_length),
+        );
+
+        format!("{prefix}-{hint}-{timestamp}-{counter}-{salt}")
     }
 }
 
@@ -116,7 +139,7 @@ pub struct SequentialIdGenerator {
 impl SequentialIdGenerator {
     pub fn new(prefix: impl Into<String>) -> Self {
         Self {
-            prefix: prefix.into(),
+            prefix: normalize_prefix(&prefix.into()),
             next: 1,
         }
     }
@@ -130,9 +153,16 @@ impl Default for SequentialIdGenerator {
 
 impl IdGenerator for SequentialIdGenerator {
     fn next_id(&mut self, hint: &str) -> String {
-        let id = format!("{}-{}-{}", self.prefix, normalize_hint(hint), self.next);
+        // A deserialized prefix must not bypass the identifier contract.
+        let prefix = normalize_prefix(&self.prefix);
+        let counter = self.next.to_string();
         self.next = self.next.wrapping_add(1);
-        id
+        let fixed_length = prefix.len() + counter.len() + 2;
+        let hint = normalize_hint(
+            hint,
+            MAX_GENERATED_ID_LENGTH.saturating_sub(fixed_length),
+        );
+        format!("{prefix}-{hint}-{counter}")
     }
 }
 
@@ -169,5 +199,37 @@ mod tests {
         let mut generator = SequentialIdGenerator::default();
         assert_eq!(generator.next_id("hero"), "fly-hero-1");
         assert_eq!(generator.next_id("hero"), "fly-hero-2");
+    }
+
+    #[test]
+    fn generators_bound_prefix_and_hint_to_the_identifier_contract() {
+        let long = "Long Prefix !".repeat(32);
+        let mut unique = UniqueIdGenerator::new(long.clone());
+        let mut sequential = SequentialIdGenerator::new(long.clone());
+
+        for id in [unique.next_id(&long), sequential.next_id(&long)] {
+            assert!(id.len() <= MAX_GENERATED_ID_LENGTH);
+            validate_identifier(&id).unwrap_or_else(|error| {
+                panic!("generated id {id} must be valid: {error}")
+            });
+        }
+    }
+
+    #[test]
+    fn deserialized_generators_normalize_untrusted_prefixes_before_emitting_ids() {
+        let mut unique: UniqueIdGenerator = serde_json::from_str(
+            r#"{"prefix":" !!! invalid prefix !!! ","salt":1,"next":1}"#,
+        )
+        .expect("unique generator");
+        let mut sequential: SequentialIdGenerator =
+            serde_json::from_str(r#"{"prefix":" !!! invalid prefix !!! ","next":1}"#)
+                .expect("sequential generator");
+
+        for id in [unique.next_id(""), sequential.next_id("")] {
+            assert!(id.len() <= MAX_GENERATED_ID_LENGTH);
+            validate_identifier(&id).unwrap_or_else(|error| {
+                panic!("generated id {id} must be valid: {error}")
+            });
+        }
     }
 }

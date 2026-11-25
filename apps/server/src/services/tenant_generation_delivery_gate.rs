@@ -2,7 +2,7 @@ use std::any::Any;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use rustok_cache::CacheService;
+use rustok_cache::{BoundedCacheEventDedupe, CacheService};
 use rustok_core::events::{EventEnvelope, EventTransport, ReliabilityLevel};
 use rustok_core::{Error, Result};
 use rustok_events::{ContractEventEnvelope, ContractEventPayload};
@@ -16,14 +16,33 @@ use rustok_pages::{PageCacheInvalidationEventHandler, PagesCacheInvalidationRunt
 use crate::services::pages_cache_invalidation::ServerPagesCachePort;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use crate::services::tenant_cache_generation::tenant_cache_generation_listener_snapshot;
-use crate::services::tenant_cache_generation_status::TenantCacheGenerationListenerStatus;
+use crate::services::tenant_cache_generation_status::{
+    TenantCacheGenerationListenerSnapshot, TenantCacheGenerationListenerStatus,
+};
 
-/// Prevent local-only event delivery from treating an unrelated cache invalidation subscriber as
-/// the canonical tenant generation listener.
+fn tenant_generation_listener_ready(
+    redis_configured: bool,
+    snapshot: &TenantCacheGenerationListenerSnapshot,
+) -> bool {
+    if redis_configured {
+        snapshot.redis_required
+            && snapshot.status == TenantCacheGenerationListenerStatus::Healthy
+            && snapshot.subscriber_ready
+            && snapshot.reconciliation_healthy
+    } else {
+        !snapshot.redis_required
+            && snapshot.status == TenantCacheGenerationListenerStatus::Healthy
+            && snapshot.local_ready
+    }
+}
+
+/// Prevent event delivery until the canonical tenant generation listener is ready.
 ///
 /// The invalidation transport exposes a transport-wide receiver count that may include receivers
-/// for other channels. This gate uses the context-owned generation listener state immediately
-/// before downstream event delivery. A retry can therefore resume after the listener recovers
+/// for other channels. This gate uses the context-owned listener state immediately before
+/// downstream delivery: the local effective-policy cache is fenced synchronously, local-only mode
+/// requires its canonical local listener, and Redis-backed mode requires the Redis subscriber and
+/// durable reconciliation to be healthy. A retry can therefore resume after the listener recovers
 /// without rotating the same event generation again.
 ///
 /// With the Pages module enabled, the same delivery gate also runs the Pages cache invalidation
@@ -35,6 +54,7 @@ pub struct TenantGenerationDeliveryGate {
     inner: Arc<dyn EventTransport>,
     ctx: ServerRuntimeContext,
     cache: CacheService,
+    policy_cache_invalidations: Arc<BoundedCacheEventDedupe>,
     #[cfg(feature = "mod-pages")]
     pages_handler: PageCacheInvalidationEventHandler,
 }
@@ -55,18 +75,16 @@ impl TenantGenerationDeliveryGate {
             inner,
             ctx,
             cache,
+            policy_cache_invalidations: Arc::new(BoundedCacheEventDedupe::default()),
             #[cfg(feature = "mod-pages")]
             pages_handler,
         }
     }
 
-    async fn ensure_local_listener_ready(&self) -> Result<()> {
-        if self.cache.redis_configuration_present() {
-            return Ok(());
-        }
-
+    async fn ensure_listener_ready(&self) -> Result<()> {
+        let redis_configured = self.cache.redis_configuration_present();
         let snapshot = tenant_cache_generation_listener_snapshot(&self.ctx).await;
-        if snapshot.status == TenantCacheGenerationListenerStatus::Healthy && snapshot.local_ready {
+        if tenant_generation_listener_ready(redis_configured, &snapshot) {
             return Ok(());
         }
 
@@ -79,11 +97,25 @@ impl TenantGenerationDeliveryGate {
 #[async_trait]
 impl EventTransport for TenantGenerationDeliveryGate {
     async fn publish(&self, envelope: EventEnvelope) -> Result<()> {
-        self.ensure_local_listener_ready().await?;
+        {
+            let _event_guard = self
+                .policy_cache_invalidations
+                .serialize_event(envelope.id)
+                .await;
+            if !self.policy_cache_invalidations.is_duplicate(envelope.id)
+                && crate::services::tenant_cache_generation::invalidate_effective_policy_cache_for_event(
+                    &self.ctx,
+                    &envelope,
+                )
+            {
+                self.policy_cache_invalidations.observe(envelope.id);
+            }
+        }
         #[cfg(feature = "mod-pages")]
         if self.pages_handler.handles(&envelope.event) {
             self.pages_handler.handle(&envelope).await?;
         }
+        self.ensure_listener_ready().await?;
         self.inner.publish(envelope).await
     }
 
@@ -144,12 +176,12 @@ impl EventTransport for TenantGenerationDeliveryGate {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(feature = "mod-pages")]
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::*;
     use rustok_core::events::MemoryTransport;
     use rustok_events::DomainEvent;
+    use rustok_modules::{ModuleEffectivePolicyCache, PolicyCacheReadStamp};
     #[cfg(feature = "mod-pages")]
     use rustok_pages::{PAGES_CACHE_ENTITY_KIND, PageCacheGenerationSnapshot, PagesCacheReadPort};
     use uuid::Uuid;
@@ -203,6 +235,182 @@ mod tests {
         fn as_any(&self) -> &dyn Any {
             self
         }
+    }
+
+    struct PolicyCacheStampCheckingTransport {
+        cache: ModuleEffectivePolicyCache,
+        tenant_id: Uuid,
+        before: PolicyCacheReadStamp,
+    }
+
+    #[async_trait]
+    impl EventTransport for PolicyCacheStampCheckingTransport {
+        async fn publish(&self, _envelope: EventEnvelope) -> Result<()> {
+            assert_ne!(
+                self.cache.stamp(self.tenant_id),
+                self.before,
+                "local effective-policy cache must be invalidated before downstream delivery"
+            );
+            Ok(())
+        }
+
+        fn reliability_level(&self) -> ReliabilityLevel {
+            ReliabilityLevel::Outbox
+        }
+
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+    }
+
+    struct FailOncePolicyCacheStampCheckingTransport {
+        cache: ModuleEffectivePolicyCache,
+        tenant_id: Uuid,
+        before: PolicyCacheReadStamp,
+        attempts: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl EventTransport for FailOncePolicyCacheStampCheckingTransport {
+        async fn publish(&self, _envelope: EventEnvelope) -> Result<()> {
+            assert_ne!(
+                self.cache.stamp(self.tenant_id),
+                self.before,
+                "local effective-policy cache must be invalidated before downstream delivery"
+            );
+            if self.attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                return Err(Error::External(
+                    "synthetic downstream rejection".to_string(),
+                ));
+            }
+            Ok(())
+        }
+
+        fn reliability_level(&self) -> ReliabilityLevel {
+            ReliabilityLevel::Outbox
+        }
+
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+    }
+
+    fn listener_snapshot(
+        redis_required: bool,
+        status: TenantCacheGenerationListenerStatus,
+        local_ready: bool,
+        subscriber_ready: bool,
+        reconciliation_healthy: bool,
+    ) -> TenantCacheGenerationListenerSnapshot {
+        TenantCacheGenerationListenerSnapshot {
+            status,
+            last_error: None,
+            redis_required,
+            local_ready,
+            subscriber_ready,
+            reconciliation_healthy,
+        }
+    }
+
+    #[test]
+    fn local_delivery_requires_the_canonical_local_listener() {
+        assert!(!tenant_generation_listener_ready(
+            false,
+            &listener_snapshot(
+                false,
+                TenantCacheGenerationListenerStatus::Starting,
+                false,
+                false,
+                true,
+            ),
+        ));
+        assert!(tenant_generation_listener_ready(
+            false,
+            &listener_snapshot(
+                false,
+                TenantCacheGenerationListenerStatus::Healthy,
+                true,
+                false,
+                true,
+            ),
+        ));
+    }
+
+    #[test]
+    fn redis_delivery_requires_a_healthy_subscriber_and_reconciliation() {
+        let starting = listener_snapshot(
+            true,
+            TenantCacheGenerationListenerStatus::Starting,
+            true,
+            false,
+            true,
+        );
+        assert!(!tenant_generation_listener_ready(true, &starting));
+
+        let healthy = listener_snapshot(
+            true,
+            TenantCacheGenerationListenerStatus::Healthy,
+            false,
+            true,
+            true,
+        );
+        assert!(tenant_generation_listener_ready(true, &healthy));
+        assert!(!tenant_generation_listener_ready(false, &healthy));
+    }
+
+    #[tokio::test]
+    async fn local_effective_policy_cache_is_invalidated_before_downstream_delivery() {
+        let cache = CacheService::from_url(None);
+        let ctx = context().await;
+        let policy_cache = ModuleEffectivePolicyCache::new();
+        ctx.shared_insert(policy_cache.clone());
+        crate::services::tenant_cache_generation::start_tenant_cache_generation_listener(
+            &ctx,
+            cache.clone(),
+        )
+        .await
+        .unwrap();
+
+        let tenant_id = Uuid::from_u128(42);
+        let before = policy_cache.stamp(tenant_id);
+        let downstream = Arc::new(PolicyCacheStampCheckingTransport {
+            cache: policy_cache,
+            tenant_id,
+            before,
+        });
+        let gate = TenantGenerationDeliveryGate::new(downstream, ctx, cache);
+
+        gate.publish(tenant_event(42)).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn policy_cache_invalidation_is_not_repeated_for_downstream_retries() {
+        let cache = CacheService::from_url(None);
+        let ctx = context().await;
+        let policy_cache = ModuleEffectivePolicyCache::new();
+        ctx.shared_insert(policy_cache.clone());
+        crate::services::tenant_cache_generation::start_tenant_cache_generation_listener(
+            &ctx,
+            cache.clone(),
+        )
+        .await
+        .unwrap();
+
+        let tenant_id = Uuid::from_u128(43);
+        let before = policy_cache.stamp(tenant_id);
+        let downstream = Arc::new(FailOncePolicyCacheStampCheckingTransport {
+            cache: policy_cache.clone(),
+            tenant_id,
+            before,
+            attempts: AtomicUsize::new(0),
+        });
+        let gate = TenantGenerationDeliveryGate::new(downstream, ctx, cache);
+        let envelope = tenant_event(43);
+
+        assert!(gate.publish(envelope.clone()).await.is_err());
+        let after_first_attempt = policy_cache.stamp(tenant_id);
+        gate.publish(envelope).await.unwrap();
+        assert_eq!(policy_cache.stamp(tenant_id), after_first_attempt);
     }
 
     #[tokio::test]

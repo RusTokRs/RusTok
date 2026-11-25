@@ -4,11 +4,16 @@ import { readFile } from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
 
 const runtime = await readFile(new URL('../assets/fly-actions.js', import.meta.url), 'utf8');
+const nextRuntime = await readFile(
+  new URL('../../../../../apps/next-frontend/packages/rustok-pages/src/components/fly-actions.js', import.meta.url),
+  'utf8',
+);
 
 // Exercise the shipped runtime with a minimal DOM boundary. Real browser scrolling and media
 // emulation are covered separately by the Playwright suite.
 function fixture(reducedMotion) {
   const calls = [];
+  const events = [];
   const view = reducedMotion === undefined ? {} : {
     matchMedia(query) {
       assert.equal(query, '(prefers-reduced-motion: reduce)');
@@ -42,10 +47,20 @@ function fixture(reducedMotion) {
     closest() { return root; },
     getAttribute() { return null; },
     querySelectorAll() { return []; },
+    dispatchEvent(event) { events.push(event); return true; },
   };
-  const context = {};
+  const context = {
+    CustomEvent: class {
+      constructor(type, options = {}) {
+        this.type = type;
+        this.detail = options.detail;
+        this.bubbles = options.bubbles;
+        this.cancelable = options.cancelable;
+      }
+    },
+  };
   runInNewContext(runtime, context);
-  return { calls, target, trigger, actions: context.FlyActions };
+  return { calls, events, target, trigger, actions: context.FlyActions };
 }
 
 for (const [label, preference, behavior] of [
@@ -72,4 +87,46 @@ test('animation uses the target document motion preference', () => {
   const normal = fixture(false);
   normal.actions.handleAction({ kind: 'animate', target_id: 'destination', animation: 'fade_in' }, normal.trigger);
   assert.equal(normal.calls[0][0], 'animate');
+});
+
+
+test('the Next published-page asset stays identical to the Fly source asset', () => {
+  assert.equal(nextRuntime, runtime);
+});
+
+for (const payload of [false, 0, '']) {
+  test('emit_event preserves falsy payload ' + String(payload), () => {
+    const { actions, events, trigger } = fixture();
+    actions.handleAction({ kind: 'emit_event', event: 'test.payload', payload }, trigger);
+    assert.equal(events.length, 1);
+    assert.equal(events[0].type, 'fly:action');
+    assert.strictEqual(events[0].detail.payload, payload);
+  });
+}
+
+for (const input of [false, 0, '']) {
+  test('provider_action preserves falsy input ' + String(input), () => {
+    const { actions, events, trigger } = fixture();
+    actions.handleAction({
+      kind: 'provider_action',
+      provider: 'test',
+      action: 'submit',
+      input,
+    }, trigger);
+    assert.equal(events.length, 1);
+    assert.strictEqual(events[0].detail.input, input);
+  });
+}
+
+test('null custom JSON values use the empty-object default', () => {
+  const { actions, events, trigger } = fixture();
+  actions.handleAction({ kind: 'emit_event', event: 'test.empty', payload: null }, trigger);
+  actions.handleAction({
+    kind: 'provider_action',
+    provider: 'test',
+    action: 'submit',
+    input: null,
+  }, trigger);
+  assert.equal(JSON.stringify(events[0].detail.payload), '{}');
+  assert.equal(JSON.stringify(events[1].detail.input), '{}');
 });

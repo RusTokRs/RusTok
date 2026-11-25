@@ -289,6 +289,34 @@ fn platform_wide_policy_event(event: &DomainEvent) -> bool {
     )
 }
 
+/// Fence this process's effective-policy cache synchronously before an outbox
+/// event is handed to downstream consumers. The durable listener still
+/// invalidates every other process; this local step closes the window between
+/// publishing the durable invalidation record and the local subscriber
+/// consuming it.
+pub(crate) fn invalidate_effective_policy_cache_for_event(
+    ctx: &ServerRuntimeContext,
+    envelope: &EventEnvelope,
+) -> bool {
+    let Some(policy_cache) = ctx.shared_get::<rustok_modules::ModuleEffectivePolicyCache>() else {
+        return false;
+    };
+
+    if platform_wide_policy_event(&envelope.event) {
+        policy_cache.clear();
+        return true;
+    }
+
+    if let Some(tenant_id) =
+        tenant_cache_event_tenant_id(&envelope.event, Some(envelope.tenant_id))
+    {
+        policy_cache.invalidate_tenant(tenant_id);
+        return true;
+    }
+
+    false
+}
+
 #[derive(Clone)]
 struct TenantCacheGenerationListener {
     cache: CacheService,

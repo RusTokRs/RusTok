@@ -1354,3 +1354,11 @@ state is in-memory, not durable across a full remount. The editor does not
 auto-merge drafts; three-way merge and durable recovery across remounts remain
 open. PostgreSQL is the production database; SQLite is used for isolated
 integration tests; MySQL support is out of scope.
+
+
+2026-11-25 Fly SSR workspace and browser-control follow-up (source only; not executed):
+- The default non-hydrated SSR Fly workspace now hides panels whose interactions require Leptos event handlers. Palette/layer selection remains available through the browser adapter; theme-token and scoped-style edits use named intent forms. The Page Builder SSR inspector retains page/component/asset controls and now includes page reorder forms.
+- The workspace exposes a hydration marker. Browser form/action transports yield to typed Leptos callbacks after wasm-client hydration, while selection remains mirrored locally for inspector targeting. This prevents duplicate mutation submissions across the SSR and hydrated paths.
+- Nested component click/drag handling is delegated once and resolves the nearest component; preview clicks prevent link navigation/form submission. Selection is forwarded as a read-only intent when the browser adapter owns the SSR path.
+- Added source regressions for delegated selection/drag, hydration transport ownership, SSR theme/style forms, and the SSR workspace visibility gate. **No Cargo build, Rust test, formatting, lint or browser test was run.**
+- **Still open:** run the focused Fly/Page Builder tests and formatting, compile both default SSR and wasm-client profiles, and exercise the mounted SSR and hydrated paths (palette insert/drag, nested selection, style/theme forms, page reorder, inspector targeting, iframe selection and CSP) before treating the integration as verified.
