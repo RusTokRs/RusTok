@@ -2153,6 +2153,52 @@ mod tests {
     }
 
     #[test]
+    fn image_set_string_sources_follow_the_render_resource_policy() {
+        let policy = RenderPolicy::default();
+        for value in [
+            "image-set(\"/hero.png\" 1x, \"https://cdn.example/hero@2x.png\" 2x)",
+            "-webkit-image-set('/hero.png' 1x)",
+            "image-set(\"data:image/png;base64,iVBORw0KGgo=\" 1x)",
+        ] {
+            assert!(
+                safe_style("background-image", &Value::String(value.to_string()), &policy).is_some(),
+                "rejected safe image-set {value}"
+            );
+        }
+        for value in [
+            "image-set('javascript:alert(1)' 1x)",
+            "image-set('//attacker.example/hero.png' 1x)",
+            "image-set('data:image/svg+xml;base64,PHN2Zz4=' 1x)",
+        ] {
+            assert!(
+                safe_style("background-image", &Value::String(value.to_string()), &policy).is_none(),
+                "accepted unsafe image-set {value}"
+            );
+        }
+        let no_https = RenderPolicy {
+            allow_https: false,
+            ..RenderPolicy::default()
+        };
+        assert!(safe_style(
+            "background-image",
+            &Value::String("image-set('https://cdn.example/hero.png' 1x)".to_string()),
+            &no_https
+        ).is_none());
+    }
+
+    #[test]
+    fn css_image_set_string_scanner_ignores_literals_and_handles_nested_functions() {
+        let css = r#"content: "image-set('not-a-resource')"; background-image: IMAGE-SET("/hero.png" 1x, url("/hero@2x.png") 2x, type("image/avif")); -webkit-image-set('/webkit.png' 1x)"#;
+        let ranges = css_image_set_string_ranges(css).expect("valid CSS string boundaries");
+        let values = ranges.iter().map(|range| &css[range.clone()]).collect::<Vec<_>>();
+        assert_eq!(values, ["/hero.png", "/hero@2x.png", "image/avif", "/webkit.png"]);
+        assert!(css_image_set_string_ranges(r#"content: "image-set('/literal.png')""#)
+            .expect("literal CSS string").is_empty());
+        assert!(css_image_set_string_ranges(r#"image-set("/unterminated.png" 1x"#).is_none());
+        assert!(css_image_set_string_ranges(r#"image-set("/escaped\".png" 1x)"#).is_none());
+    }
+
+    #[test]
     fn style_hooks_can_be_disabled_with_project_css() {
         let rendered = render_page(
             &document(),

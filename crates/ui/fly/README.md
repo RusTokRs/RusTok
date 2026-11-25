@@ -172,7 +172,9 @@ crates/ui/fly/
   `<style>` element body each have their own escape; URLs are filtered by `RenderPolicy`.
   Action, attribute and head URL checks share parsed HTTP(S) authority validation. SSR and
   document validation share bounded srcset candidate checks, including numeric descriptor
-  uniqueness, positive density/width and one descriptor family.
+  uniqueness, positive density/width and one descriptor family. CSS url() and quoted
+  image-set() / -webkit-image-set() resource candidates are checked against the same
+  resource policy; escaped or malformed image-set strings fail closed.
 
 ## Runtime locale selection
 
@@ -363,7 +365,9 @@ the owner of the missing half.
   stay out by design, while `raw_html` stays escaped (above). Owner: `fly` embed registry.
 - **Design tokens exist with usage checks and reference rewriting.**
   A project carries a `flyTheme` extension (`fly::theme`): validated tokens render as `:root`
-  custom properties and style declarations reference them with `var(--name)`. Token mutations
+  custom properties and style declarations reference them with `var(--name)`. Theme values reject
+  resource-bearing url() and quoted image-set candidates so a variable cannot bypass the
+  declaration URL policy. Token mutations
   are editor commands (`EditorCommand::Theme`), and both adapter workspaces (`fly-leptos`,
   `fly-dioxus`) ship an editable token panel on the same command. Renaming a token
   (`ThemeCommand::Rename`) automatically rewrites all `var(--old_name)` occurrences across

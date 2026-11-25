@@ -1,13 +1,13 @@
 use fly::{
     AssetDescriptor, AssetKind, ComponentChildren, ComponentNode, ComponentObject,
-    FLY_PAGE_METADATA_FIELD, ProjectDocument, StyleRuleDescriptor, StyleRuleScope,
+    FLY_PAGE_METADATA_FIELD, FLY_THEME_FIELD, ProjectDocument, StyleRuleDescriptor, StyleRuleScope,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
-pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT: &str = "page_builder_static_publish_policy_v2";
+pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT: &str = "page_builder_static_publish_policy_v3";
 
 const ALLOWED_TAGS: &[&str] = &[
     "a",
@@ -107,9 +107,10 @@ const ALLOWED_DATA_IMAGE_PREFIXES: &[&str] = &[
 /// stricter policy, it is an incoherent one — and it surfaced as a late, confusing publish
 /// failure after the author had already seen the background render in the editor.
 ///
-/// References are instead validated per URL, with exactly the rule this policy applies to image
-/// resources, by [`strip_validated_css_urls`]. Everything listed below has no legitimate use in a
-/// declaration and stays banned outright.
+/// References are validated per URL: url() resources use
+/// [`strip_validated_css_urls`], while quoted image-set() candidates use Fly's shared CSS scanner.
+/// Both paths apply this policy's image-resource URL rule. Everything listed below has no
+/// legitimate use in a declaration and stays banned outright.
 ///
 /// The validators still honour a `forbidden_css_tokens` list that names `"url("` (covered by
 /// tests), but no runtime path supplies one: see [`PageBuilderStaticPublishPolicy`].
@@ -307,6 +308,7 @@ pub fn validate_static_publish_document(
     validate_style_rules(document, &policy, &mut diagnostics);
     validate_assets(document, &policy, &mut diagnostics);
     validate_page_metadata(document, &policy, &mut diagnostics);
+    validate_theme(document, &mut diagnostics);
 
     if !diagnostics.is_empty() {
         return Err(PageBuilderStaticPublishPolicyError::Rejected { diagnostics });
@@ -316,6 +318,20 @@ pub fn validate_static_publish_document(
         format: policy.format.clone(),
         policy_hash: policy.policy_hash()?,
     })
+}
+
+fn validate_theme(
+    document: &ProjectDocument,
+    diagnostics: &mut Vec<PageBuilderStaticPublishPolicyDiagnostic>,
+) {
+    if let Err(error) = fly::decode_theme_tokens(document) {
+        reject(
+            diagnostics,
+            "landing_theme_invalid",
+            FLY_THEME_FIELD,
+            error,
+        );
+    }
 }
 
 fn validate_component_node(
@@ -1187,7 +1203,7 @@ fn safe_css_value(value: &str, policy: &PageBuilderStaticPublishPolicy) -> bool 
         .forbidden_css_tokens
         .iter()
         .any(|token| token == "url(");
-    let scanned = if bans_all_references {
+    let mut scanned = if bans_all_references {
         value.to_string()
     } else {
         // Validate and blank out references *before* the delimiter checks. A permitted
@@ -1198,6 +1214,20 @@ fn safe_css_value(value: &str, policy: &PageBuilderStaticPublishPolicy) -> bool 
             None => return false,
         }
     };
+
+    let image_set_ranges = match fly::css_image_set_string_ranges(&scanned) {
+        Some(ranges) => ranges,
+        None => return false,
+    };
+    if bans_all_references && !image_set_ranges.is_empty() {
+        return false;
+    }
+    for range in image_set_ranges.iter().rev() {
+        if validate_url(&scanned[range.clone()], UrlKind::ResourceImage, policy).is_err() {
+            return false;
+        }
+        scanned.replace_range(range.clone(), "url-ok");
+    }
 
     let compact = scanned
         .to_ascii_lowercase()
@@ -1482,6 +1512,24 @@ mod tests {
     }
 
     #[test]
+    fn static_policy_rejects_theme_tokens_with_image_set_resource_strings() {
+        let mut document = document(json!({ "id": "root", "type": "wrapper" }));
+        document.project_mut().extensions.insert(
+            FLY_THEME_FIELD.to_string(),
+            json!({
+                "tokens": {
+                    "hero": "image-set(\"https://cdn.example/hero.png\" 1x)"
+                }
+            }),
+        );
+        let error = validate_static_publish_document(&document).expect_err("unsafe theme token");
+        assert!(error.diagnostics().iter().any(|diagnostic| {
+            diagnostic.code == "landing_theme_invalid"
+                && diagnostic.path == FLY_THEME_FIELD
+        }));
+    }
+
+    #[test]
     fn policy_rejects_opaque_markup_and_non_renderable_nodes() {
         let document = document(json!({
             "id": "root",
@@ -1572,10 +1620,10 @@ mod tests {
     }
 
     #[test]
-    fn v1_policy_evidence_is_not_current_after_v2_cutover() {
+    fn v2_policy_evidence_is_not_current_after_v3_cutover() {
         let policy = PageBuilderStaticPublishPolicy::default();
         let evidence = PageBuilderStaticPublishPolicyEvidence {
-            format: "page_builder_static_publish_policy_v1".to_string(),
+            format: "page_builder_static_publish_policy_v2".to_string(),
             policy_hash: policy.policy_hash().expect("current hash"),
         };
         assert!(evidence.verify_integrity().is_err());
@@ -1600,6 +1648,14 @@ mod tests {
                 "css rule rejected {url} that the attribute rule accepts"
             );
         }
+        assert!(safe_css_value(
+            "image-set('/hero.png' 1x, 'https://cdn.example/hero@2x.png' 2x)",
+            &policy
+        ));
+        assert!(safe_css_value(
+            "image-set('data:image/png;base64,iVBORw0KGgo=' 1x)",
+            &policy
+        ));
     }
 
     #[test]
@@ -1615,6 +1671,11 @@ mod tests {
             "url(/a.png);color:red",
             "u r l(https://cdn.example/a.png)",
             "blurl(https://cdn.example/a.png)",
+            "image-set('javascript:alert(1)' 1x)",
+            "image-set('http://insecure.example/a.png' 1x)",
+            "image-set('//protocol.relative/a.png' 1x)",
+            "image-set('data:image/svg+xml;base64,PHN2Zz4=' 1x)",
+            "-webkit-image-set('javascript:alert(1)' 1x)",
         ] {
             assert!(!safe_css_value(value, &policy), "accepted hostile {value}");
         }
@@ -1627,6 +1688,10 @@ mod tests {
         policy.forbidden_css_tokens.push("url(".to_string());
         assert!(!safe_css_value(
             "url(https://cdn.example/hero.png)",
+            &policy
+        ));
+        assert!(!safe_css_value(
+            "image-set('https://cdn.example/hero.png' 1x)",
             &policy
         ));
         assert!(safe_css_value("#ffffff", &policy));

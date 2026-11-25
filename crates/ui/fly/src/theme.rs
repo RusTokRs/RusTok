@@ -216,6 +216,10 @@ mod tests {
                 "url value",
             ),
             (
+                json!({ "brand": "image-set(\"https://evil.example/x.png\" 1x)" }),
+                "image-set string URL",
+            ),
+            (
                 json!({ "brand": "expression(alert(1))" }),
                 "expression value",
             ),
