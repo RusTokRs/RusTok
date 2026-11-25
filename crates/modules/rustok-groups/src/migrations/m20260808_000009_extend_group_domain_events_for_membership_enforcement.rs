@@ -200,9 +200,36 @@ BEGIN
         1,
         NEW.invited_by_user_id,
         json_object(
-            'invitation_id', NEW.id,
-            'group_id', NEW.group_id,
-            'target_user_id', NEW.target_user_id
+            'invitation_id',
+            CASE
+                WHEN typeof(NEW.id) = 'blob' THEN
+                    lower(hex(substr(NEW.id, 1, 4))) || '-' ||
+                    lower(hex(substr(NEW.id, 5, 2))) || '-' ||
+                    lower(hex(substr(NEW.id, 7, 2))) || '-' ||
+                    lower(hex(substr(NEW.id, 9, 2))) || '-' ||
+                    lower(hex(substr(NEW.id, 11, 6)))
+                ELSE NEW.id
+            END,
+            'group_id',
+            CASE
+                WHEN typeof(NEW.group_id) = 'blob' THEN
+                    lower(hex(substr(NEW.group_id, 1, 4))) || '-' ||
+                    lower(hex(substr(NEW.group_id, 5, 2))) || '-' ||
+                    lower(hex(substr(NEW.group_id, 7, 2))) || '-' ||
+                    lower(hex(substr(NEW.group_id, 9, 2))) || '-' ||
+                    lower(hex(substr(NEW.group_id, 11, 6)))
+                ELSE NEW.group_id
+            END,
+            'target_user_id',
+            CASE
+                WHEN typeof(NEW.target_user_id) = 'blob' THEN
+                    lower(hex(substr(NEW.target_user_id, 1, 4))) || '-' ||
+                    lower(hex(substr(NEW.target_user_id, 5, 2))) || '-' ||
+                    lower(hex(substr(NEW.target_user_id, 7, 2))) || '-' ||
+                    lower(hex(substr(NEW.target_user_id, 9, 2))) || '-' ||
+                    lower(hex(substr(NEW.target_user_id, 11, 6)))
+                ELSE NEW.target_user_id
+            END
         )
     );
 END"#,

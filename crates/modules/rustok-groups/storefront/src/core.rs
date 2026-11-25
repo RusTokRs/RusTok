@@ -40,8 +40,9 @@ pub fn selected_transport_profile(value: Option<&str>) -> GroupsStorefrontTransp
         .to_ascii_lowercase()
         .as_str()
     {
+        "" | "native" => GroupsStorefrontTransportProfile::Native,
         "graphql" => GroupsStorefrontTransportProfile::Graphql,
-        _ => GroupsStorefrontTransportProfile::Native,
+        other => panic!("unsupported groups storefront transport profile: {other}"),
     }
 }
 
@@ -117,6 +118,12 @@ mod tests {
             selected_transport_profile(None),
             GroupsStorefrontTransportProfile::Native
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "unsupported groups storefront transport profile")]
+    fn invalid_transport_profile_fails_closed() {
+        let _ = selected_transport_profile(Some("rest"));
     }
 
     #[test]
