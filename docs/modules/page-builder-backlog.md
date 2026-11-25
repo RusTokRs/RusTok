@@ -157,6 +157,15 @@ explicit null fallback is distinct from absent fallback, and symbolId is structu
 Four focused regressions authored; compilation, tests, lint and remediation gate not
 run. Unresolved computed producer ownership and scoped repeater bindings remain open.
 
+Fly scoped binding follow-up (2026-11-25, source-only): the runtime pipeline defers
+alias-dependent bindings to the generated instance's lexical context, including
+nested shadowing and repeater roots; values are applied after interpolation in a
+single mutable walk and counted per surviving instance. Global bindings retain
+pre-expansion semantics. Local identity/reference/provider contract writes are
+intentionally rejected pending integration with repeater identity proofs.
+Two pipeline regressions authored; tests, build, lint and remediation gate not run.
+Unresolved computed producer ownership and repeat-materialization protection remain open.
+
 Reduced-motion follow-up: the shared Fly browser asset now uses instant scrolling for
 `scroll_to` when the target document requests reduced motion, including in the presence of
 CSS `scroll-behavior: smooth`; animations use the same document preference. The Node runtime

@@ -181,6 +181,14 @@ pub const MAX_REPEATER_DEPTH: usize = 8;
 pub const MAX_TOTAL_REPEATED_NODES: usize = 50_000;
 
 pub fn materialize_runtime(document: &ProjectDocument, context: &Value) -> RuntimeMaterialization {
+    materialize_runtime_with_scoped_bindings(document, context, None)
+}
+
+pub(crate) fn materialize_runtime_with_scoped_bindings(
+    document: &ProjectDocument,
+    context: &Value,
+    scoped_bindings: Option<&mut crate::binding::ScopedBindings>,
+) -> RuntimeMaterialization {
     let catalog = DynamicCatalog::from_document(document);
     let mut materialized = document.clone();
     let mut diagnostics = Vec::new();
@@ -296,6 +304,7 @@ pub fn materialize_runtime(document: &ProjectDocument, context: &Value) -> Runti
         used_style_ids,
         repeaters: expandable,
         deferred_conditions,
+        scoped_bindings,
         original_styles: &original_styles,
         generated_styles: Vec::new(),
         retired_style_ids: BTreeSet::new(),
@@ -343,6 +352,22 @@ pub fn materialize_runtime(document: &ProjectDocument, context: &Value) -> Runti
     }
 }
 
+/// Collect the lexical aliases visible to each template component, including
+/// the repeater root itself. A nested instance can shadow an outer alias.
+pub(crate) fn repeater_binding_scopes(document: &ProjectDocument) -> BTreeMap<String, BTreeSet<String>> {
+    let catalog = DynamicCatalog::from_document(document);
+    let mut scopes = BTreeMap::<String, BTreeSet<String>>::new();
+    for repeater in &catalog.repeaters {
+        if repeater_alias_error(repeater).is_some() {
+            continue;
+        }
+        for id in component_subtree_ids(document, &repeater.component_id) {
+            scopes.entry(id).or_default().extend([repeater.item_alias.clone(), repeater.index_alias.clone()]);
+        }
+    }
+    scopes
+}
+
 /// Ids of components that are strict descendants of some repeater target.
 fn repeater_scoped_component_ids(
     document: &ProjectDocument,
@@ -377,6 +402,7 @@ struct RuntimeExpander<'a> {
     used_style_ids: BTreeSet<String>,
     repeaters: BTreeMap<String, RuntimeRepeater>,
     deferred_conditions: BTreeMap<String, Vec<RuntimeCondition>>,
+    scoped_bindings: Option<&'a mut crate::binding::ScopedBindings>,
     original_styles: &'a [Value],
     generated_styles: Vec<Value>,
     retired_style_ids: BTreeSet<String>,
@@ -679,6 +705,12 @@ impl RuntimeExpander<'_> {
         suffix: &str,
         origin: &BTreeMap<String, String>,
     ) {
+        if depth > 0
+            && let Some(id) = node.id()
+            && let Some(bindings) = self.scoped_bindings.as_deref_mut()
+        {
+            bindings.capture(Self::origin_id(id, origin), id, context);
+        }
         let Some(object) = node.as_object_mut() else {
             return;
         };

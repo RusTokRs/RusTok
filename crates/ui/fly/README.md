@@ -181,6 +181,16 @@ transforms retain the original JSON number, and an explicit null fallback surviv
 serialization. Fallback is used only for a missing path, not a present null or a
 failed transform. Structural symbol identity cannot be bound.
 
+The full runtime pipeline resolves bindings whose path begins with a visible
+repeater alias per surviving instance (including the repeater root). Nested
+aliases shadow outer aliases. Global bindings still run before expansion; local
+values are captured in scope and applied after template interpolation, so a
+bound string is not interpreted again as a template. Instance writes contribute
+to the existing binding counters. Local bindings support content, safe CSS
+property names and non-identity attributes; identity/reference and provider
+contract writes remain blocked until they can participate in identity proofs.
+The standalone `materialize_bindings` function remains the global-only pass.
+
 ## Runtime materialization bounds
 
 Runtime context paths are bounded to 2048 bytes, 64 segments and array index 9999.
