@@ -752,7 +752,7 @@ mod tests {
         std::fs::write(
             stale_staging.join(super::MCP_SCAFFOLD_STAGING_MARKER),
             format!(
-                "{}\\n{}\\n",
+                "{}\n{}\n",
                 super::MCP_SCAFFOLD_STAGING_MARKER_VERSION,
                 stale_id
             ),
