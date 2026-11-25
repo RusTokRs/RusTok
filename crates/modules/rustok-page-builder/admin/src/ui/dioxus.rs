@@ -1118,7 +1118,7 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                     discard_json.set(None);
                     discard_persisted.set(true);
                 }
-                Err(error) => discard_status.set(DraftRecoveryStatus::SaveError(error)),
+                Err(error) => discard_status.set(DraftRecoveryStatus::Error(error)),
             }
         }
     });
@@ -1332,17 +1332,17 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                         }
                     } else if !local_recovery_json_text.is_empty() {
                         details {
-                            summary { class: "cursor-pointer font-medium", "Show current server-backed document JSON" }
+                            summary { class: "cursor-pointer font-medium", "Show current editor document JSON" }
                             pre {
                                 class: "mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-all rounded border border-amber-500/30 bg-background p-2 text-xs text-foreground",
                                 tabindex: "0",
-                                aria_label: "Current local Page Builder draft JSON",
+                                aria_label: "Current Page Builder editor document JSON",
                                 "{local_recovery_json_text}"
                             }
                         }
                         p {
                             class: "text-xs opacity-80",
-                            "This is the current server-backed document; an unreadable browser recovery record, if present, remains untouched."
+                            "This is the current editor document and may include unsaved edits; an unreadable browser recovery record, if present, remains untouched."
                         }
                     }
                     if recovery_store.is_some() {
