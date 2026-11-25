@@ -1023,6 +1023,7 @@ async fn apply_scaffold_draft(
         ApplyMcpScaffoldDraftInput {
             workspace_root: input.workspace_root,
             confirm: input.confirm,
+            expected_client_id: None,
             applied_by,
             actor_id,
             actor_type,
