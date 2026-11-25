@@ -69,21 +69,53 @@ pub fn decode_theme_tokens(document: &ProjectDocument) -> Result<Vec<DesignToken
         .iter()
         .map(|token| format!("--{}", token.name))
         .collect::<std::collections::BTreeSet<_>>();
+    let mut reference_graph = std::collections::BTreeMap::new();
     for token in &decoded {
         let references = crate::css_var_references(&token.value).ok_or_else(|| {
             format!("design token {} contains a malformed var() reference", token.name)
         })?;
-        for reference in references {
-            if !allowed_references.contains(&reference) {
+        for reference in &references {
+            if !allowed_references.contains(reference) {
                 return Err(format!(
                     "design token {} references undeclared token {reference}",
                     token.name
                 ));
             }
         }
+        reference_graph.insert(format!("--{}", token.name), references);
+    }
+
+    let mut visiting = std::collections::BTreeSet::new();
+    let mut visited = std::collections::BTreeSet::new();
+    for name in reference_graph.keys() {
+        validate_token_reference_cycles(name, &reference_graph, &mut visiting, &mut visited)?;
     }
 
     Ok(decoded)
+}
+
+fn validate_token_reference_cycles(
+    name: &str,
+    graph: &std::collections::BTreeMap<String, Vec<String>>,
+    visiting: &mut std::collections::BTreeSet<String>,
+    visited: &mut std::collections::BTreeSet<String>,
+) -> Result<(), String> {
+    if visited.contains(name) {
+        return Ok(());
+    }
+    if !visiting.insert(name.to_string()) {
+        return Err(format!("design token reference cycle includes {name}"));
+    }
+
+    if let Some(references) = graph.get(name) {
+        for reference in references {
+            validate_token_reference_cycles(reference, graph, visiting, visited)?;
+        }
+    }
+
+    visiting.remove(name);
+    visited.insert(name.to_string());
+    Ok(())
 }
 
 /// Token names become CSS custom property names verbatim after the `--` prefix, so the
@@ -268,6 +300,18 @@ mod tests {
         }));
         let error = decode_theme_tokens(&document).expect_err("undeclared token reference");
         assert!(error.contains("undeclared token"));
+    }
+
+    #[test]
+    fn rejects_cyclic_token_references() {
+        let document = document_with_theme(json!({
+            "tokens": {
+                "primary": "var(--secondary)",
+                "secondary": "var(--primary)"
+            }
+        }));
+        let error = decode_theme_tokens(&document).expect_err("cyclic token references");
+        assert!(error.contains("cycle"));
     }
 
     #[test]
