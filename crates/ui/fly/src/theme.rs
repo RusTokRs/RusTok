@@ -128,6 +128,12 @@ pub fn validate_token_value(name: &str, value: &str) -> Result<(), String> {
         .chars()
         .filter(|character| !character.is_ascii_whitespace())
         .collect::<String>();
+    let image_set_strings = crate::css_image_set_string_ranges(value);
+    if !matches!(image_set_strings, Some(ref ranges) if ranges.is_empty()) {
+        return Err(format!(
+            "design token {name} uses an image-set string resource that is not allowed in theme tokens"
+        ));
+    }
     if compact.contains("expression(")
         || compact.contains("javascript:")
         || compact.contains("@import")

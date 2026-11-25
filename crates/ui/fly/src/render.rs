@@ -1248,6 +1248,104 @@ pub fn css_property_allowed(name: &str) -> bool {
         && !DENIED_STYLE_PROPERTIES.contains(&name.to_ascii_lowercase().as_str())
 }
 
+/// Return byte ranges of quoted strings inside CSS image-set() functions.
+///
+/// CSS image-set accepts quoted URL candidates, unlike most CSS image functions which
+/// express resources through url(). Callers validate each returned string with their
+/// own resource URL policy. Strings outside these functions are ignored. Escaped strings
+/// and malformed function/string boundaries fail closed.
+pub fn css_image_set_string_ranges(value: &str) -> Option<Vec<std::ops::Range<usize>>> {
+    if value.contains('\\') { return None; }
+    let lowered = value.to_ascii_lowercase();
+    let mut ranges = Vec::new();
+    let mut cursor = 0usize;
+    while cursor < value.len() {
+        match value.as_bytes()[cursor] {
+            b'\'' | b'"' => { cursor = skip_css_string(value, cursor)?; continue; }
+            _ => {}
+        }
+        let remaining = &lowered[cursor..];
+        let function = if remaining.starts_with("-webkit-image-set(") {
+            Some("-webkit-image-set(")
+        } else if remaining.starts_with("image-set(") {
+            Some("image-set(")
+        } else { None };
+        if let Some(function) = function {
+            let preceded_by_identifier = value[..cursor].chars().next_back()
+                .is_some_and(css_identifier_character);
+            if !preceded_by_identifier {
+                let open = cursor + function.len() - 1;
+                let close = css_function_close(value, open)?;
+                collect_css_string_ranges(value, open + 1, close, &mut ranges)?;
+                cursor = close + 1;
+                continue;
+            }
+        }
+        cursor += value[cursor..].chars().next()?.len_utf8();
+    }
+    Some(ranges)
+}
+
+fn css_identifier_character(character: char) -> bool {
+    character.is_ascii_alphanumeric() || matches!(character, '-' | '_') || !character.is_ascii()
+}
+
+fn skip_css_string(value: &str, start: usize) -> Option<usize> {
+    let quote = *value.as_bytes().get(start)?;
+    if !matches!(quote, b'\'' | b'"') { return None; }
+    let mut cursor = start + 1;
+    while cursor < value.len() {
+        match value.as_bytes()[cursor] {
+            b'\\' => return None,
+            character if character == quote => return Some(cursor + 1),
+            _ => cursor += 1,
+        }
+    }
+    None
+}
+
+fn css_function_close(value: &str, open: usize) -> Option<usize> {
+    if value.as_bytes().get(open) != Some(&b'(') { return None; }
+    let mut depth = 1usize;
+    let mut cursor = open + 1;
+    while cursor < value.len() {
+        match value.as_bytes()[cursor] {
+            b'\'' | b'"' => cursor = skip_css_string(value, cursor)?,
+            b'\\' => return None,
+            b'(' => { depth = depth.checked_add(1)?; cursor += 1; }
+            b')' => {
+                depth -= 1;
+                if depth == 0 { return Some(cursor); }
+                cursor += 1;
+            }
+            _ => cursor += 1,
+        }
+    }
+    None
+}
+
+fn collect_css_string_ranges(
+    value: &str,
+    start: usize,
+    end: usize,
+    ranges: &mut Vec<std::ops::Range<usize>>,
+) -> Option<()> {
+    let mut cursor = start;
+    while cursor < end {
+        match value.as_bytes()[cursor] {
+            b'\'' | b'"' => {
+                let after = skip_css_string(value, cursor)?;
+                if after > end { return None; }
+                ranges.push(cursor + 1..after - 1);
+                cursor = after;
+            }
+            b'\\' => return None,
+            _ => cursor += 1,
+        }
+    }
+    Some(())
+}
+
 /// Decide whether a single CSS declaration may be emitted.
 ///
 /// `url(...)` used to be rejected outright, which is safe but wrong for a page builder: it made
@@ -1278,7 +1376,19 @@ fn safe_style(name: &str, value: &Value, policy: &RenderPolicy) -> Option<String
     // legitimate data-image reference legally contains `;` (`data:image/png;base64,...`) and the
     // structural check must not see it. Characters that are dangerous *inside* a reference are
     // rejected by `url_allowed` and by the stricter check in the stripping pass.
-    let without_urls = validate_and_strip_url_tokens(&value, policy)?;
+    let mut without_urls = validate_and_strip_url_tokens(&value, policy)?;
+    let image_set_ranges = css_image_set_string_ranges(&without_urls)?;
+    let url_policy = policy.url_policy();
+    for range in image_set_ranges.iter().rev() {
+        if !safe_url::url_allowed(
+            &without_urls[range.clone()],
+            UrlAttributeKind::Resource,
+            &url_policy,
+        ) {
+            return None;
+        }
+        without_urls.replace_range(range.clone(), "url-ok");
+    }
 
     // Structural characters in what remains are what would let a declaration escape into a new
     // rule or a comment.
