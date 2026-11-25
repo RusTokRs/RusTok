@@ -176,7 +176,7 @@ fn binding_validation_reports_runtime_binding_target_missing() {
     }))
     .expect("document");
 
-    document.project.extensions.insert(
+    document.project_mut().extensions.insert(
         FLY_RUNTIME_BINDINGS_FIELD.to_string(),
         json!([{
             "id": "missing-target",
