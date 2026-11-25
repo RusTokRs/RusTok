@@ -66,14 +66,15 @@ struct AuthConfig {
 
 #[derive(Deserialize)]
 struct JwtConfig {
-    secret: String,
+    #[serde(rename = "secret")]
+    mac_root: String,
     expiration: u64,
 }
 
 impl std::fmt::Debug for JwtConfig {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.debug_struct("JwtConfig")
-            .field("secret", &"<redacted>")
+            .field("mac_root", &"<redacted>")
             .field("expiration", &self.expiration)
             .finish()
     }
@@ -213,7 +214,7 @@ pub async fn run() -> Result<()> {
     let result = with_runtime_shutdown(&runtime_ctx, async {
         let mut supervisor = Box::pin(supervisor.run(production));
         let startup = async {
-            initialize_server_context(&runtime_ctx, &config.auth.jwt.secret, &database_uri)
+            initialize_server_context(&runtime_ctx, &config.auth.jwt.mac_root, &database_uri)
                 .await?;
 
             let router =
@@ -624,7 +625,7 @@ async fn prepare_jwt_bootstrap(config: &HostConfig, production: bool) -> Result<
     let bytes = read_jwt_keyring_file(&keyring_path).await?;
     let digest = sha256_digest(&[&bytes]);
     let (generation, auth_config) = crate::auth::auth_config_from_host_document(
-        config.auth.jwt.secret.clone(), config.auth.jwt.expiration,
+        config.auth.jwt.mac_root.clone(), config.auth.jwt.expiration,
         Some(&config.settings), &bytes,
     )?;
     validate_auth_deployment(&auth_config, production)?;
@@ -883,7 +884,7 @@ mod tests {
     #[test]
     fn jwt_config_debug_redacts_root() {
         let rendered = format!("{:?}", super::JwtConfig {
-            secret: "sensitive-root-value".to_string(), expiration: 900,
+            mac_root: "sensitive-root-value".to_string(), expiration: 900,
         });
         assert!(!rendered.contains("sensitive-root-value"));
     }

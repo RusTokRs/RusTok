@@ -23,7 +23,7 @@ use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeCo
 /// Runs host-independent startup validation and one-time initialization.
 pub async fn initialize_server_context(
     runtime_ctx: &ServerRuntimeContext,
-    jwt_secret: &str,
+    mac_root: &str,
     database_uri: &str,
 ) -> Result<()> {
     let initialization = ServerBootstrapInitializationLock::ensure(runtime_ctx);
@@ -33,8 +33,8 @@ pub async fn initialize_server_context(
             "server shutdown started before runtime initialization".to_string(),
         ));
     }
-    check_production_secrets(
-        jwt_secret,
+    check_production_environment(
+        mac_root,
         database_uri,
         crate::common::is_production_security_mode(),
     )?;
@@ -72,22 +72,23 @@ fn should_initialize_default_superadmin_for_mode(
     )
 }
 
-fn check_production_secrets(jwt_secret: &str, database_uri: &str, production: bool) -> Result<()> {
+fn check_production_environment(mac_root: &str, database_uri: &str, production: bool) -> Result<()> {
     if !production {
         return Ok(());
     }
 
-    let trimmed_secret = jwt_secret.trim();
-    if known_dev_jwt_fragment(trimmed_secret).is_some() {
+    let trimmed_mac_root = mac_root.trim();
+    if known_dev_mac_root_fragment(trimmed_mac_root).is_some() {
         return Err(crate::error::Error::Message(
-            "FATAL: JWT secret contains a known development value. Set a strong, random secret in the production configuration."
+            "FATAL: MAC root contains a known development value. Set an independently generated random MAC root in the production configuration."
                 .to_string(),
         ));
     }
 
-    if trimmed_secret.is_empty() || trimmed_secret.len() < 32 {
+    let mac_root_bytes = mac_root.bytes().filter(|byte| !byte.is_ascii_whitespace()).count();
+    if mac_root_bytes < 64 {
         return Err(crate::error::Error::Message(
-            "FATAL: JWT secret is too short for production use. Generate a cryptographically random secret of at least 32 bytes."
+            "FATAL: MAC root must contain at least 64 non-whitespace bytes for production use."
                 .to_string(),
         ));
     }
@@ -120,7 +121,7 @@ fn check_production_secrets(jwt_secret: &str, database_uri: &str, production: bo
     Ok(())
 }
 
-pub(crate) fn known_dev_jwt_fragment(secret: &str) -> Option<&'static str> {
+pub(crate) fn known_dev_mac_root_fragment(secret: &str) -> Option<&'static str> {
     const KNOWN_DEV_SUBSTRINGS: &[&str] = &[
         "dev-secret",
         "test-secret",
@@ -304,7 +305,7 @@ pub async fn bootstrap_application_router(
 #[cfg(test)]
 mod tests {
     use super::{
-        check_production_secrets, known_dev_jwt_fragment, known_sample_superadmin_password,
+        check_production_environment, known_dev_mac_root_fragment, known_sample_superadmin_password,
         sample_database_credentials_pattern, should_initialize_default_superadmin_for_mode,
     };
 
@@ -378,7 +379,7 @@ mod tests {
 
     #[test]
     fn production_secret_validation_is_disabled_outside_production() {
-        check_production_secrets(
+        check_production_environment(
             "dev-secret",
             "postgres://postgres:postgres@db/rustok",
             false,
@@ -387,28 +388,28 @@ mod tests {
     }
 
     #[test]
-    fn production_secret_validation_rejects_empty_jwt_secret_without_exposing_it() {
+    fn production_secret_validation_rejects_empty_mac_root_without_exposing_it() {
         let _env = EnvGuard::new(SUPERADMIN_ENV_KEYS);
-        let error = check_production_secrets("", "postgres://app:strong@db/rustok", true)
-            .expect_err("production must reject an empty JWT secret");
+        let error = check_production_environment("", "postgres://app:strong@db/rustok", true)
+            .expect_err("production must reject an empty MAC root");
         let message = error.to_string();
-        assert!(message.contains("JWT secret is too short"));
+        assert!(message.contains("MAC root is too short"));
     }
 
     #[test]
-    fn production_secret_validation_rejects_whitespace_jwt_secret() {
+    fn production_secret_validation_rejects_whitespace_mac_root() {
         let _env = EnvGuard::new(SUPERADMIN_ENV_KEYS);
-        let error = check_production_secrets("   ", "postgres://app:strong@db/rustok", true)
-            .expect_err("production must reject whitespace JWT secret");
+        let error = check_production_environment("   ", "postgres://app:strong@db/rustok", true)
+            .expect_err("production must reject whitespace MAC root");
         let message = error.to_string();
-        assert!(message.contains("JWT secret is too short"));
+        assert!(message.contains("MAC root is too short"));
     }
 
     #[test]
     fn production_secret_validation_rejects_empty_and_whitespace_database_uri() {
         let _env = EnvGuard::new(SUPERADMIN_ENV_KEYS);
         let secret = "aB3!zY7@qW8#eR2$".repeat(5);
-        let error_empty = check_production_secrets(&secret, "", true)
+        let error_empty = check_production_environment(&secret, "", true)
             .expect_err("production must reject empty database URI");
         assert!(
             error_empty
@@ -416,7 +417,7 @@ mod tests {
                 .contains("database URI must not be empty")
         );
 
-        let error_ws = check_production_secrets(&secret, "   ", true)
+        let error_ws = check_production_environment(&secret, "   ", true)
             .expect_err("production must reject whitespace database URI");
         assert!(
             error_ws
@@ -429,8 +430,8 @@ mod tests {
     fn production_secret_validation_redacts_development_jwt_fragment() {
         let _env = EnvGuard::new(SUPERADMIN_ENV_KEYS);
         let secret = "prefix-dev-secret-suffix";
-        let error = check_production_secrets(secret, "postgres://app:strong@db/rustok", true)
-            .expect_err("known development JWT material must be rejected");
+        let error = check_production_environment(secret, "postgres://app:strong@db/rustok", true)
+            .expect_err("known development MAC root material must be rejected");
         let message = error.to_string();
         assert!(message.contains("known development value"));
         assert!(!message.contains("dev-secret"));
@@ -440,7 +441,7 @@ mod tests {
     fn production_secret_validation_redacts_database_sample_credentials() {
         let _env = EnvGuard::new(SUPERADMIN_ENV_KEYS);
         let uri = "postgres://postgres:postgres@db/rustok";
-        let error = check_production_secrets("aB3!zY7@qW8#eR2$".repeat(5).as_str(), uri, true)
+        let error = check_production_environment("aB3!zY7@qW8#eR2$".repeat(5).as_str(), uri, true)
             .expect_err("sample database credentials must be rejected");
         let message = error.to_string();
         assert!(message.contains("known sample credentials"));
@@ -451,7 +452,7 @@ mod tests {
     fn production_secret_validation_rejects_user_password_database_uri() {
         let _env = EnvGuard::new(SUPERADMIN_ENV_KEYS);
         let uri = "postgres://user:password@prod-host:5432/rustok";
-        let error = check_production_secrets("aB3!zY7@qW8#eR2$".repeat(5).as_str(), uri, true)
+        let error = check_production_environment("aB3!zY7@qW8#eR2$".repeat(5).as_str(), uri, true)
             .expect_err("user:password credentials must be rejected");
         assert!(error.to_string().contains("known sample credentials"));
     }
@@ -464,7 +465,7 @@ mod tests {
             std::env::set_var("SUPERADMIN_PASSWORD", "short");
         }
         let error_short =
-            check_production_secrets(&secret, "postgres://app:strong@db/rustok", true)
+            check_production_environment(&secret, "postgres://app:strong@db/rustok", true)
                 .expect_err("short superadmin password must fail");
         assert!(
             error_short
@@ -476,7 +477,7 @@ mod tests {
             std::env::set_var("SUPERADMIN_PASSWORD", "admin12345");
         }
         let error_sample =
-            check_production_secrets(&secret, "postgres://app:strong@db/rustok", true)
+            check_production_environment(&secret, "postgres://app:strong@db/rustok", true)
                 .expect_err("sample superadmin password must fail");
         assert!(
             error_sample
@@ -496,15 +497,15 @@ mod tests {
     #[test]
     fn helper_matchers_still_identify_known_samples_without_disclosing_them() {
         assert_eq!(
-            known_dev_jwt_fragment("dev-secret-value"),
+            known_dev_mac_root_fragment("dev-secret-value"),
             Some("dev-secret")
         );
         assert_eq!(
-            known_dev_jwt_fragment("MY-DEV_SECRET-TOKEN"),
+            known_dev_mac_root_fragment("MY-DEV_SECRET-TOKEN"),
             Some("dev_secret")
         );
         assert_eq!(
-            known_dev_jwt_fragment("something-CHANGEME-token"),
+            known_dev_mac_root_fragment("something-CHANGEME-token"),
             Some("changeme")
         );
         assert_eq!(

@@ -49,13 +49,13 @@ fn parse_auth_settings(settings: Option<&serde_json::Value>) -> Result<AuthSetti
 
 /// The file source supplies all JWT keys; never build an unused startup signer.
 pub(crate) fn auth_config_from_host_document(
-    secret: String,
+    mac_root: String,
     access_expiration: u64,
     settings: Option<&serde_json::Value>,
     bytes: &[u8],
 ) -> Result<(u64, AuthConfig)> {
     rustok_auth::build_auth_config_from_document(
-        secret, access_expiration, parse_auth_settings(settings)?, bytes,
+        mac_root, access_expiration, parse_auth_settings(settings)?, bytes,
     ).map_err(auth_err)
 }
 
@@ -63,9 +63,9 @@ pub(crate) fn auth_config_from_host_document(
 /// Tests sharing one security store must clone this configuration rather
 /// than generating another one for token issuance.
 #[cfg(test)]
-pub(crate) fn test_auth_config(root: String) -> AuthConfig {
+pub(crate) fn test_auth_config(mac_root: String) -> AuthConfig {
     let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().expect("RSA fixture");
-    auth_config_from_host_document(root, 900, None, fixture.document(1).to_string().as_bytes())
+    auth_config_from_host_document(mac_root, 900, None, fixture.document(1).to_string().as_bytes())
         .expect("valid test JWT configuration").1
 }
 
@@ -323,7 +323,7 @@ struct AppSettings {
 mod tests {
     use super::*;
 
-    fn secret() -> String {
+    fn mac_root() -> String {
         "test-secret-key-for-unit-tests-only-32bytes!".to_string()
     }
 
@@ -341,7 +341,7 @@ mod tests {
     fn auth_config_from_complete_rsa_document_preserves_host_policy() {
         let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
         let (generation, config) = auth_config_from_host_document(
-            secret(), 900, None, fixture.document(7).to_string().as_bytes(),
+            mac_root(), 900, None, fixture.document(7).to_string().as_bytes(),
         ).expect("auth config");
 
         assert_eq!(generation, 7);
@@ -361,7 +361,7 @@ mod tests {
         let document = fixture.document(1).to_string();
 
         let result = auth_config_from_host_document(
-            secret(), 900, Some(&settings), document.as_bytes(),
+            mac_root(), 900, Some(&settings), document.as_bytes(),
         );
 
         assert!(matches!(result, Err(crate::error::Error::Json(_))));
@@ -378,7 +378,7 @@ mod tests {
         let document = fixture.document(1).to_string();
 
         let result = auth_config_from_host_document(
-            secret(), 900, Some(&settings), document.as_bytes(),
+            mac_root(), 900, Some(&settings), document.as_bytes(),
         );
 
         assert!(result.is_err());
@@ -403,7 +403,7 @@ mod tests {
     #[test]
     fn password_reset_token_is_bound_to_credential_state() {
         let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
-        let config = rsa_test_config(secret(), &fixture.document(1));
+        let config = rsa_test_config(mac_root(), &fixture.document(1));
         let tenant_id = uuid::Uuid::new_v4();
         let token = encode_password_reset_token(
             &config,
@@ -434,7 +434,7 @@ mod tests {
     fn reset_binding_rejects_legacy_and_different_secrets() {
         let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
         let document = fixture.document(1);
-        let config = rsa_test_config(secret(), &document);
+        let config = rsa_test_config(mac_root(), &document);
         let tag = password_reset_credential_fingerprint(&config, "hash").unwrap();
         assert!(password_reset_credential_matches(&config, "hash", &tag));
         assert!(!password_reset_credential_matches(&config, "hash", &format!("v2:{tag}")));
@@ -458,7 +458,7 @@ mod tests {
     #[test]
     fn email_verification_token_is_bound_to_user_id() {
         let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
-        let config = rsa_test_config(secret(), &fixture.document(1));
+        let config = rsa_test_config(mac_root(), &fixture.document(1));
         let tenant_id = uuid::Uuid::new_v4();
         let user_id = uuid::Uuid::new_v4();
         let token =
