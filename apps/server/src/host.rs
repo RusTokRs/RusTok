@@ -358,16 +358,20 @@ fn validate_auth_deployment(config: &crate::auth::AuthConfig, production: bool) 
 
     match config.algorithm {
         crate::auth::JwtAlgorithm::HS256 => {
-            if config.secret.len() < MIN_PRODUCTION_HS256_SECRET_BYTES {
-                return Err(Error::BadRequest(format!(
-                    "Production HS256 secret must contain at least {MIN_PRODUCTION_HS256_SECRET_BYTES} bytes"
-                )));
-            }
-            if jwt_secret_looks_like_placeholder(&config.secret) {
-                return Err(Error::BadRequest(
-                    "Production HS256 secret looks like a placeholder or low-diversity value"
-                        .to_string(),
-                ));
+            for secret in std::iter::once(config.secret.as_str())
+                .chain(config.jwt_keyring.hs256_secrets(&config.secret))
+            {
+                if secret.bytes().filter(|b| !b.is_ascii_whitespace()).count() < MIN_PRODUCTION_HS256_SECRET_BYTES {
+                    return Err(Error::BadRequest(format!(
+                        "Production HS256 secret must contain at least {MIN_PRODUCTION_HS256_SECRET_BYTES} bytes"
+                    )));
+                }
+                if jwt_secret_looks_like_placeholder(secret) {
+                    return Err(Error::BadRequest(
+                        "Production HS256 secret looks like a placeholder or low-diversity value"
+                            .to_string(),
+                    ));
+                }
             }
         }
         crate::auth::JwtAlgorithm::RS256 => {

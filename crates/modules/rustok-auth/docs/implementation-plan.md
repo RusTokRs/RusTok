@@ -182,8 +182,13 @@ Auth owns HKDF-SHA256 derivation and HMAC-SHA256 for password-reset credential
 binding and OAuth browser confirmation. The new formats reject earlier forms
 and reset links intentionally; access JWT signatures and refresh/session storage
 are unchanged. Stop old host writers before deploying new instances. Source
-regressions and locked Cargo dependency updates authored, unrun. JWT signing key
-rotation, key IDs and staged verification remain separate work.
+regressions and locked Cargo dependency updates authored, unrun.
+
+JWT keyring selection, key IDs, verification retirement and the explicit initial
+missing-ID migration are source-implemented. Scoped compilation, RSA rotation
+and multi-replica rollout evidence are pending; separate purpose keyrings,
+algorithm migration and hot reload remain separate work. See the
+[owner contract](README.md#jwt-keyring-and-rotation).
 
 ## JWT and CSRF hardening (source only)
 

@@ -25,6 +25,7 @@ pub mod error;
 #[cfg(feature = "graphql")]
 pub mod graphql;
 pub mod jwt;
+pub mod jwt_keyring;
 pub mod lifecycle;
 pub mod migrations;
 pub mod module;

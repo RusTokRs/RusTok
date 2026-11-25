@@ -99,8 +99,46 @@ Auth derives distinct 32-byte keys with HKDF-SHA256 for OAuth browser confirmati
 and password-reset credential binding. Host adapters use `auth_purpose_mac` rather
 than raw shared-secret hashing or local HMAC. MAC v5 and reset fingerprint v2
 replace earlier formats without fallback; outstanding forms and reset links must
-be restarted. JWT signing and persisted session/refresh digests are unchanged.
+be restarted. Persisted session/refresh digests are unchanged.
 Source regressions unrun. Deploy all host instances together.
+
+
+## JWT keyring and rotation
+
+All JWT issuance paths include the active `kid`. Set `settings.auth.jwt_keyring_env`
+to the name of an environment variable containing JSON (never commit its secret
+material). The JSON fields are:
+
+- `active_kid`: 1–64 ASCII letters, digits, hyphens or underscores.
+- `active_hs256_secret`: optional independent HS256 signing secret; absent uses
+  the existing host secret. For RS256 use the existing RSA private/public
+  settings and omit this field.
+- `verification_keys`: up to 16 objects with `kid`, `material` (HS256
+  secret or RSA public PEM for the configured algorithm), and `verify_until`
+  (exclusive Unix timestamp in seconds).
+- `legacy_without_kid`: optional object with `kid` and `verify_until` for
+  a bounded initial migration of previously issued JWTs. Missing IDs fail
+  closed without this explicit setting.
+
+For the first deployment of key-ID support, keep the existing signing material
+and set `active_kid` to `default`; configure `legacy_without_kid` to point to
+that ID with a deadline covering outstanding pre-key-ID JWTs. Deploy that
+configuration to all replicas before promoting a different signer. Do not
+activate a new signer while any verifier still runs the pre-keyring code.
+
+For a coordinated rotation, first distribute the next key as a verification-only
+entry while keeping the current signer, then promote the new key to active and
+move the outgoing key into the verification list on all instances. Keep the
+host MAC secret unchanged. Choose retirement deadlines after the longest
+outstanding JWT lifetime and remove expired entries and the initial migration
+setting. Never reuse identifiers or key material. An emergency revocation may
+intentionally invalidate outstanding JWTs. This is startup configuration, not
+hot reload. HS256 verification material can also sign cryptographically; the
+verification-only designation restricts this implementation, not an attacker
+who obtains the secret. Prefer RS256 when distributing verification keys across
+trust boundaries. Same-algorithm rotation is supported; distinct purpose keyrings,
+algorithm migration, and live multi-replica evidence are pending.
+See [the ADR](../../../../DECISIONS/2026-11-25-jwt-keyring.md).
 
 ## JWT and browser confirmation hardening
 

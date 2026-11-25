@@ -108,6 +108,7 @@ RusToK provides a sandboxed, extensible module runtime supporting native Rust cr
 
 ### Domain Module Documentation
 
+- [ADR: JWT keyring and controlled verification retirement](../DECISIONS/2026-11-25-jwt-keyring.md) — active signing key, exact key ID selection and bounded verification retirement.
 - [Auth Module Documentation](../crates/modules/rustok-auth/docs/README.md)
 - [RBAC Module Documentation](../crates/modules/rustok-rbac/docs/README.md) — canonical persisted relation reads/writes, transaction-backed role-mutation facts and administrator continuity, and uncached tenant-policy decisions used by owner-transaction purge authorization.
 - RBAC host request snapshots feed the module policy engine through its resolver

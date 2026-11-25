@@ -6,6 +6,7 @@ use crate::credentials::{
     MIN_PASSWORD_LENGTH_FLOOR_CHARS,
 };
 use crate::error::{AuthError, Result};
+use crate::jwt_keyring::JwtKeyring;
 
 const DEFAULT_ACCESS_EXPIRATION_SECS: u64 = 900; // 15 minutes
 const DEFAULT_REFRESH_EXPIRATION_SECS: u64 = 60 * 60 * 24 * 30; // 30 days
@@ -52,6 +53,8 @@ pub enum JwtAlgorithm {
 #[derive(Clone)]
 pub struct AuthConfig {
     pub secret: String,
+    /// Deployment JWT key selection; separate from the host MAC root.
+    pub jwt_keyring: JwtKeyring,
     pub access_expiration: u64,
     pub refresh_expiration: u64,
     pub issuer: String,
@@ -73,6 +76,7 @@ impl std::fmt::Debug for AuthConfig {
         formatter
             .debug_struct("AuthConfig")
             .field("secret", &"<redacted>")
+            .field("jwt_keyring", &self.jwt_keyring)
             .field("access_expiration", &self.access_expiration)
             .field("refresh_expiration", &self.refresh_expiration)
             .field("issuer", &self.issuer)
@@ -95,6 +99,7 @@ impl AuthConfig {
     pub fn new(secret: String) -> Self {
         Self {
             secret,
+            jwt_keyring: JwtKeyring::default(),
             access_expiration: DEFAULT_ACCESS_EXPIRATION_SECS,
             refresh_expiration: DEFAULT_REFRESH_EXPIRATION_SECS,
             issuer: "rustok".to_string(),
@@ -146,6 +151,8 @@ pub struct AuthSettingsOverrides {
     pub issuer: Option<String>,
     pub audience: Option<String>,
     pub algorithm: Option<JwtAlgorithm>,
+    /// Name of an environment variable containing the JWT keyring JSON.
+    pub jwt_keyring_env: Option<String>,
     pub rsa_private_key_pem: Option<String>,
     pub rsa_public_key_pem: Option<String>,
     pub rsa_private_key_env: Option<String>,
@@ -157,6 +164,7 @@ impl std::fmt::Debug for AuthSettingsOverrides {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("AuthSettingsOverrides")
+            .field("jwt_keyring_env", &self.jwt_keyring_env)
             .field("refresh_expiration", &self.refresh_expiration)
             .field("issuer", &self.issuer)
             .field("audience", &self.audience)
@@ -178,7 +186,24 @@ impl std::fmt::Debug for AuthSettingsOverrides {
 
 impl AuthSettingsOverrides {
     /// Apply overrides on top of a base `AuthConfig`.
-    pub fn apply(self, config: &mut AuthConfig) {
+    pub fn apply(self, config: &mut AuthConfig) -> Result<()> {
+        let mut candidate = config.clone();
+        self.apply_with_env(&mut candidate, &mut read_auth_env)?;
+        validate_auth_config(&candidate)?;
+        *config = candidate;
+        Ok(())
+    }
+
+    fn apply_with_env<F>(self, config: &mut AuthConfig, env_resolver: &mut F) -> Result<()>
+    where
+        F: FnMut(&str) -> Result<String>,
+    {
+        if let Some(name) = self.jwt_keyring_env {
+            if name.trim().is_empty() {
+                return Err(AuthError::Internal("JWT keyring environment name is empty".to_string()));
+            }
+            config.jwt_keyring = JwtKeyring::from_json(&env_resolver(&name)?)?;
+        }
         if let Some(v) = self.refresh_expiration {
             config.refresh_expiration = v;
         }
@@ -191,15 +216,20 @@ impl AuthSettingsOverrides {
         if let Some(v) = self.algorithm {
             config.algorithm = v;
         }
-        if let Some(v) = self.rsa_private_key_pem {
-            config.rsa_private_key_pem = Some(v);
+        if self.rsa_private_key_pem.is_some() || self.rsa_private_key_env.is_some() {
+            config.rsa_private_key_pem = resolve_key_material(
+                self.rsa_private_key_pem, self.rsa_private_key_env, env_resolver,
+            )?;
         }
-        if let Some(v) = self.rsa_public_key_pem {
-            config.rsa_public_key_pem = Some(v);
+        if self.rsa_public_key_pem.is_some() || self.rsa_public_key_env.is_some() {
+            config.rsa_public_key_pem = resolve_key_material(
+                self.rsa_public_key_pem, self.rsa_public_key_env, env_resolver,
+            )?;
         }
         if let Some(v) = self.min_password_length {
             config.min_password_length = v;
         }
+        Ok(())
     }
 }
 
@@ -214,10 +244,12 @@ pub fn build_auth_config(
     access_expiration: u64,
     auth_settings: AuthSettingsOverrides,
 ) -> Result<AuthConfig> {
-    build_auth_config_with_env(secret, access_expiration, auth_settings, |name| {
-        std::env::var(name)
-            .map_err(|_| AuthError::Internal(format!("Missing auth env var: {name}")))
-    })
+    build_auth_config_with_env(secret, access_expiration, auth_settings, read_auth_env)
+}
+
+fn read_auth_env(name: &str) -> Result<String> {
+    std::env::var(name)
+        .map_err(|_| AuthError::Internal(format!("Missing auth env var: {name}")))
 }
 
 /// Build and validate `AuthConfig` with an injectable env resolver for tests.
@@ -230,35 +262,9 @@ pub fn build_auth_config_with_env<F>(
 where
     F: FnMut(&str) -> Result<String>,
 {
-    let refresh_expiration = auth_settings
-        .refresh_expiration
-        .unwrap_or(DEFAULT_REFRESH_EXPIRATION_SECS);
-
-    let mut config = AuthConfig::new(secret).with_expiration(access_expiration, refresh_expiration);
-
-    if let Some(issuer) = auth_settings.issuer {
-        config = config.with_issuer(issuer);
-    }
-    if let Some(audience) = auth_settings.audience {
-        config = config.with_audience(audience);
-    }
-    if let Some(algorithm) = auth_settings.algorithm {
-        config.algorithm = algorithm;
-    }
-    if let Some(min_password_length) = auth_settings.min_password_length {
-        config = config.with_min_password_length(min_password_length);
-    }
-
-    config.rsa_private_key_pem = resolve_key_material(
-        auth_settings.rsa_private_key_pem,
-        auth_settings.rsa_private_key_env,
-        &mut env_resolver,
-    )?;
-    config.rsa_public_key_pem = resolve_key_material(
-        auth_settings.rsa_public_key_pem,
-        auth_settings.rsa_public_key_env,
-        &mut env_resolver,
-    )?;
+    let mut config = AuthConfig::new(secret);
+    config.access_expiration = access_expiration;
+    auth_settings.apply_with_env(&mut config, &mut env_resolver)?;
 
     validate_auth_config(&config)?;
     Ok(config)
@@ -338,6 +344,12 @@ pub fn validate_auth_config(config: &AuthConfig) -> Result<()> {
         )));
     }
 
+    config.jwt_keyring.validate(
+        &config.algorithm,
+        &config.secret,
+        config.rsa_public_key_pem.as_deref(),
+    )?;
+
     match config.algorithm {
         JwtAlgorithm::HS256 => {
             if config.rsa_private_key_pem.is_some() || config.rsa_public_key_pem.is_some() {
@@ -395,6 +407,39 @@ fn validate_rs256_key_pair(private_key_pem: &str, public_key_pem: &str) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+
+
+    #[test]
+    fn keyring_configuration_rejects_ambiguous_or_weak_keys() {
+        use serde_json::json;
+        let active = secret();
+        let valid_material = "different-test-verification-key-at-least-32-bytes";
+        for value in [
+            json!({"active_kid": ""}),
+            json!({"active_kid": "a", "verification_keys": [
+                {"kid":"a","material":valid_material,"verify_until":1}
+            ]}),
+            json!({"active_kid": "a", "verification_keys": [
+                {"kid":"b","material":"short","verify_until":1}
+            ]}),
+            json!({"active_kid": "a", "verification_keys": [
+                {"kid":"b","material":valid_material,"verify_until":1},
+                {"kid":"b","material":"different-other-test-key-at-least-32-bytes","verify_until":2}
+            ]}),
+            json!({"active_kid": "a", "legacy_without_kid":{"kid":"missing","verify_until":1}}),
+            json!({"active_kid": "a", "active_hs256_secret":"short"}),
+            json!({"active_kid": "a", "verification_keys": [
+                {"kid":"b","material":active,"verify_until":1}
+            ]}),
+        ] {
+            let result = build_auth_config_with_env(
+                active.clone(), 900,
+                AuthSettingsOverrides { jwt_keyring_env: Some("JWT_KEYS".into()), ..Default::default() },
+                |_| Ok(value.to_string()),
+            );
+            assert!(result.is_err());
+        }
+    }
 
     fn secret() -> String {
         "test-secret-key-for-unit-tests-only-32bytes!".to_string()
