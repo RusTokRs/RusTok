@@ -9,9 +9,9 @@
 //! tens of millions of node visits to answer a question that one traversal answers for all of
 //! them.
 //!
-//! Build an index once, query it many times. The index is a *snapshot*: it borrows nothing and is
-//! invalidated by any mutation, so it is deliberately not cached on the document — a stale index
-//! would be far worse than a slow lookup.
+//! Build an index once, query it many times. The index is a *snapshot*: it borrows nothing and
+//! must be invalidated when the document changes. The document caches it until its mutation
+//! boundary invalidates the cache.
 
 use crate::{ComponentLocation, ComponentNode, ComponentObject, ProjectDocument};
 use std::collections::{BTreeMap, BTreeSet};
@@ -114,6 +114,21 @@ impl ComponentIndex {
     /// Where the component sits, or `None` if it does not exist.
     pub fn location(&self, component_id: &str) -> Option<&ComponentLocation> {
         self.locations.get(component_id)
+    }
+
+    /// Test strict ancestry using structural paths instead of parent IDs.
+    ///
+    /// An intermediate node need not have an ID, and a repeated parent ID may
+    /// resolve to a different branch under the first-occurrence lookup rule.
+    pub(crate) fn is_descendant_of(&self, candidate_id: &str, ancestor_id: &str) -> bool {
+        let (Some((candidate_page, candidate_path)), Some((ancestor_page, ancestor_path))) =
+            (self.paths.get(candidate_id), self.paths.get(ancestor_id))
+        else {
+            return false;
+        };
+        candidate_page == ancestor_page
+            && candidate_path.len() > ancestor_path.len()
+            && candidate_path.starts_with(ancestor_path)
     }
 
     /// Retrieve the component directly via its indexed path in O(depth) steps.

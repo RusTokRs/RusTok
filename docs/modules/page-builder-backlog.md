@@ -88,6 +88,11 @@ Auto-scroll rejects malformed viewports and avoids overlapping edge zones. Focus
 regressions are authored; Rust compilation, tests, lint, remediation gate and mounted browser
 verification remain with the maintainer.
 
+Fly placement follow-up (2026-11-25, source-only): strict ancestry checks compare indexed
+structural paths on the same page rather than following parent IDs; anonymous intermediate
+nodes and repeated parent IDs no longer break the recursion guard. Regressions are authored
+but not executed.
+
 Reduced-motion follow-up: the shared Fly browser asset now uses instant scrolling for
 `scroll_to` when the target document requests reduced motion, including in the presence of
 CSS `scroll-behavior: smooth`; animations use the same document preference. The Node runtime
