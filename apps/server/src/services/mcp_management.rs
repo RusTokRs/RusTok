@@ -683,17 +683,6 @@ impl McpManagementService {
 
         let host_authority_actor_id = crate::host_authority::current_host_authority()
             .map(|authority| authority.actor_id());
-        let mut recovery_guard = ScaffoldApplyRecoveryGuard::new(
-            db.clone(),
-            tenant_id,
-            draft.clone(),
-            input.applied_by,
-            input.actor_id.clone(),
-            input.actor_type.clone(),
-            workspace_root.clone(),
-            host_authority_actor_id,
-        );
-
         let staged_draft = match draft.to_staged_draft() {
             Ok(staged_draft) => staged_draft,
             Err(error) => {
@@ -712,7 +701,6 @@ impl McpManagementService {
                     &reason,
                 )
                 .await?;
-                recovery_guard.disarm();
                 return Err(Error::BadRequest(reason));
             }
         };
@@ -744,7 +732,6 @@ impl McpManagementService {
                 &reason,
             )
             .await?;
-            recovery_guard.disarm();
             return Err(error);
         }
 
@@ -780,7 +767,7 @@ impl McpManagementService {
                     )
                     .await
                     {
-                        Ok(()) => recovery_guard.disarm(),
+                        Ok(()) => (),
                         Err(mark_error) => tracing::error!(
                             draft_id = %draft_id,
                             error = ?mark_error,
@@ -801,7 +788,6 @@ impl McpManagementService {
                     &reason,
                 )
                 .await?;
-                recovery_guard.disarm();
                 return Err(Error::BadRequest(reason));
             }
             Err(join_error) if join_error.is_cancelled() => {
@@ -817,7 +803,6 @@ impl McpManagementService {
                     reason,
                 )
                 .await?;
-                recovery_guard.disarm();
                 return Err(Error::InternalServerError);
             }
             Err(join_error) => {
@@ -840,7 +825,7 @@ impl McpManagementService {
                 )
                 .await
                 {
-                    Ok(()) => recovery_guard.disarm(),
+                    Ok(()) => (),
                     Err(mark_error) => tracing::error!(
                         draft_id = %draft_id,
                         error = ?mark_error,
@@ -945,7 +930,7 @@ impl McpManagementService {
                 )
                 .await
                 {
-                    Ok(()) => recovery_guard.disarm(),
+                    Ok(()) => (),
                     Err(mark_error) => tracing::error!(
                         draft_id = %draft_id,
                         error = ?mark_error,
@@ -955,8 +940,6 @@ impl McpManagementService {
                 return Err(error);
             }
         };
-
-        recovery_guard.disarm();
         Ok((updated, apply_result))
     }
 
@@ -1396,7 +1379,7 @@ fn scaffold_status_error(draft_id: Uuid, status: &str) -> Error {
             draft_id
         )),
         MCP_SCAFFOLD_STATUS_APPLYING => Error::BadRequest(format!(
-            "Scaffold draft {} is already being applied",
+            "Scaffold draft {} is applying or was interrupted; verify and reconcile the target workspace before retrying",
             draft_id
         )),
         MCP_SCAFFOLD_STATUS_RECOVERY_REQUIRED => Error::BadRequest(format!(
@@ -1441,102 +1424,11 @@ fn map_db_err(_err: sea_orm::DbErr) -> Error {
     Error::InternalServerError
 }
 
-struct ScaffoldApplyRecoveryGuard {
-    db: DatabaseConnection,
-    tenant_id: Uuid,
-    draft: mcp_scaffold_drafts::Model,
-    applied_by: Option<Uuid>,
-    actor_id: Option<String>,
-    actor_type: Option<String>,
-    workspace_root: String,
-    host_authority_actor_id: Option<Uuid>,
-    armed: bool,
-}
-
-impl ScaffoldApplyRecoveryGuard {
-    fn new(
-        db: DatabaseConnection,
-        tenant_id: Uuid,
-        draft: mcp_scaffold_drafts::Model,
-        applied_by: Option<Uuid>,
-        actor_id: Option<String>,
-        actor_type: Option<String>,
-        workspace_root: String,
-        host_authority_actor_id: Option<Uuid>,
-    ) -> Self {
-        Self {
-            db,
-            tenant_id,
-            draft,
-            applied_by,
-            actor_id,
-            actor_type,
-            workspace_root,
-            host_authority_actor_id,
-            armed: true,
-        }
-    }
-
-    fn disarm(&mut self) {
-        self.armed = false;
-    }
-}
-
-impl Drop for ScaffoldApplyRecoveryGuard {
-    fn drop(&mut self) {
-        if !self.armed {
-            return;
-        }
-
-        let db = self.db.clone();
-        let tenant_id = self.tenant_id;
-        let draft = self.draft.clone();
-        let applied_by = self.applied_by;
-        let actor_id = self.actor_id.clone();
-        let actor_type = self.actor_type.clone();
-        let workspace_root = self.workspace_root.clone();
-        let host_authority_actor_id = self.host_authority_actor_id;
-        let draft_id = draft.id;
-        let reason = "Scaffold apply task was cancelled before finalization; the target workspace may contain partial files and requires manual reconciliation";
-
-        match tokio::runtime::Handle::try_current() {
-            Ok(handle) => {
-                handle.spawn(async move {
-                    if let Err(error) = McpManagementService::mark_scaffold_apply_recovery_required(
-                        &db,
-                        tenant_id,
-                        &draft,
-                        applied_by,
-                        actor_id,
-                        actor_type,
-                        &workspace_root,
-                        host_authority_actor_id,
-                        reason,
-                    )
-                    .await
-                    {
-                        tracing::error!(
-                            draft_id = %draft_id,
-                            error = ?error,
-                            "Failed to quarantine cancelled MCP scaffold apply"
-                        );
-                    }
-                });
-            }
-            Err(error) => tracing::error!(
-                draft_id = %draft_id,
-                %error,
-                "Cannot quarantine cancelled MCP scaffold apply without an active Tokio runtime"
-            ),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
         dedupe, scaffold_apply_error_requires_recovery, scaffold_status_error, token_preview,
-        MCP_SCAFFOLD_STATUS_RECOVERY_REQUIRED,
+        MCP_SCAFFOLD_STATUS_APPLYING, MCP_SCAFFOLD_STATUS_RECOVERY_REQUIRED,
     };
     use crate::error::Error;
     use rustok_mcp::alloy_scaffold::AlloyScaffoldError;
@@ -1555,6 +1447,15 @@ mod tests {
             path: PathBuf::from("crates/modules/example"),
         };
         assert!(!scaffold_apply_error_requires_recovery(&preflight_error));
+    }
+
+    #[test]
+    fn interrupted_scaffold_apply_requires_workspace_reconciliation() {
+        let error = scaffold_status_error(Uuid::new_v4(), MCP_SCAFFOLD_STATUS_APPLYING);
+        assert!(matches!(
+            error,
+            Error::BadRequest(message) if message.contains("reconcile the target workspace")
+        ));
     }
 
     #[test]
