@@ -126,8 +126,8 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
                 granted_scopes: command.granted_scopes,
                 metadata: command.metadata,
                 created_by: Some(context.actor_id),
-                actor_id: Some(context.actor_id.to_string()),
-                actor_type: Some("human_user".to_string()),
+                audit_actor_id: Some(context.actor_id.to_string()),
+                audit_actor_type: Some("human_user".to_string()),
             },
         )
         .await
@@ -155,8 +155,8 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
                 expires_at: parse_optional_datetime(command.expires_at)?,
                 metadata: command.metadata,
                 created_by: Some(context.actor_id),
-                actor_id: Some(context.actor_id.to_string()),
-                actor_type: Some("human_user".to_string()),
+                audit_actor_id: Some(context.actor_id.to_string()),
+                audit_actor_type: Some("human_user".to_string()),
                 revoke_existing_tokens: command.revoke_existing_tokens,
             },
         )
@@ -187,8 +187,8 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
                 granted_scopes: command.granted_scopes,
                 metadata: command.metadata,
                 updated_by: Some(context.actor_id),
-                actor_id: Some(context.actor_id.to_string()),
-                actor_type: Some("human_user".to_string()),
+                audit_actor_id: Some(context.actor_id.to_string()),
+                audit_actor_type: Some("human_user".to_string()),
             },
         )
         .await
@@ -249,8 +249,8 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
                 client_id: command.client_id,
                 request: command.request,
                 created_by: Some(context.actor_id),
-                actor_id: Some(context.actor_id.to_string()),
-                actor_type: Some("human_user".to_string()),
+                audit_actor_id: Some(context.actor_id.to_string()),
+                audit_actor_type: Some("human_user".to_string()),
             },
         )
         .await

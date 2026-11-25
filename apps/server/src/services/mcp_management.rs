@@ -31,8 +31,8 @@ pub struct CreateMcpClientInput {
     pub granted_scopes: Vec<String>,
     pub metadata: serde_json::Value,
     pub created_by: Option<Uuid>,
-    pub actor_id: Option<String>,
-    pub actor_type: Option<String>,
+    pub audit_actor_id: Option<String>,
+    pub audit_actor_type: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -41,8 +41,8 @@ pub struct RotateMcpTokenInput {
     pub expires_at: Option<DateTime<Utc>>,
     pub metadata: serde_json::Value,
     pub created_by: Option<Uuid>,
-    pub actor_id: Option<String>,
-    pub actor_type: Option<String>,
+    pub audit_actor_id: Option<String>,
+    pub audit_actor_type: Option<String>,
     pub revoke_existing_tokens: bool,
 }
 
@@ -54,8 +54,8 @@ pub struct UpdateMcpPolicyInput {
     pub granted_scopes: Vec<String>,
     pub metadata: serde_json::Value,
     pub updated_by: Option<Uuid>,
-    pub actor_id: Option<String>,
-    pub actor_type: Option<String>,
+    pub audit_actor_id: Option<String>,
+    pub audit_actor_type: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -218,11 +218,11 @@ impl McpManagementService {
                 client_id: Some(client.id),
                 token_id: Some(token.id),
                 actor_id: input
-                    .actor_id
+                    .audit_actor_id
                     .clone()
                     .or_else(|| input.created_by.map(|value| value.to_string())),
                 actor_type: input
-                    .actor_type
+                    .audit_actor_type
                     .clone()
                     .or_else(|| input.created_by.map(|_| "human_user".to_string())),
                 action: "client_created".to_string(),
@@ -351,11 +351,11 @@ impl McpManagementService {
                 client_id: Some(client.id),
                 token_id: Some(token.id),
                 actor_id: input
-                    .actor_id
+                    .audit_actor_id
                     .clone()
                     .or_else(|| input.created_by.map(|value| value.to_string())),
                 actor_type: input
-                    .actor_type
+                    .audit_actor_type
                     .clone()
                     .or_else(|| input.created_by.map(|_| "human_user".to_string())),
                 action: "token_rotated".to_string(),
@@ -443,11 +443,11 @@ impl McpManagementService {
                 client_id: Some(client.id),
                 token_id: None,
                 actor_id: input
-                    .actor_id
+                    .audit_actor_id
                     .clone()
                     .or_else(|| input.updated_by.map(|value| value.to_string())),
                 actor_type: input
-                    .actor_type
+                    .audit_actor_type
                     .clone()
                     .or_else(|| input.updated_by.map(|_| "human_user".to_string())),
                 action: "policy_updated".to_string(),
@@ -668,11 +668,11 @@ impl McpManagementService {
                 client_id: input.client_id,
                 token_id: None,
                 actor_id: input
-                    .actor_id
+                    .audit_actor_id
                     .clone()
                     .or_else(|| input.created_by.map(|value| value.to_string())),
                 actor_type: input
-                    .actor_type
+                    .audit_actor_type
                     .clone()
                     .or_else(|| input.created_by.map(|_| "human_user".to_string())),
                 action: "scaffold_draft_staged".to_string(),

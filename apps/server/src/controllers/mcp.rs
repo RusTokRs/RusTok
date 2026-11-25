@@ -758,8 +758,8 @@ async fn create_client(
             granted_scopes: input.granted_scopes,
             metadata: input.metadata,
             created_by: actor_user_id,
-            actor_id,
-            actor_type,
+            audit_actor_id: actor_id,
+            audit_actor_type: actor_type,
         },
     )
     .await?;
@@ -804,8 +804,8 @@ async fn rotate_token(
             expires_at: input.expires_at,
             metadata: input.metadata,
             created_by: actor_user_id,
-            actor_id,
-            actor_type,
+            audit_actor_id: actor_id,
+            audit_actor_type: actor_type,
             revoke_existing_tokens: input.revoke_existing_tokens.unwrap_or(true),
         },
     )
@@ -853,8 +853,8 @@ async fn update_policy(
             granted_scopes: input.granted_scopes,
             metadata: input.metadata,
             updated_by: actor_user_id,
-            actor_id,
-            actor_type,
+            audit_actor_id: actor_id,
+            audit_actor_type: actor_type,
         },
     )
     .await?;
