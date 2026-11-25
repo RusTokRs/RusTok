@@ -272,7 +272,9 @@ DB clock jump, and no host suspend that stops the monotonic clock. Stop all
 older/unmanaged host binaries and apply both Auth migrations before cutover.
 A database error terminates the host; static mode exits when its lease is
 denied. File-backed stale hosts keep polling with JWT crypto fenced after
-expiry. In-flight business transactions already authorized are not cancelled.
+expiry. The host's critical `jwt_cluster_lease` readiness check samples the
+same local gate after awaited dependency probes, returning 503 when the lease
+is unavailable. In-flight business transactions already authorized are not cancelled.
 Root rotation, rollback of the database itself, explicit replica membership,
 non-disruptive staging/promotion and emergency distributed revocation remain
 separate work. Keys removed before first enrollment are not known to the ledger.

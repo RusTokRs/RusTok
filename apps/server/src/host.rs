@@ -195,6 +195,9 @@ pub async fn run() -> Result<()> {
     tracing::info!(generation, "JWT keyring runtime initialized");
 
     let runtime_ctx = ServerRuntimeContext::new(db, rustok_settings.clone());
+    runtime_ctx.shared_insert(
+        supervisor.publisher.lease_readiness().map_err(crate::auth::auth_err)?,
+    );
 
     let result = with_runtime_shutdown(&runtime_ctx, async {
         let mut supervisor = Box::pin(supervisor.run(production));

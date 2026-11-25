@@ -65,6 +65,10 @@ their selected surface.
 ### Dependency checks
 
 - `database` — critical check for DB availability;
+- `jwt_cluster_lease` — critical check of the same local monotonic lease used
+  by JWT signing and verification. The HTTP host registers it in every host
+  mode, including static JWT mode. An expired or unavailable lease yields HTTP
+  503, even if the process is alive. No key or generation metadata is exposed;
 - `database_schema` — critical check for mandatory runtime schema tables:
   `tenants`, `users`, `sys_events` when the active delivery profile is
   `outbox` or `outbox_iggy`, and

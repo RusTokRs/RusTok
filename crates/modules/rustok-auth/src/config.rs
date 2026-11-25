@@ -96,6 +96,27 @@ struct VersionedJwtKeys {
     lease_until: Option<Instant>,
 }
 
+impl VersionedJwtKeys {
+    fn permits_crypto_at(&self, now: Instant) -> bool {
+        !self.lease_required || self.lease_until.is_some_and(|deadline| now < deadline)
+    }
+}
+
+/// Read-only readiness view of the exact lease gate used by JWT operations.
+/// It does not expose key material, generation mutation, or renewal authority.
+#[derive(Clone)]
+pub struct JwtLeaseReadiness {
+    current: Arc<RwLock<VersionedJwtKeys>>,
+}
+
+impl JwtLeaseReadiness {
+    pub fn is_ready(&self) -> bool {
+        self.current.read().is_ok_and(|guard| {
+            guard.lease_required && guard.permits_crypto_at(Instant::now())
+        })
+    }
+}
+
 /// Host-only publication capability. Request consumers receive AuthConfig,
 /// not this handle. The four prepared rings and generation move together.
 pub struct JwtKeyringPublisher {
@@ -205,12 +226,18 @@ impl AuthConfig {
     pub(crate) fn with_jwt_operation<T>(
         &self, operation: impl FnOnce(&ValidatedJwtKeyrings) -> Result<T>,
     ) -> Result<T> {
+        self.with_jwt_operation_at(Instant::now, operation)
+    }
+
+    fn with_jwt_operation_at<T>(
+        &self, now: impl Fn() -> Instant,
+        operation: impl FnOnce(&ValidatedJwtKeyrings) -> Result<T>,
+    ) -> Result<T> {
         match &self.key_state {
             JwtKeySource::Fixed(keys) => operation(keys.prepared(self.secret())?),
             JwtKeySource::Live(current) => {
                 let guard = current.read().map_err(|_| keyring_runtime_error())?;
-                let authorized = || !guard.lease_required
-                    || guard.lease_until.is_some_and(|deadline| Instant::now() < deadline);
+                let authorized = || guard.permits_crypto_at(now());
                 if !authorized() {
                     return Err(keyring_runtime_error());
                 }
@@ -412,6 +439,17 @@ impl JwtKeyringPublisher {
                 .map_err(|_| keyring_runtime_error()),
             JwtKeySource::Fixed(_) => Err(invalid_rotation()),
         }
+    }
+
+    /// Obtain a read-only view for the host readiness probe.
+    pub fn lease_readiness(&self) -> Result<JwtLeaseReadiness> {
+        let JwtKeySource::Live(current) = &self.config.key_state else {
+            return Err(invalid_rotation());
+        };
+        if !current.read().map_err(|_| keyring_runtime_error())?.lease_required {
+            return Err(invalid_rotation());
+        }
+        Ok(JwtLeaseReadiness { current: current.clone() })
     }
 
     pub(crate) fn lease_root(&self) -> &str {
@@ -742,6 +780,41 @@ pub(crate) fn validate_rs256_key_pair(private_key_pem: &str, public_key_pem: &st
 mod tests {
     use super::*;
 
+
+    #[test]
+    fn cluster_lease_gate_rejects_crypto_at_or_after_deadline() {
+        use std::cell::Cell;
+        use std::time::Duration;
+        let (config, publisher) = AuthConfig::new(secret()).into_cluster_jwt(0).unwrap();
+        let readiness = publisher.lease_readiness().unwrap();
+        assert!(!readiness.is_ready());
+        let start = Instant::now();
+        let deadline = start.checked_add(Duration::from_secs(60)).unwrap();
+        assert!(!publisher.install_lease(1, deadline).unwrap());
+        assert!(!publisher.install_lease(0, start).unwrap());
+        assert!(publisher.install_lease(0, deadline).unwrap());
+        assert!(readiness.is_ready());
+
+        // The post-operation fence must discard a result even if crypto
+        // started before expiry. Simulate the clock without sleeping.
+        let clock = Cell::new(start);
+        let calls = Cell::new(0);
+        let result = config.with_jwt_operation_at(|| clock.get(), |_| {
+            calls.set(calls.get() + 1);
+            clock.set(deadline);
+            Ok(123_u32)
+        });
+        assert!(result.is_err());
+        assert_eq!(calls.get(), 1);
+        assert!(config.with_jwt_operation_at(|| deadline, |_| {
+            panic!("expired lease must not enter crypto");
+            #[allow(unreachable_code)]
+            Ok(())
+        }).is_err());
+        publisher.revoke_lease();
+        assert!(!readiness.is_ready());
+        assert!(config.with_jwt_operation(|_| Ok(())).is_err());
+    }
 
     #[test]
     fn auth_overrides_reject_unknown_security_settings() {

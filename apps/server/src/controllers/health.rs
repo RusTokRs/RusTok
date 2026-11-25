@@ -500,6 +500,11 @@ async fn collect_readiness(
     // a shutdown requested during a slow probe must also clear readiness.
     // Registry-only hosts have no required background workers to reveal stop.
     checks.push(runtime_shutdown_check(&ctx));
+    // Sample the same monotonic gate used by JWT crypto, after the awaited
+    // dependency checks so a lease expiring during the probe is not hidden.
+    if let Some(check) = jwt_cluster_lease_check(&ctx) {
+        checks.push(check);
+    }
 
     // Stable output is useful to operators and avoids completion-order churn.
     checks.sort_by(|left, right| left.name.cmp(&right.name));
@@ -905,6 +910,21 @@ fn is_missing_search_relation_error(error: &sea_orm::DbErr) -> bool {
     message.contains("no such table")
         || message.contains("undefinedtable")
         || message.contains("relation") && message.contains("does not exist")
+}
+
+fn jwt_cluster_lease_check(ctx: &ServerRuntimeContext) -> Option<ReadinessCheck> {
+    // The HTTP host always registers this read-only handle. Embedded/test
+    // contexts without cluster-managed Auth have no such dependency.
+    let lease = ctx.shared_get::<rustok_auth::JwtLeaseReadiness>()?;
+    let ready = lease.is_ready();
+    Some(ReadinessCheck {
+        name: "jwt_cluster_lease".to_string(),
+        kind: "runtime",
+        criticality: DependencyCriticality::Critical,
+        status: if ready { ReadinessStatus::Ok } else { ReadinessStatus::Unhealthy },
+        latency_ms: 0,
+        reason: (!ready).then(|| "JWT cluster lease unavailable".to_string()),
+    })
 }
 
 fn runtime_shutdown_check(ctx: &ServerRuntimeContext) -> ReadinessCheck {
@@ -1392,6 +1412,22 @@ pub fn router() -> crate::routes::ServerRouter {
 mod tests {
     use super::*;
     use crate::middleware::tenant::TenantInvalidationListenerSnapshot;
+
+    #[tokio::test]
+    async fn cluster_lease_is_critical_in_every_host_mode() {
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = crate::common::settings::RuntimeHostMode::RegistryOnly;
+        let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
+        assert!(jwt_cluster_lease_check(&ctx).is_none());
+        let (_, publisher) = rustok_auth::AuthConfig::new("lease-readiness-test-root-at-least-32-bytes".into())
+            .into_cluster_jwt(0).unwrap();
+        ctx.shared_insert(publisher.lease_readiness().unwrap());
+        let response = collect_readiness(ctx, ModuleRegistry::new()).await;
+        let lease = response.checks.iter().find(|check| check.name == "jwt_cluster_lease").unwrap();
+        assert_eq!(lease.criticality, DependencyCriticality::Critical);
+        assert_eq!(lease.status, ReadinessStatus::Unhealthy);
+        assert_eq!(readiness_http_status(response.status), StatusCode::SERVICE_UNAVAILABLE);
+    }
 
     #[tokio::test]
     async fn registry_only_readiness_rejects_shutdown_without_background_workers() {

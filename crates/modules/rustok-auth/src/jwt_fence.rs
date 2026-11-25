@@ -301,8 +301,14 @@ impl JwtGenerationFence {
                 Some(ledger) if generation == ledger.generation => {
                     return if snapshot == ledger.current { Ok(JwtAdmission::Admitted) } else { Err(rejected()) };
                 }
-                Some(ledger) => ledger.advance(generation, snapshot.clone(), chrono::Utc::now().timestamp())?,
+                Some(ledger) => ledger.advance(generation, snapshot.clone(), stored.now_ms / 1000)?,
             };
+            // Reject an oversized ledger before closing renewal. A candidate
+            // that cannot be persisted must not start an avoidable drain.
+            let payload = serde_json::to_string(&next).map_err(|_| unavailable())?;
+            if payload.len() > MAX_LEDGER_BYTES {
+                return Err(rejected());
+            }
             if stored.lease_until_ms > stored.now_ms {
                 if stored.drain_until_ms > stored.now_ms {
                     return Ok(JwtAdmission::Draining);
@@ -321,10 +327,6 @@ impl JwtGenerationFence {
                     return Ok(JwtAdmission::Draining);
                 }
                 continue;
-            }
-            let payload = serde_json::to_string(&next).map_err(|_| unavailable())?;
-            if payload.len() > MAX_LEDGER_BYTES {
-                return Err(rejected());
             }
             let tag = hex::encode(mac.state_mac(&payload)?.finalize().into_bytes());
             let backend = self.db.get_database_backend();

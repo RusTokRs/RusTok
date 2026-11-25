@@ -64,8 +64,10 @@ failure the host exits; a drop guard clears local authority even on
 cancellation. At startup the host does not bind a listener before admission
 and initial lease succeed. A static host exits when renewal is denied.
 A file-backed host continues polling but cannot perform JWT crypto without
-a current lease. Already-authorized async business IO is not cancelled by
-a crypto lease expiry.
+a current lease. The HTTP host registers a read-only readiness handle;
+the critical JWT lease check is sampled after awaited dependencies and
+reports HTTP 503 when the same crypto gate is closed. Already-authorized
+async business IO is not cancelled by a crypto lease expiry.
 
 ## Cutover and non-goals
 
@@ -81,6 +83,6 @@ No new dependencies or event infrastructure.
 ## Verification
 
 Source regressions cover old lease drain, renewal refusal, expired lease
-crypto refusal, canonical catch-up, generation-zero/static enrollment and
-drain expiry. Run scoped Auth/host checks and real independent-pool PostgreSQL
+crypto refusal before and after an operation, canonical catch-up,
+generation-zero/static enrollment, drain expiry and critical readiness. Run scoped Auth/host checks and real independent-pool PostgreSQL
 contention, network partition, restart and timing tests before deployment.
