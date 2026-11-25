@@ -1129,9 +1129,13 @@ export class FlyBrowserAdapter {
         detail: { componentId: next, source },
       }),
     );
-    // Keep the controller selection in sync with the browser adapter. This is
-    // a read-only intent and does not create a document revision or save.
-    if (this.postIntents && this.intentEndpoint) {
+    // In the hydrated workspace, Leptos owns selection and updates its local
+    // controller. The adapter still mirrors selectedId for SSR forms, but must not
+    // post a second request. SSR and iframe/inspector selections use this transport.
+    const wasmOwnsSelection =
+      source === "ssr-control" &&
+      this.root.querySelector("[data-fly-wasm-hydrated='true']");
+    if (this.postIntents && this.intentEndpoint && !wasmOwnsSelection) {
       void this.emitIntent("select", { component_id: next });
     }
   }
@@ -1286,6 +1290,7 @@ export class FlyBrowserAdapter {
         (event) => {
           const blockId = element.dataset.flyBlockId;
           if (!blockId) return;
+          if (element.closest("[data-fly-wasm-hydrated='true']")) return;
           event.dataTransfer?.setData("application/x-fly-block", blockId);
           event.dataTransfer?.setData("text/plain", blockId);
           this.activeDrag = { kind: "block", block_id: blockId };
@@ -1341,6 +1346,10 @@ export class FlyBrowserAdapter {
         }
         const componentId = componentElement.dataset.flyComponentId;
         if (!componentId) return;
+        if (componentElement.closest("[data-fly-wasm-hydrated='true']")) {
+          this.select(componentId, "ssr-control");
+          return;
+        }
         event.dataTransfer?.setData(
           "application/x-fly-component",
           componentId,
@@ -1368,6 +1377,12 @@ export class FlyBrowserAdapter {
         if (!(actionElement instanceof Element)) return;
         const action = actionElement.dataset.flyAction;
         if (!action) return;
+        if (
+          action !== "select-component" &&
+          actionElement.closest("[data-fly-wasm-hydrated='true']")
+        ) {
+          return;
+        }
         switch (action) {
           case "insert-block": {
             event.preventDefault();

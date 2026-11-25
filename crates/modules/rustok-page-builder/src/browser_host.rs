@@ -245,6 +245,9 @@ const __flyBindSsrAdapter = (adapter) => {
       ? event.target.closest("form[data-fly-intent-form]")
       : null;
     if (!(form instanceof HTMLFormElement)) return;
+    // Hydrated Fly controls submit through typed Leptos callbacks. The browser
+    // form transport is the SSR fallback and must not duplicate those mutations.
+    if (form.closest("[data-fly-wasm-hydrated='true']")) return;
     event.preventDefault();
     const intent = form.dataset.flyIntentForm;
     if (!intent) return;
@@ -480,5 +483,11 @@ mod selection_contract_tests {
             .contains("adapter.select(picker.value || null, \"ssr-inspector\");"));
         assert!(!PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS
             .contains("adapter.selectedId = picker.value || null;"));
+    }
+
+    #[test]
+    fn hydrated_workspace_forms_are_left_to_leptos() {
+        assert!(PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS
+            .contains("form.closest(\"[data-fly-wasm-hydrated='true']\")"));
     }
 }

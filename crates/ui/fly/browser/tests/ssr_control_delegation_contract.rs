@@ -23,3 +23,11 @@ fn nested_component_drag_uses_one_nearest_component_target() {
 fn browser_selection_is_forwarded_as_a_read_only_intent() {
     assert!(contains("void this.emitIntent(\"select\", { component_id: next });"));
 }
+
+
+#[test]
+fn hydrated_workspace_actions_and_selection_have_one_transport_owner() {
+    assert!(contains("actionElement.closest(\"[data-fly-wasm-hydrated='true']\")"));
+    assert!(contains("componentElement.closest(\"[data-fly-wasm-hydrated='true']\")"));
+    assert!(contains("source === \"ssr-control\" && this.root.querySelector(\"[data-fly-wasm-hydrated='true']\")"));
+}
