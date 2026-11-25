@@ -111,11 +111,11 @@ impl EventTransport for TenantGenerationDeliveryGate {
                 self.policy_cache_invalidations.observe(envelope.id);
             }
         }
-        self.ensure_listener_ready().await?;
         #[cfg(feature = "mod-pages")]
         if self.pages_handler.handles(&envelope.event) {
             self.pages_handler.handle(&envelope).await?;
         }
+        self.ensure_listener_ready().await?;
         self.inner.publish(envelope).await
     }
 
