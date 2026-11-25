@@ -1,5 +1,5 @@
-//! Purpose-separated host authentication proofs. JWT signing deliberately
-//! retains its existing contract until a coordinated key-rotation migration.
+//! Purpose-separated host authentication proofs. JWT key rotation does not
+//! change the host MAC root or invalidate credential-bound proofs.
 use hkdf::Hkdf;
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;

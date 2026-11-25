@@ -623,7 +623,7 @@ mod tests {
             panic!("expected typed validation diagnostics");
         };
         assert!(diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "landing_srcset_rejected"
+            diagnostic.code == "runtime_public_url_invalid"
                 && diagnostic.path.ends_with("attributes.srcset")
         }));
     }

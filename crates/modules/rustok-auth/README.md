@@ -97,6 +97,12 @@ it never provisions a service or adds grants. Human transport authentication is 
 
 ### Known Limitations / Pending Implementation
 
+JWT keyring selection and retirement are source-implemented; scoped compilation,
+RSA rotation and coordinated replica rollout evidence are pending. Configuration
+is startup-scoped; purpose-specific keyrings and algorithm migration remain open.
+See [JWT rotation](docs/README.md#jwt-keyring-and-rotation).
+
+
 Context/configuration and revocation-double definitions are uncompiled/unrun. Actual canonical
 OAuth/module availability/secret rotation, denied/revoked grants, backend and deployment evidence
 remain pending; absent bindings refuse instead of falling back to system/admin authority.

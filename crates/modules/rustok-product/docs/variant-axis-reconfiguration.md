@@ -37,6 +37,13 @@ rewritten/staged, and tuple-only changes do not rewrite configuration or unaffec
 identities; this avoids unnecessary deferred-trigger work. Final invariants hold at commit.
 Removed-axis EAV is retained; the operation does not delete/consolidate SKUs, stock, prices or
 cross-owner links. Only explicitly reassigned target values are overwritten.
+Both standalone tuple edits and axis reconfiguration capture the previous generated
+titles before mutation and refresh affected SKUs in the same transaction using the
+shared localized tuple projection. Product locales and each SKU's existing extra
+locales are retained; missing/empty rows and rows equal to the previous generated
+title advance, while other authored copy is preserved. This is the existing
+value-comparison heuristic, not explicit persisted title provenance. The focused
+regression is authored but unrun.
 
 Changed configuration/assignments advance the Product revision, index invalidation and
 `ProductUpdated` event atomically with the existing durable receipt. No-ops still complete their

@@ -84,7 +84,7 @@ if (
   contract.provider.sanitization.format !==
     "page_builder_static_publish_sanitization_v2" ||
   contract.provider.sanitization.policy.format !==
-    "page_builder_static_publish_policy_v1"
+    "page_builder_static_publish_policy_v2"
 ) {
   fail("static publish sanitization/policy formats are not current");
 }

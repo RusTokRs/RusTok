@@ -1242,6 +1242,16 @@ fn srcset_allowed(value: &str, policy: &RenderPolicy) -> bool {
 const DENIED_STYLE_PROPERTIES: &[&str] =
     &["behavior", "-moz-binding", "-ms-behavior", "expression"];
 
+/// Check the renderer's CSS property-name admission rule. Hosts may impose
+/// additional length or publication restrictions, but must not admit names
+/// the renderer would silently drop.
+pub fn css_property_allowed(name: &str) -> bool {
+    !name.is_empty()
+        && !name.starts_with("--")
+        && name.chars().all(|character| character.is_ascii_alphabetic() || character == '-')
+        && !DENIED_STYLE_PROPERTIES.contains(&name.to_ascii_lowercase().as_str())
+}
+
 /// Decide whether a single CSS declaration may be emitted.
 ///
 /// `url(...)` used to be rejected outright, which is safe but wrong for a page builder: it made
@@ -1260,18 +1270,7 @@ const DENIED_STYLE_PROPERTIES: &[&str] =
 /// same stricter rule to attributes *and* references — see `FORBIDDEN_CSS_TOKENS` and
 /// `strip_validated_css_urls` in `rustok-page-builder`'s `static_publish_policy`.
 fn safe_style(name: &str, value: &Value, policy: &RenderPolicy) -> Option<String> {
-    if name.is_empty()
-        || name.starts_with("--")
-        || !name
-            .chars()
-            .all(|character| character.is_ascii_alphabetic() || character == '-')
-    {
-        return None;
-    }
-    // These properties execute code by design, so no value is safe. Previously they were blocked
-    // only as a side effect of banning `url(` outright; now that safe references are permitted,
-    // the property itself has to be refused.
-    if DENIED_STYLE_PROPERTIES.contains(&name.to_ascii_lowercase().as_str()) {
+    if !css_property_allowed(name) {
         return None;
     }
     let value = scalar_string(value)?;

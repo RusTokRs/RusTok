@@ -51,6 +51,7 @@ Fly Visual Editor Engine: framework-neutral visual editor engine, AST models, de
 - Empty projects, missing templates, and circular symbol references fail closed with descriptive domain errors.
 
 ## 4. Security & Isolation Invariants
+- Host publish policies reuse the public URL-shape helpers, `validate_srcset_candidates` (with a host resource-admission callback), and `css_property_allowed`; hosts can narrow policy without duplicating renderer grammar.
 - SSR and validation share head URL admission (including Twitter images) and bounded responsive image candidate validation. Absolute HTTP(S) URLs require a parseable host/port.
 - Safe URL validation (`validate_component_public_urls`, `validate_embed_url`) forbids `javascript:`, executable data URIs, embed credentials/non-default ports, and paths that escape registered provider surfaces.
 - HTML sanitization and safe SSR rendering prevent injection of executable script tags or malicious event handlers.

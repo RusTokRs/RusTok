@@ -1439,6 +1439,69 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn axis_order_refresh_advances_seeded_titles_without_overwriting_authored_locales() {
+        use super::super::commands::VariantAutoTitleSnapshot;
+        use sea_orm::TransactionTrait;
+
+        let db = variant_projection_db().await;
+        let (tenant_id, product_id, variant_id) = seed_variant_projection_fixture(&db).await;
+        let backend = sea_orm::DatabaseBackend::Sqlite;
+        db.execute_raw(Statement::from_string(
+            backend,
+            "CREATE TABLE product_translations (tenant_id TEXT, product_id TEXT, locale TEXT);
+             CREATE TABLE product_variant_translations (id TEXT PRIMARY KEY, variant_id TEXT, locale TEXT, title TEXT);",
+        ))
+        .await
+        .unwrap();
+        for locale in ["en", "de"] {
+            db.execute_raw(Statement::from_sql_and_values(
+                backend,
+                "INSERT INTO product_translations (tenant_id, product_id, locale) VALUES (?, ?, ?)",
+                [tenant_id.into(), product_id.into(), locale.into()],
+            ))
+            .await
+            .unwrap();
+        }
+        for (locale, title) in [("en", "M / Red"), ("ru", "Авторское название"), ("fr", "M / Red")] {
+            entities::variant_translation::ActiveModel {
+                id: Set(Uuid::new_v4()),
+                variant_id: Set(variant_id),
+                locale: Set(locale.to_owned()),
+                title: Set(Some(title.to_owned())),
+            }
+            .insert(&db)
+            .await
+            .unwrap();
+        }
+        let txn = db.begin().await.unwrap();
+        let titles = VariantAutoTitleSnapshot::capture(&txn, tenant_id, product_id, &[variant_id])
+            .await
+            .unwrap();
+        txn.execute_raw(Statement::from_string(
+            backend,
+            "UPDATE product_variant_axes SET position = 1 - position",
+        ))
+        .await
+        .unwrap();
+        titles.refresh(&txn, tenant_id, product_id).await.unwrap();
+        txn.commit().await.unwrap();
+
+        let saved = entities::variant_translation::Entity::find()
+            .filter(entities::variant_translation::Column::VariantId.eq(variant_id))
+            .all(&db)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|row| (row.locale, row.title))
+            .collect::<HashMap<_, _>>();
+        assert_eq!(saved.len(), 4);
+        assert_eq!(saved["en"].as_deref(), Some("Red / M"));
+        assert_eq!(saved["fr"].as_deref(), Some("Red / M"));
+        assert_eq!(saved["de"].as_deref(), Some("Red / M"));
+        assert_eq!(saved["ru"].as_deref(), Some("Авторское название"));
+    }
+
+    #[tokio::test]
     async fn display_titles_fall_back_to_option_codes_and_default() {
         let db = variant_projection_db().await;
         let (tenant_id, product_id, variant_id) = seed_variant_projection_fixture(&db).await;

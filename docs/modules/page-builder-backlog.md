@@ -120,6 +120,16 @@ evidence/version was not changed; its independent URL and srcset grammar still r
 a coordinated cutover with artifact compatibility review. Focused regressions authored;
 compilation, tests, lint and remediation gate not run.
 
+Static publication follow-up (2026-11-25, source-only): policy v2 reuses Fly URL
+shape, numeric srcset candidate grammar and CSS property-name admission, keeping the
+stricter HTTPS-only resource and relative form-action rules. All localized canonical,
+Open Graph and Twitter image URLs must match head rendering. The registry and runtime
+review format guards move to v2; as decided in the media-provider ADR, existing stored
+compiled artifacts remain served, but exact rebuild of v1 retained sources requires a
+fresh reviewed publish. Four focused regressions authored; compiler, tests, lint,
+remediation gate and evidence admission not run. Full CSS value grammar and runtime
+materialization resource audit remain open.
+
 Reduced-motion follow-up: the shared Fly browser asset now uses instant scrolling for
 `scroll_to` when the target document requests reduced motion, including in the presence of
 CSS `scroll-behavior: smooth`; animations use the same document preference. The Node runtime
