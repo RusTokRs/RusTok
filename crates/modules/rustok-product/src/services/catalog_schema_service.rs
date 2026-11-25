@@ -1642,7 +1642,8 @@ mod tests {
         assert!(valid_attribute_input("en_us").validate().is_err());
 
         let mut duplicate = valid_attribute_input("en-US");
-        duplicate.translations.push(duplicate.translations[0].clone());
+        let duplicate_translation = duplicate.translations[0].clone();
+        duplicate.translations.push(duplicate_translation);
         assert!(duplicate.validate().is_err());
     }
 
