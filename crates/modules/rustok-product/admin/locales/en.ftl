@@ -139,6 +139,7 @@ product-variants-barcode = Barcode
 product-variants-cannotDeleteOnly = Cannot delete the only variant of a product.
 product-variants-delete = Delete
 product-variants-deleteConfirm = Are you sure you want to delete this variant?
+product-variants-deleteCancel = Cancel
 product-variants-deleteSuccess = Variant deleted successfully.
 product-variants-empty = No variants found.
 product-variants-options = Options

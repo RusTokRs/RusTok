@@ -454,7 +454,9 @@ pub(crate) async fn delete_product(
 }
 
 /// Remaining image and variant update/delete writes use the private lifecycle gateway.
-pub(crate) use legacy::{add_product_image, delete_product_image, update_product_variant};
+pub(crate) use legacy::{
+    add_product_image, delete_product_image, delete_product_variant, update_product_variant,
+};
 
 pub(crate) use crate::transport::variant_axes::{preview_variant_axes, set_variant_axes};
 

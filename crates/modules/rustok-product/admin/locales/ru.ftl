@@ -139,6 +139,7 @@ product-variants-barcode = Штрихкод
 product-variants-cannotDeleteOnly = Нельзя удалить единственный вариант товара.
 product-variants-delete = Удалить
 product-variants-deleteConfirm = Вы уверены, что хотите удалить этот вариант?
+product-variants-deleteCancel = Отмена
 product-variants-deleteSuccess = Вариант успешно удалён.
 product-variants-empty = Варианты не найдены.
 product-variants-options = Опции

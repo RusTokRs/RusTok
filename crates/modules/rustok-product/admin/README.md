@@ -131,11 +131,14 @@ correction. `core/initial_catalog.rs` owns selection/assignment/scalar validatio
 command receives the exact selected axes/SKUs, not a temporary default SKU followed by writes.
 
 Standalone SKU creation/recovery is mounted through `ProductVariantCreateSection` outside the
-document fieldset; `ProductVariantsPanel` only edits existing rows. Creation sends explicit axis
-assignments and refuses invalid inventory/price text rather than coercing it to zero.
-Projection refresh only merges acknowledged variants/axes; it does not rebase dirty document
-controls. Persisted-axis writes are blocked while the category is dirty. The newly mounted
-section does not offer SKU deletion until stock-safe owner lifecycle semantics are implemented.
+document fieldset. `ProductVariantsPanel` edits and can retire an existing SKU only when
+another variant remains; deletion requires explicit confirmation and the current variant revision.
+The Product owner performs Inventory/Pricing cleanup in the same transaction and refuses
+retirement while stock, reservations or historical Inventory references remain. Projection refresh
+only merges acknowledged variants/axes; it does not rebase dirty document controls, and it moves
+the separate SKU editor to a surviving variant only when its exact target was retired. Persisted-axis
+writes are blocked while the category is dirty. Leptos retains the lifecycle retry key in process
+memory; durable browser recovery across process loss or multi-instance routing remains outstanding.
 
 `core/variant_axes.rs`, `ui/variant_axes.rs` and the selected native/GraphQL adapters now own
 existing-axis preview/full-tuple correction/CAS in source. Localized recovery controls persist
@@ -170,8 +173,8 @@ Axes, standalone SKU creation and dictionary definition lifecycle have durable L
 recovery in source; other retained-key CRUD helpers remain memory-only. Product create and remaining CRUD still use
 `transport/product_lifecycle_graphql.rs`; this is not a general native CRUD cutover. Unsubmitted
 local drafts/filters are not durable pending commands. Localization of other initial/schema
-controls, stock-safe retirement, storefront work and runtime verification
-remain in the [Product plan](../docs/implementation-plan.md#variant-axis-continuation-2026-10-29).
+controls, durable browser recovery for existing-row Variant update/delete, storefront work and
+runtime verification remain in the [Product plan](../docs/implementation-plan.md#variant-axis-continuation-2026-10-29).
 
 
 ## Attribute and option definition recovery
