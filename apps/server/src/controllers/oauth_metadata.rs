@@ -94,6 +94,8 @@ fn metadata_for_issuer(issuer: &str) -> Result<OAuthAuthorizationServerMetadata,
 
         claims_supported: vec![
             "sub".into(),
+            "role".into(),
+            "tenant_id".into(),
             "name".into(),
             "email".into(),
             "email_verified".into(),
@@ -191,6 +193,8 @@ mod tests {
             metadata.claims_supported,
             vec![
                 "sub".to_string(),
+                "role".to_string(),
+                "tenant_id".to_string(),
                 "name".to_string(),
                 "email".to_string(),
                 "email_verified".to_string(),
