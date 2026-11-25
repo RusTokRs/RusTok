@@ -858,7 +858,7 @@ pub const DEFAULT_EDITOR_DRAFT_SESSION_TTL: Duration =
 const UNATTRIBUTED_PARTITION: &str = "_unattributed";
 /// Prefix of per-tenant partitions; the encoded tenant id follows.
 const TENANT_PARTITION_PREFIX: &str = "t-";
-/// Directory of the per-token OS file-lock files, shared by all partitions
+/// Directory of the per-session and per-owner OS file-lock files, shared by all partitions
 /// because a token is unique across tenants.
 const LOCKS_DIR: &str = "_locks";
 /// Stable directory guard. Token lock files may only be opened or removed while
@@ -877,7 +877,8 @@ const MAX_TTL_REFRESH_SLACK_SECS: u64 = 5 * 60;
 /// Layout (audit §2.6): `<dir>/t-<tenant>/<token>.json` per tenant,
 /// `<dir>/_unattributed/<token>.json` for sessions without an owner, and
 /// `<dir>/_locks/<token>.lock` plus the stable `<dir>/_locks/.guard.lock`.
-/// Token locks use OS file locks; `prune` safely removes idle token lock files.
+/// Session and per-owner capacity locks use OS file locks; `prune` safely
+/// removes idle lock files.
 /// On Unix every directory is created `0700` and
 /// every file `0600`; a storage directory that is a symbolic link, or that the
 /// process cannot restrict to its own user, is refused.
@@ -1348,6 +1349,22 @@ impl FileSsrDraftSessionStore {
         let Some(owner) = owner.as_ref() else {
             return Ok(());
         };
+        // Serialize the scan-and-evict decision per owner. The current new
+        // token lock is already held by save_record_locked; this owner lock is
+        // acquired before any candidate token locks, so concurrent creates
+        // cannot both observe a free slot and exceed the cap.
+        let owner_lock_token = owner_cap_lock_token(owner);
+        self.with_lock(&owner_lock_token, || {
+            self.enforce_owner_cap_under_lock(partition, owner, keep_token)
+        })
+    }
+
+    fn enforce_owner_cap_under_lock(
+        &self,
+        partition: &Path,
+        owner: &DraftSessionOwner,
+        keep_token: &str,
+    ) -> Result<(), SsrDraftSessionError> {
         let entries = match fs::read_dir(partition) {
             Ok(entries) => entries,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -1987,8 +2004,9 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
         }
 
         // Lock files are stable inodes while a process owns them. Reap idle
-        // ones only after all record pruning is complete; active operations
-        // are left alone and waiters cannot race the unlink.
+        // session and per-owner lock files only after record pruning is
+        // complete; active operations are left alone and waiters cannot race
+        // the unlink.
         prune_token_lock_files(&self.dir.join(LOCKS_DIR))?;
         Ok(pruned)
     }
@@ -3026,7 +3044,7 @@ fn try_with_token_lock<T>(
     }
 }
 
-/// Removes idle per-token lock files without racing waiters or active holders.
+/// Removes idle session and per-owner lock files without racing waiters or active holders.
 ///
 /// Every token-lock opener first takes the directory guard. While pruning
 /// holds that guard, no new waiter can open a token file; a failed try-lock
@@ -3165,6 +3183,23 @@ enum TokenLockCommit {
 /// within the same second are ordered by the nanosecond timestamp that
 /// [`atomic_write_file`] stamps on every record.
 type RecordAge = (u64, SystemTime);
+
+/// Stable per-owner lock key used only to serialize the file store's
+/// scan-and-evict capacity decision. FNV-1a is not a security primitive here:
+/// collisions only serialize unrelated owners; it never authorizes access.
+fn owner_cap_lock_token(owner: &DraftSessionOwner) -> String {
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    for byte in owner
+        .tenant_id
+        .bytes()
+        .chain(std::iter::once(0xff))
+        .chain(owner.user_id.bytes())
+    {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("owner-cap-{hash:016x}")
+}
 
 fn record_age(path: &Path, expires_at_unix_secs: u64) -> RecordAge {
     let modified = fs::metadata(path)
@@ -5759,6 +5794,54 @@ mod tests {
         for name in foreign {
             assert!(dir.join(name).is_file(), "{name} is not ours to delete");
         }
+    }
+
+    #[test]
+    fn file_store_serializes_concurrent_creates_for_the_same_owner_cap() {
+        let dir = temp_store_dir();
+        let store = file_store(&dir);
+        let owner = owner("acme", "user-alice");
+        for _ in 0..(MAX_DRAFT_SESSIONS_PER_OWNER - 1) {
+            store
+                .commit(None, None, controller("home"), Some(&owner))
+                .expect("seed owner session");
+        }
+
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(3));
+        let first_store = store.clone();
+        let first_owner = owner.clone();
+        let first_barrier = barrier.clone();
+        let first = std::thread::spawn(move || {
+            first_barrier.wait();
+            first_store.commit(None, None, controller("first"), Some(&first_owner))
+        });
+        let second_store = store.clone();
+        let second_owner = owner.clone();
+        let second_barrier = barrier.clone();
+        let second = std::thread::spawn(move || {
+            second_barrier.wait();
+            second_store.commit(None, None, controller("second"), Some(&second_owner))
+        });
+
+        barrier.wait();
+        first.join().expect("first writer").expect("first create");
+        second.join().expect("second writer").expect("second create");
+
+        let owner_partition =
+            dir.join(FileSsrDraftSessionStore::partition_name(Some(&owner)).expect("partition"));
+        let live_records = fs::read_dir(owner_partition)
+            .expect("owner partition")
+            .flatten()
+            .filter(|entry| {
+                entry
+                    .path()
+                    .extension()
+                    .and_then(|extension| extension.to_str())
+                    == Some("json")
+            })
+            .count();
+        assert_eq!(live_records, MAX_DRAFT_SESSIONS_PER_OWNER);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
