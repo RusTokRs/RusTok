@@ -46,6 +46,38 @@ where
     }
 }
 
+/// Collect link targets from the validated rich-text tree for host policy checks.
+pub fn rich_text_link_hrefs(payload: &RichTextPayload) -> Vec<&str> {
+    let mut hrefs = Vec::new();
+    collect_rich_text_link_hrefs(&payload.payload, &mut hrefs);
+    hrefs
+}
+
+fn collect_rich_text_link_hrefs<'a>(node: &'a Value, hrefs: &mut Vec<&'a str>) {
+    let Some(object) = node.as_object() else {
+        return;
+    };
+
+    if let Some(marks) = object.get("marks").and_then(Value::as_array) {
+        for mark in marks {
+            if mark.get("type").and_then(Value::as_str) == Some("link")
+                && let Some(href) = mark
+                    .get("attrs")
+                    .and_then(|attrs| attrs.get("href"))
+                    .and_then(Value::as_str)
+            {
+                hrefs.push(href);
+            }
+        }
+    }
+
+    if let Some(children) = object.get("content").and_then(Value::as_array) {
+        for child in children {
+            collect_rich_text_link_hrefs(child, hrefs);
+        }
+    }
+}
+
 /// Remove link marks that do not satisfy the enclosing page's navigation URL policy.
 /// This runs before either the host HTML renderer or Fly's fallback sees the payload, so a
 /// trusted host renderer cannot accidentally re-enable a link disabled by RenderPolicy.
@@ -395,6 +427,38 @@ mod tests {
             "<blockquote><p>mailphonefragmentlocal</p></blockquote>"
         );
         assert!(rich_text_fallback_html(&payload).contains("href=\"/local\""));
+    }
+
+    #[test]
+    fn link_href_extraction_walks_nested_content_and_ignores_other_marks() {
+        let payload = payload(json!({
+            "type": "doc",
+            "content": [{
+                "type": "blockquote",
+                "content": [{
+                    "type": "paragraph",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "external",
+                            "marks": [
+                                {"type": "bold"},
+                                {"type": "link", "attrs": {"href": "https://example.test/page"}}
+                            ]
+                        },
+                        {
+                            "type": "text",
+                            "text": "local",
+                            "marks": [{"type": "link", "attrs": {"href": "/local"}}]
+                        }
+                    ]
+                }]
+            }]
+        }));
+        assert_eq!(
+            rich_text_link_hrefs(&payload),
+            ["https://example.test/page", "/local"]
+        );
     }
 
     #[test]

@@ -184,7 +184,7 @@ pub use render::{
 pub use rich_text::{
     FLY_RICH_TEXT_FIELD, MAXIMUM_RICH_TEXT_BYTES, MAXIMUM_RICH_TEXT_DEPTH, MAXIMUM_RICH_TEXT_NODES,
     RICH_TEXT_CAPABILITY, RichTextHtmlRenderer, decode_rich_text_payload, rich_text_fallback_html,
-    rich_text_plain_text, validate_rich_text_payload,
+    rich_text_link_hrefs, rich_text_plain_text, validate_rich_text_payload,
 };
 pub use runtime_locale::{
     LOCALIZED_FALLBACK_FIELD, LOCALIZED_VALUES_FIELD, RUNTIME_FALLBACK_LOCALES_FIELD,

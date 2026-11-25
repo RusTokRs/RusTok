@@ -1,13 +1,14 @@
 use fly::{
     AssetDescriptor, AssetKind, ComponentChildren, ComponentNode, ComponentObject,
-    FLY_PAGE_METADATA_FIELD, FLY_THEME_FIELD, ProjectDocument, StyleRuleDescriptor, StyleRuleScope,
+    FLY_EMBED_FIELD, FLY_PAGE_METADATA_FIELD, FLY_RICH_TEXT_FIELD, FLY_THEME_FIELD,
+    ProjectDocument, StyleRuleDescriptor, StyleRuleScope,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
-pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT: &str = "page_builder_static_publish_policy_v5";
+pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT: &str = "page_builder_static_publish_policy_v6";
 
 const ALLOWED_TAGS: &[&str] = &[
     "a",
@@ -419,6 +420,38 @@ fn validate_component(
             format!("{path}.type"),
             format!("component type `{component_type}` is forbidden in a static public artifact"),
         );
+    }
+
+    if component.extensions.contains_key(FLY_EMBED_FIELD) {
+        reject(
+            diagnostics,
+            "landing_embed_forbidden",
+            format!("{path}.{FLY_EMBED_FIELD}"),
+            "Fly embed extensions render sandboxed iframes and are not allowed in static public artifacts",
+        );
+    }
+
+    if let Some(raw_rich_text) = component.extensions.get(FLY_RICH_TEXT_FIELD) {
+        match fly::decode_rich_text_payload(raw_rich_text) {
+            Ok(payload) => {
+                for (index, href) in fly::rich_text_link_hrefs(&payload).iter().enumerate() {
+                    if validate_url(href, UrlKind::Navigation, policy).is_err() {
+                        reject(
+                            diagnostics,
+                            "landing_rich_text_link_url_rejected",
+                            format!("{path}.{FLY_RICH_TEXT_FIELD}.links[{index}]"),
+                            "rich-text link URL is not allowed by static publish policy",
+                        );
+                    }
+                }
+            }
+            Err(error) => reject(
+                diagnostics,
+                "landing_rich_text_payload_invalid",
+                format!("{path}.{FLY_RICH_TEXT_FIELD}"),
+                error,
+            ),
+        }
     }
 
     if let Some(content) = component.extensions.get("content") {
@@ -1530,6 +1563,91 @@ mod tests {
     }
 
     #[test]
+    fn static_policy_rejects_fly_embed_extension_on_generic_component() {
+        let document = document(json!({
+            "id": "root",
+            "type": "wrapper",
+            "components": [{
+                "id": "embedded",
+                "type": "wrapper",
+                "flyEmbed": {
+                    "provider": "youtube",
+                    "url": "https://www.youtube.com/embed/demo",
+                    "title": "Video"
+                }
+            }]
+        }));
+        let error = validate_static_publish_document(&document).expect_err("embed extension");
+        assert!(error.diagnostics().iter().any(|diagnostic| {
+            diagnostic.code == "landing_embed_forbidden"
+                && diagnostic.path.ends_with(".flyEmbed")
+        }));
+    }
+
+    #[test]
+    fn static_policy_rejects_http_rich_text_links() {
+        let document = document(json!({
+            "id": "root",
+            "type": "wrapper",
+            "components": [{
+                "id": "rich",
+                "type": "wrapper",
+                "flyRichText": {
+                    "capability": "richtext",
+                    "payload": {
+                        "type": "doc",
+                        "content": [{
+                            "type": "paragraph",
+                            "content": [{
+                                "type": "text",
+                                "text": "Insecure link",
+                                "marks": [{
+                                    "type": "link",
+                                    "attrs": {"href": "http://insecure.example/page"}
+                                }]
+                            }]
+                        }]
+                    }
+                }
+            }]
+        }));
+        let error = validate_static_publish_document(&document).expect_err("HTTP rich-text link");
+        assert!(error.diagnostics().iter().any(|diagnostic| {
+            diagnostic.code == "landing_rich_text_link_url_rejected"
+        }));
+    }
+
+    #[test]
+    fn static_policy_accepts_https_rich_text_links() {
+        let document = document(json!({
+            "id": "root",
+            "type": "wrapper",
+            "components": [{
+                "id": "rich",
+                "type": "wrapper",
+                "flyRichText": {
+                    "capability": "richtext",
+                    "payload": {
+                        "type": "doc",
+                        "content": [{
+                            "type": "paragraph",
+                            "content": [{
+                                "type": "text",
+                                "text": "Secure link",
+                                "marks": [{
+                                    "type": "link",
+                                    "attrs": {"href": "https://example.test/page"}
+                                }]
+                            }]
+                        }]
+                    }
+                }
+            }]
+        }));
+        assert!(validate_static_publish_document(&document).is_ok());
+    }
+
+    #[test]
     fn policy_rejects_opaque_markup_and_non_renderable_nodes() {
         let document = document(json!({
             "id": "root",
@@ -1620,10 +1738,10 @@ mod tests {
     }
 
     #[test]
-    fn v4_policy_evidence_is_not_current_after_v5_cutover() {
+    fn v5_policy_evidence_is_not_current_after_v6_cutover() {
         let policy = PageBuilderStaticPublishPolicy::default();
         let evidence = PageBuilderStaticPublishPolicyEvidence {
-            format: "page_builder_static_publish_policy_v4".to_string(),
+            format: "page_builder_static_publish_policy_v5".to_string(),
             policy_hash: policy.policy_hash().expect("current hash"),
         };
         assert!(evidence.verify_integrity().is_err());
