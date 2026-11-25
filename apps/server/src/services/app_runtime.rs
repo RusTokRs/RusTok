@@ -1015,9 +1015,10 @@ mod tests {
                 .await
         });
         registration.wait_until_entered().await;
-        // The callback is held longer than the host drain deadline.
+        // The callback has no completion signal. Shutdown must cancel the
+        // unpublished registration and release both startup locks promptly.
         tokio::time::timeout(
-            std::time::Duration::from_secs(8),
+            std::time::Duration::from_secs(2),
             shutdown_runtime_workers(&ctx),
         )
         .await
