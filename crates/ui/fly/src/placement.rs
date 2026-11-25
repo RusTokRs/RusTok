@@ -137,8 +137,18 @@ impl RegistrySet {
             }
         }
 
-        let parent_type =
-            parent_component_id.and_then(|parent_id| document.component_type_for_id(parent_id));
+        // An omitted parent is the first page root, not an unrestricted virtual
+        // container. Resolve the same node as insert_component and root_child_count.
+        let parent_type = match parent_component_id {
+            Some(parent_id) => document.component_type_for_id(parent_id),
+            None => document
+                .project
+                .pages
+                .iter()
+                .find_map(|page| page.component.as_ref())
+                .and_then(ComponentNode::as_object)
+                .map(|root| root.component_type()),
+        };
         if !self.accepts_child_type(parent_type, child_type) {
             let parent_name = parent_type.unwrap_or("project root");
             return PlacementDecision::rejected(format!(
@@ -282,6 +292,27 @@ mod tests {
                 .unwrap_or_default()
                 .contains("does not accept")
         );
+    }
+
+    #[test]
+    fn implicit_root_obeys_the_same_child_policy_as_explicit_root() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "list-root",
+                    "type": "list"
+                }
+            }]
+        }))
+        .expect("document");
+        let registries = RegistrySet::with_builtins();
+        for (child_type, legal) in [("text", false), ("list_item", true)] {
+            let implicit = registries.evaluate_placement(&document, None, child_type, None, 0);
+            let explicit =
+                registries.evaluate_placement(&document, None, child_type, Some("list-root"), 0);
+            assert_eq!(implicit, explicit);
+            assert_eq!(implicit.legal, legal);
+        }
     }
 
     #[test]

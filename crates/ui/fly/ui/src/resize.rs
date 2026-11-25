@@ -232,11 +232,15 @@ impl ResizeSession {
 
     pub fn component_patch(&self, result: ResizeResult) -> ComponentPatch {
         let mut style = Map::new();
-        if result.width_changed {
-            style.insert("width".to_string(), Value::String(px(result.rect.width)));
-        }
-        if result.height_changed {
-            style.insert("height".to_string(), Value::String(px(result.rect.height)));
+        // ResizeResult is public and deserializable. Do not trust adapter-supplied
+        // flags or geometry to bypass the same validity boundary as update().
+        if result.rect.is_valid() {
+            if result.width_changed && self.handle.changes_width() {
+                style.insert("width".to_string(), Value::String(px(result.rect.width)));
+            }
+            if result.height_changed && self.handle.changes_height() {
+                style.insert("height".to_string(), Value::String(px(result.rect.height)));
+            }
         }
         ComponentPatch {
             style: Some(Value::Object(style)),
@@ -270,7 +274,14 @@ fn clamp_dimension(value: f64, minimum: f64, maximum: Option<f64>) -> f64 {
 }
 
 fn px(value: f64) -> String {
-    let rounded = (value * 100.0).round() / 100.0;
+    // Scaling a large but finite dimension by 100 can overflow. At that
+    // magnitude there are no representable fractional CSS pixels to round.
+    let scaled = value * 100.0;
+    let rounded = if scaled.is_finite() {
+        scaled.round() / 100.0
+    } else {
+        value
+    };
     format!("{rounded}px")
 }
 
@@ -428,6 +439,58 @@ mod tests {
         assert_eq!(result.rect, resize.start_rect);
         assert!(!result.width_changed);
         assert!(!result.height_changed);
+    }
+
+    #[test]
+    fn direct_resize_patch_rejects_invalid_geometry_and_uncontrolled_axes() {
+        let resize = session(ResizeHandle::East);
+        for width in [f64::NAN, f64::INFINITY, -1.0] {
+            let result = ResizeResult {
+                rect: CanvasRect {
+                    width,
+                    ..resize.start_rect
+                },
+                width_changed: true,
+                height_changed: true,
+            };
+            assert_eq!(
+                resize.component_patch(result).style,
+                Some(Value::Object(Map::new()))
+            );
+        }
+        let result = ResizeResult {
+            rect: CanvasRect {
+                width: 232.0,
+                height: 120.0,
+                ..resize.start_rect
+            },
+            width_changed: true,
+            height_changed: true,
+        };
+        let style = resize.component_patch(result).style.expect("style");
+        assert_eq!(style["width"], "232px");
+        assert!(style.get("height").is_none());
+    }
+
+    #[test]
+    fn finite_resize_dimension_cannot_overflow_during_css_rounding() {
+        let resize = session(ResizeHandle::East);
+        let result = ResizeResult {
+            rect: CanvasRect {
+                width: f64::MAX / 2.0,
+                ..resize.start_rect
+            },
+            width_changed: true,
+            height_changed: false,
+        };
+        let style = resize.component_patch(result).style.expect("style");
+        let width = style["width"].as_str().expect("width string");
+        let number = width
+            .strip_suffix("px")
+            .expect("CSS pixels")
+            .parse::<f64>()
+            .expect("numeric width");
+        assert!(number.is_finite());
     }
 
     #[test]
