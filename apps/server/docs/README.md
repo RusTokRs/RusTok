@@ -418,6 +418,14 @@ remain separate unfinished control-plane work.
 
 ## REST transport correctness
 
+The CSP report collector accepts legacy browser reports containing both
+`effective-directive` and `violated-directive`, preferring the nonblank
+effective value for bounded telemetry. The 512-byte location limit applies
+to both serialized origins and opaque URL schemes. See the
+[CSP collection contract](../../../docs/security/csp-report-only-inventory.md).
+Focused parser and middleware regressions are authored; execution remains
+with maintainer verification.
+
 The legacy commerce `ApiErrorResponse` adapter returns actionable client HTTP
 statuses for invalid price/options/variants (400), missing products, variants,
 or shipping profiles (404), and duplicate identifiers or shipping-profile

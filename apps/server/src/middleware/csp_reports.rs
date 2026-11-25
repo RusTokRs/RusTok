@@ -21,10 +21,11 @@ struct CspViolation {
     #[serde(
         default,
         alias = "effective-directive",
-        alias = "effectiveDirective",
-        alias = "violated-directive"
+        alias = "effectiveDirective"
     )]
     effective_directive: Option<String>,
+    #[serde(default, alias = "violated-directive")]
+    violated_directive: Option<String>,
     #[serde(default, alias = "source-file", alias = "sourceFile")]
     source_file: Option<String>,
     #[serde(default, alias = "line-number", alias = "lineNumber")]
@@ -157,7 +158,7 @@ fn parse_reports(body: &[u8]) -> Result<Vec<ParsedCspReport>, CspReportParseErro
 }
 
 fn record_report(report: ParsedCspReport) {
-    let directive = normalized_directive(report.violation.effective_directive.as_deref());
+    let directive = report_directive(&report.violation);
     rustok_telemetry::metrics::record_module_error("security", directive, "warning");
 
     tracing::warn!(
@@ -191,6 +192,17 @@ fn normalized_disposition(value: Option<&str>) -> &'static str {
         "report" => "report",
         _ => "other",
     }
+}
+
+fn report_directive(violation: &CspViolation) -> &'static str {
+    // Legacy browser reports can carry both fields. Prefer the actual check.
+    normalized_directive(
+        violation
+            .effective_directive
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .or(violation.violated_directive.as_deref()),
+    )
 }
 
 fn normalized_directive(value: Option<&str>) -> &'static str {
@@ -227,14 +239,15 @@ fn sanitized_location(value: Option<&str>) -> Option<String> {
 
     if let Ok(parsed) = url::Url::parse(value) {
         let origin = parsed.origin().ascii_serialization();
-        if origin.len() > MAX_LOGGED_ORIGIN_BYTES {
-            return Some("oversized".to_string());
-        }
-        return Some(if origin == "null" {
+        let location = if origin == "null" {
             parsed.scheme().to_string()
         } else {
             origin
-        });
+        };
+        if location.len() > MAX_LOGGED_ORIGIN_BYTES {
+            return Some("oversized".to_string());
+        }
+        return Some(location);
     }
 
     Some("opaque".to_string())
@@ -253,13 +266,32 @@ mod tests {
         assert_eq!(reports.len(), 1);
         assert_eq!(reports[0].format, "legacy");
         assert_eq!(
-            normalized_directive(reports[0].violation.effective_directive.as_deref()),
+            report_directive(&reports[0].violation),
             "script-src"
         );
         assert_eq!(
             sanitized_location(reports[0].violation.document_uri.as_deref()).as_deref(),
             Some("https://admin.example.com")
         );
+    }
+
+    #[test]
+    fn legacy_browser_reports_accept_both_directives_and_prefer_effective() {
+        let reports = parse_reports(
+            br#"{"csp-report":{"violated-directive":"default-src","effective-directive":"script-src-elem"}}"#,
+        )
+        .expect("browser CSP report with both fields");
+        assert_eq!(reports.len(), 1);
+        assert_eq!(report_directive(&reports[0].violation), "script-src");
+    }
+
+    #[test]
+    fn blank_effective_directive_falls_back_to_violated_directive() {
+        let reports = parse_reports(
+            br#"{"csp-report":{"effective-directive":" ","violated-directive":"img-src"}}"#,
+        )
+        .expect("legacy report");
+        assert_eq!(report_directive(&reports[0].violation), "img-src");
     }
 
     #[test]
@@ -270,6 +302,7 @@ mod tests {
         .expect("reporting API batch");
         assert_eq!(reports.len(), 1);
         assert_eq!(reports[0].format, "reporting_api");
+        assert_eq!(report_directive(&reports[0].violation), "connect-src");
         assert_eq!(
             sanitized_location(reports[0].violation.blocked_uri.as_deref()).as_deref(),
             Some("https://cdn.example.net")
@@ -309,6 +342,13 @@ mod tests {
             sanitized_location(Some(url.as_str())).as_deref(),
             Some("oversized")
         );
+    }
+
+    #[test]
+    fn oversized_opaque_url_schemes_are_bounded() {
+        let scheme = "a".repeat(MAX_LOGGED_ORIGIN_BYTES + 1);
+        let url = format!("{scheme}:private");
+        assert_eq!(sanitized_location(Some(&url)).as_deref(), Some("oversized"));
     }
 
     #[test]
