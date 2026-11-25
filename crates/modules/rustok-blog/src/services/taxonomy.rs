@@ -499,13 +499,38 @@ impl BlogTaxonomyPort for NoopBlogTaxonomyPort {
 
     async fn resolve_tag_id_for_module(
         &self,
-        _conn: BlogTaxonomyConnection<'_>,
-        _tenant_id: Uuid,
-        _tag: &str,
+        conn: BlogTaxonomyConnection<'_>,
+        tenant_id: Uuid,
+        tag: &str,
         _locale: &str,
         _fallback_locale: Option<&str>,
     ) -> Result<Option<Uuid>, BlogError> {
-        Ok(None)
+        let key = crate::domain::normalization::normalize_term_route_key(tag)
+            .unwrap_or_else(|| tag.trim().to_lowercase());
+        if key.is_empty() {
+            return Ok(None);
+        }
+        let backend = match conn {
+            BlogTaxonomyConnection::Connection(c) => c.get_database_backend(),
+            BlogTaxonomyConnection::Transaction(tx) => tx.get_database_backend(),
+        };
+        let stmt = match backend {
+            DbBackend::Sqlite => Statement::from_sql_and_values(
+                backend,
+                "SELECT id FROM taxonomy_terms WHERE tenant_id = ?1 AND canonical_key = ?2",
+                [tenant_id.into(), key.into()],
+            ),
+            _ => Statement::from_sql_and_values(
+                backend,
+                "SELECT id FROM taxonomy_terms WHERE tenant_id = $1 AND canonical_key = $2",
+                [tenant_id.into(), key.into()],
+            ),
+        };
+        let row_opt = match conn {
+            BlogTaxonomyConnection::Connection(c) => c.query_one_raw(stmt).await?,
+            BlogTaxonomyConnection::Transaction(tx) => tx.query_one_raw(stmt).await?,
+        };
+        Ok(row_opt.and_then(|r| r.try_get_by_index::<Uuid>(0).ok()))
     }
 
     async fn find_all_valid_tag_ids(

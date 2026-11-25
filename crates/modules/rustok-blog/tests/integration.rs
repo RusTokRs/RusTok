@@ -78,7 +78,8 @@ async fn test_post_lifecycle() -> TestResult<()> {
     let transport = MemoryTransport::new();
     let mut receiver = transport.subscribe();
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
-    let post_service = PostService::new(db.clone(), event_bus.clone());
+    let post_service = PostService::new(db.clone(), event_bus.clone())
+        .with_taxonomy_port(rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()));
 
     let tenant_id = Uuid::new_v4();
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
@@ -152,7 +153,8 @@ async fn test_create_and_publish_post() -> TestResult<()> {
     let transport = MemoryTransport::new();
     let _receiver = transport.subscribe();
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
-    let post_service = PostService::new(db.clone(), event_bus.clone());
+    let post_service = PostService::new(db.clone(), event_bus.clone())
+        .with_taxonomy_port(rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()));
 
     let tenant_id = Uuid::new_v4();
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
@@ -209,7 +211,8 @@ async fn test_post_read_paths_normalize_requested_and_fallback_locale() -> TestR
     let transport = MemoryTransport::new();
     let _receiver = transport.subscribe();
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
-    let post_service = PostService::new(db.clone(), event_bus.clone());
+    let post_service = PostService::new(db.clone(), event_bus.clone())
+        .with_taxonomy_port(rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()));
 
     let tenant_id = Uuid::new_v4();
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
@@ -352,7 +355,8 @@ async fn test_list_posts_with_pagination() -> TestResult<()> {
     let transport = MemoryTransport::new();
     let _receiver = transport.subscribe();
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
-    let post_service = PostService::new(db.clone(), event_bus.clone());
+    let post_service = PostService::new(db.clone(), event_bus.clone())
+        .with_taxonomy_port(rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()));
 
     let tenant_id = Uuid::new_v4();
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
@@ -451,7 +455,8 @@ async fn test_filter_posts_by_tag() -> TestResult<()> {
     let transport = MemoryTransport::new();
     let _receiver = transport.subscribe();
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
-    let post_service = PostService::new(db.clone(), event_bus.clone());
+    let post_service = PostService::new(db.clone(), event_bus.clone())
+        .with_taxonomy_port(rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()));
 
     let tenant_id = Uuid::new_v4();
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
@@ -523,7 +528,8 @@ async fn test_cannot_delete_published_post() -> TestResult<()> {
     let transport = MemoryTransport::new();
     let _receiver = transport.subscribe();
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
-    let post_service = PostService::new(db.clone(), event_bus.clone());
+    let post_service = PostService::new(db.clone(), event_bus.clone())
+        .with_taxonomy_port(rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()));
 
     let tenant_id = Uuid::new_v4();
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
@@ -588,6 +594,7 @@ async fn test_category_crud() -> TestResult<()> {
     let _receiver = transport.subscribe();
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
     let category_service = CategoryService::new(db.clone(), event_bus)
+        .with_taxonomy_port(rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()))
         .with_category_delete_cleanup(Arc::new(NoopCategoryDeleteCleanup));
 
     let tenant_id = Uuid::new_v4();
@@ -650,7 +657,8 @@ async fn test_tag_crud_and_slug_normalization() -> TestResult<()> {
 
     let transport = MemoryTransport::new();
     let _receiver = transport.subscribe();
-    let tag_service = TagService::new(db.clone());
+    let tag_service = TagService::new(db.clone())
+        .with_taxonomy_port(rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()));
 
     let tenant_id = Uuid::new_v4();
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
@@ -729,8 +737,10 @@ async fn test_taxonomy_services_enforce_rbac() -> TestResult<()> {
     let transport = MemoryTransport::new();
     let _receiver = transport.subscribe();
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
-    let category_service = CategoryService::new(db.clone(), event_bus);
-    let tag_service = TagService::new(db);
+    let taxonomy_port = rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone());
+    let category_service = CategoryService::new(db.clone(), event_bus)
+        .with_taxonomy_port(taxonomy_port.clone());
+    let tag_service = TagService::new(db).with_taxonomy_port(taxonomy_port);
 
     let tenant_id = Uuid::new_v4();
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
@@ -884,7 +894,8 @@ async fn test_blog_comment_surface_policy_preserves_comment_data() -> TestResult
     let transport = MemoryTransport::new();
     let _receiver = transport.subscribe();
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
-    let post_service = PostService::new(db.clone(), event_bus.clone());
+    let post_service = PostService::new(db.clone(), event_bus.clone())
+        .with_taxonomy_port(rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()));
     let open_comments = CommentService::from_runtime_capabilities(
         db.clone(),
         Some(in_process_comments_thread_port(
@@ -1127,7 +1138,8 @@ async fn test_public_comment_create_rejects_draft_and_hidden_channel() -> TestRe
     let transport = MemoryTransport::new();
     let _receiver = transport.subscribe();
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
-    let post_service = PostService::new(db.clone(), event_bus.clone());
+    let post_service = PostService::new(db.clone(), event_bus.clone())
+        .with_taxonomy_port(rustok_content_orchestration::in_process_blog_taxonomy_port(db.clone()));
     let comment_service = CommentService::from_runtime_capabilities(
         db.clone(),
         Some(in_process_comments_thread_port(db.clone(), event_bus)),
