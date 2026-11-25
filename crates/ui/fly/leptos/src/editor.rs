@@ -2674,11 +2674,13 @@ pub fn FlyEditorWorkspace(
     });
 
     let layers_editor = editor;
+    let select_instance = intent_instance.clone();
     let on_select = Callback::new(move |component_id: Option<String>| {
-        // In intent mode the browser adapter owns DOM selection and sends the
-        // non-mutating select intent. Dispatching here as well would race the
-        // browser request and make server selection depend on arrival order.
-        if on_intent.is_some() {
+        if let Some(on_intent) = on_intent {
+            on_intent.run(BrowserIntentEnvelope::select(
+                &select_instance,
+                component_id.as_deref(),
+            ));
             return;
         }
         let apply_result = layers_editor
@@ -2907,6 +2909,9 @@ pub fn FlyEditorWorkspace(
     };
 
     let palette_messages = theme_messages.clone();
+    let wasm_hydrated = RwSignal::new(false);
+    #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
+    Effect::new(move |_| wasm_hydrated.set(true));
 
     view! {
         <section
@@ -2914,9 +2919,13 @@ pub fn FlyEditorWorkspace(
             role="application"
             aria-label=workspace_title
             tabindex="0"
+            data-fly-wasm-hydrated=move || if wasm_hydrated.get() { "true" } else { "false" }
             on:keydown=on_workspace_keydown
         >
-            <div class="fly-editor__toolbar" role="toolbar" aria-label=toolbar_label>
+            <style>
+                {r#".fly-editor[data-fly-wasm-hydrated="false"] [data-fly-ssr-only="true"] { display: none !important; }"#}
+            </style>
+            <div class="fly-editor__toolbar" data-fly-ssr-only="true" role="toolbar" aria-label=toolbar_label>
                 <button
                     type="button"
                     disabled=move || {
@@ -3020,20 +3029,22 @@ pub fn FlyEditorWorkspace(
                     </button>
                 </div>
             </div>
-            {move || {
-                let active = active_page.get();
-                view! {
-                    <FlyPageTabs
-                        pages=page_summaries.get()
-                        active=active
-                        on_activate=on_activate
-                        on_add=on_add_page
-                        on_remove=on_remove_page
-                        capabilities=Some(effective_capabilities.get())
-                        messages=tabs_messages.clone()
-                    />
-                }
-            }}
+            <div data-fly-ssr-only="true">
+                {move || {
+                    let active = active_page.get();
+                    view! {
+                        <FlyPageTabs
+                            pages=page_summaries.get()
+                            active=active
+                            on_activate=on_activate
+                            on_add=on_add_page
+                            on_remove=on_remove_page
+                            capabilities=Some(effective_capabilities.get())
+                            messages=tabs_messages.clone()
+                        />
+                    }
+                }}
+            </div>
             <div class="fly-editor__body">
                 {summary_assembly.map(|assembly| {
                     view! {
@@ -3061,28 +3072,31 @@ pub fn FlyEditorWorkspace(
                             on_remove=on_token_remove
                             capabilities=Some(effective_capabilities.get())
                             messages=theme_messages.clone()
+                            intent_mode=on_intent.is_some()
                         />
                     }
                 }}
-                {move || {
-                    let snapshot = properties_snapshot.get();
-                    match snapshot {
-                        (Some(summary), metadata, page_count) => view! {
-                            <FlyPageProperties
-                                summary=summary
-                                metadata=metadata
-                                page_count=page_count
-                                on_apply=on_apply_page_properties
-                                on_move=on_move_page
-                                capabilities=Some(effective_capabilities.get())
-                                messages=properties_messages.clone()
-                            />
-                        }
-                        .into_any(),
-                        _ => view! { <div class="fly-page-properties fly-page-properties--empty"></div> }
+                <div data-fly-ssr-only="true">
+                    {move || {
+                        let snapshot = properties_snapshot.get();
+                        match snapshot {
+                            (Some(summary), metadata, page_count) => view! {
+                                <FlyPageProperties
+                                    summary=summary
+                                    metadata=metadata
+                                    page_count=page_count
+                                    on_apply=on_apply_page_properties
+                                    on_move=on_move_page
+                                    capabilities=Some(effective_capabilities.get())
+                                    messages=properties_messages.clone()
+                                />
+                            }
                             .into_any(),
-                    }
-                }}
+                            _ => view! { <div class="fly-page-properties fly-page-properties--empty"></div> }
+                                .into_any(),
+                        }
+                    }}
+                </div>
                 {move || {
                     let document = editor.with(|editor| editor.document().clone());
                     let selected = editor.with(|editor| editor.selection().map(ToString::to_string));
@@ -3095,33 +3109,37 @@ pub fn FlyEditorWorkspace(
                             page_index=page_index
                             messages=panel_messages.clone()
                         />
-                        <FlyCanvasPreview
-                            document=document
-                            page_index=Some(page_index)
-                            selected=selected
-                            on_select=Some(on_select)
-                            on_patch_content=Some(on_canvas_patch_content)
-                            interactive=Some(interactive_mode.get())
-                            viewport_width=preview_width.get()
-                            messages=Some(panel_messages.clone())
-                            csp_nonce=workspace_csp_nonce.clone()
-                        />
+                        <div data-fly-ssr-only="true">
+                            <FlyCanvasPreview
+                                document=document
+                                page_index=Some(page_index)
+                                selected=selected
+                                on_select=Some(on_select)
+                                on_patch_content=Some(on_canvas_patch_content)
+                                interactive=Some(interactive_mode.get())
+                                viewport_width=preview_width.get()
+                                messages=Some(panel_messages.clone())
+                                csp_nonce=workspace_csp_nonce.clone()
+                            />
+                        </div>
                     }
                 }}
-                {
-                    let component_messages = component_messages.clone();
-                    move || {
-                        let view = selection_snapshot.get();
-                        view! {
-                            <FlyComponentProperties
-                                view=view
-                                on_patch=on_patch_property
-                                capabilities=Some(effective_capabilities.get())
-                                messages=component_messages.clone()
-                            />
+                <div data-fly-ssr-only="true">
+                    {
+                        let component_messages = component_messages.clone();
+                        move || {
+                            let view = selection_snapshot.get();
+                            view! {
+                                <FlyComponentProperties
+                                    view=view
+                                    on_patch=on_patch_property
+                                    capabilities=Some(effective_capabilities.get())
+                                    messages=component_messages.clone()
+                                />
+                            }
                         }
                     }
-                }
+                </div>
                 {
                     let component_messages = component_messages.clone();
                     move || {
@@ -3137,26 +3155,29 @@ pub fn FlyEditorWorkspace(
                                 on_preview_breakpoint=on_preview_breakpoint
                                 capabilities=Some(effective_capabilities.get())
                                 messages=component_messages.clone()
+                                intent_mode=on_intent.is_some()
                             />
                         }
                     }
                 }
-                {move || {
-                    let assets = asset_snapshot.get();
-                    let selected_component =
-                        editor.with(|editor| editor.selection().map(ToString::to_string));
-                    view! {
-                        <FlyAssets
-                            assets=assets
-                            selected_component=selected_component
-                            on_upsert=on_upsert_asset
-                            on_remove=on_remove_asset
-                            on_apply=on_apply_asset
-                            capabilities=Some(effective_capabilities.get())
-                            messages=asset_messages.clone()
-                        />
-                    }
-                }}
+                <div data-fly-ssr-only="true">
+                    {move || {
+                        let assets = asset_snapshot.get();
+                        let selected_component =
+                            editor.with(|editor| editor.selection().map(ToString::to_string));
+                        view! {
+                            <FlyAssets
+                                assets=assets
+                                selected_component=selected_component
+                                on_upsert=on_upsert_asset
+                                on_remove=on_remove_asset
+                                on_apply=on_apply_asset
+                                capabilities=Some(effective_capabilities.get())
+                                messages=asset_messages.clone()
+                            />
+                        }
+                    }}
+                </div>
             </div>
         </section>
     }
