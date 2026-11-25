@@ -93,6 +93,15 @@ satisfy the platform multilingual storage contract. Their translation-table cuto
 is an explicit release-plan priority in this module's implementation plan; transports
 must not introduce a competing JSON or request-local fallback in the meantime.
 
+## GraphQL credential throttling
+
+The Auth-owned rate-limit extension charges each distinct root credential mutation
+response key in the selected operation. Different aliases are separate charges;
+merged selections of the same field are not. Root fragment traversal is iterative
+and each named fragment is visited once per operation, even before schema validation.
+The normal GraphQL validator still rejects invalid documents. Existing tenant,
+actor, surface and backend-failure semantics remain unchanged.
+
 ## Responsibility Zone
 
 `rustok-auth` owns authentication, OAuth, credential, token, and user-lifecycle

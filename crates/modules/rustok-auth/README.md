@@ -17,7 +17,8 @@ FFA package and framework-neutral session models in `rustok-ui-auth`.
 - Own typed `AuthLifecyclePort`, `UserAdminMutationPort`, and `OAuthAdminPort` boundaries used by GraphQL and native adapters.
 - Own the auth lifecycle and OAuth GraphQL query, mutation, input, and output surfaces behind the
   `graphql` feature. Its credential rate-limit extension uses shared `http` header types without a
-  direct Axum dependency.
+  direct Axum dependency. It charges distinct credential mutation response keys in the selected
+  operation and traverses root fragments without recursion or repeated expansion.
 - Enforce tenant-composite integrity for OAuth apps, tokens, authorization codes,
   consents, and their user subjects at both database and query boundaries.
 - Fail auth configuration fast for malformed or mismatched RS256 keys and keep

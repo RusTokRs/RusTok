@@ -81,63 +81,63 @@ impl AuthGraphqlSurface {
 #[derive(Clone, Debug)]
 struct AuthGraphqlDocumentPolicy(Vec<AuthGraphqlSurface>);
 
-fn collect_auth_fields_from_selection_set(
-    operation_type: OperationType,
-    selection_set: &SelectionSet,
+// Classification runs before GraphQL validation. Expand each named fragment
+// once per operation with an explicit worklist to avoid cycles and exponential
+// expansion. Distinct response keys represent separate resolver invocations.
+fn auth_graphql_fields(
     document: &ExecutableDocument,
-    fields: &mut BTreeSet<AuthGraphqlSurface>,
-) {
-    for selection in &selection_set.items {
-        match &selection.node {
-            Selection::Field(field) => {
-                if let Some(surface) = AuthGraphqlSurface::from_root_field(
-                    operation_type,
-                    field.node.name.node.as_str(),
-                ) {
-                    fields.insert(surface);
-                }
-            }
-            Selection::FragmentSpread(fragment) => {
-                if let Some(definition) = document.fragments.get(&fragment.node.fragment_name.node)
-                {
-                    collect_auth_fields_from_selection_set(
-                        operation_type,
-                        &definition.node.selection_set.node,
-                        document,
-                        fields,
-                    );
-                }
-            }
-            Selection::InlineFragment(fragment) => collect_auth_fields_from_selection_set(
-                operation_type,
-                &fragment.node.selection_set.node,
-                document,
-                fields,
-            ),
+    operation_name: Option<&str>,
+) -> Vec<AuthGraphqlSurface> {
+    let mut result = Vec::new();
+    for (name, operation) in document.operations.iter() {
+        if operation_name.is_some_and(|requested| name.map(|n| n.as_str()) != Some(requested)) {
+            continue;
         }
+        let mut fields = BTreeSet::new();
+        let mut visited_fragments = BTreeSet::new();
+        let mut pending: Vec<&SelectionSet> = vec![&operation.node.selection_set.node];
+        while let Some(selection_set) = pending.pop() {
+            for selection in &selection_set.items {
+                match &selection.node {
+                    Selection::Field(field) => {
+                        if let Some(surface) = AuthGraphqlSurface::from_root_field(
+                            operation.node.ty,
+                            field.node.name.node.as_str(),
+                        ) {
+                            let response_key = field
+                                .node
+                                .alias
+                                .as_ref()
+                                .unwrap_or(&field.node.name)
+                                .node
+                                .as_str();
+                            fields.insert((surface, response_key));
+                        }
+                    }
+                    Selection::FragmentSpread(fragment) => {
+                        let name = &fragment.node.fragment_name.node;
+                        if visited_fragments.insert(name.as_str()) {
+                            if let Some(definition) = document.fragments.get(name) {
+                                pending.push(&definition.node.selection_set.node);
+                            }
+                        }
+                    }
+                    Selection::InlineFragment(fragment) => {
+                        pending.push(&fragment.node.selection_set.node);
+                    }
+                }
+            }
+        }
+        result.extend(fields.into_iter().map(|(surface, _)| surface));
     }
-}
-
-fn auth_graphql_fields(document: &ExecutableDocument) -> Vec<AuthGraphqlSurface> {
-    let mut fields = BTreeSet::new();
-    for (_, operation) in document.operations.iter() {
-        collect_auth_fields_from_selection_set(
-            operation.node.ty,
-            &operation.node.selection_set.node,
-            document,
-            &mut fields,
-        );
-    }
-    fields.into_iter().collect()
+    result
 }
 
 fn classify_auth_graphql_document(request: &mut Request) -> ServerResult<()> {
-    if request.query.trim().is_empty() {
-        return Ok(());
-    }
-
+    // A request may already carry a parsed document (e.g. persisted queries).
+    let operation_name = request.operation_name.clone();
     let document = request.parsed_query()?;
-    let fields = auth_graphql_fields(document);
+    let fields = auth_graphql_fields(document, operation_name.as_deref());
     if !fields.is_empty() {
         request.data.insert(AuthGraphqlDocumentPolicy(fields));
     }
@@ -327,7 +327,7 @@ mod tests {
         .expect("document should parse");
 
         assert_eq!(
-            auth_graphql_fields(&document),
+            auth_graphql_fields(&document, None),
             vec![AuthGraphqlSurface::SignIn, AuthGraphqlSurface::RefreshToken]
         );
     }
@@ -346,12 +346,78 @@ mod tests {
         .expect("document should parse");
 
         assert_eq!(
-            auth_graphql_fields(&document),
+            auth_graphql_fields(&document, None),
             vec![
                 AuthGraphqlSurface::ForgotPassword,
                 AuthGraphqlSurface::AcceptInvite
             ]
         );
+    }
+
+    #[test]
+    fn charges_distinct_aliases_but_not_merged_selections() {
+        let document = parse_query(
+            r#"
+                mutation AuthFlow {
+                    first: signIn(input: { email: "a@example.com", password: "x" }) { accessToken }
+                    ...Shared
+                    ...Shared
+                    ... on Mutation { ...Shared }
+                    second: signIn(input: { email: "b@example.com", password: "x" }) { accessToken }
+                }
+                fragment Shared on Mutation {
+                    first: signIn(input: { email: "a@example.com", password: "x" }) { accessToken }
+                }
+            "#,
+        )
+        .expect("document should parse");
+
+        assert_eq!(
+            auth_graphql_fields(&document, Some("AuthFlow")),
+            vec![AuthGraphqlSurface::SignIn, AuthGraphqlSurface::SignIn]
+        );
+    }
+
+    #[test]
+    fn cyclic_fragments_terminate_before_graphql_validation() {
+        let document = parse_query(
+            r#"
+                mutation AuthFlow { ...First }
+                fragment First on Mutation { ...Second }
+                fragment Second on Mutation {
+                    ...First
+                    signIn(input: { email: "a@example.com", password: "x" }) { accessToken }
+                }
+            "#,
+        )
+        .expect("document should parse before validation");
+
+        assert_eq!(
+            auth_graphql_fields(&document, Some("AuthFlow")),
+            vec![AuthGraphqlSurface::SignIn]
+        );
+    }
+
+    #[test]
+    fn only_selected_operation_is_charged() {
+        let document = parse_query(
+            r#"
+                mutation Login {
+                    signIn(input: { email: "a@example.com", password: "x" }) { accessToken }
+                }
+                mutation Recovery {
+                    forgotPassword(input: { email: "a@example.com" }) { success }
+                }
+                query Read { __typename }
+            "#,
+        )
+        .expect("document should parse");
+
+        assert_eq!(
+            auth_graphql_fields(&document, Some("Recovery")),
+            vec![AuthGraphqlSurface::ForgotPassword]
+        );
+        assert!(auth_graphql_fields(&document, Some("Read")).is_empty());
     }
 
     #[test]

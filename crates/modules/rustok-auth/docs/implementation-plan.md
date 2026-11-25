@@ -176,6 +176,15 @@ gates in the [Page Builder backlog](../../../../docs/modules/page-builder-backlo
    exhaustively at the GraphQL boundary); `AuthSettingsOverrides::apply` is
    live runtime wiring, not dead code.
 
+## GraphQL credential throttling remediation (source only)
+
+The credential limiter now accounts for separate aliased resolver calls, ignores
+unselected named operations, and traverses cyclic/shared fragment graphs safely
+before validation. Focused classifier regressions are authored but unrun. Run
+`cargo test -p rustok-auth --features graphql --lib graphql::rate_limit` and the
+host GraphQL integration checks before release. Compilation and the remediation
+gate are pending maintainer verification.
+
 ## Verification
 
 - `npm run verify:auth:ui-boundary` and `npm run test:verify:auth:ui-boundary`
