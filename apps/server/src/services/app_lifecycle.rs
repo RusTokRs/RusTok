@@ -3147,7 +3147,6 @@ mod installer_job_task_registry_tests {
     }
 }
 
-
 #[cfg(test)]
 mod remote_executor_reaper_shutdown_tests {
     use super::*;
