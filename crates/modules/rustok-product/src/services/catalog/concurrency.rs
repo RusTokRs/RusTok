@@ -125,15 +125,27 @@ pub(crate) fn ensure_expected_variant_revision(
 }
 
 pub(crate) fn variant_revision_conflict_of(message: &str) -> bool {
-    message.contains(VARIANT_REVISION_CONFLICT_PREFIX)
+    let Some(start) = message.find(VARIANT_REVISION_CONFLICT_PREFIX) else {
+        return false;
+    };
+    let rest = &message[start + VARIANT_REVISION_CONFLICT_PREFIX.len()..];
+    let Some(rest) = rest.strip_prefix(": expected revision ") else {
+        return false;
+    };
+    let Some((expected, current)) = rest.split_once(", current revision ") else {
+        return false;
+    };
+
+    expected.parse::<i64>().is_ok_and(|revision| revision > 0)
+        && current.parse::<i64>().is_ok_and(|revision| revision > 0)
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        REVISION_CONFLICT_PREFIX, ensure_expected_revision, expected_variant_revision,
-        next_revision, revision_conflict, revision_conflict_of, validate_patch_text_length,
-        variant_revision_conflict_of, CommerceError,
+        REVISION_CONFLICT_PREFIX, ensure_expected_revision, ensure_expected_variant_revision,
+        expected_variant_revision, next_revision, revision_conflict, revision_conflict_of,
+        validate_patch_text_length, variant_revision_conflict_of, CommerceError,
     };
     use crate::entities;
     use rustok_api::Patch;
@@ -191,13 +203,55 @@ mod tests {
         assert!(expected_variant_revision(Some("not-a-revision")).is_err());
     }
 
+    fn variant(index_revision: i64) -> entities::product_variant::Model {
+        let now = chrono::Utc::now().into();
+        entities::product_variant::Model {
+            id: uuid::Uuid::from_u128(1),
+            tenant_id: uuid::Uuid::from_u128(2),
+            product_id: uuid::Uuid::from_u128(3),
+            title: "Variant".to_owned(),
+            sku: Some("SKU-1".to_owned()),
+            barcode: None,
+            weight: None,
+            weight_unit: None,
+            inventory_management: "manual".to_owned(),
+            inventory_quantity: 0,
+            inventory_policy: "deny".to_owned(),
+            position: 0,
+            combination_identity: None,
+            shipping_profile_slug: None,
+            created_at: now,
+            updated_at: now,
+            index_revision,
+        }
+    }
+
     #[test]
-    fn variant_revision_conflicts_are_recognized() {
+    fn stale_variant_revision_is_refused_and_current_revision_is_accepted() {
+        assert!(ensure_expected_variant_revision(&variant(5), Some("5")).is_ok());
+
+        let error = ensure_expected_variant_revision(&variant(5), Some("4"))
+            .expect_err("stale variant predecessor");
+        assert!(variant_revision_conflict_of(&error.to_string()));
+        assert!(ensure_expected_variant_revision(&variant(5), None).is_err());
+    }
+
+    #[test]
+    fn variant_revision_conflicts_require_complete_positive_revision_facts() {
         let error = CommerceError::Validation(
             "product variant revision conflict: expected revision 4, current revision 5".into(),
         );
         assert!(variant_revision_conflict_of(&error.to_string()));
         assert!(!variant_revision_conflict_of("ordinary validation error"));
+        assert!(!variant_revision_conflict_of(
+            "Product validation error: user text mentions product variant revision conflict"
+        ));
+        assert!(!variant_revision_conflict_of(
+            "product variant revision conflict: expected revision invalid, current revision 5"
+        ));
+        assert!(!variant_revision_conflict_of(
+            "product variant revision conflict: expected revision 4, current revision 5 trailing"
+        ));
     }
 
     #[test]
