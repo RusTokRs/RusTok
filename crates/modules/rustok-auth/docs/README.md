@@ -105,40 +105,72 @@ Source regressions unrun. Deploy all host instances together.
 
 ## JWT keyring and rotation
 
-All JWT issuance paths include the active `kid`. Set `settings.auth.jwt_keyring_env`
-to the name of an environment variable containing JSON (never commit its secret
-material). The JSON fields are:
+Auth uses four independent rings: access (direct and OAuth), password reset,
+email verification, and invite. Each has one active key and bounded verification
+history. Special JWTs require a purpose-specific `typ` and `kid`; access retains
+the existing `JWT` type. The caller selects the ring before inspecting the header.
+
+Set `settings.auth.jwt_keyring_env` to the environment variable holding access
+ring JSON. Access uses the existing `algorithm` and RSA settings. Set
+`settings.auth.jwt_special_keyrings_env` to a separate environment variable holding
+an object with optional `password_reset`, `email_verification` and `invite`
+entries. Each entry has `algorithm` (HS256 by default), `keyring`, and, for RS256,
+`rsa_private_key_pem` plus `rsa_public_key_pem`. Do not commit secret JSON.
+
+Each ring object accepts:
 
 - `active_kid`: 1–64 ASCII letters, digits, hyphens or underscores.
-- `active_hs256_secret`: optional independent HS256 signing secret; absent uses
-  the existing host secret. For RS256 use the existing RSA private/public
-  settings and omit this field.
-- `verification_keys`: up to 16 objects with `kid`, `material` (HS256
-  secret or RSA public PEM for the configured algorithm), and `verify_until`
-  (exclusive Unix timestamp in seconds).
-- `legacy_without_kid`: optional object with `kid` and `verify_until` for
-  a bounded initial migration of previously issued JWTs. Missing IDs fail
-  closed without this explicit setting.
+- `active_hs256_secret`: optional independent signing secret for HS256.
+  If omitted, HKDF-SHA256 derives an independent purpose key from the host
+  MAC root. The raw root is never an active JWT key.
+- `verification_keys`: up to 16 objects with `kid`, `material` (actual HS256
+  signing secret or RSA public PEM), and exclusive Unix-second `verify_until`.
+- `legacy_without_kid`: access-only bounded migration setting with `kid` and
+  `verify_until`. Special rings reject this setting.
 
-For the first deployment of key-ID support, keep the existing signing material
-and set `active_kid` to `default`; configure `legacy_without_kid` to point to
-that ID with a deadline covering outstanding pre-key-ID JWTs. Deploy that
-configuration to all replicas before promoting a different signer. Do not
-activate a new signer while any verifier still runs the pre-keyring code.
+The unconfigured access ID is `default`; special IDs are `reset-default`,
+`verify-default`, and `invite-default`. Example special configuration shape
+(use independent high-entropy secret material supplied by the secret manager):
 
-For a coordinated rotation, first distribute the next key as a verification-only
-entry while keeping the current signer, then promote the new key to active and
-move the outgoing key into the verification list on all instances. Keep the
-host MAC secret unchanged. Choose retirement deadlines after the longest
-outstanding JWT lifetime and remove expired entries and the initial migration
-setting. Never reuse identifiers or key material. An emergency revocation may
-intentionally invalidate outstanding JWTs. This is startup configuration, not
-hot reload. HS256 verification material can also sign cryptographically; the
-verification-only designation restricts this implementation, not an attacker
-who obtains the secret. Prefer RS256 when distributing verification keys across
-trust boundaries. Same-algorithm rotation is supported; distinct purpose keyrings,
-algorithm migration, and live multi-replica evidence are pending.
-See [the ADR](../../../../DECISIONS/2026-11-25-jwt-keyring.md).
+```json
+{
+  "password_reset": {
+    "algorithm": "HS256",
+    "keyring": {
+      "active_kid": "reset-next",
+      "active_hs256_secret": "<independent-secret>"
+    }
+  }
+}
+```
+
+All explicit symmetric material is subject to production secret policy even
+with RSA access. Startup and selected-key use reject key material reuse across rings. Derived
+keys isolate disclosure of a derived signing key, not compromise of the
+common root; use independent explicit material for stronger isolation.
+
+### Cutover and rotation
+
+For previous default HS256 access deployments, configure a new active ID
+and put the old raw host secret under the old ID `default` in access
+`verification_keys`, with a cutoff covering the remaining access JWT lifetime.
+If necessary, configure `legacy_without_kid` to point to that old entry.
+Existing independent access signing material or RSA access pairs can retain
+their IDs. The old raw host secret is not allowed as an active signing key.
+Old shared-key special links are intentionally rejected and must be reissued.
+Keep the host MAC root unchanged during this migration; refresh sessions are
+not rewritten or revoked. Coordinate all replicas for this cutover.
+
+For subsequent same-algorithm rotations, distribute the next verification
+material to all replicas first, then promote it and retain the outgoing
+material until its JWTs expire. For derived HS256 keys, the historical
+material is the actual lowercase hex-encoded HKDF output (not the root).
+Prefer explicit independent secrets for operational rotations. Remove
+expired history; never reuse IDs or key material. HS256 verification material
+is cryptographically capable of signing; use RSA for distribution to
+untrusted verifiers. Configuration is startup-scoped, not hot reload.
+Algorithm migration and multi-replica execution evidence are pending.
+See [purpose keyring ADR](../../../../DECISIONS/2026-11-25-jwt-purpose-keyrings.md).
 
 ## JWT and browser confirmation hardening
 

@@ -184,10 +184,10 @@ and reset links intentionally; access JWT signatures and refresh/session storage
 are unchanged. Stop old host writers before deploying new instances. Source
 regressions and locked Cargo dependency updates authored, unrun.
 
-JWT keyring selection, key IDs, verification retirement and the explicit initial
+JWT purpose keyrings, key IDs, verification retirement and access-only initial
 missing-ID migration are source-implemented. Scoped compilation, RSA rotation
-and multi-replica rollout evidence are pending; separate purpose keyrings,
-algorithm migration and hot reload remain separate work. See the
+and multi-replica rollout evidence are pending; algorithm migration and hot reload
+remain separate work. Reissue pre-cutover shared-key special links. See the
 [owner contract](README.md#jwt-keyring-and-rotation).
 
 ## JWT and CSRF hardening (source only)

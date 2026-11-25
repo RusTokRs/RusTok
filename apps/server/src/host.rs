@@ -356,41 +356,25 @@ fn validate_auth_deployment(config: &crate::auth::AuthConfig, production: bool) 
         ));
     }
 
-    match config.algorithm {
-        crate::auth::JwtAlgorithm::HS256 => {
-            for secret in std::iter::once(config.secret.as_str())
-                .chain(config.jwt_keyring.hs256_secrets(&config.secret))
-            {
-                if secret.bytes().filter(|b| !b.is_ascii_whitespace()).count() < MIN_PRODUCTION_HS256_SECRET_BYTES {
-                    return Err(Error::BadRequest(format!(
-                        "Production HS256 secret must contain at least {MIN_PRODUCTION_HS256_SECRET_BYTES} bytes"
-                    )));
-                }
-                if jwt_secret_looks_like_placeholder(secret) {
-                    return Err(Error::BadRequest(
-                        "Production HS256 secret looks like a placeholder or low-diversity value"
-                            .to_string(),
-                    ));
-                }
-            }
+    // The root protects host MACs and derived JWT keys even for RS256 access.
+    // Explicit HS256 keys from every purpose (including history) must meet the
+    // same production policy.
+    for secret in config.explicit_hs256_secrets() {
+        if secret.bytes().filter(|b| !b.is_ascii_whitespace()).count()
+            < MIN_PRODUCTION_HS256_SECRET_BYTES
+        {
+            return Err(Error::BadRequest(format!(
+                "Production HS256/root secret must contain at least {MIN_PRODUCTION_HS256_SECRET_BYTES} bytes"
+            )));
         }
-        crate::auth::JwtAlgorithm::RS256 => {
-            if config
-                .rsa_private_key_pem
-                .as_deref()
-                .is_none_or(|value| value.trim().is_empty())
-                || config
-                    .rsa_public_key_pem
-                    .as_deref()
-                    .is_none_or(|value| value.trim().is_empty())
-            {
-                return Err(Error::BadRequest(
-                    "Production RS256 requires non-empty private and public key material"
-                        .to_string(),
-                ));
-            }
+        if jwt_secret_looks_like_placeholder(secret) {
+            return Err(Error::BadRequest(
+                "Production HS256/root secret looks like a placeholder or low-diversity value"
+                    .to_string(),
+            ));
         }
     }
+    rustok_auth::validate_auth_config(config).map_err(crate::auth::auth_err)?;
 
     Ok(())
 }
@@ -949,6 +933,29 @@ mod tests {
             .with_audience("rustok-production-admin");
         validate_auth_deployment(&config, true)
             .expect("explicit claims and a high-entropy secret satisfy production policy");
+    }
+
+    #[test]
+    fn production_rejects_short_special_jwt_key_material() {
+        let config = rustok_auth::build_auth_config_with_env(
+            "aB3!zY7@qW8#eR2$".repeat(5),
+            900,
+            crate::auth::AuthSettingsOverrides {
+                issuer: Some("https://api.example.com".into()),
+                audience: Some("rustok-production-admin".into()),
+                jwt_special_keyrings_env: Some("SPECIAL_KEYS".into()),
+                ..Default::default()
+            },
+            |_| Ok(serde_json::json!({
+                "invite": {"keyring": {
+                    "active_kid": "invite-next",
+                    "active_hs256_secret": "distinct-special-signing-key-with-32-bytes"
+                }}
+            }).to_string()),
+        ).expect("owner accepts the development key-strength floor");
+        let error = validate_auth_deployment(&config, true)
+            .expect_err("production must validate all purpose keys");
+        assert!(error.to_string().contains("at least 64 bytes"));
     }
 
     #[test]

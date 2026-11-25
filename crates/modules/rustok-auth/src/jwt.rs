@@ -8,6 +8,9 @@ use uuid::Uuid;
 
 use crate::config::{AuthConfig, JwtAlgorithm};
 use crate::error::{AuthError, Result};
+use crate::jwt_keyring::{
+    JwtPurpose, PurposeKeyringRef, ensure_selected_key_isolated, verification_key,
+};
 
 const DIRECT_GRANT_TYPE: &str = "direct";
 const PASSWORD_RESET_PURPOSE: &str = "password_reset";
@@ -122,7 +125,7 @@ pub fn encode_access_token(
         jti: None,
     };
 
-    encode(&jwt_header(config), &claims, &encoding_key(config)?)
+    encode(&jwt_header(config, JwtPurpose::Access), &claims, &encoding_key(config, JwtPurpose::Access)?)
         .map_err(|_| AuthError::TokenEncodingFailed)
 }
 
@@ -163,7 +166,7 @@ pub fn encode_oauth_access_token(
         jti: Some(input.token_id),
     };
 
-    encode(&jwt_header(config), &claims, &encoding_key(config)?)
+    encode(&jwt_header(config, JwtPurpose::Access), &claims, &encoding_key(config, JwtPurpose::Access)?)
         .map_err(|_| AuthError::TokenEncodingFailed)
 }
 
@@ -185,9 +188,9 @@ pub fn decode_access_token(config: &AuthConfig, token: &str) -> Result<Claims> {
         return Err(AuthError::InvalidAccessToken);
     }
     tracing::debug!("Decoding access token");
-    let validation = strict_jwt_validation(config);
+    let validation = strict_jwt_validation(config, JwtPurpose::Access);
 
-    let key = decoding_key(config, token).map_err(|_| AuthError::InvalidAccessToken)?;
+    let key = decoding_key(config, token, JwtPurpose::Access).map_err(|_| AuthError::InvalidAccessToken)?;
     let claims = decode::<Claims>(token, &key, &validation)
         .map(|data| data.claims)
         .map_err(|_| AuthError::InvalidAccessToken)?;
@@ -225,7 +228,7 @@ pub fn encode_password_reset_token(
         iat: now.timestamp() as usize,
     };
 
-    encode(&jwt_header(config), &claims, &encoding_key(config)?)
+    encode(&jwt_header(config, JwtPurpose::PasswordReset), &claims, &encoding_key(config, JwtPurpose::PasswordReset)?)
         .map_err(|_| AuthError::TokenEncodingFailed)
 }
 
@@ -238,9 +241,9 @@ pub fn decode_password_reset_token(
         return Err(AuthError::InvalidResetToken);
     }
     tracing::debug!("Decoding password reset token");
-    let validation = strict_jwt_validation(config);
+    let validation = strict_jwt_validation(config, JwtPurpose::PasswordReset);
 
-    let key = decoding_key(config, token).map_err(|_| AuthError::InvalidResetToken)?;
+    let key = decoding_key(config, token, JwtPurpose::PasswordReset).map_err(|_| AuthError::InvalidResetToken)?;
     let claims = decode::<PasswordResetClaims>(token, &key, &validation)
         .map(|data| data.claims)
         .map_err(|_| AuthError::InvalidResetToken)?;
@@ -280,7 +283,7 @@ pub fn encode_email_verification_token(
         iat: now.timestamp() as usize,
     };
 
-    encode(&jwt_header(config), &claims, &encoding_key(config)?)
+    encode(&jwt_header(config, JwtPurpose::EmailVerification), &claims, &encoding_key(config, JwtPurpose::EmailVerification)?)
         .map_err(|_| AuthError::TokenEncodingFailed)
 }
 
@@ -293,9 +296,9 @@ pub fn decode_email_verification_token(
         return Err(AuthError::InvalidVerificationToken);
     }
     tracing::debug!("Decoding email verification token");
-    let validation = strict_jwt_validation(config);
+    let validation = strict_jwt_validation(config, JwtPurpose::EmailVerification);
 
-    let key = decoding_key(config, token).map_err(|_| AuthError::InvalidVerificationToken)?;
+    let key = decoding_key(config, token, JwtPurpose::EmailVerification).map_err(|_| AuthError::InvalidVerificationToken)?;
     let claims = decode::<EmailVerificationClaims>(token, &key, &validation)
         .map(|data| data.claims)
         .map_err(|_| AuthError::InvalidVerificationToken)?;
@@ -339,7 +342,7 @@ pub fn encode_invite_token(
         iat: now.timestamp() as usize,
     };
 
-    encode(&jwt_header(config), &claims, &encoding_key(config)?)
+    encode(&jwt_header(config, JwtPurpose::Invite), &claims, &encoding_key(config, JwtPurpose::Invite)?)
         .map_err(|_| AuthError::TokenEncodingFailed)
 }
 
@@ -349,9 +352,9 @@ pub fn decode_invite_token(config: &AuthConfig, token: &str) -> Result<InviteCla
         return Err(AuthError::InvalidInviteToken);
     }
     tracing::debug!("Decoding invite token");
-    let validation = strict_jwt_validation(config);
+    let validation = strict_jwt_validation(config, JwtPurpose::Invite);
 
-    let key = decoding_key(config, token).map_err(|_| AuthError::InvalidInviteToken)?;
+    let key = decoding_key(config, token, JwtPurpose::Invite).map_err(|_| AuthError::InvalidInviteToken)?;
     let claims = decode::<InviteClaims>(token, &key, &validation)
         .map(|data| data.claims)
         .map_err(|_| AuthError::InvalidInviteToken)?;
@@ -386,69 +389,58 @@ fn token_expiration(now: chrono::DateTime<Utc>, ttl_seconds: u64) -> Result<chro
 
 // ─── Key helpers ─────────────────────────────────────────────────────
 
-/// Build the encoding key for the configured algorithm.
-fn jwt_header(config: &AuthConfig) -> Header {
-    let mut header = Header::new(jwt_algorithm(config));
-    header.kid = Some(config.jwt_keyring.active_kid().to_string());
+/// Bind the token class to a caller-selected ring and explicit JWT type.
+fn jwt_header(config: &AuthConfig, purpose: JwtPurpose) -> Header {
+    let selected = PurposeKeyringRef::for_config(config, purpose);
+    let mut header = Header::new(jwt_algorithm(selected.algorithm));
+    header.kid = Some(selected.ring.active_kid().to_string());
+    header.typ = Some(purpose.typ().to_string());
     header
 }
 
-fn jwt_algorithm(config: &AuthConfig) -> Algorithm {
-    match config.algorithm {
+fn jwt_algorithm(algorithm: &JwtAlgorithm) -> Algorithm {
+    match algorithm {
         JwtAlgorithm::HS256 => Algorithm::HS256,
         JwtAlgorithm::RS256 => Algorithm::RS256,
     }
 }
 
-/// HS256 signs with a symmetric secret, so a short secret is a forgeable
-/// key. `build_auth_config` validates this at startup, but `AuthConfig` can
-/// also be constructed directly; fail closed at key materialization so no
-/// construction path can sign or verify with a weak secret.
-fn hs256_secret_bytes(config: &AuthConfig) -> Result<&[u8]> {
-    let secret = config.jwt_keyring.active_hs256_secret(&config.secret);
-    if !crate::config::hs256_secret_has_min_length(secret) {
-        return Err(AuthError::Internal(format!(
-            "HS256 secret must contain at least {} non-whitespace bytes",
-            crate::config::MIN_HS256_SECRET_BYTES
-        )));
-    }
-    Ok(secret.as_bytes())
-}
-
-fn encoding_key(config: &AuthConfig) -> Result<EncodingKey> {
-    if !config.jwt_keyring.signing_id_is_valid()
+fn encoding_key(config: &AuthConfig, purpose: JwtPurpose) -> Result<EncodingKey> {
+    let selected = PurposeKeyringRef::for_config(config, purpose);
+    if !selected.ring.signing_id_is_valid()
         || !crate::config::hs256_secret_has_min_length(&config.secret)
     {
         return Err(AuthError::TokenEncodingFailed);
     }
-    match config.algorithm {
-        JwtAlgorithm::HS256 => Ok(EncodingKey::from_secret(hs256_secret_bytes(config)?)),
+    let material = selected.active_material()?;
+    ensure_selected_key_isolated(config, purpose, selected.algorithm, &material)?;
+    match selected.algorithm {
+        JwtAlgorithm::HS256 => {
+            Ok(EncodingKey::from_secret(material.as_bytes()))
+        }
         JwtAlgorithm::RS256 => {
-            let pem = config.rsa_private_key_pem.as_deref().ok_or_else(|| {
-                AuthError::Internal("RS256 requires rsa_private_key_pem".to_string())
-            })?;
-            EncodingKey::from_rsa_pem(pem.as_bytes())
-                .map_err(|e| AuthError::Internal(format!("Invalid RSA private key: {e}")))
+            let pem = selected.rsa_private.ok_or(AuthError::TokenEncodingFailed)?;
+            EncodingKey::from_rsa_pem(pem.as_bytes()).map_err(|_| AuthError::TokenEncodingFailed)
         }
     }
 }
 
-/// Select a single configured verification key from the untrusted header.
-fn decoding_key(config: &AuthConfig, token: &str) -> Result<DecodingKey> {
+/// The untrusted header selects a key only within the caller's expected ring.
+fn decoding_key(config: &AuthConfig, token: &str, purpose: JwtPurpose) -> Result<DecodingKey> {
+    let selected = PurposeKeyringRef::for_config(config, purpose);
     let header = decode_header(token).map_err(|_| AuthError::InvalidAccessToken)?;
-    if header.alg != jwt_algorithm(config)
+    if header.alg != jwt_algorithm(selected.algorithm)
+        || header.typ.as_deref() != Some(purpose.typ())
         || !crate::config::hs256_secret_has_min_length(&config.secret)
+        || (purpose != JwtPurpose::Access && header.kid.is_none())
     {
         return Err(AuthError::InvalidAccessToken);
     }
-    let active = match config.algorithm {
-        JwtAlgorithm::HS256 => config.jwt_keyring.active_hs256_secret(&config.secret),
-        JwtAlgorithm::RS256 => config.rsa_public_key_pem.as_deref()
-            .ok_or(AuthError::InvalidAccessToken)?,
-    };
-    let material = config.jwt_keyring.select(header.kid.as_deref(), active)
+    let active = selected.active_material()?;
+    let material = selected.ring.select(header.kid.as_deref(), &active)
         .ok_or(AuthError::InvalidAccessToken)?;
-    crate::jwt_keyring::verification_key(&config.algorithm, material)
+    ensure_selected_key_isolated(config, purpose, selected.algorithm, material)?;
+    verification_key(selected.algorithm, material)
 }
 
 // ─── Validation ──────────────────────────────────────────────────────
@@ -460,8 +452,9 @@ fn valid_token_times(iat: usize, exp: usize) -> bool {
     iat > 0 && iat <= now && iat < exp
 }
 
-fn strict_jwt_validation(config: &AuthConfig) -> Validation {
-    let mut validation = Validation::new(jwt_algorithm(config));
+fn strict_jwt_validation(config: &AuthConfig, purpose: JwtPurpose) -> Validation {
+    let selected = PurposeKeyringRef::for_config(config, purpose);
+    let mut validation = Validation::new(jwt_algorithm(selected.algorithm));
     validation.set_required_spec_claims(&["exp", "iss", "aud", "sub"]);
     validation.validate_exp = true;
     validation.validate_nbf = true;
@@ -546,16 +539,16 @@ mod tests {
             expires_in_secs: 900,
             token_id: Uuid::new_v4(),
         }).unwrap();
-        let mut no_kid = jwt_header(&old);
+        let mut no_kid = jwt_header(&old, JwtPurpose::Access);
         no_kid.kid = None;
-        let legacy = encode(&no_kid, &old_claims, &encoding_key(&old).unwrap()).unwrap();
+        let legacy = encode(&no_kid, &old_claims, &encoding_key(&old, JwtPurpose::Access).unwrap()).unwrap();
         assert!(decode_access_token(&old, &legacy).is_err());
         let now = Utc::now().timestamp();
         let settings = |until| json!({
             "active_kid": "next",
             "active_hs256_secret": "new-jwt-signing-secret-only-for-tests-123456",
             "verification_keys": [{
-                "kid": "default", "material": old.secret, "verify_until": until
+                "kid": "default", "material": PurposeKeyringRef::for_config(&old, JwtPurpose::Access).active_material().unwrap().as_ref(), "verify_until": until
             }],
             "legacy_without_kid": {"kid": "default", "verify_until": until}
         });
@@ -575,9 +568,9 @@ mod tests {
         assert!(decode_access_token(&rotated, &fresh).is_ok());
         assert!(decode_access_token(&old, &fresh).is_err());
         for kid in ["unknown", "", "default"] {
-            let mut header = jwt_header(&rotated);
+            let mut header = jwt_header(&rotated, JwtPurpose::Access);
             header.kid = Some(kid.to_string());
-            let forged = encode(&header, &old_claims, &encoding_key(&rotated).unwrap()).unwrap();
+            let forged = encode(&header, &old_claims, &encoding_key(&rotated, JwtPurpose::Access).unwrap()).unwrap();
             assert!(decode_access_token(&rotated, &forged).is_err());
         }
         let mut retired = rotated.clone();
@@ -590,29 +583,150 @@ mod tests {
     }
 
     #[test]
-    fn jwt_keyring_applies_to_all_special_purpose_tokens() {
+    fn purpose_rotation_is_independent_and_rejects_cross_signed_claims() {
+        use serde_json::json;
         let old = test_config();
         let tenant = Uuid::new_v4();
         let reset = encode_password_reset_token(&old, tenant, "a@example.com", 900).unwrap();
         let verify = encode_email_verification_token(&old, tenant, "a@example.com", 900).unwrap();
         let invite = encode_invite_token(&old, tenant, "a@example.com", UserRole::Customer, None, 900).unwrap();
+        let access = encode_access_token(&old, Uuid::new_v4(), tenant, UserRole::Customer, Uuid::new_v4()).unwrap();
+        let reset_claims = decode_password_reset_token(&old, &reset).unwrap();
+        let access_claims = decode_access_token(&old, &access).unwrap();
         let mut rotated = old.clone();
-        rotated.jwt_keyring = crate::jwt_keyring::JwtKeyring::from_json(
-            &serde_json::json!({
-                "active_kid": "next",
-                "active_hs256_secret": "new-jwt-signing-secret-only-for-tests-123456",
+        let old_reset_key = PurposeKeyringRef::for_config(&old, JwtPurpose::PasswordReset)
+            .active_material().unwrap();
+        let settings = |until| json!({
+            "password_reset": {"keyring": {
+                "active_kid": "reset-next",
+                "active_hs256_secret": "independent-reset-signing-key-for-tests-12345",
                 "verification_keys": [{
-                    "kid": "default", "material": old.secret,
-                    "verify_until": Utc::now().timestamp() + 3600
+                    "kid": "reset-default", "material": old_reset_key.as_ref(),
+                    "verify_until": until
                 }]
-            }).to_string()
+            }}
+        });
+        let now = Utc::now().timestamp();
+        rotated.special_jwt_keyrings = crate::jwt_keyring::SpecialJwtKeyrings::from_json(
+            &settings(now + 3600).to_string()
         ).unwrap();
+        crate::config::validate_auth_config(&rotated).unwrap();
         assert!(decode_password_reset_token(&rotated, &reset).is_ok());
         assert!(decode_email_verification_token(&rotated, &verify).is_ok());
         assert!(decode_invite_token(&rotated, &invite).is_ok());
-        assert!(decode_invite_token(&rotated, &reset).is_err());
-        assert!(decode_password_reset_token(&rotated, &verify).is_err());
-        assert!(decode_email_verification_token(&rotated, &invite).is_err());
+        assert!(decode_access_token(&rotated, &access).is_ok());
+
+        let fresh = encode_password_reset_token(&rotated, tenant, "a@example.com", 900).unwrap();
+        assert_eq!(decode_header(&fresh).unwrap().kid.as_deref(), Some("reset-next"));
+        assert!(decode_password_reset_token(&old, &fresh).is_err());
+        // A forged reset with the correct reset header but an access signature must fail.
+        let forged_reset = encode(
+            &jwt_header(&rotated, JwtPurpose::PasswordReset),
+            &reset_claims,
+            &encoding_key(&rotated, JwtPurpose::Access).unwrap(),
+        ).unwrap();
+        assert!(decode_password_reset_token(&rotated, &forged_reset).is_err());
+        // A forged access token with the correct access header but a reset signature must fail.
+        let forged_access = encode(
+            &jwt_header(&rotated, JwtPurpose::Access),
+            &access_claims,
+            &encoding_key(&rotated, JwtPurpose::PasswordReset).unwrap(),
+        ).unwrap();
+        assert!(decode_access_token(&rotated, &forged_access).is_err());
+        // Even a valid reset signature cannot override the expected typ.
+        let mut header = jwt_header(&rotated, JwtPurpose::PasswordReset);
+        header.typ = Some("JWT".to_string());
+        let wrong_typ = encode(&header, &reset_claims,
+            &encoding_key(&rotated, JwtPurpose::PasswordReset).unwrap()).unwrap();
+        assert!(decode_password_reset_token(&rotated, &wrong_typ).is_err());
+        header.typ = Some(JwtPurpose::PasswordReset.typ().to_string());
+        header.kid = None;
+        let missing_kid = encode(&header, &reset_claims,
+            &encoding_key(&rotated, JwtPurpose::PasswordReset).unwrap()).unwrap();
+        assert!(decode_password_reset_token(&rotated, &missing_kid).is_err());
+        rotated.special_jwt_keyrings = crate::jwt_keyring::SpecialJwtKeyrings::from_json(
+            &settings(now - 1).to_string()
+        ).unwrap();
+        assert!(decode_password_reset_token(&rotated, &reset).is_err());
+        assert!(decode_password_reset_token(&rotated, &fresh).is_ok());
+        assert!(decode_email_verification_token(&rotated, &verify).is_ok());
+        assert!(decode_invite_token(&rotated, &invite).is_ok());
+        assert!(decode_access_token(&rotated, &access).is_ok());
+    }
+
+    #[test]
+    fn previous_shared_access_key_can_only_migrate_access_tokens() {
+        use serde_json::json;
+        let old = test_config();
+        let tenant = Uuid::new_v4();
+        let access = encode_access_token(&old, Uuid::new_v4(), tenant, UserRole::Customer, Uuid::new_v4()).unwrap();
+        let claims = decode_access_token(&old, &access).unwrap();
+        let mut old_header = Header::new(Algorithm::HS256);
+        old_header.kid = Some("default".to_string());
+        let old_key = EncodingKey::from_secret(old.secret.as_bytes());
+        let legacy_access = encode(&old_header, &claims, &old_key).unwrap();
+        let mut migrated = old.clone();
+        migrated.jwt_keyring = crate::jwt_keyring::JwtKeyring::from_json(&json!({
+            "active_kid": "access-next",
+            "verification_keys": [{
+                "kid": "default", "material": old.secret,
+                "verify_until": Utc::now().timestamp() + 3600
+            }]
+        }).to_string()).unwrap();
+        crate::config::validate_auth_config(&migrated).unwrap();
+        assert!(decode_access_token(&migrated, &legacy_access).is_ok());
+        let reset = encode_password_reset_token(&old, tenant, "a@example.com", 900).unwrap();
+        let reset_claims = decode_password_reset_token(&old, &reset).unwrap();
+        let legacy_reset = encode(&old_header, &reset_claims, &old_key).unwrap();
+        assert!(decode_password_reset_token(&migrated, &legacy_reset).is_err());
+    }
+
+    #[test]
+    fn direct_configuration_cannot_bypass_cross_ring_key_isolation() {
+        let mut config = test_config();
+        let shared = "independent-but-reused-signing-material-test-123456";
+        let tenant = Uuid::new_v4();
+        config.jwt_keyring = crate::jwt_keyring::JwtKeyring::from_json(
+            &serde_json::json!({
+                "active_kid": "access-next",
+                "active_hs256_secret": shared
+            }).to_string()
+        ).unwrap();
+        let token = encode_access_token(&config, Uuid::new_v4(), tenant, UserRole::Customer, Uuid::new_v4()).unwrap();
+        config.special_jwt_keyrings = crate::jwt_keyring::SpecialJwtKeyrings::from_json(
+            &serde_json::json!({
+                "invite": {"keyring": {
+                    "active_kid": "invite-next",
+                    "active_hs256_secret": shared
+                }}
+            }).to_string()
+        ).unwrap();
+        assert!(decode_access_token(&config, &token).is_err());
+        assert!(encode_invite_token(&config, tenant, "a@example.com", UserRole::Customer, None, 900).is_err());
+    }
+
+    #[test]
+    fn independent_rsa_special_ring_does_not_change_hs256_access() {
+        let mut config = test_config();
+        config.special_jwt_keyrings = crate::jwt_keyring::SpecialJwtKeyrings::from_json(
+            &serde_json::json!({
+                "invite": {
+                    "algorithm": "RS256",
+                    "keyring": {"active_kid": "invite-rsa"},
+                    "rsa_private_key_pem": TEST_RSA_PRIVATE_KEY,
+                    "rsa_public_key_pem": TEST_RSA_PUBLIC_KEY
+                }
+            }).to_string()
+        ).unwrap();
+        crate::config::validate_auth_config(&config).unwrap();
+        let tenant = Uuid::new_v4();
+        let invite = encode_invite_token(&config, tenant, "a@example.com", UserRole::Customer, None, 900).unwrap();
+        assert_eq!(decode_header(&invite).unwrap().alg, Algorithm::RS256);
+        assert!(decode_invite_token(&config, &invite).is_ok());
+        let access = encode_access_token(&config, Uuid::new_v4(), tenant, UserRole::Customer, Uuid::new_v4()).unwrap();
+        assert_eq!(decode_header(&access).unwrap().alg, Algorithm::HS256);
+        let duplicated = config.with_rs256(TEST_RSA_PRIVATE_KEY, TEST_RSA_PUBLIC_KEY);
+        assert!(crate::config::validate_auth_config(&duplicated).is_err());
     }
 
     fn rs256_test_config() -> AuthConfig {
@@ -734,7 +848,7 @@ mod tests {
     }
 
     #[test]
-    fn rs256_special_purpose_tokens_round_trip() {
+    fn rs256_access_with_default_hs256_special_purposes_round_trips() {
         let config = rs256_test_config();
         let tenant_id = Uuid::new_v4();
 
@@ -844,7 +958,7 @@ mod tests {
         };
         for issued_at in [now + 60, claims.exp, 0] {
             claims.iat = issued_at;
-            let signed = encode(&jwt_header(&config), &claims, &encoding_key(&config).unwrap())
+            let signed = encode(&jwt_header(&config, JwtPurpose::Access), &claims, &encoding_key(&config, JwtPurpose::Access).unwrap())
                 .unwrap();
             assert!(decode_access_token(&config, &signed).is_err());
         }
@@ -852,7 +966,7 @@ mod tests {
         claims.iat = now;
         let mut payload = serde_json::to_value(&claims).unwrap();
         payload["nbf"] = serde_json::json!(now + 60);
-        let signed = encode(&jwt_header(&config), &payload, &encoding_key(&config).unwrap())
+        let signed = encode(&jwt_header(&config, JwtPurpose::Access), &payload, &encoding_key(&config, JwtPurpose::Access).unwrap())
             .unwrap();
         assert!(decode_access_token(&config, &signed).is_err());
 
@@ -865,7 +979,7 @@ mod tests {
             exp: now + 600,
             iat: now + 60,
         };
-        let signed = encode(&jwt_header(&config), &reset, &encoding_key(&config).unwrap())
+        let signed = encode(&jwt_header(&config, JwtPurpose::PasswordReset), &reset, &encoding_key(&config, JwtPurpose::PasswordReset).unwrap())
             .unwrap();
         assert!(decode_password_reset_token(&config, &signed).is_err());
     }

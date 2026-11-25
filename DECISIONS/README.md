@@ -53,6 +53,7 @@ Non-ADR plans and research documents do not belong in this registry.
 
 | ADR | Title | Decision status | Implementation status | Relations |
 | --- | --- | --- | --- | --- |
+| [2026-11-25](./2026-11-25-jwt-purpose-keyrings.md) | JWT purpose keyrings and cryptographic separation | Accepted | In progress | Extends and supersedes shared-key scope of [JWT keyring](./2026-11-25-jwt-keyring.md) |
 | [2026-11-25](./2026-11-25-jwt-keyring.md) | JWT keyring and controlled verification retirement | Accepted | In progress | Extends Auth lifecycle invalidation |
 | [2026-11-25](./2026-11-25-session-refresh-history.md) | Direct session refresh history | Accepted | In progress | Extends [Auth lifecycle invalidation](./2026-02-26-auth-lifecycle-unification-session-invalidation.md) |
 | [2026-11-25](./2026-11-25-taxonomy-native-composition.md) | Compose native Product and Groups Taxonomy adapters in Distribution | Accepted | In progress | Extends [Canonical FBA owner ports](./2026-11-11-canonical-fba-owner-ports.md); supersedes [Groups Taxonomy integration](./2026-11-12-groups-taxonomy-port-architecture.md) and the Taxonomy adapter placement and runtime dependency from [Inventory and Taxonomy decoupling](./2026-11-11-inventory-taxonomy-sovereignty-and-product-decoupling.md) |

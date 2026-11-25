@@ -1,9 +1,13 @@
 //! Deployment-owned JWT key selection. Only the active key can sign.
+use std::borrow::Cow;
+
 use chrono::Utc;
+use hkdf::Hkdf;
 use jsonwebtoken::DecodingKey;
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 
-use crate::config::{JwtAlgorithm, hs256_secret_has_min_length};
+use crate::config::{AuthConfig, JwtAlgorithm, hs256_secret_has_min_length, validate_rs256_key_pair};
 use crate::error::{AuthError, Result};
 
 const MAX_VERIFICATION_KEYS: usize = 16;
@@ -55,7 +59,7 @@ impl std::fmt::Debug for JwtKeyring {
     }
 }
 
-fn invalid_config() -> AuthError {
+pub(crate) fn invalid_config() -> AuthError {
     AuthError::Internal("Invalid JWT keyring configuration".to_string())
 }
 
@@ -80,35 +84,29 @@ impl JwtKeyring {
             && !self.verification_keys.iter().any(|key| key.kid == self.active_kid)
     }
 
-    pub(crate) fn active_hs256_secret<'a>(&'a self, root: &'a str) -> &'a str {
-        self.active_hs256_secret.as_deref().unwrap_or(root)
+    fn with_default_kid(kid: &str) -> Self {
+        Self { active_kid: kid.to_string(), ..Self::default() }
     }
 
-    /// Used by host deployment validation; do not log these values.
-    pub fn hs256_secrets<'a>(&'a self, root: &'a str) -> impl Iterator<Item = &'a str> {
-        std::iter::once(self.active_hs256_secret(root))
+    fn explicit_hs256_secrets(&self) -> impl Iterator<Item = &str> {
+        self.active_hs256_secret.as_deref().into_iter()
             .chain(self.verification_keys.iter().map(|key| key.material.as_str()))
     }
 
     pub(crate) fn validate(
         &self,
         algorithm: &JwtAlgorithm,
-        root: &str,
-        active_public_key: Option<&str>,
+        active_material: &str,
+        allow_missing_kid: bool,
     ) -> Result<()> {
         if !valid_kid(&self.active_kid)
             || self.verification_keys.len() > MAX_VERIFICATION_KEYS
             || (*algorithm == JwtAlgorithm::RS256 && self.active_hs256_secret.is_some())
+            || (!allow_missing_kid && self.legacy_without_kid.is_some())
         {
             return Err(invalid_config());
         }
-        let active_material = match algorithm {
-            JwtAlgorithm::HS256 => self.active_hs256_secret(root),
-            JwtAlgorithm::RS256 => active_public_key.ok_or_else(invalid_config)?,
-        };
-        if *algorithm == JwtAlgorithm::HS256 && !hs256_secret_has_min_length(active_material) {
-            return Err(invalid_config());
-        }
+        verification_key(algorithm, active_material)?;
         for (index, key) in self.verification_keys.iter().enumerate() {
             if !valid_kid(&key.kid)
                 || key.kid == self.active_kid
@@ -169,6 +167,280 @@ impl JwtKeyring {
         let key = previous?;
         (now < key.verify_until).then_some(key.material.as_str())
     }
+}
+
+
+/// Token purpose is selected by the trusted caller, never from unverified claims.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum JwtPurpose {
+    Access,
+    PasswordReset,
+    EmailVerification,
+    Invite,
+}
+
+impl JwtPurpose {
+    const ALL: [Self; 4] = [Self::Access, Self::PasswordReset, Self::EmailVerification, Self::Invite];
+
+    pub(crate) fn typ(self) -> &'static str {
+        match self {
+            Self::Access => "JWT",
+            Self::PasswordReset => "rustok-reset+jwt",
+            Self::EmailVerification => "rustok-email-verification+jwt",
+            Self::Invite => "rustok-invite+jwt",
+        }
+    }
+
+    fn label(self) -> &'static [u8] {
+        match self {
+            Self::Access => b"access",
+            Self::PasswordReset => b"password-reset",
+            Self::EmailVerification => b"email-verification",
+            Self::Invite => b"invite",
+        }
+    }
+
+    /// Defaults use independent derived signing keys, never the raw host MAC root.
+    fn derive_hs256(self, root: &str) -> Result<String> {
+        if !hs256_secret_has_min_length(root) {
+            return Err(invalid_config());
+        }
+        let hkdf = Hkdf::<Sha256>::new(Some(b"rustok/auth/jwt-purpose/v1"), root.as_bytes());
+        let mut key = [0_u8; 32];
+        hkdf.expand(self.label(), &mut key).map_err(|_| invalid_config())?;
+        Ok(hex::encode(key))
+    }
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SpecialJwtKeyring {
+    #[serde(default)]
+    algorithm: JwtAlgorithm,
+    keyring: JwtKeyring,
+    #[serde(default)]
+    rsa_private_key_pem: Option<String>,
+    #[serde(default)]
+    rsa_public_key_pem: Option<String>,
+}
+
+impl SpecialJwtKeyring {
+    fn default_for(kid: &str) -> Self {
+        Self {
+            algorithm: JwtAlgorithm::HS256,
+            keyring: JwtKeyring::with_default_kid(kid),
+            rsa_private_key_pem: None,
+            rsa_public_key_pem: None,
+        }
+    }
+}
+
+/// Independent internal-link signing configuration. The access ring retains
+/// its existing host configuration entry point.
+#[derive(Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct SpecialJwtKeyrings {
+    password_reset: SpecialJwtKeyring,
+    email_verification: SpecialJwtKeyring,
+    invite: SpecialJwtKeyring,
+}
+
+impl Default for SpecialJwtKeyrings {
+    fn default() -> Self {
+        Self {
+            password_reset: SpecialJwtKeyring::default_for("reset-default"),
+            email_verification: SpecialJwtKeyring::default_for("verify-default"),
+            invite: SpecialJwtKeyring::default_for("invite-default"),
+        }
+    }
+}
+
+impl std::fmt::Debug for SpecialJwtKeyrings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SpecialJwtKeyrings")
+            .field("password_reset", &self.password_reset.keyring)
+            .field("email_verification", &self.email_verification.keyring)
+            .field("invite", &self.invite.keyring)
+            .finish()
+    }
+}
+
+impl SpecialJwtKeyrings {
+    pub(crate) fn from_json(value: &str) -> Result<Self> {
+        serde_json::from_str(value).map_err(|_| invalid_config())
+    }
+}
+
+pub(crate) struct PurposeKeyringRef<'a> {
+    pub(crate) algorithm: &'a JwtAlgorithm,
+    pub(crate) ring: &'a JwtKeyring,
+    pub(crate) rsa_private: Option<&'a str>,
+    rsa_public: Option<&'a str>,
+    root: &'a str,
+    purpose: JwtPurpose,
+}
+
+impl<'a> PurposeKeyringRef<'a> {
+    pub(crate) fn for_config(config: &'a AuthConfig, purpose: JwtPurpose) -> Self {
+        let special = match purpose {
+            JwtPurpose::Access => None,
+            JwtPurpose::PasswordReset => Some(&config.special_jwt_keyrings.password_reset),
+            JwtPurpose::EmailVerification => Some(&config.special_jwt_keyrings.email_verification),
+            JwtPurpose::Invite => Some(&config.special_jwt_keyrings.invite),
+        };
+        let (algorithm, ring, rsa_private, rsa_public) = match special {
+            Some(special) => (&special.algorithm, &special.keyring,
+                special.rsa_private_key_pem.as_deref(), special.rsa_public_key_pem.as_deref()),
+            None => (&config.algorithm, &config.jwt_keyring,
+                config.rsa_private_key_pem.as_deref(), config.rsa_public_key_pem.as_deref()),
+        };
+        Self { algorithm, ring, rsa_private, rsa_public, root: &config.secret, purpose }
+    }
+
+    pub(crate) fn active_material(&self) -> Result<Cow<'a, str>> {
+        match self.algorithm {
+            JwtAlgorithm::HS256 => {
+                let value = match self.ring.active_hs256_secret.as_deref() {
+                    Some(secret) => Cow::Borrowed(secret),
+                    None => Cow::Owned(self.purpose.derive_hs256(self.root)?),
+                };
+                if !hs256_secret_has_min_length(&value)
+                    || hmac_identity(value.as_bytes()) == hmac_identity(self.root.as_bytes())
+                {
+                    return Err(invalid_config());
+                }
+                Ok(value)
+            }
+            JwtAlgorithm::RS256 => self.rsa_public.map(Cow::Borrowed).ok_or_else(invalid_config),
+        }
+    }
+
+    pub(crate) fn validate(&self) -> Result<()> {
+        let active = self.active_material()?;
+        self.ring.validate(self.algorithm, &active, self.purpose == JwtPurpose::Access)?;
+        match self.algorithm {
+            JwtAlgorithm::HS256 => {
+                if self.rsa_private.is_some() || self.rsa_public.is_some() {
+                    return Err(invalid_config());
+                }
+            }
+            JwtAlgorithm::RS256 => {
+                validate_rs256_key_pair(self.rsa_private.ok_or_else(invalid_config)?, &active)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+// Compare HMAC's effective block-sized key, not textual representations.
+// For RSA, jsonwebtoken extracts the RSA DER from the supported PEM forms.
+fn hmac_identity(material: &[u8]) -> [u8; 64] {
+    let mut block = [0_u8; 64];
+    if material.len() > block.len() {
+        block[..32].copy_from_slice(&Sha256::digest(material));
+    } else {
+        block[..material.len()].copy_from_slice(material);
+    }
+    block
+}
+
+fn key_identity(algorithm: &JwtAlgorithm, material: &str) -> Result<[u8; 32]> {
+    let mut digest = Sha256::new();
+    match algorithm {
+        JwtAlgorithm::HS256 => {
+            digest.update(b"HS256");
+            digest.update(hmac_identity(material.as_bytes()));
+        }
+        JwtAlgorithm::RS256 => {
+            digest.update(b"RS256");
+            let key = verification_key(algorithm, material)?;
+            digest.update(key.try_get_as_bytes().map_err(|_| invalid_config())?);
+        }
+    }
+    let mut identity = [0_u8; 32];
+    identity.copy_from_slice(&digest.finalize());
+    Ok(identity)
+}
+
+/// Validate both active and historical key identities across every ring.
+/// The old raw host root may only occur as an explicitly retired access key.
+pub(crate) fn validate_purpose_keyrings(config: &AuthConfig) -> Result<()> {
+    let mut identities = std::collections::HashSet::new();
+    let root_identity = key_identity(&JwtAlgorithm::HS256, &config.secret)?;
+    for purpose in JwtPurpose::ALL {
+        let selected = PurposeKeyringRef::for_config(config, purpose);
+        selected.validate()?;
+        let active = selected.active_material()?;
+        if !identities.insert(key_identity(selected.algorithm, &active)?) {
+            return Err(invalid_config());
+        }
+        for key in &selected.ring.verification_keys {
+            let identity = key_identity(selected.algorithm, &key.material)?;
+            if (identity == root_identity && purpose != JwtPurpose::Access)
+                || !identities.insert(identity)
+            {
+                return Err(invalid_config());
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Directly constructed configurations also fail closed if the selected key
+/// aliases another key. The scan is bounded and never attempts signatures
+/// with non-selected keys. Startup performs the full pair/config validation.
+pub(crate) fn ensure_selected_key_isolated(
+    config: &AuthConfig,
+    expected: JwtPurpose,
+    algorithm: &JwtAlgorithm,
+    material: &str,
+) -> Result<()> {
+    let identity = key_identity(algorithm, material)?;
+    if expected != JwtPurpose::Access
+        && *algorithm == JwtAlgorithm::HS256
+        && identity == key_identity(algorithm, &config.secret)?
+    {
+        return Err(invalid_config());
+    }
+    let mut matches = 0;
+    for purpose in JwtPurpose::ALL {
+        let selected = PurposeKeyringRef::for_config(config, purpose);
+        if selected.algorithm != algorithm {
+            continue;
+        }
+        if !selected.ring.signing_id_is_valid() {
+            return Err(invalid_config());
+        }
+        let active = selected.active_material()?;
+        for candidate in std::iter::once(active.as_ref())
+            .chain(selected.ring.verification_keys.iter().map(|key| key.material.as_str()))
+        {
+            if key_identity(algorithm, candidate)? == identity {
+                if purpose != expected {
+                    return Err(invalid_config());
+                }
+                matches += 1;
+            }
+        }
+    }
+    if matches != 1 {
+        return Err(invalid_config());
+    }
+    Ok(())
+}
+
+/// Host production policy applies to the root and all explicitly supplied
+/// symmetric material. Derived keys inherit root strength.
+pub(crate) fn explicit_hs256_secrets(config: &AuthConfig) -> impl Iterator<Item = &str> {
+    std::iter::once(config.secret.as_str()).chain(
+        JwtPurpose::ALL.into_iter().flat_map(move |purpose| {
+            let selected = PurposeKeyringRef::for_config(config, purpose);
+            (*selected.algorithm == JwtAlgorithm::HS256)
+                .then_some(selected.ring)
+                .into_iter()
+                .flat_map(JwtKeyring::explicit_hs256_secrets)
+        }),
+    )
 }
 
 pub(crate) fn verification_key(algorithm: &JwtAlgorithm, material: &str) -> Result<DecodingKey> {

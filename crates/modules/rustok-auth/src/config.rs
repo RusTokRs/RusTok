@@ -6,7 +6,7 @@ use crate::credentials::{
     MIN_PASSWORD_LENGTH_FLOOR_CHARS,
 };
 use crate::error::{AuthError, Result};
-use crate::jwt_keyring::JwtKeyring;
+use crate::jwt_keyring::{JwtKeyring, SpecialJwtKeyrings, validate_purpose_keyrings};
 
 const DEFAULT_ACCESS_EXPIRATION_SECS: u64 = 900; // 15 minutes
 const DEFAULT_REFRESH_EXPIRATION_SECS: u64 = 60 * 60 * 24 * 30; // 30 days
@@ -55,6 +55,7 @@ pub struct AuthConfig {
     pub secret: String,
     /// Deployment JWT key selection; separate from the host MAC root.
     pub jwt_keyring: JwtKeyring,
+    pub special_jwt_keyrings: SpecialJwtKeyrings,
     pub access_expiration: u64,
     pub refresh_expiration: u64,
     pub issuer: String,
@@ -77,6 +78,7 @@ impl std::fmt::Debug for AuthConfig {
             .debug_struct("AuthConfig")
             .field("secret", &"<redacted>")
             .field("jwt_keyring", &self.jwt_keyring)
+            .field("special_jwt_keyrings", &self.special_jwt_keyrings)
             .field("access_expiration", &self.access_expiration)
             .field("refresh_expiration", &self.refresh_expiration)
             .field("issuer", &self.issuer)
@@ -96,10 +98,16 @@ impl std::fmt::Debug for AuthConfig {
 }
 
 impl AuthConfig {
+    /// Host production policy checks these secrets without exposing them in diagnostics.
+    pub fn explicit_hs256_secrets(&self) -> impl Iterator<Item = &str> {
+        crate::jwt_keyring::explicit_hs256_secrets(self)
+    }
+
     pub fn new(secret: String) -> Self {
         Self {
             secret,
             jwt_keyring: JwtKeyring::default(),
+            special_jwt_keyrings: SpecialJwtKeyrings::default(),
             access_expiration: DEFAULT_ACCESS_EXPIRATION_SECS,
             refresh_expiration: DEFAULT_REFRESH_EXPIRATION_SECS,
             issuer: "rustok".to_string(),
@@ -153,6 +161,8 @@ pub struct AuthSettingsOverrides {
     pub algorithm: Option<JwtAlgorithm>,
     /// Name of an environment variable containing the JWT keyring JSON.
     pub jwt_keyring_env: Option<String>,
+    /// Environment variable containing the independent internal-link rings.
+    pub jwt_special_keyrings_env: Option<String>,
     pub rsa_private_key_pem: Option<String>,
     pub rsa_public_key_pem: Option<String>,
     pub rsa_private_key_env: Option<String>,
@@ -165,6 +175,7 @@ impl std::fmt::Debug for AuthSettingsOverrides {
         formatter
             .debug_struct("AuthSettingsOverrides")
             .field("jwt_keyring_env", &self.jwt_keyring_env)
+            .field("jwt_special_keyrings_env", &self.jwt_special_keyrings_env)
             .field("refresh_expiration", &self.refresh_expiration)
             .field("issuer", &self.issuer)
             .field("audience", &self.audience)
@@ -203,6 +214,12 @@ impl AuthSettingsOverrides {
                 return Err(AuthError::Internal("JWT keyring environment name is empty".to_string()));
             }
             config.jwt_keyring = JwtKeyring::from_json(&env_resolver(&name)?)?;
+        }
+        if let Some(name) = self.jwt_special_keyrings_env {
+            if name.trim().is_empty() {
+                return Err(AuthError::Internal("Special JWT keyring environment name is empty".to_string()));
+            }
+            config.special_jwt_keyrings = SpecialJwtKeyrings::from_json(&env_resolver(&name)?)?;
         }
         if let Some(v) = self.refresh_expiration {
             config.refresh_expiration = v;
@@ -344,45 +361,10 @@ pub fn validate_auth_config(config: &AuthConfig) -> Result<()> {
         )));
     }
 
-    config.jwt_keyring.validate(
-        &config.algorithm,
-        &config.secret,
-        config.rsa_public_key_pem.as_deref(),
-    )?;
-
-    match config.algorithm {
-        JwtAlgorithm::HS256 => {
-            if config.rsa_private_key_pem.is_some() || config.rsa_public_key_pem.is_some() {
-                return Err(AuthError::Internal(
-                    "HS256 configuration must not include RSA key material".to_string(),
-                ));
-            }
-        }
-        JwtAlgorithm::RS256 => {
-            let private_key = config
-                .rsa_private_key_pem
-                .as_deref()
-                .filter(|key| !key.trim().is_empty());
-            let public_key = config
-                .rsa_public_key_pem
-                .as_deref()
-                .filter(|key| !key.trim().is_empty());
-            match (private_key, public_key) {
-                (Some(priv_key), Some(pub_key)) => validate_rs256_key_pair(priv_key, pub_key)?,
-                _ => {
-                    return Err(AuthError::Internal(
-                        "RS256 requires both non-empty rsa_private_key_pem and rsa_public_key_pem"
-                            .to_string(),
-                    ));
-                }
-            }
-        }
-    }
-
-    Ok(())
+    validate_purpose_keyrings(config)
 }
 
-fn validate_rs256_key_pair(private_key_pem: &str, public_key_pem: &str) -> Result<()> {
+pub(crate) fn validate_rs256_key_pair(private_key_pem: &str, public_key_pem: &str) -> Result<()> {
     let encoding_key = EncodingKey::from_rsa_pem(private_key_pem.as_bytes())
         .map_err(|_| AuthError::Internal("Invalid RS256 private key PEM".to_string()))?;
     let decoding_key = DecodingKey::from_rsa_pem(public_key_pem.as_bytes())
@@ -428,13 +410,46 @@ mod tests {
             ]}),
             json!({"active_kid": "a", "legacy_without_kid":{"kid":"missing","verify_until":1}}),
             json!({"active_kid": "a", "active_hs256_secret":"short"}),
-            json!({"active_kid": "a", "verification_keys": [
-                {"kid":"b","material":active,"verify_until":1}
-            ]}),
+            json!({"active_kid": "a", "active_hs256_secret":active}),
         ] {
             let result = build_auth_config_with_env(
                 active.clone(), 900,
                 AuthSettingsOverrides { jwt_keyring_env: Some("JWT_KEYS".into()), ..Default::default() },
+                |_| Ok(value.to_string()),
+            );
+            assert!(result.is_err());
+        }
+    }
+
+    #[test]
+    fn purpose_config_rejects_cross_ring_key_reuse_and_legacy_special_ids() {
+        use serde_json::json;
+        let shared = "independent-but-reused-signing-material-test-123456";
+        let root = secret();
+        for value in [
+            json!({
+                "invite":{"keyring":{"active_kid":"i","active_hs256_secret":shared}},
+                "password_reset":{"keyring":{"active_kid":"r","active_hs256_secret":shared}}
+            }),
+            json!({
+                "invite":{"keyring":{"active_kid":"i","active_hs256_secret":root}}
+            }),
+            json!({
+                "invite":{"keyring":{"active_kid":"i","legacy_without_kid":{"kid":"i","verify_until":123}}}
+            }),
+            json!({
+                "invite":{"keyring":{"active_kid":"i","verification_keys":[
+                    {"kid":"old","material":shared,"verify_until":123}
+                ]}},
+                "password_reset":{"keyring":{"active_kid":"r","active_hs256_secret":shared}}
+            }),
+            json!({
+                "invite":{"algorithm":"RS256","keyring":{"active_kid":"i"}}
+            }),
+        ] {
+            let result = build_auth_config_with_env(
+                root.clone(), 900,
+                AuthSettingsOverrides { jwt_special_keyrings_env: Some("SPECIAL_KEYS".into()), ..Default::default() },
                 |_| Ok(value.to_string()),
             );
             assert!(result.is_err());
