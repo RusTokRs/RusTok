@@ -16,20 +16,38 @@ use rustok_pages::{PageCacheInvalidationEventHandler, PagesCacheInvalidationRunt
 use crate::services::pages_cache_invalidation::ServerPagesCachePort;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use crate::services::tenant_cache_generation::tenant_cache_generation_listener_snapshot;
-use crate::services::tenant_cache_generation_status::TenantCacheGenerationListenerStatus;
+use crate::services::tenant_cache_generation_status::{
+    TenantCacheGenerationListenerSnapshot, TenantCacheGenerationListenerStatus,
+};
 
-/// Prevent local-only event delivery from treating an unrelated cache invalidation subscriber as
-/// the canonical tenant generation listener.
+/// Prevent event delivery until the canonical tenant generation listener is ready.
 ///
 /// The invalidation transport exposes a transport-wide receiver count that may include receivers
-/// for other channels. This gate uses the context-owned generation listener state immediately
-/// before downstream event delivery. A retry can therefore resume after the listener recovers
-/// without rotating the same event generation again.
+/// for other channels. This gate uses the context-owned listener state immediately before
+/// downstream delivery: local-only mode requires its canonical local listener, while Redis-backed
+/// mode requires the Redis subscriber and durable reconciliation to be healthy. A retry can
+/// therefore resume after the listener recovers without rotating the same event generation again.
 ///
 /// With the Pages module enabled, the same delivery gate also runs the Pages cache invalidation
 /// handler synchronously before downstream transport acceptance. `ServerPagesCachePort` shares a
 /// bounded event-id dedupe across the gate and the asynchronous module listener, so relay retries
 /// and later listener delivery cannot rotate the same Pages event twice in one process.
+fn tenant_generation_listener_ready(
+    redis_configured: bool,
+    snapshot: &TenantCacheGenerationListenerSnapshot,
+) -> bool {
+    if redis_configured {
+        snapshot.redis_required
+            && snapshot.status == TenantCacheGenerationListenerStatus::Healthy
+            && snapshot.subscriber_ready
+            && snapshot.reconciliation_healthy
+    } else {
+        !snapshot.redis_required
+            && snapshot.status == TenantCacheGenerationListenerStatus::Healthy
+            && snapshot.local_ready
+    }
+}
+
 #[derive(Clone)]
 pub struct TenantGenerationDeliveryGate {
     inner: Arc<dyn EventTransport>,
@@ -61,12 +79,9 @@ impl TenantGenerationDeliveryGate {
     }
 
     async fn ensure_local_listener_ready(&self) -> Result<()> {
-        if self.cache.redis_configuration_present() {
-            return Ok(());
-        }
-
+        let redis_configured = self.cache.redis_configuration_present();
         let snapshot = tenant_cache_generation_listener_snapshot(&self.ctx).await;
-        if snapshot.status == TenantCacheGenerationListenerStatus::Healthy && snapshot.local_ready {
+        if tenant_generation_listener_ready(redis_configured, &snapshot) {
             return Ok(());
         }
 
@@ -203,6 +218,69 @@ mod tests {
         fn as_any(&self) -> &dyn Any {
             self
         }
+    }
+
+    fn listener_snapshot(
+        redis_required: bool,
+        status: TenantCacheGenerationListenerStatus,
+        local_ready: bool,
+        subscriber_ready: bool,
+        reconciliation_healthy: bool,
+    ) -> TenantCacheGenerationListenerSnapshot {
+        TenantCacheGenerationListenerSnapshot {
+            status,
+            last_error: None,
+            redis_required,
+            local_ready,
+            subscriber_ready,
+            reconciliation_healthy,
+        }
+    }
+
+    #[test]
+    fn local_delivery_requires_the_canonical_local_listener() {
+        assert!(!tenant_generation_listener_ready(
+            false,
+            &listener_snapshot(
+                false,
+                TenantCacheGenerationListenerStatus::Starting,
+                false,
+                false,
+                true,
+            ),
+        ));
+        assert!(tenant_generation_listener_ready(
+            false,
+            &listener_snapshot(
+                false,
+                TenantCacheGenerationListenerStatus::Healthy,
+                true,
+                false,
+                true,
+            ),
+        ));
+    }
+
+    #[test]
+    fn redis_delivery_requires_a_healthy_subscriber_and_reconciliation() {
+        let starting = listener_snapshot(
+            true,
+            TenantCacheGenerationListenerStatus::Starting,
+            true,
+            false,
+            true,
+        );
+        assert!(!tenant_generation_listener_ready(true, &starting));
+
+        let healthy = listener_snapshot(
+            true,
+            TenantCacheGenerationListenerStatus::Healthy,
+            false,
+            true,
+            true,
+        );
+        assert!(tenant_generation_listener_ready(true, &healthy));
+        assert!(!tenant_generation_listener_ready(false, &healthy));
     }
 
     #[tokio::test]

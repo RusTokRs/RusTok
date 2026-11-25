@@ -161,7 +161,7 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
             );
             // The relay target performs generation rotation synchronously. OutboxRelay therefore
             // cannot mark a tenant mutation dispatched until cache invalidation has been published
-            // and the exact canonical local listener is ready when Redis is not configured.
+            // and the canonical tenant generation listener is ready for the configured transport.
             let relay_target = tenant_generation_transport(ctx, &cache, relay_target);
             let relay_policy = &settings.events.relay_retry_policy;
             let max_attempts = if settings.events.dlq.enabled {
