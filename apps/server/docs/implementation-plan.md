@@ -1,5 +1,16 @@
 # Server App — Implementation Plan
 
+## Bounded post-abort worker joins (2026-11-25)
+
+Runtime and module worker shutdown helpers now use a separate one-second
+post-abort join grace. Worker groups still broadcast abort to every remaining
+member before joining any of them, then share one deadline across cleanup.
+If a task remains unresponsive, its join handle is released after the grace so
+shutdown does not await it indefinitely; Tokio cancellation remains cooperative
+and cleanup is not guaranteed. Added a regression using an already-started
+`spawn_blocking` task to prove the join helper returns when abort cannot stop
+the task. Tests and compilation remain with the maintainer.
+
 ## Registry direct-session admission (2026-11-25)
 
 Aligned registry controller and middleware admission with the canonical

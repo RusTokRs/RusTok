@@ -35,11 +35,15 @@ authentication. Bundled mode validation is unchanged.
 
 When a runtime worker group exhausts its cooperative shutdown deadline, the
 host aborts every remaining group member before awaiting any individual
-cleanup. Cancellation of the drain still aborts its owned handles. The
-runtime-wide StopHandle uses the atomic shared singleton primitive, with no
-unregistered fallback handle. Producer/dispatcher/forwarder shutdown order
-and the existing join-after-abort contract are unchanged. Abort is cooperative
-at Tokio cancellation points; a non-yielding task can still delay joining.
+cleanup. Group members then share a separate one-second abort-join grace;
+single runtime/module workers use the same bounded grace. Installer job tasks
+retain their separately configured abort-join grace. A handle still unresponsive
+after its grace is released so the shutdown helper does not await it indefinitely.
+Cancellation of the drain still aborts its owned handles. The runtime-wide
+StopHandle uses the atomic shared singleton primitive, with no unregistered
+fallback handle. Producer/dispatcher/forwarder shutdown order is unchanged.
+Abort remains cooperative at Tokio cancellation points, so cleanup of a
+non-yielding task is not guaranteed.
 
 ## Forwarded authority parsing (2026-11-25)
 

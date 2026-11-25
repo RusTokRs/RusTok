@@ -1546,8 +1546,9 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     event_forwarder_drain.await;
 }
 
-/// Guard a task handle so cancellation of the shutdown future cannot turn a
-/// locally owned JoinHandle into a detached task.
+/// Guard a task handle so cancellation of the shutdown future always requests
+/// abort. A handle that remains unresponsive after the bounded abort grace is
+/// released so the host shutdown path does not wait on it indefinitely.
 struct ShutdownJoinHandle(Option<JoinHandle<()>>);
 
 impl ShutdownJoinHandle {
@@ -1579,8 +1580,8 @@ impl Drop for ShutdownJoinHandle {
     }
 }
 
-/// Drain runtime-owned tasks after broadcasting stop. On timeout, abort and
-/// join them so dropping the runtime context cannot detach them.
+/// Drain runtime-owned tasks after broadcasting stop. A graceful timeout
+/// broadcasts abort and then joins only for a separate bounded grace period.
 fn await_runtime_worker_shutdown(
     worker: &'static str,
     task: Option<JoinHandle<()>>,
@@ -1607,6 +1608,43 @@ fn await_runtime_worker_shutdown_with_timeout(
     )
 }
 
+const RUNTIME_WORKER_ABORT_JOIN_GRACE: Duration = Duration::from_secs(1);
+
+async fn join_shutdown_handle_until(
+    worker: &'static str,
+    mut task: ShutdownJoinHandle,
+    deadline: tokio::time::Instant,
+) {
+    match tokio::time::timeout_at(deadline, task.handle_mut()).await {
+        Ok(Ok(())) => task.disarm(),
+        Ok(Err(error)) if error.is_cancelled() => task.disarm(),
+        Ok(Err(error)) => {
+            task.disarm();
+            tracing::warn!(worker, ?error, "Worker exited with error after abort");
+        }
+        Err(_) => {
+            tracing::warn!(
+                worker,
+                "Worker did not stop after abort grace; releasing its join handle to keep shutdown bounded"
+            );
+        }
+    }
+}
+
+async fn abort_and_join_shutdown_handle_with_timeout(
+    worker: &'static str,
+    task: ShutdownJoinHandle,
+    abort_join_grace: Duration,
+) {
+    task.abort();
+    join_shutdown_handle_until(
+        worker,
+        task,
+        tokio::time::Instant::now() + abort_join_grace,
+    )
+    .await;
+}
+
 fn await_runtime_worker_shutdown_until(
     worker: &'static str,
     task: JoinHandle<()>,
@@ -1623,13 +1661,12 @@ fn await_runtime_worker_shutdown_until(
             }
             Err(_) => {
                 tracing::warn!(worker, "Runtime worker shutdown timed out; aborting");
-                task.abort();
-                if let Err(error) = task.handle_mut().await {
-                    if !error.is_cancelled() {
-                        tracing::warn!(worker, ?error, "Runtime worker failed after abort");
-                    }
-                }
-                task.disarm();
+                abort_and_join_shutdown_handle_with_timeout(
+                    worker,
+                    task,
+                    RUNTIME_WORKER_ABORT_JOIN_GRACE,
+                )
+                .await;
             }
         }
     }
@@ -1664,13 +1701,10 @@ fn await_runtime_worker_shutdown_tasks_with_timeout(
                     for task in &remaining {
                         task.abort();
                     }
-                    for mut task in remaining {
-                        if let Err(error) = task.handle_mut().await {
-                            if !error.is_cancelled() {
-                                tracing::warn!(worker, ?error, "Runtime worker failed after abort");
-                            }
-                        }
-                        task.disarm();
+                    let abort_join_deadline =
+                        tokio::time::Instant::now() + RUNTIME_WORKER_ABORT_JOIN_GRACE;
+                    for task in remaining {
+                        join_shutdown_handle_until(worker, task, abort_join_deadline).await;
                     }
                     return;
                 }
@@ -1726,13 +1760,12 @@ fn await_module_worker_shutdown_with_timeout(
             }
             Err(_) => {
                 tracing::warn!(worker, "Module worker shutdown timed out; aborting");
-                task.abort();
-                if let Err(error) = task.handle_mut().await {
-                    if !error.is_cancelled() {
-                        tracing::warn!(worker, ?error, "Module worker failed after abort");
-                    }
-                }
-                task.disarm();
+                abort_and_join_shutdown_handle_with_timeout(
+                    worker,
+                    task,
+                    RUNTIME_WORKER_ABORT_JOIN_GRACE,
+                )
+                .await;
             }
         }
     }
@@ -2537,6 +2570,33 @@ mod tests {
         assert!(
             observed_rx.await.expect("first cleanup finished"),
             "all remaining tasks must be cancelled before the first join"
+        );
+    }
+
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn runtime_worker_abort_join_grace_bounds_non_cancellable_blocking_task() {
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (finished_tx, finished_rx) = tokio::sync::oneshot::channel();
+        let task = tokio::task::spawn_blocking(move || {
+            started_tx.send(()).expect("blocking worker started");
+            std::thread::sleep(Duration::from_millis(250));
+            let _ = finished_tx.send(());
+        });
+        started_rx.await.expect("blocking worker must start before abort");
+
+        super::abort_and_join_shutdown_handle_with_timeout(
+            "test non-cancellable worker",
+            super::ShutdownJoinHandle::new(task),
+            Duration::from_millis(10),
+        )
+        .await;
+
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), finished_rx)
+                .await
+                .is_err(),
+            "shutdown must release an unresponsive join handle after the abort grace"
         );
     }
 
