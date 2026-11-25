@@ -322,6 +322,12 @@ pub fn FlyThemeTokens(
     }
 }
 
+fn token_submission_is_visible(tokens: &[ThemeTokenItem], name: &str, value: &str) -> bool {
+    tokens
+        .iter()
+        .any(|token| token.name == name && token.value == value)
+}
+
 /// Token editor: lists existing tokens and provides an authoring form for upsert/remove.
 #[component]
 pub fn FlyThemeTokenEditor(
@@ -344,14 +350,12 @@ pub fn FlyThemeTokenEditor(
     let mut pending_submission = use_signal(|| Option::<(String, String)>::None);
     let token_error_message = token_error.read().clone();
     let observed_tokens = tokens.clone();
-    use_effect(use_reactive!(|observed_tokens| {
+    let effect_tokens = tokens.clone();
+    use_effect(use_reactive!(|effect_tokens| {
         let Some((name, value)) = pending_submission.peek().clone() else {
             return;
         };
-        if observed_tokens
-            .iter()
-            .any(|token| token.name == name && token.value == value)
-        {
+        if token_submission_is_visible(&effect_tokens, &name, &value) {
             token_name.set(String::new());
             token_value.set(String::new());
             pending_submission.set(None);
@@ -404,10 +408,7 @@ pub fn FlyThemeTokenEditor(
                         {
                             Ok(()) => {
                                 token_error.set(None);
-                                if observed_tokens
-                                    .iter()
-                                    .any(|token| token.name == name && token.value == value)
-                                {
+                                if token_submission_is_visible(&observed_tokens, &name, &value) {
                                     token_name.set(String::new());
                                     token_value.set(String::new());
                                     pending_submission.set(None);
@@ -1129,15 +1130,9 @@ mod controlled_workspace_regression_tests {
             value: "#123456".to_string(),
             css_variable: "--brand".to_string(),
         }];
-        assert!(tokens
-            .iter()
-            .any(|token| token.name == "brand" && token.value == "#123456"));
-        assert!(!tokens
-            .iter()
-            .any(|token| token.name == "brand" && token.value == "#654321"));
-        assert!(!tokens
-            .iter()
-            .any(|token| token.name == "other" && token.value == "#123456"));
+        assert!(token_submission_is_visible(&tokens, "brand", "#123456"));
+        assert!(!token_submission_is_visible(&tokens, "brand", "#654321"));
+        assert!(!token_submission_is_visible(&tokens, "other", "#123456"));
     }
 
 
