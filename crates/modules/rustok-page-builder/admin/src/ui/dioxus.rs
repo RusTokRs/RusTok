@@ -993,6 +993,7 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
         let effects = {
             let mut state = session.write();
             let previous_hash = state.controller.editor().revision().project_hash;
+            let previous_active_page_index = state.controller.active_page_index();
             // The callback must carry the snapshot that rendered its workspace. Reading the
             // live controller here would silently upgrade a stale event to the latest revision.
             let envelope = bind_workspace_intent_snapshot(
@@ -1006,6 +1007,7 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                     // A command from a stale workspace must never dispatch its
                     // asynchronous persistence effect against a newer document.
                     let current_hash = state.controller.editor().revision().project_hash;
+                    let current_active_page_index = state.controller.active_page_index();
                     let current_sequence = state.controller.editor().revision().command_sequence;
                     if result.page_id != state.controller.page_id()
                         || result.revision_id != state.controller.revision_id()
@@ -1015,7 +1017,9 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                         state.fail("Browser workspace response no longer matches the active document");
                         return;
                     }
-                    if current_hash != previous_hash {
+                    if current_hash != previous_hash
+                        || current_active_page_index != previous_active_page_index
+                    {
                         state.runtime_publish_gate_evaluation = None;
                         state.server_preview_html = None;
                         state.preview_request = None;
