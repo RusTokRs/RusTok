@@ -298,9 +298,8 @@ pub fn FlyThemeTokens(
 
 /// Editable design-token panel: lists the validated token projection, removes tokens,
 /// and upserts one token by name. Input is checked with the same `fly` validators the
-/// command path applies, so an invalid name/value is reported inline instead of being
-/// silently dropped; accepted edits go out as callbacks and the host/workspace turns
-/// them into `EditorCommand::Theme` (the only mutation path for `flyTheme`).
+/// command path applies. Hydrated workspaces use callbacks; the default SSR workspace
+/// exposes named `set_theme_token` and `remove_theme_token` forms for the browser host.
 #[component]
 pub fn FlyThemeTokenEditor(
     tokens: Vec<ThemeTokenItem>,
@@ -1881,12 +1880,13 @@ pub fn FlyAssets(
 /// [`EditorMessages`](fly_ui::EditorMessages) from its own message catalog for the
 /// current locale (English by default), keeping the adapters platform-neutral.
 ///
-/// When the host passes `on_intent`, the workspace runs in SSR intent mode instead:
-/// palette inserts, selection, and undo/redo are emitted as typed
-/// [`BrowserIntentEnvelope`]s for the host to POST to its intent endpoint, and the
-/// host re-renders with the server-returned document — the workspace mutates nothing
-/// locally. Design-token edits ride the same transport (`set_theme_token` /
-/// `remove_theme_token` intents).
+/// When the host passes `on_intent`, hydrated wasm-client builds use typed callbacks
+/// against the authoritative controller. Before hydration, the default SSR workspace keeps
+/// only controls with a browser transport: palette/layer selection plus named theme/style
+/// intent forms. Page, component-property, asset and inline-preview panels that require
+/// Leptos event handlers stay hidden until hydration; the Page Builder host supplies their
+/// SSR equivalents outside this workspace. The browser adapter yields mutation ownership
+/// to Leptos after hydration, preventing the same action from being submitted twice.
 #[component]
 pub fn FlyEditorWorkspace(
     document: ProjectDocument,
@@ -2374,6 +2374,9 @@ pub fn FlyEditorWorkspace(
         let intent_instance = intent_instance.clone();
         let apply_editor = editor;
         move |change: ScopedStyleChange| {
+            if change.component_id.trim().is_empty() {
+                return;
+            }
             if let Some(on_intent) = on_intent {
                 let (scope_kind, scope_value) = match &change.scope {
                     fly::StyleRuleScope::Media { query } => ("media", query.clone()),
