@@ -1,5 +1,8 @@
 #![cfg(all(feature = "mod-taxonomy", feature = "mod-flex"))]
 
+mod support;
+use support::test_auth_config;
+
 use std::{collections::HashMap, error::Error, io, sync::Arc, time::Duration};
 
 use flex::graphql::AttachedValuesGraphqlPort;
@@ -72,6 +75,7 @@ async fn taxonomy_category_flex_registered_translation_provider_multi_replica_ev
 }
 
 async fn run_contract(database_url: &str) -> TestResult<()> {
+    let auth_config = test_auth_config();
     let seed_connection = connect_postgres(database_url).await?;
     Migrator::up(&seed_connection, None).await?;
 
@@ -94,7 +98,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         return Err(test_error(format!("unexpected source attached values: {source}")).into());
     }
 
-    let seed_provider = registered_provider(seed_connection.clone())?;
+    let seed_provider = registered_provider(seed_connection.clone(), auth_config.clone())?;
     let listed = seed_provider
         .list_resources(
             read_context(tenant_id, "seed-list"),
@@ -146,8 +150,8 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
 
     let first_connection = connect_postgres(database_url).await?;
     let second_connection = connect_postgres(database_url).await?;
-    let first_provider = registered_provider(first_connection.clone())?;
-    let second_provider = registered_provider(second_connection.clone())?;
+    let first_provider = registered_provider(first_connection.clone(), auth_config.clone())?;
+    let second_provider = registered_provider(second_connection.clone(), auth_config.clone())?;
     let read_request = ReadTranslationResourceRequest {
         identity: identity.clone(),
         source_locale: TenantLocale::new("en")?,
@@ -227,7 +231,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     second_connection.close().await?;
 
     let observer_connection = connect_postgres(database_url).await?;
-    let observer_provider = registered_provider(observer_connection.clone())?;
+    let observer_provider = registered_provider(observer_connection.clone(), auth_config.clone())?;
     let applied = observer_provider
         .read_resource(
             read_context(tenant_id, "observer-read"),
@@ -278,7 +282,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     observer_connection.close().await?;
 
     let recovery_connection = connect_postgres(database_url).await?;
-    let recovery_provider = registered_provider(recovery_connection.clone())?;
+    let recovery_provider = registered_provider(recovery_connection.clone(), auth_config.clone())?;
     let replay = recovery_provider
         .apply_patch(
             apply_context(tenant_id, "recovery-replay", winner_key),
@@ -422,7 +426,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     recovery_connection.close().await?;
 
     let deletion_connection = connect_postgres(database_url).await?;
-    let deletion_provider = registered_provider(deletion_connection.clone())?;
+    let deletion_provider = registered_provider(deletion_connection.clone(), auth_config.clone())?;
     let deletion_changes = deletion_provider
         .read_changes(
             read_context(tenant_id, "deletion-cursor"),
@@ -511,7 +515,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     Ok(())
 }
 
-fn registered_provider(db: DatabaseConnection) -> TestResult<Arc<dyn TranslationTargetProvider>> {
+fn registered_provider(db: DatabaseConnection, auth_config: AuthConfig) -> TestResult<Arc<dyn TranslationTargetProvider>> {
     let registry = ModuleRegistry::new()
         .register(FlexModule)
         .register(TaxonomyModule);
@@ -521,7 +525,7 @@ fn registered_provider(db: DatabaseConnection) -> TestResult<Arc<dyn Translation
         &registry,
         &settings,
         runtime_ctx,
-        AuthConfig::new("test-secret-key-for-flex-translation-evidence-32bytes!".to_string()),
+        auth_config,
     )?;
     let targets = translation_target_registry(&extensions)
         .ok_or_else(|| test_error("host composition did not publish TranslationTargetRegistry"))?;
