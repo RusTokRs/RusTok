@@ -215,6 +215,28 @@ fn validate_page_patch(patch: &PagePatch) -> FlyResult<()> {
             ));
         }
     }
+
+    for field in patch.fields.keys() {
+        if patch.remove_fields.iter().any(|removed| removed == field) {
+            return Err(FlyError::InvalidPagePatch(format!(
+                "field `{field}` cannot be set and removed in the same patch"
+            )));
+        }
+    }
+
+    if let Some(value) = patch.fields.get("id") {
+        let Some(id) = value.as_str() else {
+            return Err(FlyError::InvalidPagePatch(
+                "field `id` must be a string; use `remove_fields` to clear it".to_string(),
+            ));
+        };
+        if id.trim().is_empty() {
+            return Err(FlyError::InvalidPagePatch(
+                "field `id` must not be empty; use `remove_fields` to clear it".to_string(),
+            ));
+        }
+    }
+
     Ok(())
 }
 
@@ -244,9 +266,14 @@ fn ensure_page_id_available(
     id: Option<&str>,
     except_index: Option<usize>,
 ) -> FlyResult<()> {
-    let Some(id) = id.filter(|id| !id.trim().is_empty()) else {
+    let Some(id) = id else {
         return Ok(());
     };
+    if id.trim().is_empty() {
+        return Err(FlyError::InvalidPagePatch(
+            "page id must not be empty".to_string(),
+        ));
+    }
     if document
         .project
         .pages
@@ -406,5 +433,94 @@ mod tests {
         )
         .expect_err("reserved page field");
         assert!(matches!(error, FlyError::InvalidPagePatch(_)));
+    }
+
+    #[test]
+    fn page_patch_rejects_invalid_ids_without_mutating_the_document() {
+        for invalid_id in [Value::Null, json!(42), json!("  ")] {
+            let mut document = document();
+            let before = document.clone();
+            let error = apply_page_command(
+                &mut document,
+                &PageCommand::Patch {
+                    locator: PageLocator::by_id("a"),
+                    patch: PagePatch {
+                        fields: Map::from_iter([("id".to_string(), invalid_id)]),
+                        ..PagePatch::default()
+                    },
+                },
+            )
+            .expect_err("invalid page id must be rejected");
+            assert!(matches!(error, FlyError::InvalidPagePatch(_)));
+            assert_eq!(document, before, "invalid page patches must be atomic");
+        }
+    }
+
+    #[test]
+    fn clearing_a_page_id_requires_the_explicit_remove_fields_operation() {
+        let mut document = document();
+        let error = apply_page_command(
+            &mut document,
+            &PageCommand::Patch {
+                locator: PageLocator::by_id("a"),
+                patch: PagePatch {
+                    fields: Map::from_iter([("id".to_string(), Value::Null)]),
+                    ..PagePatch::default()
+                },
+            },
+        )
+        .expect_err("null must not silently clear page identity");
+        assert!(matches!(error, FlyError::InvalidPagePatch(_)));
+        assert_eq!(document.project.pages[0].id.as_deref(), Some("a"));
+
+        apply_page_command(
+            &mut document,
+            &PageCommand::Patch {
+                locator: PageLocator::by_id("a"),
+                patch: PagePatch {
+                    remove_fields: vec!["id".to_string()],
+                    ..PagePatch::default()
+                },
+            },
+        )
+        .expect("explicitly remove page id");
+        assert_eq!(document.project.pages[0].id, None);
+    }
+
+    #[test]
+    fn page_patch_rejects_conflicting_set_and_remove_operations() {
+        let mut document = document();
+        let before = document.clone();
+        let error = apply_page_command(
+            &mut document,
+            &PageCommand::Patch {
+                locator: PageLocator::by_id("a"),
+                patch: PagePatch {
+                    fields: Map::from_iter([("name".to_string(), json!("Renamed"))]),
+                    remove_fields: vec!["name".to_string()],
+                },
+            },
+        )
+        .expect_err("a field cannot be both set and removed");
+        assert!(matches!(error, FlyError::InvalidPagePatch(_)));
+        assert_eq!(document, before);
+    }
+
+    #[test]
+    fn adding_a_page_rejects_a_blank_identity() {
+        let mut document = document();
+        let before = document.clone();
+        let mut page = blank_page("valid", "Valid");
+        page.id = Some("  ".to_string());
+        let error = apply_page_command(
+            &mut document,
+            &PageCommand::Add {
+                index: 2,
+                page: Box::new(page),
+            },
+        )
+        .expect_err("blank page identity");
+        assert!(matches!(error, FlyError::InvalidPagePatch(_)));
+        assert_eq!(document, before);
     }
 }
