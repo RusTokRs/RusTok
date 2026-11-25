@@ -11,7 +11,6 @@ use rustok_channel::{ChannelService, CreateChannelInput};
 use rustok_core::events::EventTransport;
 use rustok_migrations::SqliteTestMigrator;
 use rustok_server::{
-    auth::AuthConfig,
     common::settings::{RuntimeHostMode, RustokSettings, TenantRuntimeProfile},
     middleware::{rate_limit::PathRateLimitMiddlewareState, tenant},
     models::tenants,

@@ -3,7 +3,6 @@ use support::test_auth_config;
 
 use std::sync::Arc;
 
-use rustok_auth::AuthConfig;
 use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions};
 use rustok_index::IndexModule;
 use rustok_server::common::settings::RustokSettings;
