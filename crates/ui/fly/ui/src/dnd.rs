@@ -22,6 +22,22 @@ pub struct HitTestCandidate {
     pub reason: Option<String>,
 }
 
+impl HitTestCandidate {
+    pub(crate) fn validate_for_drop(&self) -> UiResult<()> {
+        if !self.legal {
+            return Err(UiError::IllegalDrop(
+                self.reason
+                    .clone()
+                    .unwrap_or_else(|| "candidate rejected by policy".to_string()),
+            ));
+        }
+        if !self.rect.is_valid() || !self.score.is_finite() {
+            return Err(UiError::InvalidGeometry("drop candidate".to_string()));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum DragSource {
     ExistingComponent {
@@ -52,6 +68,7 @@ pub fn command_for_drop(
     source: DragSource,
     candidate: &HitTestCandidate,
 ) -> UiResult<EditorCommand> {
+    candidate.validate_for_drop()?;
     let parent_id = match candidate.position {
         DropPosition::Inside => Some(candidate.target_component_id.clone()),
         DropPosition::Before | DropPosition::After => candidate.parent_component_id.clone(),

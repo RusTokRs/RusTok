@@ -7,7 +7,7 @@ For full public interface and web runtime definitions, see [CRATE_API.md](CRATE_
 ## Responsibilities
 
 - Define screen, viewport, and canvas coordinates (`BrowserPoint`, `BrowserRect`, `CoordinateTransform`).
-- Provide hit-testing, drop candidate normalization, and auto-scroll policies (`hit_test_drop_targets`, `auto_scroll_delta`).
+- Provide hit-testing, drop candidate normalization, and auto-scroll policies (`hit_test_drop_targets`, `auto_scroll_delta`). Invalid browser bounds and invalid transformed canvas rectangles are excluded before candidates reach the state machine. Auto-scroll is idle for malformed geometry and splits narrow viewports into non-overlapping edge zones.
 - Define the typed iframe bridge protocol (`IframeBridgeEnvelope`, `IframeBridgeMessage`) with monotonic sequence and instance validation.
 - Own the two origin rules: inbound acceptance compares `event.origin` against a canonical expected origin (`normalize_expected_origin`, which accepts HTTP(S) origins and `OPAQUE_ORIGIN`, and rejects paths, credentials, queries and fragments), while outbound delivery translates an opaque destination to `*` (`outbound_target_origin`), because the platform rejects `"null"` as a `postMessage` target.
 - Implement RAII browser event listener handles (`EventListenerHandle`, `CleanupRegistry`).

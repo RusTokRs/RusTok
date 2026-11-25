@@ -61,7 +61,9 @@ Concurrent save requests and retries after an unresolved revision conflict are r
 implement automatic merge. Host transports must carry the `SaveAttempt` end-to-end. The local
 request ID is not a server idempotency key.
 Drop rechecks the current presentation and drag capability at commit time, including when
-restored state contains a drag started under a different policy.
+restored state contains a drag started under a different policy. Command construction also
+rejects illegal or malformed candidates, so direct callers and restored state cannot bypass
+candidate validation. Starting another drag clears the preceding insertion overlay.
 
 A save success is accepted only during an active `SaveStarted` transition and only when its
 request ID matches the active attempt. A stale success or failure, uncorrelated failure, or

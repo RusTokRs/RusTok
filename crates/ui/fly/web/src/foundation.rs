@@ -62,6 +62,14 @@ impl BrowserRect {
             && self.height.is_finite()
     }
 
+    fn has_valid_bounds(self) -> bool {
+        self.is_finite()
+            && self.width >= 0.0
+            && self.height >= 0.0
+            && (self.left + self.width).is_finite()
+            && (self.top + self.height).is_finite()
+    }
+
     pub fn contains(self, point: BrowserPoint) -> bool {
         point.x >= self.left
             && point.y >= self.top
@@ -223,7 +231,7 @@ pub fn resolve_drop_position(
     // every point and passes the size guard, and then `(pointer.y - rect.top) / rect.height`
     // evaluates to NaN, so every comparison below is false and the function silently answers
     // `After` for a rect that does not exist.
-    if !pointer.is_finite() || !rect.is_finite() {
+    if !pointer.is_finite() || !rect.has_valid_bounds() {
         return None;
     }
     if !rect.contains(pointer) || rect.width <= 0.0 || rect.height <= 0.0 {
@@ -269,16 +277,22 @@ pub fn normalize_hit_targets(
         .into_iter()
         // A target whose rectangle is not a real rectangle cannot be hit; passing it through
         // would only yield a garbage canvas rect downstream.
-        .filter(|target| target.rect.is_finite())
-        .map(|target| HitTestCandidate {
-            target_component_id: target.component_id,
-            parent_component_id: target.parent_component_id,
-            index: target.index,
-            position: target.position,
-            rect: target.rect.to_canvas_rect(transform),
-            score: finite_score(target.score),
-            legal: target.legal,
-            reason: target.reason,
+        .filter(|target| target.rect.has_valid_bounds())
+        .filter_map(|target| {
+            let rect = target.rect.to_canvas_rect(transform);
+            if !rect.is_valid() {
+                return None;
+            }
+            Some(HitTestCandidate {
+                target_component_id: target.component_id,
+                parent_component_id: target.parent_component_id,
+                index: target.index,
+                position: target.position,
+                rect,
+                score: finite_score(target.score),
+                legal: target.legal,
+                reason: target.reason,
+            })
         })
         .collect::<Vec<_>>();
     sort_candidates_by_score(&mut candidates);
@@ -328,6 +342,10 @@ pub fn hit_test_drop_targets(
         .into_iter()
         .filter_map(|target| {
             let position = resolve_drop_position(pointer, target.rect, target.axis, target.policy)?;
+            let rect = target.rect.to_canvas_rect(transform);
+            if !rect.is_valid() {
+                return None;
+            }
             let distance = pointer.distance_squared(target.rect.center()).sqrt();
             let proximity = (1.0 / (1.0 + distance)) as f32;
             let index = if position == DropPosition::After {
@@ -340,7 +358,7 @@ pub fn hit_test_drop_targets(
                 parent_component_id: target.parent_component_id,
                 index,
                 position,
-                rect: target.rect.to_canvas_rect(transform),
+                rect,
                 score: finite_score(finite_score(target.priority) + proximity),
                 legal: target.legal,
                 reason: target.reason,
@@ -384,6 +402,14 @@ pub fn auto_scroll_delta(
     viewport: BrowserRect,
     policy: AutoScrollPolicy,
 ) -> AutoScrollDelta {
+    if !pointer.is_finite()
+        || !viewport.has_valid_bounds()
+        || viewport.width <= 0.0
+        || viewport.height <= 0.0
+    {
+        return AutoScrollDelta::default();
+    }
+
     let edge = if policy.edge_px.is_finite() {
         policy.edge_px.max(1.0)
     } else {
@@ -396,6 +422,12 @@ pub fn auto_scroll_delta(
     };
 
     fn axis_delta(value: f64, start: f64, length: f64, edge: f64, maximum: f64) -> f64 {
+        // On a small viewport the two edge zones must not overlap; otherwise
+        // the first branch scrolls toward the start even beyond the midpoint.
+        let edge = edge.min(length / 2.0);
+        if edge == 0.0 {
+            return 0.0;
+        }
         let end = start + length;
         if value < start + edge {
             -maximum * ((start + edge - value) / edge).clamp(0.0, 1.0)
@@ -660,6 +692,53 @@ mod tests {
         assert!(delta.x.abs() < f64::EPSILON);
         assert!(delta.y > 0.0);
         assert!(delta.y <= 24.0);
+    }
+
+    #[test]
+    fn auto_scroll_is_idle_for_invalid_geometry_and_at_small_viewport_center() {
+        let policy = AutoScrollPolicy::default();
+        let small = rect(0.0, 0.0, 20.0, 20.0);
+        assert!(auto_scroll_delta(BrowserPoint { x: 10.0, y: 10.0 }, small, policy).is_idle());
+        let delta = auto_scroll_delta(BrowserPoint { x: 15.0, y: 15.0 }, small, policy);
+        assert!(delta.x > 0.0 && delta.y > 0.0);
+        assert!(auto_scroll_delta(BrowserPoint { x: f64::NAN, y: 5.0 }, small, policy).is_idle());
+        assert!(auto_scroll_delta(BrowserPoint { x: 5.0, y: 5.0 }, rect(0.0, 0.0, -1.0, 20.0), policy).is_idle());
+    }
+
+    #[test]
+    fn hit_testing_drops_invalid_geometry_before_and_after_conversion() {
+        let good = rect(0.0, 0.0, 100.0, 100.0);
+        let bad = rect(0.0, 0.0, -1.0, 100.0);
+        let transform = CoordinateTransform {
+            zoom: f64::MIN_POSITIVE,
+            ..CoordinateTransform::default()
+        };
+        let hit = |rect| BrowserHitTarget {
+            component_id: "target".to_string(),
+            parent_component_id: None,
+            index: 0,
+            rect,
+            position: DropPosition::Before,
+            legal: true,
+            reason: None,
+            score: 1.0,
+        };
+        assert!(normalize_hit_targets([hit(bad)], CoordinateTransform::default()).is_empty());
+        assert!(normalize_hit_targets([hit(good)], transform).is_empty());
+        assert!(hit_test_drop_targets(
+            BrowserPoint { x: 50.0, y: 50.0 },
+            [drop_target(1.0, good)],
+            transform,
+        ).is_empty());
+        assert_eq!(
+            resolve_drop_position(
+                BrowserPoint { x: f64::MAX, y: 10.0 },
+                rect(f64::MAX, 0.0, f64::MAX, 100.0),
+                DropAxis::Horizontal,
+                DropZonePolicy::default(),
+            ),
+            None
+        );
     }
 
     #[test]

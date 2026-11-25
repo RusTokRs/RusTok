@@ -80,6 +80,14 @@ Contract/security docs and the logic-hygiene catalog were updated. No Rust build
 browser run was performed in this pass at the user's request; maintainer verification remains
 open.
 
+Fly geometry follow-up (2026-11-25, source-only): the shared resize controller preserves
+untouched axes, anchors opposite edges and constrains aspect-locked gestures to a single
+scale. Drag command construction rejects illegal or invalid candidates, restarting a drag clears
+its stale insertion overlay, and browser hit-testing filters invalid transformed geometry.
+Auto-scroll rejects malformed viewports and avoids overlapping edge zones. Focused unit
+regressions are authored; Rust compilation, tests, lint, remediation gate and mounted browser
+verification remain with the maintainer.
+
 Reduced-motion follow-up: the shared Fly browser asset now uses instant scrolling for
 `scroll_to` when the target document requests reduced motion, including in the presence of
 CSS `scroll-behavior: smooth`; animations use the same document preference. The Node runtime
