@@ -93,6 +93,15 @@ satisfy the platform multilingual storage contract. Their translation-table cuto
 is an explicit release-plan priority in this module's implementation plan; transports
 must not introduce a competing JSON or request-local fallback in the meantime.
 
+## JWT and browser confirmation hardening
+
+Both HS256 and RS256 host configuration require at least 32 non-whitespace
+bytes of symmetric secret because browser confirmation and credential binding
+still use it. JWT validation enforces `iat > 0`, `iat <= now`, `iat < exp`,
+and `nbf` when present; checked duration construction rejects out-of-range TTL.
+OAuth browser confirmation MAC v4 includes the direct session ID and rejects
+expiries beyond its ten-minute window. Source regressions unrun.
+
 ## OAuth revocation client fence
 
 RFC 7009 revocation rechecks the authenticated client snapshot under the app

@@ -176,6 +176,14 @@ gates in the [Page Builder backlog](../../../../docs/modules/page-builder-backlo
    exhaustively at the GraphQL boundary); `AuthSettingsOverrides::apply` is
    live runtime wiring, not dead code.
 
+## JWT and CSRF hardening (source only)
+
+Browser confirmation MAC v4 binds the direct session and bounds expiry;
+previous forms require restart. RS256 host config now also validates the
+symmetric secret. JWT time claims and chrono duration construction fail closed.
+Source regressions authored, unrun. Deployment must provision the symmetric
+secret even with RSA signing; keep server clocks synchronized.
+
 ## OAuth revocation client fence (source only)
 
 RFC 7009 revocation revalidates the active client identity, type and secret hash

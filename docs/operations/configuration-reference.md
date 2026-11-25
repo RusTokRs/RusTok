@@ -49,7 +49,7 @@ Every non-debug `apps/server` binary enforces production-grade host security gat
 
 | Key | Environment Variable | Default (Dev) | Description |
 | :--- | :--- | :--- | :--- |
-| `auth.jwt.secret` | `JWT_SECRET`, `RUSTOK_JWT_SECRET` | *dev placeholder* | HS256 signing secret. Production requires >= 64 high-entropy random bytes. |
+| `auth.jwt.secret` | `JWT_SECRET`, `RUSTOK_JWT_SECRET` | *dev placeholder* | HS256 signing and host MAC secret (also required with RS256). Auth config requires at least 32 non-whitespace bytes. Production requires >= 64 high-entropy random bytes. |
 | `auth.jwt.expiration` | `JWT_EXPIRATION` | `604800` (7 days) | Access token lifetime in seconds. Recommended `3600` (1 hour) in production. |
 | `settings.auth.refresh_expiration` | `REFRESH_TOKEN_EXPIRATION` | `1209600` (14 days) | Refresh token lifetime in seconds before re-authentication is required. |
 | `settings.auth.issuer` | `JWT_ISSUER` | `rustok` | Claim issuer (`iss`). Must match deployment API URL in production. |

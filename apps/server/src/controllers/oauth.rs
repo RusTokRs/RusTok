@@ -73,7 +73,7 @@ fn direct_user_required_error() -> TokenErrorResponse {
 /// session cookie, which is still sent on cross-site top-level GET navigation.
 /// Therefore cookie-authenticated GET requests must render a confirmation
 /// form and never issue a code directly. The form is protected by a short-lived
-/// keyed MAC bound to the signed-in user and exact authorization parameters;
+/// keyed MAC bound to the signed-in user, direct session and exact authorization parameters;
 /// a forged cross-site submission (including from a same-site subdomain)
 /// cannot produce a valid value.
 const CONSENT_CSRF_TTL_SECS: i64 = 10 * 60;
@@ -131,6 +131,7 @@ fn consent_csrf_mac(
     config: &crate::auth::AuthConfig,
     tenant_id: Uuid,
     user_id: Uuid,
+    session_id: Uuid,
     client_id: &str,
     redirect_uri: &str,
     scope: Option<&str>,
@@ -140,9 +141,10 @@ fn consent_csrf_mac(
     expires_at: i64,
 ) -> String {
     let mut payload = Vec::new();
-    payload.extend_from_slice(b"rustok:oauth:consent-csrf:v3");
+    payload.extend_from_slice(b"rustok:oauth:consent-csrf:v4");
     append_csrf_mac_field(&mut payload, &tenant_id.to_string());
     append_csrf_mac_field(&mut payload, &user_id.to_string());
+    append_csrf_mac_field(&mut payload, &session_id.to_string());
     append_csrf_mac_field(&mut payload, client_id);
     append_csrf_mac_field(&mut payload, redirect_uri);
     append_optional_csrf_mac_field(&mut payload, scope);
@@ -168,6 +170,7 @@ fn issue_consent_csrf(
     config: &crate::auth::AuthConfig,
     tenant_id: Uuid,
     user_id: Uuid,
+    session_id: Uuid,
     client_id: &str,
     redirect_uri: &str,
     scope: Option<&str>,
@@ -182,6 +185,7 @@ fn issue_consent_csrf(
             config,
             tenant_id,
             user_id,
+            session_id,
             client_id,
             redirect_uri,
             scope,
@@ -198,6 +202,7 @@ fn verify_consent_csrf(
     config: &crate::auth::AuthConfig,
     tenant_id: Uuid,
     user_id: Uuid,
+    session_id: Uuid,
     client_id: &str,
     redirect_uri: &str,
     scope: Option<&str>,
@@ -217,13 +222,18 @@ fn verify_consent_csrf(
     let Ok(expires_at) = expires_at.parse::<i64>() else {
         return false;
     };
-    if chrono::Utc::now().timestamp() >= expires_at {
+    let now = chrono::Utc::now().timestamp();
+    if session_id.is_nil()
+        || expires_at <= now
+        || expires_at > now.saturating_add(CONSENT_CSRF_TTL_SECS)
+    {
         return false;
     }
     let expected = consent_csrf_mac(
         config,
         tenant_id,
         user_id,
+        session_id,
         client_id,
         redirect_uri,
         scope,
@@ -710,6 +720,7 @@ pub(crate) async fn authorize_browser_handler(
         auth_config,
         tenant_ctx.id,
         current_user.user.id,
+        current_user.session_id,
         &req.client_id,
         &req.redirect_uri,
         req.scope.as_deref(),
@@ -797,6 +808,7 @@ pub(crate) async fn consent_handler(
             auth_config,
             tenant_ctx.id,
             current_user.user.id,
+            current_user.session_id,
             &req.client_id,
             &req.redirect_uri,
             req.scope.as_deref(),
@@ -1711,21 +1723,35 @@ mod tests {
         let config = crate::auth::AuthConfig::new("test-oauth-consent-secret-with-32-bytes".to_string());
         let tenant = Uuid::new_v4();
         let user = Uuid::new_v4();
+        let session = Uuid::new_v4();
         let client = Uuid::new_v4().to_string();
         let redirect = "https://example.com/callback";
         let challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
         let allowed = vec!["profile".to_string(), "catalog:read".to_string()];
         let displayed = validate_authorization_scopes(None, &allowed).unwrap();
         let token = issue_consent_csrf(
-            &config, tenant, user, &client, redirect, None, &displayed, None, challenge,
+            &config, tenant, user, session, &client, redirect, None, &displayed, None, challenge,
         );
         let verify = |effective: &[String]| {
             verify_consent_csrf(
-                &config, tenant, user, &client, redirect, None, effective, None,
+                &config, tenant, user, session, &client, redirect, None, effective, None,
                 challenge, Some(token.as_str()),
             )
         };
         assert!(verify(&displayed));
+        assert!(!verify_consent_csrf(
+            &config, tenant, user, Uuid::new_v4(), &client, redirect, None,
+            &displayed, None, challenge, Some(token.as_str()),
+        ), "a confirmation cannot cross sessions of the same user");
+        let future = chrono::Utc::now().timestamp() + CONSENT_CSRF_TTL_SECS + 60;
+        let future_token = format!("{future}.{}", consent_csrf_mac(
+            &config, tenant, user, session, &client, redirect, None,
+            &displayed, None, challenge, future,
+        ));
+        assert!(!verify_consent_csrf(
+            &config, tenant, user, session, &client, redirect, None,
+            &displayed, None, challenge, Some(&future_token),
+        ), "a signed expiry beyond the confirmation lifetime is invalid");
 
         let expanded = vec!["profile".to_string(), "catalog:read".to_string(), "catalog:write".to_string()];
         let expanded = validate_authorization_scopes(None, &expanded).unwrap();
@@ -1741,15 +1767,15 @@ mod tests {
         // permissions change, but is not interchangeable with an omitted scope.
         let explicit = validate_authorization_scopes(Some("profile"), &allowed).unwrap();
         let explicit_token = issue_consent_csrf(
-            &config, tenant, user, &client, redirect, Some("profile"), &explicit, None, challenge,
+            &config, tenant, user, session, &client, redirect, Some("profile"), &explicit, None, challenge,
         );
         let still_explicit = validate_authorization_scopes(Some("profile"), &expanded).unwrap();
         assert!(verify_consent_csrf(
-            &config, tenant, user, &client, redirect, Some("profile"), &still_explicit, None,
+            &config, tenant, user, session, &client, redirect, Some("profile"), &still_explicit, None,
             challenge, Some(explicit_token.as_str()),
         ));
         assert!(!verify_consent_csrf(
-            &config, tenant, user, &client, redirect, None, &still_explicit, None,
+            &config, tenant, user, session, &client, redirect, None, &still_explicit, None,
             challenge, Some(explicit_token.as_str()),
         ));
     }

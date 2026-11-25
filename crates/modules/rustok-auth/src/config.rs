@@ -330,13 +330,16 @@ pub fn validate_auth_config(config: &AuthConfig) -> Result<()> {
         )));
     }
 
+    // The host also uses this secret for CSRF and credential binding even
+    // when JWT signatures use RSA. Never allow weak symmetric key material.
+    if !hs256_secret_has_min_length(&config.secret) {
+        return Err(AuthError::Internal(format!(
+            "Auth secret must contain at least {MIN_HS256_SECRET_BYTES} non-whitespace bytes"
+        )));
+    }
+
     match config.algorithm {
         JwtAlgorithm::HS256 => {
-            if !hs256_secret_has_min_length(&config.secret) {
-                return Err(AuthError::Internal(format!(
-                    "HS256 secret must contain at least {MIN_HS256_SECRET_BYTES} non-whitespace bytes"
-                )));
-            }
             if config.rsa_private_key_pem.is_some() || config.rsa_public_key_pem.is_some() {
                 return Err(AuthError::Internal(
                     "HS256 configuration must not include RSA key material".to_string(),
@@ -508,6 +511,17 @@ mod tests {
             config.rsa_public_key_pem.as_deref(),
             Some(crate::jwt::TEST_RSA_PUBLIC_KEY)
         );
+    }
+
+    #[test]
+    fn rs256_configuration_still_requires_strong_symmetric_secret() {
+        for weak in ["", "short-secret", "abc                              "] {
+            let config = AuthConfig::new(weak.to_string()).with_rs256(
+                crate::jwt::TEST_RSA_PRIVATE_KEY,
+                crate::jwt::TEST_RSA_PUBLIC_KEY,
+            );
+            assert!(validate_auth_config(&config).is_err());
+        }
     }
 
     #[test]

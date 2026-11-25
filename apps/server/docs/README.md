@@ -988,6 +988,7 @@ before the event forwarder. The Outbox relay supervisor owns and gracefully drai
 - OAuth discovery metadata also uses `ServerAuthRuntime` as the single source of auth config.
 - OAuth REST token, authorize/consent, browser-session, and revoke handlers extract `ServerAuthRuntime`
   or `ServerRuntimeContext`; host-wide context does not participate in OAuth request state.
+- OAuth browser confirmation MAC v4 binds the current direct session and bounds the expiry. JWT validation rejects future or inconsistent issuance times and future `nbf`; duration conversion is checked. RS256 configuration still requires a strong symmetric secret for host MACs. Source regressions unrun.
 - OAuth RFC 7009 revocation revalidates the authenticated client snapshot (identity, active state, app type, and secret hash) under the app mutation lock before looking up any token. Unknown tokens still succeed for authenticated clients. Source regression unrun.
 - OAuth authorization locks app, subject and direct session in that order, rechecks email policy and credential expiry, and commits browser approval and code issuance together. A stale session cannot grant consent or issue codes. Source regressions unrun.
 - OAuth consent re-grant invalidates pending codes for that app, tenant and subject in the same transaction. Code exchange rejects a newer consent epoch and rechecks the refresh grant if a refresh credential was prepared. OAuth replay grace uses the exact elapsed duration and rejects future timestamps. Source regressions unrun.
