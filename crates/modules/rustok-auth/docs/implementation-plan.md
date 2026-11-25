@@ -44,6 +44,12 @@ obsolete fake session; its stale generated standalone lockfile was removed and i
 screenshot is historical, not verification of this migration. Preserve the release
 gates in the [Page Builder backlog](../../../../docs/modules/page-builder-backlog.md).
 
+JWT clock discontinuity detection: dual local deadlines, sticky runtime and
+shared authority fault latches, bounded DB time samples and conservative key
+retirement/promotion margins are source-implemented. No schema change.
+Scoped compilation, regressions, promtool and independent PostgreSQL/VM
+clock fault-injection and suspend tests remain pending.
+
 JWT operational observability: authenticated cluster gauges, local lease state,
 bounded operation counters, ACK-attempt timing, pending generation age and
 initial alerts are source-implemented. Compilation, tests, promtool and

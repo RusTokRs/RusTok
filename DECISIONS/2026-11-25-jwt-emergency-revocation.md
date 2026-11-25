@@ -71,8 +71,9 @@ Do not clear the ledger or restore an old database to recover availability.
 This is bounded emergency enforcement, not instantaneous global cancellation.
 The receipt's DB horizon is a conservative observation of existing grants,
 not proof that business operations already authorized have stopped.
-The normal lease assumptions (trusted primary, disciplined clocks, no
-host suspend that stalls monotonic time) still apply. Root compromise,
+The [clock discontinuity contract](2026-11-25-jwt-clock-discontinuity.md)
+adds bounded detection and dual local deadlines; its independent time-source
+assumptions still apply. Root compromise,
 standalone unmanaged JWT users, arbitrary clock discontinuity, DB rollback,
 and invalidation of already-authorized business transactions are excluded.
 Stop older host and CLI binaries before enabling this contract. Older

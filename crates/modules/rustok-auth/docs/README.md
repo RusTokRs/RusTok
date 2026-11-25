@@ -254,7 +254,7 @@ rejected candidate retains the local snapshot.
 
 All upgraded HTTP hosts (including static mode) require a current database
 lease for JWT signing and verification. Renewal confirms the exact durable
-generation and canonical metadata. Auth checks a ten-second local monotonic
+generation and canonical metadata. Auth checks a ten-second local monotonic and wall-clock
 deadline before and after crypto; the DB records a conservative fifteen-second
 maximum lease horizon. The host supervisor runs every two seconds from
 bootstrap through serving. For an incompatible generation change the database
@@ -266,8 +266,9 @@ receiving the committed document. An abandoned drain expires and permits
 the still-current generation to resume renewing.
 
 The fallback drain may briefly interrupt JWT operations. It assumes a
-single authoritative database primary, disciplined clock rates with no forward
-DB clock jump, and no host suspend that stops the monotonic clock. Stop all
+single authoritative database primary and independently disciplined host clocks.
+Clock guards now detect bounded discontinuities and close the local gate;
+see the clock protection contract below. Stop all
 older/unmanaged host binaries and apply the Auth migrations before cutover.
 A database error terminates the host; static mode exits when its lease is
 denied. File-backed stale hosts keep polling with JWT crypto fenced after
@@ -340,6 +341,27 @@ See [emergency revocation ADR](../../../../DECISIONS/2026-11-25-jwt-emergency-re
 [cluster lease barrier ADR](../../../../DECISIONS/2026-11-25-jwt-cluster-lease.md)
 and [rolling replica admission ADR](../../../../DECISIONS/2026-11-25-jwt-rolling-admission.md).
 
+### Clock discontinuity protection
+
+Managed leases expire when either the ten-second monotonic or wall-clock
+deadline elapses. Both clocks are checked before and after crypto. Local
+and authority clocks are anchored for their lifetime; divergence over one
+second latches a fault. Authority reads must finish within one second and
+the sampled database timestamp must be within the host read interval plus
+or minus 500 ms. Slow samples are refused; detected clock faults are sticky.
+A diagnostic scrape can close the same gate, never renew it. A new generation
+cannot clear a fault. Fix independent UTC synchronization and restart only
+after the conservative lease window has elapsed on a reliable external clock.
+Emergency revocation remains possible during an incident because it never
+grants or expires authority; its wall-clock receipt is not elapsed-time proof.
+
+This does not detect coherent failure of all clocks or a freshly started
+host with a false time source. Independently synchronize hosts to UTC within
+500 ms, keep the primary trusted and stop older binaries. Database rollback
+protection remains open. No migration is needed. See the
+[clock discontinuity ADR](../../../../DECISIONS/2026-11-25-jwt-clock-discontinuity.md) for assumptions, recovery and
+verification. Source regressions are unrun.
+
 ### Operational observability
 
 The existing host-authorized metrics endpoint exports `rustok_auth_jwt_*`.
@@ -351,7 +373,8 @@ No key IDs, fingerprints, paths, replica UUIDs, tenant IDs or secrets are export
 
 - `local_generation`, `local_ready`, `local_emergency_fenced`,
   `local_state_available` and `local_lease_remaining_seconds` sample the
-  actual local crypto gate after DB IO.
+  actual local crypto gate after DB IO. `local_clock_fenced` and
+  `authority_clock_fenced` expose sticky detected clock faults.
 - `durable_generation` and signed `generation_lag` compare independent
   database and local samples. Static mode has generation zero.
 - `current_grants`, `stale_grants`, `current_grant_replicas` and

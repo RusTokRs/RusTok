@@ -27,6 +27,7 @@ pub mod graphql;
 pub mod jwt;
 pub mod jwt_keyring;
 mod jwt_fence;
+mod jwt_clock;
 pub mod lifecycle;
 pub mod migrations;
 pub mod module;

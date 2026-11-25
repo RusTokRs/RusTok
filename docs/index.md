@@ -108,6 +108,7 @@ RusToK provides a sandboxed, extensible module runtime supporting native Rust cr
 
 ### Domain Module Documentation
 
+- [ADR: JWT clock discontinuity protection](../DECISIONS/2026-11-25-jwt-clock-discontinuity.md) — dual lease deadlines, bounded DB clock samples and sticky local fencing.
 - [ADR: JWT emergency key revocation](../DECISIONS/2026-11-25-jwt-emergency-revocation.md) — irreversible identity bans and bounded lease enforcement.
 - [ADR: JWT rolling replica admission](../DECISIONS/2026-11-25-jwt-rolling-admission.md) — registered grants and compatible staged signer promotion.
 - [ADR: JWT cluster lease barrier](../DECISIONS/2026-11-25-jwt-cluster-lease.md) — bounded crypto leases and database-serialized generation drain.

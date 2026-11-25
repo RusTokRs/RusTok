@@ -53,6 +53,7 @@ Non-ADR plans and research documents do not belong in this registry.
 
 | ADR | Title | Decision status | Implementation status | Relations |
 | --- | --- | --- | --- | --- |
+| [2026-11-25](./2026-11-25-jwt-clock-discontinuity.md) | JWT clock discontinuity protection | Accepted | In progress | Extends [JWT cluster lease barrier](./2026-11-25-jwt-cluster-lease.md) and [emergency revocation](./2026-11-25-jwt-emergency-revocation.md) |
 | [2026-11-25](./2026-11-25-jwt-emergency-revocation.md) | JWT emergency key revocation | Accepted | In progress | Extends [JWT rolling replica admission](./2026-11-25-jwt-rolling-admission.md) |
 | [2026-11-25](./2026-11-25-jwt-rolling-admission.md) | JWT rolling replica admission | Accepted | In progress | Extends [JWT cluster lease barrier](./2026-11-25-jwt-cluster-lease.md) |
 | [2026-11-25](./2026-11-25-jwt-cluster-lease.md) | JWT cluster lease barrier | Accepted | In progress | Extends [Durable JWT generation fence](./2026-11-25-jwt-generation-fence.md) |

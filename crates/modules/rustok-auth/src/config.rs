@@ -1,5 +1,7 @@
 use std::sync::{Arc, OnceLock, RwLock};
-use std::time::Instant;
+use std::time::Duration;
+
+use crate::jwt_clock::{ClockGuard, ClockSample, LeaseDeadline};
 
 use jsonwebtoken::{Algorithm, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
@@ -93,13 +95,28 @@ struct VersionedJwtKeys {
     generation: u64,
     keys: Arc<JwtKeyState>,
     lease_required: bool,
-    lease_until: Option<Instant>,
+    lease_until: Option<LeaseDeadline>,
+    clock: Arc<ClockGuard>,
+    authority_clock: Option<Arc<ClockGuard>>,
     emergency_fenced: bool,
 }
 
 impl VersionedJwtKeys {
-    fn permits_crypto_at(&self, now: Instant) -> bool {
-        !self.emergency_fenced && (!self.lease_required || self.lease_until.is_some_and(|deadline| now < deadline))
+    fn clock_healthy_at(&self, now: ClockSample) -> bool {
+        if !self.clock.healthy_at(now) {
+            return false;
+        }
+        if self.authority_clock.as_ref().is_some_and(|clock| !clock.healthy_at(now)) {
+            self.clock.trip();
+        }
+        !self.clock.faulted()
+    }
+
+    fn permits_crypto_at(&self, now: ClockSample) -> bool {
+        !self.emergency_fenced && (!self.lease_required || (
+            self.clock_healthy_at(now)
+                && self.lease_until.as_ref().is_some_and(|lease| lease.remaining(now) > Duration::ZERO)
+        ))
     }
 }
 
@@ -112,21 +129,22 @@ pub struct JwtLeaseReadiness {
 
 impl JwtLeaseReadiness {
     /// Sample the real lease gate under a single read fence.
-    pub(crate) fn operational_state(&self) -> Option<(u64, bool, bool, f64)> {
+    pub(crate) fn operational_state(&self) -> Option<(u64, bool, bool, f64, bool)> {
         let guard = self.current.read().ok()?;
-        let now = Instant::now();
+        let now = ClockSample::now();
+        let clock_healthy = guard.clock_healthy_at(now);
         let ready = guard.lease_required && guard.permits_crypto_at(now);
         let remaining = if ready {
-            guard.lease_until?.saturating_duration_since(now).as_secs_f64()
+            guard.lease_until.as_ref()?.remaining(now).as_secs_f64()
         } else {
             0.0
         };
-        Some((guard.generation, ready, guard.emergency_fenced, remaining))
+        Some((guard.generation, ready, guard.emergency_fenced, remaining, !clock_healthy || guard.clock.faulted()))
     }
 
     pub fn is_ready(&self) -> bool {
         self.current.read().is_ok_and(|guard| {
-            guard.lease_required && guard.permits_crypto_at(Instant::now())
+            guard.lease_required && guard.permits_crypto_at(ClockSample::now())
         })
     }
 }
@@ -241,11 +259,11 @@ impl AuthConfig {
     pub(crate) fn with_jwt_operation<T>(
         &self, operation: impl FnOnce(&ValidatedJwtKeyrings) -> Result<T>,
     ) -> Result<T> {
-        self.with_jwt_operation_at(Instant::now, operation)
+        self.with_jwt_operation_at(ClockSample::now, operation)
     }
 
     fn with_jwt_operation_at<T>(
-        &self, now: impl Fn() -> Instant,
+        &self, now: impl Fn() -> ClockSample,
         operation: impl FnOnce(&ValidatedJwtKeyrings) -> Result<T>,
     ) -> Result<T> {
         match &self.key_state {
@@ -401,6 +419,8 @@ impl AuthConfig {
             keys,
             lease_required,
             lease_until: None,
+            clock: Arc::new(ClockGuard::new()),
+            authority_clock: None,
             emergency_fenced: false,
         })));
         let publisher = JwtKeyringPublisher { config: self.clone(), incarnation: uuid::Uuid::new_v4() };
@@ -490,15 +510,39 @@ impl JwtKeyringPublisher {
         Ok((guard.generation, snapshot))
     }
 
-    pub(crate) fn install_lease(&self, generation: u64, deadline: Instant) -> Result<bool> {
+    pub(crate) fn clock_healthy(&self) -> Result<bool> {
+        let JwtKeySource::Live(current) = &self.config.key_state else {
+            return Err(invalid_rotation());
+        };
+        let guard = current.read().map_err(|_| keyring_runtime_error())?;
+        Ok(guard.clock_healthy_at(ClockSample::now()))
+    }
+
+    pub(crate) fn fence_clock(&self) -> Result<()> {
+        let JwtKeySource::Live(current) = &self.config.key_state else {
+            return Err(invalid_rotation());
+        };
+        current.read().map_err(|_| keyring_runtime_error())?.clock.trip();
+        Ok(())
+    }
+
+    pub(crate) fn install_lease(&self, generation: u64, deadline: LeaseDeadline) -> Result<bool> {
         let JwtKeySource::Live(current) = &self.config.key_state else {
             return Err(invalid_rotation());
         };
         let mut guard = current.write().map_err(|_| keyring_runtime_error())?;
-        if !guard.lease_required || guard.emergency_fenced || guard.generation != generation || Instant::now() >= deadline {
+        let now = ClockSample::now();
+        if !guard.clock_healthy_at(now) || !deadline.authority.healthy_at(now) {
+            guard.clock.trip();
             return Ok(false);
         }
-        if guard.lease_until.is_none_or(|previous| deadline > previous) {
+        if !guard.lease_required || guard.emergency_fenced || guard.generation != generation
+            || deadline.remaining(now) == Duration::ZERO
+        {
+            return Ok(false);
+        }
+        if guard.lease_until.as_ref().is_none_or(|previous| deadline.later_than(previous)) {
+            guard.authority_clock = Some(deadline.authority.clone());
             guard.lease_until = Some(deadline);
         }
         Ok(true)
@@ -539,13 +583,13 @@ impl JwtKeyringPublisher {
 
     /// Only the Auth fence may install a deadline obtained for this candidate.
     pub(crate) fn publish_granted(
-        &self, generation: u64, candidate: AuthConfig, deadline: Instant,
+        &self, generation: u64, candidate: AuthConfig, deadline: LeaseDeadline,
     ) -> Result<bool> {
         self.publish_inner(generation, candidate, Some(deadline))
     }
 
     fn publish_inner(
-        &self, generation: u64, candidate: AuthConfig, deadline: Option<Instant>,
+        &self, generation: u64, candidate: AuthConfig, deadline: Option<LeaseDeadline>,
     ) -> Result<bool> {
         if !matches!(&candidate.key_state, JwtKeySource::Fixed(_))
             || self.config.secret() != candidate.secret()
@@ -574,12 +618,30 @@ impl JwtKeyringPublisher {
             guard.keys.prepared(self.config.secret())?.validate_successor(next)?;
         }
         let lease_required = guard.lease_required;
-        if let Some(deadline) = deadline {
-            if !lease_required || Instant::now() >= deadline {
-                return Ok(false);
+        if lease_required {
+            let now = ClockSample::now();
+            if !guard.clock_healthy_at(now) {
+                return Err(keyring_runtime_error());
             }
+            if let Some(deadline) = deadline.as_ref() {
+                if !deadline.authority.healthy_at(now) {
+                    guard.clock.trip();
+                    return Err(keyring_runtime_error());
+                }
+                if deadline.remaining(now) == Duration::ZERO {
+                    return Ok(false);
+                }
+            }
+        } else if deadline.is_some() {
+            return Ok(false);
         }
-        *guard = VersionedJwtKeys { generation, keys, lease_required, lease_until: deadline, emergency_fenced: false };
+        let clock = guard.clock.clone();
+        let authority_clock = deadline.as_ref().map(|lease| lease.authority.clone())
+            .or_else(|| guard.authority_clock.clone());
+        *guard = VersionedJwtKeys {
+            generation, keys, lease_required, lease_until: deadline,
+            clock, authority_clock, emergency_fenced: false,
+        };
         Ok(true)
     }
 }
@@ -834,17 +896,37 @@ mod tests {
 
 
     #[test]
+    fn clock_fault_is_sticky_across_grants_and_publication() {
+        let root = secret();
+        let (_, publisher) = AuthConfig::new(root.clone()).into_cluster_jwt(0).unwrap();
+        let authority = Arc::new(ClockGuard::new());
+        let deadline = LeaseDeadline::new(ClockSample::now(), Duration::from_secs(10), authority.clone()).unwrap();
+        assert!(publisher.install_lease(0, deadline).unwrap());
+        let readiness = publisher.lease_readiness().unwrap();
+        assert!(readiness.is_ready());
+        authority.trip();
+        assert!(!readiness.is_ready());
+        let fresh = Arc::new(ClockGuard::new());
+        let deadline = LeaseDeadline::new(ClockSample::now(), Duration::from_secs(10), fresh).unwrap();
+        assert!(!publisher.install_lease(0, deadline.clone()).unwrap());
+        assert!(publisher.publish_granted(1, AuthConfig::new(root), deadline).is_err());
+        assert!(!readiness.is_ready());
+    }
+
+    #[test]
     fn cluster_lease_gate_rejects_crypto_at_or_after_deadline() {
         use std::cell::Cell;
         use std::time::Duration;
         let (config, publisher) = AuthConfig::new(secret()).into_cluster_jwt(0).unwrap();
         let readiness = publisher.lease_readiness().unwrap();
         assert!(!readiness.is_ready());
-        let start = Instant::now();
+        let authority = Arc::new(ClockGuard::new());
+        let start = ClockSample::now();
         let deadline = start.checked_add(Duration::from_secs(60)).unwrap();
-        assert!(!publisher.install_lease(1, deadline).unwrap());
-        assert!(!publisher.install_lease(0, start).unwrap());
-        assert!(publisher.install_lease(0, deadline).unwrap());
+        let lease = LeaseDeadline::new(start, Duration::from_secs(60), authority.clone()).unwrap();
+        assert!(!publisher.install_lease(1, lease.clone()).unwrap());
+        assert!(!publisher.install_lease(0, LeaseDeadline::new(start, Duration::ZERO, authority).unwrap()).unwrap());
+        assert!(publisher.install_lease(0, lease).unwrap());
         assert!(readiness.is_ready());
 
         // The post-operation fence must discard a result even if crypto

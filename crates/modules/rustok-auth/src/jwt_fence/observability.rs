@@ -208,6 +208,8 @@ impl JwtOperationalMetrics {
         gauge!("local_ready", u8::from(local.is_some_and(|s| s.1)));
         gauge!("local_emergency_fenced", local.map_or(f64::NAN, |s| u8::from(s.2) as f64));
         gauge!("local_lease_remaining_seconds", local.map_or(f64::NAN, |s| s.3));
+        gauge!("local_clock_fenced", local.map_or(f64::NAN, |s| u8::from(s.4) as f64));
+        gauge!("authority_clock_fenced", u8::from(self.fence.clock.faulted()));
         gauge!("durable_generation", cluster.map_or(f64::NAN, |s| s.generation as f64));
         gauge!("generation_lag", cluster.zip(local).map_or(f64::NAN, |(s, l)|
             (i128::from(s.generation) - i128::from(l.0)) as f64));
@@ -279,6 +281,28 @@ mod tests {
         assert!(unknown.contains("rustok_auth_jwt_collection_status 0\n"));
         assert!(unknown.contains("rustok_auth_jwt_durable_generation NaN\n"));
         assert!(unknown.contains("rustok_auth_jwt_local_ready 0\n"));
+    }
+
+    #[tokio::test]
+    async fn authority_clock_fault_closes_active_gate_and_preserves_emergency_revocation() {
+        let fence = JwtGenerationFence::new(database().await);
+        let first = config(ROOT, "clock-key", OLD, None, None);
+        assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
+        let (_, publisher) = first.clone().into_cluster_jwt(1).unwrap();
+        let metrics = fence.operational_metrics(&publisher).unwrap();
+        assert!(fence.renew(&publisher).await.unwrap());
+        assert!(publisher.lease_readiness().unwrap().is_ready());
+
+        fence.clock.trip();
+        assert!(metrics.cluster_snapshot().await.is_err());
+        let fault = metrics.render(None);
+        assert!(fault.contains("rustok_auth_jwt_authority_clock_fenced 1\n"));
+        assert!(fault.contains("rustok_auth_jwt_local_clock_fenced 1\n"));
+        assert!(fault.contains("rustok_auth_jwt_local_ready 0\n"));
+        assert!(!publisher.lease_readiness().unwrap().is_ready());
+        assert!(fence.renew(&publisher).await.is_err());
+        assert!(fence.admit(1, &first).await.is_err());
+        assert!(fence.revoke_key(ROOT, "access", "clock-key").await.unwrap().newly_revoked);
     }
 
     #[test]

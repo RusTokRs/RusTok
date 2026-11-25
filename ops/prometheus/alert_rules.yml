@@ -431,6 +431,14 @@ groups:
         annotations:
           summary: "JWT authority observation unavailable"
 
+      - alert: JwtClockFault
+        expr: rustok_auth_jwt_local_clock_fenced == 1 or rustok_auth_jwt_authority_clock_fenced == 1
+        labels:
+          severity: critical
+          component: auth
+        annotations:
+          summary: "JWT clock fault latched; correct clocks before restart"
+
       - alert: JwtLocalCryptoGateClosed
         expr: rustok_auth_jwt_local_ready == 0
         for: 30s

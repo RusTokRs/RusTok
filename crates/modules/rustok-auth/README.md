@@ -104,6 +104,8 @@ Optional process-local file-backed hot reload, durable generation fencing and
 identity tombstones are source-implemented;
 cluster lease/drain fencing and compatible rolling replica admission are
 source-implemented, including emergency enrolled-key revocation; algorithm and host root migration remain open.
+Clock discontinuity detection and dual-deadline leases are source-implemented;
+independent clock fault-injection and suspend evidence remain pending.
 See [JWT rotation](docs/README.md#jwt-keyring-and-rotation).
 Operational JWT metrics and initial alerts are source-implemented; see
 [operational observability](docs/README.md#operational-observability).

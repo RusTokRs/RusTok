@@ -81,7 +81,7 @@ guarantee: delayed file distribution can fence individual replicas,
 capacity/contention can deny grants, incompatible removal drains,
 and an operator must provision a sufficient historical JWT TTL window.
 [Emergency key revocation](2026-11-25-jwt-emergency-revocation.md) extends this contract.
-Clock discontinuity protection, database rollback protection and root/algorithm migration remain open.
+[Clock discontinuity protection](2026-11-25-jwt-clock-discontinuity.md) extends the lease contract with bounded detection. Database rollback protection and root/algorithm migration remain open.
 
 ## Verification
 

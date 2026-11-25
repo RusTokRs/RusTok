@@ -1,6 +1,8 @@
 //! Durable admission of complete JWT generations. No key material is persisted.
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
+use std::sync::Arc;
+use crate::jwt_clock::{ClockGuard, ClockSample, LeaseDeadline, KEY_CLOCK_MARGIN_MS};
 
 use hkdf::Hkdf;
 use hmac::{Hmac, KeyInit, Mac};
@@ -100,7 +102,7 @@ type ReplicaGrants = BTreeMap<String, ReplicaGrant>;
 /// Directional transition: preserve old verification and permit both signers
 /// throughout the overlap. The operator separately budgets outgoing JWT TTL.
 fn rolling_compatible(old: &Snapshot, next: &Snapshot, now_ms: i64, horizon_ms: i64) -> bool {
-    let now = now_ms / 1000;
+    let now = now_ms.saturating_sub(KEY_CLOCK_MARGIN_MS) / 1000;
     let until = horizon_ms.saturating_add(OVERLAP_MARGIN_MS).saturating_add(999) / 1000;
     if old.len() != next.len() {
         return false;
@@ -280,6 +282,7 @@ impl FenceMac {
 pub struct JwtGenerationFence {
     db: DatabaseConnection,
     metrics: OperationMetrics,
+    clock: Arc<ClockGuard>,
 }
 
 struct StoredFence {
@@ -340,10 +343,27 @@ impl StoredFence {
 
 impl JwtGenerationFence {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db, metrics: OperationMetrics::default() }
+        Self { db, metrics: OperationMetrics::default(), clock: Arc::new(ClockGuard::new()) }
     }
 
     async fn load(&self) -> Result<StoredFence> {
+        self.load_at(ClockSample::now()).await
+    }
+
+    async fn load_at(&self, before: ClockSample) -> Result<StoredFence> {
+        if !self.clock.healthy_at(before) {
+            return Err(unavailable());
+        }
+        let stored = self.load_raw().await?;
+        if !self.clock.validate_db(before, ClockSample::now(), stored.now_ms) {
+            return Err(unavailable());
+        }
+        Ok(stored)
+    }
+
+    // Only emergency revocation may read without using the clock as an
+    // expiry oracle: it never grants, removes or extends authority.
+    async fn load_raw(&self) -> Result<StoredFence> {
         let backend = self.db.get_database_backend();
         let clock = match backend {
             DbBackend::Postgres => "CAST(EXTRACT(EPOCH FROM clock_timestamp()) * 1000 AS BIGINT)",
@@ -391,7 +411,7 @@ impl JwtGenerationFence {
         }
         let mac = FenceMac::new(root)?;
         for _ in 0..MAX_CAS_ATTEMPTS {
-            let stored = self.load().await?;
+            let stored = self.load_raw().await?;
             let mut ledger = stored.ledger(&mac)?.ok_or_else(rejected)?;
             let binding = ledger.seen.get_mut(purpose)
                 .and_then(|keys| keys.get_mut(kid)).ok_or_else(rejected)?;
@@ -442,6 +462,9 @@ impl JwtGenerationFence {
     /// DB IO; an expired/delayed grant cannot revive a local deadline.
     pub async fn renew(&self, publisher: &JwtKeyringPublisher) -> Result<bool> {
         let result = self.renew_inner(publisher).await;
+        if self.clock.faulted() {
+            publisher.fence_clock()?;
+        }
         self.metrics.record("renew", match &result {
             Ok(true) => "granted", Ok(false) => "denied", Err(_) => "error",
         });
@@ -449,6 +472,9 @@ impl JwtGenerationFence {
     }
 
     async fn renew_inner(&self, publisher: &JwtKeyringPublisher) -> Result<bool> {
+        if !publisher.clock_healthy()? {
+            return Err(unavailable());
+        }
         let mac = FenceMac::new(publisher.lease_root())?;
         let (generation, snapshot) = publisher.lease_metadata(|identity| mac.identity(identity))?;
         let Some(deadline) = self.grant(publisher, generation, snapshot, &mac, true).await? else {
@@ -463,6 +489,9 @@ impl JwtGenerationFence {
         &self, publisher: &JwtKeyringPublisher, generation: u64, candidate: AuthConfig,
     ) -> Result<bool> {
         let result = self.activate_inner(publisher, generation, candidate).await;
+        if self.clock.faulted() {
+            publisher.fence_clock()?;
+        }
         self.metrics.record("activate", match &result {
             Ok(true) => "applied", Ok(false) => "denied", Err(_) => "error",
         });
@@ -472,6 +501,9 @@ impl JwtGenerationFence {
     async fn activate_inner(
         &self, publisher: &JwtKeyringPublisher, generation: u64, candidate: AuthConfig,
     ) -> Result<bool> {
+        if !publisher.clock_healthy()? {
+            return Err(unavailable());
+        }
         if generation <= publisher.generation()? || candidate.secret() != publisher.lease_root() {
             return Err(rejected());
         }
@@ -538,12 +570,12 @@ impl JwtGenerationFence {
     async fn grant(
         &self, publisher: &JwtKeyringPublisher, generation: u64, snapshot: Snapshot, mac: &FenceMac,
         already_applied: bool,
-    ) -> Result<Option<Instant>> {
+    ) -> Result<Option<LeaseDeadline>> {
         let generation_sql = i64::try_from(generation).map_err(|_| rejected())?;
         let key = format!("{}:{generation}", publisher.incarnation());
         for _ in 0..MAX_CAS_ATTEMPTS {
-            let started = Instant::now();
-            let stored = self.load().await?;
+            let started = ClockSample::now();
+            let stored = self.load_at(started).await?;
             let ledger = stored.ledger(mac)?;
             if ledger.as_ref().is_some_and(|ledger| ledger.contains_revoked(&snapshot)) {
                 if already_applied {
@@ -604,7 +636,11 @@ impl JwtGenerationFence {
                     stored.lease_until_ms.into(), stored.replica_grants.into()],
             )).await.map_err(|_| unavailable())?;
             if updated.rows_affected() == 1 {
-                return Ok(Some(started.checked_add(LOCAL_LEASE).ok_or_else(unavailable)?));
+                if !self.clock.healthy_at(ClockSample::now()) {
+                    return Err(unavailable());
+                }
+                return Ok(Some(LeaseDeadline::new(started, LOCAL_LEASE, self.clock.clone())
+                    .ok_or_else(unavailable)?));
             }
         }
         self.metrics.record("grant", "contention");
@@ -652,7 +688,8 @@ impl JwtGenerationFence {
                 Some(ledger) if generation == ledger.generation => {
                     return if snapshot == ledger.current { Ok(JwtAdmission::Admitted) } else { Err(rejected()) };
                 }
-                Some(ledger) => ledger.advance(generation, snapshot.clone(), stored.now_ms / 1000)?,
+                Some(ledger) => ledger.advance(generation, snapshot.clone(),
+                    stored.now_ms.saturating_add(KEY_CLOCK_MARGIN_MS) / 1000)?,
             };
             // Reject an oversized ledger before closing renewal. A candidate
             // that cannot be persisted must not start an avoidable drain.
@@ -802,7 +839,8 @@ mod tests {
         assert!(issue(&live_a).is_err());
         assert!(decode_access_token(&live_b, &token).is_err());
         assert!(!a.lease_readiness().unwrap().is_ready());
-        assert!(!a.install_lease(2, Instant::now() + LOCAL_LEASE).unwrap());
+        let deadline = LeaseDeadline::new(ClockSample::now(), LOCAL_LEASE, fence.clock.clone()).unwrap();
+        assert!(!a.install_lease(2, deadline).unwrap());
         assert_eq!(reopened.admit(3, &clean).await.unwrap(), JwtAdmission::Draining);
         db.execute_unprepared("UPDATE auth_jwt_generation_fence SET lease_until_ms = 0, replica_grants = '{}' WHERE id = 1")
             .await.unwrap();
