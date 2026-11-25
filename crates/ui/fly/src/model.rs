@@ -65,8 +65,8 @@ impl ProjectDocument {
         self.component_index.take();
     }
 
-    /// Borrow the raw project for mutation, invalidating derived state before
-    /// the borrow escapes. Prefer this to writing the public field directly.
+    /// Borrow the project for mutation. Both derived caches are invalidated before
+    /// the mutable borrow escapes; use this for all project writes.
     pub fn project_mut(&mut self) -> &mut GrapesProject {
         self.invalidate_caches();
         &mut self.project
