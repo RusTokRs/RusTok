@@ -74,8 +74,8 @@ export function PermissionsTable({
     const map = new Map<string, CatalogPermissionRow>();
 
     for (const item of platformPermissions) {
-      map.set(item.permission, {
-        slug: item.permission,
+      map.set(item.id, {
+        slug: item.id,
         resource: item.resource,
         action: item.action,
         module: item.moduleSlug || item.resource,
