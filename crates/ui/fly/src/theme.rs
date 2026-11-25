@@ -63,6 +63,25 @@ pub fn decode_theme_tokens(document: &ProjectDocument) -> Result<Vec<DesignToken
         });
     }
     decoded.sort_by(|left, right| left.name.cmp(&right.name));
+
+    let allowed_references = decoded
+        .iter()
+        .map(|token| format!("--{}", token.name))
+        .collect::<std::collections::BTreeSet<_>>();
+    for token in &decoded {
+        let references = crate::css_var_references(&token.value).ok_or_else(|| {
+            format!("design token {} contains a malformed var() reference", token.name)
+        })?;
+        for reference in references {
+            if !allowed_references.contains(&reference) {
+                return Err(format!(
+                    "design token {} references undeclared token {reference}",
+                    token.name
+                ));
+            }
+        }
+    }
+
     Ok(decoded)
 }
 
@@ -239,6 +258,15 @@ mod tests {
                 "case must fail: {case}"
             );
         }
+    }
+
+    #[test]
+    fn rejects_references_to_undeclared_tokens() {
+        let document = document_with_theme(json!({
+            "tokens": { "accent": "var(--missing)" }
+        }));
+        let error = decode_theme_tokens(&document).expect_err("undeclared token reference");
+        assert!(error.contains("undeclared token"));
     }
 
     #[test]

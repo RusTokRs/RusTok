@@ -1256,6 +1256,63 @@ pub fn css_property_allowed(name: &str) -> bool {
 /// finds these functions when nested inside other functions such as cross-fade(). Callers
 /// validate each returned string with their own resource URL policy. Strings outside these
 /// functions are ignored. Escaped strings and malformed function/string boundaries fail closed.
+/// Return all custom-property references in CSS var() functions.
+///
+/// Strings are ignored, nested fallbacks are scanned, and malformed or escaped var()
+/// expressions fail closed. The caller decides which custom properties are in scope.
+pub fn css_var_references(value: &str) -> Option<Vec<String>> {
+    if value.contains('\\') {
+        return None;
+    }
+    let lowered = value.to_ascii_lowercase();
+    let mut references = Vec::new();
+    let mut cursor = 0usize;
+    while cursor < value.len() {
+        match value.as_bytes()[cursor] {
+            b'\\'' | b'"' => {
+                cursor = skip_css_string(value, cursor)?;
+                continue;
+            }
+            _ => {}
+        }
+
+        if lowered[cursor..].starts_with("var(") {
+            let preceded_by_identifier = value[..cursor]
+                .chars()
+                .next_back()
+                .is_some_and(css_identifier_character);
+            if !preceded_by_identifier {
+                let open = cursor + 3;
+                let close = css_function_close(value, open)?;
+                let arguments = &value[open + 1..close];
+                let name = arguments.split(',').next()?.trim();
+                if !valid_css_custom_property_name(name) {
+                    return None;
+                }
+                references.push(name.to_string());
+                // Continue through fallbacks to find nested var() references.
+                cursor = open + 1;
+                continue;
+            }
+        }
+
+        cursor += value[cursor..].chars().next()?.len_utf8();
+    }
+    Some(references)
+}
+
+fn valid_css_custom_property_name(name: &str) -> bool {
+    let Some(suffix) = name.strip_prefix("--") else {
+        return false;
+    };
+    !suffix.is_empty()
+        && suffix.chars().all(|character| {
+            character.is_ascii_alphanumeric()
+                || matches!(character, '-' | '_')
+                || !character.is_ascii()
+        })
+}
+
 pub fn css_resource_string_ranges(value: &str) -> Option<Vec<std::ops::Range<usize>>> {
     if value.contains('\\') { return None; }
     let lowered = value.to_ascii_lowercase();
@@ -2249,6 +2306,32 @@ mod tests {
             .expect("literal CSS string").is_empty());
         assert!(css_resource_string_ranges(r#"image-set("/unterminated.png" 1x"#).is_none());
         assert!(css_resource_string_ranges(r#"image("/escaped\".png", red)"#).is_none());
+    }
+
+    #[test]
+    fn css_var_reference_scanner_finds_nested_fallbacks_and_ignores_strings() {
+        let css = r#"content: "var(--not-a-token)"; color: VAR(--brand); width: calc(var(--space) * 2); background: var(--image, var(--fallback))"#;
+        assert_eq!(
+            css_var_references(css).expect("valid var() expressions"),
+            vec![
+                "--brand".to_string(),
+                "--space".to_string(),
+                "--image".to_string(),
+                "--fallback".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn css_var_reference_scanner_rejects_malformed_or_escaped_references() {
+        for value in [
+            "var()",
+            "var(--bad name)",
+            "var(--unclosed",
+            r#"var(--token, "escaped\value")"#,
+        ] {
+            assert!(css_var_references(value).is_none(), "accepted {value}");
+        }
     }
 
     #[test]
