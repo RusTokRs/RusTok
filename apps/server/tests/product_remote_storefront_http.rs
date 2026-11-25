@@ -1,5 +1,8 @@
 #![cfg(feature = "mod-commerce")]
 
+mod support;
+use support::test_auth_config;
+
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use axum::{Router, http::StatusCode};
@@ -177,7 +180,7 @@ async fn compose_storefront(tenant_id: Uuid) -> TestResult<Router> {
     eprintln!("Commerce connected to the selected Product provider");
 
     let registry = build_registry();
-    let auth = AuthConfig::new("remote-storefront-fixture-secret-with-32-bytes".into());
+    let auth = test_auth_config();
     let extensions = build_shared_runtime_extensions_with_host_providers(
         &registry,
         &settings,
