@@ -895,6 +895,7 @@ export class FlyBrowserAdapter {
       ? readPendingOperation(this.pageId)
       : null;
     this.pendingOperationUnresolved = Boolean(this.pendingOperation);
+    this.pendingResolutionInFlight = false;
     this.drawOverlays = options.drawOverlays !== false;
     this.postIntents = options.postIntents !== false;
     this.intentRequestGeneration = 0;
@@ -1013,11 +1014,21 @@ export class FlyBrowserAdapter {
     this.root.addEventListener(
       "fly:browser-intent-response",
       (event) => {
-        if (event.detail?.current === false) return;
+        if (event.detail?.current === false || this.peerWriteConflict) return;
         if (event.detail?.ok === true) {
           settleSaveFailure(this, event.detail.result, event.detail.request);
         } else {
-          reportBrowserProblem(this, event.detail, null);
+          const failure = event.detail?.result;
+          if (isObject(failure) &&
+              ["REVISION_CONFLICT", "PAGE_DOCUMENT_REVISION_CONFLICT"].includes(failure.code)) {
+            const parked = { ...failure,
+              expected_revision: nonEmptyString(event.detail?.request?.revision) ||
+                nonEmptyString(this.root.dataset.flyRevision) };
+            writeSaveFailure(this.pageId, parked);
+            reportSaveFailure(this, parked, event.detail.request);
+          } else {
+            reportBrowserProblem(this, event.detail, null);
+          }
         }
       },
       { signal },
@@ -1065,6 +1076,12 @@ export class FlyBrowserAdapter {
     );
     this.bindSsrControls(signal);
     this.root.dataset.flyBrowserMounted = "true";
+    if (this.pendingOperation) {
+      showPendingOperationNotice(this, this.pendingOperation.invalid ? "invalid" : "unknown");
+      if (!this.pendingOperation.invalid) {
+        queueMicrotask(() => void this.resolvePendingOperation());
+      }
+    }
     this.root.dispatchEvent(
       new CustomEvent("fly:browser-ready", {
         bubbles: true,
@@ -1605,7 +1622,9 @@ export class FlyBrowserAdapter {
   }
 
   async resolvePendingOperation() {
-    if (!this.requiresOperationReceipts || !this.pendingOperation) return null;
+    if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED ||
+        !this.requiresOperationReceipts || !this.pendingOperation ||
+        this.authoritativeInFlight || this.pendingResolutionInFlight) return null;
     if (this.pendingOperation.invalid) {
       this.pendingOperationUnresolved = true;
       showPendingOperationNotice(this, "invalid");
@@ -1618,7 +1637,6 @@ export class FlyBrowserAdapter {
       return null;
     }
     this.pendingOperationUnresolved = true;
-    showPendingOperationNotice(this, "checking");
     return this.postIntent({
       intent: "resolve_operation",
       payload: {},
@@ -1633,10 +1651,8 @@ export class FlyBrowserAdapter {
       return null;
     }
     const request = pending.request;
-    if (this.authoritativeInFlight) {
-      showPendingOperationNotice(this, "checking");
-      return null;
-    }
+    if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED ||
+        this.authoritativeInFlight || this.pendingResolutionInFlight) return null;
     if (
       request.page_id !== this.pageId ||
       request.draft_token !== this.draftSession?.token ||
@@ -1800,11 +1816,12 @@ export class FlyBrowserAdapter {
       intent: record.intent,
       timeoutMs: record.timeoutMs,
       requestGeneration: record.requestGeneration,
-      current: record.authoritative
-        ? record.requestGeneration === this.latestAuthoritativeRequestGeneration
-        : !record.readStartedDuringWrite &&
-          record.requestGeneration === this.latestIntentRequestGeneration &&
-          record.requestGeneration > this.latestAuthoritativeRequestGeneration,
+      current: !this.peerWriteConflict && (record.resolvesOperation ||
+        (record.authoritative
+          ? record.requestGeneration === this.latestAuthoritativeRequestGeneration
+          : !record.readStartedDuringWrite &&
+            record.requestGeneration === this.latestIntentRequestGeneration &&
+            record.requestGeneration > this.latestAuthoritativeRequestGeneration)),
       instanceId: this.instanceId,
       pageId: this.pageId,
     };
@@ -1830,6 +1847,15 @@ export class FlyBrowserAdapter {
       ? { ...input, payload: isObject(input.payload) ? { ...input.payload } : {} }
       : normalizedIntent(this, input);
     if (!request.intent) return null;
+    const resolvesOperation = request.intent === "resolve_operation";
+    // A receipt lookup and a retry of that same operation are mutually exclusive.
+    // A lookup is authoritative for recovery, independent of selection/hover generations.
+    if (resolvesOperation && (
+      !this.requiresOperationReceipts ||
+      !this.pendingOperation?.request ||
+      request.operation_id !== this.pendingOperation.request.operation_id ||
+      this.pendingResolutionInFlight || this.authoritativeInFlight
+    )) return null;
 
     const limit = limitFor(
       this,
@@ -1857,7 +1883,7 @@ export class FlyBrowserAdapter {
     }
     const queuedSignal = normalizedTransportOptions(requestOptions).signal;
     if (queuedSignal?.aborted) return null;
-    if (retryPending && this.authoritativeInFlight) {
+    if (retryPending && (this.authoritativeInFlight || this.pendingResolutionInFlight)) {
       showPendingOperationNotice(this, "checking");
       return null;
     }
@@ -1910,6 +1936,10 @@ export class FlyBrowserAdapter {
       if (!retryPending) this.pendingOperationUnresolved = false;
     }
     if (authoritative) this.authoritativeInFlight = true;
+    if (resolvesOperation) {
+      this.pendingResolutionInFlight = true;
+      showPendingOperationNotice(this, "checking");
+    }
     // A failed, redirected, unconfirmed or navigation-producing write does not
     // establish the revision the next queued mutation must use.
     let acknowledgedAuthoritativeResult = false;
@@ -1930,13 +1960,15 @@ export class FlyBrowserAdapter {
     // acknowledgement stale. Conversely, an old read must not overwrite state
     // after a newer edit was submitted.
     const readStartedDuringWrite = !authoritative &&
-      (this.authoritativeInFlight || this.queuedAuthoritativeIntents.length > 0);
+      (this.authoritativeInFlight || this.pendingResolutionInFlight ||
+        this.queuedAuthoritativeIntents.length > 0);
     this.latestIntentRequestGeneration = requestGeneration;
     if (authoritative) this.latestAuthoritativeRequestGeneration = requestGeneration;
     const record = {
       abort,
       controller,
       authoritative,
+      resolvesOperation,
       readStartedDuringWrite,
       intent: request.intent,
       requestGeneration,
@@ -2009,25 +2041,18 @@ export class FlyBrowserAdapter {
         operationCommitted = true;
         this.clearPendingOperation();
       }
-      const resolvedPendingReceipt = request.intent === "resolve_operation" &&
-        response.ok &&
-        isObject(result) &&
-        result.operation_status === "committed" &&
-        result.operation_id === request.operation_id;
+      const matchesPendingLookup = resolvesOperation &&
+        this.pendingOperation?.request?.operation_id === request.operation_id;
+      const matchingReceipt = matchesPendingLookup && response.ok &&
+        isObject(result) && result.operation_id === request.operation_id;
+      const resolvedPendingReceipt = matchingReceipt &&
+        result.operation_status === "committed";
       if (resolvedPendingReceipt) {
         this.clearPendingOperation();
-      } else if (
-        request.intent === "resolve_operation" &&
-        response.ok &&
-        isObject(result) &&
-        result.operation_status === "unknown"
-      ) {
+      } else if (matchesPendingLookup) {
         this.pendingOperationUnresolved = true;
-        showPendingOperationNotice(this, "unknown");
-      }
-      if (request.intent === "resolve_operation" && !response.ok) {
-        this.pendingOperationUnresolved = true;
-        showPendingOperationNotice(this, "unavailable");
+        showPendingOperationNotice(this,
+          matchingReceipt && result.operation_status === "unknown" ? "unknown" : "unavailable");
       }
       if (authoritative && this.requiresOperationReceipts && !operationReceiptCommitted) {
         if (response.ok) {
@@ -2050,11 +2075,14 @@ export class FlyBrowserAdapter {
         result.reload !== true &&
         typeof result.location !== "string" &&
         (!this.requiresOperationReceipts || operationReceiptCommitted);
-      const current = authoritative
-        ? requestGeneration === this.latestAuthoritativeRequestGeneration
-        : !readStartedDuringWrite &&
-          requestGeneration === this.latestIntentRequestGeneration &&
-          requestGeneration > this.latestAuthoritativeRequestGeneration;
+      const current = !this.peerWriteConflict && (resolvesOperation
+        ? matchesPendingLookup && (resolvedPendingReceipt ||
+          (matchingReceipt && result.operation_status === "unknown"))
+        : authoritative
+          ? requestGeneration === this.latestAuthoritativeRequestGeneration
+          : !readStartedDuringWrite &&
+            requestGeneration === this.latestIntentRequestGeneration &&
+            requestGeneration > this.latestAuthoritativeRequestGeneration);
       this.root.dispatchEvent(
         new CustomEvent("fly:browser-intent-response", {
           bubbles: true,
@@ -2069,7 +2097,7 @@ export class FlyBrowserAdapter {
         }),
       );
       if (current) {
-        if (request.intent === "resolve_operation" && result?.operation_status === "unknown") {
+        if (resolvesOperation && result?.operation_status === "unknown") {
           updateNetworkIndicator(this.root, "error", "OPERATION_OUTCOME_UNKNOWN");
         } else if (this.peerWriteConflict) {
           updateNetworkIndicator(this.root, "error", PEER_WRITE_CONFLICT_CODE);
@@ -2098,7 +2126,16 @@ export class FlyBrowserAdapter {
         }
         // A confirmed write makes other same-origin editors of this page stale.
         // The server remains the source of truth; this is a UX safety fence.
-        if (authoritative && acknowledgedAuthoritativeResult && this.pageId) {
+        // A persisted save can require SSR reload; that prevents queue replay,
+        // not notification of peers. Dirty draft-only mutations are not confirmed writes.
+        const confirmedWrite = (authoritative || resolvedPendingReceipt) &&
+          (!this.requiresOperationReceipts || operationReceiptCommitted || resolvedPendingReceipt) &&
+          state.dirty === false &&
+          nonEmptyString(state.revision_id) &&
+          nonEmptyString(state.project_hash) &&
+          state.revision_id !== request.revision &&
+          !isObject(result.save_failure);
+        if (confirmedWrite && this.pageId) {
           try {
             this.peerWriteChannel?.postMessage({
               kind: "confirmed-write",
@@ -2154,11 +2191,13 @@ export class FlyBrowserAdapter {
       // The adapter was disposed: late rejected/aborted promises must not
       // repaint a stopped root or emit misleading lifecycle events.
       if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) return null;
-      const current = authoritative
-        ? requestGeneration === this.latestAuthoritativeRequestGeneration
-        : !readStartedDuringWrite &&
-          requestGeneration === this.latestIntentRequestGeneration &&
-          requestGeneration > this.latestAuthoritativeRequestGeneration;
+      const current = !this.peerWriteConflict && (resolvesOperation
+        ? this.pendingOperation?.request?.operation_id === request.operation_id
+        : authoritative
+          ? requestGeneration === this.latestAuthoritativeRequestGeneration
+          : !readStartedDuringWrite &&
+            requestGeneration === this.latestIntentRequestGeneration &&
+            requestGeneration > this.latestAuthoritativeRequestGeneration);
       if (current) {
         updateNetworkIndicator(this.root, "error", error);
       }
@@ -2167,7 +2206,8 @@ export class FlyBrowserAdapter {
         shouldResolvePendingAfterRequest = true;
         showPendingOperationNotice(this, "checking");
       }
-      if (request.intent === "resolve_operation") {
+      if (resolvesOperation &&
+          this.pendingOperation?.request?.operation_id === request.operation_id) {
         this.pendingOperationUnresolved = true;
         showPendingOperationNotice(this, "unavailable");
       }
@@ -2206,6 +2246,7 @@ export class FlyBrowserAdapter {
       }
       releaseForwardedAbort?.();
       this.pendingIntentRequests.delete(requestKey);
+      if (resolvesOperation) this.pendingResolutionInFlight = false;
       if (authoritative) {
         this.authoritativeInFlight = false;
         if (
@@ -2245,7 +2286,7 @@ export class FlyBrowserAdapter {
           }
         }
       }
-      if (shouldResolvePendingAfterRequest) {
+      if (shouldResolvePendingAfterRequest && this.lifecycleState !== ADAPTER_LIFECYCLE.STOPPED) {
         queueMicrotask(() => void this.resolvePendingOperation());
       }
     }

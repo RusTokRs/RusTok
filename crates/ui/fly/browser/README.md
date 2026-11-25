@@ -99,7 +99,13 @@ mutating envelope and its operation ID in tab-scoped `sessionStorage` before
 sending it. A reload or ambiguous response triggers a read-only receipt lookup.
 The adapter blocks new mutations while the outcome is unknown and exposes
 explicit status-check and same-request retry controls; it never automatically
-retries the mutation. The host must render an owner-bound draft token before
+retries the mutation. A restored pending envelope immediately shows its recovery
+notice and starts a receipt lookup. Lookups and retries of the same operation are
+mutually exclusive, and only a matching receipt may clear the pending envelope.
+Selection and hover cannot supersede recovery. Confirmed clean writes notify peers
+even when the SSR response requires reload; dirty draft-only changes do not.
+HTTP revision-conflict responses fence the editor, and late responses cannot replace
+a peer-write warning. The host must render an owner-bound draft token before
 enabling edits and bind that token into the route. This protocol is currently
 implemented by the Pages SSR host; other hosts must not opt into the strict
 contract without matching server-side atomic receipts.

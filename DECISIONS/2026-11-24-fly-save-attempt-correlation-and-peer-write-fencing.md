@@ -63,7 +63,12 @@ operation and must not be blocked by a release-readiness policy when the actor h
    so its delayed response cannot acknowledge an older revision or clear the conflict. The JS
    adapter also fences an explicit server revision-conflict response if a BroadcastChannel
    notification was missed, and clears that parked fence only after a reload observes a
-   different server revision.
+   different server revision. A direct HTTP revision-conflict response also fences
+   the adapter. The classic adapter separates confirmed clean writes from
+   queue-replay eligibility: a required SSR reload must not suppress peer notification.
+   Dirty draft-only changes are not confirmed writes. Pending-operation receipt lookup
+   and same-request retry are mutually exclusive and receipt identity must match the
+   pending operation.
 6. **No automatic merge or replay is introduced.** A peer notification asks the user to preserve
    local work and reload. The server's revision compare-and-swap remains authoritative if
    BroadcastChannel is unavailable or a notification is missed.

@@ -167,6 +167,8 @@ test('server revision conflicts fence the browser editor without BroadcastChanne
     root.dispatchEvent(new CustomEvent('fly:browser-intent-response', {
       bubbles: true,
       detail: {
+        ok: true,
+        current: true,
         request: { intent: 'publish' },
         result: {
           save_failure: {
@@ -192,6 +194,8 @@ test('a fresh server revision clears a persisted revision-conflict fence', async
     root.dispatchEvent(new CustomEvent('fly:browser-intent-response', {
       bubbles: true,
       detail: {
+        ok: true,
+        current: true,
         request: { intent: 'publish' },
         result: {
           save_failure: {
@@ -242,4 +246,45 @@ test('peer write on another page does not fence unrelated editors', async ({ con
     };
   });
   expect(state).toEqual({ posted: ['save'], emitted: ['save'], conflict: null });
+});
+
+
+test('HTTP revision conflict fences a stale editor before the next mutation', async ({ page }) => {
+  const source = await readFile(adapterPath, 'utf8');
+  await mountEditor(page, 'same-page', source);
+  await page.evaluate(async () => {
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      code: 'REVISION_CONFLICT', error: 'stale revision'
+    }), { status: 409, headers: { 'content-type': 'application/json' } });
+    await (globalThis as PeerScope).__flyPeerAdapter?.emitIntent('save', {});
+  });
+  await expect(page.locator('#fly-root')).toHaveAttribute('data-fly-peer-write-conflict', 'true');
+  await expect(page.locator('#fly-root')).toHaveAttribute('data-fly-browser-problem', 'FLY_PEER_WRITE_CONFLICT');
+});
+
+test('an in-flight response cannot replace a peer-write fence', async ({ page }) => {
+  const source = await readFile(adapterPath, 'utf8');
+  await mountEditor(page, 'same-page', source);
+  await page.evaluate(async () => {
+    const scope = globalThis as PeerScope;
+    const root = document.querySelector('#fly-root')!;
+    let finish: (response: Response) => void = () => {};
+    globalThis.fetch = () => new Promise<Response>((resolve) => { finish = resolve; });
+    const pending = scope.__flyPeerAdapter?.emitIntent('save', {});
+    const fenced = new Promise<void>((resolve) => root.addEventListener(
+      'fly:browser-peer-write', () => resolve(), { once: true }
+    ));
+    const channel = new BroadcastChannel('fly:page-authoring-writes:v1');
+    channel.postMessage({
+      kind: 'confirmed-write', pageId: 'same-page',
+      revision: 'rev-peer', hash: 'hash-peer', senderId: 'other-editor'
+    });
+    await fenced;
+    channel.close();
+    finish(new Response(JSON.stringify({ code: 'SAVE_FAILED', error: 'late error' }),
+      { status: 500, headers: { 'content-type': 'application/json' } }));
+    await pending;
+  });
+  await expect(page.locator('#fly-root')).toHaveAttribute('data-fly-browser-problem', 'FLY_PEER_WRITE_CONFLICT');
+  await expect(page.locator('#fly-root')).toHaveAttribute('data-fly-revision', 'rev-1');
 });
