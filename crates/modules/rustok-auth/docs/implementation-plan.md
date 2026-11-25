@@ -73,7 +73,10 @@ configuration. Full development Compose now mounts the explicitly
 provisioned dedicated keyring directory read-only and the dev launch script
 requires an existing readable file before starting migrations. Browser smoke
 CI, remaining constructors and mandatory executable source admission still
-need coordinated migration; scoped execution remains pending. The file-source entry point now
+need coordinated migration. Follow-up source review corrected a stale optional
+JOSE kid assertion, added distinct keyed snapshot identity assertions, and
+hardened one-time provisioning directory durability and dev mount scope.
+Scoped execution remains pending. The file-source entry point now
 constructs and validates only the actual complete candidate, without
 instantiating default signing inputs, with typed source exclusivity
 owned by Auth, not a redundant startup signer. Independent MAC root validation

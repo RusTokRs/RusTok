@@ -76,6 +76,20 @@ def provision(output: Path) -> None:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
 
+    # File fsync alone does not make the published directory entry durable.
+    # Never remove or regenerate a published keyring after an uncertain sync.
+    try:
+        descriptor = os.open(parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    except OSError as error:
+        raise OSError(
+            "Keyring was published but directory durability could not be confirmed; "
+            "inspect and preserve the existing file before retrying"
+        ) from error
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)

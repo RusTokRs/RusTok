@@ -82,13 +82,17 @@ check_jwt_keyring() {
             return 1
             ;;
     esac
-    if ! python3 - "$directory" <<'PY'
+    if ! python3 - "$directory" "$PROJECT_ROOT" <<'PY'
 import os
 import stat
 import sys
 from pathlib import Path
 
 directory = Path(sys.argv[1])
+repository = Path(sys.argv[2])
+# Do not mount a broad ancestor (including HOME) into the container.
+if directory == Path.home().resolve() or directory in repository.parents:
+    sys.exit(1)
 try:
     parent = directory.stat()
     file = (directory / "jwt.json").lstat()
@@ -104,7 +108,7 @@ if not (
     sys.exit(1)
 PY
     then
-        print_error "The JWT directory and file must be private, owned by the caller (0700/0600). Python 3 is required."
+        print_error "Use a dedicated private JWT directory and file owned by the caller (0700/0600), not HOME or a repository ancestor. Python 3 is required."
         return 1
     fi
     export RUSTOK_DEV_JWT_KEYRING_DIR="$directory"

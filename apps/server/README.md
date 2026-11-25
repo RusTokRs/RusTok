@@ -111,7 +111,7 @@ requires a pre-provisioned private directory with `jwt.json` (see the
 mounted read-only to preserve visibility of atomic file replacement. The
 executable's remaining static startup path has not yet been removed; do not deploy the future cutover until the
 provisioning and retained-state requirements are satisfied. Optional runtime
-overrides live under `settings.rustok.auth`:
+overrides live under `settings.auth`:
 
 - `refresh_expiration`, `issuer`, `audience`
 - `algorithm`: `HS256` or `RS256`
@@ -119,7 +119,7 @@ overrides live under `settings.rustok.auth`:
 - `rsa_private_key_pem`, `rsa_public_key_pem`: development/test fallback values
 
 When the OAuth surface is mounted (`settings.features.oauth_enabled` is true and the host mode is not
-`worker` or `registry_only`), `settings.rustok.auth.issuer` must be an absolute root URL:
+`worker` or `registry_only`), `settings.auth.issuer` must be an absolute root URL:
 HTTPS in production, or HTTPS / `http://localhost` / `http://127.0.0.1` in
 development. Userinfo, path, query, and fragment components are rejected.
 OAuth discovery advertises this exact JWT issuer; it never derives an issuer

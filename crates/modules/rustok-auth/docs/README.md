@@ -250,7 +250,10 @@ pre-cutover startup contract.
 
 The command generates four independent RSA pairs with distinct key IDs,
 writes a complete file with mode 0600 outside the checkout, and refuses
-replacement even if concurrent provisioning targets the same path. It never
+replacement even if concurrent provisioning targets the same path. File data
+and the published directory entry are synchronized before reporting success;
+an uncertain directory sync must not trigger key regeneration. The launcher
+rejects mounting HOME or a repository ancestor. It never
 generates or modifies the independent MAC root. Supply that root separately.
 The file uses the currently admitted document shape; no startup generation,
 production fallback, or authority/witness reset is introduced.

@@ -46,6 +46,21 @@ class ProvisionJwtKeyringTests(unittest.TestCase):
             self.assertNotEqual(rejected.returncode, 0)
             self.assertTrue(output.read_bytes() == original, "Existing keyring changed")
 
+    def test_concurrent_provisioners_publish_exactly_one_complete_document(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "keyring.json"
+            command = [sys.executable, str(SCRIPT), "--output", str(output)]
+            with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as first:
+                with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as second:
+                    first.communicate()
+                    second.communicate()
+                    self.assertEqual(sorted([first.returncode, second.returncode]), [0, 1])
+            document = json.loads(output.read_bytes())
+            self.assertEqual(document["generation"], 1)
+            self.assertEqual(set(document), {"generation", "access", "password_reset", "email_verification", "invite"})
+            self.assertEqual(stat.S_IMODE(output.stat().st_mode), 0o600)
+            self.assertEqual(list(Path(directory).iterdir()), [output])
+
     def test_insecure_directory_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             parent = Path(directory)

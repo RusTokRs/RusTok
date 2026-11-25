@@ -913,9 +913,15 @@ mod tests {
     fn prepared_snapshot_records_every_key_algorithm() {
         let keys = FenceKeys::generate();
         let cfg = keys.config(ROOT, "old", keys.old(), Some(("new", &keys.next, 4_000_000_000)));
-        let snapshot = cfg.fence_snapshot(|_| Ok("identity".to_string())).unwrap();
+        let mac = FenceMac::new(ROOT).unwrap();
+        let snapshot = cfg.fence_snapshot(|identity| mac.identity(identity)).unwrap();
         let ring = snapshot.get("JWT").unwrap();
         assert_eq!(ring.keys.len(), 2);
+        assert_eq!(snapshot.len(), 4);
+        let identities: std::collections::HashSet<_> = snapshot.values()
+            .flat_map(|ring| ring.keys.values().map(|key| key.identity.as_str()))
+            .collect();
+        assert_eq!(identities.len(), 5);
         assert!(snapshot.values().all(|ring| ring.algorithm == JwtAlgorithm::RS256
             && ring.keys.values().all(|key| key.algorithm == JwtAlgorithm::RS256)));
         let serialized = serde_json::to_string(&snapshot).unwrap();

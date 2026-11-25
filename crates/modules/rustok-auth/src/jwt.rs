@@ -1098,7 +1098,14 @@ mod tests {
             assert!(auth_jwt_header(&token).is_err());
         }
         let omitted = format!("{}.e30.signature", URL_SAFE_NO_PAD.encode(r#"{"alg":"RS256","typ":"JWT"}"#));
-        assert!(auth_jwt_header(&omitted).unwrap().kid.is_none());
+        assert!(auth_jwt_header(&omitted).is_err());
+        let valid = format!("{}.e30.signature", URL_SAFE_NO_PAD.encode(
+            r#"{"alg":"RS256","typ":"JWT","kid":"a"}"#,
+        ));
+        let parsed = auth_jwt_header(&valid).unwrap();
+        assert_eq!(parsed.kid, "a");
+        assert_eq!(parsed.alg, Algorithm::RS256);
+        assert_eq!(parsed.typ, "JWT");
         let oversized = format!("{}.e30.signature", "a".repeat(1025));
         assert!(auth_jwt_header(&oversized).is_err());
     }
