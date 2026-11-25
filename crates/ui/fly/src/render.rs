@@ -544,12 +544,30 @@ pub fn render_page_with_rich_text_and_embed_registry(
     // Action targets get an unforgeable hook. A plain HTML id is added only when it would not
     // collide with an authored id or the HTML id a form will receive at materialization.
     let identities = RenderIdentities::new(root, action_target_ids(document));
+    let theme_tokens = crate::decode_theme_tokens(document)
+        .map(|tokens| {
+            tokens
+                .into_iter()
+                .map(|token| format!("--{}", token.name))
+                .collect::<BTreeSet<_>>()
+        })
+        .unwrap_or_default();
     let mut html = String::new();
-    render_node(root, None, 0, policy, rich_text, embeds, &identities, &mut html);
+    render_node(
+        root,
+        None,
+        0,
+        policy,
+        &theme_tokens,
+        rich_text,
+        embeds,
+        &identities,
+        &mut html,
+    );
     let metadata = PageMetadata::from_page(page);
     let head = PageHead::from_metadata(&metadata);
     let css = if policy.emit_style_hooks {
-        render_project_styles(document, page, policy)
+        render_project_styles(document, page, policy, &theme_tokens)
     } else {
         String::new()
     };
@@ -690,6 +708,7 @@ fn render_node(
     parent_id: Option<&str>,
     index: usize,
     policy: &RenderPolicy,
+    theme_tokens: &BTreeSet<String>,
     rich_text: Option<&dyn crate::RichTextHtmlRenderer>,
     embeds: &crate::EmbedProviderRegistry,
     identities: &RenderIdentities,
@@ -697,7 +716,15 @@ fn render_node(
 ) {
     match node {
         ComponentNode::Object(component) => render_component(
-            component, parent_id, index, policy, rich_text, embeds, identities, output,
+            component,
+            parent_id,
+            index,
+            policy,
+            theme_tokens,
+            rich_text,
+            embeds,
+            identities,
+            output,
         ),
         ComponentNode::Opaque(value) if policy.include_opaque_text_nodes => {
             render_opaque(value, output)
@@ -711,6 +738,7 @@ fn render_component(
     parent_id: Option<&str>,
     index: usize,
     policy: &RenderPolicy,
+    theme_tokens: &BTreeSet<String>,
     rich_text: Option<&dyn crate::RichTextHtmlRenderer>,
     embeds: &crate::EmbedProviderRegistry,
     identities: &RenderIdentities,
@@ -802,7 +830,9 @@ fn render_component(
     {
         let declarations = style
             .iter()
-            .filter_map(|(name, value)| safe_style(name, value, policy))
+            .filter_map(|(name, value)| {
+                safe_style_with_tokens(name, value, policy, theme_tokens)
+            })
             .collect::<Vec<_>>()
             .join(";");
         if !declarations.is_empty() {
@@ -847,6 +877,7 @@ fn render_component(
                 component_id,
                 child_index,
                 policy,
+                theme_tokens,
                 rich_text,
                 embeds,
                 identities,
@@ -943,6 +974,7 @@ fn render_project_styles(
     document: &ProjectDocument,
     page: &ProjectPage,
     policy: &RenderPolicy,
+    theme_tokens: &BTreeSet<String>,
 ) -> String {
     let mut component_ids = Vec::new();
     if let Some(root) = page.component.as_ref() {
@@ -962,7 +994,9 @@ fn render_project_styles(
         let declarations = rule
             .declarations
             .iter()
-            .filter_map(|(name, value)| safe_style(name, value, policy))
+            .filter_map(|(name, value)| {
+                safe_style_with_tokens(name, value, policy, theme_tokens)
+            })
             .collect::<Vec<_>>()
             .join(";");
         if declarations.is_empty() {
@@ -1016,12 +1050,17 @@ fn render_project_styles(
         }
     }
     if let Some(root) = page.component.as_ref() {
-        append_component_style_rules(root, policy, &mut css);
+        append_component_style_rules(root, policy, theme_tokens, &mut css);
     }
     css
 }
 
-fn append_component_style_rules(node: &ComponentNode, policy: &RenderPolicy, css: &mut String) {
+fn append_component_style_rules(
+    node: &ComponentNode,
+    policy: &RenderPolicy,
+    theme_tokens: &BTreeSet<String>,
+    css: &mut String,
+) {
     let ComponentNode::Object(component) = node else {
         return;
     };
@@ -1031,7 +1070,9 @@ fn append_component_style_rules(node: &ComponentNode, policy: &RenderPolicy, css
     ) {
         let declarations = style
             .iter()
-            .filter_map(|(name, value)| safe_style(name, value, policy))
+            .filter_map(|(name, value)| {
+                safe_style_with_tokens(name, value, policy, theme_tokens)
+            })
             .collect::<Vec<_>>()
             .join(";");
         if !declarations.is_empty() {
@@ -1043,7 +1084,7 @@ fn append_component_style_rules(node: &ComponentNode, policy: &RenderPolicy, css
         }
     }
     for child in component.children() {
-        append_component_style_rules(child, policy, css);
+        append_component_style_rules(child, policy, theme_tokens, css);
     }
 }
 
@@ -1444,10 +1485,26 @@ fn collect_css_string_ranges(
 /// same stricter rule to attributes *and* references — see `FORBIDDEN_CSS_TOKENS` and
 /// `strip_validated_css_urls` in `rustok-page-builder`'s `static_publish_policy`.
 fn safe_style(name: &str, value: &Value, policy: &RenderPolicy) -> Option<String> {
+    safe_style_with_tokens(name, value, policy, &BTreeSet::new())
+}
+
+fn safe_style_with_tokens(
+    name: &str,
+    value: &Value,
+    policy: &RenderPolicy,
+    theme_tokens: &BTreeSet<String>,
+) -> Option<String> {
     if !css_property_allowed(name) {
         return None;
     }
     let value = scalar_string(value)?;
+    let references = css_var_references(&value)?;
+    if references
+        .iter()
+        .any(|reference| !theme_tokens.contains(reference))
+    {
+        return None;
+    }
     if value.chars().any(char::is_control) {
         return None;
     }
