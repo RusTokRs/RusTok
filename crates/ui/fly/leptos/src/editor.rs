@@ -308,6 +308,7 @@ pub fn FlyThemeTokenEditor(
     on_remove: Callback<String>,
     #[prop(optional_no_strip)] capabilities: Option<CapabilityState>,
     #[prop(optional)] messages: Option<EditorMessages>,
+    #[prop(optional)] intent_mode: bool,
 ) -> impl IntoView {
     let messages = messages.unwrap_or_default();
     let can_styles = capabilities.map(|state| state.styles).unwrap_or(true);
@@ -332,14 +333,25 @@ pub fn FlyThemeTokenEditor(
                     .into_iter()
                     .map(|token| {
                         let name_for_remove = token.name.clone();
+                        let name_for_form = token.name.clone();
+                        let remove_form_id = format!("fly-theme-remove-{}", token.name);
                         let remove_label = remove_label.clone();
                         view! {
                             <div class="fly-theme-tokens__row">
                                 <dt><code>{token.css_variable.clone()}</code></dt>
                                 <dd>{token.value.clone()}</dd>
                                 <dd>
+                                    <form
+                                        id=remove_form_id.clone()
+                                        hidden=true
+                                        data-fly-intent-form=intent_mode.then_some("remove_theme_token")
+                                        on:submit=move |event| event.prevent_default()
+                                    >
+                                        <input type="hidden" name="name" value=name_for_form/>
+                                    </form>
                                     <button
-                                        type="button"
+                                        type="submit"
+                                        form=remove_form_id
                                         class="fly-theme-tokens__remove"
                                         disabled=!can_styles
                                         on:click=move |_| on_remove.run(name_for_remove.clone())
@@ -353,6 +365,15 @@ pub fn FlyThemeTokenEditor(
                     .collect_view()}
             </dl>
             <div class="fly-theme-token-editor__form">
+                <form
+                    id="fly-theme-token-upsert"
+                    hidden=true
+                    data-fly-intent-form=intent_mode.then_some("set_theme_token")
+                    on:submit=move |event| event.prevent_default()
+                >
+                    <input type="hidden" name="name" prop:value=move || token_name.get()/>
+                    <input type="hidden" name="value" prop:value=move || token_value.get()/>
+                </form>
                 <label>
                     {token_name_label}
                     <input
@@ -374,9 +395,10 @@ pub fn FlyThemeTokenEditor(
                     />
                 </label>
                 <button
-                    type="button"
+                    type="submit"
+                    form="fly-theme-token-upsert"
                     disabled=!can_styles
-                    on:click=move |_| {
+                    on:click=move |event| {
                         let name = token_name.get_untracked().trim().to_string();
                         let value = token_value.get_untracked().trim().to_string();
                         match validate_token_name(&name)
@@ -386,7 +408,10 @@ pub fn FlyThemeTokenEditor(
                                 error.set(None);
                                 on_upsert.run(DesignToken { name, value });
                             }
-                            Err(message) => error.set(Some(message)),
+                            Err(message) => {
+                                error.set(Some(message));
+                                event.prevent_default();
+                            }
                         }
                     }
                 >
