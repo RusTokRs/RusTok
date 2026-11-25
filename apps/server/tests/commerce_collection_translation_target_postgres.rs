@@ -145,8 +145,8 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
 
     let first_connection = connect_postgres(database_url).await?;
     let second_connection = connect_postgres(database_url).await?;
-    let first_provider = registered_provider(first_connection.clone(, auth_config.clone()));
-    let second_provider = registered_provider(second_connection.clone(, auth_config.clone()));
+    let first_provider = registered_provider(first_connection.clone(), auth_config.clone()));
+    let second_provider = registered_provider(second_connection.clone(), auth_config.clone()));
 
     let first_patch = patch(
         &initial,

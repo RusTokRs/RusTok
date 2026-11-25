@@ -162,8 +162,8 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
 
     let first_connection = connect_postgres(database_url).await?;
     let second_connection = connect_postgres(database_url).await?;
-    let first_provider = registered_provider(first_connection.clone(, auth_config.clone()))?;
-    let second_provider = registered_provider(second_connection.clone(, auth_config.clone()))?;
+    let first_provider = registered_provider(first_connection.clone(), auth_config.clone()))?;
+    let second_provider = registered_provider(second_connection.clone(), auth_config.clone()))?;
     let read_request = ReadTranslationResourceRequest {
         identity: identity.clone(),
         source_locale: TenantLocale::new("en")?,
@@ -244,7 +244,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     second_connection.close().await?;
 
     let observer_connection = connect_postgres(database_url).await?;
-    let observer_provider = registered_provider(observer_connection.clone(, auth_config.clone()))?;
+    let observer_provider = registered_provider(observer_connection.clone(), auth_config.clone()))?;
     let applied = observer_provider
         .read_resource(
             read_context(tenant_id, "observer-read"),
@@ -295,7 +295,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     observer_connection.close().await?;
 
     let recovery_connection = connect_postgres(database_url).await?;
-    let recovery_provider = registered_provider(recovery_connection.clone(, auth_config.clone()))?;
+    let recovery_provider = registered_provider(recovery_connection.clone(), auth_config.clone()))?;
     let replay = recovery_provider
         .apply_patch(
             apply_context(tenant_id, "recovery-replay", winner_key),
@@ -486,7 +486,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     recovery_connection.close().await?;
 
     let deletion_connection = connect_postgres(database_url).await?;
-    let deletion_provider = registered_provider(deletion_connection.clone(, auth_config.clone()))?;
+    let deletion_provider = registered_provider(deletion_connection.clone(), auth_config.clone()))?;
     let deletion_changes = deletion_provider
         .read_changes(
             read_context(tenant_id, "deletion-cursor"),
