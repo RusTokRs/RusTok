@@ -31,3 +31,10 @@ fn hydrated_workspace_actions_and_selection_have_one_transport_owner() {
     assert!(contains("componentElement.closest(\"[data-fly-wasm-hydrated='true']\")"));
     assert!(contains("source === \"ssr-control\" && this.root.querySelector(\"[data-fly-wasm-hydrated='true']\")"));
 }
+
+
+#[test]
+fn selection_intents_do_not_reapply_the_selected_component_hint() {
+    assert!(contains("intent !== \"select\""));
+    assert!(contains("intent !== \"focus_requested\""));
+}

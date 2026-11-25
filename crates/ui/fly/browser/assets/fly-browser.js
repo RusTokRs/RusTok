@@ -768,7 +768,12 @@ function normalizedIntent(adapter, input) {
       ? { ...message }
       : {};
   delete payload.type;
-  if (adapter.selectedId && !payload.selected_component_id) {
+  if (
+    intent !== "select" &&
+    intent !== "focus_requested" &&
+    adapter.selectedId &&
+    !payload.selected_component_id
+  ) {
     payload.selected_component_id = adapter.selectedId;
   }
   return {
