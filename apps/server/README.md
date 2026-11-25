@@ -102,7 +102,11 @@ Production also requires an independently provisioned JWT authority via
 [offline import and recovery contract](../../crates/modules/rustok-auth/docs/README.md#independent-jwt-authority)
 before starting a new production host; no automatic fallback is allowed.
 
-`auth.jwt.secret` remains the HS256 default secret source. Optional runtime
+`auth.jwt.secret` is the independent host MAC root and still supplies the
+pre-cutover HS256 default derivation source. The accepted [RS256-only target](../../DECISIONS/2026-11-25-rs256-only-jwt.md)
+requires four independent RSA pairs. Complete generation-bearing file
+provisioning is available today; do not deploy the future cutover until the
+provisioning and retained-state requirements are satisfied. Optional runtime
 overrides live under `settings.rustok.auth`:
 
 - `refresh_expiration`, `issuer`, `audience`

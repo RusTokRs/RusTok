@@ -3,7 +3,7 @@ use super::{
     resolve_service_token_permissions,
 };
 use crate::auth::{
-    AuthConfig, AuthSettingsOverrides, Claims, encode_access_token, encode_oauth_access_token,
+    AuthConfig, Claims, encode_access_token, encode_oauth_access_token,
 };
 use crate::common::settings::RustokSettings;
 use crate::models::{oauth_apps, oauth_consents, oauth_tokens, sessions, tenants, users};
@@ -40,12 +40,7 @@ async fn ensure_oauth_apps_table(db: &DatabaseConnection) {
 }
 
 fn test_auth_config() -> AuthConfig {
-    rustok_auth::build_auth_config(
-        "test-secret-key-for-auth-extractor-32b".to_string(),
-        900,
-        AuthSettingsOverrides::default(),
-    )
-    .expect("auth config")
+    crate::auth::test_auth_config("test-secret-key-for-auth-extractor-32b".to_string())
 }
 
 fn test_auth_runtime(db: DatabaseConnection) -> ServerAuthRuntime {
@@ -361,7 +356,7 @@ async fn authorization_code_token_rejects_inactive_oauth_app() {
     )
     .await;
     let token = encode_oauth_access_token(
-        &test_auth_config(),
+        auth_runtime.require_auth_config().unwrap(),
         user.id,
         tenant.id,
         UserRole::Customer,
@@ -400,7 +395,7 @@ async fn authorization_code_token_rejects_scope_removed_from_oauth_app() {
     let app = insert_oauth_app(&db, tenant.id, "third_party", &["authorization_code"], true).await;
     let removed_scopes = vec!["admin:*".to_string()];
     let token = encode_oauth_access_token(
-        &test_auth_config(),
+        auth_runtime.require_auth_config().unwrap(),
         user.id,
         tenant.id,
         UserRole::Customer,
@@ -472,7 +467,7 @@ async fn oauth_access_token_without_registration_is_rejected() {
     let (user, _) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
     let app = insert_oauth_app(&db, tenant.id, "third_party", &["authorization_code"], true).await;
     let token = encode_oauth_access_token(
-        &test_auth_config(),
+        auth_runtime.require_auth_config().unwrap(),
         user.id,
         tenant.id,
         UserRole::Customer,
@@ -512,7 +507,7 @@ async fn revoked_oauth_access_registration_is_rejected() {
     let app = insert_oauth_app(&db, tenant.id, "third_party", &["authorization_code"], true).await;
     let token_id = Uuid::new_v4();
     let token = encode_oauth_access_token(
-        &test_auth_config(),
+        auth_runtime.require_auth_config().unwrap(),
         user.id,
         tenant.id,
         UserRole::Customer,
@@ -575,7 +570,7 @@ async fn oauth_access_token_with_stale_consent_epoch_is_rejected() {
 
     let token_id = Uuid::new_v4();
     let token = encode_oauth_access_token(
-        &test_auth_config(),
+        auth_runtime.require_auth_config().unwrap(),
         user.id,
         tenant.id,
         UserRole::Customer,
@@ -634,7 +629,7 @@ async fn direct_token_rejects_session_owned_by_another_subject() {
     .expect("create tenant");
     let (_, session_id) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
     let token = encode_access_token(
-        &test_auth_config(),
+        auth_runtime.require_auth_config().unwrap(),
         Uuid::new_v4(),
         tenant.id,
         UserRole::Customer,
@@ -668,7 +663,7 @@ async fn access_token_resolver_returns_forbidden_for_inactive_user() {
     .expect("create tenant");
     let (user, session_id) = insert_user_with_session(&db, tenant.id, UserStatus::Inactive).await;
     let token = encode_access_token(
-        &test_auth_config(),
+        auth_runtime.require_auth_config().unwrap(),
         user.id,
         tenant.id,
         UserRole::Customer,
@@ -697,8 +692,9 @@ async fn access_token_resolver_rejects_unverified_users_when_email_verification_
     .await
     .expect("create tenant");
     let (user, session_id) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
+    let config = test_auth_config();
     let token = encode_access_token(
-        &test_auth_config(),
+        &config,
         user.id,
         tenant.id,
         UserRole::Customer,
@@ -710,7 +706,7 @@ async fn access_token_resolver_rejects_unverified_users_when_email_verification_
     settings.features.email_verification = true;
     let auth_runtime = ServerAuthRuntime::new(
         ServerRuntimeContext::new(db, settings),
-        test_auth_config(),
+        config,
     );
 
     let error = resolve_current_user_from_access_token(&auth_runtime, tenant.id, &token)
@@ -737,7 +733,7 @@ async fn access_token_resolver_returns_internal_server_error_on_rbac_storage_fai
             .expect("create tenant");
     let (user, session_id) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
     let token = encode_access_token(
-        &test_auth_config(),
+        auth_runtime.require_auth_config().unwrap(),
         user.id,
         tenant.id,
         UserRole::Customer,
@@ -786,7 +782,7 @@ async fn websocket_lease_revalidates_live_authority_and_fails_closed() {
     .await
     .expect("assign manager role");
     let token = encode_access_token(
-        &test_auth_config(),
+        runtime.require_auth_config().unwrap(),
         user.id,
         tenant.id,
         UserRole::Manager,
@@ -850,7 +846,7 @@ async fn websocket_lease_rejects_a_disabled_tenant() {
     .await
     .expect("assign customer role");
     let token = encode_access_token(
-        &test_auth_config(),
+        runtime.require_auth_config().unwrap(),
         user.id,
         tenant.id,
         UserRole::Customer,

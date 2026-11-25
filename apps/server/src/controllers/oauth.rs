@@ -1690,7 +1690,7 @@ mod tests {
 
     #[test]
     fn consent_csrf_mac_fields_are_unambiguous() {
-        let config = crate::auth::AuthConfig::new("test-consent-key-with-at-least-32-bytes".to_string());
+        let config = crate::auth::test_auth_config("test-consent-key-with-at-least-32-bytes".to_string());
         let mut first = Vec::new();
         super::append_optional_csrf_mac_field(&mut first, Some("scope\0state"));
         super::append_optional_csrf_mac_field(&mut first, None);
@@ -1707,7 +1707,7 @@ mod tests {
 
     #[test]
     fn consent_confirmation_binds_the_effective_scopes_even_when_scope_is_omitted() {
-        let config = crate::auth::AuthConfig::new("test-oauth-consent-secret-with-32-bytes".to_string());
+        let config = crate::auth::test_auth_config("test-oauth-consent-secret-with-32-bytes".to_string());
         let tenant = Uuid::new_v4();
         let user = Uuid::new_v4();
         let session = Uuid::new_v4();

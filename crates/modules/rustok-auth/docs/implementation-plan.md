@@ -67,8 +67,10 @@ rotation now exercise the same RSA fixture contract. JWT primitive tests now use
 and verification, including exact JOSE checks and cross-purpose rejection.
 Embedded test RSA keys in the Auth owner sources are removed. Explicit HS256
 negative and existing startup-source tests remain until consumer cutover.
-Remaining constructors and host consumers still need migration; scoped
-execution remains pending. The file-source entry point now
+Server host-policy, runtime-context, OAuth confirmation and extractor tests
+now exercise complete RSA fixtures, with issuance using the same runtime's
+configuration. Remaining constructors, deployment tooling and mandatory
+startup source admission still need migration; scoped execution remains pending. The file-source entry point now
 constructs and validates only the actual complete candidate, without
 instantiating default signing inputs, with typed source exclusivity
 owned by Auth, not a redundant startup signer. Independent MAC root validation

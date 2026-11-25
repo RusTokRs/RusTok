@@ -599,7 +599,6 @@ mod tests {
     #[test]
     fn require_auth_config_behavior() {
         use super::{ServerAuthRuntime, ServerRuntimeContext};
-        use crate::auth::AuthConfig;
         use crate::common::settings::RustokSettings;
         use sea_orm::DatabaseConnection;
 
@@ -608,7 +607,7 @@ mod tests {
         let unauth = ServerAuthRuntime::without_auth(ctx.clone());
         assert!(unauth.require_auth_config().is_err());
 
-        let authed = ServerAuthRuntime::new(ctx, AuthConfig::new("aB3!zY7@qW8#eR2$".repeat(4)));
+        let authed = ServerAuthRuntime::new(ctx, crate::auth::test_auth_config("aB3!zY7@qW8#eR2$".repeat(4)));
         assert!(authed.require_auth_config().is_ok());
     }
 

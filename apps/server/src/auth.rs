@@ -76,6 +76,16 @@ fn auth_config_from_parts(
     rustok_auth::build_auth_config(secret, access_expiration, auth_settings).map_err(auth_err)
 }
 
+/// Fresh, complete RSA configuration for an isolated server test runtime.
+/// Tests sharing one security store must clone this configuration rather
+/// than generating another one for token issuance.
+#[cfg(test)]
+pub(crate) fn test_auth_config(root: String) -> AuthConfig {
+    let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().expect("RSA fixture");
+    auth_config_from_host_document(root, 900, None, fixture.document(1).to_string().as_bytes())
+        .expect("valid test JWT configuration").1
+}
+
 // ─── Token functions ─────────────────────────────────────────────────
 
 pub fn encode_access_token(

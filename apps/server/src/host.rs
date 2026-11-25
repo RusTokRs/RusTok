@@ -858,6 +858,7 @@ mod tests {
         validate_https_deployment,
     };
     use crate::common::settings::RuntimeHostMode;
+    use crate::auth::test_auth_config;
 
     #[test]
     fn jwt_config_debug_redacts_root() {
@@ -1071,7 +1072,7 @@ mod tests {
 
     #[test]
     fn non_production_allows_default_jwt_claims() {
-        let config = crate::auth::AuthConfig::new(
+        let config = test_auth_config(
             "development-secret-value-with-more-than-thirty-two-bytes".to_string(),
         );
         validate_auth_deployment(&config, false)
@@ -1080,7 +1081,7 @@ mod tests {
 
     #[test]
     fn oauth_metadata_requires_an_explicit_issuer_when_enabled() {
-        let config = crate::auth::AuthConfig::new(
+        let config = test_auth_config(
             "development-secret-value-with-more-than-thirty-two-bytes".to_string(),
         );
 
@@ -1097,7 +1098,7 @@ mod tests {
             "http://localhost:3000",
             "http://127.0.0.1:3000",
         ] {
-            let config = crate::auth::AuthConfig::new(
+            let config = test_auth_config(
                 "development-secret-value-with-more-than-thirty-two-bytes".to_string(),
             )
             .with_issuer(issuer);
@@ -1118,7 +1119,7 @@ mod tests {
             "https://@api.example.com",
             "https://api.example.com ",
         ] {
-            let config = crate::auth::AuthConfig::new(
+            let config = test_auth_config(
                 "development-secret-value-with-more-than-thirty-two-bytes".to_string(),
             )
             .with_issuer(issuer);
@@ -1131,7 +1132,7 @@ mod tests {
 
     #[test]
     fn oauth_metadata_issuer_validation_is_skipped_when_oauth_is_disabled() {
-        let config = crate::auth::AuthConfig::new(
+        let config = test_auth_config(
             "development-secret-value-with-more-than-thirty-two-bytes".to_string(),
         )
         .with_issuer("https://api.example.com/issuer");
@@ -1142,25 +1143,25 @@ mod tests {
 
     #[test]
     fn production_rejects_default_jwt_claims() {
-        let config = crate::auth::AuthConfig::new("aB3!".repeat(20));
+        let config = test_auth_config("aB3!".repeat(20));
         let error = validate_auth_deployment(&config, true)
             .expect_err("production must not share the framework claim namespace");
         assert!(error.to_string().contains("issuer"));
     }
 
     #[test]
-    fn production_rejects_short_hs256_secret() {
-        let config = crate::auth::AuthConfig::new("aB3!".repeat(10))
+    fn production_rejects_short_mac_root() {
+        let config = test_auth_config("aB3!".repeat(10))
             .with_issuer("https://api.example.com")
             .with_audience("rustok-production-admin");
         let error = validate_auth_deployment(&config, true)
-            .expect_err("production HS256 needs a stronger secret floor");
+            .expect_err("production MAC root needs a stronger secret floor");
         assert!(error.to_string().contains("at least 64 bytes"));
     }
 
     #[test]
-    fn production_accepts_explicit_strong_hs256_policy() {
-        let config = crate::auth::AuthConfig::new("aB3!zY7@qW8#eR2$".repeat(5))
+    fn production_accepts_explicit_rsa_and_strong_mac_policy() {
+        let config = test_auth_config("aB3!zY7@qW8#eR2$".repeat(5))
             .with_issuer("https://api.example.com")
             .with_audience("rustok-production-admin");
         validate_auth_deployment(&config, true)
@@ -1308,14 +1309,14 @@ mod tests {
 
     #[test]
     fn validate_auth_deployment_rejects_empty_or_whitespace_issuer() {
-        let config = crate::auth::AuthConfig::new("aB3!zY7@qW8#eR2$".repeat(5))
+        let config = test_auth_config("aB3!zY7@qW8#eR2$".repeat(5))
             .with_issuer("https://")
             .with_audience("rustok-production-admin");
         let error =
             validate_auth_deployment(&config, true).expect_err("issuer without host must fail");
         assert!(error.to_string().contains("issuer"));
 
-        let config_ws = crate::auth::AuthConfig::new("aB3!zY7@qW8#eR2$".repeat(5))
+        let config_ws = test_auth_config("aB3!zY7@qW8#eR2$".repeat(5))
             .with_issuer("https://api .example.com")
             .with_audience("rustok-production-admin");
         let error_ws = validate_auth_deployment(&config_ws, true)
@@ -1325,7 +1326,7 @@ mod tests {
 
     #[test]
     fn validate_auth_deployment_rejects_zero_expiration_and_short_password() {
-        let mut config = crate::auth::AuthConfig::new("aB3!zY7@qW8#eR2$".repeat(5))
+        let mut config = test_auth_config("aB3!zY7@qW8#eR2$".repeat(5))
             .with_issuer("https://api.example.com")
             .with_audience("rustok-production-admin");
         config.access_expiration = 0;
@@ -1360,7 +1361,7 @@ mod tests {
 
     #[test]
     fn validate_auth_deployment_rejects_https_issuer_without_a_host() {
-        let config = crate::auth::AuthConfig::new("aB3!zY7@qW8#eR2$".repeat(5))
+        let config = test_auth_config("aB3!zY7@qW8#eR2$".repeat(5))
             .with_issuer("https://?")
             .with_audience("rustok-production-admin");
         let error = validate_auth_deployment(&config, true)
