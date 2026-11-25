@@ -23,7 +23,7 @@ mod variant_translation_changes;
 mod variant_translation_progress;
 
 pub(crate) use commands::variant_axes::reconfiguration_error_code;
-pub(crate) use concurrency::revision_conflict_of;
+pub(crate) use concurrency::{revision_conflict_of, variant_revision_conflict_of};
 pub use facets::{
     MAX_CATALOG_FACET_VALUES, MAX_CATALOG_FACETS, StorefrontCatalogFacet,
     StorefrontCatalogFacetValue,
