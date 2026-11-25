@@ -106,7 +106,9 @@ cluster lease/drain fencing and compatible rolling replica admission are
 source-implemented, including emergency enrolled-key revocation.
 RS256-only is the accepted target; mixed histories and active algorithm
 changes are rejected. Coordinated RSA-only bootstrap and consumer cutover,
-including removal of remaining homogeneous HS256 paths, is pending.
+including removal of remaining homogeneous HS256 paths, is pending. Explicit
+isolated dev/test provisioning of four independent RSA pairs is available
+through the [keyring provisioning command](docs/README.md#isolated-development-and-test-provisioning).
 Do not reset non-disposable security state. See the
 [cutover contract](docs/README.md#rs256-only-cutover).
 All JWT purposes require an exact key ID; missing-ID access and raw-root

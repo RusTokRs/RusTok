@@ -230,6 +230,29 @@ authority/witness history; only explicitly disposable development state may
 be replaced together with fresh keys and invalidation of old tokens.
 The cutover does not authorize data deletion.
 
+### Isolated development and test provisioning
+
+On POSIX systems with Python 3.9+ and OpenSSL, explicitly create a new
+generation-1 file for a **fresh, isolated** development/test security store:
+
+```sh
+install -d -m 0700 "$HOME/.local/share/rustok-dev"
+python3 scripts/dev/provision-jwt-keyring.py --output "$HOME/.local/share/rustok-dev/jwt.json"
+export RUSTOK_JWT_KEYRING_FILE="$HOME/.local/share/rustok-dev/jwt.json"
+```
+
+The command generates four independent RSA pairs with distinct key IDs,
+writes a complete file with mode 0600 outside the checkout, and refuses
+replacement even if concurrent provisioning targets the same path. It never
+generates or modifies the independent MAC root. Supply that root separately.
+The file uses the currently admitted document shape; no startup generation,
+production fallback, or authority/witness reset is introduced.
+
+Do not use this command as a rotation, recovery or conversion procedure for
+an enrolled store. Use a different private output path for each isolated
+test store. The coordinated server/installer/test consumer cutover and
+removal of the algorithm field remain pending.
+
 ### Process-local hot reload
 
 Set `RUSTOK_JWT_KEYRING_FILE` to a trusted secret-manager-mounted JSON file.

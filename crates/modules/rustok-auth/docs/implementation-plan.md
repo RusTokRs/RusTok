@@ -52,7 +52,11 @@ and validate authority before application migration. Focused regressions unrun.
 RS256-only JWT target: [accepted ADR](../../../../DECISIONS/2026-11-25-rs256-only-jwt.md).
 Mixed histories, mixed persisted snapshots/grants and cross-algorithm
 promotion are rejected in source. Next implement the coordinated four-RSA-pair
-bootstrap and all consumer/fixture cutover. The file-source entry point now
+bootstrap and all consumer/fixture cutover. A one-time POSIX dev/test tool
+now provisions four independent RSA pairs outside the checkout without
+replacing an existing keyring or touching persisted security state. Its
+source regression is authored but unrun; host/test consumers still need
+coordinated migration. The file-source entry point now
 validates only the actual complete candidate, with typed source exclusivity
 owned by Auth, not a redundant startup signer. Independent MAC root validation
 now rejects PEM key material and weak roots at preparation, host proofs and
