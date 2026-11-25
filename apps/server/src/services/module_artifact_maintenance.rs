@@ -217,6 +217,14 @@ pub fn spawn_module_artifact_maintenance_handle(
     let join_handle = tokio::spawn(async move {
         let control_plane = ModuleControlPlane::new(db);
         let mut verifier: Option<Arc<dyn TrustVerifier>> = None;
+        // Keep tenant discovery fair across bounded maintenance passes. A
+        // process restart starts at the first page; the durable candidate rows
+        // remain authoritative and no tenant is lost when this cursor resets.
+        let mut data_object_gc_tenant_cursor = None;
+        // Admission reverification also scans bounded pages. Keep the last
+        // examined installation ID so a persistent stale prefix or a large
+        // fresh prefix cannot monopolize every maintenance pass.
+        let mut admission_reverification_cursor = None;
         let mut ticker = tokio::time::interval(interval);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
@@ -296,20 +304,26 @@ pub fn spawn_module_artifact_maintenance_handle(
                     // then reused for every tenant sweep.
                     let data_object_gc = control_plane.artifact_data_object_gc(storage.clone());
                     match data_object_gc
-                        .tenants_with_candidates(DATA_OBJECT_GC_TENANT_SCAN_LIMIT)
+                        .tenants_with_candidates_after(
+                            data_object_gc_tenant_cursor,
+                            DATA_OBJECT_GC_TENANT_SCAN_LIMIT,
+                        )
                         .await
                     {
                         Ok(tenant_ids) if !tenant_ids.is_empty() => {
                             if !may_admit_next_worker_operation(&stop_rx) {
                                 break;
                             }
+                            let next_cursor = next_data_object_gc_tenant_cursor(&tenant_ids);
                             match data_object_gc.load_ledger_retention_snapshot().await {
                                 Ok(retention) => {
+                                    let mut stopped_during_page = false;
                                     for tenant_id in tenant_ids {
                                         // A tenant sweep already underway must
                                         // finish; unstarted tenants remain
                                         // eligible for the next host instance.
                                         if !may_admit_next_worker_operation(&stop_rx) {
+                                            stopped_during_page = true;
                                             break;
                                         }
                                         match data_object_gc
@@ -343,8 +357,17 @@ pub fn spawn_module_artifact_maintenance_handle(
                                             }
                                         }
                                     }
+                                    // Advance even if one tenant sweep failed:
+                                    // the failed tenant remains in the durable
+                                    // inventory and is retried after the cursor
+                                    // wraps, while later tenants get a turn.
+                                    if !stopped_during_page {
+                                        data_object_gc_tenant_cursor = next_cursor;
+                                    }
                                 }
                                 Err(err) => {
+                                    // Preserve the cursor so a failed snapshot
+                                    // cannot skip an entirely unprocessed page.
                                     error!(
                                         worker = "module_artifact_maintenance",
                                         instance_id,
@@ -354,8 +377,14 @@ pub fn spawn_module_artifact_maintenance_handle(
                                 }
                             }
                         }
-                        Ok(_) => {}
+                        Ok(_) => {
+                            // Reached the end of the live keyset inventory.
+                            // Wrap on the next pass so newly queued work and
+                            // previously failed/held tenants are revisited.
+                            data_object_gc_tenant_cursor = None;
+                        }
                         Err(err) => {
+                            // A failed discovery must retry the same page.
                             error!(
                                 worker = "module_artifact_maintenance",
                                 instance_id,
@@ -404,16 +433,23 @@ pub fn spawn_module_artifact_maintenance_handle(
                                 config.trust_policy,
                             );
                             match service
-                                .list_stale_candidates(ADMISSION_REVERIFICATIONS_PER_PASS)
+                                .list_stale_candidates_after(
+                                    admission_reverification_cursor,
+                                    ADMISSION_REVERIFICATIONS_PER_PASS,
+                                )
                                 .await
                             {
-                                Ok(candidates) => {
-                                    for candidate in candidates {
+                                Ok(page) => {
+                                    let next_cursor =
+                                        if page.has_more { page.next_cursor } else { None };
+                                    let mut stopped_during_page = false;
+                                    for candidate in page.candidates {
                                         // Never start another external trust
                                         // reverification once the host is
                                         // stopping. The current call completes
                                         // before this check is reached.
                                         if !may_admit_next_worker_operation(&stop_rx) {
+                                            stopped_during_page = true;
                                             break;
                                         }
                                         let idempotency_key = reverification_idempotency_key(
@@ -470,8 +506,17 @@ pub fn spawn_module_artifact_maintenance_handle(
                                             }
                                         }
                                     }
+                                    // Failed candidates remain stale and are
+                                    // retried after wrap; advancing this page
+                                    // lets later installations receive a turn.
+                                    if !stopped_during_page
+                                        && may_admit_next_worker_operation(&stop_rx)
+                                    {
+                                        admission_reverification_cursor = next_cursor;
+                                    }
                                 }
                                 Err(err) => {
+                                    // A failed scan must retry the same page.
                                     error!(
                                         worker = "module_artifact_maintenance",
                                         instance_id,
@@ -503,6 +548,14 @@ pub fn spawn_module_artifact_maintenance_handle(
     })
 }
 
+fn next_data_object_gc_tenant_cursor(tenant_ids: &[Uuid]) -> Option<Uuid> {
+    if tenant_ids.len() == DATA_OBJECT_GC_TENANT_SCAN_LIMIT as usize {
+        tenant_ids.last().copied()
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod startup_configuration_tests {
     use super::*;
@@ -522,5 +575,21 @@ mod startup_configuration_tests {
             Ok(_) => panic!("misconfigured security verifier must reject worker startup"),
         };
         assert!(error.contains("TRUST_POLICY_REVISION"), "{error}");
+    }
+
+    #[test]
+    fn tenant_gc_cursor_advances_full_pages_and_wraps_after_short_pages() {
+        let full_page: Vec<_> = (1..=DATA_OBJECT_GC_TENANT_SCAN_LIMIT as u128)
+            .map(Uuid::from_u128)
+            .collect();
+        assert_eq!(
+            next_data_object_gc_tenant_cursor(&full_page),
+            full_page.last().copied()
+        );
+        assert_eq!(
+            next_data_object_gc_tenant_cursor(&full_page[..full_page.len() - 1]),
+            None
+        );
+        assert_eq!(next_data_object_gc_tenant_cursor(&[]), None);
     }
 }

@@ -206,6 +206,19 @@ artifact admission reverification recheck stop between independent
 stages and tenant/candidate iterations; an already-started durable
 effect is not interrupted by these new checks.
 
+The module artifact maintenance worker also retains a UUID keyset cursor for
+tenant data-object GC across its 60-second passes. A full page advances the
+cursor; a short or empty page wraps to the first page. Discovery and retention
+snapshot failures keep the current cursor, while individual tenant failures
+do not prevent later tenants from receiving a sweep. The cursor is process-local
+and resets on restart; durable candidate rows provide restart recovery.
+
+The same worker carries an installation-ID cursor for admission reverification.
+The owner returns the last row examined, including fresh rows, so the 32-candidate
+limit and 8,192-row scan budget continue across passes. Per-candidate failures
+advance with the page and are retried after wrap; a scan failure preserves the
+cursor.
+
 
 Channel and RBAC cache-invalidation, tenant-cache and tenant-locale
 generation, and Redis-status listener starters now cancel pending
