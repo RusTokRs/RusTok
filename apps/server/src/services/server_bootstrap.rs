@@ -6,8 +6,8 @@ use crate::auth::AuthConfig;
 use crate::common::settings::RustokSettings;
 use crate::error::Result;
 use crate::services::app_lifecycle::{
-    ServerBootstrapInitializationLock, StopHandle, await_worker_startup_or_stop,
-    connect_runtime_workers_with_runtime,
+    await_worker_startup_or_stop, connect_runtime_workers_with_runtime,
+    ServerBootstrapInitializationLock, StopHandle,
 };
 use crate::services::app_router::compose_application_router;
 use crate::services::app_runtime::bootstrap_app_runtime;
