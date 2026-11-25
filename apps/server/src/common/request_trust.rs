@@ -143,11 +143,17 @@ fn client_ip_from_forwarded_chain(
     let trusted_nets = trusted_proxy_nets(settings);
     let mut current = peer_ip;
     for field in fields.into_iter().rev() {
-        for entry in field.to_str().ok()?.rsplit(',') {
+        // Decode each hop only after establishing that it belongs to the
+        // trusted side of the chain. An opaque byte in a caller-controlled
+        // earlier hop must not invalidate a proxy-appended client address.
+        for entry in field.as_bytes().rsplit(|byte| *byte == b',') {
             if !trusted_nets.iter().any(|net| net.contains(&current)) {
                 return Some(current);
             }
-            current = parse_hop(entry.trim())?;
+            if !entry.is_ascii() {
+                return None;
+            }
+            current = parse_hop(std::str::from_utf8(entry).ok()?.trim())?;
         }
     }
     Some(current)
@@ -309,7 +315,7 @@ mod tests {
         let settings = RequestTrustSettings::default();
         assert_eq!(
             secure_cookie_required(&headers, peer, &settings),
-            super::settings::is_production_security_mode(),
+            crate::common::settings::is_production_security_mode(),
         );
     }
 
@@ -520,6 +526,39 @@ mod tests {
             ),
             Some(IpAddr::from([203, 0, 113, 8])),
         );
+    }
+
+    #[test]
+    fn opaque_untrusted_hops_do_not_poison_client_identity() {
+        let peer = Some(IpAddr::from([10, 1, 2, 3]));
+        let client = Some(IpAddr::from([203, 0, 113, 8]));
+        let settings = trusted_settings();
+
+        for (name, combined, appended) in [
+            (
+                "x-forwarded-for",
+                &b"\xff, 203.0.113.8"[..],
+                "203.0.113.8",
+            ),
+            (
+                "forwarded",
+                &b"for=\xff, for=203.0.113.8"[..],
+                "for=203.0.113.8",
+            ),
+        ] {
+            let mut headers = HeaderMap::new();
+            headers.insert(name, HeaderValue::from_bytes(combined).unwrap());
+            assert_eq!(extract_effective_client_ip(&headers, peer, &settings), client);
+
+            // The same boundary applies across multiple header field lines.
+            headers.insert(name, HeaderValue::from_bytes(b"\xff").unwrap());
+            headers.append(name, HeaderValue::from_static(appended));
+            assert_eq!(extract_effective_client_ip(&headers, peer, &settings), client);
+
+            // Opaque bytes on the trusted side still fail closed.
+            headers.append(name, HeaderValue::from_bytes(b"\xff").unwrap());
+            assert_eq!(extract_effective_client_ip(&headers, peer, &settings), peer);
+        }
     }
 
     #[test]
