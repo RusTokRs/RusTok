@@ -452,11 +452,6 @@ impl JwtGenerationFence {
         }
     }
 
-    /// Refuse configuration-source downgrade after the first file enrollment.
-    pub async fn ensure_static_allowed(&self) -> Result<()> {
-        if self.load().await?.is_empty() { Ok(()) } else { Err(rejected()) }
-    }
-
     /// Trusted operator command, not a request/tenant capability.
     /// The supplied stable root must authenticate the enrolled authority.
     /// The CAS updates only the envelope and tag, preserving all leases.
@@ -630,6 +625,9 @@ impl JwtGenerationFence {
         already_applied: bool,
     ) -> Result<Option<LeaseDeadline>> {
         let generation_sql = i64::try_from(generation).map_err(|_| rejected())?;
+        if generation_sql <= 0 {
+            return Err(rejected());
+        }
         let key = format!("{}:{generation}", publisher.incarnation());
         for _ in 0..MAX_CAS_ATTEMPTS {
             let started = ClockSample::now();
@@ -642,10 +640,9 @@ impl JwtGenerationFence {
                 self.metrics.record("grant", "revoked");
                 return Ok(None);
             }
-            let admitted = match ledger {
-                None => generation == 0,
-                Some(ledger) => generation == ledger.generation && snapshot == ledger.current,
-            };
+            let admitted = ledger
+                .as_ref()
+                .is_some_and(|ledger| generation == ledger.generation && snapshot == ledger.current);
             if !admitted {
                 self.metrics.record("grant", "not_admitted");
                 return Ok(None);
@@ -655,14 +652,6 @@ impl JwtGenerationFence {
                 return Ok(None);
             }
             let mut grants = stored.live_grants()?;
-            // Generation zero has no durable snapshot yet. Do not authorize
-            // a different static key set while prior holders can use JWTs.
-            if generation == 0 && (stored.untracked_until_ms > stored.now_ms
-                || grants.values().any(|grant| grant.snapshot != snapshot))
-            {
-                self.metrics.record("grant", "static_conflict");
-                return Ok(None);
-            }
             if already_applied {
                 // Renewal observes the locally installed generation, so it
                 // can retry an ACK lost to CAS contention during activation.
@@ -978,23 +967,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn jwt_schema_rollback_refuses_enrollment_and_exercised_static_lease() {
+    async fn jwt_schema_rollback_refuses_enrollment() {
         let keys = FenceKeys::generate();
-        let db = database().await;
-        let manager = SchemaManager::new(&db);
-        let fence = JwtGenerationFence::new(db.clone());
         let first = keys.config(ROOT, "old", keys.old(), None);
-        let (_, publisher) = first.clone().into_cluster_jwt(0).unwrap();
-        assert!(fence.renew(&publisher).await.unwrap());
-        let before = fence.load().await.unwrap();
-        assert!(before.is_empty());
-        assert!(before.lease_until_ms > 0);
-        let last = crate::migrations::jwt_fence_migrations().pop().unwrap();
-        assert!(last.down(&manager).await.is_err());
-        let after = fence.load().await.unwrap();
-        assert_eq!(before.lease_until_ms, after.lease_until_ms);
-        assert_eq!(before.replica_grants, after.replica_grants);
-
         let enrolled_db = database().await;
         let enrolled = JwtGenerationFence::new(enrolled_db.clone());
         assert_eq!(enrolled.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
@@ -1272,26 +1247,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn static_grants_require_exact_compatible_metadata() {
-        let keys = FenceKeys::generate();
-        let db = database().await;
-        let fence = JwtGenerationFence::new(db.clone());
-        let first = keys.config(ROOT, "old", keys.old(), None);
-        let second = keys.config(ROOT, "new", &keys.next, None);
-        let (_, a) = first.clone().into_cluster_jwt(0).unwrap();
-        let (_, b) = first.into_cluster_jwt(0).unwrap();
-        let (_, c) = second.into_cluster_jwt(0).unwrap();
-        assert!(fence.renew(&a).await.unwrap());
-        assert!(fence.renew(&b).await.unwrap());
-        assert!(!fence.renew(&c).await.unwrap());
-        assert!(!c.lease_readiness().unwrap().is_ready());
-        a.revoke_lease();
-        b.revoke_lease();
-        db.execute_unprepared("UPDATE auth_jwt_generation_fence SET lease_until_ms = 0, replica_grants = '{}' WHERE id = 1").await.unwrap();
-        assert!(fence.renew(&c).await.unwrap());
-    }
-
-    #[tokio::test]
     async fn malformed_registry_keys_are_refused_before_expiry_or_ack() {
         let keys = FenceKeys::generate();
         let db = database().await;
@@ -1313,35 +1268,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn static_lease_blocks_first_enrollment_and_expired_drain_recovers() {
-        let keys = FenceKeys::generate();
-        let db = database().await;
-        let fence = JwtGenerationFence::new(db.clone());
-        let first = keys.config(ROOT, "old", keys.old(), None);
-        let (_, static_runtime) = first.clone().into_cluster_jwt(0).unwrap();
-        assert!(fence.renew(&static_runtime).await.unwrap());
-        assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Draining);
-        assert!(!fence.renew(&static_runtime).await.unwrap());
-        db.execute_unprepared("UPDATE auth_jwt_generation_fence SET drain_until_ms = 0 WHERE id = 1")
-            .await.unwrap();
-        assert!(fence.renew(&static_runtime).await.unwrap());
-        assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Draining);
-        static_runtime.revoke_lease();
-        db.execute_unprepared("UPDATE auth_jwt_generation_fence SET lease_until_ms = 0, replica_grants = '{}' WHERE id = 1")
-            .await.unwrap();
-        assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
-        assert!(!fence.renew(&static_runtime).await.unwrap());
-        assert!(fence.ensure_static_allowed().await.is_err());
-    }
-
-    #[tokio::test]
     async fn persists_floor_and_tombstones_across_store_recreation() {
         let keys = FenceKeys::generate();
         let db = database().await;
         let first = keys.config(ROOT, "old", keys.old(), None);
         let second = keys.config(ROOT, "new", &keys.next, None);
         let fence = JwtGenerationFence::new(db.clone());
-        assert!(fence.ensure_static_allowed().await.is_ok());
         fence.admit(1, &first).await.unwrap();
         fence.admit(2, &second).await.unwrap();
         drop(fence);
@@ -1349,7 +1281,6 @@ mod tests {
         restarted.admit(2, &second).await.unwrap();
         assert!(restarted.admit(1, &first).await.is_err());
         assert!(restarted.admit(2, &first).await.is_err());
-        assert!(restarted.ensure_static_allowed().await.is_err());
         assert!(restarted.admit(3, &first).await.is_err());
         assert!(restarted.admit(3, &keys.config(ROOT, "renamed", keys.old(), None)).await.is_err());
         assert!(restarted.admit(3, &keys.config(ROOT, "old", &keys.third, None)).await.is_err());
@@ -1405,10 +1336,8 @@ mod tests {
             "UPDATE auth_jwt_generation_fence SET tag = '0000000000000000000000000000000000000000000000000000000000000000' WHERE id = 1",
         ).await.unwrap();
         assert!(matches!(fence.admit(1, &first).await, Err(AuthError::Internal(_))));
-        assert!(fence.ensure_static_allowed().await.is_err());
         db.execute_unprepared("DELETE FROM auth_jwt_generation_fence WHERE id = 1")
             .await.unwrap();
-        assert!(fence.ensure_static_allowed().await.is_err());
         assert!(matches!(fence.admit(2, &first).await, Err(AuthError::Internal(_))));
     }
 

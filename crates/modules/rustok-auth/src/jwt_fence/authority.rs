@@ -343,7 +343,7 @@ mod tests {
         let independent = open_bound(destination.clone(), id, ROOT).await.unwrap();
         let candidate = keys.config("incorrect-root-at-least-thirty-two-bytes", "new", &keys.next, None);
         assert!(independent.admit(1, &candidate).await.is_err());
-        let (_, publisher) = candidate.into_cluster_jwt(0).unwrap();
+        let (_, publisher) = candidate.into_cluster_jwt(1).unwrap();
         assert!(independent.renew(&publisher).await.is_err());
         assert!(independent.load().await.unwrap().is_empty());
         // Simulate the marker disappearing between the read and the CAS.

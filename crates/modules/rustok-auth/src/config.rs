@@ -415,14 +415,14 @@ impl AuthConfig {
         self.into_jwt_runtime(generation, false)
     }
 
-    /// HTTP host composition: generation zero is static mode. JWT operations
-    /// fail closed until a matching durable lease is installed.
+    /// HTTP host composition: a positive enrolled generation is mandatory.
+    /// JWT operations fail closed until a matching durable lease is installed.
     pub fn into_cluster_jwt(self, generation: u64) -> Result<(Self, JwtKeyringPublisher)> {
         self.into_jwt_runtime(generation, true)
     }
 
     fn into_jwt_runtime(mut self, generation: u64, lease_required: bool) -> Result<(Self, JwtKeyringPublisher)> {
-        if (!lease_required && generation == 0)
+        if generation == 0
             || i64::try_from(generation).is_err()
             || !matches!(&self.key_state, JwtKeySource::Fixed(_))
         {
@@ -995,18 +995,18 @@ mod tests {
         let root = secret();
         let fixture = JwtKeyringFixture::generate().unwrap();
         let candidate = rsa_config(root, &fixture);
-        let (_, publisher) = candidate.clone().into_cluster_jwt(0).unwrap();
+        let (_, publisher) = candidate.clone().into_cluster_jwt(1).unwrap();
         let authority = Arc::new(ClockGuard::new());
         let deadline = LeaseDeadline::new(ClockSample::now(), Duration::from_secs(10), authority.clone()).unwrap();
-        assert!(publisher.install_lease(0, deadline).unwrap());
+        assert!(publisher.install_lease(1, deadline).unwrap());
         let readiness = publisher.lease_readiness().unwrap();
         assert!(readiness.is_ready());
         authority.trip();
         assert!(!readiness.is_ready());
         let fresh = Arc::new(ClockGuard::new());
         let deadline = LeaseDeadline::new(ClockSample::now(), Duration::from_secs(10), fresh).unwrap();
-        assert!(!publisher.install_lease(0, deadline.clone()).unwrap());
-        assert!(publisher.publish_granted(1, candidate, deadline).is_err());
+        assert!(!publisher.install_lease(1, deadline.clone()).unwrap());
+        assert!(publisher.publish_granted(2, candidate, deadline).is_err());
         assert!(!readiness.is_ready());
     }
 
@@ -1015,16 +1015,16 @@ mod tests {
         use std::cell::Cell;
         use std::time::Duration;
         let fixture = JwtKeyringFixture::generate().unwrap();
-        let (config, publisher) = rsa_config(secret(), &fixture).into_cluster_jwt(0).unwrap();
+        let (config, publisher) = rsa_config(secret(), &fixture).into_cluster_jwt(1).unwrap();
         let readiness = publisher.lease_readiness().unwrap();
         assert!(!readiness.is_ready());
         let authority = Arc::new(ClockGuard::new());
         let start = ClockSample::now();
         let deadline = start.checked_add(Duration::from_secs(60)).unwrap();
         let lease = LeaseDeadline::new(start, Duration::from_secs(60), authority.clone()).unwrap();
-        assert!(!publisher.install_lease(1, lease.clone()).unwrap());
-        assert!(!publisher.install_lease(0, LeaseDeadline::new(start, Duration::ZERO, authority).unwrap()).unwrap());
-        assert!(publisher.install_lease(0, lease).unwrap());
+        assert!(!publisher.install_lease(2, lease.clone()).unwrap());
+        assert!(!publisher.install_lease(1, LeaseDeadline::new(start, Duration::ZERO, authority).unwrap()).unwrap());
+        assert!(publisher.install_lease(1, lease).unwrap());
         assert!(readiness.is_ready());
 
         // The post-operation fence must discard a result even if crypto
@@ -1278,7 +1278,7 @@ mod tests {
         assert!(base.prepare_jwt_document(&serde_json::to_vec(&obsolete).unwrap()).is_err());
         assert!(base.clone().into_live_jwt(max + 1).is_err());
         assert!(base.clone().into_cluster_jwt(max + 1).is_err());
-        assert!(base.clone().into_cluster_jwt(0).is_ok());
+        assert!(base.clone().into_cluster_jwt(0).is_err());
         let (generation, first) = base.prepare_jwt_document(
             &document(&fixture, 1, "one", material),
         ).unwrap();

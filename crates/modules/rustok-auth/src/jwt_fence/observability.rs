@@ -20,7 +20,7 @@ const OUTCOMES: &[(&str, &str)] = &[
     ("renew", "granted"), ("renew", "denied"), ("renew", "error"),
     ("activate", "applied"), ("activate", "denied"), ("activate", "error"),
     ("grant", "revoked"), ("grant", "not_admitted"), ("grant", "draining"),
-    ("grant", "capacity"), ("grant", "contention"), ("grant", "static_conflict"),
+    ("grant", "capacity"), ("grant", "contention"),
     ("admit", "admitted"), ("admit", "draining"), ("admit", "awaiting_replicas"),
     ("admit", "rejected"), ("admit", "error"),
     ("ack", "complete"), ("ack", "deferred"), ("ack", "error"),
