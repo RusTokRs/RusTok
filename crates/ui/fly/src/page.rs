@@ -135,7 +135,7 @@ pub fn apply_page_command(document: &mut ProjectDocument, command: &PageCommand)
                 });
             }
             ensure_page_id_available(document, page.id.as_deref(), None)?;
-            document.project.pages.insert(*index, page.as_ref().clone());
+            document.project_mut().pages.insert(*index, page.as_ref().clone());
             Ok(())
         }
         PageCommand::Remove { locator } => {
@@ -143,7 +143,7 @@ pub fn apply_page_command(document: &mut ProjectDocument, command: &PageCommand)
             if document.project.pages.len() <= 1 {
                 return Err(FlyError::LastPageRemoval);
             }
-            let page = document.project.pages.remove(index);
+            let page = document.project_mut().pages.remove(index);
             remove_known_page_style_rules(document, &page);
             Ok(())
         }
@@ -157,8 +157,8 @@ pub fn apply_page_command(document: &mut ProjectDocument, command: &PageCommand)
             if source_index < target_index {
                 target_index = target_index.saturating_sub(1);
             }
-            let page = document.project.pages.remove(source_index);
-            document.project.pages.insert(target_index, page);
+            let page = document.project_mut().pages.remove(source_index);
+            document.project_mut().pages.insert(target_index, page);
             Ok(())
         }
         PageCommand::Patch { locator, patch } => {
@@ -172,10 +172,7 @@ pub fn apply_page_command(document: &mut ProjectDocument, command: &PageCommand)
             if proposed_id.is_some() {
                 ensure_page_id_available(document, proposed_id.as_deref(), Some(index))?;
             }
-            let page = document
-                .project
-                .pages
-                .get_mut(index)
+            let page = document.project_mut().pages.get_mut(index)
                 .ok_or_else(|| FlyError::PageNotFound(index.to_string()))?;
             apply_page_patch(page, patch.clone());
             Ok(())
@@ -303,7 +300,7 @@ fn remove_known_page_style_rules(document: &mut ProjectDocument, page: &ProjectP
         root.collect_ids(&mut component_ids);
     }
     let component_ids = component_ids.into_iter().collect::<BTreeSet<_>>();
-    document.project.styles.retain(|raw| {
+    document.project_mut().styles.retain(|raw| {
         StyleRuleIdentity::from_value(raw).is_none_or(|rule| {
             rule.component_id
                 .as_ref()

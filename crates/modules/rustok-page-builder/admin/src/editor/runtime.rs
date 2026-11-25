@@ -355,13 +355,14 @@ impl AdminEditorRuntime {
         let request = self.controller.with(|controller| {
             let active_page_index = controller.active_page_index();
             let mut document = controller.editor().document().clone();
-            document.project.pages = document
-                .project
+            let active_page = document
+                .project()
                 .pages
                 .get(active_page_index)
                 .cloned()
                 .into_iter()
                 .collect();
+            document.project_mut().pages = active_page;
             GrapesJsCodec::encode_value(&document)
                 .map(|project_data| {
                     (

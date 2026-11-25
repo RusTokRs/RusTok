@@ -331,10 +331,10 @@ fn write_catalog(document: &mut ProjectDocument, catalog: TranslationCatalog) ->
         .collect::<FlyResult<Vec<_>>>()?;
     entries.extend(catalog.unknown_entries);
     if entries.is_empty() {
-        document.project.extensions.remove(FLY_TRANSLATIONS_FIELD);
+        document.project_mut().extensions.remove(FLY_TRANSLATIONS_FIELD);
     } else {
         document
-            .project
+            .project_mut()
             .extensions
             .insert(FLY_TRANSLATIONS_FIELD.to_string(), Value::Array(entries));
     }

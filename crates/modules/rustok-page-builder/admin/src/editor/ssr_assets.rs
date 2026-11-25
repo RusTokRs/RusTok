@@ -336,7 +336,7 @@ fn asset_reference_component_ids(
 ) -> Vec<String> {
     let mut references = Vec::new();
     visit_project_components(
-        &controller.editor().document().project,
+        &controller.editor().document().project(),
         |component, visit| {
             if component
                 .attributes

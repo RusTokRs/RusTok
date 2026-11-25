@@ -31,7 +31,7 @@ pub struct EditorLayerItem {
 /// before mutation anyway.
 pub fn editor_layer_items(document: &ProjectDocument) -> Vec<EditorLayerItem> {
     let mut items = Vec::new();
-    for page in &document.project.pages {
+    for page in &document.project().pages {
         if let Some(root) = page.component.as_ref() {
             collect_layer_items(root, 0, None, 0, &mut items);
         }
@@ -167,7 +167,7 @@ pub fn editor_layer_items_for_page(
 ) -> Vec<EditorLayerItem> {
     let mut items = Vec::new();
     if let Some(root) = document
-        .project
+        .project()
         .pages
         .get(page_index)
         .and_then(|page| page.component.as_ref())

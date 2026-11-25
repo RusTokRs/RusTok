@@ -503,7 +503,7 @@ fn write_catalog(document: &mut ProjectDocument, catalog: BindingCatalog) -> Fly
         })
         .collect::<FlyResult<Vec<_>>>()?;
     entries.extend(catalog.unknown_entries);
-    document.project.extensions.insert(
+    document.project_mut().extensions.insert(
         FLY_RUNTIME_BINDINGS_FIELD.to_string(),
         Value::Array(entries),
     );

@@ -307,7 +307,7 @@ pub fn apply_style_rule_command(
             }
             let existing = find_component_rule_index(document, component_id, scope);
             if let Some(index) = existing {
-                let object = document.project.styles[index]
+                let object = document.project_mut().styles[index]
                     .as_object_mut()
                     .ok_or_else(|| {
                         FlyError::Encode("style rule must remain an object".to_string())
@@ -324,7 +324,7 @@ pub fn apply_style_rule_command(
                 style.extend(declarations.clone());
                 synchronize_rule_identity(object, component_id, scope);
             } else if !declarations.is_empty() {
-                document.project.styles.push(component_rule_value(
+                document.project_mut().styles.push(component_rule_value(
                     component_id,
                     scope,
                     declarations.clone(),
@@ -343,7 +343,7 @@ pub fn apply_style_rule_command(
         } => {
             let before = document.project.styles.len();
             let scope_key = scope.stable_key();
-            document.project.styles.retain(|raw| {
+            document.project_mut().styles.retain(|raw| {
                 StyleRuleIdentity::from_value(raw)
                     .is_none_or(|rule| !rule.targets(component_id, scope_key.as_str()))
             });
@@ -383,9 +383,9 @@ fn upsert_raw_style_rule(document: &mut ProjectDocument, rule: Value) -> FlyResu
                     && candidate.scope.stable_key() == descriptor_scope_key
         })
     }) {
-        document.project.styles[index] = rule;
+        document.project_mut().styles[index] = rule;
     } else {
-        document.project.styles.push(rule);
+        document.project_mut().styles.push(rule);
     }
     Ok(())
 }
@@ -478,7 +478,7 @@ fn find_component_rule_index(
 }
 
 fn remove_empty_component_rules(document: &mut ProjectDocument) {
-    document.project.styles.retain(|raw| {
+    document.project_mut().styles.retain(|raw| {
         let has_declarations = raw
             .get("style")
             .and_then(Value::as_object)

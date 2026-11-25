@@ -46,7 +46,7 @@ pub(crate) fn evaluate_materialized_landing_readiness(
         fly::FLY_RUNTIME_CONDITIONS_FIELD,
         fly::FLY_RUNTIME_REPEATERS_FIELD,
     ] {
-        validation_document.project.extensions.remove(field);
+        validation_document.project_mut().extensions.remove(field);
     }
     validation_document.invalidate_caches();
     evaluate_landing_readiness_impl(&validation_document, None, policy, true)
@@ -88,7 +88,7 @@ fn evaluate_landing_readiness_impl(
     };
 
     let routes = localized_page_route_index(document);
-    for (page_index, page) in document.project.pages.iter().enumerate() {
+    for (page_index, page) in document.project().pages.iter().enumerate() {
         let path = format!("project.pages[{page_index}]");
         if policy.require_page_id && page.id.as_deref().map(str::trim).is_none_or(str::is_empty) {
             issues.push(issue(
@@ -194,7 +194,7 @@ fn evaluate_landing_readiness_impl(
     LandingReadinessReport {
         ready,
         block_on_warnings: policy.block_on_warnings,
-        page_count: document.project.pages.len(),
+        page_count: document.project().pages.len(),
         issues,
         categories,
         locale_coverage,

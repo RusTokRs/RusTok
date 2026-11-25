@@ -415,14 +415,14 @@ pub fn rename_token_references(
     let mut total_replacements = 0;
 
     // 1. Mutate component styles across all pages
-    for page in &mut document.project.pages {
+    for page in &mut document.project_mut().pages {
         if let Some(root) = page.component.as_mut() {
             total_replacements += rename_in_component_tree(root, old_name, new_name);
         }
     }
 
     // 2. Mutate project style catalog rules
-    for rule_val in &mut document.project.styles {
+    for rule_val in &mut document.project_mut().styles {
         if let Some(style_obj) = rule_val.get_mut("style").and_then(Value::as_object_mut) {
             for val in style_obj.values_mut() {
                 if let Some(css_val) = val.as_str() {
@@ -437,7 +437,7 @@ pub fn rename_token_references(
     }
 
     // 3. Mutate sibling theme tokens
-    if let Some(theme) = document.project.extensions.get_mut(FLY_THEME_FIELD)
+    if let Some(theme) = document.project_mut().extensions.get_mut(FLY_THEME_FIELD)
         && let Some(tokens_obj) = theme.get_mut("tokens").and_then(Value::as_object_mut)
     {
         for val in tokens_obj.values_mut() {
@@ -624,13 +624,13 @@ fn apply_theme_command_inner(
         )));
     }
     if tokens.is_empty() {
-        document.project.extensions.remove(FLY_THEME_FIELD);
+        document.project_mut().extensions.remove(FLY_THEME_FIELD);
     } else {
         let mut map = serde_json::Map::new();
         for token in &tokens {
             map.insert(token.name.clone(), Value::String(token.value.clone()));
         }
-        document.project.extensions.insert(
+        document.project_mut().extensions.insert(
             FLY_THEME_FIELD.to_string(),
             serde_json::json!({ "tokens": Value::Object(map) }),
         );

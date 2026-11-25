@@ -82,10 +82,10 @@ impl SymbolDescriptor {
 /// Replaces the stored definition list with `symbols` (used by command application).
 pub fn set_symbol_descriptors(document: &mut ProjectDocument, symbols: Vec<Value>) {
     if symbols.is_empty() {
-        document.project.extensions.remove(FLY_SYMBOLS_FIELD);
+        document.project_mut().extensions.remove(FLY_SYMBOLS_FIELD);
     } else {
         document
-            .project
+            .project_mut()
             .extensions
             .insert(FLY_SYMBOLS_FIELD.to_string(), Value::Array(symbols));
     }
@@ -140,9 +140,9 @@ fn apply_symbol_command_inner(
                     crate::AssetDescriptor::from_value(candidate.clone())
                         .is_some_and(|candidate| candidate.id == asset_descriptor.id)
                 }) {
-                    document.project.assets[index] = asset.clone();
+                    document.project_mut().assets[index] = asset.clone();
                 } else {
-                    document.project.assets.push(asset.clone());
+                    document.project_mut().assets.push(asset.clone());
                 }
             }
             let mut entries: Vec<Value> = SymbolDescriptor::entries_from_document(document)
@@ -385,7 +385,7 @@ pub fn resolve_symbol_instances(document: &ProjectDocument) -> FlyResult<Project
         page_dom: BTreeSet::new(),
     };
     let mut pending_styles = Vec::new();
-    for page in &mut resolved.project.pages {
+    for page in &mut resolved.project_mut().pages {
         if let Some(root) = page.component.as_mut() {
             identities.page_dom =
                 crate::id_reference::materialized_dom_ids(std::iter::once(&*root));
@@ -399,7 +399,7 @@ pub fn resolve_symbol_instances(document: &ProjectDocument) -> FlyResult<Project
             )?;
         }
     }
-    resolved.project.styles.extend(pending_styles);
+    resolved.project_mut().styles.extend(pending_styles);
     Ok(resolved)
 }
 

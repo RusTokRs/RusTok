@@ -1538,10 +1538,10 @@ where
         .collect::<FlyResult<Vec<_>>>()?;
     entries.extend(unknown);
     if entries.is_empty() {
-        document.project.extensions.remove(field);
+        document.project_mut().extensions.remove(field);
     } else {
         document
-            .project
+            .project_mut()
             .extensions
             .insert(field.to_string(), Value::Array(entries));
     }

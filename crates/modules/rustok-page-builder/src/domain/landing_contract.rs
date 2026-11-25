@@ -159,10 +159,10 @@ pub struct LandingSectionValidationReport {
 
 impl LandingSectionValidationReport {
     pub fn for_document(document: &ProjectDocument) -> FlyResult<Self> {
-        let mut pages = Vec::with_capacity(document.project.pages.len());
+        let mut pages = Vec::with_capacity(document.project().pages.len());
         let mut issues = Vec::new();
 
-        for (page_index, page) in document.project.pages.iter().enumerate() {
+        for (page_index, page) in document.project().pages.iter().enumerate() {
             let mut sections = Vec::new();
             if let Some(root) = page.component.as_ref() {
                 collect_landing_sections(
@@ -328,7 +328,7 @@ pub struct ComponentRegistryManifest {
 impl ComponentRegistryManifest {
     pub fn for_document(document: &ProjectDocument, registries: &RegistrySet) -> Self {
         let mut components = BTreeMap::<String, ComponentRegistryContract>::new();
-        document.project.visit_components(|component, _, _| {
+        document.project().visit_components(|component, _, _| {
             let component_type = component.component_type().to_string();
             let contract = registries
                 .components
@@ -674,8 +674,8 @@ where
             &mut structural_issues,
         ))
     };
-    let mut pages = Vec::with_capacity(render_document.project.pages.len());
-    for (page_index, _) in render_document.project.pages.iter().enumerate() {
+    let mut pages = Vec::with_capacity(render_document.project().pages.len());
+    for (page_index, _) in render_document.project().pages.iter().enumerate() {
         let rendered = renderer.render_page(&render_document, page_index, render_policy)?;
         if rendered.page_index != page_index {
             return Err(FlyError::Encode(format!(

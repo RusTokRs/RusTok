@@ -26,7 +26,7 @@ pub fn materialize_localized_page_metadata(
     let mut fallback_values = 0usize;
     let mut unresolved_values = 0usize;
 
-    for (page_index, page) in document.project.pages.iter_mut().enumerate() {
+    for (page_index, page) in document.project_mut().pages.iter_mut().enumerate() {
         let Some(metadata) = page.extensions.get(FLY_PAGE_METADATA_FIELD).cloned() else {
             continue;
         };

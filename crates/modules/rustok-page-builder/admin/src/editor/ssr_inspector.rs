@@ -236,7 +236,7 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                 .iter()
                 .flat_map(flatten_layer)
                 .collect::<Vec<_>>();
-            let pages = controller.editor().document().project.pages.clone();
+            let pages = controller.editor().document().project().pages.clone();
             (components, pages, controller.active_page_index())
         });
         let page_count = pages.len();

@@ -294,7 +294,7 @@ pub fn validate_static_publish_document(
     policy.verify_integrity()?;
 
     let mut diagnostics = Vec::new();
-    for (page_index, page) in document.project.pages.iter().enumerate() {
+    for (page_index, page) in document.project().pages.iter().enumerate() {
         if let Some(root) = page.component.as_ref() {
             validate_component_node(
                 root,
@@ -646,7 +646,7 @@ fn validate_style_rules(
     policy: &PageBuilderStaticPublishPolicy,
     diagnostics: &mut Vec<PageBuilderStaticPublishPolicyDiagnostic>,
 ) {
-    for (index, raw) in document.project.styles.iter().enumerate() {
+    for (index, raw) in document.project().styles.iter().enumerate() {
         let path = format!("styles[{index}]");
         let Some(rule) = StyleRuleDescriptor::from_value(raw.clone()) else {
             reject(
@@ -823,7 +823,7 @@ fn validate_assets(
     diagnostics: &mut Vec<PageBuilderStaticPublishPolicyDiagnostic>,
 ) {
     let mut ids = BTreeSet::new();
-    for (index, raw) in document.project.assets.iter().enumerate() {
+    for (index, raw) in document.project().assets.iter().enumerate() {
         let path = format!("assets[{index}]");
         let Some(asset) = AssetDescriptor::from_value(raw.clone()) else {
             reject(
@@ -863,7 +863,7 @@ fn validate_page_metadata(
     policy: &PageBuilderStaticPublishPolicy,
     diagnostics: &mut Vec<PageBuilderStaticPublishPolicyDiagnostic>,
 ) {
-    for (page_index, page) in document.project.pages.iter().enumerate() {
+    for (page_index, page) in document.project().pages.iter().enumerate() {
         let Some(metadata) = page.extensions.get(FLY_PAGE_METADATA_FIELD) else {
             continue;
         };
@@ -1505,7 +1505,7 @@ mod tests {
     #[test]
     fn policy_rejects_empty_localized_metadata_urls() {
         let mut document = document(json!({ "id": "root", "type": "wrapper" }));
-        document.project.pages[0]
+        document.project().pages[0]
             .extensions
             .get_mut(FLY_PAGE_METADATA_FIELD)
             .and_then(Value::as_object_mut)

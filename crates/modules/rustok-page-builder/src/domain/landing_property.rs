@@ -148,7 +148,7 @@ impl LandingPropertyValidationReport {
     pub fn for_document(document: &ProjectDocument) -> Self {
         let mut sections = Vec::new();
         let mut issues = Vec::new();
-        for (page_index, page) in document.project.pages.iter().enumerate() {
+        for (page_index, page) in document.project().pages.iter().enumerate() {
             if let Some(root) = page.component.as_ref() {
                 inspect_component_tree(
                     root,

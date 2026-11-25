@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ProjectDocument {
-    pub project: GrapesProject,
+    pub(crate) project: GrapesProject,
     #[serde(skip)]
     pub(crate) component_index: std::sync::OnceLock<ComponentIndex>,
     #[serde(skip)]
@@ -38,6 +38,11 @@ impl ProjectDocument {
             component_index: std::sync::OnceLock::new(),
             cached_hash: std::sync::OnceLock::new(),
         }
+    }
+
+    /// Returns a read-only view of the GrapesJS project. Use `project_mut()` for writes.
+    pub fn project(&self) -> &GrapesProject {
+        &self.project
     }
 
     pub fn component_index(&self) -> &ComponentIndex {
@@ -1241,5 +1246,35 @@ mod tests {
             style_val.get("flyComponentId").and_then(Value::as_str),
             Some("orig-h1")
         );
+    }
+}
+
+
+#[cfg(test)]
+mod project_access_tests {
+    use super::*;
+    use crate::GrapesJsCodec;
+    use serde_json::json;
+
+    #[test]
+    fn project_mut_invalidates_cached_hash_and_component_index() {
+        let mut document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{"id": "child", "type": "text"}]
+                }
+            }]
+        })).expect("valid document");
+
+        let original_hash = document.hash();
+        assert!(document.contains_component("child"));
+
+        document.project_mut().pages[0].component = None;
+
+        assert!(!document.contains_component("child"));
+        assert_ne!(document.hash(), original_hash);
     }
 }

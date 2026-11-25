@@ -169,7 +169,7 @@ pub fn SsrLocalizedMetadataPanel(runtime: AdminEditorRuntime) -> impl IntoView {
         );
         let pages = runtime
             .controller
-            .with(|controller| controller.editor().document().project.pages.clone());
+            .with(|controller| controller.editor().document().project().pages.clone());
 
         view! {
             <section
@@ -373,7 +373,7 @@ mod tests {
             .dispatch(intent)
             .expect("localized metadata patch");
         let metadata =
-            &controller.editor().document().project.pages[0].extensions[FLY_PAGE_METADATA_FIELD];
+            &controller.editor().document().project().pages[0].extensions[FLY_PAGE_METADATA_FIELD];
         assert_eq!(metadata["providerFuture"]["enabled"], true);
         assert_eq!(
             metadata["slug"][LOCALIZED_VALUES_FIELD]["en"],
@@ -384,7 +384,7 @@ mod tests {
             controller.editor().document(),
             &json!({ "$locale": "ru" }),
         );
-        let resolved = PageMetadata::from_page(&materialized.document.project.pages[0]);
+        let resolved = PageMetadata::from_page(&materialized.document.project().pages[0]);
         assert_eq!(resolved.title.as_deref(), Some("Главная"));
         assert_eq!(resolved.slug.as_deref(), Some("привет-мир"));
     }
@@ -427,7 +427,7 @@ mod tests {
             }]
         }))
         .expect("document");
-        let page = &document.project.pages[0];
+        let page = &document.project().pages[0];
         assert_eq!(
             serde_json::from_str::<Value>(&localized_metadata_json(page)).unwrap(),
             json!({ "title": { "en": "Home", "ru": "Главная" } })

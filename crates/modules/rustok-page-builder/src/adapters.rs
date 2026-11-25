@@ -79,7 +79,7 @@ impl FlyProjectInspection {
     /// the structural layers tree.
     pub fn tree_nodes(&self) -> Vec<BuilderTreeNode> {
         self.document
-            .project
+            .project()
             .pages
             .iter()
             .enumerate()

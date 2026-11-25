@@ -358,7 +358,7 @@ impl AdminCanvasController {
         let name = optional(request.name).unwrap_or_else(|| page_id.clone());
         Ok(UiIntent::execute(EditorCommand::Page {
             command: PageCommand::Add {
-                index: self.editor().document().project.pages.len(),
+                index: self.editor().document().project().pages.len(),
                 page: Box::new(blank_page(page_id, name)),
             },
         }))

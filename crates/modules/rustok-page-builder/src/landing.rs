@@ -126,7 +126,7 @@ fn registry_compatibility(
     registries: &RegistrySet,
 ) -> RegistryCompatibilityReport {
     let mut report = registry.compatibility_with(registries);
-    document.project.visit_components(|component, _, _| {
+    document.project().visit_components(|component, _, _| {
         let component_type = component.component_type();
         let Some(available) = registries.components.get(component_type) else {
             return;
@@ -208,7 +208,7 @@ mod tests {
     #[test]
     fn api_decodes_to_the_domain_document() {
         let inspection = LandingProjectInspection::decode(&project_value()).expect("inspection");
-        assert_eq!(inspection.document().project.pages.len(), 1);
+        assert_eq!(inspection.document().project().pages.len(), 1);
         assert!(inspection.registry_manifest().components.len() >= 2);
     }
 

@@ -494,15 +494,15 @@ fn apply_asset_command(document: &mut ProjectDocument, command: &AssetCommand) -
                 AssetDescriptor::from_value(candidate.clone())
                     .is_some_and(|candidate| candidate.id == descriptor.id)
             }) {
-                document.project.assets[index] = asset.clone();
+                document.project_mut().assets[index] = asset.clone();
             } else {
-                document.project.assets.push(asset.clone());
+                document.project_mut().assets.push(asset.clone());
             }
             Ok(())
         }
         AssetCommand::Remove { asset_id } => {
             let before = document.project.assets.len();
-            document.project.assets.retain(|candidate| {
+            document.project_mut().assets.retain(|candidate| {
                 AssetDescriptor::from_value(candidate.clone())
                     .is_none_or(|candidate| candidate.id != *asset_id)
             });

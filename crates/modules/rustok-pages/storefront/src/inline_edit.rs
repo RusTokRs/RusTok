@@ -466,12 +466,12 @@ fn decode_canonical_document(
             "Pages inline edit document could not be decoded by the canonical Fly codec",
         )
     })?;
-    if document.project.pages.len() != 1 {
+    if document.project().pages.len() != 1 {
         return Err(rustok_pages::inline_edit_context_mismatch(
             "Pages inline edit requires exactly one Fly page in the localized body",
         ));
     }
-    let fly_page_id = document.project.pages[0]
+    let fly_page_id = document.project().pages[0]
         .id
         .as_deref()
         .map(str::trim)
@@ -483,7 +483,7 @@ fn decode_canonical_document(
             )
         })?;
     let mut unstable_component_path = None;
-    document.project.visit_components(|component, _, path| {
+    document.project().visit_components(|component, _, path| {
         if unstable_component_path.is_none()
             && component
                 .id()

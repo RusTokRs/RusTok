@@ -48,15 +48,16 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
             let context = runtime.runtime_context.get();
             runtime.controller.with(|controller| {
                 let mut active_document = controller.editor().document().clone();
-                active_document.project.pages = controller
+                let active_page = controller
                     .editor()
                     .document()
-                    .project
+                    .project()
                     .pages
                     .get(controller.active_page_index())
                     .cloned()
                     .into_iter()
                     .collect();
+                active_document.project_mut().pages = active_page;
                 render_canvas_srcdoc_with_context(
                     &active_document,
                     &instance_id,

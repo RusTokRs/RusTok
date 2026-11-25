@@ -44,7 +44,7 @@ impl AdminCanvasController {
         if !self
             .editor()
             .document()
-            .project
+            .project()
             .pages
             .iter()
             .any(|page| page.id.as_deref() == Some(page_id))

@@ -62,7 +62,7 @@ pub fn materialize_component_actions_with_providers(
     let mut diagnostics = Vec::new();
     let mut counters = ActionCounters::default();
 
-    visit_project_components_mut(&mut materialized.project, |component, visit| {
+    visit_project_components_mut(materialized.project_mut(), |component, visit| {
         materialize_component(
             component,
             visit.path(),

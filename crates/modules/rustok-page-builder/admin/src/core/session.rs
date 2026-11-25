@@ -271,13 +271,14 @@ impl EditorSessionState {
         let runtime_scenario_id = self.active_runtime_scenario.clone();
         let active_page_index = self.controller.active_page_index();
         let mut document = self.controller.editor().document().clone();
-        document.project.pages = document
-            .project
+        let active_page = document
+            .project()
             .pages
             .get(active_page_index)
             .cloned()
             .into_iter()
             .collect();
+        document.project_mut().pages = active_page;
         let project_data = GrapesJsCodec::encode_value(&document).map_err(|e| e.to_string())?;
         let project_hash = self.controller.editor().revision().project_hash;
         let request = PageBuilderCapabilityRequest::Preview(

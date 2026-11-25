@@ -95,7 +95,7 @@ pub fn set_project_locale_policy(
     let value =
         serde_json::to_value(policy).map_err(|error| FlyError::Encode(error.to_string()))?;
     document
-        .project
+        .project_mut()
         .extensions
         .insert(FLY_LOCALES_FIELD.to_string(), value);
     document.invalidate_caches();
@@ -103,7 +103,7 @@ pub fn set_project_locale_policy(
 }
 
 pub fn clear_project_locale_policy(document: &mut ProjectDocument) {
-    if document.project.extensions.remove(FLY_LOCALES_FIELD).is_some() {
+    if document.project_mut().extensions.remove(FLY_LOCALES_FIELD).is_some() {
         document.invalidate_caches();
     }
 }

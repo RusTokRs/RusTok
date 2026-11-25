@@ -2142,7 +2142,7 @@ pub fn FlyEditorWorkspace(
         });
         match apply_result {
             Some(Ok(_)) => {
-                let remaining = remove_editor.with(|editor| editor.document().project.pages.len());
+                let remaining = remove_editor.with(|editor| editor.document().project().pages.len());
                 let current = active_page.get_untracked();
                 let clamped = if remaining == 0 {
                     0
@@ -2676,7 +2676,7 @@ pub fn FlyEditorWorkspace(
                 .or_else(|| summaries.first().cloned());
             let metadata = summary
                 .as_ref()
-                .and_then(|summary| editor.document().project.pages.get(summary.index))
+                .and_then(|summary| editor.document().project().pages.get(summary.index))
                 .map(PageMetadata::from_page)
                 .unwrap_or_default();
             (summary, metadata, summaries.len())

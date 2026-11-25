@@ -1165,13 +1165,13 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
     let (workspace_canvas, workspace_canvas_interactive): (Option<Element>, bool) = {
         let mut canvas_document = workspace_document.clone();
         let active_page = canvas_document
-            .project
+            .project()
             .pages
             .get(workspace_initial_page)
             .cloned();
         match active_page {
             Some(active_page) => {
-                canvas_document.project.pages = vec![active_page];
+                canvas_document.project_mut().pages = vec![active_page];
                 let canvas_nonce = workspace_csp_nonce
                     .as_deref()
                     .and_then(UiCspNonce::new);

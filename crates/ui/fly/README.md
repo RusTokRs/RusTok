@@ -285,9 +285,9 @@ caps. The `fly` crate has no cross-page store: consumer modules such as
 
 ## Known Limitations / Pending Implementation
 
-- **Raw project mutation can bypass cache invalidation.** `ProjectDocument.project` is still public.
-  Use `project_mut()`, `component_mut()`, or the owner command API for writes; indexed mutable
-  component access now invalidates both caches. Closing the field requires migrating all
+- **Project access is cache-safe.** `ProjectDocument::project()` exposes a read-only view;
+  `project_mut()` and `component_mut()` invalidate both derived caches before returning a mutable
+  borrow. The raw `project` field is crate-private, preventing downstream code from bypassing this invariant.
   workspace consumers and source guards together. This remaining cutover is tracked in the
   [Page Builder backlog](../../../docs/modules/page-builder-backlog.md).
 

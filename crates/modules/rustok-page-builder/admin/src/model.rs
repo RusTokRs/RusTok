@@ -117,15 +117,15 @@ impl AdminCanvasController {
         let mut document = self.editor.document().clone();
         let page =
             document
-                .project
+                .project()
                 .pages
                 .get(index)
                 .cloned()
                 .ok_or(fly::FlyError::InvalidPageIndex {
                     index,
-                    len: document.project.pages.len(),
+                    len: document.project().pages.len(),
                 })?;
-        document.project.pages = vec![page];
+        document.project_mut().pages = vec![page];
         GrapesJsCodec::encode_value(&document)
     }
 
@@ -136,7 +136,7 @@ impl AdminCanvasController {
     pub fn active_root_id(&self) -> Option<String> {
         self.editor
             .document()
-            .project
+            .project()
             .pages
             .get(self.active_page_index())
             .and_then(|page| page.component.as_ref())
@@ -376,7 +376,7 @@ impl AdminCanvasController {
         let page = self
             .editor
             .document()
-            .project
+            .project()
             .pages
             .get(*page_index)
             .ok_or_else(|| {

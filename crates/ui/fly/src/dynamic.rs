@@ -317,14 +317,14 @@ pub(crate) fn materialize_runtime_with_scoped_bindings(
 
     // One traversal of each page expands every repeater at every depth, instead of re-walking the
     // whole document once per repeater definition.
-    let mut pages = std::mem::take(&mut materialized.project.pages);
+    let mut pages = std::mem::take(&mut materialized.project_mut().pages);
     for page in &mut pages {
         if let Some(root) = page.component.as_mut() {
             let origin = BTreeMap::new();
             expander.expand_node(root, context, 0, "", &origin);
         }
     }
-    materialized.project.pages = pages;
+    materialized.project_mut().pages = pages;
 
     let RuntimeExpander {
         generated_styles,
@@ -338,7 +338,7 @@ pub(crate) fn materialize_runtime_with_scoped_bindings(
     diagnostics.extend(expansion_diagnostics);
     hidden_components = hidden_components.saturating_add(hidden_in_repeaters);
     remove_style_rules_for_component_ids(&mut materialized, &retired_style_ids);
-    materialized.project.styles.extend(generated_styles);
+    materialized.project_mut().styles.extend(generated_styles);
     // The preflight lookups populate the document's index before expansion. Its locations (and
     // any cached hash) must describe the returned tree, not the original repeater templates.
     materialized.invalidate_caches();
@@ -1259,10 +1259,10 @@ where
         .collect::<FlyResult<Vec<_>>>()?;
     entries.extend(unknown);
     if entries.is_empty() {
-        document.project.extensions.remove(field);
+        document.project_mut().extensions.remove(field);
     } else {
         document
-            .project
+            .project_mut()
             .extensions
             .insert(field.to_string(), Value::Array(entries));
     }
@@ -1392,13 +1392,13 @@ fn hide_runtime_component(document: &mut ProjectDocument, component_id: &str) ->
     let style_targets = component_subtree_ids(document, component_id);
     if location.parent_component_id.is_some() {
         remove_style_rules_for_component_ids(document, &style_targets);
-        document.project.remove_component(component_id)?;
+        document.project_mut().remove_component(component_id)?;
         document.invalidate_caches();
         return Ok(());
     }
     remove_style_rules_for_component_ids(document, &style_targets);
     let page = document
-        .project
+        .project_mut()
         .pages
         .get_mut(location.page_index)
         .ok_or_else(|| FlyError::PageNotFound(location.page_index.to_string()))?;
@@ -1431,7 +1431,7 @@ fn remove_style_rules_for_component_ids(
     if component_ids.is_empty() {
         return;
     }
-    document.project.styles.retain(|raw| {
+    document.project_mut().styles.retain(|raw| {
         StyleRuleIdentity::from_value(raw).is_none_or(|rule| {
             rule.component_id
                 .as_ref()
