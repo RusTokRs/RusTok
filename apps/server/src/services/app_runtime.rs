@@ -224,7 +224,7 @@ async fn initialize_module_work_runtime(
     extensions: &ModuleRuntimeExtensions,
 ) -> Result<()> {
     use crate::services::app_lifecycle::{
-        ModuleWorkSchedulerInitializationLock, StopHandle, await_worker_startup_or_stop,
+        await_worker_startup_or_stop, ModuleWorkSchedulerInitializationLock, StopHandle,
     };
 
     // Registration can await, so a check-then-spawn permits competing bootstraps
