@@ -46,14 +46,15 @@ where
     }
 }
 
-/// Collect link targets from the validated rich-text tree for host policy checks.
-pub fn rich_text_link_hrefs(payload: &RichTextPayload) -> Vec<&str> {
+/// Decode and validate a rich-text extension, then collect its link targets for host policy checks.
+pub fn validated_rich_text_link_hrefs(raw: &Value) -> Result<Vec<String>, String> {
+    let payload = decode_rich_text_payload(raw)?;
     let mut hrefs = Vec::new();
     collect_rich_text_link_hrefs(&payload.payload, &mut hrefs);
-    hrefs
+    Ok(hrefs)
 }
 
-fn collect_rich_text_link_hrefs<'a>(node: &'a Value, hrefs: &mut Vec<&'a str>) {
+fn collect_rich_text_link_hrefs(node: &Value, hrefs: &mut Vec<String>) {
     let Some(object) = node.as_object() else {
         return;
     };
@@ -66,7 +67,7 @@ fn collect_rich_text_link_hrefs<'a>(node: &'a Value, hrefs: &mut Vec<&'a str>) {
                     .and_then(|attrs| attrs.get("href"))
                     .and_then(Value::as_str)
             {
-                hrefs.push(href);
+                hrefs.push(href.to_string());
             }
         }
     }
@@ -431,33 +432,36 @@ mod tests {
 
     #[test]
     fn link_href_extraction_walks_nested_content_and_ignores_other_marks() {
-        let payload = payload(json!({
-            "type": "doc",
-            "content": [{
-                "type": "blockquote",
+        let raw = json!({
+            "capability": RICH_TEXT_CAPABILITY,
+            "payload": {
+                "type": "doc",
                 "content": [{
-                    "type": "paragraph",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "external",
-                            "marks": [
-                                {"type": "bold"},
-                                {"type": "link", "attrs": {"href": "https://example.test/page"}}
-                            ]
-                        },
-                        {
-                            "type": "text",
-                            "text": "local",
-                            "marks": [{"type": "link", "attrs": {"href": "/local"}}]
-                        }
-                    ]
+                    "type": "blockquote",
+                    "content": [{
+                        "type": "paragraph",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "external",
+                                "marks": [
+                                    {"type": "bold"},
+                                    {"type": "link", "attrs": {"href": "https://example.test/page"}}
+                                ]
+                            },
+                            {
+                                "type": "text",
+                                "text": "local",
+                                "marks": [{"type": "link", "attrs": {"href": "/local"}}]
+                            }
+                        ]
+                    }]
                 }]
-            }]
-        }));
+            }
+        });
         assert_eq!(
-            rich_text_link_hrefs(&payload),
-            ["https://example.test/page", "/local"]
+            validated_rich_text_link_hrefs(&raw).expect("valid rich-text extension"),
+            vec!["https://example.test/page".to_string(), "/local".to_string()]
         );
     }
 

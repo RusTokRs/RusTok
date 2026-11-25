@@ -432,9 +432,9 @@ fn validate_component(
     }
 
     if let Some(raw_rich_text) = component.extensions.get(FLY_RICH_TEXT_FIELD) {
-        match fly::decode_rich_text_payload(raw_rich_text) {
-            Ok(payload) => {
-                for (index, href) in fly::rich_text_link_hrefs(&payload).iter().enumerate() {
+        match fly::validated_rich_text_link_hrefs(raw_rich_text) {
+            Ok(hrefs) => {
+                for (index, href) in hrefs.iter().enumerate() {
                     if validate_url(href, UrlKind::Navigation, policy).is_err() {
                         reject(
                             diagnostics,
@@ -1614,6 +1614,26 @@ mod tests {
         let error = validate_static_publish_document(&document).expect_err("HTTP rich-text link");
         assert!(error.diagnostics().iter().any(|diagnostic| {
             diagnostic.code == "landing_rich_text_link_url_rejected"
+        }));
+    }
+
+    #[test]
+    fn static_policy_rejects_invalid_rich_text_payload() {
+        let document = document(json!({
+            "id": "root",
+            "type": "wrapper",
+            "components": [{
+                "id": "rich",
+                "type": "wrapper",
+                "flyRichText": {
+                    "capability": "richtext",
+                    "payload": {"type": "paragraph", "content": []}
+                }
+            }]
+        }));
+        let error = validate_static_publish_document(&document).expect_err("invalid rich-text");
+        assert!(error.diagnostics().iter().any(|diagnostic| {
+            diagnostic.code == "landing_rich_text_payload_invalid"
         }));
     }
 
