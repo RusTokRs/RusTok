@@ -163,7 +163,8 @@ pub fn apply_mcp_scaffold_atomically(
     let workspace_root = Path::new(workspace_root);
     let modules_root = workspace_root.join("crates/modules");
     ensure_apply_directory(&modules_root)?;
-    cleanup_stale_mcp_scaffold_staging_dirs(&modules_root)?;
+    let scaffold_state_dir = workspace_root.join(".rustok/scaffold");
+    cleanup_stale_mcp_scaffold_staging_dirs(&scaffold_state_dir)?;
 
     let final_target = workspace_root.join(&draft.preview.crate_path);
     if path_exists(&final_target)? {
@@ -173,7 +174,8 @@ pub fn apply_mcp_scaffold_atomically(
     }
 
     let staging_id = Uuid::new_v4().to_string();
-    let staging_root = modules_root.join(format!("{MCP_SCAFFOLD_STAGING_PREFIX}{staging_id}"));
+    let staging_root =
+        scaffold_state_dir.join(format!("{MCP_SCAFFOLD_STAGING_PREFIX}{staging_id}"));
     std::fs::create_dir(&staging_root).map_err(|error| {
         rustok_mcp::AlloyScaffoldError::Workspace(format!(
             "Failed to create private MCP scaffold staging directory {}: {error}",
@@ -190,20 +192,30 @@ pub fn apply_mcp_scaffold_atomically(
                 "Failed to mark private MCP scaffold staging directory: {error}"
             ))
         })?;
-        std::fs::write(staging_root.join("Cargo.toml"), "[workspace]\n").map_err(|error| {
+        let staging_workspace_root = staging_root.join("workspace");
+        std::fs::create_dir(&staging_workspace_root).map_err(|error| {
+            rustok_mcp::AlloyScaffoldError::Workspace(format!(
+                "Failed to create private MCP scaffold workspace root: {error}"
+            ))
+        })?;
+        std::fs::write(
+            staging_workspace_root.join("Cargo.toml"),
+            "[workspace]\n",
+        )
+        .map_err(|error| {
             rustok_mcp::AlloyScaffoldError::Workspace(format!(
                 "Failed to initialize private MCP scaffold workspace: {error}"
             ))
         })?;
-        std::fs::create_dir(staging_root.join("crates")).map_err(|error| {
+        std::fs::create_dir(staging_workspace_root.join("crates")).map_err(|error| {
             rustok_mcp::AlloyScaffoldError::Workspace(format!(
                 "Failed to initialize private MCP scaffold crate root: {error}"
             ))
         })?;
 
-        let staging_root_string = staging_root.to_string_lossy().into_owned();
+        let staging_root_string = staging_workspace_root.to_string_lossy().into_owned();
         let response = rustok_mcp::apply_staged_scaffold(draft, &staging_root_string)?;
-        let staged_target = staging_root.join(&draft.preview.crate_path);
+        let staged_target = staging_workspace_root.join(&draft.preview.crate_path);
         let staged_metadata = std::fs::symlink_metadata(&staged_target).map_err(|error| {
             rustok_mcp::AlloyScaffoldError::FileWrite(format!(
                 "Staged MCP scaffold target is missing or inaccessible: {error}"
@@ -322,12 +334,12 @@ fn path_exists(path: &Path) -> std::result::Result<bool, rustok_mcp::AlloyScaffo
 }
 
 fn cleanup_stale_mcp_scaffold_staging_dirs(
-    modules_root: &Path,
+    scaffold_state_dir: &Path,
 ) -> std::result::Result<(), rustok_mcp::AlloyScaffoldError> {
-    let entries = std::fs::read_dir(modules_root).map_err(|error| {
+    let entries = std::fs::read_dir(scaffold_state_dir).map_err(|error| {
         rustok_mcp::AlloyScaffoldError::Workspace(format!(
             "Failed to inspect MCP scaffold staging directory {}: {error}",
-            modules_root.display()
+            scaffold_state_dir.display()
         ))
     })?;
 
@@ -741,9 +753,11 @@ mod tests {
         let root_string = root.to_string_lossy().into_owned();
         let modules_root = root.join("crates/modules");
         std::fs::create_dir_all(&modules_root).expect("modules directory");
+        let scaffold_state_dir = root.join(".rustok/scaffold");
+        std::fs::create_dir_all(&scaffold_state_dir).expect("scaffold state directory");
 
         let stale_id = Uuid::new_v4().to_string();
-        let stale_staging = modules_root.join(format!(
+        let stale_staging = scaffold_state_dir.join(format!(
             "{}{}",
             super::MCP_SCAFFOLD_STAGING_PREFIX,
             stale_id
@@ -788,8 +802,8 @@ mod tests {
         assert!(target.join("Cargo.toml").is_file());
         assert!(target.join("src/lib.rs").is_file());
         assert!(
-            std::fs::read_dir(&modules_root)
-                .expect("modules listing")
+            std::fs::read_dir(&scaffold_state_dir)
+                .expect("scaffold state listing")
                 .all(|entry| !entry
                     .expect("modules entry")
                     .file_name()
