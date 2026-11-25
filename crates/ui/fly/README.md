@@ -352,9 +352,11 @@ the owner of the missing half.
   integration. Cross-tab messages fence stale editors but do not merge documents; the server
   revision check remains authoritative. Mounted Dioxus browser/runtime verification is still
   a release gate.
-- **Session and CSRF posture of the standalone admin.** The intent route authenticates with the
-  same-origin session cookie; issuing that session server-side and adding an explicit server-side
-  CSRF check are the admin shell's change, tracked as `CLEAN-060` — see `SECURITY.md`.
+- **Session lifecycle of the standalone admin.** Cookie-authenticated intent writes already
+  require the server-verified `x-csrf-token` derived from the authenticated session ID; bearer API
+  requests use an explicit Authorization header. The remaining `CLEAN-060` gap is session
+  issuance: the admin shell still mirrors a `localStorage` token into a script-readable cookie
+  instead of using a server-issued HttpOnly session. See `SECURITY.md`.
 - **Embeds use an explicit provider catalog; there is no custom-code block.** Built-in providers
   cover YouTube, Vimeo and Google Maps. Hosts can extend the catalog with `EmbedProviderRegistry`,
   configure the same registry on `FlyEditor::with_embed_registry`, and pass it to
