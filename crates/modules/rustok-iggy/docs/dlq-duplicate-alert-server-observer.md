@@ -29,6 +29,12 @@ shutdown's handle snapshot. The tasks are supervised by their original
 `JoinHandle`; an already-finished handle is reported with a stable error
 diagnostic and retained for the shutdown join rather than overwritten.
 A host already stopping admits no new scanner or companion tasks.
+The scanner also supervises the entire read-only poll loop with the shared
+shutdown watch, cancelling pending connection or scan I/O instead of waiting
+for the next poll boundary. The publisher stays outside the cancelled loop,
+so graceful exit advances the unavailable generation and clears its prior
+evaluation. Moving-window progress remains process-local; cancellation
+does not acknowledge messages or persist offsets.
 
 Static modes that intentionally have no background task remain valid and do
 not block event delivery. The lock is process-local; broker duplication,

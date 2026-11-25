@@ -16,6 +16,7 @@ use crate::services::app_lifecycle::{
 };
 use crate::services::event_transport_factory::EventRuntime;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::stop_handle::run_until_stopped;
 
 const ENABLE_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_ENABLED";
 const POLL_ENV: &str = "RUSTOK_EVENT_DLQ_DUPLICATE_ALERT_POLL_MS";
@@ -218,14 +219,34 @@ async fn observer_loop(
     iggy_config: rustok_iggy::IggyConfig,
     config: EventDlqDuplicateAlertObserverConfig,
     mut publisher: DlqDuplicateAlertRuntimePublisher,
-    mut stop_rx: tokio::sync::watch::Receiver<bool>,
+    stop_rx: tokio::sync::watch::Receiver<bool>,
+) {
+    // Scanning is read-only and its moving-window progress is process-local.
+    // A stop may cancel connection or polling without acknowledging messages
+    // or losing durable cursor state. Keep the publisher outside the cancelled
+    // future so every graceful exit clears the last available evaluation.
+    run_until_stopped(
+        stop_rx.clone(),
+        observer_poll_loop(iggy_config, config, &mut publisher, stop_rx),
+    )
+    .await;
+    if let Err(error) = publisher.mark_unavailable() {
+        tracing::warn!(
+            error_code = error.stable_code(),
+            "Failed to mark DLQ duplicate alert observer unavailable on exit"
+        );
+    }
+}
+
+async fn observer_poll_loop(
+    iggy_config: rustok_iggy::IggyConfig,
+    config: EventDlqDuplicateAlertObserverConfig,
+    publisher: &mut DlqDuplicateAlertRuntimePublisher,
+    stop_rx: tokio::sync::watch::Receiver<bool>,
 ) {
     let mut observer = None;
     loop {
         if *stop_rx.borrow() {
-            if let Err(error) = publisher.mark_unavailable() {
-                tracing::warn!(%error, "Failed to mark DLQ duplicate alert observer unavailable on shutdown");
-            }
             return;
         }
 
@@ -279,8 +300,15 @@ async fn observer_loop(
             }
         }
 
+        if *stop_rx.borrow() {
+            return;
+        }
         if let Some(mut connected) = observer.take() {
-            match connected.summarize().await {
+            let summary = connected.summarize().await;
+            if *stop_rx.borrow() {
+                return;
+            }
+            match summary {
                 Ok(summary) => {
                     match publisher.publish(&summary) {
                         Ok(snapshot) => record_snapshot(snapshot),
@@ -311,12 +339,7 @@ async fn observer_loop(
             }
         }
 
-        if wait_or_stop(config.poll, &mut stop_rx).await {
-            if let Err(unavail_err) = publisher.mark_unavailable() {
-                tracing::warn!(error = %unavail_err, "Failed to mark DLQ duplicate observer unavailable on poll exit");
-            }
-            return;
-        }
+        tokio::time::sleep(config.poll).await;
     }
 }
 
@@ -456,13 +479,6 @@ fn observer_mode(
     }
 }
 
-async fn wait_or_stop(delay: Duration, stop_rx: &mut tokio::sync::watch::Receiver<bool>) -> bool {
-    tokio::select! {
-        _ = tokio::time::sleep(delay) => false,
-        changed = stop_rx.changed() => changed.is_err() || *stop_rx.borrow(),
-    }
-}
-
 fn optional_bool_env(name: &str, default: bool) -> Result<bool> {
     match env::var(name) {
         Ok(value) => parse_bool(name, &value).map_err(Error::Message),
@@ -570,6 +586,39 @@ mod tests {
         StopHandle::ensure(&ctx).stop().await;
         start_event_dlq_duplicate_alert_observer(&ctx).await;
         assert!(!ctx.shared_contains::<EventDlqDuplicateAlertObserverHandle>());
+    }
+
+    #[tokio::test]
+    async fn stopped_observer_clears_the_last_available_snapshot() {
+        let config = EventDlqDuplicateAlertObserverConfig {
+            poll: Duration::from_secs(30),
+            scan: EventDlqDuplicateAlertScanConfig::GlobalBudget {
+                start_offset: 0,
+                max_messages: 100,
+                batch_size: 10,
+            },
+            policy: DlqDuplicateAlertPolicy::new(2, 4, 2, 3, 3, 5).unwrap(),
+        };
+        let (mut publisher, subscriber) = DlqDuplicateAlertRuntimePublisher::new(
+            DlqDuplicateAlertPolicy::new(2, 4, 2, 3, 3, 5).unwrap(),
+        );
+        let summary = rustok_iggy::summarize_dlq_duplicates([]).unwrap();
+        let previous = publisher.publish(&summary).unwrap();
+        assert!(previous.is_available());
+
+        let (stop, receiver) = StopHandle::new();
+        stop.stop().await;
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            observer_loop(rustok_iggy::IggyConfig::default(), config, publisher, receiver),
+        )
+        .await
+        .expect("stopped observer exits without broker access");
+
+        let final_snapshot = subscriber.current();
+        assert_eq!(final_snapshot.generation(), previous.generation() + 1);
+        assert!(!final_snapshot.is_available());
+        assert_eq!(final_snapshot.evaluation(), None);
     }
 
     #[test]
