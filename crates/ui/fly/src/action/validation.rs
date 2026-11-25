@@ -284,8 +284,18 @@ pub(super) fn validate_action_contract(
         ComponentAction::SwitchSlide {
             slider_id,
             target_slide,
-            ..
+            direction,
+            index,
         } => validate_identifier(slider_id, "slider id").and_then(|_| {
+            let selector_count = usize::from(target_slide.is_some())
+                + usize::from(direction.is_some())
+                + usize::from(index.is_some());
+            if selector_count != 1 {
+                return Err(
+                    "switch_slide requires exactly one of target_slide, direction, or index"
+                        .to_string(),
+                );
+            }
             if let Some(target) = target_slide {
                 validate_identifier(target, "target slide id")
             } else {
