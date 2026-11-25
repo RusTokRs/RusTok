@@ -20,7 +20,7 @@ use super::inventory::inventory_item_write_query;
 use super::policy::inventory_policy_allows_backorder;
 use crate::entities::{inventory_item, inventory_level, stock_location};
 
-const MAX_QUANTITY_LEVELS: usize = 4096;
+pub(super) const MAX_QUANTITY_LEVELS: usize = 4096;
 
 /// Finite owner refusals; no submitted quantity, saved payload or dependency text is public copy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -666,6 +666,15 @@ pub(super) fn available_by_variant<'a>(
     item_to_variant: &std::collections::HashMap<Uuid, Uuid>,
     levels: impl IntoIterator<Item = &'a inventory_level::Model>,
 ) -> Result<std::collections::HashMap<Uuid, i32>, DbErr> {
+    let mut variants = BTreeSet::new();
+    if item_to_variant.iter().any(|(item, variant)| {
+        item.is_nil() || variant.is_nil() || !variants.insert(*variant)
+    }) {
+        return Err(DbErr::Custom("Inventory availability item identity is unverified".into()));
+    }
+    let mut level_ids = BTreeSet::new();
+    let mut level_bindings = BTreeSet::new();
+    let mut level_counts = std::collections::HashMap::<Uuid, usize>::new();
     let mut quantities = item_to_variant
         .values()
         .copied()
@@ -675,6 +684,17 @@ pub(super) fn available_by_variant<'a>(
         let variant_id = item_to_variant
             .get(&level.inventory_item_id)
             .ok_or_else(|| DbErr::Custom("Inventory availability binding is unverified".into()))?;
+        if level.id.is_nil() || level.location_id.is_nil()
+            || !level_ids.insert(level.id)
+            || !level_bindings.insert((level.inventory_item_id, level.location_id))
+        {
+            return Err(DbErr::Custom("Inventory availability level identity is unverified".into()));
+        }
+        let count = level_counts.entry(level.inventory_item_id).or_default();
+        *count += 1;
+        if *count > MAX_QUANTITY_LEVELS {
+            return Err(DbErr::Custom("Inventory availability exceeds the level read bound".into()));
+        }
         if level.stocked_quantity < 0 || level.reserved_quantity < 0 || level.incoming_quantity < 0
         {
             return Err(DbErr::Custom(

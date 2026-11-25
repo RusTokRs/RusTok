@@ -759,6 +759,22 @@ They now capture any transport error into an `action_error` reactive signal and 
   [regression](../../crates/modules/rustok-commerce/tests/inventory_quantity_release.rs).
   Regression source authored, not executed.
 
+### P-INVENTORY-PHYSICAL-COUNTERS — signed availability is not negative physical stock
+
+- **Category:** shared arithmetic / read-write parity.
+- **Observed defect:** Native availability accepted negative stocked or
+  incoming counters while Product projection rejected them. Duplicate
+  item/level identities could also inflate projected stock.
+- **Canonical correction:** Reuse the checked owner projection reducer for
+  native response arithmetic, reject all negative physical counters and
+  duplicate identities, and apply the same selected-level bound per item.
+  Retain signed net availability for backorders and exact wide accumulation.
+  Anonymous release refuses negative physical stock before mutation.
+- **Evidence:** [quantity reducer](../../crates/modules/rustok-inventory/src/services/quantity.rs),
+  [native service](../../crates/modules/rustok-inventory/src/services/inventory.rs),
+  [regressions](../../crates/modules/rustok-inventory/src/services/quantity/tests.rs).
+  Source-only evidence; tests not executed.
+
 ## 1. Core Philosophy: The 6 Universal Logic Dimensions
 
 Under [AGENTS.md §4](../../AGENTS.md), verify the affected behavior and its owner contract across the **6 Universal Logic Dimensions**. Use source matches to find code to inspect. A match alone cannot establish a behavioral defect:

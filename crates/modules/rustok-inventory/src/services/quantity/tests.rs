@@ -289,3 +289,36 @@ fn expected_quantity_snapshot_rejects_stale_values() {
     assert!(ensure_expected_quantity_matches(9, Some(8)).is_err());
     assert!(ensure_expected_quantity_matches(8, None).is_ok());
 }
+
+#[test]
+fn projection_refuses_duplicate_item_and_level_identities() {
+    let item = Uuid::new_v4();
+    let variant = Uuid::new_v4();
+    let binding = std::collections::HashMap::from([(item, variant)]);
+    let row = inventory_level::Model {
+        id: Uuid::new_v4(),
+        inventory_item_id: item,
+        location_id: Uuid::new_v4(),
+        stocked_quantity: 5,
+        reserved_quantity: 8,
+        incoming_quantity: 0,
+        low_stock_threshold: None,
+        updated_at: Utc::now().into(),
+    };
+    assert_eq!(available_by_variant(&binding, [&row]).unwrap()[&variant], -3);
+    assert!(available_by_variant(&binding, [&row, &row]).is_err());
+    let mut duplicate_location = row.clone();
+    duplicate_location.id = Uuid::new_v4();
+    assert!(available_by_variant(&binding, [&row, &duplicate_location]).is_err());
+    let duplicate_items = std::collections::HashMap::from([(item, variant), (Uuid::new_v4(), variant)]);
+    assert!(available_by_variant(&duplicate_items, std::iter::empty()).is_err());
+    let nil_binding = std::collections::HashMap::from([(Uuid::nil(), variant)]);
+    assert!(available_by_variant(&nil_binding, std::iter::empty()).is_err());
+    let excessive: Vec<_> = (0..=MAX_QUANTITY_LEVELS).map(|_| {
+        let mut level = row.clone();
+        level.id = Uuid::new_v4();
+        level.location_id = Uuid::new_v4();
+        level
+    }).collect();
+    assert!(available_by_variant(&binding, &excessive).is_err());
+}

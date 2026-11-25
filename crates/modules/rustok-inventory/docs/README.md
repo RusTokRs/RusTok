@@ -33,6 +33,18 @@ prevents additional allocation against underreported claims, without releasing
 or repairing existing reservations. Regression sources are authored, unrun;
 real database concurrency and ambiguous commit recovery remain unverified.
 
+Native quantity reservation/check responses and Product quantity projections
+share the checked availability reducer. All three physical counters
+(stocked, reserved, incoming) must be nonnegative; signed net availability
+is retained for legitimate backorders. The reducer refuses nil identities,
+duplicate SKU item bindings, duplicate level IDs and item/location bindings,
+and more than 4096 selected levels per item. Anonymous release also refuses
+negative physical stock before applying its plan. Existing empty-item
+projections still yield zero; a missing item is not synthesized. The
+visibility and identity selection of each caller is unchanged, and the
+projection's per-item reduction bound is not a database query row limit.
+Regression sources are authored or corrected, not executed.
+
 ## Purpose
 
 - inventory service logic;

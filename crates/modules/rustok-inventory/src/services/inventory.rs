@@ -24,7 +24,7 @@ mod reservation_release;
 
 use reservation_release::{QUANTITY_RESERVATION_ROW_LIMIT, SelectedQuantityRelease};
 
-const STOCK_LEVEL_READ_LIMIT: usize = 4096;
+const STOCK_LEVEL_READ_LIMIT: usize = super::quantity::MAX_QUANTITY_LEVELS;
 
 /// Native compatibility and durable identity writes share one item lock. The caller must first
 /// prove the Variant through the tenant owner boundary; inventory_items itself has no tenant key.
@@ -947,24 +947,16 @@ pub(crate) fn checked_available_quantity(
             "Inventory availability exceeds the {STOCK_LEVEL_READ_LIMIT} level read bound"
         )));
     }
-    let total = levels.iter().try_fold(0_i64, |total, level| {
-        if level.reserved_quantity < 0 {
-            return Err(CommerceError::Validation(
-                "Inventory has a negative reserved counter; reconcile saved state".to_string(),
-            ));
-        }
-        let available = i64::from(level.stocked_quantity) - i64::from(level.reserved_quantity);
-        total.checked_add(available).ok_or_else(|| {
-            CommerceError::Validation(
-                "Inventory availability exceeds the supported range".to_string(),
-            )
-        })
-    })?;
-    // Negative availability is legitimate for continue backorders. This is not v1 event admission.
-    i32::try_from(total).map_err(|_| {
-        CommerceError::Validation(
-            "Inventory availability exceeds the signed i32 response range".to_string(),
-        )
+    let Some(first) = levels.first() else {
+        return Ok(0);
+    };
+    // Reuse the owner projection arithmetic and identity validation. Here
+    // the item UUID is only a local aggregation key, not a Product identity.
+    let binding = std::collections::HashMap::from([(first.inventory_item_id, first.inventory_item_id)]);
+    let quantities = super::quantity::available_by_variant(&binding, levels)
+        .map_err(|error| CommerceError::Validation(error.to_string()))?;
+    quantities.get(&first.inventory_item_id).copied().ok_or_else(|| {
+        CommerceError::Validation("Inventory availability binding is unverified".into())
     })
 }
 
