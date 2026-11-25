@@ -112,3 +112,10 @@ fn action_groups_and_swipes_respect_landing_boundaries() {
     assert_contains("documentRef.addEventListener(\"touchcancel\", cancelTouch");
     assert_contains("!belongsToPage(touchSlider, touchPageRoot)");
 }
+
+
+#[test]
+fn action_runtime_preserves_falsy_json_payloads_and_inputs() {
+    assert_contains("detail.payload = action.payload ?? {};");
+    assert_contains("detail.input = action.input ?? {};");
+}

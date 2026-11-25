@@ -152,11 +152,11 @@
     };
     if (action.kind === "emit_event") {
       detail.event = action.event || "";
-      detail.payload = action.payload || {};
+      detail.payload = action.payload ?? {};
     } else {
       detail.provider = action.provider || "";
       detail.action = action.action || "";
-      detail.input = action.input || {};
+      detail.input = action.input ?? {};
     }
     element.dispatchEvent(
       new CustomEvent("fly:action", { bubbles: true, cancelable: true, detail: detail })
