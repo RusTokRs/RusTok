@@ -206,14 +206,49 @@ pub(crate) async fn delete_product(
     result
 }
 
+fn effective_optional_text(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|value| !value.is_empty())
+}
+
 fn variant_update_intent(
     tenant_id: &str,
     user_id: &str,
     variant_id: &str,
     draft: &VariantUpdateDraft,
 ) -> String {
+    // Match the exact effective GraphQL input. An untouched price editor buffer is not
+    // sent unless prices_changed is true, and an empty axis buffer is omitted.
+    let axis_values = (!draft.axis_values.is_empty()).then_some(&draft.axis_values);
+    let prices = draft.prices_changed.then(|| {
+        draft
+            .prices
+            .iter()
+            .map(|price| {
+                (
+                    price.currency_code.as_str(),
+                    price.amount.as_str(),
+                    effective_optional_text(price.compare_at_amount.as_deref()),
+                )
+            })
+            .collect::<Vec<_>>()
+    });
+    let inventory_policy = effective_optional_text(draft.inventory_policy.as_deref());
+
     format!(
-        "operation=update-variant;tenant={tenant_id:?};actor={user_id:?};variant={variant_id:?};draft={draft:?}"
+        concat!(
+            "operation=update-variant;tenant={tenant_id:?};actor={user_id:?};variant={variant_id:?};",
+            "sku={:?};barcode={:?};shipping_profile_slug={:?};weight={:?};weight_unit={:?};",
+            "axis_values={axis_values:?};prices={prices:?};inventory_quantity={:?};",
+            "expected_inventory_quantity={:?};expected_revision={:?};inventory_policy={inventory_policy:?}"
+        ),
+        draft.sku,
+        draft.barcode,
+        draft.shipping_profile_slug,
+        draft.weight,
+        draft.weight_unit,
+        draft.inventory_quantity,
+        draft.expected_inventory_quantity,
+        draft.expected_revision
     )
 }
 
@@ -457,11 +492,40 @@ mod variant_retry_tests {
             currency_code: "USD".into(),
             compare_at_amount: None,
         });
+        assert_eq!(
+            previous,
+            variant_update_intent("tenant", "actor", "variant", &draft),
+            "unmarked prices are only an editor buffer and are not part of the owner request"
+        );
+        draft.prices_changed = true;
         assert_ne!(
             previous,
-            variant_update_intent("tenant", "actor", "variant", &draft)
+            variant_update_intent("tenant", "actor", "variant", &draft),
+            "an explicit price replacement must produce a different retry identity"
         );
     }
+
+    #[test]
+    fn variant_update_intent_omits_empty_price_replacements_and_blank_inventory_policy() {
+        let draft = VariantUpdateDraft::default();
+        let original = variant_update_intent("tenant", "actor", "variant", &draft);
+
+        let mut blank_policy = draft.clone();
+        blank_policy.inventory_policy = Some("  ".to_owned());
+        assert_eq!(
+            original,
+            variant_update_intent("tenant", "actor", "variant", &blank_policy)
+        );
+
+        let mut clear_prices = draft;
+        clear_prices.prices_changed = true;
+        assert_ne!(
+            original,
+            variant_update_intent("tenant", "actor", "variant", &clear_prices),
+            "an explicit empty replacement clears prices and is not equivalent to Keep"
+        );
+    }
+
     #[test]
     fn variant_delete_attempt_identity_includes_the_expected_revision() {
         let first = variant_delete_intent("tenant", "actor", "variant", "7");
