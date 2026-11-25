@@ -18,9 +18,12 @@ We add a persisted server-side control plane for Alloy scaffold drafts in `apps/
 - REST endpoints under `/api/mcp/scaffold-drafts*`;
 - GraphQL fields `mcpModuleScaffoldDraft*`.
 
-The persisted control plane stores staged scaffold request/preview payloads and the apply outcome
-metadata, but it does not yet replace the in-memory draft store used by the current `rustok-mcp`
-runtime flow.
+The server-hosted MCP runtime uses `DbBackedMcpRuntimeBridge` as its
+`McpScaffoldDraftStore` implementation. Stage, review and apply operations are routed through
+`mcp_scaffold_drafts` and `McpManagementService`, so remote server sessions use durable,
+tenant-bound draft state rather than the generic in-memory store. Standalone/in-process
+`rustok-mcp` runtimes may still use the owner crate's in-memory draft store when no server
+persistence bridge is supplied.
 
 The host-workspace apply path is a cooperating writer with native scaffolding. Before claiming a
 draft it takes the permanent `.rustok/scaffold/lock` OS lock used by `cargo xtask scaffold` and
@@ -40,11 +43,10 @@ Positive:
 
 Constraint:
 
-- live MCP runtime still uses process-local in-memory draft storage;
-- a follow-up slice is required to bind runtime tooling to the persisted server-side store.
+- standalone/in-process MCP runtimes without the server bridge may still use process-local draft storage;
+- server-hosted remote MCP stage/review/apply operations use the persisted control plane.
 
 ## Next steps
 
-1. Bind live MCP runtime to the persisted draft store.
-2. Add admin UI for listing, reviewing, and applying drafts.
-3. Extend persisted draft metadata toward richer codegen workflows.
+1. Extend persisted draft metadata toward richer codegen workflows.
+2. Continue verifying admin UI and operator workflows against the persisted control plane.

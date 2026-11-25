@@ -1,4 +1,5 @@
 use base64::{Engine as _, engine::general_purpose};
+use std::sync::OnceLock;
 use chrono::{DateTime, Utc};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
@@ -1374,7 +1375,7 @@ fn scaffold_apply_error_requires_recovery(
 ) -> bool {
     matches!(
         error,
-        rustok_mcp::alloy_scaffold::AlloyScaffoldError::FileWrite { .. }
+        rustok_mcp::alloy_scaffold::AlloyScaffoldError::FileWrite(_)
     )
 }
 
@@ -1438,21 +1439,25 @@ mod tests {
     };
     use crate::error::Error;
     use rustok_mcp::alloy_scaffold::AlloyScaffoldError;
-    use std::path::PathBuf;
     use uuid::Uuid;
 
     #[test]
     fn partial_scaffold_file_write_requires_manual_reconciliation() {
-        let error = AlloyScaffoldError::FileWrite {
-            path: PathBuf::from("crates/modules/example/Cargo.toml"),
-            source: std::io::Error::new(std::io::ErrorKind::Other, "disk full"),
-        };
+        let error = AlloyScaffoldError::FileWrite(
+            "Failed to write crates/modules/example/Cargo.toml: disk full".to_string(),
+        );
         assert!(scaffold_apply_error_requires_recovery(&error));
 
-        let preflight_error = AlloyScaffoldError::TargetAlreadyExists {
-            path: PathBuf::from("crates/modules/example"),
-        };
+        let preflight_error = AlloyScaffoldError::TargetAlreadyExists(
+            "crates/modules/example".to_string(),
+        );
         assert!(!scaffold_apply_error_requires_recovery(&preflight_error));
+
+        let preflight_workspace_error =
+            AlloyScaffoldError::Workspace("workspace path is invalid".to_string());
+        assert!(!scaffold_apply_error_requires_recovery(
+            &preflight_workspace_error
+        ));
     }
 
     #[test]
@@ -1505,6 +1510,9 @@ mod tests {
         let authorize = method
             .find("authorize_mcp_scaffold_workspace")
             .expect("service-level workspace authorization exists");
+        let workspace_lock = method
+            .find("lock_mcp_scaffold_workspace")
+            .expect("native workspace lock must be acquired");
         let claim = method
             .find("claim_scaffold_draft_for_apply")
             .expect("draft claim exists");
@@ -1512,10 +1520,11 @@ mod tests {
             .find("validate_mcp_scaffold_target_path")
             .expect("persisted target path must be validated");
         let apply = method
-            .find("apply_staged_scaffold")
-            .expect("staged filesystem apply exists");
+            .find("apply_mcp_scaffold_atomically")
+            .expect("atomic filesystem publish must be used");
 
-        assert!(authorize < claim, "workspace must be authorized before draft claim");
+        assert!(authorize < workspace_lock, "workspace must be authorized before locking");
+        assert!(workspace_lock < claim, "workspace lock must be held before draft claim");
         assert!(claim < target_validation, "draft must be claimed before target validation");
         assert!(
             target_validation < apply,
@@ -1523,7 +1532,23 @@ mod tests {
         );
         assert!(method.contains("tokio::task::spawn_blocking"));
         assert!(method.contains("let _workspace_apply_guard = workspace_apply_guard"));
-        assert!(method.contains("apply_staged_scaffold(&staged_draft, &apply_workspace_root)"));
+        assert!(method.contains("workspace_lock,"));
+
+        let workspace_source = include_str!("mcp_scaffold_workspace.rs");
+        let atomic_start = workspace_source
+            .find("pub fn apply_mcp_scaffold_atomically(")
+            .expect("atomic workspace apply exists");
+        let atomic_apply = &workspace_source[atomic_start..];
+        let blocking_validation = atomic_apply
+            .find("validate_mcp_scaffold_target_path_blocking")
+            .expect("target paths must be revalidated in the blocking writer");
+        let staged_write = atomic_apply
+            .find("rustok_mcp::apply_staged_scaffold")
+            .expect("staged crate writer exists");
+        assert!(
+            blocking_validation < staged_write,
+            "path validation must be repeated immediately before filesystem writes"
+        );
     }
 
     #[test]
