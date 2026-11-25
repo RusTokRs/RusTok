@@ -100,8 +100,10 @@ requireMarkers('snapshotDiff', [
   'pub fn compare_projects(',
   'visit_project_components(&document.project',
   'visit.path()',
-  'AssetCatalog::from_document',
-  'StyleRuleCatalog::from_document',
+  'AssetDescriptor::from_value',
+  'StyleRuleIdentity::from_value',
+  'ordered_raw_entries',
+  'ProjectHash::from_document',
 ], 'structural snapshot diff');
 for (const forbidden of [
   '.project.visit_components(',
@@ -120,6 +122,8 @@ requireMarkers('snapshotTests', [
   'catalog_compares_snapshot_with_current',
   'anonymous_components_use_canonical_paths_in_diffs',
   'missing_snapshot_is_explicit',
+  'diff_counts_page_and_style_order_changes_after_cached_hash',
+  'diff_retains_duplicate_assets_and_opaque_order',
 ], 'snapshot regression coverage');
 requireMarkers('commandModel', [
   'RestoreSnapshot',

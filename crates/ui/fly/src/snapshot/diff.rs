@@ -1,5 +1,7 @@
 use super::model::ProjectDiffSummary;
-use crate::{AssetCatalog, ProjectDocument, StyleRuleCatalog, visit_project_components};
+use crate::{
+    AssetDescriptor, ProjectDocument, ProjectHash, StyleRuleIdentity, visit_project_components,
+};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -21,8 +23,9 @@ pub fn compare_projects(before: &ProjectDocument, after: &ProjectDocument) -> Pr
         diff_maps(&before_styles, &after_styles);
 
     ProjectDiffSummary {
-        before_hash: before.hash().hex(),
-        after_hash: after.hash().hex(),
+        // Compare actual payloads rather than potentially stale raw-project caches.
+        before_hash: ProjectHash::from_document(before).hex(),
+        after_hash: ProjectHash::from_document(after).hex(),
         added_pages,
         removed_pages,
         changed_pages,
@@ -39,58 +42,71 @@ pub fn compare_projects(before: &ProjectDocument, after: &ProjectDocument) -> Pr
     }
 }
 
-fn page_map(document: &ProjectDocument) -> BTreeMap<String, Value> {
-    document
-        .project
-        .pages
-        .iter()
-        .enumerate()
-        .map(|(index, page)| {
-            let key = page.id.clone().unwrap_or_else(|| format!("@index:{index}"));
-            (key, serde_json::to_value(page).unwrap_or(Value::Null))
-        })
-        .collect()
+// Keep positions and all occurrences: a map of id -> single value loses
+// both ordering and repeated identities in imported or malformed projects.
+type OrderedEntries = BTreeMap<String, Vec<(usize, Value)>>;
+
+fn page_map(document: &ProjectDocument) -> OrderedEntries {
+    let mut pages = OrderedEntries::new();
+    for (index, page) in document.project.pages.iter().enumerate() {
+        let key = page.id.clone().unwrap_or_else(|| format!("@index:{index}"));
+        pages.entry(key).or_default().push((
+            index,
+            serde_json::to_value(page).unwrap_or(Value::Null),
+        ));
+    }
+    pages
 }
 
-fn component_map(document: &ProjectDocument) -> BTreeMap<String, Value> {
-    let mut components = BTreeMap::new();
+fn component_map(document: &ProjectDocument) -> BTreeMap<String, Vec<Value>> {
+    let mut components = BTreeMap::<String, Vec<Value>>::new();
     visit_project_components(&document.project, |component, visit| {
         let key = component
             .id()
             .map(ToString::to_string)
             .unwrap_or_else(|| format!("@path:{}", visit.path()));
-        components.insert(key, serde_json::to_value(component).unwrap_or(Value::Null));
+        components
+            .entry(key)
+            .or_default()
+            .push(serde_json::to_value(component).unwrap_or(Value::Null));
     });
     components
 }
 
-fn asset_map(document: &ProjectDocument) -> BTreeMap<String, Value> {
-    let catalog = AssetCatalog::from_document(document);
-    let mut assets = BTreeMap::new();
-    for asset in catalog.assets {
-        assets.insert(asset.id, asset.raw);
-    }
-    for (index, asset) in catalog.unknown_entries.into_iter().enumerate() {
-        assets.insert(format!("@opaque:{index}"), asset);
-    }
-    assets
+fn asset_map(document: &ProjectDocument) -> OrderedEntries {
+    ordered_raw_entries(&document.project.assets, |raw| {
+        AssetDescriptor::from_value(raw.clone()).map(|asset| asset.id)
+    })
 }
 
-fn style_rule_map(document: &ProjectDocument) -> BTreeMap<String, Value> {
-    let catalog = StyleRuleCatalog::from_document(document);
-    let mut rules = BTreeMap::new();
-    for rule in catalog.rules {
-        rules.insert(rule.id, rule.raw);
-    }
-    for (index, rule) in catalog.unknown_entries.into_iter().enumerate() {
-        rules.insert(format!("@opaque:{index}"), rule);
-    }
-    rules
+fn style_rule_map(document: &ProjectDocument) -> OrderedEntries {
+    ordered_raw_entries(&document.project.styles, |raw| {
+        StyleRuleIdentity::from_value(raw).map(|rule| rule.id)
+    })
 }
 
-fn diff_maps(
-    before: &BTreeMap<String, Value>,
-    after: &BTreeMap<String, Value>,
+/// Use owner-defined identities while keeping each raw entry in its original
+/// position, including opaque entries interleaved with recognized ones.
+fn ordered_raw_entries(
+    entries: &[Value],
+    identity: impl Fn(&Value) -> Option<String>,
+) -> OrderedEntries {
+    let mut result = OrderedEntries::new();
+    let mut opaque_index = 0usize;
+    for (index, raw) in entries.iter().enumerate() {
+        let key = identity(raw).unwrap_or_else(|| {
+            let key = format!("@opaque:{opaque_index}");
+            opaque_index += 1;
+            key
+        });
+        result.entry(key).or_default().push((index, raw.clone()));
+    }
+    result
+}
+
+fn diff_maps<T: PartialEq>(
+    before: &BTreeMap<String, T>,
+    after: &BTreeMap<String, T>,
 ) -> (Vec<String>, Vec<String>, Vec<String>) {
     let before_keys = before.keys().cloned().collect::<BTreeSet<_>>();
     let after_keys = after.keys().cloned().collect::<BTreeSet<_>>();

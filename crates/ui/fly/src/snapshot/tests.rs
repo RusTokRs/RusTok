@@ -211,3 +211,50 @@ fn digestless_snapshots_remain_readable_but_not_verifiable() {
         Err(FlyError::SnapshotDigestMissing(_))
     ));
 }
+
+#[test]
+fn diff_counts_page_and_style_order_changes_after_cached_hash() {
+    let mut before = GrapesJsCodec::decode_value(json!({
+        "pages": [
+            { "id": "one", "component": { "id": "root-one", "type": "wrapper" } },
+            { "id": "two", "component": { "id": "root-two", "type": "wrapper" } }
+        ],
+        "styles": [
+            { "selectors": ["one"], "style": { "color": "red" } },
+            { "selectors": ["two"], "style": { "color": "blue" } }
+        ]
+    })).expect("document");
+    let original_hash = before.hash();
+    let original = before.clone();
+    before.project.pages.swap(0, 1);
+    before.project.styles.swap(0, 1);
+    let diff = compare_projects(&original, &before);
+    assert_eq!(diff.before_hash, original_hash.hex());
+    assert_ne!(diff.after_hash, original_hash.hex());
+    assert_eq!(diff.after_hash, before.clone().hash().hex());
+    assert_eq!(diff.changed_pages, vec!["one".to_string(), "two".to_string()]);
+    assert_eq!(diff.changed_style_rules.len(), 2);
+    assert!(diff.added_pages.is_empty());
+    assert!(diff.removed_pages.is_empty());
+    assert!(diff.change_count() >= 4);
+}
+
+#[test]
+fn diff_retains_duplicate_assets_and_opaque_order() {
+    let mut before = document("Content");
+    before.project_mut().assets = vec![
+        json!({"id": "same", "src": "/first.png"}),
+        json!("opaque"),
+        json!({"id": "same", "src": "/last.png"}),
+    ];
+    let mut after = before.clone();
+    after.project_mut().assets[0] = json!({"id": "same", "src": "/changed.png"});
+    let duplicate_diff = compare_projects(&before, &after);
+    assert_eq!(duplicate_diff.changed_assets, vec!["same".to_string()]);
+    let mut reordered = before.clone();
+    reordered.project_mut().assets.swap(0, 1);
+    let order_diff = compare_projects(&before, &reordered);
+    assert!(order_diff.changed_assets.contains(&"same".to_string()));
+    assert!(order_diff.changed_assets.contains(&"@opaque:0".to_string()));
+    assert!(!order_diff.is_empty());
+}

@@ -32,6 +32,7 @@ Fly Visual Editor Engine: framework-neutral visual editor engine, AST models, de
 - **Safe Rust**: The entire crate forbids unsafe code (`#![forbid(unsafe_code)]`).
 - **Lossless Round-Trip**: The GrapesJS codec guarantees lossless preservation of unrecognized attributes, custom traits, and raw CSS rules.
 - **Undo/Redo Integrity**: History retains before/after snapshots for undo and redo, including when an inverse command exists. The budget is a conservative JSON-size proxy, not exact heap accounting; shared `Arc` snapshots can be counted more than once. Eviction retains one oversized entry and preserves a contiguous undo/redo sequence; deserialization rebuilds accounting from the stored entries.
+- **Snapshot diff integrity**: Comparisons fingerprint actual payloads, retain every occurrence of an identity, and report page, asset and style-rule position changes, including opaque entries and shifted siblings.
 - **Inverse metadata**: Batch transactions and content patches that remove scalar text children have no local inverse; undo and redo restore exact document snapshots. Style inverses restore the full original slot (including absence).
 - **Snapshot capture**: Verify payload round-trip and fingerprint the actual payload before committing the catalog sequence; exhausted/duplicate identities or zero capacity fail without mutation.
 - **Move insertion slots**: Move indices refer to pre-removal slots. The implicit first-page root and its explicit ID resolve to the same parent, and inverse moves account for the shifted slot when moving left.
