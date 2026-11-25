@@ -17,19 +17,25 @@ use crate::jwt_keyring::{
 
 const DEFAULT_ACCESS_EXPIRATION_SECS: u64 = 900; // 15 minutes
 const DEFAULT_REFRESH_EXPIRATION_SECS: u64 = 60 * 60 * 24 * 30; // 30 days
-pub(crate) const MIN_HS256_SECRET_BYTES: usize = 32;
+pub(crate) const MIN_SYMMETRIC_SECRET_BYTES: usize = 32;
 
-/// The single HS256 secret-strength rule, shared by startup validation and
-/// by key materialization in `jwt.rs` so the two can never drift apart:
-/// at least `MIN_HS256_SECRET_BYTES` non-whitespace bytes. (Counting only
-/// `trim().len()` would credit interior whitespace toward the minimum.)
-pub(crate) fn hs256_secret_has_min_length(secret: &str) -> bool {
+/// The shared minimum for symmetric cryptographic material, independent of
+/// JWT signing policy. Interior whitespace does not count toward the floor.
+pub(crate) fn symmetric_secret_has_min_length(secret: &str) -> bool {
     secret
         .bytes()
         .filter(|byte| !byte.is_ascii_whitespace())
         .count()
-        >= MIN_HS256_SECRET_BYTES
+        >= MIN_SYMMETRIC_SECRET_BYTES
 }
+
+/// The MAC root must be independently provisioned symmetric material, not
+/// a PEM-encoded public or private key (or certificate). This checks the
+/// representation and length floor, not the entropy of supplied material.
+pub(crate) fn mac_root_is_valid(root: &str) -> bool {
+    symmetric_secret_has_min_length(root) && !root.contains("-----BEGIN ")
+}
+
 const MIN_ACCESS_EXPIRATION_SECS: u64 = 60;
 const MAX_ACCESS_EXPIRATION_SECS: u64 = 60 * 60 * 24 * 30;
 const MIN_REFRESH_EXPIRATION_SECS: u64 = 60 * 5;
@@ -903,11 +909,11 @@ pub fn validate_auth_config(config: &AuthConfig) -> Result<()> {
         )));
     }
 
-    // The host also uses this secret for CSRF and credential binding even
-    // when JWT signatures use RSA. Never allow weak symmetric key material.
-    if !hs256_secret_has_min_length(config.secret()) {
+    // Host proofs and durable authority use an independent symmetric root,
+    // even when JWT signing uses RSA.
+    if !mac_root_is_valid(config.secret()) {
         return Err(AuthError::Internal(format!(
-            "Auth secret must contain at least {MIN_HS256_SECRET_BYTES} non-whitespace bytes"
+            "Auth MAC root must contain at least {MIN_SYMMETRIC_SECRET_BYTES} non-whitespace bytes and must not contain PEM key material"
         )));
     }
 
@@ -1447,8 +1453,11 @@ mod tests {
     }
 
     #[test]
-    fn rs256_configuration_still_requires_strong_symmetric_secret() {
-        for weak in ["", "short-secret", "abc                              "] {
+    fn rs256_configuration_requires_independent_mac_root() {
+        for weak in [
+            "", "short-secret", "abc                              ",
+            crate::jwt::TEST_RSA_PUBLIC_KEY, crate::jwt::TEST_RSA_PRIVATE_KEY,
+        ] {
             let config = AuthConfig::new(weak.to_string()).with_rs256(
                 crate::jwt::TEST_RSA_PRIVATE_KEY,
                 crate::jwt::TEST_RSA_PUBLIC_KEY,

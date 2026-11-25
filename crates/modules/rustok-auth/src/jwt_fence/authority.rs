@@ -39,7 +39,7 @@ pub(super) struct AuthorityBinding {
 
 impl AuthorityBinding {
     fn new(id: Uuid, root: &str) -> Result<Self> {
-        if id.is_nil() || !crate::config::hs256_secret_has_min_length(root) {
+        if id.is_nil() {
             return Err(rejected());
         }
         let mac = FenceMac::new(root)?;

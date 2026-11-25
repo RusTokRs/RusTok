@@ -20,8 +20,9 @@ database:
 
 auth:
   jwt:
-    # Replace through the deployment secret manager. Production HS256 requires
-    # at least 64 bytes and rejects common placeholder/low-diversity values.
+    # Independently provision the MAC root through the deployment secret manager.
+    # Production requires at least 64 non-whitespace bytes and rejects common
+    # placeholder/low-diversity values. Never use JWT PEM material here.
     secret: CHANGE_ME_WITH_64_PLUS_RANDOM_BYTES_FROM_SECRET_MANAGER
     expiration: 3600
 
@@ -32,7 +33,7 @@ settings:
     # Both PostgreSQL URIs require sslmode=verify-full. Provision the
     # independent authority and witness before starting; see Auth docs.
     # Optional hot-reload source (environment RUSTOK_JWT_KEYRING_FILE):
-    # mount a complete versioned secret document; do not combine with the startup
+    # mount a complete generation-bearing secret document; do not combine with the startup
     # crypto overrides below. See the Auth owner docs for the JSON contract.
     # Optional startup JWT keyring; provision its JSON through the secret manager.
     # jwt_keyring_env: RUSTOK_JWT_KEYRING

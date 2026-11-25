@@ -962,8 +962,8 @@ mod tests {
             Uuid::new_v4(),
         );
         assert!(encode.is_err());
-        assert!(!crate::config::hs256_secret_has_min_length(padded.secret()));
-        assert!(crate::config::hs256_secret_has_min_length(
+        assert!(!crate::config::symmetric_secret_has_min_length(padded.secret()));
+        assert!(crate::config::symmetric_secret_has_min_length(
             &"a".repeat(32)
         ));
     }

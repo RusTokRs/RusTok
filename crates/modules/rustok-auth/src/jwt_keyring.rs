@@ -6,7 +6,7 @@ use jsonwebtoken::{DecodingKey, EncodingKey, crypto::aws_lc::DEFAULT_PROVIDER};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-use crate::config::{JwtAlgorithm, JwtKeyInputs, hs256_secret_has_min_length, validate_rs256_key_pair};
+use crate::config::{JwtAlgorithm, JwtKeyInputs, mac_root_is_valid, symmetric_secret_has_min_length, validate_rs256_key_pair};
 use crate::error::{AuthError, Result};
 
 const MAX_VERIFICATION_KEYS: usize = 16;
@@ -148,7 +148,7 @@ impl JwtPurpose {
 
     /// Defaults use independent derived signing keys, never the raw host MAC root.
     fn derive_hs256(self, root: &str) -> Result<String> {
-        if !hs256_secret_has_min_length(root) {
+        if !mac_root_is_valid(root) {
             return Err(invalid_config());
         }
         let hkdf = Hkdf::<Sha256>::new(Some(b"rustok/auth/jwt-purpose/v1"), root.as_bytes());
@@ -255,7 +255,7 @@ impl<'a> PurposeKeyringRef<'a> {
                     Some(secret) => Cow::Borrowed(secret),
                     None => Cow::Owned(self.purpose.derive_hs256(self.root)?),
                 };
-                if !hs256_secret_has_min_length(&value)
+                if !symmetric_secret_has_min_length(&value)
                     || hmac_identity(value.as_bytes()) == hmac_identity(self.root.as_bytes())
                 {
                     return Err(invalid_config());
@@ -448,7 +448,7 @@ pub(crate) struct ValidatedJwtKeyrings {
 
 impl ValidatedJwtKeyrings {
     pub(crate) fn prepare(inputs: &JwtKeyInputs, root: &str) -> Result<Self> {
-        if !hs256_secret_has_min_length(root) {
+        if !mac_root_is_valid(root) {
             return Err(invalid_config());
         }
         let root_identity = key_identity(&JwtAlgorithm::HS256, root)?;
@@ -600,7 +600,7 @@ pub(crate) fn verification_key(algorithm: &JwtAlgorithm, material: &str) -> Resu
     match algorithm {
         // An RSA public PEM is public information, never an HMAC secret.
         // Reject PEM-shaped material even if it meets the length floor.
-        JwtAlgorithm::HS256 if hs256_secret_has_min_length(material)
+        JwtAlgorithm::HS256 if symmetric_secret_has_min_length(material)
             && !material.contains("-----BEGIN ") => {
             Ok(DecodingKey::from_secret(material.as_bytes()))
         }

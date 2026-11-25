@@ -54,7 +54,9 @@ Mixed histories, mixed persisted snapshots/grants and cross-algorithm
 promotion are rejected in source. Next implement the coordinated four-RSA-pair
 bootstrap and all consumer/fixture cutover. The file-source entry point now
 validates only the actual complete candidate, with typed source exclusivity
-owned by Auth, not a redundant startup signer. Remove the remaining HS256 JWT
+owned by Auth, not a redundant startup signer. Independent MAC root validation
+now rejects PEM key material and weak roots at preparation, host proofs and
+fence MAC derivation; durable domains are unchanged. Remove the remaining HS256 JWT
 implementation and canonicalize persisted RSA-only metadata. Retained-state
 conversion and verification are explicit blockers to deployment where needed.
 Scoped compilation, regression execution and independent-replica rollout

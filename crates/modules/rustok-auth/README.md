@@ -117,7 +117,7 @@ generation. Password-reset credential binding and OAuth consent MAC proofs use o
 unversioned canonical format. Zero-legacy cleanup remains open for other
 unreleased token formats and broader config compatibility. Ambiguous or empty RSA key sources
 are rejected.
-Host root rotation remains open.
+The independent MAC root rejects PEM key material and weak values at JWT preparation, host-proof and durable fence derivation boundaries. Host root rotation remains open.
 Clock discontinuity detection and dual-deadline leases are source-implemented;
 independent clock fault-injection and suspend evidence remain pending.
 Independent production JWT authority and explicit offline import are source-implemented;

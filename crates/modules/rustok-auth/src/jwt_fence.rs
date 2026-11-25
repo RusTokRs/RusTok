@@ -257,6 +257,9 @@ struct FenceMac {
 
 impl FenceMac {
     fn new(root: &str) -> Result<Self> {
+        if !crate::config::mac_root_is_valid(root) {
+            return Err(rejected());
+        }
         let hkdf = Hkdf::<Sha256>::new(
             Some(b"rustok/auth/jwt-generation-fence/v1"), root.as_bytes(),
         );
@@ -461,9 +464,7 @@ impl JwtGenerationFence {
         &self, root: &str, purpose: &str, kid: &str,
     ) -> Result<JwtRevocationReceipt> {
         let purpose = revocation_purpose(purpose)?;
-        if !crate::config::hs256_secret_has_min_length(root)
-            || !crate::jwt_keyring::valid_kid(kid)
-        {
+        if !crate::jwt_keyring::valid_kid(kid) {
             return Err(rejected());
         }
         let mac = self.checked_mac(root)?;
@@ -827,6 +828,14 @@ mod tests {
     use sea_orm_migration::SchemaManager;
 
     pub(super) const ROOT: &str = "stable-host-root-for-fence-tests-only-32bytes";
+    #[test]
+    fn fence_mac_rejects_invalid_independent_root() {
+        for root in ["short", crate::jwt::TEST_RSA_PUBLIC_KEY, crate::jwt::TEST_RSA_PRIVATE_KEY] {
+            assert!(FenceMac::new(root).is_err());
+        }
+        assert!(FenceMac::new(ROOT).is_ok());
+    }
+
     pub(super) const OLD: &str = "first-independent-signing-key-at-least-32-bytes";
     pub(super) const NEW: &str = "second-independent-signing-key-at-least-32-bytes";
     const THIRD: &str = "third-independent-signing-key-at-least-32-bytes";

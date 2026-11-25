@@ -4,7 +4,7 @@ use hkdf::Hkdf;
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 
-use crate::config::{AuthConfig, hs256_secret_has_min_length};
+use crate::config::{AuthConfig, mac_root_is_valid};
 use crate::error::{AuthError, Result};
 
 /// Closed list: callers cannot supply arbitrary key derivation labels.
@@ -24,8 +24,8 @@ impl AuthMacPurpose {
 }
 
 fn derive_key(config: &AuthConfig, purpose: AuthMacPurpose) -> Result<[u8; 32]> {
-    if !hs256_secret_has_min_length(config.secret()) {
-        return Err(AuthError::Internal("Auth MAC secret is too short".to_string()));
+    if !mac_root_is_valid(config.secret()) {
+        return Err(AuthError::Internal("Invalid independent Auth MAC root".to_string()));
     }
     let hkdf = Hkdf::<Sha256>::new(
         Some(b"rustok/auth/host-mac"),
@@ -101,10 +101,12 @@ mod tests {
     }
 
     #[test]
-    fn weak_secret_fails_closed_for_every_purpose() {
-        let config = AuthConfig::new("short".to_string());
-        for purpose in [AuthMacPurpose::OAuthConsentCsrf, AuthMacPurpose::PasswordResetCredential] {
-            assert!(auth_purpose_mac(&config, purpose, b"payload").is_err());
+    fn invalid_root_fails_closed_for_every_mac_purpose() {
+        for root in ["short", crate::jwt::TEST_RSA_PUBLIC_KEY, crate::jwt::TEST_RSA_PRIVATE_KEY] {
+            let config = AuthConfig::new(root.to_string());
+            for purpose in [AuthMacPurpose::OAuthConsentCsrf, AuthMacPurpose::PasswordResetCredential] {
+                assert!(auth_purpose_mac(&config, purpose, b"payload").is_err());
+            }
         }
     }
 }

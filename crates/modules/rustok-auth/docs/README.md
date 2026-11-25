@@ -218,7 +218,12 @@ cutover; they are not part of the target architecture. Until that slice
 lands, the configuration examples below describe the existing runtime only.
 Four independent RSA pairs, exact kid selection, public-only history,
 terminal identity tombstones, rolling RSA rotation and emergency revocation
-are required in the target. HMAC root remains independent of JWT signing.
+are required in the target. HMAC root remains independent of JWT signing. The root must be independently
+provisioned symmetric secret material; PEM public/private keys and certificates
+are rejected at JWT preparation, host MAC proof derivation and durable fence
+MAC derivation. Existing valid root bytes and durable derivation domains are
+unchanged. The length and PEM checks do not prove entropy or independence of
+arbitrarily encoded material.
 Do not attempt live algorithm migration or deploy against retained mixed
 state. An authenticated offline preservation plan is required for valuable
 authority/witness history; only explicitly disposable development state may
