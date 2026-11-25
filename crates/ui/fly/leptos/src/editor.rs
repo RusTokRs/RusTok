@@ -3426,6 +3426,60 @@ mod tests {
     }
 
     #[test]
+    fn ssr_workspace_hides_controls_that_require_wasm_hydration() {
+        let html = view! {
+            <FlyEditorWorkspace
+                document=sample_document()
+                page_index=0
+                on_intent=Callback::new(|_: BrowserIntentEnvelope| {})
+            />
+        }
+        .to_html();
+
+        assert!(html.contains("data-fly-wasm-hydrated=\"false\""));
+        assert!(html.contains("data-fly-ssr-only=\"true\""));
+        assert!(html.contains("display: none !important"));
+    }
+
+    #[test]
+    fn theme_token_editor_exposes_named_ssr_intent_forms() {
+        let html = view! {
+            <FlyThemeTokenEditor
+                tokens=vec![]
+                on_upsert=Callback::new(|_: DesignToken| {})
+                on_remove=Callback::new(|_: String| {})
+                intent_mode=true
+            />
+        }
+        .to_html();
+
+        assert!(html.contains("data-fly-intent-form=\"set_theme_token\""));
+        assert!(html.contains("name=\"name\""));
+        assert!(html.contains("name=\"value\""));
+    }
+
+    #[test]
+    fn style_rules_expose_named_ssr_intent_forms_even_before_selection() {
+        let html = view! {
+            <FlyStyleRules
+                component_id=None
+                rules=fly::StyleRuleCatalog::default()
+                on_upsert=Callback::new(|_: ScopedStyleChange| {})
+                on_preview_breakpoint=None
+                intent_mode=true
+            />
+        }
+        .to_html();
+
+        assert!(html.contains("data-fly-intent-form=\"upsert_style_rule\""));
+        assert!(html.contains("name=\"scope_kind\""));
+        assert!(html.contains("name=\"scope_value\""));
+        assert!(html.contains("name=\"property\""));
+        assert!(html.contains("name=\"value\""));
+        assert!(html.contains("name=\"remove\""));
+    }
+
+    #[test]
     fn fly_canvas_preview_renders_in_preview_and_interactive_modes() {
         let document: ProjectDocument = serde_json::from_value(serde_json::json!({
             "project": {
