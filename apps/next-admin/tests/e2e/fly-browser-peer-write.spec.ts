@@ -338,7 +338,7 @@ test('strict receipt recovery rejects concurrent retry and ignores an unknown re
       pending: JSON.parse(sessionStorage.getItem(storageKey)!).request.operation_id
     };
     const lookup = adapter.resolvePendingOperation();
-    if (requests.length !== 2) throw new Error('second lookup was not sent');
+    if (!requests[1]) throw new Error('second lookup was not sent');
     responses[1](new Response(JSON.stringify({
       operation_id: 'operation-1', operation_status: 'committed',
       result: { revision_id: 'rev-2', project_hash: 'hash-2', dirty: false },
@@ -408,4 +408,48 @@ test('strict draft view requests use the same receipt-ordered transport as edits
       { intent: 'save', draft_generation: 2, hasReceipt: true }
     ]
   });
+});
+
+
+test('a persisted write requiring SSR reload still notifies peer editors', async ({ context, page }) => {
+  const source = await readFile(adapterPath, 'utf8');
+  const peer = await context.newPage();
+  await mountEditor(page, 'same-page', source);
+  await mountEditor(peer, 'same-page', source);
+  await page.evaluate(() => {
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      reload: true,
+      result: { revision_id: 'rev-2', project_hash: 'hash-2', dirty: false }
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+    void (globalThis as PeerScope).__flyPeerAdapter?.emitIntent('save', {});
+  });
+  await expect(peer.locator('#fly-root')).toHaveAttribute('data-fly-peer-write-conflict', 'true');
+  await peer.close();
+});
+
+test('dirty draft-only responses do not report a confirmed peer write', async ({ context, page }) => {
+  const source = await readFile(adapterPath, 'utf8');
+  const peer = await context.newPage();
+  await mountEditor(page, 'same-page', source);
+  await mountEditor(peer, 'same-page', source);
+  const broadcasts = await page.evaluate(async () => {
+    const sent: unknown[] = [];
+    const original = BroadcastChannel.prototype.postMessage;
+    BroadcastChannel.prototype.postMessage = function (message: unknown) {
+      sent.push(message);
+      original.call(this, message);
+    };
+    try {
+      globalThis.fetch = async () => new Response(JSON.stringify({
+        result: { revision_id: 'rev-1', project_hash: 'dirty-hash', dirty: true }
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+      await (globalThis as PeerScope).__flyPeerAdapter?.emitIntent('save', {});
+      return sent;
+    } finally {
+      BroadcastChannel.prototype.postMessage = original;
+    }
+  });
+  expect(broadcasts).toEqual([]);
+  await expect(peer.locator('#fly-root')).not.toHaveAttribute('data-fly-peer-write-conflict', 'true');
+  await peer.close();
 });

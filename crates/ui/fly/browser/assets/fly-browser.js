@@ -1620,7 +1620,9 @@ export class FlyBrowserAdapter {
         operationId: this.pendingOperation?.request?.operation_id || null,
       },
     }));
-    showPendingOperationNotice(this, this.pendingOperation?.invalid ? "invalid" : "unknown");
+    showPendingOperationNotice(this,
+      this.pendingResolutionInFlight || this.authoritativeInFlight ? "checking" :
+        this.pendingOperation?.invalid ? "invalid" : "unknown");
     return null;
   }
 
