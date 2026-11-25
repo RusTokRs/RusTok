@@ -214,3 +214,27 @@ fn switch_slide_form_accepts_each_supported_selector_individually() {
         assert!(result.dirty);
     }
 }
+
+#[test]
+fn ssr_action_form_preserves_exclusive_accordion_actions() {
+    let source = include_str!("editor/ssr_actions_forms.rs");
+    assert!(source.contains("name=\"exclusive\""));
+    assert!(source.contains("checked=action_values.exclusive"));
+
+    let mut controller = controller();
+    let request = intent(
+        &controller,
+        "set_component_action",
+        json!({
+            "component_id": "cta",
+            "kind": "toggle_accordion",
+            "target_id": "panel",
+            "exclusive": true
+        }),
+    );
+    dispatch_browser_intent(&mut controller, request).expect("accordion action dispatch");
+    assert_eq!(
+        controller.editor().document().component("cta").unwrap().extensions[FLY_ACTION_FIELD]["exclusive"],
+        true
+    );
+}
