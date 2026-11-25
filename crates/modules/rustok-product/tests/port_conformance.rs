@@ -650,8 +650,16 @@ impl ProductCatalogCommandPort for MockProductCatalogCommandPort {
         &self,
         _context: PortContext,
         _variant_id: Uuid,
+        expected_revision: String,
     ) -> Result<(), PortError> {
-        Ok(())
+        if expected_revision == "23" {
+            Ok(())
+        } else {
+            Err(PortError::conflict(
+                "product.variant_revision_conflict",
+                "The variant revision changed",
+            ))
+        }
     }
 
     async fn add_product_image(
@@ -724,6 +732,7 @@ async fn loopback_grpc_provider_executes_the_product_catalog_command_port_contra
     .with_allowed_operations([
         ProductCatalogGrpcOperation::CreateProduct,
         ProductCatalogGrpcOperation::DeleteProduct,
+        ProductCatalogGrpcOperation::DeleteVariant,
     ]);
     let attached_token =
         ProductCatalogGrpcBearerToken::new("loopback-attached-write-token").unwrap();
@@ -891,6 +900,26 @@ async fn loopback_grpc_provider_executes_the_product_catalog_command_port_contra
     assert_eq!(created.id, product_id);
     assert_eq!(created.tenant_id, tenant_id);
     assert_eq!(created.status, ProductStatus::Active);
+
+    let variant_id = Uuid::new_v4();
+    let stale = remote
+        .delete_variant(
+            write_context.clone().with_idempotency_key("delete-stale"),
+            variant_id,
+            "22".into(),
+        )
+        .await
+        .expect_err("stale predecessor revision must reach the Product owner");
+    assert_eq!(stale.kind, PortErrorKind::Conflict);
+    assert_eq!(stale.code, "product.variant_revision_conflict");
+    remote
+        .delete_variant(
+            write_context.clone().with_idempotency_key("delete-current"),
+            variant_id,
+            "23".into(),
+        )
+        .await
+        .expect("the current revision should reach the Product owner unchanged");
 
     remote
         .delete_product(write_context, product_id)

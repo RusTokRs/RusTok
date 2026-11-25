@@ -818,7 +818,7 @@ async fn source_delivery_fresh_variant_and_guarded_variant_delete_keep_unified_a
     assert_source_fact(&f, &created, Some(creating_actor)).await;
     let deleting_actor = Uuid::new_v4();
     f.catalog
-        .delete_variant(f.tenant, deleting_actor, variant.id)
+        .delete_variant(f.tenant, deleting_actor, variant.id, variant.revision)
         .await
         .unwrap();
     let deleted = history(&f)

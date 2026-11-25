@@ -325,3 +325,7 @@ product-attributeLifecycle-refChannelSetting = Channel attribute setting
 product-attributeLifecycle-refOptionRule = Retained option rule/default
 product-attributeLifecycle-refVirtualCategory = Virtual category predicate
 product-attributeLifecycle-loading = Loading catalog reads. Saved-request recovery is available independently.
+
+product-category-rule-label = Virtual category rule
+product-category-rule-hint = Enter a V1 JSON object with at least one condition. Example:
+product-category-rule-required = Enter a rule for the virtual category.

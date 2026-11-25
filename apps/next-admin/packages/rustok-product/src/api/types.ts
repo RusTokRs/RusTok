@@ -72,6 +72,7 @@ export interface CreateCatalogCategoryPayload {
   code: string;
   slug: string;
   kind?: string;
+  ruleJson?: string;
   name: string;
   description?: string;
 }

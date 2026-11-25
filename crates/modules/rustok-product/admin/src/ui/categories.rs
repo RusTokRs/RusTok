@@ -4,11 +4,13 @@ use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
 use rustok_grid_leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
+use rustok_ui_leptos::{Label, Textarea};
 
 use crate::catalog_transport;
 use crate::core::{
     CategoryTreeRowViewModel, build_category_tree, build_category_tree_row_view_models,
-    filter_product_categories, flatten_category_tree, product_category_grid_columns, slugify,
+    category_create_rule_json, filter_product_categories, flatten_category_tree,
+    product_category_grid_columns, slugify,
 };
 use crate::model::{CatalogCategoryDraft, CatalogCategorySummary};
 
@@ -188,6 +190,22 @@ pub fn CategoriesPage() -> impl IntoView {
     let (cat_code, set_cat_code) = signal(String::new());
     let (cat_parent_id, set_cat_parent_id) = signal(String::new());
     let (cat_kind, set_cat_kind) = signal(STRUCTURAL_CATEGORY_KIND.to_owned());
+    let (cat_rule_json, set_cat_rule_json) = signal(String::new());
+    let rule_label = StoredValue::new(crate::i18n::t(
+        locale.as_deref(),
+        "product-category-rule-label",
+        "Virtual category rule",
+    ));
+    let rule_hint = StoredValue::new(crate::i18n::t(
+        locale.as_deref(),
+        "product-category-rule-hint",
+        "Enter a V1 JSON object with at least one condition. Example:",
+    ));
+    let rule_required = crate::i18n::t(
+        locale.as_deref(),
+        "product-category-rule-required",
+        "Enter a rule for the virtual category.",
+    );
     let (cat_description, set_cat_description) = signal(String::new());
 
     // Load categories
@@ -236,6 +254,7 @@ pub fn CategoriesPage() -> impl IntoView {
         set_cat_code.set(String::new());
         set_cat_parent_id.set(String::new());
         set_cat_kind.set(STRUCTURAL_CATEGORY_KIND.to_owned());
+        set_cat_rule_json.set(String::new());
         set_cat_description.set(String::new());
         set_error_msg.set(None);
         set_success_msg.set(None);
@@ -275,6 +294,10 @@ pub fn CategoriesPage() -> impl IntoView {
         };
 
         let kind = cat_kind.get_untracked();
+        let Ok(rule_json) = category_create_rule_json(&kind, cat_rule_json.get_untracked()) else {
+            set_error_msg.set(Some(rule_required.clone()));
+            return;
+        };
         let desc = cat_description.get_untracked().trim().to_string();
         let description = if desc.is_empty() { None } else { Some(desc) };
 
@@ -291,6 +314,7 @@ pub fn CategoriesPage() -> impl IntoView {
             code,
             slug,
             kind,
+            rule_json,
             name,
             description,
         };
@@ -422,6 +446,7 @@ pub fn CategoriesPage() -> impl IntoView {
                             set_cat_slug.set(format!("{}-copy", cat.slug));
                             set_cat_code.set(format!("{}_COPY", cat.code));
                             set_cat_kind.set(cat.kind);
+                            set_cat_rule_json.set(String::new());
                         })
                     />
                 </div>
@@ -525,6 +550,26 @@ pub fn CategoriesPage() -> impl IntoView {
                             <option value="virtual">{if is_ru { "Виртуальная (Цифровые услуги / Смарт-правила)" } else { "Virtual (Digital / Smart Rules)" }}</option>
                         </select>
                     </div>
+
+                    <Show when=move || cat_kind.get() == "virtual">
+                        <div class="space-y-1.5">
+                            <Label r#for="catalog-category-rule">{rule_label.get_value()}</Label>
+                            <Textarea
+                                id="catalog-category-rule"
+                                described_by="catalog-category-rule-help"
+                                class="font-mono"
+                                rows=5
+                                required=true
+                                disabled=is_busy
+                                value=cat_rule_json
+                                set_value=set_cat_rule_json
+                            />
+                            <p id="catalog-category-rule-help" class="text-xs text-muted-foreground">
+                                {rule_hint.get_value()} " "
+                                <code>{r#"{"version":1,"statuses":["active"],"in_stock":true}"#}</code>
+                            </p>
+                        </div>
+                    </Show>
 
                     <div class="space-y-1.5">
                         <label class="text-xs font-medium text-foreground">

@@ -82,6 +82,7 @@ struct Fixture {
     actor: Uuid,
     product: Uuid,
     variant: Uuid,
+    variant_revision: String,
     item: Uuid,
     location: Uuid,
     level: Uuid,
@@ -104,6 +105,13 @@ async fn fixture_for_variant(
     product: Uuid,
     variant: Uuid,
 ) -> Fixture {
+    let variant_revision = product_variant::Entity::find_by_id(variant)
+        .one(db)
+        .await
+        .unwrap()
+        .unwrap()
+        .index_revision
+        .to_string();
     let item = inventory_item::Entity::find()
         .filter(inventory_item::Column::VariantId.eq(variant))
         .one(db)
@@ -121,6 +129,7 @@ async fn fixture_for_variant(
         actor,
         product,
         variant,
+        variant_revision,
         item: item.id,
         location: level.location_id,
         level: level.id,
@@ -567,7 +576,12 @@ async fn standalone_variant_deletion_uses_the_same_history_guard() {
     reservation(&db, &first, 0, true, serde_json::json!({"released_at": 0})).await;
     let before = snapshot(&db).await;
     let error = service
-        .delete_variant(first.tenant, first.actor, first.variant)
+        .delete_variant(
+            first.tenant,
+            first.actor,
+            first.variant,
+            first.variant_revision.clone(),
+        )
         .await
         .unwrap_err();
     assert!(matches!(
@@ -599,7 +613,12 @@ async fn empty_standalone_variant_delete_preserves_sibling_and_last_sku_rule() {
         .await
         .unwrap();
     service
-        .delete_variant(first.tenant, first.actor, first.variant)
+        .delete_variant(
+            first.tenant,
+            first.actor,
+            first.variant,
+            first.variant_revision.clone(),
+        )
         .await
         .unwrap();
     assert_eq!(
@@ -625,7 +644,12 @@ async fn empty_standalone_variant_delete_preserves_sibling_and_last_sku_rule() {
     );
     let before = snapshot(&db).await;
     let error = service
-        .delete_variant(second.tenant, second.actor, second.variant)
+        .delete_variant(
+            second.tenant,
+            second.actor,
+            second.variant,
+            second.variant_revision.clone(),
+        )
         .await
         .unwrap_err();
     assert!(matches!(error, CommerceError::CannotDeleteOnlyVariant));

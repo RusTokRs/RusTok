@@ -24,8 +24,9 @@ use super::auth::{
     TENANT_ID_METADATA,
 };
 use super::payloads::{
-    ProductIdPayload, ProductImageIdPayload, ProductInputPayload, ReadAttachedValuesPayload,
-    ReorderProductImagesPayload, UpdateProductImagePayload, VariantIdPayload, VariantInputPayload,
+    DeleteVariantPayload, ProductIdPayload, ProductImageIdPayload, ProductInputPayload,
+    ReadAttachedValuesPayload, ReorderProductImagesPayload, UpdateProductImagePayload,
+    VariantInputPayload,
 };
 use super::proto::product_catalog_command_service_server::ProductCatalogCommandService;
 use super::proto::product_catalog_read_service_server::ProductCatalogReadService;
@@ -925,7 +926,7 @@ where
         json_response(&value)
     }
 
-    async fn update_variant(
+    async fn update_variant_with_revision(
         &self,
         request: Request<JsonRequest>,
     ) -> Result<Response<JsonResponse>, Status> {
@@ -944,7 +945,7 @@ where
         json_response(&value)
     }
 
-    async fn delete_variant(
+    async fn delete_variant_with_revision(
         &self,
         request: Request<JsonRequest>,
     ) -> Result<Response<JsonResponse>, Status> {
@@ -953,9 +954,9 @@ where
             decode_context(&request.get_ref().context_json)?,
             ProductCatalogGrpcOperation::DeleteVariant,
         )?;
-        let payload: VariantIdPayload = decode_input(&request.into_inner().input_json)?;
+        let payload: DeleteVariantPayload = decode_input(&request.into_inner().input_json)?;
         self.provider
-            .delete_variant(context, payload.variant_id)
+            .delete_variant(context, payload.variant_id, payload.expected_revision)
             .await
             .map_err(port_error_to_status)?;
         json_response(&())

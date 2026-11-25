@@ -207,3 +207,38 @@ test('structural root and subcategory persist in the catalog tree', async ({
     await close();
   }
 });
+
+test('a virtual category with a V1 rule persists after reload', async ({
+  browser
+}) => {
+  const { page, close } = await authenticatedAdminPage(browser);
+  try {
+    const name = 'E2E Virtual Category ' + Date.now();
+    await openCreateDialog(page);
+    const dialog = page.getByRole('dialog');
+    await dialog
+      .getByRole('combobox')
+      .filter({ hasText: 'Structural' })
+      .click();
+    await page.getByRole('option', { name: 'Virtual (Rule-based)' }).click();
+    await page.locator('#cat-name').fill(name);
+    await page.locator('#cat-rule').fill('{"version":1,"in_stock":false}');
+    await page.getByRole('button', { name: 'Create Category' }).click();
+    await expect(page.getByText('Category created successfully')).toBeVisible({
+      timeout: 30_000
+    });
+
+    await page.goto(baseUrl + '/dashboard/product/categories');
+    await page
+      .getByPlaceholder('Filter categories by name, code or path...')
+      .fill(name);
+    const row = page.getByRole('row').filter({
+      has: page.getByText(name, { exact: true })
+    });
+    await expect(
+      row.getByRole('cell', { name: 'virtual', exact: true })
+    ).toBeVisible();
+  } finally {
+    await close();
+  }
+});

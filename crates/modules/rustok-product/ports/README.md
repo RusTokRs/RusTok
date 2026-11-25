@@ -63,6 +63,13 @@ The gRPC client preserves structured owner errors. Bare `DeadlineExceeded` and
 transport deadline as `Cancelled`. A command whose response timed out may have
 committed. Reuse the original idempotency key and payload to recover its result.
 
+Variant edits and removals use `UpdateVariantWithRevision` and
+`DeleteVariantWithRevision`. Send the revision from the loaded Variant with a
+stable command key. The Product owner checks the revision under the write lock
+and includes it in the receipt request. The new method names fence mixed
+deployments. An older provider cannot accept a write without enforcing the
+revision, and newer providers have no handler for either old method name.
+
 ## Authentication
 
 - Client authentication: `ProductCatalogGrpcBearerToken` attaches `Authorization: Bearer ...` and `x-rustok-tenant-id`.

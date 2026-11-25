@@ -169,6 +169,7 @@ export async function createCatalogCategory(
     code: payload.code.trim(),
     slug: payload.slug.trim(),
     kind: payload.kind || 'structural',
+    ruleJson: payload.ruleJson,
     name: payload.name.trim(),
     description: payload.description?.trim() || null
   };

@@ -31,8 +31,9 @@ service ProductCatalogCommandService {
   rpc ArchiveProduct(JsonRequest) returns (JsonResponse);
   rpc DeleteProduct(JsonRequest) returns (JsonResponse);
   rpc CreateVariant(JsonRequest) returns (JsonResponse);
-  rpc UpdateVariant(JsonRequest) returns (JsonResponse);
-  rpc DeleteVariant(JsonRequest) returns (JsonResponse);
+  // The previous endpoints accepted writes without the predecessor revision.
+  rpc UpdateVariantWithRevision(JsonRequest) returns (JsonResponse);
+  rpc DeleteVariantWithRevision(JsonRequest) returns (JsonResponse);
   rpc SetVariantAxes(JsonRequest) returns (JsonResponse);
   rpc PreviewVariantAxes(JsonRequest) returns (JsonResponse);
   rpc AddProductImage(JsonRequest) returns (JsonResponse);

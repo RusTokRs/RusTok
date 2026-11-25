@@ -23,27 +23,25 @@ import {
 } from '@/shared/ui/shadcn/select';
 import { Plus, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { CatalogCategorySummary } from '../../api/types';
+import { useTranslations } from '@rustok/next-fluent/client';
+import type {
+  CatalogCategorySummary,
+  CreateCatalogCategoryPayload
+} from '../../api/types';
 import { SearchableCategorySelect } from './searchable-category-select';
 
 const STRUCTURAL_CATEGORY_KIND = 'structural';
 
 interface CategoryCreateDialogProps {
   categories: CatalogCategorySummary[];
-  onCreateCategory: (payload: {
-    name: string;
-    code: string;
-    slug: string;
-    parentId?: string | null;
-    kind?: string;
-    description?: string;
-  }) => Promise<void>;
+  onCreateCategory: (payload: CreateCatalogCategoryPayload) => Promise<void>;
 }
 
 export function CategoryCreateDialog({
   categories,
   onCreateCategory
 }: CategoryCreateDialogProps) {
+  const t = useTranslations('product');
   const [open, setOpen] = React.useState(false);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [name, setName] = React.useState('');
@@ -51,6 +49,7 @@ export function CategoryCreateDialog({
   const [slug, setSlug] = React.useState('');
   const [parentId, setParentId] = React.useState<string>('none');
   const [kind, setKind] = React.useState<string>(STRUCTURAL_CATEGORY_KIND);
+  const [ruleJson, setRuleJson] = React.useState('');
   const [description, setDescription] = React.useState('');
 
   const handleNameChange = (val: string) => {
@@ -110,6 +109,7 @@ export function CategoryCreateDialog({
         slug: slug.trim(),
         parentId: parentId === 'none' ? null : parentId,
         kind,
+        ruleJson: kind === 'virtual' ? ruleJson : undefined,
         description: description.trim() || undefined
       });
       toast.success('Category created successfully');
@@ -119,6 +119,7 @@ export function CategoryCreateDialog({
       setSlug('');
       setParentId('none');
       setKind(STRUCTURAL_CATEGORY_KIND);
+      setRuleJson('');
       setDescription('');
     } catch (err) {
       toast.error(
@@ -224,6 +225,28 @@ export function CategoryCreateDialog({
                 </Select>
               </div>
             </div>
+
+            {kind === 'virtual' && (
+              <div className='space-y-1.5'>
+                <Label htmlFor='cat-rule'>{t('categoryRuleLabel')}</Label>
+                <Textarea
+                  id='cat-rule'
+                  aria-describedby='cat-rule-help'
+                  className='font-mono'
+                  value={ruleJson}
+                  onChange={(event) => setRuleJson(event.target.value)}
+                  rows={5}
+                  disabled={isSubmitting}
+                  required
+                />
+                <p id='cat-rule-help' className='text-muted-foreground text-xs'>
+                  {t('categoryRuleHint')}{' '}
+                  <code>
+                    {'{"version":1,"statuses":["active"],"in_stock":true}'}
+                  </code>
+                </p>
+              </div>
+            )}
 
             <div className='space-y-1.5'>
               <Label htmlFor='cat-desc'>Description</Label>

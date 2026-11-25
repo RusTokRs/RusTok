@@ -1391,3 +1391,6 @@ product-catalog-availableAttributes = Доступные фильтруемые 
 product-catalog-manualFacetHint = Введите выражение code=value выше, чтобы отфильтровать этот атрибут.
 product-catalog-truncated = Часть значений скрыта; уточните фильтры, чтобы увидеть больше.
 product-catalog-clearFacet = Сбросить этот фасет
+
+product-categoryRuleLabel = Правило виртуальной категории
+product-categoryRuleHint = Введите JSON-объект V1 хотя бы с одним условием. Пример:

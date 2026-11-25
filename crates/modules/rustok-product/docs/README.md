@@ -109,6 +109,10 @@ and [native transaction contract](./product-lifecycle-collaboration.md#atomicity
 - The former Product-to-Index projection has been removed with Index v1. Product and Search must not depend on an Index projection until the generic Index Engine publishes replacement owner contracts.
 - Search consumes Product's public transport contract for category and attribute options. The Product write model remains authoritative for schema inheritance and detached-value handling.
 - Visibility flags are computed with priority `global attribute defaults < schema/category overrides < channel settings`. Overrides are tri-state: a missing field inherits the previous value, explicit `false` disables the behavior. The resolver preserves overrides through live inheritance and clone snapshots.
+- Choose the virtual kind in either admin and enter the V1 rule as JSON. The native and
+  GraphQL create adapters pass the rule text to the same Product decoder so that integer
+  price bounds retain their precision. Product validates both predicates and references when
+  creating the category.
 - Virtual category uses a bounded V1 rule contract. All filled predicates are combined with AND: `statuses`, `primary_category_subtree_id`, overlapping range `price_min`/`price_max`, `in_stock` and a list of `attributes` with `eq`/`range` operators. Attribute rules work only with stable option codes and locale-neutral product values; localized and variant-only attributes are rejected on the write-side.
 
 ```json
@@ -126,7 +130,7 @@ and [native transaction contract](./product-lifecycle-collaboration.md#atomicity
 }
 ```
 
-When resolving virtual-category assignments, Product evaluates the stored rule against the effective form. Invalid old rule payloads do not stop resolution: the category is skipped with a warning; the creation service rejects new invalid payloads.
+Product validates and stores rules at category creation. The storefront category filter resolves the structural subtree. Evaluation of saved virtual rules for storefront results remains open.
 
 ## Integration
 

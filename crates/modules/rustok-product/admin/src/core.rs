@@ -2543,6 +2543,38 @@ pub struct CategoryTreeItem {
     pub children: Vec<CategoryTreeItem>,
 }
 
+#[cfg(test)]
+#[test]
+fn category_creation_only_submits_nonempty_virtual_rule_text() {
+    let rule = r#" {"version":1,"price_min":9007199254740993} "#;
+    assert_eq!(
+        category_create_rule_json("virtual", rule.to_owned()),
+        Ok(Some(rule.to_owned()))
+    );
+    assert_eq!(
+        category_create_rule_json("virtual", " ".to_owned()),
+        Err(())
+    );
+    assert_eq!(
+        category_create_rule_json("structural", rule.to_owned()),
+        Ok(None)
+    );
+}
+
+/// Include rule text only for a virtual category. A virtual draft needs a rule before submission.
+pub(crate) fn category_create_rule_json(
+    kind: &str,
+    rule_json: String,
+) -> Result<Option<String>, ()> {
+    if kind != "virtual" {
+        return Ok(None);
+    }
+    if rule_json.trim().is_empty() {
+        return Err(());
+    }
+    Ok(Some(rule_json))
+}
+
 pub fn build_category_tree(categories: &[CatalogCategorySummary]) -> Vec<CategoryTreeItem> {
     fn build_branch(
         parent_id: Option<&str>,

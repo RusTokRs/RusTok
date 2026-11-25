@@ -15,8 +15,9 @@ pub(crate) struct ReadAttachedValuesPayload {
 }
 
 #[derive(Serialize, Deserialize)]
-pub(crate) struct VariantIdPayload {
+pub(crate) struct DeleteVariantPayload {
     pub variant_id: Uuid,
+    pub expected_revision: String,
 }
 
 #[derive(Serialize, Deserialize)]

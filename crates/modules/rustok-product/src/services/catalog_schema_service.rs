@@ -256,6 +256,25 @@ pub struct CreateCatalogCategoryInput {
 }
 
 impl CreateCatalogCategoryInput {
+    /// Decode rule text from admin transports without narrowing JSON numbers in the client.
+    pub fn decode_rule_json(rule_json: Option<&str>) -> CommerceResult<Value> {
+        let Some(rule_json) = rule_json else {
+            return Ok(serde_json::json!({}));
+        };
+        if rule_json.len() > MAX_PRODUCT_JSON_BYTES {
+            return Err(CommerceError::Validation(
+                "category rule JSON must not exceed 64 KiB".into(),
+            ));
+        }
+        serde_json::from_str(rule_json).map_err(|error| {
+            CommerceError::Validation(format!(
+                "invalid category rule JSON at line {}, column {}",
+                error.line(),
+                error.column()
+            ))
+        })
+    }
+
     fn validate(&self) -> CommerceResult<()> {
         validate_code("category code", &self.code)?;
         validate_slug("category slug", &self.slug)?;
@@ -1491,6 +1510,31 @@ fn map_schema_resolution_error(error: SchemaResolutionError) -> CommerceError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn category_rule_text_preserves_large_integers_and_optional_input() {
+        let rule = CreateCatalogCategoryInput::decode_rule_json(Some(
+            r#"{"version":1,"price_min":9007199254740993,"in_stock":false}"#,
+        ))
+        .unwrap();
+        let parsed = parse_virtual_category_rule_v1(&rule).unwrap();
+        assert_eq!(parsed.price_min, Some(9_007_199_254_740_993));
+        assert_eq!(parsed.in_stock, Some(false));
+        assert_eq!(
+            CreateCatalogCategoryInput::decode_rule_json(None).unwrap(),
+            serde_json::json!({})
+        );
+    }
+
+    #[test]
+    fn category_rule_text_rejects_invalid_json_and_bounds() {
+        for input in ["", "{", &" ".repeat(MAX_PRODUCT_JSON_BYTES + 1)] {
+            assert!(CreateCatalogCategoryInput::decode_rule_json(Some(input)).is_err());
+        }
+        let empty_rule =
+            CreateCatalogCategoryInput::decode_rule_json(Some(r#"{"version":1}"#)).unwrap();
+        assert!(parse_virtual_category_rule_v1(&empty_rule).is_err());
+    }
 
     #[test]
     fn bounded_json_rejects_excessive_size_and_depth() {

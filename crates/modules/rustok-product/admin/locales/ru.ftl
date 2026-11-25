@@ -325,3 +325,7 @@ product-attributeLifecycle-refChannelSetting = Настройка характе
 product-attributeLifecycle-refOptionRule = Сохранённое правило/default опции
 product-attributeLifecycle-refVirtualCategory = Предикат виртуальной категории
 product-attributeLifecycle-loading = Чтение каталога. Восстановление сохранённого запроса доступно независимо.
+
+product-category-rule-label = Правило виртуальной категории
+product-category-rule-hint = Введите JSON-объект V1 хотя бы с одним условием. Пример:
+product-category-rule-required = Введите правило виртуальной категории.

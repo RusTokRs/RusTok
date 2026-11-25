@@ -41,8 +41,9 @@ use uuid::Uuid;
 
 use super::auth::{AUTHORIZATION_METADATA, TENANT_ID_METADATA};
 use super::payloads::{
-    ProductIdPayload, ProductImageIdPayload, ProductInputPayload, ReadAttachedValuesPayload,
-    ReorderProductImagesPayload, UpdateProductImagePayload, VariantIdPayload, VariantInputPayload,
+    DeleteVariantPayload, ProductIdPayload, ProductImageIdPayload, ProductInputPayload,
+    ReadAttachedValuesPayload, ReorderProductImagesPayload, UpdateProductImagePayload,
+    VariantInputPayload,
 };
 use super::proto::JsonRequest;
 use super::proto::product_catalog_command_service_client::ProductCatalogCommandServiceClient;
@@ -752,7 +753,7 @@ impl ProductCatalogCommandPort for GrpcProductCatalogCommandProvider {
         let response = self
             .client
             .clone()
-            .update_variant(request)
+            .update_variant_with_revision(request)
             .await
             .map_err(status_to_port_error)?
             .into_inner();
@@ -763,13 +764,17 @@ impl ProductCatalogCommandPort for GrpcProductCatalogCommandProvider {
         &self,
         context: PortContext,
         variant_id: Uuid,
+        expected_revision: String,
     ) -> Result<(), PortError> {
-        let payload = VariantIdPayload { variant_id };
+        let payload = DeleteVariantPayload {
+            variant_id,
+            expected_revision,
+        };
         let request = self.command_request(&context, &payload)?;
         let _ = self
             .client
             .clone()
-            .delete_variant(request)
+            .delete_variant_with_revision(request)
             .await
             .map_err(status_to_port_error)?;
         Ok(())

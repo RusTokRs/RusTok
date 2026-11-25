@@ -1403,3 +1403,6 @@ product-catalog-availableAttributes = Filterable attributes
 product-catalog-manualFacetHint = Enter a code=value expression above to filter this attribute.
 product-catalog-truncated = Some values are omitted; narrow your filters to see more.
 product-catalog-clearFacet = Clear this facet
+
+product-categoryRuleLabel = Virtual category rule
+product-categoryRuleHint = Enter a V1 JSON object with at least one condition. Example:

@@ -1217,6 +1217,8 @@ pub struct CreateCatalogCategoryInput {
     pub code: String,
     pub slug: String,
     pub kind: String,
+    /// V1 rule as JSON text for virtual categories.
+    pub rule_json: Option<String>,
     pub name: String,
     pub description: Option<String>,
 }

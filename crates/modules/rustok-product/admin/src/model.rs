@@ -874,6 +874,8 @@ pub struct CatalogCategoryDraft {
     pub code: String,
     pub slug: String,
     pub kind: String,
+    #[serde(rename = "ruleJson", skip_serializing_if = "Option::is_none")]
+    pub rule_json: Option<String>,
     pub name: String,
     pub description: Option<String>,
 }

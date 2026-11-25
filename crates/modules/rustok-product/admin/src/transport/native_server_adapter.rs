@@ -1360,7 +1360,11 @@ async fn product_admin_create_category_native(
                 slug: draft.slug,
                 kind: parse_category_kind(&draft.kind)?,
                 position: 0,
-                rule_config: empty_json(),
+                rule_config:
+                    rustok_product::services::CreateCatalogCategoryInput::decode_rule_json(
+                        draft.rule_json.as_deref(),
+                    )
+                    .map_err(|error| ServerFnError::new(error.to_string()))?,
                 metadata: empty_json(),
                 translations: vec![rustok_product::services::CategoryTranslationInput {
                     locale,

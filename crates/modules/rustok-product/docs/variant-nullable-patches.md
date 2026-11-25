@@ -26,16 +26,18 @@ variables use camelCase (`shippingProfileSlug`, `weightUnit`). Examples of Graph
 {}
 ```
 
-keeps all five values; `{"sku": null}` clears only SKU;
-`{"barcode": "0123", "weight": "0.000000001", "weightUnit": "kg"}` sets only those fields.
+keeps all five values. To clear only SKU, send
+`{"sku": null, "expectedRevision": "23"}` with the revision from the loaded Variant.
+To set only barcode, weight and unit, send
+`{"barcode": "0123", "weight": "0.000000001", "weightUnit": "kg", "expectedRevision": "23"}`.
 `Keep` is omitted during serialization: it must never turn into a JSON null. Command receipt
 payloads therefore distinguish Keep, Clear and Set. Reusing a caller key for a different patch
 must conflict; replay returns the original public result and does not reapply a clear.
 
-Other Variant update fields retain their existing contracts. In particular, omitted prices/axes
-keep their values; this slice does not introduce nullable collections, whole-screen atomicity,
-Variant editorial CAS, or new inventory/pricing ownership rules. Create inputs are not patches
-and retain their existing optional-field semantics.
+Omitted prices and axes keep their values. The owner checks the predecessor
+for a patch with changes and for deletion. The revision is part of the command
+receipt request. Create retains its existing optional fields.
+[Revision-guarded gRPC](../ports/README.md).
 
 ## Owner and adapter rules
 

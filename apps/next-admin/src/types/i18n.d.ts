@@ -1049,6 +1049,10 @@ export type AppMessageKey =
   | 'product-attributeLifecycle-target'
   | 'product.attributeLifecycle.target'
   | 'product-attributeLifecycle-title'
+  | 'product-categoryRuleHint'
+  | 'product.categoryRuleHint'
+  | 'product-categoryRuleLabel'
+  | 'product.categoryRuleLabel'
   | 'product.attributeLifecycle.title'
   | 'product-attributeLifecycle-unavailable'
   | 'product.attributeLifecycle.unavailable'
@@ -3487,6 +3491,10 @@ export interface AppMessageArgs {
   'product-attributeLifecycle-target'?: Record<string, never>;
   'product.attributeLifecycle.target'?: Record<string, never>;
   'product-attributeLifecycle-title'?: Record<string, never>;
+  'product.categoryRuleHint'?: Record<string, never>;
+  'product-categoryRuleHint'?: Record<string, never>;
+  'product.categoryRuleLabel'?: Record<string, never>;
+  'product-categoryRuleLabel'?: Record<string, never>;
   'product.attributeLifecycle.title'?: Record<string, never>;
   'product-attributeLifecycle-unavailable'?: Record<string, never>;
   'product.attributeLifecycle.unavailable'?: Record<string, never>;
@@ -5926,6 +5934,10 @@ export interface AppMessages {
   'product-attributeLifecycle-target': Record<string, never>;
   'product.attributeLifecycle.target': Record<string, never>;
   'product-attributeLifecycle-title': Record<string, never>;
+  'product.categoryRuleHint': Record<string, never>;
+  'product-categoryRuleHint': Record<string, never>;
+  'product.categoryRuleLabel': Record<string, never>;
+  'product-categoryRuleLabel': Record<string, never>;
   'product.attributeLifecycle.title': Record<string, never>;
   'product-attributeLifecycle-unavailable': Record<string, never>;
   'product.attributeLifecycle.unavailable': Record<string, never>;

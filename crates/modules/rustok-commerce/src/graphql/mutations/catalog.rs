@@ -1542,7 +1542,10 @@ impl CommerceCatalogMutation {
             slug: input.slug,
             kind: parse_catalog_category_kind(&input.kind)?,
             position: 0,
-            rule_config: serde_json::Value::Object(Default::default()),
+            rule_config: rustok_product::services::CreateCatalogCategoryInput::decode_rule_json(
+                input.rule_json.as_deref(),
+            )
+            .map_err(invalid_catalog_input)?,
             metadata: serde_json::Value::Object(Default::default()),
             translations: vec![rustok_product::services::CategoryTranslationInput {
                 locale,
