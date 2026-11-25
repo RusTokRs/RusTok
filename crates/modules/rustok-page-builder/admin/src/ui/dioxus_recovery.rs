@@ -4,10 +4,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
-use std::{cell::Cell, rc::Rc};
+use std::{cell::{Cell, RefCell}, rc::Rc};
 
 const RECOVERY_FORMAT: u8 = 1;
 const MAX_RECOVERY_RECORD_BYTES: usize = 2 * 1024 * 1024;
+const MAX_RECOVERY_SUPERSEDED_KEYS: usize = 256;
 const RECOVERY_KEY_PREFIX: &str = "rustok:fly:draft:v1:";
 
 #[derive(Debug, Clone, PartialEq)]
@@ -44,6 +45,9 @@ struct DraftRecoveryRecord {
     /// Monotonic within one mounted writer; timestamps alone can tie within a millisecond.
     #[serde(default)]
     sequence: u64,
+    /// Exact older storage keys consumed by this recovery lineage.
+    #[serde(default)]
+    supersedes: Vec<String>,
     base_revision_id: String,
     base_project_data: Value,
     draft_project_data: Value,
@@ -62,8 +66,13 @@ pub(crate) struct DraftRecoveryBootstrap {
 
 
 struct LoadedRecoveryRecord {
-    references: Vec<RecoveryRecordRef>,
     record: DraftRecoveryRecord,
+}
+
+struct LoadedRecoveryRecords {
+    records: Vec<LoadedRecoveryRecord>,
+    references: Vec<RecoveryRecordRef>,
+    supersedes_keys: BTreeSet<String>,
 }
 
 fn recovery_record_storage_key(prefix: &str, writer_id: &str, record_id: &str) -> String {
@@ -83,7 +92,10 @@ fn valid_recovery_token(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
 }
 
-fn recovery_record_is_newer(candidate: &DraftRecoveryRecord, current: &DraftRecoveryRecord) -> bool {
+fn recovery_record_is_newer(
+    candidate: &DraftRecoveryRecord,
+    current: &DraftRecoveryRecord,
+) -> bool {
     (
         candidate.sequence,
         candidate.updated_at_ms,
@@ -95,6 +107,59 @@ fn recovery_record_is_newer(candidate: &DraftRecoveryRecord, current: &DraftReco
     )
 }
 
+fn latest_recovery_records(
+    entries: Vec<(RecoveryRecordRef, DraftRecoveryRecord)>,
+) -> Result<LoadedRecoveryRecords, String> {
+    let mut references = Vec::with_capacity(entries.len());
+    let mut by_writer = BTreeMap::<String, (String, DraftRecoveryRecord)>::new();
+
+    for (reference, record) in entries {
+        let key = reference.key.clone();
+        references.push(reference);
+        match by_writer.entry(record.writer_id.clone()) {
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                entry.insert((key, record));
+            }
+            std::collections::btree_map::Entry::Occupied(mut entry) => {
+                if recovery_record_is_newer(&record, &entry.get().1) {
+                    entry.insert((key, record));
+                }
+            }
+        }
+    }
+
+    let supersedes_keys = by_writer
+        .values()
+        .flat_map(|(_, record)| record.supersedes.iter().cloned())
+        .collect::<BTreeSet<_>>();
+    let writer_count = by_writer.len();
+    let mut records = by_writer
+        .into_values()
+        .filter_map(|(key, record)| {
+            (!supersedes_keys.contains(&key)).then_some(LoadedRecoveryRecord { record })
+        })
+        .collect::<Vec<_>>();
+
+    if writer_count > 0 && records.is_empty() {
+        return Err(
+            "Local recovery records contain a cyclic supersession chain; all records were left untouched."
+                .to_string(),
+        );
+    }
+
+    records.sort_by(|left, right| {
+        left.record
+            .updated_at_ms
+            .cmp(&right.record.updated_at_ms)
+            .then_with(|| left.record.writer_id.cmp(&right.record.writer_id))
+    });
+    Ok(LoadedRecoveryRecords {
+        records,
+        references,
+        supersedes_keys,
+    })
+}
+
 #[derive(Clone)]
 pub(crate) struct DraftRecoveryStore {
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
@@ -103,6 +168,10 @@ pub(crate) struct DraftRecoveryStore {
     writer_id: String,
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
     sequence: Rc<Cell<u64>>,
+    #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
+    supersedes_keys: Rc<RefCell<BTreeSet<String>>>,
+    #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
+    consumed_records: Rc<RefCell<Vec<RecoveryRecordRef>>>,
 }
 
 impl DraftRecoveryStore {
@@ -127,10 +196,22 @@ impl DraftRecoveryStore {
             prefix,
             writer_id,
             sequence: Rc::new(Cell::new(0)),
+            supersedes_keys: Rc::new(RefCell::new(BTreeSet::new())),
+            consumed_records: Rc::new(RefCell::new(Vec::new())),
         };
         // Probe storage during initialization so quota/security failures are surfaced before edits.
         let _ = store.storage()?;
         Ok(store)
+    }
+
+    #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
+    fn set_recovery_lineage(
+        &self,
+        supersedes_keys: BTreeSet<String>,
+        consumed_records: Vec<RecoveryRecordRef>,
+    ) {
+        *self.supersedes_keys.borrow_mut() = supersedes_keys;
+        *self.consumed_records.borrow_mut() = consumed_records;
     }
 
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
@@ -144,7 +225,7 @@ impl DraftRecoveryStore {
     }
 
     #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
-    fn load_records(&self) -> Result<Vec<LoadedRecoveryRecord>, String> {
+    fn load_records(&self) -> Result<LoadedRecoveryRecords, String> {
         let storage = self.storage()?;
         let length = storage
             .length()
@@ -155,7 +236,7 @@ impl DraftRecoveryStore {
             .and_then(|value| value.split(':').next())
             .unwrap_or_default();
         let page_hash = self.prefix.rsplit(':').nth(1).unwrap_or_default();
-        let mut by_writer = BTreeMap::<String, LoadedRecoveryRecord>::new();
+        let mut entries = Vec::<(RecoveryRecordRef, DraftRecoveryRecord)>::new();
 
         for index in 0..length {
             let Some(key) = storage
@@ -186,6 +267,10 @@ impl DraftRecoveryStore {
                 || record.page_hash.as_str() != page_hash
                 || !valid_recovery_token(&record.writer_id)
                 || (!record.record_id.is_empty() && !valid_recovery_token(&record.record_id))
+                || record.supersedes.len() > MAX_RECOVERY_SUPERSEDED_KEYS
+                || record.supersedes.iter().any(|superseded_key| {
+                    superseded_key.len() > 512 || !superseded_key.starts_with(&self.prefix)
+                })
                 || key != recovery_record_storage_key(
                     &self.prefix,
                     &record.writer_id,
@@ -195,32 +280,10 @@ impl DraftRecoveryStore {
                 return Err("A local recovery record has an unsupported identity or format.".to_string());
             }
 
-            let reference = RecoveryRecordRef { key, raw };
-            match by_writer.entry(record.writer_id.clone()) {
-                std::collections::btree_map::Entry::Vacant(entry) => {
-                    entry.insert(LoadedRecoveryRecord {
-                        references: vec![reference],
-                        record,
-                    });
-                }
-                std::collections::btree_map::Entry::Occupied(mut entry) => {
-                    let loaded = entry.get_mut();
-                    loaded.references.push(reference);
-                    if recovery_record_is_newer(&record, &loaded.record) {
-                        loaded.record = record;
-                    }
-                }
-            }
+            entries.push((RecoveryRecordRef { key, raw }, record));
         }
 
-        let mut records = by_writer.into_values().collect::<Vec<_>>();
-        records.sort_by(|left, right| {
-            left.record
-                .updated_at_ms
-                .cmp(&right.record.updated_at_ms)
-                .then_with(|| left.record.writer_id.cmp(&right.record.writer_id))
-        });
-        Ok(records)
+        latest_recovery_records(entries)
     }
 
     pub(crate) fn save(
@@ -257,6 +320,7 @@ impl DraftRecoveryStore {
                 writer_id: self.writer_id.clone(),
                 record_id: record_id.clone(),
                 sequence,
+                supersedes: self.supersedes_keys.borrow().iter().cloned().collect(),
                 base_revision_id: base.revision_id.clone(),
                 base_project_data: base.project_data.clone(),
                 draft_project_data,
@@ -328,6 +392,8 @@ impl DraftRecoveryStore {
     pub(crate) fn clear_current(&self) -> Result<(), String> {
         #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
         {
+            let consumed_records = self.consumed_records.borrow().clone();
+            self.clear_if_unchanged(&consumed_records)?;
             let storage = self.storage()?;
             for key in self.writer_record_keys(&storage)? {
                 storage
@@ -461,7 +527,7 @@ pub(crate) fn initialize_draft_recovery(
                 };
             }
         };
-        let records = match store.load_records() {
+        let loaded = match store.load_records() {
             Ok(records) => records,
             Err(error) => {
                 return DraftRecoveryBootstrap {
@@ -475,6 +541,11 @@ pub(crate) fn initialize_draft_recovery(
                 };
             }
         };
+        let mut supersedes_keys = loaded.supersedes_keys.clone();
+        supersedes_keys.extend(loaded.references.iter().map(|reference| reference.key.clone()));
+        store.set_recovery_lineage(supersedes_keys, loaded.references.clone());
+        let records = loaded.records;
+        let consumed_records = loaded.references;
         if records.is_empty() {
             return DraftRecoveryBootstrap {
                 store: Some(store),
@@ -482,15 +553,11 @@ pub(crate) fn initialize_draft_recovery(
                 merged_document: None,
                 status: DraftRecoveryStatus::Ready,
                 conflict_json: None,
-                consumed_records: Vec::new(),
+                consumed_records,
                 persisted: !controller.editor().revision().dirty,
             };
         }
 
-        let consumed_records = records
-            .iter()
-            .flat_map(|loaded| loaded.references.iter().cloned())
-            .collect::<Vec<_>>();
         let mut merged = base.project_data.clone();
         let mut conflicts = BTreeSet::new();
         for loaded in &records {
@@ -993,6 +1060,7 @@ mod tests {
             writer_id: "writer-1".to_string(),
             record_id: "1-a".to_string(),
             sequence: 1,
+            supersedes: Vec::new(),
             base_revision_id: "rev-1".to_string(),
             base_project_data: json!({ "pages": [] }),
             draft_project_data: json!({ "pages": [] }),
@@ -1135,6 +1203,111 @@ mod tests {
             .expect("merge");
         assert!(conflicts.is_empty());
         assert_eq!(merged, Some(json!([{ "id": "b", "content": "B" }])));
+    }
+
+
+
+    fn test_recovery_record(
+        writer_id: &str,
+        record_id: &str,
+        sequence: u64,
+        supersedes: &[&str],
+    ) -> DraftRecoveryRecord {
+        DraftRecoveryRecord {
+            format: RECOVERY_FORMAT,
+            scope_hash: "scope".to_string(),
+            page_hash: "page".to_string(),
+            writer_id: writer_id.to_string(),
+            record_id: record_id.to_string(),
+            sequence,
+            supersedes: supersedes.iter().map(|key| (*key).to_string()).collect(),
+            base_revision_id: "rev-1".to_string(),
+            base_project_data: json!({ "pages": [] }),
+            draft_project_data: json!({ "pages": [] }),
+            updated_at_ms: sequence,
+        }
+    }
+
+    fn test_record_ref(key: &str) -> RecoveryRecordRef {
+        RecoveryRecordRef {
+            key: key.to_string(),
+            raw: key.to_string(),
+        }
+    }
+
+    #[test]
+    fn recovery_lineage_supersedes_pre_reload_writer_without_merging_it_twice() {
+        let loaded = latest_recovery_records(vec![
+            (
+                test_record_ref("a1"),
+                test_recovery_record("writer-a", "a1", 1, &[]),
+            ),
+            (
+                test_record_ref("a2"),
+                test_recovery_record("writer-a", "a2", 2, &["a1"]),
+            ),
+            (
+                test_record_ref("b1"),
+                test_recovery_record("writer-b", "b1", 1, &["a1", "a2"]),
+            ),
+        ])
+        .expect("valid recovery lineage");
+
+        assert_eq!(loaded.records.len(), 1);
+        assert_eq!(loaded.records[0].record.writer_id, "writer-b");
+        assert_eq!(loaded.references.len(), 3);
+        assert!(loaded.supersedes_keys.contains("a1"));
+        assert!(loaded.supersedes_keys.contains("a2"));
+    }
+
+    #[test]
+    fn recovery_lineage_keeps_a_new_peer_write_after_the_superseded_snapshot() {
+        let loaded = latest_recovery_records(vec![
+            (
+                test_record_ref("a1"),
+                test_recovery_record("writer-a", "a1", 1, &[]),
+            ),
+            (
+                test_record_ref("a2"),
+                test_recovery_record("writer-a", "a2", 2, &["a1"]),
+            ),
+            (
+                test_record_ref("b1"),
+                test_recovery_record("writer-b", "b1", 1, &["a1", "a2"]),
+            ),
+            (
+                test_record_ref("a3"),
+                test_recovery_record("writer-a", "a3", 3, &["a1"]),
+            ),
+        ])
+        .expect("concurrent latest writer snapshots");
+
+        assert_eq!(loaded.records.len(), 2);
+        assert!(loaded
+            .records
+            .iter()
+            .any(|loaded| loaded.record.writer_id == "writer-a"
+                && loaded.record.record_id == "a3"));
+        assert!(loaded
+            .records
+            .iter()
+            .any(|loaded| loaded.record.writer_id == "writer-b"
+                && loaded.record.record_id == "b1"));
+    }
+
+    #[test]
+    fn cyclic_recovery_lineage_fails_closed_without_discarding_records() {
+        let result = latest_recovery_records(vec![
+            (
+                test_record_ref("a1"),
+                test_recovery_record("writer-a", "a1", 1, &["b1"]),
+            ),
+            (
+                test_record_ref("b1"),
+                test_recovery_record("writer-b", "b1", 1, &["a1"]),
+            ),
+        ]);
+        assert!(result.is_err());
     }
 
 }

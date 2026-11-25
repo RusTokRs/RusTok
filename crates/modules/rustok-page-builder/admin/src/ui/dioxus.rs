@@ -688,6 +688,15 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                 };
                 (dirty, project_data)
             };
+            if !dirty
+                && matches!(
+                    &*persistence_status.peek(),
+                    DraftRecoveryStatus::Conflict { .. } | DraftRecoveryStatus::Error(_)
+                )
+            {
+                // Conflict/error recovery is preserved until the user explicitly resolves it.
+                return;
+            }
             persistence_ready.set(false);
             if !dirty {
                 match store.clear_current() {
