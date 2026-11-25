@@ -1,7 +1,4 @@
-use crate::safe_url::{
-    self, UrlAttributeKind, UrlPolicy, absolute_url_has_authority, normalized_url_candidate,
-    safe_data_image,
-};
+use crate::safe_url::{self, UrlAttributeKind, UrlPolicy};
 use crate::{
     ComponentNode, ComponentObject, FlyError, FlyResult, PageMetadata, ProjectDocument,
     ProjectPage, StyleRuleCatalog, StyleRuleScope,
@@ -1208,17 +1205,7 @@ fn scalar_string(value: &Value) -> Option<String> {
 }
 
 fn safe_head_url(value: &str, allow_data_image: bool) -> Option<String> {
-    let value = normalized_url_candidate(value)?;
-    let normalized = value.to_ascii_lowercase();
-    if value.starts_with('/')
-        || absolute_url_has_authority(value, "http://")
-        || absolute_url_has_authority(value, "https://")
-        || (allow_data_image && safe_data_image(&normalized))
-    {
-        Some(value.to_string())
-    } else {
-        None
-    }
+    safe_url::head_url(value, allow_data_image).map(ToString::to_string)
 }
 
 impl RenderPolicy {
@@ -1248,25 +1235,7 @@ fn url_allowed(value: &str, kind: UrlAttributeKind, policy: &RenderPolicy) -> bo
 /// `src`. The value is all-or-nothing: one bad candidate drops the whole
 /// attribute instead of silently changing which image the browser picks.
 fn srcset_allowed(value: &str, policy: &RenderPolicy) -> bool {
-    let mut candidates = 0usize;
-    for raw_candidate in value.split(',') {
-        let candidate = raw_candidate.trim();
-        if candidate.is_empty() {
-            return false;
-        }
-        candidates += 1;
-        let mut tokens = candidate.split_whitespace();
-        let Some(url) = tokens.next() else {
-            return false;
-        };
-        if tokens.count() > 1 {
-            return false;
-        }
-        if url.starts_with("data:") || !url_allowed(url, UrlAttributeKind::Resource, policy) {
-            return false;
-        }
-    }
-    candidates > 0
+    safe_url::srcset_allowed(value, &policy.url_policy())
 }
 
 /// Properties that can execute script regardless of their value.
@@ -2556,6 +2525,11 @@ mod tests {
             "javascript:alert(1) 1x, /img/hero.webp 2x",
             "/img/hero.webp 1x, data:image/png;base64,AAAA 2x",
             "/img/hero.webp 1x trailing-token",
+            "/a.webp 1x, /b.webp 1.0x",
+            "/a.webp 0x",
+            "/a.webp 800w, /b.webp 2x",
+            "DATA:image/png;base64,AAAA 2x",
+            "/a.webp nonsense",
             "",
         ] {
             let document = GrapesJsCodec::decode_value(json!({

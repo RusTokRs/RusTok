@@ -488,6 +488,7 @@ fn validate_page_metadata(metadata: &PageMetadata, page_path: &str, report: &mut
             metadata.open_graph_image.as_deref(),
             true,
         ),
+        ("twitter_image", metadata.twitter_image.as_deref(), true),
     ] {
         if value.is_some_and(|value| !metadata_url_allowed(value, allow_data_image)) {
             report.diagnostics.push(diagnostic(
@@ -944,6 +945,19 @@ fn check_component_public_urls(
 ) {
     for (name, value) in &component.attributes {
         let normalized_name = name.to_ascii_lowercase();
+        if normalized_name == "srcset" {
+            if !value.as_str().is_some_and(|value| {
+                safe_url::srcset_allowed(value, &UrlPolicy::permissive())
+            }) {
+                diagnostics.push(diagnostic(
+                    ValidationSeverity::Error,
+                    "runtime_public_url_invalid",
+                    format!("{path}.attributes.{name}"),
+                    "srcset contains malformed or unsupported image candidates",
+                ));
+            }
+            continue;
+        }
         let Some(kind) = UrlAttributeKind::for_attribute(&normalized_name) else {
             continue;
         };
@@ -1096,44 +1110,7 @@ fn validate_style_rules(
 }
 
 fn metadata_url_allowed(value: &str, allow_data_image: bool) -> bool {
-    let value = value.trim();
-    if value.starts_with("//")
-        || value.contains('\\')
-        || value.chars().any(char::is_control)
-        || value.chars().any(char::is_whitespace)
-    {
-        return false;
-    }
-    let normalized = value.to_ascii_lowercase();
-    value.is_empty()
-        || value.starts_with('/')
-        || absolute_metadata_url_has_authority(value, "http://")
-        || absolute_metadata_url_has_authority(value, "https://")
-        || (allow_data_image && safe_metadata_data_image(&normalized))
-}
-
-fn absolute_metadata_url_has_authority(value: &str, scheme: &str) -> bool {
-    let lower = value.to_ascii_lowercase();
-    if !lower.starts_with(scheme) {
-        return false;
-    }
-    let authority = value[scheme.len()..]
-        .split(['/', '?', '#'])
-        .next()
-        .unwrap_or_default();
-    !authority.is_empty() && !authority.starts_with(':')
-}
-
-fn safe_metadata_data_image(value: &str) -> bool {
-    [
-        "data:image/png;base64,",
-        "data:image/jpeg;base64,",
-        "data:image/gif;base64,",
-        "data:image/webp;base64,",
-        "data:image/avif;base64,",
-    ]
-    .iter()
-    .any(|prefix| value.starts_with(prefix))
+    value.trim().is_empty() || safe_url::head_url(value, allow_data_image).is_some()
 }
 
 fn deduplicate_diagnostics(diagnostics: &mut Vec<ValidationDiagnostic>) {
@@ -1445,6 +1422,35 @@ mod tests {
                 .count(),
             2
         );
+    }
+
+    #[test]
+    fn metadata_and_srcset_diagnostics_match_render_admission() {
+        let long_url = format!("/{}", "a".repeat(crate::safe_url::MAXIMUM_URL_LENGTH));
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "flyPageMeta": {
+                    "canonical_url": long_url,
+                    "twitter_image": "https://example.test:99999/image"
+                },
+                "component": {"id": "root", "type": "wrapper", "components": [{
+                    "id": "image", "type": "image",
+                    "attributes": {"srcset": "/a.webp 1x, /b.webp 1.0x"}
+                }]}
+            }]
+        })).expect("document");
+        let report = validate_project(&document, &RegistrySet::with_builtins(), ValidationLimits::default());
+        for field in ["canonical_url", "twitter_image"] {
+            assert!(report.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == "invalid_page_metadata_url" && diagnostic.path.ends_with(field)
+            }), "missing {field}");
+        }
+        assert!(report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "runtime_public_url_invalid" && diagnostic.path.ends_with(".srcset")
+        }));
+        assert!(validate_component_public_urls(&document).iter().any(|diagnostic| {
+            diagnostic.path.ends_with(".srcset")
+        }));
     }
 
     #[test]

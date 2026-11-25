@@ -51,6 +51,7 @@ Fly Visual Editor Engine: framework-neutral visual editor engine, AST models, de
 - Empty projects, missing templates, and circular symbol references fail closed with descriptive domain errors.
 
 ## 4. Security & Isolation Invariants
+- SSR and validation share head URL admission (including Twitter images) and bounded responsive image candidate validation. Absolute HTTP(S) URLs require a parseable host/port.
 - Safe URL validation (`validate_component_public_urls`, `validate_embed_url`) forbids `javascript:`, executable data URIs, embed credentials/non-default ports, and paths that escape registered provider surfaces.
 - HTML sanitization and safe SSR rendering prevent injection of executable script tags or malicious event handlers.
 - Multi-tenant bundle export/import validates cryptographic SHA-256 digests (`bundle_hash`, `sha256_hex`, `constant_time_eq`) under strict policy enforcement.

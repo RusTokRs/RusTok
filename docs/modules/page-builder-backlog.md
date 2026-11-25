@@ -111,6 +111,15 @@ Snapshot capture verifies payload round-trip, derives a fresh payload fingerprin
 sequence exhaustion, duplicate identity and invalid capacity before mutating the catalog.
 Six focused regressions authored; compilation, tests, lint and remediation gate not run.
 
+Fly URL validation follow-up (2026-11-25, source-only): action, markup and head URL
+checks require parseable HTTP(S) authorities; head diagnostics reuse SSR admission and
+cover Twitter images and the URL length ceiling. SSR and document validation share
+bounded srcset checks for numeric descriptor identity, positive width/density, uniform
+descriptor family and case-insensitive data URL exclusion. Existing static publish policy
+evidence/version was not changed; its independent URL and srcset grammar still requires
+a coordinated cutover with artifact compatibility review. Focused regressions authored;
+compilation, tests, lint and remediation gate not run.
+
 Reduced-motion follow-up: the shared Fly browser asset now uses instant scrolling for
 `scroll_to` when the target document requests reduced motion, including in the presence of
 CSS `scroll-behavior: smooth`; animations use the same document preference. The Node runtime

@@ -167,6 +167,9 @@ crates/ui/fly/
   `MAXIMUM_DECODE_DEPTH` before any recursive code touches them.
 - **Rendering escapes at every sink.** HTML text, attribute values, CSS attribute selectors and the
   `<style>` element body each have their own escape; URLs are filtered by `RenderPolicy`.
+  Action, attribute and head URL checks share parsed HTTP(S) authority validation. SSR and
+  document validation share bounded srcset candidate checks, including numeric descriptor
+  uniqueness, positive density/width and one descriptor family.
 
 ## Identity and history contracts
 
