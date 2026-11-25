@@ -55,9 +55,9 @@ and witness persistence are source-implemented. The persisted algorithm field
 is now mandatory per key; the legacy homogeneous metadata reader is removed.
 Scoped compilation, regression execution and independent-replica rollout
 remain pending. Before root MAC rotation, complete the remaining pre-release
-zero-legacy cleanup: mandatory kid for access, no raw-root JWT history,
-canonical unreleased token and keyring document contracts, and review of
-configuration defaults/aliases. Preserve key rotation, terminal tombstones,
+zero-legacy cleanup: canonical unreleased token and keyring document
+contracts, and review of configuration defaults/aliases. Mandatory kid for
+every purpose and removal of raw-root JWT history are source-implemented. Preserve key rotation, terminal tombstones,
 lease fencing and witness security. Do not silently reset non-disposable
 authority or witness state; follow the owner cutover contract.
 
@@ -225,10 +225,10 @@ and reset links intentionally; access JWT signatures and refresh/session storage
 are unchanged. Stop old host writers before deploying new instances. Source
 regressions and locked Cargo dependency updates authored, unrun.
 
-JWT purpose keyrings, key IDs, verification retirement and access-only initial
-missing-ID migration are source-implemented. A two-key RS256 staging/promotion/
+JWT purpose keyrings, mandatory key IDs and verification retirement are
+source-implemented. Missing-ID access and raw-root JWT history are rejected. A two-key RS256 staging/promotion/
 retirement regression is authored. Scoped compilation, regression execution
-and multi-replica rollout evidence are pending; managed algorithm migration is now source-implemented. Reissue pre-cutover shared-key special links.
+and multi-replica rollout evidence are pending; managed algorithm migration is now source-implemented. Reissue obsolete development tokens and shared-key special links.
 Follow-up source review adds canonical RSA modulus identity, private/public
 pair enforcement at signing, strict JOSE header admission and post-signature
 retirement fencing. Zero-duration issuance and timestamp truncation are rejected;

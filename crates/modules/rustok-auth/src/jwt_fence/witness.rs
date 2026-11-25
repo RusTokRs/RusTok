@@ -397,7 +397,7 @@ mod tests {
     #[tokio::test]
     async fn rollback_fences_active_lease_and_recovery_preserves_revocation() {
         let (authority, witness_db, id, fence) = deployment().await;
-        let first = config(ROOT, "old", OLD, None, None);
+        let first = config(ROOT, "old", OLD, None);
         assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
         let (_, publisher) = first.clone().into_cluster_jwt(1).unwrap();
         assert!(fence.renew(&publisher).await.unwrap());
@@ -426,14 +426,14 @@ mod tests {
         assert!(recovered.admit(2, &first).await.is_err());
         // A recovery must retain the old holder's grant until its deadline.
         assert_eq!(recovered.load().await.unwrap().replica_grants, after.replica_grants);
-        let clean = config(ROOT, "new", NEW, None, None);
+        let clean = config(ROOT, "new", NEW, None);
         assert_eq!(recovered.admit(2, &clean).await.unwrap(), JwtAdmission::Draining);
     }
 
     #[tokio::test]
     async fn same_revision_grant_corruption_is_detected_and_reinit_refused() {
         let (authority, _, _, fence) = deployment().await;
-        let first = config(ROOT, "old", OLD, None, None);
+        let first = config(ROOT, "old", OLD, None);
         assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
         let (_, publisher) = first.into_cluster_jwt(1).unwrap();
         assert!(fence.renew(&publisher).await.unwrap());
@@ -447,7 +447,7 @@ mod tests {
     async fn stale_revision_cannot_mutate_even_if_original_cas_predicate_matches() {
         let (_, _, _, fence) = deployment().await;
         let before = fence.load().await.unwrap();
-        let first = config(ROOT, "old", OLD, None, None);
+        let first = config(ROOT, "old", OLD, None);
         assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
         let after = fence.load().await.unwrap();
         let statement = fence.statement(DbBackend::Sqlite,
@@ -465,7 +465,7 @@ mod tests {
         use serde_json::json;
         let (authority, witness_db, id, fence) = deployment().await;
         let until = chrono::Utc::now().timestamp() + 3600;
-        let first = config(ROOT, "old", OLD, None, None);
+        let first = config(ROOT, "old", OLD, None);
         let staged = algorithm_config(json!({"keyring":{
             "active_kid":"old", "active_hs256_secret":OLD,
             "verification_keys":[{"kid":"rsa","algorithm":"RS256",

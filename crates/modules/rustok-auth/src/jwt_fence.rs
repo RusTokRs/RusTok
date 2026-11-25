@@ -80,17 +80,9 @@ pub(crate) struct KeyMetadata {
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct LegacyMetadata {
-    pub(crate) kid: String,
-    pub(crate) verify_until: i64,
-}
-
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub(crate) struct RingMetadata {
     pub(crate) algorithm: JwtAlgorithm,
     pub(crate) keys: BTreeMap<String, KeyMetadata>,
-    pub(crate) legacy: Option<LegacyMetadata>,
 }
 
 impl KeyMetadata {
@@ -129,9 +121,6 @@ fn rolling_compatible(old: &Snapshot, next: &Snapshot, now_ms: i64, horizon_ms: 
     }
     for (purpose, before) in old {
         let Some(after) = next.get(purpose) else { return false; };
-        if before.legacy != after.legacy {
-            return false;
-        }
         // Every currently accepted old verifier remains accepted, with no
         // shortened history deadline. The outgoing signer covers overlap.
         for (kid, key) in &before.keys {
@@ -231,12 +220,6 @@ impl Ledger {
                         return Err(rejected());
                     }
                 }
-            }
-            match (&old.legacy, &ring.legacy) {
-                (_, None) => {}
-                (Some(before), Some(after))
-                    if before.kid == after.kid && after.verify_until <= before.verify_until => {}
-                _ => return Err(rejected()),
             }
             for (kid, key) in &ring.keys {
                 let previous = old.keys.get(kid);
@@ -751,7 +734,7 @@ impl JwtGenerationFence {
     }
 
     /// Admit before local publication. Same generation is idempotent only for
-    /// the same canonical snapshot, including cutoffs and legacy mapping.
+    /// the same canonical snapshot, including exact verifier identities and cutoffs.
     pub async fn admit(&self, generation: u64, candidate: &AuthConfig) -> Result<JwtAdmission> {
         let result = self.admit_inner(generation, candidate).await;
         self.metrics.record("admit", match &result {
@@ -865,16 +848,12 @@ mod tests {
     pub(super) const NEW: &str = "second-independent-signing-key-at-least-32-bytes";
     const THIRD: &str = "third-independent-signing-key-at-least-32-bytes";
 
-    pub(super) fn config(root: &str, kid: &str, material: &str, history: Option<(&str, &str, i64)>,
-        legacy: Option<(&str, i64)>) -> AuthConfig {
+    pub(super) fn config(root: &str, kid: &str, material: &str, history: Option<(&str, &str, i64)>) -> AuthConfig {
         let mut access = serde_json::json!({"active_kid": kid, "active_hs256_secret": material});
         if let Some((kid, material, until)) = history {
             access["verification_keys"] = serde_json::json!([{
                 "kid": kid, "material": material, "verify_until": until,
             }]);
-        }
-        if let Some((kid, until)) = legacy {
-            access["legacy_without_kid"] = serde_json::json!({"kid": kid, "verify_until": until});
         }
         let doc = serde_json::json!({
             "schema_version": 1, "generation": 1,
@@ -918,7 +897,7 @@ mod tests {
         use serde_json::json;
         let fence = JwtGenerationFence::new(database().await);
         let until = chrono::Utc::now().timestamp() + 3600;
-        let first = config(ROOT, "old", OLD, None, None);
+        let first = config(ROOT, "old", OLD, None);
         let staged = algorithm_config(json!({"keyring":{
             "active_kid":"old", "active_hs256_secret": OLD,
             "verification_keys":[{"kid":"rsa","algorithm":"RS256",
@@ -995,7 +974,7 @@ mod tests {
 
     #[test]
     fn prepared_snapshot_records_every_key_algorithm() {
-        let cfg = config(ROOT, "old", OLD, Some(("new", NEW, 4_000_000_000)), None);
+        let cfg = config(ROOT, "old", OLD, Some(("new", NEW, 4_000_000_000)));
         let snapshot = cfg.fence_snapshot(|_| Ok("identity".to_string())).unwrap();
         let ring = snapshot.get("JWT").unwrap();
         assert_eq!(ring.keys.len(), 2);
@@ -1027,9 +1006,9 @@ mod tests {
         let db = database().await;
         let fence = JwtGenerationFence::new(db.clone());
         let until = chrono::Utc::now().timestamp() + 3600;
-        let first = config(ROOT, "old", OLD, None, None);
-        let staged = config(ROOT, "old", OLD, Some(("new", NEW, until)), None);
-        let clean = config(ROOT, "new", NEW, None, None);
+        let first = config(ROOT, "old", OLD, None);
+        let staged = config(ROOT, "old", OLD, Some(("new", NEW, until)));
+        let clean = config(ROOT, "new", NEW, None);
         assert!(fence.revoke_key(ROOT, "access", "old").await.is_err());
         assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
         let (live_a, a) = first.clone().into_cluster_jwt(1).unwrap();
@@ -1069,7 +1048,7 @@ mod tests {
         assert!(issue(&live_a).is_ok());
         assert!(decode_access_token(&live_a, &token).is_err());
         assert!(!reopened.renew(&b).await.unwrap());
-        assert!(reopened.admit(4, &config(ROOT, "renamed", OLD, None, None)).await.is_err());
+        assert!(reopened.admit(4, &config(ROOT, "renamed", OLD, None)).await.is_err());
         assert!(reopened.admit(4, &staged).await.is_err());
     }
 
@@ -1078,7 +1057,7 @@ mod tests {
         let db = database().await;
         let fence = JwtGenerationFence::new(db.clone());
         let other = JwtGenerationFence::new(db);
-        let first = config(ROOT, "old", OLD, None, None);
+        let first = config(ROOT, "old", OLD, None);
         assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
         let (_, publisher) = first.into_cluster_jwt(1).unwrap();
         let (renewal, revoked) = tokio::join!(
@@ -1098,7 +1077,7 @@ mod tests {
         let db = database().await;
         let fence = JwtGenerationFence::new(db.clone());
         let until = chrono::Utc::now().timestamp() + 3600;
-        let first = config(ROOT, "new", NEW, Some(("old", OLD, until)), None);
+        let first = config(ROOT, "new", NEW, Some(("old", OLD, until)));
         assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
         let (_, publisher) = first.clone().into_cluster_jwt(1).unwrap();
         assert!(fence.renew(&publisher).await.unwrap());
@@ -1106,7 +1085,7 @@ mod tests {
         assert!(!fence.renew(&publisher).await.unwrap());
         assert!(!publisher.lease_readiness().unwrap().is_ready());
         assert!(fence.admit(2, &first).await.is_err());
-        let clean = config(ROOT, "new", NEW, None, None);
+        let clean = config(ROOT, "new", NEW, None);
         assert_eq!(fence.admit(2, &clean).await.unwrap(), JwtAdmission::Draining);
         db.execute_unprepared("UPDATE auth_jwt_generation_fence SET lease_until_ms = 0, replica_grants = '{}' WHERE id = 1")
             .await.unwrap();
@@ -1124,9 +1103,9 @@ mod tests {
         let db = database().await;
         let fence = JwtGenerationFence::new(db.clone());
         let until = chrono::Utc::now().timestamp() + 3600;
-        let first = config(ROOT, "old", OLD, None, None);
-        let staged = config(ROOT, "old", OLD, Some(("new", NEW, until)), None);
-        let promoted = config(ROOT, "new", NEW, Some(("old", OLD, until)), None);
+        let first = config(ROOT, "old", OLD, None);
+        let staged = config(ROOT, "old", OLD, Some(("new", NEW, until)));
+        let promoted = config(ROOT, "new", NEW, Some(("old", OLD, until)));
         assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
         let (live_a, a) = first.clone().into_cluster_jwt(1).unwrap();
         let (live_b, b) = first.into_cluster_jwt(1).unwrap();
@@ -1166,9 +1145,9 @@ mod tests {
         let db = database().await;
         let fence = JwtGenerationFence::new(db.clone());
         let until = chrono::Utc::now().timestamp() + 3600;
-        let first = config(ROOT, "old", OLD, None, None);
-        let staged = config(ROOT, "old", OLD, Some(("new", NEW, until)), None);
-        let promoted = config(ROOT, "new", NEW, Some(("old", OLD, until)), None);
+        let first = config(ROOT, "old", OLD, None);
+        let staged = config(ROOT, "old", OLD, Some(("new", NEW, until)));
+        let promoted = config(ROOT, "new", NEW, Some(("old", OLD, until)));
         assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
         let (_, a) = first.clone().into_cluster_jwt(1).unwrap();
         let (_, b) = first.into_cluster_jwt(1).unwrap();
@@ -1208,8 +1187,8 @@ mod tests {
         use uuid::Uuid;
         let db = database().await;
         let fence = JwtGenerationFence::new(db.clone());
-        let first = config(ROOT, "old", OLD, None, None);
-        let second = config(ROOT, "new", NEW, None, None);
+        let first = config(ROOT, "old", OLD, None);
+        let second = config(ROOT, "new", NEW, None);
         assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
         let (live_a, a) = first.clone().into_cluster_jwt(1).unwrap();
         let (live_b, b) = first.into_cluster_jwt(1).unwrap();
@@ -1248,8 +1227,8 @@ mod tests {
     async fn static_grants_require_exact_compatible_metadata() {
         let db = database().await;
         let fence = JwtGenerationFence::new(db.clone());
-        let first = config(ROOT, "old", OLD, None, None);
-        let second = config(ROOT, "new", NEW, None, None);
+        let first = config(ROOT, "old", OLD, None);
+        let second = config(ROOT, "new", NEW, None);
         let (_, a) = first.clone().into_cluster_jwt(0).unwrap();
         let (_, b) = first.into_cluster_jwt(0).unwrap();
         let (_, c) = second.into_cluster_jwt(0).unwrap();
@@ -1267,7 +1246,7 @@ mod tests {
     async fn malformed_registry_keys_are_refused_before_expiry_or_ack() {
         let db = database().await;
         let fence = JwtGenerationFence::new(db.clone());
-        let first = config(ROOT, "old", OLD, None, None);
+        let first = config(ROOT, "old", OLD, None);
         assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
         let (_, publisher) = first.into_cluster_jwt(1).unwrap();
         assert!(fence.renew(&publisher).await.unwrap());
@@ -1287,7 +1266,7 @@ mod tests {
     async fn static_lease_blocks_first_enrollment_and_expired_drain_recovers() {
         let db = database().await;
         let fence = JwtGenerationFence::new(db.clone());
-        let first = config(ROOT, "old", OLD, None, None);
+        let first = config(ROOT, "old", OLD, None);
         let (_, static_runtime) = AuthConfig::new(ROOT.into()).into_cluster_jwt(0).unwrap();
         assert!(fence.renew(&static_runtime).await.unwrap());
         assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Draining);
@@ -1307,8 +1286,8 @@ mod tests {
     #[tokio::test]
     async fn persists_floor_and_tombstones_across_store_recreation() {
         let db = database().await;
-        let first = config(ROOT, "old", OLD, None, None);
-        let second = config(ROOT, "new", NEW, None, None);
+        let first = config(ROOT, "old", OLD, None);
+        let second = config(ROOT, "new", NEW, None);
         let fence = JwtGenerationFence::new(db.clone());
         assert!(fence.ensure_static_allowed().await.is_ok());
         fence.admit(1, &first).await.unwrap();
@@ -1320,10 +1299,10 @@ mod tests {
         assert!(restarted.admit(2, &first).await.is_err());
         assert!(restarted.ensure_static_allowed().await.is_err());
         assert!(restarted.admit(3, &first).await.is_err());
-        assert!(restarted.admit(3, &config(ROOT, "renamed", OLD, None, None)).await.is_err());
-        assert!(restarted.admit(3, &config(ROOT, "old", THIRD, None, None)).await.is_err());
-        assert!(restarted.admit(3, &config("different-host-root-for-fence-tests-32bytes", "new", NEW, None, None)).await.is_err());
-        restarted.admit(3, &config(ROOT, "third", THIRD, None, None)).await.unwrap();
+        assert!(restarted.admit(3, &config(ROOT, "renamed", OLD, None)).await.is_err());
+        assert!(restarted.admit(3, &config(ROOT, "old", THIRD, None)).await.is_err());
+        assert!(restarted.admit(3, &config("different-host-root-for-fence-tests-32bytes", "new", NEW, None)).await.is_err());
+        restarted.admit(3, &config(ROOT, "third", THIRD, None)).await.unwrap();
         let row = restarted.load().await.unwrap();
         assert!(!row.payload.contains(OLD) && !row.payload.contains(NEW) && !row.payload.contains(ROOT));
     }
@@ -1332,26 +1311,24 @@ mod tests {
     async fn staged_keys_promote_once_and_retirement_is_terminal() {
         let fence = JwtGenerationFence::new(database().await);
         let until = chrono::Utc::now().timestamp() + 3600;
-        let first = config(ROOT, "old", OLD, None, Some(("old", until)));
+        let first = config(ROOT, "old", OLD, None);
         fence.admit(1, &first).await.unwrap();
-        let staged = config(ROOT, "old", OLD, Some(("new", NEW, until)), Some(("old", until)));
+        let staged = config(ROOT, "old", OLD, Some(("new", NEW, until)));
         fence.admit(2, &staged).await.unwrap();
-        let extended = config(ROOT, "old", OLD, Some(("new", NEW, until + 1)), Some(("old", until)));
+        let extended = config(ROOT, "old", OLD, Some(("new", NEW, until + 1)));
         assert!(fence.admit(3, &extended).await.is_err());
-        let promoted = config(ROOT, "new", NEW, Some(("old", OLD, until)), None);
+        let promoted = config(ROOT, "new", NEW, Some(("old", OLD, until)));
         fence.admit(3, &promoted).await.unwrap();
         assert!(fence.admit(4, &staged).await.is_err());
-        let reenabled = config(ROOT, "new", NEW, Some(("old", OLD, until)), Some(("old", until)));
-        assert!(fence.admit(4, &reenabled).await.is_err());
-        let demoted = config(ROOT, "old", OLD, Some(("new", NEW, until)), None);
+        let demoted = config(ROOT, "old", OLD, Some(("new", NEW, until)));
         assert!(fence.admit(4, &demoted).await.is_err());
-        fence.admit(4, &config(ROOT, "new", NEW, None, None)).await.unwrap();
+        fence.admit(4, &config(ROOT, "new", NEW, None)).await.unwrap();
         assert!(fence.admit(5, &promoted).await.is_err());
     }
 
     #[test]
     fn same_reuse_identity_cannot_change_exact_verifier() {
-        let config = config(ROOT, "old", OLD, None, None);
+        let config = config(ROOT, "old", OLD, None);
         let mac = FenceMac::new(config.secret()).unwrap();
         let current = config.fence_snapshot(|identity| mac.identity(identity)).unwrap();
         let mut next = current.clone();
@@ -1365,7 +1342,7 @@ mod tests {
     async fn missing_or_tampered_authority_is_not_reenrolled() {
         let db = database().await;
         let fence = JwtGenerationFence::new(db.clone());
-        let first = config(ROOT, "old", OLD, None, None);
+        let first = config(ROOT, "old", OLD, None);
         fence.admit(1, &first).await.unwrap();
         db.execute_unprepared(
             "UPDATE auth_jwt_generation_fence SET tag = '0000000000000000000000000000000000000000000000000000000000000000' WHERE id = 1",
@@ -1382,9 +1359,9 @@ mod tests {
     async fn pre_enrollment_history_cannot_become_a_signer() {
         let fence = JwtGenerationFence::new(database().await);
         let until = chrono::Utc::now().timestamp() + 3600;
-        let first = config(ROOT, "old", OLD, Some(("new", NEW, until)), None);
+        let first = config(ROOT, "old", OLD, Some(("new", NEW, until)));
         fence.admit(1, &first).await.unwrap();
-        let promoted = config(ROOT, "new", NEW, Some(("old", OLD, until)), None);
+        let promoted = config(ROOT, "new", NEW, Some(("old", OLD, until)));
         assert!(fence.admit(2, &promoted).await.is_err());
     }
 
@@ -1393,8 +1370,8 @@ mod tests {
         let db = database().await;
         let a = JwtGenerationFence::new(db.clone());
         let b = JwtGenerationFence::new(db);
-        let first = config(ROOT, "one", OLD, None, None);
-        let second = config(ROOT, "two", NEW, None, None);
+        let first = config(ROOT, "one", OLD, None);
+        let second = config(ROOT, "two", NEW, None);
         let (left, right) = tokio::join!(a.admit(1, &first), b.admit(1, &second));
         assert_ne!(left.is_ok(), right.is_ok());
         if left.is_ok() {

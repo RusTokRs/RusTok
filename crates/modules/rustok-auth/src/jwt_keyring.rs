@@ -19,15 +19,13 @@ pub struct JwtKeyring {
     active_hs256_secret: Option<String>,
     #[serde(default)]
     verification_keys: Vec<VerificationKey>,
-    #[serde(default)]
-    legacy_without_kid: Option<LegacyKey>,
 }
 
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct VerificationKey {
     kid: String,
-    /// Omitted means the active ring algorithm (legacy homogeneous format).
+    /// An omitted configuration algorithm uses the active ring default.
     #[serde(default)]
     algorithm: Option<JwtAlgorithm>,
     material: String,
@@ -40,20 +38,12 @@ impl VerificationKey {
     }
 }
 
-#[derive(Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct LegacyKey {
-    kid: String,
-    verify_until: i64,
-}
-
 impl Default for JwtKeyring {
     fn default() -> Self {
         Self {
             active_kid: "default".to_string(),
             active_hs256_secret: None,
             verification_keys: Vec::new(),
-            legacy_without_kid: None,
         }
     }
 }
@@ -62,7 +52,6 @@ impl std::fmt::Debug for JwtKeyring {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("JwtKeyring")
             .field("verification_key_count", &self.verification_keys.len())
-            .field("legacy_without_kid", &self.legacy_without_kid.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -98,12 +87,10 @@ impl JwtKeyring {
         &self,
         algorithm: &JwtAlgorithm,
         active_material: &str,
-        allow_missing_kid: bool,
     ) -> Result<()> {
         if !valid_kid(&self.active_kid)
             || self.verification_keys.len() > MAX_VERIFICATION_KEYS
             || (*algorithm == JwtAlgorithm::RS256 && self.active_hs256_secret.is_some())
-            || (!allow_missing_kid && self.legacy_without_kid.is_some())
         {
             return Err(invalid_config());
         }
@@ -120,18 +107,6 @@ impl JwtKeyring {
                 return Err(invalid_config());
             }
             verification_key(key.algorithm(algorithm), &key.material)?;
-        }
-        if let Some(legacy) = &self.legacy_without_kid {
-            if !valid_kid(&legacy.kid) || legacy.verify_until <= 0 {
-                return Err(invalid_config());
-            }
-            if legacy.kid != self.active_kid
-                && !self.verification_keys.iter().any(|key| {
-                    key.kid == legacy.kid && legacy.verify_until <= key.verify_until
-                })
-            {
-                return Err(invalid_config());
-            }
         }
         Ok(())
     }
@@ -292,7 +267,7 @@ impl<'a> PurposeKeyringRef<'a> {
 
     pub(crate) fn validate(&self) -> Result<()> {
         let active = self.active_material()?;
-        self.ring.validate(self.algorithm, &active, self.purpose == JwtPurpose::Access)?;
+        self.ring.validate(self.algorithm, &active)?;
         match self.algorithm {
             JwtAlgorithm::HS256 => {
                 if self.rsa_private.is_some() || self.rsa_public.is_some() {
@@ -370,7 +345,6 @@ pub(crate) struct ValidatedJwtKeyring {
     active_identity: [u8; 32],
     active_verification_identity: [u8; 32],
     history: HashMap<String, PreparedVerificationKey>,
-    legacy_without_kid: Option<LegacyKey>,
 }
 
 struct PreparedVerificationKey {
@@ -396,26 +370,16 @@ impl ValidatedJwtKeyring {
 
     /// Exact ID lookup; retirement remains a live clock check, never cached.
     pub(crate) fn select(
-        &self, kid: Option<&str>, now: i64,
+        &self, kid: &str, now: i64,
     ) -> Option<(&JwtAlgorithm, &DecodingKey, Option<i64>)> {
-        let (kid, legacy_until) = match kid {
-            Some(kid) => (kid, None),
-            None => {
-                let legacy = self.legacy_without_kid.as_ref()?;
-                if now >= legacy.verify_until {
-                    return None;
-                }
-                (legacy.kid.as_str(), Some(legacy.verify_until))
-            }
-        };
         if !valid_kid(kid) {
             return None;
         }
         if kid == self.active_kid {
-            return Some((&self.algorithm, &self.active_verification_key, legacy_until));
+            return Some((&self.algorithm, &self.active_verification_key, None));
         }
         let previous = self.history.get(kid)?;
-        let cutoff = legacy_until.map_or(previous.verify_until, |until| until.min(previous.verify_until));
+        let cutoff = previous.verify_until;
         (now < cutoff).then_some((&previous.algorithm, &previous.key, Some(cutoff)))
     }
 
@@ -447,8 +411,7 @@ impl ValidatedJwtKeyring {
         for previous in &selected.ring.verification_keys {
             let algorithm = previous.algorithm(selected.algorithm);
             let identity = key_identity(algorithm, &previous.material)?;
-            if (identity == root_identity && purpose != JwtPurpose::Access)
-                || !identities.insert(identity)
+            if identity == root_identity || !identities.insert(identity)
             {
                 return Err(invalid_config());
             }
@@ -469,7 +432,6 @@ impl ValidatedJwtKeyring {
             active_identity,
             active_verification_identity,
             history,
-            legacy_without_kid: selected.ring.legacy_without_kid.clone(),
         })
     }
 }
@@ -506,7 +468,7 @@ impl ValidatedJwtKeyrings {
         &self,
         fingerprint: impl Fn(&[u8; 32]) -> Result<String>,
     ) -> Result<crate::jwt_fence::Snapshot> {
-        use crate::jwt_fence::{KeyMetadata, LegacyMetadata, RingMetadata};
+        use crate::jwt_fence::{KeyMetadata, RingMetadata};
         let mut result = BTreeMap::new();
         for purpose in JwtPurpose::ALL {
             let ring = self.for_purpose(purpose);
@@ -525,11 +487,8 @@ impl ValidatedJwtKeyrings {
                     algorithm: history.algorithm.clone(),
                 });
             }
-            let legacy = ring.legacy_without_kid.as_ref().map(|legacy| LegacyMetadata {
-                kid: legacy.kid.clone(), verify_until: legacy.verify_until,
-            });
             result.insert(purpose.typ().to_string(), RingMetadata {
-                algorithm: ring.algorithm.clone(), keys, legacy,
+                algorithm: ring.algorithm.clone(), keys,
             });
         }
         Ok(result)
@@ -668,19 +627,18 @@ mod tests {
     use crate::config::AuthConfig;
 
     #[test]
-    fn retirement_and_legacy_cutoffs_are_exclusive() {
+    fn retirement_cutoff_is_exclusive() {
         let mut config = AuthConfig::new("root-test-material-with-at-least-32-bytes".into());
         config.set_test_jwt_keyring(JwtKeyring::from_json(r#"{
             "active_kid":"next",
-            "verification_keys":[{"kid":"old","material":"old-verification-material-at-least-32-bytes","verify_until":200}],
-            "legacy_without_kid":{"kid":"old","verify_until":150}
+            "verification_keys":[{"kid":"old","material":"old-verification-material-at-least-32-bytes","verify_until":200}]
         }"#).unwrap());
         let ring = config.prepared_jwt().unwrap().for_purpose(JwtPurpose::Access);
-        assert_eq!(ring.select(Some("old"), 199).map(|(_, _, cutoff)| cutoff), Some(Some(200)));
-        assert!(ring.select(Some("old"), 200).is_none());
-        assert_eq!(ring.select(None, 149).map(|(_, _, cutoff)| cutoff), Some(Some(150)));
-        assert!(ring.select(None, 150).is_none());
-        assert_eq!(ring.select(Some("next"), 200).map(|(_, _, cutoff)| cutoff), Some(None));
+        assert_eq!(ring.select("old", 199).map(|(_, _, cutoff)| cutoff), Some(Some(200)));
+        assert!(ring.select("old", 200).is_none());
+        assert!(ring.select("", 149).is_none());
+        assert!(ring.select("unknown", 149).is_none());
+        assert_eq!(ring.select("next", 200).map(|(_, _, cutoff)| cutoff), Some(None));
     }
 
     #[test]

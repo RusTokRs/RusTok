@@ -107,9 +107,10 @@ source-implemented, including emergency enrolled-key revocation and managed stag
 HS256/RS256 migration. Persisted key metadata now requires an explicit
 algorithm; old ledger/grant/checkpoint payloads are not supported. Do not reset
 non-disposable security state. See the [cutover contract](docs/README.md#managed-algorithm-migration).
-Zero-legacy cleanup remains open for missing-kid access, raw-root history,
-unreleased token/document formats and config compatibility. Host root rotation
-remains open.
+All JWT purposes require an exact key ID; missing-ID access and raw-root
+verification bridges are removed. Zero-legacy cleanup remains open for
+unreleased token/document formats and other config compatibility.
+Host root rotation remains open.
 Clock discontinuity detection and dual-deadline leases are source-implemented;
 independent clock fault-injection and suspend evidence remain pending.
 Independent production JWT authority and explicit offline import are source-implemented;

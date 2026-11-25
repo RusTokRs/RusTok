@@ -6,6 +6,9 @@
 - Owners: Auth; server host composition
 - Supersedes: [JWT algorithm migration](2026-11-25-jwt-algorithm-migration.md).
 
+
+The missing-ID and raw-root compatibility provisions (where present) are superseded by [Mandatory JWT key identity](2026-11-25-jwt-mandatory-key-identity.md). The remaining security invariants are retained.
+
 ## Decision
 
 Each purpose has one active signer. Trusted purpose and exact kid select the

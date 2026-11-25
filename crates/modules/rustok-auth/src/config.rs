@@ -990,7 +990,8 @@ mod tests {
                 {"kid":"b","material":valid_material,"verify_until":1},
                 {"kid":"b","material":"different-other-test-key-at-least-32-bytes","verify_until":2}
             ]}),
-            json!({"active_kid": "a", "legacy_without_kid":{"kid":"missing","verify_until":1}}),
+            json!({"active_kid": "a", "legacy_without_kid":{"kid":"a","verify_until":1}}),
+            json!({"active_kid": "a", "verification_keys": [{"kid":"root","material":active,"verify_until":1}]}),
             json!({"active_kid": "a", "active_hs256_secret":"short"}),
             json!({"active_kid": "a", "active_hs256_secret":active}),
         ] {
@@ -1004,7 +1005,7 @@ mod tests {
     }
 
     #[test]
-    fn purpose_config_rejects_cross_ring_key_reuse_and_legacy_special_ids() {
+    fn purpose_config_rejects_cross_ring_key_reuse_and_obsolete_fields() {
         use serde_json::json;
         let shared = "independent-but-reused-signing-material-test-123456";
         let root = secret();

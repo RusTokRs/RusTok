@@ -4,6 +4,9 @@
 - Implementation status: In progress (source implementation; runtime verification pending)
 - Extends and supersedes the shared-key scope of [JWT keyring](2026-11-25-jwt-keyring.md).
 
+
+The missing-ID and raw-root compatibility provisions (where present) are superseded by [Mandatory JWT key identity](2026-11-25-jwt-mandatory-key-identity.md). The remaining security invariants are retained.
+
 ## Decision
 
 Auth owns four independent rings: direct/OAuth access, password reset, email verification and invite. The trusted encode/decode entry point selects the ring and JWT type; the exact kid selects the configured verification algorithm. Neither an untrusted header nor a claim can switch purposes or algorithms. Access retains the existing JWT type for the bounded migration, while special JWTs carry distinct types and mandatory key IDs. Each ring has one active key, bounded history and exclusive retirement deadlines. The decoder accepts only the emitted JOSE fields; null and duplicate identifiers are not missing identifiers. Retirement is checked before and after signature verification.

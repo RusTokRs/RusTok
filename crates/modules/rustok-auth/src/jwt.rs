@@ -448,21 +448,14 @@ fn encoding_key(config: &AuthConfig, purpose: JwtPurpose) -> Result<&EncodingKey
     Ok(config.prepared_jwt()?.for_purpose(purpose).signing_key())
 }
 
-/// Only the JOSE fields emitted by Auth are supported. In particular, null
-/// kid is not equivalent to an omitted kid during the access migration.
+/// Only the JOSE fields emitted by Auth are supported; every purpose requires
+/// a non-null, exact key identifier.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct AuthJwtHeader {
     alg: Algorithm,
     typ: String,
-    #[serde(default, deserialize_with = "deserialize_present_kid")]
-    kid: Option<String>,
-}
-
-fn deserialize_present_kid<'de, D: serde::Deserializer<'de>>(
-    deserializer: D,
-) -> std::result::Result<Option<String>, D::Error> {
-    String::deserialize(deserializer).map(Some)
+    kid: String,
 }
 
 fn auth_jwt_header(token: &str) -> Result<AuthJwtHeader> {
@@ -486,12 +479,10 @@ fn decode_for_purpose<T: DeserializeOwned>(
     let header = auth_jwt_header(token)?;
     config.with_jwt_operation(|prepared| {
         let selected = prepared.for_purpose(purpose);
-        if header.typ != purpose.typ()
-            || (purpose != JwtPurpose::Access && header.kid.is_none())
-        {
+        if header.typ != purpose.typ() {
             return Err(AuthError::InvalidAccessToken);
         }
-        let (algorithm, key, cutoff) = selected.select(header.kid.as_deref(), Utc::now().timestamp())
+        let (algorithm, key, cutoff) = selected.select(&header.kid, Utc::now().timestamp())
             .ok_or(AuthError::InvalidAccessToken)?;
         // The trusted purpose and exact kid determine the algorithm. The
         // untrusted JOSE alg is an equality check, never a key selector.
@@ -655,8 +646,7 @@ mod tests {
             "active_hs256_secret": "new-jwt-signing-secret-only-for-tests-123456",
             "verification_keys": [{
                 "kid": "default", "material": PurposeKeyringRef::for_config(&old, JwtPurpose::Access).active_material().unwrap().as_ref(), "verify_until": until
-            }],
-            "legacy_without_kid": {"kid": "default", "verify_until": until}
+            }]
         });
         let rotated = crate::config::build_auth_config_with_env(
             old.secret().to_string(), 900,
@@ -668,7 +658,7 @@ mod tests {
         ).unwrap();
         assert_eq!(decode_access_token(&rotated, &token).unwrap().sub, user);
         assert_eq!(decode_access_token(&rotated, &oauth).unwrap().grant_type, "client_credentials");
-        assert!(decode_access_token(&rotated, &legacy).is_ok());
+        assert!(decode_access_token(&rotated, &legacy).is_err());
         let fresh = encode_access_token(&rotated, user, tenant, UserRole::Customer, session).unwrap();
         assert_eq!(decode_header(&fresh).unwrap().kid.as_deref(), Some("next"));
         assert!(decode_access_token(&rotated, &fresh).is_ok());
@@ -761,30 +751,27 @@ mod tests {
     }
 
     #[test]
-    fn previous_shared_access_key_can_only_migrate_access_tokens() {
+    fn raw_host_root_cannot_verify_jwt_or_enter_history() {
         use serde_json::json;
         let old = test_config();
         let tenant = Uuid::new_v4();
         let access = encode_access_token(&old, Uuid::new_v4(), tenant, UserRole::Customer, Uuid::new_v4()).unwrap();
         let claims = decode_access_token(&old, &access).unwrap();
-        let mut old_header = Header::new(Algorithm::HS256);
-        old_header.kid = Some("default".to_string());
-        let old_key = EncodingKey::from_secret(old.secret().as_bytes());
-        let legacy_access = encode(&old_header, &claims, &old_key).unwrap();
-        let mut migrated = old.clone();
-        migrated.set_test_jwt_keyring(crate::jwt_keyring::JwtKeyring::from_json(&json!({
+        let header = jwt_header(&old, JwtPurpose::Access);
+        let root_key = EncodingKey::from_secret(old.secret().as_bytes());
+        let forged = encode(&header, &claims, &root_key).unwrap();
+        assert!(decode_access_token(&old, &forged).is_err());
+
+        let mut candidate = old.clone();
+        candidate.set_test_jwt_keyring(crate::jwt_keyring::JwtKeyring::from_json(&json!({
             "active_kid": "access-next",
             "verification_keys": [{
                 "kid": "default", "material": old.secret(),
                 "verify_until": Utc::now().timestamp() + 3600
             }]
         }).to_string()).unwrap());
-        crate::config::validate_auth_config(&migrated).unwrap();
-        assert!(decode_access_token(&migrated, &legacy_access).is_ok());
-        let reset = encode_password_reset_token(&old, tenant, "a@example.com", 900).unwrap();
-        let reset_claims = decode_password_reset_token(&old, &reset).unwrap();
-        let legacy_reset = encode(&old_header, &reset_claims, &old_key).unwrap();
-        assert!(decode_password_reset_token(&migrated, &legacy_reset).is_err());
+        assert!(crate::config::validate_auth_config(&candidate).is_err());
+        assert!(decode_access_token(&candidate, &forged).is_err());
     }
 
     #[test]
@@ -854,8 +841,7 @@ mod tests {
             "verification_keys": [{
                 "kid": "default", "material": TEST_RSA_PUBLIC_KEY,
                 "verify_until": until
-            }],
-            "legacy_without_kid": {"kid": "default", "verify_until": until}
+            }]
         });
         promoted.set_test_jwt_keyring(JwtKeyring::from_json(&history(now + 3600).to_string()).unwrap());
         crate::config::validate_auth_config(&promoted).unwrap();
@@ -872,7 +858,7 @@ mod tests {
         let mut legacy_header = jwt_header(&old, JwtPurpose::Access);
         legacy_header.kid = None;
         let legacy = encode(&legacy_header, &claims, encoding_key(&old, JwtPurpose::Access).unwrap()).unwrap();
-        assert!(decode_access_token(&promoted, &legacy).is_ok());
+        assert!(decode_access_token(&promoted, &legacy).is_err());
         for wrong_id in ["rsa-next", "unknown"] {
             let mut wrong_header = jwt_header(&old, JwtPurpose::Access);
             wrong_header.kid = Some(wrong_id.to_string());
@@ -893,7 +879,7 @@ mod tests {
     }
 
     #[test]
-    fn mixed_history_pins_algorithm_and_legacy_mapping_to_exact_key() {
+    fn mixed_history_pins_algorithm_to_exact_key() {
         use serde_json::json;
         use crate::jwt_keyring::JwtKeyring;
         let mut old = test_config();
@@ -909,8 +895,7 @@ mod tests {
         let mut mixed = test_config().with_rs256(TEST_RSA_PRIVATE_KEY, TEST_RSA_PUBLIC_KEY);
         let history = |until| json!({
             "active_kid":"rsa",
-            "verification_keys":[{"kid":"hs","algorithm":"HS256","material":secret,"verify_until":until}],
-            "legacy_without_kid":{"kid":"hs","verify_until":until}
+            "verification_keys":[{"kid":"hs","algorithm":"HS256","material":secret,"verify_until":until}]
         });
         mixed.set_test_jwt_keyring(JwtKeyring::from_json(&history(cutoff).to_string()).unwrap());
         let rsa_token = issue(&mixed);
@@ -919,7 +904,7 @@ mod tests {
         let mut header = jwt_header(&old, JwtPurpose::Access);
         header.kid = None;
         let legacy = encode(&header, &claims, encoding_key(&old, JwtPurpose::Access).unwrap()).unwrap();
-        assert!(decode_access_token(&mixed, &legacy).is_ok());
+        assert!(decode_access_token(&mixed, &legacy).is_err());
         // RSA public material must never serve as a selected HMAC verifier.
         header.kid = Some("rsa".into());
         let forged = encode(&header, &claims, &EncodingKey::from_secret(TEST_RSA_PUBLIC_KEY.as_bytes())).unwrap();

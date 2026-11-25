@@ -53,6 +53,7 @@ Non-ADR plans and research documents do not belong in this registry.
 
 | ADR | Title | Decision status | Implementation status | Relations |
 | --- | --- | --- | --- | --- |
+| [2026-11-25](./2026-11-25-jwt-mandatory-key-identity.md) | Mandatory JWT key identity | Accepted | In progress | Partially supersedes [JWT keyring](./2026-11-25-jwt-keyring.md), [JWT purpose keyrings](./2026-11-25-jwt-purpose-keyrings.md), [JWT generation fence](./2026-11-25-jwt-generation-fence.md), [JWT rolling admission](./2026-11-25-jwt-rolling-admission.md), [JWT emergency revocation](./2026-11-25-jwt-emergency-revocation.md) and [canonical JWT algorithm metadata](./2026-11-25-jwt-canonical-algorithm-metadata.md) |
 | [2026-11-25](./2026-11-25-jwt-canonical-algorithm-metadata.md) | Canonical JWT algorithm metadata | Accepted | In progress | Supersedes [JWT algorithm migration](./2026-11-25-jwt-algorithm-migration.md) |
 | [2026-11-25](./2026-11-25-jwt-algorithm-migration.md) | JWT algorithm migration | Superseded | In progress | Superseded by [Canonical JWT algorithm metadata](./2026-11-25-jwt-canonical-algorithm-metadata.md) |
 | [2026-11-25](./2026-11-25-jwt-rollback-witness.md) | JWT authority rollback witness | Accepted | In progress | Extends [Independent JWT authority](./2026-11-25-jwt-independent-authority.md) |

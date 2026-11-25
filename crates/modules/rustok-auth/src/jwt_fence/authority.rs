@@ -306,8 +306,8 @@ mod tests {
     async fn independent_ledger_survives_application_restore_and_refuses_reimport() {
         let source = database().await;
         let original = JwtGenerationFence::new(source.clone());
-        let first = config(ROOT, "old", OLD, None, None);
-        let clean = config(ROOT, "new", NEW, None, None);
+        let first = config(ROOT, "old", OLD, None);
+        let clean = config(ROOT, "new", NEW, None);
         assert_eq!(original.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
         let destination = Database::connect("sqlite::memory:").await.unwrap();
         let id = Uuid::new_v4();
@@ -339,7 +339,7 @@ mod tests {
         let id = Uuid::new_v4();
         import_bound(&source, destination.clone(), id, ROOT).await.unwrap();
         let independent = open_bound(destination.clone(), id, ROOT).await.unwrap();
-        let candidate = config("incorrect-root-at-least-thirty-two-bytes", "new", NEW, None, None);
+        let candidate = config("incorrect-root-at-least-thirty-two-bytes", "new", NEW, None);
         assert!(independent.admit(1, &candidate).await.is_err());
         let (_, publisher) = candidate.into_cluster_jwt(0).unwrap();
         assert!(independent.renew(&publisher).await.is_err());
@@ -357,7 +357,7 @@ mod tests {
     async fn import_refuses_live_source_grants_and_same_database() {
         let source = database().await;
         let original = JwtGenerationFence::new(source.clone());
-        let first = config(ROOT, "old", OLD, None, None);
+        let first = config(ROOT, "old", OLD, None);
         assert_eq!(original.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
         let id = Uuid::new_v4();
         assert!(import_bound(&source, source.clone(), id, ROOT).await.is_err());

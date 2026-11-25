@@ -132,12 +132,10 @@ Each ring object accepts:
 - `active_kid`: 1–64 ASCII letters, digits, hyphens or underscores.
 - `active_hs256_secret`: optional independent signing secret for HS256.
   If omitted, HKDF-SHA256 derives an independent purpose key from the host
-  MAC root. The raw root is never an active JWT key.
+  MAC root. The raw root is never a JWT signing or verification key.
 - `verification_keys`: up to 16 objects with `kid`, optional `algorithm` (HS256
   or RS256; omission inherits the active ring algorithm), `material` (actual
   HS256 signing secret or RSA public PEM), and exclusive Unix-second `verify_until`.
-- `legacy_without_kid`: access-only bounded migration setting with `kid` and
-  `verify_until`. Special rings reject this setting.
 
 The unconfigured access ID is `default`; special IDs are `reset-default`,
 `verify-default`, and `invite-default`. Example special configuration shape
@@ -166,15 +164,12 @@ common root; use independent explicit material for stronger isolation.
 
 ### Cutover and rotation
 
-For previous default HS256 access deployments, configure a new active ID
-and put the old raw host secret under the old ID `default` in access
-`verification_keys`, with a cutoff covering the remaining access JWT lifetime.
-If necessary, configure `legacy_without_kid` to point to that old entry.
-Existing independent access signing material or RSA access pairs can retain
-their IDs. The old raw host secret is not allowed as an active signing key.
-Old shared-key special links are intentionally rejected and must be reissued.
-Keep the host MAC root unchanged during this migration; refresh sessions are
-not rewritten or revoked. Coordinate all replicas for this cutover.
+All access and special JWTs require an explicit valid key ID. The raw host
+MAC root cannot enter any JWT ring, including history. There is no migration
+bridge for missing-ID or shared-root tokens. Reissue development tokens and
+special links through canonical issuance. The format cutover requires all
+hosts and operators to stop and follows the retained-state rules below.
+See [mandatory JWT key identity](../../../../DECISIONS/2026-11-25-jwt-mandatory-key-identity.md).
 
 For subsequent same-algorithm rotations, distribute the next verification
 material to all replicas first, then promote it and retain the outgoing
@@ -190,7 +185,7 @@ prepared encoding/decoding keys and indexed verification history; the JWT librar
 still constructs its internal crypto providers per operation.
 A source regression now exercises staging, promotion, retirement and exact
 key selection using two independent RS256 key pairs, including OAuth access and
-bounded missing-ID migration. Mixed-algorithm verification and managed staged
+missing-ID rejection. Mixed-algorithm verification and managed staged
 promotion are also source-implemented; compile and multi-replica execution
 evidence remain pending.
 See [purpose keyring ADR](../../../../DECISIONS/2026-11-25-jwt-purpose-keyrings.md).
@@ -212,13 +207,13 @@ The decoder selects a single key by purpose and kid, then requires JOSE
 alg to match that key. Historical HMAC secrets remain subject to production
 policy even when the active signer is RSA. Do not configure public bytes
 as symmetric secrets; PEM-shaped HMAC material is rejected. For a rolling
-promotion preserve all accepted verification keys, legacy mapping and
+promotion preserve all accepted verification keys and
 deadlines through overlap. An incompatible candidate uses the bounded drain,
 not a guaranteed zero-downtime cutover.
 
 Every persisted key entry explicitly records its algorithm, even in a
-homogeneous ring. Missing or null algorithm metadata is rejected; there is no
-previous-format reader. Stop all Auth hosts and operators for this pre-release
+homogeneous ring. Missing or null algorithm metadata and obsolete ring fields are rejected;
+there is no previous-format reader. Stop all Auth hosts and operators for this pre-release
 format cutover. Only demonstrably disposable development authority and witness
 state may be re-created together, with fresh JWT signing material and
 invalidation of outstanding development tokens. Preserve non-disposable state;
@@ -327,7 +322,7 @@ signer; distribute it before promoting the new signer in the next document.
 Retain the previous signer as verification history for the full remaining
 JWT lifetime. Both generations must verify each other's signer for the
 entire overlap plus a safety margin, and existing live verification
-deadlines and legacy mapping must be preserved. A compatible promotion
+deadlines must be preserved. A compatible promotion
 waits for all outstanding older incompatible grants to be acknowledged
 or expire without closing renewal for the current generation (AwaitingReplicas). A new
 local lease and the new keys are installed atomically. An incompatible
@@ -364,8 +359,8 @@ material. A replica observing revocation fences its whole local JWT runtime
 and readiness, including if its file is unchanged; disconnected replicas
 expire their local lease. Existing grants can remain usable for up to ten
 seconds from their local grant start under the documented clock assumptions.
-Recovery requires a higher complete generation without the revoked key or
-its legacy mapping, and a conservative drain of incompatible outstanding
+Recovery requires a higher complete generation without the revoked key
+and a conservative drain of incompatible outstanding
 grants. Retain only uncompromised material. Already-authorized business IO
 is not cancelled. Static generation zero is not an enrolled identity
 authority. Stop older binaries before use; unmanaged embedders, root

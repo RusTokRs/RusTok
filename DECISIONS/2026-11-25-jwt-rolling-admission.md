@@ -8,6 +8,9 @@
 - Supersedes: None
 - Superseded by: None
 
+
+The missing-ID and raw-root compatibility provisions (where present) are superseded by [Mandatory JWT key identity](2026-11-25-jwt-mandatory-key-identity.md). The remaining security invariants are retained.
+
 ## Context
 
 Draining every generation prevents incompatible concurrent crypto but also
