@@ -121,7 +121,7 @@ impl OAuthTokenService {
                     )
                 })?;
                 let current_app = lock_active_oauth_app(&tx, app.id, tenant_id).await?;
-                ensure_client_secret_unchanged(&app, &current_app)?;
+                ensure_authenticated_client_unchanged(&app, &current_app)?;
                 require_grant(&current_app, CLIENT_CREDENTIALS_GRANT)?;
                 let scopes = validate_requested_scopes(&current_app, request.scope.as_deref())?;
                 let prepared = prepare_service_access_token(&current_app, auth_config, &scopes)?;
@@ -1015,11 +1015,19 @@ where
     Ok(user)
 }
 
-fn ensure_client_secret_unchanged(
+fn ensure_authenticated_client_unchanged(
     authenticated_app: &oauth_apps::Model,
     current_app: &oauth_apps::Model,
 ) -> Result<(), OAuthTokenProtocolError> {
-    if authenticated_app.client_secret_hash.as_deref() != current_app.client_secret_hash.as_deref()
+    // Client authentication also depends on app type (public vs confidential).
+    // An unchanged secret hash alone cannot authenticate a changed identity
+    // or a client whose required authentication method changed.
+    if !current_app.is_active()
+        || authenticated_app.id != current_app.id
+        || authenticated_app.tenant_id != current_app.tenant_id
+        || authenticated_app.client_id != current_app.client_id
+        || authenticated_app.app_type != current_app.app_type
+        || authenticated_app.client_secret_hash != current_app.client_secret_hash
     {
         return Err(OAuthTokenProtocolError::invalid_client(
             "OAuth client credentials changed during token issuance",
@@ -1215,7 +1223,7 @@ async fn commit_authorization_code_exchange(
         OAuthTokenProtocolError::server_error("Failed to begin authorization-code exchange")
     })?;
     let current_app = lock_active_oauth_app(&tx, authenticated_app.id, code.tenant_id).await?;
-    ensure_client_secret_unchanged(authenticated_app, &current_app)?;
+    ensure_authenticated_client_unchanged(authenticated_app, &current_app)?;
     require_grant(&current_app, AUTHORIZATION_CODE_GRANT)?;
     if prepared.refresh_model.is_some() {
         // Preparation is outside the transaction; a removed refresh grant
@@ -1300,7 +1308,7 @@ async fn commit_refresh_rotation(
         OAuthTokenProtocolError::server_error("Failed to begin refresh-token rotation")
     })?;
     let current_app = lock_active_oauth_app(&tx, authenticated_app.id, current.tenant_id).await?;
-    ensure_client_secret_unchanged(authenticated_app, &current_app)?;
+    ensure_authenticated_client_unchanged(authenticated_app, &current_app)?;
     require_grant(&current_app, REFRESH_TOKEN_GRANT)?;
     validate_scope_subset(&current_app.scopes_list(), &current.scopes_list())?;
     let user_id = current.user_id.ok_or_else(|| {
@@ -1594,6 +1602,37 @@ mod tests {
             created_at: now,
             updated_at: now,
         }
+    }
+
+    #[test]
+    fn authenticated_client_snapshot_rejects_identity_and_policy_drift() {
+        let original = app(
+            serde_json::json!(["profile"]),
+            serde_json::json!(["authorization_code", "refresh_token"]),
+        );
+        assert!(super::ensure_authenticated_client_unchanged(&original, &original).is_ok());
+
+        let mut changed = original.clone();
+        changed.app_type = "mobile".to_string();
+        assert_eq!(
+            super::ensure_authenticated_client_unchanged(&original, &changed).unwrap_err().error,
+            "invalid_client"
+        );
+        let mut changed = original.clone();
+        changed.client_id = Uuid::new_v4();
+        assert!(super::ensure_authenticated_client_unchanged(&original, &changed).is_err());
+        let mut changed = original.clone();
+        changed.tenant_id = Uuid::new_v4();
+        assert!(super::ensure_authenticated_client_unchanged(&original, &changed).is_err());
+        let mut changed = original.clone();
+        changed.id = Uuid::new_v4();
+        assert!(super::ensure_authenticated_client_unchanged(&original, &changed).is_err());
+        let mut changed = original.clone();
+        changed.client_secret_hash = None;
+        assert!(super::ensure_authenticated_client_unchanged(&original, &changed).is_err());
+        let mut changed = original.clone();
+        changed.is_active = false;
+        assert!(super::ensure_authenticated_client_unchanged(&original, &changed).is_err());
     }
 
     #[test]

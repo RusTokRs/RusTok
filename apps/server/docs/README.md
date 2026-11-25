@@ -1003,7 +1003,7 @@ before the event forwarder. The Outbox relay supervisor owns and gracefully drai
 - Auth derives separate host MAC keys for OAuth CSRF and password reset via HKDF-SHA256 and uses library HMAC-SHA256. MAC v5 and reset fingerprint v2 invalidate outstanding previous forms/links; JWT signing and session storage are unchanged. Deploy host instances together. Source regressions unrun.
 - OAuth browser confirmation MAC v4 binds the current direct session and bounds the expiry. JWT validation rejects future or inconsistent issuance times and future `nbf`; duration conversion is checked. RS256 configuration still requires a strong symmetric secret for host MACs. Source regressions unrun.
 - OAuth RFC 7009 revocation revalidates the authenticated client snapshot (identity, active state, app type, and secret hash) under the app mutation lock before looking up any token. Unknown tokens still succeed for authenticated clients. Source regression unrun.
-- OAuth authorization locks app, subject and direct session in that order, rechecks email policy and credential expiry, and commits browser approval and code issuance together. A stale session cannot grant consent or issue codes. Source regressions unrun.
+- OAuth authorization locks app, subject and direct session in that order, rechecks email policy and credential expiry, and commits browser approval and code issuance together. A stale session cannot grant consent or issue codes. Redirect registration and authorization admission reject callback query names reserved for OAuth responses (`code`, `state`, `error`, `error_description`, `error_uri`), including percent-encoded names. Legacy conflicting callbacks must be corrected before issuing new codes; unrelated query parameters are preserved. Source regressions unrun.
 - OAuth consent re-grant invalidates pending codes for that app, tenant and subject in the same transaction. Code exchange rejects a newer consent epoch and rechecks the refresh grant if a refresh credential was prepared. OAuth replay grace uses the exact elapsed duration and rejects future timestamps. Source regressions unrun.
 - OAuth access JWTs are registered credentials: issuance writes a `token_kind = access`
   row whose id is the JWT `jti`, and the extractor requires that row to be active,
@@ -1012,10 +1012,11 @@ before the event forwarder. The Outbox relay supervisor owns and gracefully drai
   family, so an already-issued access JWT is fenced before its signed TTL. Delegated
   rows also capture the consent epoch (`consent_granted_at`); a consent revoke/re-grant
   cannot resurrect older tokens. Code exchange locks the active app and delegated
-  subject in the persistence transaction, then rechecks the client-secret hash,
+  subject in the persistence transaction, then rechecks the authenticated client
+  identity, app type, active state and client-secret hash,
   authorization-code grant, current scopes, registered redirect URI, subject status,
   and password-change epoch before consuming the code. Refresh rotation similarly
-  locks the app and subject and rechecks the client-secret hash, refresh grant,
+  locks the app and subject and rechecks the same client authentication snapshot, refresh grant,
   current scopes, subject status, password-change epoch and the original
   refresh-family absolute deadline before consuming the refresh token. The
   family root is resolved again inside the transaction, so waiting for app or
