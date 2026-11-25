@@ -9,7 +9,9 @@ use fly::{
     FLY_PAGE_METADATA_FIELD, PageCommand, PageLocator, PageMetadata, PagePatch, RuntimeBinding,
     TranslationCommand, TranslationEntry, blank_page,
 };
-use fly_ui::{MAX_RESIZE_DIMENSION_PX, UiIntent};
+use fly_ui::{
+    MAX_RESIZE_DIMENSION_PX, MIN_RESIZE_HEIGHT_PX, MIN_RESIZE_WIDTH_PX, UiIntent,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -226,8 +228,8 @@ impl AdminCanvasController {
         for (property, value) in style {
             let property = normalize_css_property(property)?;
             let minimum = match property.as_str() {
-                "width" => 24.0,
-                "height" => 20.0,
+                "width" => MIN_RESIZE_WIDTH_PX,
+                "height" => MIN_RESIZE_HEIGHT_PX,
                 _ => return Err("resize patch may only change width and height".to_string()),
             };
             let value = value

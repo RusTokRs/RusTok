@@ -6,6 +6,7 @@ use fly::ComponentPatch;
 #[cfg(any(target_arch = "wasm32", test))]
 use fly_ui::{
     CanvasRect, ResizeHandle, ResizePolicy, ViewportState, MAX_RESIZE_DIMENSION_PX,
+    MIN_RESIZE_HEIGHT_PX, MIN_RESIZE_WIDTH_PX,
 };
 #[cfg(target_arch = "wasm32")]
 use fly_ui::{ResizeResult, ResizeSession};
@@ -475,8 +476,8 @@ mod tests {
     #[test]
     fn page_builder_resize_policy_matches_server_dimension_limit() {
         let policy = page_builder_resize_policy();
-        assert_eq!(policy.minimum_width, 24.0);
-        assert_eq!(policy.minimum_height, 20.0);
+        assert_eq!(policy.minimum_width, MIN_RESIZE_WIDTH_PX);
+        assert_eq!(policy.minimum_height, MIN_RESIZE_HEIGHT_PX);
         assert_eq!(policy.maximum_width, Some(MAX_RESIZE_DIMENSION_PX));
         assert_eq!(policy.maximum_height, Some(MAX_RESIZE_DIMENSION_PX));
         assert_eq!(policy.grid_size, Some(4.0));

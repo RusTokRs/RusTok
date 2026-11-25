@@ -15,8 +15,8 @@ versioned with the host workspace, so until it is extracted (see the `rustok-ui-
   resize after pointer capture succeeds, preserving context menus and canvas interactions when
   resize setup is unavailable.
 - **Resize preview/commit parity.** The browser resize policy and SSR patch validator now
-  share the same 100,000px dimension cap, preventing a preview from exceeding a limit that
-  the server would later reject.
+  share the same 24px/20px minimums and 100,000px dimension cap, preventing a preview from
+  exceeding a limit that the server would later reject.
 - **Leptos SSR history controls.** Undo and Redo are now exposed through the existing
   browser-intent transport before WASM hydration; controls that still require Leptos handlers
   remain hidden until hydration.

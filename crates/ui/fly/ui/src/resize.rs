@@ -63,8 +63,8 @@ pub struct ResizePolicy {
 impl Default for ResizePolicy {
     fn default() -> Self {
         Self {
-            minimum_width: 24.0,
-            minimum_height: 20.0,
+            minimum_width: MIN_RESIZE_WIDTH_PX,
+            minimum_height: MIN_RESIZE_HEIGHT_PX,
             maximum_width: None,
             maximum_height: None,
             grid_size: None,
@@ -92,6 +92,12 @@ pub struct ResizeResult {
 
 /// A single pointer gesture is bounded independently of optional component size policy.
 const MAX_RESIZE_POINTER_DELTA_PX: f64 = 1_000_000.0;
+
+/// Default minimum width for Fly resize sessions and the Page Builder surface.
+pub const MIN_RESIZE_WIDTH_PX: f64 = 24.0;
+
+/// Default minimum height for Fly resize sessions and the Page Builder surface.
+pub const MIN_RESIZE_HEIGHT_PX: f64 = 20.0;
 
 /// Maximum persisted dimension used by the Page Builder resize surface.
 ///
