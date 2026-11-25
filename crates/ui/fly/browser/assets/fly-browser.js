@@ -1294,31 +1294,65 @@ export class FlyBrowserAdapter {
     for (const element of this.root.querySelectorAll(
       "[data-fly-component-id]",
     )) {
-      const componentId = element.dataset.flyComponentId;
-      element.addEventListener(
-        "click",
-        () => this.select(componentId, "ssr-control"),
-        { signal },
-      );
       element.setAttribute("draggable", "true");
-      element.addEventListener(
-        "dragstart",
-        (event) => {
-          if (!componentId) return;
-          event.dataTransfer?.setData(
-            "application/x-fly-component",
-            componentId,
-          );
-          event.dataTransfer?.setData("text/plain", componentId);
-          this.select(componentId, "ssr-control");
-          this.activeDrag = { kind: "component", component_id: componentId };
-          this.activeDrop = null;
-          this.root.dataset.flyDragging = "component";
-        },
-        { signal },
-      );
-      element.addEventListener("dragend", () => this.cancelDrag(), { signal });
     }
+    // Component markup is a nested tree. Per-element click/drag listeners bubble
+    // through every ancestor component and used to leave the outermost ancestor
+    // selected or dragged. Delegate once and resolve the nearest component instead.
+    this.root.addEventListener(
+      "click",
+      (event) => {
+        const componentElement =
+          event.target instanceof Element
+            ? event.target.closest("[data-fly-canvas] [data-fly-component-id]")
+            : null;
+        if (
+          !(componentElement instanceof Element) ||
+          !this.root.contains(componentElement)
+        ) {
+          return;
+        }
+        const componentId = componentElement.dataset.flyComponentId;
+        if (!componentId) return;
+        // Preview links and form controls must not navigate or submit while the
+        // author is selecting a component in the canvas.
+        event.preventDefault();
+        this.select(componentId, "ssr-control");
+      },
+      { signal },
+    );
+    this.root.addEventListener(
+      "dragstart",
+      (event) => {
+        const componentElement =
+          event.target instanceof Element
+            ? event.target.closest("[data-fly-component-id]")
+            : null;
+        if (
+          !(componentElement instanceof Element) ||
+          !this.root.contains(componentElement)
+        ) {
+          return;
+        }
+        const componentId = componentElement.dataset.flyComponentId;
+        if (!componentId) return;
+        event.dataTransfer?.setData(
+          "application/x-fly-component",
+          componentId,
+        );
+        event.dataTransfer?.setData("text/plain", componentId);
+        this.select(componentId, "ssr-control");
+        this.activeDrag = { kind: "component", component_id: componentId };
+        this.activeDrop = null;
+        this.root.dataset.flyDragging = "component";
+      },
+      { signal },
+    );
+    this.root.addEventListener(
+      "dragend",
+      () => this.cancelDrag(),
+      { signal },
+    );
     this.root.addEventListener(
       "click",
       (event) => {
