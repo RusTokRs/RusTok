@@ -217,11 +217,12 @@ test('variant update and delete preserve their exact request/key through reload 
     id: '00000000-0000-4000-8000-000000000001',
     variantId,
     scope: testScope,
-    input: { sku: 'SKU-UPDATED' }
+    input: { sku: 'SKU-UPDATED', expectedRevision: '1' }
   };
   const deleteRequest = {
     id: updateRequest.id,
     variantId,
+    expectedRevision: '1',
     scope: testScope
   };
 

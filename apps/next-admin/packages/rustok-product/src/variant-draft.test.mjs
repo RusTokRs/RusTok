@@ -383,6 +383,7 @@ test('a picked full tuple can be appended when the unfiltered Cartesian space ex
 
 test('variant edits emit only explicitly changed fields, not stale Inventory or Pricing snapshots', () => {
   const current = {
+    revision: '1',
     sku: 'SKU-1',
     barcode: 'BAR-1',
     inventoryQuantity: 8,
@@ -402,12 +403,13 @@ test('variant edits emit only explicitly changed fields, not stale Inventory or 
         prices: unchangedPrices
       })
     ),
-    { sku: 'SKU-2' }
+    { sku: 'SKU-2', expectedRevision: '1' }
   );
 });
 
 test('variant edits patch only an explicitly changed shipping profile and can clear the override', () => {
   const current = {
+    revision: '1',
     sku: 'SKU-1',
     barcode: 'BAR-1',
     shippingProfileSlug: 'parcel',
@@ -429,16 +431,17 @@ test('variant edits patch only an explicitly changed shipping profile and can cl
   );
   assert.deepEqual(
     clone(buildVariantUpdatePatch(current, { ...base, shippingProfileSlug: 'express' })),
-    { shippingProfileSlug: 'express' }
+    { shippingProfileSlug: 'express', expectedRevision: '1' }
   );
   assert.deepEqual(
     clone(buildVariantUpdatePatch(current, { ...base, shippingProfileSlug: '  ' })),
-    { shippingProfileSlug: null }
+    { shippingProfileSlug: null, expectedRevision: '1' }
   );
 });
 
 test('unchanged variant forms produce no write and preserve owner snapshots', () => {
   const current = {
+    revision: '1',
     sku: 'SKU-1',
     barcode: 'BAR-1',
     inventoryQuantity: 8,
@@ -461,6 +464,7 @@ test('unchanged variant forms produce no write and preserve owner snapshots', ()
 
 test('explicit price clearing remains an empty replacement and quantity is patched independently', () => {
   const current = {
+    revision: '1',
     sku: 'SKU-1',
     barcode: 'BAR-1',
     inventoryQuantity: 8,
@@ -477,13 +481,14 @@ test('explicit price clearing remains an empty replacement and quantity is patch
         prices: []
       })
     ),
-    { inventoryQuantity: 9, prices: [] }
+    { inventoryQuantity: 9, expectedInventoryQuantity: 8, prices: [], expectedRevision: '1' }
   );
 });
 
 
 test('changing one currency price preserves every other currency in the replacement set', () => {
   const current = {
+    revision: '1',
     sku: 'SKU-1',
     barcode: 'BAR-1',
     inventoryQuantity: 8,
@@ -510,7 +515,8 @@ test('changing one currency price preserves every other currency in the replacem
       prices: [
         { currencyCode: 'USD', amount: '13.00', compareAtAmount: null },
         { currencyCode: 'EUR', amount: '11.50', compareAtAmount: null }
-      ]
+      ],
+      expectedRevision: '1'
     }
   );
 });
