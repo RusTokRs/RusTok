@@ -1370,10 +1370,9 @@ fn collect_css_string_ranges(
 
 /// Decide whether a single CSS declaration may be emitted.
 ///
-/// `url(...)` used to be rejected outright, which is safe but wrong for a page builder: it made
-/// `background-image` unusable. References are now allowed when the URL inside them satisfies the
-/// same resource policy the renderer applies to `src`, so `url(/hero.png)` works while
-/// `url(javascript:...)` and `url(data:text/html,...)` remain blocked.
+/// CSS resource URLs may be expressed through url() or through quoted strings in image(),
+/// src(), image-set(), and -webkit-image-set(). Every form is checked against the same
+/// RenderPolicy resource rules, including when these functions are nested inside image functions.
 ///
 /// # The invariant this upholds
 ///
@@ -1394,10 +1393,9 @@ fn safe_style(name: &str, value: &Value, policy: &RenderPolicy) -> Option<String
         return None;
     }
 
-    // Validate and blank out every `url(...)` token *before* the structural check, because a
-    // legitimate data-image reference legally contains `;` (`data:image/png;base64,...`) and the
-    // structural check must not see it. Characters that are dangerous *inside* a reference are
-    // rejected by `url_allowed` and by the stricter check in the stripping pass.
+    // Validate and blank out url() tokens first, because data-image URLs legally contain
+    // semicolons. Then validate and blank out quoted resource strings in image functions so
+    // their URL schemes and data-image forms obey the same policy before structural checks.
     let mut without_urls = validate_and_strip_url_tokens(&value, policy)?;
     let resource_string_ranges = css_resource_string_ranges(&without_urls)?;
     let url_policy = policy.url_policy();

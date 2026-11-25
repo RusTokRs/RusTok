@@ -2,8 +2,9 @@
 //!
 //! A project may carry a `flyTheme` extension: `{ "tokens": { "brand": "#0b5fff", ... } }`.
 //! Fly decodes and validates it here — token names become `--{name}` custom properties and
-//! token values must stay inside the safe CSS value subset — and the renderer emits one
-//! `:root { ... }` rule ahead of the project styles. Style declarations reference tokens
+//! token values stay inside the safe CSS value subset; resource-bearing url(), image(), src(),
+//! and image-set() forms are refused so a variable cannot bypass declaration URL checks.
+//! The renderer emits one `:root { ... }` rule ahead of the project styles. Style declarations reference tokens
 //! with the standard `var(--brand)` syntax, which the declaration sanitizer already admits.
 //!
 //! Before this module, projects had per-component declarations and class rules only: no
