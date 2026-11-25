@@ -555,8 +555,8 @@ connection as the other Product catalog reads. The existing GraphQL
 retain their own page limits and projection rules. The standalone Product
 process can select the Taxonomy gRPC binding to serve pages with tagged products.
 Both RPCs report the existing typed unavailable error when the selected page
-requires tag names and Taxonomy is unavailable. Mounted Commerce verification
-remains a deployment gate.
+requires tag names and Taxonomy is unavailable. The [mounted Commerce fixture](#mounted-commerce-storefront-lists-2026-11-25)
+verified those responses through both HTTP routes.
 
 Product now reads term names through Taxonomy's published
 `TaxonomyTermNamesReadPort`. The embedded provider uses Taxonomy's existing
@@ -754,6 +754,27 @@ The first HTTP run exposed a PostgreSQL parameter binding error when Cart loaded
 the tenant locale. Commit `8077c68a71` selects the correct parameter syntax for
 PostgreSQL, and the successful runs used that fix. This evidence covers the
 Commerce HTTP path for a digital SKU on shared storage.
+
+### Mounted Commerce storefront lists (2026-11-25)
+
+The `mod-commerce` [HTTP fixture](../../../../apps/server/tests/product_remote_storefront_http.rs)
+mounted the production REST router, GraphQL schema, provider selection and
+HTTP middleware on loopback. Its platform state was in a fresh SQLite database.
+The Product and Taxonomy service binaries ran separately with distinct
+PostgreSQL 16 databases. The returned catalog item existed only in Product.
+
+- `GET /store/products` and GraphQL `storefrontProducts` returned the same
+  fixture Product and its Taxonomy tag for `de` on page 2, with two total matches.
+- With Taxonomy stopped and Product still running, REST returned HTTP `503`
+  with `commerce_store_product_unavailable`. GraphQL returned HTTP `200` with
+  `PRODUCT_TEMPORARILY_UNAVAILABLE` and a null `storefrontProducts` field.
+  Both errors had `retryable: true`.
+- The Product port tests cover both Tonic deadline statuses. Structured Product
+  errors continue to take precedence over the transport status mapping.
+
+Use the [host fixture instructions](../../../../apps/server/README.md#mounted-product-storefront-evidence)
+to reproduce this scenario. Full `rustok-server` startup with a separate
+PostgreSQL consumer database remains part of the combined deployment capture.
 
 ### Mounted AI product attributes (2026-11-10)
 

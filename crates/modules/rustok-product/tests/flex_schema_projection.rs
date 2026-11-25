@@ -656,7 +656,9 @@ impl TaggedStorefrontLists {
         tenant: Uuid,
         taxonomy_available: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let child = service_command(host)
+        use tokio::io::AsyncReadExt;
+
+        let mut child = service_command(host)
             .args([
                 "--ignored",
                 "--exact",
@@ -686,13 +688,32 @@ impl TaggedStorefrontLists {
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()?;
-        let output =
-            tokio::time::timeout(Duration::from_secs(30), child.wait_with_output()).await??;
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        if !output.status.success() || !stdout.contains("PRODUCT_REMOTE_STOREFRONT_HTTP_OK") {
+        let (mut stdout, mut stderr) = (child.stdout.take().unwrap(), child.stderr.take().unwrap());
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        let (status, out_result, err_result) = tokio::join!(
+            async {
+                match tokio::time::timeout(Duration::from_secs(100), child.wait()).await {
+                    Ok(status) => status,
+                    Err(_) => {
+                        child.kill().await?;
+                        Err(std::io::Error::other(
+                            "mounted storefront fixture exceeded 100 seconds",
+                        ))
+                    }
+                }
+            },
+            stdout.read_to_end(&mut out),
+            stderr.read_to_end(&mut err),
+        );
+        out_result?;
+        err_result?;
+        let stdout = String::from_utf8_lossy(&out);
+        if !status.as_ref().is_ok_and(|exit| exit.success())
+            || !stdout.contains("PRODUCT_REMOTE_STOREFRONT_HTTP_OK")
+        {
             return Err(format!(
-                "Mounted Commerce storefront fixture failed:\n{stdout}\n{}",
-                String::from_utf8_lossy(&output.stderr)
+                "Mounted Commerce storefront fixture failed ({status:?})\n{stdout}\n{}",
+                String::from_utf8_lossy(&err)
             )
             .into());
         }

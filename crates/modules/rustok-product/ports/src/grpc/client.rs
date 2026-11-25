@@ -943,7 +943,8 @@ fn status_to_port_error(status: Status) -> PortError {
         Code::NotFound => PortErrorKind::NotFound,
         Code::AlreadyExists | Code::Aborted | Code::FailedPrecondition => PortErrorKind::Conflict,
         Code::PermissionDenied | Code::Unauthenticated => PortErrorKind::Forbidden,
-        Code::DeadlineExceeded => PortErrorKind::Timeout,
+        // Tonic also converts an expired transport deadline to Cancelled.
+        Code::Cancelled | Code::DeadlineExceeded => PortErrorKind::Timeout,
         Code::Unavailable | Code::ResourceExhausted => PortErrorKind::Unavailable,
         _ => PortErrorKind::InvariantViolation,
     };
@@ -988,6 +989,18 @@ mod tests {
         let error = status_to_port_error(Status::unavailable("down"));
         assert_eq!(error.kind, PortErrorKind::Unavailable);
         assert!(error.retryable);
+    }
+
+    #[test]
+    fn transport_deadline_statuses_are_retryable_timeouts() {
+        for status in [
+            Status::cancelled("Timeout expired"),
+            Status::deadline_exceeded("Product deadline exceeded"),
+        ] {
+            let error = status_to_port_error(status);
+            assert_eq!(error.kind, PortErrorKind::Timeout);
+            assert!(error.retryable);
+        }
     }
 
     #[test]

@@ -1763,6 +1763,32 @@ Detection: `rg -n -B3 "continue;" crates | rg "let _ ="` and
 counters that follow a discarded result. Read each loop for the path that reaches
 its deadline.
 
+## P-GRPC-DEADLINE-STATUS — Preserve retryability when Tonic cancels an expired request
+
+- **Category:** FBA transport error translation.
+- **Logic dimensions:** Branch completeness, order of operations and concurrency.
+- **Observed defect:** With Taxonomy stopped, the Product storefront request
+  could exhaust the caller's gRPC deadline before Product returned its typed
+  dependency error. Tonic converts `TimeoutExpired` to `Cancelled`. The Product
+  client handled only `DeadlineExceeded` as a timeout, so the Commerce REST
+  boundary returned a nonretryable HTTP 500. The Taxonomy client already accepts
+  both deadline status forms.
+- **Canonical solution:** Decode the owner's structured `PortError` first. For
+  bare transport statuses, classify both deadline forms as retryable timeouts.
+  A timeout leaves a write's outcome unknown. Retry a command with its original
+  idempotency key so the owner can replay any committed result.
+
+```rust
+Code::Cancelled | Code::DeadlineExceeded => PortErrorKind::Timeout,
+```
+
+Detection: `rg -n 'Code::(Cancelled|DeadlineExceeded)' crates/modules` locates
+status mappings. Check both forms in Tonic clients and exercise the mounted
+consumer with its downstream owner unavailable.
+[Product client](../../crates/modules/rustok-product/ports/src/grpc/client.rs),
+[Taxonomy client](../../crates/modules/rustok-taxonomy/ports/src/grpc/client.rs),
+[mounted Commerce regression](../../apps/server/tests/product_remote_storefront_http.rs).
+
 ## P-UNRECOGNIZED-TO-SINK — Input a reader does not recognise never reaches the sink
 
 - **Category:** Output containment and fail-open fallbacks.

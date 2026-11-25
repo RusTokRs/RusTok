@@ -81,7 +81,9 @@ The fixture runs the host executable with the live Product credential and endpoi
 It sends HTTP requests through the production router and middleware on loopback.
 The consumer uses a fresh SQLite database for platform state, while Product and
 Taxonomy use separate PostgreSQL databases and run in their own processes.
-[Provider fixture setup](../../crates/modules/rustok-taxonomy/docs/README.md#verification)
+The successful run covered localized tags and retryable errors after Taxonomy
+shutdown through Commerce REST and GraphQL. [Provider fixture setup](../../crates/modules/rustok-taxonomy/docs/README.md#verification),
+[Product verification record](../../crates/modules/rustok-product/docs/implementation-plan.md#mounted-commerce-storefront-lists-2026-11-25).
 
 ## Production container configuration
 

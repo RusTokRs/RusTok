@@ -58,6 +58,10 @@ The catalog read credential covers both storefront list RPCs.
 field with a limit of 48 rows. Each RPC preserves its existing owner projection.
 A standalone Product instance without a Taxonomy provider returns a retryable
 unavailable error if listing the requested page requires resolving tag names.
+The gRPC client preserves structured owner errors. Bare `DeadlineExceeded` and
+`Cancelled` statuses are retryable timeouts because Tonic can report an expired
+transport deadline as `Cancelled`. A command whose response timed out may have
+committed. Reuse the original idempotency key and payload to recover its result.
 
 ## Authentication
 

@@ -26,8 +26,8 @@ use rustok_server::{
         server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext},
     },
 };
-use sea_orm::{ActiveModelTrait, ConnectionTrait, Database, DatabaseBackend, Set, Statement};
-use sea_orm_migration::MigratorTrait;
+use rustok_test_utils::db::setup_test_db_with_migrations;
+use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseBackend, Set, Statement};
 use serde_json::{Value, json};
 use tokio::{net::TcpListener, sync::Notify};
 use uuid::Uuid;
@@ -41,7 +41,10 @@ async fn mounted_storefront_lists_use_the_selected_product_process() -> TestResu
     let product_id: Uuid = std::env::var("RUSTOK_PRODUCT_TEST_PRODUCT_ID")?.parse()?;
     let taxonomy_available: bool =
         std::env::var("RUSTOK_PRODUCT_TEST_TAXONOMY_AVAILABLE")?.parse()?;
-    let app = compose_storefront(tenant_id).await?;
+    let app = tokio::time::timeout(Duration::from_secs(60), compose_storefront(tenant_id))
+        .await
+        .map_err(|_| std::io::Error::other("Timed out preparing the Commerce HTTP runtime"))??;
+    eprintln!("Commerce storefront runtime composed");
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let endpoint = format!("http://{}", listener.local_addr()?);
     let stop = Arc::new(Notify::new());
@@ -65,6 +68,7 @@ async fn mounted_storefront_lists_use_the_selected_product_process() -> TestResu
         .header("X-Tenant-ID", tenant_id.to_string())
         .send()
         .await?;
+    eprintln!("Commerce storefront REST responded");
     let graphql = client
         .post(format!("{endpoint}/api/graphql"))
         .header("X-Tenant-ID", tenant_id.to_string())
@@ -72,10 +76,16 @@ async fn mounted_storefront_lists_use_the_selected_product_process() -> TestResu
             "query": "{ storefrontProducts(locale: \"de\", filter: { page: 2, perPage: 1 }) { items { id title tags } total } }"
         }))
         .send().await?;
+    eprintln!("Commerce storefront GraphQL responded");
     let (rest_status, rest_body) = response_json(rest).await?;
     let (graphql_status, graphql_body) = response_json(graphql).await?;
+    drop(client);
     stop.notify_one();
-    server.await??;
+    tokio::time::timeout(Duration::from_secs(5), server)
+        .await
+        .map_err(|_| {
+            std::io::Error::other("Timed out shutting down the Commerce HTTP listener")
+        })???;
 
     assert_eq!(graphql_status, StatusCode::OK, "{graphql_body}");
     if taxonomy_available {
@@ -118,8 +128,9 @@ async fn mounted_storefront_lists_use_the_selected_product_process() -> TestResu
 }
 
 async fn compose_storefront(tenant_id: Uuid) -> TestResult<Router> {
-    let db = Database::connect("sqlite::memory:").await?;
-    SqliteTestMigrator::up(&db, None).await?;
+    eprintln!("Applying platform migrations to the Commerce fixture database");
+    let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
+    eprintln!("Commerce fixture database migrated");
     let now = chrono::Utc::now().fixed_offset();
     tenants::ActiveModel {
         id: Set(tenant_id),
@@ -143,7 +154,7 @@ async fn compose_storefront(tenant_id: Uuid) -> TestResult<Router> {
         )).await?;
     }
     let channels = ChannelService::new(db.clone());
-    let web = channels
+    channels
         .create_channel(CreateChannelInput {
             tenant_id,
             slug: "web".into(),
@@ -151,7 +162,7 @@ async fn compose_storefront(tenant_id: Uuid) -> TestResult<Router> {
             settings: None,
         })
         .await?;
-    channels.set_default_channel(web.id).await?;
+    eprintln!("Commerce fixture tenant and default channel seeded");
 
     let mut settings = RustokSettings::default();
     settings.runtime.host_mode = RuntimeHostMode::Api;
@@ -163,6 +174,7 @@ async fn compose_storefront(tenant_id: Uuid) -> TestResult<Router> {
     ctx.shared_insert(transactional_event_bus_from_context(&ctx));
     ctx.shared_insert(rustok_storage::StorageRuntime::in_memory());
     configure_product_catalog_deployment(&ctx).await?;
+    eprintln!("Commerce connected to the selected Product provider");
 
     let registry = build_registry();
     let auth = AuthConfig::new("remote-storefront-fixture-secret-with-32-bytes".into());
@@ -178,6 +190,7 @@ async fn compose_storefront(tenant_id: Uuid) -> TestResult<Router> {
         ServerMarketplaceCatalog::new(ctx.clone(), registry.clone()),
     )));
     let graphql_schema = init_graphql_schema(&ctx)?;
+    eprintln!("Commerce GraphQL schema composed");
     let auth = ServerAuthRuntime::new(ctx.clone(), auth);
     let runtime = AppRuntimeBootstrap {
         deployment_surfaces: DeploymentSurfaceContract {

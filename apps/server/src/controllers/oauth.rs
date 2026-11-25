@@ -429,16 +429,18 @@ async fn parse_token_request(
         .map(is_form_encoded_content_type)
         .unwrap_or(false);
 
+    let invalid_request = || oauth_invalid_request_error("Invalid OAuth token request");
     let mut parsed = if is_form {
         Form::<TokenRequest>::from_request(request, state)
             .await
             .map(|Form(request)| request)
+            .map_err(|_| invalid_request())?
     } else {
         Json::<TokenRequest>::from_request(request, state)
             .await
             .map(|Json(request)| request)
-    }
-    .map_err(|_| oauth_invalid_request_error("Invalid OAuth token request"))?;
+            .map_err(|_| invalid_request())?
+    };
 
     apply_basic_client_credentials(
         &headers,
@@ -1467,16 +1469,18 @@ async fn parse_revoke_request(
         .map(is_form_encoded_content_type)
         .unwrap_or(false);
 
+    let invalid_request = || oauth_invalid_request_error("Invalid OAuth revocation request");
     let mut parsed = if is_form {
         Form::<RevokeRequest>::from_request(request, state)
             .await
             .map(|Form(request)| request)
+            .map_err(|_| invalid_request())?
     } else {
         Json::<RevokeRequest>::from_request(request, state)
             .await
             .map(|Json(request)| request)
-    }
-    .map_err(|_| oauth_invalid_request_error("Invalid OAuth revocation request"))?;
+            .map_err(|_| invalid_request())?
+    };
 
     apply_basic_client_credentials(
         &headers,

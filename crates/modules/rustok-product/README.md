@@ -63,9 +63,11 @@ source commit or retained raw logs. The conformance fixture now includes `Produc
 See the [current verification scope](docs/implementation-plan.md#current-revision-and-evidence-limits).
 
 The retained standalone PostgreSQL probe exercises the six original read RPCs. Commerce HTTP checkout passed locally
-in both profiles. The AI GraphQL attribute task passed locally with a separate Product service
-and separate PostgreSQL databases. The catalog-read track remains `boundary_ready` pending
-the combined deployment capture.
+in both profiles. The mounted Commerce REST and GraphQL lists passed with separate
+Product and Taxonomy processes, including retryable Taxonomy outage responses.
+The AI GraphQL attribute task passed locally with a separate Product service and
+separate PostgreSQL databases. The catalog-read track remains `boundary_ready` pending
+the combined deployment capture. [Mounted storefront verification](docs/implementation-plan.md#mounted-commerce-storefront-lists-2026-11-25).
 AI `product_copy` uses the Product read and command ports selected by the host and fails
 before generation if either is missing. The host enables this write workflow when
 both ports are embedded or both use the configured Product gRPC endpoint, so the

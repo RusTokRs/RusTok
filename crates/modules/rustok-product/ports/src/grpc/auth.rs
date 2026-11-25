@@ -105,6 +105,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "grpc-server")]
     #[test]
     fn bearer_token_comparison_matches_full_authorization_value() {
         let token = ProductCatalogGrpcBearerToken::new("catalog-secret")
