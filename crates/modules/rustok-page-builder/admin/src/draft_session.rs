@@ -863,6 +863,7 @@ const TENANT_PARTITION_PREFIX: &str = "t-";
 const LOCKS_DIR: &str = "_locks";
 /// Stable directory guard. Token lock files may only be opened or removed while
 /// this file is exclusively locked; it is never removed itself.
+#[cfg(not(target_arch = "wasm32"))]
 const LOCKS_DIR_GUARD_FILE: &str = ".guard.lock";
 /// Longest partition directory name accepted (file systems cap one path
 /// component at 255 bytes).
@@ -2887,6 +2888,7 @@ fn ensure_record_size(bytes: usize) -> Result<(), SsrDraftSessionError> {
 const TEMP_FILE_STALE_AFTER: Duration = Duration::from_secs(30);
 
 /// How long a waiter polls for an OS-level token lock before giving up.
+#[cfg(not(target_arch = "wasm32"))]
 const TOKEN_LOCK_WAIT: Duration = Duration::from_secs(2);
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -3446,7 +3448,7 @@ pub enum SsrDraftSessionError {
     UnsupportedFormat { found: u32, supported: u32 },
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
     use fly_ui::UiIntent;

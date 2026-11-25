@@ -44,7 +44,7 @@ an open descriptor while cleanup can unlink the token file. Process exit release
 there is no mtime-based stale-lock breaking. `prune` removes only idle token lock files, and
 temporary-write cleanup plus capacity eviction recheck under the owning token lock. All writers
 sharing the file directory must use the new protocol; drain pre-upgrade writers during rollout.
-The filesystem must propagate advisory locks; otherwise use the shared atomic KV backend.
+The filesystem must propagate OS file locks; otherwise use the shared atomic KV backend.
 Focused regressions cover descriptor-drop/unwind release, pruning with a waiting writer, stale
 temporary cleanup under an active token lock, and generation-checked eviction; they are authored
 but not executed.

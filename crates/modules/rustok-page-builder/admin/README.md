@@ -100,7 +100,7 @@ contended descriptor before releasing the guard, and `prune` unlinks only idle
 token lock files while holding it. The OS releases held locks when a process exits;
 there is no age-based stale-lock breaking. All writers sharing a directory must
 use the same protocol, so drain old-version writers before rolling out this change.
-The underlying filesystem must propagate advisory locks; use the shared KV backend
+The underlying filesystem must propagate OS file locks; use the shared KV backend
 when that guarantee is unavailable.
 
 A consumer that restores SSR draft sessions provides `SsrDraftRenderBinding`, including the
