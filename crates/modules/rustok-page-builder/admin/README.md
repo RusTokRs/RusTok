@@ -379,3 +379,7 @@ Contribution registry installation is atomic at both the host and controller bou
 all installers must succeed on a candidate registry before it replaces the active registry.
 Undo and redo also reject disconnected or currently invalid history snapshots without
 changing the controller's document, revision, or history.
+
+A successful document mutation, including undo, redo and recovered merges,
+invalidates active drag/drop candidates and their insertion overlay. Failed and
+idempotent commands preserve the existing interaction so it can be retried.

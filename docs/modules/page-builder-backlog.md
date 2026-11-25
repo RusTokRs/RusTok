@@ -1507,3 +1507,6 @@ integration tests; MySQL support is out of scope.
 2026-11-25 Save effect admission parity follow-up (source only; not executed):
 - SSR Pages, Leptos and Dioxus share controller admission of the exact persistence effect (consumer page, CAS revision, hash, sequence and serialized payload) before starting transport; both framework adapters retain the emitted command sequence.
 - Session reducer ignores inactive save acknowledgements before touching error feedback. Added focused controller and reducer regressions; compilation, formatting and tests remain pending.
+
+2026-11-25 Drag candidate history fence (source only; not executed):
+- Clear drag candidates and insertion geometry when a successful controller mutation changes the document sequence, including undo/redo and recovered merges. Keep interaction state intact on a rejected or idempotent command. Added undo/redo and rollback regression.

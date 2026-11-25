@@ -159,9 +159,11 @@ impl AdminCanvasController {
             project_data,
             metadata: Default::default(),
         };
+        let sequence_before = self.editor.revision().command_sequence;
         let report = self.editor.restore_snapshot(&snapshot)?;
         self.clipboard = None;
         self.synchronize(report);
+        self.invalidate_drag_after_document_change(sequence_before);
         Ok(())
     }
 
@@ -180,7 +182,17 @@ impl AdminCanvasController {
                 return Err(error);
             }
         }
+        self.invalidate_drag_after_document_change(snapshot.editor.revision().command_sequence);
         Ok(outgoing)
+    }
+
+    /// Drop candidates refer to insertion slots in the previous document.
+    /// Even if the target ID survives undo/redo, its children or location may not.
+    fn invalidate_drag_after_document_change(&mut self, sequence_before: u64) {
+        if self.editor.revision().command_sequence != sequence_before {
+            self.ui.state.drag = None;
+            self.ui.state.overlays.insertion = None;
+        }
     }
 
     /// Bind a transport attempt to the exact emitted persistence effect.
@@ -987,6 +999,44 @@ mod tests {
             input.project_data["pages"][0]["component"]["components"][0]["attributes"]["aria-label"],
             "Hero"
         );
+    }
+
+    #[test]
+    fn history_transitions_discard_old_drop_candidates_but_failed_edits_do_not() {
+        use fly_ui::{CanvasRect, DragSource, DropPosition, HitTestCandidate};
+
+        let mut controller = controller();
+        controller.dispatch(UiIntent::execute(EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: ComponentPatch::default().merge_style(json!({"margin": "12px"})),
+        })).expect("edit");
+        for history_intent in [UiIntent::Undo, UiIntent::Redo] {
+            controller.dispatch(UiIntent::BeginDrag(DragSource::ExistingComponent {
+                component_id: "copy-me".to_string(),
+            })).expect("begin drag");
+            controller.dispatch(UiIntent::UpdateHitTest(vec![HitTestCandidate {
+                target_component_id: "hero".to_string(),
+                parent_component_id: Some("root".to_string()),
+                index: 0,
+                position: DropPosition::Inside,
+                rect: CanvasRect { x: 0.0, y: 0.0, width: 10.0, height: 10.0 },
+                score: 1.0,
+                legal: true,
+                reason: None,
+            }])).expect("hit test");
+            let before = controller.clone();
+            assert!(controller.dispatch(UiIntent::execute(EditorCommand::Remove {
+                component_id: "missing".to_string(),
+            })).is_err());
+            assert_eq!(controller, before);
+
+            controller.dispatch(history_intent).expect("history transition");
+            assert!(controller.ui().state.drag.is_none());
+            assert!(controller.ui().state.overlays.insertion.is_none());
+            let after = controller.clone();
+            assert!(controller.dispatch(UiIntent::Drop).is_err());
+            assert_eq!(controller, after);
+        }
     }
 
     #[test]
