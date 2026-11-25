@@ -296,6 +296,11 @@ rotated here.
 
 The Auth-owned fence migration inventory is shared by application schema
 installation, the independent authority import and Auth regression fixtures.
+The durable fence, authority, witness and observability regressions now use
+fresh independent RSA pairs per isolated ledger, with stable identity across
+its generations and public-only history. HS256 remains only in explicit
+algorithm-change rejection scenarios within these suites until the full cutover.
+These source regressions have not been executed.
 The three pending migration identities remain append-only until the
 [consolidation admission guide](../../../../docs/guides/safe-database-migrations-and-squashing.md)
 is satisfied. Do not infer permission to reset a retained security database

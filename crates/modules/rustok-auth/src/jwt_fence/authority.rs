@@ -273,7 +273,7 @@ pub(super) async fn import_bound(source: &DatabaseConnection, destination: Datab
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::super::{JwtAdmission, tests::{ROOT, OLD, NEW, config, database}};
+    use super::super::{JwtAdmission, tests::{ROOT, FenceKeys, database}};
 
     #[test]
     fn external_settings_and_verified_tls_are_mandatory() {
@@ -304,10 +304,11 @@ mod tests {
 
     #[tokio::test]
     async fn independent_ledger_survives_application_restore_and_refuses_reimport() {
+        let keys = FenceKeys::generate();
         let source = database().await;
         let original = JwtGenerationFence::new(source.clone());
-        let first = config(ROOT, "old", OLD, None);
-        let clean = config(ROOT, "new", NEW, None);
+        let first = keys.config(ROOT, "old", keys.old(), None);
+        let clean = keys.config(ROOT, "new", &keys.next, None);
         assert_eq!(original.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
         let destination = Database::connect("sqlite::memory:").await.unwrap();
         let id = Uuid::new_v4();
@@ -334,12 +335,13 @@ mod tests {
 
     #[tokio::test]
     async fn empty_bound_authority_rejects_wrong_root_and_cas_rechecks_pin() {
+        let keys = FenceKeys::generate();
         let source = database().await;
         let destination = Database::connect("sqlite::memory:").await.unwrap();
         let id = Uuid::new_v4();
         import_bound(&source, destination.clone(), id, ROOT).await.unwrap();
         let independent = open_bound(destination.clone(), id, ROOT).await.unwrap();
-        let candidate = config("incorrect-root-at-least-thirty-two-bytes", "new", NEW, None);
+        let candidate = keys.config("incorrect-root-at-least-thirty-two-bytes", "new", &keys.next, None);
         assert!(independent.admit(1, &candidate).await.is_err());
         let (_, publisher) = candidate.into_cluster_jwt(0).unwrap();
         assert!(independent.renew(&publisher).await.is_err());
@@ -355,9 +357,10 @@ mod tests {
 
     #[tokio::test]
     async fn import_refuses_live_source_grants_and_same_database() {
+        let keys = FenceKeys::generate();
         let source = database().await;
         let original = JwtGenerationFence::new(source.clone());
-        let first = config(ROOT, "old", OLD, None);
+        let first = keys.config(ROOT, "old", keys.old(), None);
         assert_eq!(original.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
         let id = Uuid::new_v4();
         assert!(import_bound(&source, source.clone(), id, ROOT).await.is_err());

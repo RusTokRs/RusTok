@@ -243,21 +243,22 @@ impl JwtOperationalMetrics {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::super::tests::{ROOT, OLD, NEW, config, database};
+    use super::super::tests::{ROOT, FenceKeys, database};
     use super::super::JwtAdmission;
 
     #[tokio::test]
     async fn observations_distinguish_grants_revocation_and_local_gate() {
+        let keys = FenceKeys::generate();
         let fence = JwtGenerationFence::new(database().await);
-        let first = config(ROOT, "private-kid", OLD, None, None);
+        let first = keys.config(ROOT, "private-kid", keys.old(), None);
         assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
         let (_, publisher) = first.clone().into_cluster_jwt(1).unwrap();
         let (_, other) = first.into_cluster_jwt(1).unwrap();
         let metrics = fence.operational_metrics(&publisher).unwrap();
         assert!(fence.renew(&publisher).await.unwrap());
         assert!(fence.renew(&other).await.unwrap());
-        let staged = config(ROOT, "private-kid", OLD,
-            Some(("staged-kid", NEW, chrono::Utc::now().timestamp() + 3600)), None);
+        let staged = keys.config(ROOT, "private-kid", keys.old(),
+            Some(("staged-kid", &keys.next, chrono::Utc::now().timestamp() + 3600)));
         assert_eq!(fence.admit(2, &staged).await.unwrap(), JwtAdmission::Admitted);
         assert!(fence.activate(&publisher, 2, staged).await.unwrap());
         let cluster = metrics.cluster_snapshot().await.unwrap();
@@ -288,8 +289,9 @@ mod tests {
 
     #[tokio::test]
     async fn authority_clock_fault_closes_active_gate_and_preserves_emergency_revocation() {
+        let keys = FenceKeys::generate();
         let fence = JwtGenerationFence::new(database().await);
-        let first = config(ROOT, "clock-key", OLD, None, None);
+        let first = keys.config(ROOT, "clock-key", keys.old(), None);
         assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
         let (_, publisher) = first.clone().into_cluster_jwt(1).unwrap();
         let metrics = fence.operational_metrics(&publisher).unwrap();

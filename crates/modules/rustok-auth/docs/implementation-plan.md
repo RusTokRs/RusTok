@@ -59,8 +59,11 @@ source regression is authored but unrun; host/test consumers still need
 coordinated migration. The shared `rustok-test-utils` JWT feature generates
 fresh independent RSA pairs in memory without embedded private keys or
 external executables. Auth document bootstrap and server reset/verification
-regressions use it; remaining constructors and rotation fixtures still need
-migration. The file-source entry point now
+regressions use it. Durable fence, rolling admission, revocation, authority,
+witness and observability scenarios now use fresh RSA pairs per isolated
+ledger and public-only history. Explicit cross-algorithm negative coverage is
+retained until the algorithm removal. Remaining constructors and JWT/config
+rotation fixtures still need migration; scoped execution remains pending. The file-source entry point now
 constructs and validates only the actual complete candidate, without
 instantiating default signing inputs, with typed source exclusivity
 owned by Auth, not a redundant startup signer. Independent MAC root validation

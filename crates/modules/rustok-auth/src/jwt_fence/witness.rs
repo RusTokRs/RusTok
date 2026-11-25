@@ -380,7 +380,7 @@ mod tests {
     use super::*;
     use sea_orm::Database;
     use uuid::Uuid;
-    use super::super::{JwtAdmission, authority::{bound, import_bound}, tests::{ROOT, OLD, NEW, config, database}};
+    use super::super::{JwtAdmission, authority::{bound, import_bound}, tests::{ROOT, FenceKeys, database}};
 
     async fn deployment() -> (DatabaseConnection, DatabaseConnection, Uuid, JwtGenerationFence) {
         let source = database().await;
@@ -396,8 +396,9 @@ mod tests {
 
     #[tokio::test]
     async fn rollback_fences_active_lease_and_recovery_preserves_revocation() {
+        let keys = FenceKeys::generate();
         let (authority, witness_db, id, fence) = deployment().await;
-        let first = config(ROOT, "old", OLD, None);
+        let first = keys.config(ROOT, "old", keys.old(), None);
         assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
         let (_, publisher) = first.clone().into_cluster_jwt(1).unwrap();
         assert!(fence.renew(&publisher).await.unwrap());
@@ -426,14 +427,15 @@ mod tests {
         assert!(recovered.admit(2, &first).await.is_err());
         // A recovery must retain the old holder's grant until its deadline.
         assert_eq!(recovered.load().await.unwrap().replica_grants, after.replica_grants);
-        let clean = config(ROOT, "new", NEW, None);
+        let clean = keys.config(ROOT, "new", &keys.next, None);
         assert_eq!(recovered.admit(2, &clean).await.unwrap(), JwtAdmission::Draining);
     }
 
     #[tokio::test]
     async fn same_revision_grant_corruption_is_detected_and_reinit_refused() {
+        let keys = FenceKeys::generate();
         let (authority, _, _, fence) = deployment().await;
-        let first = config(ROOT, "old", OLD, None);
+        let first = keys.config(ROOT, "old", keys.old(), None);
         assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
         let (_, publisher) = first.into_cluster_jwt(1).unwrap();
         assert!(fence.renew(&publisher).await.unwrap());
@@ -445,9 +447,10 @@ mod tests {
 
     #[tokio::test]
     async fn stale_revision_cannot_mutate_even_if_original_cas_predicate_matches() {
+        let keys = FenceKeys::generate();
         let (_, _, _, fence) = deployment().await;
         let before = fence.load().await.unwrap();
-        let first = config(ROOT, "old", OLD, None);
+        let first = keys.config(ROOT, "old", keys.old(), None);
         assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
         let after = fence.load().await.unwrap();
         let statement = fence.statement(DbBackend::Sqlite,
@@ -461,18 +464,18 @@ mod tests {
 
     #[tokio::test]
     async fn witness_rejects_algorithm_change_and_preserves_revocation_history() {
-        use super::super::tests::rsa_config;
+        let keys = FenceKeys::generate();
         let (authority, witness_db, id, fence) = deployment().await;
         let until = chrono::Utc::now().timestamp() + 3600;
-        let first = config(ROOT, "old", OLD, None);
-        let staged = config(ROOT, "old", OLD, Some(("new", NEW, until)));
-        let promoted = config(ROOT, "new", NEW, Some(("old", OLD, until)));
-        let clean = config(ROOT, "new", NEW, None);
+        let first = keys.config(ROOT, "old", keys.old(), None);
+        let staged = keys.config(ROOT, "old", keys.old(), Some(("new", &keys.next, until)));
+        let promoted = keys.config(ROOT, "new", &keys.next, Some(("old", keys.old(), until)));
+        let clean = keys.config(ROOT, "new", &keys.next, None);
         assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
         assert_eq!(fence.admit(2, &staged).await.unwrap(), JwtAdmission::Admitted);
         assert_eq!(fence.admit(3, &promoted).await.unwrap(), JwtAdmission::Admitted);
         let before = fence.load().await.unwrap();
-        assert!(fence.admit(4, &rsa_config(serde_json::json!([]))).await.is_err());
+        assert!(fence.admit(4, &crate::AuthConfig::new(ROOT.into())).await.is_err());
         let after = fence.load().await.unwrap();
         assert_eq!(before.revision, after.revision);
         assert_eq!(before.payload, after.payload);

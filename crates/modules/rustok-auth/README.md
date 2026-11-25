@@ -108,7 +108,8 @@ RS256-only is the accepted target; mixed histories and active algorithm
 changes are rejected. Coordinated RSA-only bootstrap and consumer cutover,
 including removal of remaining homogeneous HS256 paths, is pending. The
 shared dev-only JWT fixture generator now supplies complete independent RSA
-keyrings to the Auth document bootstrap and server special-token regressions. Explicit
+keyrings to the Auth document bootstrap, server special-token regressions and
+durable fence, authority, witness and observability scenarios. Explicit
 isolated dev/test provisioning of four independent RSA pairs is available
 through the [keyring provisioning command](docs/README.md#isolated-development-and-test-provisioning).
 File bootstrap constructs the selected complete key source directly without
