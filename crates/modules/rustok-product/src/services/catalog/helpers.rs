@@ -102,7 +102,7 @@ use sea_orm::{
     FromQueryResult, QueryFilter, QueryOrder, Statement, Value as SqlValue, sea_query::Expr,
 };
 use serde_json::Value;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use unicode_normalization::UnicodeNormalization;
 use uuid::Uuid;
 
@@ -697,6 +697,21 @@ pub fn product_channel_visibility_condition(
     }
 }
 
+pub(super) fn resolve_variant_inventory_quantity(
+    variant_id: Uuid,
+    legacy_quantity: i32,
+    inventory_quantities: &HashMap<Uuid, i32>,
+) -> i32 {
+    inventory_quantities
+        .get(&variant_id)
+        .copied()
+        .unwrap_or(legacy_quantity)
+}
+
+pub(super) fn inventory_policy_allows_backorder(policy: &str) -> bool {
+    policy.trim().eq_ignore_ascii_case("continue")
+}
+
 pub async fn apply_public_channel_inventory_to_product(
     inventory_port: Option<&std::sync::Arc<dyn crate::ports::ProductInventoryPort>>,
     db: &DatabaseConnection,
@@ -722,9 +737,14 @@ pub async fn apply_public_channel_inventory_to_product(
     };
 
     for variant in &mut product.variants {
-        let available_inventory = available_by_variant.get(&variant.id).copied().unwrap_or(0);
+        let available_inventory = resolve_variant_inventory_quantity(
+            variant.id,
+            variant.inventory_quantity,
+            &available_by_variant,
+        );
         variant.inventory_quantity = available_inventory;
-        variant.in_stock = available_inventory > 0 || variant.inventory_policy == "continue";
+        variant.in_stock = available_inventory > 0
+            || inventory_policy_allows_backorder(&variant.inventory_policy);
     }
 
     Ok(())
