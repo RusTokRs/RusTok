@@ -2,7 +2,7 @@ use std::any::Any;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use rustok_cache::CacheService;
+use rustok_cache::{BoundedCacheEventDedupe, CacheService};
 use rustok_core::events::{EventEnvelope, EventTransport, ReliabilityLevel};
 use rustok_core::{Error, Result};
 use rustok_events::{ContractEventEnvelope, ContractEventPayload};
@@ -54,6 +54,7 @@ pub struct TenantGenerationDeliveryGate {
     inner: Arc<dyn EventTransport>,
     ctx: ServerRuntimeContext,
     cache: CacheService,
+    policy_cache_invalidations: Arc<BoundedCacheEventDedupe>,
     #[cfg(feature = "mod-pages")]
     pages_handler: PageCacheInvalidationEventHandler,
 }
@@ -74,6 +75,7 @@ impl TenantGenerationDeliveryGate {
             inner,
             ctx,
             cache,
+            policy_cache_invalidations: Arc::new(BoundedCacheEventDedupe::default()),
             #[cfg(feature = "mod-pages")]
             pages_handler,
         }
@@ -95,10 +97,20 @@ impl TenantGenerationDeliveryGate {
 #[async_trait]
 impl EventTransport for TenantGenerationDeliveryGate {
     async fn publish(&self, envelope: EventEnvelope) -> Result<()> {
-        crate::services::tenant_cache_generation::invalidate_effective_policy_cache_for_event(
-            &self.ctx,
-            &envelope,
-        );
+        {
+            let _event_guard = self
+                .policy_cache_invalidations
+                .serialize_event(envelope.id)
+                .await;
+            if !self.policy_cache_invalidations.is_duplicate(envelope.id)
+                && crate::services::tenant_cache_generation::invalidate_effective_policy_cache_for_event(
+                    &self.ctx,
+                    &envelope,
+                )
+            {
+                self.policy_cache_invalidations.observe(envelope.id);
+            }
+        }
         self.ensure_listener_ready().await?;
         #[cfg(feature = "mod-pages")]
         if self.pages_handler.handles(&envelope.event) {
@@ -164,7 +176,6 @@ impl EventTransport for TenantGenerationDeliveryGate {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(feature = "mod-pages")]
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::*;
@@ -240,6 +251,38 @@ mod tests {
                 self.before,
                 "local effective-policy cache must be invalidated before downstream delivery"
             );
+            Ok(())
+        }
+
+        fn reliability_level(&self) -> ReliabilityLevel {
+            ReliabilityLevel::Outbox
+        }
+
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+    }
+
+    struct FailOncePolicyCacheStampCheckingTransport {
+        cache: ModuleEffectivePolicyCache,
+        tenant_id: Uuid,
+        before: PolicyCacheReadStamp,
+        attempts: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl EventTransport for FailOncePolicyCacheStampCheckingTransport {
+        async fn publish(&self, _envelope: EventEnvelope) -> Result<()> {
+            assert_ne!(
+                self.cache.stamp(self.tenant_id),
+                self.before,
+                "local effective-policy cache must be invalidated before downstream delivery"
+            );
+            if self.attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                return Err(Error::External(
+                    "synthetic downstream rejection".to_string(),
+                ));
+            }
             Ok(())
         }
 
@@ -338,6 +381,36 @@ mod tests {
         let gate = TenantGenerationDeliveryGate::new(downstream, ctx, cache);
 
         gate.publish(tenant_event(42)).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn policy_cache_invalidation_is_not_repeated_for_downstream_retries() {
+        let cache = CacheService::from_url(None);
+        let ctx = context().await;
+        let policy_cache = ModuleEffectivePolicyCache::new();
+        ctx.shared_insert(policy_cache.clone());
+        crate::services::tenant_cache_generation::start_tenant_cache_generation_listener(
+            &ctx,
+            cache.clone(),
+        )
+        .await
+        .unwrap();
+
+        let tenant_id = Uuid::from_u128(43);
+        let before = policy_cache.stamp(tenant_id);
+        let downstream = Arc::new(FailOncePolicyCacheStampCheckingTransport {
+            cache: policy_cache.clone(),
+            tenant_id,
+            before,
+            attempts: AtomicUsize::new(0),
+        });
+        let gate = TenantGenerationDeliveryGate::new(downstream, ctx, cache);
+        let envelope = tenant_event(43);
+
+        assert!(gate.publish(envelope.clone()).await.is_err());
+        let after_first_attempt = policy_cache.stamp(tenant_id);
+        gate.publish(envelope).await.unwrap();
+        assert_eq!(policy_cache.stamp(tenant_id), after_first_attempt);
     }
 
     #[tokio::test]
