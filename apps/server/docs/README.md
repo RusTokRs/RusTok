@@ -657,8 +657,12 @@ be recovered from the old refresh token.
 GraphQL request-preparation policies classify only the operation selected by
 `operationName` (or the sole operation when no name is required). The selected
 operation is an execution selector, not an authorization grant: field permissions
-remain enforced by server-owned policy. Fragment-spread classification is
-cycle-safe because host preflight runs before GraphQL's normal document validation.
+remain enforced by server-owned policy. Preflight classifies the parsed
+executable document even when the request has no source text (for example,
+a server-supplied pre-parsed document); empty source is not a policy exemption.
+A request with neither source nor a parsed document fails parsing.
+Fragment-spread classification is cycle-safe because host preflight runs
+before GraphQL's normal document validation.
 
 ## Runtime surface
 

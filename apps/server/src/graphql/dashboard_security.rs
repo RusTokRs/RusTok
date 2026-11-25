@@ -77,10 +77,6 @@ fn collect_fields(
 }
 
 fn classify_document(request: &mut Request) -> ServerResult<()> {
-    if request.query.trim().is_empty() {
-        return Ok(());
-    }
-
     let operation_name = request.operation_name.clone();
     let document = request.parsed_query()?;
     let mut fields = BTreeSet::new();

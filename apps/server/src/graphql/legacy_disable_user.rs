@@ -85,12 +85,10 @@ impl Extension for LegacyDisableUserPolicyExtension {
         next: NextPrepareRequest<'_>,
     ) -> ServerResult<Request> {
         let mut request = next.run(ctx, request).await?;
-        if !request.query.trim().is_empty() {
-            let operation_name = request.operation_name.clone();
-            let document = request.parsed_query()?;
-            if document_contains_disable_user(document, operation_name.as_deref()) {
-                request.data.insert(LegacyDisableUserRequested);
-            }
+        let operation_name = request.operation_name.clone();
+        let document = request.parsed_query()?;
+        if document_contains_disable_user(document, operation_name.as_deref()) {
+            request.data.insert(LegacyDisableUserRequested);
         }
         Ok(request)
     }

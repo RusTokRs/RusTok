@@ -147,10 +147,6 @@ fn sensitive_graphql_fields(
 }
 
 fn classify_sensitive_graphql_document(request: &mut Request) -> ServerResult<()> {
-    if request.query.trim().is_empty() {
-        return Ok(());
-    }
-
     let operation_name = request.operation_name.clone();
     let document = request.parsed_query()?;
     let sensitive_fields = sensitive_graphql_fields(document, operation_name.as_deref());

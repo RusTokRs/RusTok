@@ -33,10 +33,6 @@ impl ExtensionFactory for GraphqlTenantPolicy {
 struct GraphqlTenantPolicyExtension;
 
 fn classify_tenant_arguments(request: &mut Request) -> ServerResult<()> {
-    if request.query.trim().is_empty() {
-        return Ok(());
-    }
-
     // Clone variables before borrowing the parsed document from Request.
     let variables = request.variables.clone();
     let operation_name = request.operation_name.clone();

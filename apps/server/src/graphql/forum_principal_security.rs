@@ -166,12 +166,10 @@ impl Extension for ForumPrincipalPolicyExtension {
         next: NextPrepareRequest<'_>,
     ) -> ServerResult<Request> {
         let mut request = next.run(ctx, request).await?;
-        if !request.query.trim().is_empty() {
-            let operation_name = request.operation_name.clone();
-            let policy = document_policy(request.parsed_query()?, operation_name.as_deref());
-            if !policy.is_empty() {
-                request.data.insert(policy);
-            }
+        let operation_name = request.operation_name.clone();
+        let policy = document_policy(request.parsed_query()?, operation_name.as_deref());
+        if !policy.is_empty() {
+            request.data.insert(policy);
         }
         Ok(request)
     }

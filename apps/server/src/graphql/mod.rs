@@ -117,3 +117,145 @@ mod operation_selection_tests {
         assert!(selected_operations(&multiple, None).is_empty());
     }
 }
+
+#[cfg(test)]
+mod parsed_document_policy_tests {
+    use super::{
+        dashboard_security::GraphqlDashboardSecurityPolicy,
+        forum_principal_security::ForumPrincipalPolicy,
+        legacy_disable_user::LegacyDisableUserPolicy,
+        module_security::GraphqlModuleSecurityPolicy,
+        security::GraphqlSecurityPolicy,
+        storefront_principal_security::StorefrontPrincipalPolicy,
+        tenant_security::GraphqlTenantPolicy,
+    };
+    use async_graphql::{EmptyMutation, EmptySubscription, Object, Request, Schema};
+    use rustok_api::{AuthContext, TenantContext};
+    use uuid::Uuid;
+
+    struct Query;
+
+    #[Object]
+    impl Query {
+        async fn ping(&self) -> bool {
+            true
+        }
+
+        async fn users(&self) -> bool {
+            true
+        }
+
+        async fn dashboard_stats(&self) -> bool {
+            true
+        }
+
+        async fn module_registry(&self) -> bool {
+            true
+        }
+
+        async fn echo_tenant(&self, tenant_id: Uuid) -> Uuid {
+            tenant_id
+        }
+
+        async fn storefront_me(&self) -> bool {
+            true
+        }
+    }
+
+    struct Mutation;
+
+    #[Object]
+    impl Mutation {
+        async fn disable_user(&self) -> bool {
+            true
+        }
+
+        async fn create_forum_topic(&self) -> bool {
+            true
+        }
+    }
+
+    fn parsed_request(query: &str) -> Request {
+        let mut request = Request::new("");
+        request.set_parsed_query(async_graphql::parser::parse_query(query).unwrap());
+        request
+    }
+
+    fn service_auth(tenant_id: Uuid) -> AuthContext {
+        AuthContext {
+            user_id: Uuid::new_v4(),
+            session_id: Uuid::nil(),
+            tenant_id,
+            permissions: Vec::new(),
+            client_id: Some(Uuid::new_v4()),
+            scopes: Vec::new(),
+            grant_type: "client_credentials".to_owned(),
+        }
+    }
+
+    #[tokio::test]
+    async fn parsed_documents_without_source_still_pass_every_security_policy() {
+        let security = Schema::build(Query, EmptyMutation, EmptySubscription)
+            .extension(GraphqlSecurityPolicy)
+            .finish();
+        let dashboard = Schema::build(Query, EmptyMutation, EmptySubscription)
+            .extension(GraphqlDashboardSecurityPolicy)
+            .finish();
+        let modules = Schema::build(Query, EmptyMutation, EmptySubscription)
+            .extension(GraphqlModuleSecurityPolicy)
+            .finish();
+        for (schema, query) in [
+            (&security, "{ users }"),
+            (&dashboard, "{ dashboardStats }"),
+            (&modules, "{ moduleRegistry }"),
+        ] {
+            let response = schema.execute(parsed_request(query)).await;
+            assert_eq!(response.errors.len(), 1, "{query}: {response:?}");
+            assert!(schema.execute(parsed_request("{ ping }")).await.errors.is_empty());
+        }
+
+        let tenant_id = Uuid::new_v4();
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Tenant".to_owned(),
+            slug: "tenant".to_owned(),
+            domain: None,
+            settings: serde_json::json!({}),
+            default_locale: "en".to_owned(),
+            is_active: true,
+        };
+        let tenant_schema = Schema::build(Query, EmptyMutation, EmptySubscription)
+            .extension(GraphqlTenantPolicy)
+            .finish();
+        let foreign = Uuid::new_v4();
+        let denied = tenant_schema
+            .execute(parsed_request(&format!("{{ echoTenant(tenantId: \"{foreign}\") }}")).data(tenant.clone()))
+            .await;
+        assert_eq!(denied.errors.len(), 1);
+        let allowed = tenant_schema
+            .execute(parsed_request(&format!("{{ echoTenant(tenantId: \"{tenant_id}\") }}")).data(tenant))
+            .await;
+        assert!(allowed.errors.is_empty());
+
+        let storefront = Schema::build(Query, Mutation, EmptySubscription)
+            .extension(StorefrontPrincipalPolicy)
+            .finish();
+        let forum = Schema::build(Query, Mutation, EmptySubscription)
+            .extension(ForumPrincipalPolicy)
+            .finish();
+        let legacy = Schema::build(Query, Mutation, EmptySubscription)
+            .extension(LegacyDisableUserPolicy)
+            .finish();
+        for (schema, query) in [
+            (&storefront, "{ storefrontMe }"),
+            (&forum, "mutation { createForumTopic }"),
+            (&legacy, "mutation { disableUser }"),
+        ] {
+            let response = schema
+                .execute(parsed_request(query).data(service_auth(tenant_id)))
+                .await;
+            assert_eq!(response.errors.len(), 1, "{query}: {response:?}");
+            assert!(schema.execute(parsed_request("{ ping }")).await.errors.is_empty());
+        }
+    }
+}
