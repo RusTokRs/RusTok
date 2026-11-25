@@ -95,7 +95,10 @@ pub(crate) fn expected_variant_revision(value: Option<&str>) -> CommerceResult<i
             "variant writes require the revision that was read".to_owned(),
         ));
     };
-    if value.len() > 19 || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+    if value.len() > 19
+        || value.starts_with('0')
+        || !value.bytes().all(|byte| byte.is_ascii_digit())
+    {
         return Err(CommerceError::Validation(
             "variant revision must be a positive integer".to_owned(),
         ));
@@ -125,10 +128,12 @@ pub(crate) fn ensure_expected_variant_revision(
 }
 
 pub(crate) fn variant_revision_conflict_of(message: &str) -> bool {
-    let Some(start) = message.find(VARIANT_REVISION_CONFLICT_PREFIX) else {
+    let message = message
+        .strip_prefix("Product validation error: ")
+        .unwrap_or(message);
+    let Some(rest) = message.strip_prefix(VARIANT_REVISION_CONFLICT_PREFIX) else {
         return false;
     };
-    let rest = &message[start + VARIANT_REVISION_CONFLICT_PREFIX.len()..];
     let Some(rest) = rest.strip_prefix(": expected revision ") else {
         return false;
     };
@@ -200,6 +205,7 @@ mod tests {
         assert_eq!(expected_variant_revision(Some("7")).unwrap(), 7);
         assert!(expected_variant_revision(None).is_err());
         assert!(expected_variant_revision(Some("0")).is_err());
+        assert!(expected_variant_revision(Some("07")).is_err());
         assert!(expected_variant_revision(Some("not-a-revision")).is_err());
     }
 
@@ -245,6 +251,9 @@ mod tests {
         assert!(!variant_revision_conflict_of("ordinary validation error"));
         assert!(!variant_revision_conflict_of(
             "Product validation error: user text mentions product variant revision conflict"
+        ));
+        assert!(!variant_revision_conflict_of(
+            "user value: product variant revision conflict: expected revision 4, current revision 5"
         ));
         assert!(!variant_revision_conflict_of(
             "product variant revision conflict: expected revision invalid, current revision 5"
