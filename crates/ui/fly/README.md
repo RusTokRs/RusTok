@@ -177,6 +177,10 @@ Runtime context paths are bounded to 2048 bytes, 64 segments and array index 999
 A single path write may add at most 10,000 array slots across all nested arrays;
 invalid writes leave the original context unchanged. Equivalent path spellings are
 compared structurally for duplicate field/computed targets and self-references.
+Computed values are evaluated in structural dependency order rather than declaration order.
+Fallbacks are available to dependent expressions, overlapping write targets and cycles
+are rejected, and the dependency graph is limited to 100,000 edges. Repeater aliases
+must be distinct single context keys in each scope; nested shadowing remains supported.
 Repeater expansion reserves work for every node in each copied template before
 nested expansion; the existing public counter continues to count repeater instances.
 

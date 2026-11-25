@@ -247,124 +247,63 @@ pub fn materialize_context(document: &ProjectDocument, input: &Value) -> Context
         }
     }
 
-    let mut pending = catalog.computed.iter().collect::<Vec<_>>();
+    let (order, graph_diagnostics) = computed_evaluation_order(&catalog.computed);
     let mut computed_applied = 0usize;
     let mut computed_fallbacks = 0usize;
-    let mut unresolved_computed = 0usize;
-    let maximum_passes = pending.len().saturating_add(1);
+    let mut unresolved_computed = catalog.computed.len().saturating_sub(order.len());
+    diagnostics.extend(graph_diagnostics);
 
-    for _ in 0..maximum_passes {
-        if pending.is_empty() {
-            break;
-        }
-        let mut progress = false;
-        let mut next = Vec::new();
-        for computed in pending {
-            match evaluate_expression(&computed.expression, &context) {
-                ExpressionEvaluation::Value(value) => {
-                    match set_context_path(&mut context, &computed.path, value) {
-                        Ok(()) => {
-                            computed_applied = computed_applied.saturating_add(1);
-                            progress = true;
-                        }
-                        Err(error) => diagnostics.push(context_diagnostic(
-                            ValidationSeverity::Warning,
-                            "runtime_computed_write_failed",
-                            &computed.path,
-                            format!(
-                                "computed value `{}` could not be written: {error}",
-                                computed.id
-                            ),
-                        )),
-                    }
-                }
-                ExpressionEvaluation::Pending => next.push(computed),
-                ExpressionEvaluation::Error(error) => {
-                    if let Some(fallback) = computed.fallback.clone() {
-                        match set_context_path(&mut context, &computed.path, fallback) {
-                            Ok(()) => {
-                                computed_applied = computed_applied.saturating_add(1);
-                                computed_fallbacks = computed_fallbacks.saturating_add(1);
-                                progress = true;
-                                diagnostics.push(context_diagnostic(
-                                    ValidationSeverity::Info,
-                                    "runtime_computed_fallback_used",
-                                    &computed.path,
-                                    format!(
-                                        "computed value `{}` used fallback after evaluation error: {error}",
-                                        computed.id
-                                    ),
-                                ));
-                            }
-                            Err(write_error) => diagnostics.push(context_diagnostic(
-                                ValidationSeverity::Warning,
-                                "runtime_computed_write_failed",
-                                &computed.path,
-                                format!(
-                                    "computed value `{}` fallback could not be written: {write_error}",
-                                    computed.id
-                                ),
-                            )),
-                        }
-                    } else {
-                        unresolved_computed = unresolved_computed.saturating_add(1);
-                        diagnostics.push(context_diagnostic(
-                            ValidationSeverity::Warning,
-                            "runtime_computed_evaluation_failed",
-                            &computed.path,
-                            format!("computed value `{}` failed: {error}", computed.id),
-                        ));
-                    }
-                }
-            }
-        }
-        if !progress {
-            pending = next;
-            break;
-        }
-        pending = next;
-    }
-
-    for computed in pending {
-        if let Some(fallback) = computed.fallback.clone() {
-            match set_context_path(&mut context, &computed.path, fallback) {
-                Ok(()) => {
-                    computed_applied = computed_applied.saturating_add(1);
-                    computed_fallbacks = computed_fallbacks.saturating_add(1);
+    // All declared producers are settled before consumers, even when an input
+    // or a schema default already populated the producer's target.
+    for index in order {
+        let computed = &catalog.computed[index];
+        let (value, fallback_reason) = match evaluate_expression(&computed.expression, &context) {
+            ExpressionEvaluation::Value(value) => (Some(value), None),
+            ExpressionEvaluation::Pending => (
+                computed.fallback.clone(),
+                Some("dependencies did not resolve".to_string()),
+            ),
+            ExpressionEvaluation::Error(error) => (computed.fallback.clone(), Some(error)),
+        };
+        let Some(value) = value else {
+            unresolved_computed += 1;
+            let (code, reason) = match fallback_reason.as_deref() {
+                Some("dependencies did not resolve") => (
+                    "runtime_computed_unresolved", "dependencies did not resolve"
+                ),
+                Some(reason) => ("runtime_computed_evaluation_failed", reason),
+                None => ("runtime_computed_unresolved", "no value"),
+            };
+            diagnostics.push(context_diagnostic(
+                ValidationSeverity::Warning,
+                code,
+                &computed.path,
+                format!("computed value `{}` failed: {reason}", computed.id),
+            ));
+            continue;
+        };
+        match set_context_path(&mut context, &computed.path, value) {
+            Ok(()) => {
+                computed_applied += 1;
+                if let Some(reason) = fallback_reason {
+                    computed_fallbacks += 1;
                     diagnostics.push(context_diagnostic(
                         ValidationSeverity::Info,
                         "runtime_computed_fallback_used",
                         &computed.path,
-                        format!(
-                            "computed value `{}` used fallback because dependencies did not resolve",
-                            computed.id
-                        ),
-                    ));
-                }
-                Err(error) => {
-                    unresolved_computed = unresolved_computed.saturating_add(1);
-                    diagnostics.push(context_diagnostic(
-                        ValidationSeverity::Warning,
-                        "runtime_computed_write_failed",
-                        &computed.path,
-                        format!(
-                            "computed value `{}` fallback could not be written: {error}",
-                            computed.id
-                        ),
+                        format!("computed value `{}` used fallback: {reason}", computed.id),
                     ));
                 }
             }
-        } else {
-            unresolved_computed = unresolved_computed.saturating_add(1);
-            diagnostics.push(context_diagnostic(
-                ValidationSeverity::Warning,
-                "runtime_computed_unresolved",
-                &computed.path,
-                format!(
-                    "computed value `{}` dependencies did not resolve; a dependency cycle may exist",
-                    computed.id
-                ),
-            ));
+            Err(error) => {
+                unresolved_computed += 1;
+                diagnostics.push(context_diagnostic(
+                    ValidationSeverity::Warning,
+                    "runtime_computed_write_failed",
+                    &computed.path,
+                    format!("computed value `{}` could not be written: {error}", computed.id),
+                ));
+            }
         }
     }
 
@@ -1425,90 +1364,102 @@ fn format_dependencies(template: &str) -> Vec<String> {
 }
 
 fn detect_computed_cycles(computed: &[ComputedContextValue]) -> Vec<ValidationDiagnostic> {
-    let targets = computed
-        .iter()
-        .map(|value| (value.path.clone(), value.id.clone()))
-        .collect::<BTreeMap<_, _>>();
-    let graph = computed
-        .iter()
-        .map(|value| {
-            let mut dependencies = BTreeSet::new();
-            collect_expression_paths(&value.expression, &mut dependencies);
-            let dependencies = dependencies
-                .into_iter()
-                .filter(|path| targets.contains_key(path))
-                .collect::<Vec<_>>();
-            (value.path.clone(), dependencies)
-        })
-        .collect::<BTreeMap<_, _>>();
-
-    let mut diagnostics = Vec::new();
-    let mut visiting = BTreeSet::new();
-    let mut visited = BTreeSet::new();
-    for path in graph.keys() {
-        detect_cycle_from(
-            path,
-            &graph,
-            &targets,
-            &mut visiting,
-            &mut visited,
-            &mut Vec::new(),
-            &mut diagnostics,
-        );
-    }
-    diagnostics
+    computed_evaluation_order(computed).1
 }
 
-fn detect_cycle_from(
-    path: &str,
-    graph: &BTreeMap<String, Vec<String>>,
-    targets: &BTreeMap<String, String>,
-    visiting: &mut BTreeSet<String>,
-    visited: &mut BTreeSet<String>,
-    stack: &mut Vec<String>,
-    diagnostics: &mut Vec<ValidationDiagnostic>,
-) {
-    if visited.contains(path) {
-        return;
-    }
-    if visiting.contains(path) {
-        let start = stack.iter().position(|value| value == path).unwrap_or(0);
-        let mut cycle = stack[start..].to_vec();
-        cycle.push(path.to_string());
-        diagnostics.push(context_diagnostic(
-            ValidationSeverity::Error,
-            "runtime_computed_dependency_cycle",
-            path,
-            format!(
-                "computed context dependency cycle: {}",
-                cycle
-                    .iter()
-                    .map(|value| targets.get(value).cloned().unwrap_or_else(|| value.clone()))
-                    .collect::<Vec<_>>()
-                    .join(" -> ")
-            ),
-        ));
-        return;
-    }
-
-    visiting.insert(path.to_string());
-    stack.push(path.to_string());
-    if let Some(dependencies) = graph.get(path) {
-        for dependency in dependencies {
-            detect_cycle_from(
-                dependency,
-                graph,
-                targets,
-                visiting,
-                visited,
-                stack,
-                diagnostics,
-            );
+/// One structural dependency graph for validation and evaluation. A dependency
+/// on an object also depends on its computed descendants; a dependency on a
+/// child depends on a computed ancestor. Overlapping writes are ambiguous.
+/// Kahn's algorithm avoids recursion proportional to the catalog length.
+fn computed_evaluation_order(
+    computed: &[ComputedContextValue],
+) -> (Vec<usize>, Vec<ValidationDiagnostic>) {
+    let mut targets = BTreeMap::<Vec<ContextPathSegment>, usize>::new();
+    let mut diagnostics = Vec::new();
+    for (index, value) in computed.iter().enumerate() {
+        let Some(path) = parse_context_path(&value.path) else {
+            diagnostics.push(context_diagnostic(
+                ValidationSeverity::Error, "runtime_computed_path_invalid", &value.path,
+                format!("computed value `{}` path is invalid", value.id),
+            ));
+            continue;
+        };
+        if targets.insert(path, index).is_some() {
+            diagnostics.push(context_diagnostic(
+                ValidationSeverity::Error, "duplicate_runtime_computed_path", &value.path,
+                format!("computed value `{}` has a duplicate target", value.id),
+            ));
         }
     }
-    stack.pop();
-    visiting.remove(path);
-    visited.insert(path.to_string());
+    for (path, &index) in &targets {
+        if (1..path.len()).any(|length| targets.contains_key(&path[..length])) {
+            diagnostics.push(context_diagnostic(
+                ValidationSeverity::Error, "runtime_computed_target_overlap", &computed[index].path,
+                "computed targets must not overlap as ancestor and descendant",
+            ));
+        }
+    }
+    if !diagnostics.is_empty() {
+        return (Vec::new(), diagnostics);
+    }
+    let mut indegree = vec![0usize; computed.len()];
+    let mut dependents = vec![Vec::<usize>::new(); computed.len()];
+    // Cap graph edges as well as path depth; aggregate reads can otherwise
+    // create a dense dependency graph from a compact catalog.
+    const MAX_DEPENDENCY_EDGES: usize = 100_000;
+    let mut edges = 0usize;
+    for (index, value) in computed.iter().enumerate() {
+        let mut paths = BTreeSet::new();
+        collect_expression_paths(&value.expression, &mut paths);
+        let mut dependencies = BTreeSet::new();
+        for path in paths.iter().filter_map(|path| parse_context_path(path)) {
+            for length in 1..=path.len() {
+                if let Some(&producer) = targets.get(&path[..length]) {
+                    dependencies.insert(producer);
+                }
+            }
+            for (target, &producer) in targets.range(path.clone()..) {
+                if !target.starts_with(&path) {
+                    break;
+                }
+                dependencies.insert(producer);
+            }
+            if edges.saturating_add(dependencies.len()) > MAX_DEPENDENCY_EDGES {
+                diagnostics.push(context_diagnostic(
+                    ValidationSeverity::Error, "runtime_computed_dependency_budget_exceeded",
+                    &value.path, "computed dependency graph exceeds its edge budget",
+                ));
+                return (Vec::new(), diagnostics);
+            }
+        }
+        indegree[index] = dependencies.len();
+        edges += dependencies.len();
+        for producer in dependencies {
+            dependents[producer].push(index);
+        }
+    }
+    let mut ready = indegree.iter().enumerate()
+        .filter_map(|(index, &count)| (count == 0).then_some(index))
+        .collect::<BTreeSet<_>>();
+    let mut order = Vec::with_capacity(computed.len());
+    while let Some(index) = ready.pop_first() {
+        order.push(index);
+        for &consumer in &dependents[index] {
+            indegree[consumer] -= 1;
+            if indegree[consumer] == 0 {
+                ready.insert(consumer);
+            }
+        }
+    }
+    for (index, count) in indegree.into_iter().enumerate() {
+        if count != 0 {
+            diagnostics.push(context_diagnostic(
+                ValidationSeverity::Error, "runtime_computed_dependency_cycle", &computed[index].path,
+                format!("computed value `{}` is in or depends on a dependency cycle", computed[index].id),
+            ));
+        }
+    }
+    (order, diagnostics)
 }
 
 fn decode_entries<T>(value: Option<&Value>) -> (Vec<T>, Vec<Value>)
@@ -1674,6 +1625,68 @@ mod tests {
         assert_eq!(materialized.defaults_applied, 2);
         assert_eq!(materialized.computed_applied, 2);
         assert_eq!(materialized.unresolved_computed, 0);
+    }
+
+    #[test]
+    fn computed_dependencies_use_fresh_values_and_propagate_fallbacks_in_either_order() {
+        let definitions = vec![
+            json!({"id": "label", "path": "label", "expression": {"op": "format", "template": "{{$.product.name}}!"}}),
+            json!({"id": "product", "path": "product", "expression": {"op": "path", "path": "missing"}, "fallback": {"name": "Fresh"}}),
+            json!({"id": "aggregate", "path": "aggregate", "expression": {"op": "path", "path": "cart"}}),
+            json!({"id": "amount", "path": "cart.amount", "expression": {"op": "literal", "value": 7}}),
+        ];
+        for values in [definitions.clone(), definitions.into_iter().rev().collect()] {
+            let document = GrapesJsCodec::decode_value(json!({
+                "pages": [{"component": {"id": "root", "type": "wrapper"}}],
+                "flyRuntimeComputed": values
+            })).expect("document");
+            let result = materialize_context(&document, &json!({
+                "product": {"name": "Stale"}, "cart": {"amount": 0}
+            }));
+            assert_eq!(result.context["label"], "Fresh!");
+            assert_eq!(result.context["aggregate"]["amount"], 7);
+            assert_eq!(result.computed_applied, 4);
+            assert_eq!(result.computed_fallbacks, 1);
+            assert_eq!(result.unresolved_computed, 0);
+        }
+    }
+
+    #[test]
+    fn structural_cycles_block_fallback_and_downstream_evaluation() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{"component": {"id": "root", "type": "wrapper"}}],
+            "flyRuntimeComputed": [
+                {"id": "a", "path": "a", "expression": {"op": "path", "path": "$.b"}, "fallback": 1},
+                {"id": "b", "path": "b", "expression": {"op": "path", "path": "$.a"}, "fallback": 2},
+                {"id": "c", "path": "c", "expression": {"op": "path", "path": "a"}}
+            ]
+        })).expect("document");
+        let result = materialize_context(&document, &json!({}));
+        assert_eq!(result.computed_applied, 0);
+        assert_eq!(result.unresolved_computed, 3);
+        assert_eq!(result.computed_fallbacks, 0);
+        assert!(result.diagnostics.iter().any(|d| d.code == "runtime_computed_dependency_cycle"));
+        assert!(validate_context_definitions(&document).iter().any(|d| d.code == "runtime_computed_dependency_cycle"));
+    }
+
+    #[test]
+    fn overlapping_computed_targets_are_rejected_and_failed_writes_are_counted() {
+        let source = |values| GrapesJsCodec::decode_value(json!({
+            "pages": [{"component": {"id": "root", "type": "wrapper"}}],
+            "flyRuntimeComputed": values
+        })).expect("document");
+        let overlap = source(json!([
+            {"id": "one", "path": "obj", "expression": {"op": "literal", "value": {}}},
+            {"id": "two", "path": "obj.child", "expression": {"op": "literal", "value": 1}}
+        ]));
+        assert!(validate_context_definitions(&overlap).iter().any(|d| d.code == "runtime_computed_target_overlap"));
+        let bad_write = source(json!([
+            {"id": "one", "path": "obj.child", "expression": {"op": "literal", "value": 1}}
+        ]));
+        let result = materialize_context(&bad_write, &json!({"obj": 2}));
+        assert_eq!(result.unresolved_computed, 1);
+        assert_eq!(result.computed_applied, 0);
+        assert_eq!(result.context["obj"], 2);
     }
 
     #[test]

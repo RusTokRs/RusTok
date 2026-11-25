@@ -161,7 +161,7 @@ pub fn preflight_runtime_context(
             "runtime_context_type_mismatch" | "runtime_context_array_item_type_mismatch" => {
                 policy.type_mismatch_is_error
             }
-            "runtime_computed_unresolved" | "runtime_computed_evaluation_failed" => {
+            "runtime_computed_unresolved" | "runtime_computed_evaluation_failed" | "runtime_computed_write_failed" => {
                 policy.unresolved_computed_is_error
             }
             _ => false,

@@ -140,6 +140,15 @@ cloning an entire source array. Three focused regressions authored; tests, build
 lint and remediation gate not run. Computed dependency scheduling and alias admission
 remain open for follow-up.
 
+Fly computed context follow-up (2026-11-25, source-only): validation and materialization
+share a bounded iterative dependency graph with structural paths and ancestor/descendant
+read dependencies. Producers settle before consumers even with prepopulated input;
+fallbacks propagate in order, cycles/overlapping writers block, and write failures count
+as unresolved and obey strict preflight. Repeater command, validation and expansion share
+distinct single-key alias admission while preserving nested shadowing. Four regressions
+authored; compilation, tests, lint and remediation gate not run. Binding transform
+semantics and unresolved producer input ownership remain open.
+
 Reduced-motion follow-up: the shared Fly browser asset now uses instant scrolling for
 `scroll_to` when the target document requests reduced motion, including in the presence of
 CSS `scroll-behavior: smooth`; animations use the same document preference. The Node runtime
