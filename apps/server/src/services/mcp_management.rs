@@ -146,12 +146,14 @@ impl McpManagementService {
         input: CreateMcpClientInput,
     ) -> Result<CreateMcpClientResult> {
         validate_slug(&input.slug)?;
+        validate_mcp_label(&input.display_name, "display name", 160)?;
         validate_token_expiry(input.token_expires_at.as_ref())?;
         let token_name = input
             .token_name
             .clone()
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| "primary".to_string());
+        validate_mcp_label(&token_name, "token name", 128)?;
         let actor_type = actor_type_slug(input.actor_type);
         let allowed_tools = dedupe(input.allowed_tools);
         let denied_tools = dedupe(input.denied_tools);
@@ -319,6 +321,7 @@ impl McpManagementService {
             .clone()
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| "rotated".to_string());
+        validate_mcp_label(&token_name, "token name", 128)?;
         validate_token_expiry(input.expires_at.as_ref())?;
         let txn = db.begin().await.map_err(map_db_err)?;
         let client = lock_client_for_update_txn(&txn, tenant_id, client_id).await?;
@@ -1427,6 +1430,23 @@ fn clamp_limit(limit: Option<u64>, default: u64, max: u64) -> u64 {
     limit.unwrap_or(default).clamp(1, max)
 }
 
+fn validate_mcp_label(value: &str, field: &str, max_chars: usize) -> Result<()> {
+    if value.trim().is_empty() {
+        return Err(Error::BadRequest(format!("MCP {field} must not be empty")));
+    }
+    if value.chars().count() > max_chars {
+        return Err(Error::BadRequest(format!(
+            "MCP {field} must be {max_chars} characters or fewer"
+        )));
+    }
+    if value.chars().any(char::is_control) {
+        return Err(Error::BadRequest(format!(
+            "MCP {field} must not contain control characters"
+        )));
+    }
+    Ok(())
+}
+
 fn validate_scaffold_slug_for_rust_type(slug: &str) -> Result<()> {
     let slug = slug.trim();
     if !slug
@@ -1530,7 +1550,8 @@ fn map_db_err(_err: sea_orm::DbErr) -> Error {
 mod tests {
     use super::{
         dedupe, scaffold_apply_error_requires_recovery, scaffold_status_error,
-        token_preview, validate_scaffold_slug_for_rust_type, validate_token_expiry,
+        token_preview, validate_mcp_label, validate_scaffold_slug_for_rust_type,
+        validate_token_expiry,
         MCP_SCAFFOLD_STATUS_APPLYING,
         MCP_SCAFFOLD_STATUS_RECOVERY_REQUIRED,
     };
@@ -1577,6 +1598,15 @@ mod tests {
             error,
             Error::BadRequest(message) if message.contains("manual workspace reconciliation")
         ));
+    }
+
+    #[test]
+    fn mcp_labels_respect_database_lengths_and_reject_control_characters() {
+        assert!(validate_mcp_label("API client", "display name", 160).is_ok());
+        assert!(validate_mcp_label("primary", "token name", 128).is_ok());
+        assert!(validate_mcp_label("  ", "display name", 160).is_err());
+        assert!(validate_mcp_label(&"x".repeat(161), "display name", 160).is_err());
+        assert!(validate_mcp_label("primary\nrotated", "token name", 128).is_err());
     }
 
     #[test]
