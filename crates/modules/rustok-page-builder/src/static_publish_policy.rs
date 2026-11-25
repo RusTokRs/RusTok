@@ -8,7 +8,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
-pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT: &str = "page_builder_static_publish_policy_v7";
+pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT: &str = "page_builder_static_publish_policy_v8";
 
 const ALLOWED_TAGS: &[&str] = &[
     "a",
@@ -309,6 +309,9 @@ pub fn validate_static_publish_document(
         }
     };
 
+    let theme_tokens = validate_theme(&materialized, &mut diagnostics);
+    validate_css_var_references(&materialized, &theme_tokens, &mut diagnostics);
+
     for (page_index, page) in materialized.project().pages.iter().enumerate() {
         if let Some(root) = page.component.as_ref() {
             validate_component_node(
@@ -322,7 +325,6 @@ pub fn validate_static_publish_document(
     validate_style_rules(&materialized, &policy, &mut diagnostics);
     validate_assets(&materialized, &policy, &mut diagnostics);
     validate_page_metadata(&materialized, &policy, &mut diagnostics);
-    validate_theme(&materialized, &mut diagnostics);
 
     if !diagnostics.is_empty() {
         return Err(PageBuilderStaticPublishPolicyError::Rejected { diagnostics });
@@ -337,14 +339,116 @@ pub fn validate_static_publish_document(
 fn validate_theme(
     document: &ProjectDocument,
     diagnostics: &mut Vec<PageBuilderStaticPublishPolicyDiagnostic>,
+) -> BTreeSet<String> {
+    match fly::decode_theme_tokens(document) {
+        Ok(tokens) => tokens
+            .into_iter()
+            .map(|token| format!("--{}", token.name))
+            .collect(),
+        Err(error) => {
+            reject(
+                diagnostics,
+                "landing_theme_invalid",
+                FLY_THEME_FIELD,
+                error,
+            );
+            BTreeSet::new()
+        }
+    }
+}
+
+fn validate_css_var_references(
+    document: &ProjectDocument,
+    allowed_tokens: &BTreeSet<String>,
+    diagnostics: &mut Vec<PageBuilderStaticPublishPolicyDiagnostic>,
 ) {
-    if let Err(error) = fly::decode_theme_tokens(document) {
+    for (page_index, page) in document.project().pages.iter().enumerate() {
+        if let Some(root) = page.component.as_ref() {
+            validate_component_css_var_references(
+                root,
+                &format!("pages[{page_index}].component"),
+                allowed_tokens,
+                diagnostics,
+            );
+        }
+    }
+
+    for (style_index, style_rule) in document.project().styles.iter().enumerate() {
+        if let Some(declarations) = style_rule.get("style").and_then(Value::as_object) {
+            for (name, value) in declarations {
+                if let Some(value) = value.as_str() {
+                    validate_css_var_reference_value(
+                        value,
+                        &format!("styles[{style_index}].style.{name}"),
+                        allowed_tokens,
+                        diagnostics,
+                    );
+                }
+            }
+        }
+    }
+}
+
+fn validate_component_css_var_references(
+    node: &ComponentNode,
+    path: &str,
+    allowed_tokens: &BTreeSet<String>,
+    diagnostics: &mut Vec<PageBuilderStaticPublishPolicyDiagnostic>,
+) {
+    let ComponentNode::Object(component) = node else {
+        return;
+    };
+
+    if let Some(declarations) = component.style.as_ref().and_then(Value::as_object) {
+        for (name, value) in declarations {
+            if let Some(value) = value.as_str() {
+                validate_css_var_reference_value(
+                    value,
+                    &format!("{path}.style.{name}"),
+                    allowed_tokens,
+                    diagnostics,
+                );
+            }
+        }
+    }
+
+    if let ComponentChildren::Nodes(children) = &component.components {
+        for (index, child) in children.iter().enumerate() {
+            validate_component_css_var_references(
+                child,
+                &format!("{path}.components[{index}]"),
+                allowed_tokens,
+                diagnostics,
+            );
+        }
+    }
+}
+
+fn validate_css_var_reference_value(
+    value: &str,
+    path: &str,
+    allowed_tokens: &BTreeSet<String>,
+    diagnostics: &mut Vec<PageBuilderStaticPublishPolicyDiagnostic>,
+) {
+    let Some(references) = fly::css_var_references(value) else {
         reject(
             diagnostics,
-            "landing_theme_invalid",
-            FLY_THEME_FIELD,
-            error,
+            "landing_css_var_reference_invalid",
+            path,
+            "CSS var() reference is malformed or escaped",
         );
+        return;
+    };
+
+    for reference in references {
+        if !allowed_tokens.contains(&reference) {
+            reject(
+                diagnostics,
+                "landing_css_var_reference_rejected",
+                path,
+                format!("CSS variable {reference} is not declared in flyTheme"),
+            );
+        }
     }
 }
 
@@ -1239,7 +1343,7 @@ fn validate_sizes_condition_value(value: &str) -> Result<(), StaticPublishValida
 }
 
 fn safe_css_value(value: &str, policy: &PageBuilderStaticPublishPolicy) -> bool {
-    if value.chars().any(char::is_control) {
+    if fly::css_var_references(value).is_none() || value.chars().any(char::is_control) {
         return false;
     }
 
@@ -1576,6 +1680,34 @@ mod tests {
     }
 
     #[test]
+    fn static_policy_rejects_undeclared_css_variable_references() {
+        let document = document(json!({
+            "id": "root",
+            "type": "wrapper",
+            "style": {"background-image": "var(--host-url)"}
+        }));
+        let error = validate_static_publish_document(&document).expect_err("undeclared CSS variable");
+        assert!(error.diagnostics().iter().any(|diagnostic| {
+            diagnostic.code == "landing_css_var_reference_rejected"
+                && diagnostic.path.contains("background-image")
+        }));
+    }
+
+    #[test]
+    fn static_policy_accepts_declared_css_variable_references() {
+        let mut document = document(json!({
+            "id": "root",
+            "type": "wrapper",
+            "style": {"color": "var(--brand)"}
+        }));
+        document.project_mut().extensions.insert(
+            FLY_THEME_FIELD.to_string(),
+            json!({"tokens": {"brand": "#0b5fff"}}),
+        );
+        assert!(validate_static_publish_document(&document).is_ok());
+    }
+
+    #[test]
     fn static_policy_rejects_fly_embed_extension_on_generic_component() {
         let document = document(json!({
             "id": "root",
@@ -1830,10 +1962,10 @@ mod tests {
     }
 
     #[test]
-    fn v6_policy_evidence_is_not_current_after_v7_cutover() {
+    fn v7_policy_evidence_is_not_current_after_v8_cutover() {
         let policy = PageBuilderStaticPublishPolicy::default();
         let evidence = PageBuilderStaticPublishPolicyEvidence {
-            format: "page_builder_static_publish_policy_v6".to_string(),
+            format: "page_builder_static_publish_policy_v7".to_string(),
             policy_hash: policy.policy_hash().expect("current hash"),
         };
         assert!(evidence.verify_integrity().is_err());

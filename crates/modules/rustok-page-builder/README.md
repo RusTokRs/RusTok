@@ -62,10 +62,11 @@ rebuild still checks retained hashes and fails closed if a corrected materializa
   `srcset` would silently change which image the browser picks). CSS image(), src(),
   image-set() and -webkit-image-set() quoted candidates are also checked against the same
   image-resource policy.
-  Policy v7 shares Fly URL shape, CSS property-name, srcset and CSS resource-string admission.
-  It validates the symbol-materialized page tree, rejects embed extensions even on generic wrapper
-  components, validates Rich Text payloads and link targets against the stricter static navigation
-  URL policy, and checks project theme tokens plus canonical, Open Graph and Twitter metadata URLs.
+  Policy v8 shares Fly URL shape, CSS property-name, srcset, CSS resource-string and CSS custom
+  property admission. It validates the symbol-materialized page tree, rejects embed extensions
+  even on generic wrapper components, validates Rich Text payloads and link targets against the
+  stricter static navigation URL policy, and checks declared theme-token references plus canonical,
+  Open Graph and Twitter metadata URLs.
   After the policy hash changes, exact
   rebuild of earlier retained sanitized sources reports hash drift until the
   page is re-published (fail-closed by design, see
