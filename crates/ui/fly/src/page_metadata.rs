@@ -199,7 +199,9 @@ impl PageMetadata {
     pub fn normalized(mut self) -> Self {
         self.title = normalize_optional(self.title);
         self.description = normalize_optional(self.description);
-        self.slug = normalize_optional(self.slug).map(normalize_slug);
+        self.slug = normalize_optional(self.slug)
+            .map(normalize_slug)
+            .filter(|slug| !slug.is_empty());
         self.canonical_url = normalize_optional(self.canonical_url);
         self.open_graph_title = normalize_optional(self.open_graph_title);
         self.open_graph_description = normalize_optional(self.open_graph_description);
@@ -395,6 +397,16 @@ mod tests {
         .normalized();
         assert_eq!(metadata.title, None);
         assert_eq!(metadata.slug.as_deref(), Some("hello-rust-world"));
+    }
+
+    #[test]
+    fn punctuation_only_slug_is_cleared_after_normalization() {
+        let metadata = PageMetadata {
+            slug: Some(" — !!! ".to_string()),
+            ..PageMetadata::default()
+        }
+        .normalized();
+        assert_eq!(metadata.slug, None);
     }
 
     #[test]
