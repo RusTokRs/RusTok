@@ -15,17 +15,20 @@ use rustok_core::SecurityContext;
 use rustok_api::{Action, PortContext, Resource};
 
 use crate::audience::SharedForumAudienceFactsPort;
-use crate::entities::{forum_reply, forum_reply_vote, forum_topic, forum_topic_vote};
+use crate::entities::{forum_reply, forum_reply_vote, forum_topic_vote};
 use crate::error::{ForumError, ForumResult};
 use crate::services::category_audience::lock_category_tree_in_tx;
 use crate::services::engagement_mode::{ForumEngagementMode, ForumSettingsProviders};
 use crate::services::projection_invalidation::publish_forum_topic_projection_direct_in_tx;
 use crate::services::rbac::enforce_scope;
+use crate::services::topic_engagement_guard::{
+    TopicEngagementKind, enforce_topic_engagement,
+};
 use crate::services::topic_vote_lock::{
     lock_active_topic_vote_write_in_tx, lock_topic_vote_scopes_in_tx,
 };
 use crate::services::topic_write_audience::topic_write_audience_allows_in_tx;
-use crate::state_machine::{ReplyStatus, TopicStatus};
+use crate::state_machine::ReplyStatus;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct VoteSummary {
@@ -142,13 +145,14 @@ impl VoteService {
             .require_internal_voting()?;
         let policy = ForumVotePolicy::resolve_in_tx(&self.settings, &txn, tenant_id).await?;
         policy.require_value_allowed(value)?;
-        lock_active_topic_vote_write_in_tx(&txn, tenant_id, topic_id).await?;
+        let topic = lock_active_topic_vote_write_in_tx(&txn, tenant_id, topic_id).await?;
+        enforce_topic_engagement(
+            &topic,
+            TopicEngagementKind::Vote,
+            &security,
+            Resource::ForumTopics,
+        )?;
         lock_topic_vote_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
-        let topic = forum_topic::Entity::find_by_id(topic_id)
-            .filter(forum_topic::Column::TenantId.eq(tenant_id))
-            .one(&txn)
-            .await?
-            .ok_or(ForumError::TopicNotFound(topic_id))?;
         if topic.author_id == Some(user_id) && !policy.allow_self_voting {
             return Err(ForumError::forbidden(
                 "Forum topic authors cannot vote on their own topic",
@@ -261,18 +265,19 @@ impl VoteService {
         policy.require_value_allowed(value)?;
         // Match topic-vote rules and the category -> topic -> reply lock
         // order. An approved reply must not be votable after its parent
-        // topic has been archived while authorization was evaluated.
+        // topic left the public engagement set while authorization ran.
         let parent_topic = crate::services::TopicService::find_topic_for_update_in_tx(
             &txn,
             tenant_id,
             parent.topic_id,
         )
         .await?;
-        if parent_topic.status == TopicStatus::Archived {
-            return Err(ForumError::Validation(
-                "Forum reply votes cannot be changed after topic archival".to_string(),
-            ));
-        }
+        enforce_topic_engagement(
+            &parent_topic,
+            TopicEngagementKind::Vote,
+            &security,
+            Resource::ForumReplies,
+        )?;
         let reply =
             crate::services::ReplyService::find_reply_for_update_in_tx(&txn, tenant_id, reply_id)
                 .await?;
@@ -289,6 +294,13 @@ impl VoteService {
 
         self.upsert_reply_vote_in_tx(&txn, tenant_id, reply_id, user_id, value)
             .await?;
+        publish_forum_topic_projection_direct_in_tx(
+            &txn,
+            tenant_id,
+            Some(user_id),
+            parent.topic_id,
+        )
+        .await?;
         txn.commit().await?;
         Ok(())
     }
@@ -319,12 +331,26 @@ impl VoteService {
         // Blindly delete only this principal's vote. Requiring the reply row
         // here leaks whether an inaccessible or deleted reply still exists
         // and contradicts the accepted vote-clear owner contract.
-        forum_reply_vote::Entity::delete_many()
+        let deleted = forum_reply_vote::Entity::delete_many()
             .filter(forum_reply_vote::Column::TenantId.eq(tenant_id))
             .filter(forum_reply_vote::Column::ReplyId.eq(reply_id))
             .filter(forum_reply_vote::Column::UserId.eq(user_id))
             .exec(&txn)
             .await?;
+        if deleted.rows_affected > 0
+            && let Some(reply) = forum_reply::Entity::find_by_id(reply_id)
+                .filter(forum_reply::Column::TenantId.eq(tenant_id))
+                .one(&txn)
+                .await?
+        {
+            publish_forum_topic_projection_direct_in_tx(
+                &txn,
+                tenant_id,
+                Some(user_id),
+                reply.topic_id,
+            )
+            .await?;
+        }
         txn.commit().await?;
         Ok(())
     }

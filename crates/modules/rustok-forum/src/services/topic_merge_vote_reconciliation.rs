@@ -200,10 +200,7 @@ impl ForumTopicMergeVoteReconciliationService {
                     .to_string(),
             ));
         }
-        if source.category_id != merge.category_id
-            || target.category_id != merge.category_id
-            || source.category_id != target.category_id
-        {
+        if target.category_id != merge.category_id {
             return Err(ForumError::Validation(
                 "Forum topic merge vote reconciliation does not match the merge category"
                     .to_string(),

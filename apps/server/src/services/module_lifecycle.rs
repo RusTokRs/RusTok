@@ -371,6 +371,7 @@ impl ModuleLifecycleService {
                 }
             },
         )?;
+        let settings = validate_forum_module_settings(module_slug, settings)?;
 
         let state = writer
             .update_static_normalized_settings(ModuleLifecycleSettingsCommand {
@@ -392,6 +393,24 @@ impl ModuleLifecycleService {
             revision: state.revision,
         })
     }
+}
+
+fn validate_forum_module_settings(
+    module_slug: &str,
+    settings: serde_json::Value,
+) -> Result<serde_json::Value, UpdateModuleSettingsError> {
+    if module_slug != "forum" {
+        return Ok(settings);
+    }
+    #[cfg(feature = "mod-forum")]
+    {
+        let parsed: rustok_forum::ForumModuleSettings = serde_json::from_value(settings.clone())
+            .map_err(|_| UpdateModuleSettingsError::InvalidSettings)?;
+        parsed
+            .validate()
+            .map_err(|error| UpdateModuleSettingsError::Validation(error.to_string()))?;
+    }
+    Ok(settings)
 }
 
 fn map_toggle_validation_error(error: ModuleToggleValidationError) -> ToggleModuleError {

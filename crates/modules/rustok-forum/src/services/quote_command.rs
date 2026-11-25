@@ -27,6 +27,8 @@ use super::edit_window::enforce_author_edit_window;
 use super::engagement_mode::ForumSettingsProviders;
 use super::mention_relation::MentionRelationService;
 use super::rbac::enforce_owned_scope;
+use super::topic_engagement_guard::{TopicEngagementKind, enforce_topic_engagement};
+use super::topic_facade::TopicService;
 
 #[derive(Clone, Copy)]
 enum ForumQuoteSource {
@@ -139,6 +141,43 @@ impl ForumQuoteCommandService {
             .await?;
         let txn = self.db.begin().await?;
         crate::services::category_audience::lock_category_tree_in_tx(&txn, tenant_id).await?;
+        match source {
+            ForumQuoteSource::Topic(topic_id) => {
+                let topic =
+                    TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
+                enforce_topic_engagement(
+                    &topic,
+                    TopicEngagementKind::UpdateTopic,
+                    &security,
+                    Resource::ForumTopics,
+                )?;
+            }
+            ForumQuoteSource::Reply(reply_id) => {
+                let initial = crate::services::ReplyService::find_reply_in_tx(
+                    &txn, tenant_id, reply_id,
+                )
+                .await?;
+                let topic = TopicService::find_topic_for_update_in_tx(
+                    &txn,
+                    tenant_id,
+                    initial.topic_id,
+                )
+                .await?;
+                let reply = crate::services::ReplyService::find_reply_for_update_in_tx(
+                    &txn, tenant_id, reply_id,
+                )
+                .await?;
+                if reply.topic_id != initial.topic_id {
+                    return Err(ForumError::TopicUpdateConflict(initial.topic_id));
+                }
+                enforce_topic_engagement(
+                    &topic,
+                    TopicEngagementKind::UpdateReply,
+                    &security,
+                    Resource::ForumReplies,
+                )?;
+            }
+        }
         let result = relations.persist_in_tx(&txn, prepared).await?;
         let response = load_snapshot_in_tx(
             &txn,

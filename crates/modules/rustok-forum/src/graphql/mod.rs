@@ -22,6 +22,7 @@ mod storefront_read_state;
 mod subscription_reconciliation_query;
 mod topic_fork_mutation;
 mod topic_merge_mutation;
+mod topic_move_mutation;
 mod topic_reply_range_move_mutation;
 mod topic_route_query;
 mod topic_slug_rename_mutation;
@@ -73,6 +74,7 @@ pub use topic_merge_mutation::{
     GqlForumTopicMerge, GqlForumTopicMergeSolutionResolution, MergeForumTopicGraphqlInput,
     ResolveForumTopicMergeSolutionGraphqlInput,
 };
+pub use topic_move_mutation::{GqlForumTopicMove, MoveForumTopicGraphqlInput};
 pub use topic_reply_range_move_mutation::{
     GqlForumReplyRangeMove, MoveForumTopicReplyRangeGraphqlInput,
 };
@@ -116,6 +118,7 @@ pub struct ForumMutation(
     storefront_read_state::ForumStorefrontReadStateMutation,
     topic_fork_mutation::ForumTopicForkMutation,
     topic_merge_mutation::ForumTopicMergeMutation,
+    topic_move_mutation::ForumTopicMoveMutation,
     topic_reply_range_move_mutation::ForumTopicReplyRangeMoveMutation,
     topic_slug_rename_mutation::ForumTopicSlugRenameMutation,
     topic_split_mutation::ForumTopicSplitMutation,

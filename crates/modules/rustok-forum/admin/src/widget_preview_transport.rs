@@ -251,11 +251,25 @@ pub async fn preview_forum_page_builder_widget(
         )
         .map_err(|error| ServerFnError::new(error.to_string()))?;
         let audience_facts = host.shared_get::<rustok_forum::SharedForumAudienceFactsPort>();
+        let settings = match (
+            host.shared_get::<rustok_api::SharedStaticModuleSettingsReader>(),
+            host.shared_get::<rustok_api::SharedStaticModuleSettingsTransactionReader>(),
+        ) {
+            (Some(reader), Some(transactional_reader)) => {
+                rustok_forum::ForumSettingsProviders::default()
+                    .with_static_readers(reader, transactional_reader)
+            }
+            (Some(reader), None) => {
+                rustok_forum::ForumSettingsProviders::default().with_static_reader(reader)
+            }
+            (None, _) => rustok_forum::ForumSettingsProviders::default(),
+        };
         let response = rustok_forum::ForumWidgetPreviewService::new(
             host.db_clone(),
             event_bus,
             audience_facts,
         )
+        .with_settings_providers(settings)
         .preview(
             tenant.id,
             rustok_core::SecurityContext::from_permission_snapshot(

@@ -12,6 +12,7 @@ mod model;
 mod page_builder;
 mod topic_fork_model;
 mod topic_merge_model;
+mod topic_move_model;
 mod topic_reply_range_model;
 mod topic_slug_rename_model;
 mod topic_split_model;

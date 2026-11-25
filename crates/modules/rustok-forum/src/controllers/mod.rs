@@ -114,6 +114,7 @@ impl ForumHttpRuntime {
             self.event_bus(),
             self.audience_facts.clone(),
         )
+        .with_settings_providers(self.settings_providers.clone())
     }
 
     fn moderation_service(&self) -> crate::ModerationService {
