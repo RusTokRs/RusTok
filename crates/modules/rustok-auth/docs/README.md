@@ -221,17 +221,43 @@ Existing AuthConfig clones share the live source. Synchronous signing and
 verification hold a read fence; no fence is held through database or network IO.
 Failed reads, invalid documents, stale generations and incompatible successor
 keys retain the last-known-good snapshot. A rejected file revision is retried
-when its contents change. Never reuse an ID or key material: adjacent snapshots
-enforce identity continuity, purpose separation, and no reactivation of expired
-history. The root MAC secret and issuer/audience/TTL/password policy are not
+when its contents change. Never reuse an ID or key material: durable admission enforces identity
+continuity, purpose separation and terminal removal. The root MAC secret and issuer/audience/TTL/password policy are not
 rotated here.
 
-This is process-local only: the generation floor is not durable across
-restarts, removal history is not persisted, and no replica barrier, distributed
-emergency revocation or automatic convergence proof exists. Deploy coordinated
-staging before promotion; a failed replica must not be assumed current. In-flight
-business transactions that already authenticated are not cancelled by a local
-keyring publication. Source tests are authored but unrun.
+### Durable generation admission
+
+Apply the Auth-owned migration before starting the host (including static
+configuration mode). The database singleton authenticates canonical key metadata
+and lifetime key ID/material bindings with keys derived from the stable host
+MAC root. It does not store signing keys, raw HMAC secrets or PEMs. A candidate
+must be admitted durably before a local publication, including startup. An
+identical canonical generation can restart; older or conflicting generations
+cannot. Removing a key ID or material is terminal, even if a later document
+renames the material or places it in another purpose. An active key moved to
+history cannot sign again; newly staged verification keys can be promoted once
+before expiry. Initial history is conservatively verification-only; enroll
+before staging a future signer. Retained deadlines can only shorten; a removed
+missing-ID mapping cannot be enabled again. The 8192-identity ledger limit
+fails closed rather than forgetting retired identities.
+
+The first file enrollment prevents subsequent static-mode startup against
+the same database. Keep the MAC root and database authority stable; do not
+restore an older database or run an older host binary. Stop old writers before
+enrollment. An unavailable database or unknown publication result terminates
+the host during admission; a crash after durable commit but before local
+publication can recover by restarting with the committed generation. A
+rejected candidate retains the local snapshot.
+
+This is not a replica barrier: unchanged files and already-running replicas
+are not checked against the database per JWT operation. Multi-replica readiness
+and emergency distributed revocation remain open. In-flight business
+transactions that already authenticated are not cancelled by publication.
+Keys removed before first enrollment are not known to the ledger.
+Root rotation, database rollback protection and trusted-clock rollback
+protection are outside this contract. Source regressions are authored, unrun.
+
+See [durable generation fence ADR](../../../../DECISIONS/2026-11-25-jwt-generation-fence.md).
 
 ## JWT principal and invite admission
 

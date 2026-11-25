@@ -295,6 +295,16 @@ impl AuthConfig {
         Ok((doc.generation, candidate))
     }
 
+    pub(crate) fn fence_snapshot(
+        &self,
+        fingerprint: impl Fn(&[u8; 32]) -> Result<String>,
+    ) -> Result<crate::jwt_fence::Snapshot> {
+        if !matches!(&self.key_state, JwtKeySource::Fixed(_)) {
+            return Err(invalid_rotation());
+        }
+        self.with_prepared_jwt(|prepared| prepared.fence_snapshot(fingerprint))
+    }
+
     /// Convert a validated fixed candidate into a shared process-local runtime.
     /// Call before cloning into the host's transports and providers.
     pub fn into_live_jwt(mut self, generation: u64) -> Result<(Self, JwtKeyringPublisher)> {

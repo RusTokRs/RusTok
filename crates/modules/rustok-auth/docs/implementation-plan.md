@@ -196,8 +196,10 @@ Immutable prepared JWT snapshots are source-implemented: all-purpose admission,
 shared once-only initialization, private key configuration and candidate detachment.
 Process-local hot reload now shares a publication fence across all AuthConfig clones;
 the optional complete file document is checked before startup and polled by the host.
-Stale generations and incompatible adjacent key identities are rejected. Durable
-rollback fencing, cross-replica publication and emergency revocation remain open.
+Auth-owned durable generation admission now persists the current metadata and
+lifetime identity bindings before startup or local publication; source regressions
+cover rollback, conflicts, terminal removal, staging and restart of the store.
+Cross-replica publication/readiness and emergency revocation remain open.
 Scoped checks are pending. See the
 [owner contract](README.md#jwt-keyring-and-rotation).
 

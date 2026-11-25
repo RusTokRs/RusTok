@@ -113,15 +113,13 @@ pub async fn run() -> Result<()> {
         config.auth.jwt.expiration,
         Some(&config.settings),
     )?;
-    let (auth_config, reload) = if let Some(path) = keyring_path {
+    let (auth_config, reload_source) = if let Some(path) = keyring_path {
         let bytes = read_jwt_keyring_file(&path).await?;
         let digest: [u8; 32] = sha256_digest(&[&bytes]);
         let (generation, candidate) = base_auth_config.prepare_jwt_document(&bytes)
             .map_err(crate::auth::auth_err)?;
         validate_auth_deployment(&candidate, production)?;
-        let (live, publisher) = candidate.into_live_jwt(generation).map_err(crate::auth::auth_err)?;
-        tracing::info!(generation, "JWT keyring runtime initialized");
-        (live, Some(JwtFileReload { path, publisher, digest }))
+        (candidate, Some((path, generation, digest)))
     } else {
         validate_auth_deployment(&base_auth_config, production)?;
         (base_auth_config, None)
@@ -161,6 +159,19 @@ pub async fn run() -> Result<()> {
     if shutdown_during_migration {
         return Ok(());
     }
+
+    // The database is the durable admission authority. Do not expose a
+    // listener or compose request consumers before the startup fence succeeds.
+    let fence = rustok_auth::JwtGenerationFence::new(db.clone());
+    let (auth_config, reload) = if let Some((path, generation, digest)) = reload_source {
+        fence.admit(generation, &auth_config).await.map_err(crate::auth::auth_err)?;
+        let (live, publisher) = auth_config.into_live_jwt(generation).map_err(crate::auth::auth_err)?;
+        tracing::info!(generation, "JWT keyring runtime initialized");
+        (live, Some(JwtFileReload { path, publisher, digest, fence }))
+    } else {
+        fence.ensure_static_allowed().await.map_err(crate::auth::auth_err)?;
+        (auth_config, None)
+    };
 
     let runtime_ctx = ServerRuntimeContext::new(db, rustok_settings.clone());
 
@@ -608,6 +619,7 @@ struct JwtFileReload {
     path: PathBuf,
     publisher: rustok_auth::JwtKeyringPublisher,
     digest: [u8; 32],
+    fence: rustok_auth::JwtGenerationFence,
 }
 
 impl JwtFileReload {
@@ -630,17 +642,33 @@ impl JwtFileReload {
             // A rejected document is retried only after a new file revision.
             // The last-known-good keyring stays active on every failure.
             self.digest = digest;
-            let result = (|| {
-                let (generation, candidate) = self.publisher.prepare_document(&bytes)
-                    .map_err(crate::auth::auth_err)?;
-                validate_auth_deployment(&candidate, production)?;
-                self.publisher.publish(generation, candidate).map_err(crate::auth::auth_err)?;
-                Ok::<_, Error>(generation)
-            })();
-            match result {
-                Ok(generation) => tracing::info!(generation, "JWT keyring generation published"),
-                Err(_) => tracing::warn!("JWT keyring reload rejected; retaining active generation"),
+            let (generation, candidate) = match self.publisher.prepare_document(&bytes) {
+                Ok(candidate) => candidate,
+                Err(_) => {
+                    tracing::warn!("JWT keyring reload rejected; retaining active generation");
+                    continue;
+                }
+            };
+            if generation <= self.publisher.generation().map_err(crate::auth::auth_err)?
+                || validate_auth_deployment(&candidate, production).is_err()
+            {
+                tracing::warn!("JWT keyring reload rejected; retaining active generation");
+                continue;
             }
+
+            // Durable commit precedes the local write fence. Rejection is safe
+            // to retain; an unknown commit result is not. Do not continue
+            // serving after an unavailable authority or a post-commit failure.
+            match self.fence.admit(generation, &candidate).await {
+                Ok(()) => {}
+                Err(rustok_auth::AuthError::Validation(_)) => {
+                    tracing::warn!("JWT keyring generation rejected by durable fence");
+                    continue;
+                }
+                Err(error) => return Err(crate::auth::auth_err(error)),
+            }
+            self.publisher.publish(generation, candidate).map_err(crate::auth::auth_err)?;
+            tracing::info!(generation, "JWT keyring generation published");
         }
     }
 }

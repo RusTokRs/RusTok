@@ -1,5 +1,5 @@
 //! Deployment-owned JWT key selection. Only the active key can sign.
-use std::{borrow::Cow, collections::{HashMap, HashSet}};
+use std::{borrow::Cow, collections::{BTreeMap, HashMap, HashSet}};
 
 use hkdf::Hkdf;
 use jsonwebtoken::{DecodingKey, EncodingKey, crypto::aws_lc::DEFAULT_PROVIDER};
@@ -456,6 +456,36 @@ impl ValidatedJwtKeyrings {
             email_verification: prepare(JwtPurpose::EmailVerification)?,
             invite: prepare(JwtPurpose::Invite)?,
         })
+    }
+
+    /// Expose only canonical metadata with keyed identities to durable admission.
+    pub(crate) fn fence_snapshot(
+        &self,
+        fingerprint: impl Fn(&[u8; 32]) -> Result<String>,
+    ) -> Result<crate::jwt_fence::Snapshot> {
+        use crate::jwt_fence::{KeyMetadata, LegacyMetadata, RingMetadata};
+        let mut result = BTreeMap::new();
+        for purpose in JwtPurpose::ALL {
+            let ring = self.for_purpose(purpose);
+            let mut keys = BTreeMap::new();
+            keys.insert(ring.active_kid.clone(), KeyMetadata {
+                identity: fingerprint(&ring.active_identity)?,
+                verify_until: None,
+            });
+            for (kid, history) in &ring.history {
+                keys.insert(kid.clone(), KeyMetadata {
+                    identity: fingerprint(&history.identity)?,
+                    verify_until: Some(history.verify_until),
+                });
+            }
+            let legacy = ring.legacy_without_kid.as_ref().map(|legacy| LegacyMetadata {
+                kid: legacy.kid.clone(), verify_until: legacy.verify_until,
+            });
+            result.insert(purpose.typ().to_string(), RingMetadata {
+                algorithm: ring.algorithm.clone(), keys, legacy,
+            });
+        }
+        Ok(result)
     }
 
     /// Preserve identity across adjacent generations. Algorithm migration

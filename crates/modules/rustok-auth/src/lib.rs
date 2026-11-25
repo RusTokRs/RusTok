@@ -26,6 +26,7 @@ pub mod error;
 pub mod graphql;
 pub mod jwt;
 pub mod jwt_keyring;
+mod jwt_fence;
 pub mod lifecycle;
 pub mod migrations;
 pub mod module;
@@ -61,6 +62,7 @@ pub use credentials::{
 };
 pub use crypto::{AuthMacPurpose, auth_purpose_mac};
 pub use error::AuthError;
+pub use jwt_fence::JwtGenerationFence;
 pub use jwt::{
     Claims, EmailVerificationClaims, InviteClaims, OauthAccessTokenInput, PasswordResetClaims,
     decode_access_token, decode_email_verification_token, decode_invite_token,
