@@ -13,27 +13,31 @@ use crate::extractors::{
     rbac::{RequireMcpManage, RequireMcpRead},
     tenant::CurrentTenant,
 };
-use crate::services::mcp_management::{
-    ApplyMcpScaffoldDraftInput, CreateMcpClientInput, McpAuditFilters, McpClientDetails,
-    McpManagementService, RotateMcpTokenInput, StageMcpScaffoldDraftInput, UpdateMcpPolicyInput,
-};
-use crate::services::mcp_management_authority::McpManagementAuthorityService;
-use crate::services::mcp_runtime::{DbBackedMcpRuntimeBridge, McpRemoteBootstrapResponse};
+use crate::services::mcp_host::{management, persistence};
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_core::ModuleRegistry;
+use rustok_mcp::McpManagementAuthorityError;
+use rustok_mcp::persistence::McpPersistenceError;
 use rustok_mcp::{
     ApplyMcpModuleScaffoldDraftRequest, ApplyModuleScaffoldRequest,
     BootstrapMcpRemoteSessionRequest, CreateMcpClientRequest, CreateMcpClientResponse,
     McpActorType, McpAuditEventResponse, McpAuditQuery, McpAuditSink, McpClientDetailsResponse,
     McpClientSummaryResponse, McpModuleScaffoldDraftResponse, McpPolicyResponse,
-    McpRemoteToolCallRequest, McpRemoteToolCallResponse, McpRuntimeBinding,
-    McpScaffoldDraftRuntimeContext, McpScaffoldDraftStore, McpSessionContext, McpTokenResponse,
-    McpToolCallAuditEvent, McpToolCallOutcome, McpToolResponse, RegistryToolInvocationError,
-    ReviewModuleScaffoldRequest, RotateMcpTokenRequest, RotateMcpTokenResponse,
-    ScaffoldModuleRequest, StageMcpModuleScaffoldDraftRequest, TOOL_ALLOY_APPLY_MODULE_SCAFFOLD,
-    TOOL_ALLOY_IMPORT_PUBLISHED_RELEASE, TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD,
-    TOOL_ALLOY_SCAFFOLD_MODULE, TOOL_MCP_HEALTH, UpdateMcpPolicyRequest, default_tool_requirement,
-    invoke_registry_tool, is_remote_alloy_authoring_tool,
+    McpRemoteBootstrapResponse, McpRemoteToolCallRequest, McpRemoteToolCallResponse,
+    McpRuntimeBinding, McpScaffoldDraftRuntimeContext, McpScaffoldDraftStore, McpSessionContext,
+    McpTokenResponse, McpToolCallAuditEvent, McpToolCallOutcome, McpToolResponse,
+    RegistryToolInvocationError, ReviewModuleScaffoldRequest, RotateMcpTokenRequest,
+    RotateMcpTokenResponse, ScaffoldModuleRequest, StageMcpModuleScaffoldDraftRequest,
+    TOOL_ALLOY_APPLY_MODULE_SCAFFOLD, TOOL_ALLOY_IMPORT_PUBLISHED_RELEASE,
+    TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD, TOOL_ALLOY_SCAFFOLD_MODULE, TOOL_MCP_HEALTH,
+    UpdateMcpPolicyRequest, default_tool_requirement, invoke_registry_tool,
+    is_remote_alloy_authoring_tool,
+};
+use rustok_mcp::{
+    ApplyMcpScaffoldDraftCommand, CreateMcpClientCommand, McpAuditEventRecord,
+    McpClientDetailsRecord, McpClientRecord, McpManagementContext, McpManagementMutationError,
+    McpPolicyRecord, McpScaffoldDraftRecord, McpTokenRecord, RotateMcpTokenCommand,
+    StageMcpScaffoldDraftCommand, UpdateMcpPolicyCommand,
 };
 use tokio_stream::once;
 
@@ -68,9 +72,7 @@ async fn bootstrap_remote_session(
         "Handling MCP bootstrap remote session request"
     );
 
-    let bridge = ctx
-        .shared_get::<std::sync::Arc<DbBackedMcpRuntimeBridge>>()
-        .unwrap_or_else(|| DbBackedMcpRuntimeBridge::shared(ctx.clone()));
+    let bridge = persistence(&ctx)?;
 
     let response = bridge
         .bootstrap_remote_session(
@@ -80,7 +82,8 @@ async fn bootstrap_remote_session(
                 .with_metadata(input.metadata)
                 .with_correlation_id(correlation_id),
         )
-        .await?;
+        .await
+        .map_err(map_persistence_error)?;
 
     Ok(Json(response))
 }
@@ -159,10 +162,11 @@ async fn execute_remote_tool_call(
         .ok_or_else(|| crate::error::Error::Unauthorized("MCP bearer token is required".into()))?;
     let correlation_id = normalize_remote_correlation_id(input.correlation_id)?;
 
-    let bridge = ctx
-        .shared_get::<std::sync::Arc<DbBackedMcpRuntimeBridge>>()
-        .unwrap_or_else(|| DbBackedMcpRuntimeBridge::shared(ctx.clone()));
-    let binding = bridge.resolve_binding_for_token(&plaintext_token).await?;
+    let bridge = persistence(ctx)?;
+    let binding = bridge
+        .resolve_binding_for_token(&plaintext_token)
+        .await
+        .map_err(map_persistence_error)?;
     let audit_metadata = remote_tool_audit_metadata(&input.tool_name, input.metadata.clone());
 
     #[cfg(feature = "mod-alloy")]
@@ -689,30 +693,28 @@ fn parse_tool_args<T: serde::de::DeserializeOwned>(
 async fn list_clients(
     State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
-    RequireMcpRead(_user): RequireMcpRead,
+    RequireMcpRead(user): RequireMcpRead,
 ) -> Result<Json<Vec<McpClientSummaryResponse>>> {
-    tracing::debug!(
-        tenant_id = %tenant.id,
-        "Handling list MCP clients request"
-    );
-    let clients = McpManagementService::list_clients(ctx.db(), tenant.id, Some(100)).await?;
+    let clients = management(&ctx)?
+        .port()
+        .list_clients(&management_context(tenant.id, &user), Some(100))
+        .await
+        .map_err(map_management_error)?;
     Ok(Json(clients.into_iter().map(map_client_summary).collect()))
 }
 
 async fn get_client(
     State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
-    RequireMcpRead(_user): RequireMcpRead,
+    RequireMcpRead(user): RequireMcpRead,
     Path(client_id): Path<Uuid>,
 ) -> Result<Json<McpClientDetailsResponse>> {
-    tracing::debug!(
-        tenant_id = %tenant.id,
-        client_id = %client_id,
-        "Handling get MCP client details request"
-    );
-    let details = McpManagementService::get_client_details(ctx.db(), tenant.id, client_id)
-        .await?
-        .ok_or(crate::error::Error::NotFound)?;
+    let details = management(&ctx)?
+        .port()
+        .get_client(&management_context(tenant.id, &user), client_id)
+        .await
+        .map_err(map_management_error)?
+        .ok_or(Error::NotFound)?;
     Ok(Json(map_client_details(details)?))
 }
 
@@ -721,52 +723,31 @@ async fn create_client(
     CurrentTenant(tenant): CurrentTenant,
     RequireMcpManage(user): RequireMcpManage,
     Json(input): Json<CreateMcpClientRequest>,
-) -> Result<Json<CreateMcpClientResponse>> {
-    // Preserve the authenticated principal in the management audit trail.
-    let (actor_id, actor_type, actor_user_id) = mcp_management_audit_actor(&user);
-    tracing::debug!(
-        tenant_id = %tenant.id,
-        slug_len = input.slug.len(),
-        actor_type = ?input.actor_type,
-        "Handling create MCP client request"
-    );
-    McpManagementAuthorityService::validate_create_client(
-        ctx.db(),
-        tenant.id,
-        &user.permissions,
-        parse_actor_type(&input.actor_type)?,
-        input.delegated_user_id,
-        &input.granted_permissions,
-    )
-    .await
-    .map_err(map_mcp_authority_error)?;
-
-    let result = McpManagementService::create_client(
-        ctx.db(),
-        tenant.id,
-        CreateMcpClientInput {
-            slug: input.slug,
-            display_name: input.display_name,
-            description: input.description,
-            actor_type: parse_actor_type(&input.actor_type)?,
-            delegated_user_id: input.delegated_user_id,
-            token_name: input.token_name,
-            token_expires_at: input.token_expires_at,
-            allowed_tools: input.allowed_tools,
-            denied_tools: input.denied_tools,
-            granted_permissions: input.granted_permissions,
-            granted_scopes: input.granted_scopes,
-            metadata: input.metadata,
-            created_by: actor_user_id,
-            audit_actor_id: actor_id,
-            audit_actor_type: actor_type,
-        },
-    )
-    .await?;
-
+) -> Result<Json<CreateMcpClientResponse>, McpManagementHttpError> {
+    let result = management(&ctx)?
+        .port()
+        .create_client(
+            &management_context(tenant.id, &user),
+            CreateMcpClientCommand {
+                slug: input.slug,
+                display_name: input.display_name,
+                description: input.description,
+                actor_type: parse_actor_type(&input.actor_type)?,
+                delegated_user_id: input.delegated_user_id,
+                token_name: input.token_name,
+                token_expires_at: input.token_expires_at.map(|value| value.to_rfc3339()),
+                allowed_tools: input.allowed_tools,
+                denied_tools: input.denied_tools,
+                granted_permissions: input.granted_permissions,
+                granted_scopes: input.granted_scopes,
+                metadata: input.metadata,
+            },
+        )
+        .await
+        .map_err(McpManagementHttpError::from)?;
     Ok(Json(CreateMcpClientResponse {
         client: map_client_summary(result.client),
-        policy: map_policy(result.policy)?,
+        policy: map_policy(result.policy.ok_or(Error::InternalServerError)?),
         token: map_token(result.token),
         plaintext_token: result.plaintext_token,
     }))
@@ -778,39 +759,21 @@ async fn rotate_token(
     RequireMcpManage(user): RequireMcpManage,
     Path(client_id): Path<Uuid>,
     Json(input): Json<RotateMcpTokenRequest>,
-) -> Result<Json<RotateMcpTokenResponse>> {
-    // Preserve the authenticated principal in the management audit trail.
-    let (actor_id, actor_type, actor_user_id) = mcp_management_audit_actor(&user);
-    tracing::debug!(
-        tenant_id = %tenant.id,
-        client_id = %client_id,
-        "Handling rotate MCP token request"
-    );
-    McpManagementAuthorityService::validate_token_rotation(
-        ctx.db(),
-        tenant.id,
-        &user.permissions,
-        client_id,
-    )
-    .await
-    .map_err(map_mcp_authority_error)?;
-
-    let result = McpManagementService::rotate_token(
-        ctx.db(),
-        tenant.id,
-        client_id,
-        RotateMcpTokenInput {
-            token_name: input.token_name,
-            expires_at: input.expires_at,
-            metadata: input.metadata,
-            created_by: actor_user_id,
-            audit_actor_id: actor_id,
-            audit_actor_type: actor_type,
-            revoke_existing_tokens: input.revoke_existing_tokens.unwrap_or(true),
-        },
-    )
-    .await?;
-
+) -> Result<Json<RotateMcpTokenResponse>, McpManagementHttpError> {
+    let result = management(&ctx)?
+        .port()
+        .rotate_token(
+            &management_context(tenant.id, &user),
+            RotateMcpTokenCommand {
+                client_id,
+                token_name: input.token_name,
+                expires_at: input.expires_at.map(|value| value.to_rfc3339()),
+                metadata: input.metadata,
+                revoke_existing_tokens: input.revoke_existing_tokens.unwrap_or(true),
+            },
+        )
+        .await
+        .map_err(McpManagementHttpError::from)?;
     Ok(Json(RotateMcpTokenResponse {
         client: map_client_summary(result.client),
         token: map_token(result.token),
@@ -824,42 +787,23 @@ async fn update_policy(
     RequireMcpManage(user): RequireMcpManage,
     Path(client_id): Path<Uuid>,
     Json(input): Json<UpdateMcpPolicyRequest>,
-) -> Result<Json<McpPolicyResponse>> {
-    // Preserve the authenticated principal in the management audit trail.
-    let (actor_id, actor_type, actor_user_id) = mcp_management_audit_actor(&user);
-    tracing::debug!(
-        tenant_id = %tenant.id,
-        client_id = %client_id,
-        "Handling update MCP policy request"
-    );
-    McpManagementAuthorityService::validate_policy_update(
-        ctx.db(),
-        tenant.id,
-        &user.permissions,
-        client_id,
-        &input.granted_permissions,
-    )
-    .await
-    .map_err(map_mcp_authority_error)?;
-
-    let policy = McpManagementService::update_policy(
-        ctx.db(),
-        tenant.id,
-        client_id,
-        UpdateMcpPolicyInput {
-            allowed_tools: input.allowed_tools,
-            denied_tools: input.denied_tools,
-            granted_permissions: input.granted_permissions,
-            granted_scopes: input.granted_scopes,
-            metadata: input.metadata,
-            updated_by: actor_user_id,
-            audit_actor_id: actor_id,
-            audit_actor_type: actor_type,
-        },
-    )
-    .await?;
-
-    Ok(Json(map_policy(policy)?))
+) -> Result<Json<McpPolicyResponse>, McpManagementHttpError> {
+    let policy = management(&ctx)?
+        .port()
+        .update_policy(
+            &management_context(tenant.id, &user),
+            UpdateMcpPolicyCommand {
+                client_id,
+                allowed_tools: input.allowed_tools,
+                denied_tools: input.denied_tools,
+                granted_permissions: input.granted_permissions,
+                granted_scopes: input.granted_scopes,
+                metadata: input.metadata,
+            },
+        )
+        .await
+        .map_err(McpManagementHttpError::from)?;
+    Ok(Json(map_policy(policy)))
 }
 
 async fn revoke_token_by_id(
@@ -868,23 +812,11 @@ async fn revoke_token_by_id(
     RequireMcpManage(user): RequireMcpManage,
     Path(token_id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
-    // Preserve the authenticated principal in the management audit trail.
-    let (actor_id, actor_type, actor_user_id) = mcp_management_audit_actor(&user);
-    tracing::debug!(
-        tenant_id = %tenant.id,
-        token_id = %token_id,
-        "Handling revoke MCP token request"
-    );
-    McpManagementService::revoke_token(
-        ctx.db(),
-        tenant.id,
-        token_id,
-        actor_user_id,
-        actor_id,
-        actor_type,
-        None,
-    )
-    .await?;
+    management(&ctx)?
+        .port()
+        .revoke_token(&management_context(tenant.id, &user), token_id, None)
+        .await
+        .map_err(map_management_error)?;
     Ok(Json(serde_json::json!({ "success": true })))
 }
 
@@ -894,101 +826,74 @@ async fn deactivate_client(
     RequireMcpManage(user): RequireMcpManage,
     Path(client_id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
-    // Preserve the authenticated principal in the management audit trail.
-    let (actor_id, actor_type, actor_user_id) = mcp_management_audit_actor(&user);
-    tracing::debug!(
-        tenant_id = %tenant.id,
-        client_id = %client_id,
-        "Handling deactivate MCP client request"
-    );
-    McpManagementService::deactivate_client(
-        ctx.db(),
-        tenant.id,
-        client_id,
-        actor_user_id,
-        actor_id,
-        actor_type,
-        None,
-    )
-    .await?;
+    management(&ctx)?
+        .port()
+        .deactivate_client(&management_context(tenant.id, &user), client_id, None)
+        .await
+        .map_err(map_management_error)?;
     Ok(Json(serde_json::json!({ "success": true })))
 }
 
 async fn list_audit_events(
     State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
-    RequireMcpRead(_user): RequireMcpRead,
+    RequireMcpRead(user): RequireMcpRead,
     Query(query): Query<McpAuditQuery>,
 ) -> Result<Json<Vec<McpAuditEventResponse>>> {
-    tracing::debug!(
-        tenant_id = %tenant.id,
-        client_id = ?query.client_id,
-        outcome = ?query.outcome,
-        limit = ?query.limit,
-        "Handling list MCP audit events request"
-    );
-    let events = McpManagementService::list_audit_events(
-        ctx.db(),
-        tenant.id,
-        McpAuditFilters {
-            client_id: query.client_id,
-            outcome: query.outcome,
-            limit: query.limit,
-        },
-    )
-    .await?;
-
-    Ok(Json(
-        events.into_iter().map(map_audit_event).collect::<Vec<_>>(),
-    ))
+    let records = management(&ctx)?
+        .port()
+        .list_audit_events(
+            &management_context(tenant.id, &user),
+            query.client_id,
+            query.outcome,
+            query.limit,
+        )
+        .await
+        .map_err(map_management_error)?;
+    Ok(Json(records.into_iter().map(map_audit_event).collect()))
 }
 
 async fn list_scaffold_drafts(
     State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
-    RequireMcpManage(_user): RequireMcpManage,
+    RequireMcpManage(user): RequireMcpManage,
 ) -> Result<Json<Vec<McpModuleScaffoldDraftResponse>>> {
-    tracing::debug!(
-        tenant_id = %tenant.id,
-        "Handling list MCP scaffold drafts request"
-    );
-    let drafts = McpManagementService::list_scaffold_drafts(ctx.db(), tenant.id, Some(100)).await?;
-    Ok(Json(drafts.into_iter().map(map_scaffold_draft).collect()))
+    let records = management(&ctx)?
+        .port()
+        .list_scaffold_drafts(&management_context(tenant.id, &user), Some(100))
+        .await
+        .map_err(map_management_error)?;
+    Ok(Json(records.into_iter().map(map_scaffold_draft).collect()))
 }
 
 async fn get_scaffold_draft(
     State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
-    RequireMcpManage(_user): RequireMcpManage,
+    RequireMcpManage(user): RequireMcpManage,
     Path(draft_id): Path<Uuid>,
 ) -> Result<Json<McpModuleScaffoldDraftResponse>> {
-    tracing::debug!(
-        tenant_id = %tenant.id,
-        draft_id = %draft_id,
-        "Handling get MCP scaffold draft request"
-    );
-    let draft = McpManagementService::get_scaffold_draft(ctx.db(), tenant.id, draft_id)
-        .await?
-        .ok_or(crate::error::Error::NotFound)?;
-    Ok(Json(map_scaffold_draft(draft)))
+    let record = management(&ctx)?
+        .port()
+        .get_scaffold_draft(&management_context(tenant.id, &user), draft_id)
+        .await
+        .map_err(map_management_error)?
+        .ok_or(Error::NotFound)?;
+    Ok(Json(map_scaffold_draft(record)))
 }
 
-fn mcp_management_audit_actor(
+fn management_context(
+    tenant_id: Uuid,
     user: &crate::extractors::auth::CurrentUser,
-) -> (Option<String>, Option<String>, Option<Uuid>) {
-    if matches!(&user.principal_kind, &rustok_api::AuthPrincipalKind::Service) {
+) -> McpManagementContext {
+    let (actor_id, actor_type) = if user.principal_kind.is_service() {
         (
-            Some(user.client_id.unwrap_or(user.user.id).to_string()),
-            Some("service_client".to_string()),
-            None,
+            user.client_id.unwrap_or(user.user.id),
+            McpActorType::ServiceClient,
         )
     } else {
-        (
-            Some(user.user.id.to_string()),
-            Some("human_user".to_string()),
-            Some(user.user.id),
-        )
-    }
+        (user.user.id, McpActorType::HumanUser)
+    };
+    McpManagementContext::new(tenant_id, actor_id, actor_type, user.permissions.clone())
 }
 
 async fn stage_scaffold_draft(
@@ -997,35 +902,25 @@ async fn stage_scaffold_draft(
     RequireMcpManage(user): RequireMcpManage,
     Json(input): Json<StageMcpModuleScaffoldDraftRequest>,
 ) -> Result<Json<McpModuleScaffoldDraftResponse>> {
-    tracing::debug!(
-        tenant_id = %tenant.id,
-        slug_len = input.slug.len(),
-        name_len = input.name.len(),
-        "Handling stage MCP scaffold draft request"
-    );
-    // Preserve the authenticated principal in the management audit trail.
-    let (actor_id, actor_type, created_by) = mcp_management_audit_actor(&user);
-    let draft = McpManagementService::stage_scaffold_draft(
-        ctx.db(),
-        tenant.id,
-        StageMcpScaffoldDraftInput {
-            client_id: input.client_id,
-            request: ScaffoldModuleRequest {
-                slug: input.slug,
-                name: input.name,
-                description: input.description,
-                dependencies: input.dependencies,
-                with_graphql: input.with_graphql.unwrap_or(true),
-                with_rest: input.with_rest.unwrap_or(true),
-                write_files: false,
+    let draft = management(&ctx)?
+        .port()
+        .stage_scaffold_draft(
+            &management_context(tenant.id, &user),
+            StageMcpScaffoldDraftCommand {
+                client_id: input.client_id,
+                request: ScaffoldModuleRequest {
+                    slug: input.slug,
+                    name: input.name,
+                    description: input.description,
+                    dependencies: input.dependencies,
+                    with_graphql: input.with_graphql.unwrap_or(true),
+                    with_rest: input.with_rest.unwrap_or(true),
+                    write_files: false,
+                },
             },
-            created_by,
-            actor_id,
-            actor_type,
-        },
-    )
-    .await?;
-
+        )
+        .await
+        .map_err(map_management_error)?;
     Ok(Json(map_scaffold_draft(draft)))
 }
 
@@ -1036,29 +931,18 @@ async fn apply_scaffold_draft(
     Path(draft_id): Path<Uuid>,
     Json(input): Json<ApplyMcpModuleScaffoldDraftRequest>,
 ) -> Result<Json<McpModuleScaffoldDraftResponse>> {
-    tracing::debug!(
-        tenant_id = %tenant.id,
-        draft_id = %draft_id,
-        confirm = input.confirm,
-        "Handling apply MCP scaffold draft request"
-    );
-    // Preserve the authenticated principal in the management audit trail.
-    let (actor_id, actor_type, applied_by) = mcp_management_audit_actor(&user);
-    let (draft, _) = McpManagementService::apply_scaffold_draft(
-        ctx.db(),
-        tenant.id,
-        draft_id,
-        ApplyMcpScaffoldDraftInput {
-            workspace_root: input.workspace_root,
-            confirm: input.confirm,
-            expected_client_id: None,
-            applied_by,
-            actor_id,
-            actor_type,
-        },
-    )
-    .await?;
-
+    let draft = management(&ctx)?
+        .port()
+        .apply_scaffold_draft(
+            &management_context(tenant.id, &user),
+            ApplyMcpScaffoldDraftCommand {
+                draft_id,
+                workspace_root: input.workspace_root,
+                confirm: input.confirm,
+            },
+        )
+        .await
+        .map_err(map_management_error)?;
     Ok(Json(map_scaffold_draft(draft)))
 }
 
@@ -1118,22 +1002,85 @@ fn parse_bearer_token(value: &str) -> Option<&str> {
     (!token.is_empty()).then_some(token)
 }
 
-fn map_mcp_authority_error(
-    error: crate::services::mcp_management_authority::McpManagementAuthorityError,
-) -> crate::error::Error {
-    use crate::services::mcp_management_authority::McpManagementAuthorityError;
+enum McpManagementHttpError {
+    Delegation(McpManagementAuthorityError),
+    Request(Error),
+}
 
-    match error {
-        McpManagementAuthorityError::Invalid(message) => crate::error::Error::BadRequest(message),
-        McpManagementAuthorityError::Forbidden(message) => crate::error::Error::Forbidden(message),
-        McpManagementAuthorityError::NotFound(_) => crate::error::Error::NotFound,
-        McpManagementAuthorityError::Internal(_error) => {
-            tracing::error!(
-                error_code = "mcp_management_authority_validation_failed",
-                "MCP management authority validation failed"
-            );
-            crate::error::Error::InternalServerError
+impl From<Error> for McpManagementHttpError {
+    fn from(error: Error) -> Self {
+        Self::Request(error)
+    }
+}
+
+impl From<McpManagementMutationError> for McpManagementHttpError {
+    fn from(error: McpManagementMutationError) -> Self {
+        match error {
+            McpManagementMutationError::Authority(error) => Self::Delegation(error),
+            other => Self::Request(map_management_error(other)),
         }
+    }
+}
+
+impl axum::response::IntoResponse for McpManagementHttpError {
+    fn into_response(self) -> axum::response::Response {
+        use axum::http::StatusCode;
+
+        let (status, code, message) = match self {
+            Self::Request(error) => return error.into_response(),
+            Self::Delegation(error) => match error {
+                McpManagementAuthorityError::Invalid(message) => {
+                    (StatusCode::BAD_REQUEST, "invalid_request", message)
+                }
+                McpManagementAuthorityError::Forbidden(message) => {
+                    (StatusCode::FORBIDDEN, "access_denied", message)
+                }
+                McpManagementAuthorityError::NotFound(message) => {
+                    (StatusCode::NOT_FOUND, "not_found", message)
+                }
+                McpManagementAuthorityError::Internal(message) => {
+                    (StatusCode::INTERNAL_SERVER_ERROR, "internal_error", message)
+                }
+            },
+        };
+        // These REST endpoints published delegation errors in this envelope.
+        (
+            status,
+            Json(serde_json::json!({ "error": code, "message": message })),
+        )
+            .into_response()
+    }
+}
+
+fn map_management_error(error: McpManagementMutationError) -> Error {
+    match error {
+        McpManagementMutationError::Authority(error) => map_authority_error(error),
+        McpManagementMutationError::Validation(message) => Error::BadRequest(message),
+        McpManagementMutationError::Forbidden(message) => Error::Forbidden(message),
+        McpManagementMutationError::NotFound(_) => Error::NotFound,
+        McpManagementMutationError::Conflict(message) => Error::Conflict(message),
+        McpManagementMutationError::Internal(_) => Error::InternalServerError,
+    }
+}
+
+fn map_persistence_error(error: McpPersistenceError) -> Error {
+    match error {
+        McpPersistenceError::Authority(error) => map_authority_error(error),
+        McpPersistenceError::BadRequest(message) => Error::BadRequest(message),
+        McpPersistenceError::Unauthorized(message) => Error::Unauthorized(message),
+        McpPersistenceError::Forbidden(message) => Error::Forbidden(message),
+        McpPersistenceError::NotFound => Error::NotFound,
+        McpPersistenceError::InternalServerError => Error::InternalServerError,
+        McpPersistenceError::Message(message) => Error::Message(message),
+    }
+}
+
+fn map_authority_error(error: McpManagementAuthorityError) -> Error {
+    match error {
+        McpManagementAuthorityError::Invalid(message) => Error::BadRequest(message),
+        McpManagementAuthorityError::Forbidden(message) => Error::Forbidden(message),
+        McpManagementAuthorityError::NotFound(_) => Error::NotFound,
+        McpManagementAuthorityError::Internal(_) => Error::InternalServerError,
     }
 }
 
@@ -1141,64 +1088,46 @@ fn parse_actor_type(value: &str) -> Result<McpActorType> {
     McpActorType::from_str(value).map_err(|err| crate::error::Error::BadRequest(err.to_string()))
 }
 
-fn map_client_summary(model: crate::models::mcp_clients::Model) -> McpClientSummaryResponse {
-    let is_active = model.is_active();
+fn map_client_summary(model: McpClientRecord) -> McpClientSummaryResponse {
+    let is_active = model.is_active;
     McpClientSummaryResponse {
         id: model.id,
         client_key: model.client_key,
         slug: model.slug,
         display_name: model.display_name,
-        actor_type: model.actor_type,
+        actor_type: model.actor_type.as_str().to_string(),
         is_active,
-        last_used_at: model.last_used_at.map(Into::into),
-        created_at: model.created_at.into(),
+        last_used_at: model.last_used_at,
+        created_at: model.created_at,
     }
 }
 
-fn map_policy(model: crate::models::mcp_policies::Model) -> Result<McpPolicyResponse> {
-    let decoded = (|| {
-        Ok::<_, String>((
-            model.allowed_tools_list()?,
-            model.denied_tools_list()?,
-            model.granted_permissions_list()?,
-            model.granted_scopes_list()?,
-        ))
-    })()
-    .map_err(|_error| {
-        tracing::error!(
-            client_id = %model.client_id,
-            error_code = "mcp_persisted_policy_invalid",
-            "Persisted MCP policy is invalid"
-        );
-        Error::InternalServerError
-    })?;
-    Ok(McpPolicyResponse {
-        allowed_tools: decoded.0,
-        denied_tools: decoded.1,
-        granted_permissions: decoded.2,
-        granted_scopes: decoded.3,
+fn map_policy(model: McpPolicyRecord) -> McpPolicyResponse {
+    McpPolicyResponse {
+        allowed_tools: model.allowed_tools,
+        denied_tools: model.denied_tools,
+        granted_permissions: model.granted_permissions,
+        granted_scopes: model.granted_scopes,
         metadata: model.metadata,
-        updated_at: model.updated_at.into(),
-    })
+        updated_at: model.updated_at,
+    }
 }
 
-fn map_token(model: crate::models::mcp_tokens::Model) -> McpTokenResponse {
-    let is_active = model.is_active();
+fn map_token(model: McpTokenRecord) -> McpTokenResponse {
+    let is_active = model.is_active;
     McpTokenResponse {
         id: model.id,
         token_name: model.token_name,
         token_preview: model.token_preview,
         is_active,
-        expires_at: model.expires_at.map(Into::into),
-        revoked_at: model.revoked_at.map(Into::into),
-        last_used_at: model.last_used_at.map(Into::into),
-        created_at: model.created_at.into(),
+        expires_at: model.expires_at,
+        revoked_at: model.revoked_at,
+        last_used_at: model.last_used_at,
+        created_at: model.created_at,
     }
 }
 
-fn map_scaffold_draft(
-    model: crate::models::mcp_scaffold_drafts::Model,
-) -> McpModuleScaffoldDraftResponse {
+fn map_scaffold_draft(model: McpScaffoldDraftRecord) -> McpModuleScaffoldDraftResponse {
     McpModuleScaffoldDraftResponse {
         id: model.id,
         client_id: model.client_id,
@@ -1208,28 +1137,29 @@ fn map_scaffold_draft(
         request_payload: model.request_payload,
         preview_payload: model.preview_payload,
         workspace_root: model.workspace_root,
-        applied_at: model.applied_at.map(Into::into),
+        applied_at: model.applied_at,
         created_by: model.created_by,
-        created_at: model.created_at.into(),
-        updated_at: model.updated_at.into(),
+        created_at: model.created_at,
+        updated_at: model.updated_at,
     }
 }
 
-fn map_client_details(details: McpClientDetails) -> Result<McpClientDetailsResponse> {
+fn map_client_details(details: McpClientDetailsRecord) -> Result<McpClientDetailsResponse> {
     Ok(McpClientDetailsResponse {
         client: map_client_summary(details.client.clone()),
         description: details.client.description,
         delegated_user_id: details.client.delegated_user_id,
         metadata: details.client.metadata,
-        policy: details.policy.map(map_policy).transpose()?,
+        policy: details.policy.map(map_policy),
         tokens: details.tokens.into_iter().map(map_token).collect(),
         effective_access_context: details
             .effective_access_context
-            .and_then(|value| serde_json::to_value(value).ok()),
+            .map(serde_json::to_value)
+            .transpose()?,
     })
 }
 
-fn map_audit_event(model: crate::models::mcp_audit_logs::Model) -> McpAuditEventResponse {
+fn map_audit_event(model: McpAuditEventRecord) -> McpAuditEventResponse {
     McpAuditEventResponse {
         id: model.id,
         client_id: model.client_id,
@@ -1242,14 +1172,12 @@ fn map_audit_event(model: crate::models::mcp_audit_logs::Model) -> McpAuditEvent
         reason: model.reason,
         correlation_id: model.correlation_id,
         metadata: model.metadata,
-        created_at: model.created_at.into(),
+        created_at: model.created_at,
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::map_mcp_authority_error;
-    use crate::services::mcp_management_authority::McpManagementAuthorityError;
     use axum::{http::StatusCode, response::IntoResponse};
 
     use super::*;
@@ -1257,28 +1185,48 @@ mod tests {
     #[test]
     fn maps_mcp_authority_error_to_stable_http_statuses() {
         assert_eq!(
-            map_mcp_authority_error(McpManagementAuthorityError::Invalid("bad".to_string()))
+            map_management_error(McpManagementMutationError::Validation("bad".to_string()))
                 .into_response()
                 .status(),
             StatusCode::BAD_REQUEST
         );
         assert_eq!(
-            map_mcp_authority_error(McpManagementAuthorityError::Forbidden("no".to_string()))
+            map_management_error(McpManagementMutationError::Forbidden("no".to_string()))
                 .into_response()
                 .status(),
             StatusCode::FORBIDDEN
         );
         assert_eq!(
-            map_mcp_authority_error(McpManagementAuthorityError::NotFound("client".to_string()))
+            map_management_error(McpManagementMutationError::NotFound("client".to_string()))
                 .into_response()
                 .status(),
             StatusCode::NOT_FOUND
         );
         assert_eq!(
-            map_mcp_authority_error(McpManagementAuthorityError::Internal("db".to_string()))
+            map_management_error(McpManagementMutationError::Internal("db".to_string()))
                 .into_response()
                 .status(),
             StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+
+    #[tokio::test]
+    async fn delegation_denial_keeps_the_management_rest_error_envelope() {
+        let response = McpManagementHttpError::from(McpManagementMutationError::Authority(
+            McpManagementAuthorityError::Forbidden("grant exceeds authority".to_string()),
+        ))
+        .into_response();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let bytes = axum::body::to_bytes(response.into_body(), 1024)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(
+            body,
+            serde_json::json!({
+                "error": "access_denied",
+                "message": "grant exceeds authority",
+            })
         );
     }
 

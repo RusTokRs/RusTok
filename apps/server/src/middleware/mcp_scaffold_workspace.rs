@@ -3,7 +3,6 @@ use std::str::FromStr;
 use axum::{
     Json,
     body::{Body, to_bytes},
-    extract::State,
     http::{Method, Request, StatusCode, header, request::Parts},
     middleware::Next,
     response::{IntoResponse, Response},
@@ -18,26 +17,13 @@ use rustok_mcp::{
 };
 use uuid::Uuid;
 
-use crate::services::mcp_management_authority::{
-    McpManagementAuthorityError, McpManagementAuthorityService,
-};
 use crate::services::mcp_scaffold_workspace::authorize_mcp_scaffold_workspace;
-use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const MAX_MCP_MANAGEMENT_BODY_BYTES: usize = 64 * 1024;
 type MiddlewareResult<T> = Result<T, Box<Response>>;
 
-/// Enforce the host-owned MCP filesystem and management authority boundaries
-/// before a transport reaches a direct service handler.
-///
-/// GraphQL/native mutations and legacy REST mutations share the same canonical
-/// authority validator. This middleware owns only HTTP parsing, request-scoped
-/// principal extraction, response mapping and workspace normalization.
-pub async fn authorize_workspace(
-    State(ctx): State<ServerRuntimeContext>,
-    request: Request<Body>,
-    next: Next,
-) -> Response {
+/// Normalize the host workspace and bound HTTP request bodies before routing.
+pub async fn authorize_workspace(request: Request<Body>, next: Next) -> Response {
     let Some(mode) = request_mode(request.method(), request.uri().path()) else {
         return next.run(request).await;
     };
@@ -48,7 +34,7 @@ pub async fn authorize_workspace(
         Err(_) => return invalid_request("MCP request body is invalid or too large"),
     };
 
-    let body = match process_request(&ctx, &parts, mode, &bytes).await {
+    let body = match process_request(&parts, mode, &bytes).await {
         Ok(body) => body,
         Err(response) => return *response,
     };
@@ -69,12 +55,11 @@ enum RequestMode {
     DirectApply,
     RemoteTool,
     CreateClient,
-    UpdatePolicy(Uuid),
-    RotateToken(Uuid),
+    UpdatePolicy,
+    RotateToken,
 }
 
 async fn process_request(
-    ctx: &ServerRuntimeContext,
     parts: &Parts,
     mode: RequestMode,
     bytes: &[u8],
@@ -83,86 +68,28 @@ async fn process_request(
         RequestMode::DirectApply => normalize_direct_apply(bytes).await,
         RequestMode::RemoteTool => normalize_remote_tool(bytes).await,
         RequestMode::CreateClient => {
-            validate_create_client(ctx, parts, bytes).await?;
+            let input = serde_json::from_slice::<CreateMcpClientRequest>(bytes).map_err(|_| {
+                Box::new(invalid_request("MCP create-client body must be valid JSON"))
+            })?;
+            McpActorType::from_str(input.actor_type.trim())
+                .map_err(|message| Box::new(invalid_request(&message)))?;
+            require_management_authority(parts)?;
             Ok(bytes.to_vec())
         }
-        RequestMode::UpdatePolicy(client_id) => {
-            validate_update_policy(ctx, parts, client_id, bytes).await?;
+        RequestMode::UpdatePolicy => {
+            serde_json::from_slice::<UpdateMcpPolicyRequest>(bytes)
+                .map_err(|_| Box::new(invalid_request("MCP policy body must be valid JSON")))?;
+            require_management_authority(parts)?;
             Ok(bytes.to_vec())
         }
-        RequestMode::RotateToken(client_id) => {
-            validate_rotate_token(ctx, parts, client_id).await?;
+        RequestMode::RotateToken => {
+            require_management_authority(parts)?;
             Ok(bytes.to_vec())
         }
     }
 }
 
-async fn validate_create_client(
-    ctx: &ServerRuntimeContext,
-    parts: &Parts,
-    bytes: &[u8],
-) -> MiddlewareResult<()> {
-    let input = serde_json::from_slice::<CreateMcpClientRequest>(bytes)
-        .map_err(|_| Box::new(invalid_request("MCP create-client body must be valid JSON")))?;
-    let actor_type = McpActorType::from_str(input.actor_type.trim())
-        .map_err(|message| Box::new(invalid_request(&message)))?;
-    let authority = management_authority(parts)?;
-
-    McpManagementAuthorityService::validate_create_client(
-        ctx.db(),
-        authority.tenant_id,
-        authority.permissions,
-        actor_type,
-        input.delegated_user_id,
-        &input.granted_permissions,
-    )
-    .await
-    .map_err(|error| Box::new(authority_error_response(error)))
-}
-
-async fn validate_update_policy(
-    ctx: &ServerRuntimeContext,
-    parts: &Parts,
-    client_id: Uuid,
-    bytes: &[u8],
-) -> MiddlewareResult<()> {
-    let input = serde_json::from_slice::<UpdateMcpPolicyRequest>(bytes)
-        .map_err(|_| Box::new(invalid_request("MCP policy body must be valid JSON")))?;
-    let authority = management_authority(parts)?;
-
-    McpManagementAuthorityService::validate_policy_update(
-        ctx.db(),
-        authority.tenant_id,
-        authority.permissions,
-        client_id,
-        &input.granted_permissions,
-    )
-    .await
-    .map_err(|error| Box::new(authority_error_response(error)))
-}
-
-async fn validate_rotate_token(
-    ctx: &ServerRuntimeContext,
-    parts: &Parts,
-    client_id: Uuid,
-) -> MiddlewareResult<()> {
-    let authority = management_authority(parts)?;
-    McpManagementAuthorityService::validate_token_rotation(
-        ctx.db(),
-        authority.tenant_id,
-        authority.permissions,
-        client_id,
-    )
-    .await
-    .map_err(|error| Box::new(authority_error_response(error)))
-}
-
-struct ManagementAuthority<'a> {
-    tenant_id: Uuid,
-    permissions: &'a [Permission],
-}
-
-fn management_authority(parts: &Parts) -> MiddlewareResult<ManagementAuthority<'_>> {
+fn require_management_authority(parts: &Parts) -> MiddlewareResult<()> {
     let auth = parts
         .extensions
         .get::<AuthContextExtension>()
@@ -183,19 +110,7 @@ fn management_authority(parts: &Parts) -> MiddlewareResult<ManagementAuthority<'
         return Err(Box::new(forbidden("mcp:manage permission is required")));
     }
 
-    Ok(ManagementAuthority {
-        tenant_id: tenant.id,
-        permissions: &auth.permissions,
-    })
-}
-
-fn authority_error_response(error: McpManagementAuthorityError) -> Response {
-    match error {
-        McpManagementAuthorityError::Invalid(message) => invalid_request(&message),
-        McpManagementAuthorityError::Forbidden(message) => forbidden(&message),
-        McpManagementAuthorityError::NotFound(message) => not_found(&message),
-        McpManagementAuthorityError::Internal(message) => internal_error(&message),
-    }
+    Ok(())
 }
 
 async fn normalize_direct_apply(bytes: &[u8]) -> MiddlewareResult<Vec<u8>> {
@@ -257,7 +172,7 @@ async fn normalize_remote_tool(bytes: &[u8]) -> MiddlewareResult<Vec<u8>> {
 }
 
 fn request_mode(method: &Method, path: &str) -> Option<RequestMode> {
-    if method == Method::POST && path == "/api/mcp/clients" {
+    if method == Method::POST && matches!(path, "/api/mcp/clients" | "/api/mcp/clients/") {
         return Some(RequestMode::CreateClient);
     }
     if method == Method::POST && is_scaffold_apply_path(path) {
@@ -275,11 +190,11 @@ fn request_mode(method: &Method, path: &str) -> Option<RequestMode> {
     {
         return None;
     }
-    let client_id = Uuid::parse_str(segments[3]).ok()?;
+    Uuid::parse_str(segments[3]).ok()?;
     if method == Method::PUT && segments[4] == "policy" {
-        Some(RequestMode::UpdatePolicy(client_id))
+        Some(RequestMode::UpdatePolicy)
     } else if method == Method::POST && segments[4] == "rotate-token" {
-        Some(RequestMode::RotateToken(client_id))
+        Some(RequestMode::RotateToken)
     } else {
         None
     }
@@ -319,10 +234,6 @@ fn invalid_request(message: &str) -> Response {
 
 fn forbidden(message: &str) -> Response {
     response(StatusCode::FORBIDDEN, "access_denied", message)
-}
-
-fn not_found(message: &str) -> Response {
-    response(StatusCode::NOT_FOUND, "not_found", message)
 }
 
 fn internal_error(message: &str) -> Response {
@@ -383,14 +294,14 @@ mod tests {
         );
         assert_eq!(
             request_mode(&Method::PUT, &format!("/api/mcp/clients/{id}/policy")),
-            Some(RequestMode::UpdatePolicy(id))
+            Some(RequestMode::UpdatePolicy)
         );
         assert_eq!(
             request_mode(
                 &Method::POST,
                 &format!("/api/mcp/clients/{id}/rotate-token")
             ),
-            Some(RequestMode::RotateToken(id))
+            Some(RequestMode::RotateToken)
         );
         assert_eq!(
             request_mode(&Method::POST, &format!("/api/mcp/clients/{id}/deactivate")),

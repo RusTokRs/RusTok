@@ -4,6 +4,8 @@
 
 Accepted
 
+The [MCP management owner boundary](./2026-07-10-mcp-management-owner-boundary.md#ownership-refinement-2026-11-25) refines the placement of the persistence implementation. This record preserves the original decision and workflow.
+
 ## Context
 
 `rustok-mcp` already had an in-memory review/apply boundary for Alloy scaffold drafts, but that

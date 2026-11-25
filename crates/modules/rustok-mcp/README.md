@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`rustok-mcp` is RusToK's MCP adapter crate. It integrates platform services with the official Rust
+`rustok-mcp` is RusToK's MCP capability owner. It integrates platform services with the official Rust
 SDK (`rmcp`) and keeps MCP transport/protocol concerns out of business-domain crates.
 
 ## Responsibilities
@@ -99,18 +99,17 @@ root and generated files; this is provenance evidence, not a hash inferred from 
 - runtime auth hooks for persisted sessions (`McpSessionContext`, `McpAccessResolver`, `McpRuntimeBinding`, `McpAuditSink`)
 - pluggable scaffold draft runtime hooks (`McpScaffoldDraftRuntimeContext`, `McpScaffoldDraftStore`)
 - runtime allow/deny audit events for tool invocations
-- persisted MCP management layer in `apps/server` for clients/tokens/policies/audit
+- module-owned persisted MCP management for clients/tokens/policies/audit
   GraphQL: `mcpClients`, `mcpClient`, `mcpAuditEvents`, `createMcpClient`, `rotateMcpClientToken`, `updateMcpClientPolicy`, `revokeMcpToken`, `deactivateMcpClient`
   REST: `/api/mcp/*`
-- DB-backed runtime bridge in `apps/server` (`DbBackedMcpRuntimeBridge`) that resolves persisted tokens into `McpAccessContext`, writes runtime tool-call audit, and can back Alloy scaffold draft tools from the persisted server-side control plane
+- embedded `McpPersistence` resolves persisted tokens, records audit and implements the management and draft-store ports
 - optional Alloy tool surface layered on top of `alloy`
 - staged RusToK module scaffolding through `alloy_scaffold_module`
 - explicit review/apply boundary for generated drafts through `alloy_review_module_scaffold` and `alloy_apply_module_scaffold`
-- persisted Alloy scaffold draft control plane in `apps/server` through REST `/api/mcp/scaffold-drafts*` and GraphQL `mcpModuleScaffoldDraft*`
-- transaction-claimed persisted scaffold apply flow in `apps/server`: applying a draft first
+- persisted Alloy scaffold draft control plane through REST `/api/mcp/scaffold-drafts*` and GraphQL `mcpModuleScaffoldDraft*`
+- transaction-claimed persisted scaffold apply flow: applying a draft first
   atomically claims `staged -> applying` and writes an `apply_started` audit row, then records either
-  the final `applied` state with success audit or restores `staged` with failure audit if the
-  workspace write fails
+  the final `applied` state with success audit, restores `staged` on a confirmed pre-publication failure, or records `recovery_required` when publication is uncertain
 - live runtime binding hooks so Alloy scaffold tools can use the persisted draft store instead of process-local memory when a server-backed `McpScaffoldDraftStore` is attached
 - owner-owned admin UI slice for persisted Alloy scaffold drafts, MCP audit events, clients,
   policies, and safe token previews:
@@ -118,15 +117,13 @@ root and generated files; this is provenance evidence, not a hash inferred from 
   - Leptos FFA package `crates/modules/rustok-mcp/admin`
   - Next host route `/dashboard/mcp` and Leptos host route `/mcp` only mount the owner packages and
     do not own MCP transport logic
-- owner-defined `McpManagementPort` with an `apps/server` provider that delegates client,
-  policy, token, audit, and Alloy scaffold draft reads/writes to the canonical transactional
-  `McpManagementService`; the Leptos owner package contains no scaffold persistence or audit SQL
+- REST, GraphQL and native admin use the same `McpManagementPort`. The host supplies composition dependencies.
 - owner-defined GraphQL query, mutation, and DTO surface behind the `graphql` feature
 
 ### What is not implemented yet
 
 - MCP `resources`, `prompts`, `roots`, `sampling`, `logging`, `completions`, or subscriptions
-- server-owned remote MCP transport/session bootstrap beyond the current stdio adapter
+- standard MCP Streamable HTTP and independent owner deployment. The embedded host currently exposes RusToK JSON/SSE routes.
 - browser-level parity verification for the Next and Leptos management workflows
 - script-to-native-module compilation pipeline and marketplace/publish flow
 - automatic generation of module-specific `Resource`/`Permission` surface in `rustok-core`
@@ -202,14 +199,13 @@ let config = McpServerConfig::new(registry).with_access_context(McpAccessContext
 });
 ```
 
-For persisted MCP auth, keep the binding in the server layer. `apps/server` provides a
-`DbBackedMcpRuntimeBridge` that attaches a plaintext MCP token to `McpSessionContext`, resolves the
-effective `McpAccessContext` at session start, updates token/client `last_used_at`, and persists
-runtime allow/deny audit events without coupling `rustok-mcp` to SeaORM.
+For persisted MCP auth, compose the owner with the `persistence` feature.
+`McpPersistence` implements `McpManagementPort`, `McpAccessResolver`,
+`McpAuditSink` and `McpScaffoldDraftStore`. The host supplies the database,
+effective principal and permission facts, and the authorized workspace
+publisher. The `migrations` feature exports the owner migration source with
+the existing schema names and ordering.
 
-The same bridge can also back Alloy scaffold draft tools through `McpScaffoldDraftStore`, so
-`alloy_scaffold_module` / `alloy_review_module_scaffold` / `alloy_apply_module_scaffold` operate on
-persisted drafts from `apps/server` instead of process-local in-memory state.
 
 ## Interactions
 
@@ -217,7 +213,7 @@ persisted drafts from `apps/server` instead of process-local in-memory state.
 - `crates/libs/rustok-core` for registry/services
 - domain and capability crates through their service layers
 - Alloy scaffold contracts when scaffold tools are enabled
-- `apps/server` for persisted MCP clients/tokens/policies/audit and runtime bridge wiring
+- `apps/server` for embedded composition, HTTP routing and host workspace publication
 
 ## Entry points
 

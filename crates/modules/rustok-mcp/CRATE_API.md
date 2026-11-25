@@ -1,7 +1,7 @@
 # rustok-mcp / CRATE_API
 
 ## Public Modules
-`access`, `alloy_authoring`, `alloy_import`, `alloy_tools`, `management`, `runtime`, `scaffold_workspace`, `server`, `tools`.
+`access`, `alloy_authoring`, `alloy_import`, `alloy_tools`, `management`, `runtime`, `scaffold_workspace`, `server`, `tools`. The `persistence` feature exposes the embedded provider, and `migrations` exports the owner migration source.
 
 ## Platform Capability Bindings
 
@@ -17,7 +17,7 @@
 ## Domain Collaborations
 
 - **`rustok-core`**: Module registry exploration and standard error mappings.
-- **`apps/server`**: Host composition for MCP remote sessions, tokens, and management ports.
+- **`apps/server`**: Composes MCP persistence, the HTTP and GraphQL routes, delegated principal facts and authorized workspace publication.
 
 
 ## Primary Public Types and Signatures
@@ -52,7 +52,11 @@
 - `pub trait McpAccessResolver`
 - `pub trait McpAuditSink`
 - `pub trait McpScaffoldDraftStore`
+- `pub struct McpManagementContext`
 - `pub trait McpManagementPort`
+- `pub struct persistence::McpPersistence`
+- `pub trait persistence::McpHostServices`
+- `pub trait persistence::McpScaffoldPublication`
 - `pub struct StageMcpScaffoldDraftCommand`
 - `pub struct ApplyMcpScaffoldDraftCommand`
 - `pub struct McpScaffoldDraftRecord`

@@ -5,16 +5,16 @@ use sea_orm::{
     DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
     Statement, TransactionTrait, sea_query::Expr,
 };
-use sha2::{Digest, Sha256};
-use std::sync::OnceLock;
 use uuid::Uuid;
 
-use crate::error::{Error, Result};
-use crate::models::{mcp_audit_logs, mcp_clients, mcp_policies, mcp_scaffold_drafts, mcp_tokens};
-use rustok_mcp::{
+use super::authority::Authority;
+use super::models::{mcp_audit_logs, mcp_clients, mcp_policies, mcp_scaffold_drafts, mcp_tokens};
+use super::{McpHostServices, McpPersistenceError as Error, Result};
+use crate::{
     ApplyModuleScaffoldResponse, McpAccessContext, McpActorType, McpIdentity,
     ScaffoldModuleRequest, generate_module_scaffold,
 };
+use rustok_api::Permission;
 
 #[derive(Debug, Clone)]
 pub struct CreateMcpClientInput {
@@ -132,9 +132,6 @@ const MCP_SCAFFOLD_STATUS_APPLYING: &str = "applying";
 const MCP_SCAFFOLD_STATUS_APPLIED: &str = "applied";
 const MCP_SCAFFOLD_STATUS_RECOVERY_REQUIRED: &str = "recovery_required";
 
-static MCP_SCAFFOLD_APPLY_LOCK: OnceLock<std::sync::Arc<tokio::sync::Mutex<()>>> =
-    OnceLock::new();
-
 impl McpManagementService {
     #[tracing::instrument(
         skip(db, input),
@@ -155,7 +152,7 @@ impl McpManagementService {
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| "primary".to_string());
         validate_mcp_label(&token_name, "token name", 128)?;
-        let actor_type = actor_type_slug(input.actor_type);
+        let actor_type = input.actor_type.as_str();
         let allowed_tools = dedupe(input.allowed_tools);
         let denied_tools = dedupe(input.denied_tools);
         let granted_permissions = dedupe(input.granted_permissions);
@@ -316,6 +313,8 @@ impl McpManagementService {
         tenant_id: Uuid,
         client_id: Uuid,
         input: RotateMcpTokenInput,
+        manager_permissions: &[Permission],
+        delegated_permissions: Option<&[Permission]>,
     ) -> Result<RotateMcpTokenResult> {
         let token_name = input
             .token_name
@@ -331,6 +330,14 @@ impl McpManagementService {
                 "MCP client is inactive and cannot issue a new token".to_string(),
             ));
         }
+
+        Authority::validate_token_rotation(
+            &txn,
+            &client,
+            manager_permissions,
+            delegated_permissions,
+        )
+        .await?;
 
         if input.revoke_existing_tokens {
             revoke_active_tokens_txn(&txn, tenant_id, client.id).await?;
@@ -634,7 +641,7 @@ impl McpManagementService {
         input: StageMcpScaffoldDraftInput,
     ) -> Result<mcp_scaffold_drafts::Model> {
         if let Some(client_id) = input.client_id {
-            let _ = require_client(db, tenant_id, client_id).await?;
+            require_client(db, tenant_id, client_id).await?;
         }
 
         validate_scaffold_slug_for_rust_type(&input.request.slug)?;
@@ -700,6 +707,7 @@ impl McpManagementService {
 
     pub async fn apply_scaffold_draft(
         db: &DatabaseConnection,
+        host: &dyn McpHostServices,
         tenant_id: Uuid,
         draft_id: Uuid,
         input: ApplyMcpScaffoldDraftInput,
@@ -710,27 +718,12 @@ impl McpManagementService {
             ));
         }
 
-        // Enforce host-global manage authority and the host-owned workspace
-        // boundary in the service itself. HTTP normalization is defense in
-        // depth; remote MCP and other transports can reach this service port
-        // without the direct apply request path, so transport-only validation
-        // would leave a host filesystem write capability reachable by any
-        // tenant-scoped MCP manager.
-        let workspace_root =
-            crate::services::mcp_scaffold_workspace::authorize_mcp_scaffold_workspace(
-                &input.workspace_root,
-            )
+        // The host authorizes and locks its workspace before the owner claims the draft.
+        let publication = host
+            .prepare_scaffold_workspace(&input.workspace_root)
             .await?;
-
-        // Serialize same-process requests, then acquire the permanent OS lock
-        // shared with native xtask scaffolding before claiming or touching files.
-        let workspace_apply_lock = MCP_SCAFFOLD_APPLY_LOCK
-            .get_or_init(|| std::sync::Arc::new(tokio::sync::Mutex::new(())))
-            .clone();
-        let workspace_apply_guard = workspace_apply_lock.lock_owned().await;
-        let workspace_lock =
-            crate::services::mcp_scaffold_workspace::lock_mcp_scaffold_workspace(&workspace_root)
-                .await?;
+        let workspace_root = publication.root().to_owned();
+        let host_authority_actor_id = Some(publication.actor_id());
 
         let draft = Self::claim_scaffold_draft_for_apply(
             db,
@@ -744,8 +737,6 @@ impl McpManagementService {
         )
         .await?;
 
-        let host_authority_actor_id = crate::host_authority::current_host_authority()
-            .map(|authority| authority.actor_id());
         let staged_draft = match draft.to_staged_draft() {
             Ok(staged_draft) => staged_draft,
             Err(error) => {
@@ -768,21 +759,7 @@ impl McpManagementService {
             }
         };
 
-        let file_paths = staged_draft
-            .preview
-            .files
-            .iter()
-            .map(|file| file.path.clone())
-            .collect::<Vec<_>>();
-        if let Err(error) =
-            crate::services::mcp_scaffold_workspace::validate_mcp_scaffold_target_path(
-                &workspace_root,
-                &staged_draft.preview.crate_name,
-                &staged_draft.preview.crate_path,
-                &file_paths,
-            )
-            .await
-        {
+        if let Err(error) = publication.validate_target(&staged_draft).await {
             let reason = error.to_string();
             Self::mark_scaffold_apply_failed(
                 db,
@@ -800,14 +777,8 @@ impl McpManagementService {
 
         // Scaffold generation writes several files synchronously. Keep that filesystem
         // work off Tokio's async workers; a panic or partial write is quarantined below.
-        let apply_workspace_root = workspace_root.clone();
         let apply_result = match tokio::task::spawn_blocking(move || {
-            let _workspace_apply_guard = workspace_apply_guard;
-            crate::services::mcp_scaffold_workspace::apply_mcp_scaffold_atomically(
-                &staged_draft,
-                &apply_workspace_root,
-                workspace_lock,
-            )
+            publication.publish(&staged_draft)
         })
         .await
         {
@@ -922,10 +893,7 @@ impl McpManagementService {
                     mcp_scaffold_drafts::Column::AppliedAt,
                     Expr::value(Some(now.clone())),
                 )
-                .col_expr(
-                    mcp_scaffold_drafts::Column::UpdatedAt,
-                    Expr::value(now),
-                )
+                .col_expr(mcp_scaffold_drafts::Column::UpdatedAt, Expr::value(now))
                 .exec(&txn)
                 .await
                 .map_err(map_db_err)?;
@@ -1049,8 +1017,8 @@ impl McpManagementService {
             let mut existing_query = mcp_scaffold_drafts::Entity::find_by_id(draft_id)
                 .filter(mcp_scaffold_drafts::Column::TenantId.eq(tenant_id));
             if let Some(client_id) = expected_client_id {
-                existing_query =
-                    existing_query.filter(mcp_scaffold_drafts::Column::ClientId.eq(Some(client_id)));
+                existing_query = existing_query
+                    .filter(mcp_scaffold_drafts::Column::ClientId.eq(Some(client_id)));
             }
             let existing = existing_query
                 .one(&txn)
@@ -1303,7 +1271,7 @@ async fn lock_client_for_update_txn(
 
     let client = match txn.get_database_backend() {
         DatabaseBackend::Postgres | DatabaseBackend::MySql => {
-            query.lock_exclusive().one(txn).await?
+            query.lock_exclusive().one(txn).await.map_err(map_db_err)?
         }
         DatabaseBackend::Sqlite => {
             let statement = Statement::from_sql_and_values(
@@ -1311,10 +1279,10 @@ async fn lock_client_for_update_txn(
                 "UPDATE mcp_clients SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
                 [tenant_id.into(), client_id.into()],
             );
-            txn.execute_raw(statement).await?;
-            query.one(txn).await?
+            txn.execute_raw(statement).await.map_err(map_db_err)?;
+            query.one(txn).await.map_err(map_db_err)?
         }
-        _ => query.one(txn).await?,
+        _ => query.one(txn).await.map_err(map_db_err)?,
     };
 
     client.ok_or(Error::NotFound)
@@ -1388,10 +1356,10 @@ where
     Ok((token, plaintext_token))
 }
 
-fn identity_for_client(
+pub(super) fn identity_for_client(
     client: &mcp_clients::Model,
     policy: &mcp_policies::Model,
-) -> Result<McpIdentity, String> {
+) -> std::result::Result<McpIdentity, String> {
     Ok(McpIdentity {
         actor_id: client.id.to_string(),
         actor_type: client.actor_type(),
@@ -1408,23 +1376,13 @@ fn generate_token() -> String {
     format!("mcp_{payload}")
 }
 
-fn hash_token(token: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(token.as_bytes());
-    hex::encode(hasher.finalize())
+pub(super) fn hash_token(token: &str) -> String {
+    hex::encode(rustok_api::sha256_digest(&[token.as_bytes()]))
 }
 
 fn token_preview(token: &str) -> String {
     let visible = token.chars().take(12).collect::<String>();
     format!("{visible}...")
-}
-
-fn actor_type_slug(actor_type: McpActorType) -> &'static str {
-    match actor_type {
-        McpActorType::HumanUser => "human_user",
-        McpActorType::ServiceClient => "service_client",
-        McpActorType::ModelAgent => "model_agent",
-    }
 }
 
 fn clamp_limit(limit: Option<u64>, default: u64, max: u64) -> u64 {
@@ -1487,11 +1445,11 @@ fn validate_slug(slug: &str) -> Result<()> {
 }
 
 fn scaffold_apply_error_requires_recovery(
-    error: &rustok_mcp::alloy_scaffold::AlloyScaffoldError,
+    error: &crate::alloy_scaffold::AlloyScaffoldError,
 ) -> bool {
     matches!(
         error,
-        rustok_mcp::alloy_scaffold::AlloyScaffoldError::FileWrite(_)
+        crate::alloy_scaffold::AlloyScaffoldError::FileWrite(_)
     )
 }
 
@@ -1549,16 +1507,14 @@ fn map_db_err(_err: sea_orm::DbErr) -> Error {
 
 #[cfg(test)]
 mod tests {
+    use super::Error;
     use super::{
-        dedupe, scaffold_apply_error_requires_recovery, scaffold_status_error,
-        token_preview, validate_mcp_label, validate_scaffold_slug_for_rust_type,
-        validate_token_expiry,
-        MCP_SCAFFOLD_STATUS_APPLYING,
-        MCP_SCAFFOLD_STATUS_RECOVERY_REQUIRED,
+        MCP_SCAFFOLD_STATUS_APPLYING, MCP_SCAFFOLD_STATUS_RECOVERY_REQUIRED, dedupe,
+        scaffold_apply_error_requires_recovery, scaffold_status_error, token_preview,
+        validate_mcp_label, validate_scaffold_slug_for_rust_type, validate_token_expiry,
     };
-    use crate::error::Error;
+    use crate::alloy_scaffold::AlloyScaffoldError;
     use chrono::Utc;
-    use rustok_mcp::alloy_scaffold::AlloyScaffoldError;
     use uuid::Uuid;
 
     #[test]
@@ -1568,9 +1524,8 @@ mod tests {
         );
         assert!(scaffold_apply_error_requires_recovery(&error));
 
-        let preflight_error = AlloyScaffoldError::TargetAlreadyExists(
-            "crates/modules/example".to_string(),
-        );
+        let preflight_error =
+            AlloyScaffoldError::TargetAlreadyExists("crates/modules/example".to_string());
         assert!(!scaffold_apply_error_requires_recovery(&preflight_error));
 
         let preflight_workspace_error =
@@ -1591,10 +1546,7 @@ mod tests {
 
     #[test]
     fn recovery_required_scaffold_drafts_cannot_be_reapplied() {
-        let error = scaffold_status_error(
-            Uuid::new_v4(),
-            MCP_SCAFFOLD_STATUS_RECOVERY_REQUIRED,
-        );
+        let error = scaffold_status_error(Uuid::new_v4(), MCP_SCAFFOLD_STATUS_RECOVERY_REQUIRED);
         assert!(matches!(
             error,
             Error::BadRequest(message) if message.contains("manual workspace reconciliation")
@@ -1640,64 +1592,6 @@ mod tests {
         ]);
 
         assert_eq!(values, vec!["tool.a".to_string(), "tool.z".to_string()]);
-    }
-
-    // Concurrency-sensitive rotation/deactivation paths lock the client row
-    // inside their transaction before touching child tokens.
-    #[test]
-    fn scaffold_apply_revalidates_host_workspace_before_claiming_or_writing() {
-        let source = include_str!("mcp_management.rs");
-        let start = source
-            .find("pub async fn apply_scaffold_draft(")
-            .expect("apply_scaffold_draft implementation exists");
-        let end = source[start..]
-            .find("async fn claim_scaffold_draft_for_apply(")
-            .map(|offset| start + offset)
-            .expect("claim helper follows apply_scaffold_draft");
-        let method = &source[start..end];
-
-        let authorize = method
-            .find("authorize_mcp_scaffold_workspace")
-            .expect("service-level workspace authorization exists");
-        let workspace_lock = method
-            .find("lock_mcp_scaffold_workspace")
-            .expect("native workspace lock must be acquired");
-        let claim = method
-            .find("claim_scaffold_draft_for_apply")
-            .expect("draft claim exists");
-        let target_validation = method
-            .find("validate_mcp_scaffold_target_path")
-            .expect("persisted target path must be validated");
-        let apply = method
-            .find("apply_mcp_scaffold_atomically")
-            .expect("atomic filesystem publish must be used");
-
-        assert!(authorize < workspace_lock, "workspace must be authorized before locking");
-        assert!(workspace_lock < claim, "workspace lock must be held before draft claim");
-        assert!(claim < target_validation, "draft must be claimed before target validation");
-        assert!(
-            target_validation < apply,
-            "target and file paths must be validated before filesystem apply"
-        );
-        assert!(method.contains("tokio::task::spawn_blocking"));
-        assert!(method.contains("let _workspace_apply_guard = workspace_apply_guard"));
-        assert!(method.contains("workspace_lock,"));
-
-        let workspace_source = include_str!("mcp_scaffold_workspace.rs");
-        let atomic_start = workspace_source
-            .find("pub fn apply_mcp_scaffold_atomically(")
-            .expect("atomic workspace apply exists");
-        let atomic_apply = &workspace_source[atomic_start..];
-        let blocking_validation = atomic_apply
-            .find("validate_mcp_scaffold_target_path_blocking")
-            .expect("target paths must be revalidated in the blocking writer");
-        let staged_write = atomic_apply
-            .find("rustok_mcp::apply_staged_scaffold")
-            .expect("staged crate writer exists");
-        assert!(
-            blocking_validation < staged_write,
-            "path validation must be repeated immediately before filesystem writes"
-        );
     }
 
     #[test]

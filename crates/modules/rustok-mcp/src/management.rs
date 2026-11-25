@@ -12,6 +12,55 @@ use crate::{McpActorType, ScaffoldModuleRequest};
 pub struct McpManagementContext {
     pub actor_id: Uuid,
     pub tenant_id: Uuid,
+    pub(crate) actor_type: McpActorType,
+    pub(crate) permissions: Vec<rustok_api::Permission>,
+    pub(crate) request_actor_id: Option<Uuid>,
+}
+
+impl McpManagementContext {
+    /// Construct the context from trusted authentication middleware.
+    pub fn new(
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        actor_type: McpActorType,
+        permissions: Vec<rustok_api::Permission>,
+    ) -> Self {
+        Self {
+            tenant_id,
+            actor_id,
+            actor_type,
+            permissions,
+            request_actor_id: None,
+        }
+    }
+
+    #[cfg(feature = "auth-context")]
+    pub fn from_auth_context(auth: &rustok_api::AuthContext) -> Self {
+        let (actor_id, actor_type) = match rustok_api::AuthPrincipalKind::from_authenticated_facts(
+            &auth.grant_type,
+            auth.client_id,
+            auth.session_id,
+        ) {
+            Some(rustok_api::AuthPrincipalKind::Service) => (
+                auth.client_id.unwrap_or(auth.user_id),
+                McpActorType::ServiceClient,
+            ),
+            _ => (auth.user_id, McpActorType::HumanUser),
+        };
+        let mut context = Self::new(
+            auth.tenant_id,
+            actor_id,
+            actor_type,
+            auth.permissions.clone(),
+        );
+        context.request_actor_id = Some(auth.user_id);
+        context
+    }
+
+    #[cfg(feature = "persistence")]
+    pub(crate) fn human_actor_id(&self) -> Option<Uuid> {
+        (self.actor_type == McpActorType::HumanUser).then_some(self.actor_id)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -69,6 +118,16 @@ pub struct BootstrapMcpRemoteSessionRequest {
     pub correlation_id: Option<String>,
     #[serde(default = "default_metadata")]
     pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct McpRemoteBootstrapResponse {
+    pub transport: String,
+    pub correlation_id: Option<String>,
+    pub tenant_id: Option<String>,
+    pub client_id: Option<String>,
+    pub token_id: Option<String>,
+    pub access_context: crate::McpAccessContext,
 }
 
 #[derive(Debug, Deserialize)]
@@ -354,7 +413,21 @@ pub struct McpScaffoldDraftRecord {
 }
 
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
+pub enum McpManagementAuthorityError {
+    #[error("invalid MCP management authority request: {0}")]
+    Invalid(String),
+    #[error("MCP management authority denied: {0}")]
+    Forbidden(String),
+    #[error("MCP management resource not found: {0}")]
+    NotFound(String),
+    #[error("MCP management authority validation failed: {0}")]
+    Internal(String),
+}
+
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum McpManagementMutationError {
+    #[error(transparent)]
+    Authority(#[from] McpManagementAuthorityError),
     #[error("MCP management permission denied: {0}")]
     Forbidden(String),
     #[error("invalid MCP management mutation: {0}")]

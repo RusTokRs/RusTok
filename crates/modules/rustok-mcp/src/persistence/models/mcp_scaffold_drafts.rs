@@ -1,9 +1,47 @@
-use rustok_mcp::{
+use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+#[sea_orm(table_name = "mcp_scaffold_drafts")]
+pub struct Model {
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub client_id: Option<Uuid>,
+    pub slug: String,
+    pub crate_name: String,
+    pub status: String,
+    pub request_payload: Json,
+    pub preview_payload: Json,
+    pub workspace_root: Option<String>,
+    pub applied_at: Option<DateTimeWithTimeZone>,
+    pub created_by: Option<Uuid>,
+    pub created_at: DateTimeWithTimeZone,
+    pub updated_at: DateTimeWithTimeZone,
+}
+
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+pub enum Relation {
+    #[sea_orm(
+        belongs_to = "super::mcp_clients::Entity",
+        from = "Column::ClientId",
+        to = "super::mcp_clients::Column::Id"
+    )]
+    McpClient,
+}
+
+impl Related<super::mcp_clients::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::McpClient.def()
+    }
+}
+
+impl ActiveModelBehavior for ActiveModel {}
+
+use crate::{
     ModuleScaffoldDraftStatus, ScaffoldModulePreview, ScaffoldModuleRequest, StagedModuleScaffold,
 };
-use sea_orm::{QueryFilter, QueryOrder, QuerySelect, entity::prelude::*};
-
-pub use super::_entities::mcp_scaffold_drafts::{ActiveModel, Column, Entity, Model, Relation};
+use sea_orm::{QueryFilter, QueryOrder, QuerySelect};
 
 impl Entity {
     pub async fn find_by_tenant(
@@ -24,9 +62,9 @@ fn map_persisted_status(status: &str) -> Result<ModuleScaffoldDraftStatus, Strin
     match status {
         "staged" | "applying" => Ok(ModuleScaffoldDraftStatus::Staged),
         "applied" => Ok(ModuleScaffoldDraftStatus::Applied),
-        "recovery_required" => Err(
-            "Scaffold draft requires manual workspace reconciliation".to_string(),
-        ),
+        "recovery_required" => {
+            Err("Scaffold draft requires manual workspace reconciliation".to_string())
+        }
         other => Err(format!(
             "Scaffold draft has unsupported persisted status '{}'",
             other
@@ -91,7 +129,7 @@ impl Model {
 #[cfg(test)]
 mod tests {
     use super::map_persisted_status;
-    use rustok_mcp::ModuleScaffoldDraftStatus;
+    use crate::ModuleScaffoldDraftStatus;
 
     #[test]
     fn persisted_status_mapping_fails_closed_for_internal_or_unknown_states() {

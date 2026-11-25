@@ -25,12 +25,10 @@ hydrate = ["leptos/hydrate", "rustok-auth-ui/hydrate"]
 ssr = [
   "leptos/ssr",
   "rustok-auth-ui/ssr",
-  "dep:chrono",
   "dep:leptos_axum",
   "dep:rustok-api",
   "dep:rustok-core",
-  "dep:rustok-mcp",
-  "dep:sea-orm",
+  "rustok-mcp/auth-context",
   "dep:uuid",
   "rustok-api/server",
 ]
@@ -39,11 +37,9 @@ ssr = [
 leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
 rustok-auth-ui.workspace = true
-chrono = { workspace = true, optional = true }
 rustok-api = { workspace = true, optional = true, default-features = false }
 rustok-core = { workspace = true, optional = true }
 rustok-mcp = { workspace = true, optional = true }
-sea-orm = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 uuid = { workspace = true, optional = true }

@@ -6,7 +6,7 @@ Leptos admin package for the MCP control plane.
 
 - Expose MCP-owned operator views.
 - Preserve SSR and hydration parity.
-- Delegate mutable behavior to MCP owner services.
+- Delegate native reads and writes to the MCP owner management port.
 
 ## Interactions
 

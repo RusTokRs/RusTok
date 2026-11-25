@@ -45,6 +45,12 @@ pub mod alloy_tools {
 #[cfg(feature = "graphql")]
 pub mod graphql;
 pub mod management;
+#[cfg(feature = "migrations")]
+pub mod migrations;
+#[cfg(feature = "migrations")]
+mod module;
+#[cfg(feature = "persistence")]
+pub mod persistence;
 pub mod runtime;
 pub mod scaffold_workspace;
 pub mod server;
@@ -82,8 +88,9 @@ pub use management::{
     BootstrapMcpRemoteSessionRequest, CreateMcpClientCommand, CreateMcpClientRequest,
     CreateMcpClientResponse, McpAuditEventRecord, McpAuditEventResponse, McpAuditQuery,
     McpClientDetailsRecord, McpClientDetailsResponse, McpClientRecord, McpClientSummaryResponse,
-    McpManagementContext, McpManagementMutationError, McpManagementPort, McpManagementRuntime,
-    McpModuleScaffoldDraftResponse, McpPolicyRecord, McpPolicyResponse, McpRemoteToolCallRequest,
+    McpManagementAuthorityError, McpManagementContext, McpManagementMutationError,
+    McpManagementPort, McpManagementRuntime, McpModuleScaffoldDraftResponse, McpPolicyRecord,
+    McpPolicyResponse, McpRemoteBootstrapResponse, McpRemoteToolCallRequest,
     McpRemoteToolCallResponse, McpScaffoldDraftRecord, McpTokenRecord, McpTokenResponse,
     McpTokenSecretResult, RotateMcpTokenCommand, RotateMcpTokenRequest, RotateMcpTokenResponse,
     StageMcpModuleScaffoldDraftRequest, StageMcpScaffoldDraftCommand, UpdateMcpPolicyCommand,
@@ -110,3 +117,6 @@ pub use tools::{
 
 #[cfg(test)]
 mod contract_tests;
+
+#[cfg(feature = "migrations")]
+pub use module::McpModule;

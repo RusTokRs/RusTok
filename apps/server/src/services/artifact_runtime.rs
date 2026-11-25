@@ -222,11 +222,7 @@ fn build_capability_resolver(
     let mcp_capability = artifact_capability_name(ARTIFACT_CAPABILITY_ROUTES[3])?;
     let http_capability = artifact_capability_name(ARTIFACT_CAPABILITY_ROUTES[4])?;
     let events_capability = artifact_capability_name(ARTIFACT_CAPABILITY_ROUTES[5])?;
-    let mcp_audit = ctx
-        .shared_get::<Arc<crate::services::mcp_runtime::DbBackedMcpRuntimeBridge>>()
-        .ok_or_else(|| {
-            Error::Message("artifact runtime requires initialized MCP audit owner".to_string())
-        })?;
+    let mcp_audit = crate::services::mcp_host::persistence(ctx)?;
     let mcp_invoker = crate::services::artifact_mcp::ServerArtifactMcpInvoker::local_registry(
         registry.clone(),
         mcp_audit,

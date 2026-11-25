@@ -5,9 +5,9 @@
 `rustok-mcp` owns the RusToK MCP adapter over `rmcp`: typed tools, access
 policy, runtime binding, audit hooks, Alloy scaffold review/apply, MCP
 management contracts, GraphQL, REST DTOs, and owner-owned Next/Leptos admin
-surfaces. `apps/server` supplies persistence, authentication/RBAC extraction,
+surfaces and its embedded persistence implementation. `apps/server` supplies authentication/RBAC extraction,
 and composition; it must not recreate MCP DTOs or workflows. The current
-protocol surface includes stdio plus authenticated HTTP JSON/SSE transport.
+protocol surface includes stdio plus authenticated RusToK HTTP JSON/SSE routes.
 The owner crate also exposes one transport-neutral, read-only registry-tool
 invoker. The server uses it for both remote transport and the admitted-artifact
 `platform.mcp` route, so tool authorization is not reimplemented by either
@@ -36,7 +36,7 @@ the AI host retains that typed receipt separately from redacted tool output.
 - FFA status: `in_progress`.
 - FBA status: `boundary_ready` (`core_transport_ui`).
 - Structural shape: `core_transport_ui`
-- `McpManagementPort` is the owner contract. The Leptos package uses
+- `McpManagementPort` is the owner contract. REST, GraphQL and Leptos native share its embedded provider and the owner migration source. The Leptos package uses
   `HostRuntimeContext` for native `#[server]` functions while retaining the
   parallel GraphQL/headless adapter. Next and Leptos hosts mount owner packages
   without owning MCP management logic.
@@ -52,10 +52,10 @@ the AI host retains that typed receipt separately from redacted tool output.
    token rotation/revocation, audit, and staged Alloy draft review/apply in both
    `/dashboard/mcp` and `/mcp`. Done when native and GraphQL paths have the
    same authorization, transaction-claim, recovery, and visible audit result.
-2. **Deliver secure remote MCP transport deliberately.** Define the remote
+2. **Expose standard MCP Streamable HTTP.** Define the remote
    session bootstrap, consent, authorization, token storage, HTTPS/TLS,
    redirect validation, SSRF-safe discovery, audit/telemetry, and failure
-   policy before promoting beyond stdio. Done when a remote integration test
+   policy for the standard endpoint. Done when a remote integration test
    proves these controls without token passthrough.
 3. **Stage new MCP capabilities by owner contract.** Add resources, prompts,
    roots, sampling, logging, completions, or subscriptions only after a named
@@ -76,6 +76,11 @@ the AI host retains that typed receipt separately from redacted tool output.
    source-bearing responses and audit metadata are redacted; owner SeaORM
    integration evidence rejects a cross-tenant mutation. The remote-only tool
    names are statically guarded from generic stdio/in-process MCP.
+
+6. **Prepare the independent owner profile.** Publish the transport-neutral contracts
+   in the canonical MCP ports package when a remote owner consumer is composed.
+   Verify its dependency graph and run the same management cases against the
+   embedded and independent provider before enabling the profile.
 
 ## Verification
 

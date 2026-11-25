@@ -33,6 +33,16 @@ pub enum McpActorType {
     ModelAgent,
 }
 
+impl McpActorType {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::HumanUser => "human_user",
+            Self::ServiceClient => "service_client",
+            Self::ModelAgent => "model_agent",
+        }
+    }
+}
+
 impl FromStr for McpActorType {
     type Err = String;
 

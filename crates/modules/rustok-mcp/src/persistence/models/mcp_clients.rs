@@ -24,36 +24,12 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    #[sea_orm(
-        belongs_to = "super::tenants::Entity",
-        from = "Column::TenantId",
-        to = "super::tenants::Column::Id"
-    )]
-    Tenant,
-    #[sea_orm(
-        belongs_to = "super::users::Entity",
-        from = "Column::DelegatedUserId",
-        to = "super::users::Column::Id"
-    )]
-    DelegatedUser,
-    #[sea_orm(
-        belongs_to = "super::users::Entity",
-        from = "Column::CreatedBy",
-        to = "super::users::Column::Id"
-    )]
-    CreatedByUser,
     #[sea_orm(has_many = "super::mcp_tokens::Entity")]
     McpTokens,
     #[sea_orm(has_one = "super::mcp_policies::Entity")]
     McpPolicy,
     #[sea_orm(has_many = "super::mcp_audit_logs::Entity")]
     McpAuditLogs,
-}
-
-impl Related<super::tenants::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::Tenant.def()
-    }
 }
 
 impl Related<super::mcp_tokens::Entity> for Entity {
@@ -75,3 +51,20 @@ impl Related<super::mcp_audit_logs::Entity> for Entity {
 }
 
 impl ActiveModelBehavior for ActiveModel {}
+
+use crate::McpActorType;
+
+impl Model {
+    pub fn is_active(&self) -> bool {
+        self.is_active && self.revoked_at.is_none()
+    }
+
+    pub fn actor_type(&self) -> McpActorType {
+        match self.actor_type.as_str() {
+            "human_user" => McpActorType::HumanUser,
+            "service_client" => McpActorType::ServiceClient,
+            "model_agent" => McpActorType::ModelAgent,
+            _ => McpActorType::ServiceClient,
+        }
+    }
+}

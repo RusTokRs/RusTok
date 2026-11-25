@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use async_trait::async_trait;
 use chrono::Utc;
 use rustok_api::Permission;
@@ -7,54 +5,27 @@ use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait,
     sea_query::Expr,
 };
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use crate::error::{Error, Result};
-use crate::models::{mcp_clients, mcp_policies, mcp_tokens};
-use crate::services::mcp_management::{
+use super::authority::Authority;
+use super::models::{mcp_clients, mcp_policies, mcp_tokens};
+use super::service::identity_for_client;
+use super::service::{
     ApplyMcpScaffoldDraftInput, McpManagementService, RecordMcpAuditEventInput,
-    StageMcpScaffoldDraftInput,
+    StageMcpScaffoldDraftInput, hash_token,
 };
-use crate::services::mcp_management_authority::{
-    McpManagementAuthorityError, McpManagementAuthorityService,
-};
-use crate::services::server_runtime_context::ServerRuntimeContext;
-use rustok_mcp::{
+use super::{McpPersistence, McpPersistenceError as Error, Result};
+use crate::McpManagementAuthorityError;
+use crate::{
     ApplyModuleScaffoldRequest, ApplyModuleScaffoldResponse, McpAccessContext, McpAccessPolicy,
-    McpAccessResolver, McpActorType, McpAuditSink, McpIdentity, McpRuntimeBinding,
-    McpRuntimeError, McpRuntimeResult, McpScaffoldDraftRuntimeContext, McpScaffoldDraftStore,
-    McpSessionContext, McpToolCallAuditEvent, McpToolCallOutcome, ReviewModuleScaffoldRequest,
-    ReviewModuleScaffoldResponse, ScaffoldModuleRequest, StageModuleScaffoldResponse,
-    TOOL_MCP_WHOAMI, scaffold_source_digest,
+    McpAccessResolver, McpActorType, McpAuditSink, McpIdentity, McpRemoteBootstrapResponse,
+    McpRuntimeBinding, McpRuntimeError, McpRuntimeResult, McpScaffoldDraftRuntimeContext,
+    McpScaffoldDraftStore, McpSessionContext, McpToolCallAuditEvent, McpToolCallOutcome,
+    ReviewModuleScaffoldRequest, ReviewModuleScaffoldResponse, ScaffoldModuleRequest,
+    StageModuleScaffoldResponse, TOOL_MCP_WHOAMI, scaffold_source_digest,
 };
-use rustok_rbac::PermissionAvailability;
 
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct McpRemoteBootstrapResponse {
-    pub transport: String,
-    pub correlation_id: Option<String>,
-    pub tenant_id: Option<String>,
-    pub client_id: Option<String>,
-    pub token_id: Option<String>,
-    pub access_context: McpAccessContext,
-}
-
-pub struct DbBackedMcpRuntimeBridge {
-    db: DatabaseConnection,
-    runtime_ctx: ServerRuntimeContext,
-}
-
-impl DbBackedMcpRuntimeBridge {
-    pub fn new(runtime_ctx: ServerRuntimeContext) -> Self {
-        let db = runtime_ctx.db_clone();
-        Self { db, runtime_ctx }
-    }
-
-    pub fn shared(runtime_ctx: ServerRuntimeContext) -> Arc<Self> {
-        Arc::new(Self::new(runtime_ctx))
-    }
-
+impl McpPersistence {
     pub async fn bootstrap_remote_session(
         &self,
         session_context: McpSessionContext,
@@ -88,7 +59,7 @@ impl DbBackedMcpRuntimeBridge {
                     .access_context
                     .identity
                     .as_ref()
-                    .map(|identity| actor_type_slug(identity.actor_type).to_string()),
+                    .map(|identity| identity.actor_type.as_str().to_string()),
                 action: "remote_session_bootstrapped".to_string(),
                 outcome: "success".to_string(),
                 tool_name: None,
@@ -127,26 +98,24 @@ impl DbBackedMcpRuntimeBridge {
             .one(&self.db)
             .await
             .map_err(map_db_err)?
-            .ok_or_else(|| Error::Unauthorized("MCP client not found".into()))?;
+            .ok_or_else(|| Error::Unauthorized("Invalid or expired MCP token".into()))?;
 
         if !client.is_active() {
-            return Err(Error::Unauthorized("MCP client is inactive".into()));
+            return Err(Error::Unauthorized("Invalid or expired MCP token".into()));
         }
 
         let policy =
             mcp_policies::Entity::find_by_client_scoped(&self.db, client.tenant_id, client.id)
                 .await
                 .map_err(map_db_err)?;
-        if let Some(policy) = policy.as_ref() {
-            McpManagementAuthorityService::validate_runtime_policy(
-                &self.db,
-                client.tenant_id,
-                &client,
-                policy,
-            )
-            .await
-            .map_err(|error| map_runtime_policy_error(&client, error))?;
-        }
+        Authority::validate_runtime_policy(
+            self.host.as_ref(),
+            client.tenant_id,
+            &client,
+            policy.as_ref(),
+        )
+        .await
+        .map_err(|error| map_runtime_policy_error(&client, error))?;
 
         touch_last_used(&self.db, &client, &token).await?;
 
@@ -168,37 +137,38 @@ impl DbBackedMcpRuntimeBridge {
         tenant_id: Uuid,
         mut access_context: McpAccessContext,
     ) -> Result<McpAccessContext> {
-        let availability = crate::services::rbac_module_availability::permission_availability_for(
-            &self.runtime_ctx,
-            tenant_id,
-        )
-        .await
-        .map_err(|_error| {
-            tracing::error!(
-                tenant_id = %tenant_id,
-                error_code = "mcp_module_permission_availability_failed",
-                "MCP module permission availability failed"
-            );
-            Error::InternalServerError
-        })?;
-        access_context.granted_permissions = filter_active_module_permissions(
-            &access_context.granted_permissions,
-            availability.as_ref(),
-        );
+        let permissions = parse_granted_permissions(&access_context.granted_permissions);
+        let mut active = self
+            .host
+            .active_permissions(tenant_id, permissions)
+            .await
+            .map_err(|_error| {
+                tracing::error!(
+                    tenant_id = %tenant_id,
+                    error_code = "mcp_module_permission_availability_failed",
+                    "MCP module permission availability failed"
+                );
+                Error::InternalServerError
+            })?;
+        active.sort_by_cached_key(ToString::to_string);
+        active.dedup();
+        access_context.granted_permissions = active
+            .into_iter()
+            .map(|permission| permission.to_string())
+            .collect();
         Ok(access_context)
     }
 }
 
 #[async_trait]
-impl McpAccessResolver for DbBackedMcpRuntimeBridge {
+impl McpAccessResolver for McpPersistence {
     async fn resolve_runtime_binding(
         &self,
         session: &McpSessionContext,
     ) -> McpRuntimeResult<McpRuntimeBinding> {
-        let plaintext_token = session
-            .plaintext_token
-            .as_deref()
-            .ok_or_else(|| McpRuntimeError::Message("MCP session plaintext token is required".to_string()))?;
+        let plaintext_token = session.plaintext_token.as_deref().ok_or_else(|| {
+            McpRuntimeError::Message("MCP session plaintext token is required".to_string())
+        })?;
 
         self.resolve_binding_for_token(plaintext_token)
             .await
@@ -207,7 +177,7 @@ impl McpAccessResolver for DbBackedMcpRuntimeBridge {
 }
 
 #[async_trait]
-impl McpAuditSink for DbBackedMcpRuntimeBridge {
+impl McpAuditSink for McpPersistence {
     async fn record_tool_call(&self, event: McpToolCallAuditEvent) -> McpRuntimeResult<()> {
         let Some(tenant_id) = parse_uuid(event.tenant_id.as_deref()) else {
             tracing::warn!(
@@ -230,7 +200,7 @@ impl McpAuditSink for DbBackedMcpRuntimeBridge {
                 actor_type: event
                     .identity
                     .as_ref()
-                    .map(|identity| actor_type_slug(identity.actor_type).to_string()),
+                    .map(|identity| identity.actor_type.as_str().to_string()),
                 action: "tool_call".to_string(),
                 outcome: match event.outcome {
                     McpToolCallOutcome::Allowed => "allowed".to_string(),
@@ -254,16 +224,14 @@ impl McpAuditSink for DbBackedMcpRuntimeBridge {
 }
 
 #[async_trait]
-impl McpScaffoldDraftStore for DbBackedMcpRuntimeBridge {
+impl McpScaffoldDraftStore for McpPersistence {
     async fn stage_scaffold_draft(
         &self,
         context: &McpScaffoldDraftRuntimeContext,
         request: ScaffoldModuleRequest,
     ) -> McpRuntimeResult<StageModuleScaffoldResponse> {
-        let tenant_id = tenant_id_from_runtime_context(context)
-            .map_err(|e| McpRuntimeError::Message(e.to_string()))?;
-        let client_id = client_id_from_runtime_context(context)
-            .map_err(|e| McpRuntimeError::Message(e.to_string()))?;
+        let tenant_id = tenant_id_from_runtime_context(context)?;
+        let client_id = client_id_from_runtime_context(context)?;
         let created_by = actor_user_id_from_runtime_context(context);
         let (actor_id, actor_type) = actor_identity_from_runtime_context(context);
 
@@ -291,19 +259,17 @@ impl McpScaffoldDraftStore for DbBackedMcpRuntimeBridge {
             draft_id: draft.id.to_string(),
             preview,
             source_digest,
-            status: draft
-                .status_value()
-                .map_err(McpRuntimeError::Message)?,
+            status: draft.status_value().map_err(McpRuntimeError::Message)?,
             review_required: true,
-            apply_tool: rustok_mcp::TOOL_ALLOY_APPLY_MODULE_SCAFFOLD.to_string(),
+            apply_tool: crate::TOOL_ALLOY_APPLY_MODULE_SCAFFOLD.to_string(),
             next_steps: vec![
                 format!(
                     "Review the persisted draft with {} before applying it.",
-                    rustok_mcp::TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD
+                    crate::TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD
                 ),
                 format!(
                     "Apply the persisted draft with {} and confirm=true.",
-                    rustok_mcp::TOOL_ALLOY_APPLY_MODULE_SCAFFOLD
+                    crate::TOOL_ALLOY_APPLY_MODULE_SCAFFOLD
                 ),
             ],
         })
@@ -314,21 +280,19 @@ impl McpScaffoldDraftStore for DbBackedMcpRuntimeBridge {
         context: &McpScaffoldDraftRuntimeContext,
         request: ReviewModuleScaffoldRequest,
     ) -> McpRuntimeResult<ReviewModuleScaffoldResponse> {
-        let tenant_id = tenant_id_from_runtime_context(context)
-            .map_err(|e| McpRuntimeError::Message(e.to_string()))?;
+        let tenant_id = tenant_id_from_runtime_context(context)?;
         let draft_id = Uuid::parse_str(&request.draft_id)
             .map_err(|error| McpRuntimeError::Message(format!("Invalid draft id: {error}")))?;
         let client_id = client_id_from_runtime_context(context)
             .map_err(|error| McpRuntimeError::Message(error.to_string()))?;
         let draft = McpManagementService::get_scaffold_draft_for_client(
-            &self.db,
-            tenant_id,
-            client_id,
-            draft_id,
+            &self.db, tenant_id, client_id, draft_id,
         )
         .await
         .map_err(|error| McpRuntimeError::Message(error.to_string()))?
-        .ok_or_else(|| McpRuntimeError::Message(format!("Unknown scaffold draft: {}", request.draft_id)))?;
+        .ok_or_else(|| {
+            McpRuntimeError::Message(format!("Unknown scaffold draft: {}", request.draft_id))
+        })?;
 
         ensure_scaffold_draft_client_binding(draft.client_id, client_id)?;
         let draft = draft
@@ -347,8 +311,7 @@ impl McpScaffoldDraftStore for DbBackedMcpRuntimeBridge {
         context: &McpScaffoldDraftRuntimeContext,
         request: ApplyModuleScaffoldRequest,
     ) -> McpRuntimeResult<ApplyModuleScaffoldResponse> {
-        let tenant_id = tenant_id_from_runtime_context(context)
-            .map_err(|e| McpRuntimeError::Message(e.to_string()))?;
+        let tenant_id = tenant_id_from_runtime_context(context)?;
         let applied_by = actor_user_id_from_runtime_context(context);
         let (actor_id, actor_type) = actor_identity_from_runtime_context(context);
         let draft_id = Uuid::parse_str(&request.draft_id)
@@ -358,6 +321,7 @@ impl McpScaffoldDraftStore for DbBackedMcpRuntimeBridge {
             .map_err(|error| McpRuntimeError::Message(error.to_string()))?;
         let (_, response) = McpManagementService::apply_scaffold_draft(
             &self.db,
+            self.host.as_ref(),
             tenant_id,
             draft_id,
             ApplyMcpScaffoldDraftInput {
@@ -376,14 +340,8 @@ impl McpScaffoldDraftStore for DbBackedMcpRuntimeBridge {
     }
 }
 
-fn filter_active_module_permissions(
-    granted_permissions: &[String],
-    availability: Option<&PermissionAvailability>,
-) -> Vec<String> {
-    // Always parse and canonicalize persisted grants. When no module registry
-    // is composed, module filtering is intentionally skipped, but returning
-    // raw strings would make whitespace/alias handling differ by runtime
-    // profile because McpAccessContext compares canonical permission strings.
+fn parse_granted_permissions(granted_permissions: &[String]) -> Vec<Permission> {
+    // Canonicalize persisted grants even when the host runs without a module registry.
     let mut permissions = Vec::with_capacity(granted_permissions.len());
     for value in granted_permissions {
         match value.parse::<Permission>() {
@@ -396,41 +354,7 @@ fn filter_active_module_permissions(
             }
         }
     }
-
-    let mut active = match availability {
-        Some(availability) => availability.active_permissions(&permissions),
-        None => permissions,
-    };
-    active.sort_by_cached_key(ToString::to_string);
-    active.dedup();
-    active
-        .into_iter()
-        .map(|permission| permission.to_string())
-        .collect()
-}
-
-#[cfg(test)]
-mod permission_filter_tests {
-    use super::filter_active_module_permissions;
-    use rustok_api::Permission;
-
-    #[test]
-    fn granted_permissions_are_canonicalized_without_a_module_registry() {
-        let padded = format!(" {} ", Permission::MODULES_READ);
-        let filtered = filter_active_module_permissions(&[padded], None);
-
-        assert_eq!(filtered, vec![Permission::MODULES_READ.to_string()]);
-    }
-
-    #[test]
-    fn invalid_grants_are_ignored_without_a_module_registry() {
-        let filtered = filter_active_module_permissions(
-            &["not:a:permission".to_string()],
-            None,
-        );
-
-        assert!(filtered.is_empty());
-    }
+    permissions
 }
 
 fn access_context_for_client(
@@ -478,29 +402,32 @@ fn access_context_for_client(
 
 fn tenant_id_from_runtime_context(
     context: &McpScaffoldDraftRuntimeContext,
-) -> anyhow::Result<Uuid> {
+) -> McpRuntimeResult<Uuid> {
     context
         .runtime_binding
         .as_ref()
         .and_then(|binding| binding.tenant_id.as_deref())
         .and_then(|value| parse_uuid(Some(value)))
         .ok_or_else(|| {
-            anyhow::anyhow!("Persisted scaffold draft flow requires tenant-bound MCP runtime")
+            McpRuntimeError::from("Persisted scaffold draft flow requires tenant-bound MCP runtime")
         })
 }
 
 fn client_id_from_runtime_context(
     context: &McpScaffoldDraftRuntimeContext,
-) -> anyhow::Result<Uuid> {
+) -> McpRuntimeResult<Uuid> {
     let value = context
         .runtime_binding
         .as_ref()
         .and_then(|binding| binding.client_id.as_deref())
         .ok_or_else(|| {
-            anyhow::anyhow!("Persisted scaffold draft flow requires a client-bound MCP runtime")
+            McpRuntimeError::from(
+                "Persisted scaffold draft flow requires a client-bound MCP runtime",
+            )
         })?;
-    Uuid::parse_str(value)
-        .map_err(|error| anyhow::anyhow!("Invalid MCP client id in runtime binding: {error}"))
+    Uuid::parse_str(value).map_err(|error| {
+        McpRuntimeError::from(format!("Invalid MCP client id in runtime binding: {error}"))
+    })
 }
 
 fn ensure_scaffold_draft_client_binding(
@@ -526,7 +453,7 @@ fn actor_identity_from_runtime_context(
         .map(|identity| {
             (
                 Some(identity.actor_id.clone()),
-                Some(actor_type_slug(identity.actor_type).to_string()),
+                Some(identity.actor_type.as_str().to_string()),
             )
         })
         .unwrap_or_default()
@@ -549,20 +476,6 @@ fn actor_user_id_from_access_context(access: &McpAccessContext) -> Option<Uuid> 
                 McpActorType::HumanUser => parse_uuid(Some(identity.actor_id.as_str())),
                 _ => None,
             })
-    })
-}
-
-fn identity_for_client(
-    client: &mcp_clients::Model,
-    policy: &mcp_policies::Model,
-) -> Result<McpIdentity, String> {
-    Ok(McpIdentity {
-        actor_id: client.id.to_string(),
-        actor_type: client.actor_type(),
-        tenant_id: Some(client.tenant_id.to_string()),
-        delegated_user_id: client.delegated_user_id.map(|value| value.to_string()),
-        display_name: Some(client.display_name.clone()),
-        scopes: policy.granted_scopes_list()?,
     })
 }
 
@@ -621,24 +534,10 @@ async fn touch_last_used(
     Ok(())
 }
 
-fn hash_token(token: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(token.as_bytes());
-    hex::encode(hasher.finalize())
-}
-
 fn parse_uuid(value: Option<&str>) -> Option<Uuid> {
     value
         .and_then(|value| Uuid::parse_str(value).ok())
         .filter(|value| !value.is_nil())
-}
-
-fn actor_type_slug(actor_type: McpActorType) -> &'static str {
-    match actor_type {
-        McpActorType::HumanUser => "human_user",
-        McpActorType::ServiceClient => "service_client",
-        McpActorType::ModelAgent => "model_agent",
-    }
 }
 
 fn map_db_err(_err: sea_orm::DbErr) -> Error {
@@ -670,38 +569,136 @@ fn map_runtime_policy_error(
         McpManagementAuthorityError::Invalid(_)
         | McpManagementAuthorityError::Forbidden(_)
         | McpManagementAuthorityError::NotFound(_) => {
-            Error::Unauthorized("MCP token policy is no longer valid".to_string())
+            Error::Unauthorized("Invalid or expired MCP token".to_string())
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        ensure_scaffold_draft_client_binding, filter_active_module_permissions, map_db_err,
-        parse_uuid,
-    };
-    use axum::{http::StatusCode, response::IntoResponse};
+    use std::sync::Arc;
 
-    use super::{access_context_for_client, actor_user_id_from_runtime_context, touch_last_used};
-    use crate::models::{mcp_clients, mcp_policies, mcp_tokens, tenants};
-    use rustok_api::Permission;
-    use rustok_mcp::{
+    use sea_orm::{
+        ActiveModelTrait, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection,
+        EntityTrait, Set, Statement,
+        sea_query::{Alias, ColumnDef, Table},
+    };
+    use sea_orm_migration::SchemaManager;
+
+    use super::super::{
+        McpDelegatedPrincipal, McpHostServices, McpPersistenceError, McpScaffoldPublication,
+        Result,
+        models::{mcp_clients, mcp_policies, mcp_tokens},
+    };
+    use super::{
+        McpPersistence, access_context_for_client, actor_user_id_from_runtime_context,
+        ensure_scaffold_draft_client_binding, map_db_err, parse_uuid, touch_last_used,
+    };
+    use crate::{
         McpAccessContext, McpActorType, McpIdentity, McpScaffoldDraftRuntimeContext,
         McpSessionContext, TOOL_MCP_WHOAMI,
     };
-    use rustok_rbac::PermissionAvailability;
-    use sea_orm::entity::prelude::Uuid;
-    use std::collections::{BTreeMap, BTreeSet};
+    use rustok_api::Permission;
+    use uuid::Uuid;
+
+    struct TestHost {
+        disabled_permission: Option<Permission>,
+        availability_failed: bool,
+    }
+
+    #[async_trait::async_trait]
+    impl McpHostServices for TestHost {
+        fn request_permissions(&self, _: Uuid, _: Uuid) -> Option<Vec<Permission>> {
+            None
+        }
+
+        async fn delegated_principal(
+            &self,
+            _tenant_id: Uuid,
+            _user_id: Uuid,
+        ) -> Result<McpDelegatedPrincipal> {
+            Err(McpPersistenceError::InternalServerError)
+        }
+
+        async fn active_permissions(
+            &self,
+            _tenant_id: Uuid,
+            mut permissions: Vec<Permission>,
+        ) -> Result<Vec<Permission>> {
+            if self.availability_failed {
+                return Err(McpPersistenceError::InternalServerError);
+            }
+            if let Some(disabled_permission) = &self.disabled_permission {
+                permissions.retain(|permission| permission != disabled_permission);
+            }
+            Ok(permissions)
+        }
+
+        async fn prepare_scaffold_workspace(
+            &self,
+            _requested_root: &str,
+        ) -> Result<Box<dyn McpScaffoldPublication>> {
+            Err(McpPersistenceError::InternalServerError)
+        }
+    }
+
+    async fn permission_test_runtime(host: TestHost) -> McpPersistence {
+        McpPersistence {
+            db: Database::connect("sqlite::memory:")
+                .await
+                .expect("open runtime test database"),
+            host: Arc::new(host),
+        }
+    }
+
+    #[tokio::test]
+    async fn granted_permissions_are_canonicalized_without_a_module_registry() {
+        let runtime = permission_test_runtime(TestHost {
+            disabled_permission: None,
+            availability_failed: false,
+        })
+        .await;
+        let access = McpAccessContext {
+            granted_permissions: vec![
+                format!(" {} ", Permission::MODULES_READ),
+                Permission::MODULES_READ.to_string(),
+                "not:a:permission".to_string(),
+            ],
+            ..Default::default()
+        };
+        let filtered = runtime
+            .filter_active_module_permissions(Uuid::new_v4(), access)
+            .await
+            .expect("canonicalize permissions without a module registry");
+
+        assert_eq!(
+            filtered.granted_permissions,
+            vec![Permission::MODULES_READ.to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn permission_availability_failure_rejects_the_runtime_binding() {
+        let runtime = permission_test_runtime(TestHost {
+            disabled_permission: None,
+            availability_failed: true,
+        })
+        .await;
+        let denied = runtime
+            .filter_active_module_permissions(Uuid::new_v4(), McpAccessContext::default())
+            .await;
+        assert!(matches!(
+            denied,
+            Err(McpPersistenceError::InternalServerError)
+        ));
+    }
 
     #[test]
     fn scaffold_draft_access_is_bound_to_the_current_mcp_client() {
         let client_id = Uuid::new_v4();
         assert!(ensure_scaffold_draft_client_binding(Some(client_id), client_id).is_ok());
         assert!(ensure_scaffold_draft_client_binding(None, client_id).is_err());
-        assert!(
-            ensure_scaffold_draft_client_binding(Some(Uuid::new_v4()), client_id).is_err()
-        );
+        assert!(ensure_scaffold_draft_client_binding(Some(Uuid::new_v4()), client_id).is_err());
     }
 
     #[test]
@@ -716,26 +713,30 @@ mod tests {
         assert_eq!(parse_uuid(None), None);
     }
 
-    #[test]
-    fn disabled_module_grants_are_removed_from_mcp_runtime_context() {
-        let forum_grant = Permission::FORUM_TOPICS_READ.to_string();
-        let availability = PermissionAvailability::new(
-            BTreeMap::from([(forum_grant.clone(), "forum".to_string())]),
-            BTreeSet::new(),
-        );
-
-        let active = filter_active_module_permissions(
-            &[forum_grant, Permission::MODULES_LIST.to_string()],
-            Some(&availability),
-        );
-
-        assert_eq!(active, vec![Permission::MODULES_LIST.to_string()]);
+    #[tokio::test]
+    async fn disabled_module_grants_are_removed_from_mcp_runtime_context() {
+        let runtime = permission_test_runtime(TestHost {
+            disabled_permission: Some(Permission::FORUM_TOPICS_READ),
+            availability_failed: false,
+        })
+        .await;
         let access = McpAccessContext {
-            identity: None,
-            granted_permissions: active,
-            policy: Default::default(),
+            granted_permissions: vec![
+                Permission::FORUM_TOPICS_READ.to_string(),
+                Permission::MODULES_LIST.to_string(),
+            ],
+            ..Default::default()
         };
-        let decision = access.authorize_tool(&rustok_mcp::McpToolRequirement {
+        let access = runtime
+            .filter_active_module_permissions(Uuid::new_v4(), access)
+            .await
+            .expect("filter disabled module permissions");
+
+        assert_eq!(
+            access.granted_permissions,
+            vec![Permission::MODULES_LIST.to_string()]
+        );
+        let decision = access.authorize_tool(&crate::McpToolRequirement {
             tool_name: "forum.read_topic".to_string(),
             required_permissions: vec![Permission::FORUM_TOPICS_READ.to_string()],
             required_scopes: Vec::new(),
@@ -746,26 +747,158 @@ mod tests {
 
     #[test]
     fn database_errors_map_to_internal_server_error() {
-        let response =
-            map_db_err(sea_orm::DbErr::Custom("database failure".to_string())).into_response();
-        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(matches!(
+            map_db_err(sea_orm::DbErr::Custom("database failure".to_string())),
+            McpPersistenceError::InternalServerError
+        ));
+    }
+
+    async fn open_persistence_fixture() -> (DatabaseConnection, Uuid) {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("open MCP test database");
+        let schema = SchemaManager::new(&db);
+        // These tables stub only the external keys referenced by MCP migrations.
+        for table in ["tenants", "users"] {
+            schema
+                .create_table(
+                    Table::create()
+                        .table(Alias::new(table))
+                        .col(
+                            ColumnDef::new(Alias::new("id"))
+                                .uuid()
+                                .not_null()
+                                .primary_key(),
+                        )
+                        .to_owned(),
+                )
+                .await
+                .expect("create referenced key table");
+        }
+        for migration in crate::migrations::migrations() {
+            migration.up(&schema).await.expect("apply MCP migration");
+        }
+
+        let tenant_id = Uuid::new_v4();
+        db.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "INSERT INTO tenants (id) VALUES (?)",
+            [tenant_id.into()],
+        ))
+        .await
+        .expect("insert tenant");
+        (db, tenant_id)
+    }
+
+    #[tokio::test]
+    async fn rotation_checks_current_policy_before_revoking_the_existing_token() {
+        use crate::{
+            CreateMcpClientCommand, McpManagementContext, McpManagementMutationError,
+            McpManagementPort, RotateMcpTokenCommand, UpdateMcpPolicyCommand,
+        };
+
+        let (db, tenant_id) = open_persistence_fixture().await;
+        let runtime = McpPersistence::new(
+            db,
+            Arc::new(TestHost {
+                disabled_permission: None,
+                availability_failed: false,
+            }),
+        );
+        let operator_id = Uuid::new_v4();
+        let operator = McpManagementContext::new(
+            tenant_id,
+            operator_id,
+            McpActorType::ServiceClient,
+            vec![Permission::MCP_MANAGE],
+        );
+        let administrator = McpManagementContext::new(
+            tenant_id,
+            Uuid::new_v4(),
+            McpActorType::ServiceClient,
+            vec![Permission::MCP_MANAGE, Permission::PAGES_MANAGE],
+        );
+        let issued = runtime
+            .create_client(
+                &operator,
+                CreateMcpClientCommand {
+                    slug: "rotation".to_string(),
+                    display_name: "Rotation".to_string(),
+                    description: None,
+                    actor_type: McpActorType::ServiceClient,
+                    delegated_user_id: None,
+                    token_name: None,
+                    token_expires_at: None,
+                    allowed_tools: Vec::new(),
+                    denied_tools: Vec::new(),
+                    granted_permissions: Vec::new(),
+                    granted_scopes: Vec::new(),
+                    metadata: serde_json::json!({}),
+                },
+            )
+            .await
+            .expect("create the MCP client and token");
+        let client_id = issued.client.id;
+        runtime
+            .update_policy(
+                &administrator,
+                UpdateMcpPolicyCommand {
+                    client_id,
+                    allowed_tools: Vec::new(),
+                    denied_tools: Vec::new(),
+                    granted_permissions: vec![Permission::PAGES_READ.to_string()],
+                    granted_scopes: Vec::new(),
+                    metadata: serde_json::json!({}),
+                },
+            )
+            .await
+            .expect("grant a permission only the administrator can delegate");
+
+        let denied = runtime
+            .rotate_token(
+                &operator,
+                RotateMcpTokenCommand {
+                    client_id,
+                    token_name: None,
+                    expires_at: None,
+                    revoke_existing_tokens: true,
+                    metadata: serde_json::json!({}),
+                },
+            )
+            .await;
+
+        assert!(matches!(
+            denied,
+            Err(McpManagementMutationError::Authority(
+                crate::McpManagementAuthorityError::Forbidden(_)
+            ))
+        ));
+        let details = runtime
+            .get_client(&operator, client_id)
+            .await
+            .expect("read current tokens")
+            .expect("client persists");
+        assert_eq!(details.tokens.len(), 1);
+        assert_eq!(details.tokens[0].id, issued.token.id);
+        assert!(details.tokens[0].is_active);
+        let audit = runtime
+            .list_audit_events(&operator, Some(client_id), None, None)
+            .await
+            .expect("read the audit log");
+        assert!(audit.iter().all(|event| event.action != "token_rotated"));
+        assert!(audit.iter().any(|event| {
+            event.actor_id.as_deref() == Some(operator_id.to_string().as_str())
+                && event.actor_type.as_deref() == Some("service_client")
+                && event.created_by.is_none()
+        }));
     }
 
     #[tokio::test]
     async fn last_used_touch_cannot_resurrect_revoked_mcp_credentials() {
-        use rustok_migrations::SqliteTestMigrator as Migrator;
-        use rustok_test_utils::db::setup_test_db_with_migrations;
-        use sea_orm::{ActiveModelTrait, EntityTrait, Set};
-
-        let db = setup_test_db_with_migrations::<Migrator>().await;
-        let tenant =
-            tenants::ActiveModel::new("MCP touch tenant", &format!("mcp-touch-{}", Uuid::new_v4()))
-                .insert(&db)
-                .await
-                .expect("insert tenant");
+        let (db, tenant_id) = open_persistence_fixture().await;
         let client = mcp_clients::ActiveModel {
             id: Set(Uuid::new_v4()),
-            tenant_id: Set(tenant.id),
+            tenant_id: Set(tenant_id),
             client_key: Set(Uuid::new_v4()),
             slug: Set("touch-client".to_string()),
             display_name: Set("Touch client".to_string()),
@@ -785,7 +918,7 @@ mod tests {
         .expect("insert MCP client");
         let token = mcp_tokens::ActiveModel {
             id: Set(Uuid::new_v4()),
-            tenant_id: Set(tenant.id),
+            tenant_id: Set(tenant_id),
             client_id: Set(client.id),
             token_name: Set("primary".to_string()),
             token_preview: Set("mcp_…".to_string()),
@@ -818,7 +951,7 @@ mod tests {
         let error = touch_last_used(&db, &stale_client, &stale_token)
             .await
             .expect_err("stale token snapshot must not touch or restore a revoked token");
-        assert!(matches!(error, crate::error::Error::Unauthorized(_)));
+        assert!(matches!(error, McpPersistenceError::Unauthorized(_)));
         let persisted = mcp_tokens::Entity::find_by_id(stale_token.id)
             .one(&db)
             .await
@@ -848,7 +981,7 @@ mod tests {
         let error = touch_last_used(&db, &stale_client, &stale_active_token)
             .await
             .expect_err("stale client snapshot must not restore a revoked client");
-        assert!(matches!(error, crate::error::Error::Unauthorized(_)));
+        assert!(matches!(error, McpPersistenceError::Unauthorized(_)));
         let persisted_client = mcp_clients::Entity::find_by_id(stale_client.id)
             .one(&db)
             .await
