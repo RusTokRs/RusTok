@@ -43,8 +43,8 @@ const ownerPath = 'crates/modules/rustok-product/src/services/catalog/queries.rs
 const owner = requireMarkers(ownerPath, [
   'pub async fn list_published_products_with_query(',
   'types::validate_storefront_product_search(list_query.search.as_deref())?;',
-  'let pattern = format!("%{search}%");',
-  'pt.title LIKE $1',
+  'let pattern = product_title_substring_like_pattern(search);',
+  "LOWER(pt.title) LIKE LOWER($2) ESCAPE '!'",
 ]);
 const searchEntryPoint = 'pub async fn list_published_products_with_query(';
 const searchEntryOffset = owner.indexOf(searchEntryPoint);

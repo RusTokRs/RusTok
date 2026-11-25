@@ -42,7 +42,7 @@ export function run() {
   require(syncSku.includes('sync_variant_sku_in_tx(&txn, tenant_id, actor_id, variant_id, sku)'),
     'owner SKU: pass changed values to Inventory in the Product transaction');
   const rowEditor = section(read(`${owner}admin/src/ui/leptos.rs`), 'fn ProductVariantsPanel(', 'fn ProductMediaPanel(');
-  require(rowEditor.includes('build_variant_row_update_draft('),
+  require(rowEditor.includes('build_variant_row_update_draft_with_price_clear('),
     'inline editor: preserve sparse price and inventory intent');
   require(command.includes('if let Patch::Set(slug) = &input.shipping_profile_slug'), 'Shipping lookup must be Set-only');
   for (const field of ['sku', 'barcode', 'shipping_profile_slug', 'weight_unit']) {

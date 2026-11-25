@@ -146,8 +146,8 @@ for (const [name, key, before, after, diagnostic] of [
   [
     'invalid inventory sends the old parsed number',
     'routedEditor',
-    'let save_variant = move |_| {\n        if is_busy.get_untracked() || product_write_blocked() || !is_editing {\n            return;\n        }\n        if !inventory_quantity_valid.get_untracked() {',
-    'let save_variant = move |_| {\n        if is_busy.get_untracked() || product_write_blocked() || !is_editing {\n            return;\n        }\n        if false {',
+    'if !inventory_quantity_valid.get_untracked() {\n            set_error_msg.set(Some(\n                "Inventory must be a non-negative 32-bit integer.".to_string(),\n            ));\n            return;\n        }\n        if !draft.has_changes() {',
+    'if false {\n            set_error_msg.set(Some(\n                "Inventory must be a non-negative 32-bit integer.".to_string(),\n            ));\n            return;\n        }\n        if !draft.has_changes() {',
     /invalid inventory input/
   ],
   [

@@ -251,7 +251,7 @@ function ffaEditorSource() {
 function ffaActionsSource({ includeAtomicValues = true } = {}) {
   return `
 export async function saveProductAction() {
-  ${includeAtomicValues ? 'const input = { attributeValues: payload.attributePatches.length ? [batch] : [] };' : 'return {};'}
+  ${includeAtomicValues ? 'const input = { attributeValues: payload.attributeValueBatches };' : 'return {};'}
 }
 `;
 }

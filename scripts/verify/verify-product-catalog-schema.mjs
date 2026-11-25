@@ -73,6 +73,8 @@ const productTagsTestPath = 'crates/modules/rustok-commerce/tests/product_taxono
 const shippingGraphqlTestPath = 'crates/modules/rustok-commerce/tests/graphql_runtime_parity_test/shipping.rs';
 const productEventTestPath = 'crates/modules/rustok-commerce/tests/product_event_index_integration_test.rs';
 const commerceMutationHelpersPath = 'crates/modules/rustok-commerce/src/graphql/mutations/helpers.rs';
+const commerceStorefrontShippingPath = 'crates/modules/rustok-commerce/src/storefront_shipping.rs';
+const commerceCheckoutCatalogPath = 'crates/modules/rustok-commerce/src/services/checkout_catalog.rs';
 const commerceSafeOrderHelpersPath =
   'crates/modules/rustok-commerce/src/graphql/mutations/safe_order_helpers.rs';
 const commerceCatalogMutationPath = 'crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs';
@@ -135,6 +137,8 @@ const productTagsTest = read(productTagsTestPath);
 const shippingGraphqlTest = read(shippingGraphqlTestPath);
 const productEventTest = read(productEventTestPath);
 const commerceMutationHelpers = read(commerceMutationHelpersPath);
+const commerceStorefrontShipping = read(commerceStorefrontShippingPath);
+const commerceCheckoutCatalog = read(commerceCheckoutCatalogPath);
 const commerceSafeOrderHelpers = read(commerceSafeOrderHelpersPath);
 const commerceCatalogMutation = read(commerceCatalogMutationPath);
 const commerceGraphqlModule = read(commerceGraphqlModulePath);
@@ -610,12 +614,17 @@ for (const marker of [
 ]) {
   requireSource(productEventTest, marker, productEventTestPath);
 }
+requireSource(
+  commerceStorefrontShipping,
+  'pub fn effective_shipping_profile_slug(',
+  commerceStorefrontShippingPath,
+);
 for (const marker of [
   'effective_shipping_profile_slug(',
-  'product_model.shipping_profile_slug.as_deref()',
+  'product.shipping_profile_slug.as_deref()',
   'variant.shipping_profile_slug.as_deref()',
 ]) {
-  requireSource(commerceMutationHelpers, marker, commerceMutationHelpersPath);
+  requireSource(commerceCheckoutCatalog, marker, commerceCheckoutCatalogPath);
 }
 for (const marker of [
   '.publish_product(port_context.clone(), id)',

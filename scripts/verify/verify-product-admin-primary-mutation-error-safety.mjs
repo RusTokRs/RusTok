@@ -71,7 +71,7 @@ const masterPlan = read(paths.masterPlan);
 requireText(facade, "ProductDetail, ProductDraft,", `${paths.facade}: ProductDraft wrapper import`);
 requireText(
   facade,
-  "graphql_error_safety::GraphqlMutationContext",
+  "GraphqlMutationContext",
   `${paths.facade}: mutation policy wiring`,
 );
 
@@ -134,6 +134,8 @@ if (countText(facade, ".map_err(|mutation_error| context.map_error(mutation_erro
   failures.push(`${paths.facade}: expected exactly four primary mutation mappers`);
 }
 
+requireText(safety, "const SELECTED_PRODUCT_ADMIN_MUTATION_BOUNDARY", `${paths.safety}: mutation boundary`);
+requireText(safety, '"product_admin_graphql_mutations"', `${paths.safety}: mutation boundary identity`);
 const mutationBlock = between(
   safety,
   "struct GraphqlMutationContext",
@@ -141,8 +143,6 @@ const mutationBlock = between(
   paths.safety,
 );
 for (const [marker, label] of [
-  ["const PRODUCT_ADMIN_MUTATION_GRAPHQL_BOUNDARY", "mutation boundary"],
-  ['"product_admin_primary_graphql_mutations"', "mutation boundary identity"],
   ["struct GraphqlMutationContext", "private mutation context"],
   ['"product-admin-mutation:{operation}:{}"', "mutation correlation namespace"],
   ["fn for_create_product(", "create context"],
@@ -156,10 +156,10 @@ for (const [marker, label] of [
   ["GraphqlHttpError::Graphql(_)", "GraphQL classification"],
   ['"Product admin service is temporarily unavailable"', "HTTP public message"],
   ['"Product admin request could not be completed"', "GraphQL public message"],
-  ['"product.admin_graphql_network_unavailable"', "network code"],
-  ['"product.admin_graphql_http_unavailable"', "HTTP code"],
-  ['"product.admin_graphql_authentication_required"', "auth code"],
-  ['"product.admin_graphql_request_rejected"', "GraphQL code"],
+  ['"product.admin_transport_network_unavailable"', "network code"],
+  ['"product.admin_transport_http_unavailable"', "HTTP code"],
+  ['"product.admin_transport_authentication_required"', "auth code"],
+  ['"product.admin_transport_request_rejected"', "GraphQL code"],
   ["let error_payload_length = match &error", "bounded payload derivation"],
   ["GraphqlHttpError::Http(value) | GraphqlHttpError::Graphql(value)", "payload variants"],
   ["Some(value.chars().count())", "payload character length"],
@@ -167,7 +167,8 @@ for (const [marker, label] of [
   ["let error_payload_present = error_payload_length.is_some_and(|length| length > 0);", "payload presence"],
   ["error_payload_present,", "payload presence diagnostic"],
   ["error_payload_length = ?error_payload_length", "payload length diagnostic"],
-  ["correlation_id = %self.correlation_id", "correlation diagnostics"],
+  ["correlation_id_present = !self.correlation_id.is_empty()", "correlation diagnostics"],
+  ["correlation_id_length = self.correlation_id.chars().count()", "correlation length diagnostics"],
   ["token_present = self.token_present", "token presence"],
   ["tenant_slug_length = ?self.tenant_slug_length", "tenant slug shape"],
   ["tenant_id_length = self.tenant_id_length", "tenant ID shape"],
@@ -175,7 +176,7 @@ for (const [marker, label] of [
   ["resource_id_length = ?self.resource_id_length", "resource ID shape"],
   ["status_length = ?self.status_length", "status shape"],
   ["draft_present = self.draft_present", "draft presence"],
-  ["boundary = PRODUCT_ADMIN_MUTATION_GRAPHQL_BOUNDARY", "mutation boundary log"],
+  ["boundary = SELECTED_PRODUCT_ADMIN_MUTATION_BOUNDARY", "mutation boundary log"],
 ]) {
   requireText(mutationBlock, marker, `${paths.safety}: ${label}`);
 }

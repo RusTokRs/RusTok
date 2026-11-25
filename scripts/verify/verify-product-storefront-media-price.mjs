@@ -170,7 +170,12 @@ assertContains(
 );
 assertContains(
   pricingPort,
-  '.min_by(|left, right| left.amount.cmp(&right.amount))',
+  '.min_by(|left, right|',
+  'crates/modules/rustok-pricing/src/integrations/product_pricing_port.rs: from price must select a minimum storefront candidate'
+);
+assertContains(
+  pricingPort,
+  'left.amount.cmp(&right.amount)',
   'crates/modules/rustok-pricing/src/integrations/product_pricing_port.rs: from price must be the minimum storefront candidate'
 );
 assertContains(
@@ -383,7 +388,7 @@ assertContains(
 );
 assertContains(
   ffaActions,
-  'attributeValues: payload.attributePatches.length',
+  'attributeValues: payload.attributeValueBatches',
   `${ffaActionsPath}: values must be composed into the atomic catalog save`
 );
 assertContains(

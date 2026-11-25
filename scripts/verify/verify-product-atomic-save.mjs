@@ -93,7 +93,7 @@ export function verifyAtomicSave(source) {
     '!self.attribute_values.is_empty()'
   ), 'value batches must require the document predecessor revision');
   require(source.next.includes(
-    'attributeValues: payload.attributePatches.length'
+    'attributeValues: payload.attributeValueBatches'
   ), 'Next save must compose value batches');
   require(!source.next.includes(
     'await saveProductAttributeValues('

@@ -45,6 +45,8 @@ const fixtureFiles = [
   'crates/modules/rustok-commerce/tests/graphql_runtime_parity_test/shipping.rs',
   'crates/modules/rustok-commerce/tests/product_event_index_integration_test.rs',
   'crates/modules/rustok-commerce/src/graphql/mutations/helpers.rs',
+  'crates/modules/rustok-commerce/src/storefront_shipping.rs',
+  'crates/modules/rustok-commerce/src/services/checkout_catalog.rs',
   'crates/modules/rustok-commerce/src/graphql/mutations/safe_order_helpers.rs',
   'crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs',
   'crates/modules/rustok-commerce/src/graphql/mod.rs',

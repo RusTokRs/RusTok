@@ -23,11 +23,11 @@ function fixture(options = {}) {
     : `name="category_id" name="sort_by" name="sort_direction" build_product_admin_list_input provide_context(catalog_controls) fetch_catalog_search_options super::leptos::ProductAdmin`);
   write(root, "crates/modules/rustok-product/admin/src/catalog_transport.rs", options.omitContext
     ? `admin_catalog_native::fetch_products admin_catalog_graphql::fetch_products`
-    : `use_context::<ProductAdminListInput>() route_controls.category_id route_controls.sort_by route_controls.sort_direction admin_catalog_native::fetch_products admin_catalog_graphql::fetch_products`);
+    : `controls: ProductAdminListInput controls.category_id controls.sort_by controls.sort_direction admin_catalog_native::fetch_products admin_catalog_graphql::fetch_products`);
   write(root, "crates/modules/rustok-product/admin/src/transport/admin_catalog_graphql.rs", options.omitGraphqlSort
     ? `adminProductCatalog AdminProductCatalogFilter categoryId primaryCategoryId`
     : `adminProductCatalog AdminProductCatalogFilter categoryId sortBy sortDirection primaryCategoryId`);
-  write(root, "crates/modules/rustok-product/admin/src/transport/admin_catalog_native.rs", `product/admin/catalog-list AdminProductListQuery::try_from_transport list_admin_products_with_query PRODUCTS_LIST`);
+  write(root, "crates/modules/rustok-product/admin/src/transport/admin_catalog_native.rs", `product/admin/catalog-list AdminProductListQuery::try_from_transport .list_admin_products( PRODUCTS_LIST`);
   write(root, "crates/modules/rustok-product/src/services/catalog/types.rs", `AdminProductListQuery status must be \`draft\`, \`active\`, or \`archived\` category_id sort_by sort_direction`);
   write(root, "crates/modules/rustok-product/src/services/catalog/admin_queries.rs", options.omitOwnerCategory
     ? `TenantId.eq(tenant_id) Column::Status.eq( order_by_asc order_by_desc Id)`

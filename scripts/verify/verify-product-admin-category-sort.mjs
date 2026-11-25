@@ -41,13 +41,13 @@ for (const marker of ["ProductAdminListInput", "category_id", "sort_by", "sort_d
 for (const marker of ['name="category_id"', 'name="sort_by"', 'name="sort_direction"', "build_product_admin_list_input", "provide_context(catalog_controls)", "fetch_catalog_search_options", "super::leptos::ProductAdmin"]) {
   requireText(files.ui, marker, `admin UI must retain ${marker}`);
 }
-for (const marker of ["use_context::<ProductAdminListInput>()", "route_controls.category_id", "route_controls.sort_by", "route_controls.sort_direction", "admin_catalog_native::fetch_products", "admin_catalog_graphql::fetch_products"]) {
+for (const marker of ["controls: ProductAdminListInput", "controls.category_id", "controls.sort_by", "controls.sort_direction", "admin_catalog_native::fetch_products", "admin_catalog_graphql::fetch_products"]) {
   requireText(files.transport, marker, `admin transport facade must retain ${marker}`);
 }
 for (const marker of ["adminProductCatalog", "AdminProductCatalogFilter", "categoryId", "sortBy", "sortDirection", "primaryCategoryId"]) {
   requireText(files.graphql, marker, `admin GraphQL adapter must retain ${marker}`);
 }
-for (const marker of ["product/admin/catalog-list", "AdminProductListQuery::try_from_transport", "list_admin_products_with_query", "PRODUCTS_LIST"]) {
+for (const marker of ["product/admin/catalog-list", "AdminProductListQuery::try_from_transport", ".list_admin_products(", "PRODUCTS_LIST"]) {
   requireText(files.native, marker, `admin native adapter must retain ${marker}`);
 }
 for (const marker of ["AdminProductListQuery", "status must be `draft`, `active`, or `archived`", "category_id", "sort_by", "sort_direction"]) {

@@ -229,8 +229,8 @@ const gridSource = readRepo(gridPath);
 const editorSource = readRepo(editorPath);
 
 for (const marker of [
-  'catalog_transport::product_admin_list_input_from_route()',
-  'provide_context(catalog_controls.clone())',
+  'build_product_admin_list_input(',
+  'catalog_transport::fetch_admin_catalog_facets(',
   'catalog_transport::fetch_products(',
   'catalog_transport::fetch_catalog_search_options(',
   'name="category_id"',
