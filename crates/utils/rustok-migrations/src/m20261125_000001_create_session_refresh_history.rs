@@ -5,7 +5,7 @@ pub struct Migration;
 
 #[derive(Iden)]
 enum History {
-    #[sea_orm(iden = "session_refresh_history")]
+    #[iden = "session_refresh_history"]
     Table,
     TokenHash,
     SessionId,
