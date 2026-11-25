@@ -291,7 +291,9 @@ impl McpScaffoldDraftStore for DbBackedMcpRuntimeBridge {
             draft_id: draft.id.to_string(),
             preview,
             source_digest,
-            status: draft.status_value(),
+            status: draft
+                .status_value()
+                .map_err(McpRuntimeError::Message)?,
             review_required: true,
             apply_tool: rustok_mcp::TOOL_ALLOY_APPLY_MODULE_SCAFFOLD.to_string(),
             next_steps: vec![
@@ -322,8 +324,8 @@ impl McpScaffoldDraftStore for DbBackedMcpRuntimeBridge {
             .ok_or_else(|| McpRuntimeError::Message(format!("Unknown scaffold draft: {}", request.draft_id)))?;
 
         let draft = draft
-            .to_staged_draft()
-            .map_err(|error| McpRuntimeError::Message(error.to_string()))?;
+            .to_reviewable_draft()
+            .map_err(McpRuntimeError::Message)?;
         let source_digest = scaffold_source_digest(&draft.preview)
             .map_err(|error| McpRuntimeError::Message(error.to_string()))?;
         Ok(ReviewModuleScaffoldResponse {

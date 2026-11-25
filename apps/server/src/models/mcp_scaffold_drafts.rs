@@ -20,12 +20,23 @@ impl Entity {
     }
 }
 
+fn map_persisted_status(status: &str) -> Result<ModuleScaffoldDraftStatus, String> {
+    match status {
+        "staged" | "applying" => Ok(ModuleScaffoldDraftStatus::Staged),
+        "applied" => Ok(ModuleScaffoldDraftStatus::Applied),
+        "recovery_required" => Err(
+            "Scaffold draft requires manual workspace reconciliation".to_string(),
+        ),
+        other => Err(format!(
+            "Scaffold draft has unsupported persisted status '{}'",
+            other
+        )),
+    }
+}
+
 impl Model {
-    pub fn status_value(&self) -> ModuleScaffoldDraftStatus {
-        match self.status.as_str() {
-            "applied" => ModuleScaffoldDraftStatus::Applied,
-            _ => ModuleScaffoldDraftStatus::Staged,
-        }
+    pub fn status_value(&self) -> Result<ModuleScaffoldDraftStatus, String> {
+        map_persisted_status(&self.status)
     }
 
     pub fn request(&self) -> Result<ScaffoldModuleRequest, serde_json::Error> {
@@ -36,12 +47,67 @@ impl Model {
         serde_json::from_value(self.preview_payload.clone())
     }
 
-    pub fn to_staged_draft(&self) -> Result<StagedModuleScaffold, serde_json::Error> {
+    /// Convert a claimed draft for the owner crate's apply API. The database
+    /// remains authoritative for the applying transition; the owner DTO has
+    /// only staged/applied states.
+    pub fn to_staged_draft(&self) -> Result<StagedModuleScaffold, String> {
+        let status = self.status_value()?;
+        let request = self
+            .request()
+            .map_err(|error| format!("Invalid persisted scaffold request: {error}"))?;
+        let preview = self
+            .preview()
+            .map_err(|error| format!("Invalid persisted scaffold preview: {error}"))?;
+
         Ok(StagedModuleScaffold {
             draft_id: self.id.to_string(),
-            request: self.request()?,
-            preview: self.preview()?,
-            status: self.status_value(),
+            request,
+            preview,
+            status,
         })
+    }
+
+    /// Review responses expose only the owner crate's staged/applied states.
+    /// Internal in-flight and recovery states must never be presented as staged.
+    pub fn to_reviewable_draft(&self) -> Result<StagedModuleScaffold, String> {
+        match self.status.as_str() {
+            "staged" | "applied" => self.to_staged_draft(),
+            "applying" => Err(
+                "Scaffold draft is currently applying and cannot be reviewed until the apply attempt is reconciled"
+                    .to_string(),
+            ),
+            "recovery_required" => Err(
+                "Scaffold draft requires manual workspace reconciliation before it can be reviewed"
+                    .to_string(),
+            ),
+            other => Err(format!(
+                "Scaffold draft has unsupported persisted status '{}'",
+                other
+            )),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::map_persisted_status;
+    use rustok_mcp::ModuleScaffoldDraftStatus;
+
+    #[test]
+    fn persisted_status_mapping_fails_closed_for_internal_or_unknown_states() {
+        assert_eq!(
+            map_persisted_status("staged"),
+            Ok(ModuleScaffoldDraftStatus::Staged)
+        );
+        assert_eq!(
+            map_persisted_status("applying"),
+            Ok(ModuleScaffoldDraftStatus::Staged)
+        );
+        assert_eq!(
+            map_persisted_status("applied"),
+            Ok(ModuleScaffoldDraftStatus::Applied)
+        );
+        assert!(map_persisted_status("recovery_required").is_err());
+        assert!(map_persisted_status("unknown").is_err());
     }
 }
