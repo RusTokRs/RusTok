@@ -1105,7 +1105,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     let module_work_drain = async {
         let initialization = ModuleWorkSchedulerInitializationLock::ensure(runtime_ctx);
-        let deadline = startup_deadline;
+        let deadline = tokio::time::Instant::now() + timeout_duration;
         let worker = match tokio::time::timeout_at(deadline, initialization.0.lock()).await {
             Ok(_guard) => runtime_ctx.shared_take::<ModuleWorkSchedulerHandle>(),
             Err(_) => {
@@ -1126,7 +1126,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     #[cfg(feature = "mod-workflow")]
     let workflow_drain = async {
         let initialization = WorkflowCronSchedulerInitializationLock::ensure(runtime_ctx);
-        let deadline = startup_deadline;
+        let deadline = tokio::time::Instant::now() + timeout_duration;
         let worker = match tokio::time::timeout_at(deadline, initialization.0.lock()).await {
             Ok(_guard) => runtime_ctx.shared_take::<WorkflowCronSchedulerHandle>(),
             Err(_) => {
@@ -1166,7 +1166,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     let module_artifact_maintenance_drain = async {
         let initialization = ModuleArtifactMaintenanceInitializationLock::ensure(runtime_ctx);
-        let deadline = startup_deadline;
+        let deadline = tokio::time::Instant::now() + timeout_duration;
         let worker = match tokio::time::timeout_at(deadline, initialization.0.lock()).await {
             Ok(_guard) => runtime_ctx
                 .shared_take::<crate::services::module_artifact_maintenance::ModuleArtifactMaintenanceHandle>(),
