@@ -4,11 +4,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
-use std::{cell::{Cell, RefCell}, rc::Rc};
+use std::{cell::Cell, rc::Rc};
+#[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
+use std::cell::RefCell;
 
 const RECOVERY_FORMAT: u8 = 1;
 const MAX_RECOVERY_RECORD_BYTES: usize = 2 * 1024 * 1024;
 const MAX_RECOVERY_SUPERSEDED_KEYS: usize = 256;
+const MAX_RECOVERY_RECORDS_PER_SCOPE: usize = 256;
 const RECOVERY_KEY_PREFIX: &str = "rustok:fly:draft:v1:";
 
 #[derive(Debug, Clone, PartialEq)]
@@ -300,6 +303,12 @@ impl DraftRecoveryStore {
                 return Err("A local recovery record has an unsupported identity or format.".to_string());
             }
 
+            if entries.len() >= MAX_RECOVERY_RECORDS_PER_SCOPE {
+                return Err(
+                    "The local recovery scope contains too many records; existing records were left untouched."
+                        .to_string(),
+                );
+            }
             entries.push((RecoveryRecordRef { key, raw }, record));
         }
 
@@ -886,6 +895,74 @@ fn merge_arrays_by_id(
         (groups, positions)
     }
 
+    fn merge_insertion_sequences(server: &[String], local: &[String]) -> Option<Vec<String>> {
+        let all_ids = server
+            .iter()
+            .chain(local.iter())
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        let server_positions = server
+            .iter()
+            .enumerate()
+            .map(|(index, id)| (id.clone(), index))
+            .collect::<BTreeMap<_, _>>();
+        let local_positions = local
+            .iter()
+            .enumerate()
+            .map(|(index, id)| (id.clone(), index))
+            .collect::<BTreeMap<_, _>>();
+        let priority = |id: &String| {
+            (
+                server_positions.get(id).copied().unwrap_or(usize::MAX),
+                local_positions.get(id).copied().unwrap_or(usize::MAX),
+                id.clone(),
+            )
+        };
+
+        let mut outgoing = BTreeMap::<String, BTreeSet<String>>::new();
+        let mut indegree = all_ids
+            .iter()
+            .cloned()
+            .map(|id| (id, 0usize))
+            .collect::<BTreeMap<_, _>>();
+        for sequence in [server, local] {
+            for pair in sequence.windows(2) {
+                if outgoing
+                    .entry(pair[0].clone())
+                    .or_default()
+                    .insert(pair[1].clone())
+                {
+                    *indegree.get_mut(&pair[1])? += 1;
+                }
+            }
+        }
+
+        let mut ready = BTreeSet::new();
+        for id in &all_ids {
+            if indegree.get(id).copied()? == 0 {
+                ready.insert(priority(id));
+            }
+        }
+
+        let mut merged = Vec::with_capacity(all_ids.len());
+        while let Some(next_ready) = ready.iter().next().cloned() {
+            ready.remove(&next_ready);
+            let (_, _, id) = next_ready;
+            merged.push(id.clone());
+            if let Some(next_ids) = outgoing.get(&id) {
+                for next_id in next_ids {
+                    let degree = indegree.get_mut(next_id)?;
+                    *degree = degree.checked_sub(1)?;
+                    if *degree == 0 {
+                        ready.insert(priority(next_id));
+                    }
+                }
+            }
+        }
+
+        (merged.len() == all_ids.len()).then_some(merged)
+    }
+
     fn gap_is_valid(gap: &Gap, positions: &BTreeMap<String, usize>, base_len: usize) -> bool {
         let previous = match gap.0.as_ref() {
             Some(id) => match positions.get(id) {
@@ -951,7 +1028,6 @@ fn merge_arrays_by_id(
     }
 
     let mut ordered_ids = Vec::with_capacity(merged_items.len());
-    let mut seen = BTreeSet::new();
     for gap_index in 0..=merged_base_order.len() {
         let gap = (
             gap_index
@@ -959,24 +1035,16 @@ fn merge_arrays_by_id(
                 .and_then(|index| merged_base_order.get(index).cloned()),
             merged_base_order.get(gap_index).cloned(),
         );
-        if let Some(ids) = server_groups.get(&gap) {
-            for id in ids {
-                if seen.insert(id.clone()) {
-                    ordered_ids.push(id.clone());
-                }
-            }
-        }
-        if let Some(ids) = local_groups.get(&gap) {
-            for id in ids {
-                if seen.insert(id.clone()) {
-                    ordered_ids.push(id.clone());
-                }
-            }
-        }
+        let server_insertions = server_groups.get(&gap).map(Vec::as_slice).unwrap_or(&[]);
+        let local_insertions = local_groups.get(&gap).map(Vec::as_slice).unwrap_or(&[]);
+        let Some(insertions) = merge_insertion_sequences(server_insertions, local_insertions) else {
+            conflicts.push(format!("{path}/$order"));
+            return None;
+        };
+        ordered_ids.extend(insertions);
+
         if let Some(base_id) = merged_base_order.get(gap_index) {
-            if seen.insert(base_id.clone()) {
-                ordered_ids.push(base_id.clone());
-            }
+            ordered_ids.push(base_id.clone());
         }
     }
 
@@ -1343,6 +1411,67 @@ mod tests {
             ),
         ]);
         assert!(result.is_err());
+    }
+
+
+
+    #[test]
+    fn three_way_merge_rejects_reordered_shared_insertions_in_one_gap() {
+        let base = json!([
+            { "id": "a", "content": "A" },
+            { "id": "b", "content": "B" }
+        ]);
+        let server = json!([
+            { "id": "a", "content": "A" },
+            { "id": "x", "content": "X" },
+            { "id": "y", "content": "Y" },
+            { "id": "b", "content": "B" }
+        ]);
+        let local = json!([
+            { "id": "a", "content": "A" },
+            { "id": "y", "content": "Y" },
+            { "id": "x", "content": "X" },
+            { "id": "b", "content": "B" }
+        ]);
+        let mut conflicts = Vec::new();
+        let merged = merge_optional(Some(&base), Some(&server), Some(&local), "$", &mut conflicts);
+        assert!(merged.is_none());
+        assert!(conflicts.iter().any(|path| path == "$/$order"));
+    }
+
+    #[test]
+    fn three_way_merge_preserves_both_writers_order_constraints_for_same_gap_insertions() {
+        let base = json!([
+            { "id": "a", "content": "A" },
+            { "id": "b", "content": "B" }
+        ]);
+        let server = json!([
+            { "id": "a", "content": "A" },
+            { "id": "x", "content": "X" },
+            { "id": "y", "content": "Y" },
+            { "id": "b", "content": "B" }
+        ]);
+        let local = json!([
+            { "id": "a", "content": "A" },
+            { "id": "x", "content": "X" },
+            { "id": "z", "content": "Z" },
+            { "id": "y", "content": "Y" },
+            { "id": "b", "content": "B" }
+        ]);
+        let mut conflicts = Vec::new();
+        let merged = merge_optional(Some(&base), Some(&server), Some(&local), "$", &mut conflicts)
+            .expect("merge");
+        assert!(conflicts.is_empty());
+        assert_eq!(
+            merged,
+            Some(json!([
+                { "id": "a", "content": "A" },
+                { "id": "x", "content": "X" },
+                { "id": "z", "content": "Z" },
+                { "id": "y", "content": "Y" },
+                { "id": "b", "content": "B" }
+            ]))
+        );
     }
 
 }
