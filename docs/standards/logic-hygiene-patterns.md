@@ -649,6 +649,21 @@ They now capture any transport error into an `action_error` reactive signal and 
   [Inventory public projection](../../crates/modules/rustok-inventory/src/services/public_channel.rs).
   Focused regression sources authored, not run.
 
+### P-BATCH-PRICE-IDENTITY — reject repeated and ambiguous price positions
+
+- **Category:** batch admission / deterministic state transitions.
+- **Observed defect:** Pricing batch authoring repeatedly updated one logical
+  channel/currency position and used `.one()` on potentially ambiguous stored
+  matches, unlike the single-row writer.
+- **Canonical correction:** Under the SKU lock, admit the full input using the
+  normalized currency and resolved Channel UUID as the duplicate key; reject
+  multiple exact stored matches through the shared bounded row selector
+  (`.limit(2).all(...)`). Preserve one transaction and one catalog predecessor
+  advancement for the successful batch.
+- **Detection:** `rg -n 'set_prices|unique_existing_price|admit_batch_price_identity' crates/modules/rustok-pricing/src`.
+- **Evidence:** [Pricing commands](../../crates/modules/rustok-pricing/src/services/pricing/commands.rs).
+  Focused regression sources authored, not executed.
+
 ## 1. Core Philosophy: The 6 Universal Logic Dimensions
 
 Under [AGENTS.md §4](../../AGENTS.md), verify the affected behavior and its owner contract across the **6 Universal Logic Dimensions**. Use source matches to find code to inspect. A match alone cannot establish a behavioral defect:

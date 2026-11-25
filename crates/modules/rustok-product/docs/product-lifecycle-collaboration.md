@@ -116,6 +116,13 @@ silently rounded to make an otherwise unquotable row acceptable.
 Existing legacy two-decimal mirrors are unchanged. Source regressions are
 authored but not executed; historical invalid price rows are not rewritten.
 
+Direct Pricing batch edits of a SKU now reject repeated normalized currency /
+resolved Channel identities before price writes and reject ambiguous exact
+stored matches, matching single-price authoring. All prices, events and the
+single catalog predecessor advance remain inside the Pricing transaction.
+This does not introduce a new Product write protocol or certify historical
+channel alias reconciliation. Regression sources remain unexecuted.
+
 ## Atomicity
 
 The owner bootstrap methods accept the same SeaORM transaction connection used by `ProductWriteTransaction`. Product variant state, initial inventory, initial prices, the Product event, and the outbox write therefore share one transaction boundary in the embedded profile.

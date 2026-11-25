@@ -21,6 +21,16 @@ New PriceUpdated amounts are encoded without rounding. Calculated discount
 rounding and the retained two-decimal legacy mirror are unchanged.
 Focused regressions are authored but not executed.
 
+Batch base-price authoring admits every input before row or event mutation,
+rejects repeated normalized currency / resolved Channel identities (including
+ID and slug aliases), and uses the same bounded stored-row ambiguity check as
+single-price authoring. Duplicate inputs are validation errors; multiple exact
+stored matches return the existing `PRICING_PRICE_AMBIGUOUS` conflict and
+abort the entire transaction. The batch still advances the catalog Variant
+predecessor once for successful unscoped changes. Existing stored channel
+representations and cross-command alias reconciliation are unchanged.
+Focused regression sources are authored, not executed.
+
 Direct embedded Pricing base-price authoring advances the Product-owned Variant
 predecessor using its co-located transaction seam; the exact PriceUpdated envelope
 causes the corresponding Variant Index refresh. Batch writes advance once after

@@ -1,5 +1,6 @@
 use rust_decimal::Decimal;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QuerySelect, Set, TransactionTrait};
+use std::collections::HashSet;
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -17,6 +18,31 @@ use super::types::*;
 mod entities {
     pub(crate) use crate::entities::{price, price_list, price_list_translation};
     pub use rustok_commerce_foundation::entities::product_variant;
+}
+
+/// A single authoring command must not choose an arbitrary stored row.
+fn unique_existing_price(
+    mut rows: Vec<entities::price::Model>,
+) -> CommerceResult<Option<entities::price::Model>> {
+    if rows.len() > 1 {
+        return Err(ResolutionError::Ambiguous.into_commerce());
+    }
+    Ok(rows.pop())
+}
+
+/// The resolved Channel UUID, not the submitted ID/slug representation,
+/// determines whether two entries address the same batch price position.
+fn admit_batch_price_identity(
+    seen: &mut HashSet<(Option<Uuid>, String)>,
+    channel_id: Option<Uuid>,
+    currency: &str,
+) -> CommerceResult<()> {
+    if !seen.insert((channel_id, currency.to_owned())) {
+        return Err(CommerceError::Validation(
+            "Duplicate batch price for the same channel and currency".to_owned(),
+        ));
+    }
+    Ok(())
 }
 
 #[derive(Clone, Copy)]
@@ -527,7 +553,7 @@ impl PricingService {
 
         // INVARIANT: the Variant lock and (when selected) price-list lock above
         // protect the same canonical row through calculation, mutation and commit.
-        let mut existing_rows = entities::price::Entity::find()
+        let existing_rows = entities::price::Entity::find()
             .filter(entities::price::Column::VariantId.eq(variant_id))
             .filter(entities::price::Column::CurrencyCode.eq(&currency_code))
             .filter(entities::price::Column::RegionId.is_null())
@@ -554,10 +580,7 @@ impl PricingService {
             .limit(2)
             .all(txn)
             .await?;
-        if existing_rows.len() > 1 {
-            return Err(ResolutionError::Ambiguous.into_commerce());
-        }
-        let existing = existing_rows.pop();
+        let existing = unique_existing_price(existing_rows)?;
         let preview = match intent {
             PriceWriteIntent::Fixed { .. } => None,
             PriceWriteIntent::PercentageDiscount(percent) => {
@@ -680,18 +703,21 @@ impl PricingService {
         let txn = self.db.begin().await?;
         let variant = load_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
 
-        let mut last_catalog_price_event = None;
+        // Admit the complete batch before writing any row or event.
+        let mut seen = HashSet::new();
+        let mut prepared = Vec::with_capacity(prices.len());
         for price_input in &prices {
             let normalized_currency = normalize_resolution_currency(&price_input.currency_code)?;
             let normalized_channel_slug =
                 normalize_channel_slug(price_input.channel_slug.as_deref());
-            validate_channel_scope_in_tx(
+            let resolved_channel_id = resolve_channel_id_in_tx(
                 &txn,
                 tenant_id,
                 price_input.channel_id,
                 normalized_channel_slug.as_deref(),
             )
             .await?;
+            admit_batch_price_identity(&mut seen, resolved_channel_id, &normalized_currency)?;
 
             if price_input.amount < Decimal::ZERO {
                 return Err(CommerceError::InvalidPrice(
@@ -712,7 +738,12 @@ impl PricingService {
                 &normalized_currency,
             )?;
 
-            let existing = entities::price::Entity::find()
+            prepared.push((price_input, normalized_currency, normalized_channel_slug));
+        }
+
+        let mut last_catalog_price_event = None;
+        for (price_input, normalized_currency, normalized_channel_slug) in prepared {
+            let existing_rows = entities::price::Entity::find()
                 .filter(entities::price::Column::VariantId.eq(variant_id))
                 .filter(entities::price::Column::CurrencyCode.eq(&normalized_currency))
                 .filter(entities::price::Column::RegionId.is_null())
@@ -723,12 +754,14 @@ impl PricingService {
                 ))
                 .filter(super::queries::optional_string_filter(
                     entities::price::Column::ChannelSlug,
-                    normalize_channel_slug(price_input.channel_slug.as_deref()),
+                    normalized_channel_slug.clone(),
                 ))
                 .filter(entities::price::Column::MinQuantity.is_null())
                 .filter(entities::price::Column::MaxQuantity.is_null())
-                .one(&txn)
+                .limit(2)
+                .all(&txn)
                 .await?;
+            let existing = unique_existing_price(existing_rows)?;
 
             let old_amount = existing.as_ref().map(|p| p.amount);
 
@@ -738,8 +771,7 @@ impl PricingService {
                     price_active.amount = Set(price_input.amount);
                     price_active.compare_at_amount = Set(price_input.compare_at_amount);
                     price_active.channel_id = Set(price_input.channel_id);
-                    price_active.channel_slug =
-                        Set(normalize_channel_slug(price_input.channel_slug.as_deref()));
+                    price_active.channel_slug = Set(normalized_channel_slug.clone());
                     price_active.legacy_amount = Set(
                         crate::services::bootstrap::legacy_amount_units(price_input.amount),
                     );
@@ -754,9 +786,7 @@ impl PricingService {
                         variant_id: Set(variant_id),
                         price_list_id: Set(None),
                         channel_id: Set(price_input.channel_id),
-                        channel_slug: Set(normalize_channel_slug(
-                            price_input.channel_slug.as_deref(),
-                        )),
+                        channel_slug: Set(normalized_channel_slug.clone()),
                         currency_code: Set(normalized_currency.clone()),
                         region_id: Set(None),
                         amount: Set(price_input.amount),
@@ -871,4 +901,49 @@ async fn record_catalog_price_revision(
             "Product catalog price revision could not be recorded".into(),
         )),
     })
+}
+
+#[cfg(test)]
+mod batch_price_admission_tests {
+    use super::*;
+
+    fn row(id: u128) -> entities::price::Model {
+        entities::price::Model {
+            id: Uuid::from_u128(id),
+            variant_id: Uuid::from_u128(100),
+            price_list_id: None,
+            channel_id: None,
+            channel_slug: None,
+            currency_code: "USD".to_owned(),
+            region_id: None,
+            amount: Decimal::from(10),
+            compare_at_amount: None,
+            legacy_amount: None,
+            legacy_compare_at_amount: None,
+            min_quantity: None,
+            max_quantity: None,
+        }
+    }
+
+    #[test]
+    fn both_price_writers_refuse_multiple_matching_stored_rows() {
+        assert!(unique_existing_price(Vec::new()).unwrap().is_none());
+        assert_eq!(unique_existing_price(vec![row(1)]).unwrap().unwrap().id, row(1).id);
+        assert!(unique_existing_price(vec![row(1), row(2)]).is_err());
+        assert!(unique_existing_price(vec![row(2), row(1)]).is_err());
+    }
+
+    #[test]
+    fn batch_rejects_duplicate_normalized_currency_and_resolved_channel() {
+        let mut seen = HashSet::new();
+        let channel = Some(Uuid::from_u128(1));
+        let other_channel = Some(Uuid::from_u128(2));
+        let usd = normalize_resolution_currency(" usd ").unwrap();
+        assert!(admit_batch_price_identity(&mut seen, channel, &usd).is_ok());
+        assert!(admit_batch_price_identity(&mut seen, channel, "USD").is_err());
+        assert!(admit_batch_price_identity(&mut seen, other_channel, "USD").is_ok());
+        assert!(admit_batch_price_identity(&mut seen, channel, "EUR").is_ok());
+        assert!(admit_batch_price_identity(&mut seen, None, "USD").is_ok());
+        assert!(admit_batch_price_identity(&mut seen, None, "USD").is_err());
+    }
 }
