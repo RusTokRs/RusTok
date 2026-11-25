@@ -219,6 +219,11 @@ limit and 8,192-row scan budget continue across passes. Per-candidate failures
 advance with the page and are retried after wrap; a scan failure preserves the
 cursor.
 
+The remote-executor reaper also listens for host stop while a pass is active.
+Its per-claim transactions commit independently, so completed requeues remain
+durable and cancellation leaves the remaining expired leases discoverable on
+the next run instead of holding shutdown until the entire backlog is scanned.
+
 
 Channel and RBAC cache-invalidation, tenant-cache and tenant-locale
 generation, and Redis-status listener starters now cancel pending
