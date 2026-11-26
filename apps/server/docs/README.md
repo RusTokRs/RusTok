@@ -979,6 +979,11 @@ tests for long chains and context-sensitive cycles are present but unrun.
   fanout, and candidate workers are also required readiness workers once started.
   A dead queue/reconciliation task cannot leave the HTTP host green while its
   durable work remains unprocessed.
+- Notification Outbox intake advances a bounded owner-provided chronological
+  keyset cursor after successful selection, even if every selected event fails.
+  A selection error preserves the cursor; end-of-scan wraps to pending work.
+  Failed envelopes remain unacknowledged, and restart begins at the oldest
+  pending row. Regression source authored, unrun.
 - Notification candidate, fanout, Outbox intake, Forum Search inbox,
   Forum Search contract, Product Index refresh and Social Graph Index worker
   startup have distinct process-local atomic lifecycle claims in

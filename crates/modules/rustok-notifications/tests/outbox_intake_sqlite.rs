@@ -321,6 +321,81 @@ async fn accepted_and_permanent_invalid_envelopes_leave_no_head_of_line_blocker(
     assert_eq!(oversized.stable_code(), "NOTIFICATION_VALIDATION_ERROR");
 }
 
+#[tokio::test]
+async fn retryable_prefix_does_not_starve_later_pages_and_is_revisited() {
+    let db = setup().await;
+    let tenant_id = Uuid::new_v4();
+    insert_tenant(&db, tenant_id).await;
+
+    let first = Uuid::from_u128(1);
+    let second = Uuid::from_u128(2);
+    let third = Uuid::from_u128(3);
+    let fourth = Uuid::from_u128(4);
+    for id in [first, second] {
+        insert_outbox_event(
+            &db, id, 1, serde_json::json!({"retryable": true}), 1,
+        )
+        .await;
+    }
+    // The third row shares the failed prefix's timestamp. The exclusive
+    // tie-breaker must find it even when the full first page remains pending.
+    for (id, sequence) in [(third, 1), (fourth, 2)] {
+        insert_outbox_event(
+            &db,
+            id,
+            1,
+            serde_json::json!({
+                "tenant_id": tenant_id,
+                "source_event_id": Uuid::new_v4(),
+                "source_revision": 1,
+            }),
+            sequence,
+        )
+        .await;
+    }
+    let worker = NotificationOutboxIntakeWorker::new(db.clone(), Arc::new(FakeDecoder), 2)
+        .expect("worker");
+    let page = worker.pending_outbox_page_after(None).await.expect("first page");
+    assert_eq!(page.event_ids, vec![first, second]);
+    for id in page.event_ids {
+        assert!(worker.process_outbox_event(id).await.expect_err("retryable").is_retryable());
+    }
+    let page = worker
+        .pending_outbox_page_after(page.next_cursor.as_ref())
+        .await
+        .expect("next page");
+    assert_eq!(page.event_ids, vec![third, fourth]);
+    for id in page.event_ids {
+        assert!(matches!(
+            worker.process_outbox_event(id).await.expect("accepted"),
+            NotificationOutboxIntakeOutcome::Accepted(_)
+        ));
+    }
+    // A completed cursor row need not survive retention for the next scan.
+    db.execute_unprepared(&format!(
+        "DELETE FROM sys_events WHERE id = X'{}'",
+        fourth.simple()
+    ))
+    .await
+    .expect("remove cursor row");
+    let end = worker
+        .pending_outbox_page_after(page.next_cursor.as_ref())
+        .await
+        .expect("end of scan");
+    assert!(end.event_ids.is_empty());
+    assert!(end.next_cursor.is_none());
+    let wrapped = worker.pending_outbox_page_after(None).await.expect("wrap");
+    assert_eq!(wrapped.event_ids, vec![first, second]);
+    assert_eq!(
+        source_inbox::Entity::find()
+            .filter(source_inbox::Column::TenantId.eq(tenant_id))
+            .count(&db)
+            .await
+            .expect("accepted source count"),
+        2
+    );
+}
+
 async fn setup() -> DatabaseConnection {
     let url = format!(
         "sqlite:file:notification_outbox_intake_{}?mode=memory&cache=shared",
