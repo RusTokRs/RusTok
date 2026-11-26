@@ -3,6 +3,7 @@ use crate::{
     LocaleResolver, ProjectLocalePolicy, TranslationCatalog, default_locale_resolver,
     normalize_locale_tag,
 };
+use crate::page_metadata::LOCALIZED_METADATA_FIELDS;
 use crate::runtime_locale::has_unambiguous_locale;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -264,16 +265,6 @@ fn push_locale(locales: &mut Vec<String>, locale: Option<&str>) {
     }
 }
 
-const LOCALIZED_METADATA_FIELDS: &[&str] = &[
-    "title",
-    "description",
-    "slug",
-    "canonical_url",
-    "open_graph_title",
-    "open_graph_description",
-    "open_graph_image",
-];
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -358,6 +349,65 @@ mod tests {
         }));
         assert_eq!(report.summary_for("ru-RU").unwrap().missing, 2);
         assert!(!report.strict_ready());
+    }
+
+    #[test]
+    fn localized_social_metadata_participates_in_coverage_and_publish_validation() {
+        for field in [
+            "open_graph_type",
+            "twitter_card",
+            "twitter_title",
+            "twitter_description",
+            "twitter_image",
+        ] {
+            let mut document = GrapesJsCodec::decode_value(json!({
+                "flyLocales": {
+                    "supported_locales": ["en", "ru"],
+                    "required_locales": ["en", "ru"],
+                    "enforce_required_locales": true
+                },
+                "pages": [{
+                    "id": "home",
+                    "flyPageMeta": {},
+                    "component": { "id": "root", "type": "wrapper" }
+                }]
+            }))
+            .expect("document");
+            document.project_mut().pages[0].extensions
+                .get_mut(FLY_PAGE_METADATA_FIELD).expect("metadata")[field] =
+                json!({ "$localized": { "en": "website" } });
+
+            let coverage = analyze_project_locale_coverage(&document);
+            assert_eq!(coverage.metadata_total, 1, "{field}");
+            assert_eq!(coverage.summary_for("ru").unwrap().missing, 1, "{field}");
+            assert!(!coverage.strict_ready(), "{field}");
+            let path = format!("project.pages[0].{FLY_PAGE_METADATA_FIELD}.{field}");
+            assert!(crate::validate_runtime_extensions(&document).iter().any(|diagnostic| {
+                diagnostic.code == "localized_metadata_required_locale_missing"
+                    && diagnostic.severity == crate::ValidationSeverity::Error
+                    && diagnostic.path == path
+            }), "{field}");
+
+            document.project_mut().pages[0].extensions
+                .get_mut(FLY_PAGE_METADATA_FIELD).expect("metadata")[field]["$localized"]["ru"] =
+                json!("website");
+            assert!(analyze_project_locale_coverage(&document).strict_ready(), "{field}");
+            assert!(!crate::validate_project_locale_policy(&document).iter().any(|diagnostic| {
+                diagnostic.code == "localized_metadata_required_locale_missing"
+                    && diagnostic.path == path
+            }), "{field}");
+
+            // Duplicate normalized locale keys are invalid even without a project policy.
+            document.project_mut().extensions.remove(FLY_LOCALES_FIELD);
+            document.project_mut().pages[0].extensions
+                .get_mut(FLY_PAGE_METADATA_FIELD).expect("metadata")[field] =
+                json!({ "$localized": { "ru-RU": "first", "ru_RU": "second" } });
+            assert!(crate::validate_project_locale_policy(&document).iter().any(|diagnostic| {
+                diagnostic.code == "localized_metadata_locale_ambiguous"
+                    && diagnostic.severity == crate::ValidationSeverity::Error
+                    && diagnostic.path == path
+            }), "{field}");
+        }
     }
 
     #[test]

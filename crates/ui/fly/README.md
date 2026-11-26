@@ -200,7 +200,9 @@ even if the values agree. Authoring rejects such translation entries, imported m
 remain lossless but unresolved, and coverage does not count ambiguous maps. Ambiguous
 localized slugs are excluded from inbound routing and reject outbound navigation
 without using the interaction fallback URL. Metadata collisions are diagnosed even
-when no project locale policy is configured.
+when no project locale policy is configured. Required-locale coverage and collision checks
+share the PageMetadata text-field inventory, including Open Graph type and Twitter Card,
+title, description and image. Plain, non-localized metadata is not counted as a translation gap.
 Translation IDs are exact, nonempty ASCII alphanumeric, hyphen or underscore identities:
 surrounding whitespace is invalid on authoring and validation, and removal addresses the
 exact stored ID so an invalid imported entry can be removed without deleting a different

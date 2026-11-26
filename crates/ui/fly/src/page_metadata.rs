@@ -4,6 +4,23 @@ use serde_json::{Map, Value};
 
 pub const FLY_PAGE_METADATA_FIELD: &str = "flyPageMeta";
 
+/// Text fields that accept a localized value wrapper in PageMetadata.
+/// Coverage and publication validation must use the same field inventory.
+pub(crate) const LOCALIZED_METADATA_FIELDS: &[&str] = &[
+    "title",
+    "description",
+    "slug",
+    "canonical_url",
+    "open_graph_title",
+    "open_graph_description",
+    "open_graph_image",
+    "open_graph_type",
+    "twitter_card",
+    "twitter_title",
+    "twitter_description",
+    "twitter_image",
+];
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct PageMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]

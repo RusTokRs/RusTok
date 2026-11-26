@@ -6,6 +6,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::BTreeSet;
+use crate::page_metadata::LOCALIZED_METADATA_FIELDS;
 use crate::runtime_locale::{duplicate_locale_key, has_unambiguous_locale};
 
 pub const FLY_LOCALES_FIELD: &str = "flyLocales";
@@ -386,16 +387,6 @@ fn validate_locale_policy_coverage(document: &ProjectDocument) -> Vec<Validation
 
     diagnostics
 }
-
-const LOCALIZED_METADATA_FIELDS: &[&str] = &[
-    "title",
-    "description",
-    "slug",
-    "canonical_url",
-    "open_graph_title",
-    "open_graph_description",
-    "open_graph_image",
-];
 
 fn normalize_required_locale(locale: &str) -> Result<String, String> {
     normalize_locale_tag(locale).ok_or_else(|| format!("locale `{locale}` is invalid"))
