@@ -671,7 +671,7 @@ mod tests {
         let narrow_wrong_ratio = ResizeResult {
             rect: CanvasRect {
                 width: 2e-8,
-                height: 100.0,
+                height: 110.0,
                 ..narrow.start_rect
             },
             width_changed: true,
