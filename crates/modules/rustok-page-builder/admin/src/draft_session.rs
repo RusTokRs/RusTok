@@ -1013,6 +1013,7 @@ impl SsrDraftSessionStore for InMemorySsrDraftSessionStore {
             .map_err(|_| SsrDraftSessionError::Poisoned)?;
         if let Some(entry) = entries.get(token) {
             ensure_session_owner(entry.owner.as_ref(), owner)?;
+            ensure_no_prepared_save(&entry.operation_receipts)?;
             entries.remove(token);
         }
         Ok(())
@@ -1068,9 +1069,10 @@ pub trait PersistentDraftSessionBackend: Send + Sync {
         new_record: &PersistentDraftSessionRecord,
     ) -> Result<bool, SsrDraftSessionError>;
 
-    /// Deletes the record associated with the token. `owner` routes the
-    /// lookup exactly as in [`Self::load_record`]; ownership itself has
-    /// already been enforced by the caller.
+    /// Deletes an ordinary record associated with the token. The backend
+    /// checks ownership and absence of a prepared save under the same lock
+    /// or generation CAS as deletion. A concurrent update must not be erased.
+    /// An absent record is already removed.
     fn delete_record(
         &self,
         token: &str,
@@ -1943,21 +1945,7 @@ impl PersistentDraftSessionBackend for FileSsrDraftSessionStore {
         token: &str,
         owner: Option<&DraftSessionOwner>,
     ) -> Result<(), SsrDraftSessionError> {
-        let token = token.trim();
-        if !Self::is_safe_token(token) {
-            return Ok(());
-        }
-        // Backend primitive: the caller (the durable store) has already
-        // enforced ownership against this record; `owner` only selects the
-        // tenant partition. Runs under the token lock, so it cannot
-        // interleave with a commit.
-        self.with_lock(token, || {
-            if let Some(file_path) = self.locate(token, owner)? {
-                remove_file_if_present(&file_path)
-                    .map_err(|e| SsrDraftSessionError::Io(e.to_string()))?;
-            }
-            Ok(())
-        })
+        <Self as SsrDraftSessionStore>::remove(self, token, owner)
     }
 
     fn prune_records(
@@ -2174,6 +2162,7 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
         self.with_lock(token, || {
             if let Some((file_path, record)) = self.read_located(token, owner, TokenLock::Held)? {
                 ensure_session_owner(record.owner.as_ref(), owner)?;
+                ensure_no_prepared_save(&record.operation_receipts)?;
                 remove_file_if_present(&file_path)
                     .map_err(|e| SsrDraftSessionError::Io(e.to_string()))?;
             }
@@ -2509,14 +2498,28 @@ impl PersistentDraftSessionBackend for ExternalKvDraftSessionBackend {
     fn delete_record(
         &self,
         token: &str,
-        _owner: Option<&DraftSessionOwner>,
+        owner: Option<&DraftSessionOwner>,
     ) -> Result<(), SsrDraftSessionError> {
         let token = token.trim();
-        if !FileSsrDraftSessionStore::is_safe_token(token) {
+        let Some(record) = self.load_record(token, owner)? else {
+            return Ok(());
+        };
+        ensure_session_owner(record.owner.as_ref(), owner)?;
+        ensure_no_prepared_save(&record.operation_receipts)?;
+        let key = self.key_for_token(token);
+        if self.driver.compare_and_delete(&key, record.generation)? {
             return Ok(());
         }
-        let key = self.key_for_token(token);
-        self.driver.delete(&key)
+        // Never retry deletion against a newer generation: the other writer
+        // may have just reserved a save or committed new work.
+        if let Some(current) = self.load_record(token, owner)? {
+            ensure_session_owner(current.owner.as_ref(), owner)?;
+            return Err(SsrDraftSessionError::GenerationConflict {
+                expected: current.generation,
+                actual: record.generation,
+            });
+        }
+        Ok(())
     }
 
     fn prune_records(
@@ -2786,12 +2789,13 @@ impl DurableSsrDraftSessionStore {
         runtime_context: Option<Value>,
         owner: Option<&DraftSessionOwner>,
     ) -> Result<SsrDraftSessionSnapshot, SsrDraftSessionError> {
-        let persistent_record = if let Some(tok) = token.map(str::trim).filter(|t| !t.is_empty()) {
+        let token = token.map(str::trim).filter(|t| !t.is_empty());
+        let persistent_record = if let Some(tok) = token {
             self.backend.load_record(tok, owner)?
         } else {
             None
         };
-        if let Some(persistent_record) = persistent_record.as_ref() {
+        if let (Some(tok), Some(persistent_record)) = (token, persistent_record.as_ref()) {
             persistent_record.validate()?;
             persistent_record.validate_storage_key(tok)?;
             if persistent_record.controller.page_id() != controller.page_id() {
@@ -3162,15 +3166,10 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
         token: &str,
         owner: Option<&DraftSessionOwner>,
     ) -> Result<(), SsrDraftSessionError> {
-        // The backend record is authoritative for ownership: the memory cache
-        // may be empty after a restart while the record lives on.
-        if let Some(record) = self.backend.load_record(token, owner)? {
-            record.validate()?;
-            record.validate_storage_key(token)?;
-            ensure_session_owner(record.owner.as_ref(), owner)?;
-        }
-        self.memory.remove(token, owner)?;
+        // The backend owns admission and deletion atomically. A stale cache
+        // must neither authorize deletion nor veto an authorized removal.
         self.backend.delete_record(token, owner)?;
+        self.memory.evict(token)?;
         Ok(())
     }
 
@@ -3941,6 +3940,15 @@ mod tests {
         assert!(matches!(store.commit(
             Some(&original.token), Some(prepared.generation), prepared.controller.clone(), None,
         ), Err(SsrDraftSessionError::OperationReceiptPending)));
+        assert!(matches!(
+            store.remove(&original.token, None),
+            Err(SsrDraftSessionError::OperationReceiptPending)
+        ));
+        assert_eq!(
+            store.lookup_operation_receipt(&original.token, "home", None, "save-op", Some(&hash))
+                .expect("receipt preserved"),
+            Some(json!({"prepared_save": true}))
+        );
         let response = json!({"save_failure": null});
         let done = store.commit_with_operation_receipt(
             &original.token, prepared.generation, prepared.controller.clone(), json!({}),
@@ -3954,6 +3962,8 @@ mod tests {
         assert_eq!(store.admit_operation_receipt(
             &original.token, "home", None, done.generation, "other-op", &"b".repeat(64),
         ).expect("unfenced"), None);
+        store.remove(&original.token, None).expect("remove completed draft");
+        assert!(store.load(&original.token, "home", None).expect("load").is_none());
     }
 
     #[test]
@@ -4060,6 +4070,13 @@ mod tests {
         );
         assert_prepared_save_lifecycle(&durable);
         std::fs::remove_dir_all(dir).expect("cleanup");
+        let distributed = DurableSsrDraftSessionStore::distributed(
+            InMemorySsrDraftSessionStore::default(),
+            Arc::new(MemoryKvDriver::new()),
+            Duration::from_secs(3600),
+            100,
+        );
+        assert_prepared_save_lifecycle(&distributed);
     }
 
     #[test]
@@ -7063,6 +7080,22 @@ mod tests {
                 .expect("get")
                 .is_some()
         );
+    }
+
+    #[test]
+    fn kv_explicit_remove_preserves_a_concurrent_commit() {
+        let driver = Arc::new(CommitBeforeDeleteDriver::new(|store| {
+            kv_put(store, "tokDEL01", 5, current_unix_secs() + 3600);
+        }));
+        kv_put(&driver.inner, "tokDEL01", 4, current_unix_secs() + 3600);
+        let backend =
+            ExternalKvDraftSessionBackend::new(driver.clone(), Duration::from_secs(3600), 100);
+        assert!(matches!(
+            backend.delete_record("tokDEL01", None),
+            Err(SsrDraftSessionError::GenerationConflict { expected: 5, actual: 4 })
+        ));
+        let current = backend.load_record("tokDEL01", None).expect("load").expect("newer draft");
+        assert_eq!(current.generation, 5);
     }
 
     #[test]

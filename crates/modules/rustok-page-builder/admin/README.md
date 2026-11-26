@@ -436,5 +436,9 @@ cache entry does not evict an unrelated draft.
 Live prepared saves are protected from capacity eviction in memory, file and
 KV stores. The memory and file owner-admission paths reject new sessions when
 only protected slots remain; periodic pruning may temporarily exceed the cap
-rather than discard recovery state. Normal TTL expiry and explicit removal
-still apply; no indefinite retention is implied.
+rather than discard recovery state. Explicit removal also refuses a live
+prepared save until its original operation is resolved. The backend checks
+ownership and preparation atomically with deletion; KV deletion uses generation
+CAS and refuses a newer concurrent write instead of retrying against it.
+Durable removal invalidates the cache only after backend success. Normal TTL
+expiry still applies; no indefinite retention is implied.
