@@ -814,6 +814,7 @@ async fn request_verification(
         .auth_config()
         .cloned()
         .ok_or(Error::InternalServerError)?;
+    rustok_auth::application_clock::admit_now(ctx.runtime_ctx().db()).await?;
     let user = Users::find_by_email(ctx.runtime_ctx().db(), tenant.id, email).await?;
     crate::auth::mask_auth_lookup_timing().await?;
 

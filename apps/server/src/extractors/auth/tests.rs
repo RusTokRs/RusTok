@@ -251,7 +251,7 @@ async fn registered_service_token(
         user_id: Set(None),
         tenant_id: Set(app.tenant_id),
         token_hash: Set(crate::auth::hash_refresh_token(&token)),
-        family_id: Set(Some(token_id)),
+        family_id: Set(token_id),
         authorization_code_id: Set(None),
         grant_type: Set("client_credentials".to_string()),
         token_kind: Set(oauth_tokens::TOKEN_KIND_ACCESS.to_string()),
@@ -298,6 +298,32 @@ async fn oauth_service_token_intersects_app_permissions_with_scopes() {
         vec![Permission::from_str("forum_topics:list").expect("forum permission")]
     );
     assert_eq!(inferred_role, UserRole::Customer);
+}
+
+#[tokio::test]
+async fn oauth_service_token_rejects_future_registration() {
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    ensure_oauth_apps_table(&db).await;
+    let tenant = tenants::ActiveModel::new("Future registration tenant", &format!("tenant-{}", Uuid::new_v4()))
+        .insert(&db).await.expect("tenant");
+    let app = insert_oauth_app(&db, tenant.id, "service", &["client_credentials"], true).await;
+    let runtime = test_auth_runtime(db.clone());
+    let token = registered_service_token(
+        &db, runtime.require_auth_config().unwrap(), &app, &["forum:*".to_string()],
+    ).await;
+    assert!(resolve_current_user_from_access_token(&runtime, tenant.id, &token).await.is_ok());
+
+    let row = oauth_tokens::Entity::find()
+        .filter(oauth_tokens::Column::TokenHash.eq(crate::auth::hash_refresh_token(&token)))
+        .one(&db).await.unwrap().unwrap();
+    let mut changed: oauth_tokens::ActiveModel = row.into();
+    changed.created_at = Set((Utc::now() + Duration::minutes(1)).into());
+    changed.update(&db).await.expect("set future registration creation");
+    let error = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+        .await.expect_err("future registration must not authorize access");
+    assert_eq!(error, (axum::http::StatusCode::UNAUTHORIZED, "OAuth access token revoked or unknown"));
 }
 
 #[tokio::test]
@@ -567,7 +593,7 @@ async fn insert_access_registration(
         user_id: Set(Some(user_id)),
         tenant_id: Set(app.tenant_id),
         token_hash: Set(token_hash),
-        family_id: Set(Some(token_id)),
+        family_id: Set(token_id),
         authorization_code_id: Set(None),
         grant_type: Set("authorization_code".to_string()),
         token_kind: Set(oauth_tokens::TOKEN_KIND_ACCESS.to_string()),
@@ -720,7 +746,7 @@ async fn oauth_access_token_with_stale_consent_epoch_is_rejected() {
         user_id: Set(Some(user.id)),
         tenant_id: Set(app.tenant_id),
         token_hash: Set(crate::auth::hash_refresh_token(&token)),
-        family_id: Set(Some(token_id)),
+        family_id: Set(token_id),
         authorization_code_id: Set(None),
         grant_type: Set("authorization_code".to_string()),
         token_kind: Set(oauth_tokens::TOKEN_KIND_ACCESS.to_string()),

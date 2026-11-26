@@ -11,10 +11,9 @@ pub struct Model {
     pub tenant_id: Uuid,
     #[serde(skip)]
     pub token_hash: String,
-    /// Id of the first token in this refresh-token lineage (the root
-    /// token carries its own id). NULL on pre-migration rows, which
-    /// code coalesces to the row id.
-    pub family_id: Option<Uuid>,
+    /// Immutable root identity. Access-only families are self-rooted;
+    /// access registrations in a refresh family reference its refresh root.
+    pub family_id: Uuid,
     /// Authorization code that originally issued this delegated token
     /// lineage. NULL on pre-migration rows and service-client tokens.
     pub authorization_code_id: Option<Uuid>,

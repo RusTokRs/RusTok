@@ -28,6 +28,7 @@ impl AuthLifecycleService {
         tenant_id: uuid::Uuid,
         token: &str,
     ) -> Result<(), AuthLifecycleError> {
+        rustok_auth::application_clock::admit_now(ctx.db()).await?;
         let claims = decode_email_verification_token(config, token)
             .map_err(|_| AuthLifecycleError::InvalidVerificationToken)?;
         // INVARIANT: In-memory verification ensuring the decoded email verification token belongs to the target tenant.
@@ -88,6 +89,10 @@ impl AuthLifecycleService {
             }
         }
 
+        if rustok_auth::application_clock::verified_now(&tx).await? >= claims.expires_at {
+            tx.rollback().await.map_err(AuthLifecycleError::from)?;
+            return Err(AuthLifecycleError::InvalidVerificationToken);
+        }
         tx.commit().await.map_err(AuthLifecycleError::from)?;
         Ok(())
     }

@@ -5,10 +5,14 @@ pub use super::_entities::oauth_authorization_codes::{ActiveModel, Column, Entit
 
 impl Model {
     pub fn is_active(&self) -> bool {
-        let now_utc = chrono::Utc::now();
-        let expires_at_utc = self.expires_at.with_timezone(&chrono::Utc);
+        self.is_active_at(chrono::Utc::now())
+    }
 
-        self.used_at.is_none() && expires_at_utc > now_utc
+    /// A code cannot be used before its creation or at its exclusive expiry.
+    pub fn is_active_at(&self, now: chrono::DateTime<chrono::Utc>) -> bool {
+        self.used_at.is_none()
+            && self.created_at.with_timezone(&chrono::Utc) <= now
+            && self.expires_at.with_timezone(&chrono::Utc) > now
     }
 
     /// Decode the complete stored grant; never silently discard invalid entries.
@@ -32,6 +36,7 @@ impl Entity {
             .filter(oauth_authorization_codes::Column::TenantId.eq(tenant_id))
             .filter(oauth_authorization_codes::Column::AppId.eq(app_id))
             .filter(oauth_authorization_codes::Column::UsedAt.is_null())
+            .filter(oauth_authorization_codes::Column::CreatedAt.lte(now))
             .filter(oauth_authorization_codes::Column::ExpiresAt.gt(now))
             .exec(db)
             .await?;

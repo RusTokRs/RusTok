@@ -163,8 +163,9 @@ See [owner contract](README.md#operational-observability).
    not register a task for this operation.
 
 6. **Keep session maintenance in the auth-owned CLI adapter.**
-   `rustok-cli auth sessions-cleanup` removes expired auth sessions without the
-   server task bridge.
+   `rustok-cli auth sessions-cleanup` calls the Auth owner's session-only
+   retention operation without a server task bridge, preserves the same
+   30-day horizon as the worker and refuses dry-run.
 
 7. **Completed — keep bootstrap identity provisioning in the auth owner.**
    `AuthUserBootstrapDbWriter` provides idempotent tenant-scoped user creation
@@ -319,6 +320,41 @@ before persisting prepared credentials. OAuth replay grace no longer accepts
 future timestamps or truncates elapsed time to whole seconds. Focused source
 regressions authored; compilation and runtime verification remain pending.
 
+OAuth issuance additionally rechecks the locked authorization session after
+consent writes and after code insertion; future-dated and exactly expired codes
+cannot be consumed, and prepared token expiry is rechecked before committing
+a code exchange. Service access responses report remaining durable lifetime.
+The Auth signer now returns exact signed expiry metadata and accepts the
+absolute family cap before signing. Service and delegated access registrations
+use that exact deadline; response lifetime is calculated after usage telemetry.
+Future-dated prepared credentials fail closed. Old registrations retain their
+stored expiry and the extractor continues taking the earlier deadline.
+Boundary regressions are authored; compilation and transaction tests remain open.
+Live-runtime OAuth exchange and access extraction now use the shared Auth
+credential clock at admission, locked mutation and response boundaries. Strict
+serialized wall observations latch backward steps, including subsecond steps;
+refresh replay classification fails without mutating on an unavailable clock.
+Browser confirmation verification now returns the authenticated expiry and
+the code-issuance transaction rechecks it with the shared credential clock
+after locks, before consent, before code insert and before commit. Code issuance
+also verifies its persisted expiry before response; a post-commit fault
+suppresses publication rather than undoing a durable grant. The shared
+application clock now corroborates DB time at OAuth admission, time-dependent
+replay classification, locked consent/code/token mutations and pre-commit,
+and final common access extraction. Standalone consent grants use the verified
+host timestamp; future-dated access registrations fail closed. Retention and
+credential paths share one process-local application-clock latch, independent
+of JWT signing authority. Retention retains the fixed conservative cutoff;
+the post-commit response checks the local latch without another DB round trip.
+Direct login/registration and refresh/recovery now sample the application
+DB and live credential clocks under the existing mutation fences and before
+commit; login failure counters use corroborated time. Direct access JWT expiry
+is bounded by the durable session and returned exactly from signing; both
+response lifetimes are recomputed after commit. Future rotation timestamps
+cannot classify replay as theft. Other recovery mutations, durable cross-restart
+and cross-replica rollback remain open. Independent processes require reliable
+time and a single trusted primary. Source regressions unrun.
+
 ## OAuth family lifetime and replay evidence (source only)
 
 New access registrations and refresh rows cannot exceed the original family
@@ -327,11 +363,20 @@ consumption and delegated responses report the remaining access lifetime.
 Grace requires matching rotation timestamps and valid temporal evidence, not
 merely a recent revocation. Focused boundary and transactional regressions
 are unrun. Existing pre-change access registrations retain their stored expiry;
-canonical family identity migration remains open. Proof-bound OAuth refresh
+canonical family identity is now source-wired: non-optional Rust UUID,
+PostgreSQL NOT NULL/deferred root FK, SQLite write/deletion guards, one
+unrevoked refresh per family and immutable ownership/epoch identity.
+The migration backfills only old NULL-as-self roots and rejects inconsistent
+or forked history. Retention waits for all family members and preserves
+authorization codes until no linked token remains. Migration/rollback and
+PostgreSQL contention tests remain unrun. Proof-bound OAuth refresh
 recovery is source-wired using an optional secret singleton header and an
 independent purpose over tenant/app/family/predecessor/proof. The owner
 rechecks current app, subject, consent, exact scopes, live successor and
 exclusive grace under lock; recovery inserts only a fresh access row.
+The canonical CORS allowlist already admits the proof header; HTTP edge
+redaction now explicitly covers it for direct and OAuth refresh. Source
+regressions cover a superseded successor and delayed admission beyond grace.
 Client integration and cross-replica fault-injection evidence remain open.
 Root resolution now rejects unconsumed roots, mismatched consent epochs,
 widened descendant scopes and future timestamps. The app/subject-locked
@@ -514,3 +559,17 @@ The host extractor fails closed unless that row is active and matches the
 presented hash, client, tenant, grant, and subject. RFC 7009 and security
 revocation paths revoke access and refresh rows together. Delegated rows store
 the consent epoch so revoke/re-grant cannot resurrect older credentials.
+
+## Recovery lifecycle continuation (2026-11-26)
+
+- Email-change issuance and confirmation bind the existing user recovery revision; the Auth migration invalidates pre-cutover pending challenges. Mailbox ABA and stale issuance source regressions are authored.
+- Reset, verification, email change and invite acceptance recheck credential deadlines after transactional writes, immediately before requesting commit; authenticated email change also rechecks the locked proving session. Invite acceptance checks signed and ledger expiry.
+- PostgreSQL/SQLite fresh and incremental migration, rollback, contention and transport execution evidence remain pending. Source regressions are unrun. No transport or readiness status promotion.
+- Durable high-water time, commit-time deadline semantics, issuer authority history, and immediate reclamation of stale cross-account mailbox reservations remain separate unresolved boundaries.
+
+## Durable application clock admission (2026-11-26)
+
+- Auth migration adds singleton host/DB millisecond floors; admission commits independently of domain rollback, serializing before observation. Missing state fails closed.
+- Initial wiring covers direct registration/login/refresh/session creation, access extraction (including post-policy admission), OAuth token exchange/code issuance/strict consent, password reset, verification, email change, invite issuance/acceptance, and retention.
+- Existing in-transaction corroboration checks the durable floor without taking the global writer lock. Subsequent observations are not independently durable; full expiry non-resurrection, WebSocket and remaining consumers, and independent JWT authority continuity remain open.
+- Source regression authored for rollback/recreated guard/missing state; PostgreSQL independent-pool contention, synchronized replica skew, migration and runtime checks remain unrun. No readiness promotion.

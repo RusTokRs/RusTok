@@ -702,14 +702,35 @@ fn ws_should_forward_text(
     text: &str,
     operations: &mut WsOperationTracker,
 ) -> bool {
-    let Some(id) = ws_server_terminal_id(text) else {
+    let Some(id) = ws_server_operation_message_id(text) else {
         return true;
     };
-    let cancelled_by_client = operations.release(&id);
-    // graphql-transport-ws treats client completion as final; echoing the
-    // engine's completion may be attributed to a new operation reusing the id.
-    // The legacy subscriptions-transport-ws protocol expects this response.
-    !(cancelled_by_client && protocol == WebSocketProtocols::GraphQLWS)
+
+    if ws_server_terminal_id(text).is_some() {
+        let cancelled_by_client = operations.release(&id);
+        // graphql-transport-ws treats client completion as final; echoing the
+        // engine's completion may be attributed to a new operation reusing the id.
+        // The legacy subscriptions-transport-ws protocol expects this response.
+        return !(cancelled_by_client && protocol == WebSocketProtocols::GraphQLWS);
+    }
+
+    // A payload already queued by the engine can race with a client stop/complete.
+    // Do not deliver that stale payload after cancellation has been observed.
+    !operations.cancelling.contains(&id)
+}
+
+fn ws_server_operation_message_id(text: &str) -> Option<String> {
+    let value = serde_json::from_str::<serde_json::Value>(text).ok()?;
+    if !matches!(
+        value.get("type").and_then(serde_json::Value::as_str),
+        Some("next" | "data" | "complete" | "error")
+    ) {
+        return None;
+    }
+    value
+        .get("id")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
 }
 
 fn ws_server_terminal_id(text: &str) -> Option<String> {
@@ -1195,6 +1216,53 @@ mod tests {
             );
             tracker.observe_client_message(&start).unwrap();
             assert!(tracker.active.contains("op"));
+            assert!(tracker.cancelling.is_empty());
+        }
+    }
+
+    #[test]
+    fn graphql_ws_client_cancellation_suppresses_late_operation_payloads() {
+        for (protocol, start_type, stop_type, payload_type, forward_completion) in [
+            (
+                WebSocketProtocols::GraphQLWS,
+                "subscribe",
+                "complete",
+                "next",
+                false,
+            ),
+            (
+                WebSocketProtocols::SubscriptionsTransportWS,
+                "start",
+                "stop",
+                "data",
+                true,
+            ),
+        ] {
+            let mut tracker = super::WsOperationTracker::default();
+            let start = serde_json::json!({ "type": start_type, "id": "op" }).to_string();
+            let stop = serde_json::json!({ "type": stop_type, "id": "op" }).to_string();
+            let payload = serde_json::json!({
+                "type": payload_type,
+                "id": "op",
+                "payload": { "data": { "value": "stale" } },
+            })
+            .to_string();
+            let complete = serde_json::json!({ "type": "complete", "id": "op" }).to_string();
+
+            tracker.observe_client_message(&start).expect("start");
+            tracker.observe_client_message(&stop).expect("client cancellation");
+            assert!(
+                !super::ws_should_forward_text(protocol, &payload, &mut tracker),
+                "queued operation payload must not be forwarded after cancellation"
+            );
+            assert!(tracker.active.contains("op"));
+            assert!(tracker.cancelling.contains("op"));
+
+            assert_eq!(
+                super::ws_should_forward_text(protocol, &complete, &mut tracker),
+                forward_completion
+            );
+            assert!(!tracker.active.contains("op"));
             assert!(tracker.cancelling.is_empty());
         }
     }

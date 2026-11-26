@@ -649,7 +649,79 @@ Source regressions unrun.
 Browser approval and authorization-code issuance share one transaction. The host
 locks app, user and direct session in order, rechecks ownership, session liveness,
 email policy and access credential expiry, then grants missing consent only for
-explicit approval. Code insertion failure rolls back the consent change.
+explicit approval. The same locked session and access deadlines are rechecked
+before code insertion and before commit; expiry or code insertion failure rolls
+back the consent change. Code exchange admits only the interval
+`created_at <= now < expires_at`, using one timestamp for the conditional
+consumption and its recorded use time. Prepared access/refresh deadlines are
+rechecked after insertion before commit. Service-token responses likewise
+compute remaining durable access lifetime after commit instead of advertising
+the original TTL. The Auth signer returns the precise issuance sample and
+exact signed whole-second expiry; both service and delegated access rows store
+that expiry, with the original refresh-family deadline applied before signing.
+Responses derive remaining whole seconds after usage telemetry, and prepared
+credentials dated after the current clock fail closed. Existing access rows
+retain their stored expiry; validation still takes the earlier signed/durable
+deadline. The live Auth runtime serializes credential wall-clock observations and
+latches any observed backward step, even inside the JWT lease's divergence
+tolerance. OAuth token admission, refresh replay classification, locked rotation,
+recovery and pre-commit/response checks use that clock; access extraction samples
+before signature validation and after asynchronous policy reads. The gate also
+rechecks the managed lease and emergency/shutdown fences. Fixed embedders retain
+their existing behavior. Explicit revocation is not disabled by this gate.
+Browser confirmation issuance and verification use the same clock; the
+verified MAC expiry is retained as an exclusive deadline through locked
+session/consent checks and code persistence. New consent uses the sampled
+admission time. The code's own expiry is checked before commit and after its
+acknowledgement; no code is published if the gate closes after commit (the
+committed grant cannot be rolled back at that point). Non-browser bearer
+authorization also uses this gate without gaining consent-grant authority.
+Application DB clock corroboration now lives in `rustok_auth::application_clock`.
+OAuth code/refresh admission and time-based replay classification sample it
+before deciding expiry; code issuance, standalone consent grants and all token
+issuance/rotation/recovery writes recheck it on the same transaction before
+mutation and commit. Recovery also rechecks the prepared access deadline after
+insertion. The common access extractor samples the application DB after policy
+resolution before returning authority, and rejects future-dated OAuth access
+registrations. Credential timestamps remain host UTC; DB time corroborates
+rather than extends them. Publication after commit rechecks the local latch
+without another potentially failing DB round trip. Explicit revocations do not
+require this clock check.
+
+The application clock latch is shared with retention within one process,
+assuming a single trusted application primary; it is independent of the
+JWT authority latch. Slow/inconclusive DB observations deny the operation
+without asserting a discontinuity; observed faults remain sticky. Committed application admission now persists host and database high-water
+marks in the trusted application primary before selected operations. The
+independent transaction survives domain rollback; in-domain observations
+check but do not advance the durable floor. This is partial cross-restart
+protection, not a proof against rollback of the primary or of time observed
+only after the last committed admission. See the clock discontinuity ADR.
+Direct registration/login/session creation and refresh/recovery now use the
+same application DB observer and live credential clock at the mutation and
+pre-commit boundaries. Login lockout admission uses checked time; failed
+attempt bookkeeping corroborates DB time without requiring a signing lease.
+Future session creation or rotation evidence cannot authorize refresh or
+trigger a time-based replay revoke. New session timestamps share the checked
+host timeline. Direct access signing returns its exact NumericDate deadline,
+bounded by the persisted session expiry and absolute cap. Both response
+lifetimes are measured after commit, and a closed local gate or elapsed
+deadline suppresses publication. Other recovery mutations still require coverage.
+
+Auth retention is now owned by `rustok_auth::retention`. Both the daily sweep
+and session-only CLI corroborate fresh application DB wall time with bounded
+host samples before any deletion and again before commit. They use one fixed
+cutoff derived from the earlier observation minus two seconds; an inconclusive
+sample aborts, a detected clock fault is sticky for the process, and any
+pre-commit failure rolls back the full sweep. The CLI observes the same 30-day
+session horizon as the worker, including cascading refresh evidence, and
+rejects dry-run. The worker preserves its existing 120-day OAuth family/code
+windows and complete-lineage predicate. The shared application clock guard
+is independent of JWT signing lease availability: the CLI does not need signing
+material.
+The same bounded-clock assumptions apply; a fresh process with coherently
+incorrect host and DB time is not protected. No durable time watermark exists.
+Source regressions are authored, not executed.
 
 Re-granting consent durably revokes existing access and refresh credentials
 and invalidates pending authorization codes for the same app, subject and
@@ -673,9 +745,26 @@ secret singleton `x-rustok-refresh-retry-key` (64 lowercase nonzero hex).
 Retry the same request with the same scope and proof within 30 seconds.
 Only a matching live successor is returned; a fresh access row is registered,
 without another refresh row or expiry extension. Wrong proof, changed scope,
-revoked successor or elapsed grace fail closed. SDK adoption, CORS/header
-policy, generated reference verification, compilation and PostgreSQL
+revoked successor or elapsed grace fail closed. An admitted recovery that
+outlasts grace fails without revoking the lineage. The existing CORS
+allowlist covers the header and the HTTP edge marks it sensitive before
+tracing for both direct and OAuth refresh. SDK adoption, generated reference
+verification, compilation and PostgreSQL
 lost-response/concurrency evidence remain pending.
+
+## Canonical OAuth family identity
+
+The token model has a non-optional family UUID. The cutover migration
+materializes old NULL self-roots, rejects missing/inconsistent roots or
+multiple unrevoked refresh branches, then enforces immutable root identity
+and a partial unique index. PostgreSQL uses NOT NULL and a deferred root FK;
+SQLite uses equivalent write and root deletion guards. Fresh issuance inserts
+the refresh root before its access registration in the same transaction.
+Retention removes complete families only after the newest member's retention
+deadline and keeps authorization-code replay evidence while linked rows exist.
+Stop older hosts before applying the migration. Source regressions and the
+registered backfill fixture are unrun; existing corrupt history requires
+explicit operator repair, not automatic reassignment.
 
 ## Direct session concurrency
 
@@ -703,6 +792,17 @@ confirmation rechecks it under the user mutation lock and in its conditional
 write. Old subjects without the revision fail closed. Stop older Auth writers,
 apply the platform migration and request fresh links at cutover. See
 [the recovery revision ADR](../../../../DECISIONS/2026-11-26-auth-recovery-revision.md).
+Stored email-change challenges now bind the same revision, including the
+pre-reauthentication snapshot comparison at issuance. Confirmation fails
+closed on a missing or changed revision. The Auth migration removes legacy
+pending requests instead of backfilling a revision they never proved.
+A stale challenge may retain its bounded reservation until confirmation,
+replacement or expiry cleanup. Reset, verification, email change and invite
+acceptance recheck deadlines after transactional side effects and before
+requesting commit; email-change confirmation also rechecks the proving
+session. Recovery now uses the shared corroborated application clock and
+commits an independent admission sample; later checks are not independently
+durable and do not guarantee database commit-time deadlines.
 Source regressions and PostgreSQL/SQLite migration execution remain pending.
 
 ## Direct session refresh history and recovery

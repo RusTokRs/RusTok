@@ -41,3 +41,19 @@ fn auth_cli_command_provider_descriptors() {
     assert_eq!(commands[5].namespace, "auth");
     assert_eq!(commands[5].name, "jwt-revoke");
 }
+
+
+#[tokio::test]
+async fn session_cleanup_dry_run_is_rejected_before_database_access() {
+    use crate::AuthCommandProvider;
+    use rustok_cli_core::{CliCoreError, CommandProvider, CommandRequest};
+    use rustok_runtime::RuntimeComposition;
+
+    let provider = AuthCommandProvider {
+        runtime: RuntimeComposition::without_database(serde_json::json!({})),
+    };
+    let result = provider.execute(CommandRequest::new(
+        "auth", "sessions-cleanup", serde_json::json!({}), true,
+    )).await;
+    assert!(matches!(result, Err(CliCoreError::DryRunNotSupported { .. })));
+}

@@ -30,8 +30,14 @@ impl Model {
     }
 
     pub fn is_active(&self) -> bool {
-        let now = Utc::now();
-        self.revoked_at.is_none() && self.expires_at > now && self.absolute_deadline() > now
+        self.is_active_at(Utc::now())
+    }
+
+    pub fn is_active_at(&self, now: DateTime<Utc>) -> bool {
+        self.revoked_at.is_none()
+            && self.created_at.with_timezone(&Utc) <= now
+            && self.expires_at > now
+            && self.absolute_deadline() > now
     }
 }
 

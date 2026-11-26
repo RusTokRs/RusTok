@@ -1,117 +1,15 @@
-//! Bounded retention for authentication artifacts.
-//!
-//! Sessions and invite bookkeeping only need to outlive their security
-//! purpose: a session row and its cascading refresh-token history are
-//! worthless once the whole lineage has expired, and an
-//! invite digest only has to survive until the signed token expires.
-//! Rows are purged 30 days past expiry, so storage stays bounded
-//! without weakening exactly-once acceptance or theft detection. Pending
-//! mailbox-change challenges are deleted as soon as expired: they have no
-//! replay-evidence role after expiry and retain both email addresses. The
-//! host runs this daily via the auth retention worker; the
-//! `auth sessions-cleanup` CLI remains available for one-off runs.
+//! Host adapter for the Auth owner's bounded, transactional retention sweep.
 
-use chrono::{Duration, Utc};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait};
+use sea_orm::DatabaseConnection;
 
 use crate::error::Result;
-use crate::models::{
-    auth_email_change_requests, auth_invite_consumptions, auth_invites, oauth_authorization_codes,
-    oauth_tokens, sessions,
+pub use rustok_auth::retention::{
+    AUTH_ARTIFACT_RETENTION_DAYS, AuthRetentionPurge, OAUTH_AUTHORIZATION_CODE_RETENTION_DAYS,
+    OAUTH_TOKEN_RETENTION_DAYS,
 };
 
-/// How long expired auth artifacts are kept for audit before deletion.
-pub const AUTH_ARTIFACT_RETENTION_DAYS: i64 = 30;
-
-/// OAuth token rows are retained longer: a rotated lineage can live
-/// up to the 90-day family cap, and the revoked rows are the reuse
-/// evidence (plus the root row anchors the family deadline). They
-/// are purged 120 days past expiry — family cap plus the usual
-/// 30-day audit window.
-pub const OAUTH_TOKEN_RETENTION_DAYS: i64 = 120;
-
-/// Authorization codes are short-lived, but a used code is the replay anchor
-/// for the delegated refresh lineage it issued. Keep that evidence for the
-/// same outer window as the token family itself; purging it earlier would let
-/// a late code replay fail closed without revoking the still-live lineage.
-pub const OAUTH_AUTHORIZATION_CODE_RETENTION_DAYS: i64 = OAUTH_TOKEN_RETENTION_DAYS;
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct AuthRetentionPurge {
-    pub sessions: u64,
-    pub invite_consumptions: u64,
-    pub invites: u64,
-    pub email_change_requests: u64,
-    pub oauth_tokens: u64,
-    pub oauth_authorization_codes: u64,
-}
-
-/// Delete expired authentication artifacts in one transaction. A failed purge
-/// must not leave some artifact families deleted while later cleanup fails.
-/// Returns per-table deletion counts only after the transaction commits.
 pub async fn purge_expired_auth_artifacts(db: &DatabaseConnection) -> Result<AuthRetentionPurge> {
-    let now = Utc::now();
-    let cutoff = now - Duration::days(AUTH_ARTIFACT_RETENTION_DAYS);
-    let oauth_cutoff = now - Duration::days(OAUTH_TOKEN_RETENTION_DAYS);
-    let oauth_code_cutoff = now - Duration::days(OAUTH_AUTHORIZATION_CODE_RETENTION_DAYS);
-    let tx = db.begin().await?;
-
-    let result: Result<AuthRetentionPurge> = async {
-        let sessions = sessions::Entity::delete_many()
-            .filter(sessions::Column::ExpiresAt.lt(cutoff))
-            .exec(&tx)
-            .await?;
-
-        let invite_consumptions = auth_invite_consumptions::Entity::delete_many()
-            .filter(auth_invite_consumptions::Column::ExpiresAt.lt(cutoff))
-            .exec(&tx)
-            .await?;
-
-        let invites = auth_invites::Entity::delete_many()
-            .filter(auth_invites::Column::ExpiresAt.lt(cutoff))
-            .exec(&tx)
-            .await?;
-
-        // Match the on-demand cleanup at email-change issuance. Expired
-        // challenges no longer reserve an address or authorize confirmation.
-        let email_change_requests = auth_email_change_requests::Entity::delete_many()
-            .filter(auth_email_change_requests::Column::ExpiresAt.lte(now))
-            .exec(&tx)
-            .await?;
-
-        let oauth_tokens = oauth_tokens::Entity::delete_many()
-            .filter(oauth_tokens::Column::ExpiresAt.lt(oauth_cutoff))
-            .exec(&tx)
-            .await?;
-
-        let oauth_authorization_codes = oauth_authorization_codes::Entity::delete_many()
-            .filter(oauth_authorization_codes::Column::ExpiresAt.lt(oauth_code_cutoff))
-            .exec(&tx)
-            .await?;
-
-        Ok(AuthRetentionPurge {
-            sessions: sessions.rows_affected,
-            invite_consumptions: invite_consumptions.rows_affected,
-            invites: invites.rows_affected,
-            email_change_requests: email_change_requests.rows_affected,
-            oauth_tokens: oauth_tokens.rows_affected,
-            oauth_authorization_codes: oauth_authorization_codes.rows_affected,
-        })
-    }
-    .await;
-
-    match result {
-        Ok(report) => {
-            tx.commit().await?;
-            Ok(report)
-        }
-        Err(error) => {
-            // Explicit rollback keeps the failure visible and prevents later
-            // runs from observing a partially committed retention sweep.
-            tx.rollback().await?;
-            Err(error)
-        }
-    }
+    Ok(rustok_auth::retention::purge_expired_auth_artifacts(db).await?)
 }
 
 #[cfg(test)]
@@ -119,7 +17,8 @@ mod tests {
     use super::*;
     use crate::models::{oauth_apps, oauth_authorization_codes, tenants, users};
     use crate::services::oauth_app::{CreateOAuthAppInput, OAuthAppService};
-    use chrono::Duration;
+    use chrono::{Duration, Utc};
+    use crate::models::{auth_email_change_requests, sessions};
     use rustok_migrations::SqliteTestMigrator as Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
@@ -196,6 +95,7 @@ mod tests {
                 current_email: Set(user.email),
                 new_email: Set("new@example.com".to_string()),
                 password_changed_at: Set(user.password_changed_at),
+                recovery_revision: Set(Some(user.recovery_revision)),
                 token_hash: Set(format!("{:064x}", index + 1)),
                 expires_at: Set(expiry.into()),
                 created_at: Set((now - Duration::minutes(30)).into()),
@@ -271,7 +171,33 @@ mod tests {
             used_at: Set(Some(now.into())),
             created_at: Set((old_cutoff - Duration::minutes(10)).into()),
         };
-        old_code.insert(&db).await.expect("old code");
+        let old_code = old_code.insert(&db).await.expect("old code");
+        let root_id = Uuid::new_v4();
+        let child_id = Uuid::new_v4();
+        let rotated_at = old_cutoff - Duration::days(1);
+        for (id, expires, revoked_at) in [
+            (root_id, old_cutoff - Duration::minutes(1), Some(rotated_at)),
+            (child_id, old_cutoff + Duration::days(1), None),
+        ] {
+            crate::models::oauth_tokens::ActiveModel {
+                id: Set(id),
+                app_id: Set(created.app.id),
+                tenant_id: Set(tenant.id),
+                user_id: Set(Some(user.id)),
+                token_hash: Set(format!("retention-{id}")),
+                family_id: Set(root_id),
+                authorization_code_id: Set(Some(old_code.id)),
+                grant_type: Set("authorization_code".into()),
+                token_kind: Set(crate::models::oauth_tokens::TOKEN_KIND_REFRESH.into()),
+                consent_granted_at: Set(None),
+                scopes: Set(serde_json::json!(["openid"])),
+                expires_at: Set(expires.into()),
+                revoked_at: Set(revoked_at.map(Into::into)),
+                last_used_at: Set(revoked_at.map(Into::into)),
+                created_at: Set((old_cutoff - Duration::days(2)).into()),
+                updated_at: Set(rotated_at.into()),
+            }.insert(&db).await.expect("retention family member");
+        }
 
         let recent = oauth_authorization_codes::ActiveModel {
             id: Set(Uuid::new_v4()),
@@ -292,6 +218,19 @@ mod tests {
         .expect("recent code");
 
         let purge = purge_expired_auth_artifacts(&db).await.expect("purge");
+        assert_eq!(purge.oauth_authorization_codes, 0);
+        assert_eq!(purge.oauth_tokens, 0);
+        for id in [root_id, child_id] {
+            assert!(crate::models::oauth_tokens::Entity::find_by_id(id)
+                .one(&db).await.unwrap().is_some());
+        }
+        let mut child: crate::models::oauth_tokens::ActiveModel =
+            crate::models::oauth_tokens::Entity::find_by_id(child_id)
+                .one(&db).await.unwrap().unwrap().into();
+        child.expires_at = Set((old_cutoff - Duration::minutes(1)).into());
+        child.update(&db).await.expect("age remaining family member");
+        let purge = purge_expired_auth_artifacts(&db).await.expect("purge whole family");
+        assert_eq!(purge.oauth_tokens, 2);
         assert_eq!(purge.oauth_authorization_codes, 1);
 
         let remaining = oauth_authorization_codes::Entity::find()

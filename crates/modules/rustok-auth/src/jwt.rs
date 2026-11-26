@@ -94,6 +94,18 @@ pub fn encode_access_token(
     role: UserRole,
     session_id: Uuid,
 ) -> Result<String> {
+    Ok(issue_direct_access_token(config, user_id, tenant_id, role, session_id, None)?.token)
+}
+
+/// Exact signed direct-access deadline, optionally bounded by the session.
+pub fn issue_direct_access_token(
+    config: &AuthConfig,
+    user_id: Uuid,
+    tenant_id: Uuid,
+    role: UserRole,
+    session_id: Uuid,
+    deadline: Option<chrono::DateTime<Utc>>,
+) -> Result<IssuedAccessToken> {
     if user_id.is_nil() || tenant_id.is_nil() || session_id.is_nil() {
         return Err(AuthError::TokenEncodingFailed);
     }
@@ -104,8 +116,14 @@ pub fn encode_access_token(
         session_id = %session_id,
         "Encoding access token"
     );
-    let now = Utc::now();
-    let exp = token_expiration(now, config.access_expiration)?;
+    let now = config.credential_now()?;
+    let configured_expiry = token_expiration(now, config.access_expiration)?;
+    let bounded_expiry = deadline.map_or(configured_expiry, |cap| configured_expiry.min(cap));
+    let expires_at = chrono::DateTime::<Utc>::from_timestamp(bounded_expiry.timestamp(), 0)
+        .ok_or(AuthError::TokenEncodingFailed)?;
+    if now.timestamp() <= 0 || expires_at <= now {
+        return Err(AuthError::TokenEncodingFailed);
+    }
 
     let claims = Claims {
         sub: user_id,
@@ -114,21 +132,44 @@ pub fn encode_access_token(
         session_id,
         iss: config.issuer.clone(),
         aud: config.audience.clone(),
-        exp: exp.timestamp() as usize,
-        iat: now.timestamp() as usize,
+        exp: usize::try_from(expires_at.timestamp()).map_err(|_| AuthError::TokenEncodingFailed)?,
+        iat: usize::try_from(now.timestamp()).map_err(|_| AuthError::TokenEncodingFailed)?,
         client_id: None,
         scopes: Vec::new(),
         grant_type: DIRECT_GRANT_TYPE.to_string(),
         jti: None,
     };
 
-    encode_for_purpose(config, JwtPurpose::Access, &claims)
+    let token = encode_for_purpose(config, JwtPurpose::Access, &claims)?;
+    let after = config.credential_now()?;
+    if after < now || after >= expires_at {
+        return Err(AuthError::TokenEncodingFailed);
+    }
+    Ok(IssuedAccessToken { token, issued_at: now, expires_at })
 }
 
 pub fn encode_oauth_access_token(
     config: &AuthConfig,
     input: OauthAccessTokenInput<'_>,
 ) -> Result<String> {
+    Ok(issue_oauth_access_token(config, input, None)?.token)
+}
+
+/// The exact signed deadline accompanies the bearer for durable registration.
+/// Do not derive a second expiry from an independent clock observation.
+pub struct IssuedAccessToken {
+    pub token: String,
+    pub issued_at: chrono::DateTime<Utc>,
+    pub expires_at: chrono::DateTime<Utc>,
+}
+
+pub type IssuedOauthAccessToken = IssuedAccessToken;
+
+pub fn issue_oauth_access_token(
+    config: &AuthConfig,
+    input: OauthAccessTokenInput<'_>,
+    deadline: Option<chrono::DateTime<Utc>>,
+) -> Result<IssuedOauthAccessToken> {
     if input.app_id.is_nil()
         || input.tenant_id.is_nil()
         || input.client_id.is_nil()
@@ -144,8 +185,16 @@ pub fn encode_oauth_access_token(
         grant_type = %input.grant_type,
         "Encoding OAuth access token"
     );
-    let now = Utc::now();
-    let exp = token_expiration(now, input.expires_in_secs)?;
+    let now = config.credential_now()?;
+    let configured_expiry = token_expiration(now, input.expires_in_secs)?;
+    let bounded_expiry = deadline.map_or(configured_expiry, |cap| configured_expiry.min(cap));
+    // NumericDate has whole-second precision. Floor the absolute bound,
+    // never round it up or derive another TTL after sampling the clock.
+    let expires_at = chrono::DateTime::<Utc>::from_timestamp(bounded_expiry.timestamp(), 0)
+        .ok_or(AuthError::TokenEncodingFailed)?;
+    if now.timestamp() <= 0 || expires_at <= now {
+        return Err(AuthError::TokenEncodingFailed);
+    }
 
     let claims = Claims {
         sub: input.app_id,
@@ -154,8 +203,8 @@ pub fn encode_oauth_access_token(
         session_id: Uuid::nil(),
         iss: config.issuer.clone(),
         aud: config.audience.clone(),
-        exp: exp.timestamp() as usize,
-        iat: now.timestamp() as usize,
+        exp: usize::try_from(expires_at.timestamp()).map_err(|_| AuthError::TokenEncodingFailed)?,
+        iat: usize::try_from(now.timestamp()).map_err(|_| AuthError::TokenEncodingFailed)?,
         client_id: Some(input.client_id),
         scopes: input.scopes.to_vec(),
         grant_type: input.grant_type.to_string(),
@@ -165,7 +214,12 @@ pub fn encode_oauth_access_token(
     if !valid_access_subject(&claims) {
         return Err(AuthError::TokenEncodingFailed);
     }
-    encode_for_purpose(config, JwtPurpose::Access, &claims)
+    let token = encode_for_purpose(config, JwtPurpose::Access, &claims)?;
+    let after = config.credential_now()?;
+    if after < now || after >= expires_at {
+        return Err(AuthError::TokenEncodingFailed);
+    }
+    Ok(IssuedAccessToken { token, issued_at: now, expires_at })
 }
 
 pub struct OauthAccessTokenInput<'a> {
@@ -916,6 +970,36 @@ mod tests {
     }
 
     #[test]
+    fn oauth_issuance_metadata_matches_signed_numeric_dates_and_absolute_cap() {
+        let config = test_config();
+        let scopes = vec!["read".to_string()];
+        let input = |grant_type: &'static str| OauthAccessTokenInput {
+            app_id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            role: UserRole::Customer,
+            client_id: Uuid::new_v4(),
+            scopes: &scopes,
+            grant_type,
+            expires_in_secs: 900,
+            token_id: Uuid::new_v4(),
+        };
+        let cap = chrono::DateTime::<Utc>::from_timestamp(Utc::now().timestamp() + 60, 123_000_000).unwrap();
+        let issued = issue_oauth_access_token(&config, input("authorization_code"), Some(cap)).unwrap();
+        let claims = decode_access_token(&config, &issued.token).unwrap();
+        assert_eq!(claims.iat, issued.issued_at.timestamp() as usize);
+        assert_eq!(claims.exp, issued.expires_at.timestamp() as usize);
+        assert_eq!(issued.expires_at.timestamp_subsec_nanos(), 0);
+        assert_eq!(issued.expires_at.timestamp(), cap.timestamp());
+        assert!(issued.expires_at <= cap);
+        assert!(issue_oauth_access_token(&config, input("authorization_code"), Some(Utc::now())).is_err());
+        let uncapped = issue_oauth_access_token(&config, input("client_credentials"), None).unwrap();
+        assert_eq!(
+            uncapped.expires_at.timestamp() - uncapped.issued_at.timestamp(),
+            900,
+        );
+    }
+
+    #[test]
     fn token_encoders_reject_ttl_values_that_cannot_be_represented_safely() {
         let config = test_config();
 
@@ -1029,6 +1113,20 @@ mod tests {
                 assert!(!valid_token_times(overflow, overflow));
             }
         }
+    }
+
+    #[test]
+    fn direct_access_deadline_is_the_exact_signed_session_bound() {
+        let config = test_config();
+        let cap = Utc::now() + Duration::seconds(30);
+        let issued = issue_direct_access_token(
+            &config, Uuid::new_v4(), Uuid::new_v4(), UserRole::Customer,
+            Uuid::new_v4(), Some(cap),
+        ).unwrap();
+        let claims = decode_access_token(&config, &issued.token).unwrap();
+        assert_eq!(claims.exp as i64, issued.expires_at.timestamp());
+        assert!(issued.expires_at <= cap);
+        assert_eq!(claims.iat as i64, issued.issued_at.timestamp());
     }
 
     #[test]

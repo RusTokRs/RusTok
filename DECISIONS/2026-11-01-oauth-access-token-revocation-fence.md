@@ -56,6 +56,11 @@ consent-presence check alone could not distinguish an old epoch from a new grant
    access registrations and refresh tokens. Issuance rejects expired prepared
    credentials and rechecks their deadlines under the mutation fence; delegated
    token responses report only remaining whole access-lifetime seconds.
+   Newly issued service and delegated access rows store the exact signed
+   whole-second JWT expiry. The Auth signer applies the absolute family cap
+   before signing and returns the signed expiry with the precise issuance
+   sample. The response TTL is calculated after asynchronous usage telemetry.
+   Existing rows keep their earlier-of-signed-and-durable validation fence.
 10. The duplicate-rotation grace applies only to a consumed refresh row whose
     last-use and revocation timestamps match, with a valid creation/expiry
     interval and nonnegative elapsed time strictly below 30 seconds. An
@@ -79,7 +84,34 @@ consent-presence check alone could not distinguish an old epoch from a new grant
     original exclusive 30-second window. It registers fresh access only;
     refresh history and deadlines are unchanged. Non-proof clients retain
     non-recoverable CSPRNG rotations. The header is rejected for other
-    grants. Never log proofs or raw credentials.
+    grants. Never log proofs or raw credentials. The shared HTTP edge
+    marks the proof header sensitive before tracing. A proof-bearing
+    request admitted while the predecessor is live or in grace may fail
+    after waiting, but does not become a fresh replay revocation.
+
+13. Every OAuth token has one non-nil, immutable family UUID. A fresh
+    refresh root is inserted before its access registration. Access-only
+    credentials are self-rooted. The database admits at most one unrevoked
+    refresh row per family, even when an unrevoked row is already expired.
+    Descendants must reference a self-rooted refresh row with the same
+    client, tenant, subject, original code, grant and consent epoch.
+    PostgreSQL uses NOT NULL, a deferred root foreign key and a write
+    guard; SQLite uses an equivalent null/identity write guard and a root
+    deletion guard without rebuilding the existing tenant-guarded table.
+14. Retention deletes entire families only after the latest member's
+    expiry plus the existing 120-day window. Retain code replay evidence
+    while any token from that code remains. The cutover materializes NULL
+    as self-root only, rejects inconsistent/forked existing families before
+    backfill, and never silently discards or reassigns history. Stop old
+    hosts before applying the migration. The application has no NULL
+    fallback. Downgrade does not undo the truthful identity backfill.
+
+15. Token exchange and access admission use the live Auth credential clock
+    at time-sensitive admission and mutation boundaries. Observed backward
+    wall steps latch the existing local clock fault; refresh recovery and
+    replay classification fail closed if the clock/lease cannot authorize the
+    observation. Explicit revocation remains independent of this gate. This is
+    not a durable cross-restart or cross-replica time authority.
 
 ## Sources of truth and ownership
 

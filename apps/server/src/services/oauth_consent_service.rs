@@ -29,6 +29,7 @@ impl OAuthAppService {
         // Token issuance takes these same locks in app-then-user order before
         // checking consent. Sharing that order makes grant/revoke linearizable
         // with token exchange and with concurrent app/user deactivation.
+        rustok_auth::application_clock::admit_now(db).await?;
         let tx = db.begin().await?;
         let app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
             .await?
@@ -62,12 +63,14 @@ impl OAuthAppService {
 
         let scopes_json = serde_json::to_value(&normalized)
             .map_err(|_| Error::InternalServerError)?;
+        let now = rustok_auth::application_clock::verified_now(&tx).await?;
         OAuthAppService::grant_consent_in_transaction(
             &tx,
             app.id,
             user.id,
             tenant_id,
             &scopes_json,
+            now,
         )
         .await
         .map_err(|attempt| match attempt {
@@ -76,6 +79,7 @@ impl OAuthAppService {
             ),
             GrantConsentAttempt::Fatal(error) => error,
         })?;
+        rustok_auth::application_clock::verified_now(&tx).await?;
         tx.commit().await?;
         Ok(())
     }

@@ -68,6 +68,12 @@ missing. It did not protect the two GET fast paths.
 - A stale or revoked consent cannot authorize a code: POST rechecks consent and
   the code-issuance owner revalidates the authority fence inside its
   transaction.
+- MAC verification returns the authenticated exclusive confirmation expiry,
+  not merely a boolean. The locked transaction checks that deadline with the
+  shared Auth credential clock before granting consent, inserting a code and
+  committing. A fault before commit rolls back both writes. After commit, a
+  closed gate or expired code suppresses publication, not the committed grant.
+  The ten-minute code lifetime is independent of the confirmation lifetime.
 - Delegated OAuth and service principals remain unable to authorize or
   consent.
 

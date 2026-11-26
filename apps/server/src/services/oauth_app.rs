@@ -224,6 +224,30 @@ pub(crate) struct AuthorizationSession {
     pub session_id: Uuid,
     pub access_expires_at: chrono::DateTime<Utc>,
     pub require_email_verification: bool,
+    pub confirmation_deadline: Option<chrono::DateTime<Utc>>,
+}
+
+impl AuthorizationSession {
+    fn ensure_live(
+        &self,
+        session: &crate::models::sessions::Model,
+        now: chrono::DateTime<Utc>,
+    ) -> Result<()> {
+        if self.confirmation_deadline.is_some_and(|deadline| now >= deadline) {
+            return Err(Error::Unauthorized("OAuth authorization confirmation expired".to_string()));
+        }
+        if session.revoked_at.is_some()
+            || session.created_at.with_timezone(&Utc) > now
+            || session.expires_at.with_timezone(&Utc) <= now
+            || session.absolute_deadline() <= now
+            || self.access_expires_at <= now
+        {
+            return Err(Error::Unauthorized(
+                "OAuth authorization credential expired or inactive".to_string(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 pub struct OAuthAppService;
@@ -633,8 +657,10 @@ impl OAuthAppService {
         redirect_uri: String,
         scopes: Vec<String>,
         code_challenge: String,
-        approve_consent: bool,
+        clock: &(dyn Fn() -> Result<chrono::DateTime<Utc>> + Send + Sync),
     ) -> Result<String> {
+        clock()?;
+        rustok_auth::application_clock::admit_now(db).await?;
         let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
         let app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
             .await
@@ -679,16 +705,15 @@ impl OAuthAppService {
         if subject.require_email_verification && !user.is_email_verified() {
             return Err(Error::Unauthorized("Email verification required".to_string()));
         }
-        crate::services::auth_lifecycle::AuthLifecycleService::find_session_by_id_for_update_in_tx(
+        let session = crate::services::auth_lifecycle::AuthLifecycleService::find_session_by_id_for_update_in_tx(
             &tx, tenant_id, subject.session_id,
         )
         .await
         .map_err(|_| Error::InternalServerError)?
-        .filter(|session| session.user_id == user.id && session.is_active())
+        .filter(|session| session.user_id == user.id)
         .ok_or_else(|| Error::Unauthorized("OAuth authorization session is no longer active".to_string()))?;
-        if subject.access_expires_at <= Utc::now() {
-            return Err(Error::Unauthorized("OAuth authorization credential expired".to_string()));
-        }
+        rustok_auth::application_clock::verified_now(&tx).await?;
+        subject.ensure_live(&session, clock()?)?;
 
         if app.requires_user_consent() {
             let consent = OAuthConsents::find_active_consent(&tx, app_id, user.id, tenant_id)
@@ -702,15 +727,18 @@ impl OAuthAppService {
                 None => false,
             };
             if !covered {
-                if !approve_consent {
+                if subject.confirmation_deadline.is_none() {
                     return Err(Error::Unauthorized(
                         "OAuth authorization requires active user consent".to_string(),
                     ));
                 }
                 let scopes_json = serde_json::to_value(&scopes)
                     .map_err(|_| Error::InternalServerError)?;
+                rustok_auth::application_clock::verified_now(&tx).await?;
+                let now = clock()?;
+                subject.ensure_live(&session, now)?;
                 Self::grant_consent_in_transaction(
-                    &tx, app_id, user.id, tenant_id, &scopes_json,
+                    &tx, app_id, user.id, tenant_id, &scopes_json, now,
                 )
                 .await
                 .map_err(|attempt| match attempt {
@@ -724,14 +752,19 @@ impl OAuthAppService {
 
         // Generate a fresh code only after the caller has passed authoritative
         // checks. Hashing an opaque random code does not leak plaintext to DB.
-        let random_bytes: [u8; 32] = rand::random();
+        // Use the Auth owner's fallible CSPRNG; preserve base64url wire format.
+        let random_bytes = hex::decode(auth::generate_refresh_token()?)
+            .map_err(|_| Error::InternalServerError)?;
         use base64::{Engine as _, engine::general_purpose};
         let code = general_purpose::URL_SAFE_NO_PAD.encode(random_bytes);
-        use sha2::{Digest, Sha256};
-        let code_hash = hex::encode(Sha256::digest(code.as_bytes()));
+        let code_hash = auth::hash_refresh_token(&code);
 
-        let now = Utc::now();
-        OAuthCodeActiveModel {
+        rustok_auth::application_clock::verified_now(&tx).await?;
+        let now = clock()?;
+        subject.ensure_live(&session, now)?;
+        let expires_at = now.checked_add_signed(chrono::Duration::minutes(10))
+            .ok_or(Error::InternalServerError)?;
+        let stored = OAuthCodeActiveModel {
             id: Set(Uuid::new_v4()),
             app_id: Set(app_id),
             user_id: Set(user.id),
@@ -741,14 +774,28 @@ impl OAuthAppService {
             scopes: Set(serde_json::to_value(&scopes).map_err(|_| Error::InternalServerError)?),
             code_challenge: Set(code_challenge),
             code_challenge_method: Set("S256".to_string()),
-            expires_at: Set((now + chrono::Duration::minutes(10)).into()),
+            expires_at: Set(expires_at.into()),
             used_at: Set(None),
             created_at: Set(now.into()),
         }
         .insert(&tx)
         .await
         .map_err(|_| Error::InternalServerError)?;
+        // Recheck immediately before attempting commit; a slow code write
+        // must not pass a stale authorization decision. The session stays locked.
+        rustok_auth::application_clock::verified_now(&tx).await?;
+        let now = clock()?;
+        subject.ensure_live(&session, now)?;
+        if !stored.is_active_at(now) {
+            return Err(Error::Unauthorized("OAuth authorization code expired before commit".to_string()));
+        }
         tx.commit().await.map_err(|_| Error::InternalServerError)?;
+        // A committed code cannot be rolled back after acknowledgement.
+        // Refuse publication if the clock fence closed or the code expired.
+        rustok_auth::application_clock::check_local()?;
+        if !stored.is_active_at(clock()?) {
+            return Err(Error::Unauthorized("OAuth authorization code expired before response".to_string()));
+        }
         Ok(code)
     }
 
@@ -850,16 +897,12 @@ impl OAuthAppService {
             .map_err(|_| Error::InternalServerError)?;
 
         if let Some(token) = token {
-            let family_id = token.family_id.unwrap_or(token.id);
+            let family_id = token.family_id;
             let now = Utc::now();
             let mut family_scope = sea_orm::Condition::all()
                 .add(oauth_tokens::Column::AppId.eq(app_id))
                 .add(oauth_tokens::Column::TenantId.eq(tenant_id))
-                .add(
-                    sea_orm::Condition::any()
-                        .add(oauth_tokens::Column::FamilyId.eq(family_id))
-                        .add(oauth_tokens::Column::Id.eq(family_id)),
-                );
+                .add(oauth_tokens::Column::FamilyId.eq(family_id));
             family_scope = match token.user_id {
                 Some(user_id) => family_scope.add(oauth_tokens::Column::UserId.eq(user_id)),
                 None => family_scope.add(oauth_tokens::Column::UserId.is_null()),
@@ -958,7 +1001,8 @@ impl OAuthAppService {
         }
 
         let scopes_json = serde_json::to_value(&scopes).map_err(|_| Error::InternalServerError)?;
-        Self::grant_consent_in_transaction(&tx, app_id, user_id, tenant_id, &scopes_json)
+        let now = rustok_auth::application_clock::verified_now(&tx).await?;
+        Self::grant_consent_in_transaction(&tx, app_id, user_id, tenant_id, &scopes_json, now)
             .await
             .map_err(|attempt| match attempt {
                 GrantConsentAttempt::UniqueRace => Error::Conflict(
@@ -966,6 +1010,7 @@ impl OAuthAppService {
                 ),
                 GrantConsentAttempt::Fatal(error) => error,
             })?;
+        rustok_auth::application_clock::verified_now(&tx).await?;
         tx.commit().await.map_err(|_| Error::InternalServerError)?;
         Ok(())
     }
@@ -979,6 +1024,7 @@ impl OAuthAppService {
         user_id: Uuid,
         tenant_id: Uuid,
         scopes_json: &serde_json::Value,
+        now: chrono::DateTime<Utc>,
     ) -> std::result::Result<(), GrantConsentAttempt>
     where
         C: ConnectionTrait,
@@ -993,7 +1039,6 @@ impl OAuthAppService {
 
         match existing {
             Some(consent) => {
-                let now = Utc::now();
                 // Re-grant creates a new consent epoch even when the scopes
                 // are unchanged. Durably revoke all credentials of the previous
                 // grant, even if the database clock repeats an epoch timestamp.
@@ -1035,7 +1080,7 @@ impl OAuthAppService {
                     user_id: Set(user_id),
                     tenant_id: Set(tenant_id),
                     scopes: Set(scopes_json.clone()),
-                    granted_at: Set(Utc::now().into()),
+                    granted_at: Set(now.into()),
                     revoked_at: Set(None),
                 }
                 .insert(db)
@@ -2297,6 +2342,7 @@ mod tests {
                 "m20261025_000001_add_user_login_lockout".to_owned(),
                 "m20261025_000005_add_oauth_token_family".to_owned(),
                 "m20261101_000001_add_user_password_changed_at".to_owned(),
+                "m20261126_000050_add_user_recovery_revision".to_owned(),
             ]);
 
             let migrations = Migrator::migrations()
@@ -3074,13 +3120,24 @@ mod tests {
         token_hash: &str,
         family_id: Option<Uuid>,
     ) -> oauth_tokens::Model {
+        let id = Uuid::new_v4();
+        if let Some(root_id) = family_id {
+            let now = Utc::now();
+            OAuthTokens::update_many()
+                .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
+                .col_expr(oauth_tokens::Column::LastUsedAt, Expr::value(now))
+                .filter(oauth_tokens::Column::Id.eq(root_id))
+                .filter(oauth_tokens::Column::AppId.eq(app.id))
+                .filter(oauth_tokens::Column::TenantId.eq(app.tenant_id))
+                .exec(db).await.expect("consume test root");
+        }
         oauth_tokens::ActiveModel {
-            id: Set(Uuid::new_v4()),
+            id: Set(id),
             app_id: Set(app.id),
             user_id: Set(None),
             tenant_id: Set(app.tenant_id),
             token_hash: Set(token_hash.to_string()),
-            family_id: Set(family_id),
+            family_id: Set(family_id.unwrap_or(id)),
             authorization_code_id: Set(None),
             grant_type: Set("client_credentials".to_string()),
             token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
@@ -3118,7 +3175,12 @@ mod tests {
             session_id: session.id,
             access_expires_at: expires_at,
             require_email_verification: false,
+            confirmation_deadline: None,
         }
+    }
+
+    fn authorization_test_clock() -> Result<chrono::DateTime<Utc>> {
+        Ok(Utc::now())
     }
 
     #[tokio::test]
@@ -3145,8 +3207,7 @@ mod tests {
                 tenant.id,
                 redirect_uri.to_string(),
                 scopes.clone(),
-                "challenge".to_string(),
-                false,
+                "challenge".to_string(), &authorization_test_clock,
             )
         };
 
@@ -3219,6 +3280,33 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    async fn authorization_session_deadlines_are_exclusive() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let user = users::ActiveModel::new(tenant.id, "deadline-auth@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("user");
+        let subject = authorization_subject(&db, &user).await;
+        let mut session = crate::models::sessions::Entity::find_by_id(subject.session_id)
+            .one(&db)
+            .await
+            .expect("load session")
+            .expect("session exists");
+        let now = Utc::now();
+        assert!(subject.ensure_live(&session, now).is_ok());
+        let expired = AuthorizationSession { access_expires_at: now, ..subject };
+        assert!(expired.ensure_live(&session, now).is_err());
+        let confirmed = AuthorizationSession { confirmation_deadline: Some(now), ..subject };
+        assert!(confirmed.ensure_live(&session, now).is_err());
+        session.expires_at = now.into();
+        assert!(subject.ensure_live(&session, now).is_err());
+        session.expires_at = subject.access_expires_at.into();
+        session.absolute_expires_at = Some(now.into());
+        assert!(subject.ensure_live(&session, now).is_err());
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn revoked_session_cannot_approve_consent_or_issue_code() {
         let (db, tenant) = test_db_with_tenant().await;
         let app = insert_revocation_app(&db, tenant.id, "revoked-authorization-session").await;
@@ -3235,12 +3323,40 @@ mod tests {
             .expect("revoke session");
 
         let result = OAuthAppService::generate_authorization_code(
-            &db, app.id, subject, tenant.id,
+            &db, app.id, AuthorizationSession { confirmation_deadline: Some(subject.access_expires_at), ..subject }, tenant.id,
             "https://partner.example.com/callback".to_string(),
-            vec!["openid".to_string()], "challenge".to_string(), true,
+            vec!["openid".to_string()], "challenge".to_string(), &authorization_test_clock,
         )
         .await;
         assert!(matches!(result, Err(Error::Unauthorized(_))));
+        assert_eq!(OAuthConsents::find().count(&db).await.expect("consents"), 0);
+        assert_eq!(oauth_authorization_codes::Entity::find().count(&db).await.expect("codes"), 0);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn confirmation_expiring_after_code_insert_rolls_back_consent_and_code() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let app = insert_revocation_app(&db, tenant.id, "confirmation-deadline").await;
+        let user = users::ActiveModel::new(tenant.id, "confirmation-deadline@example.com", "hash")
+            .insert(&db).await.expect("user");
+        let subject = authorization_subject(&db, &user).await;
+        let start = Utc::now();
+        let deadline = start + chrono::Duration::seconds(1);
+        let subject = AuthorizationSession { confirmation_deadline: Some(deadline), ..subject };
+        let samples = std::sync::atomic::AtomicUsize::new(0);
+        let clock = || Ok(if samples.fetch_add(1, std::sync::atomic::Ordering::SeqCst) >= 4 {
+            deadline
+        } else {
+            start
+        });
+        let result = OAuthAppService::generate_authorization_code(
+            &db, app.id, subject, tenant.id,
+            "https://partner.example.com/callback".to_string(),
+            vec!["openid".to_string()], "challenge".to_string(), &clock,
+        ).await;
+        assert!(matches!(result, Err(Error::Unauthorized(_))));
+        assert_eq!(samples.load(std::sync::atomic::Ordering::SeqCst), 5);
         assert_eq!(OAuthConsents::find().count(&db).await.expect("consents"), 0);
         assert_eq!(oauth_authorization_codes::Entity::find().count(&db).await.expect("codes"), 0);
     }
@@ -3262,9 +3378,9 @@ mod tests {
         .await
         .expect("inject code write failure");
         let issue = || OAuthAppService::generate_authorization_code(
-            &db, app.id, subject, tenant.id,
+            &db, app.id, AuthorizationSession { confirmation_deadline: Some(subject.access_expires_at), ..subject }, tenant.id,
             "https://partner.example.com/callback".to_string(),
-            vec!["openid".to_string()], "challenge".to_string(), true,
+            vec!["openid".to_string()], "challenge".to_string(), &authorization_test_clock,
         );
         assert!(issue().await.is_err());
         assert_eq!(OAuthConsents::find().count(&db).await.expect("consents"), 0);
@@ -3307,7 +3423,7 @@ mod tests {
                     user_id: Set(Some(subject)),
                     tenant_id: Set(tenant.id),
                     token_hash: Set(format!("regrant-{id}")),
-                    family_id: Set(Some(id)),
+                    family_id: Set(id),
                     authorization_code_id: Set(None),
                     grant_type: Set("authorization_code".to_string()),
                     token_kind: Set(kind.to_string()),
@@ -3356,8 +3472,7 @@ mod tests {
             tenant.id,
             "https://partner.example.com/callback".to_string(),
             scopes,
-            "challenge".to_string(),
-            false,
+            "challenge".to_string(), &authorization_test_clock,
         )
         .await
         .expect("new epoch admits a new code");
@@ -3406,8 +3521,7 @@ mod tests {
                 tenant_id,
                 "https://partner.example.com/callback".to_string(),
                 vec!["openid".to_string()],
-                "challenge".to_string(),
-                false,
+                "challenge".to_string(), &authorization_test_clock,
             )
         };
         assert!(matches!(issue(Uuid::new_v4()).await, Err(Error::NotFound)));
@@ -3633,7 +3747,7 @@ mod tests {
             user_id: Set(None),
             tenant_id: Set(app.tenant_id),
             token_hash: Set("access-jwt-hash".to_string()),
-            family_id: Set(Some(root.id)),
+            family_id: Set(root.id),
             authorization_code_id: Set(None),
             grant_type: Set("client_credentials".to_string()),
             token_kind: Set(oauth_tokens::TOKEN_KIND_ACCESS.to_string()),
@@ -3678,7 +3792,7 @@ mod tests {
         let app = insert_revocation_app(&db, tenant.id, "rfc7009-scope").await;
         let other_app = insert_revocation_app(&db, other_tenant.id, "rfc7009-other").await;
         let root = insert_revocation_token(&db, &app, "scoped-root", None).await;
-        let foreign = insert_revocation_token(&db, &other_app, "foreign-root", Some(root.id)).await;
+        let foreign = insert_revocation_token(&db, &other_app, "foreign-root", None).await;
 
         OAuthAppService::revoke_token_by_hash(&db, "scoped-root", app.id, other_tenant.id)
             .await
@@ -4130,13 +4244,14 @@ mod tests {
         .await
         .expect("insert token user");
 
+        let token_id = Uuid::new_v4();
         oauth_tokens::ActiveModel {
-            id: Set(Uuid::new_v4()),
+            id: Set(token_id),
             app_id: Set(created.app.id),
             user_id: Set(Some(token_user.id)),
             tenant_id: Set(tenant.id),
             token_hash: Set("refresh-token-hash".to_string()),
-            family_id: Set(None),
+            family_id: Set(token_id),
             authorization_code_id: Set(None),
             grant_type: Set("authorization_code".to_string()),
             token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
@@ -4818,13 +4933,14 @@ mod tests {
         .await
         .expect("insert auto-created app owned by a different manifest entry");
 
+        let old_token_id = Uuid::new_v4();
         let old_token = oauth_tokens::ActiveModel {
-            id: Set(Uuid::new_v4()),
+            id: Set(old_token_id),
             app_id: Set(orphan_app.id),
             user_id: Set(Some(orphan_user.id)),
             tenant_id: Set(tenant.id),
             token_hash: Set("orphan-token-hash".to_string()),
-            family_id: Set(None),
+            family_id: Set(old_token_id),
             authorization_code_id: Set(Some(orphan_code_id)),
             grant_type: Set("authorization_code".to_string()),
             token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),

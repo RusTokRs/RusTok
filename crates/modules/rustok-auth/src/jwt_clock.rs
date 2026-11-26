@@ -7,8 +7,9 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-//! Bounded clock observations for the managed JWT lease, not a time service.
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+//! Bounded clock observations for the managed JWT lease and credential admission,
+//! not a distributed time service.
+use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const MAX_DIVERGENCE: Duration = Duration::from_secs(1);
@@ -36,6 +37,11 @@ impl ClockSample {
         })
     }
 
+    pub(crate) fn utc(self) -> Option<chrono::DateTime<chrono::Utc>> {
+        let elapsed = self.wall.duration_since(UNIX_EPOCH).ok()?;
+        chrono::DateTime::from_timestamp(i64::try_from(elapsed.as_secs()).ok()?, elapsed.subsec_nanos())
+    }
+
     fn wall_ms(self) -> Option<i64> {
         i64::try_from(self.wall.duration_since(UNIX_EPOCH).ok()?.as_millis()).ok()
     }
@@ -45,6 +51,9 @@ impl ClockSample {
 pub(crate) struct ClockGuard {
     anchor: ClockSample,
     faulted: AtomicBool,
+    // Serialize sampling, not merely publication, to avoid treating an
+    // out-of-order concurrent observation as a backward clock step.
+    credential_high_water: Mutex<ClockSample>,
 }
 
 impl ClockGuard {
@@ -53,7 +62,11 @@ impl ClockGuard {
     }
 
     fn at(anchor: ClockSample) -> Self {
-        Self { anchor, faulted: AtomicBool::new(false) }
+        Self {
+            anchor,
+            faulted: AtomicBool::new(false),
+            credential_high_water: Mutex::new(anchor),
+        }
     }
 
     pub(crate) fn faulted(&self) -> bool {
@@ -62,7 +75,7 @@ impl ClockGuard {
 
     pub(crate) fn trip(&self) {
         if !self.faulted.swap(true, Ordering::AcqRel) {
-            tracing::error!("JWT lease clock fault; restart only after clock remediation");
+            tracing::error!("Auth clock fault; restart only after clock remediation");
         }
     }
 
@@ -77,6 +90,25 @@ impl ClockGuard {
             self.trip();
         }
         !self.faulted()
+    }
+
+    /// Credential admission must not reuse an earlier observed wall time,
+    /// even within the lease's one-second divergence tolerance.
+    pub(crate) fn credential_sample(&self, sample: impl FnOnce() -> ClockSample) -> Option<ClockSample> {
+        let Ok(mut previous) = self.credential_high_water.lock() else {
+            self.trip();
+            return None;
+        };
+        let now = sample();
+        if now.wall < previous.wall || now.mono < previous.mono {
+            self.trip();
+            return None;
+        }
+        if !self.healthy_at(now) {
+            return None;
+        }
+        *previous = now;
+        Some(now)
     }
 
     /// The timestamp was evaluated somewhere within the read interval.
@@ -160,6 +192,22 @@ impl LeaseDeadline {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn credential_clock_rejects_small_rollback_and_never_reopens() {
+        let start = ClockSample::now();
+        let guard = ClockGuard::at(start);
+        let later = start.checked_add(Duration::from_millis(500)).unwrap();
+        assert!(guard.credential_sample(|| later).is_some());
+        let rollback = ClockSample {
+            mono: start.mono + Duration::from_millis(600),
+            wall: start.wall + Duration::from_millis(400),
+        };
+        assert!(guard.healthy_at(rollback), "lease tolerance alone admits this sample");
+        assert!(guard.credential_sample(|| rollback).is_none());
+        assert!(guard.faulted());
+        assert!(guard.credential_sample(|| start.checked_add(Duration::from_secs(2)).unwrap()).is_none());
+    }
 
     #[test]
     fn database_skew_is_bounded_and_faults_are_sticky() {

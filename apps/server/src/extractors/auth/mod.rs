@@ -240,6 +240,7 @@ async fn validate_oauth_access_token_registration(
         "OAuth access token is not registered",
     ))?;
     let token_hash = crate::auth::hash_refresh_token(access_token);
+    let now = chrono::Utc::now();
     let row = OAuthTokens::find_by_id(jti)
         .filter(oauth_tokens::Column::TokenHash.eq(token_hash))
         .filter(oauth_tokens::Column::AppId.eq(app_id))
@@ -247,7 +248,8 @@ async fn validate_oauth_access_token_registration(
         .filter(oauth_tokens::Column::GrantType.eq(grant_type))
         .filter(oauth_tokens::Column::TokenKind.eq(oauth_tokens::TOKEN_KIND_ACCESS))
         .filter(oauth_tokens::Column::RevokedAt.is_null())
-        .filter(oauth_tokens::Column::ExpiresAt.gt(chrono::Utc::now()))
+        .filter(oauth_tokens::Column::CreatedAt.lte(now))
+        .filter(oauth_tokens::Column::ExpiresAt.gt(now))
         .one(db)
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
@@ -446,6 +448,10 @@ pub async fn resolve_current_user_from_access_token(
     ))?;
     let db = ctx.runtime_ctx().db();
 
+    rustok_auth::application_clock::admit_now(db).await
+        .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Application database clock unavailable"))?;
+    auth_config.credential_now()
+        .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Credential authority unavailable"))?;
     let claims = decode_access_token(auth_config, access_token)
         .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid token signature"))?;
     let expiry_seconds = i64::try_from(claims.exp)
@@ -659,10 +665,13 @@ pub async fn resolve_current_user_from_access_token(
     // Storage and policy resolution may outlast either credential fence.
     // The signed JWT cannot extend the observed session (including its
     // absolute cap) or durable OAuth registration deadline.
+    rustok_auth::application_clock::admit_now(db).await
+        .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Application database clock unavailable"))?;
     ensure_access_token_not_expired(
         access_token_expires_at,
         durable_credential_expires_at,
-        chrono::Utc::now(),
+        auth_config.credential_now()
+            .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Credential authority unavailable"))?,
     )?;
 
     Ok(CurrentUser {

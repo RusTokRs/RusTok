@@ -1052,6 +1052,8 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         let email = rustok_auth::normalize_email(&command.email)
             .map_err(|error| AuthAdminMutationError::Validation(error.to_string()))?;
 
+        rustok_auth::application_clock::admit_now(&self.db).await
+            .map_err(super::internal_admin_error)?;
         let token = crate::auth::encode_invite_token(
             &self.auth_config,
             context.tenant_id,
@@ -1066,8 +1068,9 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         // because a second clock read added a fractional second.
         let expires_at = invite_expiration_from_token(&self.auth_config, &token)?;
 
-        let now = Utc::now();
         let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
+        let now = rustok_auth::application_clock::verified_now(&tx).await
+            .map_err(super::internal_admin_error)?;
 
         // The custom-role ceiling is validated at issuance under the
         // issuer's current authority: the role must exist in this
@@ -1134,6 +1137,12 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             },
         )
         .await?;
+        let final_now = rustok_auth::application_clock::verified_now(&tx).await
+            .map_err(super::internal_admin_error)?;
+        if final_now >= expires_at {
+            tx.rollback().await.map_err(super::internal_admin_error)?;
+            return Err(AuthAdminMutationError::Validation("Invite expired before issuance".to_string()));
+        }
         tx.commit().await.map_err(super::internal_admin_error)?;
 
         Ok(IssuedUserInviteResult {

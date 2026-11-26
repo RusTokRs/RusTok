@@ -29,6 +29,7 @@ impl AuthLifecycleService {
         email: &str,
         locale: &str,
     ) -> Result<(), AuthLifecycleError> {
+        rustok_auth::application_clock::admit_now(ctx.db()).await?;
         let user = users::Entity::find_by_email(ctx.db(), tenant_id, email.trim())
             .await
             .map_err(AuthLifecycleError::from)?;
@@ -73,6 +74,7 @@ impl AuthLifecycleService {
         token: &str,
         new_password: &str,
     ) -> Result<(), AuthLifecycleError> {
+        rustok_auth::application_clock::admit_now(ctx.db()).await?;
         let claims = decode_password_reset_token(config, token)
             .map_err(|_| AuthLifecycleError::InvalidResetToken)?;
         // INVARIANT: Validate that the reset token was signed for the requested tenant before looking up the user.
@@ -162,6 +164,10 @@ impl AuthLifecycleService {
         )
         .await?;
 
+        if rustok_auth::application_clock::verified_now(&tx).await? >= claims.expires_at {
+            tx.rollback().await.map_err(AuthLifecycleError::from)?;
+            return Err(AuthLifecycleError::InvalidResetToken);
+        }
         tx.commit().await.map_err(AuthLifecycleError::from)?;
         Self::record_password_reset_sessions_revoked(revoked_sessions);
         Ok(())

@@ -100,7 +100,12 @@ it never provisions a service or adds grants. Human transport authentication is 
 
 ### Known Limitations / Pending Implementation
 
-OAuth policy changes and consent re-grants now durably revoke previous
+OAuth authorization rechecks the locked direct-session/access deadline after
+consent and code writes, and code consumption rejects future-dated and expired
+codes using one admission timestamp. Service and delegated token exchanges
+recheck prepared expiry before commit. Newly issued OAuth access rows use
+the exact signed whole-second JWT expiry, and response TTL is computed after
+usage telemetry. OAuth policy changes and consent re-grants now durably revoke previous
 credentials at the source level. Compilation, focused regressions and
 PostgreSQL contention/rollback evidence remain pending. OAuth refresh-family
 proof-bound recovery is source-wired for the token endpoint; client adoption,
@@ -108,7 +113,7 @@ generated references and full OAuth lifecycle verification remain open. Newly is
 credentials are bounded by the original refresh-family deadline, and
 rotation requires consistent consumed-root evidence and rejects multiple
 live refresh branches. Pre-existing access registrations keep their stored
-expiry; canonical non-null family identity migration remains pending.
+expiry. Canonical family identity, database uniqueness and family-wide retention are source-wired; migration execution and PostgreSQL verification remain pending.
 
 Direct first-party refresh has source-level proof-bound recovery through the
 raw and cookie REST endpoints and GraphQL HTTP transport. The cookie
@@ -150,7 +155,15 @@ unreleased token formats and broader config compatibility. Ambiguous or empty RS
 are rejected.
 The independent MAC root rejects PEM key material and weak values at JWT preparation, host-proof and durable fence derivation boundaries. Host root rotation remains open.
 Clock discontinuity detection and dual-deadline leases are source-implemented;
+browser code issuance carries the authenticated confirmation expiry through
+locked consent and code writes and checks the shared live credential clock;
 independent clock fault-injection and suspend evidence remain pending.
+The Auth-owned retention operation also corroborates host/application DB time
+at both transaction boundaries, retains the same session history for worker
+and CLI, and refuses deletion on time uncertainty. OAuth credential mutations,
+standalone consent grants, direct login/registration/refresh and the common access extractor now corroborate
+application DB time with that same process-local guard; independent JWT
+authority remains separate.
 Independent production JWT authority and explicit offline import are source-implemented;
 a separately configured rollback witness detects authority-only rollback and
 supports exact offline recovery. Joint-store rollback and application session
@@ -171,3 +184,22 @@ admission, foreign epoch invalidation and atomic verified memory publication.
 See [Auth UI](ui/README.md); server-side expected-lineage admission is
 source-wired for raw/cookie REST and GraphQL HTTP refresh, with mounted browser
 and cross-replica verification pending.
+
+## Recovery credential lifecycle (2026-11-26)
+
+Email-change challenges bind the database-owned account recovery revision,
+like reset and verification JWTs. Legacy pending email changes are removed
+at migration; no revision backfill or compatibility reader is provided.
+Recovery mutations recheck credential expiry before requesting commit and
+roll back late transitions; this does not establish durable clock safety.
+See the [recovery revision ADR](../../../DECISIONS/2026-11-26-auth-recovery-revision.md)
+and the [Auth implementation plan](./docs/implementation-plan.md) for remaining evidence.
+
+## Durable application clock admission
+
+Selected Auth credential and retention entrypoints persist corroborated host
+and primary-DB high-water marks in `auth_application_clock` before domain
+transactions. Later checks read the floor without a nested writer transaction.
+Apply the Auth migration before deploying this version; never lower the floor.
+Full durable expiry observation coverage, independent JWT authority continuity,
+contention and restart/runtime evidence remain open. See the [clock ADR](../../../DECISIONS/2026-11-25-jwt-clock-discontinuity.md).
