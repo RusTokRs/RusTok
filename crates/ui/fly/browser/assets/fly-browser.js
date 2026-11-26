@@ -441,7 +441,8 @@ function readDraftSession(pageId, renderedBinding = null) {
   // The server-rendered identity is authoritative for strict hosts. Never
   // replace it with a stale token left by another render in sessionStorage.
   // Storage remains a compatibility path for legacy hosts only.
-  if (isObject(renderedBinding) && renderedBinding.required === true) {
+  if (isObject(renderedBinding) &&
+      (renderedBinding.authoritative === true || renderedBinding.required === true)) {
     const token = nonEmptyString(renderedBinding.token);
     if (!token) return null;
     const rawGeneration = renderedBinding.generation;
@@ -986,6 +987,7 @@ export class FlyBrowserAdapter {
     // storage would only widen the XSS surface without authenticating anything new.
     this.requiresOperationReceipts = root.dataset.flyDraftContract === "rendered";
     this.draftSession = readDraftSession(this.pageId, {
+      authoritative: root.dataset.flyDraftBinding === "rendered",
       required: this.requiresOperationReceipts,
       token: root.dataset.flyRenderedDraftToken,
       generation: root.dataset.flyRenderedDraftGeneration,
