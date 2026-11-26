@@ -133,6 +133,16 @@ impl RegistrySet {
             if location.depth == 0 {
                 return PlacementDecision::rejected("moving a page root is not supported");
             }
+            // The proposed type is authoritative only for a new insertion.
+            // A move must describe the current source node, not stale drag metadata.
+            let Some(actual_type) = document.component_type_for_id(moving_component_id) else {
+                return PlacementDecision::rejected("moving component does not exist or is opaque");
+            };
+            if actual_type != child_type {
+                return PlacementDecision::rejected(format!(
+                    "moving component type `{actual_type}` does not match proposed type `{child_type}`"
+                ));
+            }
             if parent_component_id == Some(moving_component_id) {
                 return PlacementDecision::rejected("a component cannot contain itself");
             }
@@ -365,6 +375,53 @@ mod tests {
                 .evaluate_placement(&document, Some("section-a"), "section", None, 2)
                 .legal
         );
+    }
+
+    #[test]
+    fn placement_checks_actual_moving_type_across_pages() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "source",
+                "component": {
+                    "id": "source-root",
+                    "type": "wrapper",
+                    "components": [
+                        { "id": "moving-text", "type": "text" },
+                        { "id": "moving-item", "type": "list_item" }
+                    ]
+                }
+            }, {
+                "id": "destination",
+                "component": {
+                    "id": "destination-list",
+                    "type": "list"
+                }
+            }]
+        }))
+        .expect("document");
+        let registries = RegistrySet::with_builtins();
+
+        let forged = registries.evaluate_placement(
+            &document, Some("moving-text"), "list_item", Some("destination-list"), 0,
+        );
+        assert!(!forged.legal);
+        assert!(forged.reason.unwrap_or_default().contains("does not match proposed type"));
+
+        let actual = registries.evaluate_placement(
+            &document, Some("moving-text"), "text", Some("destination-list"), 0,
+        );
+        assert!(!actual.legal);
+        assert!(actual.reason.unwrap_or_default().contains("does not accept"));
+
+        assert!(registries.evaluate_placement(
+            &document, Some("moving-item"), "list_item", Some("destination-list"), 0,
+        ).legal);
+        assert!(registries.evaluate_placement(
+            &document, None, "list_item", Some("destination-list"), 0,
+        ).legal);
+        assert!(!registries.evaluate_placement(
+            &document, Some("moving-item"), "text", Some("source-root"), 0,
+        ).legal);
     }
 
     #[test]
