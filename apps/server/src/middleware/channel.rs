@@ -325,7 +325,6 @@ pub async fn resolve(
     };
 
     let settings = ctx.settings();
-    let resolver = ChannelResolver::new(ctx.db_clone());
     let facts = build_request_facts(
         tenant.id,
         req.headers(),
@@ -334,14 +333,79 @@ pub async fn resolve(
         settings,
         req.extensions(),
     )?;
-    let cache = channel_cache(&ctx);
-    let cache_usable = channel_resolution_cache_usable(&ctx);
+    if let Some(context) = resolve_channel_context_for_facts(&ctx, facts).await? {
+        req.extensions_mut()
+            .insert(ChannelContextExtension(context));
+    }
+
+    tracing::debug!(path_group = crate::middleware::http_stack::trace_path_family(req.uri().path()), "channel::resolve calling next");
+    Ok(next.run(req).await)
+}
+
+fn build_request_facts(
+    tenant_id: Uuid,
+    headers: &HeaderMap,
+    query: Option<&str>,
+    peer_ip: Option<std::net::IpAddr>,
+    settings: &RustokSettings,
+    extensions: &Extensions,
+) -> Result<RequestFacts, axum::http::StatusCode> {
+    build_request_facts_for_context(
+        tenant_id,
+        headers,
+        query,
+        peer_ip,
+        settings,
+        extensions
+            .get::<AuthContextExtension>()
+            .and_then(|auth| auth.0.client_id),
+        extensions
+            .get::<ResolvedRequestLocale>()
+            .map(|resolved| resolved.effective_locale.clone()),
+    )
+}
+
+/// Build canonical facts for transports that resolve their tenant after the HTTP
+/// middleware stack has run (for example GraphQL connection_init).
+pub(crate) fn build_request_facts_for_context(
+    tenant_id: Uuid,
+    headers: &HeaderMap,
+    query: Option<&str>,
+    peer_ip: Option<std::net::IpAddr>,
+    settings: &RustokSettings,
+    oauth_app_id: Option<Uuid>,
+    locale: Option<String>,
+) -> Result<RequestFacts, axum::http::StatusCode> {
+    Ok(RequestFacts {
+        tenant_id,
+        surface: TargetSurface::Http,
+        header_channel_id: channel_id_from_header(headers)?,
+        header_channel_slug: channel_slug_from_header(headers)?,
+        query_channel_slug: channel_slug_from_query(query)?,
+        host: extract_effective_host(headers, peer_ip, &settings.runtime.request_trust),
+        oauth_app_id,
+        locale,
+    })
+}
+
+/// Resolve a channel after the caller has established the request tenant.
+///
+/// This shares the cache, invalidation fence, and cross-tenant check used by the
+/// HTTP middleware so deferred handshakes cannot silently lose channel context
+/// or create a weaker resolution path.
+pub(crate) async fn resolve_channel_context_for_facts(
+    ctx: &ServerRuntimeContext,
+    facts: RequestFacts,
+) -> Result<Option<ChannelContext>, axum::http::StatusCode> {
+    let tenant_id = facts.tenant_id;
+    let resolver = ChannelResolver::new(ctx.db_clone());
+    let cache = channel_cache(ctx);
+    let cache_usable = channel_resolution_cache_usable(ctx);
 
     // Two independent reasons to resolve without the cache: no version fence for
-    // the tenant yet, or a broken durable invalidation runtime (see
-    // `channel_resolution_cache_usable`). The uncached path is correct in both
-    // cases; only the cost differs.
-    let cached = match (cache_usable, cache.tenant_version(facts.tenant_id)) {
+    // the tenant yet, or a broken durable invalidation runtime. The uncached path
+    // is correct in both cases; only the cost differs.
+    let cached = match (cache_usable, cache.tenant_version(tenant_id)) {
         (true, Some(version)) => {
             let cache_key = channel_cache_key_from_facts(&facts, version);
             cache
@@ -375,46 +439,21 @@ pub async fn resolve(
             })?,
     };
 
-    if let CachedChannelResolution::Found(context) = cached {
-        if context.tenant_id != tenant.id {
+    match cached {
+        CachedChannelResolution::Found(context) if context.tenant_id == tenant_id => {
+            Ok(Some(*context))
+        }
+        CachedChannelResolution::Found(context) => {
             tracing::error!(
                 channel_id = %context.id,
                 channel_tenant_id = %context.tenant_id,
-                request_tenant_id = %tenant.id,
+                request_tenant_id = %tenant_id,
                 "Cross-tenant channel resolution detected - failing closed"
             );
-            return Err(axum::http::StatusCode::FORBIDDEN);
+            Err(axum::http::StatusCode::FORBIDDEN)
         }
-        req.extensions_mut()
-            .insert(ChannelContextExtension(*context));
+        CachedChannelResolution::Missing => Ok(None),
     }
-
-    tracing::debug!(path_group = crate::middleware::http_stack::trace_path_family(req.uri().path()), "channel::resolve calling next");
-    Ok(next.run(req).await)
-}
-
-fn build_request_facts(
-    tenant_id: Uuid,
-    headers: &HeaderMap,
-    query: Option<&str>,
-    peer_ip: Option<std::net::IpAddr>,
-    settings: &RustokSettings,
-    extensions: &Extensions,
-) -> Result<RequestFacts, axum::http::StatusCode> {
-    Ok(RequestFacts {
-        tenant_id,
-        surface: TargetSurface::Http,
-        header_channel_id: channel_id_from_header(headers)?,
-        header_channel_slug: channel_slug_from_header(headers)?,
-        query_channel_slug: channel_slug_from_query(query)?,
-        host: extract_effective_host(headers, peer_ip, &settings.runtime.request_trust),
-        oauth_app_id: extensions
-            .get::<AuthContextExtension>()
-            .and_then(|auth| auth.0.client_id),
-        locale: extensions
-            .get::<ResolvedRequestLocale>()
-            .map(|resolved| resolved.effective_locale.clone()),
-    })
 }
 
 /// Whether this process may serve channel resolution from its cache.

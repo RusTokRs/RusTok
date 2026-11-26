@@ -1,4 +1,5 @@
 use std::{
+    net::{IpAddr, SocketAddr},
     sync::{Arc, OnceLock},
     time::Duration,
 };
@@ -8,11 +9,11 @@ use async_graphql::http::{GraphQLPlaygroundConfig, WebSocketProtocols, WsMessage
 use axum::{
     Extension, Json,
     extract::{
-        State,
+        ConnectInfo, State,
         rejection::JsonRejection,
         ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade},
     },
-    http::{HeaderMap, StatusCode, header},
+    http::{HeaderMap, StatusCode, Uri, header},
     response::{IntoResponse, Response},
     routing::get,
 };
@@ -242,7 +243,9 @@ async fn graphql_ws_handler(
     State(auth_runtime): State<ServerAuthRuntime>,
     Extension(registry): Extension<ModuleRegistry>,
     Extension(schema): Extension<Arc<AppSchema>>,
-    OptionalChannel(channel): OptionalChannel,
+    headers: HeaderMap,
+    uri: Uri,
+    connect_info: Option<ConnectInfo<SocketAddr>>,
 ) -> impl IntoResponse {
     let ws = ws
         .protocols(async_graphql::http::ALL_WEBSOCKET_PROTOCOLS)
@@ -264,6 +267,9 @@ async fn graphql_ws_handler(
             .into_response();
     };
 
+    let query = uri.query().map(str::to_owned);
+    let peer_ip = connect_info.map(|ConnectInfo(address)| address.ip());
+
     ws.on_upgrade(move |socket| {
         handle_graphql_ws(
             socket,
@@ -272,7 +278,9 @@ async fn graphql_ws_handler(
             auth_runtime,
             registry,
             protocol,
-            channel,
+            headers,
+            query,
+            peer_ip,
         )
     })
 }
@@ -284,7 +292,9 @@ async fn handle_graphql_ws(
     auth_runtime: ServerAuthRuntime,
     registry: ModuleRegistry,
     protocol: WebSocketProtocols,
-    channel: Option<ChannelContext>,
+    headers: HeaderMap,
+    query: Option<String>,
+    peer_ip: Option<IpAddr>,
 ) {
     let (mut sink, mut source) = socket.split();
     let (incoming_tx, incoming_rx) =
@@ -299,7 +309,8 @@ async fn handle_graphql_ws(
     let runtime_ctx_for_init = runtime_ctx.clone();
     let auth_runtime_for_init = auth_runtime.clone();
     let registry_for_init = registry.clone();
-    let channel_for_init = channel.clone();
+    let headers_for_init = headers;
+    let query_for_init = query;
     let auth_lease_for_init = Arc::clone(&auth_lease);
     let connection_init_received_for_init = Arc::clone(&connection_init_received);
     let mut graphql_stream = async_graphql::http::WebSocket::new(
@@ -316,7 +327,9 @@ async fn handle_graphql_ws(
                 runtime_ctx_for_init.clone(),
                 auth_runtime_for_init.clone(),
                 registry_for_init.clone(),
-                channel_for_init.clone(),
+                headers_for_init.clone(),
+                query_for_init.clone(),
+                peer_ip,
                 Arc::clone(&auth_lease_for_init),
                 payload,
             ),
@@ -718,7 +731,9 @@ async fn build_ws_connection_data(
     runtime_ctx: ServerRuntimeContext,
     auth_runtime: ServerAuthRuntime,
     registry: ModuleRegistry,
-    channel: Option<ChannelContext>,
+    headers: HeaderMap,
+    query: Option<String>,
+    peer_ip: Option<IpAddr>,
     auth_lease: Arc<OnceLock<WebSocketAuthLease>>,
     payload: serde_json::Value,
 ) -> async_graphql::Result<Data> {
@@ -742,7 +757,6 @@ async fn build_ws_connection_data(
             );
             async_graphql::Error::new(error.client_message())
         })?;
-    ensure_ws_channel_tenant(channel.as_ref(), tenant_ctx.id)?;
     let access_token = strip_ws_bearer_scheme(token.trim()).to_string();
     let current_user =
         resolve_current_user_from_access_token(&auth_runtime, tenant_ctx.id, &access_token)
@@ -757,6 +771,29 @@ async fn build_ws_connection_data(
     );
 
     let locale = resolve_ws_locale(&runtime_ctx, &tenant_ctx, payload.locale.as_deref()).await?;
+    let channel_facts = crate::middleware::channel::build_request_facts_for_context(
+        tenant_ctx.id,
+        &headers,
+        query.as_deref(),
+        peer_ip,
+        runtime_ctx.settings(),
+        current_user.client_id,
+        Some(locale.to_string()),
+    )
+    .map_err(|status| {
+        if status == StatusCode::BAD_REQUEST {
+            async_graphql::Error::new("Invalid channel selector")
+        } else {
+            async_graphql::Error::new("Channel resolution failed")
+        }
+    })?;
+    let channel = crate::middleware::channel::resolve_channel_context_for_facts(
+        &runtime_ctx,
+        channel_facts,
+    )
+    .await
+    .map_err(|_| async_graphql::Error::new("Channel resolution failed"))?;
+    ensure_ws_channel_tenant(channel.as_ref(), tenant_ctx.id)?;
 
     auth_lease
         .set(WebSocketAuthLease::new(access_token, &current_user))

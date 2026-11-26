@@ -2155,3 +2155,14 @@ failed subscriptions from permanently consuming the per-connection operation
 budget. Client-cancellation races are covered for both supported WebSocket
 protocols. Source regressions were added; tests and formatting were not run
 at the user's request.
+
+
+## GraphQL WebSocket channel context (2026-11-26)
+
+GraphQL WebSocket handshakes resolve their tenant from `connection_init`, after
+HTTP tenant/channel middleware has run. Channel resolution is therefore deferred
+until the tenant and authenticated principal are known, using the same selector
+parsing, trusted-host policy, cache generation fence, and cross-tenant check as
+HTTP requests. Host, `X-Channel-ID`, `X-Channel-Slug`, and `channel` query
+selectors now work for WebSocket connections as well. Source regressions were
+added; tests and formatting were not run at the user's request.

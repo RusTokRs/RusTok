@@ -1,4 +1,5 @@
 use super::{
+    build_request_facts_for_context, resolve_channel_context_for_facts,
     CachedChannelResolution, ChannelResolutionCache, ChannelResolutionOutcome,
     ChannelResolutionStage, bounded_cache_component,
     build_request_facts as try_build_request_facts,
@@ -6,6 +7,7 @@ use super::{
     channel_slug_from_header, channel_slug_from_query, resolved_detail_source_and_trace,
 };
 use crate::common::RustokSettings;
+use crate::services::server_runtime_context::ServerRuntimeContext;
 use crate::context::{ChannelContext, ChannelResolutionSource};
 use axum::http::{Extensions, HeaderMap, header::HOST};
 use rustok_api::{
@@ -460,6 +462,46 @@ fn request_facts_reject_malformed_and_ambiguous_channel_selectors() {
         )
         .is_err()
     );
+}
+
+#[tokio::test]
+async fn deferred_tenant_resolution_can_resolve_the_same_host_channel_as_http() {
+    let db = setup_channel_db().await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant(&db, tenant_id, "tenant").await;
+    let service = ChannelService::new(db.clone());
+    let channel_id = create_channel(&service, tenant_id, "ws-host-channel").await;
+    add_web_target(&service, channel_id, "ws.example.test").await;
+
+    let settings = test_settings();
+    let mut headers = HeaderMap::new();
+    headers.insert(HOST, "ws.example.test".parse().expect("host header"));
+    let facts = build_request_facts_for_context(
+        tenant_id,
+        &headers,
+        None,
+        None,
+        &settings,
+        None,
+        Some("en".to_string()),
+    )
+    .expect("websocket facts should use the canonical channel selectors");
+    let runtime_ctx = ServerRuntimeContext::new(db, settings);
+
+    let resolved = resolve_channel_context_for_facts(&runtime_ctx, facts.clone())
+        .await
+        .expect("channel resolution should succeed")
+        .expect("host target should resolve a channel");
+    assert_eq!(resolved.id, channel_id);
+    assert_eq!(resolved.tenant_id, tenant_id);
+    assert_eq!(resolved.target_value.as_deref(), Some("ws.example.test"));
+
+    let cached = resolve_channel_context_for_facts(&runtime_ctx, facts)
+        .await
+        .expect("cached channel resolution should succeed")
+        .expect("cached host target should remain available");
+    assert_eq!(cached.id, channel_id);
+    assert_eq!(cached.target_value.as_deref(), Some("ws.example.test"));
 }
 
 #[tokio::test]
