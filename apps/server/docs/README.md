@@ -2135,3 +2135,13 @@ ownership under a tenant session lock and does not clear a missing or mismatched
 credential. The ID is not a bearer credential; absence remains credential-only
 startup or explicit raw-token operation. CORS admits the header. Mounted HTTP
 and database contention evidence is pending.
+
+
+## Forum service-boundary path canonicalization (2026-11-26)
+
+Service-principal restrictions for forum authorship, quote relations and
+content updates now classify percent-encoded resource IDs using the same
+percent-decoding semantics as Axum's Path extractor. Encoded UUID hyphens
+can no longer bypass human-only or moderation-only route checks. Focused
+source regressions were added; compilation, formatting and tests were not run
+at the user's request.
