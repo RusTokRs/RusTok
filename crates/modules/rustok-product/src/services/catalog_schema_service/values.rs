@@ -32,6 +32,76 @@ async fn lock_product_for_update_in_tx(
 }
 
 #[derive(FromQueryResult)]
+struct AttributeTranslationValidationRow {
+    value_type: String,
+    is_localized: bool,
+    validation: Value,
+}
+
+pub(crate) async fn validate_localized_attribute_translation_in<C>(
+    conn: &C,
+    tenant_id: Uuid,
+    primary_category_id: Option<Uuid>,
+    attribute_id: Uuid,
+    value: &str,
+) -> CommerceResult<()>
+where
+    C: ConnectionTrait,
+{
+    let definition = AttributeTranslationValidationRow::find_by_statement(
+        Statement::from_sql_and_values(
+            conn.get_database_backend(),
+            "SELECT value_type, is_localized, validation FROM product_attributes WHERE tenant_id = $1 AND id = $2",
+            vec![tenant_id.into(), attribute_id.into()],
+        ),
+    )
+    .one(conn)
+    .await?
+    .ok_or_else(|| {
+        CommerceError::Validation(
+            "Localized Product attribute no longer exists".to_owned(),
+        )
+    })?;
+
+    let value_type =
+        AttributeValueType::from_storage(&definition.value_type).map_err(map_schema_resolution_error)?;
+    if !definition.is_localized
+        || !matches!(
+            value_type,
+            AttributeValueType::Text | AttributeValueType::Textarea | AttributeValueType::Richtext
+        )
+    {
+        return Err(CommerceError::Validation(
+            "Translation target is not a localized text attribute".to_owned(),
+        ));
+    }
+
+    let validation = if let Some(category_id) = primary_category_id {
+        let form = ProductCatalogSchemaService::load_effective_form_for_category_in(
+            conn,
+            tenant_id,
+            category_id,
+            std::slice::from_ref(&attribute_id),
+        )
+        .await?;
+        form.attributes
+            .into_iter()
+            .find(|binding| binding.attribute_id == attribute_id)
+            .map(|binding| binding.validation)
+            .unwrap_or(definition.validation)
+    } else {
+        definition.validation
+    };
+
+    attribute_validation::validate_localized_text_translation_value(
+        attribute_id,
+        value_type,
+        &validation,
+        value,
+    )
+}
+
+#[derive(FromQueryResult)]
 struct ProductAttributeScopeRow {
     id: Uuid,
     scope: String,

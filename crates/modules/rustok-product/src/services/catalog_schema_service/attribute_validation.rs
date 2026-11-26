@@ -736,6 +736,32 @@ pub(crate) fn validate_attribute_value_rules(
     Ok(())
 }
 
+/// Validates a localized text translation against the same rule set used by direct EAV writes.
+pub(crate) fn validate_localized_text_translation_value(
+    attribute_id: Uuid,
+    value_type: AttributeValueType,
+    validation: &Value,
+    value: &str,
+) -> CommerceResult<()> {
+    if !matches!(
+        value_type,
+        AttributeValueType::Text | AttributeValueType::Textarea | AttributeValueType::Richtext
+    ) {
+        return Err(schema_failure(
+            "localized value",
+            "requires a text, textarea, or richtext attribute",
+        ));
+    }
+
+    let rules = parse_product_attribute_validation(validation)?;
+    validate_attribute_value_rules(
+        attribute_id,
+        &rules,
+        value_type,
+        &ProductAttributeValuePatchValue::Text(value.to_owned()),
+    )
+}
+
 fn check_numeric_bounds(
     attribute_id: Uuid,
     rules: &ProductAttributeValidationRules,
@@ -927,6 +953,44 @@ mod tests {
             value_type,
             &ProductAttributeValuePatchValue::Clear,
         );
+    }
+
+    #[test]
+    fn localized_translation_enforces_effective_text_rules() {
+        let validation = json!({
+            "minLength": 2,
+            "maxLength": 4,
+            "pattern": "^[A-Z]+$"
+        });
+
+        assert!(validate_localized_text_translation_value(
+            attribute_id(),
+            AttributeValueType::Text,
+            &validation,
+            "AB",
+        )
+        .is_ok());
+        assert!(validate_localized_text_translation_value(
+            attribute_id(),
+            AttributeValueType::Textarea,
+            &validation,
+            "ABC",
+        )
+        .is_ok());
+        assert!(validate_localized_text_translation_value(
+            attribute_id(),
+            AttributeValueType::Richtext,
+            &validation,
+            "ABCDE",
+        )
+        .is_err());
+        assert!(validate_localized_text_translation_value(
+            attribute_id(),
+            AttributeValueType::Text,
+            &validation,
+            "abc",
+        )
+        .is_err());
     }
 
     #[test]
