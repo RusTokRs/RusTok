@@ -14,11 +14,11 @@ type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 #[tokio::test]
 async fn sanitized_project_hash_survives_postgres_jsonb_roundtrip() -> TestResult<()> {
     let Ok(database_url) = env::var(DATABASE_ENV) else {
-        eprintln!("{DATABASE_ENV} is not set; skipping PostgreSQL JSONB roundtrip regression");
+        tracing::info!("{DATABASE_ENV} is not set; skipping PostgreSQL JSONB roundtrip regression");
         return Ok(());
     };
     if !database_url.starts_with("postgres://") && !database_url.starts_with("postgresql://") {
-        eprintln!("{DATABASE_ENV} is not a PostgreSQL URL; skipping JSONB roundtrip regression");
+        tracing::info!("{DATABASE_ENV} is not a PostgreSQL URL; skipping JSONB roundtrip regression");
         return Ok(());
     }
 

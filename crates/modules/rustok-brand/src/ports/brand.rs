@@ -69,38 +69,6 @@ pub trait BrandPort: Send + Sync {
         tenant_id: Uuid,
         brand_id: Uuid,
     ) -> BrandResult<Vec<BrandCategoryDto>>;
-
-    // Product associations (transitional during hybrid cutover)
-    #[deprecated(
-        note = "Product-to-brand binding is canonically owned by rustok-product::product_brands. Use ProductPort / ProductReadPort."
-    )]
-    async fn get_brand_for_product(
-        &self,
-        tenant_id: Uuid,
-        product_id: Uuid,
-        locale: Option<&str>,
-    ) -> BrandResult<Option<BrandDto>>;
-
-    #[deprecated(
-        note = "Product-to-brand binding is canonically owned by rustok-product::product_brands. Use ProductPort::update_product or create_product with brands."
-    )]
-    async fn assign_product_brand(
-        &self,
-        tenant_id: Uuid,
-        brand_id: Uuid,
-        product_id: Uuid,
-        is_primary: bool,
-    ) -> BrandResult<()>;
-
-    #[deprecated(
-        note = "Product-to-brand binding is canonically owned by rustok-product::product_brands. Use ProductPort::update_product."
-    )]
-    async fn unassign_product_brand(
-        &self,
-        tenant_id: Uuid,
-        brand_id: Uuid,
-        product_id: Uuid,
-    ) -> BrandResult<()>;
 }
 
 /// Cross-boundary read port consumed by other modules (such as rustok-product).

@@ -36,7 +36,7 @@ impl ScopedPg {
             .ok()
             .filter(|url| url.starts_with("postgres://") || url.starts_with("postgresql://"))
         else {
-            eprintln!("No PostgreSQL test URL: skipping page document save receipts test");
+            tracing::info!("No PostgreSQL test URL: skipping page document save receipts test");
             return Ok(None);
         };
         let control = connect(&url).await?;
@@ -345,7 +345,7 @@ async fn postgres_concurrent_unpublish_replays_across_independent_connections()
     );
     let first = left?;
     let second = right?;
-    assert_eq!(serde_json::to_value(first)?, serde_json::to_value(second)?);
+    assert_eq!(serde_json::to_value(&first)?, serde_json::to_value(&second)?);
     assert_eq!(second.version, 2);
     assert_eq!(
         second.status,
@@ -462,7 +462,7 @@ async fn postgres_duplicate_restores_replay_across_independent_connections()
     );
     let first = left?;
     let second = right?;
-    assert_eq!(serde_json::to_value(first)?, serde_json::to_value(second)?);
+    assert_eq!(serde_json::to_value(&first)?, serde_json::to_value(&second)?);
     assert_eq!(
         revision_count(&primary, tenant_id, page_id).await?,
         3,

@@ -80,13 +80,3 @@ pub struct BrandCategoryDto {
     pub is_featured: bool,
     pub created_at: DateTime<Utc>,
 }
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct BrandProductDto {
-    pub id: Uuid,
-    pub tenant_id: Uuid,
-    pub brand_id: Uuid,
-    pub product_id: Uuid,
-    pub is_primary: bool,
-    pub created_at: DateTime<Utc>,
-}

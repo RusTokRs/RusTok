@@ -45,7 +45,7 @@ struct TestDatabase {
 impl TestDatabase {
     async fn setup() -> TestResult<Option<Self>> {
         let Some(database_url) = database_url() else {
-            eprintln!(
+            tracing::info!(
                 "{DATABASE_ENV} is not set to a PostgreSQL URL; skipping Pages explicit repair cache harness"
             );
             return Ok(None);

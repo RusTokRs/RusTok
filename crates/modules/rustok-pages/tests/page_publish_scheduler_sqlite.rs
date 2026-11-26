@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use chrono::{Duration as ChronoDuration, Utc};
 #[cfg(feature = "runtime")]
-use rustok_api::{ModuleWorkItem, ModuleWorkOutcome, ModuleWorkSource};
+use rustok_api::{ModuleWorkHandler, ModuleWorkItem, ModuleWorkOutcome, ModuleWorkSource};
 use rustok_channel::ChannelModule;
 use rustok_core::{MigrationSource, SecurityContext};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
@@ -923,7 +923,7 @@ async fn scheduler_adapter_claims_stranded_jobs_and_publishes_them() -> TestResu
     page_publish_job::Entity::update_many()
         .col_expr(
             page_publish_job::Column::PublishAt,
-            Expr::value((Utc::now() - ChronoDuration::minutes(1)).into()),
+            Expr::value((Utc::now() - ChronoDuration::minutes(1)).fixed_offset()),
         )
         .filter(page_publish_job::Column::TenantId.eq(fixture.tenant_id))
         .filter(page_publish_job::Column::PageId.eq(page_id))
