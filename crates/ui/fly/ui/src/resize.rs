@@ -149,12 +149,11 @@ impl ResizeSession {
         }
 
         let mut rect = self.start_rect;
-        if self.policy.preserve_aspect_ratio
-            && self.handle.changes_width()
-            && self.handle.changes_height()
-            && rect.width > 0.0
-            && rect.height > 0.0
-        {
+        if self.aspect_ratio_locked() {
+            // A collapsed or numerically unrepresentable ratio cannot be locked.
+            if !self.matches_aspect_ratio(rect) {
+                return unchanged();
+            }
             // Constrain one scale, not two independent dimensions. Snapping and
             // clamping both dimensions separately can destroy the aspect ratio.
             let Some((min_width, max_width)) =
@@ -228,14 +227,11 @@ impl ResizeSession {
         if !rect.is_valid() {
             return unchanged();
         }
-        let width_changed = self.handle.changes_width()
-            && (rect.width - self.start_rect.width).abs() > f64::EPSILON;
-        let height_changed = self.handle.changes_height()
-            && (rect.height - self.start_rect.height).abs() > f64::EPSILON;
-        if self.policy.preserve_aspect_ratio
-            && self.handle.changes_width()
-            && self.handle.changes_height()
-            && width_changed != height_changed
+        let width_changed = self.handle.changes_width() && rect.width != self.start_rect.width;
+        let height_changed = self.handle.changes_height() && rect.height != self.start_rect.height;
+        if self.aspect_ratio_locked()
+            && (width_changed || height_changed)
+            && (!width_changed || !height_changed || !self.matches_aspect_ratio(rect))
         {
             return unchanged();
         }
@@ -244,6 +240,29 @@ impl ResizeSession {
             height_changed,
             rect,
         }
+    }
+
+    fn aspect_ratio_locked(&self) -> bool {
+        self.policy.preserve_aspect_ratio
+            && self.handle.changes_width()
+            && self.handle.changes_height()
+    }
+
+    fn matches_aspect_ratio(&self, rect: CanvasRect) -> bool {
+        if self.start_rect.width <= 0.0
+            || self.start_rect.height <= 0.0
+            || rect.width <= 0.0
+            || rect.height <= 0.0
+        {
+            return false;
+        }
+        let start_ratio = self.start_rect.width / self.start_rect.height;
+        let result_ratio = rect.width / rect.height;
+        start_ratio.is_finite()
+            && start_ratio > 0.0
+            && result_ratio.is_finite()
+            && result_ratio > 0.0
+            && (result_ratio / start_ratio - 1.0).abs() <= 1e-9
     }
 
     /// Produces a keyboard resize step using the same snapping and bounds as pointer input.
@@ -283,30 +302,11 @@ impl ResizeSession {
             } else {
                 true
             };
-            let aspect_ratio_valid = if self.policy.preserve_aspect_ratio
-                && self.handle.changes_width()
-                && self.handle.changes_height()
-                && (result.width_changed || result.height_changed)
-            {
-                if !result.width_changed
-                    || !result.height_changed
-                    || self.start_rect.width <= 0.0
-                    || self.start_rect.height <= 0.0
-                    || result.rect.width <= 0.0
-                    || result.rect.height <= 0.0
-                {
-                    false
-                } else {
-                    let start_ratio = self.start_rect.width / self.start_rect.height;
-                    let result_ratio = result.rect.width / result.rect.height;
-                    start_ratio.is_finite()
-                        && result_ratio.is_finite()
-                        && (result_ratio - start_ratio).abs()
-                            <= 1e-9 * start_ratio.abs().max(f64::MIN_POSITIVE)
-                }
-            } else {
-                true
-            };
+            let aspect_ratio_valid = !self.aspect_ratio_locked()
+                || (!result.width_changed && !result.height_changed)
+                || (result.width_changed
+                    && result.height_changed
+                    && self.matches_aspect_ratio(result.rect));
 
             if width_within_bounds && height_within_bounds && aspect_ratio_valid {
                 if result.width_changed && self.handle.changes_width() {
@@ -497,6 +497,71 @@ mod tests {
         assert!((result.rect.width / result.rect.height - 2.0).abs() < 1e-9);
         assert!((result.rect.x + result.rect.width - 210.0).abs() < 1e-9);
         assert!((result.rect.y + result.rect.height - 120.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn locked_corner_rejects_collapsed_start_and_zero_scale() {
+        for (width, height) in [(0.0, 100.0), (200.0, 0.0), (0.0, 0.0)] {
+            let mut resize = session(ResizeHandle::SouthEast);
+            resize.policy.preserve_aspect_ratio = true;
+            resize.start_rect.width = width;
+            resize.start_rect.height = height;
+            let result = resize.update(240.0, 140.0);
+            assert_eq!(result.rect, resize.start_rect);
+            assert!(!result.width_changed && !result.height_changed);
+            assert_eq!(
+                resize.component_patch(result).style,
+                Some(Value::Object(Map::new()))
+            );
+        }
+
+        let mut resize = session(ResizeHandle::SouthEast);
+        resize.policy.preserve_aspect_ratio = true;
+        resize.policy.minimum_width = 0.0;
+        resize.policy.minimum_height = 0.0;
+        let result = resize.update(0.0, 0.0);
+        assert_eq!(result.rect, resize.start_rect);
+        assert!(!result.width_changed && !result.height_changed);
+        assert_eq!(
+            resize.component_patch(result).style,
+            Some(Value::Object(Map::new()))
+        );
+    }
+
+    #[test]
+    fn unlocked_corner_can_resize_a_collapsed_element() {
+        let mut resize = session(ResizeHandle::SouthEast);
+        resize.start_rect.width = 0.0;
+        resize.start_rect.height = 0.0;
+        let result = resize.update(240.0, 140.0);
+        assert_eq!(result.rect.width, 40.0);
+        assert_eq!(result.rect.height, 40.0);
+        let style = resize.component_patch(result).style.expect("style");
+        assert_eq!(style["width"], "40px");
+        assert_eq!(style["height"], "40px");
+    }
+
+    #[test]
+    fn locked_corner_rejects_subnormal_ratio_drift_at_patch_boundary() {
+        let mut resize = session(ResizeHandle::SouthEast);
+        resize.policy.preserve_aspect_ratio = true;
+        resize.policy.minimum_width = 0.0;
+        resize.policy.minimum_height = 0.0;
+        resize.start_rect.width = 1e-320;
+        resize.start_rect.height = 100.0;
+        let result = ResizeResult {
+            rect: CanvasRect {
+                width: 4e-320,
+                height: 200.0,
+                ..resize.start_rect
+            },
+            width_changed: true,
+            height_changed: true,
+        };
+        assert_eq!(
+            resize.component_patch(result).style,
+            Some(Value::Object(Map::new()))
+        );
     }
 
     #[test]

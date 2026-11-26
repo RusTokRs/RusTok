@@ -100,5 +100,7 @@ Resize gestures leave untouched dimensions unchanged, including off-grid dimensi
 perpendicular arrow keys. A zero-displacement gesture produces no patch. Corner gestures with
 aspect-ratio preservation snap the driving dimension and constrain a single scale to both axes'
 size bounds; the aspect ratio and bounds take precedence over snapping the second dimension.
-Incompatible bounds leave the original geometry unchanged. West and north handles anchor their
-opposite edges to the initial rectangle.
+Incompatible bounds, collapsed geometry or an unrepresentable locked aspect ratio leave the
+original geometry unchanged. Preview and patch generation apply the same relative aspect-ratio
+check; an unlocked gesture can still expand a collapsed element. West and north handles anchor
+their opposite edges to the initial rectangle.
