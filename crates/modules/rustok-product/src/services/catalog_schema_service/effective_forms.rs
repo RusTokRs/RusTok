@@ -1,5 +1,7 @@
 use super::*;
 
+const EFFECTIVE_ATTRIBUTE_DEFINITION_BATCH_SIZE: usize = 500;
+
 #[derive(FromQueryResult)]
 struct ProductCategoryPathRow {
     id: Uuid,
@@ -49,19 +51,22 @@ where
         return Ok(());
     }
 
-    let (placeholders, values) = uuid_filter_values(tenant_id, &attribute_ids);
-    let declared = AttributeValidationRow::find_by_statement(Statement::from_sql_and_values(
-        db.get_database_backend(),
-        format!(
-            "SELECT id, scope, value_type, is_localized, validation FROM product_attributes WHERE tenant_id = $1 AND archived_at IS NULL AND id IN ({placeholders})"
-        ),
-        values,
-    ))
-    .all(db)
-    .await?
-    .into_iter()
-    .map(|row| (row.id, (row.scope, row.value_type, row.is_localized, row.validation)))
-    .collect::<HashMap<_, _>>();
+    let mut declared = HashMap::new();
+    for attribute_id_chunk in attribute_ids.chunks(EFFECTIVE_ATTRIBUTE_DEFINITION_BATCH_SIZE) {
+        let (placeholders, values) = uuid_filter_values(tenant_id, attribute_id_chunk);
+        let rows = AttributeValidationRow::find_by_statement(Statement::from_sql_and_values(
+            db.get_database_backend(),
+            format!(
+                "SELECT id, scope, value_type, is_localized, validation FROM product_attributes WHERE tenant_id = $1 AND archived_at IS NULL AND id IN ({placeholders})"
+            ),
+            values,
+        ))
+        .all(db)
+        .await?;
+        for row in rows {
+            declared.insert(row.id, (row.scope, row.value_type, row.is_localized, row.validation));
+        }
+    }
 
     for form in forms {
         for binding in &mut form.attributes {
