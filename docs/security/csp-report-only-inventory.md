@@ -26,7 +26,7 @@ No violation in this document is an automatic allowlist request. The preferred r
 - Invalid content types, JSON and report shapes are rejected with bounded status codes. A violation body must be an object with a nonblank effective or legacy violated directive; missing and blank directives and positional arrays are rejected. Unknown nonblank directives remain accepted as `other`; only exact script/style directive names and their `-elem`/`-attr` variants enter the corresponding buckets. Legacy directive source lists are ignored for classification.
 - The standalone admin process does not advertise a report endpoint it cannot receive; it emits enforced CSP only.
 
-The collector never records `script-sample`, full document paths, URL queries or URL fragments. Structured logs retain only normalized origins, bounded opaque-URL schemes or fixed values such as `inline`, `eval`, `data` and `blob`. The 512-byte location limit also applies to opaque URL schemes.
+The collector never records `script-sample`, full document paths, URL queries or URL fragments. Structured logs retain only normalized origins, known opaque-URL scheme labels or fixed values such as `inline`, `eval`, `data` and `blob`. Unknown opaque schemes become `opaque`; their attacker-controlled text is never logged. The 512-byte location limit also applies to opaque URL schemes.
 
 ## Telemetry Contract
 
@@ -37,7 +37,7 @@ Accepted reports emit structured events with target `rustok.security.csp` and bo
 | `report_format` | `legacy`, `reporting_api` |
 | `directive` | `script-src`, `style-src`, `connect-src`, `img-src`, `font-src`, `worker-src`, `frame-src`, `frame-ancestors`, `object-src`, `base-uri`, `form-action`, `default-src`, `other` |
 | `disposition` | Normalized `report`, `enforce` or `other` value |
-| locations | Origin only, fixed keyword, scheme-only value, `oversized` marker or `opaque` |
+| locations | Origin only, fixed keyword, known scheme label, `oversized` marker or `opaque` |
 | source position | Optional line and column |
 | status | Optional document response status |
 

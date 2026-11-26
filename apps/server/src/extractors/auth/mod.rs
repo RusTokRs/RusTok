@@ -407,8 +407,10 @@ pub async fn resolve_current_user_from_access_token(
 
     let claims = decode_access_token(auth_config, access_token)
         .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid token signature"))?;
+    let expiry_seconds = i64::try_from(claims.exp)
+        .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid token expiry"))?;
     let access_token_expires_at =
-        chrono::DateTime::<chrono::Utc>::from_timestamp(claims.exp as i64, 0)
+        chrono::DateTime::<chrono::Utc>::from_timestamp(expiry_seconds, 0)
             .ok_or((StatusCode::UNAUTHORIZED, "Invalid token expiry"))?;
 
     // INVARIANT: In-memory verification ensuring the decoded JWT token payload belongs to the requested tenant.
@@ -604,6 +606,10 @@ pub async fn resolve_current_user_from_access_token(
         }
     };
 
+    // Storage and policy resolution may outlast the signed credential.
+    // Admit no request with an already-expired token, regardless of grant.
+    ensure_access_token_not_expired(access_token_expires_at, chrono::Utc::now())?;
+
     Ok(CurrentUser {
         user,
         session_id,
@@ -616,6 +622,16 @@ pub async fn resolve_current_user_from_access_token(
         grant_type: claims.grant_type,
         access_token_expires_at,
     })
+}
+
+fn ensure_access_token_not_expired(
+    expires_at: chrono::DateTime<chrono::Utc>,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<(), (StatusCode, &'static str)> {
+    if now >= expires_at {
+        return Err((StatusCode::UNAUTHORIZED, "Access token expired"));
+    }
+    Ok(())
 }
 
 impl<S> FromRequestParts<S> for CurrentUser

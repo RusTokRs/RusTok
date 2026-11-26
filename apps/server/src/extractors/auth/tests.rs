@@ -1,5 +1,6 @@
 use super::{
-    CurrentUser, classify_access_token_claims, resolve_current_user_from_access_token,
+    CurrentUser, classify_access_token_claims, ensure_access_token_not_expired,
+    resolve_current_user_from_access_token,
     resolve_service_token_permissions,
 };
 use crate::auth::{
@@ -18,6 +19,21 @@ use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseConnection, DbBackend, 
 use sea_orm_migration::SchemaManager;
 use std::str::FromStr;
 use uuid::Uuid;
+
+#[test]
+fn resolved_access_token_authority_expires_at_the_exact_signed_deadline() {
+    let expires_at = Utc::now();
+    assert!(ensure_access_token_not_expired(
+        expires_at,
+        expires_at - Duration::nanoseconds(1),
+    ).is_ok());
+    for now in [expires_at, expires_at + Duration::nanoseconds(1)] {
+        assert_eq!(
+            ensure_access_token_not_expired(expires_at, now),
+            Err((axum::http::StatusCode::UNAUTHORIZED, "Access token expired"))
+        );
+    }
+}
 
 async fn ensure_oauth_apps_table(db: &DatabaseConnection) {
     let manager = SchemaManager::new(db);

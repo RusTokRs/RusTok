@@ -264,7 +264,19 @@ fn sanitized_location(value: Option<&str>) -> Option<String> {
     if let Ok(parsed) = url::Url::parse(value) {
         let origin = parsed.origin().ascii_serialization();
         let location = if origin == "null" {
-            parsed.scheme().to_string()
+            let scheme = parsed.scheme();
+            if scheme.len() > MAX_LOGGED_ORIGIN_BYTES {
+                return Some("oversized".to_string());
+            }
+            // An opaque scheme is itself untrusted text, not a browser origin.
+            // Retain only known scheme labels; arbitrary schemes may contain
+            // private identifiers and must not be copied to telemetry.
+            match scheme {
+                "about" | "blob" | "data" | "file" | "filesystem" | "javascript"
+                | "mailto" | "chrome" | "chrome-extension" | "moz-extension"
+                | "resource" => scheme.to_string(),
+                _ => return Some("opaque".to_string()),
+            }
         } else {
             origin
         };
@@ -373,6 +385,24 @@ mod tests {
         let scheme = "a".repeat(MAX_LOGGED_ORIGIN_BYTES + 1);
         let url = format!("{scheme}:private");
         assert_eq!(sanitized_location(Some(&url)).as_deref(), Some("oversized"));
+    }
+
+    #[test]
+    fn opaque_url_scheme_telemetry_retains_only_known_labels() {
+        for (value, expected) in [
+            ("data:text/plain,private", "data"),
+            ("file:///private/path", "file"),
+            ("about:blank", "about"),
+            ("chrome-extension://private-id/path", "chrome-extension"),
+            ("private-identifier:payload", "opaque"),
+            ("unknown+scheme://private-host/path", "opaque"),
+        ] {
+            assert_eq!(sanitized_location(Some(value)).as_deref(), Some(expected));
+        }
+        assert_eq!(
+            sanitized_location(Some("https://user:password@example.com/path?secret=1#private")).as_deref(),
+            Some("https://example.com")
+        );
     }
 
     #[test]
