@@ -72,3 +72,50 @@ pub async fn lock_invite_role_grant_binding_on(
     }
     Ok(Some(binding))
 }
+
+ 
+/// A read-only, single-statement static RBAC observation. Membership and
+/// role grant epochs are read from one database snapshot, including users
+/// with no roles. Compare before and after multi-query authority resolution;
+/// unlike the cache generation this also detects direct relation writes.
+#[derive(Debug, PartialEq, Eq)]
+pub struct StaticActorAuthorityRevision {
+    membership: i64,
+    grants: Vec<(Uuid, i64)>,
+}
+
+pub async fn read_static_actor_authority_revision_on(
+    db: &impl ConnectionTrait, tenant_id: Uuid, actor_id: Uuid,
+) -> Result<StaticActorAuthorityRevision, DbErr> {
+    let backend = db.get_database_backend();
+    let sql = match backend {
+        DatabaseBackend::Postgres => "SELECT u.rbac_membership_revision, r.id AS role_id, r.grant_revision FROM users u LEFT JOIN (user_roles ur JOIN roles r ON r.id = ur.role_id) ON ur.user_id = u.id AND r.tenant_id = u.tenant_id WHERE u.tenant_id = $1 AND u.id = $2 ORDER BY r.id",
+        DatabaseBackend::Sqlite => "SELECT u.rbac_membership_revision, r.id AS role_id, r.grant_revision FROM users u LEFT JOIN (user_roles ur JOIN roles r ON r.id = ur.role_id) ON ur.user_id = u.id AND r.tenant_id = u.tenant_id WHERE u.tenant_id = ?1 AND u.id = ?2 ORDER BY r.id",
+        _ => return Err(DbErr::Custom("unsupported RBAC authority revision backend".into())),
+    };
+    let rows = db.query_all_raw(Statement::from_sql_and_values(
+        backend, sql, [tenant_id.into(), actor_id.into()],
+    )).await?;
+    let missing = || DbErr::Custom("invalid or missing RBAC authority revision".into());
+    let membership: i64 = rows.first().ok_or_else(missing)?.try_get("", "rbac_membership_revision")?;
+    if membership < 0 {
+        return Err(missing());
+    }
+    let mut grants = Vec::new();
+    for row in rows {
+        let revision: i64 = row.try_get("", "rbac_membership_revision")?;
+        let role: Option<Uuid> = row.try_get("", "role_id")?;
+        let grant: Option<i64> = row.try_get("", "grant_revision")?;
+        if revision != membership {
+            return Err(missing());
+        }
+        match (role, grant) {
+            (Some(id), Some(epoch)) if !id.is_nil() && epoch >= 0 => grants.push((id, epoch)),
+            (None, None) => {},
+            _ => return Err(missing()),
+        }
+    }
+    grants.sort_unstable();
+    grants.dedup();
+    Ok(StaticActorAuthorityRevision { membership, grants })
+}

@@ -346,7 +346,7 @@ async fn active_permissions_for_tenant(
     permissions: Vec<Permission>,
 ) -> Result<Vec<Permission>, (StatusCode, &'static str)> {
     let availability =
-        crate::services::rbac_module_availability::permission_availability_for(ctx, tenant_id)
+        crate::services::rbac_module_availability::authoritative_permission_availability_for(ctx, tenant_id)
             .await
             .map_err(|error| {
                 tracing::error!(
@@ -497,6 +497,7 @@ pub async fn resolve_current_user_from_access_token(
 
     let principal_kind = classify_access_token_claims(&claims)?;
     let mut delegated_credential_issued_at = None;
+    let mut static_authority_revision = None;
     let mut durable_credential_expires_at = access_token_expires_at;
 
     // Tenant middleware is intentionally bypassed on global operator routes,
@@ -614,6 +615,7 @@ pub async fn resolve_current_user_from_access_token(
                 }
             }
 
+            static_authority_revision = Some(read_static_authority_revision(db, tenant_id, user.id).await?);
             let granted_permissions =
                 RbacService::get_user_permissions_authoritative(db, &tenant_id, &user.id)
                     .await
@@ -721,6 +723,16 @@ pub async fn resolve_current_user_from_access_token(
         ensure_access_token_not_expired(access_token_expires_at, durable_credential_expires_at, crossing)?;
     }
 
+    // The initial session, account, registration and policy reads preceded
+    // asynchronous authority resolution and the independent clock commit.
+    // Check the live owner state again; a shortened deadline never extends
+    // or silently changes the admitted snapshot.
+    revalidate_admitted_authority(
+        ctx, tenant_id, &claims, access_token, &user, &permissions,
+        &inferred_role, principal_kind, delegated_credential_issued_at,
+        durable_credential_expires_at, decision, static_authority_revision.as_ref(),
+    ).await?;
+
     // A healthy replacement keyring need not retain the original key.
     decode_access_token(auth_config, access_token)
         .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid token signature"))?;
@@ -749,6 +761,99 @@ pub async fn resolve_current_user_from_access_token(
         grant_type: claims.grant_type,
         access_token_expires_at: access_token_expires_at.min(durable_credential_expires_at),
     })
+}
+
+async fn read_static_authority_revision(
+    db: &DatabaseConnection, tenant_id: uuid::Uuid, user_id: uuid::Uuid,
+) -> Result<rustok_rbac::StaticActorAuthorityRevision, (StatusCode, &'static str)> {
+    rustok_rbac::read_static_actor_authority_revision_on(db, tenant_id, user_id).await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn revalidate_admitted_authority(
+    ctx: &ServerAuthRuntime,
+    tenant_id: uuid::Uuid,
+    claims: &crate::auth::Claims,
+    access_token: &str,
+    original_user: &users::Model,
+    permissions: &[Permission],
+    role: &UserRole,
+    principal_kind: AuthPrincipalKind,
+    delegated_issued_at: Option<chrono::DateTime<chrono::Utc>>,
+    durable_deadline: chrono::DateTime<chrono::Utc>,
+    admitted_at: chrono::DateTime<chrono::Utc>,
+    static_revision: Option<&rustok_rbac::StaticActorAuthorityRevision>,
+) -> Result<(), (StatusCode, &'static str)> {
+    let db = ctx.runtime_ctx().db();
+    let changed = (StatusCode::UNAUTHORIZED, "Credential authority changed during admission");
+    let database_error = (StatusCode::INTERNAL_SERVER_ERROR, "Database error");
+    if principal_kind == AuthPrincipalKind::Service {
+        let client_id = claims.client_id.ok_or(changed)?;
+        let (current_permissions, current_role, current_deadline) = resolve_service_token_permissions(
+            ctx.runtime_ctx(), tenant_id, claims.sub, client_id, claims.role.clone(),
+            &claims.scopes, access_token, claims.jti,
+        ).await?;
+        if &current_role != role || current_deadline < durable_deadline
+            || permissions.iter().any(|permission| !current_permissions.contains(permission))
+        {
+            return Err(changed);
+        }
+    } else {
+        let current_user = Users::find_by_id(original_user.id)
+            .filter(users::Column::TenantId.eq(tenant_id))
+            .one(db).await.map_err(|_| database_error)?.ok_or(changed)?;
+        if !current_user.is_active() || current_user.recovery_revision != original_user.recovery_revision
+            || (ctx.runtime_ctx().settings().features.email_verification && !current_user.is_email_verified())
+        {
+            return Err(changed);
+        }
+        match principal_kind {
+            AuthPrincipalKind::DirectUser => {
+                let session = Sessions::find_by_id(claims.session_id)
+                    .filter(crate::models::sessions::Column::TenantId.eq(tenant_id))
+                    .one(db).await.map_err(|_| database_error)?.ok_or(changed)?;
+                if session.user_id != original_user.id || !session.is_active_at(admitted_at)
+                    || session.expires_at.with_timezone(&chrono::Utc).min(session.absolute_deadline()) < durable_deadline
+                {
+                    return Err(changed);
+                }
+            }
+            AuthPrincipalKind::DelegatedUser => {
+                let issued_at = delegated_issued_at.ok_or(changed)?;
+                if current_user.rejects_delegated_token_issued_at(issued_at) {
+                    return Err(changed);
+                }
+                let client_id = claims.client_id.ok_or(changed)?;
+                let app = resolve_active_oauth_app(db, tenant_id, client_id, AUTHORIZATION_CODE_GRANT_TYPE, &claims.scopes).await?;
+                let row = validate_oauth_access_token_registration(
+                    db, app.id, tenant_id, AUTHORIZATION_CODE_GRANT_TYPE,
+                    claims.jti, access_token, Some(original_user.id), &claims.scopes,
+                ).await?;
+                if row.created_at.with_timezone(&chrono::Utc) != issued_at
+                    || row.expires_at.with_timezone(&chrono::Utc) < durable_deadline
+                {
+                    return Err(changed);
+                }
+                validate_active_user_consent(db, &app, tenant_id, original_user.id, &claims.scopes, row.consent_granted_at).await?;
+            }
+            AuthPrincipalKind::Service => return Err(changed),
+        }
+        let active = active_permissions_for_tenant(ctx.runtime_ctx(), tenant_id, original_user.id, permissions.to_vec()).await?;
+        if permissions.iter().any(|permission| !active.contains(permission)) {
+            return Err(changed);
+        }
+        let current_revision = read_static_authority_revision(db, tenant_id, original_user.id).await?;
+        if static_revision != Some(&current_revision) {
+            return Err(changed);
+        }
+    }
+    let tenant = crate::models::tenants::Entity::find_by_id(tenant_id)
+        .one(db).await.map_err(|_| database_error)?.ok_or(changed)?;
+    if !tenant.is_active {
+        return Err((StatusCode::FORBIDDEN, "Tenant is unavailable"));
+    }
+    Ok(())
 }
 
 fn ensure_access_token_not_expired(

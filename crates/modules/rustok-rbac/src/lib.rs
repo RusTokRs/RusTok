@@ -35,7 +35,7 @@ pub mod services;
 
 pub use module::RbacModule;
 pub use membership_revision::read_user_membership_revision_on;
-pub use role_grant_revision::{lock_actor_role_grants_on, lock_invite_role_grant_binding_on};
+pub use role_grant_revision::{lock_actor_role_grants_on, lock_invite_role_grant_binding_on, read_static_actor_authority_revision_on, StaticActorAuthorityRevision};
 
 pub use artifact_permission_assignment::{
     ArtifactPermissionAssignmentError, ArtifactPermissionAssignmentScope,

@@ -80,6 +80,23 @@ pub async fn permission_availability_for(
     .map(Some)
 }
 
+/// Credential admission must not trust a process-local TTL cache on another
+/// replica. Use the current owner policy; the compiled ownership catalog is
+/// still safe to reuse.
+pub(crate) async fn authoritative_permission_availability_for(
+    ctx: &ServerRuntimeContext, tenant_id: uuid::Uuid,
+) -> Result<Option<PermissionAvailability>> {
+    let Some(registry) = ctx.shared_get::<ModuleRegistry>() else {
+        return Ok(None);
+    };
+    let ownership = permission_ownership(ctx, &registry)?;
+    let policy = EffectiveModulePolicyService::resolve(ctx.db(), &registry, tenant_id)
+        .await
+        .map_err(|error| Error::Message(format!("module policy resolution failed: {error}")))?;
+    let enabled: BTreeSet<String> = policy.into_enabled_modules().into_iter().collect();
+    Ok(Some(PermissionAvailability::new((*ownership).clone(), enabled)))
+}
+
 pub(super) async fn resolve_permission_availability(
     db: &sea_orm::DatabaseConnection,
     registry: &ModuleRegistry,

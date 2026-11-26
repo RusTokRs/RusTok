@@ -613,3 +613,10 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
 - Direct session service and REST/cookie/lifecycle adapters revalidate exact JWT eligibility and original deadlines, including proof-bound recovery grace. OAuth checks signed access eligibility and all prepared token deadlines at response. No compensating revocation of an already committed rotation.
 - Common access extraction checks exact JWT eligibility after asynchronous policy IO; WebSocket caps lease by wall and monotonic deadlines, latches expiry, and checks local authority before connection publication and send.
 - Source regression for monotonic expiry; tests, compilation, live rotation and blocked socket writes remain unverified. Post-commit observations are not all durably persisted; no readiness promotion.
+
+## Cross-replica authority admission (2026-11-27)
+
+- Common access admission resolves module policy without the local TTL cache.
+- Read static membership/grant revision in a single RBAC-owner query before and after user policy resolution; reject changed authority (including membership ABA).
+- Recheck current tenant/account/session or OAuth app, access registration and consent after asynchronous policy and clock work; never extend the original observed deadline or restore lost capabilities.
+- Regression covers final admission after membership ABA and session revocation. Compilation, PostgreSQL contention, cross-replica runtime, exact atomic admission and downstream mutation fences remain open.

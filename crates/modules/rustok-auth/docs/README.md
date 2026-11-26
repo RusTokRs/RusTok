@@ -1100,3 +1100,19 @@ rollback, throughput and runtime evidence remain open.
 ## Final credential publication fences (source only)
 
 Direct session responses retain original signed and persisted deadlines and refresh-recovery grace through REST, cookie and lifecycle provider adapters. Revalidate the exact access JWT against current key eligibility and recompute remaining TTL before publication; never extend a previously computed TTL. OAuth publication also checks prepared refresh lifetime. Common access admission revalidates the original JWT after asynchronous policy resolution. GraphQL WebSocket uses the earlier wall/monotonic deadline, latches observed expiration, and checks local key eligibility before publishing connection authority or sending data. These are observed checks, not atomic cancellation of in-flight socket writes or already committed mutations. Compilation and runtime evidence remain pending.
+
+## Cross-replica access admission (source only)
+
+The common direct/delegated/service resolver no longer uses the process-local
+module-policy TTL cache for credential admission. It obtains current module
+availability from the owner. Direct/delegated reads bracket permission and
+hierarchy resolution with the RBAC-owned static membership/grant revision
+snapshot and reject a changed epoch, including ABA. After policy and clock IO,
+admission rechecks current tenant, account recovery revision, session or OAuth
+registration and consent, and refuses lost effective capabilities. Service
+credentials re-resolve current app/registration/scoped capabilities. The
+original deadline cannot be extended. These are optimistic bounded observations,
+not a transaction spanning all authority owners, a fence for downstream
+in-flight writes, or rollback protection for the authority stores. Source
+regression authored; compilation, real contention and cache-bypass evidence
+remain pending.

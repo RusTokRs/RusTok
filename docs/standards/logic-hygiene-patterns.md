@@ -3134,3 +3134,16 @@ Find other host composition checks with
 ### P-AUTH-FINAL-KEY-ELIGIBILITY — Revalidate the exact credential at publication
 
 A healthy replacement keyring does not establish that the previously verified or prepared JWT still has an eligible key. Revalidate the exact token after async policy/storage work and at host publication; retain original durable refresh and signed access deadlines plus proof-bound retry grace across adapters. WebSocket deadlines must also be monotonic and observed expiry sticky; check local authority before send without holding locks across socket IO. Source regression authored, unrun. See [access resolver](../../apps/server/src/extractors/auth/mod.rs), [session lifecycle](../../apps/server/src/services/auth_lifecycle.rs) and [OAuth exchange](../../apps/server/src/services/oauth_token_service.rs).
+
+### P-AUTH-CROSS-REPLICA-ADMISSION-SNAPSHOT — Refuse mixed or stale authority reads
+
+Credential extraction bypassed the RBAC grant cache but still depended on a
+local TTL module policy and on separate relation/role reads. Resolve the live
+module policy at credential admission and bracket static grants/hierarchy with
+a single-statement owner revision snapshot. Recheck current durable credential,
+account, tenant and effective capability evidence after policy and clock IO;
+reject changed or shortened authority rather than widening the original
+snapshot. Optimistic reads are not a distributed transaction or a guarantee
+against changes after the last observation. Source regression authored, unrun.
+See [access resolver](../../apps/server/src/extractors/auth/mod.rs) and
+[RBAC revisions](../../crates/modules/rustok-rbac/src/role_grant_revision.rs).
