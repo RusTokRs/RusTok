@@ -99,7 +99,11 @@ the frame open. A host with no such route keeps the `srcdoc` shape.
   (`SsrDraftSessionStore::validate_token`), so it needs no escaping to travel in an address.
 - **Who owns it.** The session is loaded with `DraftSessionOwner { tenant_id, user_id }` taken from
   the verified snapshot, so the token alone reads nothing, and a mismatch is `403` rather than a
-  silent fallback to the saved page.
+  silent fallback to the saved page. Unattributed legacy records cannot be claimed by an
+  authenticated caller because their original owner is unknowable. Before loading any supplied
+  draft token, the route re-fetches the requested page and requires its current `document_readable`
+  result; the token never substitutes for current page-source authorization, so permission
+  revocation or an ownership change stops the preview.
 - **What it answers.** The document is composed by `rustok_pages_admin::render_server_preview` and
   served by `pages_server_preview_response`, under the artifact policy derived from the stylesheet
   the document carries. A document that does not carry the envelope is refused
@@ -150,7 +154,9 @@ was supposed to fill it.
 - Every SSR-rendered control that performs an action names a `BrowserIntentKind` some handler
   resolves; the preview control is one of them.
 - A rendered preview is never produced from a body the caller may not read: the preview request
-  goes through the same `pages:read` / editor-capability preflight as every other intent.
+  goes through the same `pages:read` / editor-capability preflight as every other intent. The
+  standalone route repeats the current page-source check on every request before loading a draft
+  session, including when the caller supplies a draft token.
 - The admin document's policy does not gain a script source, `style-src-attr`, or a relaxed
   `default-src` for the sake of a preview.
 - A preview response carries the policy of the page it previews, derived from its own rendered
