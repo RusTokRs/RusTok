@@ -177,7 +177,7 @@ fn pages_server_preview_response_with_policy(html: &str, policy: &str) -> axum::
         .header(header::CACHE_CONTROL, "no-store")
         .header(header::VARY, "Authorization, X-Tenant-Slug, X-Channel-Slug")
         .header(header::CONTENT_SECURITY_POLICY, policy)
-        .header(header::REFERRER_POLICY, "strict-origin-when-cross-origin")
+        .header(header::REFERRER_POLICY, "no-referrer")
         .header("x-content-type-options", "nosniff")
         .body(axum::body::Body::from(html.to_string()))
         .unwrap_or_else(|_| (StatusCode::INTERNAL_SERVER_ERROR, "failed to build preview response").into_response())
@@ -421,6 +421,7 @@ mod tests {
         let response = super::pages_server_preview_response(&html).expect("preview response");
         let headers = response.headers();
         assert_eq!(headers.get("cache-control").unwrap(), "no-store");
+        assert_eq!(headers.get("referrer-policy").unwrap(), "no-referrer");
         assert_eq!(headers.get("x-content-type-options").unwrap(), "nosniff");
         let policy = headers
             .get("content-security-policy")

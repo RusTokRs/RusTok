@@ -106,8 +106,9 @@ the frame open. A host with no such route keeps the `srcdoc` shape.
   revocation or an ownership change stops the preview.
 - **What it answers.** The document is composed by `rustok_pages_admin::render_server_preview` and
   served by `pages_server_preview_response`, under the artifact policy derived from the stylesheet
-  the document carries. A document that does not carry the envelope is refused
-  (`PreviewError::MissingEnvelope`) rather than policied from a guess.
+  the document carries. The response uses `Referrer-Policy: no-referrer` so the draft token and
+  runtime context in its query are not forwarded to subresources. A document that does not carry
+  the envelope is refused (`PreviewError::MissingEnvelope`) rather than policied from a guess.
 
 The middleware in `apps/admin/src/app/security.rs` classifies this path as a frame surface:
 `X-Frame-Options: SAMEORIGIN`, `cache-control: no-store`, and a fallback policy that names no
