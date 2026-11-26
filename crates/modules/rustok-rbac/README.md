@@ -26,7 +26,9 @@ See [the cache-consistency decision](../../../DECISIONS/2026-11-02-rbac-cache-re
 - Publish the typed `settings:*` and `logs:*` platform-admin surface used by server adapters.
 - Own explicit tenant-role grants for immutable artifact permission keys without
   extending the static `Permission` enum or writing `role_permissions`.
-- Own the RBAC relation-integrity and durable invalidation-generation migrations.
+- Own the RBAC relation-integrity, durable invalidation-generation and user
+  membership revision migrations. The membership revision is distinct from the
+  cache generation.
 
 ## Interactions
 

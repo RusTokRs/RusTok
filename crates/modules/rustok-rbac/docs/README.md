@@ -27,6 +27,10 @@ documentation for this module must live inside the crate, not spread across
   consumes request snapshots and does not establish a revocation fence;
 - `resolve_persisted_permissions_on` uses that same reader on a host-supplied
   connection or transaction; server authoritative reads delegate here;
+- `read_user_membership_revision_on` reads the durable membership epoch under
+  the caller's user mutation fence. Relation insert/delete/changed identity
+  advances affected users atomically, independent of cache invalidation.
+  See the [membership epoch ADR](../../../../DECISIONS/2026-11-27-rbac-membership-revision.md).
 - `load_role_user_ids_on` owns exact persisted role-membership reads and excludes
   cross-tenant subjects even when malformed membership rows exist;
 - authenticated request snapshots are inputs to the owner `PermissionResolver`

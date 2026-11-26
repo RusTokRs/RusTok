@@ -19,6 +19,7 @@ impl MigrationSource for RbacModule {
             Box::new(crate::m20260717_000001_artifact_role_permissions::Migration),
             Box::new(crate::m20260803_000001_canonicalize_artifact_permissions::Migration),
             Box::new(crate::m20260914_000001_localized_presentations::Migration),
+            Box::new(crate::m20261127_000001_create_rbac_membership_revision::Migration),
         ]
     }
 }

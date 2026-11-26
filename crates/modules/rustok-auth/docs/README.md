@@ -78,7 +78,10 @@ account recovery revision; acceptance rejects missing or changed revisions
 even after status, mailbox or password ABA. Stop old binaries before applying
 the Auth migration: it revokes unconsumed legacy invitations without backfill,
 preserves accepted receipts and prior revocations, and requires new invitations.
-This is not a durable history of RBAC membership, role grants or module policy,
+Invites also bind the RBAC-owned membership revision under the same user
+fence. Membership removal/reassignment ABA cannot revive an older invitation.
+The binding migration revokes previously unbound pending invites, preserving
+consumption history. This is not a durable history of role grants or module policy,
 nor a transaction-spanning module-policy fence.
 
 The host additionally composition-gates the OAuth protocol surface and discovery metadata with

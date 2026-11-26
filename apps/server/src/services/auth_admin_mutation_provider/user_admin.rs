@@ -1058,6 +1058,9 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         .ok_or_else(|| AuthAdminMutationError::Forbidden(
             "active invitation issuer is required".to_string(),
         ))?;
+        let membership_revision = rustok_rbac::read_user_membership_revision_on(
+            &tx, context.tenant_id, context.actor_id,
+        ).await.map_err(super::internal_admin_error)?;
         let persisted_permissions = RbacService::get_user_permissions_authoritative(
             &tx, &context.tenant_id, &context.actor_id,
         )
@@ -1112,6 +1115,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             role: Set(ledger_role),
             issued_by: Set(Some(context.actor_id)),
             issuer_recovery_revision: Set(Some(issuer.recovery_revision)),
+            issuer_membership_revision: Set(Some(membership_revision)),
             expires_at: Set(expires_at.into()),
             revoked_at: Set(None),
             created_at: Set(now.into()),
@@ -1353,6 +1357,7 @@ mod tests {
             role: Set("customer".to_string()),
             issued_by: Set(None),
             issuer_recovery_revision: Set(None),
+            issuer_membership_revision: Set(None),
             expires_at: Set((now + chrono::Duration::hours(1)).into()),
             revoked_at: Set(None),
             created_at: Set(now.into()),

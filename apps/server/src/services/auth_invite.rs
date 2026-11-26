@@ -242,6 +242,11 @@ impl AuthLifecycleService {
             .map_err(|error| InviteAcceptanceError::Internal(error.into()))?
             .filter(|issuer| invite_issuer_matches_account(&issued, issuer))
             .ok_or(InviteAcceptanceError::InvalidToken)?;
+        let membership_revision = rustok_rbac::read_user_membership_revision_on(&tx, tenant_id, issuer_id)
+            .await.map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
+        if issued.issuer_membership_revision != Some(membership_revision) {
+            return Err(InviteAcceptanceError::InvalidToken);
+        }
         let mut issuer_permissions =
             RbacService::get_user_permissions_authoritative(&tx, &tenant_id, &issuer_id)
                 .await
@@ -597,6 +602,7 @@ mod tests {
                 role VARCHAR(64) NOT NULL, \
                 issued_by TEXT NULL, \
                 issuer_recovery_revision BIGINT NULL, \
+                issuer_membership_revision BIGINT NULL, \
                 expires_at TEXT NOT NULL, \
                 revoked_at TEXT NULL, \
                 created_at TEXT NOT NULL\
@@ -616,6 +622,7 @@ mod tests {
             role: Set("customer".to_string()),
             issued_by: Set(None),
             issuer_recovery_revision: Set(None),
+            issuer_membership_revision: Set(None),
             expires_at: Set((now + chrono::Duration::days(7)).into()),
             revoked_at: Set(None),
             created_at: Set(now.into()),
@@ -690,6 +697,7 @@ mod tests {
             role: "customer".to_string(),
             issued_by: None,
             issuer_recovery_revision: None,
+            issuer_membership_revision: None,
             expires_at: expires_at.into(),
             revoked_at: None,
             created_at: now.into(),
