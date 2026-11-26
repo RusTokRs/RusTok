@@ -44,10 +44,13 @@ obsolete fake session; its stale generated standalone lockfile was removed and i
 screenshot is historical, not verification of this migration. Preserve the release
 gates in the [Page Builder backlog](../../../../docs/modules/page-builder-backlog.md).
 
-JWT follow-up source review: bind reads and every CAS to authority identity,
-authenticate the caller root even for an empty ledger, reject incompatible
-static grants and malformed registry identifiers, latch observed lease expiry,
-and validate authority before application migration. Focused regressions unrun.
+JWT follow-up source hardening is implemented: every authority read and CAS
+is bound to the pinned authority identity; the caller MAC root is authenticated
+even for an empty ledger; generation-zero/static HTTP admission is absent;
+malformed replica-grant identifiers are rejected; observed lease expiry is
+sticky; and production opens the external authority before application
+migrations. Focused source regressions are authored but unrun; scoped checks
+and real PostgreSQL contention/restore evidence remain pending.
 
 RS256-only JWT target: [accepted ADR](../../../../DECISIONS/2026-11-25-rs256-only-jwt.md).
 All repository-owned JWT signing and verification now use RS256 exclusively.
@@ -253,15 +256,21 @@ are unchanged. Stop old host writers before deploying new instances. Source
 regressions authored, unrun. See [canonical Auth MAC proofs](../../../../DECISIONS/2026-11-25-canonical-auth-mac-proofs.md).
 
 JWT purpose keyrings, mandatory key IDs and verification retirement are
-source-implemented. Missing-ID access and raw-root JWT history are rejected. A two-key RS256 staging/promotion/
-retirement regression is authored. Scoped compilation, regression execution
-and multi-replica rollout evidence are pending. Managed algorithm migration
-is removed; RS256-only consumer/bootstrap cutover remains pending.
-Reissue obsolete development tokens and shared-key special links.
-Follow-up source review adds canonical RSA modulus identity, private/public
-pair enforcement at signing, strict JOSE header admission and post-signature
-retirement fencing. Zero-duration issuance and timestamp truncation are rejected;
-regressions authored but not executed.
+source-implemented. All repository-owned JWT signing and verification are
+RS256-only; the mandatory complete keyring file supplies four independent
+purpose pairs and server bootstrap performs durable admission before
+application migrations and listener startup. The keyring document has no
+algorithm selector; JOSE verification pins RS256 before exact kid lookup.
+No HS256 signer, verifier, derivation or fallback remains. Durable metadata
+retains a fixed RS256 assertion for continuity; persisted HS256 fails closed,
+and incompatible retained stores remain blocked pending the authenticated
+offline converter. Scoped compilation, regression execution and
+independent-replica rollout evidence remain pending. Reissue obsolete
+development tokens and shared-key special links.
+Canonical RSA modulus identity, private/public pair enforcement at signing,
+strict JOSE header admission, post-signature retirement fencing and checked
+signed-time conversion are source-implemented. Focused regressions are
+authored but not executed.
 Immutable prepared JWT snapshots are source-implemented: all-purpose admission,
 shared once-only initialization, private key configuration and candidate detachment.
 Process-local hot reload now shares a publication fence across all AuthConfig clones;

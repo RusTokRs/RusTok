@@ -350,9 +350,9 @@ before staging a future signer. Retained deadlines can only shorten.
 The 8192-identity ledger limit
 fails closed rather than forgetting retired identities.
 
-The first file enrollment prevents subsequent static-mode startup against
-the same database. Keep the MAC root and database authority stable; do not
-restore an older database or run an older host binary. Stop old writers before
+There is no static-mode HTTP runtime: every host uses an admitted positive
+generation. Keep the MAC root and database authority stable; do not restore
+an older database or run an older host binary. Stop old writers before
 enrollment. An unavailable database or unknown publication result terminates
 the host during admission; a crash after durable commit but before local
 publication can recover by restarting with the committed generation. A
@@ -473,9 +473,8 @@ host with a false time source. Independently synchronize hosts to UTC within
 verification. Source regressions are unrun.
 
 A lease that has been observed expired cannot reopen on a backward wall-clock
-step. A fresh grant is required. Generation-zero replicas must present identical
-canonical key metadata while any registered static grant is live; anonymous
-outstanding grants also block static renewal until expiry.
+step. A fresh durable grant is required. Generation zero is not a runtime
+generation and cannot obtain a JWT lease.
 
 ### Independent JWT authority
 
@@ -563,7 +562,8 @@ No key IDs, fingerprints, paths, replica UUIDs, tenant IDs or secrets are export
   actual local crypto gate after DB IO. `local_clock_fenced` and
   `authority_clock_fenced` expose sticky detected clock faults.
 - `durable_generation` and signed `generation_lag` compare independent
-  database and local samples. Static mode has generation zero.
+  database and local samples. Every HTTP host reports an admitted positive
+  generation; generation zero represents only the empty ledger.
 - `current_grants`, `stale_grants`, `current_grant_replicas` and
   `stale_grant_replicas` count unexpired conservative grants and distinct
   incarnations within each class. An incarnation may be in both classes.
