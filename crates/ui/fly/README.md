@@ -203,6 +203,10 @@ without using the interaction fallback URL. Metadata collisions are diagnosed ev
 when no project locale policy is configured. Required-locale coverage and collision checks
 share the PageMetadata text-field inventory, including Open Graph type and Twitter Card,
 title, description and image. Plain, non-localized metadata is not counted as a translation gap.
+The authoring metadata projection may show a sample translation for editing, but HTML head
+rendering and plain slug selection only use resolved text. Call the runtime locale resolver
+before rendering localized metadata; unresolved wrappers remain lossless and are not emitted
+as an arbitrary language in the rendered head.
 Translation IDs are exact, nonempty ASCII alphanumeric, hyphen or underscore identities:
 surrounding whitespace is invalid on authoring and validation, and removal addresses the
 exact stored ID so an invalid imported entry can be removed without deleting a different
