@@ -18,8 +18,8 @@ use crate::services::widget_contract::{
     FORUM_WIDGET_TYPE_TOPIC_LIST, ForumWidgetContractService,
 };
 use crate::services::{
-    ForumReplyAudienceReadService, ForumTopicAudienceReadService, ForumTopicAudienceViewer,
-    ForumTopicAudienceVisibilityService, TopicService,
+    ForumReplyAudienceReadService, ForumSettingsProviders, ForumTopicAudienceReadService,
+    ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService, TopicService,
 };
 use crate::state_machine::ReplyStatus;
 
@@ -36,14 +36,16 @@ const MODERATOR_PREVIEW_REPLY_STATUSES: [ReplyStatus; 5] = [
 /// Forum owner runtime for Page Builder widget previews.
 ///
 /// All widget configuration crosses `ForumWidgetContractService` first. Data then comes only from
-/// Forum owner audience reads for the caller's exact `PortContext`. Every topic, reply, and list
-/// the preview returns is checked against the parent topic's owner audience, so a preview cannot
-/// show content that the caller cannot read through the owner transports. The service never
-/// accepts tenant or actor identity inside widget props.
+/// Forum storefront audience reads for the caller's exact `PortContext`. Every topic, reply, and
+/// list the preview returns is checked against the parent topic's storefront audience (open topic,
+/// route channel, inherited category floor and richer layers), so a preview cannot show content
+/// that the storefront would hide. The service never accepts tenant or actor identity inside
+/// widget props.
 pub struct ForumWidgetPreviewService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
     audience_facts: Option<SharedForumAudienceFactsPort>,
+    settings: ForumSettingsProviders,
 }
 
 impl ForumWidgetPreviewService {
@@ -58,7 +60,13 @@ impl ForumWidgetPreviewService {
             db,
             event_bus,
             audience_facts,
+            settings: ForumSettingsProviders::default(),
         }
+    }
+
+    pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
+        self.settings = settings;
+        self
     }
 
     /// Previews one widget for an authenticated caller.
@@ -145,6 +153,7 @@ impl ForumWidgetPreviewService {
 
     fn visibility_service(&self) -> ForumTopicAudienceVisibilityService {
         ForumTopicAudienceVisibilityService::new(self.db.clone(), self.audience_facts.clone())
+            .with_settings_providers(self.settings.clone())
     }
 
     fn topic_audience_read_service(&self) -> ForumTopicAudienceReadService {
@@ -156,6 +165,7 @@ impl ForumWidgetPreviewService {
             ),
             None => ForumTopicAudienceReadService::new(self.db.clone(), self.event_bus.clone()),
         }
+        .with_settings_providers(self.settings.clone())
     }
 
     fn reply_audience_read_service(&self) -> ForumReplyAudienceReadService {
@@ -167,6 +177,7 @@ impl ForumWidgetPreviewService {
             ),
             None => ForumReplyAudienceReadService::new(self.db.clone(), self.event_bus.clone()),
         }
+        .with_settings_providers(self.settings.clone())
     }
 
     async fn preview_topic_list(
@@ -184,6 +195,7 @@ impl ForumWidgetPreviewService {
         let sort = required_string(props, "sort")?;
         let visibility = self.visibility_service();
         let (items, total) = TopicService::new(self.db.clone(), self.event_bus.clone())
+            .with_settings_providers(self.settings.clone())
             .list_widget_preview_owner_visible(
                 tenant_id,
                 security,
@@ -231,19 +243,20 @@ impl ForumWidgetPreviewService {
 
         let topic = self
             .topic_audience_read_service()
-            .get_authenticated_owner_visible_with_audience_context(
+            .get_authenticated_storefront_visible_with_audience_context(
                 tenant_id,
                 security.clone(),
                 context.clone(),
                 topic_id,
                 fallback_locale,
             )
-            .await?;
+            .await?
+            .ok_or(ForumError::TopicNotFound(topic_id))?;
 
         let (replies, next_cursor) = if include_replies {
             let page = self
                 .reply_audience_read_service()
-                .list_response_authenticated_owner_visible_with_audience_context(
+                .list_authenticated_storefront_visible_with_audience_context(
                     tenant_id,
                     security,
                     context,
@@ -290,7 +303,7 @@ impl ForumWidgetPreviewService {
         let statuses = reply_stream_preview_statuses(approved_only, &security)?;
         let page = self
             .reply_audience_read_service()
-            .list_response_authenticated_owner_visible_with_audience_context(
+            .list_authenticated_storefront_visible_with_audience_context(
                 tenant_id,
                 security,
                 audience.clone(),

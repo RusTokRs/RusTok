@@ -138,6 +138,7 @@ impl From<UpdateTopicInput> for UpdateTopicCommandInput {
     async_graphql::Enum,
 )]
 #[serde(rename_all = "snake_case")]
+#[graphql(rename_items = "SCREAMING_SNAKE_CASE")]
 pub enum ForumTopicListOrder {
     #[default]
     Latest,

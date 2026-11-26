@@ -1508,6 +1508,7 @@ impl TopicService {
 
 use super::category_audience::lock_category_tree_in_tx;
 use super::edit_window::enforce_author_edit_window;
+use super::topic_engagement_guard::{TopicEngagementKind, enforce_topic_engagement};
 use super::topic_create_audience_authorization::ForumTopicCreateAudienceAuthorizationService;
 use super::topic_tag_lock::{lock_active_topic_tag_write_in_tx, lock_topic_tag_scopes_in_tx};
 use crate::dto::{CreateTopicCommandInput, UpdateTopicCommandInput};
@@ -1812,6 +1813,13 @@ impl TopicService {
 
         let txn = self.db.begin().await?;
         lock_category_tree_in_tx(&txn, tenant_id).await?;
+        let locked_topic = Self::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
+        enforce_topic_engagement(
+            &locked_topic,
+            TopicEngagementKind::UpdateTopic,
+            &security,
+            Resource::ForumTopics,
+        )?;
         let claimed_updated_at =
             Self::claim_topic_update_in_tx(&txn, tenant_id, topic_id, expected_updated_at).await?;
         // A content edit in a pre-moderated tenant re-enters moderation only when
@@ -1840,7 +1848,7 @@ impl TopicService {
         };
         let content_changed = title_changed || body_changed;
 
-        let repend_for_moderation = topic.status == TopicStatus::Open
+        let repend_for_moderation = locked_topic.status == TopicStatus::Open
             && content_changed
             && self
                 .settings
@@ -1861,7 +1869,7 @@ impl TopicService {
             lock_active_topic_tag_write_in_tx(&txn, tenant_id, topic_id).await?;
             lock_topic_tag_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
         }
-        let mut active: forum_topic::ActiveModel = topic.into();
+        let mut active: forum_topic::ActiveModel = locked_topic.into();
         active.updated_at = Set(claimed_updated_at.into());
         if repend_for_moderation {
             active.status = Set(TopicStatus::Pending);
@@ -2317,8 +2325,9 @@ impl TopicService {
         include_pinned: bool,
         sort: &str,
     ) -> ForumResult<Select<forum_topic::Entity>> {
-        let mut select =
-            forum_topic::Entity::find().filter(forum_topic::Column::TenantId.eq(tenant_id));
+        let mut select = forum_topic::Entity::find()
+            .filter(forum_topic::Column::TenantId.eq(tenant_id))
+            .filter(forum_topic::Column::Status.eq(TopicStatus::Open));
         if let Some(category_id) = category_id {
             select = select.filter(forum_topic::Column::CategoryId.eq(category_id));
         }
@@ -2350,13 +2359,13 @@ impl TopicService {
         Ok(select.order_by_desc(forum_topic::Column::Id))
     }
 
-    /// Exact owner-audience widget topic list.
+    /// Storefront-audience widget topic list.
     ///
     /// Every candidate is checked with
-    /// `ForumTopicAudienceVisibilityService::is_topic_owner_visible`, which covers the inherited
-    /// category floor and every richer category/topic layer. Pagination and `total` count only
-    /// topics the viewer can read, so a page never has gaps and the total never counts hidden
-    /// topics.
+    /// `ForumTopicAudienceVisibilityService::is_topic_visible`, the same storefront gate the
+    /// public topic feed uses (open topic, route channel, anonymous-read, inherited category
+    /// floor and every richer layer). Pagination and `total` count only topics the viewer can
+    /// read, so a page never has gaps and the total never counts hidden topics.
     #[instrument(skip(self, security, context, visibility, query, fallback_locale))]
     pub(crate) async fn list_widget_preview_owner_visible(
         &self,
@@ -2371,8 +2380,14 @@ impl TopicService {
         let locale = normalize_locale(&context.locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
         let per_page = query.per_page.clamp(1, 100);
+        let channel_slug = context.channel.clone();
         let viewer =
             crate::services::ForumTopicAudienceViewer::authenticated(security.clone(), context)?;
+        let show_locked_topics_in_lists = self
+            .settings
+            .module_settings(tenant_id)
+            .await?
+            .show_locked_topics_in_lists;
 
         let candidates = Self::widget_topic_candidates(
             tenant_id,
@@ -2394,8 +2409,11 @@ impl TopicService {
         let mut selected = Vec::new();
         for page_index in 0..paginator.num_pages().await? {
             for topic in paginator.fetch_page(page_index).await? {
+                if !show_locked_topics_in_lists && topic.is_locked {
+                    continue;
+                }
                 if !visibility
-                    .is_topic_owner_visible(tenant_id, topic.id, &viewer)
+                    .is_topic_visible(tenant_id, topic.id, channel_slug.as_deref(), &viewer)
                     .await?
                 {
                     continue;

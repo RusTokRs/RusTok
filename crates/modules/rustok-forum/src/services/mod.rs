@@ -73,6 +73,7 @@ mod topic_audience_read;
 mod topic_audience_visibility;
 mod topic_canonical_resolution;
 mod topic_create_audience_authorization;
+mod topic_engagement_guard;
 mod topic_facade;
 mod topic_fork;
 mod topic_merge;

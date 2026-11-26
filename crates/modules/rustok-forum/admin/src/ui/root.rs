@@ -4,6 +4,7 @@ use rustok_ui_core::UiRouteContext;
 
 use super::topic_fork::ForumTopicForkAdmin;
 use super::topic_merge::ForumTopicMergeAdmin;
+use super::topic_move::ForumTopicMoveAdmin;
 use super::topic_reply_range::ForumTopicReplyRangeAdmin;
 use super::topic_slug_rename::ForumTopicSlugRenameAdmin;
 use super::topic_split::ForumTopicSplitAdmin;
@@ -50,6 +51,8 @@ pub fn ForumAdmin() -> impl IntoView {
         view! { <ForumTopicSplitAdmin /> }.into_any()
     } else if route_context.subpath_matches("merge") {
         view! { <ForumTopicMergeAdmin /> }.into_any()
+    } else if route_context.subpath_matches("move") {
+        view! { <ForumTopicMoveAdmin /> }.into_any()
     } else {
         view! { <super::leptos::ForumAdmin /> }.into_any()
     };
