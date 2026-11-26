@@ -2,6 +2,15 @@
   "schema_version": 1,
   "contracts": [
     {
+      "id": "auth-oauth-family-identity",
+      "migration": "m20261126_000060_enforce_oauth_family_identity",
+      "mode": "fixture",
+      "owner": "rustok-auth",
+      "reason": "Materializes the old reader's exact NULL-as-self-root interpretation. Existing root identities and credential hashes remain intact; inconsistent roots and multiple unrevoked refresh branches reject the cutover.",
+      "setup_sql": "INSERT INTO tenants (id, name, slug) VALUES ('d1320000-0000-0000-0000-000000000001', 'OAuth family fixture', 'oauth-family-fixture'); INSERT INTO users (id, tenant_id, email, password_hash) VALUES ('d1320000-0000-0000-0000-000000000002', 'd1320000-0000-0000-0000-000000000001', 'oauth-family@example.com', 'fixture-hash'); INSERT INTO oauth_apps (id, tenant_id, slug, app_type, client_id) VALUES ('d1320000-0000-0000-0000-000000000003', 'd1320000-0000-0000-0000-000000000001', 'oauth-family-fixture', 'first_party', 'd1320000-0000-0000-0000-000000000004'); INSERT INTO oauth_tokens (id, tenant_id, app_id, user_id, token_hash, grant_type, scopes, expires_at, family_id) VALUES ('d1320000-0000-0000-0000-000000000005', 'd1320000-0000-0000-0000-000000000001', 'd1320000-0000-0000-0000-000000000003', 'd1320000-0000-0000-0000-000000000002', 'fixture-oauth-family-digest', 'authorization_code', '[\"openid\"]'::jsonb, CURRENT_TIMESTAMP + INTERVAL '1 day', NULL)",
+      "assertion_sql": "SELECT EXISTS (SELECT 1 FROM oauth_tokens WHERE id = 'd1320000-0000-0000-0000-000000000005'::uuid AND family_id = id AND token_hash = 'fixture-oauth-family-digest') AS passed"
+    },
+    {
       "id": "auth-session-refresh-history",
       "migration": "m20261125_000001_create_session_refresh_history",
       "mode": "fixture",

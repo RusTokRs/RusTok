@@ -84,6 +84,23 @@ consent-presence check alone could not distinguish an old epoch from a new grant
     request admitted while the predecessor is live or in grace may fail
     after waiting, but does not become a fresh replay revocation.
 
+13. Every OAuth token has one non-nil, immutable family UUID. A fresh
+    refresh root is inserted before its access registration. Access-only
+    credentials are self-rooted. The database admits at most one unrevoked
+    refresh row per family, even when an unrevoked row is already expired.
+    Descendants must reference a self-rooted refresh row with the same
+    client, tenant, subject, original code, grant and consent epoch.
+    PostgreSQL uses NOT NULL, a deferred root foreign key and a write
+    guard; SQLite uses an equivalent null/identity write guard and a root
+    deletion guard without rebuilding the existing tenant-guarded table.
+14. Retention deletes entire families only after the latest member's
+    expiry plus the existing 120-day window. Retain code replay evidence
+    while any token from that code remains. The cutover materializes NULL
+    as self-root only, rejects inconsistent/forked existing families before
+    backfill, and never silently discards or reassigns history. Stop old
+    hosts before applying the migration. The application has no NULL
+    fallback. Downgrade does not undo the truthful identity backfill.
+
 ## Sources of truth and ownership
 
 - Canonical owner: `rustok-auth` owns JWT claims and auth migrations;

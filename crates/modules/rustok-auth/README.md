@@ -108,7 +108,7 @@ generated references and full OAuth lifecycle verification remain open. Newly is
 credentials are bounded by the original refresh-family deadline, and
 rotation requires consistent consumed-root evidence and rejects multiple
 live refresh branches. Pre-existing access registrations keep their stored
-expiry; canonical non-null family identity migration remains pending.
+expiry. Canonical family identity, database uniqueness and family-wide retention are source-wired; migration execution and PostgreSQL verification remain pending.
 
 Direct first-party refresh has source-level proof-bound recovery through the
 raw and cookie REST endpoints and GraphQL HTTP transport. The cookie

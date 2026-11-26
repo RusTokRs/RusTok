@@ -850,16 +850,12 @@ impl OAuthAppService {
             .map_err(|_| Error::InternalServerError)?;
 
         if let Some(token) = token {
-            let family_id = token.family_id.unwrap_or(token.id);
+            let family_id = token.family_id;
             let now = Utc::now();
             let mut family_scope = sea_orm::Condition::all()
                 .add(oauth_tokens::Column::AppId.eq(app_id))
                 .add(oauth_tokens::Column::TenantId.eq(tenant_id))
-                .add(
-                    sea_orm::Condition::any()
-                        .add(oauth_tokens::Column::FamilyId.eq(family_id))
-                        .add(oauth_tokens::Column::Id.eq(family_id)),
-                );
+                .add(oauth_tokens::Column::FamilyId.eq(family_id));
             family_scope = match token.user_id {
                 Some(user_id) => family_scope.add(oauth_tokens::Column::UserId.eq(user_id)),
                 None => family_scope.add(oauth_tokens::Column::UserId.is_null()),
@@ -2297,6 +2293,7 @@ mod tests {
                 "m20261025_000001_add_user_login_lockout".to_owned(),
                 "m20261025_000005_add_oauth_token_family".to_owned(),
                 "m20261101_000001_add_user_password_changed_at".to_owned(),
+                "m20261126_000050_add_user_recovery_revision".to_owned(),
             ]);
 
             let migrations = Migrator::migrations()
@@ -3074,13 +3071,24 @@ mod tests {
         token_hash: &str,
         family_id: Option<Uuid>,
     ) -> oauth_tokens::Model {
+        let id = Uuid::new_v4();
+        if let Some(root_id) = family_id {
+            let now = Utc::now();
+            OAuthTokens::update_many()
+                .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
+                .col_expr(oauth_tokens::Column::LastUsedAt, Expr::value(now))
+                .filter(oauth_tokens::Column::Id.eq(root_id))
+                .filter(oauth_tokens::Column::AppId.eq(app.id))
+                .filter(oauth_tokens::Column::TenantId.eq(app.tenant_id))
+                .exec(db).await.expect("consume test root");
+        }
         oauth_tokens::ActiveModel {
-            id: Set(Uuid::new_v4()),
+            id: Set(id),
             app_id: Set(app.id),
             user_id: Set(None),
             tenant_id: Set(app.tenant_id),
             token_hash: Set(token_hash.to_string()),
-            family_id: Set(family_id),
+            family_id: Set(family_id.unwrap_or(id)),
             authorization_code_id: Set(None),
             grant_type: Set("client_credentials".to_string()),
             token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
@@ -3307,7 +3315,7 @@ mod tests {
                     user_id: Set(Some(subject)),
                     tenant_id: Set(tenant.id),
                     token_hash: Set(format!("regrant-{id}")),
-                    family_id: Set(Some(id)),
+                    family_id: Set(id),
                     authorization_code_id: Set(None),
                     grant_type: Set("authorization_code".to_string()),
                     token_kind: Set(kind.to_string()),
@@ -3633,7 +3641,7 @@ mod tests {
             user_id: Set(None),
             tenant_id: Set(app.tenant_id),
             token_hash: Set("access-jwt-hash".to_string()),
-            family_id: Set(Some(root.id)),
+            family_id: Set(root.id),
             authorization_code_id: Set(None),
             grant_type: Set("client_credentials".to_string()),
             token_kind: Set(oauth_tokens::TOKEN_KIND_ACCESS.to_string()),
@@ -3678,7 +3686,7 @@ mod tests {
         let app = insert_revocation_app(&db, tenant.id, "rfc7009-scope").await;
         let other_app = insert_revocation_app(&db, other_tenant.id, "rfc7009-other").await;
         let root = insert_revocation_token(&db, &app, "scoped-root", None).await;
-        let foreign = insert_revocation_token(&db, &other_app, "foreign-root", Some(root.id)).await;
+        let foreign = insert_revocation_token(&db, &other_app, "foreign-root", None).await;
 
         OAuthAppService::revoke_token_by_hash(&db, "scoped-root", app.id, other_tenant.id)
             .await
@@ -4130,13 +4138,14 @@ mod tests {
         .await
         .expect("insert token user");
 
+        let token_id = Uuid::new_v4();
         oauth_tokens::ActiveModel {
-            id: Set(Uuid::new_v4()),
+            id: Set(token_id),
             app_id: Set(created.app.id),
             user_id: Set(Some(token_user.id)),
             tenant_id: Set(tenant.id),
             token_hash: Set("refresh-token-hash".to_string()),
-            family_id: Set(None),
+            family_id: Set(token_id),
             authorization_code_id: Set(None),
             grant_type: Set("authorization_code".to_string()),
             token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
@@ -4818,13 +4827,14 @@ mod tests {
         .await
         .expect("insert auto-created app owned by a different manifest entry");
 
+        let old_token_id = Uuid::new_v4();
         let old_token = oauth_tokens::ActiveModel {
-            id: Set(Uuid::new_v4()),
+            id: Set(old_token_id),
             app_id: Set(orphan_app.id),
             user_id: Set(Some(orphan_user.id)),
             tenant_id: Set(tenant.id),
             token_hash: Set("orphan-token-hash".to_string()),
-            family_id: Set(None),
+            family_id: Set(old_token_id),
             authorization_code_id: Set(Some(orphan_code_id)),
             grant_type: Set("authorization_code".to_string()),
             token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),

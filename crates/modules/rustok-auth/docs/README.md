@@ -680,6 +680,20 @@ tracing for both direct and OAuth refresh. SDK adoption, generated reference
 verification, compilation and PostgreSQL
 lost-response/concurrency evidence remain pending.
 
+## Canonical OAuth family identity
+
+The token model has a non-optional family UUID. The cutover migration
+materializes old NULL self-roots, rejects missing/inconsistent roots or
+multiple unrevoked refresh branches, then enforces immutable root identity
+and a partial unique index. PostgreSQL uses NOT NULL and a deferred root FK;
+SQLite uses equivalent write and root deletion guards. Fresh issuance inserts
+the refresh root before its access registration in the same transaction.
+Retention removes complete families only after the newest member's retention
+deadline and keeps authorization-code replay evidence while linked rows exist.
+Stop older hosts before applying the migration. Source regressions and the
+registered backfill fixture are unrun; existing corrupt history requires
+explicit operator repair, not automatic reassignment.
+
 ## Direct session concurrency
 
 The host uses user-before-session locking for direct refresh (including history-only

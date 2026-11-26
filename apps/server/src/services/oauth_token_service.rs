@@ -3,7 +3,7 @@ use chrono::Utc;
 use rustok_api::context::scope_matches;
 use rustok_auth::{AuthRefreshRetryKey, TokenRequest, TokenResponse};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, DbBackend,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend,
     EntityTrait, QueryFilter, QuerySelect, Set, TransactionTrait, sea_query::Expr,
 };
 use sha2::{Digest, Sha256};
@@ -663,9 +663,8 @@ fn within_refresh_rotation_grace(
         && age < chrono::Duration::seconds(OAUTH_REFRESH_REUSE_GRACE_SECONDS)
 }
 
-/// Resolve the lineage of the presented refresh token. Pre-migration
-/// rows have no family id and start their own family rooted at
-/// themselves. A referenced root that is missing or belongs to another
+/// Resolve the canonical lineage of the presented refresh token.
+/// A referenced root that is missing or belongs to another
 /// client/tenant/subject fails closed. A referenced row must itself be a
 /// root of the same authorization-code lineage and cannot postdate the
 /// descendant: accepting a different or newer root could reset the cap.
@@ -676,7 +675,7 @@ async fn resolve_refresh_family<C>(
 where
     C: ConnectionTrait,
 {
-    let family_id = current.family_id.unwrap_or(current.id);
+    let family_id = current.family_id;
     if family_id.is_nil() || current.id.is_nil()
         || current.user_id.is_none_or(|id| id.is_nil())
         || current.created_at.with_timezone(&Utc) > Utc::now()
@@ -702,7 +701,7 @@ where
             .ok_or_else(|| {
                 OAuthTokenProtocolError::invalid_grant("Refresh token family root is unavailable")
             })?;
-        if root.family_id.unwrap_or(root.id) != root.id
+        if root.family_id != root.id
             || root.authorization_code_id != current.authorization_code_id
             || root.consent_granted_at != current.consent_granted_at
             || root.created_at > current.created_at
@@ -747,9 +746,7 @@ where
         .filter(oauth_tokens::Column::TokenKind.eq(oauth_tokens::TOKEN_KIND_REFRESH))
         .filter(oauth_tokens::Column::RevokedAt.is_null())
         .filter(oauth_tokens::Column::ExpiresAt.gt(now))
-        .filter(Condition::any()
-            .add(oauth_tokens::Column::FamilyId.eq(family.family_id))
-            .add(oauth_tokens::Column::Id.eq(family.family_id)))
+        .filter(oauth_tokens::Column::FamilyId.eq(family.family_id))
         .limit(2)
         .all(db)
         .await
@@ -833,7 +830,7 @@ async fn detect_oauth_refresh_reuse(
         return Ok(());
     }
 
-    let family_id = stale.family_id.unwrap_or(stale.id);
+    let family_id = stale.family_id;
     let user_id = stale.user_id.ok_or_else(|| {
         OAuthTokenProtocolError::server_error("Replayed OAuth refresh token has no subject")
     })?;
@@ -852,11 +849,7 @@ async fn detect_oauth_refresh_reuse(
         .filter(oauth_tokens::Column::TenantId.eq(tenant_id))
         .filter(oauth_tokens::Column::UserId.eq(user_id))
         .filter(oauth_tokens::Column::RevokedAt.is_null())
-        .filter(
-            Condition::any()
-                .add(oauth_tokens::Column::FamilyId.eq(family_id))
-                .add(oauth_tokens::Column::Id.eq(family_id)),
-        )
+        .filter(oauth_tokens::Column::FamilyId.eq(family_id))
         .exec(&tx)
         .await;
     if let Err(error) = result {
@@ -1191,7 +1184,7 @@ fn prepare_service_access_token(
         user_id: Set(None),
         tenant_id: Set(app.tenant_id),
         token_hash: Set(auth::hash_refresh_token(&token)),
-        family_id: Set(Some(token_id)),
+        family_id: Set(token_id),
         authorization_code_id: Set(None),
         grant_type: Set(CLIENT_CREDENTIALS_GRANT.to_string()),
         token_kind: Set(oauth_tokens::TOKEN_KIND_ACCESS.to_string()),
@@ -1287,7 +1280,7 @@ async fn prepare_user_tokens(
         user_id: Set(Some(user_id)),
         tenant_id: Set(app.tenant_id),
         token_hash: Set(auth::hash_refresh_token(&access_token)),
-        family_id: Set(Some(access_family_id)),
+        family_id: Set(access_family_id),
         authorization_code_id: Set(authorization_code_id),
         grant_type: Set(AUTHORIZATION_CODE_GRANT.to_string()),
         token_kind: Set(oauth_tokens::TOKEN_KIND_ACCESS.to_string()),
@@ -1313,7 +1306,7 @@ async fn prepare_user_tokens(
             user_id: Set(Some(user_id)),
             tenant_id: Set(app.tenant_id),
             token_hash: Set(refresh_hash),
-            family_id: Set(Some(family_id)),
+            family_id: Set(family_id),
             authorization_code_id: Set(authorization_code_id),
             grant_type: Set(AUTHORIZATION_CODE_GRANT.to_string()),
             token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
@@ -1650,17 +1643,19 @@ async fn persist_prepared_tokens<C>(
 where
     C: ConnectionTrait,
 {
+    // A fresh family must insert its refresh root before its access row.
+    // Both writes remain inside the caller's one-shot transaction.
+    if let Some(model) = prepared.refresh_model.clone() {
+        model.insert(db).await.map_err(|_| {
+            OAuthTokenProtocolError::server_error("Failed to persist replacement refresh token")
+        })?;
+    }
     prepared
         .access_model
         .clone()
         .insert(db)
         .await
         .map_err(|_| OAuthTokenProtocolError::server_error("Failed to persist access token"))?;
-    if let Some(model) = prepared.refresh_model.clone() {
-        model.insert(db).await.map_err(|_| {
-            OAuthTokenProtocolError::server_error("Failed to persist replacement refresh token")
-        })?;
-    }
     Ok(())
 }
 
@@ -1991,7 +1986,7 @@ mod tests {
             user_id: Set(Some(user.id)),
             tenant_id: Set(tenant.id),
             token_hash: Set("consent-bound-refresh-token".to_string()),
-            family_id: Set(Some(current_id)),
+            family_id: Set(current_id),
             authorization_code_id: Set(None),
             grant_type: Set(super::AUTHORIZATION_CODE_GRANT.to_string()),
             token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
@@ -2014,7 +2009,7 @@ mod tests {
                 user_id: Set(Some(user.id)),
                 tenant_id: Set(tenant.id),
                 token_hash: Set("access-after-consent-change".to_string()),
-                family_id: Set(Some(current_id)),
+                family_id: Set(current_id),
                 authorization_code_id: Set(None),
                 grant_type: Set(super::AUTHORIZATION_CODE_GRANT.to_string()),
                 token_kind: Set(oauth_tokens::TOKEN_KIND_ACCESS.to_string()),
@@ -2033,7 +2028,7 @@ mod tests {
                 user_id: Set(Some(user.id)),
                 tenant_id: Set(tenant.id),
                 token_hash: Set("replacement-after-consent-change".to_string()),
-                family_id: Set(Some(current_id)),
+                family_id: Set(current_id),
                 authorization_code_id: Set(None),
                 grant_type: Set(super::AUTHORIZATION_CODE_GRANT.to_string()),
                 token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
@@ -2167,7 +2162,7 @@ mod tests {
             user_id: Set(Some(user_id)),
             tenant_id: Set(tenant_id),
             token_hash: Set(hash.to_string()),
-            family_id: Set(Some(family_id)),
+            family_id: Set(family_id),
             authorization_code_id: Set(None),
             grant_type: Set(super::AUTHORIZATION_CODE_GRANT.to_string()),
             token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
@@ -2304,7 +2299,7 @@ mod tests {
             user_id: Set(Some(user_id)),
             tenant_id: Set(tenant_id),
             token_hash: Set("delegated-refresh-hash".to_string()),
-            family_id: Set(Some(token_id)),
+            family_id: Set(token_id),
             authorization_code_id: Set(None),
             grant_type: Set(super::AUTHORIZATION_CODE_GRANT.to_string()),
             token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
@@ -2616,7 +2611,7 @@ mod tests {
                 last_used_at TEXT NULL,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
-                family_id TEXT NULL,
+                family_id TEXT NOT NULL,
                 authorization_code_id TEXT NULL,
                 token_kind TEXT NOT NULL DEFAULT 'refresh',
                 consent_granted_at TEXT NULL
@@ -2659,7 +2654,7 @@ mod tests {
             user_id: Set(Some(user_id)),
             tenant_id: Set(tenant_id),
             token_hash: Set("current-hash".to_string()),
-            family_id: Set(Some(current_id)),
+            family_id: Set(current_id),
             authorization_code_id: Set(None),
             grant_type: Set("authorization_code".to_string()),
             token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
@@ -2683,7 +2678,7 @@ mod tests {
                 user_id: Set(current.user_id),
                 tenant_id: Set(current.tenant_id),
                 token_hash: Set(format!("access-{hash}")),
-                family_id: Set(Some(current_id)),
+                family_id: Set(current_id),
                 authorization_code_id: Set(None),
                 grant_type: Set("authorization_code".to_string()),
                 token_kind: Set(oauth_tokens::TOKEN_KIND_ACCESS.to_string()),
@@ -2702,7 +2697,7 @@ mod tests {
                 user_id: Set(current.user_id),
                 tenant_id: Set(current.tenant_id),
                 token_hash: Set(hash.to_string()),
-                family_id: Set(Some(current_id)),
+                family_id: Set(current_id),
                 authorization_code_id: Set(None),
                 grant_type: Set("authorization_code".to_string()),
                 token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
@@ -2894,7 +2889,7 @@ mod tests {
             user_id: Set(Some(user_id)),
             tenant_id: Set(tenant_id),
             token_hash: Set("pre-change-refresh".to_string()),
-            family_id: Set(Some(current_id)),
+            family_id: Set(current_id),
             authorization_code_id: Set(None),
             grant_type: Set("authorization_code".to_string()),
             token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
@@ -2951,7 +2946,7 @@ mod tests {
                 user_id TEXT NULL,
                 tenant_id TEXT NOT NULL,
                 token_hash TEXT NOT NULL,
-                family_id TEXT NULL,
+                family_id TEXT NOT NULL,
                 authorization_code_id TEXT NULL,
                 grant_type TEXT NOT NULL,
                 scopes TEXT NOT NULL,
@@ -3002,7 +2997,7 @@ mod tests {
                 user_id: Set(Some(token_user)),
                 tenant_id: Set(token_tenant),
                 token_hash: Set(format!("code-family-{index}")),
-                family_id: Set(Some(id)),
+                family_id: Set(id),
                 authorization_code_id: Set(Some(token_code)),
                 grant_type: Set(super::AUTHORIZATION_CODE_GRANT.to_string()),
                 token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
@@ -3107,7 +3102,7 @@ mod tests {
                 user_id TEXT NULL,
                 tenant_id TEXT NOT NULL,
                 token_hash TEXT NOT NULL,
-                family_id TEXT NULL,
+                family_id TEXT NOT NULL,
                 authorization_code_id TEXT NULL,
                 grant_type TEXT NOT NULL,
                 scopes TEXT NOT NULL,
@@ -3129,7 +3124,7 @@ mod tests {
             user_id: Set(Some(Uuid::new_v4())),
             tenant_id: Set(Uuid::new_v4()),
             token_hash: Set("orphan-family".to_string()),
-            family_id: Set(Some(Uuid::new_v4())),
+            family_id: Set(Uuid::new_v4()),
             authorization_code_id: Set(None),
             grant_type: Set(super::AUTHORIZATION_CODE_GRANT.to_string()),
             token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
@@ -3150,11 +3145,11 @@ mod tests {
             .expect_err("missing family root must not reset the absolute lifetime cap");
         assert_eq!(error.error, "invalid_grant");
 
-        let root_id = token.family_id.expect("referenced root identity");
+        let root_id = token.family_id;
         let mut root: oauth_tokens::ActiveModel = token.clone().into();
         root.id = Set(root_id);
         root.token_hash = Set("family-root".to_string());
-        root.family_id = Set(Some(Uuid::new_v4()));
+        root.family_id = Set(Uuid::new_v4());
         root.created_at = Set((now - chrono::Duration::days(1)).into());
         let root = root.insert(&db).await.expect("insert referenced row");
         assert_eq!(
@@ -3164,7 +3159,7 @@ mod tests {
         );
 
         let mut root: oauth_tokens::ActiveModel = root.into();
-        root.family_id = Set(Some(root_id));
+        root.family_id = Set(root_id);
         root.created_at = Set((now + chrono::Duration::days(1)).into());
         let root = root.update(&db).await.expect("update referenced row");
         assert_eq!(
@@ -3185,7 +3180,7 @@ mod tests {
 
         let mut root: oauth_tokens::ActiveModel = root.into();
         root.authorization_code_id = Set(token.authorization_code_id);
-        root.family_id = Set(Some(root_id));
+        root.family_id = Set(root_id);
         let root = root.update(&db).await.expect("restore root identity");
         assert_eq!(
             super::resolve_refresh_family(&db, &token).await.unwrap_err().error,
@@ -3216,17 +3211,16 @@ mod tests {
 
         let mut root: oauth_tokens::ActiveModel = root.into();
         root.scopes = Set(token.scopes.clone());
-        // Pre-migration roots used NULL rather than a self reference.
-        root.family_id = Set(None);
-        let root = root.update(&db).await.expect("restore valid legacy root");
+        root.family_id = Set(root_id);
+        let root = root.update(&db).await.expect("restore valid canonical root");
         let family = super::resolve_refresh_family(&db, &token)
             .await
-            .expect("valid legacy root");
+            .expect("valid canonical root");
         assert_eq!(family.family_id, root_id);
         assert_eq!(family.created_at, root.created_at.with_timezone(&Utc));
 
         let mut malformed = token;
-        malformed.family_id = Some(Uuid::nil());
+        malformed.family_id = Uuid::nil();
         assert_eq!(
             super::resolve_refresh_family(&db, &malformed).await.unwrap_err().error,
             "invalid_grant"

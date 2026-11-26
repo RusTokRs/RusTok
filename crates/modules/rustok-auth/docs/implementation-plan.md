@@ -327,7 +327,13 @@ consumption and delegated responses report the remaining access lifetime.
 Grace requires matching rotation timestamps and valid temporal evidence, not
 merely a recent revocation. Focused boundary and transactional regressions
 are unrun. Existing pre-change access registrations retain their stored expiry;
-canonical family identity migration remains open. Proof-bound OAuth refresh
+canonical family identity is now source-wired: non-optional Rust UUID,
+PostgreSQL NOT NULL/deferred root FK, SQLite write/deletion guards, one
+unrevoked refresh per family and immutable ownership/epoch identity.
+The migration backfills only old NULL-as-self roots and rejects inconsistent
+or forked history. Retention waits for all family members and preserves
+authorization codes until no linked token remains. Migration/rollback and
+PostgreSQL contention tests remain unrun. Proof-bound OAuth refresh
 recovery is source-wired using an optional secret singleton header and an
 independent purpose over tenant/app/family/predecessor/proof. The owner
 rechecks current app, subject, consent, exact scopes, live successor and
