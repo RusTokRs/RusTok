@@ -199,8 +199,11 @@ A localized value map with two keys that normalize to the same locale is invalid
 even if the values agree. Authoring rejects such translation entries, imported maps
 remain lossless but unresolved, and coverage does not count ambiguous maps. Ambiguous
 localized slugs are excluded from inbound routing and reject outbound navigation
-without using the interaction fallback URL. Metadata collisions are diagnosed even
-when no project locale policy is configured. Required-locale coverage and collision checks
+without using the interaction fallback URL. A malformed locale key likewise invalidates
+the entire map: no exact or fallback translation is selected, no required coverage is
+credited, and neither inbound nor outbound navigation uses its slugs. Runtime translation
+projection removes stale caller values for these invalid entries. Metadata key errors
+and collisions are diagnosed even when no project locale policy is configured. Required-locale coverage and collision checks
 share the PageMetadata text-field inventory, including Open Graph type and Twitter Card,
 title, description and image. Plain, non-localized metadata is not counted as a translation gap.
 The authoring metadata projection may show a sample translation for editing, but HTML head

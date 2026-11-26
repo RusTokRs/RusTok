@@ -96,6 +96,16 @@ fn materialize_value(
                 ));
                 return materialize_object(object, selection, path, state);
             };
+            if let Some(locale) = invalid_locale_key(translations) {
+                state.unresolved_values = state.unresolved_values.saturating_add(1);
+                state.diagnostics.push(locale_diagnostic(
+                    ValidationSeverity::Error,
+                    "runtime_localized_value_locale_invalid",
+                    path,
+                    format!("localized value has invalid locale key `{locale}`"),
+                ));
+                return value.clone();
+            }
             if let Some(locale) = duplicate_locale_key(translations) {
                 state.unresolved_values = state.unresolved_values.saturating_add(1);
                 state.diagnostics.push(locale_diagnostic(
@@ -175,7 +185,7 @@ pub(crate) fn select_translation<'a>(
     translations: &'a Map<String, Value>,
     selection: &RuntimeLocaleSelection,
 ) -> Option<(&'a Value, bool, String)> {
-    if duplicate_locale_key(translations).is_some() {
+    if invalid_locale_key(translations).is_some() || duplicate_locale_key(translations).is_some() {
         return None;
     }
     let requested_candidates = selection
@@ -230,6 +240,14 @@ pub(crate) fn select_translation<'a>(
     None
 }
 
+/// A malformed authored key invalidates the entire localized map.
+pub(crate) fn invalid_locale_key(values: &Map<String, Value>) -> Option<&str> {
+    values
+        .keys()
+        .find(|key| normalize_locale_tag(key).is_none())
+        .map(String::as_str)
+}
+
 /// A localized map has at most one authored value for each canonical locale.
 pub(crate) fn duplicate_locale_key(values: &Map<String, Value>) -> Option<String> {
     let mut seen = BTreeSet::new();
@@ -242,7 +260,9 @@ pub(crate) fn duplicate_locale_key(values: &Map<String, Value>) -> Option<String
 }
 
 pub(crate) fn has_unambiguous_locale(values: &Map<String, Value>, locale: &str) -> bool {
-    duplicate_locale_key(values).is_none() && translation_for(values, locale).is_some()
+    invalid_locale_key(values).is_none()
+        && duplicate_locale_key(values).is_none()
+        && translation_for(values, locale).is_some()
 }
 
 fn translation_for<'a>(
@@ -420,6 +440,29 @@ mod tests {
             assert_eq!(result.unresolved_values, 1);
             assert!(result.diagnostics.iter().any(|diagnostic| {
                 diagnostic.code == "runtime_localized_value_locale_ambiguous"
+                    && diagnostic.severity == ValidationSeverity::Error
+            }));
+        }
+    }
+
+    #[test]
+    fn malformed_locale_keys_block_single_and_mixed_map_fallbacks() {
+        for values in [
+            json!({ "invalid locale": "Invalid" }),
+            json!({ "en": "Valid", "invalid locale": "Invalid" }),
+        ] {
+            let input = json!({
+                "$locale": "en",
+                "$fallback_locales": ["en"],
+                "label": { "$localized": values, "$fallback": "en" }
+            });
+            let result = materialize_runtime_locale_context(&input);
+            assert_eq!(result.context["label"], input["label"]);
+            assert_eq!(result.resolved_values, 0);
+            assert_eq!(result.fallback_values, 0);
+            assert_eq!(result.unresolved_values, 1);
+            assert!(result.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == "runtime_localized_value_locale_invalid"
                     && diagnostic.severity == ValidationSeverity::Error
             }));
         }

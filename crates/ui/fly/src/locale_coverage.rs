@@ -352,6 +352,28 @@ mod tests {
     }
 
     #[test]
+    fn invalid_locale_keys_do_not_count_toward_required_coverage() {
+        let report = report(json!({
+            "flyLocales": {
+                "supported_locales": ["en"],
+                "required_locales": ["en"],
+                "enforce_required_locales": true
+            },
+            "flyTranslations": [{
+                "id": "hero", "values": { "en": "Valid", "invalid locale": "Invalid" }
+            }],
+            "pages": [{
+                "flyPageMeta": {
+                    "title": { "$localized": { "en": "Valid", "invalid locale": "Invalid" } }
+                },
+                "component": { "id": "root", "type": "wrapper" }
+            }]
+        }));
+        assert_eq!(report.summary_for("en").unwrap().missing, 2);
+        assert!(!report.strict_ready());
+    }
+
+    #[test]
     fn localized_social_metadata_participates_in_coverage_and_publish_validation() {
         for field in [
             "open_graph_type",

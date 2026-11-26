@@ -248,12 +248,12 @@ pub fn materialize_project_locale_context(
 }
 
 pub fn validate_project_locale_policy(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
-    let mut diagnostics = validate_metadata_locale_collisions(document);
+    let mut diagnostics = validate_metadata_locale_keys(document);
     diagnostics.extend(validate_locale_policy_coverage(document));
     diagnostics
 }
 
-fn validate_metadata_locale_collisions(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
+fn validate_metadata_locale_keys(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
     let mut diagnostics = Vec::new();
     for (page_index, page) in document.project().pages.iter().enumerate() {
         let Some(metadata) = page.extensions.get(FLY_PAGE_METADATA_FIELD) else {
@@ -266,6 +266,16 @@ fn validate_metadata_locale_collisions(document: &ProjectDocument) -> Vec<Valida
             else {
                 continue;
             };
+            for locale in values.keys() {
+                if normalize_locale_tag(locale).is_none() {
+                    diagnostics.push(locale_coverage_diagnostic(
+                        ValidationSeverity::Error,
+                        "localized_metadata_locale_invalid",
+                        format!("project.pages[{page_index}].{FLY_PAGE_METADATA_FIELD}.{field}"),
+                        format!("localized metadata locale `{locale}` is invalid"),
+                    ));
+                }
+            }
             if let Some(locale) = duplicate_locale_key(values) {
                 diagnostics.push(locale_coverage_diagnostic(
                     ValidationSeverity::Error,
@@ -360,16 +370,6 @@ fn validate_locale_policy_coverage(document: &ProjectDocument) -> Vec<Validation
             else {
                 continue;
             };
-            for locale in values.keys() {
-                if normalize_locale_tag(locale).is_none() {
-                    diagnostics.push(locale_coverage_diagnostic(
-                        ValidationSeverity::Error,
-                        "localized_metadata_locale_invalid",
-                        format!("project.pages[{page_index}].{FLY_PAGE_METADATA_FIELD}.{field}"),
-                        format!("localized metadata locale `{locale}` is invalid"),
-                    ));
-                }
-            }
             for locale in &policy.required_locales {
                 if !has_unambiguous_locale(values, locale) {
                     diagnostics.push(locale_coverage_diagnostic(

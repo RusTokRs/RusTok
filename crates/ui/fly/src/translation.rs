@@ -7,7 +7,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::BTreeSet;
-use crate::runtime_locale::duplicate_locale_key;
+use crate::runtime_locale::{duplicate_locale_key, invalid_locale_key};
 
 pub const FLY_TRANSLATIONS_FIELD: &str = "flyTranslations";
 pub const RUNTIME_TRANSLATIONS_CONTEXT_FIELD: &str = "translations";
@@ -149,8 +149,10 @@ pub fn materialize_project_translations(
     let mut unresolved_translations = 0usize;
 
     for entry in &catalog.entries {
-        if duplicate_locale_key(&entry.values).is_some() {
-            // A caller-provided projection must not mask an ambiguous authored value.
+        if invalid_locale_key(&entry.values).is_some()
+            || duplicate_locale_key(&entry.values).is_some()
+        {
+            // A caller-provided projection must not mask an invalid authored locale map.
             translated.remove(&entry.id);
         }
         let mut localized_wrapper = Map::new();
@@ -651,6 +653,32 @@ mod tests {
         assert_eq!(result.resolved_translations, 0);
         assert!(result.context["translations"].get("hero").is_none());
         assert_eq!(result.context["translations"]["other"], "Keep");
+    }
+
+    #[test]
+    fn invalid_catalog_locale_cannot_resolve_or_retain_stale_projection() {
+        let mut document = document();
+        for values in [
+            json!({ "invalid locale": "Invalid" }),
+            json!({ "en": "Valid", "invalid locale": "Invalid" }),
+        ] {
+            document.project_mut().extensions.insert(
+                FLY_TRANSLATIONS_FIELD.to_string(),
+                json!([{ "id": "hero", "values": values }]),
+            );
+            let result = materialize_project_translations(
+                &document,
+                &json!({ "$locale": "en", "translations": { "hero": "Stale", "other": "Keep" } }),
+            );
+            assert_eq!(result.resolved_translations, 0);
+            assert_eq!(result.unresolved_translations, 1);
+            assert!(result.context["translations"].get("hero").is_none());
+            assert_eq!(result.context["translations"]["other"], "Keep");
+            assert!(result.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == "runtime_localized_value_locale_invalid"
+                    && diagnostic.severity == ValidationSeverity::Error
+            }));
+        }
     }
 
     #[test]
