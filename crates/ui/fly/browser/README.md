@@ -129,7 +129,7 @@ HTTP revision-conflict responses fence the editor, and late responses cannot rep
 a peer-write warning. The host must render an explicit draft-binding marker for every Pages workspace.
 When a session exists, it also renders the owner-bound token and generation before
 enabling edits. Strict mounts use those server-rendered values as authoritative;
-stale \`sessionStorage\` metadata must never replace them. A rendered no-session
+stale `sessionStorage` metadata must never replace them. A rendered no-session
 binding must also suppress legacy storage fallback. The adapter advances the
 rendered binding only after a correlated receipt, and a missing page/session identity
 fails closed. This protocol is currently
