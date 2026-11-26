@@ -21,7 +21,7 @@
       "hash_algorithm": "sha256",
       "hash_payload": ["format", "policy_format", "policy_hash", "sanitized_project"],
       "policy": {
-        "format": "page_builder_static_publish_policy_v2",
+        "format": "page_builder_static_publish_policy_v11",
         "source": "crates/modules/rustok-page-builder/src/static_publish_policy.rs",
         "dto": "PageBuilderStaticPublishPolicy",
         "evidence": "PageBuilderStaticPublishPolicyEvidence",

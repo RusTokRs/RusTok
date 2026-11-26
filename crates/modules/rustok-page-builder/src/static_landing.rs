@@ -613,6 +613,20 @@ mod tests {
     }
 
     #[test]
+    fn compiler_rejects_ambiguous_srcset_before_artifact_creation() {
+        let error = StaticLandingCompiler::default()
+            .compile_publish(&project_with_srcset("/a.webp,/b.webp 2x"))
+            .expect_err("ambiguous candidate separator must be rejected");
+        let LandingProjectError::Validation { diagnostics } = error else {
+            panic!("expected typed validation diagnostics");
+        };
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "runtime_public_url_invalid"
+                && diagnostic.path.ends_with("attributes.srcset")
+        }));
+    }
+
+    #[test]
     fn compiler_rejects_data_url_srcset_candidate_before_artifact_creation() {
         let error = StaticLandingCompiler::default()
             .compile_publish(&project_with_srcset(

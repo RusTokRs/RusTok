@@ -172,7 +172,9 @@ crates/ui/fly/
   `<style>` element body each have their own escape; URLs are filtered by `RenderPolicy`.
   Action, attribute and head URL checks share parsed HTTP(S) authority validation. SSR and
   document validation share bounded srcset candidate checks, including numeric descriptor
-  uniqueness, positive density/width and one descriptor family. CSS url(), image(), src(),
+  uniqueness, positive density/width, one descriptor family and unambiguous comma boundaries.
+  A bare candidate URL requires whitespace on at least one side of a following comma; encode
+  literal URL commas as %2C. CSS url(), image(), src(),
   image-set() and -webkit-image-set() resource strings are checked against the same
   resource policy, including nested image functions; escaped or malformed strings fail closed.
 

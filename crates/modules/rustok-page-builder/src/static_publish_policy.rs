@@ -8,7 +8,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
-pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT: &str = "page_builder_static_publish_policy_v10";
+pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT: &str = "page_builder_static_publish_policy_v11";
 
 const ALLOWED_TAGS: &[&str] = &[
     "a",
@@ -1991,13 +1991,18 @@ mod tests {
     }
 
     #[test]
-    fn v9_policy_evidence_is_not_current_after_v10_cutover() {
+    fn previous_policy_formats_cannot_authorize_current_evidence() {
         let policy = PageBuilderStaticPublishPolicy::default();
-        let evidence = PageBuilderStaticPublishPolicyEvidence {
-            format: "page_builder_static_publish_policy_v9".to_string(),
-            policy_hash: policy.policy_hash().expect("current hash"),
-        };
-        assert!(evidence.verify_integrity().is_err());
+        for format in [
+            "page_builder_static_publish_policy_v9",
+            "page_builder_static_publish_policy_v10",
+        ] {
+            let evidence = PageBuilderStaticPublishPolicyEvidence {
+                format: format.to_string(),
+                policy_hash: policy.policy_hash().expect("current hash"),
+            };
+            assert!(evidence.verify_integrity().is_err(), "{format}");
+        }
     }
 
     #[test]
@@ -2116,6 +2121,8 @@ mod tests {
         )
         .is_ok());
         assert!(validate_srcset("hero.webp 1x, hero@2x.webp 2x", &policy).is_ok());
+        assert!(validate_srcset("/a.webp, /b.webp 2x", &policy).is_ok());
+        assert!(validate_srcset("/a.webp 1x,/b.webp 2x", &policy).is_ok());
         assert!(
             validate_srcset("/hero.webp", &policy).is_ok(),
             "bare candidate"
@@ -2168,6 +2175,7 @@ mod tests {
             "",
             ", https://cdn.example.com/hero.webp 1x",
             "//cdn.example.com/hero.webp 1x",
+            "/a.webp,/b.webp 2x",
         ] {
             assert!(
                 validate_srcset(value, &policy).is_err(),
