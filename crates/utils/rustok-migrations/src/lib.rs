@@ -72,6 +72,7 @@ mod composition {
     mod m20261121_000001_add_sys_events_tenant_projection;
     mod m20261124_000001_quarantine_stale_installer_http_jobs;
     mod m20261125_000001_create_session_refresh_history;
+    mod m20261126_000050_add_user_recovery_revision;
 
     #[cfg(test)]
     mod contract_tests;
@@ -511,6 +512,7 @@ mod composition {
             m20261124_000001_quarantine_stale_installer_http_jobs::Migration,
         ));
         all.push(Box::new(m20261125_000001_create_session_refresh_history::Migration));
+        all.push(Box::new(m20261126_000050_add_user_recovery_revision::Migration));
         all
     }
 

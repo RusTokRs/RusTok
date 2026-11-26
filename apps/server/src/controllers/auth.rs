@@ -122,9 +122,7 @@ async fn register(
         spawn_email_verification(
             runtime_ctx,
             &config,
-            tenant.id,
-            user.id,
-            &user.email,
+            &user,
             request_context.locale.as_str(),
         );
     }
@@ -487,9 +485,7 @@ async fn session_register(
         spawn_email_verification(
             runtime_ctx,
             &config,
-            tenant.id,
-            user.id,
-            &user.email,
+            &user,
             request_context.locale.as_str(),
         );
     }
@@ -782,12 +778,11 @@ fn prepare_verification_token(
     tenant_id: uuid::Uuid,
     user: Option<users::Model>,
 ) -> Option<(String, String)> {
-    let user = user.filter(|record| record.email_verified_at.is_none())?;
+    let user = user.filter(|record| record.tenant_id == tenant_id && record.is_active()
+        && record.email_verified_at.is_none())?;
     match encode_email_verification_token(
         config,
-        tenant_id,
-        user.id,
-        &user.email,
+        &user,
         EMAIL_VERIFICATION_TOKEN_TTL_SECS,
     ) {
         Ok(token) => Some((user.email, token)),
@@ -1212,7 +1207,7 @@ mod tests {
             .into_cluster_jwt(1)
             .expect("prepare runtime without granting a signing lease");
         assert!(crate::auth::encode_email_verification_token(
-            &unleased, tenant.id, user.id, &user.email,
+            &unleased, &user,
             super::EMAIL_VERIFICATION_TOKEN_TTL_SECS,
         ).is_err());
         assert!(super::prepare_verification_token(&unleased, tenant.id, Some(user)).is_none());

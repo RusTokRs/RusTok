@@ -21,6 +21,9 @@ pub struct Model {
     /// Delegated OAuth tokens issued at or before this instant are invalid.
     /// First-party sessions use their own revocation lineage.
     pub password_changed_at: Option<DateTimeWithTimeZone>,
+    /// Database-owned monotonic epoch for account recovery links.
+    #[serde(skip)]
+    pub recovery_revision: i64,
     pub metadata: Json,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,

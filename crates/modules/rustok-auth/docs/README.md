@@ -668,6 +668,20 @@ password reset reuse the lifecycle's tenant/user-scoped bulk session
 revocation; the shared writer updates both revocation and modification
 timestamps and does not rewrite previously revoked rows.
 
+## Account recovery revision
+
+Password-reset and email-verification JWT subjects bind the exact account ID,
+mailbox and database-owned monotonic `recovery_revision`. Password reset also
+retains the existing password-hash MAC binding. A user-table trigger advances
+the revision on changed email, password hash, status, tenant or removal of
+mailbox verification; unchanged/profile updates and initial verification do
+not advance it. Both issuance and confirmation use the persisted revision;
+confirmation rechecks it under the user mutation lock and in its conditional
+write. Old subjects without the revision fail closed. Stop older Auth writers,
+apply the platform migration and request fresh links at cutover. See
+[the recovery revision ADR](../../../../DECISIONS/2026-11-26-auth-recovery-revision.md).
+Source regressions and PostgreSQL/SQLite migration execution remain pending.
+
 ## Direct session refresh history and recovery
 
 The host records each rotated refresh digest and timestamp in

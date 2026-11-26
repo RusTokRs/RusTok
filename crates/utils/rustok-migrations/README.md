@@ -38,6 +38,15 @@ storage with a session deletion cascade; rollback drops historical evidence and 
 not be used with live new-version sessions. The backfill fixture is declared in the
 platform backfill register. Runtime migration checks are pending.
 
+## Account recovery revision
+
+`m20261126_000050_add_user_recovery_revision` adds a nonnegative monotonic
+user-row revision and database-specific PostgreSQL/SQLite triggers. Existing
+rows start at zero; previous link subjects are rejected by the new Auth
+reader rather than backfilled. Stop older binaries before cutover; do not
+downgrade with outstanding recovery links. See the
+[Auth ADR](../../../DECISIONS/2026-11-26-auth-recovery-revision.md).
+
 ## SQLite unit-test schema
 
 `identity::migrations()` is available without default features and returns the

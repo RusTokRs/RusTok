@@ -16,26 +16,28 @@ const TOKEN_SUBJECT_SEPARATOR: char = '\u{001f}';
 /// Server-owned password reset claims.
 ///
 /// The generic auth crate validates the JWT envelope and purpose. The server
-/// additionally binds the token to the password hash that existed when the
-/// reset was requested, making the token invalid after the first successful
-/// password change on every server instance.
+/// additionally binds the token to the user, recovery revision and password
+/// hash that existed when the reset was requested.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PasswordResetClaims {
     pub sub: String,
     pub tenant_id: uuid::Uuid,
+    pub user_id: uuid::Uuid,
+    pub recovery_revision: i64,
     pub credential_fingerprint: String,
     pub expires_at: chrono::DateTime<chrono::Utc>,
 }
 
 /// Server-owned email verification claims bound to a concrete account id.
 ///
-/// Binding the token to `user_id` prevents a token issued for a deleted account
-/// from verifying a newly created account that reuses the same email address.
+/// Binding the token to the user and durable recovery revision prevents
+/// mailbox reuse and account-state ABA from resurrecting a previous link.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EmailVerificationClaims {
     pub sub: String,
     pub tenant_id: uuid::Uuid,
     pub user_id: uuid::Uuid,
+    pub recovery_revision: i64,
     pub expires_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -116,17 +118,44 @@ pub fn decode_access_token(config: &AuthConfig, token: &str) -> Result<Claims> {
     rustok_auth::decode_access_token(config, token).map_err(auth_err)
 }
 
+// Closed subject format: user UUID, nonnegative decimal revision and
+// normalized email. Reset appends the existing purpose-separated MAC tag.
+fn recovery_subject(user: &crate::models::users::Model) -> Result<String> {
+    let email = user.email.trim().to_lowercase();
+    if user.id.is_nil() || user.tenant_id.is_nil() || user.recovery_revision < 0
+        || email.is_empty() || email.contains(TOKEN_SUBJECT_SEPARATOR)
+    {
+        return Err(auth_err(AuthError::TokenEncodingFailed));
+    }
+    Ok(format!("{}{TOKEN_SUBJECT_SEPARATOR}{}{TOKEN_SUBJECT_SEPARATOR}{email}",
+        user.id, user.recovery_revision))
+}
+
+fn parse_recovery_subject(subject: &str) -> Option<(uuid::Uuid, i64, &str)> {
+    let mut fields = subject.split(TOKEN_SUBJECT_SEPARATOR);
+    let raw_id = fields.next()?;
+    let raw_revision = fields.next()?;
+    let email = fields.next()?;
+    let user_id = uuid::Uuid::parse_str(raw_id).ok()?;
+    let revision = raw_revision.parse::<i64>().ok()?;
+    if user_id.is_nil() || user_id.to_string() != raw_id
+        || revision < 0 || revision.to_string() != raw_revision
+        || email.is_empty() || fields.next().is_some()
+    {
+        return None;
+    }
+    Some((user_id, revision, email))
+}
+
 pub fn encode_password_reset_token(
     config: &AuthConfig,
-    tenant_id: uuid::Uuid,
-    email: &str,
-    password_hash: &str,
+    user: &crate::models::users::Model,
     ttl_seconds: u64,
 ) -> Result<String> {
-    let normalized_email = email.trim().to_lowercase();
-    let fingerprint = password_reset_credential_fingerprint(config, password_hash)?;
-    let subject = format!("{normalized_email}{TOKEN_SUBJECT_SEPARATOR}{fingerprint}");
-    rustok_auth::encode_password_reset_token(config, tenant_id, &subject, ttl_seconds)
+    let prefix = recovery_subject(user)?;
+    let fingerprint = password_reset_credential_fingerprint(config, &user.password_hash)?;
+    let subject = format!("{prefix}{TOKEN_SUBJECT_SEPARATOR}{fingerprint}");
+    rustok_auth::encode_password_reset_token(config, user.tenant_id, &subject, ttl_seconds)
         .map_err(auth_err)
 }
 
@@ -135,15 +164,19 @@ pub fn decode_password_reset_token(
     token: &str,
 ) -> Result<PasswordResetClaims> {
     let claims = rustok_auth::decode_password_reset_token(config, token).map_err(auth_err)?;
-    let (email, credential_fingerprint) = claims
+    let (prefix, credential_fingerprint) = claims
         .sub
         .rsplit_once(TOKEN_SUBJECT_SEPARATOR)
-        .filter(|(email, fingerprint)| !email.is_empty() && is_canonical_auth_mac_tag(fingerprint))
+        .filter(|(_, fingerprint)| is_canonical_auth_mac_tag(fingerprint))
+        .ok_or_else(|| auth_err(AuthError::InvalidResetToken))?;
+    let (user_id, recovery_revision, email) = parse_recovery_subject(prefix)
         .ok_or_else(|| auth_err(AuthError::InvalidResetToken))?;
 
     Ok(PasswordResetClaims {
         sub: email.to_string(),
         tenant_id: claims.tenant_id,
+        user_id,
+        recovery_revision,
         credential_fingerprint: credential_fingerprint.to_string(),
         expires_at: signed_recovery_expiry(claims.exp)
             .ok_or_else(|| auth_err(AuthError::InvalidResetToken))?,
@@ -175,14 +208,11 @@ fn password_reset_credential_fingerprint(config: &AuthConfig, password_hash: &st
 
 pub fn encode_email_verification_token(
     config: &AuthConfig,
-    tenant_id: uuid::Uuid,
-    user_id: uuid::Uuid,
-    email: &str,
+    user: &crate::models::users::Model,
     ttl_seconds: u64,
 ) -> Result<String> {
-    let normalized_email = email.trim().to_lowercase();
-    let subject = format!("{user_id}{TOKEN_SUBJECT_SEPARATOR}{normalized_email}");
-    rustok_auth::encode_email_verification_token(config, tenant_id, &subject, ttl_seconds)
+    let subject = recovery_subject(user)?;
+    rustok_auth::encode_email_verification_token(config, user.tenant_id, &subject, ttl_seconds)
         .map_err(auth_err)
 }
 
@@ -191,18 +221,14 @@ pub fn decode_email_verification_token(
     token: &str,
 ) -> Result<EmailVerificationClaims> {
     let claims = rustok_auth::decode_email_verification_token(config, token).map_err(auth_err)?;
-    let (user_id, email) = claims
-        .sub
-        .split_once(TOKEN_SUBJECT_SEPARATOR)
-        .filter(|(user_id, email)| !user_id.is_empty() && !email.is_empty())
+    let (user_id, recovery_revision, email) = parse_recovery_subject(&claims.sub)
         .ok_or_else(|| auth_err(AuthError::InvalidVerificationToken))?;
-    let user_id = uuid::Uuid::parse_str(user_id)
-        .map_err(|_| auth_err(AuthError::InvalidVerificationToken))?;
 
     Ok(EmailVerificationClaims {
         sub: email.to_string(),
         tenant_id: claims.tenant_id,
         user_id,
+        recovery_revision,
         expires_at: signed_recovery_expiry(claims.exp)
             .ok_or_else(|| auth_err(AuthError::InvalidVerificationToken))?,
     })
@@ -416,18 +442,18 @@ mod tests {
         let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
         let config = rsa_test_config(mac_root(), &fixture.document(1));
         let tenant_id = uuid::Uuid::new_v4();
-        let token = encode_password_reset_token(
-            &config,
-            tenant_id,
-            " User@Example.com ",
-            "old-password-hash",
-            900,
-        )
+        let mut user = crate::models::users::Model::default_service_user(uuid::Uuid::new_v4(), tenant_id);
+        user.email = " User@Example.com ".to_string();
+        user.password_hash = "old-password-hash".to_string();
+        user.recovery_revision = 7;
+        let token = encode_password_reset_token(&config, &user, 900)
         .expect("encode reset token");
         let claims = decode_password_reset_token(&config, &token).expect("decode reset token");
 
         assert_eq!(claims.sub, "user@example.com");
         assert_eq!(claims.tenant_id, tenant_id);
+        assert_eq!(claims.user_id, user.id);
+        assert_eq!(claims.recovery_revision, 7);
         assert!(is_canonical_auth_mac_tag(&claims.credential_fingerprint));
         assert!(password_reset_credential_matches(
             &config,
@@ -451,8 +477,17 @@ mod tests {
         assert!(!password_reset_credential_matches(&config, "hash", &format!("v2:{tag}")));
         assert!(!password_reset_credential_matches(&config, "hash", &tag[2..]));
         let tenant = uuid::Uuid::new_v4();
+        let user_id = uuid::Uuid::new_v4();
         for invalid in [format!("v2:{tag}"), tag.to_uppercase(), tag[2..].to_string()] {
-            let subject = format!("user@example.com{TOKEN_SUBJECT_SEPARATOR}{invalid}");
+            let subject = format!("{user_id}{TOKEN_SUBJECT_SEPARATOR}0{TOKEN_SUBJECT_SEPARATOR}user@example.com{TOKEN_SUBJECT_SEPARATOR}{invalid}");
+            let token = rustok_auth::encode_password_reset_token(&config, tenant, &subject, 900).unwrap();
+            assert!(decode_password_reset_token(&config, &token).is_err());
+        }
+        let legacy = format!("user@example.com{TOKEN_SUBJECT_SEPARATOR}{tag}");
+        let legacy = rustok_auth::encode_password_reset_token(&config, tenant, &legacy, 900).unwrap();
+        assert!(decode_password_reset_token(&config, &legacy).is_err());
+        for revision in ["-1", "+1", "01", "9223372036854775808"] {
+            let subject = format!("{user_id}{TOKEN_SUBJECT_SEPARATOR}{revision}{TOKEN_SUBJECT_SEPARATOR}user@example.com{TOKEN_SUBJECT_SEPARATOR}{tag}");
             let token = rustok_auth::encode_password_reset_token(&config, tenant, &subject, 900).unwrap();
             assert!(decode_password_reset_token(&config, &token).is_err());
         }
@@ -472,14 +507,21 @@ mod tests {
         let config = rsa_test_config(mac_root(), &fixture.document(1));
         let tenant_id = uuid::Uuid::new_v4();
         let user_id = uuid::Uuid::new_v4();
+        let mut user = crate::models::users::Model::default_service_user(user_id, tenant_id);
+        user.email = " User@Example.com ".to_string();
+        user.recovery_revision = 9;
         let token =
-            encode_email_verification_token(&config, tenant_id, user_id, " User@Example.com ", 900)
+            encode_email_verification_token(&config, &user, 900)
                 .expect("encode verification token");
         let claims =
             decode_email_verification_token(&config, &token).expect("decode verification token");
 
         assert_eq!(claims.tenant_id, tenant_id);
         assert_eq!(claims.user_id, user_id);
+        assert_eq!(claims.recovery_revision, 9);
         assert_eq!(claims.sub, "user@example.com");
+        let legacy = format!("{user_id}{TOKEN_SUBJECT_SEPARATOR}user@example.com");
+        let legacy = rustok_auth::encode_email_verification_token(&config, tenant_id, &legacy, 900).unwrap();
+        assert!(decode_email_verification_token(&config, &legacy).is_err());
     }
 }
