@@ -1549,6 +1549,13 @@ pub fn css_resource_string_ranges(value: &str) -> Option<Vec<std::ops::Range<usi
         }
         cursor += value[cursor..].chars().next()?.len_utf8();
     }
+    // An outer image function collects its direct strings before the scanner
+    // visits nested image functions. Restore source order before consumers
+    // replace ranges in reverse; otherwise earlier edits invalidate later offsets.
+    ranges.sort_unstable_by_key(|range| range.start);
+    if ranges.windows(2).any(|pair| pair[0].end > pair[1].start) {
+        return None;
+    }
     Some(ranges)
 }
 
@@ -2575,6 +2582,28 @@ mod tests {
         ).expect("valid CSS");
         assert_eq!(seen, ["/url(/hero.png)", "/hero(2).png"]);
         assert_eq!(scanned, "image-set('url-ok' 1x, url-ok 2x)");
+    }
+
+    #[test]
+    fn nested_css_resource_ranges_remain_in_source_order() {
+        let css = "image-set(image('/é.png') 1x, '/second-long.png' 2x)";
+        let ranges = css_resource_string_ranges(css).expect("resource ranges");
+        assert_eq!(
+            ranges.iter().map(|range| &css[range.clone()]).collect::<Vec<_>>(),
+            ["/é.png", "/second-long.png"]
+        );
+        let mut checked = Vec::new();
+        let masked = strip_css_resource_references(css, |url| {
+            checked.push(url.to_string());
+            true
+        }).expect("nested resources");
+        assert_eq!(checked, ["/second-long.png", "/é.png"]);
+        assert_eq!(masked, "image-set(image('url-ok') 1x, 'url-ok' 2x)");
+        assert!(safe_style(
+            "background-image",
+            &Value::String(css.to_string()),
+            &RenderPolicy::default(),
+        ).is_some());
     }
 
     #[test]

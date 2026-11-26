@@ -8,7 +8,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
-pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT: &str = "page_builder_static_publish_policy_v12";
+pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT: &str = "page_builder_static_publish_policy_v13";
 
 const ALLOWED_TAGS: &[&str] = &[
     "a",
@@ -1920,6 +1920,7 @@ mod tests {
             "page_builder_static_publish_policy_v9",
             "page_builder_static_publish_policy_v10",
             "page_builder_static_publish_policy_v11",
+            "page_builder_static_publish_policy_v12",
         ] {
             let evidence = PageBuilderStaticPublishPolicyEvidence {
                 format: format.to_string(),
@@ -1981,6 +1982,19 @@ mod tests {
         for value in ["url('/hero(1).png')", "image-set('/url(/hero.png)' 1x)"] {
             assert!(safe_css_value(value, &policy), "{value}");
         }
+    }
+
+    #[test]
+    fn nested_css_resource_strings_are_checked_without_offset_drift() {
+        let policy = PageBuilderStaticPublishPolicy::default();
+        assert!(safe_css_value(
+            "image-set(image('/é.png') 1x, '/second-long.png' 2x)",
+            &policy
+        ));
+        assert!(!safe_css_value(
+            "image-set(image('/é.png') 1x, 'http://insecure.example/second.png' 2x)",
+            &policy
+        ));
     }
 
     #[test]
