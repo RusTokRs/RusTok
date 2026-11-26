@@ -153,23 +153,24 @@ fn issue_consent_csrf(
     if tenant_id.is_nil() || user_id.is_nil() || session_id.is_nil() {
         return None;
     }
-    let expires_at = chrono::Utc::now().timestamp().checked_add(CONSENT_CSRF_TTL_SECS)?;
-    Some(format!(
-        "{expires_at}.{}",
-        consent_csrf_mac(
-            config,
-            tenant_id,
-            user_id,
-            session_id,
-            client_id,
-            redirect_uri,
-            scope,
-            effective_scopes,
-            state,
-            code_challenge,
-            expires_at,
-        )?
-    ))
+    let expires_at = config.credential_now().ok()?.timestamp().checked_add(CONSENT_CSRF_TTL_SECS)?;
+    let mac = consent_csrf_mac(
+        config,
+        tenant_id,
+        user_id,
+        session_id,
+        client_id,
+        redirect_uri,
+        scope,
+        effective_scopes,
+        state,
+        code_challenge,
+        expires_at,
+    )?;
+    if config.credential_now().ok()?.timestamp() >= expires_at {
+        return None;
+    }
+    Some(format!("{expires_at}.{mac}"))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -185,34 +186,34 @@ fn verify_consent_csrf(
     state: Option<&str>,
     code_challenge: &str,
     presented: Option<&str>,
-) -> bool {
+) -> Option<chrono::DateTime<chrono::Utc>> {
     use subtle::ConstantTimeEq;
 
     let Some(presented) = presented else {
-        return false;
+        return None;
     };
     // A positive i64 decimal timestamp, separator and full hex MAC fit in 84 bytes.
     if presented.len() > 84 {
-        return false;
+        return None;
     }
     let Some((expiry, mac)) = presented.split_once('.') else {
-        return false;
+        return None;
     };
     if !rustok_auth::is_canonical_auth_mac_tag(mac) {
-        return false;
+        return None;
     }
     let Ok(expires_at) = expiry.parse::<i64>() else {
-        return false;
+        return None;
     };
     if expires_at <= 0 || expiry != expires_at.to_string() {
-        return false;
+        return None;
     }
-    let now = chrono::Utc::now().timestamp();
+    let now = config.credential_now().ok()?.timestamp();
     if tenant_id.is_nil() || user_id.is_nil() || session_id.is_nil()
         || expires_at <= now
         || expires_at > now.saturating_add(CONSENT_CSRF_TTL_SECS)
     {
-        return false;
+        return None;
     }
     let Some(expected) = consent_csrf_mac(
         config,
@@ -227,9 +228,13 @@ fn verify_consent_csrf(
         code_challenge,
         expires_at,
     ) else {
-        return false;
+        return None;
     };
-    expected.as_bytes().ct_eq(mac.as_bytes()).into()
+    if !bool::from(expected.as_bytes().ct_eq(mac.as_bytes())) {
+        return None;
+    }
+    let deadline = chrono::DateTime::<chrono::Utc>::from_timestamp(expires_at, 0)?;
+    (config.credential_now().ok()? < deadline).then_some(deadline)
 }
 
 #[derive(Debug, Clone)]
@@ -503,7 +508,7 @@ fn is_form_encoded_content_type(value: &str) -> bool {
     )
 )]
 pub(crate) async fn authorize_handler(
-    State(ctx): State<ServerRuntimeContext>,
+    State(ctx): State<ServerAuthRuntime>,
     tenant_ctx: TenantContext,
     current_user: CurrentUser,
     Json(req): Json<AuthorizeRequest>,
@@ -516,7 +521,7 @@ pub(crate) async fn authorize_handler(
 }
 
 async fn authorize_handler_inner(
-    ctx: ServerRuntimeContext,
+    ctx: ServerAuthRuntime,
     tenant_ctx: TenantContext,
     current_user: CurrentUser,
     req: AuthorizeRequest,
@@ -529,7 +534,7 @@ async fn authorize_handler_inner(
     }
 
     let validated = validate_authorize_request(
-        &ctx,
+        ctx.runtime_ctx(),
         tenant_ctx.id,
         req.client_id,
         req.redirect_uri,
@@ -543,7 +548,7 @@ async fn authorize_handler_inner(
 
     if validated.app.requires_user_consent() {
         let has_consent = OAuthAppService::get_active_consent(
-            ctx.db(),
+            ctx.runtime_ctx().db(),
             validated.app.id,
             current_user.user.id,
             tenant_ctx.id,
@@ -565,7 +570,7 @@ async fn authorize_handler_inner(
     }
 
     let code =
-        issue_authorization_code(&ctx, tenant_ctx.id, &validated, &current_user, false).await?;
+        issue_authorization_code(&ctx, tenant_ctx.id, &validated, &current_user, None).await?;
 
     let mut response = serde_json::json!({
         "code": code,
@@ -692,11 +697,11 @@ pub(crate) async fn authorize_browser_handler(
         has_consent,
     ) {
         return match issue_authorization_code(
-            runtime_ctx,
+            &ctx,
             tenant_ctx.id,
             &validated,
             &current_user,
-            false,
+            None,
         )
         .await
         {
@@ -811,7 +816,7 @@ pub(crate) async fn consent_handler(
         return oauth_error_response(direct_user_required_error());
     }
 
-    let csrf_valid = ctx.auth_config().is_some_and(|auth_config| {
+    let confirmation_deadline = ctx.auth_config().and_then(|auth_config| {
         verify_consent_csrf(
             auth_config,
             tenant_ctx.id,
@@ -826,13 +831,13 @@ pub(crate) async fn consent_handler(
             req.consent_csrf.as_deref(),
         )
     });
-    if !csrf_valid {
+    let Some(confirmation_deadline) = confirmation_deadline else {
         return oauth_error_response(TokenErrorResponse {
             error: "invalid_request".to_string(),
             error_description: "Invalid or expired authorization confirmation; restart the authorization flow"
                 .to_string(),
         });
-    }
+    };
 
     if req.action == "deny" {
         return redirect_with_error(
@@ -856,7 +861,7 @@ pub(crate) async fn consent_handler(
 
     // Approval and issuance share one transaction, with a fresh direct-session
     // check under the mutation locks. Never persist consent before issuance.
-    match issue_authorization_code(runtime_ctx, tenant_ctx.id, &validated, &current_user, true)
+    match issue_authorization_code(&ctx, tenant_ctx.id, &validated, &current_user, Some(confirmation_deadline))
         .await
     {
         Ok(code) => redirect_with_code(
@@ -1107,26 +1112,29 @@ fn map_code_issuance_error(error: crate::error::Error) -> TokenErrorResponse {
 }
 
 async fn issue_authorization_code(
-    ctx: &ServerRuntimeContext,
+    ctx: &ServerAuthRuntime,
     tenant_id: Uuid,
     validated: &ValidatedAuthorizeRequest,
     current_user: &CurrentUser,
-    approve_consent: bool,
+    confirmation_deadline: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Result<String, TokenErrorResponse> {
+    let config = ctx.require_auth_config().map_err(map_code_issuance_error)?;
+    let clock = || config.credential_now().map_err(|_| crate::error::Error::InternalServerError);
     OAuthAppService::generate_authorization_code(
-        ctx.db(),
+        ctx.runtime_ctx().db(),
         validated.app.id,
         AuthorizationSession {
             user_id: current_user.user.id,
             session_id: current_user.session_id,
             access_expires_at: current_user.access_token_expires_at,
-            require_email_verification: ctx.settings().features.email_verification,
+            require_email_verification: ctx.runtime_ctx().settings().features.email_verification,
+            confirmation_deadline,
         },
         tenant_id,
         validated.redirect_uri.clone(),
         validated.requested_scopes.clone(),
         validated.code_challenge.clone(),
-        approve_consent,
+        &clock,
     )
     .await
     .map_err(map_code_issuance_error)
@@ -1739,10 +1747,15 @@ mod tests {
             verify_consent_csrf(
                 &config, tenant, user, session, &client, redirect, None, effective, None,
                 challenge, Some(token.as_str()),
-            )
+            ).is_some()
         };
         assert!(verify(&displayed));
         let (expiry, tag) = token.split_once('.').unwrap();
+        let verified_deadline = verify_consent_csrf(
+            &config, tenant, user, session, &client, redirect, None, &displayed, None,
+            challenge, Some(&token),
+        ).unwrap();
+        assert_eq!(verified_deadline.timestamp().to_string(), expiry);
         for malformed in [
             format!("+{expiry}.{tag}"),
             format!("0{expiry}.{tag}"),
@@ -1754,7 +1767,7 @@ mod tests {
             assert!(!verify_consent_csrf(
                 &config, tenant, user, session, &client, redirect, None,
                 &displayed, None, challenge, Some(&malformed),
-            ));
+            ).is_some());
         }
         for (t, u, s) in [(Uuid::nil(), user, session), (tenant, Uuid::nil(), session), (tenant, user, Uuid::nil())] {
             assert!(issue_consent_csrf(
@@ -1762,7 +1775,7 @@ mod tests {
             ).is_none());
             assert!(!verify_consent_csrf(
                 &config, t, u, s, &client, redirect, None, &displayed, None, challenge, Some(&token),
-            ));
+            ).is_some());
         }
         let weak_fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
         let weak_document = weak_fixture.document(1).to_string();
@@ -1779,7 +1792,7 @@ mod tests {
         assert!(!verify_consent_csrf(
             &config, tenant, user, Uuid::new_v4(), &client, redirect, None,
             &displayed, None, challenge, Some(token.as_str()),
-        ), "a confirmation cannot cross sessions of the same user");
+        ).is_some(), "a confirmation cannot cross sessions of the same user");
         let future = chrono::Utc::now().timestamp() + CONSENT_CSRF_TTL_SECS + 60;
         let future_token = format!("{future}.{}", consent_csrf_mac(
             &config, tenant, user, session, &client, redirect, None,
@@ -1788,7 +1801,7 @@ mod tests {
         assert!(!verify_consent_csrf(
             &config, tenant, user, session, &client, redirect, None,
             &displayed, None, challenge, Some(&future_token),
-        ), "a signed expiry beyond the confirmation lifetime is invalid");
+        ).is_some(), "a signed expiry beyond the confirmation lifetime is invalid");
 
         let expanded = vec!["profile".to_string(), "catalog:read".to_string(), "catalog:write".to_string()];
         let expanded = validate_authorization_scopes(None, &expanded).unwrap();
@@ -1810,11 +1823,11 @@ mod tests {
         assert!(verify_consent_csrf(
             &config, tenant, user, session, &client, redirect, Some("profile"), &still_explicit, None,
             challenge, Some(explicit_token.as_str()),
-        ));
+        ).is_some());
         assert!(!verify_consent_csrf(
             &config, tenant, user, session, &client, redirect, None, &still_explicit, None,
             challenge, Some(explicit_token.as_str()),
-        ));
+        ).is_some());
     }
 
     #[test]

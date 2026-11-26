@@ -224,6 +224,7 @@ pub(crate) struct AuthorizationSession {
     pub session_id: Uuid,
     pub access_expires_at: chrono::DateTime<Utc>,
     pub require_email_verification: bool,
+    pub confirmation_deadline: Option<chrono::DateTime<Utc>>,
 }
 
 impl AuthorizationSession {
@@ -232,6 +233,9 @@ impl AuthorizationSession {
         session: &crate::models::sessions::Model,
         now: chrono::DateTime<Utc>,
     ) -> Result<()> {
+        if self.confirmation_deadline.is_some_and(|deadline| now >= deadline) {
+            return Err(Error::Unauthorized("OAuth authorization confirmation expired".to_string()));
+        }
         if session.revoked_at.is_some()
             || session.created_at.with_timezone(&Utc) > now
             || session.expires_at.with_timezone(&Utc) <= now
@@ -653,8 +657,9 @@ impl OAuthAppService {
         redirect_uri: String,
         scopes: Vec<String>,
         code_challenge: String,
-        approve_consent: bool,
+        clock: &(dyn Fn() -> Result<chrono::DateTime<Utc>> + Send + Sync),
     ) -> Result<String> {
+        clock()?;
         let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
         let app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
             .await
@@ -706,7 +711,7 @@ impl OAuthAppService {
         .map_err(|_| Error::InternalServerError)?
         .filter(|session| session.user_id == user.id)
         .ok_or_else(|| Error::Unauthorized("OAuth authorization session is no longer active".to_string()))?;
-        subject.ensure_live(&session, Utc::now())?;
+        subject.ensure_live(&session, clock()?)?;
 
         if app.requires_user_consent() {
             let consent = OAuthConsents::find_active_consent(&tx, app_id, user.id, tenant_id)
@@ -720,15 +725,17 @@ impl OAuthAppService {
                 None => false,
             };
             if !covered {
-                if !approve_consent {
+                if subject.confirmation_deadline.is_none() {
                     return Err(Error::Unauthorized(
                         "OAuth authorization requires active user consent".to_string(),
                     ));
                 }
                 let scopes_json = serde_json::to_value(&scopes)
                     .map_err(|_| Error::InternalServerError)?;
+                let now = clock()?;
+                subject.ensure_live(&session, now)?;
                 Self::grant_consent_in_transaction(
-                    &tx, app_id, user.id, tenant_id, &scopes_json,
+                    &tx, app_id, user.id, tenant_id, &scopes_json, now,
                 )
                 .await
                 .map_err(|attempt| match attempt {
@@ -742,16 +749,18 @@ impl OAuthAppService {
 
         // Generate a fresh code only after the caller has passed authoritative
         // checks. Hashing an opaque random code does not leak plaintext to DB.
-        let random_bytes: [u8; 32] = rand::random();
+        // Use the Auth owner's fallible CSPRNG; preserve base64url wire format.
+        let random_bytes = hex::decode(auth::generate_refresh_token()?)
+            .map_err(|_| Error::InternalServerError)?;
         use base64::{Engine as _, engine::general_purpose};
         let code = general_purpose::URL_SAFE_NO_PAD.encode(random_bytes);
-        use sha2::{Digest, Sha256};
-        let code_hash = hex::encode(Sha256::digest(code.as_bytes()));
+        let code_hash = auth::hash_refresh_token(&code);
 
-        let now = Utc::now();
-        // Consent persistence may have consumed the remaining session lifetime.
+        let now = clock()?;
         subject.ensure_live(&session, now)?;
-        OAuthCodeActiveModel {
+        let expires_at = now.checked_add_signed(chrono::Duration::minutes(10))
+            .ok_or(Error::InternalServerError)?;
+        let stored = OAuthCodeActiveModel {
             id: Set(Uuid::new_v4()),
             app_id: Set(app_id),
             user_id: Set(user.id),
@@ -761,7 +770,7 @@ impl OAuthAppService {
             scopes: Set(serde_json::to_value(&scopes).map_err(|_| Error::InternalServerError)?),
             code_challenge: Set(code_challenge),
             code_challenge_method: Set("S256".to_string()),
-            expires_at: Set((now + chrono::Duration::minutes(10)).into()),
+            expires_at: Set(expires_at.into()),
             used_at: Set(None),
             created_at: Set(now.into()),
         }
@@ -770,8 +779,17 @@ impl OAuthAppService {
         .map_err(|_| Error::InternalServerError)?;
         // Recheck immediately before attempting commit; a slow code write
         // must not pass a stale authorization decision. The session stays locked.
-        subject.ensure_live(&session, Utc::now())?;
+        let now = clock()?;
+        subject.ensure_live(&session, now)?;
+        if !stored.is_active_at(now) {
+            return Err(Error::Unauthorized("OAuth authorization code expired before commit".to_string()));
+        }
         tx.commit().await.map_err(|_| Error::InternalServerError)?;
+        // A committed code cannot be rolled back after acknowledgement.
+        // Refuse publication if the clock fence closed or the code expired.
+        if !stored.is_active_at(clock()?) {
+            return Err(Error::Unauthorized("OAuth authorization code expired before response".to_string()));
+        }
         Ok(code)
     }
 
@@ -977,7 +995,7 @@ impl OAuthAppService {
         }
 
         let scopes_json = serde_json::to_value(&scopes).map_err(|_| Error::InternalServerError)?;
-        Self::grant_consent_in_transaction(&tx, app_id, user_id, tenant_id, &scopes_json)
+        Self::grant_consent_in_transaction(&tx, app_id, user_id, tenant_id, &scopes_json, Utc::now())
             .await
             .map_err(|attempt| match attempt {
                 GrantConsentAttempt::UniqueRace => Error::Conflict(
@@ -998,6 +1016,7 @@ impl OAuthAppService {
         user_id: Uuid,
         tenant_id: Uuid,
         scopes_json: &serde_json::Value,
+        now: chrono::DateTime<Utc>,
     ) -> std::result::Result<(), GrantConsentAttempt>
     where
         C: ConnectionTrait,
@@ -1012,7 +1031,6 @@ impl OAuthAppService {
 
         match existing {
             Some(consent) => {
-                let now = Utc::now();
                 // Re-grant creates a new consent epoch even when the scopes
                 // are unchanged. Durably revoke all credentials of the previous
                 // grant, even if the database clock repeats an epoch timestamp.
@@ -1054,7 +1072,7 @@ impl OAuthAppService {
                     user_id: Set(user_id),
                     tenant_id: Set(tenant_id),
                     scopes: Set(scopes_json.clone()),
-                    granted_at: Set(Utc::now().into()),
+                    granted_at: Set(now.into()),
                     revoked_at: Set(None),
                 }
                 .insert(db)
@@ -3149,7 +3167,12 @@ mod tests {
             session_id: session.id,
             access_expires_at: expires_at,
             require_email_verification: false,
+            confirmation_deadline: None,
         }
+    }
+
+    fn authorization_test_clock() -> Result<chrono::DateTime<Utc>> {
+        Ok(Utc::now())
     }
 
     #[tokio::test]
@@ -3176,8 +3199,7 @@ mod tests {
                 tenant.id,
                 redirect_uri.to_string(),
                 scopes.clone(),
-                "challenge".to_string(),
-                false,
+                "challenge".to_string(), &authorization_test_clock,
             )
         };
 
@@ -3266,6 +3288,8 @@ mod tests {
         assert!(subject.ensure_live(&session, now).is_ok());
         let expired = AuthorizationSession { access_expires_at: now, ..subject };
         assert!(expired.ensure_live(&session, now).is_err());
+        let confirmed = AuthorizationSession { confirmation_deadline: Some(now), ..subject };
+        assert!(confirmed.ensure_live(&session, now).is_err());
         session.expires_at = now.into();
         assert!(subject.ensure_live(&session, now).is_err());
         session.expires_at = subject.access_expires_at.into();
@@ -3291,12 +3315,40 @@ mod tests {
             .expect("revoke session");
 
         let result = OAuthAppService::generate_authorization_code(
-            &db, app.id, subject, tenant.id,
+            &db, app.id, AuthorizationSession { confirmation_deadline: Some(subject.access_expires_at), ..subject }, tenant.id,
             "https://partner.example.com/callback".to_string(),
-            vec!["openid".to_string()], "challenge".to_string(), true,
+            vec!["openid".to_string()], "challenge".to_string(), &authorization_test_clock,
         )
         .await;
         assert!(matches!(result, Err(Error::Unauthorized(_))));
+        assert_eq!(OAuthConsents::find().count(&db).await.expect("consents"), 0);
+        assert_eq!(oauth_authorization_codes::Entity::find().count(&db).await.expect("codes"), 0);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn confirmation_expiring_after_code_insert_rolls_back_consent_and_code() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let app = insert_revocation_app(&db, tenant.id, "confirmation-deadline").await;
+        let user = users::ActiveModel::new(tenant.id, "confirmation-deadline@example.com", "hash")
+            .insert(&db).await.expect("user");
+        let subject = authorization_subject(&db, &user).await;
+        let start = Utc::now();
+        let deadline = start + chrono::Duration::seconds(1);
+        let subject = AuthorizationSession { confirmation_deadline: Some(deadline), ..subject };
+        let samples = std::sync::atomic::AtomicUsize::new(0);
+        let clock = || Ok(if samples.fetch_add(1, std::sync::atomic::Ordering::SeqCst) >= 4 {
+            deadline
+        } else {
+            start
+        });
+        let result = OAuthAppService::generate_authorization_code(
+            &db, app.id, subject, tenant.id,
+            "https://partner.example.com/callback".to_string(),
+            vec!["openid".to_string()], "challenge".to_string(), &clock,
+        ).await;
+        assert!(matches!(result, Err(Error::Unauthorized(_))));
+        assert_eq!(samples.load(std::sync::atomic::Ordering::SeqCst), 5);
         assert_eq!(OAuthConsents::find().count(&db).await.expect("consents"), 0);
         assert_eq!(oauth_authorization_codes::Entity::find().count(&db).await.expect("codes"), 0);
     }
@@ -3318,9 +3370,9 @@ mod tests {
         .await
         .expect("inject code write failure");
         let issue = || OAuthAppService::generate_authorization_code(
-            &db, app.id, subject, tenant.id,
+            &db, app.id, AuthorizationSession { confirmation_deadline: Some(subject.access_expires_at), ..subject }, tenant.id,
             "https://partner.example.com/callback".to_string(),
-            vec!["openid".to_string()], "challenge".to_string(), true,
+            vec!["openid".to_string()], "challenge".to_string(), &authorization_test_clock,
         );
         assert!(issue().await.is_err());
         assert_eq!(OAuthConsents::find().count(&db).await.expect("consents"), 0);
@@ -3412,8 +3464,7 @@ mod tests {
             tenant.id,
             "https://partner.example.com/callback".to_string(),
             scopes,
-            "challenge".to_string(),
-            false,
+            "challenge".to_string(), &authorization_test_clock,
         )
         .await
         .expect("new epoch admits a new code");
@@ -3462,8 +3513,7 @@ mod tests {
                 tenant_id,
                 "https://partner.example.com/callback".to_string(),
                 vec!["openid".to_string()],
-                "challenge".to_string(),
-                false,
+                "challenge".to_string(), &authorization_test_clock,
             )
         };
         assert!(matches!(issue(Uuid::new_v4()).await, Err(Error::NotFound)));

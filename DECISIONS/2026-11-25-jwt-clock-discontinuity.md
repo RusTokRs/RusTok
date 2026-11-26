@@ -63,7 +63,11 @@ The gate checks the managed lease and emergency/shutdown fences without holding
 a synchronous lock across async work. Fixed embedders retain their contract;
 explicit security-reducing revocations do not require this admission gate.
 This does not establish a durable application DB clock or cross-restart high
-water mark. Browser authorization issuance and retention remain follow-up work.
+water mark. Browser confirmation MAC issuance and verification and all code
+issuance paths use the live credential clock. The verified confirmation expiry
+survives into the locked mutation, which checks it before consent/code writes
+and commit. Code publication rechecks the gate and code expiry after commit.
+Standalone consent grants, application DB time and retention remain follow-up work.
 
 ## Recovery and limits
 

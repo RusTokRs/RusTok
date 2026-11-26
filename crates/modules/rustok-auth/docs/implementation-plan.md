@@ -333,8 +333,13 @@ Live-runtime OAuth exchange and access extraction now use the shared Auth
 credential clock at admission, locked mutation and response boundaries. Strict
 serialized wall observations latch backward steps, including subsecond steps;
 refresh replay classification fails without mutating on an unavailable clock.
-Browser code issuance, application DB clock checks, retention and durable
-cross-restart/replica rollback remain open. Source regression unrun.
+Browser confirmation verification now returns the authenticated expiry and
+the code-issuance transaction rechecks it with the shared credential clock
+after locks, before consent, before code insert and before commit. Code issuance
+also verifies its persisted expiry before response; a post-commit fault
+suppresses publication rather than undoing a durable grant. Application DB clock
+checks, standalone consent grants, retention and durable cross-restart/replica
+rollback remain open. Source regressions unrun.
 
 ## OAuth family lifetime and replay evidence (source only)
 

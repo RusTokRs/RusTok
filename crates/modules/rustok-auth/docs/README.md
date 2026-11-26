@@ -669,9 +669,16 @@ recovery and pre-commit/response checks use that clock; access extraction sample
 before signature validation and after asynchronous policy reads. The gate also
 rechecks the managed lease and emergency/shutdown fences. Fixed embedders retain
 their existing behavior. Explicit revocation is not disabled by this gate.
+Browser confirmation issuance and verification use the same clock; the
+verified MAC expiry is retained as an exclusive deadline through locked
+session/consent checks and code persistence. New consent uses the sampled
+admission time. The code's own expiry is checked before commit and after its
+acknowledgement; no code is published if the gate closes after commit (the
+committed grant cannot be rolled back at that point). Non-browser bearer
+authorization also uses this gate without gaining consent-grant authority.
 This is process-local observed rollback protection, not durable rollback
-protection across restarts or independent replicas. Browser code issuance,
-application DB time validation and retention still require additional work.
+protection across restarts or independent replicas. Application DB time
+validation, standalone consent grants and retention still require additional work.
 Source regressions are authored, not executed.
 
 Re-granting consent durably revokes existing access and refresh credentials

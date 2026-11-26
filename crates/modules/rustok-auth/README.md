@@ -155,6 +155,8 @@ unreleased token formats and broader config compatibility. Ambiguous or empty RS
 are rejected.
 The independent MAC root rejects PEM key material and weak values at JWT preparation, host-proof and durable fence derivation boundaries. Host root rotation remains open.
 Clock discontinuity detection and dual-deadline leases are source-implemented;
+browser code issuance carries the authenticated confirmation expiry through
+locked consent and code writes and checks the shared live credential clock;
 independent clock fault-injection and suspend evidence remain pending.
 Independent production JWT authority and explicit offline import are source-implemented;
 a separately configured rollback witness detects authority-only rollback and

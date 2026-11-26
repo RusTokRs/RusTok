@@ -68,6 +68,7 @@ impl OAuthAppService {
             user.id,
             tenant_id,
             &scopes_json,
+            chrono::Utc::now(),
         )
         .await
         .map_err(|attempt| match attempt {
