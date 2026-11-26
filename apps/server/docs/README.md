@@ -1266,6 +1266,7 @@ before the event forwarder. The Outbox relay supervisor owns and gracefully drai
 - Channel and standalone Flex REST handlers receive `ServerRuntimeContext`; channel JSON response
   formatting goes through `rustok_web::json_response`, and Flex controller tests assemble the same
   neutral runtime fixture.
+- Auth lifecycle root-event writes for self-service operations and invite acceptance resolve the registered runtime transactional transport instead of constructing private OutboxTransport instances. Event append failures propagate through the owner transaction and prevent commit; a source regression covers profile rollback with a registered failing transport. Administrative mutation provider composition is separate. Source regression unrun.
 - Auth REST handlers extract a narrow `ServerAuthRuntime`; password reset and verification endpoints
   additionally receive `ServerEmailRuntime`. The controller receives explicit config, DB, and mailer
   dependencies, and JSON response formatting goes through `rustok_web::json_response`.
