@@ -1882,7 +1882,20 @@ impl AuthLifecycleService {
         }
         tx.commit().await.map_err(AuthLifecycleError::from)?;
         Ok(count)
-    }MAX_PASSWORD_LENGTH_BYTES, decode_access_token, hash_password,
+    }
+
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        AUTH_CHANGE_PASSWORD_SESSIONS_REVOKED_TOTAL, AUTH_FLOW_INCONSISTENCY_TOTAL,
+        AUTH_LOGIN_INACTIVE_USER_ATTEMPT_TOTAL, AUTH_PASSWORD_RESET_SESSIONS_REVOKED_TOTAL,
+        AuthLifecycleError, AuthLifecycleMetricsSnapshot, AuthLifecycleService, Error,
+        PreparedSessionTokens, REFRESH_REUSE_GRACE_SECONDS,
+    };
+    use crate::auth::{
+        AuthConfig, MAX_PASSWORD_LENGTH_BYTES, decode_access_token, hash_password,
         hash_refresh_token,
     };
     use crate::models::_entities::{session_refresh_history, user_roles};
