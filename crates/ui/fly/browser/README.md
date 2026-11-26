@@ -22,6 +22,8 @@ SSR-first browser adapter assets and protocol contracts for Fly editors.
   nearest accordion and may not contain the trigger itself. Sliders prioritize the explicit active
   marker over visibility and reject malformed or ambiguous selectors. Swipe state is document-local
   and completes only for the initiating touch. Animation lookup accepts only own allow-listed names.
+  Action adapter startup is idempotent per document. Repeated cleanup of a stopped adapter
+  cannot unregister a replacement adapter or duplicate its listeners.
   Scroll actions use instant scrolling when the
   target document requests reduced motion, even if its CSS specifies smooth scrolling. It emits
   host events but does not implement Cart, Product or Pricing rules.
@@ -80,7 +82,11 @@ The serialized writer queue fails closed on HTTP errors, timeouts/aborts, redire
 responses, application-level save failures, navigation responses, or HTTP successes without a
 confirmed nonempty revision and project hash. Pending mutations are resolved as unsent instead
 of being replayed with an unverified base. An abort signal that expired while queued skips that
-intent without posting. This is intentionally a safety gate, not automatic retry or reconciliation.
+intent without posting. If a dequeued request fails admission before taking the in-flight guard,
+the remaining queue is explicitly discarded and its promises settled; no request is left waiting
+for a nonexistent transport completion. Synchronous response or network-status listeners may
+unmount the adapter; the stopped continuation cannot rebase the root or initiate navigation.
+This is intentionally a safety gate, not automatic retry or reconciliation.
 
 Timeout notifications use the same authoritative/read-only request ordering rule as response
 and error notifications. A newer selection request cannot hide the timeout of a pending write.
@@ -109,7 +115,7 @@ The adapter blocks new mutations while the outcome is unknown and exposes
 explicit status-check and same-request retry controls; it never automatically
 retries the mutation. A restored pending envelope immediately shows its recovery
 notice and starts a receipt lookup. Lookups and retries of the same operation are
-mutually exclusive. A tab/page pending slot cannot be overwritten by a second mounted root, and clearing it requires the exact original envelope. A committed receipt must match the operation ID and draft token, advance the original generation, and include a usable editor snapshot. Unconfirmed success is not returned as a usable result.
+mutually exclusive. A tab/page pending slot cannot be overwritten by a second mounted root, and clearing it requires the exact original envelope. A stale mount that loses slot ownership cannot apply a late response, overwrite draft metadata, publish a response event, or initiate another lookup of the displaced operation; it must reload. A committed receipt must match the operation ID, page ID and draft token, advance the original generation, and include a usable editor snapshot. Unconfirmed success is not returned as a usable result.
 Selection and hover cannot supersede recovery. The editable Pages server also commits
 draft generation for view-state intents, so strict transport serializes and receipts
 all such requests, not only document commands. A receipt lookup is the only pure
@@ -122,7 +128,12 @@ Recovery refuses a different draft token, and the parked conflict retains the ex
 revision across reloads. Confirmed clean writes notify peers
 even when the SSR response requires reload; dirty draft-only changes do not.
 HTTP revision-conflict responses fence the editor, and late responses cannot replace
-a peer-write warning. The host must render an owner-bound draft token before
-enabling edits and bind that token into the route. This protocol is currently
+a peer-write warning. The host must render an explicit draft-binding marker for every Pages workspace.
+When a session exists, it also renders the owner-bound token and generation before
+enabling edits. Strict mounts use those server-rendered values as authoritative;
+stale `sessionStorage` metadata must never replace them. A rendered no-session
+binding must also suppress legacy storage fallback. The adapter advances the
+rendered binding only after a correlated receipt, and a missing page/session identity
+fails closed. The Pages endpoint also rejects editable requests that omit an operation ID or owner-bound draft identity; read-only requests remain receipt-free. This protocol is currently
 implemented by the Pages SSR host; other hosts must not opt into the strict
 contract without matching server-side atomic receipts.

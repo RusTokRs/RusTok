@@ -22,7 +22,7 @@ use rustok_seo::{SeoApplicationServices, SeoWorkerAuthorization};
 // ── Graceful-shutdown handle ─────────────────────────────────────────────────
 
 pub use crate::services::stop_handle::StopHandle;
-use crate::services::stop_handle::await_worker_startup_or_stop;
+use crate::services::stop_handle::{await_worker_startup_or_stop, may_admit_next_worker_operation};
 
 static OUTBOX_RELAY_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 static OUTBOX_RETENTION_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
@@ -1871,6 +1871,7 @@ fn auth_retention_removed_artifacts(
     purge.sessions > 0
         || purge.invite_consumptions > 0
         || purge.invites > 0
+        || purge.email_change_requests > 0
         || purge.oauth_tokens > 0
         || purge.oauth_authorization_codes > 0
 }
@@ -1893,7 +1894,7 @@ async fn auth_retention_loop(
     // Successful cleanup runs daily, but an unavailable database is retried
     // sooner so a short outage cannot suspend auth artifact retention for a day.
     loop {
-        if *stop_rx.borrow() {
+        if !may_admit_next_worker_operation(&stop_rx) {
             tracing::info!("Auth retention worker received shutdown signal, exiting");
             return;
         }
@@ -1904,6 +1905,7 @@ async fn auth_retention_loop(
                     sessions = purge.sessions,
                     invite_consumptions = purge.invite_consumptions,
                     invites = purge.invites,
+                    email_change_requests = purge.email_change_requests,
                     oauth_tokens = purge.oauth_tokens,
                     oauth_authorization_codes = purge.oauth_authorization_codes,
                     "Purged expired auth artifacts past retention"
@@ -1996,6 +1998,9 @@ async fn run_remote_executor_reaper_pass<F>(
 where
     F: std::future::Future,
 {
+    if !may_admit_next_worker_operation(stop_rx) {
+        return None;
+    }
     tokio::select! {
         biased;
         _ = stop_rx.changed() => None,
@@ -2012,7 +2017,7 @@ async fn remote_executor_reaper_loop(
     let poll_interval = Duration::from_millis(scan_interval_ms.max(1));
 
     loop {
-        if *stop_rx.borrow() {
+        if !may_admit_next_worker_operation(&stop_rx) {
             tracing::info!("Remote executor reaper received shutdown signal, exiting");
             return;
         }
@@ -2080,7 +2085,7 @@ async fn seo_worker_loop(
     let poll_interval = Duration::from_millis(SEO_BULK_WORKER_POLL_INTERVAL_MS);
 
     loop {
-        if *stop_rx.borrow() {
+        if !may_admit_next_worker_operation(&stop_rx) {
             tracing::info!("SEO bulk worker received shutdown signal, exiting");
             return;
         }
@@ -2101,7 +2106,7 @@ async fn seo_worker_loop(
             }
         }
 
-        if *stop_rx.borrow() {
+        if !may_admit_next_worker_operation(&stop_rx) {
             tracing::info!("SEO bulk worker received shutdown signal, exiting");
             return;
         }
@@ -2125,7 +2130,7 @@ async fn seo_worker_loop(
             }
         }
 
-        if *stop_rx.borrow() {
+        if !may_admit_next_worker_operation(&stop_rx) {
             tracing::info!("SEO bulk worker received shutdown signal, exiting");
             return;
         }
@@ -2948,7 +2953,12 @@ mod tests {
     }
 
     #[test]
-    fn auth_retention_reports_oauth_only_cleanup() {
+    fn auth_retention_reports_individual_artifact_cleanup() {
+        let email_change_only = crate::services::auth_retention::AuthRetentionPurge {
+            email_change_requests: 2,
+            ..Default::default()
+        };
+        assert!(super::auth_retention_removed_artifacts(&email_change_only));
         let oauth_only = crate::services::auth_retention::AuthRetentionPurge {
             oauth_tokens: 3,
             ..Default::default()

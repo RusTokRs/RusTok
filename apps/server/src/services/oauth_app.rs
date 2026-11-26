@@ -661,10 +661,13 @@ impl OAuthAppService {
             let consent = OAuthConsents::find_active_consent(&tx, app_id, user.id, tenant_id)
                 .await
                 .map_err(|_| Error::InternalServerError)?;
-            let covered = consent.is_some_and(|consent| {
-                let granted = consent.scopes_list();
-                scopes.iter().all(|scope| scope_matches(&granted, scope))
-            });
+            let covered = match consent {
+                Some(consent) => {
+                    let granted = consent.scopes_list().map_err(|_| Error::InternalServerError)?;
+                    scopes.iter().all(|scope| scope_matches(&granted, scope))
+                }
+                None => false,
+            };
             if !covered {
                 if !approve_consent {
                     return Err(Error::Unauthorized(
@@ -858,7 +861,7 @@ impl OAuthAppService {
             .map_err(|_| Error::InternalServerError)?;
 
         if let Some(c) = consent {
-            let granted_scopes = c.scopes_list();
+            let granted_scopes = c.scopes_list().map_err(|_| Error::InternalServerError)?;
             // Check if all requested scopes are covered by granted scopes
             for req_scope in requested_scopes {
                 if !scope_matches(&granted_scopes, req_scope) {
@@ -1784,6 +1787,7 @@ async fn replace_oauth_secret_if_current(
             "mobile",
             "service",
         ]))
+        .filter(oauth_apps::Column::RevokedAt.is_null())
         .filter(match expected_hash {
             Some(expected_hash) => {
                 oauth_apps::Column::ClientSecretHash.eq(Some(expected_hash.to_string()))
@@ -4152,6 +4156,46 @@ mod tests {
             .expect("reload app")
             .expect("app exists");
         assert_eq!(stored.app_type, "embedded");
+        assert!(stored.client_secret_hash.is_none());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn oauth_secret_rotation_cas_rejects_revoked_app() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let app = insert_revocation_app(&db, tenant.id, "rotation-revoked-app").await;
+        assert!(app.can_rotate_secret());
+        assert!(app.client_secret_hash.is_none());
+
+        // Revocation can win after the preflight but before the secret hash CAS.
+        oauth_apps::Entity::update_many()
+            .col_expr(oauth_apps::Column::IsActive, Expr::value(false))
+            .col_expr(oauth_apps::Column::RevokedAt, Expr::value(Utc::now()))
+            .filter(oauth_apps::Column::Id.eq(app.id))
+            .filter(oauth_apps::Column::TenantId.eq(tenant.id))
+            .exec(&db)
+            .await
+            .expect("revoke OAuth app concurrently");
+
+        assert!(
+            !replace_oauth_secret_if_current(
+                &db,
+                tenant.id,
+                app.id,
+                app.client_secret_hash.as_deref(),
+                "new-secret-hash-that-must-not-be-persisted",
+                Utc::now(),
+            )
+            .await
+            .expect("atomic rotation predicate"),
+            "a revoked app must not accept a stale secret rotation"
+        );
+        let stored = OAuthApps::find_by_id(app.id)
+            .one(&db)
+            .await
+            .expect("reload app")
+            .expect("app exists");
+        assert!(stored.revoked_at.is_some());
         assert!(stored.client_secret_hash.is_none());
     }
 

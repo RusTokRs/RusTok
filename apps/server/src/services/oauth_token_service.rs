@@ -160,7 +160,9 @@ impl OAuthTokenService {
                 let authorization =
                     validate_authorization_code(db, &app, tenant_id, code, redirect_uri, verifier)
                         .await?;
-                let scopes = authorization.scopes_list();
+                let scopes = authorization.scopes_list().map_err(|_| {
+                    OAuthTokenProtocolError::invalid_grant("Authorization code scopes are invalid")
+                })?;
                 let prepared = prepare_user_tokens(
                     db,
                     &app,
@@ -344,11 +346,10 @@ fn validate_requested_scopes(
     requested: Option<&str>,
 ) -> Result<Vec<String>, OAuthTokenProtocolError> {
     let allowed = app.scopes_list();
-    let Some(requested) = requested else {
-        return Ok(allowed);
+    let requested = match requested {
+        Some(requested) => parse_requested_scopes(requested),
+        None => allowed.clone(),
     };
-
-    let requested = parse_requested_scopes(requested);
     if requested.is_empty() {
         return Err(OAuthTokenProtocolError::invalid_scope(
             "Requested scope must not be empty",
@@ -362,11 +363,10 @@ fn scopes_for_refresh(
     current: &[String],
     requested: Option<&str>,
 ) -> Result<Vec<String>, OAuthTokenProtocolError> {
-    let Some(requested) = requested else {
-        return Ok(current.to_vec());
+    let narrowed = match requested {
+        Some(requested) => parse_requested_scopes(requested),
+        None => current.to_vec(),
     };
-
-    let narrowed = parse_requested_scopes(requested);
     if narrowed.is_empty() {
         return Err(OAuthTokenProtocolError::invalid_scope(
             "Refresh scope must not be empty",
@@ -380,7 +380,9 @@ fn validate_scope_subset(
     allowed: &[String],
     requested: &[String],
 ) -> Result<(), OAuthTokenProtocolError> {
-    if requested.iter().all(|scope| scope_matches(allowed, scope)) {
+    // An empty persisted authorization code or refresh grant must not pass
+    // a vacuous subset check and be exchanged for a new credential.
+    if !requested.is_empty() && requested.iter().all(|scope| scope_matches(allowed, scope)) {
         Ok(())
     } else {
         Err(OAuthTokenProtocolError::invalid_scope(
@@ -451,7 +453,9 @@ async fn validate_authorization_code(
         ));
     }
 
-    let scopes = code.scopes_list();
+    let scopes = code.scopes_list().map_err(|_| {
+        OAuthTokenProtocolError::invalid_grant("Authorization code scopes are invalid")
+    })?;
     validate_scope_subset(&app.scopes_list(), &scopes)?;
     let (user, consent_granted_at) =
         validate_active_subject_and_consent(db, app, tenant_id, code.user_id, &scopes).await?;
@@ -553,6 +557,11 @@ fn ensure_refresh_family_live(
     family: &RefreshTokenFamily,
     now: chrono::DateTime<Utc>,
 ) -> Result<(), OAuthTokenProtocolError> {
+    if family.created_at > now {
+        return Err(OAuthTokenProtocolError::invalid_grant(
+            "Refresh token family has a future creation timestamp",
+        ));
+    }
     if now >= refresh_family_deadline(family.created_at)? {
         return Err(OAuthTokenProtocolError::invalid_grant(
             "Refresh token family exceeded its maximum lifetime",
@@ -564,8 +573,9 @@ fn ensure_refresh_family_live(
 /// Resolve the lineage of the presented refresh token. Pre-migration
 /// rows have no family id and start their own family rooted at
 /// themselves. A referenced root that is missing or belongs to another
-/// client/tenant/subject fails closed: falling back to the current token
-/// would let an orphaned row reset the absolute lineage lifetime cap.
+/// client/tenant/subject fails closed. A referenced row must itself be a
+/// root of the same authorization-code lineage and cannot postdate the
+/// descendant: accepting a different or newer root could reset the cap.
 async fn resolve_refresh_family<C>(
     db: &C,
     current: &oauth_tokens::Model,
@@ -574,6 +584,11 @@ where
     C: ConnectionTrait,
 {
     let family_id = current.family_id.unwrap_or(current.id);
+    if family_id.is_nil() {
+        return Err(OAuthTokenProtocolError::invalid_grant(
+            "Refresh token family identity is invalid",
+        ));
+    }
     let created_at = if family_id == current.id {
         current.created_at.with_timezone(&Utc)
     } else {
@@ -591,6 +606,14 @@ where
             .ok_or_else(|| {
                 OAuthTokenProtocolError::invalid_grant("Refresh token family root is unavailable")
             })?;
+        if root.family_id.unwrap_or(root.id) != root.id
+            || root.authorization_code_id != current.authorization_code_id
+            || root.created_at > current.created_at
+        {
+            return Err(OAuthTokenProtocolError::invalid_grant(
+                "Refresh token family root is inconsistent",
+            ));
+        }
         root.created_at.with_timezone(&Utc)
     };
 
@@ -851,7 +874,10 @@ async fn validate_active_subject_and_consent(
             .ok_or_else(|| {
                 OAuthTokenProtocolError::invalid_grant("OAuth consent is missing or revoked")
             })?;
-        validate_scope_subset(&consent.scopes_list(), scopes)?;
+        let consent_scopes = consent.scopes_list().map_err(|_| {
+            OAuthTokenProtocolError::invalid_grant("Stored OAuth consent scopes are invalid")
+        })?;
+        validate_scope_subset(&consent_scopes, scopes)?;
         consent_granted_at = Some(consent.granted_at);
     }
 
@@ -886,7 +912,10 @@ where
             )
         })?;
 
-    validate_scope_subset(&consent.scopes_list(), scopes)?;
+    let consent_scopes = consent.scopes_list().map_err(|_| {
+        OAuthTokenProtocolError::invalid_grant("Stored OAuth consent scopes are invalid")
+    })?;
+    validate_scope_subset(&consent_scopes, scopes)?;
     if expected_granted_at.as_ref() != Some(&consent.granted_at) {
         return Err(OAuthTokenProtocolError::invalid_grant(
             "OAuth consent changed during token issuance",
@@ -1239,7 +1268,10 @@ async fn commit_authorization_code_exchange(
             "Authorization code redirect URI is no longer registered",
         ));
     }
-    validate_scope_subset(&current_app.scopes_list(), &code.scopes_list())?;
+    let code_scopes = code.scopes_list().map_err(|_| {
+        OAuthTokenProtocolError::invalid_grant("Authorization code scopes are invalid")
+    })?;
+    validate_scope_subset(&current_app.scopes_list(), &code_scopes)?;
     lock_active_oauth_subject(
         &tx,
         code.tenant_id,
@@ -1253,7 +1285,7 @@ async fn commit_authorization_code_exchange(
         &current_app,
         code.tenant_id,
         code.user_id,
-        &code.scopes_list(),
+        &code_scopes,
         prepared.consent_granted_at.clone(),
     )
     .await?;
@@ -1652,6 +1684,19 @@ mod tests {
             used_at: None,
             created_at: now.into(),
         };
+        assert_eq!(
+            code.scopes_list().expect("valid stored scopes"),
+            vec!["profile".to_string()]
+        );
+        for malformed in [
+            serde_json::json!(["profile", 42]),
+            serde_json::json!(["profile", null]),
+            serde_json::json!("profile"),
+        ] {
+            let mut damaged = code.clone();
+            damaged.scopes = malformed;
+            assert!(damaged.scopes_list().is_err());
+        }
         let older = (now - chrono::Duration::seconds(1)).into();
         let newer = (now + chrono::Duration::seconds(1)).into();
         assert!(super::validate_code_consent_epoch(&code, None).is_ok());
@@ -1836,11 +1881,29 @@ mod tests {
             tenant.id,
             user.id,
             &["profile".to_string(), "email".to_string()],
-            Some(narrowed.granted_at),
+            Some(narrowed.granted_at.clone()),
         )
         .await
         .expect_err("token scopes must still be covered by current consent");
         assert_eq!(widened_token.error, "invalid_scope");
+
+        let epoch = narrowed.granted_at.clone();
+        let mut malformed: oauth_consents::ActiveModel = narrowed.into();
+        malformed.scopes = Set(serde_json::json!(["profile", 42]));
+        let malformed = malformed.update(&db).await.expect("persist malformed consent");
+        assert!(malformed.scopes_list().is_err());
+
+        let error = super::validate_locked_oauth_consent(
+            &db,
+            &client,
+            tenant.id,
+            user.id,
+            &["profile".to_string()],
+            Some(epoch),
+        )
+        .await
+        .expect_err("partially malformed consent must not authorize token issuance");
+        assert_eq!(error.error, "invalid_grant");
     }
 
     #[tokio::test]
@@ -2143,6 +2206,42 @@ mod tests {
     }
 
     #[test]
+    fn client_credentials_rejects_missing_or_malformed_default_scopes() {
+        for scopes in [
+            serde_json::json!([]),
+            serde_json::json!(null),
+            serde_json::json!(["catalog:read", 42]),
+        ] {
+            let app = app(scopes, serde_json::json!(["client_credentials"]));
+            assert_eq!(
+                validate_requested_scopes(&app, None).unwrap_err().error,
+                "invalid_scope"
+            );
+            assert_eq!(
+                validate_requested_scopes(&app, Some("catalog:read"))
+                    .unwrap_err()
+                    .error,
+                "invalid_scope"
+            );
+        }
+    }
+
+    #[test]
+    fn empty_persisted_grant_cannot_be_exchanged_or_rotated() {
+        let allowed = vec!["catalog:read".to_string()];
+        assert_eq!(
+            super::validate_scope_subset(&allowed, &[]).unwrap_err().error,
+            "invalid_scope"
+        );
+        for requested in [None, Some(""), Some("catalog:read")] {
+            assert_eq!(
+                scopes_for_refresh(&[], requested).unwrap_err().error,
+                "invalid_scope"
+            );
+        }
+    }
+
+    #[test]
     fn client_credentials_rejects_partial_scope_truncation() {
         let app = app(
             serde_json::json!(["catalog:*"]),
@@ -2162,6 +2261,30 @@ mod tests {
         let invalid = refresh_family_deadline(chrono::DateTime::<Utc>::MAX_UTC)
             .expect_err("corrupt future timestamp must not panic");
         assert_eq!(invalid.error, "invalid_grant");
+    }
+
+    #[test]
+    fn refresh_family_lifetime_rejects_future_and_exact_deadline() {
+        let now = Utc::now();
+        let mut family = super::RefreshTokenFamily {
+            family_id: Uuid::new_v4(),
+            created_at: now + chrono::Duration::seconds(1),
+        };
+        assert_eq!(
+            super::ensure_refresh_family_live(&family, now).unwrap_err().error,
+            "invalid_grant"
+        );
+        family.created_at = now;
+        let deadline = refresh_family_deadline(now).unwrap();
+        assert!(super::ensure_refresh_family_live(
+            &family,
+            deadline - chrono::Duration::nanoseconds(1),
+        )
+        .is_ok());
+        assert_eq!(
+            super::ensure_refresh_family_live(&family, deadline).unwrap_err().error,
+            "invalid_grant"
+        );
     }
 
     #[test]
@@ -2612,7 +2735,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn refresh_family_with_missing_root_fails_closed() {
+    async fn refresh_family_requires_a_consistent_root() {
         let db = Database::connect("sqlite::memory:")
             .await
             .expect("connect sqlite");
@@ -2665,5 +2788,56 @@ mod tests {
             .await
             .expect_err("missing family root must not reset the absolute lifetime cap");
         assert_eq!(error.error, "invalid_grant");
+
+        let root_id = token.family_id.expect("referenced root identity");
+        let mut root: oauth_tokens::ActiveModel = token.clone().into();
+        root.id = Set(root_id);
+        root.token_hash = Set("family-root".to_string());
+        root.family_id = Set(Some(Uuid::new_v4()));
+        root.created_at = Set((now - chrono::Duration::days(1)).into());
+        let root = root.insert(&db).await.expect("insert referenced row");
+        assert_eq!(
+            super::resolve_refresh_family(&db, &token).await.unwrap_err().error,
+            "invalid_grant",
+            "a descendant cannot serve as another family's root"
+        );
+
+        let mut root: oauth_tokens::ActiveModel = root.into();
+        root.family_id = Set(Some(root_id));
+        root.created_at = Set((now + chrono::Duration::days(1)).into());
+        let root = root.update(&db).await.expect("update referenced row");
+        assert_eq!(
+            super::resolve_refresh_family(&db, &token).await.unwrap_err().error,
+            "invalid_grant",
+            "a root cannot be newer than its descendant"
+        );
+
+        let mut root: oauth_tokens::ActiveModel = root.into();
+        root.created_at = Set((now - chrono::Duration::days(1)).into());
+        root.authorization_code_id = Set(Some(Uuid::new_v4()));
+        let root = root.update(&db).await.expect("change root code");
+        assert_eq!(
+            super::resolve_refresh_family(&db, &token).await.unwrap_err().error,
+            "invalid_grant",
+            "a root must retain the original authorization-code identity"
+        );
+
+        let mut root: oauth_tokens::ActiveModel = root.into();
+        root.authorization_code_id = Set(token.authorization_code_id);
+        // Pre-migration roots used NULL rather than a self reference.
+        root.family_id = Set(None);
+        let root = root.update(&db).await.expect("restore valid legacy root");
+        let family = super::resolve_refresh_family(&db, &token)
+            .await
+            .expect("valid legacy root");
+        assert_eq!(family.family_id, root_id);
+        assert_eq!(family.created_at, root.created_at.with_timezone(&Utc));
+
+        let mut malformed = token;
+        malformed.family_id = Some(Uuid::nil());
+        assert_eq!(
+            super::resolve_refresh_family(&db, &malformed).await.unwrap_err().error,
+            "invalid_grant"
+        );
     }
 }

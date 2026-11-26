@@ -86,6 +86,7 @@ impl TransactionalEventBus {
             ));
         }
         validate_event(&event)?;
+        let actor_id = actor_id.filter(|id| !id.is_nil());
         let envelope = EventEnvelope::new(tenant_id, actor_id, event);
         let envelope_id = envelope.id;
         OutboxTransport::write_envelope_in_tx(txn, envelope).await?;

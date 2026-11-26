@@ -94,6 +94,11 @@ impl FormatOptions {
         self
     }
 
+    pub fn with_csv_quote(mut self, quote: u8) -> Self {
+        self.csv_quote = Some(quote);
+        self
+    }
+
     pub fn with_csv_headers(mut self, include: bool) -> Self {
         self.csv_include_headers = Some(include);
         self

@@ -63,12 +63,18 @@ impl NotificationSourceProviderFactory for ForumNotificationSourceProviderFactor
         &self,
         host: &HostRuntimeContext,
     ) -> NotificationProviderResult<Arc<dyn NotificationSourceProvider>> {
-        Ok(Arc::new(ForumNotificationSourceProvider::new(
-            host.db_clone(),
-            host.shared_get::<SharedForumNotificationRecipientContextPort>(),
-            host.shared_get::<SharedForumAudienceFactsPort>(),
-            host.shared_get::<SharedStaticModuleSettingsReader>(),
-        )))
+        Ok(Arc::new(
+            ForumNotificationSourceProvider::new(
+                host.db_clone(),
+                host.shared_get::<SharedForumNotificationRecipientContextPort>(),
+                host.shared_get::<SharedForumAudienceFactsPort>(),
+                host.shared_get::<SharedStaticModuleSettingsReader>(),
+            )
+            .with_taxonomy_port(
+                host.shared_get::<Arc<dyn crate::ForumTaxonomyPort>>()
+                    .unwrap_or_else(|| Arc::new(crate::NoopForumTaxonomyPort)),
+            ),
+        ))
     }
 }
 
@@ -78,6 +84,7 @@ struct ForumNotificationSourceProvider {
     recipient_context_port: Option<SharedForumNotificationRecipientContextPort>,
     facts_port: Option<SharedForumAudienceFactsPort>,
     settings_reader: Option<SharedStaticModuleSettingsReader>,
+    taxonomy_port: Arc<dyn crate::ForumTaxonomyPort>,
 }
 
 #[derive(Clone, Debug)]
@@ -122,7 +129,13 @@ impl ForumNotificationSourceProvider {
             recipient_context_port,
             facts_port,
             settings_reader,
+            taxonomy_port: Arc::new(crate::NoopForumTaxonomyPort),
         }
+    }
+
+    fn with_taxonomy_port(mut self, port: Arc<dyn crate::ForumTaxonomyPort>) -> Self {
+        self.taxonomy_port = port;
+        self
     }
 
     fn visibility_service(&self) -> ForumTopicAudienceVisibilityService {
@@ -131,6 +144,7 @@ impl ForumNotificationSourceProvider {
             None => ForumSettingsProviders::default(),
         };
         ForumTopicAudienceVisibilityService::new(self.db.clone(), self.facts_port.clone())
+            .with_taxonomy_port(self.taxonomy_port.clone())
             .with_settings_providers(settings)
     }
 

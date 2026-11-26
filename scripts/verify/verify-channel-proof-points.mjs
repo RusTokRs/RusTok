@@ -61,10 +61,15 @@ const blogStorefront = assertAll('crates/modules/rustok-blog/storefront/src/tran
   'ChannelService::new',
   '.is_module_enabled_for_tenant(tenant_id, channel_id, MODULE_SLUG)',
   'normalize_channel_slug',
-  'is_visible_for_public_channel',
+  'read_published_post',
   'ctx.channel_slug.as_deref()',
 ]);
 assertContains(blogStorefront, "Blog is not available for the current channel", 'blog storefront must return a channel-binding denial');
+assertAll('crates/modules/rustok-blog/src/services/post/queries/single.rs', [
+  'get_post_by_slug_on_channel',
+  'is_post_visible_for_channel(&channel_slugs, channel_slug)',
+  '.channel_is_public_visible(tenant_id, channel_slug)',
+]);
 assertAll('crates/modules/rustok-blog/src/graphql/query.rs', [
   'ChannelService::new',
   '.is_module_enabled_for_tenant(tenant_id, channel_id, MODULE_SLUG)',
@@ -143,8 +148,7 @@ assertAll('crates/modules/rustok-forum/src/graphql/query_runtime.rs', [
   'list_public_storefront_visible_with_locale_fallback',
   'Some(&PUBLIC_REPLY_STATUSES)',
 ]);
-// Topic channel filtering moved into the visibility service modules and was
-// upgraded to a tenant-scoped storefront filter.
+// Topic audiences use the tenant-scoped channel filter in the base topic query.
 assertAll('crates/modules/rustok-forum/src/services/topic_visibility.rs', [
   'matching_topic_channel_access_subquery',
   'forum_topic_channel_access::Entity',

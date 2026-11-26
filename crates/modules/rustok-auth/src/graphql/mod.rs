@@ -159,6 +159,26 @@ mod tests {
     }
 }
 
+fn refresh_retry_key(ctx: &Context<'_>) -> Result<Option<crate::AuthRefreshRetryKey>> {
+    let Some(headers) = ctx.data_opt::<http::HeaderMap>() else {
+        return Ok(None);
+    };
+    crate::AuthRefreshRetryKey::from_header_values(
+        headers.get_all(crate::REFRESH_RETRY_KEY_HEADER).iter().map(|value| value.as_bytes()),
+    )
+    .map_err(|_| <FieldError as GraphQLError>::bad_user_input("Invalid refresh retry key"))
+}
+
+fn expected_session_id(ctx: &Context<'_>) -> Result<Option<uuid::Uuid>> {
+    let Some(headers) = ctx.data_opt::<http::HeaderMap>() else {
+        return Ok(None);
+    };
+    crate::parse_expected_session_id(
+        headers.get_all(crate::EXPECTED_SESSION_ID_HEADER).iter().map(|value| value.as_bytes()),
+    )
+    .map_err(|_| <FieldError as GraphQLError>::bad_user_input("Invalid expected session identity"))
+}
+
 fn map_auth_lifecycle_error(ctx: &Context<'_>, error: AuthLifecycleMutationError) -> FieldError {
     let locale = ctx.data::<Locale>().copied().unwrap_or_default();
     let t = |key: &str| translate(locale, key);
@@ -181,6 +201,12 @@ fn map_auth_lifecycle_error(ctx: &Context<'_>, error: AuthLifecycleMutationError
         AuthLifecycleMutationError::InvalidRefreshToken => {
             unauthenticated_auth_error(&t("auth.invalid_refresh_token"))
         }
+        AuthLifecycleMutationError::RefreshAlreadyRotated => {
+            <FieldError as GraphQLError>::conflict("Refresh attempt already rotated")
+        }
+        AuthLifecycleMutationError::SessionLineageMismatch => {
+            <FieldError as GraphQLError>::conflict("Session lineage mismatch")
+        }
         AuthLifecycleMutationError::SessionExpired => {
             unauthenticated_auth_error(&t("auth.session_expired"))
         }
@@ -189,6 +215,13 @@ fn map_auth_lifecycle_error(ctx: &Context<'_>, error: AuthLifecycleMutationError
         }
         AuthLifecycleMutationError::InvalidResetToken => {
             unauthenticated_auth_error(&t("auth.invalid_reset_token"))
+        }
+        AuthLifecycleMutationError::InvalidEmailChangeToken => {
+            unauthenticated_auth_error("Invalid or expired email change token")
+        }
+        AuthLifecycleMutationError::EmailDeliveryUnavailable => {
+            tracing::error!("email change requested without an available email delivery provider");
+            <FieldError as GraphQLError>::internal_error("Email delivery is unavailable")
         }
         AuthLifecycleMutationError::InvalidInviteToken => {
             FieldError::new(t("auth.invalid_invite_token"))

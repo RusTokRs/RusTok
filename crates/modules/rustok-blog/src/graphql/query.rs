@@ -3,8 +3,9 @@ use rustok_api::{
     Action, AuthContext, RequestContext, Resource, TenantContext,
     graphql::{GraphQLError, require_module_enabled, resolve_graphql_locale},
 };
+use rustok_blog_ports::{BlogPublishedPostReadPort, ReadBlogPublishedPost};
 use rustok_channel::ChannelService;
-use rustok_core::SecurityContext;
+use rustok_core::{PermissionScope, SecurityContext};
 use rustok_outbox::TransactionalEventBus;
 use rustok_profiles::{GqlProfileSummary, ProfileSummaryAudience};
 use rustok_telemetry::metrics;
@@ -133,40 +134,62 @@ impl BlogQuery {
 
         let service =
             BlogGraphqlRuntimeData::attached(ctx).post_service(db.clone(), event_bus.clone());
-        let post = match service
-            .get_post_by_slug_with_locale_fallback(
-                tenant_id,
-                request_security_context(ctx),
-                &locale,
-                &slug,
-                Some(tenant.default_locale.as_str()),
-            )
-            .await
-        {
-            Ok(post) => post,
-            Err(BlogError::PostNotFound(_))
-            | Err(BlogError::Content(rustok_content::ContentError::NodeNotFound(_))) => {
-                return Ok(None);
+        let security = request_security_context(ctx);
+        let scope = security.get_scope(Resource::BlogPosts, Action::Read);
+        if scope == PermissionScope::None {
+            return Ok(None);
+        }
+        let post = if scope == PermissionScope::Own || can_read_non_public_posts(&security) {
+            match service
+                .get_post_by_slug_on_channel(
+                    tenant_id,
+                    security,
+                    &locale,
+                    &slug,
+                    Some(tenant.default_locale.as_str()),
+                    public_channel_slug(ctx).as_deref(),
+                )
+                .await
+            {
+                Ok(post) => post.map(GqlPost::from),
+                Err(BlogError::PostNotFound(_) | BlogError::Forbidden(_))
+                | Err(BlogError::Content(rustok_content::ContentError::NodeNotFound(_))) => None,
+                Err(error) => return Err(crate::error::public::to_graphql_error(error)),
             }
-            // A reader who may not read the post must not learn that it exists
-            // but is not readable for them: the slug lookup answers with
-            // "no post" for every caller.
-            Err(BlogError::Forbidden(_)) => return Ok(None),
-            Err(err) => return Err(crate::error::public::to_graphql_error(err)),
+        } else {
+            let context = crate::published_post_read_context(
+                tenant_id,
+                &locale,
+                ctx.data_opt::<RequestContext>(),
+            )
+            .map_err(crate::error::public::port_to_graphql_error)?;
+            service
+                .read_published_post(
+                    context,
+                    ReadBlogPublishedPost {
+                        slug,
+                        fallback_locale: Some(tenant.default_locale.clone()),
+                    },
+                )
+                .await
+                .map_err(crate::error::public::port_to_graphql_error)?
+                .map(GqlPost::from)
         };
 
-        if let Some(post) = post.filter(|post| is_post_readable_for_request(ctx, post)) {
+        if let Some(mut post) = post {
             let author_profiles = load_author_profiles_map(
                 ctx,
                 tenant_id,
-                [Some(post.author_id)],
+                [post.author_id],
                 locale.as_str(),
                 tenant.default_locale.as_str(),
             )
             .await?;
 
-            let author_profile = author_profiles.get(&post.author_id).cloned();
-            return Ok(Some(map_post(post, author_profile)));
+            post.author_profile = post
+                .author_id
+                .and_then(|id| author_profiles.get(&id).cloned());
+            return Ok(Some(post));
         }
 
         Ok(None)

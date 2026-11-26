@@ -752,7 +752,7 @@
       "owner": "rustok-mcp",
       "kind": "localized_control_plane_copy",
       "status": "documented_open",
-      "path": "crates/utils/rustok-migrations/src/m20260319_000001_create_mcp_management_tables.rs",
+      "path": "crates/modules/rustok-mcp/src/migrations/m20260319_000001_create_mcp_management_tables.rs",
       "evidence_markers": [
         "ColumnDef::new(McpClients::DisplayName)",
         "ColumnDef::new(McpClients::Description).text().null()",

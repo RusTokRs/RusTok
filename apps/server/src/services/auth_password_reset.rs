@@ -9,7 +9,7 @@ use crate::auth::{
     AuthConfig, decode_password_reset_token, encode_password_reset_token, hash_password_async,
     mask_auth_lookup_timing, password_reset_credential_matches, validate_password_policy,
 };
-use crate::models::{sessions, users};
+use crate::models::{auth_email_change_requests, sessions, users};
 use crate::services::email::{
     PASSWORD_RESET_TOKEN_TTL_SECS, email_service_from_ctx, password_reset_url,
     spawn_password_reset_email,
@@ -103,12 +103,21 @@ impl AuthLifecycleService {
         let new_hash = hash_password_async(new_password.to_string())
             .await
             .map_err(AuthLifecycleError::from)?;
-        let now = Utc::now();
         let tx = ctx.db().begin().await.map_err(AuthLifecycleError::from)?;
+        let (current, now) = AuthLifecycleService::lock_user_for_recovery(
+            &tx, tenant_id, user.id, claims.expires_at,
+        )
+        .await
+        .map_err(AuthLifecycleError::from)?
+        .ok_or(AuthLifecycleError::InvalidResetToken)?;
 
         // Hashing runs outside the transaction. Recheck the account, mailbox,
-        // status and original credential together before changing any state.
-        if !update_password_if_active(&tx, &user, &new_hash, now).await? {
+        // status and original credential after the user lock and expiry check.
+        if !current.is_active()
+            || current.email != user.email
+            || current.password_hash != user.password_hash
+            || !update_password_if_active(&tx, &current, &new_hash, now).await?
+        {
             tx.rollback().await.map_err(AuthLifecycleError::from)?;
             return Err(AuthLifecycleError::InvalidResetToken);
         }
@@ -129,6 +138,12 @@ impl AuthLifecycleService {
             )
             .await
             .map_err(AuthLifecycleError::from)?;
+        auth_email_change_requests::Entity::delete_many()
+            .filter(auth_email_change_requests::Column::TenantId.eq(tenant_id))
+            .filter(auth_email_change_requests::Column::UserId.eq(user.id))
+            .exec(&tx)
+            .await
+            .map_err(AuthLifecycleError::from)?;
 
         // A successful reset proves mailbox control: clear any brute-force
         // lockout so the legitimate owner is not kept out afterwards.
@@ -143,7 +158,7 @@ impl AuthLifecycleService {
         .map_err(AuthLifecycleError::from)?;
 
         Self::publish_user_event_in_tx(
-            ctx.db_clone(),
+            ctx,
             &tx,
             tenant_id,
             user.id,

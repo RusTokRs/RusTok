@@ -2,7 +2,7 @@
 
 mod cookie;
 
-pub use cookie::{RefreshCookieError, inspect_refresh_cookie_headers};
+pub use cookie::{RefreshCookieError, RefreshCredential, inspect_refresh_cookie_headers};
 
 pub const ADMIN_TOKEN_KEY: &str = "rustok-admin-token";
 pub const ADMIN_TENANT_KEY: &str = "rustok-admin-tenant";
@@ -10,28 +10,19 @@ pub const ADMIN_USER_KEY: &str = "rustok-admin-user";
 pub const ADMIN_SESSION_KEY: &str = "rustok-admin-session";
 
 /// HttpOnly cookie used by SSR hosts (backend-for-frontend) to hold
-/// the refresh token on behalf of the browser. The value is
-/// `{tenant_slug}.{refresh_token}` — tenant slugs and refresh tokens
-/// never contain a dot, so the split is unambiguous.
+/// the refresh token and independent recovery seed on behalf of the browser.
+/// The canonical value is `tenant.token.seed`; the previous bare format
+/// is rejected and requires reauthentication.
 pub const ADMIN_REFRESH_COOKIE: &str = "rustok-admin-refresh-v1";
 
 /// 90 days: the server-side absolute refresh-lineage cap.
 const ADMIN_REFRESH_COOKIE_MAX_AGE_SECS: u64 = 90 * 24 * 60 * 60;
 
-pub fn refresh_cookie_value(tenant: &str, refresh_token: &str) -> String {
-    format!("{tenant}.{refresh_token}")
-}
-
-pub fn parse_refresh_cookie_value(value: &str) -> Option<(&str, &str)> {
-    let (tenant, token) = value.trim().split_once('.')?;
-    (!tenant.is_empty() && !token.is_empty()).then_some((tenant, token))
-}
-
-/// `Set-Cookie` header value persisting the BFF refresh cookie.
-pub fn refresh_cookie_header(tenant: &str, refresh_token: &str, secure: bool) -> String {
+/// Persist the BFF credential as one HttpOnly cookie, not a tearable pair.
+pub fn refresh_cookie_header(credential: &RefreshCredential, secure: bool) -> String {
     let mut cookie = format!(
         "{ADMIN_REFRESH_COOKIE}={}; Path=/; HttpOnly; SameSite=Lax; Max-Age={ADMIN_REFRESH_COOKIE_MAX_AGE_SECS}",
-        refresh_cookie_value(tenant, refresh_token)
+        credential.cookie_value()
     );
     if secure {
         cookie.push_str("; Secure");
@@ -63,14 +54,28 @@ pub fn clear_refresh_cookie_header(secure: bool) -> String {
 /// still authenticate the token itself through the API — this is a
 /// parsing helper, not validation.
 pub fn session_id_from_access_token(token: &str) -> Option<String> {
-    let payload = token.split('.').nth(1)?;
+    let mut parts = token.split('.');
+    let header = parts.next()?;
+    let payload = parts.next()?;
+    let signature = parts.next()?;
+    if header.is_empty() || signature.is_empty() || parts.next().is_some() {
+        return None;
+    }
     let decoded = base64url_decode(payload)?;
-    let json = String::from_utf8(decoded).ok()?;
-    let marker = "\"session_id\":\"";
-    let start = json.find(marker)? + marker.len();
-    let end = start + json[start..].find('"')?;
-    let value = &json[start..end];
-    (!value.is_empty()).then(|| value.to_string())
+    #[derive(serde::Deserialize)]
+    struct SessionClaim { session_id: String }
+    let claims: SessionClaim = serde_json::from_slice(&decoded).ok()?;
+    (!claims.session_id.is_empty()).then_some(claims.session_id)
+}
+
+pub(crate) const EXPECTED_SESSION_ID_HEADER: &str = "x-rustok-expected-session-id";
+
+/// Canonical non-nil UUID comparison metadata, not authenticated claims.
+pub(crate) fn canonical_session_id(value: &str) -> bool {
+    value.len() == 36 && value.bytes().enumerate().all(|(index, byte)| {
+        if matches!(index, 8 | 13 | 18 | 23) { byte == b'-' }
+        else { byte.is_ascii_digit() || matches!(byte, b'a'..=b'f') }
+    }) && value.bytes().any(|byte| byte != b'0' && byte != b'-')
 }
 
 fn base64url_decode(input: &str) -> Option<Vec<u8>> {

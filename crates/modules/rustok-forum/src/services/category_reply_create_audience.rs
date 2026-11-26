@@ -1,5 +1,5 @@
-use tracing::instrument;
 use std::collections::HashMap;
+use tracing::instrument;
 
 use chrono::Utc;
 use sea_orm::{
@@ -17,7 +17,9 @@ use crate::audience::ForumAudienceConstraints;
 use crate::entities::forum_category_reply_create_audience_policy;
 use crate::error::ForumResult;
 use crate::services::audience_policy::{AudienceLayer, AudiencePolicy, CategoryReplyCreateScope};
-use crate::services::category_audience::{load_category_ancestor_ids, lock_category_tree_in_tx};
+use crate::services::category_audience::{
+    load_category_ancestor_ids_with_port, lock_category_tree_in_tx,
+};
 use crate::services::rbac::enforce_scope;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -48,11 +50,23 @@ pub struct SetForumCategoryReplyCreateAudiencePolicyInput {
 /// persistence only; command-time enforcement remains a separate composition step.
 pub struct ForumCategoryReplyCreateAudiencePolicyService {
     db: DatabaseConnection,
+    taxonomy_port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
 }
 
 impl ForumCategoryReplyCreateAudiencePolicyService {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self {
+            db,
+            taxonomy_port: std::sync::Arc::new(crate::NoopForumTaxonomyPort),
+        }
+    }
+
+    pub fn with_taxonomy_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
+    ) -> Self {
+        self.taxonomy_port = port;
+        self
     }
 
     pub async fn get(
@@ -64,8 +78,13 @@ impl ForumCategoryReplyCreateAudiencePolicyService {
         enforce_scope(&security, Resource::ForumCategories, Action::Manage)?;
         let txn = self.db.begin().await?;
         lock_category_tree_in_tx(&txn, tenant_id).await?;
-        let result =
-            load_category_reply_create_audience_policy(&txn, tenant_id, category_id).await?;
+        let result = load_category_reply_create_audience_policy(
+            self.taxonomy_port.as_ref(),
+            &txn,
+            tenant_id,
+            category_id,
+        )
+        .await?;
         txn.commit().await?;
         Ok(result)
     }
@@ -83,7 +102,14 @@ impl ForumCategoryReplyCreateAudiencePolicyService {
 
         let txn = self.db.begin().await?;
         lock_category_tree_in_tx(&txn, tenant_id).await?;
-        load_category_ancestor_ids(&txn, tenant_id, category_id).await?;
+        load_category_ancestor_ids_with_port(
+            self.taxonomy_port.as_ref(),
+            &txn,
+            (&txn).into(),
+            tenant_id,
+            category_id,
+        )
+        .await?;
 
         forum_category_reply_create_audience_policy::Entity::delete_many()
             .filter(forum_category_reply_create_audience_policy::Column::TenantId.eq(tenant_id))
@@ -107,8 +133,13 @@ impl ForumCategoryReplyCreateAudiencePolicyService {
             insert_users(&txn, tenant_id, category_id, &constraints).await?;
         }
 
-        let result =
-            load_category_reply_create_audience_policy(&txn, tenant_id, category_id).await?;
+        let result = load_category_reply_create_audience_policy(
+            self.taxonomy_port.as_ref(),
+            &txn,
+            tenant_id,
+            category_id,
+        )
+        .await?;
         txn.commit().await?;
         Ok(result)
     }
@@ -198,15 +229,17 @@ async fn insert_users(
 }
 
 pub(crate) async fn load_category_reply_create_audience_policy<C>(
+    port: &dyn crate::ForumTaxonomyPort,
     db: &C,
     tenant_id: Uuid,
     category_id: Uuid,
 ) -> ForumResult<ForumCategoryReplyCreateAudiencePolicy>
 where
-    C: ConnectionTrait,
+    C: ConnectionTrait + crate::AsForumTaxonomyConnection,
 {
     let generic =
-        load_category_reply_create_audience_policy_generic(db, tenant_id, category_id).await?;
+        load_category_reply_create_audience_policy_generic(port, db, tenant_id, category_id)
+            .await?;
     Ok(ForumCategoryReplyCreateAudiencePolicy {
         category_id: generic.subject_id,
         configured_constraints: generic.configured_constraints,
@@ -223,14 +256,22 @@ where
 
 /// Ideal generic store: single `AudiencePolicy<Scope>` replaces 4× copy-paste `ForumCategoryReplyCreateAudiencePolicy`.
 pub(crate) async fn load_category_reply_create_audience_policy_generic<C>(
+    port: &dyn crate::ForumTaxonomyPort,
     db: &C,
     tenant_id: Uuid,
     category_id: Uuid,
 ) -> ForumResult<AudiencePolicy<CategoryReplyCreateScope>>
 where
-    C: ConnectionTrait,
+    C: ConnectionTrait + crate::AsForumTaxonomyConnection,
 {
-    let ancestor_ids = load_category_ancestor_ids(db, tenant_id, category_id).await?;
+    let ancestor_ids = load_category_ancestor_ids_with_port(
+        port,
+        db,
+        db.as_forum_taxonomy_connection(),
+        tenant_id,
+        category_id,
+    )
+    .await?;
     let layers = load_local_layers(db, tenant_id, &ancestor_ids).await?;
     let configured_constraints = layers.get(&category_id).cloned();
     let effective_layers = ancestor_ids

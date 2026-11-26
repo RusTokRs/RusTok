@@ -94,17 +94,11 @@ impl ForumStorefrontReadStateQuery {
         // this query cannot disagree about a configured page size.
         let limit = match limit {
             Some(value) => storefront_limit(value)?,
-            None => runtime
-                .default_topics_per_page(tenant_id)
-                .await
-                .map_err(|error| async_graphql::Error::new(error.to_string()))?,
+            None => runtime.default_topics_per_page(tenant_id).await?,
         };
         let order = match order {
             Some(order) => order,
-            None => runtime
-                .default_topic_order(tenant_id)
-                .await
-                .map_err(|error| async_graphql::Error::new(error.to_string()))?,
+            None => runtime.default_topic_order(tenant_id).await?,
         };
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
         let audience_context = topic_read_audience_port_context(

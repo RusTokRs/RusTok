@@ -65,8 +65,8 @@ fn snapshot_reuses_visibility_and_lock_owners_and_seals_exact_channel_scope() {
     for marker in [
         "lock_category_tree_in_tx(txn, tenant_id).await",
         "lock_topic_audience_scopes_in_tx(txn, tenant_id, &[topic_id]).await",
-        "is_category_public_to_anonymous(txn, tenant_id, topic.category_id)",
-        "load_policy_for_topic(txn, tenant_id, topic)",
+        "is_category_public_to_anonymous_with_port(",
+        "load_policy_for_topic_with_port(port, txn, txn.into(), tenant_id, topic)",
         "ForumAudienceEvaluator::decide(",
         "SecurityContext::public_read()",
         "topic.status == TopicStatus::Open",

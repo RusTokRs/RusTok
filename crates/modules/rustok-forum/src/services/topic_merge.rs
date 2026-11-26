@@ -22,13 +22,14 @@ use crate::entities::{
 use crate::error::{ForumError, ForumResult};
 use crate::state_machine::{ReplyStatus, TopicStatus};
 
+use super::category_audience::lock_category_tree_in_tx;
 use super::category_lifecycle::ensure_category_tree_target_is_active_in_tx;
 use super::category_owner::CategoryService;
 use super::projection_invalidation::{
     publish_forum_category_projection_in_tx, publish_forum_topic_projection_in_tx,
 };
 use super::rbac::enforce_scope;
-use super::topic_audience::load_policy_for_topic;
+use super::topic_audience::load_policy_for_topic_with_port;
 use super::topic_merge_follow_up_reconciliation::reconcile_topic_merge_follow_up_relations_in_tx;
 use super::topic_route::ForumTopicRouteService;
 use super::user_stats::UserStatsService;
@@ -93,7 +94,7 @@ struct ForumTopicMergeSolutionPlan {
 /// categories. The target identity and topic-owned policy remain authoritative. Reply identities
 /// and all reply-owned relations are retained while reply positions are shifted after the
 /// target's current maximum. For a cross-category merge, the archived source tombstone stays in
-/// its original category, both category topic counters remain unchanged, and only the source
+/// its original category, its public category topic contribution is released, and the source
 /// published-reply contribution moves to the target category with checked arithmetic. A
 /// source-only accepted solution follows its unchanged reply identity and preserves its marker
 /// metadata. Competing accepted solutions require the explicit manager command, which selects one
@@ -104,11 +105,24 @@ struct ForumTopicMergeSolutionPlan {
 pub struct ForumTopicMergeService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
+    taxonomy_port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
 }
 
 impl ForumTopicMergeService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        Self { db, event_bus }
+        Self {
+            db,
+            event_bus,
+            taxonomy_port: std::sync::Arc::new(crate::NoopForumTaxonomyPort),
+        }
+    }
+
+    pub fn with_taxonomy_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
+    ) -> Self {
+        self.taxonomy_port = port;
+        self
     }
 
     #[instrument(skip(self, security, input))]
@@ -194,6 +208,9 @@ impl ForumTopicMergeService {
             return Ok(operation_to_result(existing));
         }
 
+        // Match delete/restore: lock the hierarchy before any topic/counter row.
+        // Exact receipt replay above intentionally does not consult current policy.
+        lock_category_tree_in_tx(&txn, tenant_id).await?;
         let preliminary_source = find_topic_in_tx(&txn, tenant_id, input.source_topic_id).await?;
         let preliminary_target = find_topic_in_tx(&txn, tenant_id, target_topic_id).await?;
         lock_merge_counter_scopes_in_tx(
@@ -227,8 +244,13 @@ impl ForumTopicMergeService {
         let source_category_id = source.category_id;
         let target_category_id = target.category_id;
         let source_author_id = source.author_id;
-        ensure_categories_active_in_tx(&txn, tenant_id, &[source_category_id, target_category_id])
-            .await?;
+        ensure_categories_active_in_tx(
+            self.taxonomy_port.as_ref(),
+            &txn,
+            tenant_id,
+            &[source_category_id, target_category_id],
+        )
+        .await?;
 
         lock_topic_solution_scopes_in_tx(&txn, tenant_id, &[source.id, target.id]).await?;
         let source_solution =
@@ -350,7 +372,14 @@ impl ForumTopicMergeService {
         target_active.last_reply_at = Set(target_last_reply_at);
         target_active.updated_at = Set(now.into());
         let target = target_active.update(&txn).await?;
-        load_policy_for_topic(&txn, tenant_id, &target).await?;
+        load_policy_for_topic_with_port(
+            self.taxonomy_port.as_ref(),
+            &txn,
+            (&txn).into(),
+            tenant_id,
+            &target,
+        )
+        .await?;
 
         let mut source_active: forum_topic::ActiveModel = source.into();
         source_active.status = Set(TopicStatus::Archived);
@@ -623,16 +652,12 @@ async fn lock_topic_merge_tenant_in_tx(
 ) -> ForumResult<()> {
     match txn.get_database_backend() {
         DatabaseBackend::Postgres => {
+            // Serialize receipt creation only. The command acquires the shared
+            // hierarchy scope explicitly after immutable receipt replay.
             txn.execute_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 "SELECT pg_advisory_xact_lock(hashtextextended($1, 21))",
                 vec![format!("forum-topic-merge:{tenant_id}").into()],
-            ))
-            .await?;
-            txn.execute_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-                vec![tenant_id.to_string().into()],
             ))
             .await?;
         }
@@ -787,6 +812,7 @@ async fn find_topic_in_tx(
 }
 
 async fn ensure_categories_active_in_tx(
+    port: &dyn crate::ForumTaxonomyPort,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     category_ids: &[Uuid],
@@ -795,17 +821,18 @@ async fn ensure_categories_active_in_tx(
     ids.sort();
     ids.dedup();
     for category_id in ids {
-        ensure_category_active_in_tx(txn, tenant_id, category_id).await?;
+        ensure_category_active_in_tx(port, txn, tenant_id, category_id).await?;
     }
     Ok(())
 }
 
 async fn ensure_category_active_in_tx(
+    port: &dyn crate::ForumTaxonomyPort,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     category_id: Uuid,
 ) -> ForumResult<()> {
-    ensure_category_tree_target_is_active_in_tx(txn, tenant_id, category_id).await
+    ensure_category_tree_target_is_active_in_tx(port, txn, tenant_id, category_id).await
 }
 
 async fn transfer_cross_category_reply_counters_in_tx(

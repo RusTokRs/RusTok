@@ -11,6 +11,7 @@
 - `pub struct SeoTargetRecord`: Target descriptor carrying `slug`, `display_name`, `owner_module_slug`, and `capabilities`.
 - `pub struct SeoTargetRegistry`: Shared capability registry storing registered SEO target providers and their metadata.
 - `pub trait SeoTargetProvider`: Asynchronous trait implemented by owner modules to provide target state, route resolution, sitemap entries, and structured JSON-LD data.
+- `pub struct SeoTargetRuntimeContext` (`server`): Database, event bus, static settings reader and `runtime_extensions: ModuleRuntimeExtensions`. The host SEO service clones its capability bindings into this request-time provider context. Owner providers retrieve their own typed ports from that snapshot, without introducing SEO-to-domain dependencies. An explicit empty snapshot is supported for standalone contexts; it is not evidence that an external capability exists. Existing struct-literal callers must supply `runtime_extensions`.
 - `pub struct SeoTargetImageRecord`: Self-contained image metadata DTO decoupled from internal media persistence.
 - `pub mod schema`: Helper functions for structured JSON-LD data construction (`web_page`, `web_page_with_image`, `collection_page`, `collection_page_with_image`, `product`, `product_with_image`, `blog_posting`, `blog_posting_with_image`, `discussion_forum_posting`, `discussion_forum_posting_with_image`).
 - `pub fn populate_image_template_fields(...)`: Template field population for SEO image tags.

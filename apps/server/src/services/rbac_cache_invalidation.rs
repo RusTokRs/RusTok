@@ -18,7 +18,7 @@ use crate::error::{Error, Result};
 use crate::services::stop_handle::{StopHandle, await_worker_startup_or_stop};
 use crate::services::rbac_invalidation_generation::{
     RbacInvalidationGenerationState, ensure_rbac_invalidation_generation_state,
-    read_rbac_invalidation_generation,
+    read_rbac_invalidation_generation_for_cache_recovery,
 };
 use crate::services::rbac_runtime::{
     invalidate_all_user_permissions_cache, invalidate_user_permissions_cache,
@@ -216,7 +216,7 @@ impl RbacCacheInvalidationListener {
     }
 
     async fn read_generation(&self) -> Result<u64> {
-        read_rbac_invalidation_generation(&self.db).await
+        read_rbac_invalidation_generation_for_cache_recovery(&self.db).await
     }
 
     async fn recover_generation_and_clear(&self) -> Result<u64> {
@@ -667,7 +667,6 @@ pub async fn start_rbac_cache_invalidation_listener(
                 %error,
                 "Initial RBAC invalidation recovery is unavailable; durable watchdog will retry"
             );
-            invalidate_all_user_permissions_cache().await;
             rustok_telemetry::metrics::record_event_error(
                 RBAC_PERMISSION_INVALIDATION_CHANNEL,
                 "startup_recovery_deferred",
@@ -983,6 +982,48 @@ mod tests {
                 .last_generation(RBAC_PERMISSION_INVALIDATION_CHANNEL),
             Some(5)
         );
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn failed_durable_recovery_clears_permissions_without_advancing_checkpoint() {
+        use crate::services::rbac_runtime::MokaPermissionCache;
+        use rustok_api::Permission;
+        use rustok_rbac::PermissionCache;
+
+        // No generation table: both the gap recovery and periodic reconciliation
+        // must return an error without keeping an unverified permission snapshot.
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let state = RbacInvalidationGenerationState::default();
+        state.observe_applied(5);
+        let listener = RbacCacheInvalidationListener::new(db, state.clone());
+        listener.tracker.seed(RBAC_PERMISSION_INVALIDATION_CHANNEL, 5).unwrap();
+        let cache = MokaPermissionCache;
+        let tenant_id = Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+
+        for reconcile in [false, true] {
+            cache.insert(&tenant_id, &user_id, vec![Permission::USERS_READ]).await;
+            let (cached, old_token) = cache.lookup(&tenant_id, &user_id).await.into_parts();
+            assert_eq!(cached, Some(vec![Permission::USERS_READ]));
+            if reconcile {
+                assert!(listener.reconcile_generation_if_advanced().await.is_err());
+            } else {
+                assert!(listener.recover_generation_and_clear().await.is_err());
+            }
+            assert!(cache.get(&tenant_id, &user_id).await.is_none());
+            assert!(
+                !cache.insert_if_current(
+                    &tenant_id, &user_id, old_token, vec![Permission::USERS_READ],
+                ).await,
+                "a pre-failure permission fill must not be admitted"
+            );
+            assert_eq!(state.current(), Some(5));
+            assert_eq!(
+                listener.tracker.last_generation(RBAC_PERMISSION_INVALIDATION_CHANNEL),
+                Some(5),
+            );
+        }
     }
 
     #[tokio::test]

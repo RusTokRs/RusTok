@@ -7,10 +7,12 @@ import {
 } from '@apollo/client/core';
 import type { OperationVariables } from '@apollo/client/core';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5150';
+const API_BASE_URL =
+  typeof window === 'undefined'
+    ? process.env.RUSTOK_API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:5150'
+    : process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5150';
 const SERVER_GRAPHQL_URL = `${API_BASE_URL}/api/graphql`;
-const CLIENT_GRAPHQL_URL =
-  process.env.NEXT_PUBLIC_GRAPHQL_ENDPOINT ?? '/api/rustok/graphql';
+const CLIENT_GRAPHQL_URL = '/api/rustok/graphql';
 
 interface GraphqlRequest<V> {
   query: string;
@@ -83,10 +85,8 @@ function getClientLocale(): string | undefined {
 }
 
 function resolveGraphqlUrl(explicit?: string): string {
-  if (explicit) return explicit;
-  return typeof window === 'undefined'
-    ? SERVER_GRAPHQL_URL
-    : CLIENT_GRAPHQL_URL;
+  if (typeof window !== 'undefined') return CLIENT_GRAPHQL_URL;
+  return explicit ?? SERVER_GRAPHQL_URL;
 }
 
 const apolloClients = new Map<string, ApolloClient>();
@@ -164,11 +164,12 @@ export async function graphqlRequest<V, T>(
   tenantSlug?: string | null,
   options?: GraphqlRequestOptions
 ): Promise<T> {
+  const isServerRequest = typeof window === 'undefined';
   const headers: Record<string, string> = {
     'Content-Type': 'application/json'
   };
 
-  if (token) {
+  if (token && isServerRequest) {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
@@ -179,7 +180,7 @@ export async function graphqlRequest<V, T>(
   const tenantId =
     options?.tenantId ??
     resolveTenantIdFromVariables(variables) ??
-    resolveTenantIdFromToken(token);
+    (isServerRequest ? resolveTenantIdFromToken(token) : null);
   if (tenantId) {
     headers['X-Tenant-ID'] = tenantId;
   }
@@ -234,15 +235,14 @@ export async function graphqlRequest<V, T>(
   if (json.errors && json.errors.length > 0) {
     const err = json.errors[0];
     const code = err.extensions?.code;
-    if (
-      code === 'UNAUTHORIZED' ||
-      err.message.toLowerCase().includes('unauthorized')
-    ) {
-      throw new GraphqlError(err.message, 'UNAUTHORIZED');
-    }
+    const resolvedCode =
+      code ??
+      (err.message.toLowerCase().includes('unauthorized')
+        ? 'UNAUTHORIZED'
+        : undefined);
     throw new GraphqlError(
       err.message,
-      code,
+      resolvedCode,
       err.extensions?.retryable,
       err.extensions?.outcome
     );

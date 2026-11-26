@@ -10,9 +10,10 @@ mod transport;
 pub mod ui;
 
 pub use model::{
-    StorefrontForumCategoryRouteDescriptor, StorefrontForumCategoryRouteDisposition,
-    StorefrontForumCategoryRouteResolution, StorefrontForumTopicRouteDescriptor,
-    StorefrontForumTopicRouteDisposition, StorefrontForumTopicRouteResolution,
+    ForumTopicFeedOrder, ForumTopicSelection, StorefrontForumCategoryRouteDescriptor,
+    StorefrontForumCategoryRouteDisposition, StorefrontForumCategoryRouteResolution,
+    StorefrontForumTopicRouteDescriptor, StorefrontForumTopicRouteDisposition,
+    StorefrontForumTopicRouteResolution,
 };
 pub use transport::{
     StorefrontForumBulkReadResult, TransportError, fetch_storefront_forum,

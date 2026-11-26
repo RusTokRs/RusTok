@@ -8,6 +8,7 @@ use super::super::keyring_schedule_audit_source_retry_postgres::{
 use super::*;
 use crate::services::app_lifecycle::DirectWorkerRegistrationLock;
 use crate::services::server_runtime_context::ServerRuntimeStartReservation;
+use crate::services::stop_handle::may_admit_next_worker_operation;
 
 pub const COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_HANDOFF_SOURCE_MAX_ATTEMPTS_ENV: &str =
     "RUSTOK_COMMENTS_TCP_DELEGATION_AUDIT_HANDOFF_SOURCE_MAX_ATTEMPTS";
@@ -100,7 +101,7 @@ impl SourceRetryHandoffWorkerCycleOutcome {
         max_claims_per_cycle: usize,
         stop_rx: &tokio::sync::watch::Receiver<bool>,
     ) -> bool {
-        self.calls < max_claims_per_cycle && !*stop_rx.borrow()
+        self.calls < max_claims_per_cycle && may_admit_next_worker_operation(stop_rx)
     }
 
     // Sweep committed exhausted rows in bounded pages rather than advancing
@@ -111,7 +112,7 @@ impl SourceRetryHandoffWorkerCycleOutcome {
         max_sweeps_per_cycle: usize,
         stop_rx: &tokio::sync::watch::Receiver<bool>,
     ) -> bool {
-        self.swept_dead_letters < max_sweeps_per_cycle && !*stop_rx.borrow()
+        self.swept_dead_letters < max_sweeps_per_cycle && may_admit_next_worker_operation(stop_rx)
     }
 
     fn had_error(self) -> bool {
@@ -308,7 +309,7 @@ async fn run_source_retry_handoff_worker(
     instance_id: u64,
 ) {
     loop {
-        if *stop_rx.borrow() {
+        if !may_admit_next_worker_operation(&stop_rx) {
             tracing::info!(
                 instance_id,
                 "Comments schedule audit source-retry handoff worker received shutdown signal"
@@ -354,7 +355,7 @@ async fn run_source_retry_handoff_worker(
             );
         }
 
-        if *stop_rx.borrow() {
+        if !may_admit_next_worker_operation(&stop_rx) {
             tracing::info!(
                 instance_id,
                 "Comments schedule audit source-retry handoff worker stopped after its current durable operation"
@@ -390,7 +391,7 @@ async fn run_source_retry_handoff_cycle(
     // No new durable side-effect phase may be admitted after shutdown.
     // Once an individual claim was acquired we still finish its publication
     // and failure transition, preserving the owner's attempt receipt.
-    if *stop_rx.borrow() {
+    if !may_admit_next_worker_operation(stop_rx) {
         return outcome;
     }
 
@@ -503,6 +504,17 @@ mod source_retry_worker_tests {
             CommentsTcpDelegationScheduleAuditHandoffWorkerHandle::for_test(task),
         );
         assert!(existing_comments_schedule_audit_handoff_worker(&runtime_ctx).is_err());
+    }
+
+    #[test]
+    fn source_retry_closed_watch_fences_claims_and_exhausted_row_sweeps() {
+        let (stop, receiver) = StopHandle::new();
+        let outcome = SourceRetryHandoffWorkerCycleOutcome::default();
+        assert!(outcome.can_claim_next(32, &receiver));
+        assert!(outcome.can_sweep_next(32, &receiver));
+        drop(stop);
+        assert!(!outcome.can_claim_next(32, &receiver));
+        assert!(!outcome.can_sweep_next(32, &receiver));
     }
 
     #[tokio::test]

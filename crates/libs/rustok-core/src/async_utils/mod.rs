@@ -154,13 +154,27 @@ impl BackoffConfig {
             return Duration::ZERO;
         }
 
-        let base_delay =
-            self.initial_delay.as_millis() as f64 * self.multiplier.powi(attempt as i32 - 1);
+        let exponent = (attempt - 1).min(i32::MAX as u32) as i32;
+        let multiplier = if self.multiplier.is_finite() && self.multiplier >= 0.0 {
+            self.multiplier
+        } else {
+            1.0
+        };
+        let base_delay = self.initial_delay.as_millis() as f64 * multiplier.powi(exponent);
+        let jitter = if self.jitter.is_finite() {
+            self.jitter.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let jitter_amount = base_delay * jitter * (rand::random::<f64>() * 2.0 - 1.0);
+        let max_ms = self.max_delay.as_millis() as f64;
+        let bounded_ms = if base_delay.is_finite() {
+            (base_delay + jitter_amount).clamp(0.0, max_ms)
+        } else {
+            max_ms
+        };
 
-        let jitter_amount = base_delay * self.jitter * (rand::random::<f64>() * 2.0 - 1.0);
-        let delay_ms = (base_delay + jitter_amount).min(self.max_delay.as_millis() as f64) as u64;
-
-        Duration::from_millis(delay_ms)
+        Duration::from_millis(bounded_ms as u64)
     }
 }
 
@@ -199,7 +213,7 @@ where
     };
 
     Err(RetryError {
-        attempts: config.max_retries + 1,
+        attempts: config.max_retries.saturating_add(1),
         error,
     })
 }

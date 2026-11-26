@@ -465,7 +465,7 @@ fn decode_for_purpose<T: DeserializeOwned>(
         if header.typ != purpose.typ() || header.alg != Algorithm::RS256 {
             return Err(AuthError::InvalidAccessToken);
         }
-        let kid = header.kid.as_deref().ok_or(AuthError::InvalidAccessToken)?;
+        let kid = header.kid.as_str();
         let (key, cutoff) = selected.select(kid, Utc::now().timestamp())
             .ok_or(AuthError::InvalidAccessToken)?;
         let validation = strict_jwt_validation(config);
@@ -481,10 +481,14 @@ fn decode_for_purpose<T: DeserializeOwned>(
 // ─── Validation ──────────────────────────────────────────────────────
 
 fn valid_token_times(iat: usize, exp: usize) -> bool {
-    let Ok(now) = usize::try_from(Utc::now().timestamp()) else {
+    let (Ok(iat), Ok(exp)) = (i64::try_from(iat), i64::try_from(exp)) else {
         return false;
     };
-    iat > 0 && iat <= now && iat < exp && now < exp
+    let Some(expiration) = chrono::DateTime::<Utc>::from_timestamp(exp, 0) else {
+        return false;
+    };
+    let now = Utc::now().timestamp();
+    iat > 0 && iat <= now && iat < expiration.timestamp() && now < expiration.timestamp()
 }
 
 fn strict_jwt_validation(config: &AuthConfig) -> Validation {
@@ -1013,6 +1017,18 @@ mod tests {
         let signed = encode(&jwt_header(&config, JwtPurpose::PasswordReset), &reset, encoding_key(&config, JwtPurpose::PasswordReset).unwrap())
             .unwrap();
         assert!(decode_password_reset_token(&config, &signed).is_err());
+    }
+
+    #[test]
+    fn jwt_time_claims_reject_unsigned_overflow_and_unrepresentable_dates() {
+        if let Ok(max_signed) = usize::try_from(i64::MAX) {
+            assert!(!valid_token_times(1, max_signed));
+            assert!(!valid_token_times(max_signed, max_signed));
+            if let Some(overflow) = max_signed.checked_add(1) {
+                assert!(!valid_token_times(1, overflow));
+                assert!(!valid_token_times(overflow, overflow));
+            }
+        }
     }
 
     #[test]

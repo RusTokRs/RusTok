@@ -20,7 +20,7 @@ where
 }
 
 /// Typed projection of the owner's GraphQL/native feed selection (not a local filter).
-#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ForumTopicFeedOrder {
     #[default]
@@ -28,7 +28,7 @@ pub enum ForumTopicFeedOrder {
     Top,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ForumTopicSelection {
     pub search: Option<String>,

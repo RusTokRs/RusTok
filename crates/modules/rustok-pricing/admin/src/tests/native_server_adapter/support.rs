@@ -1,17 +1,14 @@
 use crate::core::*;
-use crate::model::*;
 use crate::transport::native_server_adapter::*;
-use leptos::prelude::*;
 pub use rustok_api::HostRuntimeContext;
-pub use rustok_api::{AuthContext, Permission, TenantContext};
 pub use rustok_product::CatalogService;
-pub use rustok_test_utils::db::setup_test_db;
 pub use rustok_test_utils::mock_transactional_event_bus;
-use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter};
+use sea_orm::ConnectionTrait;
 use serde_json::json;
 use std::str::FromStr;
 use uuid::Uuid;
 
+#[allow(dead_code, clippy::module_inception)]
 pub mod support {
     include!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -81,6 +78,7 @@ pub async fn seed_channel_context(
         .expect("channel should be inserted");
 }
 
+#[allow(dead_code)]
 pub async fn load_base_price(
     db: &sea_orm::DatabaseConnection,
     variant_id: Uuid,
@@ -102,9 +100,10 @@ pub async fn load_base_price(
     )
 }
 
-pub async fn load_base_price_full(
+pub async fn load_base_price_full_for_currency(
     db: &sea_orm::DatabaseConnection,
     variant_id: Uuid,
+    currency_code: &str,
 ) -> (
     rust_decimal::Decimal,
     Option<rust_decimal::Decimal>,
@@ -114,8 +113,8 @@ pub async fn load_base_price_full(
     let row = db
             .query_one_raw(sea_orm::Statement::from_sql_and_values(
                 sea_orm::DatabaseBackend::Sqlite,
-                "SELECT amount_decimal, compare_at_amount_decimal, amount, compare_at_amount FROM prices WHERE variant_id = ? AND currency_code = 'USD' AND price_list_id IS NULL AND channel_id IS NULL AND min_quantity IS NULL AND max_quantity IS NULL LIMIT 1",
-                vec![variant_id.into()],
+                "SELECT amount_decimal, compare_at_amount_decimal, amount, compare_at_amount FROM prices WHERE variant_id = ? AND currency_code = ? AND price_list_id IS NULL AND channel_id IS NULL AND min_quantity IS NULL AND max_quantity IS NULL LIMIT 1",
+                vec![variant_id.into(), currency_code.into()],
             ))
             .await
             .expect("price row query should succeed")
@@ -129,6 +128,18 @@ pub async fn load_base_price_full(
         row.try_get("", "compare_at_amount")
             .expect("valid legacy_compare_at"),
     )
+}
+
+pub async fn load_base_price_full(
+    db: &sea_orm::DatabaseConnection,
+    variant_id: Uuid,
+) -> (
+    rust_decimal::Decimal,
+    Option<rust_decimal::Decimal>,
+    Option<i64>,
+    Option<i64>,
+) {
+    load_base_price_full_for_currency(db, variant_id, "USD").await
 }
 
 pub async fn count_prices(

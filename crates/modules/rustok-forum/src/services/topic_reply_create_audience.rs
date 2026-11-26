@@ -1,4 +1,3 @@
-use tracing::instrument;
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
@@ -6,6 +5,7 @@ use sea_orm::{
     TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
+use tracing::instrument;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -53,11 +53,23 @@ pub struct SetForumTopicReplyCreateAudiencePolicyInput {
 /// optional local topic layer, so a topic cannot broaden its category policy.
 pub struct ForumTopicReplyCreateAudiencePolicyService {
     db: DatabaseConnection,
+    taxonomy_port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
 }
 
 impl ForumTopicReplyCreateAudiencePolicyService {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self {
+            db,
+            taxonomy_port: std::sync::Arc::new(crate::NoopForumTaxonomyPort),
+        }
+    }
+
+    pub fn with_taxonomy_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
+    ) -> Self {
+        self.taxonomy_port = port;
+        self
     }
 
     pub async fn get(
@@ -71,8 +83,13 @@ impl ForumTopicReplyCreateAudiencePolicyService {
         lock_category_tree_in_tx(&txn, tenant_id).await?;
         lock_topic_reply_create_audience_in_tx(&txn, tenant_id, topic_id).await?;
         let topic = find_topic(&txn, tenant_id, topic_id).await?;
-        let result =
-            load_topic_reply_create_audience_policy_for_topic(&txn, tenant_id, &topic).await?;
+        let result = load_topic_reply_create_audience_policy_for_topic(
+            self.taxonomy_port.as_ref(),
+            &txn,
+            tenant_id,
+            &topic,
+        )
+        .await?;
         txn.commit().await?;
         Ok(result)
     }
@@ -92,7 +109,13 @@ impl ForumTopicReplyCreateAudiencePolicyService {
         lock_category_tree_in_tx(&txn, tenant_id).await?;
         lock_topic_reply_create_audience_in_tx(&txn, tenant_id, topic_id).await?;
         let topic = find_topic(&txn, tenant_id, topic_id).await?;
-        load_category_reply_create_audience_policy(&txn, tenant_id, topic.category_id).await?;
+        load_category_reply_create_audience_policy(
+            self.taxonomy_port.as_ref(),
+            &txn,
+            tenant_id,
+            topic.category_id,
+        )
+        .await?;
 
         forum_topic_reply_create_audience_policy::Entity::delete_many()
             .filter(forum_topic_reply_create_audience_policy::Column::TenantId.eq(tenant_id))
@@ -116,8 +139,13 @@ impl ForumTopicReplyCreateAudiencePolicyService {
             insert_users(&txn, tenant_id, topic_id, &constraints).await?;
         }
 
-        let result =
-            load_topic_reply_create_audience_policy_for_topic(&txn, tenant_id, &topic).await?;
+        let result = load_topic_reply_create_audience_policy_for_topic(
+            self.taxonomy_port.as_ref(),
+            &txn,
+            tenant_id,
+            &topic,
+        )
+        .await?;
         txn.commit().await?;
         Ok(result)
     }
@@ -207,15 +235,16 @@ async fn insert_users(
 }
 
 pub(crate) async fn load_topic_reply_create_audience_policy_for_topic<C>(
+    port: &dyn crate::ForumTaxonomyPort,
     db: &C,
     tenant_id: Uuid,
     topic: &forum_topic::Model,
 ) -> ForumResult<ForumTopicReplyCreateAudiencePolicy>
 where
-    C: ConnectionTrait,
+    C: ConnectionTrait + crate::AsForumTaxonomyConnection,
 {
     let inherited_category_layers =
-        load_category_reply_create_audience_policy(db, tenant_id, topic.category_id)
+        load_category_reply_create_audience_policy(port, db, tenant_id, topic.category_id)
             .await?
             .effective_layers;
     let configured_constraints = load_topic_layer(db, tenant_id, topic.id).await?;

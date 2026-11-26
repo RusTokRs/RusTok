@@ -6,7 +6,7 @@ type directly rather than defining another lifecycle enum.
 
 `rustok-auth` is the core authentication module of the platform. It holds JWT lifecycle,
 The `AuthLifecycleContext` carries the trusted optional `AuthPrincipalKind` classification; lifecycle self-service operations that depend on a direct user session must reject delegated OAuth and service principals rather than deriving principal kind from transport fields.
-credential hashing, refresh/reset/invite/email-verification token flows and
+credential hashing, refresh/reset/invite/email-verification/email-change token flows and
 runtime RBAC surface `users:*`.
 
 Auth lifecycle GraphQL (`AuthQuery`, `AuthMutation`) and OAuth GraphQL (`OAuthQuery`,
@@ -27,9 +27,9 @@ controller modules re-export or import those owner DTOs only for OpenAPI/route c
 ## Scope
 
 - auth configuration, complete RS256 keyring-document validation, and host policy assembly/validation;
-- encode/decode helpers for access/reset/invite/email-verification token flows; JWT encoders reject TTL values that cannot be represented safely as a checked `chrono` duration;
+- encode/decode helpers for access/reset/invite/email-verification token flows; self-service email changes use 256-bit random one-time tokens stored only as SHA-256 digests; JWT encoders reject TTL values that cannot be represented safely as a checked `chrono` duration;
 - password hashing, password verification and refresh-token helpers; refresh-token generation uses the OS RNG and propagates RNG failures as a typed `AuthError::RefreshTokenGenerationFailed` instead of panicking;
-- auth-owned migrations;
+- auth-owned migrations, including tenant-scoped one-time email-change challenges with unique pending mailbox reservations and database-enforced `(tenant_id, user_id)` integrity (composite FK on PostgreSQL; insert/update and parent-move triggers on SQLite);
 - auth-owned auth/OAuth/users REST DTO/OpenAPI schema surface in `rest.rs`, with host controllers
   limited to transport extraction, persistence adapters and response mapping;
 - publication of permission surface `users:*` via `AUTH_USER_PERMISSIONS` and `RusToKModule::permissions()`.
@@ -37,6 +37,7 @@ controller modules re-export or import those owner DTOs only for OpenAPI/route c
 - `AuthUserBackfillDbReader` implements a tenant-scoped identity projection with a strict `1..=500` batch bound, checked SQL-limit conversion, deterministic `created_at,id` ordering, and redacted storage/row-read errors for owner-owned profile backfill.
 - `AuthUserBootstrapDbWriter` owns tenant-scoped idempotent identity provisioning for installer workflows; email lookup is case-normalized, supported backends are `Postgres`/`Sqlite`, unsupported backends fail closed without panics, and storage/row-decoding failures are exposed only as stable owner errors. Caller-owned transactions remain supported for atomic identity+RBAC installation.
 - owner-owned OAuth GraphQL query/mutation/types behind `graphql` feature; `apps/server` only implements the runtime port over the DB and connects roots into the common schema;
+- self-service email change is exposed through `AuthLifecyclePort` and Auth GraphQL; request reauthenticates the direct user with the current password, and confirmation consumes a short-lived SHA-256-digested opaque token before atomically updating the verified address and revoking other sessions/delegated grants;
 - browser OAuth authorization is a host transport flow: cookie-authenticated GET requests are side-effect-free and always render a short-lived HMAC-CSRF confirmation form, even when prior consent exists or the app type does not require consent. Authorization codes are issued only after the CSRF-validated POST; explicit non-ambient Authorization-header requests may retain the pre-authorized fast path.
 
 OAuth persistence is tenant-composite rather than a set of independent foreign
@@ -185,10 +186,9 @@ supports atomic process-local hot reload. Auth request paths reuse prepared
 encoding/decoding keys and indexed verification history; the JWT library still
 constructs its internal crypto providers per operation.
 
- staging, promotion, retirement and exact
-key selection using two independent RS256 key pairs, including OAuth access and
-missing-ID rejection. Compile and multi-replica execution evidence remain
-pending.
+Focused regressions cover staging, promotion, retirement and exact key
+selection with two independent RS256 key pairs, plus OAuth access and missing-ID
+rejection. Compile and multi-replica execution evidence remain pending.
 See [purpose keyring ADR](../../../../DECISIONS/2026-11-25-jwt-purpose-keyrings.md).
 
 ### RS256-only cutover
@@ -206,8 +206,11 @@ proofs, OAuth consent CSRF, credential binding and durable authority/witness
 domains. HMAC-SHA256, HKDF-SHA256 and Argon2id remain in their non-JWT roles.
 The root must be independently provisioned symmetric secret material; PEM
 public/private keys and certificates are rejected at JWT preparation, host
-MAC proof derivation and durable fence MAC derivation. The length and PEM
-checks do not prove entropy or independence of arbitrarily encoded material.
+MAC proof derivation and durable fence MAC derivation. Production additionally
+requires at least 64 non-whitespace bytes and rejects known placeholders and
+low-diversity values. These representation checks do not prove entropy or
+independence of arbitrarily encoded material. Auth validates this policy
+without exposing the root through the public AuthConfig API.
 
 The Auth-owned database-free `validate-jwt-keyring` command uses the same
 document parser and policy checks as the host. Full development Compose runs
@@ -246,21 +249,24 @@ permissions before Compose starts and does not generate keys or reset security
 state. Direct executable launches also require
 `RUSTOK_JWT_KEYRING_FILE`; there is no static fallback.
 
- with distinct key IDs,
-writes a complete file with mode 0600 outside the checkout, and refuses
-replacement even if concurrent provisioning targets the same path. File data
-and the published directory entry are synchronized before reporting success;
-an uncertain directory sync must not trigger key regeneration. The launcher
-rejects mounting HOME or a repository ancestor. It never
-generates or modifies the independent MAC root. Supply that root separately.
-The file uses the currently admitted document shape; no startup generation,
-production fallback, or authority/witness reset is introduced.
+The provisioning helper creates four independent RSA key pairs with distinct
+key IDs and writes a complete file with mode `0600` outside the checkout. It
+refuses replacement even if concurrent provisioning targets the same path.
+File data and the published directory entry are synchronized before reporting
+success; an uncertain directory sync must not trigger key regeneration. The
+launcher rejects mounting HOME or a repository ancestor. It never generates or
+modifies the independent MAC root. Supply that root separately. The file uses
+the currently admitted document shape; no startup generation, production
+fallback, or authority/witness reset is introduced.
 
 Do not use this command as a rotation, recovery or conversion procedure for
 an enrolled store. Use a different private output path for each isolated
-test store. The server executable has completed its file-only RSA bootstrap. Legacy
-library constructors, remaining installer/test consumers and removal of the
-transitional algorithm field remain pending.
+test store. The server executable uses the generation-bearing RS256-only
+keyring. No runtime algorithm selector or document-level algorithm field
+remains. The fixed `RS256` assertion in authenticated durable authority
+metadata is intentionally retained until an offline converter can preserve
+tombstones, revoked identities, generation and witness revision; it is not a
+runtime selector.
 
 ### Process-local hot reload
 
@@ -350,9 +356,9 @@ before staging a future signer. Retained deadlines can only shorten.
 The 8192-identity ledger limit
 fails closed rather than forgetting retired identities.
 
-The first file enrollment prevents subsequent static-mode startup against
-the same database. Keep the MAC root and database authority stable; do not
-restore an older database or run an older host binary. Stop old writers before
+There is no static-mode HTTP runtime: every host uses an admitted positive
+generation. Keep the MAC root and database authority stable; do not restore
+an older database or run an older host binary. Stop old writers before
 enrollment. An unavailable database or unknown publication result terminates
 the host during admission; a crash after durable commit but before local
 publication can recover by restarting with the committed generation. A
@@ -473,9 +479,8 @@ host with a false time source. Independently synchronize hosts to UTC within
 verification. Source regressions are unrun.
 
 A lease that has been observed expired cannot reopen on a backward wall-clock
-step. A fresh grant is required. Generation-zero replicas must present identical
-canonical key metadata while any registered static grant is live; anonymous
-outstanding grants also block static renewal until expiry.
+step. A fresh durable grant is required. Generation zero is not a runtime
+generation and cannot obtain a JWT lease.
 
 ### Independent JWT authority
 
@@ -563,7 +568,8 @@ No key IDs, fingerprints, paths, replica UUIDs, tenant IDs or secrets are export
   actual local crypto gate after DB IO. `local_clock_fenced` and
   `authority_clock_fenced` expose sticky detected clock faults.
 - `durable_generation` and signed `generation_lag` compare independent
-  database and local samples. Static mode has generation zero.
+  database and local samples. Every HTTP host reports an admitted positive
+  generation; generation zero represents only the empty ledger.
 - `current_grants`, `stale_grants`, `current_grant_replicas` and
   `stale_grant_replicas` count unexpired conservative grants and distinct
   incarnations within each class. An incarnation may be in both classes.
@@ -608,9 +614,8 @@ checks. Invite issuance and verification share the same custom-role predicate:
 custom roles require the Customer baseline and a nonblank slug of at most 64
 bytes. New invitation JWTs carry a random non-nil `jti` so independent issuances
 with identical claims and timestamps cannot collide in the unique token-digest
-ledger. Previously issued invitations without a `jti` remain admissible subject
-to the same persisted exact-digest and one-use checks. Source regressions are
-not yet executed.
+ledger. Legacy invitations without a `jti` are rejected and must be reissued
+through the canonical issuer. Source regressions are not yet executed.
 
 ## JWT and browser confirmation hardening
 
@@ -643,20 +648,49 @@ less than 30 seconds. Source regression definitions are unrun.
 
 ## Direct session concurrency
 
-The host uses user-before-session locking for direct refresh and bulk self-service
-revocation, matching credential changes. Refresh revalidates the digest and subject
-under the locks; historical replay locks the session only and never acquires a user
-lock afterward. Bulk self-service revocation requires a still-active current session.
-SQLite history-only replay acquires the writer before reading the history.
+The host uses user-before-session locking for direct refresh (including history-only
+recovery and replay) and bulk self-service revocation, matching credential changes.
+Refresh revalidates the digest and subject under the locks. Bulk self-service
+revocation requires a still-active current session. SQLite acquires its writer
+at the user fence before transactional reads.
 
-## Direct session refresh history
+## Direct session refresh history and recovery
 
-The host records each rotated refresh digest and its timestamp in `session_refresh_history`
-inside the refresh transaction. The session remains the tenant and revocation authority;
-all historical digests are rejected, and replay outside the 30-second per-token grace
-revokes a live session. The previous-token columns are a last-rotation projection for
-logout with a stale cookie, not the replay authority. History cascades on session deletion.
-See [the ADR](../../../../DECISIONS/2026-11-25-session-refresh-history.md).
+The host records each rotated refresh digest and timestamp in
+`session_refresh_history` inside the refresh transaction. The session remains
+the tenant and revocation authority; replay outside the exclusive 30-second
+per-token grace revokes the live lineage. The previous-token columns are a
+last-rotation projection for recovery and logout with a stale cookie, not the
+replay authority. History cascades on session deletion.
+
+An optional secret `x-rustok-refresh-retry-key` header (one nonzero 256-bit
+CSPRNG value in exactly 64 lowercase hex characters) is accepted by raw and
+GraphQL HTTP refresh. Cookie REST instead derives the proof from the
+Auth-issued HttpOnly envelope and rejects explicit retry headers. Auth uses the independent host
+MAC root with the distinct HKDF/HMAC purpose `session-refresh-retry` to derive
+one opaque successor per tenant, session and operation key. The host checks
+the derived digest against current state and immutable rotation evidence.
+Only the immediately previous credential with the matching proof may recover
+the current successor during grace; a retry with the already-updated cookie
+and the same proof also returns it. Recovery never changes rotation history
+or extends the refresh deadline; it issues a fresh RS256 access token with
+current authority. Missing or incorrect proofs do not allow historical
+refresh. Proof reuse cannot resurrect a historical digest. Unrecoverable
+duplicates return REST 409 / GraphQL CONFLICT. No proof or plaintext token is
+stored, and the key must not be logged.
+
+Clients must generate and retain an independent secret before the request,
+reuse its proof only for that attempt, and discard it on resolution. A BFF
+may retain an independent CSPRNG login seed in an HttpOnly envelope and
+derive a separate generation-bound proof from that seed. The cookie-session
+REST owner now issues and derives the proof from its token/seed envelope;
+Next Admin relays it unchanged and direct Leptos CSR uses the same cookie
+with a bounded origin-wide browser Web Lock and one ambiguous refresh retry.
+The shared Leptos native/SSR BFF retains its raw REST proof scheme.
+No browser-readable secret storage or new database state is introduced.
+Standalone Storefront SSR composition, Next Storefront and mobile integration,
+stale client projections and all mounted runtime verification remain pending.
+See [the ADR](../../../../DECISIONS/2026-11-26-session-refresh-retry-proof.md).
 
 ## GraphQL credential throttling
 
@@ -757,3 +791,35 @@ On auth degradation:
 - [README crate](../README.md)
 - [Implementation Plan](./implementation-plan.md)
 - [Manifest Layer Contract](../../../../docs/modules/manifest.md)
+
+### Leptos client transition ownership (source only)
+
+The shared Auth UI provider holds one browser lock through the full CSR/hydrate
+transition and publishes one epoch-tagged user/session pair. Foreign browser
+epoch changes invalidate projections, refuse stale cookie intents and suppress
+native credential fallback. This is a client consistency fence, not backend
+authorization or an expected-lineage server precondition. See [Auth UI](../ui/README.md)
+and the [implementation plan](./implementation-plan.md). Mounted browser
+verification, noncooperating response ordering and seamless peer refresh remain open.
+
+### Expected session lineage (source only)
+
+The optional singleton `x-rustok-expected-session-id` canonical non-nil UUID
+is checked by raw/cookie REST refresh/logout and GraphQL HTTP refresh.
+Mismatch is a conflict before mutation, including historical reuse revocation.
+Expected logout requires possession of a digest of the exact tenant lineage
+(current, previous or retained history), not merely knowledge of the ID.
+Leptos retained-session transitions and Next Admin's Auth.js-bound session
+forward the precondition. Startup discovery and delayed response ordering
+remain separate concerns. See the [recovery ADR](../../../../DECISIONS/2026-11-26-session-refresh-retry-proof.md).
+
+### Next Admin confirmed logout (source only)
+
+The Next Admin host owns signout admission; the Auth.js catch-all never
+forwards generic signout. Same-origin POST carries the expected lineage from
+the displayed session. The owner confirms matching refresh revocation before
+the private Auth.js cleanup helper and Rustok cookie clearing. The shared
+client requires explicit success and keeps an ambiguous revocation retryable.
+See the [recovery ADR](../../../../DECISIONS/2026-11-26-session-refresh-retry-proof.md).
+Mounted Auth.js route/cookie behavior and late or partial response recovery
+remain unverified; this is not distributed atomic cookie delivery.

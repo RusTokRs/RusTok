@@ -21,6 +21,7 @@ use fly_ui::{
 use rustok_page_builder::{RuntimeContextScenario, RuntimePublishGatePolicy};
 use rustok_page_builder::dto::{
     BuilderCapabilityKind, PageBuilderCapabilityRequest, PageBuilderCapabilityResponse,
+    PublishPageBuilderInput,
 };
 use rustok_ui_core::{UiCspNonce, UiRouteContext};
 use serde_json::Value;
@@ -120,12 +121,44 @@ impl PartialEq for DioxusPageBuilderAdminHostContext {
 /// Deliver the command effects the shared editor reducer emits. Previously the
 /// Dioxus toolbar and workspace discarded Publish/Preview effects, so Save
 /// visibly did nothing even when a consumer supplied a working facade.
+// An ambiguous save may only be retried with its exact original server request.
+// A hash or revision alone cannot identify the submitted document.
+fn same_publish_input(left: &PublishPageBuilderInput, right: &PublishPageBuilderInput) -> bool {
+    left.page_id == right.page_id
+        && left.revision_id == right.revision_id
+        && left.project_data == right.project_data
+}
+
+// A copy confirmation belongs to the exact displayed working revision.
+fn draft_stamp(controller: &AdminCanvasController) -> (fly::ProjectHash, u64) {
+    let revision = controller.editor().revision();
+    (revision.project_hash, revision.command_sequence)
+}
+
+fn draft_reload_safe(
+    controller: &AdminCanvasController,
+    persisted: bool,
+    copied: Option<(fly::ProjectHash, u64)>,
+) -> bool {
+    persisted || copied == Some(draft_stamp(controller))
+}
+
+fn can_retry_unknown_save(
+    controller: &AdminCanvasController,
+    submitted: &PublishPageBuilderInput,
+) -> bool {
+    controller.page_id() == submitted.page_id
+        && controller.revision_id() == submitted.revision_id
+        && GrapesJsCodec::encode_value(controller.editor().document())
+            .is_ok_and(|data| data == submitted.project_data)
+}
+
 fn dispatch_facade_effects<F>(
     mut session: Signal<EditorSessionState>,
     facade: Option<Arc<dyn PageBuilderAdminFacade>>,
     effects: Vec<EditorSessionEffect>,
     on_publish_confirmed: F,
-    mut save_outcome_unknown: Signal<bool>,
+    mut save_outcome_unknown: Signal<Option<PublishPageBuilderInput>>,
 )
 where
     F: Fn(String, String, Value) + Clone + 'static,
@@ -201,9 +234,17 @@ where
                     continue;
                 };
                 let capability = request.capability();
-                let submitted_project_data = match &request {
+                let submitted_input = match &request {
                     PageBuilderCapabilityRequest::Publish(input) => {
-                        Some(input.project_data.clone())
+                        let matches_unknown = save_outcome_unknown.peek().as_ref()
+                            .is_none_or(|submitted| same_publish_input(submitted, input));
+                        if !matches_unknown {
+                            session.write().fail(
+                                "The working draft differs from the unknown save; preserve it and reload before saving.",
+                            );
+                            continue;
+                        }
+                        Some(input.clone())
                     }
                     _ => None,
                 };
@@ -266,14 +307,14 @@ where
                                 attempt,
                             ) {
                                 Ok(()) => {
-                                    save_outcome_unknown.set(false);
-                                    if let (Some(project_hash), Some(project_data)) =
-                                        (submitted_hash, submitted_project_data)
+                                    save_outcome_unknown.set(None);
+                                    if let (Some(project_hash), Some(input)) =
+                                        (submitted_hash, submitted_input)
                                     {
                                         confirmed_write = Some((
                                             response.revision_id.clone(),
                                             project_hash,
-                                            project_data,
+                                            input.project_data,
                                         ));
                                     }
                                 }
@@ -297,9 +338,9 @@ where
                                 other.capability()
                             );
                             if let Some(id) = save_attempt {
-                                if state.handle_publish_error_for_attempt(&id, error) {
-                                    save_outcome_unknown.set(false);
-                                }
+                                // A malformed retry response does not resolve the
+                                // original ambiguous write.
+                                state.handle_publish_error_for_attempt(&id, error);
                             } else if let Some(id) = preview_attempt_id {
                                 state.handle_preview_failure(id, error);
                             } else {
@@ -314,7 +355,7 @@ where
                                             &id,
                                             error.to_string(),
                                         ) {
-                                            save_outcome_unknown.set(false);
+                                            save_outcome_unknown.set(None);
                                         }
                                     }
                                     Some("PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN") => {
@@ -322,13 +363,13 @@ where
                                             &id,
                                             error.to_string(),
                                         ) {
-                                            save_outcome_unknown.set(true);
+                                            save_outcome_unknown.set(submitted_input);
                                         }
                                     }
                                     _ => {
-                                        if state.handle_publish_error_for_attempt(&id, error.to_string()) {
-                                            save_outcome_unknown.set(false);
-                                        }
+                                        // A generic retry failure cannot establish
+                                        // whether the earlier request committed.
+                                        state.handle_publish_error_for_attempt(&id, error.to_string());
                                     }
                                 }
                             } else if let Some(id) = preview_attempt_id {
@@ -636,8 +677,8 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
     let mut peer_write_conflict = use_signal(|| false);
     // A timeout with no visible receipt is not a failed save: only an exact retry
     // or an authoritative refresh can resolve it. Keep the editor read-only meanwhile.
-    let mut save_outcome_unknown = use_signal(|| false);
-    let mut local_draft_copied = use_signal(|| false);
+    let mut save_outcome_unknown = use_signal(|| None::<PublishPageBuilderInput>);
+    let mut local_draft_copied = use_signal(|| None::<(fly::ProjectHash, u64)>);
     // Separate editor roots in the same browser document are independent writers.
     // The document nonce added by BrowserPeerWriteChannel keeps this ID unique across tabs.
     let peer_write_scope_id = use_hook(|| uuid::Uuid::new_v4().to_string());
@@ -948,7 +989,16 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
             | DraftRecoveryStatus::Error(_)
             | DraftRecoveryStatus::SaveError(_)
     );
-    let save_outcome_unknown_active = *save_outcome_unknown.read();
+    let displayed_draft_stamp = draft_stamp(&current.controller);
+    let copied_current_draft = *local_draft_copied.read() == Some(displayed_draft_stamp);
+    let can_reload_draft = draft_reload_safe(
+        &current.controller,
+        *recovery_persisted.read(),
+        *local_draft_copied.read(),
+    );
+    let save_outcome_unknown_active = save_outcome_unknown.read().is_some();
+    let unknown_save_retry_matches = save_outcome_unknown.read().as_ref()
+        .is_some_and(|submitted| can_retry_unknown_save(&current.controller, submitted));
     let local_recovery_json = (
         peer_conflict_active || save_outcome_unknown_active || recovery_storage_unavailable
     )
@@ -998,7 +1048,7 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
     let intent_project_hash = workspace_project_hash.clone();
     let on_workspace_intent = EventHandler::new(move |envelope: BrowserIntentEnvelope| {
         let write_conflict = *peer_write_conflict.peek()
-            || *save_outcome_unknown.peek()
+            || save_outcome_unknown.peek().is_some()
             || matches!(&*recovery_status.peek(), DraftRecoveryStatus::Conflict { .. })
             || session.read().controller.ui().state.dirty.save_conflict;
         if write_conflict && envelope.is_mutating() {
@@ -1099,7 +1149,7 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
     #[cfg(feature = "dioxus-web")]
     let on_canvas_ui_intent = EventHandler::new(move |intent: UiIntent| {
         let write_conflict = *peer_write_conflict.peek()
-            || *save_outcome_unknown.peek()
+            || save_outcome_unknown.peek().is_some()
             || matches!(&*recovery_status.peek(), DraftRecoveryStatus::Conflict { .. })
             || session.read().controller.ui().state.dirty.save_conflict;
         if write_conflict && peer_conflict_blocks_ui_intent(&intent) {
@@ -1168,10 +1218,18 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
     let retry_facade = props.facade.clone();
     let retry_publish_confirmed = on_publish_confirmed.clone();
     let on_retry_unknown_save = EventHandler::new(move |_| {
-        if !*save_outcome_unknown.peek()
-            || save_retry_in_progress
+        if save_retry_in_progress
+            || *peer_write_conflict.peek()
             || matches!(&*recovery_status.peek(), DraftRecoveryStatus::Conflict { .. })
         {
+            return;
+        }
+        let matches_submitted = save_outcome_unknown.peek().as_ref()
+            .is_some_and(|submitted| can_retry_unknown_save(&session.read().controller, submitted));
+        if !matches_submitted {
+            session.write().fail(
+                "The working draft differs from the unknown save; preserve it and reload before saving.",
+            );
             return;
         }
         let effects = session.write().dispatch(
@@ -1266,7 +1324,7 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                         disabled: !can_undo,
                         onclick: move |_| {
                             if *peer_write_conflict.peek()
-                                || *save_outcome_unknown.peek()
+                                || save_outcome_unknown.peek().is_some()
                                 || recovery_conflict_active
                                 || session.read().controller.ui().state.dirty.save_conflict
                             {
@@ -1282,7 +1340,7 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                         disabled: !can_redo,
                         onclick: move |_| {
                             if *peer_write_conflict.peek()
-                                || *save_outcome_unknown.peek()
+                                || save_outcome_unknown.peek().is_some()
                                 || recovery_conflict_active
                                 || session.read().controller.ui().state.dirty.save_conflict
                             {
@@ -1298,7 +1356,7 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                         disabled: !can_save,
                         onclick: move |_| {
                             if *peer_write_conflict.peek()
-                                || *save_outcome_unknown.peek()
+                                || save_outcome_unknown.peek().is_some()
                                 || recovery_conflict_active
                                 || session.read().controller.ui().state.dirty.save_conflict
                             {
@@ -1457,14 +1515,22 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                     if let Some(reload) = props.on_reload_requested {
                         button {
                             class: "rounded border border-amber-600/40 px-3 py-1.5 font-medium hover:bg-amber-500/10 disabled:opacity-50",
-                            disabled: *local_draft_copied.read(),
-                            onclick: move |_| local_draft_copied.set(true),
+                            disabled: copied_current_draft,
+                            onclick: move |_| local_draft_copied.set(Some(displayed_draft_stamp)),
                             "I copied the local draft"
                         }
                         button {
                             class: "rounded border border-amber-600/40 px-3 py-1.5 font-medium hover:bg-amber-500/10 disabled:opacity-50",
-                            disabled: !(*local_draft_copied.read() || *recovery_persisted.read()),
-                            onclick: move |_| reload.call(()),
+                            disabled: !can_reload_draft,
+                            onclick: move |_| {
+                                if draft_reload_safe(
+                                    &session.read().controller,
+                                    *recovery_persisted.peek(),
+                                    *local_draft_copied.peek(),
+                                ) {
+                                    reload.call(());
+                                }
+                            },
                             "Reload latest revision"
                         }
                     } else {
@@ -1480,7 +1546,12 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                     class: "p-3 bg-amber-500/10 text-amber-900 dark:text-amber-200 text-sm border-b border-amber-500/30 space-y-2",
                     role: "alert",
                     p {
-                        "The save outcome is not yet known. Do not edit this draft or start a different save. Retrying the exact same request is safe: Pages will replay the committed receipt if the first request succeeded."
+                        "The save outcome is not yet known. Do not edit this draft or start a different save."
+                    }
+                    if unknown_save_retry_matches {
+                        p { "Retrying the exact same request is safe: Pages will replay the committed receipt if the first request succeeded." }
+                    } else {
+                        p { "The working draft differs from the submitted save. Preserve your draft and reload the latest server version to reconcile it. A different payload cannot be retried as the original request." }
                     }
                     if let Some(err) = last_error.clone() {
                         p { class: "text-xs opacity-80", "{err}" }
@@ -1496,9 +1567,34 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                     }
                     button {
                         class: "rounded border border-amber-600/40 px-3 py-1.5 font-medium hover:bg-amber-500/10 disabled:opacity-50",
-                        disabled: save_retry_in_progress,
+                        disabled: save_retry_in_progress || !unknown_save_retry_matches || props.facade.is_none(),
                         onclick: move |_| on_retry_unknown_save.call(()),
                         "Retry exact same save"
+                    }
+                    if let Some(reload) = props.on_reload_requested {
+                        if !*recovery_persisted.read() {
+                            p { "Browser recovery storage is not confirmed. Copy the current draft JSON before reloading." }
+                        }
+                        button {
+                            class: "rounded border border-amber-600/40 px-3 py-1.5 font-medium hover:bg-amber-500/10 disabled:opacity-50",
+                            disabled: copied_current_draft,
+                            onclick: move |_| local_draft_copied.set(Some(displayed_draft_stamp)),
+                            "I copied the local draft"
+                        }
+                        button {
+                            class: "rounded border border-amber-600/40 px-3 py-1.5 font-medium hover:bg-amber-500/10 disabled:opacity-50",
+                            disabled: !can_reload_draft,
+                            onclick: move |_| {
+                                if draft_reload_safe(
+                                    &session.read().controller,
+                                    *recovery_persisted.peek(),
+                                    *local_draft_copied.peek(),
+                                ) {
+                                    reload.call(());
+                                }
+                            },
+                            "Reload latest server version"
+                        }
                     }
                 }
             } else if let Some(err) = last_error {
@@ -1549,6 +1645,75 @@ mod props_regression_tests {
     use super::*;
     use fly::{ComponentPatch, EditorCommand};
     use serde_json::json;
+
+    #[test]
+    fn reload_requires_persisted_recovery_or_copy_of_current_revision() {
+        let mut controller = AdminCanvasController::new(
+            "home", "rev-1", json!({
+                "pages": [{
+                    "id": "home",
+                    "component": { "id": "root", "type": "wrapper", "components": [{
+                        "id": "hero", "type": "text", "content": "original"
+                    }] }
+                }]
+            }),
+        ).expect("controller");
+        let copied = Some(draft_stamp(&controller));
+        assert!(!draft_reload_safe(&controller, false, None));
+        assert!(draft_reload_safe(&controller, true, None));
+        assert!(draft_reload_safe(&controller, false, copied));
+
+        controller.dispatch(UiIntent::execute(EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: ComponentPatch::default().set_field("content", json!("new unsaved content")),
+        })).expect("edit");
+        assert!(!draft_reload_safe(&controller, false, copied));
+        assert!(draft_reload_safe(&controller, true, copied));
+        assert!(draft_reload_safe(&controller, false, Some(draft_stamp(&controller))));
+        controller.dispatch(UiIntent::Undo).expect("undo");
+        // Even returning to the same content does not reuse a prior confirmation.
+        assert!(!draft_reload_safe(&controller, false, copied));
+    }
+
+    #[test]
+    fn unknown_save_retry_requires_exact_submitted_payload_and_revision() {
+        let mut controller = AdminCanvasController::new(
+            "home", "rev-1", json!({
+                "pages": [{
+                    "id": "home",
+                    "component": { "id": "root", "type": "wrapper", "components": [{
+                        "id": "hero", "type": "text", "content": "submitted"
+                    }] }
+                }]
+            }),
+        ).expect("controller");
+        let input = PublishPageBuilderInput {
+            page_id: controller.page_id().to_string(),
+            revision_id: controller.revision_id().to_string(),
+            project_data: GrapesJsCodec::encode_value(controller.editor().document()).expect("encode"),
+        };
+        assert!(can_retry_unknown_save(&controller, &input));
+        assert!(same_publish_input(&input, &input));
+        let mut different = input.clone();
+        different.revision_id = "rev-2".to_string();
+        assert!(!can_retry_unknown_save(&controller, &different));
+        assert!(!same_publish_input(&input, &different));
+        different = input.clone();
+        different.page_id = "another".to_string();
+        assert!(!can_retry_unknown_save(&controller, &different));
+        assert!(!same_publish_input(&input, &different));
+
+        controller.dispatch(UiIntent::execute(EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: ComponentPatch::default().set_field("content", json!("newer unsaved edit")),
+        })).expect("edit while saving");
+        assert!(!can_retry_unknown_save(&controller, &input));
+        different = input.clone();
+        different.project_data = GrapesJsCodec::encode_value(controller.editor().document()).expect("encode");
+        assert!(!same_publish_input(&input, &different));
+        controller.dispatch(UiIntent::Undo).expect("restore original payload");
+        assert!(can_retry_unknown_save(&controller, &input));
+    }
 
     #[test]
     fn props_detect_draft_changes_without_a_new_server_revision() {

@@ -7,10 +7,14 @@ use rustok_api::PortContext;
 use rustok_telemetry::page_builder_provider_metrics::record_page_builder_provider_operation;
 use serde::Serialize;
 use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicU64, Ordering},
+};
 use std::time::Instant;
 
 const PROVIDER_HEALTH_PENDING_CALL_CAPACITY: usize = 1024;
+static NEXT_RUNTIME_CALL_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -46,6 +50,10 @@ pub enum PageBuilderRuntimeCallStatus {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PageBuilderRuntimeCallEvidence {
+    // A correlation ID identifies the surrounding request, not one particular
+    // port invocation. Keep the attempt identity local to this process.
+    #[serde(skip)]
+    call_id: u64,
     pub module_slug: &'static str,
     pub operation: PageBuilderRuntimeOperation,
     pub status: PageBuilderRuntimeCallStatus,
@@ -96,6 +104,7 @@ impl PageBuilderRuntimeCallEvidence {
         revision_id: Option<String>,
     ) -> Self {
         Self {
+            call_id: NEXT_RUNTIME_CALL_ID.fetch_add(1, Ordering::Relaxed),
             module_slug: PageBuilderModuleMetadata::CURRENT.module_slug,
             operation,
             status: PageBuilderRuntimeCallStatus::Started,
@@ -108,9 +117,17 @@ impl PageBuilderRuntimeCallEvidence {
         }
     }
 
+    /// Process-local invocation identity shared by the start and its terminal evidence.
+    /// It is deliberately not part of the serialized telemetry contract.
+    pub fn call_id(&self) -> u64 {
+        self.call_id
+    }
+
     pub fn succeeded(&self) -> Self {
         let mut evidence = self.clone();
         evidence.status = PageBuilderRuntimeCallStatus::Succeeded;
+        evidence.error_kind = None;
+        evidence.stable_code = None;
         evidence
     }
 
@@ -136,6 +153,7 @@ impl PageBuilderRuntimeTelemetry for NoopPageBuilderRuntimeTelemetry {
 
 #[derive(Debug)]
 struct PendingProviderHealthCall {
+    call_id: u64,
     operation: PageBuilderRuntimeOperation,
     tenant_id: String,
     page_id: String,
@@ -147,6 +165,7 @@ struct PendingProviderHealthCall {
 impl PendingProviderHealthCall {
     fn from_evidence(evidence: &PageBuilderRuntimeCallEvidence) -> Self {
         Self {
+            call_id: evidence.call_id(),
             operation: evidence.operation,
             tenant_id: evidence.tenant_id.clone(),
             page_id: evidence.page_id.clone(),
@@ -157,7 +176,8 @@ impl PendingProviderHealthCall {
     }
 
     fn matches(&self, evidence: &PageBuilderRuntimeCallEvidence) -> bool {
-        self.operation == evidence.operation
+        self.call_id == evidence.call_id()
+            && self.operation == evidence.operation
             && self.tenant_id == evidence.tenant_id
             && self.page_id == evidence.page_id
             && self.revision_id == evidence.revision_id
@@ -209,8 +229,9 @@ impl ProviderHealthRuntimeTelemetry {
             .pending
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(index) = pending.iter().rposition(|call| call.matches(evidence)) {
-            pending.remove(index);
+        // Repeated delivery of the same start must not reset its latency clock.
+        if pending.iter().any(|call| call.matches(evidence)) {
+            return;
         }
         if pending.len() >= PROVIDER_HEALTH_PENDING_CALL_CAPACITY {
             pending.pop_front();
@@ -294,6 +315,7 @@ mod tests {
         assert_eq!(value["module_slug"], "page_builder");
         assert!(value.get("contract").is_none());
         assert!(value.get("version").is_none());
+        assert!(value.get("call_id").is_none());
     }
 
     #[test]
@@ -331,6 +353,39 @@ mod tests {
                 .len(),
             0
         );
+    }
+
+    #[test]
+    fn overlapping_calls_with_identical_context_keep_independent_pending_samples() {
+        let telemetry = ProviderHealthRuntimeTelemetry::default();
+        let context = context("same-request");
+        let first = PageBuilderRuntimeCallEvidence::save_project(&context, "home", "rev-1");
+        let second = PageBuilderRuntimeCallEvidence::save_project(&context, "home", "rev-1");
+        assert_ne!(first.call_id(), second.call_id());
+        assert_eq!(first.call_id(), first.succeeded().call_id());
+        let failure = second.failed(&PageBuilderServiceError::Runtime("failed".into()));
+        assert_eq!(second.call_id(), failure.call_id());
+
+        telemetry.record_runtime_call(&first);
+        telemetry.record_runtime_call(&second);
+        let pending_ids = || {
+            telemetry.pending.lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .iter().map(|call| call.call_id).collect::<Vec<_>>()
+        };
+        assert_eq!(pending_ids(), vec![first.call_id(), second.call_id()]);
+        // Re-delivery of a start must preserve the existing entry.
+        telemetry.record_runtime_call(&first);
+        assert_eq!(pending_ids(), vec![first.call_id(), second.call_id()]);
+
+        // Finish the older invocation first. A context-only lookup would remove
+        // the second invocation's entry and misattribute latency and outcome.
+        telemetry.record_runtime_call(&first.succeeded());
+        assert_eq!(pending_ids(), vec![second.call_id()]);
+        telemetry.record_runtime_call(&first.succeeded());
+        assert_eq!(pending_ids(), vec![second.call_id()]);
+        telemetry.record_runtime_call(&failure);
+        assert!(pending_ids().is_empty());
     }
 
     #[test]

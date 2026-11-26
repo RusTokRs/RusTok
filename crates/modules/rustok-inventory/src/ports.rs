@@ -515,6 +515,9 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
             .await
             .map_err(|error| storage_unavailable_with_context(&context, owner_operation, error))?;
         if levels.len() > MAX_RESERVATION_CANDIDATE_LEVELS {
+            txn.rollback().await.map_err(|error| {
+                storage_unavailable_with_context(&context, owner_operation, error)
+            })?;
             return Err(PortError::conflict(
                 "inventory.reservation_level_limit",
                 "SKU inventory exceeds 4096 candidate levels; an inventory operator must narrow its allocation layout",
@@ -626,6 +629,9 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
         .await;
 
         if inserted.as_ref().is_ok_and(|affected| *affected != 1) {
+            txn.rollback().await.map_err(|error| {
+                storage_unavailable_with_context(&context, owner_operation, error)
+            })?;
             return Err(PortError::invariant_violation(
                 "inventory.reservation_persistence_mismatch",
                 "reservation row was not persisted exactly once; the transaction is refused",
@@ -727,6 +733,9 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
                 )
             })?;
         if observed.external_id.as_deref() != Some(request.external_id.as_str()) {
+            txn.rollback().await.map_err(|error| {
+                storage_unavailable_with_context(&context, owner_operation, error)
+            })?;
             return Err(PortError::conflict(
                 "inventory.reservation_identity_conflict",
                 "reservation id is bound to another external identity",
@@ -758,6 +767,9 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
         if reservation.inventory_item_id != item.id
             || reservation.external_id.as_deref() != Some(request.external_id.as_str())
         {
+            txn.rollback().await.map_err(|error| {
+                storage_unavailable_with_context(&context, owner_operation, error)
+            })?;
             return Err(PortError::conflict(
                 "inventory.reservation_identity_conflict",
                 "reservation identity changed while acquiring the owner lock",
@@ -786,6 +798,9 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
         }
 
         if reservation.quantity < 0 {
+            txn.rollback().await.map_err(|error| {
+                storage_unavailable_with_context(&context, owner_operation, error)
+            })?;
             return Err(PortError::invariant_violation(
                 "inventory.reservation_ledger_inconsistent",
                 "reservation quantity is inconsistent; reconcile the original identity",
@@ -811,6 +826,9 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
             .await
             .map_err(|error| storage_unavailable_with_context(&context, owner_operation, error))?;
         if level_update.rows_affected != 1 {
+            txn.rollback().await.map_err(|error| {
+                storage_unavailable_with_context(&context, owner_operation, error)
+            })?;
             return Err(PortError::invariant_violation(
                 "inventory.reservation_ledger_inconsistent",
                 "inventory reservation ledger is inconsistent",
@@ -841,6 +859,9 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
             .await
             .map_err(|error| storage_unavailable_with_context(&context, owner_operation, error))?;
         if updated.rows_affected != 1 {
+            txn.rollback().await.map_err(|error| {
+                storage_unavailable_with_context(&context, owner_operation, error)
+            })?;
             return Err(PortError::invariant_violation(
                 "inventory.reservation_persistence_mismatch",
                 "reservation release was not persisted exactly once; the transaction is refused",

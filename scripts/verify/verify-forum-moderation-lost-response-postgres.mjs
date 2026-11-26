@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { containsMarker } from "./lib/forum-source-verification.mjs";
 
 const test = fs.readFileSync(
   "crates/modules/rustok-distribution/tests/forum_moderation_lost_response_postgres.rs",
@@ -14,7 +15,7 @@ const distributionCargo = fs.readFileSync(
 );
 
 function requireText(source, needle, message) {
-  if (!source.includes(needle)) throw new Error(message);
+  if (!containsMarker(source, needle)) throw new Error(message);
 }
 
 for (const marker of [
@@ -39,7 +40,7 @@ for (const marker of [
   'owner_operation_receipts',
   "owner_slug = 'forum'",
   'APPLY_OPERATION',
-  'assert_eq!(reply_revision(&database.db, &seed).await?, revision_after_first)',
+  /assert_eq!\(\s*reply_revision\(&database\.db, &seed\)\.await\?,\s*revision_after_first\s*,?\s*\)/,
 ]) {
   requireText(test, marker, `Forum/Moderation lost-response PostgreSQL contract is missing ${marker}`);
 }

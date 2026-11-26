@@ -1,5 +1,7 @@
 use super::*;
 
+const EFFECTIVE_ATTRIBUTE_DEFINITION_BATCH_SIZE: usize = 500;
+
 #[derive(FromQueryResult)]
 struct ProductCategoryPathRow {
     id: Uuid,
@@ -10,6 +12,8 @@ struct ProductCategoryPathRow {
 struct AttributeValidationRow {
     id: Uuid,
     scope: String,
+    value_type: String,
+    is_localized: bool,
     validation: Value,
 }
 
@@ -24,47 +28,76 @@ async fn load_effective_attribute_validation<C>(
 where
     C: ConnectionTrait,
 {
-    let attribute_ids = form
-        .attributes
+    load_effective_attribute_validation_for_forms(db, tenant_id, std::slice::from_mut(form)).await
+}
+
+/// Hydrates multiple effective category forms from one tenant-scoped definition query.
+/// Schema-impact scans use this to avoid an attribute query for every category.
+pub(super) async fn load_effective_attribute_validation_for_forms<C>(
+    db: &C,
+    tenant_id: Uuid,
+    forms: &mut [EffectiveProductForm],
+) -> CommerceResult<()>
+where
+    C: ConnectionTrait,
+{
+    let mut attribute_ids = forms
         .iter()
-        .map(|binding| binding.attribute_id)
+        .flat_map(|form| form.attributes.iter().map(|binding| binding.attribute_id))
         .collect::<Vec<_>>();
+    attribute_ids.sort_unstable();
+    attribute_ids.dedup();
     if attribute_ids.is_empty() {
         return Ok(());
     }
 
-    let (placeholders, values) = uuid_filter_values(tenant_id, &attribute_ids);
-    let declared = AttributeValidationRow::find_by_statement(Statement::from_sql_and_values(
-        db.get_database_backend(),
-        format!(
-            "SELECT id, scope, validation FROM product_attributes WHERE tenant_id = $1 AND archived_at IS NULL AND id IN ({placeholders})"
-        ),
-        values,
-    ))
-    .all(db)
-    .await?
-    .into_iter()
-    .map(|row| (row.id, (row.scope, row.validation)))
-    .collect::<HashMap<_, _>>();
-
-    for binding in &mut form.attributes {
-        let (scope, base) = declared.get(&binding.attribute_id).ok_or_else(|| {
-            CommerceError::Core(rustok_core::error::Error::Internal(format!(
-                "Effective Product schema references missing or archived attribute {}",
-                binding.attribute_id
-            )))
-        })?;
-        if !matches!(scope.as_str(), "product" | "variant" | "both") {
-            return Err(CommerceError::Validation(format!(
-                "Product attribute {} has unsupported scope",
-                binding.attribute_id
-            )));
+    let mut declared = HashMap::new();
+    for attribute_id_chunk in attribute_ids.chunks(EFFECTIVE_ATTRIBUTE_DEFINITION_BATCH_SIZE) {
+        let (placeholders, values) = uuid_filter_values(tenant_id, attribute_id_chunk);
+        let rows = AttributeValidationRow::find_by_statement(Statement::from_sql_and_values(
+            db.get_database_backend(),
+            format!(
+                "SELECT id, scope, value_type, is_localized, validation FROM product_attributes WHERE tenant_id = $1 AND archived_at IS NULL AND id IN ({placeholders})"
+            ),
+            values,
+        ))
+        .all(db)
+        .await?;
+        for row in rows {
+            declared.insert(row.id, (row.scope, row.value_type, row.is_localized, row.validation));
         }
-        binding.scope = scope.clone();
-        binding.validation = attribute_validation::merge_product_attribute_validation(
-            base,
-            &binding.validation_overrides,
-        );
+    }
+
+    for form in forms {
+        for binding in &mut form.attributes {
+            let (scope, value_type, is_localized, base) = declared
+                .get(&binding.attribute_id)
+                .ok_or_else(|| {
+                    CommerceError::Core(rustok_core::error::Error::Internal(format!(
+                        "Effective Product schema references missing or archived attribute {}",
+                        binding.attribute_id
+                    )))
+                })?;
+            if !matches!(scope.as_str(), "product" | "variant" | "both") {
+                return Err(CommerceError::Validation(format!(
+                    "Product attribute {} has unsupported scope",
+                    binding.attribute_id
+                )));
+            }
+            binding.scope = scope.clone();
+            binding.validation = attribute_validation::merge_product_attribute_validation(
+                base,
+                &binding.validation_overrides,
+            );
+            attribute_validation::validate_declared_rule_keys(&binding.validation)?;
+            let rules =
+                attribute_validation::parse_product_attribute_validation(&binding.validation)?;
+            attribute_validation::validate_required_locales_compatibility(
+                value_type,
+                *is_localized,
+                &rules,
+            )?;
+        }
     }
     Ok(())
 }

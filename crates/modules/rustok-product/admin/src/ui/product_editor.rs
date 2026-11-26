@@ -16,6 +16,10 @@ use crate::model::{
     CatalogCategorySummary, ProductDetail, ProductDraft, ProductEffectiveForm, ProductImageDraft,
 };
 
+fn next_product_revision_after_variant_delete(current: i32) -> Option<i32> {
+    current.checked_add(1)
+}
+
 #[component]
 pub fn ProductEditorPage(
     #[prop(optional)] is_new: bool,
@@ -597,6 +601,14 @@ pub fn ProductEditorPage(
             set_loaded_product.update(|current| {
                 if let Some(current) = current.as_mut().filter(|current| current.id == product_id) {
                     current.variants.retain(|variant| variant.id != deleted_variant_id);
+                    // The Product owner advances the aggregate revision once for this confirmed
+                    // membership change. Keep the local editor predecessor aligned; any concurrent
+                    // Product write still leaves it stale and will be rejected on the next save.
+                    if let Some(next_revision) =
+                        next_product_revision_after_variant_delete(current.revision)
+                    {
+                        current.revision = next_revision;
+                    }
                 }
             });
             refresh_variant_projection_for_delete.run(product_id);
@@ -1863,5 +1875,21 @@ pub fn ProductEditorPage(
             </div>
             </fieldset>
         </div>
+    }
+}
+
+
+#[cfg(test)]
+mod variant_membership_revision_tests {
+    use super::next_product_revision_after_variant_delete;
+
+    #[test]
+    fn confirmed_variant_deletion_advances_the_local_product_revision_once() {
+        assert_eq!(next_product_revision_after_variant_delete(7), Some(8));
+    }
+
+    #[test]
+    fn product_revision_overflow_does_not_wrap_or_saturate() {
+        assert_eq!(next_product_revision_after_variant_delete(i32::MAX), None);
     }
 }

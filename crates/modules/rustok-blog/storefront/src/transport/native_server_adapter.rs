@@ -294,9 +294,9 @@ async fn storefront_blog_native(
         use rustok_api::HostRuntimeContext;
         use rustok_blog::{
             PostService, PublicCommentsSnapshotStore, PublicPostsPageQuery,
-            list_public_comments_with_snapshot,
+            list_public_comments_with_snapshot, published_post_read_context,
         };
-        use rustok_core::SecurityContext;
+        use rustok_blog_ports::{BlogPublishedPostReadPort, ReadBlogPublishedPost};
         use rustok_outbox::TransactionalEventBus;
         use rustok_tenant::TenantService;
 
@@ -375,19 +375,22 @@ async fn storefront_blog_native(
         let service = PostService::new(runtime_ctx.db_clone(), event_bus.clone())
             .with_taxonomy_port(rustok_blog::blog_taxonomy_from_runtime(&runtime_ctx));
 
+        let public_read_error = |error: rustok_api::PortError| {
+            ServerFnError::new(format!("{}: {}", error.code, error.message))
+        };
+        let context =
+            published_post_read_context(tenant_id, &requested_locale, request_context.as_ref())
+                .map_err(public_read_error)?;
         let selected_post = service
-            .get_post_by_slug_with_locale_fallback(
-                tenant_id,
-                SecurityContext::public_read(),
-                requested_locale.as_str(),
-                post_slug.as_str(),
-                Some(fallback_locale.as_str()),
+            .read_published_post(
+                context,
+                ReadBlogPublishedPost {
+                    slug: post_slug,
+                    fallback_locale: Some(fallback_locale.clone()),
+                },
             )
             .await
-            .map_err(public_blog_error)?
-            .filter(|post| {
-                is_visible_for_public_channel(&post.channel_slugs, public_channel_slug.as_deref())
-            });
+            .map_err(public_read_error)?;
 
         let selected_post = if let Some(post) = selected_post {
             let comments = comment_service(&runtime_ctx);
@@ -425,7 +428,11 @@ async fn storefront_blog_native(
             )
             .await;
             let author_profile = author_profiles.remove(&post.author_id);
-            Some(map_post_detail(post, public_comments, author_profile))
+            Some(map_published_post_detail(
+                post,
+                public_comments,
+                author_profile,
+            ))
         } else {
             None
         };
@@ -694,24 +701,6 @@ fn normalize_channel_slug(value: Option<&str>) -> Option<String> {
 }
 
 #[cfg(feature = "ssr")]
-fn is_visible_for_public_channel(
-    channel_slugs: &[String],
-    public_channel_slug: Option<&str>,
-) -> bool {
-    if channel_slugs.is_empty() {
-        return true;
-    }
-
-    let Some(public_channel_slug) = public_channel_slug else {
-        return false;
-    };
-
-    channel_slugs
-        .iter()
-        .any(|slug| slug.eq_ignore_ascii_case(public_channel_slug))
-}
-
-#[cfg(feature = "ssr")]
 fn map_post_detail(
     post: rustok_blog::PostResponse,
     public_comments: BlogCommentList,
@@ -737,6 +726,32 @@ fn map_post_detail(
         featured_image_url: post.featured_image_url,
         author_profile,
         category_id: post.category_id.map(|v| v.to_string()),
+        category_name: post.category_name,
+        public_comments,
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_published_post_detail(
+    post: rustok_blog_ports::BlogPublishedPost,
+    public_comments: BlogCommentList,
+    author_profile: Option<BlogPostAuthorProfile>,
+) -> BlogPostDetail {
+    BlogPostDetail {
+        id: post.id.to_string(),
+        version: post.version,
+        effective_locale: post.effective_locale,
+        title: post.title,
+        slug: Some(post.slug),
+        excerpt: post.excerpt,
+        content: Some(post.content),
+        content_plain_text: Some(post.content_plain_text),
+        status: "published".to_string(),
+        published_at: Some(post.published_at.to_string()),
+        tags: post.tags,
+        featured_image_url: post.featured_image_url,
+        author_profile,
+        category_id: post.category_id.map(|id| id.to_string()),
         category_name: post.category_name,
         public_comments,
     }

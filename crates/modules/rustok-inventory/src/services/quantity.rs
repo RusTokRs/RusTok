@@ -858,7 +858,7 @@ mod sku_sync_tests {
     async fn setup_schema(db: &sea_orm::DatabaseConnection) {
         for sql in [
             "CREATE TABLE products (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL)",
-            "CREATE TABLE product_variants (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL, product_id TEXT NOT NULL)",
+            "CREATE TABLE product_variants (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL, product_id TEXT NOT NULL, sku TEXT, inventory_policy TEXT NOT NULL DEFAULT 'deny')",
             "CREATE TABLE inventory_items (id TEXT PRIMARY KEY NOT NULL, variant_id TEXT NOT NULL, sku TEXT NULL, requires_shipping BOOLEAN NOT NULL, metadata TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
         ] {
             db.execute_raw(Statement::from_string(DatabaseBackend::Sqlite, sql.to_owned()))
@@ -872,6 +872,7 @@ mod sku_sync_tests {
         tenant_id: Uuid,
         product_id: Uuid,
         variant_id: Uuid,
+        variant_sku: Option<&str>,
         item_id: Option<Uuid>,
     ) {
         txn.execute_raw(Statement::from_sql_and_values(
@@ -883,8 +884,13 @@ mod sku_sync_tests {
         .expect("insert Product identity");
         txn.execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
-            "INSERT INTO product_variants (id, tenant_id, product_id) VALUES (?, ?, ?)",
-            [variant_id.into(), tenant_id.into(), product_id.into()],
+            "INSERT INTO product_variants (id, tenant_id, product_id, sku) VALUES (?, ?, ?, ?)",
+            [
+                variant_id.into(),
+                tenant_id.into(),
+                product_id.into(),
+                variant_sku.map(str::to_owned).into(),
+            ],
         ))
         .await
         .expect("insert ProductVariant identity");
@@ -920,7 +926,15 @@ mod sku_sync_tests {
         let product_id = Uuid::new_v4();
         let variant_id = Uuid::new_v4();
         let item_id = Uuid::new_v4();
-        insert_owner_identity(&txn, tenant_id, product_id, variant_id, Some(item_id)).await;
+        insert_owner_identity(
+            &txn,
+            tenant_id,
+            product_id,
+            variant_id,
+            Some("SKU-123"),
+            Some(item_id),
+        )
+        .await;
 
         sync_variant_sku(
             &txn,
@@ -938,6 +952,14 @@ mod sku_sync_tests {
             .expect("load Inventory item")
             .expect("Inventory item exists");
         assert_eq!(item.sku.as_deref(), Some("SKU-123"));
+
+        txn.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "UPDATE product_variants SET sku = NULL WHERE id = ? AND tenant_id = ?",
+            [variant_id.into(), tenant_id.into()],
+        ))
+        .await
+        .expect("clear canonical ProductVariant SKU");
 
         sync_variant_sku(
             &txn,
@@ -969,7 +991,15 @@ mod sku_sync_tests {
         let actor_id = Uuid::new_v4();
         let product_id = Uuid::new_v4();
         let variant_id = Uuid::new_v4();
-        insert_owner_identity(&txn, tenant_id, product_id, variant_id, None).await;
+        insert_owner_identity(
+            &txn,
+            tenant_id,
+            product_id,
+            variant_id,
+            Some("SKU-123"),
+            None,
+        )
+        .await;
 
         let error = sync_variant_sku(
             &txn,

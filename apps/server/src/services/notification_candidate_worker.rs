@@ -257,7 +257,7 @@ async fn notification_candidate_worker_loop(
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
 ) {
     loop {
-        if *stop_rx.borrow() {
+        if !may_admit_next_worker_operation(&stop_rx) {
             tracing::info!(
                 worker_id = worker.worker_id(),
                 "Notification candidate worker stopped"
@@ -279,7 +279,7 @@ async fn notification_candidate_worker_loop(
         };
 
         for work in work_items {
-            if *stop_rx.borrow() {
+            if !may_admit_next_worker_operation(&stop_rx) {
                 tracing::info!(
                     worker_id = worker.worker_id(),
                     "Notification candidate worker stopped before next claim"

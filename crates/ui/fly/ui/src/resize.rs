@@ -258,10 +258,8 @@ impl ResizeSession {
         }
         let start_ratio = self.start_rect.width / self.start_rect.height;
         let result_ratio = rect.width / rect.height;
-        start_ratio.is_finite()
-            && start_ratio > 0.0
-            && result_ratio.is_finite()
-            && result_ratio > 0.0
+        start_ratio.is_normal()
+            && result_ratio.is_normal()
             && (result_ratio / start_ratio - 1.0).abs() <= 1e-9
     }
 
@@ -302,10 +300,15 @@ impl ResizeSession {
             } else {
                 true
             };
+            let actual_width_changed = result.rect.width != self.start_rect.width;
+            let actual_height_changed = result.rect.height != self.start_rect.height;
             let aspect_ratio_valid = !self.aspect_ratio_locked()
-                || (!result.width_changed && !result.height_changed)
+                || (!result.width_changed && !result.height_changed
+                    && !actual_width_changed && !actual_height_changed)
                 || (result.width_changed
                     && result.height_changed
+                    && actual_width_changed
+                    && actual_height_changed
                     && self.matches_aspect_ratio(result.rect));
 
             if width_within_bounds && height_within_bounds && aspect_ratio_valid {
@@ -565,6 +568,34 @@ mod tests {
     }
 
     #[test]
+    fn locked_corner_rejects_mismatched_change_flags_and_subnormal_ratios() {
+        let mut resize = session(ResizeHandle::SouthEast);
+        resize.policy.preserve_aspect_ratio = true;
+        let result = ResizeResult {
+            rect: CanvasRect { height: 100.0 + 1e-10, ..resize.start_rect },
+            width_changed: true,
+            height_changed: true,
+        };
+        assert_eq!(resize.component_patch(result).style, Some(Value::Object(Map::new())));
+
+        resize.start_rect.width = f64::from_bits(100);
+        resize.start_rect.height = 100.0;
+        resize.policy.minimum_width = 0.0;
+        resize.policy.minimum_height = 0.0;
+        let result = ResizeResult {
+            rect: CanvasRect {
+                width: f64::from_bits(101),
+                height: 100.0001,
+                ..resize.start_rect
+            },
+            width_changed: true,
+            height_changed: true,
+        };
+        // Both quotients round to the same subnormal value, despite ratio drift.
+        assert_eq!(resize.component_patch(result).style, Some(Value::Object(Map::new())));
+    }
+
+    #[test]
     fn incompatible_aspect_bounds_leave_geometry_unchanged() {
         let mut resize = session(ResizeHandle::SouthEast);
         resize.policy.preserve_aspect_ratio = true;
@@ -629,6 +660,7 @@ mod tests {
         // An absolute 1e-9 tolerance is far too permissive for very narrow elements:
         // it could accept a large relative aspect-ratio change.
         let mut narrow = session(ResizeHandle::SouthEast);
+        narrow.policy.preserve_aspect_ratio = true;
         narrow.start_rect = CanvasRect {
             width: 1e-8,
             height: 100.0,
@@ -639,7 +671,7 @@ mod tests {
         let narrow_wrong_ratio = ResizeResult {
             rect: CanvasRect {
                 width: 2e-8,
-                height: 100.0,
+                height: 110.0,
                 ..narrow.start_rect
             },
             width_changed: true,

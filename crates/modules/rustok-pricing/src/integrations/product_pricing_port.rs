@@ -64,6 +64,14 @@ fn validate_catalog_price_precision(prices: &[InitialPrice]) -> Result<(), Produ
     Ok(())
 }
 
+fn canonicalize_initial_price_channel_scope(
+    price: &mut InitialPrice,
+    channel_scope: Option<(Uuid, String)>,
+) {
+    price.channel_id = channel_scope.as_ref().map(|(channel_id, _)| *channel_id);
+    price.channel_slug = channel_scope.map(|(_, channel_slug)| channel_slug);
+}
+
 /// Adapter providing ProductPricingPort backed by the native Pricing database.
 pub struct PricingProductPricingPortAdapter {
     _db: DatabaseConnection,
@@ -84,9 +92,10 @@ impl ProductPricingPort for PricingProductPricingPortAdapter {
         prices: Vec<InitialPrice>,
     ) -> Result<(), rustok_product::CommerceError> {
         validate_catalog_price_precision(&prices)?;
+        let mut prices = prices;
         let mut validated_variants = HashSet::new();
         let mut identities = HashSet::new();
-        for price in &prices {
+        for price in &mut prices {
             if validated_variants.insert(price.variant_id) {
                 crate::services::pricing::scope::load_variant_for_update_in_tx(
                     txn,
@@ -96,7 +105,7 @@ impl ProductPricingPort for PricingProductPricingPortAdapter {
                 .await
                 .map_err(map_catalog_scope_error)?;
             }
-            let channel_id = crate::services::pricing::scope::resolve_channel_id_in_tx(
+            let channel_scope = crate::services::pricing::scope::resolve_channel_scope_in_tx(
                 txn,
                 tenant_id,
                 price.channel_id,
@@ -104,9 +113,10 @@ impl ProductPricingPort for PricingProductPricingPortAdapter {
             )
             .await
             .map_err(map_catalog_scope_error)?;
+            canonicalize_initial_price_channel_scope(price, channel_scope);
             let identity = (
                 price.variant_id,
-                channel_id,
+                price.channel_id,
                 price.currency_code.trim().to_ascii_uppercase(),
             );
             if !identities.insert(identity) {
@@ -383,6 +393,69 @@ mod tests {
             min_quantity,
             max_quantity,
         }
+    }
+
+    fn initial_price(variant_id: Uuid) -> InitialPrice {
+        InitialPrice {
+            variant_id,
+            channel_id: None,
+            channel_slug: None,
+            currency_code: "USD".to_owned(),
+            amount: Decimal::new(1000, 2),
+            compare_at_amount: None,
+        }
+    }
+
+    #[test]
+    fn channel_id_only_initial_price_is_canonicalized_for_storefront_selection() {
+        let channel_id = Uuid::from_u128(2);
+        let mut price = initial_price(Uuid::from_u128(100));
+        price.channel_id = Some(channel_id);
+
+        canonicalize_initial_price_channel_scope(
+            &mut price,
+            Some((channel_id, "web".to_owned())),
+        );
+
+        assert_eq!(price.channel_id, Some(channel_id));
+        assert_eq!(price.channel_slug.as_deref(), Some("web"));
+
+        let model = candidate(
+            1,
+            price.channel_id,
+            price.channel_slug.as_deref(),
+            None,
+            None,
+            None,
+            10,
+        );
+        let selected = select_storefront_list_price_candidates(vec![&model], Some("web"));
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].id, model.id);
+    }
+
+    #[test]
+    fn channel_slug_only_initial_price_is_canonicalized_with_channel_id() {
+        let channel_id = Uuid::from_u128(2);
+        let mut price = initial_price(Uuid::from_u128(100));
+        price.channel_slug = Some(" WEB ".to_owned());
+
+        canonicalize_initial_price_channel_scope(
+            &mut price,
+            Some((channel_id, "web".to_owned())),
+        );
+
+        assert_eq!(price.channel_id, Some(channel_id));
+        assert_eq!(price.channel_slug.as_deref(), Some("web"));
+    }
+
+    #[test]
+    fn unscoped_initial_price_keeps_both_channel_aliases_empty() {
+        let mut price = initial_price(Uuid::from_u128(100));
+        canonicalize_initial_price_channel_scope(&mut price, None);
+
+        assert_eq!(price.channel_id, None);
+        assert_eq!(price.channel_slug, None);
     }
 
     #[test]

@@ -4,6 +4,23 @@ use serde_json::{Map, Value};
 
 pub const FLY_PAGE_METADATA_FIELD: &str = "flyPageMeta";
 
+/// Text fields that accept a localized value wrapper in PageMetadata.
+/// Coverage and publication validation must use the same field inventory.
+pub(crate) const LOCALIZED_METADATA_FIELDS: &[&str] = &[
+    "title",
+    "description",
+    "slug",
+    "canonical_url",
+    "open_graph_title",
+    "open_graph_description",
+    "open_graph_image",
+    "open_graph_type",
+    "twitter_card",
+    "twitter_title",
+    "twitter_description",
+    "twitter_image",
+];
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct PageMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -42,7 +59,18 @@ pub struct PageMetadata {
 }
 
 impl PageMetadata {
+    /// Authoring projection. Unresolved localized text is shown only as an editor preview.
     pub fn from_page(page: &ProjectPage) -> Self {
+        Self::from_page_with_preview(page, true)
+    }
+
+    /// Rendering and route selection must never substitute an arbitrary editor preview
+    /// for a localized value that the runtime resolver could not select.
+    pub(crate) fn from_rendered_page(page: &ProjectPage) -> Self {
+        Self::from_page_with_preview(page, false)
+    }
+
+    fn from_page_with_preview(page: &ProjectPage, allow_preview: bool) -> Self {
         let Some(mut fields) = page
             .extensions
             .get(FLY_PAGE_METADATA_FIELD)
@@ -52,24 +80,24 @@ impl PageMetadata {
             return Self::default();
         };
 
-        let title = take_plain_or_localized_preview(&mut fields, "title");
-        let description = take_plain_or_localized_preview(&mut fields, "description");
-        let slug = take_plain_or_localized_preview(&mut fields, "slug");
-        let canonical_url = take_plain_or_localized_preview(&mut fields, "canonical_url");
-        let open_graph_title = take_plain_or_localized_preview(&mut fields, "open_graph_title");
+        let title = take_text_field(&mut fields, "title", allow_preview);
+        let description = take_text_field(&mut fields, "description", allow_preview);
+        let slug = take_text_field(&mut fields, "slug", allow_preview);
+        let canonical_url = take_text_field(&mut fields, "canonical_url", allow_preview);
+        let open_graph_title = take_text_field(&mut fields, "open_graph_title", allow_preview);
         let open_graph_description =
-            take_plain_or_localized_preview(&mut fields, "open_graph_description");
-        let open_graph_image = take_plain_or_localized_preview(&mut fields, "open_graph_image");
+            take_text_field(&mut fields, "open_graph_description", allow_preview);
+        let open_graph_image = take_text_field(&mut fields, "open_graph_image", allow_preview);
         let no_index = fields
             .remove("no_index")
             .and_then(|value| value.as_bool())
             .unwrap_or(false);
-        let open_graph_type = take_plain_or_localized_preview(&mut fields, "open_graph_type");
-        let twitter_card = take_plain_or_localized_preview(&mut fields, "twitter_card");
-        let twitter_title = take_plain_or_localized_preview(&mut fields, "twitter_title");
+        let open_graph_type = take_text_field(&mut fields, "open_graph_type", allow_preview);
+        let twitter_card = take_text_field(&mut fields, "twitter_card", allow_preview);
+        let twitter_title = take_text_field(&mut fields, "twitter_title", allow_preview);
         let twitter_description =
-            take_plain_or_localized_preview(&mut fields, "twitter_description");
-        let twitter_image = take_plain_or_localized_preview(&mut fields, "twitter_image");
+            take_text_field(&mut fields, "twitter_description", allow_preview);
+        let twitter_image = take_text_field(&mut fields, "twitter_image", allow_preview);
         let structured_data = fields
             .remove("structured_data")
             .and_then(|value| match value {
@@ -255,14 +283,18 @@ pub fn normalize_slug(value: String) -> String {
     slug
 }
 
-fn take_plain_or_localized_preview(fields: &mut Map<String, Value>, field: &str) -> Option<String> {
+fn take_text_field(
+    fields: &mut Map<String, Value>,
+    field: &str,
+    allow_preview: bool,
+) -> Option<String> {
     match fields.get(field) {
         Some(Value::String(_)) => fields
             .remove(field)
             .and_then(|value| value.as_str().map(ToString::to_string))
             .and_then(|value| normalize_optional(Some(value))),
-        Some(value) => localized_preview(value),
-        None => None,
+        Some(value) if allow_preview => localized_preview(value),
+        _ => None,
     }
 }
 

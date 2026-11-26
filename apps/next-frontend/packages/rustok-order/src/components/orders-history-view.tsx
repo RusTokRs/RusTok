@@ -172,11 +172,17 @@ export function OrdersHistoryView({
           icon: Package,
           className: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
         };
-      case "CONFIRMED":
+      case "PAID":
         return {
           label: isRu ? "Оплачен" : "Paid",
           icon: CreditCard,
           className: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
+        };
+      case "CONFIRMED":
+        return {
+          label: isRu ? "Подтвержден" : "Confirmed",
+          icon: CheckCircle2,
+          className: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
         };
       case "CANCELLED":
         return {

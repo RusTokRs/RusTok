@@ -24,6 +24,9 @@ pub fn key_stroke_from_event(event: &KeyboardEvent) -> KeyStroke {
 }
 
 pub fn shortcut_from_event(event: &KeyboardEvent) -> Option<EditorShortcut> {
+    if event.is_composing() || event.get_modifier_state("AltGraph") {
+        return None;
+    }
     resolve_editor_shortcut(&key_stroke_from_event(event))
 }
 

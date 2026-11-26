@@ -82,6 +82,16 @@ impl UserStatsService {
         Self::adjust_counts_in_tx(txn, tenant_id, user_id, 0, delta, 0).await
     }
 
+    pub(crate) async fn adjust_reply_publication_counts_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        user_id: Option<Uuid>,
+        reply_delta: i32,
+        solution_delta: i32,
+    ) -> ForumResult<()> {
+        Self::adjust_counts_in_tx(txn, tenant_id, user_id, 0, reply_delta, solution_delta).await
+    }
+
     pub(crate) async fn adjust_solution_count_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
@@ -142,8 +152,9 @@ impl UserStatsService {
         if topic_delta < 0 || reply_delta < 0 || solution_delta < 0 {
             // Negative adjustments must fail closed like the exact solution
             // decrement above (and like category/topic counters): silently
-            // clamping at zero hid counter drift forever. Callers adjust
-            // one counter at a time, so a single guarded update is exact.
+            // clamping at zero hid counter drift forever. Related deltas (a
+            // withdrawn reply and its accepted solution) share this one write:
+            // database guards may reconcile every counter after each update.
             let statement = match txn.get_database_backend() {
                 DatabaseBackend::Postgres => Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,

@@ -57,11 +57,23 @@ impl ForumTopicVisibilityScope {
 /// an existence oracle.
 pub struct ForumTopicVisibilityService {
     db: DatabaseConnection,
+    taxonomy_port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
 }
 
 impl ForumTopicVisibilityService {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self {
+            db,
+            taxonomy_port: std::sync::Arc::new(crate::NoopForumTaxonomyPort),
+        }
+    }
+
+    pub fn with_taxonomy_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
+    ) -> Self {
+        self.taxonomy_port = port;
+        self
     }
 
     pub(crate) async fn hidden_category_ids_for_viewer(
@@ -70,6 +82,7 @@ impl ForumTopicVisibilityService {
         is_authenticated: bool,
     ) -> ForumResult<Vec<Uuid>> {
         ForumCategoryVisibilityPolicyService::new(self.db.clone())
+            .with_taxonomy_port(self.taxonomy_port.clone())
             .hidden_category_ids_for_viewer(tenant_id, is_authenticated)
             .await
     }

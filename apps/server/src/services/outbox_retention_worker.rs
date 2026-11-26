@@ -4,6 +4,8 @@ use std::time::Duration;
 use rustok_outbox::OutboxRetention;
 use tokio::task::JoinHandle;
 
+use crate::services::stop_handle::may_admit_next_worker_operation;
+
 static OUTBOX_RETENTION_FAILURE_TOTAL: AtomicU64 = AtomicU64::new(0);
 const OUTBOX_RETENTION_FAILURE_RETRY_DELAY: Duration = Duration::from_secs(60);
 
@@ -63,7 +65,7 @@ async fn supervise_outbox_retention(
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
 ) {
     loop {
-        if *stop_rx.borrow() {
+        if !may_admit_next_worker_operation(&stop_rx) {
             tracing::info!("Outbox retention worker received shutdown signal, exiting");
             return;
         }

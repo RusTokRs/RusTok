@@ -238,6 +238,7 @@ impl FulfillmentProviderOperationJournal {
         )
         .await?;
         if identity.as_ref().is_none_or(|row| row.id != operation_id) {
+            txn.rollback().await?;
             return Err(provider_identity_ambiguous());
         }
         let unresolved = provider_operation::Entity::find()
@@ -255,6 +256,7 @@ impl FulfillmentProviderOperationJournal {
         if let Some(scope) = scope {
             // INVARIANT: In-memory input validation that the prepared carrier scope belongs to this operation tenant and fulfillment.
             if scope.tenant_id != tenant_id || scope.fulfillment_id != parent.id {
+                txn.rollback().await?;
                 return Err(FulfillmentError::Validation(
                     "prepared carrier scope is not owned by this operation".into(),
                 ));

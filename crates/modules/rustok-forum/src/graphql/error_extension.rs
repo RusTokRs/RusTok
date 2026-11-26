@@ -547,6 +547,32 @@ mod tests {
     }
 
     #[test]
+    fn preserves_transactional_settings_capability_code() {
+        for (capability, code) in [
+            (
+                "static_module_settings_transactional",
+                "FORUM_TRANSACTIONAL_SETTINGS_UNAVAILABLE",
+            ),
+            (
+                "static_module_settings",
+                "FORUM_STATIC_SETTINGS_UNAVAILABLE",
+            ),
+        ] {
+            let graphql_error: Error = ForumError::capability_unavailable(capability, code).into();
+            let mut server_error = graphql_error.into_server_error(Pos::default());
+            annotate_forum_error(&mut server_error);
+            assert_eq!(
+                extension_value(&server_error, "code"),
+                Some(&Value::from(code))
+            );
+            assert_eq!(
+                extension_value(&server_error, "retryable"),
+                Some(&Value::from(false))
+            );
+        }
+    }
+
+    #[test]
     fn annotates_source_less_legacy_forum_messages() {
         let mut server_error = forum_path(ServerError::new("Topic is locked", None));
 

@@ -1,7 +1,8 @@
 use crate::{
     FLY_PAGE_METADATA_FIELD, FlyError, FlyResult, LOCALIZED_VALUES_FIELD, LocalizedPageRouteEntry,
     ProjectDocument, RuntimeLocaleSelection, localized_page_route_index, normalize_slug,
-    localized_route::match_route_entry, runtime_locale::select_translation,
+    localized_route::match_route_entry,
+    runtime_locale::{duplicate_locale_key, invalid_locale_key, select_translation},
 };
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -80,11 +81,24 @@ impl InteractionRouteCatalog {
         };
         let selected = match raw {
             Value::String(value) => Some(value.as_str()),
-            Value::Object(wrapper) => wrapper
-                .get(LOCALIZED_VALUES_FIELD)
-                .and_then(Value::as_object)
-                .and_then(|values| select_translation(wrapper, values, selection))
-                .and_then(|(value, _, _)| value.as_str()),
+            Value::Object(wrapper) => {
+                let Some(values) = wrapper.get(LOCALIZED_VALUES_FIELD).and_then(Value::as_object)
+                else {
+                    return Ok(None);
+                };
+                if let Some(locale) = invalid_locale_key(values) {
+                    return Err(FlyError::Decode(format!(
+                        "target page index {page_index} has invalid slug locale `{locale}`"
+                    )));
+                }
+                if let Some(locale) = duplicate_locale_key(values) {
+                    return Err(FlyError::Decode(format!(
+                        "target page index {page_index} has ambiguous slug locale `{locale}`"
+                    )));
+                }
+                select_translation(wrapper, values, selection)
+                    .and_then(|(value, _, _)| value.as_str())
+            }
             _ => None,
         };
         let Some(slug) = selected.map(|value| normalize_slug(value.to_string()))
@@ -326,6 +340,87 @@ mod tests {
         let full = crate::materialize_project_with_runtime_context(&document, &context);
         assert_eq!(full.fallback_internal_links, 1);
         assert_eq!(full.fallback_actions, 1);
+    }
+
+    #[test]
+    fn ambiguous_slug_locale_blocks_inbound_and_outbound_navigation() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root", "type": "wrapper",
+                    "components": [{
+                        "id": "link", "type": "link",
+                        "flyPageLink": { "page_id": "target", "fallback_href": "/fallback" }
+                    }, {
+                        "id": "action", "type": "button",
+                        "flyAction": { "kind": "navigate_page", "page_id": "target", "fallback_href": "/fallback" }
+                    }]
+                }
+            }, {
+                "id": "target",
+                "flyPageMeta": {
+                    "slug": { "$localized": { "ru-RU": "first", "ru_RU": "second", "en": "third" } }
+                },
+                "component": { "id": "target-root", "type": "wrapper" }
+            }]
+        })).expect("document");
+        let context = json!({ "$locale": "ru-RU" });
+        for slug in ["first", "second", "third"] {
+            assert!(crate::resolve_localized_page_route(&document, slug, &context).is_err());
+        }
+        assert!(crate::validate_runtime_extensions(&document).iter().any(|diagnostic| {
+            diagnostic.code == "localized_metadata_locale_ambiguous"
+        }));
+        let full = crate::materialize_project_with_runtime_context(&document, &context);
+        assert_eq!(full.unresolved_internal_links, 1);
+        assert_eq!(full.unresolved_actions, 1);
+        assert_eq!(full.fallback_internal_links, 0);
+        assert_eq!(full.fallback_actions, 0);
+        for id in ["link", "action"] {
+            assert!(!full.document.component(id).unwrap().attributes.contains_key("href"));
+        }
+    }
+
+    #[test]
+    fn malformed_slug_locale_blocks_inbound_and_outbound_navigation() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root", "type": "wrapper",
+                    "components": [{
+                        "id": "link", "type": "link",
+                        "flyPageLink": { "page_id": "target", "fallback_href": "/fallback" }
+                    }, {
+                        "id": "action", "type": "button",
+                        "flyAction": { "kind": "navigate_page", "page_id": "target", "fallback_href": "/fallback" }
+                    }]
+                }
+            }, {
+                "id": "target",
+                "flyPageMeta": {
+                    "slug": { "$localized": { "en": "valid", "invalid locale": "invalid" } }
+                },
+                "component": { "id": "target-root", "type": "wrapper" }
+            }]
+        })).expect("document");
+        let context = json!({ "$locale": "en" });
+        for slug in ["valid", "invalid"] {
+            assert!(crate::resolve_localized_page_route(&document, slug, &context).is_err());
+        }
+        assert!(crate::validate_project_locale_policy(&document).iter().any(|diagnostic| {
+            diagnostic.code == "localized_metadata_locale_invalid"
+                && diagnostic.severity == crate::ValidationSeverity::Error
+        }));
+        let full = crate::materialize_project_with_runtime_context(&document, &context);
+        assert_eq!(full.unresolved_internal_links, 1);
+        assert_eq!(full.unresolved_actions, 1);
+        assert_eq!(full.fallback_internal_links, 0);
+        assert_eq!(full.fallback_actions, 0);
+        for id in ["link", "action"] {
+            assert!(!full.document.component(id).unwrap().attributes.contains_key("href"));
+        }
     }
 
     #[test]

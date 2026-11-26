@@ -1,3 +1,4 @@
+use crate::codec::{MAXIMUM_DECODE_DEPTH, ensure_depth_within_limit};
 use crate::{ContentDigest, FlyError, FlyResult, GrapesJsCodec};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -23,6 +24,7 @@ pub struct ProjectSnapshot {
 impl ProjectSnapshot {
     /// Digest of the payload as it is stored right now.
     pub fn compute_content_digest(&self) -> FlyResult<ContentDigest> {
+        ensure_depth_within_limit(&self.project_data, MAXIMUM_DECODE_DEPTH)?;
         ContentDigest::from_json(&self.project_data)
     }
 
@@ -31,13 +33,24 @@ impl ProjectSnapshot {
         self.content_digest.is_some()
     }
 
-    /// Verify the integrity digest, then the cheap fingerprint, then decode.
+    /// Bound both JSON fields before retaining or cloning the snapshot as a history command.
+    pub(crate) fn validate_retained_depth(&self) -> FlyResult<()> {
+        ensure_depth_within_limit(&self.project_data, MAXIMUM_DECODE_DEPTH)?;
+        for value in self.metadata.values() {
+            ensure_depth_within_limit(value, MAXIMUM_DECODE_DEPTH - 1)?;
+        }
+        Ok(())
+    }
+
+    /// Bound the payload depth, verify its digest, decode it and verify its fingerprint.
     ///
-    /// The digest is checked first and in constant time: it is the only check that actually
-    /// resists a crafted payload.
+    /// The digest is checked before decoding and in constant time: it is the only integrity
+    /// check that actually resists a crafted payload. The depth check prevents recursive
+    /// serialization or cloning of pathological values before integrity verification.
     pub fn restore(&self) -> FlyResult<crate::ProjectDocument> {
+        ensure_depth_within_limit(&self.project_data, MAXIMUM_DECODE_DEPTH)?;
         self.verify_content_digest()?;
-        let document = GrapesJsCodec::decode_value(self.project_data.clone())?;
+        let document = GrapesJsCodec::decode_ref(&self.project_data)?;
         let actual = document.hash().hex();
         if actual != self.project_hash {
             return Err(FlyError::SnapshotHashMismatch {
@@ -62,7 +75,8 @@ impl ProjectSnapshot {
         let Some(declared) = self.content_digest.as_ref() else {
             return Ok(());
         };
-        let actual = self.compute_content_digest()?;
+        // restore has already checked the payload depth.
+        let actual = ContentDigest::from_json(&self.project_data)?;
         if declared.matches(&actual) {
             return Ok(());
         }

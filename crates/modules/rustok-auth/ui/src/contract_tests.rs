@@ -19,33 +19,22 @@ fn test_storage_and_cookie_constants_contract() {
 #[test]
 fn test_refresh_cookie_helpers_contract() {
     let tenant = "tenant-acme";
-    let token = "token-secret-123456";
+    let cookie_val = format!("{tenant}.{}.{}", "a1".repeat(32), "b2".repeat(32));
+    let credential = RefreshCredential::parse(&cookie_val).unwrap();
+    assert_eq!(credential.tenant(), tenant);
+    assert!(RefreshCredential::parse("invalid").is_err());
+    assert!(RefreshCredential::parse("tenant.token").is_err());
 
-    let cookie_val = refresh_cookie_value(tenant, token);
-    assert_eq!(cookie_val, "tenant-acme.token-secret-123456");
-
-    let parsed = parse_refresh_cookie_value(&cookie_val);
-    assert_eq!(parsed, Some((tenant, token)));
-
-    assert!(parse_refresh_cookie_value("invalid").is_none());
-    assert!(parse_refresh_cookie_value(".token").is_none());
-    assert!(parse_refresh_cookie_value("tenant.").is_none());
-
-    let raw_header = format!(
-        "other=1; {}={}; session=abc",
-        ADMIN_REFRESH_COOKIE, cookie_val
-    );
-    let extracted = inspect_refresh_cookie_headers([raw_header.as_str()]);
-    assert_eq!(extracted, Ok(Some((tenant.to_string(), token.to_string()))));
+    let raw_header = format!("other=1; {ADMIN_REFRESH_COOKIE}={cookie_val}; session=abc");
+    assert_eq!(inspect_refresh_cookie_headers([raw_header.as_str()]), Ok(Some(credential.clone())));
     assert_eq!(inspect_refresh_cookie_headers([]), Ok(None));
     assert!(inspect_refresh_cookie_headers([raw_header.as_str(), raw_header.as_str()]).is_err());
 
-    let set_cookie_insecure = refresh_cookie_header(tenant, token, false);
+    let set_cookie_insecure = refresh_cookie_header(&credential, false);
     assert!(set_cookie_insecure.contains("HttpOnly"));
     assert!(set_cookie_insecure.contains("SameSite=Lax"));
     assert!(!set_cookie_insecure.contains("Secure"));
-
-    let set_cookie_secure = refresh_cookie_header(tenant, token, true);
+    let set_cookie_secure = refresh_cookie_header(&credential, true);
     assert!(set_cookie_secure.contains("; Secure"));
 
     let clear_cookie = clear_refresh_cookie_header(true);

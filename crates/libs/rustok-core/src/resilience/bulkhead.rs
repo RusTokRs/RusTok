@@ -188,7 +188,9 @@ impl Bulkhead {
 
     /// Number of currently in-flight calls
     pub fn current_concurrent(&self) -> usize {
-        self.config.max_concurrent_calls - self.semaphore.available_permits()
+        self.config
+            .max_concurrent_calls
+            .saturating_sub(self.semaphore.available_permits())
     }
 
     /// Snapshot of bulkhead statistics
@@ -212,6 +214,10 @@ impl Bulkhead {
     /// ```
     pub fn export_prometheus_metrics(&self, name: &str) -> String {
         let stats = self.stats();
+        let escaped_name = name
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n");
         format!(
             r#"# HELP bulkhead_concurrent_calls_current Current number of concurrent calls in flight
 # TYPE bulkhead_concurrent_calls_current gauge
@@ -235,7 +241,7 @@ bulkhead_rejected_total{{name="{name}"}} {rejected}
 # TYPE bulkhead_utilization gauge
 bulkhead_utilization{{name="{name}"}} {utilization:.4}
 "#,
-            name = name,
+            name = escaped_name,
             current = stats.current_concurrent,
             max = stats.max_concurrent_calls,
             requests = stats.total_requests,

@@ -21,6 +21,7 @@
 - Registered by owner backend modules such as `rustok-pages`, `rustok-product`, `rustok-blog`, and `rustok-forum`.
 - Consumed by `rustok-seo` to resolve metadata, routing, bulk operations, redirects, and sitemap generation through one shared runtime registry.
 - Wired into host runtimes through `rustok-core::ModuleRuntimeExtensions`.
+- Server `SeoTargetRuntimeContext.runtime_extensions` carries a cloned host capability snapshot to owner providers, so providers can compose their own typed dependencies at request time. Standalone struct literals supply `Default::default()` explicitly; an empty snapshot does not simulate an external provider.
 - Runtime consumers are expected to fail fast when the shared registry is missing instead of silently falling back to hardcoded built-ins.
 - Not listed in `modules.toml` and not tenant-toggled directly.
 

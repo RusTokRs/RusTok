@@ -19,7 +19,7 @@ const contract = JSON.parse(
   read("crates/modules/rustok-forum/contracts/forum-topic-slug-rename-owner.json"),
 );
 const test = read("crates/modules/rustok-forum/tests/topic_slug_rename_sqlite.rs");
-const plan = read("crates/modules/rustok-forum/docs/implementation-plan.md");
+const api = read("crates/modules/rustok-forum/CRATE_API.md");
 
 if (contract.task !== "FORUM-24D") {
   throw new Error("FORUM-24D contract task drifted");
@@ -74,6 +74,8 @@ mustContain(
   "ForumTopicRouteDisposition::Gone",
   "deleted old route assertion",
 );
-mustContain(plan, "### Delivered in FORUM-24D", "canonical plan synchronization");
+for (const marker of ["TopicService::rename_slug", "Topic slug changed", "immutable", "edit window"]) {
+  mustContain(api, marker, "canonical slug rename contract");
+}
 
 console.log("FORUM-24D topic slug rename owner source contract is present");

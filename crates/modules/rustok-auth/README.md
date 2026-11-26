@@ -21,6 +21,9 @@ FFA package and framework-neutral session models in `rustok-ui-auth`.
   operation and traverses root fragments without recursion or repeated expansion.
 - Enforce tenant-composite integrity for OAuth apps, tokens, authorization codes,
   consents, and their user subjects at both database and query boundaries.
+- Self-service email changes require current-password reauthentication, a short-lived
+  one-time mailbox challenge, transactional identity/session updates, and a notice to
+  the previous mailbox.
 - Fail auth configuration fast for malformed or mismatched RS256 keys and keep
   OAuth code exchange and refresh rotation on one transactional execution path.
 
@@ -97,6 +100,16 @@ it never provisions a service or adds grants. Human transport authentication is 
 
 ### Known Limitations / Pending Implementation
 
+Direct first-party refresh has source-level proof-bound recovery through the
+raw and cookie REST endpoints and GraphQL HTTP transport. The cookie
+REST owner issues an HttpOnly token/seed envelope and derives its proof;
+Next Admin relays that envelope and direct Leptos CSR coordinates cooperating
+tabs with Web Locks. Shared Leptos native/SSR BFF uses the raw proof scheme.
+All use bounded ambiguous refresh retry. Standalone Storefront SSR composition,
+Next Storefront, mobile/native proof handling, generated API header documentation, compilation
+and multi-replica runtime evidence remain pending. See the
+[proof-bound refresh ADR](../../../DECISIONS/2026-11-26-session-refresh-retry-proof.md).
+
 JWT purpose keyrings, immutable prepared snapshots, fixed RS256 signing and
 verification, exact key selection and retirement are source-implemented.
 Mixed HS256/RS256 runtime branches, default key derivation, algorithm selectors
@@ -142,3 +155,9 @@ OAuth/module availability/secret rotation, denied/revoked grants, backend and de
 remain pending; absent bindings refuse instead of falling back to system/admin authority.
 The [existing downstream task record](../rustok-inventory/docs/implementation-plan.md) tracks
 recovery/cutover gates. No public transport/UI or new operator capability is exposed here.
+
+The shared Leptos CSR/hydrate provider now source-wires origin-wide transition
+admission, foreign epoch invalidation and atomic verified memory publication.
+See [Auth UI](ui/README.md); server-side expected-lineage admission is
+source-wired for raw/cookie REST and GraphQL HTTP refresh, with mounted browser
+and cross-replica verification pending.

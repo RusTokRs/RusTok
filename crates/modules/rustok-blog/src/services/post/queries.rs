@@ -239,19 +239,26 @@ impl PostService {
         let Some(channel_slug) = normalize_public_channel_slug(channel_slug) else {
             return Ok(true);
         };
-        let channel_service = rustok_channel::ChannelService::new(self.db.clone());
-        let Some(channel) = channel_service
-            .get_channel_by_slug(tenant_id, channel_slug.as_str())
+        use rustok_api::{PortActor, PortContext};
+        use rustok_channel_ports::{CHANNEL_PUBLIC_MODULE_READ_CLAIM, ReadChannelPublicModule};
+
+        // Channel availability is locale independent. The outer post operation
+        // continues to own locale resolution and the post's allowlist.
+        let context = PortContext::new(
+            tenant_id.to_string(),
+            PortActor::service("blog"),
+            PLATFORM_FALLBACK_LOCALE,
+            Uuid::new_v4().to_string(),
+        )
+        .with_claim(CHANNEL_PUBLIC_MODULE_READ_CLAIM)
+        .with_deadline(std::time::Duration::from_secs(2));
+        self.channel_public_module_port
+            .is_public_module_available(context, ReadChannelPublicModule {
+                channel_slug,
+                module_slug: "blog".to_string(),
+            })
             .await
-            .map_err(BlogError::from)?
-        else {
-            return Ok(false);
-        };
-        Ok(channel.is_active
-            && channel_service
-                .is_module_enabled_for_tenant(tenant_id, channel.id, "blog")
-                .await
-                .map_err(BlogError::from)?)
+            .map_err(BlogError::from)
     }
 
     /// Builds public summaries for already-filtered posts: translations, channel

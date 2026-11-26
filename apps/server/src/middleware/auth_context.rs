@@ -101,9 +101,16 @@ pub async fn resolve_optional(
         return with_host_authority_scope(host_authority, next.run(req)).await;
     }
 
-    if is_oauth_client_auth_request(request_method.as_str(), request_path.as_str()) {
-        // OAuth token and revocation endpoints authenticate clients with
-        // protocol-level credentials (including HTTP Basic), not user Bearer tokens.
+    if is_oauth_client_auth_request(request_method.as_str(), request_path.as_str())
+        || super::mcp_scaffold_workspace::is_remote_mcp_auth_request(
+            &request_method,
+            request_path.as_str(),
+        )
+    {
+        // OAuth client endpoints and remote MCP runtime endpoints own their
+        // protocol credentials. An MCP bearer is an opaque persisted token,
+        // not a user JWT. Preserve independent host authority and let the
+        // protocol handler authenticate the credential before any operation.
         if let Some(host_authority) = host_authority {
             parts.extensions.insert(host_authority);
         }
@@ -445,7 +452,7 @@ mod tests {
         PAGES_AUTHORING_CACHE_CONTROL, PAGES_AUTHORING_ROBOTS_POLICY,
         auth_can_resolve_without_tenant_context, auth_error_response,
         is_direct_user_self_service_path, is_direct_user_self_service_principal,
-        is_human_user_self_service_path, is_observability_auth_path,
+        is_human_user_self_service_path, is_observability_auth_path, is_oauth_client_auth_request,
         is_pages_inline_authoring_server_fn, is_pages_inline_authoring_surface,
         pages_inline_authoring_response, service_forum_boundary_violation,
         verified_tenant_id_from_access_token,
@@ -518,6 +525,72 @@ mod tests {
         assert!(!is_oauth_client_auth_request("GET", "/api/oauth/token"));
         assert!(!is_oauth_client_auth_request("POST", "/api/oauth/authorize"));
         assert!(!is_oauth_client_auth_request("POST", "/api/auth/login"));
+    }
+
+    #[tokio::test]
+    async fn remote_mcp_credentials_reach_protocol_handler_without_user_jwt() {
+        use axum::{Router, body::Body, http::Request, middleware, routing::post};
+        use tower::ServiceExt;
+
+        let ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            crate::common::settings::RustokSettings::default(),
+        );
+        let state =
+            crate::services::server_runtime_context::ServerAuthRuntime::without_auth(ctx);
+        let app = Router::new()
+            .route(
+                "/api/mcp/runtime/bootstrap",
+                post(|| async { StatusCode::NO_CONTENT }),
+            )
+            .route(
+                "/api/mcp/runtime/tools/call",
+                post(|| async { StatusCode::NO_CONTENT }),
+            )
+            .route(
+                "/api/mcp/runtime/tools/stream",
+                post(|| async { StatusCode::NO_CONTENT }),
+            )
+            .route(
+                "/api/mcp/clients",
+                post(|| async { StatusCode::NO_CONTENT }),
+            )
+            .layer(middleware::from_fn_with_state(state, super::resolve_optional));
+
+        for path in [
+            "/api/mcp/runtime/bootstrap",
+            "/api/mcp/runtime/tools/call",
+            "/api/mcp/runtime/tools/stream",
+            "/api/mcp/clients",
+        ] {
+            let request = Request::builder()
+                .method(Method::POST)
+                .uri(path)
+                .header(AUTHORIZATION, "Bearer mcp_opaque_test_credential")
+                .body(Body::empty())
+                .expect("request");
+            let response = app.clone().oneshot(request).await.expect("response");
+            if path == "/api/mcp/clients" {
+                assert!(
+                    !response.status().is_success(),
+                    "management still requires user JWT"
+                );
+            } else {
+                assert_eq!(response.status(), StatusCode::NO_CONTENT, "{path}");
+            }
+        }
+
+        let request = Request::builder()
+            .method(Method::POST)
+            .uri("/api/mcp/runtime/bootstrap")
+            .header(AUTHORIZATION, "Bearer mcp_opaque_test_credential")
+            .header(AUTHORIZATION, "Bearer mcp_opaque_test_credential")
+            .body(Body::empty())
+            .expect("duplicate credential request");
+        assert_eq!(
+            app.oneshot(request).await.expect("response").status(),
+            StatusCode::BAD_REQUEST
+        );
     }
 
     #[test]

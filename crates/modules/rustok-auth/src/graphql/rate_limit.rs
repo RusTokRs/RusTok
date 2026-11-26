@@ -49,6 +49,8 @@ enum AuthGraphqlSurface {
     ResetPassword,
     AcceptInvite,
     ChangePassword,
+    RequestEmailChange,
+    ConfirmEmailChange,
     Logout,
 }
 
@@ -62,6 +64,8 @@ impl AuthGraphqlSurface {
             (OperationType::Mutation, "resetPassword") => Some(Self::ResetPassword),
             (OperationType::Mutation, "acceptInvite") => Some(Self::AcceptInvite),
             (OperationType::Mutation, "changePassword") => Some(Self::ChangePassword),
+            (OperationType::Mutation, "requestEmailChange") => Some(Self::RequestEmailChange),
+            (OperationType::Mutation, "confirmEmailChange") => Some(Self::ConfirmEmailChange),
             (OperationType::Mutation, "logout") => Some(Self::Logout),
             _ => None,
         }
@@ -76,6 +80,8 @@ impl AuthGraphqlSurface {
             Self::ResetPassword => "reset_password",
             Self::AcceptInvite => "accept_invite",
             Self::ChangePassword => "change_password",
+            Self::RequestEmailChange => "request_email_change",
+            Self::ConfirmEmailChange => "confirm_email_change",
             Self::Logout => "logout",
         }
     }
@@ -298,6 +304,8 @@ mod tests {
                     refreshToken(refreshToken: "t") { accessToken }
                     logout { success }
                     changePassword(currentPassword: "a", newPassword: "b") { success }
+                    requestEmailChange(input: { newEmail: "b@example.com", currentPassword: "a" }) { success }
+                    confirmEmailChange(input: { token: "challenge" }) { success }
                 }
             "#,
         )
@@ -309,6 +317,8 @@ mod tests {
                 AuthGraphqlSurface::SignIn,
                 AuthGraphqlSurface::RefreshToken,
                 AuthGraphqlSurface::ChangePassword,
+                AuthGraphqlSurface::RequestEmailChange,
+                AuthGraphqlSurface::ConfirmEmailChange,
                 AuthGraphqlSurface::Logout,
             ]
         );

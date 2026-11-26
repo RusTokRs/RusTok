@@ -170,9 +170,10 @@ fn extract_locale_from_query(parts: &Parts) -> Option<String> {
 
 fn extract_locale_from_cookie(headers: &HeaderMap) -> Option<String> {
     headers
-        .get(header::COOKIE)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|raw| {
+        .get_all(header::COOKIE)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .find_map(|raw| {
             raw.split(';').find_map(|entry| {
                 let (name, value) = entry.trim().split_once('=')?;
                 if name != ADMIN_LOCALE_COOKIE {

@@ -25,12 +25,13 @@ pub struct ForumModerationAudienceAuthorization {
     pub reason: ForumAudienceDecisionReason,
 }
 
-/// Evaluates inherited category moderation audience layers before a moderation
-/// owner opens its write transaction or mutates topic, reply, counter, stat,
-/// solution, journal, or outbox state.
+/// Evaluates inherited category moderation audience layers before domain mutation.
+/// Moderation commands re-evaluate inside their writer transaction under the
+/// category-tree lock; read-only previews use their supplied connection.
 pub struct ForumModerationAudienceAuthorizationService {
     db: sea_orm::DatabaseConnection,
     facts_resolver: ForumAudienceFactsResolver,
+    taxonomy_port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
 }
 
 impl ForumModerationAudienceAuthorizationService {
@@ -41,7 +42,16 @@ impl ForumModerationAudienceAuthorizationService {
         Self {
             db,
             facts_resolver: ForumAudienceFactsResolver::new(facts_port),
+            taxonomy_port: std::sync::Arc::new(crate::NoopForumTaxonomyPort),
         }
+    }
+
+    pub fn with_taxonomy_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
+    ) -> Self {
+        self.taxonomy_port = port;
+        self
     }
 
     pub fn without_facts_provider(db: sea_orm::DatabaseConnection) -> Self {
@@ -211,9 +221,15 @@ impl ForumModerationAudienceAuthorizationService {
         context: Option<PortContext>,
     ) -> ForumResult<ForumModerationAudienceAuthorization>
     where
-        C: ConnectionTrait,
+        C: ConnectionTrait + crate::AsForumTaxonomyConnection,
     {
-        let policy = load_category_moderation_audience_policy(db, tenant_id, category_id).await?;
+        let policy = load_category_moderation_audience_policy(
+            self.taxonomy_port.as_ref(),
+            db,
+            tenant_id,
+            category_id,
+        )
+        .await?;
         let mut evaluated_layers = 0usize;
         let mut last_reason = ForumAudienceDecisionReason::Unrestricted;
         for layer in policy.effective_layers {

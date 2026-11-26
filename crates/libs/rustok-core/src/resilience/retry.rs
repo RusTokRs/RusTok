@@ -22,7 +22,16 @@ impl RetryStrategy {
             RetryStrategy::Fixed(duration) => *duration,
 
             RetryStrategy::Exponential { base, max } => {
-                let delay = base.mul_f64(2f64.powi(attempt as i32));
+                if base.is_zero() || max.is_zero() {
+                    return Duration::ZERO;
+                }
+                let mut delay = *base;
+                for _ in 0..attempt.min(64) {
+                    if delay >= *max {
+                        return *max;
+                    }
+                    delay = delay.saturating_mul(2);
+                }
                 delay.min(*max)
             }
 
@@ -178,5 +187,18 @@ mod tests {
         assert_eq!(strategy.delay(1), Duration::from_millis(100));
         assert_eq!(strategy.delay(2), Duration::from_millis(200));
         assert_eq!(strategy.delay(3), Duration::from_millis(300));
+    }
+
+    #[test]
+    fn test_exponential_backoff_large_attempt_does_not_panic() {
+        let max = Duration::from_secs(10);
+        let strategy = RetryStrategy::Exponential {
+            base: Duration::from_millis(100),
+            max,
+        };
+
+        assert_eq!(strategy.delay(64), max);
+        assert_eq!(strategy.delay(10_000), max);
+        assert_eq!(strategy.delay(u32::MAX), max);
     }
 }

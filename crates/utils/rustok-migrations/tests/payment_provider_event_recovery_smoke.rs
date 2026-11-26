@@ -127,3 +127,81 @@ async fn recovery_worker_dead_letters_legacy_event_without_normalized_checkpoint
         .expect("dead-letter provider event must remain readable");
     assert_eq!(dead_letter.status, PROVIDER_EVENT_DEAD_LETTER);
 }
+
+#[tokio::test]
+async fn recovery_admission_closes_between_individual_event_claims() {
+    let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
+    let tenant_id = Uuid::new_v4();
+    let journal = PaymentProviderEventJournal::new(db.clone());
+    let mut event_ids = Vec::new();
+    for index in 0..3 {
+        let event = journal
+            .receive_verified(
+                ReceiveProviderEvent {
+                    tenant_id,
+                    provider_id: "gateway".to_string(),
+                    delivery_id: format!("delivery-admission-{index}"),
+                    idempotency_key: format!("event-admission-{index}"),
+                    raw_payload: br#"{"type":"payment.authorized"}"#.to_vec(),
+                    signature_verified: true,
+                },
+                VerifiedProviderEvent {
+                    event_type: "payment.authorized".to_string(),
+                    external_reference: Some(format!("payment-admission-{index}")),
+                    event_metadata: json!({
+                        "collection_id": Uuid::new_v4(),
+                        "amount": "10.00",
+                        "currency_code": "USD",
+                    }),
+                },
+            )
+            .await
+            .expect("verified provider event must enter inbox");
+        event_ids.push(event.id);
+    }
+    let calls = Arc::new(AtomicUsize::new(0));
+    let recovery = PaymentProviderEventRecoveryService::new(
+        db,
+        Arc::new(AcceptingApplier {
+            calls: calls.clone(),
+        }),
+    );
+
+    let closed = recovery
+        .run_with_admission(tenant_id, "worker", Some(10), || false)
+        .await
+        .expect("closed admission is a clean stop");
+    assert_eq!(closed.scanned, 0);
+    let report = recovery
+        .run_with_admission(tenant_id, "worker", Some(10), || {
+            calls.load(Ordering::SeqCst) == 0
+        })
+        .await
+        .expect("admitted attempt must finish before stopping");
+    assert_eq!(report.scanned, 1);
+    assert_eq!(report.processed, 1);
+    assert_eq!(report.errors, 0);
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+    let mut untouched = 0;
+    for event_id in event_ids {
+        let event = journal.get(tenant_id, event_id).await.expect("read event");
+        if event.status == "received" {
+            assert_eq!(event.attempt_count, 0);
+            assert!(event.lease_owner.is_none());
+            untouched += 1;
+        } else {
+            assert_eq!(event.status, PROVIDER_EVENT_PROCESSED);
+            assert_eq!(event.attempt_count, 1);
+        }
+    }
+    assert_eq!(untouched, 2);
+
+    let remaining = recovery
+        .run(tenant_id, "worker", Some(10))
+        .await
+        .expect("next sweep can resume untouched events");
+    assert_eq!(remaining.scanned, 2);
+    assert_eq!(remaining.processed, 2);
+    assert_eq!(calls.load(Ordering::SeqCst), 3);
+}

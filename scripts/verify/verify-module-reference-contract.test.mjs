@@ -14,6 +14,7 @@ const blog = "crates/modules/rustok-blog";
 // These tests establish the guard's rejection behavior, never runtime readiness.
 const sources = [
   `${blog}/src`,
+  `${blog}/ports/src`,
   `${blog}/admin/src`,
   `${blog}/storefront/src`,
   `${blog}/docs/implementation-plan.md`,

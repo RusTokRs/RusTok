@@ -32,7 +32,7 @@ use super::projection_invalidation::{
     publish_forum_category_projection_in_tx, publish_forum_topic_projection_in_tx,
 };
 use super::rbac::enforce_scope;
-use super::topic_audience::load_policy_for_topic;
+use super::topic_audience::load_policy_for_topic_with_port;
 use super::topic_audience_lock::lock_topic_audience_scopes_in_tx;
 use super::topic_reply_create_audience::load_topic_reply_create_audience_policy_for_topic;
 use super::user_stats::UserStatsService;
@@ -131,11 +131,24 @@ struct StoredSplitOperation {
 pub struct ForumTopicSplitService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
+    taxonomy_port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
 }
 
 impl ForumTopicSplitService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        Self { db, event_bus }
+        Self {
+            db,
+            event_bus,
+            taxonomy_port: std::sync::Arc::new(crate::NoopForumTaxonomyPort),
+        }
+    }
+
+    pub fn with_taxonomy_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
+    ) -> Self {
+        self.taxonomy_port = port;
+        self
     }
 
     #[instrument(skip(self, security, input))]
@@ -163,6 +176,9 @@ impl ForumTopicSplitService {
             return Ok(operation_to_result(existing));
         }
 
+        // Match delete/restore: lock the hierarchy before any topic/counter row.
+        // Exact receipt replay above intentionally does not consult current policy.
+        lock_category_tree_in_tx(&txn, tenant_id).await?;
         let preliminary_source = find_topic_in_tx(&txn, tenant_id, source_topic_id).await?;
         lock_split_counter_scopes_in_tx(
             &txn,
@@ -187,10 +203,15 @@ impl ForumTopicSplitService {
                 "Forum topic split source published reply counter is invalid".to_string(),
             ));
         }
-        ensure_category_active_in_tx(&txn, tenant_id, source.category_id).await?;
+        ensure_category_active_in_tx(
+            self.taxonomy_port.as_ref(),
+            &txn,
+            tenant_id,
+            source.category_id,
+        )
+        .await?;
         ensure_target_topic_absent_in_tx(&txn, tenant_id, prepared.target_topic_id).await?;
 
-        lock_category_tree_in_tx(&txn, tenant_id).await?;
         lock_topic_audience_scopes_in_tx(
             &txn,
             tenant_id,
@@ -304,7 +325,14 @@ impl ForumTopicSplitService {
 
         clone_topic_access_in_tx(&txn, tenant_id, source_topic_id, prepared.target_topic_id)
             .await?;
-        validate_cloned_access_in_tx(&txn, tenant_id, &source, &target).await?;
+        validate_cloned_access_in_tx(
+            self.taxonomy_port.as_ref(),
+            &txn,
+            tenant_id,
+            &source,
+            &target,
+        )
+        .await?;
 
         let reply_audit =
             move_selected_replies_in_tx(&txn, tenant_id, prepared.target_topic_id, selected, now)
@@ -632,17 +660,14 @@ async fn lock_topic_split_tenant_in_tx(
 ) -> ForumResult<()> {
     match txn.get_database_backend() {
         DatabaseBackend::Postgres => {
-            for (scope, seed) in [
-                (format!("forum-topic-split:{tenant_id}"), 21_i32),
-                (tenant_id.to_string(), 0_i32),
-            ] {
-                txn.execute_raw(Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    "SELECT pg_advisory_xact_lock(hashtextextended($1, $2))",
-                    vec![scope.into(), seed.into()],
-                ))
-                .await?;
-            }
+            // Serialize receipt creation only. The command acquires the shared
+            // hierarchy scope explicitly after immutable receipt replay.
+            txn.execute_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT pg_advisory_xact_lock(hashtextextended($1, 21))",
+                vec![format!("forum-topic-split:{tenant_id}").into()],
+            ))
+            .await?;
             Ok(())
         }
         DatabaseBackend::Sqlite => {
@@ -765,11 +790,12 @@ async fn ensure_target_topic_absent_in_tx(
 }
 
 async fn ensure_category_active_in_tx(
+    port: &dyn crate::ForumTaxonomyPort,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     category_id: Uuid,
 ) -> ForumResult<()> {
-    ensure_category_tree_target_is_active_in_tx(txn, tenant_id, category_id).await
+    ensure_category_tree_target_is_active_in_tx(port, txn, tenant_id, category_id).await
 }
 
 async fn lock_topic_reply_create_scopes_in_tx(
@@ -1096,13 +1122,16 @@ async fn clone_topic_access_in_tx(
 }
 
 async fn validate_cloned_access_in_tx(
+    port: &dyn crate::ForumTaxonomyPort,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     source: &forum_topic::Model,
     target: &forum_topic::Model,
 ) -> ForumResult<()> {
-    let source_visibility = load_policy_for_topic(txn, tenant_id, source).await?;
-    let target_visibility = load_policy_for_topic(txn, tenant_id, target).await?;
+    let source_visibility =
+        load_policy_for_topic_with_port(port, txn, txn.into(), tenant_id, source).await?;
+    let target_visibility =
+        load_policy_for_topic_with_port(port, txn, txn.into(), tenant_id, target).await?;
     if source_visibility.inherited_category_layers != target_visibility.inherited_category_layers
         || source_visibility.configured_constraints != target_visibility.configured_constraints
     {
@@ -1111,9 +1140,9 @@ async fn validate_cloned_access_in_tx(
         ));
     }
     let source_reply_create =
-        load_topic_reply_create_audience_policy_for_topic(txn, tenant_id, source).await?;
+        load_topic_reply_create_audience_policy_for_topic(port, txn, tenant_id, source).await?;
     let target_reply_create =
-        load_topic_reply_create_audience_policy_for_topic(txn, tenant_id, target).await?;
+        load_topic_reply_create_audience_policy_for_topic(port, txn, tenant_id, target).await?;
     if source_reply_create.inherited_category_layers
         != target_reply_create.inherited_category_layers
         || source_reply_create.configured_constraints != target_reply_create.configured_constraints

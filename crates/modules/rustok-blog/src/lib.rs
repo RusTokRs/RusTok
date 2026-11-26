@@ -56,6 +56,7 @@ pub use integrations::reaction_subject::{
 };
 pub use module::BlogModule;
 pub use ports::BlogCategoryDeleteCleanupPort as TaxonomyCategoryDeleteCleanupPort;
+pub use ports::published_post_read_context;
 pub use ports::taxonomy::blog_taxonomy_from_runtime;
 pub use ports::{
     BlogCategoryDeleteCleanupPort, BlogTaxonomyConnection, BlogTaxonomyPort,

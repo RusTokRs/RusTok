@@ -11,7 +11,7 @@ fn module_metadata() {
         "Variant pricing, price lists, regions, and discount calculations"
     );
     assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
-    assert_eq!(module.dependencies(), ["product"]);
+    assert_eq!(module.dependencies(), ["product", "region"]);
 }
 
 #[test]

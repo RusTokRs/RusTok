@@ -82,10 +82,8 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
 
     verify_translation_journal_backfill(&seed_connection, backfill_tenant_id).await?;
 
-    let owner = ServerAuthAdminMutationProvider::new(
-        seed_connection.clone(),
-        auth_config.clone(),
-    );
+    let owner_runtime = ServerRuntimeContext::new(seed_connection.clone(), RustokSettings::default());
+    let owner = ServerAuthAdminMutationProvider::new(&owner_runtime, auth_config.clone());
     let created = create_app(
         &owner,
         tenant_id,

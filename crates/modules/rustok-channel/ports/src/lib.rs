@@ -14,6 +14,12 @@ use async_trait::async_trait;
 use rustok_api::{PortContext, PortError};
 use uuid::Uuid;
 
+mod public_module;
+
+pub use public_module::{
+    CHANNEL_PUBLIC_MODULE_READ_CLAIM, ChannelPublicModuleReadPort, ReadChannelPublicModule,
+};
+
 #[cfg(any(feature = "grpc-client", feature = "grpc-server"))]
 pub mod grpc;
 

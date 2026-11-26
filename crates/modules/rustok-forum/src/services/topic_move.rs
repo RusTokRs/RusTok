@@ -21,13 +21,14 @@ use crate::entities::{
 use crate::error::{ForumError, ForumResult};
 use crate::state_machine::{ReplyStatus, TopicStatus};
 
-use super::category_audience::load_category_audience_policy;
+use super::category_audience::load_category_audience_policy_with_port;
+use super::category_audience::lock_category_tree_in_tx;
 use super::category_lifecycle::ensure_category_tree_target_is_active_in_tx;
 use super::projection_invalidation::{
     publish_forum_category_projection_in_tx, publish_forum_topic_projection_in_tx,
 };
 use super::rbac::enforce_scope;
-use super::topic_audience::load_policy_for_topic;
+use super::topic_audience::load_policy_for_topic_with_port;
 
 pub const MAX_FORUM_TOPIC_MOVE_REASON_LEN: usize = 500;
 const FORUM_TOPIC_MOVED_EVENT_TYPE: &str = "forum.topic.moved";
@@ -64,11 +65,24 @@ pub struct ForumTopicMoveResult {
 pub struct ForumTopicMoveService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
+    taxonomy_port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
 }
 
 impl ForumTopicMoveService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        Self { db, event_bus }
+        Self {
+            db,
+            event_bus,
+            taxonomy_port: std::sync::Arc::new(crate::NoopForumTaxonomyPort),
+        }
+    }
+
+    pub fn with_taxonomy_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
+    ) -> Self {
+        self.taxonomy_port = port;
+        self
     }
 
     #[instrument(skip(self, security, input))]
@@ -105,6 +119,9 @@ impl ForumTopicMoveService {
             return Ok(operation_to_result(existing));
         }
 
+        // Match delete/restore: lock the hierarchy before any topic/counter row.
+        // Exact receipt replay above intentionally does not consult current policy.
+        lock_category_tree_in_tx(&txn, tenant_id).await?;
         lock_topic_in_tx(&txn, tenant_id, topic_id).await?;
         let topic = forum_topic::Entity::find_by_id(topic_id)
             .filter(forum_topic::Column::TenantId.eq(tenant_id))
@@ -147,10 +164,29 @@ impl ForumTopicMoveService {
 
         lock_category_in_tx(&txn, tenant_id, topic.category_id).await?;
         lock_category_in_tx(&txn, tenant_id, input.target_category_id).await?;
-        ensure_category_active_in_tx(&txn, tenant_id, topic.category_id).await?;
-        ensure_category_active_in_tx(&txn, tenant_id, input.target_category_id).await?;
+        ensure_category_active_in_tx(
+            self.taxonomy_port.as_ref(),
+            &txn,
+            tenant_id,
+            topic.category_id,
+        )
+        .await?;
+        ensure_category_active_in_tx(
+            self.taxonomy_port.as_ref(),
+            &txn,
+            tenant_id,
+            input.target_category_id,
+        )
+        .await?;
         validate_solution_in_tx(&txn, tenant_id, topic_id).await?;
-        load_category_audience_policy(&txn, tenant_id, input.target_category_id).await?;
+        load_category_audience_policy_with_port(
+            self.taxonomy_port.as_ref(),
+            &txn,
+            (&txn).into(),
+            tenant_id,
+            input.target_category_id,
+        )
+        .await?;
 
         let now = Utc::now();
         let source_category_id = topic.category_id;
@@ -158,7 +194,14 @@ impl ForumTopicMoveService {
         active.category_id = Set(input.target_category_id);
         active.updated_at = Set(now.into());
         let moved_topic = active.update(&txn).await?;
-        load_policy_for_topic(&txn, tenant_id, &moved_topic).await?;
+        load_policy_for_topic_with_port(
+            self.taxonomy_port.as_ref(),
+            &txn,
+            (&txn).into(),
+            tenant_id,
+            &moved_topic,
+        )
+        .await?;
 
         transfer_category_counters_in_tx(
             &txn,
@@ -282,17 +325,14 @@ async fn lock_topic_move_tenant_in_tx(
 ) -> ForumResult<()> {
     match txn.get_database_backend() {
         DatabaseBackend::Postgres => {
-            for (scope, seed) in [
-                (format!("forum-topic-move:{tenant_id}"), 21_i32),
-                (tenant_id.to_string(), 0_i32),
-            ] {
-                txn.execute_raw(Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    "SELECT pg_advisory_xact_lock(hashtextextended($1, $2))",
-                    vec![scope.into(), seed.into()],
-                ))
-                .await?;
-            }
+            // Serialize receipt creation only. The command acquires the shared
+            // hierarchy scope explicitly after immutable receipt replay.
+            txn.execute_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT pg_advisory_xact_lock(hashtextextended($1, 21))",
+                vec![format!("forum-topic-move:{tenant_id}").into()],
+            ))
+            .await?;
             Ok(())
         }
         DatabaseBackend::Sqlite => {
@@ -371,11 +411,12 @@ async fn lock_category_in_tx(
 }
 
 async fn ensure_category_active_in_tx(
+    port: &dyn crate::ForumTaxonomyPort,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     category_id: Uuid,
 ) -> ForumResult<()> {
-    ensure_category_tree_target_is_active_in_tx(txn, tenant_id, category_id).await
+    ensure_category_tree_target_is_active_in_tx(port, txn, tenant_id, category_id).await
 }
 
 async fn validate_solution_in_tx(

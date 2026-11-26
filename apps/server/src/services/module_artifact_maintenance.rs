@@ -229,9 +229,23 @@ pub fn spawn_module_artifact_maintenance_handle(
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         loop {
+            if !may_admit_next_worker_operation(&stop_rx) {
+                break;
+            }
             tokio::select! {
+                biased;
+                changed = stop_rx.changed() => {
+                    if changed.is_err() || !may_admit_next_worker_operation(&stop_rx) {
+                        info!(
+                            worker = "module_artifact_maintenance",
+                            instance_id,
+                            "Module artifact maintenance stopping"
+                        );
+                        break;
+                    }
+                }
                 _ = ticker.tick() => {
-                    if *stop_rx.borrow() {
+                    if !may_admit_next_worker_operation(&stop_rx) {
                         info!(
                             worker = "module_artifact_maintenance",
                             instance_id,
@@ -526,16 +540,6 @@ pub fn spawn_module_artifact_maintenance_handle(
                                 }
                             }
                         }
-                    }
-                }
-                changed = stop_rx.changed() => {
-                    if changed.is_err() || *stop_rx.borrow() {
-                        info!(
-                            worker = "module_artifact_maintenance",
-                            instance_id,
-                            "Module artifact maintenance stopping"
-                        );
-                        break;
                     }
                 }
             }

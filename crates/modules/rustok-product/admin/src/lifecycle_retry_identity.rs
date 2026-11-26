@@ -84,8 +84,19 @@ where
         idempotency_key
     }
 
-    pub(crate) fn mark_succeeded(&mut self) {
-        self.pending = None;
+    /// Clears the pending invocation only when the completing response still owns it.
+    ///
+    /// Multiple requests can share a key while in flight. A late response from that
+    /// invocation must never clear a newer intent installed in the same lifecycle slot.
+    pub(crate) fn clear_if_key_matches(&mut self, idempotency_key: &str) -> bool {
+        let matches = self
+            .pending
+            .as_ref()
+            .is_some_and(|pending| pending.idempotency_key == idempotency_key);
+        if matches {
+            self.pending = None;
+        }
+        matches
     }
 
     #[cfg(test)]
@@ -148,7 +159,7 @@ mod tests {
 
         let first =
             identity.idempotency_key_for(ProductAdminLifecycleOperation::DeleteProduct, &intent);
-        identity.mark_succeeded();
+        assert!(identity.clear_if_key_matches(&first));
         assert_eq!(identity.pending_key(), None);
 
         let later =

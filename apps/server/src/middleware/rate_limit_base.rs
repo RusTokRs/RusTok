@@ -425,9 +425,7 @@ impl RateLimiter {
                 if response.eq_ignore_ascii_case("PONG") {
                     Ok(())
                 } else {
-                    Err(format!(
-                        "unexpected redis rate-limit ping response: {response}"
-                    ))
+                    Err("unexpected redis rate-limit ping response".to_string())
                 }
             }
         }
@@ -761,17 +759,19 @@ fn rate_limit_key_fingerprint(key: &str) -> String {
 
 async fn redis_with_timeout<T, E, F>(
     timeout: Duration,
-    operation: &str,
+    operation: &'static str,
     future: F,
 ) -> Result<T, String>
 where
     F: std::future::Future<Output = Result<T, E>>,
-    E: std::fmt::Display,
 {
     tokio::time::timeout(timeout, future)
         .await
         .map_err(|_| format!("{operation} timed out after {} ms", timeout.as_millis()))?
-        .map_err(|error| format!("{operation} failed: {error}"))
+        // Redis errors can include server replies and connection details.
+        // These diagnostics cross into module GraphQL logs; retain only the
+        // fixed operation label, never the backend's uncontrolled text.
+        .map_err(|_| format!("{operation} failed"))
 }
 
 fn insert_header_if_valid(headers: &mut axum::http::HeaderMap, key: &'static str, value: String) {

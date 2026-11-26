@@ -28,9 +28,9 @@
   - `AuthLifecyclePort` / `AuthLifecycleRuntime`
   - `AuthUserBackfillReadPort` / `AuthUserBackfillRuntime`
   - `AuthUserBootstrapDbWriter`, `AuthUserBackfillDbReader`
-- **Configuration**: `AuthConfig`, `AuthSettingsOverrides`, `build_auth_config_from_document`, `validate_auth_config`.
+- **Configuration**: `AuthConfig`, `AuthSettingsOverrides`, `build_auth_config_from_document`, `validate_auth_config`, `AuthConfig::validate_production_mac_root`. Raw MAC-root extraction is crate-private; host composition opens the authority through `JwtAuthorityConfig::open_for`.
 - **Process-local key rotation**: `AuthConfig::prepare_jwt_document`, `AuthConfig::into_live_jwt`, `JwtKeyringPublisher::prepare_document`, `publish`, `generation`. The publisher is host-owned, never a request capability. All prepared signing and verification keys are RSA; the independent MAC root is never exposed as JWT material.
-- **Durable generation admission**: `JwtGenerationFence::new`, `admit`, and `ensure_static_allowed`. The Auth-owned database singleton must admit a complete candidate before host startup/publication. The store retains authenticated metadata, never signing key material.
+- **Durable generation admission**: `JwtGenerationFence::new` and `admit`. The Auth-owned database singleton must admit a complete positive-generation candidate before host startup/publication. Generation zero represents only the empty ledger. The store retains authenticated metadata, never signing key material.
 - **Cluster JWT lease**: `AuthConfig::into_cluster_jwt`, `JwtGenerationFence::renew`, `JwtAdmission::{Admitted, Draining, AwaitingReplicas}`. HTTP hosts gate crypto by bounded monotonic and wall-clock deadlines, with sticky clock faults, retry draining/awaiting admissions, and revoke local authority on shutdown. `JwtGenerationFence::activate` acquires a registered candidate grant before atomically exchanging the local keys and lease, then ACKs replacement for that incarnation. `JwtKeyringPublisher::lease_readiness` returns a read-only view of the same gate for host health checks.
 
 ## Domain Collaborations
@@ -76,7 +76,7 @@
 
 - Password hashing must use Argon2 with salt and configured cost parameters.
 - Multi-tenant tenant boundary checks are mandatory on all user lookups and mutations.
-- Refresh tokens must be hashed before persistence; plaintext refresh tokens are returned exactly once upon generation.
+- Refresh tokens must be hashed before persistence. `AuthRefreshRetryKey` and `REFRESH_RETRY_KEY_HEADER` define optional proof-bound direct-session recovery: the same current successor may be returned again during grace only after the host revalidates the exact operation, tenant, subject, session and history. Never log the key or credential.
 - Expired or revoked tokens must fail verification closed.
 - OAuth access JWTs must be registered (`jti` -> `oauth_tokens.token_kind = access`); the host
   extractor must reject missing/revoked/mismatched access rows, and family revocation must

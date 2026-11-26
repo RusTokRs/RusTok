@@ -110,6 +110,48 @@ rollback uses the owner operation identity. Both admin hosts display all active
 transition checkpoints, plus a distinct checkpoint selected by URL when present,
 and surface read errors. Runtime and browser verification remain required.
 
+## Authentication and session lifecycle
+
+- First-party login and registration use the Rustok cookie-session REST endpoints.
+  The backend issues an HttpOnly envelope containing the rotating token and
+  independent 256-bit seed. The BFF relays the exact owner-issued envelope
+  in an HttpOnly, SameSite=Lax cookie scoped to `/api`, and stores the
+  short-lived access token in an HttpOnly cookie scoped to `/api/rustok`.
+  Both are Secure in production. The seed never enters JavaScript, Auth.js
+  session claims or logs.
+- Auth.js contains identity and tenant scope only. Rustok access/refresh tokens
+  are not exposed by the Auth.js session endpoint or client components.
+- Browser GraphQL requests use the same-origin BFF. It ignores browser bearer
+  headers, binds tenant scope to the authenticated identity, refreshes expiring
+  access credentials server-side, and forwards only the server-held access
+  token. Cross-origin requests are rejected.
+- Confirmed logout revokes the expected backend refresh lineage before clearing
+  Auth.js and Rustok host cookies. Generic Auth.js signout is not forwarded.
+  The Auth backend derives a generation-specific HMAC-SHA256 operation proof
+  from the retained seed, resolved tenant UUID and presented refresh token.
+  The BFF forwards the envelope unchanged and checks returned seed continuity.
+  All replicas derive the same proof without a process-local cache; an
+  ambiguous upstream outcome is retried once with identical inputs. A browser retry with the unchanged
+  envelope recovers the current successor during the server's 30-second
+  grace. If the successor cookie was already applied, the next refresh uses
+  a fresh generation-specific proof. Only refresh is retried automatically,
+  never the GraphQL operation. An unrecoverable conflict preserves cookies;
+  failures before upstream GraphQL dispatch report the operation as unforwarded.
+  Rejected refreshes never emit a clearing cookie; a later response could otherwise erase a new session. Refresh responses
+  must match the Auth.js subject before being persisted. Backend redirects are
+  refused to avoid forwarding credentials to another destination.
+  Cutover requires stopping old backend and BFF writers and revoking/re-signing-in
+  old sessions; the new backend does not accept legacy bare cookies or explicit
+  cookie refresh proof headers. A successful logout requires the explicit ok body.
+  Full browser/BFF/backend failure injection and cross-replica tests remain
+  pending; post-grace recovery and stale response ordering are not guaranteed.
+- Self-service email changes require the current password and a one-time token
+  sent to the new mailbox. The old address remains active until confirmation;
+  confirmation verifies the new address, revokes other sessions and delegated
+  OAuth tokens, and notifies the previous mailbox.
+- HMAC-SHA256/HKDF-SHA256 and Argon2id are not JWT signing alternatives; the
+  backend JWT runtime is RS256-only.
+
 ## Ownership contract for module UI
 
 - If a module supplies admin UI, it remains a module-owned package alongside the module or in `packages/*`.
@@ -221,3 +263,33 @@ claims. Existing request bodies, auth/tenant headers, write identities and owner
 unchanged. This does not change GraphQL extensions, Product write-outcome classification or
 native server-function envelopes. Eleven reader regression functions are **unrun**; see the
 [canonical HTTP contract](../../../docs/architecture/api.md#http-error-retry-advice).
+
+### Auth.js lineage binding
+
+Auth.js identity carries the non-secret direct Rustok session ID and tenant UUID
+from the Auth-issued response. Existing Auth.js identities without this ID
+are rejected; sign in again. Refresh/logout forward the expected ID, and both
+existing and refreshed access projections must match tenant, subject and session
+before GraphQL dispatch. Backend JWT validation remains authoritative. A refresh
+409 is non-retryable without re-observation; failed refresh and missing Auth.js
+identity never clear Rustok cookies on the GraphQL path.
+
+### Confirmed logout
+
+`POST /api/auth/signout` is the only explicit host logout path. The credentials-only
+catch-all forwards only its allowed Auth.js actions, rejects GET signout,
+and handles POST signout itself. Exact same-origin Origin and the frozen
+expected session ID are required. The authenticated identity, tenant UUID
+and refresh envelope must be present and match the owner precondition.
+An ambiguous or rejected revocation leaves both cookie sets untouched.
+After owner confirmation, the private Auth.js server helper clears its
+session and the host clears the Rustok cookies. The browser requires HTTP 200
+with `status: ok`, rejects redirects, and navigates to sign-in only on
+confirmation. Header/sidebar and credential-change flows use the shared
+hook; localized failures do not imply a committed password/email change
+failed. Rejected sign-in does not clear another existing session.
+
+This does not make cookie delivery transactional. Cleanup errors after
+revocation, expired Auth.js identity with a remaining Rustok cookie,
+concurrent login/logout and stale domain intent remain recovery gates.
+Mounted verification with the locked Auth.js dependency is pending.

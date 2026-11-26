@@ -17,6 +17,8 @@ use leptos::server_fn::{
 pub enum AuthorizedBrowserClientError {
     #[error("Authentication metadata could not be applied")]
     AuthMetadataFailed,
+    #[error("A verified browser session is required")]
+    SessionUnavailable,
     #[error("Tenant metadata could not be applied")]
     TenantMetadataFailed,
 }
@@ -35,23 +37,32 @@ where
 
     fn send(request: Self::Request) -> impl Future<Output = Result<Self::Response, Error>> + Send {
         #[cfg(target_arch = "wasm32")]
+        let expected_epoch = crate::transport::browser_epoch::read();
+        #[cfg(target_arch = "wasm32")]
         let failure = (|| -> Result<(), AuthorizedBrowserClientError> {
+            let epoch = expected_epoch.as_ref().map_err(|_| AuthorizedBrowserClientError::SessionUnavailable)?;
+            if !crate::transport::browser_epoch::matches(epoch) {
+                return Err(AuthorizedBrowserClientError::SessionUnavailable);
+            }
             // gloo's convenience setter throws and returns (). The underlying
             // web-sys API preserves the error so malformed auth metadata fails
             // before BrowserClient sends the request.
             let headers = request.headers().into_raw();
-            if let Some(token) = super::storage::get_token() {
-                headers
-                    .set("Authorization", format!("Bearer {token}").as_str())
-                    .map_err(|_| AuthorizedBrowserClientError::AuthMetadataFailed)?;
-            }
-            if let Some(tenant) = super::storage::get_tenant() {
-                headers
-                    .set("X-Tenant-ID", tenant.as_str())
-                    .map_err(|_| AuthorizedBrowserClientError::TenantMetadataFailed)?;
-                headers
-                    .set("X-Tenant-Slug", tenant.as_str())
-                    .map_err(|_| AuthorizedBrowserClientError::TenantMetadataFailed)?;
+            // Never fall back to an ambient SSR cookie if the verified
+            // memory projection was invalidated by another tab or transition.
+            let session = super::storage::load_session()
+                .map_err(|_| AuthorizedBrowserClientError::SessionUnavailable)?;
+            headers
+                .set("Authorization", format!("Bearer {}", session.token).as_str())
+                .map_err(|_| AuthorizedBrowserClientError::AuthMetadataFailed)?;
+            headers
+                .set("X-Tenant-ID", session.tenant.as_str())
+                .map_err(|_| AuthorizedBrowserClientError::TenantMetadataFailed)?;
+            headers
+                .set("X-Tenant-Slug", session.tenant.as_str())
+                .map_err(|_| AuthorizedBrowserClientError::TenantMetadataFailed)?;
+            if !crate::transport::browser_epoch::matches(epoch) {
+                return Err(AuthorizedBrowserClientError::SessionUnavailable);
             }
             Ok(())
         })()
@@ -62,6 +73,12 @@ where
             if let Some(message) = failure {
                 return Err(Error::from_server_fn_error(ServerFnErrorErr::Request(
                     message.to_string(),
+                )));
+            }
+            #[cfg(target_arch = "wasm32")]
+            if !expected_epoch.as_ref().is_ok_and(crate::transport::browser_epoch::matches) {
+                return Err(Error::from_server_fn_error(ServerFnErrorErr::Request(
+                    AuthorizedBrowserClientError::SessionUnavailable.to_string(),
                 )));
             }
             <BrowserClient as Client<Error, InputStreamError, OutputStreamError>>::send(request)

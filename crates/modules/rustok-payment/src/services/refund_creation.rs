@@ -67,12 +67,14 @@ impl PaymentRefundCreationService {
         if PaymentCollectionStatusKind::from_raw(collection.status.as_str())
             != PaymentCollectionStatusKind::Captured
         {
+            txn.rollback().await?;
             return Err(PaymentError::InvalidTransition {
                 from: collection.status,
                 to: REFUND_STATUS_PENDING.to_string(),
             });
         }
         if input.amount <= Decimal::ZERO {
+            txn.rollback().await?;
             return Err(PaymentError::Validation(
                 "refund amount must be greater than zero".to_string(),
             ));
@@ -90,6 +92,7 @@ impl PaymentRefundCreationService {
             .fold(Decimal::ZERO, |sum, refund| sum + refund.amount);
         let remaining = collection.captured_amount - reserved;
         if input.amount > remaining {
+            txn.rollback().await?;
             return Err(PaymentError::Validation(format!(
                 "refund amount exceeds remaining refundable amount of {remaining}"
             )));

@@ -3,6 +3,7 @@ use crate::{
     ProjectDocument, RUNTIME_LOCALE_FIELD, RuntimeLocaleSelection, ValidationDiagnostic,
     ValidationSeverity, materialize_project_locale_context, normalize_locale_tag, normalize_slug,
 };
+use crate::runtime_locale::{duplicate_locale_key, invalid_locale_key};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -61,6 +62,11 @@ pub fn localized_page_route_index(document: &ProjectDocument) -> Vec<LocalizedPa
                     .get(LOCALIZED_VALUES_FIELD)
                     .and_then(Value::as_object)
                 {
+                    if invalid_locale_key(localized).is_some()
+                        || duplicate_locale_key(localized).is_some()
+                    {
+                        continue;
+                    }
                     for (locale, slug) in localized {
                         let Some(locale) = normalize_locale_tag(locale) else {
                             continue;

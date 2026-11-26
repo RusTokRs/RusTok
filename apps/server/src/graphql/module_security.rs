@@ -200,7 +200,7 @@ impl Extension for GraphqlModuleSecurityPolicyExtension {
             if !denied.is_empty() {
                 tracing::warn!(
                     denied_fields = ?denied.iter().map(|field| field.name).collect::<Vec<_>>(),
-                    operation_name = ?operation_name,
+                    operation_name_present = operation_name.is_some(),
                     "Rejected module GraphQL document before resolver execution"
                 );
                 let required = denied

@@ -34,19 +34,25 @@ impl ForumTopicSlugRenameMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
 
-        execute_rename_forum_topic_slug(db, event_bus, tenant_id, auth, topic_id, input).await
+        execute_rename_forum_topic_slug(
+            super::forum_graphql_runtime(ctx).topic_service(db.clone(), event_bus.clone()),
+            tenant_id,
+            auth,
+            topic_id,
+            input,
+        )
+        .await
     }
 }
 
 async fn execute_rename_forum_topic_slug(
-    db: &DatabaseConnection,
-    event_bus: &TransactionalEventBus,
+    service: TopicService,
     tenant_id: Uuid,
     auth: &AuthContext,
     topic_id: Uuid,
     input: RenameForumTopicSlugGraphqlInput,
 ) -> Result<GqlForumTopicSlugRename> {
-    let result = TopicService::new(db.clone(), event_bus.clone())
+    let result = service
         .rename_slug(
             tenant_id,
             topic_id,

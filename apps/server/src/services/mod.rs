@@ -11,6 +11,7 @@ pub mod artifact_runtime;
 pub mod artifact_ui;
 pub mod auth_admin_mutation_provider;
 pub mod auth_email_verification;
+pub mod auth_email_change;
 pub mod auth_invite;
 pub mod auth_lifecycle;
 pub mod auth_lifecycle_provider;
@@ -78,6 +79,8 @@ pub mod forum_posting_policy_facts;
 mod forum_search_category_scope;
 #[cfg(feature = "mod-forum")]
 pub mod forum_search_inbox_worker;
+#[cfg(all(feature = "mod-forum", feature = "mod-taxonomy"))]
+mod forum_taxonomy;
 pub mod graphql_schema;
 pub mod iggy_connector_control_adapter;
 pub mod iggy_connector_settings_service;
@@ -115,14 +118,18 @@ pub mod module_event_dispatcher {
         forum_search_category_scope, forum_search_owner_revision, forum_search_result_eligibility,
     };
 
+    #[cfg(any(
+        feature = "mod-commerce",
+        feature = "mod-payment",
+        feature = "mod-product"
+    ))]
+    pub(crate) use super::module_event_dispatcher_base::take_dispatcher_started_worker_for_shutdown;
+    pub(crate) use super::module_event_dispatcher_base::take_module_dispatcher_for_shutdown;
     pub use super::module_event_dispatcher_base::{
         ModuleEventDispatcherHandle, ModuleEventDispatcherRequirement,
         build_module_event_dispatcher, build_shared_runtime_extensions,
         spawn_module_event_dispatcher,
     };
-    pub(crate) use super::module_event_dispatcher_base::take_module_dispatcher_for_shutdown;
-    #[cfg(any(feature = "mod-commerce", feature = "mod-payment", feature = "mod-product"))]
-    pub(crate) use super::module_event_dispatcher_base::take_dispatcher_started_worker_for_shutdown;
 
     /// Search source modules whose indexed documents are public discovery material.
     ///
@@ -254,6 +261,9 @@ pub mod module_event_dispatcher {
                     extensions
                         .get::<rustok_api::SharedStaticModuleSettingsReader>()
                         .cloned(),
+                    extensions
+                        .get::<std::sync::Arc<dyn rustok_forum::ForumTaxonomyPort>>()
+                        .cloned(),
                 );
             let owner_revision =
                 forum_search_owner_revision::ServerForumProjectionOwnerRevisionSourcePort::shared(
@@ -265,6 +275,9 @@ pub mod module_event_dispatcher {
                     audience_facts,
                     extensions
                         .get::<rustok_api::SharedStaticModuleSettingsReader>()
+                        .cloned(),
+                    extensions
+                        .get::<std::sync::Arc<dyn rustok_forum::ForumTaxonomyPort>>()
                         .cloned(),
                 );
             audience_registry
@@ -436,6 +449,20 @@ pub mod module_event_dispatcher {
             ))
         })?;
 
+        #[cfg(all(feature = "mod-product", feature = "mod-translation"))]
+        if let (Some(read_runtime), Some(command_runtime)) = (
+            runtime_ctx.shared_get::<rustok_product::ProductCatalogReadRuntime>(),
+            runtime_ctx.shared_get::<rustok_product::ProductCatalogCommandRuntime>(),
+        ) {
+            command_runtime
+                .register_translation_target_providers(&read_runtime, &mut extensions)
+                .map_err(|error| {
+                    Error::Message(format!(
+                        "Product Translation target provider registration failed: {error}"
+                    ))
+                })?;
+        }
+
         #[cfg(feature = "mod-seo")]
         {
             let event_bus = rustok_outbox::TransactionalEventBus::new(Arc::new(
@@ -540,7 +567,9 @@ pub mod module_event_dispatcher {
                 &registry,
                 &settings,
                 runtime_ctx,
-                crate::auth::test_auth_config("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
+                crate::auth::test_auth_config(
+                    "test-secret-key-for-unit-tests-only-32bytes!".to_string(),
+                ),
             )
             .expect("host Index runtime should compose");
 
@@ -688,8 +717,6 @@ pub mod search_product_channel_reconciliation;
 #[cfg(feature = "mod-seo")]
 pub mod seo_redirect_cache_reconciliation;
 pub mod server_bootstrap;
-#[cfg(feature = "mod-media")]
-pub mod storage_health_probe;
 pub mod server_runtime_context;
 pub mod settings_service;
 #[cfg(feature = "mod-social_graph")]
@@ -700,6 +727,8 @@ pub mod social_graph_index_position_observer;
 pub mod social_graph_index_worker;
 pub mod static_module_registry;
 pub mod stop_handle;
+#[cfg(feature = "mod-media")]
+pub mod storage_health_probe;
 pub mod tenant_cache_generation;
 pub mod tenant_cache_generation_status;
 pub mod tenant_generation_delivery_gate;

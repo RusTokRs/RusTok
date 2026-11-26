@@ -38,3 +38,6 @@ captcha-http = ["dep:reqwest"]
 
 [package.metadata.cargo-udeps.ignore]
 normal = ["rustok-outbox"]
+
+[lints]
+workspace = true

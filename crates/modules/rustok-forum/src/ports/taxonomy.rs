@@ -126,7 +126,11 @@ pub trait ForumTaxonomyPort: Send + Sync {
         tenant_id: Uuid,
     ) -> Result<(), ForumError>;
 
-    /// Loads parent mappings for a batch of category IDs.
+    /// Loads a complete parent mapping for the supplied tenant-local Forum IDs.
+    /// Keys must match the requested set exactly. Consumers loading a whole-tenant
+    /// membership snapshot also require all parent references to remain in that
+    /// membership, and validate cycles/depth before filtering. Missing ancestry
+    /// must not silently become a public root.
     async fn load_category_parents(
         &self,
         conn: ForumTaxonomyConnection<'_>,

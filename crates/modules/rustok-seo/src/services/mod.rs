@@ -135,6 +135,7 @@ fn redirect_cache_entry_weight(_tenant_id: &Uuid, entry: &Arc<RedirectCacheEntry
 
 #[derive(Clone)]
 pub(crate) struct SeoService {
+    runtime_extensions: ModuleRuntimeExtensions,
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
     registry: Arc<SeoTargetRegistry>,
@@ -186,6 +187,7 @@ impl SeoService {
         registry: Arc<SeoTargetRegistry>,
     ) -> Self {
         Self {
+            runtime_extensions: ModuleRuntimeExtensions::default(),
             db,
             event_bus,
             registry,
@@ -242,9 +244,10 @@ impl SeoService {
             .ok_or_else(|| {
                 SeoError::configuration("Canonical route resolver is not initialized")
             })?;
-        let service = Self::new(db, event_bus, registry)
+        let mut service = Self::new(db, event_bus, registry)
             .with_static_settings_reader(settings_reader)
             .with_canonical_route_resolver(canonical_routes.0);
+        service.runtime_extensions = extensions.clone();
         if let Some(provider) = extensions.get::<SeoMediaAssetReadProvider>() {
             Ok(service.with_media_asset_read_port(provider.port()))
         } else {

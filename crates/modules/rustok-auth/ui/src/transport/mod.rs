@@ -1,4 +1,7 @@
 mod cookie_adapter;
+#[cfg(target_arch = "wasm32")]
+pub(crate) mod browser_lock;
+pub(crate) mod browser_epoch;
 mod graphql_adapter;
 mod native_server_adapter;
 
@@ -245,7 +248,40 @@ fn map_server_auth_error(error: impl std::fmt::Display, is_login: bool) -> AuthE
     }
 }
 
+/// Low-level cookie mutations also participate in the shared browser fence.
+/// Provider calls hold the same lock across their full transition and invoke
+/// only the crate-private unlocked adapter. Low-level callers receive no
+/// published AuthContext identity; they must not act on stale UI intent.
+async fn cookie_operation<T: 'static>(
+    operation: impl std::future::Future<Output = Result<T, AuthError>> + 'static,
+) -> Result<T, AuthError> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        browser_lock::with_cookie_lock(async move {
+            let stamp = browser_epoch::publish("transport", true)?;
+            let outcome = operation.await;
+            if !browser_epoch::matches(&stamp) {
+                return Err(AuthError::Http(409));
+            }
+            browser_epoch::publish("transport", true)?;
+            outcome
+        }).await
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        operation.await
+    }
+}
+
 pub async fn sign_in(
+    email: String,
+    password: String,
+    tenant: String,
+) -> Result<(AuthUser, AuthSession), AuthError> {
+    cookie_operation(sign_in_unlocked(email, password, tenant)).await
+}
+
+pub(crate) async fn sign_in_unlocked(
     email: String,
     password: String,
     tenant: String,
@@ -269,6 +305,15 @@ pub async fn sign_up(
     name: Option<String>,
     tenant: String,
 ) -> Result<(AuthUser, AuthSession), AuthError> {
+    cookie_operation(sign_up_unlocked(email, password, name, tenant)).await
+}
+
+pub(crate) async fn sign_up_unlocked(
+    email: String,
+    password: String,
+    name: Option<String>,
+    tenant: String,
+) -> Result<(AuthUser, AuthSession), AuthError> {
     match selected_transport_path() {
         UiTransportPath::NativeServer => {
             let payload = native_server_adapter::sign_up_native(email, password, name, tenant)
@@ -283,11 +328,15 @@ pub async fn sign_up(
 }
 
 pub async fn sign_out(tenant: String) -> Result<(), AuthError> {
+    cookie_operation(sign_out_unlocked(tenant, None)).await
+}
+
+pub(crate) async fn sign_out_unlocked(tenant: String, expected_session_id: Option<String>) -> Result<(), AuthError> {
     match selected_transport_path() {
-        UiTransportPath::NativeServer => native_server_adapter::sign_out_native(tenant)
+        UiTransportPath::NativeServer => native_server_adapter::sign_out_native(tenant, expected_session_id)
             .await
             .map_err(|error| map_server_auth_error(error, false)),
-        UiTransportPath::Graphql => cookie_adapter::sign_out_cookie(tenant).await,
+        UiTransportPath::Graphql => cookie_adapter::sign_out_cookie(tenant, expected_session_id).await,
     }
 }
 
@@ -295,31 +344,32 @@ pub async fn sign_out(tenant: String) -> Result<(), AuthError> {
 /// `None` is an explicit native-host observation that the refresh cookie was absent;
 /// an invalid/expired credential or an ambiguous direct-cookie 401 remains an error.
 pub async fn refresh_session(tenant: String) -> Result<Option<(AuthSession, AuthUser)>, AuthError> {
+    cookie_operation(refresh_session_unlocked(tenant, None)).await
+}
+
+pub(crate) async fn refresh_session_unlocked(tenant: String, expected_session_id: Option<String>) -> Result<Option<(AuthSession, AuthUser)>, AuthError> {
     match selected_transport_path() {
         UiTransportPath::NativeServer => {
-            let payload = native_server_adapter::refresh_token_native(tenant)
+            let payload = native_server_adapter::refresh_token_native(tenant, expected_session_id)
                 .await
                 .map_err(|error| map_server_auth_error(error, false))?;
             Ok(payload.map(|payload| (payload.session, payload.user)))
         }
-        UiTransportPath::Graphql => cookie_adapter::refresh_session_cookie(tenant)
+        UiTransportPath::Graphql => cookie_adapter::refresh_session_cookie(tenant, expected_session_id)
             .await
             .map(Some),
     }
 }
 
 /// Server-side (SSR host) refresh-token exchange for building the
-/// request auth snapshot. Returns the rotated refresh token so the
-/// host can re-issue its BFF cookie.
+/// request auth snapshot. Returns the rotated server-only credential so
+/// the host can re-issue its BFF envelope without exposing its seed.
 #[cfg(feature = "ssr")]
 pub async fn exchange_refresh_token_ssr(
-    refresh_token: String,
-    tenant: String,
-) -> Result<(AuthUser, AuthSession, String), AuthError> {
+    credential: crate::core::RefreshCredential,
+) -> Result<(AuthUser, AuthSession, crate::core::RefreshCredential), AuthError> {
     let (payload, rotated) =
-        native_server_adapter::exchange_refresh_token_ssr(refresh_token, tenant)
-            .await
-            .map_err(|error| map_server_auth_error(error, false))?;
+        native_server_adapter::exchange_refresh_token_ssr(credential).await?;
     Ok((payload.user, payload.session, rotated))
 }
 

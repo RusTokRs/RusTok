@@ -396,6 +396,7 @@ export async function completeStorefrontCheckout(
   graphql: CartGraphqlExecutor,
   input: CompleteStorefrontCheckoutInput,
   tenantSlug?: string | null,
+  token?: string | null,
 ): Promise<CompleteCheckoutResult | null> {
   const idempotencyKey =
     typeof crypto !== "undefined" && crypto.randomUUID
@@ -418,6 +419,7 @@ export async function completeStorefrontCheckout(
         input,
       },
       tenant: tenantSlug ?? undefined,
+      token: token ?? undefined,
     });
 
     assertCartResponse(response);

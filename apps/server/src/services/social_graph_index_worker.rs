@@ -22,7 +22,9 @@ use crate::common::settings::EventDeliveryProfile;
 use crate::error::{Error, Result};
 use crate::services::app_lifecycle::DirectWorkerRegistrationLock;
 use crate::services::server_runtime_context::published_worker_running;
-use crate::services::stop_handle::{StopHandle, may_admit_next_worker_operation};
+use crate::services::stop_handle::{
+    StopHandle, may_admit_next_worker_operation, wait_for_worker_retry_or_stop,
+};
 use crate::services::event_transport_factory::EventRuntime;
 use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
 
@@ -270,7 +272,7 @@ async fn social_graph_index_worker_loop(
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
 ) {
     loop {
-        if *stop_rx.borrow() {
+        if !may_admit_next_worker_operation(&stop_rx) {
             record_worker_termination("shutdown");
             tracing::info!(worker = METRICS_CONSUMER, "Worker received shutdown signal");
             return;
@@ -329,7 +331,7 @@ async fn social_graph_index_worker_loop(
                 }
             }
             Ok(None) => {
-                if wait_or_stop(config.idle_poll, &mut stop_rx).await {
+                if wait_for_worker_retry_or_stop(config.idle_poll, &mut stop_rx).await {
                     record_worker_termination("shutdown");
                     return;
                 }
@@ -517,7 +519,7 @@ async fn process_delivery(
                         retry_delay_ms = duration_millis(delay),
                         "Social Graph Index projection failed; retrying without acknowledgement"
                     );
-                    if wait_or_stop(delay, stop_rx).await {
+                    if wait_for_worker_retry_or_stop(delay, stop_rx).await {
                         return Ok(DeliveryCompletion::Stopped);
                     }
                     attempt += 1;
@@ -610,7 +612,7 @@ async fn publish_dead_lettered_result(
                     retry_delay_ms = duration_millis(delay),
                     "Durable DLQ receipt publication is retryable; retaining the source delivery"
                 );
-                if wait_or_stop(delay, stop_rx).await {
+                if wait_for_worker_retry_or_stop(delay, stop_rx).await {
                     return Ok(DlqPublishCompletion::Stopped);
                 }
                 attempt += 1;
@@ -670,7 +672,7 @@ async fn process_decode_failure(
                     retry_delay_ms = duration_millis(delay),
                     "Neutral poison receipt lookup failed; retaining source offset"
                 );
-                if wait_or_stop(delay, stop_rx).await {
+                if wait_for_worker_retry_or_stop(delay, stop_rx).await {
                     return Ok(RawPoisonCompletion::Stopped);
                 }
                 lookup_attempt += 1;
@@ -733,7 +735,7 @@ async fn process_decode_failure(
                     retry_delay_ms = duration_millis(delay),
                     "Neutral poison receipt is owned by another publisher; retaining the source delivery"
                 );
-                if wait_or_stop(delay, stop_rx).await {
+                if wait_for_worker_retry_or_stop(delay, stop_rx).await {
                     return Ok(RawPoisonCompletion::Stopped);
                 }
                 attempt += 1;
@@ -804,7 +806,7 @@ async fn process_decode_failure(
                     retry_delay_ms = duration_millis(delay),
                     "Neutral poison receipt persistence failed; retaining source offset"
                 );
-                if wait_or_stop(delay, stop_rx).await {
+                if wait_for_worker_retry_or_stop(delay, stop_rx).await {
                     return Ok(RawPoisonCompletion::Stopped);
                 }
                 attempt += 1;
@@ -873,7 +875,7 @@ async fn mark_raw_poison_published(
                     retry_delay_ms = duration_millis(delay),
                     "Raw poison bytes were published but durable published state failed; retrying persistence only"
                 );
-                if wait_or_stop(delay, stop_rx).await {
+                if wait_for_worker_retry_or_stop(delay, stop_rx).await {
                     return Err(
                         "worker stopped after raw poison publication with source offset uncommitted"
                             .to_string(),
@@ -938,7 +940,7 @@ async fn acknowledge_raw_poison_result(
                     retry_delay_ms = duration_millis(delay),
                     "Durable neutral poison result exists but broker acknowledgement failed; retrying acknowledgement only"
                 );
-                if wait_or_stop(delay, stop_rx).await {
+                if wait_for_worker_retry_or_stop(delay, stop_rx).await {
                     return Ok(RawPoisonCompletion::Stopped);
                 }
                 attempt += 1;
@@ -985,7 +987,7 @@ async fn acknowledge_terminal_result(
                     retry_delay_ms = duration_millis(delay),
                     "Terminal durable result exists but broker acknowledgement failed; retrying acknowledgement only"
                 );
-                if wait_or_stop(delay, stop_rx).await {
+                if wait_for_worker_retry_or_stop(delay, stop_rx).await {
                     return Ok(DeliveryCompletion::Stopped);
                 }
                 attempt += 1;
@@ -1037,13 +1039,6 @@ fn retry_delay(config: &SocialGraphIndexWorkerConfig, attempt: u32) -> Duration 
 
 fn duration_millis(duration: Duration) -> u64 {
     u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
-}
-
-async fn wait_or_stop(delay: Duration, stop_rx: &mut tokio::sync::watch::Receiver<bool>) -> bool {
-    tokio::select! {
-        _ = tokio::time::sleep(delay) => false,
-        changed = stop_rx.changed() => changed.is_err() || *stop_rx.borrow(),
-    }
 }
 
 fn parse_bool(name: &str, value: &str) -> std::result::Result<bool, String> {

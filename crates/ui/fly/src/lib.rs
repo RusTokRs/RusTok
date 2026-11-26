@@ -80,7 +80,9 @@ pub use bundle::{
     bundle_hash, decode_project_bundle, decode_project_bundle_value, encode_project_bundle,
     export_project_bundle, inspect_project_bundle,
 };
-pub use codec::{GrapesJsCodec, MAXIMUM_DECODE_DEPTH};
+pub use codec::{
+    GrapesJsCodec, MAXIMUM_DECODE_DEPTH, drop_value_iteratively, ensure_depth_within_limit,
+};
 pub use command::{
     AssetCommand, ComponentPatch, DEFAULT_HISTORY_MEMORY_BUDGET_BYTES, EditorCommand, FlyEditor,
     History, HistoryEntry, ProjectHash, RevisionState, SymbolCommand, invert_command,
@@ -178,7 +180,7 @@ pub use render::{
     AlternateLocaleLink, PageHead, PageSelection, RenderPolicy, RenderedPage,
     compose_document_html, document_html_stylesheet, document_html_with_style_nonce,
     css_property_may_load_resource, css_resource_string_ranges, css_var_references,
-    css_property_allowed, escape_css_attribute,
+    css_property_allowed, escape_css_attribute, strip_css_resource_references,
     render_page,
     render_page_with_embed_registry,
     render_page_with_rich_text, render_page_with_rich_text_and_embed_registry, resolve_page,

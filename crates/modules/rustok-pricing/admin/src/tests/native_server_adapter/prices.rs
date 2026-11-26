@@ -1,6 +1,5 @@
 use super::support::support;
 use super::support::*;
-use crate::core::*;
 use crate::model::*;
 use crate::transport::native_server_adapter::*;
 use rustok_api::{AuthContext, Permission, TenantContext};
@@ -298,7 +297,7 @@ async fn admin_pricing_native_update_variant_price_persists_decimal_and_legacy_c
         &tenant,
         variant_id.to_string(),
         PricingPriceDraft {
-            currency_code: "usd".to_string(),
+            currency_code: "kwd".to_string(),
             amount: "79.994".to_string(),
             compare_at_amount: "99.996".to_string(),
             price_list_id: "".to_string(),
@@ -312,7 +311,7 @@ async fn admin_pricing_native_update_variant_price_persists_decimal_and_legacy_c
     .expect("fractional update should succeed");
 
     let (amount, compare_at_amount, legacy_amount, legacy_compare_at_amount) =
-        load_base_price_full(&db, variant_id).await;
+        load_base_price_full_for_currency(&db, variant_id, "KWD").await;
 
     assert_eq!(
         amount,

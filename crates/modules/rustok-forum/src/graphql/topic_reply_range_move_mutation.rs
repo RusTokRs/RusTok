@@ -31,13 +31,25 @@ impl ForumTopicReplyRangeMoveMutation {
         )?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
+        let taxonomy = ctx
+            .data::<super::ForumGraphqlRuntimeData>()?
+            .taxonomy_port();
 
-        execute_move_forum_topic_reply_range(db, event_bus, tenant_id, auth, source_topic_id, input)
-            .await
+        execute_move_forum_topic_reply_range(
+            taxonomy,
+            db,
+            event_bus,
+            tenant_id,
+            auth,
+            source_topic_id,
+            input,
+        )
+        .await
     }
 }
 
 async fn execute_move_forum_topic_reply_range(
+    taxonomy: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
     db: &DatabaseConnection,
     event_bus: &TransactionalEventBus,
     tenant_id: Uuid,
@@ -46,6 +58,7 @@ async fn execute_move_forum_topic_reply_range(
     input: MoveForumTopicReplyRangeGraphqlInput,
 ) -> Result<GqlForumReplyRangeMove> {
     let result = ForumReplyRangeMoveService::new(db.clone(), event_bus.clone())
+        .with_taxonomy_port(taxonomy)
         .move_reply_range(
             tenant_id,
             source_topic_id,

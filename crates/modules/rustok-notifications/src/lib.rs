@@ -226,8 +226,9 @@ pub use module::NotificationsModule;
 pub use outbox_intake::{
     DEFAULT_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE, MAX_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE,
     NotificationOutboxEnvelopeDecoder, NotificationOutboxEnvelopeRecord,
-    NotificationOutboxIntakeBatchResult, NotificationOutboxIntakeFailure,
-    NotificationOutboxIntakeOutcome, NotificationOutboxIntakeReceiptPort, NotificationOutboxIntakeRejection,
+    NotificationOutboxIntakeBatchResult, NotificationOutboxIntakeCursor,
+    NotificationOutboxIntakeFailure, NotificationOutboxIntakeOutcome, NotificationOutboxIntakePage,
+    NotificationOutboxIntakeReceiptPort, NotificationOutboxIntakeRejection,
     NotificationOutboxIntakeResult, NotificationOutboxIntakeWorker,
 };
 #[cfg(feature = "server")]

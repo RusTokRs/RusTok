@@ -1,5 +1,6 @@
 use super::{
-    CurrentUser, classify_access_token_claims, resolve_current_user_from_access_token,
+    CurrentUser, classify_access_token_claims, ensure_access_token_not_expired,
+    resolve_current_user, resolve_current_user_from_access_token,
     resolve_service_token_permissions,
 };
 use crate::auth::{
@@ -18,6 +19,53 @@ use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseConnection, DbBackend, 
 use sea_orm_migration::SchemaManager;
 use std::str::FromStr;
 use uuid::Uuid;
+
+#[test]
+fn resolved_access_token_authority_expires_at_the_earliest_credential_deadline() {
+    let expires_at = Utc::now();
+    let later = expires_at + Duration::minutes(1);
+    // Either the signed or the persisted credential can expire first.
+    for (signed, durable) in [
+        (expires_at, later),
+        (later, expires_at),
+        (expires_at, expires_at),
+    ] {
+        assert!(ensure_access_token_not_expired(
+            signed,
+            durable,
+            expires_at - Duration::nanoseconds(1),
+        )
+        .is_ok());
+        for now in [expires_at, expires_at + Duration::nanoseconds(1)] {
+            assert_eq!(
+                ensure_access_token_not_expired(signed, durable, now),
+                Err((axum::http::StatusCode::UNAUTHORIZED, "Access token expired"))
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn standalone_auth_extractor_rejects_duplicate_authorization_headers() {
+    use axum::http::{Request, StatusCode, header::AUTHORIZATION};
+
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let runtime = ServerAuthRuntime::without_auth(ServerRuntimeContext::new(
+        db,
+        RustokSettings::default(),
+    ));
+    let (mut parts, _) = Request::builder()
+        .header(AUTHORIZATION, "Bearer first")
+        .header(AUTHORIZATION, "Bearer first")
+        .body(())
+        .unwrap()
+        .into_parts();
+
+    assert_eq!(
+        resolve_current_user(&mut parts, &runtime).await.unwrap_err(),
+        (StatusCode::BAD_REQUEST, "Multiple Authorization headers are not allowed")
+    );
+}
 
 async fn ensure_oauth_apps_table(db: &DatabaseConnection) {
     let manager = SchemaManager::new(db);
@@ -250,6 +298,51 @@ async fn oauth_service_token_intersects_app_permissions_with_scopes() {
         vec![Permission::from_str("forum_topics:list").expect("forum permission")]
     );
     assert_eq!(inferred_role, UserRole::Customer);
+}
+
+#[tokio::test]
+async fn oauth_service_token_rejects_corrupt_or_mismatched_registered_scopes() {
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    ensure_oauth_apps_table(&db).await;
+    let tenant = tenants::ActiveModel::new(
+        "OAuth scope registration tenant",
+        &format!("tenant-{}", Uuid::new_v4()),
+    )
+    .insert(&db)
+    .await
+    .expect("create tenant");
+    let app = insert_oauth_app(&db, tenant.id, "service", &["client_credentials"], true).await;
+    let runtime = test_auth_runtime(db.clone());
+    let token = registered_service_token(
+        &db,
+        runtime.require_auth_config().unwrap(),
+        &app,
+        &["forum:*".to_string()],
+    )
+    .await;
+    assert!(resolve_current_user_from_access_token(&runtime, tenant.id, &token).await.is_ok());
+
+    let mut row = oauth_tokens::Entity::find()
+        .filter(oauth_tokens::Column::TokenHash.eq(crate::auth::hash_refresh_token(&token)))
+        .one(&db)
+        .await
+        .expect("load access registration")
+        .expect("access row exists");
+    for (stored, message) in [
+        (serde_json::json!([]), "OAuth access token scopes mismatch"),
+        (serde_json::json!(["forum:*", 42]), "Stored OAuth access token scopes are invalid"),
+        (serde_json::json!(["forum:*", "modules:list"]), "OAuth access token scopes mismatch"),
+    ] {
+        let mut changed: oauth_tokens::ActiveModel = row.into();
+        changed.scopes = Set(stored);
+        row = changed.update(&db).await.expect("change registered scopes");
+        let error = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+            .await
+            .expect_err("inconsistent registration must fail closed");
+        assert_eq!(error, (axum::http::StatusCode::UNAUTHORIZED, message));
+    }
 }
 
 #[tokio::test]

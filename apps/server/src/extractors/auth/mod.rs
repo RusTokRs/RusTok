@@ -159,7 +159,9 @@ fn validate_oauth_token_scopes(
     app: &oauth_apps::Model,
     token_scopes: &[String],
 ) -> Result<(), (StatusCode, &'static str)> {
-    let allowed_scopes = app.scopes_list();
+    let allowed_scopes = app.decoded_scopes().map_err(|_| {
+        (StatusCode::UNAUTHORIZED, "Stored OAuth app scopes are invalid")
+    })?;
     if token_scopes
         .iter()
         .all(|scope| scope_matches(&allowed_scopes, scope))
@@ -195,7 +197,9 @@ async fn validate_active_user_consent(
             "OAuth token predates the current consent epoch",
         ));
     }
-    let consent_scopes = consent.scopes_list();
+    let consent_scopes = consent.scopes_list().map_err(|_| {
+        (StatusCode::UNAUTHORIZED, "Stored OAuth consent scopes are invalid")
+    })?;
     if token_scopes
         .iter()
         .all(|scope| scope_matches(&consent_scopes, scope))
@@ -211,8 +215,9 @@ async fn validate_active_user_consent(
 
 /// Fail-closed registration fence for already-issued OAuth access JWTs.
 /// The signed `jti` must name a live access row whose hash, client,
-/// tenant, grant, and subject bind the presented credential. Revoking
-/// that row (or its family) therefore invalidates the JWT before TTL.
+/// tenant, grant, subject, and exact issued scopes bind the credential.
+/// Revoking that row (or its family) invalidates the JWT before TTL.
+#[allow(clippy::too_many_arguments)]
 async fn validate_oauth_access_token_registration(
     db: &DatabaseConnection,
     app_id: uuid::Uuid,
@@ -221,6 +226,7 @@ async fn validate_oauth_access_token_registration(
     jti: Option<uuid::Uuid>,
     access_token: &str,
     expected_user_id: Option<uuid::Uuid>,
+    expected_scopes: &[String],
 ) -> Result<oauth_tokens::Model, (StatusCode, &'static str)> {
     let jti = jti.ok_or((
         StatusCode::UNAUTHORIZED,
@@ -246,6 +252,15 @@ async fn validate_oauth_access_token_registration(
         return Err((
             StatusCode::UNAUTHORIZED,
             "OAuth access token subject mismatch",
+        ));
+    }
+    let registered_scopes = row.decoded_scopes().map_err(|_| {
+        (StatusCode::UNAUTHORIZED, "Stored OAuth access token scopes are invalid")
+    })?;
+    if registered_scopes.as_slice() != expected_scopes {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            "OAuth access token scopes mismatch",
         ));
     }
     Ok(row)
@@ -318,7 +333,7 @@ async fn resolve_service_token_permissions(
     token_scopes: &[String],
     access_token: &str,
     jti: Option<uuid::Uuid>,
-) -> Result<(Vec<Permission>, UserRole), (StatusCode, &'static str)> {
+) -> Result<(Vec<Permission>, UserRole, chrono::DateTime<chrono::Utc>), (StatusCode, &'static str)> {
     let db = ctx.db();
     let app = resolve_active_oauth_app(
         db,
@@ -336,7 +351,7 @@ async fn resolve_service_token_permissions(
         ));
     }
 
-    validate_oauth_access_token_registration(
+    let access_row = validate_oauth_access_token_registration(
         db,
         app.id,
         tenant_id,
@@ -344,6 +359,7 @@ async fn resolve_service_token_permissions(
         jti,
         access_token,
         None,
+        token_scopes,
     )
     .await?;
 
@@ -368,7 +384,11 @@ async fn resolve_service_token_permissions(
         );
     }
 
-    Ok((effective_permissions, inferred_role))
+    Ok((
+        effective_permissions,
+        inferred_role,
+        access_row.expires_at.with_timezone(&chrono::Utc),
+    ))
 }
 
 pub(crate) async fn resolve_current_user<S>(
@@ -379,6 +399,20 @@ where
     S: Send + Sync,
     ServerAuthRuntime: FromRef<S>,
 {
+    // This extractor is also used independently of the optional auth
+    // middleware. Reject ambiguous credentials at the extraction boundary.
+    if parts
+        .headers
+        .get_all(axum::http::header::AUTHORIZATION)
+        .iter()
+        .nth(1)
+        .is_some()
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Multiple Authorization headers are not allowed",
+        ));
+    }
     let auth_runtime = ServerAuthRuntime::from_ref(state);
 
     let tenant_id = parts
@@ -407,8 +441,10 @@ pub async fn resolve_current_user_from_access_token(
 
     let claims = decode_access_token(auth_config, access_token)
         .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid token signature"))?;
+    let expiry_seconds = i64::try_from(claims.exp)
+        .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid token expiry"))?;
     let access_token_expires_at =
-        chrono::DateTime::<chrono::Utc>::from_timestamp(claims.exp as i64, 0)
+        chrono::DateTime::<chrono::Utc>::from_timestamp(expiry_seconds, 0)
             .ok_or((StatusCode::UNAUTHORIZED, "Invalid token expiry"))?;
 
     // INVARIANT: In-memory verification ensuring the decoded JWT token payload belongs to the requested tenant.
@@ -417,6 +453,8 @@ pub async fn resolve_current_user_from_access_token(
     }
 
     let principal_kind = classify_access_token_claims(&claims)?;
+    let mut delegated_credential_issued_at = None;
+    let mut durable_credential_expires_at = access_token_expires_at;
 
     // Tenant middleware is intentionally bypassed on global operator routes,
     // and a cached tenant context may predate deactivation. Resolve the live
@@ -446,6 +484,10 @@ pub async fn resolve_current_user_from_access_token(
         if session.tenant_id != tenant_id || !session.is_active() {
             return Err((StatusCode::UNAUTHORIZED, "Session expired"));
         }
+        durable_credential_expires_at = session
+            .expires_at
+            .with_timezone(&chrono::Utc)
+            .min(session.absolute_deadline());
     } else if principal_kind == AuthPrincipalKind::DelegatedUser {
         let client_id = claims.client_id.ok_or((
             StatusCode::UNAUTHORIZED,
@@ -467,8 +509,15 @@ pub async fn resolve_current_user_from_access_token(
             claims.jti,
             access_token,
             Some(claims.sub),
+            &claims.scopes,
         )
         .await?;
+        // The durable registration row retains subsecond issuance time;
+        // JWT NumericDate is whole seconds and can misorder a same-second
+        // password change and token issuance.
+        delegated_credential_issued_at =
+            Some(access_row.created_at.with_timezone(&chrono::Utc));
+        durable_credential_expires_at = access_row.expires_at.with_timezone(&chrono::Utc);
         validate_active_user_consent(
             db,
             &app,
@@ -508,9 +557,10 @@ pub async fn resolve_current_user_from_access_token(
             }
 
             if principal_kind == AuthPrincipalKind::DelegatedUser {
-                let issued_at =
-                    chrono::DateTime::<chrono::Utc>::from_timestamp(claims.iat as i64, 0)
-                        .ok_or((StatusCode::UNAUTHORIZED, "Invalid token issued-at"))?;
+                let issued_at = delegated_credential_issued_at.ok_or((
+                    StatusCode::UNAUTHORIZED,
+                    "OAuth access token is not registered",
+                ))?;
                 if user.rejects_delegated_token_issued_at(issued_at) {
                     return Err((
                         StatusCode::UNAUTHORIZED,
@@ -575,17 +625,19 @@ pub async fn resolve_current_user_from_access_token(
                 StatusCode::UNAUTHORIZED,
                 "OAuth service token is missing client_id",
             ))?;
-            let (permissions, inferred_role) = resolve_service_token_permissions(
-                ctx.runtime_ctx(),
-                tenant_id,
-                claims.sub,
-                client_id,
-                claims.role,
-                &claims.scopes,
-                access_token,
-                claims.jti,
-            )
-            .await?;
+            let (permissions, inferred_role, registration_expires_at) =
+                resolve_service_token_permissions(
+                    ctx.runtime_ctx(),
+                    tenant_id,
+                    claims.sub,
+                    client_id,
+                    claims.role,
+                    &claims.scopes,
+                    access_token,
+                    claims.jti,
+                )
+                .await?;
+            durable_credential_expires_at = registration_expires_at;
 
             (
                 users::Model::default_service_user(claims.sub, tenant_id),
@@ -596,6 +648,15 @@ pub async fn resolve_current_user_from_access_token(
             )
         }
     };
+
+    // Storage and policy resolution may outlast either credential fence.
+    // The signed JWT cannot extend the observed session (including its
+    // absolute cap) or durable OAuth registration deadline.
+    ensure_access_token_not_expired(
+        access_token_expires_at,
+        durable_credential_expires_at,
+        chrono::Utc::now(),
+    )?;
 
     Ok(CurrentUser {
         user,
@@ -609,6 +670,17 @@ pub async fn resolve_current_user_from_access_token(
         grant_type: claims.grant_type,
         access_token_expires_at,
     })
+}
+
+fn ensure_access_token_not_expired(
+    signed_expires_at: chrono::DateTime<chrono::Utc>,
+    durable_expires_at: chrono::DateTime<chrono::Utc>,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<(), (StatusCode, &'static str)> {
+    if now >= signed_expires_at.min(durable_expires_at) {
+        return Err((StatusCode::UNAUTHORIZED, "Access token expired"));
+    }
+    Ok(())
 }
 
 impl<S> FromRequestParts<S> for CurrentUser

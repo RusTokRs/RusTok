@@ -76,6 +76,8 @@ mod m20261109_000042_add_delete_snapshot_reason;
 mod m20261109_000043_enforce_archived_locked_invariant;
 mod m20261109_000044_allow_pending_topic_snapshots;
 mod m20261110_000045_reconcile_archived_counters;
+mod m20261126_000046_reconcile_reply_publication_counters;
+mod m20261126_000047_allow_topic_solution_snapshot_replay;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -160,6 +162,8 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20261109_000043_enforce_archived_locked_invariant::Migration),
         Box::new(m20261109_000044_allow_pending_topic_snapshots::Migration),
         Box::new(m20261110_000045_reconcile_archived_counters::Migration),
+        Box::new(m20261126_000046_reconcile_reply_publication_counters::Migration),
+        Box::new(m20261126_000047_allow_topic_solution_snapshot_replay::Migration),
     ]
 }
 

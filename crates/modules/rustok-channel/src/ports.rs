@@ -241,7 +241,7 @@ where
     }
 }
 
-fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
+pub(crate) fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
     let id = context.tenant_id.parse::<Uuid>().map_err(|_| {
         PortError::new(
             PortErrorKind::Validation,
@@ -299,7 +299,7 @@ fn ensure_tenant_scope(tenant_id: Uuid, detail: &ChannelDetailResponse) -> Resul
     Ok(())
 }
 
-fn map_channel_error(error: crate::ChannelError) -> PortError {
+pub(crate) fn map_channel_error(error: crate::ChannelError) -> PortError {
     match error {
         crate::ChannelError::NotFound(_) => PortError::new(
             PortErrorKind::NotFound,

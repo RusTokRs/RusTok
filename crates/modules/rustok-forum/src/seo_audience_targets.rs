@@ -12,9 +12,8 @@ use url::Url;
 use uuid::Uuid;
 
 use crate::{
-    ForumCategoryRouteService, ForumError, ForumPublicDiscoveryService,
-    ForumTopicAudienceListService, ForumTopicRouteDisposition, ForumTopicRouteService,
-    ListTopicsFilter, MAX_FORUM_READ_LIMIT,
+    ForumError, ForumPublicDiscoveryService, ForumTopicAudienceListService,
+    ForumTopicRouteDisposition, ForumTopicRouteService, ListTopicsFilter, MAX_FORUM_READ_LIMIT,
 };
 
 const MAX_FORUM_SEO_ALTERNATE_ROUTES: usize = 64;
@@ -102,7 +101,7 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
 
         let candidate = match parse_canonical_forum_route(request.route)? {
             Some(CanonicalForumRoute::Category { locale, slug }) => {
-                let resolution = match ForumCategoryRouteService::new(runtime.db.clone())
+                let resolution = match crate::seo_targets::seo_category_route_service(runtime)
                     .resolve(
                         tenant_id,
                         locale.as_str(),
@@ -181,7 +180,7 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
         // category that the public owner would hide; never forward that cursor or
         // return a sparse page when hidden candidates separate visible ones.
         let limit = request.limit.clamp(1, MAX_FORUM_READ_LIMIT) as usize;
-        let route_service = ForumCategoryRouteService::new(runtime.db.clone());
+        let route_service = crate::seo_targets::seo_category_route_service(runtime);
         let mut scan_after = request.after.map(str::to_owned);
         let mut visible = Vec::with_capacity(limit);
         let mut has_more = false;
@@ -229,7 +228,9 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
             }
             match page.next_cursor {
                 Some(next) if scan_after.as_deref() == Some(next.as_str()) => {
-                    return Err(SeoTargetError::provider("Forum category SEO keyset did not advance"));
+                    return Err(SeoTargetError::provider(
+                        "Forum category SEO keyset did not advance",
+                    ));
                 }
                 Some(next) => scan_after = Some(next),
                 None => break,
@@ -280,7 +281,7 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
         let candidates = category_provider()
             .sitemap_candidates(runtime, request)
             .await?;
-        let route_service = ForumCategoryRouteService::new(runtime.db.clone());
+        let route_service = crate::seo_targets::seo_category_route_service(runtime);
         let mut visible = Vec::with_capacity(candidates.len());
         for mut candidate in candidates {
             if discovery
@@ -394,7 +395,9 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
                     return Ok(None);
                 }
                 let canonical = resolution.canonical.ok_or_else(|| {
-                    SeoTargetError::provider("Forum topic SEO route resolved without a canonical target")
+                    SeoTargetError::provider(
+                        "Forum topic SEO route resolved without a canonical target",
+                    )
                 })?;
                 let visible = self
                     .load_target(
@@ -462,6 +465,7 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
         // items and the cursor from the audience-allowed sequence before paging.
         let page =
             ForumTopicAudienceListService::new(runtime.db.clone(), runtime.event_bus.clone())
+                .with_taxonomy_port(crate::seo_targets::seo_taxonomy_port(runtime))
                 .with_settings_providers(crate::seo_targets::seo_settings_providers(runtime))
                 .list_public_storefront_visible_with_locale_fallback(
                     tenant_id,
@@ -584,7 +588,7 @@ async fn rewrite_category_target(
     default_locale: &str,
     mut record: SeoLoadedTargetRecord,
 ) -> AnyResult<SeoLoadedTargetRecord> {
-    let service = ForumCategoryRouteService::new(runtime.db.clone());
+    let service = crate::seo_targets::seo_category_route_service(runtime);
     let canonical = service
         .canonical_descriptor(
             tenant_id,
@@ -725,6 +729,7 @@ fn topic_route_absent(error: &ForumError) -> bool {
 fn public_discovery(runtime: &SeoTargetRuntimeContext) -> ForumPublicDiscoveryService {
     ForumPublicDiscoveryService::new(runtime.db.clone(), runtime.event_bus.clone())
         .with_settings_providers(crate::seo_targets::seo_settings_providers(runtime))
+        .with_taxonomy_port(crate::seo_targets::seo_taxonomy_port(runtime))
 }
 
 fn category_provider() -> crate::seo_targets::ForumCategorySeoTargetProvider {
@@ -769,6 +774,7 @@ mod tests {
         let db = Database::connect("sqlite::memory:").await.unwrap();
         let reader = SharedStaticModuleSettingsReader(Arc::new(ForumReading(false)));
         let runtime = SeoTargetRuntimeContext {
+            runtime_extensions: Default::default(),
             event_bus: TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone()))),
             db,
             static_settings_reader: Some(reader),
@@ -847,6 +853,7 @@ mod tests {
     async fn public_sitemaps_recheck_owner_policy_even_when_anonymous_reading_is_enabled() {
         let db = Database::connect("sqlite::memory:").await.unwrap();
         let mut runtime = SeoTargetRuntimeContext {
+            runtime_extensions: Default::default(),
             event_bus: TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone()))),
             db,
             static_settings_reader: Some(SharedStaticModuleSettingsReader(Arc::new(ForumReading(

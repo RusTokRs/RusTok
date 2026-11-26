@@ -100,6 +100,7 @@ async fn setup_pricing_port_service() -> (DatabaseConnection, PricingService, Uu
         weight_unit: Set(None),
         combination_identity: Set(None),
         position: Set(0),
+        index_revision: Set(1),
         created_at: Set(now.into()),
         updated_at: Set(now.into()),
     }

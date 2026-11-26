@@ -55,7 +55,7 @@ impl SelectedProduct {
             .iter()
             .map(|id| {
                 json!({
-                    "id": id, "product_id": product_id, "title": "Selected owner SKU",
+                    "id": id, "revision": "1", "product_id": product_id, "title": "Selected owner SKU",
                     "prices": [], "inventory_quantity": 0, "inventory_policy": "deny",
                     "in_stock": false, "position": 0
                 })
@@ -199,7 +199,7 @@ impl ProductCatalogReadPort for SelectedProduct {
         Ok(rustok_product::LegacyStorefrontProductList {
             items: vec![rustok_product::LegacyStorefrontProductListItem {
                 id: self.product.id,
-                status: self.product.status.clone(),
+                status: self.product.status,
                 title: "Selected owner product".to_owned(),
                 handle: "selected-owner-product".to_owned(),
                 seller_id: None,

@@ -40,9 +40,21 @@ pub fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
 ///
 /// The algorithm prefix is part of the serialized form so that a future algorithm change is an
 /// additive, self-describing migration rather than a silent reinterpretation of stored strings.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 #[serde(transparent)]
 pub struct ContentDigest(String);
+
+impl<'de> Deserialize<'de> for ContentDigest {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Self::parse(&value).ok_or_else(|| {
+            serde::de::Error::custom("expected sha256 followed by 64 lowercase hex digits")
+        })
+    }
+}
 
 impl ContentDigest {
     /// Digest raw bytes.
@@ -130,7 +142,13 @@ mod tests {
             digest.as_str(),
             "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
-        assert_eq!(ContentDigest::parse(digest.as_str()), Some(digest));
+        assert_eq!(ContentDigest::parse(digest.as_str()), Some(digest.clone()));
+        let serialized = serde_json::to_string(&digest).expect("serialize digest");
+        assert_eq!(serialized, format!("\"{}\"", digest.as_str()));
+        assert_eq!(
+            serde_json::from_str::<ContentDigest>(&serialized).expect("deserialize digest"),
+            digest
+        );
     }
 
     #[test]
@@ -143,6 +161,7 @@ mod tests {
             "",
         ] {
             assert_eq!(ContentDigest::parse(value), None, "accepted `{value}`");
+            assert!(serde_json::from_value::<ContentDigest>(json!(value)).is_err());
         }
     }
 

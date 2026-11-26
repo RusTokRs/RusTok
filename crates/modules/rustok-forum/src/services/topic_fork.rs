@@ -13,7 +13,7 @@ mod topic {
     pub(super) use super::super::topic::MAX_FORUM_TOPIC_TAGS;
 }
 mod topic_audience {
-    pub(super) use super::super::topic_audience::load_policy_for_topic;
+    pub(super) use super::super::topic_audience::load_policy_for_topic_with_port;
 }
 mod topic_audience_lock {
     pub(super) use super::super::topic_audience_lock::lock_topic_audience_scopes_in_tx;

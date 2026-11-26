@@ -71,6 +71,15 @@ impl ForumSearchResultEligibilityService {
         }
     }
 
+    pub fn with_taxonomy_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
+    ) -> Self {
+        self.visibility = self.visibility.with_taxonomy_port(port.clone());
+        self.category_visibility = self.category_visibility.with_taxonomy_port(port);
+        self
+    }
+
     pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
         self.visibility = self.visibility.with_settings_providers(settings.clone());
         self.category_visibility = self.category_visibility.with_settings_providers(settings);

@@ -9,8 +9,8 @@ const paths = {
   contract:
     "crates/modules/rustok-forum/contracts/forum-topic-slug-rename-graphql-transport.json",
   ownerContract: "crates/modules/rustok-forum/contracts/forum-topic-slug-rename-owner.json",
-  docs: "crates/modules/rustok-forum/docs/forum-24f-topic-slug-rename-graphql-transport.md",
-  ownerDocs: "crates/modules/rustok-forum/docs/forum-24d-topic-slug-rename-owner.md",
+  api: "crates/modules/rustok-forum/CRATE_API.md",
+  readme: "crates/modules/rustok-forum/README.md",
   graphql: "crates/modules/rustok-forum/src/graphql/topic_slug_rename_mutation.rs",
   graphqlMod: "crates/modules/rustok-forum/src/graphql/mod.rs",
   owner: "crates/modules/rustok-forum/src/services/topic_owner.rs",
@@ -31,8 +31,8 @@ const includesAll = (text, markers, label) => {
 
 const contract = JSON.parse(read(paths.contract));
 const ownerContract = JSON.parse(read(paths.ownerContract));
-const docs = read(paths.docs);
-const ownerDocs = read(paths.ownerDocs);
+const api = read(paths.api);
+const readme = read(paths.readme);
 const graphql = read(paths.graphql);
 const graphqlMod = read(paths.graphqlMod);
 const owner = read(paths.owner);
@@ -85,7 +85,8 @@ includesAll(
     // The mismatch wording is produced by the shared scope resolver the resolver must call.
     "resolve_tenant_scope(tenant, tenant_id)?",
     "SecurityContext::from_permission_snapshot",
-    "TopicService::new(db.clone(), event_bus.clone())",
+    "super::forum_graphql_runtime(ctx)",
+    ".topic_service(",
     ".rename_slug(",
     "pub struct RenameForumTopicSlugGraphqlInput",
     "pub struct GqlForumTopicRouteDescriptor",
@@ -97,6 +98,7 @@ includesAll(
 );
 
 for (const forbidden of [
+  "TopicService::new(",
   "ForumTopicRouteService::new",
   "rename_topic_slug_in_tx",
   "forum_topic_route_aliases",
@@ -169,36 +171,27 @@ includesAll(
   "owner runtime contract source",
 );
 includesAll(
-  docs,
+  api,
   [
-    "# FORUM-24F topic slug rename GraphQL transport",
-    "`source_ready_maintainer_execution_pending`",
-    "renameForumTopicSlug",
-    "forum_topics:update",
-    "TopicService::rename_slug",
-    "owner-defined",
-    "No command above was run by the implementation agent",
+    "### Topic slug rename",
+    "renameForumTopicSlug", "forum_topics:update", "TopicService::rename_slug",
+    "owner-defined", "changed = false", "immutable", "Topic slug changed",
   ],
-  "FORUM-24F handoff",
+  "canonical slug rename API contract",
 );
 includesAll(
-  ownerDocs,
-  [
-    "# FORUM-24D topic slug rename owner",
-    "TopicService::rename_slug",
-    "Topic slug changed",
-  ],
-  "FORUM-24D owner handoff",
+  readme,
+  ["author edit window", "Slug changes", "ForumGraphqlRuntimeData", "reject archived topics"],
+  "configured owner admission contract",
 );
 includesAll(
   docsIndex,
   [
     "FORUM-24F exposes the localized topic slug rename owner through an additive routed-tenant GraphQL mutation",
-    "FORUM-24F topic slug rename GraphQL transport",
   ],
   "Forum docs index",
 );
 
 console.log(
-  "FORUM-24F topic slug rename GraphQL transport source is ready; maintainer execution and UI/public route composition remain pending.",
+  "Forum topic slug rename GraphQL source contract verified; runtime execution remains pending.",
 );

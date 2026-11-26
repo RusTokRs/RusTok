@@ -489,7 +489,10 @@
     duration = Math.min(10000, Math.max(50, duration));
     if (prefersReducedMotion(target) || typeof target.animate !== "function") {
       var endState = keyframes[keyframes.length - 1];
-      if (endState && endState.opacity) target.style.opacity = endState.opacity;
+      if (endState) {
+        if (typeof endState.opacity === "string") target.style.opacity = endState.opacity;
+        if (typeof endState.transform === "string") target.style.transform = endState.transform;
+      }
       return;
     }
     target.animate(keyframes, {
@@ -600,6 +603,8 @@
     documentRef.addEventListener("touchcancel", cancelTouch, { passive: true });
     var adapter = {
       stop: function () {
+        // A retained handle must not unregister a newer mount of this document.
+        if (documentRef[ADAPTER_KEY] !== adapter) return;
         documentRef.removeEventListener("click", onClick);
         documentRef.removeEventListener("touchstart", onTouchStart);
         documentRef.removeEventListener("touchend", onTouchEnd);

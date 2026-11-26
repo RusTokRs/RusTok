@@ -6,7 +6,6 @@
 //! - Strict HTTP 404 Not Found for any missing immutable asset (never fall back to HTML or default routes).
 
 use std::collections::HashMap;
-use std::fmt::Write as _;
 
 use axum::{
     body::Body,
@@ -18,10 +17,9 @@ use axum::{
 };
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-use crate::{content_etag, if_none_match_matches};
+use crate::{content_etag, if_none_match_matches, sha256_hex};
 
 pub const IMMUTABLE_ASSET_CACHE_CONTROL: &str = "public, max-age=31536000, immutable";
 pub const MISSING_ASSET_CACHE_CONTROL: &str = "no-cache, no-store, must-revalidate";
@@ -42,13 +40,7 @@ impl ReleaseQualifiedAsset {
         content_type: impl Into<String>,
         bytes: Vec<u8>,
     ) -> Self {
-        let hash = Sha256::digest(&bytes);
-        let mut digest = String::with_capacity(7 + hash.len() * 2);
-        digest.push_str("sha256:");
-        // INVARIANT: Formatting fixed Sha256 byte digest into in-memory String cannot fail.
-        for byte in hash {
-            let _ = write!(&mut digest, "{byte:02x}");
-        }
+        let digest = format!("sha256:{}", sha256_hex(&bytes));
         let etag = content_etag(&bytes);
         Self {
             logical_path: logical_path.into(),
@@ -89,7 +81,7 @@ impl BrowserAssetRegistry {
         Self {
             active_release_id: None,
             retained_releases: HashMap::new(),
-            client_cache_lifetime,
+            client_cache_lifetime: client_cache_lifetime.max(Duration::zero()),
         }
     }
 
@@ -115,7 +107,9 @@ impl BrowserAssetRegistry {
             map.insert(asset.logical_path.clone(), asset);
         }
 
-        let retained_until = now + self.client_cache_lifetime;
+        let retained_until = now
+            .checked_add_signed(self.client_cache_lifetime)
+            .unwrap_or(DateTime::<Utc>::MAX_UTC);
         self.retained_releases.insert(
             id.clone(),
             ReleaseAssetSet {
@@ -139,18 +133,21 @@ impl BrowserAssetRegistry {
             return Err(BrowserAssetError::ReleaseNotFound(release_id.to_string()));
         }
 
+        let extended_until = now
+            .checked_add_signed(self.client_cache_lifetime)
+            .unwrap_or(DateTime::<Utc>::MAX_UTC);
         // Extend retention for previous active release
         if let Some(prev_set) = self
             .active_release_id
             .as_deref()
             .and_then(|prev_active| self.retained_releases.get_mut(prev_active))
         {
-            prev_set.retained_until = now + self.client_cache_lifetime;
+            prev_set.retained_until = extended_until;
         }
 
         // Active release must stay retained indefinitely while active
         if let Some(new_set) = self.retained_releases.get_mut(release_id) {
-            new_set.retained_until = now + self.client_cache_lifetime;
+            new_set.retained_until = extended_until;
         }
 
         self.active_release_id = Some(release_id.to_string());

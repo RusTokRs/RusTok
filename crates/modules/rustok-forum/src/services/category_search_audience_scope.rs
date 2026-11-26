@@ -1,6 +1,8 @@
+use crate::ports::taxonomy::ForumTaxonomyPort;
 use rustok_api::PortContext;
 use rustok_core::SecurityContext;
 use sea_orm::DatabaseConnection;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::audience::SharedForumAudienceFactsPort;
@@ -33,6 +35,11 @@ impl ForumSearchCategoryAudienceScopeService {
         Self {
             category_reads: ForumCategoryAudienceReadService::with_audience_facts(db, facts_port),
         }
+    }
+
+    pub fn with_taxonomy_port(mut self, port: Arc<dyn ForumTaxonomyPort>) -> Self {
+        self.category_reads = self.category_reads.with_taxonomy_port(port);
+        self
     }
 
     pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {

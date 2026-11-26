@@ -7,6 +7,7 @@ pub mod category_audience;
 mod category_audience_read;
 mod category_audience_visibility;
 mod category_command;
+mod category_hierarchy;
 mod category_lifecycle;
 mod category_moderation_audience;
 mod category_owner;
@@ -61,6 +62,8 @@ mod reply_audience_read;
 mod reply_create_audience_authorization;
 mod reply_facade;
 mod reply_owner;
+mod reply_publication;
+pub(crate) use reply_publication::apply_publication_change_in_tx;
 pub mod revision;
 mod search_result_eligibility;
 pub mod storefront_read_state;
@@ -91,6 +94,7 @@ mod topic_reply_range_move;
 mod topic_route;
 mod topic_route_backfill;
 mod topic_solution_lock;
+pub(crate) use topic_solution_lock::lock_topic_solution_scopes_in_tx;
 mod topic_split;
 mod topic_subscription_lock;
 mod topic_tag_lock;
@@ -327,3 +331,9 @@ pub use user_trust_audience_facts::ForumUserTrustAudienceFactsPort;
 pub use vote::VoteService;
 pub use widget_contract::ForumWidgetContractService;
 pub use widget_preview::ForumWidgetPreviewService;
+
+#[cfg(test)]
+mod create_audience_authorization_tests;
+
+#[cfg(test)]
+mod structural_taxonomy_tests;

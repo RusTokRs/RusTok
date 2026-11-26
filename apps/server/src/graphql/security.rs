@@ -226,7 +226,7 @@ impl Extension for GraphqlSecurityPolicyExtension {
                         .iter()
                         .map(|field| field.field_name())
                         .collect::<Vec<_>>(),
-                    operation_name = ?operation_name,
+                    operation_name_present = operation_name.is_some(),
                     "Rejected sensitive GraphQL document before resolver execution"
                 );
                 return forbidden_sensitive_response(&denied_fields);
@@ -618,6 +618,54 @@ mod tests {
             assert_eq!(wrong_role.errors.len(), 1, "unauthorized {field}");
             assert!(wrong_role.errors[0].message.contains(hint), "{field}");
         }
+    }
+
+    #[test]
+    fn reporting_fragments_are_classified_once_even_when_cyclic() {
+        let document = async_graphql::parser::parse_query(
+            "query Reporting { ...A } fragment A on QueryRoot { ...B } fragment B on QueryRoot { ...A dashboardStats recentActivity }",
+        )
+        .expect("reporting query should parse");
+
+        assert_eq!(
+            sensitive_graphql_fields(&document, Some("Reporting")),
+            vec![SensitiveGraphqlField::DashboardStats, SensitiveGraphqlField::RecentActivity],
+        );
+    }
+
+    #[tokio::test]
+    async fn reporting_fields_require_their_own_permissions() {
+        let schema = Schema::build(QueryRoot, MutationRoot, EmptySubscription)
+            .extension(GraphqlSecurityPolicy)
+            .finish();
+
+        for (permission, allowed, denied, hint) in [
+            (Permission::ANALYTICS_READ, "{ dashboardStats }", "{ recentActivity }", "users:list"),
+            (Permission::USERS_LIST, "{ recentActivity }", "{ dashboardStats }", "analytics:read"),
+            (Permission::USERS_MANAGE, "{ recentActivity }", "{ dashboardStats }", "analytics:read"),
+        ] {
+            let auth = auth_context(vec![permission]);
+            let response = schema.execute(Request::new(allowed).data(auth.clone())).await;
+            assert!(response.errors.is_empty(), "{allowed}: {:?}", response.errors);
+            let response = schema.execute(Request::new(denied).data(auth.clone())).await;
+            assert_eq!(response.errors.len(), 1, "{denied}");
+            assert!(response.errors[0].message.contains(hint));
+
+            let response = schema
+                .execute(Request::new("{ dashboardStats recentActivity }").data(auth))
+                .await;
+            assert_eq!(response.errors.len(), 1);
+            assert!(response.errors[0].message.contains(hint));
+        }
+
+        let response = schema
+            .execute(
+                Request::new("query Reporting { ...Report } fragment Report on QueryRoot { stats: dashboardStats activity: recentActivity }")
+                    .data(auth_context(vec![Permission::ANALYTICS_READ, Permission::USERS_LIST])),
+            )
+            .await;
+        assert!(response.errors.is_empty(), "{:?}", response.errors);
+        assert_eq!(response.data.into_json().expect("reporting data"), json!({"stats": 42, "activity": [1, 2]}));
     }
 
     #[tokio::test]

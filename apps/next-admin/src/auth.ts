@@ -1,75 +1,117 @@
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
+import { fetchCurrentTenant } from '@/shared/api/tenant-api';
+import { handleConfirmedLogout } from '@/shared/api/auth-session';
 import {
-  signIn as rustokSignIn,
-  fetchCurrentTenant
-} from '@/shared/api/auth-api';
+  clearRustokSessionCookies,
+  createRustokSession,
+  persistRustokSessionCookies,
+  readRustokSessionCookies,
+  revokeRustokSession
+} from '@/shared/api/auth-server';
 
-export const { handlers, signIn, signOut, auth } = NextAuth({
+function asString(value: unknown): string | null {
+  return typeof value === 'string' ? value : null;
+}
+
+const { handlers, signIn, signOut: clearAuthJsSession, auth } = NextAuth({
   providers: [
     Credentials({
       credentials: {
+        action: { label: 'Action', type: 'text' },
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
+        name: { label: 'Name', type: 'text' },
         tenantSlug: { label: 'Workspace', type: 'text' }
       },
-      authorize: async (credentials) => {
+      authorize: async (credentials, request) => {
+        const rawAction = asString(credentials?.action);
         if (
-          !credentials?.email ||
-          !credentials?.password ||
-          !credentials?.tenantSlug
+          rawAction &&
+          rawAction !== 'login' &&
+          rawAction !== 'register'
         ) {
           return null;
         }
-        try {
-          const result = await rustokSignIn(
-            credentials.email as string,
-            credentials.password as string,
-            credentials.tenantSlug as string
-          );
 
-          // Fetch tenantId via currentTenant query
-          let tenantId: string | null = null;
+        const action = rawAction === 'register' ? 'register' : 'login';
+        const email = asString(credentials?.email)?.trim() ?? '';
+        const password = asString(credentials?.password) ?? '';
+        const tenantSlug = asString(credentials?.tenantSlug)?.trim() ?? '';
+        const name = asString(credentials?.name)?.trim() || undefined;
+
+        if (!email || !password || !tenantSlug) return null;
+
+        let issued: Awaited<
+          ReturnType<typeof createRustokSession>
+        > | null = null;
+
+        try {
+          issued = await createRustokSession({
+            action,
+            email,
+            password,
+            tenantSlug,
+            name,
+            request
+          });
+
           const tenant = await fetchCurrentTenant(
-            result.accessToken,
-            credentials.tenantSlug as string
+            issued.accessToken,
+            tenantSlug
           );
-          if (tenant) {
-            tenantId = tenant.id;
-          }
+          if (tenant && tenant.id !== issued.tenantId) throw new Error('Tenant identity mismatch');
+          await persistRustokSessionCookies(issued);
 
           return {
-            id: result.user.id,
-            email: result.user.email,
-            name: result.user.name,
-            role: result.user.role,
-            status: result.user.status,
-            tenantSlug: credentials.tenantSlug as string,
-            tenantId,
-            rustokToken: result.accessToken
+            id: issued.user.id,
+            email: issued.user.email,
+            name: issued.user.name,
+            role: issued.user.role,
+            status: issued.user.status,
+            tenantSlug,
+            tenantId: issued.tenantId,
+            rustokSessionId: issued.sessionId
           };
         } catch {
+          if (issued) {
+            try {
+              await revokeRustokSession(issued.refreshCredential, tenantSlug, issued.sessionId, issued.tenantId);
+            } catch {
+              console.warn(
+                'Rustok session cleanup failed after credential establishment'
+              );
+            }
+          }
+
+          // A rejected login must not clear a pre-existing or concurrently
+          // established session. Only the newly issued lineage is compensable.
           return null;
         }
       }
     })
   ],
   callbacks: {
-    jwt({ token, user }) {
+    jwt({ token, user, trigger, session }) {
       if (user) {
         token.id = user.id ?? '';
         token.role = String(user.role ?? '');
         token.status = String(user.status ?? '');
         token.tenantSlug =
-          typeof user.tenantSlug === 'string' || user.tenantSlug === null
-            ? user.tenantSlug
-            : null;
+          typeof user.tenantSlug === 'string' ? user.tenantSlug : null;
         token.tenantId =
-          typeof user.tenantId === 'string' || user.tenantId === null
-            ? user.tenantId
-            : null;
-        token.rustokToken = String(user.rustokToken ?? '');
+          typeof user.tenantId === 'string' ? user.tenantId : null;
+        token.rustokSessionId = typeof user.rustokSessionId === 'string' ? user.rustokSessionId : null;
       }
+
+      if (
+        trigger === 'update' &&
+        session &&
+        typeof (session as { name?: unknown }).name === 'string'
+      ) {
+        token.name = (session as { name: string }).name;
+      }
+
       return token;
     },
     session({ session, token }) {
@@ -77,14 +119,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       session.user.role = String(token.role ?? '');
       session.user.status = String(token.status ?? '');
       session.user.tenantSlug =
-        typeof token.tenantSlug === 'string' || token.tenantSlug === null
-          ? token.tenantSlug
-          : null;
+        typeof token.tenantSlug === 'string' ? token.tenantSlug : null;
       session.user.tenantId =
-        typeof token.tenantId === 'string' || token.tenantId === null
-          ? token.tenantId
-          : null;
-      session.user.rustokToken = String(token.rustokToken ?? '');
+        typeof token.tenantId === 'string' ? token.tenantId : null;
+      session.user.rustokSessionId =
+        typeof token.rustokSessionId === 'string' ? token.rustokSessionId : null;
+      if (typeof token.name === 'string') {
+        session.user.name = token.name;
+      }
       return session;
     }
   },
@@ -93,6 +135,35 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   },
   session: {
     strategy: 'jwt',
-    maxAge: 7 * 24 * 60 * 60
+    maxAge: 30 * 24 * 60 * 60
   }
 });
+
+export { handlers, signIn, auth };
+
+// The raw Auth.js signOut helper stays private. The route admits the caller
+// before any mutation; Auth.js cleanup runs only after owner confirmation.
+export async function confirmedSignOut(request: Request): Promise<Response> {
+  return handleConfirmedLogout(request, {
+    async readIdentity() {
+      const session = await auth();
+      return session?.user ? {
+        sessionId: session.user.rustokSessionId,
+        tenantId: session.user.tenantId,
+        tenantSlug: session.user.tenantSlug
+      } : null;
+    },
+    readCookies: readRustokSessionCookies,
+    revoke: revokeRustokSession,
+    async clearApplicationSession() {
+      const target = await clearAuthJsSession({ redirect: false, redirectTo: '/auth/sign-in' });
+      // The supported server helper returns the target URL when redirect is
+      // false. An Auth.js error redirect is not local cleanup confirmation.
+      if (typeof target !== 'string' ||
+          new URL(target, request.url).href !== new URL('/auth/sign-in', request.url).href) {
+        throw new Error('Auth.js sign-out was not confirmed');
+      }
+    },
+    clearRustokCookies: clearRustokSessionCookies
+  });
+}

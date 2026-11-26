@@ -1,6 +1,7 @@
 import { expect, Page, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { openBlankDocument } from './support/fly-blank-document';
 
 const adapterPath = resolve(
   process.cwd(),
@@ -40,6 +41,7 @@ type PendingScope = typeof globalThis & {
 
 async function mountPendingContract(page: Page) {
   const adapterSource = await readFile(adapterPath, 'utf8');
+  await openBlankDocument(page);
   await page.setContent(`
     <div
       id="fly-root"
@@ -146,7 +148,11 @@ async function resolveFetch(page: Page, index: number) {
     ];
     if (!pending) throw new Error(`Pending fetch ${fetchIndex} unavailable`);
     pending.resolve(
-      new Response(JSON.stringify({ result: {} }), {
+      new Response(JSON.stringify({ result: {
+        revision_id: `rev-${fetchIndex + 2}`,
+        project_hash: `hash-${fetchIndex + 2}`,
+        dirty: false
+      } }), {
         status: 200,
         headers: { 'content-type': 'application/json' }
       })
@@ -169,7 +175,7 @@ test('pending limit rejects newest work and releases settled slots', async ({
         () => (globalThis as PendingScope).__flyPendingFetches?.length ?? 0
       )
     )
-    .toBe(2);
+    .toBe(1);
 
   const rejected = await page.evaluate(
     () => (globalThis as PendingScope).__flyRejected ?? []
@@ -186,6 +192,11 @@ test('pending limit rejects newest work and releases settled slots', async ({
     'PENDING_INTENT_LIMIT'
   );
 
+  await resolveFetch(page, 0);
+  await awaitSave(page, 0);
+  await expect.poll(() => page.evaluate(
+    () => (globalThis as PendingScope).__flyPendingFetches?.length ?? 0
+  )).toBe(2);
   await resolveFetch(page, 1);
   await awaitSave(page, 1);
   await emitSave(page, 4);
@@ -199,14 +210,12 @@ test('pending limit rejects newest work and releases settled slots', async ({
 
   await resolveFetch(page, 2);
   await awaitSave(page, 3);
-  await resolveFetch(page, 0);
-  await awaitSave(page, 0);
   await expect(page.locator('#fly-root')).not.toHaveAttribute(
     'data-fly-browser-problem'
   );
 });
 
-test('unmount emits typed adapter-stop aborts without browser errors', async ({
+test('unmount settles queued and active work without late browser events', async ({
   page
 }) => {
   await mountPendingContract(page);
@@ -219,7 +228,7 @@ test('unmount emits typed adapter-stop aborts without browser errors', async ({
         () => (globalThis as PendingScope).__flyPendingFetches?.length ?? 0
       )
     )
-    .toBe(2);
+    .toBe(1);
 
   await page.evaluate(() => {
     (globalThis as PendingScope).FlyBrowser?.unmountAll?.();
@@ -237,19 +246,8 @@ test('unmount emits typed adapter-stop aborts without browser errors', async ({
   });
   expect(state.errors).toEqual([]);
   expect(state.problems).toEqual([]);
-  expect(state.aborts).toHaveLength(2);
-  expect(state.aborts).toEqual([
-    expect.objectContaining({
-      code: 'INTENT_REQUEST_ABORTED',
-      kind: 'adapter_stop',
-      requestGeneration: 1,
-      current: false
-    }),
-    expect.objectContaining({
-      code: 'INTENT_REQUEST_ABORTED',
-      kind: 'adapter_stop',
-      requestGeneration: 2,
-      current: false
-    })
-  ]);
+  expect(state.aborts).toEqual([]);
+  expect(await page.evaluate(() =>
+    (globalThis as PendingScope).__flyPendingFetches?.[0]?.signal.aborted
+  )).toBe(true);
 });

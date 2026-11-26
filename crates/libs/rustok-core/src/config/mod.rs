@@ -120,21 +120,7 @@ impl ConfigLoader {
 
     /// Load configuration into a type that implements Config
     pub fn load<T: Config>(self) -> Result<T, ConfigError> {
-        let mut merged = HashMap::new();
-
-        for source in &self.sources {
-            let values = match source {
-                ConfigSource::Env { prefix } => load_from_env(prefix.as_deref()),
-                ConfigSource::File(path) => load_from_file(path),
-                ConfigSource::String { content, format } => parse_content(content, *format),
-                ConfigSource::Memory(values) => Ok(values.clone()),
-            }?;
-
-            // Merge values (later sources override earlier ones)
-            merged.extend(values);
-        }
-
-        T::from_map(merged)
+        T::from_map(self.load_raw()?)
     }
 
     /// Load configuration as a raw HashMap
@@ -149,6 +135,7 @@ impl ConfigLoader {
                 ConfigSource::Memory(values) => Ok(values.clone()),
             }?;
 
+            // Merge values (later sources override earlier ones)
             merged.extend(values);
         }
 
@@ -157,20 +144,7 @@ impl ConfigLoader {
 
     /// Load configuration asynchronously into a type that implements Config
     pub async fn load_async<T: Config>(self) -> Result<T, ConfigError> {
-        let mut merged = HashMap::new();
-
-        for source in &self.sources {
-            let values = match source {
-                ConfigSource::Env { prefix } => load_from_env(prefix.as_deref()),
-                ConfigSource::File(path) => load_from_file_async(path).await,
-                ConfigSource::String { content, format } => parse_content(content, *format),
-                ConfigSource::Memory(values) => Ok(values.clone()),
-            }?;
-
-            merged.extend(values);
-        }
-
-        T::from_map(merged)
+        T::from_map(self.load_raw_async().await?)
     }
 
     /// Load configuration asynchronously as a raw HashMap
@@ -624,6 +598,36 @@ pub trait AppConfig: Config {
     }
 }
 
+fn parse_optional<T>(
+    map: &HashMap<String, String>,
+    key: &str,
+    default: T,
+) -> Result<T, ConfigError>
+where
+    T: std::str::FromStr,
+    T::Err: fmt::Display,
+{
+    match map.get(key) {
+        None => Ok(default),
+        Some(raw) => raw.parse::<T>().map_err(|e| ConfigError::InvalidValue {
+            key: key.to_string(),
+            value: raw.clone(),
+            reason: e.to_string(),
+        }),
+    }
+}
+
+fn parse_optional_bool(
+    map: &HashMap<String, String>,
+    key: &str,
+    default: bool,
+) -> Result<bool, ConfigError> {
+    match map.get(key) {
+        None => Ok(default),
+        Some(raw) => ConfigValue::new(key, Some(raw.clone())).as_bool(),
+    }
+}
+
 /// Common database configuration
 #[derive(Debug, Clone)]
 pub struct DatabaseConfig {
@@ -636,29 +640,9 @@ pub struct DatabaseConfig {
 impl Config for DatabaseConfig {
     fn from_map(map: HashMap<String, String>) -> Result<Self, ConfigError> {
         let url = ConfigValue::new("database.url", map.get("database.url").cloned()).as_string()?;
-
-        let pool_size =
-            ConfigValue::new("database.pool_size", map.get("database.pool_size").cloned())
-                .as_string()
-                .ok()
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(10);
-
-        let timeout_seconds = ConfigValue::new(
-            "database.timeout_seconds",
-            map.get("database.timeout_seconds").cloned(),
-        )
-        .as_string()
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(30);
-
-        let enable_logging = ConfigValue::new(
-            "database.enable_logging",
-            map.get("database.enable_logging").cloned(),
-        )
-        .as_bool()
-        .unwrap_or(false);
+        let pool_size = parse_optional(&map, "database.pool_size", 10)?;
+        let timeout_seconds = parse_optional(&map, "database.timeout_seconds", 30)?;
+        let enable_logging = parse_optional_bool(&map, "database.enable_logging", false)?;
 
         let config = Self {
             url: Secret::new(url),
@@ -700,32 +684,10 @@ impl Config for ServerConfig {
     fn from_map(map: HashMap<String, String>) -> Result<Self, ConfigError> {
         let host =
             ConfigValue::new("server.host", map.get("server.host").cloned()).or_default("0.0.0.0");
-
-        let port = ConfigValue::new("server.port", map.get("server.port").cloned())
-            .as_string()
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(8080);
-
-        let workers = ConfigValue::new("server.workers", map.get("server.workers").cloned())
-            .as_string()
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(4);
-
-        let request_timeout = ConfigValue::new(
-            "server.request_timeout",
-            map.get("server.request_timeout").cloned(),
-        )
-        .as_string()
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(30);
-
-        let keep_alive =
-            ConfigValue::new("server.keep_alive", map.get("server.keep_alive").cloned())
-                .as_bool()
-                .unwrap_or(true);
+        let port = parse_optional(&map, "server.port", 8080)?;
+        let workers = parse_optional(&map, "server.workers", 4)?;
+        let request_timeout = parse_optional(&map, "server.request_timeout", 30)?;
+        let keep_alive = parse_optional_bool(&map, "server.keep_alive", true)?;
 
         let config = Self {
             host,
@@ -855,5 +817,26 @@ mod tests {
         let config = ServerConfig::from_map(map).unwrap();
         assert_eq!(config.host, "127.0.0.1");
         assert_eq!(config.port, 3000);
+    }
+
+    #[test]
+    fn test_invalid_optional_config_values_fail_instead_of_silently_defaulting() {
+        let mut db_map = HashMap::new();
+        db_map.insert(
+            "database.url".to_string(),
+            "postgres://localhost/db".to_string(),
+        );
+        db_map.insert("database.pool_size".to_string(), "invalid".to_string());
+        assert!(matches!(
+            DatabaseConfig::from_map(db_map),
+            Err(ConfigError::InvalidValue { key, .. }) if key == "database.pool_size"
+        ));
+
+        let mut srv_map = HashMap::new();
+        srv_map.insert("server.keep_alive".to_string(), "maybe".to_string());
+        assert!(matches!(
+            ServerConfig::from_map(srv_map),
+            Err(ConfigError::InvalidValue { key, .. }) if key == "server.keep_alive"
+        ));
     }
 }

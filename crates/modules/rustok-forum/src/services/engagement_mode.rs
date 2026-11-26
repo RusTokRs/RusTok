@@ -23,6 +23,19 @@ pub struct ForumSettingsProviders {
 }
 
 impl ForumSettingsProviders {
+    /// Preserve both host capabilities, including incomplete configurations.
+    /// Only an actually empty pair denotes a default-only service; readers
+    /// validate the capabilities needed for their operation at the owner boundary.
+    pub fn from_optional_readers(
+        static_reader: Option<SharedStaticModuleSettingsReader>,
+        transactional_reader: Option<SharedStaticModuleSettingsTransactionReader>,
+    ) -> Self {
+        Self {
+            static_reader,
+            transactional_reader,
+        }
+    }
+
     pub fn with_static_readers(
         mut self,
         static_reader: SharedStaticModuleSettingsReader,
@@ -55,14 +68,50 @@ impl ForumSettingsProviders {
             .allow_anonymous_reading)
     }
 
-    /// Reads the Forum module settings inside the caller's transaction. A disabled module or
-    /// a missing reader yields the default settings, so every flag takes its default value.
+    fn static_settings_reader(&self) -> ForumResult<Option<&SharedStaticModuleSettingsReader>> {
+        match (
+            self.static_reader.as_ref(),
+            self.transactional_reader.is_some(),
+        ) {
+            (Some(reader), _) => Ok(Some(reader)),
+            (None, true) => Err(ForumError::capability_unavailable(
+                "static_module_settings",
+                "FORUM_STATIC_SETTINGS_UNAVAILABLE",
+            )),
+            (None, false) => Ok(None),
+        }
+    }
+
+    // No readers means the explicit default-only service configuration. Once a
+    // host supplies settings capabilities, an incomplete pair cannot be treated
+    // as evidence that this tenant has no saved policy.
+    fn transactional_settings_reader(
+        &self,
+    ) -> ForumResult<Option<&SharedStaticModuleSettingsTransactionReader>> {
+        self.static_settings_reader()?;
+        match (
+            self.transactional_reader.as_ref(),
+            self.static_reader.is_some(),
+        ) {
+            (Some(reader), _) => Ok(Some(reader)),
+            (None, true) => Err(ForumError::capability_unavailable(
+                "static_module_settings_transactional",
+                "FORUM_TRANSACTIONAL_SETTINGS_UNAVAILABLE",
+            )),
+            (None, false) => Ok(None),
+        }
+    }
+
+    /// Reads settings in the caller's transaction. A configured read-only
+    /// provider must not silently replace stored policy with permissive defaults.
+    /// Missing rows/disabled modules and explicit default-only services retain
+    /// their existing defaults; either incomplete capability pair fails closed.
     pub(crate) async fn module_settings_in_tx(
         &self,
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
     ) -> ForumResult<ForumSettings> {
-        let Some(reader) = self.transactional_reader.as_ref() else {
+        let Some(reader) = self.transactional_settings_reader()? else {
             return Ok(ForumSettings::default());
         };
         let snapshot = reader
@@ -74,7 +123,7 @@ impl ForumSettingsProviders {
 
     /// Non-transactional variant of [`Self::module_settings_in_tx`] for read-before-write checks.
     pub(crate) async fn module_settings(&self, tenant_id: Uuid) -> ForumResult<ForumSettings> {
-        let Some(reader) = self.static_reader.as_ref() else {
+        let Some(reader) = self.static_settings_reader()? else {
             return Ok(ForumSettings::default());
         };
         let snapshot = reader
@@ -188,7 +237,7 @@ pub enum ForumEngagementMode {
 
 impl ForumEngagementMode {
     pub async fn resolve(providers: &ForumSettingsProviders, tenant_id: Uuid) -> ForumResult<Self> {
-        let Some(reader) = providers.static_reader.as_ref() else {
+        let Some(reader) = providers.static_settings_reader()? else {
             return Ok(Self::InternalVotes);
         };
 
@@ -409,6 +458,121 @@ mod tests {
             SharedStaticModuleSettingsReader(reader.clone()),
             SharedStaticModuleSettingsTransactionReader(reader),
         )
+    }
+
+    #[test]
+    fn transactional_policy_distinguishes_default_only_paired_and_read_only_providers() {
+        assert!(
+            ForumSettingsProviders::default()
+                .transactional_settings_reader()
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            providers()
+                .transactional_settings_reader()
+                .unwrap()
+                .is_some()
+        );
+        let read_only = ForumSettingsProviders::default().with_static_reader(
+            SharedStaticModuleSettingsReader(Arc::new(EmptySettingsReader)),
+        );
+        let error = match read_only.transactional_settings_reader() {
+            Err(error) => error,
+            Ok(_) => {
+                panic!("configured settings must not fall back without the transactional reader")
+            }
+        };
+        assert_eq!(
+            error.stable_code(),
+            "FORUM_TRANSACTIONAL_SETTINGS_UNAVAILABLE"
+        );
+    }
+
+    #[test]
+    fn optional_reader_assembly_preserves_all_four_capability_states() {
+        for has_static in [false, true] {
+            for has_transactional in [false, true] {
+                let reader = Arc::new(EmptySettingsReader);
+                let settings = ForumSettingsProviders::from_optional_readers(
+                    has_static.then(|| SharedStaticModuleSettingsReader(reader.clone())),
+                    has_transactional.then(|| SharedStaticModuleSettingsTransactionReader(reader)),
+                );
+                assert_eq!(settings.static_reader.is_some(), has_static);
+                assert_eq!(settings.transactional_reader.is_some(), has_transactional);
+                if !has_static && has_transactional {
+                    assert_eq!(
+                        settings
+                            .static_settings_reader()
+                            .err()
+                            .expect("static reader is required")
+                            .stable_code(),
+                        "FORUM_STATIC_SETTINGS_UNAVAILABLE"
+                    );
+                    assert_eq!(
+                        settings
+                            .transactional_settings_reader()
+                            .err()
+                            .expect("partial configuration cannot write")
+                            .stable_code(),
+                        "FORUM_STATIC_SETTINGS_UNAVAILABLE"
+                    );
+                } else {
+                    assert!(settings.static_settings_reader().is_ok());
+                    assert_eq!(
+                        settings.transactional_settings_reader().is_ok(),
+                        !has_static || has_transactional
+                    );
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn transaction_only_configuration_cannot_be_read_as_default_policy() {
+        let settings = ForumSettingsProviders::from_optional_readers(
+            None,
+            Some(SharedStaticModuleSettingsTransactionReader(Arc::new(
+                EmptySettingsReader,
+            ))),
+        );
+        assert_eq!(
+            settings
+                .module_settings(Uuid::new_v4())
+                .await
+                .unwrap_err()
+                .stable_code(),
+            "FORUM_STATIC_SETTINGS_UNAVAILABLE"
+        );
+        assert_eq!(
+            ForumEngagementMode::resolve(&settings, Uuid::new_v4())
+                .await
+                .unwrap_err()
+                .stable_code(),
+            "FORUM_STATIC_SETTINGS_UNAVAILABLE",
+            "engagement reads must not turn a partial pair into internal-vote defaults"
+        );
+    }
+
+    #[tokio::test]
+    async fn read_only_provider_remains_usable_for_nontransactional_reads() {
+        let read_only = ForumSettingsProviders::default().with_static_reader(
+            SharedStaticModuleSettingsReader(Arc::new(EmptySettingsReader)),
+        );
+        assert_eq!(
+            read_only
+                .module_settings(Uuid::new_v4())
+                .await
+                .unwrap()
+                .max_edit_window_minutes,
+            0
+        );
+        assert_eq!(
+            ForumEngagementMode::resolve(&read_only, Uuid::new_v4())
+                .await
+                .unwrap(),
+            ForumEngagementMode::InternalVotes
+        );
     }
 
     #[tokio::test]

@@ -352,15 +352,20 @@ FOR UPDATE OF pav
             ));
         }
 
-        let before = build_snapshot(
-            load_attribute_value_aggregate(&txn, tenant_id, value_id)
-                .await?
-                .ok_or(ProductAttributeValueTranslationError::ValueNotFound(
-                    value_id,
-                ))?,
-            &source_locale,
-            &target_locale,
-        )?;
+        let before_aggregate = load_attribute_value_aggregate(&txn, tenant_id, value_id)
+            .await?
+            .ok_or(ProductAttributeValueTranslationError::ValueNotFound(
+                value_id,
+            ))?;
+        super::validate_localized_attribute_translation_in(
+            &txn,
+            tenant_id,
+            product.primary_category_id,
+            before_aggregate.attribute_id,
+            &request.value,
+        )
+        .await?;
+        let before = build_snapshot(before_aggregate, &source_locale, &target_locale)?;
         ensure_revision(
             "resource",
             &request.expected_resource_revision,

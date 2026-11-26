@@ -21,7 +21,7 @@ use uuid::Uuid;
 use crate::error::{Error, Result};
 use crate::services::app_lifecycle::DirectWorkerRegistrationLock;
 use crate::services::server_runtime_context::published_worker_running;
-use crate::services::stop_handle::StopHandle;
+use crate::services::stop_handle::{StopHandle, may_admit_next_worker_operation};
 use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
 
 pub const NOTIFICATION_OUTBOX_INTAKE_ENABLED_ENV: &str =
@@ -335,26 +335,33 @@ async fn notification_outbox_intake_loop(
     worker: NotificationOutboxIntakeWorker,
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
 ) {
+    // This cursor is only a fairness hint, never a durable receipt.
+    // Failed envelopes remain pending and are revisited after wrap/restart.
+    let mut cursor = None;
     loop {
-        if *stop_rx.borrow() {
+        if !may_admit_next_worker_operation(&stop_rx) {
             tracing::info!("Notification outbox intake stopped");
             return;
         }
 
-        let event_ids = match worker.pending_outbox_event_ids().await {
-            Ok(event_ids) => event_ids,
+        let event_ids = match worker.pending_outbox_page_after(cursor.as_ref()).await {
+            Ok(page) => {
+                cursor = page.next_cursor;
+                page.event_ids
+            }
             Err(error) => {
                 tracing::error!(
                     error_code = error.stable_code(),
                     retryable = error.is_retryable(),
                     "Notification outbox intake failed to select committed envelopes"
                 );
+                // Keep the current position on selection failure.
                 Vec::new()
             }
         };
 
         for outbox_event_id in event_ids {
-            if *stop_rx.borrow() {
+            if !may_admit_next_worker_operation(&stop_rx) {
                 tracing::info!("Notification outbox intake stopped before next envelope");
                 return;
             }

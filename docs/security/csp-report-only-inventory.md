@@ -16,17 +16,17 @@ No violation in this document is an automatic allowlist request. The preferred r
 ## Collection Contract
 
 - Endpoint: `POST /api/security/csp-report` on the main RusToK server host.
-- Accepted formats: legacy `application/csp-report`, Reporting API `application/reports+json`, and JSON-compatible test traffic.
+- Accepted formats: legacy `application/csp-report`, Reporting API `application/reports+json`, and JSON-compatible test traffic. A missing Content-Type remains accepted for JSON-compatible traffic; multiple Content-Type header fields, even identical ones, are rejected with HTTP 415.
 - Legacy reports may include both `effective-directive` and `violated-directive`; the collector prefers the nonblank effective directive and uses the violated directive only as a fallback. Both fields are decoded independently.
 - Maximum request body: 64 KiB.
 - Maximum processed Reporting API entries: 20 per request.
 - The outer security middleware handles the endpoint before tenant and authentication routing.
 - The configured public `/api/` rate limiter runs before the unauthenticated collector, so report traffic cannot bypass the normal API abuse budget.
 - Responses contain no report body and return `204` for accepted reports.
-- Invalid content types, JSON and report shapes are rejected with bounded status codes.
+- Invalid content types, JSON and report shapes are rejected with bounded status codes. A violation body must be an object with a nonblank effective or legacy violated directive; missing and blank directives and positional arrays are rejected. Unknown nonblank directives remain accepted as `other`; only exact script/style directive names and their `-elem`/`-attr` variants enter the corresponding buckets. Legacy directive source lists are ignored for classification.
 - The standalone admin process does not advertise a report endpoint it cannot receive; it emits enforced CSP only.
 
-The collector never records `script-sample`, full document paths, URL queries or URL fragments. Structured logs retain only normalized origins, bounded opaque-URL schemes or fixed values such as `inline`, `eval`, `data` and `blob`. The 512-byte location limit also applies to opaque URL schemes.
+The collector never records `script-sample`, full document paths, URL queries or URL fragments. Structured logs retain only normalized origins, known opaque-URL scheme labels or fixed values such as `inline`, `eval`, `data` and `blob`. Unknown opaque schemes become `opaque`; their attacker-controlled text is never logged. The 512-byte location limit also applies to opaque URL schemes.
 
 ## Telemetry Contract
 
@@ -37,7 +37,7 @@ Accepted reports emit structured events with target `rustok.security.csp` and bo
 | `report_format` | `legacy`, `reporting_api` |
 | `directive` | `script-src`, `style-src`, `connect-src`, `img-src`, `font-src`, `worker-src`, `frame-src`, `frame-ancestors`, `object-src`, `base-uri`, `form-action`, `default-src`, `other` |
 | `disposition` | Normalized `report`, `enforce` or `other` value |
-| locations | Origin only, fixed keyword, scheme-only value, `oversized` marker or `opaque` |
+| locations | Origin only, fixed keyword, known scheme label, `oversized` marker or `opaque` |
 | source position | Optional line and column |
 | status | Optional document response status |
 
@@ -65,6 +65,7 @@ The Prometheus family `rustok_module_errors_total` records the same bounded dire
 
 - `rustok-web::CspNonce` creates one UUIDv4-derived nonce per UI response.
 - The outer main-server security middleware inserts the nonce into request extensions and uses the same value in enforced and report-only headers.
+- Reserved API and operator route families are matched on path-segment boundaries, including registry mutations under `/v2/catalog`, protocol discovery under `/.well-known` and the build WebSocket at `/ws/builds`. These use the strict API CSP without UI nonce or report-only headers; similarly named UI routes are not classified as API surfaces.
 - Embedded admin processing applies the nonce only to script and style elements in the immutable bundled `index.html`; it is never applied to tenant or user-authored HTML.
 - Storefront processing applies the nonce only to the exact JSON-LD opening tag emitted by the typed SEO renderer.
 - The standalone admin middleware inserts the same nonce type into Axum request extensions and copies it into the Leptos render context through the UI nonce contract. Its SSR shell intentionally contains no transitional auth bootstrap or hydration script; module-owned server-preview and inline elements consume the context nonce, and browser hydrate/CSR reads the nonce from the trusted script that booted it.

@@ -163,16 +163,36 @@ impl PaymentProviderEventRecoveryService {
         worker_id: &str,
         limit: Option<u64>,
     ) -> PaymentResult<PaymentProviderEventRecoveryReport> {
+        self.run_with_admission(tenant_id, worker_id, limit, || true)
+            .await
+    }
+
+    /// Run a bounded recovery sweep while the caller admits new operations.
+    /// Check admission before the query and again before each individual claim.
+    /// Once admitted, a recovery attempt is awaited through its journal outcome;
+    /// closing admission does not cancel in-flight work. Unadmitted rows remain
+    /// untouched and are not counted in the partial report.
+    pub async fn run_with_admission(
+        &self,
+        tenant_id: Uuid,
+        worker_id: &str,
+        limit: Option<u64>,
+        mut may_admit: impl FnMut() -> bool + Send,
+    ) -> PaymentResult<PaymentProviderEventRecoveryReport> {
+        let mut report = PaymentProviderEventRecoveryReport::default();
+        if !may_admit() {
+            return Ok(report);
+        }
         let events = self
             .journal
             .list_retryable(tenant_id, limit.unwrap_or(DEFAULT_RECOVERY_BATCH_LIMIT))
             .await?;
-        let mut report = PaymentProviderEventRecoveryReport {
-            scanned: events.len(),
-            ..Default::default()
-        };
 
         for event in events {
+            if !may_admit() {
+                break;
+            }
+            report.scanned += 1;
             let lease_owner = format!("{worker_id}:{}:{}", event.id, Uuid::new_v4());
             match self.resume(tenant_id, event.id, lease_owner).await {
                 Ok(PaymentProviderEventRecoveryOutcome::Processed(_)) => report.processed += 1,

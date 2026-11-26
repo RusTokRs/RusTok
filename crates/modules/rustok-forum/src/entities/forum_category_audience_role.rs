@@ -19,8 +19,8 @@ pub struct Model {
 pub enum Relation {
     #[sea_orm(
         belongs_to = "super::forum_category_audience_policy::Entity",
-        from = "Column::CategoryId",
-        to = "super::forum_category_audience_policy::Column::CategoryId",
+        from = "(Column::TenantId, Column::CategoryId)",
+        to = "(super::forum_category_audience_policy::Column::TenantId, super::forum_category_audience_policy::Column::CategoryId)",
         on_update = "Cascade",
         on_delete = "Cascade"
     )]

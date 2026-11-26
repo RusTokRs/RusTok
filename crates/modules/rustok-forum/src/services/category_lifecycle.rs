@@ -4,6 +4,7 @@
 /// a child of an archived ancestor is not an active placement target even when its own
 /// lifecycle row is absent.
 pub(super) async fn ensure_category_tree_target_is_active_in_tx(
+    port: &dyn crate::ForumTaxonomyPort,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     category_id: Uuid,
@@ -14,13 +15,7 @@ pub(super) async fn ensure_category_tree_target_is_active_in_tx(
         .iter()
         .map(|category| category.id)
         .collect::<Vec<_>>();
-    let parent_by_id = load_category_parents_in_tx(
-        &crate::ports::taxonomy::NoopForumTaxonomyPort,
-        txn,
-        tenant_id,
-        &category_ids,
-    )
-    .await?;
+    let parent_by_id = load_category_parents_in_tx(port, txn, tenant_id, &category_ids).await?;
     validate_parent_map(&parent_by_id)?;
 
     let lifecycle_rows = forum_category_lifecycle::Entity::find()
@@ -44,11 +39,12 @@ pub(super) async fn ensure_category_tree_target_is_active_in_tx(
 
 /// Verify that a deleted topic/reply can be restored into its category tree.
 pub(super) async fn ensure_category_restore_target_is_active_in_tx(
+    port: &dyn crate::ForumTaxonomyPort,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     category_id: Uuid,
 ) -> ForumResult<()> {
-    ensure_category_tree_target_is_active_in_tx(txn, tenant_id, category_id).await
+    ensure_category_tree_target_is_active_in_tx(port, txn, tenant_id, category_id).await
 }
 
 async fn load_category_parents_in_tx(
@@ -57,27 +53,14 @@ async fn load_category_parents_in_tx(
     tenant_id: Uuid,
     category_ids: &[Uuid],
 ) -> ForumResult<HashMap<Uuid, Option<Uuid>>> {
-    if category_ids.is_empty() {
-        return Ok(HashMap::new());
-    }
-    let projections = port
-        .load_scoped_categories(
-            txn.into(),
-            tenant_id,
-            Some(category_ids),
-            rustok_api::PLATFORM_FALLBACK_LOCALE,
-            Some(rustok_api::PLATFORM_FALLBACK_LOCALE),
-        )
+    let parents = port
+        .load_category_parents(txn.into(), tenant_id, category_ids)
         .await?;
-    if projections.len() != category_ids.len() {
-        return Err(ForumError::Validation(
-            "Forum Category Taxonomy hierarchy coverage is incomplete".to_string(),
-        ));
-    }
-    Ok(projections
-        .into_iter()
-        .map(|category| (category.id, category.parent_id))
-        .collect())
+    crate::services::category_hierarchy::validate_category_parent_projection(
+        category_ids,
+        &parents,
+    )?;
+    Ok(parents)
 }
 
 fn collect_subtree_ids(

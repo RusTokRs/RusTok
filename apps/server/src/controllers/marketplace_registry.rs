@@ -3567,29 +3567,8 @@ fn map_remote_validation_transition_error(error: RegistryRemoteTransitionError) 
 }
 
 fn required_non_nil_idempotency_key(headers: &HeaderMap) -> Result<Uuid, Error> {
-    let mut values = headers.get_all("idempotency-key").iter();
-    let first = values
-        .next()
-        .ok_or_else(|| Error::BadRequest("Idempotency-Key header is required".to_string()))?;
-    if values.next().is_some() {
-        return Err(Error::BadRequest(
-            "Duplicate Idempotency-Key headers are forbidden".to_string(),
-        ));
-    }
-    let value = first
-        .to_str()
-        .map_err(|_| Error::BadRequest("Idempotency-Key header is invalid".to_string()))?;
-    let key = value
-        .trim()
-        .trim_matches('"')
-        .parse::<Uuid>()
-        .map_err(|_| Error::BadRequest("Idempotency-Key header must be a UUID".to_string()))?;
-    if key.is_nil() {
-        return Err(Error::BadRequest(
-            "Idempotency-Key header must not be the nil UUID".to_string(),
-        ));
-    }
-    Ok(key)
+    crate::common::idempotency::optional_uuid_header(headers)?
+        .ok_or_else(|| Error::BadRequest("Idempotency-Key header is required".to_string()))
 }
 
 fn validate_registry_slug(slug: &str) -> Result<(), Error> {
@@ -3790,6 +3769,14 @@ mod marketplace_registry_tests {
         );
         let key = super::required_non_nil_idempotency_key(&headers).expect("should succeed");
         assert_eq!(key, uuid::uuid!("00000000-0000-0000-0000-000000000001"));
+
+        assert!(super::required_non_nil_idempotency_key(&HeaderMap::new()).is_err());
+
+        headers.insert(
+            HeaderName::from_static("idempotency-key"),
+            HeaderValue::from_static("\"00000000-0000-0000-0000-000000000001"),
+        );
+        assert!(super::required_non_nil_idempotency_key(&headers).is_err());
 
         // Reject nil UUID
         let mut nil_headers = HeaderMap::new();

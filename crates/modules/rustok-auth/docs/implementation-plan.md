@@ -44,10 +44,13 @@ obsolete fake session; its stale generated standalone lockfile was removed and i
 screenshot is historical, not verification of this migration. Preserve the release
 gates in the [Page Builder backlog](../../../../docs/modules/page-builder-backlog.md).
 
-JWT follow-up source review: bind reads and every CAS to authority identity,
-authenticate the caller root even for an empty ledger, reject incompatible
-static grants and malformed registry identifiers, latch observed lease expiry,
-and validate authority before application migration. Focused regressions unrun.
+JWT follow-up source hardening is implemented: every authority read and CAS
+is bound to the pinned authority identity; the caller MAC root is authenticated
+even for an empty ledger; generation-zero/static HTTP admission is absent;
+malformed replica-grant identifiers are rejected; observed lease expiry is
+sticky; and production opens the external authority before application
+migrations. Focused source regressions are authored but unrun; scoped checks
+and real PostgreSQL contention/restore evidence remain pending.
 
 RS256-only JWT target: [accepted ADR](../../../../DECISIONS/2026-11-25-rs256-only-jwt.md).
 All repository-owned JWT signing and verification now use RS256 exclusively.
@@ -253,15 +256,21 @@ are unchanged. Stop old host writers before deploying new instances. Source
 regressions authored, unrun. See [canonical Auth MAC proofs](../../../../DECISIONS/2026-11-25-canonical-auth-mac-proofs.md).
 
 JWT purpose keyrings, mandatory key IDs and verification retirement are
-source-implemented. Missing-ID access and raw-root JWT history are rejected. A two-key RS256 staging/promotion/
-retirement regression is authored. Scoped compilation, regression execution
-and multi-replica rollout evidence are pending. Managed algorithm migration
-is removed; RS256-only consumer/bootstrap cutover remains pending.
-Reissue obsolete development tokens and shared-key special links.
-Follow-up source review adds canonical RSA modulus identity, private/public
-pair enforcement at signing, strict JOSE header admission and post-signature
-retirement fencing. Zero-duration issuance and timestamp truncation are rejected;
-regressions authored but not executed.
+source-implemented. All repository-owned JWT signing and verification are
+RS256-only; the mandatory complete keyring file supplies four independent
+purpose pairs and server bootstrap performs durable admission before
+application migrations and listener startup. The keyring document has no
+algorithm selector; JOSE verification pins RS256 before exact kid lookup.
+No HS256 signer, verifier, derivation or fallback remains. Durable metadata
+retains a fixed RS256 assertion for continuity; persisted HS256 fails closed,
+and incompatible retained stores remain blocked pending the authenticated
+offline converter. Scoped compilation, regression execution and
+independent-replica rollout evidence remain pending. Reissue obsolete
+development tokens and shared-key special links.
+Canonical RSA modulus identity, private/public pair enforcement at signing,
+strict JOSE header admission, post-signature retirement fencing and checked
+signed-time conversion are source-implemented. Focused regressions are
+authored but not executed.
 Immutable prepared JWT snapshots are source-implemented: all-purpose admission,
 shared once-only initialization, private key configuration and candidate detachment.
 Process-local hot reload now shares a publication fence across all AuthConfig clones;
@@ -311,9 +320,9 @@ regressions authored; compilation and runtime verification remain pending.
 ## Direct session mutation ordering (source only)
 
 Refresh and bulk session revocation use the shared tenant-scoped user mutation
-fence before acquiring session locks. Bulk self-service revocation checks the
-current session again under lock. SQLite history-only replay reserves its writer
-before reading the evidence. Regressions exercise lock ordering and stale current
+fence before acquiring session locks, including history-only recovery and
+replay. Bulk self-service revocation checks the current session again under
+lock. SQLite reserves its writer at the user fence before reading the evidence. Regressions exercise lock ordering and stale current
 session rejection; PostgreSQL contention, compilation and the remediation gate
 remain maintainer-run.
 
@@ -326,6 +335,81 @@ session and previous-cookie logout contract are preserved. Older overwritten dig
 cannot be recovered. Apply the migration before deploying the new host, with old host
 writers stopped. Regression definitions, PostgreSQL backfill, cascade, rollback and
 concurrency checks remain unrun.
+
+## Proof-bound direct session refresh recovery (source only)
+
+The host accepts the owner-defined secret retry header for raw REST and
+GraphQL HTTP refresh, derives the cookie REST proof from its envelope, and
+derives the opaque successor under the independent MAC root, verifies the current digest and history under the
+user/session fences, and preserves the original refresh deadline and history
+on recovery. The GraphQL provider preserves rotation conflicts as CONFLICT.
+See [the recovery ADR](../../../../DECISIONS/2026-11-26-session-refresh-retry-proof.md).
+
+The cookie-session REST owner now issues one canonical HttpOnly token/seed
+envelope and derives the proof from the seed, resolved tenant UUID and
+presented token. Next Admin relays the owner envelope unchanged; its former
+local derivation has been removed. One bounded automatic retry handles
+ambiguous upstream refresh results; the domain GraphQL operation is never
+automatically replayed. The BFF rejects duplicate/malformed cookies and
+redirects, checks the refreshed subject and seed continuity, and does not
+clear cookies on transient refresh failures. Logout requires explicit ok.
+Existing sessions require coordinated revocation and new sign-in.
+
+Leptos shared native SSR/hydrate and Admin SSR middleware now source-wire
+a canonical HttpOnly envelope, independently generated OS CSPRNG seed,
+generation-bound proof, redirect refusal and one bounded ambiguous retry.
+Explicit auth functions own their cookie transitions; middleware does not
+perform a competing rotation or overwrite an explicit handler Set-Cookie.
+The shared provider attempts refresh instead of revocation on access expiry.
+Old native bare cookies require coordinated session revocation and new sign-in.
+Scoped proof, cookie admission, status and mock HTTP retry regressions are
+authored and unrun. Only native/SSR cryptographic dependencies are enabled.
+
+Direct Leptos CSR now uses the Auth-owned HttpOnly envelope with no
+JavaScript-readable secret storage. A shared exclusive Web Lock bounds
+cookie mutation admission and serializes cooperating tabs through response
+parsing and one ambiguous refresh retry. The secure-context browser
+transport refuses redirects, uses no-store and same-origin Fetch, and
+requires Web Locks/AbortSignal.timeout. Cookie admission, proof derivation,
+retry and storage regressions are source-authored; mounted browser and
+failure-injection verification remain unrun. The shared Leptos provider now
+extends the lock through publication for CSR and hydrate, rechecks the
+captured epoch at admission, clears foreign projections on existing
+notifications, and tags its atomic verified memory pair with the completed
+epoch. Native authenticated calls refuse stale/absent credentials and recheck
+before dispatch. Refresh rejects tenant/subject/lineage replacement. Source
+regressions cover changed, missing or unavailable epochs and identity
+substitution. Routine refresh conservatively invalidates foreign projections.
+Expected-lineage admission is source-wired for raw/cookie REST refresh/logout
+and GraphQL HTTP refresh. The strict optional non-nil canonical UUID header is
+checked before rotation/recovery/reuse revocation. Expected logout proves the
+digest belongs to the locked tenant lineage (including retained history);
+missing/mismatched credentials do not clear cookies. Leptos projects the
+expected ID through CSR/hydrate and Next Admin pins Auth.js to the direct
+session, compares tenant/subject/lineage before dispatch, and avoids clearing
+cookies on rejected refresh. Next Admin explicit logout is now source-wired:
+the closed credentials-only Auth.js route admits same-origin POST with a
+frozen expected lineage, revokes through Auth before any cookie cleanup,
+then invokes the private Auth.js sign-out helper and clears Rustok cookies.
+UI header/sidebar and credential-change flows share the transport; failures
+are localized and do not repeat a committed credential change. Failed login
+does not clear unrelated cookies. Generic Auth.js signout bypass is removed.
+Regressions cover current/historical mismatch, matching proof recovery,
+historical logout retry, header parsing, adapter forwarding, route admission,
+cleanup ordering and explicit response confirmation.
+Out-of-order noncooperating responses, SSR navigation, discovery without
+expected identity, expired Auth.js identity recovery, post-revocation cleanup
+failure and mounted verification remain open.
+
+Remaining implementation: standalone Storefront SSR validated composition,
+Next Storefront (currently observation-only, without its own refresh flow),
+mobile/native consumers, generated API header reference updates, and
+header secrecy in proxies/telemetry. Next Admin browser/runtime and
+cross-replica evidence, late cookie delivery and post-revocation cookie
+cleanup recovery remain pending. OAuth refresh-family recovery is separate.
+Run scoped Auth and server compilation, retry-proof and lifecycle tests,
+mounted REST/GraphQL/CORS contracts, PostgreSQL contention and cross-replica
+lost-response injection, plus the remediation gate. None has been executed.
 
 ## Password recovery parity (source only)
 
@@ -384,10 +468,10 @@ gate are pending maintainer verification.
 - Last verified at (UTC): `2026-07-30`
 - Scope inspected: `auth ownership; JWT and credential lifecycle; OAuth app, authorization-code and refresh-token paths; tenant-qualified admin mutations; translation-table migration and runtime localization; auth-owned CLI bootstrap adapter; explicit operational tenant selection; implicit grant expansion`
 - Findings: `P0=0, P1=7, P2=0, P3=2`
-- Fixed in this pass: `preserved the four previously repaired P1 defects; fixed the post-migration rustok-auth-cli OAuth bootstrap failure by deleting raw writes to removed oauth_apps.name/description columns and persisting the base row plus en translation in one transaction; added a SQLite regression against the current translation-table schema; removed first-active-tenant inference from oauth create-app and required an explicit tenant UUID before credential persistence, with missing, invalid and valid UUID regressions`
-- Remaining risks or blockers: `P1 implicit refresh_token authority remains for auto-created applications whose persisted grant_types omit it; same-SHA auth CLI execution is pending in GitHub Actions; PostgreSQL forward/down migration smoke and browser/runtime mutation parity evidence remain required; lightweight owner-owned OAuth code/refresh regression target remains P3 verification debt`
+- Fixed in this pass: `preserved the four previously repaired P1 defects; fixed the post-migration rustok-auth-cli OAuth bootstrap failure by deleting raw writes to removed oauth_apps.name/description columns and persisting the base row plus en translation in one transaction; added a SQLite regression against the current translation-table schema; removed first-active-tenant inference from oauth create-app and required an explicit tenant UUID before credential persistence, with missing, invalid and valid UUID regressions; closed implicit refresh_token authority by enforcing exact persisted grant membership and explicitly declaring refresh_token in first-party manifest producers`
+- Remaining risks or blockers: `same-SHA auth CLI execution is pending in GitHub Actions; PostgreSQL forward/down migration smoke and browser/runtime mutation parity evidence remain required; lightweight owner-owned OAuth code/refresh regression target remains P3 verification debt`
 - Evidence: `source inspection confirms tenant-qualified OAuth client, consent and admin lookups; authorization-code and refresh-token replacements use transactional compare-and-set; oauth_app_translations uses VARCHAR(32), tenant-composite FK and unique tenant/app/locale identity; auth CLI no longer imports rustok-tenant or rustok-api, requires --tenant-id before OAuth credential writes and contains explicit missing/invalid/valid UUID unit cases; tenant FBA guard forbids read_default_active_tenant in the credential path; connector-only local execution remains unavailable because github.com DNS resolution fails and is classified as an environment limitation`
-- Next action: `run the targeted rustok-auth-cli regressions and canonical auth module checks; remove implicit refresh grant expansion with explicit producer updates; rerun PostgreSQL migration smoke; then revisit this blocked item during closing gates`
+- Next action: `run the targeted rustok-auth-cli regressions and canonical auth module checks; rerun PostgreSQL migration smoke; then revisit this blocked item during closing gates`
 - Resume command: `cargo test -p rustok-auth-cli oauth_create_app -- --nocapture && cargo test -p rustok-auth-cli development_app_uses_current_translation_schema && cargo xtask module validate auth && cargo xtask module test auth`
 
 

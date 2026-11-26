@@ -39,6 +39,8 @@ use crate::policy::{
 use crate::resolution::TargetSurface;
 use crate::target_type::ChannelTargetType;
 
+mod public_module;
+
 /// Column widths the channel schema enforces.
 ///
 /// PostgreSQL `varchar(n)` counts characters while Rust `str::len()` counts

@@ -190,6 +190,7 @@ impl OutboxConsumer {
                 .await?;
 
             if let Some(event) = pending {
+                txn.rollback().await?;
                 return Err(Error::Validation(format!(
                     "cannot retire Outbox consumer {consumer_key}: event {} is not acknowledged",
                     event.id

@@ -1,13 +1,12 @@
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use axum::extract::{MatchedPath, Request};
+use axum::extract::{MatchedPath, Request, State};
 use axum::http::{HeaderName, HeaderValue, Method, StatusCode, header};
-use axum::middleware::{Next, from_fn};
+use axum::middleware::{Next, from_fn, from_fn_with_state};
 use axum::response::{IntoResponse, Response};
 use tower::ServiceBuilder;
-use tower::limit::ConcurrencyLimitLayer;
+use tower::limit::GlobalConcurrencyLimitLayer;
 use tower_http::compression::CompressionLayer;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::sensitive_headers::SetSensitiveRequestHeadersLayer;
@@ -26,8 +25,18 @@ const MAX_HTTP_REQUEST_TIMEOUT_SECONDS: u64 = 600;
 const MAX_HTTP_UPLOAD_TIMEOUT_SECONDS: u64 = 3_600;
 const MAX_HTTP_CONCURRENCY_LIMIT: usize = 16_384;
 
-static HTTP_REQUEST_TIMEOUT_SECS: AtomicU64 = AtomicU64::new(DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS);
-static HTTP_UPLOAD_TIMEOUT_SECS: AtomicU64 = AtomicU64::new(DEFAULT_HTTP_UPLOAD_TIMEOUT_SECONDS);
+#[derive(Clone, Copy)]
+struct HttpTimeouts {
+    request: Duration,
+    upload: Duration,
+}
+
+// Compatibility defaults for callers using adaptive_timeout as a standalone
+// middleware. Composed routers carry their own immutable policy instead.
+static STANDALONE_HTTP_TIMEOUTS: Mutex<HttpTimeouts> = Mutex::new(HttpTimeouts {
+    request: Duration::from_secs(DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS),
+    upload: Duration::from_secs(DEFAULT_HTTP_UPLOAD_TIMEOUT_SECONDS),
+});
 
 fn bounded_timeout_seconds(
     value: u64,
@@ -112,22 +121,42 @@ pub fn resolve_http_concurrency_limit() -> usize {
     parse_http_concurrency_limit(raw.as_deref())
 }
 
-/// Configures global lock-free timeout thresholds for HTTP request budgets.
+impl HttpTimeouts {
+    fn new(request_secs: u64, upload_secs: u64) -> Self {
+        let request = bounded_timeout_seconds(
+            request_secs,
+            DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS,
+            MAX_HTTP_REQUEST_TIMEOUT_SECONDS,
+            "RUSTOK_HTTP_REQUEST_TIMEOUT_SECONDS",
+        );
+        let upload = bounded_timeout_seconds(
+            upload_secs,
+            DEFAULT_HTTP_UPLOAD_TIMEOUT_SECONDS,
+            MAX_HTTP_UPLOAD_TIMEOUT_SECONDS,
+            "RUSTOK_HTTP_UPLOAD_TIMEOUT_SECONDS",
+        );
+        Self {
+            request: Duration::from_secs(request),
+            upload: Duration::from_secs(upload),
+        }
+    }
+
+    fn for_request<B>(self, request: &axum::http::Request<B>) -> Duration {
+        if is_upload_request(request) {
+            self.upload.max(self.request)
+        } else {
+            self.request
+        }
+    }
+}
+
+/// Configures the standalone adaptive_timeout middleware. Already composed
+/// HTTP routers retain the timeout policy captured when they were built.
 pub fn init_http_timeouts(request_secs: u64, upload_secs: u64) {
-    let req = bounded_timeout_seconds(
-        request_secs,
-        DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS,
-        MAX_HTTP_REQUEST_TIMEOUT_SECONDS,
-        "RUSTOK_HTTP_REQUEST_TIMEOUT_SECONDS",
-    );
-    let upl = bounded_timeout_seconds(
-        upload_secs,
-        DEFAULT_HTTP_UPLOAD_TIMEOUT_SECONDS,
-        MAX_HTTP_UPLOAD_TIMEOUT_SECONDS,
-        "RUSTOK_HTTP_UPLOAD_TIMEOUT_SECONDS",
-    );
-    HTTP_REQUEST_TIMEOUT_SECS.store(req, Ordering::Relaxed);
-    HTTP_UPLOAD_TIMEOUT_SECS.store(upl, Ordering::Relaxed);
+    let timeouts = HttpTimeouts::new(request_secs, upload_secs);
+    *STANDALONE_HTTP_TIMEOUTS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = timeouts;
 }
 
 pub fn resolve_http_timeout_seconds() -> u64 {
@@ -257,25 +286,24 @@ pub(crate) fn trace_path_family(path: &str) -> &'static str {
     }
 }
 
-/// Adaptive request timeout middleware.
-///
-/// Regular requests are budgeted with `HTTP_REQUEST_TIMEOUT_SECS` (default 30s).
-/// Large multipart / artifact upload endpoints receive an extended budget
-/// `HTTP_UPLOAD_TIMEOUT_SECS` (default 300s / 5m) to avoid terminating
-/// legitimate slow uploads on slow client networks.
-///
-/// Both limits are read lock-free from atomics with zero heap allocations and
-/// zero system calls per request.
+/// Standalone adaptive request timeout middleware. The canonical edge stack
+/// uses a router-local immutable policy instead of these compatibility defaults.
 pub async fn adaptive_timeout(request: Request, next: Next) -> Response {
-    let is_upload = is_upload_request(&request);
-    let request_timeout = Duration::from_secs(HTTP_REQUEST_TIMEOUT_SECS.load(Ordering::Relaxed));
-    let upload_timeout = Duration::from_secs(HTTP_UPLOAD_TIMEOUT_SECS.load(Ordering::Relaxed));
-    let timeout = if is_upload {
-        upload_timeout.max(request_timeout)
-    } else {
-        request_timeout
-    };
+    let timeouts = *STANDALONE_HTTP_TIMEOUTS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    scoped_adaptive_timeout(State(timeouts), request, next).await
+}
 
+/// Regular requests use the captured request budget. Owner upload routes
+/// receive at least that budget and may use the larger upload budget.
+/// No global configuration is read or mutated on this request path.
+async fn scoped_adaptive_timeout(
+    State(timeouts): State<HttpTimeouts>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let timeout = timeouts.for_request(&request);
     enforce_request_timeout(timeout, next.run(request)).await
 }
 
@@ -307,7 +335,7 @@ pub fn is_upload_request<B>(request: &axum::http::Request<B>) -> bool {
     // Extended deadlines belong to owner-declared binary upload transports,
     // not to any URL containing `/media` or any client-supplied Content-Type.
     // Media's owner streaming endpoint is `MEDIA_OWNER_STREAMING_UPLOAD_PATH`.
-    if method == Method::POST && multipart && path.trim_end_matches('/') == "/api/media" {
+    if method == Method::POST && multipart && matches!(path, "/api/media" | "/api/media/") {
         return true;
     }
     // Registry artifact publication is the host-owned artifact upload route.
@@ -317,25 +345,22 @@ pub fn is_upload_request<B>(request: &axum::http::Request<B>) -> bool {
 }
 
 fn path_matches_route_template(path: &str, template: &str) -> bool {
-    let path_segments: Vec<&str> = path
-        .split('/')
-        .filter(|segment| !segment.is_empty())
-        .collect();
-    let template_segments: Vec<&str> = template
-        .split('/')
-        .filter(|segment| !segment.is_empty())
-        .collect();
-    path_segments.len() == template_segments.len()
-        && path_segments
-            .iter()
-            .zip(template_segments.iter())
-            .all(|(actual, expected)| {
-                if expected.starts_with('{') && expected.ends_with('}') {
-                    !actual.is_empty()
-                } else {
-                    actual == expected
-                }
-            })
+    // Match the literal route grammar; do not collapse empty segments or
+    // silently accept an unregistered trailing slash. No per-request allocation.
+    let mut actual_segments = path.split('/');
+    for expected in template.split('/') {
+        let Some(actual) = actual_segments.next() else {
+            return false;
+        };
+        if expected.starts_with('{') && expected.ends_with('}') {
+            if actual.is_empty() {
+                return false;
+            }
+        } else if actual != expected {
+            return false;
+        }
+    }
+    actual_segments.next().is_none()
 }
 
 fn method_str(method: &Method) -> &'static str {
@@ -487,15 +512,32 @@ fn unmatched_metrics_path(path: &str) -> &'static str {
 /// 4. `TraceLayer` (per-request spans with latency in ms, status, and embedded `x-request-id` + `x-correlation-id`)
 /// 5. `record_http_metrics` (populates `HTTP_REQUESTS_TOTAL` and `HTTP_REQUEST_DURATION_SECONDS` with cardinality guards)
 /// 6. `CorsLayer` (explicit restricted origin preflight handling, credentials enabled, comprehensive headers)
-/// 7. `adaptive_timeout` (guards request deadline budget with extended timeout for upload mutations)
-/// 8. `CompressionLayer` (transparent response compression)
+/// 7. `scoped_adaptive_timeout` (router-local request budget with extended timeout for upload mutations)
+/// 8. `GlobalConcurrencyLimitLayer` (one shared in-flight budget across routes)
+/// 9. `CompressionLayer` (transparent response compression)
 pub fn apply_http_edge_stack(
     router: axum::Router,
     is_production: bool,
     allowed_origins: Option<&[String]>,
     timeout_seconds: u64,
 ) -> axum::Router {
-    init_http_timeouts(timeout_seconds, resolve_upload_timeout_seconds());
+    apply_http_edge_stack_with_concurrency_limit(
+        router,
+        is_production,
+        allowed_origins,
+        timeout_seconds,
+        resolve_http_concurrency_limit(),
+    )
+}
+
+fn apply_http_edge_stack_with_concurrency_limit(
+    router: axum::Router,
+    is_production: bool,
+    allowed_origins: Option<&[String]>,
+    timeout_seconds: u64,
+    concurrency_limit: usize,
+) -> axum::Router {
+    let timeouts = HttpTimeouts::new(timeout_seconds, resolve_upload_timeout_seconds());
 
     let x_request_id = HeaderName::from_static("x-request-id");
     let cors_layer = build_cors_layer(is_production, allowed_origins);
@@ -520,7 +562,6 @@ pub fn apply_http_edge_stack(
     ]);
     let compression_layer = CompressionLayer::new();
 
-    let concurrency_limit = resolve_http_concurrency_limit();
     let service_stack = ServiceBuilder::new()
         .layer(SetRequestIdLayer::new(
             x_request_id.clone(),
@@ -531,8 +572,10 @@ pub fn apply_http_edge_stack(
         .layer(trace_layer)
         .layer(from_fn(record_http_metrics))
         .layer(cors_layer)
-        .layer(from_fn(adaptive_timeout))
-        .layer(ConcurrencyLimitLayer::new(concurrency_limit))
+        .layer(from_fn_with_state(timeouts, scoped_adaptive_timeout))
+        // Router::layer applies the layer to multiple route services.
+        // Share one semaphore instead of allocating a separate quota for each.
+        .layer(GlobalConcurrencyLimitLayer::new(concurrency_limit))
         .layer(compression_layer);
 
     // Route layers run after routing and can capture `MatchedPath` for the
@@ -630,6 +673,7 @@ mod tests {
         assert_eq!(slot.take().as_deref(), Some("/items/{id}"));
 
         let fallback = Router::new()
+            .route("/known", get(|| async { "known" }))
             .fallback(|| async { "spa" })
             .route_layer(from_fn(capture_matched_path));
         let slot = MatchedRouteSlot::default();
@@ -695,6 +739,165 @@ mod tests {
             .body(())
             .unwrap();
         assert!(!is_upload_request(&login_req));
+    }
+
+    #[test]
+    fn extended_upload_budget_does_not_normalize_unregistered_paths() {
+        for path in ["/api/media", "/api/media/"] {
+            let request = Request::builder()
+                .method("POST")
+                .uri(path)
+                .header("content-type", "multipart/form-data; boundary=abc")
+                .body(())
+                .unwrap();
+            assert!(is_upload_request(&request), "{path}");
+        }
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/media//")
+            .header("content-type", "multipart/form-data; boundary=abc")
+            .body(())
+            .unwrap();
+        assert!(!is_upload_request(&request));
+
+        for path in [
+            "/v2//catalog/publish/request/artifact",
+            "/v2/catalog/publish//artifact",
+            "/v2/catalog/publish/request//artifact",
+            "/v2/catalog/publish/request/artifact/",
+        ] {
+            let request = Request::builder()
+                .method("PUT")
+                .uri(path)
+                .body(())
+                .unwrap();
+            assert!(!is_upload_request(&request), "{path}");
+        }
+        assert!(path_matches_route_template(
+            "/v2/catalog/publish/request/artifact",
+            registry_publish_artifact_path(),
+        ));
+    }
+
+    #[tokio::test]
+    async fn http_edge_concurrency_budget_is_shared_across_routes() {
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let router = Router::new()
+            .route(
+                "/first",
+                get({
+                    let entered = Arc::clone(&entered);
+                    let release = Arc::clone(&release);
+                    move || {
+                        let entered = Arc::clone(&entered);
+                        let release = Arc::clone(&release);
+                        async move {
+                            entered.notify_one();
+                            release.notified().await;
+                            "first"
+                        }
+                    }
+                }),
+            )
+            .route("/second", get(|| async { "second" }));
+        let app = apply_http_edge_stack_with_concurrency_limit(router, false, None, 10, 1);
+        let first = tokio::spawn(app.clone().oneshot(
+            Request::builder().uri("/first").body(Body::empty()).unwrap(),
+        ));
+        tokio::time::timeout(Duration::from_secs(1), entered.notified())
+            .await
+            .expect("first handler must hold the only permit");
+        let second = app.oneshot(
+            Request::builder().uri("/second").body(Body::empty()).unwrap(),
+        );
+        tokio::pin!(second);
+        let early = tokio::time::timeout(Duration::from_millis(50), &mut second).await;
+        // Release the first request even if the assertion below fails.
+        release.notify_one();
+        assert!(early.is_err(), "a distinct route bypassed the shared permit");
+
+        assert_eq!(
+            first.await.unwrap().unwrap().status(),
+            StatusCode::OK,
+        );
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(1), second)
+                .await
+                .expect("second request must acquire the released permit")
+                .unwrap()
+                .status(),
+            StatusCode::OK,
+        );
+    }
+
+    #[tokio::test]
+    async fn composed_routers_keep_independent_request_budgets() {
+        let release_long = Arc::new(tokio::sync::Notify::new());
+        let short = apply_http_edge_stack(
+            Router::new().route("/wait", get(|| async {
+                std::future::pending::<&'static str>().await
+            })),
+            false,
+            None,
+            1,
+        );
+        let long = apply_http_edge_stack(
+            Router::new().route("/wait", get({
+                let release_long = Arc::clone(&release_long);
+                move || {
+                    let release_long = Arc::clone(&release_long);
+                    async move {
+                        release_long.notified().await;
+                        "long"
+                    }
+                }
+            })),
+            false,
+            None,
+            10,
+        );
+
+        let short_request = short.oneshot(
+            Request::builder().uri("/wait").body(Body::empty()).unwrap(),
+        );
+        let long_request = long.oneshot(
+            Request::builder().uri("/wait").body(Body::empty()).unwrap(),
+        );
+
+        let (short_response, long_response) = tokio::time::timeout(
+            Duration::from_secs(3),
+            async {
+                tokio::join!(
+                    async {
+                        let response = short_request.await.unwrap();
+                        release_long.notify_one();
+                        response
+                    },
+                    long_request,
+                )
+            },
+        )
+        .await
+        .expect("building the second router must not extend the first deadline");
+        assert_eq!(short_response.status(), StatusCode::GATEWAY_TIMEOUT);
+        assert_eq!(long_response.unwrap().status(), StatusCode::OK);
+    }
+
+    #[test]
+    fn upload_timeout_never_shortens_the_regular_request_budget() {
+        let upload = Request::builder()
+            .method("PUT")
+            .uri("/v2/catalog/publish/request/artifact")
+            .body(())
+            .unwrap();
+        let regular = Request::builder().uri("/health").body(()).unwrap();
+        let timeouts = HttpTimeouts::new(30, 5);
+        assert_eq!(timeouts.for_request(&upload), Duration::from_secs(30));
+        assert_eq!(timeouts.for_request(&regular), Duration::from_secs(30));
+        let timeouts = HttpTimeouts::new(30, 90);
+        assert_eq!(timeouts.for_request(&upload), Duration::from_secs(90));
+        assert_eq!(timeouts.for_request(&regular), Duration::from_secs(30));
     }
 
     #[tokio::test]

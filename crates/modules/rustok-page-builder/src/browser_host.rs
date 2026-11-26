@@ -28,17 +28,38 @@ const __flyFormPayload = (form, submitter) => {
       payload[name] = value;
     }
   }
+  const checkboxGroups = new Map();
   for (const checkbox of form.querySelectorAll('input[type="checkbox"][name]')) {
-    payload[checkbox.name] = checkbox.checked;
+    const group = checkboxGroups.get(checkbox.name) || [];
+    group.push(checkbox);
+    checkboxGroups.set(checkbox.name, group);
   }
+  for (const [name, checkboxes] of checkboxGroups) {
+    payload[name] = checkboxes.length === 1
+      ? checkboxes[0].checked
+      : checkboxes.filter((checkbox) => checkbox.checked).map((checkbox) => checkbox.value);
+  }
+  const numberGroups = new Map();
   for (const number of form.querySelectorAll('input[type="number"][name]')) {
-    if (number.value === "") {
-      delete payload[number.name];
-    } else if (Number.isFinite(Number(number.value))) {
-      payload[number.name] = Number(number.value);
+    const group = numberGroups.get(number.name) || [];
+    group.push(number);
+    numberGroups.set(number.name, group);
+  }
+  for (const [name, numbers] of numberGroups) {
+    const values = numbers
+      .filter((number) => number.value !== "" && Number.isFinite(Number(number.value)))
+      .map((number) => Number(number.value));
+    if (numbers.length === 1) {
+      if (values.length === 1) payload[name] = values[0];
+      else delete payload[name];
+    } else if (values.length > 0) {
+      payload[name] = values;
+    } else {
+      delete payload[name];
     }
   }
-  if (submitter instanceof HTMLButtonElement && submitter.name) {
+  const isSubmitterInput = submitter instanceof HTMLInputElement && submitter.type === "submit";
+  if ((submitter instanceof HTMLButtonElement || isSubmitterInput) && submitter.name) {
     payload[submitter.name] = submitter.value === "true" ? true : submitter.value;
   }
   return payload;
@@ -500,5 +521,25 @@ mod selection_contract_tests {
             .contains("__flyFormPayload(form, event.submitter)"));
         assert!(PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS
             .contains("payload[submitter.name] = submitter.value === \"true\" ? true : submitter.value"));
+    }
+    #[test]
+    fn repeated_checkbox_names_preserve_selected_values_as_a_group() {
+        let source = PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS;
+        assert!(source.contains("const checkboxGroups = new Map()"));
+        assert!(source.contains("checkboxes.filter((checkbox) => checkbox.checked).map((checkbox) => checkbox.value)"));
+        assert!(!source.contains("payload[checkbox.name] = checkbox.checked"));
+    }
+
+    #[test]
+    fn repeated_number_names_preserve_numeric_values_as_a_group() {
+        let source = PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS;
+        assert!(source.contains("const numberGroups = new Map()"));
+        assert!(source.contains("payload[name] = values"));
+    }
+
+    #[test]
+    fn native_input_submitters_are_included_in_form_payload() {
+        assert!(PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS
+            .contains("submitter instanceof HTMLInputElement && submitter.type === \"submit\""));
     }
 }

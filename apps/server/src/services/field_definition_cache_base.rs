@@ -339,6 +339,10 @@ fn spawn_field_definition_cache_invalidation_consumer(
     // Subscribe before committing the runtime handle so no event can fall into
     // the startup gap. Later supervisor attempts create a fresh subscription.
     let first_receiver = Arc::new(Mutex::new(Some(bus.subscribe())));
+    // This can also be a replacement of a terminated consumer. Subscribe
+    // first, then fence every fill that may have started during the gap.
+    cache.invalidate_all();
+    let supervisor_cache = Arc::clone(&cache);
     tokio::spawn(supervise_field_definition_cache_invalidation(
         move || {
             let mut receiver = first_receiver
@@ -377,26 +381,40 @@ fn spawn_field_definition_cache_invalidation_consumer(
             }
         },
         FIELD_DEFINITION_INVALIDATION_RESTART_DELAY,
+        supervisor_cache,
     ))
 }
 
 async fn supervise_field_definition_cache_invalidation<F, Fut>(
     mut worker_factory: F,
     restart_delay: Duration,
+    cache: Arc<FieldDefinitionCache>,
 ) where
     F: FnMut() -> Fut + Send,
     Fut: Future<Output = ()> + Send,
 {
+    let mut restarting = false;
     loop {
         let worker = match std::panic::catch_unwind(AssertUnwindSafe(&mut worker_factory)) {
             Ok(worker) => worker,
             Err(_) => {
+                cache.invalidate_all();
+                restarting = true;
                 record_field_definition_consumer_restart("factory_panicked");
                 tokio::time::sleep(restart_delay).await;
                 continue;
             }
         };
+        // The factory has subscribed before returning the new worker. Clear
+        // again now: fills during backoff may have missed broadcast events.
+        if restarting {
+            cache.invalidate_all();
+        }
         let outcome = AssertUnwindSafe(worker).catch_unwind().await;
+        // A dropped receiver can have lost unknown invalidation targets.
+        // Retire old entries and in-flight fill tokens before retry backoff.
+        cache.invalidate_all();
+        restarting = true;
         if outcome.is_err() {
             record_field_definition_consumer_restart("worker_panicked");
         } else {
@@ -647,29 +665,86 @@ mod tests {
 
     #[tokio::test]
     async fn invalidation_supervisor_restarts_after_panic() {
+        let cache = Arc::new(FieldDefinitionCache::new());
+        let tenant_id = Uuid::new_v4();
+        cache.set(tenant_id, "user", vec![mock_view("stale")]).await;
+        let initial = cache.generation(tenant_id, "user");
         let attempts = Arc::new(AtomicUsize::new(0));
         let worker_attempts = Arc::clone(&attempts);
+        let worker_cache = Arc::clone(&cache);
+        let (restarted_tx, restarted_rx) = tokio::sync::oneshot::channel();
+        let mut restarted_tx = Some(restarted_tx);
         let supervisor = tokio::spawn(supervise_field_definition_cache_invalidation(
             move || {
                 let attempt = worker_attempts.fetch_add(1, Ordering::SeqCst);
+                let cache = Arc::clone(&worker_cache);
+                // Sample the token before the supervisor clears after the
+                // replacement factory returns (the subscription boundary).
+                let before_restart_clear = cache.generation(tenant_id, "user");
+                let ready = if attempt == 0 { None } else { restarted_tx.take() };
                 async move {
                     if attempt == 0 {
                         panic!("field definition invalidation regression fixture");
+                    }
+                    if let Some(ready) = ready {
+                        let _ = ready.send((
+                            before_restart_clear,
+                            cache.generation(tenant_id, "user"),
+                        ));
                     }
                     std::future::pending::<()>().await;
                 }
             },
             Duration::from_millis(1),
+            Arc::clone(&cache),
         ));
 
+        let (after_failure, after_resubscribe) =
+            tokio::time::timeout(Duration::from_secs(1), restarted_rx)
+                .await
+                .expect("field definition invalidation supervisor should restart worker")
+                .expect("replacement worker reports its generation");
+        assert_ne!(initial, after_failure, "failure must fence old fills");
+        assert_ne!(after_failure, after_resubscribe, "restart must fence gap fills");
+        cache
+            .set_if_generation(tenant_id, "user", vec![mock_view("gap")], after_failure)
+            .await;
+        assert!(cache.get(tenant_id, "user").await.is_none());
+        supervisor.abort();
+    }
+
+    #[tokio::test]
+    async fn replacing_terminated_invalidation_consumer_fences_cached_schemas() {
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let bus = EventBus::default();
+        let cache = field_definition_cache_from_context(&ctx, bus.clone());
+        let tenant_id = Uuid::new_v4();
+        let handle = ctx
+            .shared_get::<FieldDefinitionCacheInvalidationHandle>()
+            .expect("invalidation consumer registered");
+        handle.abort_for_test();
         tokio::time::timeout(Duration::from_secs(1), async {
-            while attempts.load(Ordering::SeqCst) < 2 {
+            while handle.is_running() {
                 tokio::task::yield_now().await;
             }
         })
         .await
-        .expect("field definition invalidation supervisor should restart worker");
-        supervisor.abort();
+        .expect("old consumer exits");
+        let gap_generation = cache.generation(tenant_id, "user");
+        cache.set(tenant_id, "user", vec![mock_view("gap")]).await;
+        assert!(cache.get(tenant_id, "user").await.is_some());
+
+        let replacement = field_definition_cache_from_context(&ctx, bus);
+        assert_ne!(replacement.generation(tenant_id, "user"), gap_generation);
+        assert!(cache.get(tenant_id, "user").await.is_none());
+        assert!(replacement.get(tenant_id, "user").await.is_none());
+        let task = super::take_invalidation_task_for_shutdown(&ctx)
+            .expect("replacement task remains registered");
+        task.abort();
+        let _ = task.await;
     }
 
     #[tokio::test]

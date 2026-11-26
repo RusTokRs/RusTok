@@ -18,6 +18,14 @@ The crate defines:
 - a framework-neutral contribution adapter contract;
 - a deterministic state machine suitable for mock-adapter tests.
 
+## Keyboard shortcut parity
+
+`fixtures/keyboard-shortcuts.json` is shared by the Rust shortcut resolver tests and the Page
+Builder iframe Playwright scenarios. It records the expected semantic shortcut (or no shortcut);
+the browser checks admission and the exact forwarded stroke. Native composition and editable DOM
+boundaries are exercised separately in the browser. Extend the shared cases whenever the shortcut
+contract changes.
+
 ## Capability policy
 
 `EditorCapabilityPolicy` evaluates the intersection of requested product features, tenant policy,
@@ -62,7 +70,11 @@ an earlier snapshot leaves subsequent edits dirty and does not overwrite their p
 Concurrent save requests and retries after an unresolved revision conflict are rejected by
 `RequestSave`. Resolving a conflict requires the host to reload/rebase the draft; Fly does not
 implement automatic merge. Host transports must carry the `SaveAttempt` end-to-end. The local
-request ID is not a server idempotency key.
+request ID is not a server idempotency key. Like the core revision state, the UI rejects
+mutating intents when the command sequence is exhausted instead of saturating the
+counter and emitting an untrackable write. Rejection leaves the state (including an
+active drag and insertion overlay) unchanged. Non-mutating intents and saving the
+existing document remain available subject to the usual policy.
 Drop rechecks the current presentation and drag capability at commit time, including when
 restored state contains a drag started under a different policy. Command construction also
 rejects illegal or malformed candidates, so direct callers and restored state cannot bypass
@@ -87,7 +99,11 @@ rectangles and ignores changes on axes not controlled by the active handle. The 
 preserves the checked finite dimensions without a second rounding step that could violate a
 fractional bound or alter a locked aspect ratio.
 
-SaveStarted also checks current edit permission and unresolved conflicts. If the host has
+RequestSave and SaveStarted share admission: edit permission, blocking document diagnostics,
+unresolved conflicts and an existing attempt. SaveSucceeded rejects blank revision labels
+without retiring the active request, and a changed working hash remains dirty even if the
+sequence has not changed. Page Builder's generic controller dispatch cannot accept lifecycle
+events; its correlated save APIs update both Fly revision and UI state. If the host has
 synchronized a hash, SaveSucceeded must match both the submitted hash and request ID rather than
 merely the latest server revision; a mismatched acknowledgement leaves the active save untouched.
 The request ID and active sequence are transient and are not restored from serialized UI state.
@@ -102,5 +118,6 @@ aspect-ratio preservation snap the driving dimension and constrain a single scal
 size bounds; the aspect ratio and bounds take precedence over snapping the second dimension.
 Incompatible bounds, collapsed geometry or an unrepresentable locked aspect ratio leave the
 original geometry unchanged. Preview and patch generation apply the same relative aspect-ratio
-check; an unlocked gesture can still expand a collapsed element. West and north handles anchor
+check; subnormal quotients and inconsistent locked change flags fail closed. An unlocked gesture
+can still expand a collapsed element. West and north handles anchor
 their opposite edges to the initial rectangle.

@@ -618,6 +618,14 @@ impl Entity {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum OAuthPermissionPolicyError {
+    #[error("stored OAuth permissions are not a JSON string array")]
+    InvalidJson,
+    #[error("stored OAuth permission is invalid")]
+    InvalidPermission,
+}
+
 impl Model {
     pub fn is_active(&self) -> bool {
         self.is_active && self.revoked_at.is_none()
@@ -631,10 +639,13 @@ impl Model {
         self.auto_created && self.manifest_ref.is_some()
     }
 
+    pub fn decoded_scopes(&self) -> Result<Vec<String>, serde_json::Error> {
+        serde_json::from_value(self.scopes.clone())
+    }
+
     pub fn scopes_list(&self) -> Vec<String> {
-        // INVARIANT: Scopes are validated as a JSON array of strings before application persistence.
-        serde_json::from_value(self.scopes.clone()).unwrap_or_else(|error| {
-            tracing::warn!(app_id = %self.id, %error, "Failed to decode persisted OAuth scopes JSON array; defaulting to empty list");
+        self.decoded_scopes().unwrap_or_else(|_| {
+            tracing::warn!(app_id = %self.id, "Failed to decode persisted OAuth scopes JSON array; defaulting to empty list");
             Vec::new()
         })
     }
@@ -649,16 +660,20 @@ impl Model {
 
     pub fn granted_permissions_list(&self) -> Vec<String> {
         // INVARIANT: Granted permissions are validated as a JSON array of strings before application persistence.
-        serde_json::from_value(self.granted_permissions.clone()).unwrap_or_else(|error| {
-            tracing::warn!(app_id = %self.id, %error, "Failed to decode persisted OAuth granted permissions JSON array; defaulting to empty list");
+        serde_json::from_value(self.granted_permissions.clone()).unwrap_or_else(|_| {
+            tracing::warn!(app_id = %self.id, "Failed to decode persisted OAuth granted permissions JSON array; defaulting to empty list");
             Vec::new()
         })
     }
 
-    pub fn parsed_granted_permissions(&self) -> Result<Vec<Permission>, rustok_api::PermissionParseError> {
-        self.granted_permissions_list()
-            .into_iter()
-            .map(|value| Permission::from_str(&value))
+    pub fn parsed_granted_permissions(&self) -> Result<Vec<Permission>, OAuthPermissionPolicyError> {
+        let permissions: Vec<String> = serde_json::from_value(self.granted_permissions.clone())
+            .map_err(|_| OAuthPermissionPolicyError::InvalidJson)?;
+        permissions
+            .iter()
+            .map(|value| {
+                Permission::from_str(value).map_err(|_| OAuthPermissionPolicyError::InvalidPermission)
+            })
             .collect()
     }
 
@@ -683,10 +698,12 @@ impl Model {
     pub fn can_rotate_secret(&self) -> bool {
         // First-party apps are public PKCE clients by default. Operators may
         // add a confidential credential later for server-side client_credentials.
-        matches!(
-            self.app_type.as_str(),
-            "first_party" | "third_party" | "mobile" | "service"
-        )
+        // Revocation is terminal for this credential-management operation.
+        self.revoked_at.is_none()
+            && matches!(
+                self.app_type.as_str(),
+                "first_party" | "third_party" | "mobile" | "service"
+            )
     }
 
     pub fn can_revoke(&self) -> bool {
@@ -732,6 +749,36 @@ mod tests {
     }
 
     #[test]
+    fn parsed_permissions_distinguish_empty_from_malformed_policy() {
+        use super::OAuthPermissionPolicyError;
+
+        let mut app = app(false, serde_json::json!(["client_credentials"]));
+        assert!(app.parsed_granted_permissions().unwrap().is_empty());
+        app.granted_permissions = serde_json::json!(["modules:list"]);
+        assert_eq!(
+            app.parsed_granted_permissions().unwrap(),
+            vec![rustok_api::Permission::MODULES_LIST]
+        );
+
+        for malformed in [
+            serde_json::json!(null),
+            serde_json::json!(["modules:list", 42]),
+            serde_json::json!("modules:list"),
+        ] {
+            app.granted_permissions = malformed;
+            assert!(matches!(
+                app.parsed_granted_permissions(),
+                Err(OAuthPermissionPolicyError::InvalidJson)
+            ));
+        }
+        app.granted_permissions = serde_json::json!(["modules:list", "invalid"]);
+        assert!(matches!(
+            app.parsed_granted_permissions(),
+            Err(OAuthPermissionPolicyError::InvalidPermission)
+        ));
+    }
+
+    #[test]
     fn first_party_pkce_apps_without_a_secret_can_enable_server_side_credentials() {
         let mut app = app(
             true,
@@ -753,6 +800,13 @@ mod tests {
         app.app_type = "embedded".to_string();
         app.client_secret_hash = None;
 
+        assert!(!app.can_rotate_secret());
+    }
+
+    #[test]
+    fn revoked_apps_cannot_rotate_client_secrets() {
+        let mut app = app(false, serde_json::json!(["authorization_code"]));
+        app.revoked_at = Some(chrono::Utc::now().into());
         assert!(!app.can_rotate_secret());
     }
 

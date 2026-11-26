@@ -12,12 +12,12 @@ use super::write_journal::{
     JournalState, RecoveryQueryKey, WriteJournal, WriteJournalError, valid_uuid,
 };
 use crate::model::{ProductDetail, VariantCreateOutcome, VariantDraft, VariantPriceDraft};
-use rustok_product_ports::MAX_PRODUCT_VARIANTS;
+use rustok_product_ports::{MAX_PRODUCT_VARIANTS, MAX_VARIANT_PRICE_ROWS};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use uuid::Uuid;
 
-pub(crate) const MAX_PRICE_ROWS: usize = 64;
+pub(crate) const MAX_PRICE_ROWS: usize = MAX_VARIANT_PRICE_ROWS;
 
 pub(crate) fn empty_draft(currency: &str) -> VariantDraft {
     VariantDraft {

@@ -97,7 +97,7 @@ fn structural_diff_tracks_component_changes() {
     let before = document("Hello");
     let mut after = document("Hello world");
     after
-        .project()
+        .project_mut()
         .assets
         .push(json!({ "id": "hero", "src": "/hero.png" }));
     let diff = compare_projects(&before, &after);
@@ -193,6 +193,39 @@ fn tampered_snapshot_payload_is_rejected_by_the_digest() {
         snapshot.restore(),
         Err(FlyError::SnapshotDigestMismatch { .. })
     ));
+}
+
+#[test]
+fn snapshot_restore_and_digest_reject_pathological_value_depth() {
+    use crate::codec::{MAXIMUM_DECODE_DEPTH, drop_value_iteratively};
+    use serde_json::Value;
+
+    for content_digest in [None, Some(ContentDigest::from_bytes(b"unused"))] {
+        let mut nested = Value::Null;
+        for _ in 0..50_000 {
+            nested = Value::Array(vec![nested]);
+        }
+        let mut snapshot = ProjectSnapshot {
+            id: "deep".to_string(),
+            label: "Deep".to_string(),
+            project_hash: String::new(),
+            content_digest,
+            project_data: nested,
+            metadata: Map::new(),
+        };
+        let digest = snapshot.compute_content_digest();
+        let restored = snapshot.restore();
+        // The public borrowed APIs leave ownership with the caller.
+        drop_value_iteratively(std::mem::take(&mut snapshot.project_data));
+        assert!(matches!(
+            digest,
+            Err(FlyError::MaximumDepthExceeded { maximum: MAXIMUM_DECODE_DEPTH })
+        ));
+        assert!(matches!(
+            restored,
+            Err(FlyError::MaximumDepthExceeded { maximum: MAXIMUM_DECODE_DEPTH })
+        ));
+    }
 }
 
 #[test]

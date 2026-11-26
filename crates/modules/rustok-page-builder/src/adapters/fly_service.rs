@@ -100,6 +100,14 @@ impl<S, R, T, B> FlyAdapterBackedPageBuilderService<S, R, T, B> {
         inspection.require_valid()?;
         Ok(inspection)
     }
+
+    fn inspect_loaded(&self, project_data: Value) -> PageBuilderServiceResult<FlyProjectInspection> {
+        let result = self.inspect(&project_data);
+        if result.is_err() {
+            fly::drop_value_iteratively(project_data);
+        }
+        result
+    }
 }
 
 #[async_trait]
@@ -115,11 +123,25 @@ where
         context: &PortContext,
         input: crate::dto::PreviewPageBuilderInput,
     ) -> PageBuilderServiceResult<crate::dto::PreviewPageBuilderResult> {
-        self.inspect(&input.project_data)?;
-        input
-            .runtime
-            .validate()
-            .map_err(|error| PageBuilderServiceError::Validation(error.to_string()))?;
+        let validation = (|| {
+            if input.page_id.trim().is_empty() {
+                return Err(PageBuilderServiceError::Validation(
+                    "page_id must not be empty".to_string(),
+                ));
+            }
+            self.inspect(&input.project_data)?;
+            input
+                .runtime
+                .validate()
+                .map_err(|error| PageBuilderServiceError::Validation(error.to_string()))
+        })();
+        if let Err(error) = validation {
+            // In-process callers can supply arbitrarily deep Values. Rejecting
+            // one must not trigger a recursive destructor on either payload.
+            fly::drop_value_iteratively(input.project_data);
+            fly::drop_value_iteratively(input.runtime.context);
+            return Err(error);
+        }
         let evidence = PageBuilderRuntimeCallEvidence::render_preview(context, &input.page_id);
         self.telemetry.record_runtime_call(&evidence);
         let html = match self.renderer.render_preview(context, &input).await {
@@ -163,7 +185,7 @@ where
             }
         };
         let nodes = match project_data {
-            Some(project_data) => self.inspect(&project_data)?.tree_nodes(),
+            Some(project_data) => self.inspect_loaded(project_data)?.tree_nodes(),
             None => Vec::new(),
         };
 
@@ -178,20 +200,28 @@ where
         context: &PortContext,
         input: crate::dto::BuilderNodePropertiesInput,
     ) -> PageBuilderServiceResult<crate::dto::BuilderNodePropertiesResult> {
-        if input.page_id.trim().is_empty() || input.node_id.trim().is_empty() {
-            return Err(PageBuilderServiceError::Validation(
-                "page_id and node_id must not be empty".to_string(),
-            ));
-        }
-        if !input.properties.is_object() {
-            return Err(PageBuilderServiceError::Validation(
-                "properties must be a JSON object".to_string(),
-            ));
+        let validation = (|| {
+            if input.page_id.trim().is_empty() || input.node_id.trim().is_empty() {
+                return Err(PageBuilderServiceError::Validation(
+                    "page_id and node_id must not be empty".to_string(),
+                ));
+            }
+            if !input.properties.is_object() {
+                return Err(PageBuilderServiceError::Validation(
+                    "properties must be a JSON object".to_string(),
+                ));
+            }
+            fly::ensure_depth_within_limit(&input.properties, fly::MAXIMUM_DECODE_DEPTH)
+                .map_err(|error| PageBuilderServiceError::Validation(error.to_string()))
+        })();
+        if let Err(error) = validation {
+            fly::drop_value_iteratively(input.properties);
+            return Err(error);
         }
 
         let evidence = PageBuilderRuntimeCallEvidence::load_project(context, &input.page_id);
         self.telemetry.record_runtime_call(&evidence);
-        if let Some(project_data) = match self.store.load_project(context, &input.page_id).await {
+        let project_data = match self.store.load_project(context, &input.page_id).await {
             Ok(project_data) => {
                 self.telemetry.record_runtime_call(&evidence.succeeded());
                 project_data
@@ -200,10 +230,15 @@ where
                 self.telemetry.record_runtime_call(&evidence.failed(&error));
                 return Err(error);
             }
-        } {
-            self.inspect(&project_data)?
-                .component_properties(&input.node_id)?;
         }
+        .ok_or_else(|| {
+            PageBuilderServiceError::Validation(format!(
+                "page `{}` was not found",
+                input.page_id
+            ))
+        })?;
+        self.inspect_loaded(project_data)?
+            .component_properties(&input.node_id)?;
 
         Ok(crate::dto::BuilderNodePropertiesResult {
             page_id: input.page_id,
@@ -217,12 +252,26 @@ where
         context: &PortContext,
         input: crate::dto::PublishPageBuilderInput,
     ) -> PageBuilderServiceResult<crate::dto::PublishPageBuilderResult> {
-        if input.revision_id.trim().is_empty() {
-            return Err(PageBuilderServiceError::Validation(
-                "revision_id must not be empty".to_string(),
-            ));
-        }
-        let inspection = self.inspect(&input.project_data)?;
+        let validation = (|| {
+            if input.page_id.trim().is_empty() {
+                return Err(PageBuilderServiceError::Validation(
+                    "page_id must not be empty".to_string(),
+                ));
+            }
+            if input.revision_id.trim().is_empty() {
+                return Err(PageBuilderServiceError::Validation(
+                    "revision_id must not be empty".to_string(),
+                ));
+            }
+            self.inspect(&input.project_data)
+        })();
+        let inspection = match validation {
+            Ok(inspection) => inspection,
+            Err(error) => {
+                fly::drop_value_iteratively(input.project_data);
+                return Err(error);
+            }
+        };
         if self.release_policy.mode != RuntimeScenarioReleaseMode::Disabled {
             let baseline = self
                 .baseline_store

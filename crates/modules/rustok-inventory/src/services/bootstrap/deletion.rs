@@ -114,6 +114,7 @@ impl Level {
     }
 }
 
+#[derive(Debug)]
 struct DeletionPlan {
     /// (item, Variant), locked in Variant UUID order shared with shipment/return writers.
     items: Vec<(Uuid, Uuid)>,

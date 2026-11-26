@@ -345,7 +345,7 @@ impl From<sea_orm::DbErr> for BoundaryError {
 
 impl From<rustok_product::CommerceError> for BoundaryError {
     fn from(error: rustok_product::CommerceError) -> Self {
-        Self::Graphql(super::super::map_product_service_error(
+        Self::Graphql(super::map_product_service_error(
             error,
             "commerce_query",
         ))

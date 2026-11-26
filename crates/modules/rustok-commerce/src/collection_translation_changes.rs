@@ -1,9 +1,10 @@
-use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseTransaction, FromQueryResult, Statement};
+use sea_orm::{
+    ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction, FromQueryResult,
+    Statement,
+};
 use uuid::Uuid;
 
-use crate::{
-    CommerceError, CommerceResult, services::collection_translation::CollectionTranslationService,
-};
+use crate::{CommerceError, CommerceResult};
 
 pub const MAX_COLLECTION_TRANSLATION_CHANGE_PAGE: u16 = 200;
 
@@ -60,51 +61,50 @@ struct PreviousChangeRow {
     lifecycle: String,
 }
 
-impl CollectionTranslationService {
-    pub async fn collection_translation_change_highwater(
-        &self,
-        tenant_id: Uuid,
-    ) -> CommerceResult<Option<u64>> {
-        validate_tenant(tenant_id)?;
-        ensure_postgres(self.database())?;
-        let row = HighwaterRow::find_by_statement(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "SELECT MAX(change_seq) AS highwater FROM commerce_collection_translation_change_journal WHERE tenant_id = $1",
-            vec![tenant_id.into()],
-        ))
-        .one(self.database())
-        .await?
-        .ok_or_else(|| {
-            CommerceError::Validation(
-                "Commerce Collection translation change high-water query returned no row".to_owned(),
-            )
-        })?;
-        optional_positive_sequence(row.highwater, "high-water")
+pub(crate) async fn collection_translation_change_highwater(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+) -> CommerceResult<Option<u64>> {
+    validate_tenant(tenant_id)?;
+    ensure_postgres(db)?;
+    let row = HighwaterRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "SELECT MAX(change_seq) AS highwater FROM commerce_collection_translation_change_journal WHERE tenant_id = $1",
+        vec![tenant_id.into()],
+    ))
+    .one(db)
+    .await?
+    .ok_or_else(|| {
+        CommerceError::Validation(
+            "Commerce Collection translation change high-water query returned no row".to_owned(),
+        )
+    })?;
+    optional_positive_sequence(row.highwater, "high-water")
+}
+
+pub(crate) async fn read_collection_translation_changes(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    after_seq: u64,
+    through_seq: u64,
+    limit: u16,
+) -> CommerceResult<Vec<CollectionTranslationChangeRecord>> {
+    validate_tenant(tenant_id)?;
+    if through_seq == 0 || after_seq > through_seq {
+        return Err(CommerceError::Validation(
+            "Commerce Collection translation change cursor bounds are invalid".to_owned(),
+        ));
     }
+    if limit == 0 || limit > MAX_COLLECTION_TRANSLATION_CHANGE_PAGE {
+        return Err(CommerceError::Validation(format!(
+            "Commerce Collection translation change page size must be between 1 and {MAX_COLLECTION_TRANSLATION_CHANGE_PAGE}"
+        )));
+    }
+    ensure_postgres(db)?;
 
-    pub async fn read_collection_translation_changes(
-        &self,
-        tenant_id: Uuid,
-        after_seq: u64,
-        through_seq: u64,
-        limit: u16,
-    ) -> CommerceResult<Vec<CollectionTranslationChangeRecord>> {
-        validate_tenant(tenant_id)?;
-        if through_seq == 0 || after_seq > through_seq {
-            return Err(CommerceError::Validation(
-                "Commerce Collection translation change cursor bounds are invalid".to_owned(),
-            ));
-        }
-        if limit == 0 || limit > MAX_COLLECTION_TRANSLATION_CHANGE_PAGE {
-            return Err(CommerceError::Validation(format!(
-                "Commerce Collection translation change page size must be between 1 and {MAX_COLLECTION_TRANSLATION_CHANGE_PAGE}"
-            )));
-        }
-        ensure_postgres(self.database())?;
-
-        let rows = ChangeRow::find_by_statement(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"
+    let rows = ChangeRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
 SELECT change_seq, collection_id, resource_revision, lifecycle
 FROM commerce_collection_translation_change_journal
 WHERE tenant_id = $1
@@ -113,22 +113,21 @@ WHERE tenant_id = $1
 ORDER BY change_seq ASC
 LIMIT $4
 "#,
-            vec![
-                tenant_id.into(),
-                i64::try_from(after_seq)
-                    .map_err(|_| invalid_sequence("after"))?
-                    .into(),
-                i64::try_from(through_seq)
-                    .map_err(|_| invalid_sequence("through"))?
-                    .into(),
-                i64::from(limit).into(),
-            ],
-        ))
-        .all(self.database())
-        .await?;
+        vec![
+            tenant_id.into(),
+            i64::try_from(after_seq)
+                .map_err(|_| invalid_sequence("after"))?
+                .into(),
+            i64::try_from(through_seq)
+                .map_err(|_| invalid_sequence("through"))?
+                .into(),
+            i64::from(limit).into(),
+        ],
+    ))
+    .all(db)
+    .await?;
 
-        rows.into_iter().map(change_record_from_row).collect()
-    }
+    rows.into_iter().map(change_record_from_row).collect()
 }
 
 /// Records the exact post-command active Collection translation state under the same

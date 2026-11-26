@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { containsMarker, spaced } from "./lib/forum-source-verification.mjs";
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -20,7 +21,7 @@ function read(relativePath) {
 }
 
 function requireText(source, marker, message) {
-  if (!source.includes(marker)) failures.push(message);
+  if (!containsMarker(source, marker)) failures.push(message);
 }
 
 function rejectText(source, marker, message) {
@@ -34,7 +35,9 @@ const upstream = JSON.parse(read(contract.policy_contract ?? "") || "{}");
 const authorization = read(contract.authorization_service ?? "");
 const facade = read(contract.reply_facade ?? "");
 const rawOwner = read(contract.raw_reply_owner ?? "");
-const rawInline = read(contract.raw_reply_owner_inline ?? "");
+const createStart = rawOwner.indexOf("pub(crate) async fn create_command_with_audience_authorization(");
+const rawInline = spaced(rawOwner.slice(createStart));
+if (createStart < 0) failures.push("reply transactional create owner is missing");
 const services = read(contract.services_module ?? "");
 const crateRoot = read(contract.crate_root ?? "");
 const test = read(contract.runtime_test_file ?? "");
@@ -107,24 +110,11 @@ for (const marker of [
 ]) {
   requireText(authorization, marker, `reply-create authorization is missing ${marker}`);
 }
-const historicalCategoryOnly =
-  authorization.includes(
-    "load_category_reply_create_audience_policy(&self.db, tenant_id, category_id)",
-  ) && authorization.includes("for layer in policy.effective_layers");
-const downstreamTopicNarrowing =
-  authorization.includes(
-    "load_topic_reply_create_audience_policy_for_topic(&self.db, tenant_id, &topic)",
-  ) &&
-  authorization.includes("for layer in policy.inherited_category_layers") &&
-  authorization.includes("if let Some(constraints) = policy.configured_constraints") &&
-  topicLocalContract?.schema_version === 1 &&
-  topicLocalContract?.task === "FORUM-20AX" &&
-  topicLocalContract?.composition?.root_category_to_topic_conjunction === true;
-if (!historicalCategoryOnly && !downstreamTopicNarrowing) {
-  failures.push(
-    "reply-create authorization must retain FORUM-20AV category enforcement or the FORUM-20AX cumulative topic narrowing",
-  );
-}
+requireText(authorization, "load_topic_reply_create_audience_policy_for_topic( self.taxonomy_port.as_ref(), &self.db, tenant_id, &topic, )", "reply admission must retain selected hierarchy");
+requireText(authorization, "for layer in policy.inherited_category_layers", "reply admission must enforce category layers");
+requireText(authorization, "if let Some(constraints) = policy.configured_constraints", "reply admission must enforce topic narrowing");
+if (topicLocalContract?.composition?.root_category_to_topic_conjunction !== true) failures.push("reply admission contract must retain category-to-topic conjunction");
+
 for (const forbidden of [
   "forum_user_stats",
   "UserStatsService",
@@ -217,15 +207,8 @@ for (const marker of [
   requireText(test, marker, `reply-create SQLite proof is missing ${marker}`);
 }
 
-for (const marker of [
-  "# FORUM-20AV reply-create audience enforcement",
-  "source-ready / partially validated",
-  "does not replace or duplicate its backlog",
-  "GraphQL and REST now compose exact authenticated transport",
-  "source verifier was executed on 2026-08-11",
-  "Canonical plan synchronization",
-]) {
-  requireText(note, marker, `reply-create owner note is missing ${marker}`);
+for (const marker of ["### Selected hierarchy for create admission", "Rust tests remain uncompiled/unexecuted", "configured audience owner even when `PortContext` is absent"]) {
+  requireText(note, marker, `create admission documentation is missing ${marker}`);
 }
 
 if (failures.length > 0) {

@@ -6,6 +6,8 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::BTreeSet;
+use crate::page_metadata::LOCALIZED_METADATA_FIELDS;
+use crate::runtime_locale::{duplicate_locale_key, has_unambiguous_locale};
 
 pub const FLY_LOCALES_FIELD: &str = "flyLocales";
 
@@ -246,6 +248,48 @@ pub fn materialize_project_locale_context(
 }
 
 pub fn validate_project_locale_policy(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
+    let mut diagnostics = validate_metadata_locale_keys(document);
+    diagnostics.extend(validate_locale_policy_coverage(document));
+    diagnostics
+}
+
+fn validate_metadata_locale_keys(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
+    let mut diagnostics = Vec::new();
+    for (page_index, page) in document.project().pages.iter().enumerate() {
+        let Some(metadata) = page.extensions.get(FLY_PAGE_METADATA_FIELD) else {
+            continue;
+        };
+        for field in LOCALIZED_METADATA_FIELDS {
+            let Some(values) = metadata.get(*field)
+                .and_then(|wrapper| wrapper.get(LOCALIZED_VALUES_FIELD))
+                .and_then(Value::as_object)
+            else {
+                continue;
+            };
+            for locale in values.keys() {
+                if normalize_locale_tag(locale).is_none() {
+                    diagnostics.push(locale_coverage_diagnostic(
+                        ValidationSeverity::Error,
+                        "localized_metadata_locale_invalid",
+                        format!("project.pages[{page_index}].{FLY_PAGE_METADATA_FIELD}.{field}"),
+                        format!("localized metadata locale `{locale}` is invalid"),
+                    ));
+                }
+            }
+            if let Some(locale) = duplicate_locale_key(values) {
+                diagnostics.push(locale_coverage_diagnostic(
+                    ValidationSeverity::Error,
+                    "localized_metadata_locale_ambiguous",
+                    format!("project.pages[{page_index}].{FLY_PAGE_METADATA_FIELD}.{field}"),
+                    format!("localized metadata contains multiple values for locale `{locale}`"),
+                ));
+            }
+        }
+    }
+    diagnostics
+}
+
+fn validate_locale_policy_coverage(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
     let Some(raw_policy) = document.project().extensions.get(FLY_LOCALES_FIELD) else {
         return Vec::new();
     };
@@ -292,9 +336,12 @@ pub fn validate_project_locale_policy(document: &ProjectDocument) -> Vec<Validat
         ValidationSeverity::Warning
     };
     let catalog = TranslationCatalog::from_document(document);
+    let duplicate_ids = catalog.duplicate_ids();
     for entry in &catalog.entries {
         for locale in &policy.required_locales {
-            if !map_contains_locale(&entry.values, locale) {
+            if duplicate_ids.contains(entry.id.as_str())
+                || !has_unambiguous_locale(&entry.values, locale)
+            {
                 diagnostics.push(locale_coverage_diagnostic(
                     missing_severity,
                     "translation_required_locale_missing",
@@ -326,18 +373,8 @@ pub fn validate_project_locale_policy(document: &ProjectDocument) -> Vec<Validat
             else {
                 continue;
             };
-            for locale in values.keys() {
-                if normalize_locale_tag(locale).is_none() {
-                    diagnostics.push(locale_coverage_diagnostic(
-                        ValidationSeverity::Error,
-                        "localized_metadata_locale_invalid",
-                        format!("project.pages[{page_index}].{FLY_PAGE_METADATA_FIELD}.{field}"),
-                        format!("localized metadata locale `{locale}` is invalid"),
-                    ));
-                }
-            }
             for locale in &policy.required_locales {
-                if !map_contains_locale(values, locale) {
+                if !has_unambiguous_locale(values, locale) {
                     diagnostics.push(locale_coverage_diagnostic(
                         missing_severity,
                         "localized_metadata_required_locale_missing",
@@ -353,16 +390,6 @@ pub fn validate_project_locale_policy(document: &ProjectDocument) -> Vec<Validat
 
     diagnostics
 }
-
-const LOCALIZED_METADATA_FIELDS: &[&str] = &[
-    "title",
-    "description",
-    "slug",
-    "canonical_url",
-    "open_graph_title",
-    "open_graph_description",
-    "open_graph_image",
-];
 
 fn normalize_required_locale(locale: &str) -> Result<String, String> {
     normalize_locale_tag(locale).ok_or_else(|| format!("locale `{locale}` is invalid"))
@@ -390,12 +417,6 @@ fn runtime_locale_list(value: &Value) -> Vec<String> {
             .collect(),
         _ => Vec::new(),
     }
-}
-
-fn map_contains_locale(values: &Map<String, Value>, required_locale: &str) -> bool {
-    values
-        .keys()
-        .any(|locale| normalize_locale_tag(locale).as_deref() == Some(required_locale))
 }
 
 fn locale_policy_diagnostic(

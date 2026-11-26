@@ -379,6 +379,7 @@ impl PaymentService {
                 | PaymentCollectionStatusKind::Authorized
                 | PaymentCollectionStatusKind::Captured
         ) {
+            txn.rollback().await?;
             return Err(PaymentError::Validation(format!(
                 "payment collection {collection_id} is not reusable in its current lifecycle state"
             )));
@@ -386,6 +387,7 @@ impl PaymentService {
         if let Some(existing_order_id) = collection.order_id
             && existing_order_id != order_id
         {
+            txn.rollback().await?;
             return Err(PaymentError::Validation(format!(
                 "payment collection {collection_id} is already attached to order {existing_order_id}"
             )));
@@ -545,6 +547,7 @@ impl PaymentService {
             .load_refund_for_update_in_tx(&txn, tenant_id, refund_id)
             .await?;
         if !RefundStatusKind::from_raw(refund.status.as_str()).can_complete() {
+            txn.rollback().await?;
             return Err(PaymentError::InvalidTransition {
                 from: refund.status,
                 to: STATUS_REFUNDED.to_string(),
@@ -580,6 +583,7 @@ impl PaymentService {
             .load_refund_for_update_in_tx(&txn, tenant_id, refund_id)
             .await?;
         if !RefundStatusKind::from_raw(refund.status.as_str()).can_cancel() {
+            txn.rollback().await?;
             return Err(PaymentError::InvalidTransition {
                 from: refund.status,
                 to: STATUS_REFUND_CANCELLED.to_string(),
@@ -622,6 +626,7 @@ impl PaymentService {
             .load_collection_for_update_in_tx(&txn, tenant_id, collection_id)
             .await?;
         if !PaymentCollectionStatusKind::from_raw(collection.status.as_str()).can_authorize() {
+            txn.rollback().await?;
             return Err(PaymentError::InvalidTransition {
                 from: collection.status,
                 to: STATUS_AUTHORIZED.to_string(),
@@ -630,6 +635,7 @@ impl PaymentService {
 
         let authorize_amount = input.amount.unwrap_or(collection.amount);
         if authorize_amount <= Decimal::ZERO || authorize_amount > collection.amount {
+            txn.rollback().await?;
             return Err(PaymentError::Validation(
                 "authorize amount must be positive and not exceed collection amount".to_string(),
             ));
@@ -683,6 +689,7 @@ impl PaymentService {
             .load_collection_for_update_in_tx(&txn, tenant_id, collection_id)
             .await?;
         if !PaymentCollectionStatusKind::from_raw(collection.status.as_str()).can_capture() {
+            txn.rollback().await?;
             return Err(PaymentError::InvalidTransition {
                 from: collection.status,
                 to: STATUS_CAPTURED.to_string(),
@@ -691,6 +698,7 @@ impl PaymentService {
 
         let capture_amount = input.amount.unwrap_or(collection.authorized_amount);
         if capture_amount <= Decimal::ZERO || capture_amount > collection.authorized_amount {
+            txn.rollback().await?;
             return Err(PaymentError::Validation(
                 "capture amount must be positive and not exceed authorized amount".to_string(),
             ));
@@ -744,6 +752,7 @@ impl PaymentService {
             .await?;
         let collection_status = PaymentCollectionStatusKind::from_raw(collection.status.as_str());
         if !collection_status.can_cancel() {
+            txn.rollback().await?;
             return Err(PaymentError::InvalidTransition {
                 from: collection.status,
                 to: STATUS_CANCELLED.to_string(),
@@ -760,7 +769,10 @@ impl PaymentService {
             {
                 None
             }
-            Err(error) => return Err(error),
+            Err(error) => {
+                txn.rollback().await?;
+                return Err(error);
+            }
         };
 
         let normalized_reason = normalize_optional_reason(input.reason)?;
@@ -771,6 +783,7 @@ impl PaymentService {
                 payment_status,
                 PaymentStatusKind::Captured | PaymentStatusKind::Unknown
             ) {
+                txn.rollback().await?;
                 return Err(PaymentError::InvalidTransition {
                     from: payment.status,
                     to: STATUS_CANCELLED.to_string(),

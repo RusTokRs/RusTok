@@ -365,7 +365,7 @@ pub async fn list_tenant_variant_ids_from_conn<C: ConnectionTrait>(
     limit: usize,
 ) -> Result<Vec<Uuid>, PortError> {
     if tenant_id.is_nil()
-        || after_variant_id.is_some_and(Uuid::is_nil)
+        || after_variant_id.is_some_and(|id| id.is_nil())
         || limit == 0
         || limit > rustok_product::MAX_VARIANT_IDENTITY_BATCH
     {

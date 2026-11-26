@@ -78,6 +78,7 @@ fn optional_uuid_shape(value: Option<Uuid>) -> &'static str {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn product_core_http_policy(
     error: &rustok_core::error::Error,
     internal_code: &'static str,

@@ -374,15 +374,23 @@ FOR UPDATE OF pvav
             ));
         }
 
-        let before = build_snapshot(
+        let product =
+            super::lock_product_for_update_in_tx(&txn, tenant_id, owner.product_id).await?;
+        let before_aggregate =
             load_variant_attribute_value_aggregate(&txn, tenant_id, value_id)
                 .await?
                 .ok_or(ProductVariantAttributeValueTranslationError::ValueNotFound(
                     value_id,
-                ))?,
-            &source_locale,
-            &target_locale,
-        )?;
+                ))?;
+        super::validate_localized_attribute_translation_in(
+            &txn,
+            tenant_id,
+            product.primary_category_id,
+            before_aggregate.attribute_id,
+            &request.value,
+        )
+        .await?;
+        let before = build_snapshot(before_aggregate, &source_locale, &target_locale)?;
         ensure_revision(
             "resource",
             &request.expected_resource_revision,

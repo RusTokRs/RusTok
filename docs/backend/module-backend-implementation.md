@@ -615,10 +615,21 @@ If a module needs operational commands:
 
 The HTTP server must not link module command providers into the production runtime.
 
-The future platform CLI may aggregate many module-local command providers through an
-explicit registry. It should discover or select command adapters; it should not require all
-third-party module commands to be implemented inside one central crate. This preserves module
-isolation while keeping executable tooling outside domain code.
+The platform `rustok-cli` runner loads module-local providers through
+[`rustok-cli-registry`](../../crates/utils/rustok-cli-registry/README.md). A
+module publishes its provider through
+[`[provides.cli]`](../modules/manifest.md#providescli). The selected distribution's
+generated registry composes those providers.
+
+The local package name is `<owner-package>-cli`. Use `cli/src/lib.rs` for module
+declarations and re-exports, `provider.rs` for the command provider and dispatch,
+and `commands/` for actual operations. Add `runtime.rs` when commands share a
+runtime binding. Keep adapter tests under `cli/src/tests/` and wire
+`tests/contract.rs` through `tests/mod.rs`.
+
+`cargo xtask module lint <slug> --cli` checks the native layout and requires
+this local CLI package. The Blog reference runs the same check by default.
+Verify discovery and behavior through the platform runner for published commands.
 
 ## Data and Migrations
 

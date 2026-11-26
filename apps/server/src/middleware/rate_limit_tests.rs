@@ -571,6 +571,19 @@ async fn rate_limited_response_includes_contract_headers() {
     }));
 }
 
+#[tokio::test]
+async fn redis_backend_errors_do_not_expose_connection_or_reply_details() {
+    let result = redis_with_timeout(
+        Duration::from_secs(1),
+        "redis rate-limit script",
+        std::future::ready(Err::<(), _>(std::io::Error::other(
+            "backend reply with password=secret",
+        ))),
+    )
+    .await;
+    assert_eq!(result.unwrap_err(), "redis rate-limit script failed");
+}
+
 #[test]
 fn rate_limit_backend_unavailable_response_includes_contract_headers_and_status() {
     let response = rate_limit_backend_unavailable_response();

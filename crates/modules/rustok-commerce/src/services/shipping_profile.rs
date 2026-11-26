@@ -475,14 +475,14 @@ async fn insert_shipping_profile_row<C: ConnectionTrait>(
     txn: &C,
     active_profile: shipping_profile::ActiveModel,
 ) -> Result<shipping_profile::Model, sea_orm::DbErr> {
-    Ok(active_profile.insert(txn).await?)
+    active_profile.insert(txn).await
 }
 
 async fn update_shipping_profile_row<C: ConnectionTrait>(
     txn: &C,
     active: shipping_profile::ActiveModel,
 ) -> Result<shipping_profile::Model, sea_orm::DbErr> {
-    Ok(active.update(txn).await?)
+    active.update(txn).await
 }
 
 async fn insert_translations<C: ConnectionTrait>(

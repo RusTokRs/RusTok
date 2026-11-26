@@ -29,3 +29,6 @@ serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 rustok-grid.workspace = true
 rustok-grid-leptos = { workspace = true, default-features = false }
+
+[lints]
+workspace = true

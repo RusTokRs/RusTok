@@ -316,9 +316,9 @@ fn native_only_graphql_adapter_removal_is_documented() {
 fn native_read_mapper_keeps_backend_read_model_parity() {
     let model = read_source("src/model.rs");
     let native = read_source("src/transport/native_server_adapter.rs");
-    let product_dto = read_source("../../rustok-product/src/dto/product.rs");
-    let variant_dto = read_source("../../rustok-product/src/dto/variant.rs");
-    let catalog_types = read_source("../../rustok-product/src/services/catalog/types.rs");
+    let product_dto = read_source("../../rustok-product/ports/src/dto/product.rs");
+    let variant_dto = read_source("../../rustok-product/ports/src/dto/variant.rs");
+    let catalog_types = read_source("../../rustok-product/ports/src/types.rs");
 
     for (model_marker, backend_source, backend_marker, native_marker) in [
         (

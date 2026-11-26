@@ -30,3 +30,6 @@ validator.workspace = true
 [dev-dependencies]
 tokio.workspace = true
 rustok-test-utils.workspace = true
+
+[lints]
+workspace = true
