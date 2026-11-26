@@ -112,7 +112,7 @@ RusToK provides a sandboxed, extensible module runtime supporting native Rust cr
 - [ADR: Canonical JWT keyring document](../DECISIONS/2026-11-25-jwt-canonical-keyring-document.md) — unversioned file shape and bounded monotonic generations.
 - [ADR: Canonical JWT claims](../DECISIONS/2026-11-25-jwt-canonical-claims.md) — explicit access grant type/scopes and mandatory invitation nonce.
 - [ADR: Mandatory JWT key identity](../DECISIONS/2026-11-25-jwt-mandatory-key-identity.md) — no missing-ID or raw-root JWT bridge.
-- [ADR: RS256-only JWT architecture](../DECISIONS/2026-11-25-rs256-only-jwt.md) — single target algorithm, no cross-algorithm migration; coordinated consumer/bootstrap cutover pending.
+- [ADR: RS256-only JWT architecture](../DECISIONS/2026-11-25-rs256-only-jwt.md) — RS256-only runtime and keyring documents; retained HS256 durable state requires authenticated offline conversion.
 - [ADR: Canonical JWT algorithm metadata](../DECISIONS/2026-11-25-jwt-canonical-algorithm-metadata.md) — superseded historical algorithm metadata contract.
 - [ADR: JWT authority rollback witness](../DECISIONS/2026-11-25-jwt-rollback-witness.md) — authenticated full-state checkpoint, witness-first commits and offline recovery.
 - [ADR: Independent JWT authority](../DECISIONS/2026-11-25-jwt-independent-authority.md) — separate restore domain, pinned identity and offline cutover.

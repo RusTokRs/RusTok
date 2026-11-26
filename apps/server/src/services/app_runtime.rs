@@ -65,7 +65,7 @@ pub async fn bootstrap_app_runtime(
     runtime_ctx: ServerRuntimeContext,
     auth_config: AuthConfig,
 ) -> Result<AppRuntimeBootstrap> {
-    use crate::services::app_lifecycle::{await_worker_startup_or_stop, StopHandle};
+    use crate::services::stop_handle::{StopHandle, await_worker_startup_or_stop};
 
     let stop = StopHandle::ensure(&runtime_ctx);
     if stop.is_stopping() {
@@ -262,13 +262,34 @@ async fn initialize_module_work_runtime(
     extensions: &ModuleRuntimeExtensions,
 ) -> Result<()> {
     use crate::services::app_lifecycle::{
-        await_worker_startup_or_stop, ModuleWorkSchedulerInitializationLock, StopHandle,
+        ModuleWorkSchedulerHandle, ModuleWorkSchedulerInitializationLock,
+        ModuleWorkSchedulerRequirement,
     };
+    use crate::services::stop_handle::{StopHandle, await_worker_startup_or_stop};
+
+    let stop = StopHandle::ensure(ctx);
+    let registrations = extensions.get::<rustok_runtime::ModuleWorkRegistrations>();
+    let requirement = ModuleWorkSchedulerRequirement(
+        registrations.is_some_and(|registrations| !registrations.is_empty()),
+    );
 
     // Registration can await, so a check-then-spawn permits competing bootstraps
     // to leave an untracked scheduler running. Cancellation releases this guard.
     let initialization = ModuleWorkSchedulerInitializationLock::ensure(ctx);
-    let _guard = initialization.0.lock().await;
+    let Some(_guard) = await_worker_startup_or_stop(&stop, initialization.0.lock()).await
+    else {
+        if ctx.shared_contains::<ModuleWorkSchedulerHandle>() {
+            published_worker_running::<ModuleWorkSchedulerHandle>(
+                ctx,
+                "Module work scheduler",
+                ModuleWorkSchedulerHandle::is_finished,
+            )?;
+        }
+        // Preserve an already published composition decision. A stopped caller
+        // must not replace the active initializer's readiness requirement.
+        ctx.shared_insert_if_absent(requirement);
+        return Ok(());
+    };
     // A retained handle must pass the liveness/stop guard. With no handle,
     // continue to the requirement snapshot and the explicit stopped-host
     // no-op below rather than treating terminal shutdown as a startup failure.
@@ -282,21 +303,15 @@ async fn initialize_module_work_runtime(
         return Ok(());
     }
 
-    let registrations = extensions.get::<rustok_runtime::ModuleWorkRegistrations>();
     // Record the same registration decision used to start the scheduler so
     // readiness distinguishes an empty composition from a missing task.
-    ctx.shared_insert(
-        crate::services::app_lifecycle::ModuleWorkSchedulerRequirement(
-            registrations.is_some_and(|registrations| !registrations.is_empty()),
-        ),
-    );
+    ctx.shared_insert(requirement);
     let Some(registrations) = registrations else {
         return Ok(());
     };
     if registrations.is_empty() || !ctx.settings().runtime.runs_background_workers() {
         return Ok(());
     }
-    let stop = StopHandle::ensure(ctx);
     if stop.is_stopping() {
         tracing::info!("Shutdown requested; skipping module work scheduler startup");
         return Ok(());
@@ -475,13 +490,27 @@ fn workflow_cron_enabled(
 #[cfg(feature = "mod-workflow")]
 async fn init_workflow_runtime(ctx: &ServerRuntimeContext) -> Result<()> {
     use crate::services::app_lifecycle::{
-        StopHandle, WorkflowCronSchedulerHandle, WorkflowCronSchedulerInitializationLock,
+        WorkflowCronSchedulerHandle, WorkflowCronSchedulerInitializationLock,
     };
+    use crate::services::stop_handle::{StopHandle, await_worker_startup_or_stop};
     use rustok_workflow::WorkflowCronScheduler;
 
     // Serialize startup with concurrent bootstraps and shutdown's handle drain.
+    let stop = StopHandle::ensure(ctx);
     let initialization = WorkflowCronSchedulerInitializationLock::ensure(ctx);
-    let _guard = initialization.0.lock().await;
+    let Some(_guard) = await_worker_startup_or_stop(&stop, initialization.0.lock()).await
+    else {
+        // Preserve the retained-task error contract even if shutdown won the
+        // mutex wait. Do not take the published handle away from the drain.
+        if ctx.shared_contains::<WorkflowCronSchedulerHandle>() {
+            published_worker_running::<WorkflowCronSchedulerHandle>(
+                ctx,
+                "Workflow cron scheduler",
+                WorkflowCronSchedulerHandle::is_finished,
+            )?;
+        }
+        return Ok(());
+    };
     // As with module work, distinguish a retained task from an already
     // drained scheduler. Only the former can be reported as running.
     if ctx.shared_contains::<WorkflowCronSchedulerHandle>()
@@ -496,7 +525,7 @@ async fn init_workflow_runtime(ctx: &ServerRuntimeContext) -> Result<()> {
 
     // A receiver subscribed after send_replace(true) will not observe the old
     // change through changed(); inspect the current value before starting work.
-    let stop_rx = StopHandle::ensure(ctx).subscribe();
+    let stop_rx = stop.subscribe();
     if *stop_rx.borrow() {
         tracing::info!("Shutdown requested; skipping workflow cron scheduler startup");
         return Ok(());
@@ -506,7 +535,12 @@ async fn init_workflow_runtime(ctx: &ServerRuntimeContext) -> Result<()> {
     // drains accepted tasks before its scheduler JoinHandle completes. The
     // host's existing bounded shutdown may still force-abort a stalled task.
     let scheduler = WorkflowCronScheduler::new(ctx.db_clone());
-    scheduler.validate_persistence().await.map_err(|error| {
+    let Some(validation) =
+        await_worker_startup_or_stop(&stop, scheduler.validate_persistence()).await
+    else {
+        return Ok(());
+    };
+    validation.map_err(|error| {
         Error::Message(format!("Workflow cron durable storage is not initialized: {error}"))
     })?;
     // Schema validation may await migrations during a concurrent shutdown.
@@ -1077,6 +1111,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn queued_module_work_startup_exits_on_stop_without_replacing_requirement() {
+        use crate::services::app_lifecycle::{
+            ModuleWorkSchedulerHandle, ModuleWorkSchedulerInitializationLock,
+            ModuleWorkSchedulerRequirement, StopHandle,
+        };
+        use std::sync::atomic::Ordering;
+
+        let (ctx, registry, extensions, registration) = blocking_module_work_fixture().await;
+        ctx.shared_insert(ModuleWorkSchedulerRequirement(false));
+        let initialization = ModuleWorkSchedulerInitializationLock::ensure(&ctx);
+        let _held = initialization.0.lock().await;
+        let mut startup = Box::pin(super::initialize_module_work_runtime(
+            &ctx, &registry, &extensions,
+        ));
+        assert!(futures_util::poll!(&mut startup).is_pending());
+
+        StopHandle::ensure(&ctx).stop().await;
+        tokio::time::timeout(std::time::Duration::from_secs(1), startup)
+            .await
+            .expect("stop interrupts queued module work initialization")
+            .expect("stopped startup without a task is a no-op");
+        assert_eq!(registration.calls.load(Ordering::SeqCst), 0);
+        assert!(!ctx.shared_contains::<ModuleWorkSchedulerHandle>());
+        assert!(!ctx.shared_get::<ModuleWorkSchedulerRequirement>().unwrap().0);
+    }
+
+    #[tokio::test]
     async fn shutdown_before_module_work_initialization_prevents_startup() {
         use crate::services::app_lifecycle::{
             ModuleWorkSchedulerHandle, ModuleWorkSchedulerRequirement, shutdown_runtime_workers,
@@ -1219,6 +1280,32 @@ mod tests {
 
         // Shutdown is terminal for this runtime context, including late startup.
         super::init_workflow_runtime(&ctx).await.unwrap();
+        assert!(!ctx.shared_contains::<WorkflowCronSchedulerHandle>());
+    }
+
+    #[cfg(feature = "mod-workflow")]
+    #[tokio::test]
+    async fn waiting_workflow_cron_startup_exits_on_stop_without_acquiring_lock() {
+        use super::ServerRuntimeContext;
+        use crate::services::app_lifecycle::{
+            WorkflowCronSchedulerHandle, WorkflowCronSchedulerInitializationLock,
+        };
+        use crate::services::stop_handle::StopHandle;
+
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let initialization = WorkflowCronSchedulerInitializationLock::ensure(&ctx);
+        let _held = initialization.0.lock().await;
+        let mut startup = Box::pin(super::init_workflow_runtime(&ctx));
+        assert!(futures_util::poll!(&mut startup).is_pending());
+
+        StopHandle::ensure(&ctx).stop().await;
+        tokio::time::timeout(std::time::Duration::from_secs(1), startup)
+            .await
+            .expect("shutdown interrupts queued workflow startup")
+            .expect("stopped workflow startup without a handle is a no-op");
         assert!(!ctx.shared_contains::<WorkflowCronSchedulerHandle>());
     }
 

@@ -40,7 +40,6 @@ impl RsaKeyPairFixture {
     /// Construct one explicitly configured purpose ring.
     pub fn ring(&self, kid: &str) -> Value {
         json!({
-            "algorithm": "RS256",
             "keyring": {"active_kid": kid},
             "rsa_private_key_pem": self.private_pem,
             "rsa_public_key_pem": self.public_pem,

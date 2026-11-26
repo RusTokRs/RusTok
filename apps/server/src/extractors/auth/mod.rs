@@ -111,13 +111,7 @@ impl WebSocketAuthLease {
         }
         let lookup_timeout = remaining.min(std::time::Duration::from_secs(5));
         let user = tokio::time::timeout(lookup_timeout, async {
-            let tenant = crate::models::tenants::Entity::find_by_id(self.tenant_id)
-                .one(auth_runtime.runtime_ctx().db())
-                .await
-                .map_err(|_| ())?
-                .filter(|tenant| tenant.is_active)
-                .ok_or(())?;
-            resolve_current_user_from_access_token(auth_runtime, tenant.id, &self.access_token)
+            resolve_current_user_from_access_token(auth_runtime, self.tenant_id, &self.access_token)
                 .await
                 .map_err(|_| ())
         })
@@ -423,6 +417,18 @@ pub async fn resolve_current_user_from_access_token(
     }
 
     let principal_kind = classify_access_token_claims(&claims)?;
+
+    // Tenant middleware is intentionally bypassed on global operator routes,
+    // and a cached tenant context may predate deactivation. Resolve the live
+    // tenant at the common credential boundary for every principal kind.
+    let tenant = crate::models::tenants::Entity::find_by_id(tenant_id)
+        .one(db)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
+        .ok_or((StatusCode::FORBIDDEN, "Tenant is unavailable"))?;
+    if !tenant.is_active {
+        return Err((StatusCode::FORBIDDEN, "Tenant is unavailable"));
+    }
 
     if principal_kind == AuthPrincipalKind::DirectUser {
         let session = Sessions::find_by_id(claims.session_id)

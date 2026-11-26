@@ -1,11 +1,11 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_graphql::extensions::{
     Extension, ExtensionContext, ExtensionFactory, NextExecute, NextPrepareRequest,
 };
 use async_graphql::parser::types::{
-    ExecutableDocument, OperationDefinition, Selection, SelectionSet,
+    ExecutableDocument, OperationDefinition, SelectionSet,
 };
 use async_graphql::{FieldError, Name, Pos, Request, Response, ServerResult, Variables};
 use async_graphql_value::{ConstValue, Value};
@@ -59,13 +59,11 @@ fn tenant_argument_policy(
 
     for operation in super::selected_operations(document, operation_name) {
         let defaults = operation_variable_defaults(&operation.node);
-        let mut visited_fragments = HashSet::new();
         collect_selection_set_tenant_arguments(
             &operation.node.selection_set.node,
             document,
             variables,
             &defaults,
-            &mut visited_fragments,
             &mut policy,
         );
         if policy.invalid_argument.is_some() {
@@ -90,87 +88,46 @@ fn operation_variable_defaults(operation: &OperationDefinition) -> HashMap<Name,
         .collect()
 }
 
-#[allow(clippy::too_many_arguments)]
 fn collect_selection_set_tenant_arguments(
     selection_set: &SelectionSet,
     document: &ExecutableDocument,
     variables: &Variables,
     defaults: &HashMap<Name, ConstValue>,
-    visited_fragments: &mut HashSet<Name>,
     policy: &mut GraphqlTenantArgumentPolicy,
 ) {
     if policy.invalid_argument.is_some() {
         return;
     }
 
-    for selection in &selection_set.items {
-        match &selection.node {
-            Selection::Field(field) => {
-                for (argument_name, argument_value) in &field.node.arguments {
-                    let source = format!(
-                        "GraphQL field `{}` argument `{}`",
-                        field.node.name.node, argument_name.node
-                    );
-                    if is_tenant_argument_name(argument_name.node.as_str()) {
-                        collect_direct_tenant_value(
-                            &argument_value.node,
-                            variables,
-                            defaults,
-                            &source,
-                            policy,
-                        );
-                    } else {
-                        collect_nested_tenant_value(
-                            &argument_value.node,
-                            variables,
-                            defaults,
-                            &source,
-                            policy,
-                        );
-                    }
-                    if policy.invalid_argument.is_some() {
-                        return;
-                    }
-                }
-
-                collect_selection_set_tenant_arguments(
-                    &field.node.selection_set.node,
-                    document,
+    let _completed = super::visit_selection_fields(document, selection_set, (), |field, ()| {
+        for (argument_name, argument_value) in &field.arguments {
+            let source = format!(
+                "GraphQL field `{}` argument `{}`",
+                field.name.node, argument_name.node
+            );
+            if is_tenant_argument_name(argument_name.node.as_str()) {
+                collect_direct_tenant_value(
+                    &argument_value.node,
                     variables,
                     defaults,
-                    visited_fragments,
+                    &source,
+                    policy,
+                );
+            } else {
+                collect_nested_tenant_value(
+                    &argument_value.node,
+                    variables,
+                    defaults,
+                    &source,
                     policy,
                 );
             }
-            Selection::FragmentSpread(fragment) => {
-                let fragment_name = fragment.node.fragment_name.node.clone();
-                if visited_fragments.insert(fragment_name.clone())
-                    && let Some(definition) = document.fragments.get(&fragment_name)
-                {
-                    collect_selection_set_tenant_arguments(
-                        &definition.node.selection_set.node,
-                        document,
-                        variables,
-                        defaults,
-                        visited_fragments,
-                        policy,
-                    );
-                }
+            if policy.invalid_argument.is_some() {
+                return std::ops::ControlFlow::Break(());
             }
-            Selection::InlineFragment(fragment) => collect_selection_set_tenant_arguments(
-                &fragment.node.selection_set.node,
-                document,
-                variables,
-                defaults,
-                visited_fragments,
-                policy,
-            ),
         }
-
-        if policy.invalid_argument.is_some() {
-            return;
-        }
-    }
+        std::ops::ControlFlow::Continue(Some(()))
+    });
 }
 
 fn is_tenant_argument_name(name: &str) -> bool {

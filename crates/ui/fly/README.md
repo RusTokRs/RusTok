@@ -172,15 +172,39 @@ crates/ui/fly/
   `<style>` element body each have their own escape; URLs are filtered by `RenderPolicy`.
   Action, attribute and head URL checks share parsed HTTP(S) authority validation. SSR and
   document validation share bounded srcset candidate checks, including numeric descriptor
-  uniqueness, positive density/width and one descriptor family. CSS url(), image(), src(),
+  uniqueness, positive density/width, one descriptor family and unambiguous comma boundaries.
+  A bare candidate URL requires whitespace on at least one side of a following comma; encode
+  literal URL commas as %2C. CSS url(), image(), src(),
   image-set() and -webkit-image-set() resource strings are checked against the same
   resource policy, including nested image functions; escaped or malformed strings fail closed.
+  Original quoted resource URLs are validated before token masking, and SSR and static
+  publication share a single source-order resource scan with atomic URL tokens.
+  Masking uses disjoint original UTF-8 ranges without rescanning modified text. CSS variable substitution is also blocked
+  in reflection masks (`-webkit-box-reflect`).
 
 ## Runtime locale selection
 
 Runtime values, localized page routes, internal page links and navigation actions share the
-same ordered locale fallback chain. Coverage summary lookup also uses the resolver's chain;
+same ordered locale fallback chain. Outgoing navigation selects the authored slug with the
+runtime value resolver (including explicit field fallback or a single translation), then
+checks that the inbound route resolves to the intended page under the same locale. A
+shadowed or ambiguous slug is unresolved, not an invitation to use a fallback URL.
+A missing translation may use an explicit fallback URL, never an arbitrary first locale.
+The runtime pipeline retains the authored route catalog separately from rendered metadata.
+Coverage summary lookup also uses the resolver's chain;
 required translation coverage still requires an exact locale entry, never a fallback.
+Translation IDs are exact, nonempty ASCII alphanumeric, hyphen or underscore identities:
+surrounding whitespace is invalid on authoring and validation, and removal addresses the
+exact stored ID so an invalid imported entry can be removed without deleting a different
+entry. A present non-array `flyTranslations` block is a blocking diagnostic and catalog
+mutations reject it without changing the source document; opaque array entries remain
+preserved.
+A page-targeting interaction requires a unique page ID. Duplicate imported page IDs are
+reported as ambiguous by both link and action validation/materialization, and cannot
+produce an href even when a fallback URL is configured.
+Link, action and form materialization removes all ASCII case variants of the HTML
+attributes it owns before validation or regeneration; an authored uppercase spelling
+cannot retain a stale destination, method or runtime action marker.
 
 ## Runtime binding ownership
 

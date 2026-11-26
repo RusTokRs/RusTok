@@ -7,7 +7,7 @@
 ## Platform Capability Bindings
 
 - **Core Module Registration**: Exposes `AuthModule` implementing `RusToKModule` (slug `"auth"`, kind `ModuleKind::Core`) and `MigrationSource`.
-- **JWT algorithm migration**: historical key entries accept an optional algorithm; a trusted purpose and exact kid select a prepared key and algorithm. Managed generation admission permits only staged active-algorithm promotion with durable identity and replica checks; unmanaged publication still refuses active-algorithm changes.
+- **RS256-only JWT**: access, password-reset, email-verification and invite tokens use RSA-SHA256 exclusively. Trusted purpose and exact kid select a prepared RSA verifier; every JOSE header must declare RS256. No symmetric JWT signer, algorithm selector or fallback exists.
 - **JWT rollback witness**: `JwtAuthorityConfig::init_witness` and `recover_witness` are explicit offline operator paths. `open` and `revoke_key` require a matching independently configured witness and verified TLS; every authority mutation advances its authenticated checkpoint.
 - **Independent JWT authority**: `JwtAuthorityConfig::from_env`, `open`, `import_offline` and `revoke_key` compose a separately pinned PostgreSQL store. Production host and trusted revocation CLI require it; startup never seeds it.
 - **JWT operational metrics**: `JwtGenerationFence::operational_metrics` returns the read-only host handle `JwtOperationalMetrics`. `cluster_snapshot` authenticates the authority row; `render` samples the local gate. The trusted supervisor reports bounded reload outcomes via `record_reload`. No identity or secret is exported.
@@ -28,9 +28,9 @@
   - `AuthLifecyclePort` / `AuthLifecycleRuntime`
   - `AuthUserBackfillReadPort` / `AuthUserBackfillRuntime`
   - `AuthUserBootstrapDbWriter`, `AuthUserBackfillDbReader`
-- **Configuration**: `AuthConfig`, `build_auth_config`, `validate_auth_config`.
-- **Process-local key rotation**: `AuthConfig::prepare_jwt_document`, `AuthConfig::into_live_jwt`, `JwtKeyringPublisher::prepare_document`, `publish`, `generation`. Crypto getters return fallible owned values; `inspect_hs256_secrets` visits material without copying it. The publisher is host-owned, never a request capability.
-- **Durable generation admission**: `JwtGenerationFence::new`, `admit`, and `ensure_static_allowed`. The Auth-owned database singleton must admit a complete candidate before host startup/publication. The store retains authenticated metadata, never signing key material.
+- **Configuration**: `AuthConfig`, `AuthSettingsOverrides`, `build_auth_config_from_document`, `validate_auth_config`, `AuthConfig::validate_production_mac_root`. Raw MAC-root extraction is crate-private; host composition opens the authority through `JwtAuthorityConfig::open_for`.
+- **Process-local key rotation**: `AuthConfig::prepare_jwt_document`, `AuthConfig::into_live_jwt`, `JwtKeyringPublisher::prepare_document`, `publish`, `generation`. The publisher is host-owned, never a request capability. All prepared signing and verification keys are RSA; the independent MAC root is never exposed as JWT material.
+- **Durable generation admission**: `JwtGenerationFence::new` and `admit`. The Auth-owned database singleton must admit a complete positive-generation candidate before host startup/publication. Generation zero represents only the empty ledger. The store retains authenticated metadata, never signing key material.
 - **Cluster JWT lease**: `AuthConfig::into_cluster_jwt`, `JwtGenerationFence::renew`, `JwtAdmission::{Admitted, Draining, AwaitingReplicas}`. HTTP hosts gate crypto by bounded monotonic and wall-clock deadlines, with sticky clock faults, retry draining/awaiting admissions, and revoke local authority on shutdown. `JwtGenerationFence::activate` acquires a registered candidate grant before atomically exchanging the local keys and lease, then ACKs replacement for that incarnation. `JwtKeyringPublisher::lease_readiness` returns a read-only view of the same gate for host health checks.
 
 ## Domain Collaborations

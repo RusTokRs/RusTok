@@ -140,17 +140,14 @@ material.
 
 The current unversioned document schema requires four entries: `access`,
 `password_reset`, `email_verification` and `invite`. Each entry requires
-an explicit `algorithm: RS256` marker (a fixed transitional schema field,
-not a runtime choice), a `keyring`, `rsa_private_key_pem` and
-`rsa_public_key_pem`. The four RSA moduli must be distinct. Each keyring
-accepts:
+a `keyring`, `rsa_private_key_pem` and `rsa_public_key_pem`; no algorithm
+field is accepted. The four RSA moduli must be distinct. Each keyring accepts:
 
 - `active_kid`: 1–64 ASCII letters, digits, hyphens or underscores.
 - `verification_keys`: up to 16 objects with `kid`, public RSA PEM
-  `material`, and exclusive Unix-second `verify_until`. If a historical
-  `algorithm` marker is present, it must be RS256.
-- No `active_hs256_secret` is accepted. The independent MAC root is never
-  used or HKDF-derived as JWT key material.
+  `material`, and exclusive Unix-second `verify_until`.
+- No symmetric key material, algorithm override or fallback field is accepted.
+  The independent MAC root is never used or HKDF-derived as JWT key material.
 
 RSA keys must parse as actual public/private RSA material with a modulus of at
 least 2048 bits. The signing boundary checks that the private key matches the
@@ -209,8 +206,11 @@ proofs, OAuth consent CSRF, credential binding and durable authority/witness
 domains. HMAC-SHA256, HKDF-SHA256 and Argon2id remain in their non-JWT roles.
 The root must be independently provisioned symmetric secret material; PEM
 public/private keys and certificates are rejected at JWT preparation, host
-MAC proof derivation and durable fence MAC derivation. The length and PEM
-checks do not prove entropy or independence of arbitrarily encoded material.
+MAC proof derivation and durable fence MAC derivation. Production additionally
+requires at least 64 non-whitespace bytes and rejects known placeholders and
+low-diversity values. These representation checks do not prove entropy or
+independence of arbitrarily encoded material. Auth validates this policy
+without exposing the root through the public AuthConfig API.
 
 The Auth-owned database-free `validate-jwt-keyring` command uses the same
 document parser and policy checks as the host. Full development Compose runs
@@ -219,13 +219,11 @@ browser-smoke and reference-artifact CI host jobs provision fresh isolated
 RSA keyrings in runner temporary storage and remove them after use; private
 keys are not placed in the repository, logs, artifacts or caches.
 
-Legacy library constructors and the durable authenticated metadata still
-contain transitional algorithm representation. They are not executable host
-fallbacks. The algorithm enum, HS256 derivation, secret inventory and remaining
-mixed crypto branches still require removal. Persisted durable metadata must
-not be rewritten until an explicitly authorized authenticated offline
-converter preserves all security history and prevents old HS256 tokens from
-being accepted. No such converter is delivered here. Never reset authority or
+The durable authenticated metadata retains its fixed `RS256` assertion only
+for state continuity; it is not a selector, and persisted `HS256` metadata is
+rejected. Removing that marker requires a separately authorized authenticated
+offline converter preserving tombstones, revoked identities, generation and
+witness revision. No converter is delivered here. Never reset authority or
 witness to bypass admission; block retained-state deployments until conversion
 is available. Only explicitly disposable development state may be replaced
 together with fresh keys and invalidation of old tokens.
@@ -286,25 +284,21 @@ Example shape (replace every placeholder with a distinct, matching RSA key pair)
 {
   "generation": 1,
   "access": {
-    "algorithm": "RS256",
     "keyring": { "active_kid": "access-1" },
     "rsa_private_key_pem": "<access-private-pem>",
     "rsa_public_key_pem": "<access-public-pem>"
   },
   "password_reset": {
-    "algorithm": "RS256",
     "keyring": { "active_kid": "reset-1" },
     "rsa_private_key_pem": "<reset-private-pem>",
     "rsa_public_key_pem": "<reset-public-pem>"
   },
   "email_verification": {
-    "algorithm": "RS256",
     "keyring": { "active_kid": "verify-1" },
     "rsa_private_key_pem": "<verification-private-pem>",
     "rsa_public_key_pem": "<verification-public-pem>"
   },
   "invite": {
-    "algorithm": "RS256",
     "keyring": { "active_kid": "invite-1" },
     "rsa_private_key_pem": "<invite-private-pem>",
     "rsa_public_key_pem": "<invite-public-pem>"
@@ -330,10 +324,10 @@ The Auth-owned fence migration inventory is shared by application schema
 installation, the independent authority import and Auth regression fixtures.
 The durable fence, authority, witness and observability regressions use fresh
 independent RSA pairs per isolated ledger, with stable identity across its
-generations and public-only history. Explicit negative algorithm-change
-scenarios remain in the source tests until the internal algorithm model is
-removed. The durable authenticated metadata is unchanged by the runtime
-bootstrap cutover.
+generations and public-only history. Source checks require the fixed RS256
+metadata assertion and reject HS256 snapshots. The marker is persisted only
+for authenticated-state continuity; it never selects a verifier. Removing it
+requires the separately authorized retained-state converter.
 These source regressions have not been executed.
 The three pending migration identities remain append-only until the
 [consolidation admission guide](../../../../docs/guides/safe-database-migrations-and-squashing.md)
@@ -359,9 +353,9 @@ before staging a future signer. Retained deadlines can only shorten.
 The 8192-identity ledger limit
 fails closed rather than forgetting retired identities.
 
-The first file enrollment prevents subsequent static-mode startup against
-the same database. Keep the MAC root and database authority stable; do not
-restore an older database or run an older host binary. Stop old writers before
+There is no static-mode HTTP runtime: every host uses an admitted positive
+generation. Keep the MAC root and database authority stable; do not restore
+an older database or run an older host binary. Stop old writers before
 enrollment. An unavailable database or unknown publication result terminates
 the host during admission; a crash after durable commit but before local
 publication can recover by restarting with the committed generation. A
@@ -482,9 +476,8 @@ host with a false time source. Independently synchronize hosts to UTC within
 verification. Source regressions are unrun.
 
 A lease that has been observed expired cannot reopen on a backward wall-clock
-step. A fresh grant is required. Generation-zero replicas must present identical
-canonical key metadata while any registered static grant is live; anonymous
-outstanding grants also block static renewal until expiry.
+step. A fresh durable grant is required. Generation zero is not a runtime
+generation and cannot obtain a JWT lease.
 
 ### Independent JWT authority
 
@@ -572,7 +565,8 @@ No key IDs, fingerprints, paths, replica UUIDs, tenant IDs or secrets are export
   actual local crypto gate after DB IO. `local_clock_fenced` and
   `authority_clock_fenced` expose sticky detected clock faults.
 - `durable_generation` and signed `generation_lag` compare independent
-  database and local samples. Static mode has generation zero.
+  database and local samples. Every HTTP host reports an admitted positive
+  generation; generation zero represents only the empty ledger.
 - `current_grants`, `stale_grants`, `current_grant_replicas` and
   `stale_grant_replicas` count unexpired conservative grants and distinct
   incarnations within each class. An incarnation may be in both classes.
@@ -700,11 +694,10 @@ The executable host assembles `AuthConfig` only through
 `build_auth_config_from_document`, which consumes the mandatory complete
 generation-bearing file. `AuthSettingsOverrides` is policy-only: issuer,
 audience, refresh TTL and password policy cannot select or supply JWT keys.
-Generic default builders, environment-backed key sources, inline RSA PEM
-overrides and the `with_rs256` builder have been removed. Unknown algorithm
-or key-source fields fail deserialization. The `AuthConfig::new` constructor
-is compiled only for crate tests and is not a production API. The complete
-generation-bearing document is the sole production source of JWT material.
+There is no default AuthConfig constructor, algorithm selector, symmetric
+JWT signer or alternate key source. Unknown algorithm and key-source fields
+fail deserialization. The complete generation-bearing document is the sole
+production source of JWT material.
 
  and signs and verifies a probe at
 startup. Malformed or mismatched key pairs therefore fail configuration assembly
@@ -751,7 +744,7 @@ Primary owner for auth/JWT/RBAC incidents — Platform security/auth on-call. Es
 On auth degradation:
 
 1. Check `/health/ready`, `email_backend` and recent auth/API errors without logging secrets, reset/invite tokens or refresh tokens.
-2. Verify effective `AuthConfig`: algorithm/key pairing, issuer, audience, TTL bounds and production policy.
+2. Verify effective `AuthConfig`: all four RSA key pairs and purpose isolation, issuer, audience, TTL bounds and production policy.
 3. If the issue relates to email reset/verification delivery, escalate also to the owner of host email transport.
 4. If the issue relates to RBAC, verify `AUTH_USER_PERMISSIONS`, server registry/security hints and actual transport guards.
 5. After rollback preserve evidence: artifact id, config snapshot without secrets, affected flows, health snapshot and list of revoked/rotated credentials if rotation was performed.

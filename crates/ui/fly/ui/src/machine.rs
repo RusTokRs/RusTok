@@ -144,42 +144,39 @@ impl FlyUiStateMachine {
             } => {
                 self.state.page.active_page_id = page_id;
                 self.state.page.active_page_index = page_index;
-                self.state.selection.component_id = None;
-                self.state.selection.hovered_component_id = None;
-                self.state.selection.property_editor_id = None;
-                self.state.overlays.selected = None;
-                self.state.overlays.hovered = None;
-                self.state.overlays.insertion = None;
-                self.state.overlays.resize_handles_visible = false;
-                self.state.drag = None;
+                self.state.set_selected_component(None);
+                self.state.set_hovered_component(None);
+                self.state.invalidate_document_geometry();
                 vec![UiEffect::Command(Box::new(EditorCommand::Select {
                     component_id: None,
                 }))]
             }
             UiIntent::Select(component_id) => {
-                self.state.selection.component_id = component_id.clone();
+                self.state.set_selected_component(component_id.clone());
                 vec![UiEffect::Command(Box::new(EditorCommand::Select {
                     component_id,
                 }))]
             }
             UiIntent::Hover(component_id) => {
-                self.state.selection.hovered_component_id = component_id;
+                self.state.set_hovered_component(component_id);
                 vec![UiEffect::None]
             }
             UiIntent::SetSelectedOverlay(rect) => {
                 if rect.is_some_and(|rect| !rect.is_valid()) {
                     return Err(UiError::InvalidGeometry("selected overlay".to_string()));
                 }
-                self.state.overlays.selected = rect;
+                self.state.overlays.selected =
+                    rect.filter(|_| self.state.selection.component_id.is_some());
                 self.state.overlays.resize_handles_visible =
-                    rect.is_some() && self.effective_capabilities().styles;
+                    self.state.overlays.selected.is_some() && self.effective_capabilities().styles;
                 vec![UiEffect::None]
             }
             UiIntent::SetHoveredOverlay(rect) => {
                 if rect.is_some_and(|rect| !rect.is_valid()) {
                     return Err(UiError::InvalidGeometry("hovered overlay".to_string()));
                 }
-                self.state.overlays.hovered = rect;
+                self.state.overlays.hovered =
+                    rect.filter(|_| self.state.selection.hovered_component_id.is_some());
                 vec![UiEffect::None]
             }
             UiIntent::BeginDrag(source) => {

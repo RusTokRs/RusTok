@@ -159,7 +159,7 @@ fn materialize_object(
     )
 }
 
-fn select_translation<'a>(
+pub(crate) fn select_translation<'a>(
     wrapper: &'a Map<String, Value>,
     translations: &'a Map<String, Value>,
     selection: &RuntimeLocaleSelection,

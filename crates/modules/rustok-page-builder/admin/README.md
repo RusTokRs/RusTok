@@ -283,6 +283,8 @@ the supplied consumer facade. Save completion is attempt-aware; browser previews
 scenario/context and lifecycle flags in the same session. The Page Builder Dioxus host now mounts
 the isolated iframe canvas, forwards geometry/hover/focus/keyboard events, completes palette and
 selected-layer drag/drop, commits bounded resize patches and participates in peer-write fencing.
+Both framework adapters use the same Page Builder resize policy for pointer and keyboard
+input: a 4px grid, 24px/20px minimum width/height and a 100,000px maximum on either axis.
 The Leptos Rust runtime and JS adapter share a document nonce plus editor-root scope so their
 own confirmed writes advance one baseline; other tabs or editor roots fence stale editors.
 These BroadcastChannel notices are advisory and do not replace server revision CAS or receipts.
@@ -389,8 +391,9 @@ Undo and redo also reject disconnected or currently invalid history snapshots wi
 changing the controller's document, revision, or history.
 
 A successful document mutation, including undo, redo and recovered merges,
-invalidates active drag/drop candidates and their insertion overlay. Failed and
-idempotent commands preserve the existing interaction so it can be retried.
+invalidates active drag/drop candidates and all measured selection, hover and insertion
+geometry. Surviving component identities are preserved, but hover IDs outside the active page
+are cleared. Failed and idempotent commands preserve the existing interaction so it can be retried.
 
 Receipt-bearing SSR operations preflight the owner-scoped receipt ledger,
 expected generation and receipt capacity before consumer I/O. This read-only

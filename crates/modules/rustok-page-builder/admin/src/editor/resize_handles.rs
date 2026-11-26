@@ -4,10 +4,9 @@ use leptos::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use fly::ComponentPatch;
 #[cfg(any(target_arch = "wasm32", test))]
-use fly_ui::{
-    CanvasRect, ResizeHandle, ResizePolicy, ViewportState, MAX_RESIZE_DIMENSION_PX,
-    MIN_RESIZE_HEIGHT_PX, MIN_RESIZE_WIDTH_PX,
-};
+use crate::core::page_builder_resize_policy;
+#[cfg(any(target_arch = "wasm32", test))]
+use fly_ui::{CanvasRect, ResizeHandle, ViewportState};
 #[cfg(target_arch = "wasm32")]
 use fly_ui::{ResizeResult, ResizeSession};
 #[cfg(target_arch = "wasm32")]
@@ -34,16 +33,6 @@ struct SvgPoint {
 #[cfg(any(target_arch = "wasm32", test))]
 fn can_start_resize_pointer(listeners_ready: bool, button: i16, is_primary: bool) -> bool {
     listeners_ready && button == 0 && is_primary
-}
-
-#[cfg(any(target_arch = "wasm32", test))]
-fn page_builder_resize_policy() -> ResizePolicy {
-    ResizePolicy {
-        grid_size: Some(4.0),
-        maximum_width: Some(MAX_RESIZE_DIMENSION_PX),
-        maximum_height: Some(MAX_RESIZE_DIMENSION_PX),
-        ..ResizePolicy::default()
-    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -464,6 +453,7 @@ pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fly_ui::{MAX_RESIZE_DIMENSION_PX, MIN_RESIZE_HEIGHT_PX, MIN_RESIZE_WIDTH_PX};
 
     #[test]
     fn resize_pointerdown_only_consumes_primary_left_gestures() {

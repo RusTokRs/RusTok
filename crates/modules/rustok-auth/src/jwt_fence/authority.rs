@@ -16,7 +16,7 @@ use sha2::Sha256;
 use uuid::Uuid;
 
 use super::{FenceMac, JwtGenerationFence, JwtRevocationReceipt, rejected, unavailable};
-use crate::error::Result;
+use crate::{config::AuthConfig, error::Result};
 
 const DATABASE_URL: &str = "RUSTOK_JWT_AUTHORITY_DATABASE_URL";
 const AUTHORITY_ID: &str = "RUSTOK_JWT_AUTHORITY_ID";
@@ -119,7 +119,14 @@ impl JwtAuthorityConfig {
         Ok(fence)
     }
 
+    /// Open using the Auth-owned MAC root without exporting it to host code.
+    pub async fn open_for(&self, config: &AuthConfig) -> Result<JwtGenerationFence> {
+        self.open(config.secret()).await
+    }
+
     /// Open only a previously provisioned independent authority and witness.
+    /// Use `open_for` from host composition; raw-root access is for trusted
+    /// operator and offline tooling only.
     pub async fn open(&self, root: &str) -> Result<JwtGenerationFence> {
         let fence = self.witnessed(root).await?;
         let stored = fence.load().await?;

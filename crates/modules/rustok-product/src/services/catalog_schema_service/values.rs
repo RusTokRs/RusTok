@@ -1149,7 +1149,7 @@ mod localized_clear_tests {
     }
 
     async fn count_rows(db: &DatabaseConnection, sql: &str) -> i64 {
-        db.query_one(&Statement::from_string(
+        db.query_one_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             sql.to_owned(),
         ))

@@ -262,15 +262,6 @@ test('numeric fields in secondary dialogs fail closed instead of coercing', () =
 // refusal, and hand it to the owner call alongside the input.
 const secondaryContracts = [
   {
-    label: 'media card add-image intent',
-    file: './components/products/product-media-card.tsx',
-    mint: 'addAttemptKey.current ??= crypto.randomUUID();',
-    rotate: 'if (isDefinitiveProductWriteRefusal(err)) resetAddAttempt();',
-    resetFn: 'resetAddAttempt',
-    resetCalls: 4,
-    ownerCall: /await onAddImage\(\s*\{[\s\S]*?\},\s*addAttemptKey\.current\s*\);/
-  },
-  {
     label: 'relation add dialog intent',
     file: './components/products/product-relation-add-dialog.tsx',
     mint: 'addAttemptKey.current ??= crypto.randomUUID();',
@@ -329,6 +320,21 @@ test('secondary ADD dialogs mint, keep, and rotate one intent key', () => {
   }
 });
 
+test('media writes use the durable Product intent journal, not ephemeral card keys', () => {
+  const media = read('./components/products/product-media-card.tsx');
+  assert.ok(!media.includes('addAttemptKey'));
+  assert.ok(!media.includes('editAttemptKey'));
+  const attempt = read('./write-attempt.ts');
+  for (const operation of [
+    'image_add',
+    'image_update',
+    'image_delete',
+    'image_reorder'
+  ]) {
+    assert.ok(attempt.includes(operation), 'missing journal operation ' + operation);
+  }
+});
+
 test('bundle card init intent is keyed and the item dialog key is forwarded', () => {
   const source = read('./components/products/product-bundle-card.tsx');
   assert.ok(
@@ -372,17 +378,32 @@ test('API and server actions forward the caller intent key', () => {
   );
   assert.equal(
     (actions.match(/idempotencyKey\?: string/g) ?? []).length,
-    4,
-    'the four secondary ADD actions must accept an optional intent key'
+    3,
+    'only the remaining dialog-based secondary ADD actions use local intent keys'
   );
   assert.ok(actions.includes('addProductRelation(opts, input, idempotencyKey)'));
   assert.ok(actions.includes('createBundle(opts, input, locale, idempotencyKey)'));
   assert.ok(actions.includes('addBundleItem(opts, input, idempotencyKey)'));
   assert.ok(
-    /addProductImage\(\s*opts,\s*productId,\s*\{[\s\S]*?\},\s*idempotencyKey\s*\);/.test(
-      actions
-    ),
-    'addImageAction must forward the intent key to the API layer'
+    actions.includes('addProductImage(opts, request.id, request.input, idempotencyKey)'),
+    'addImageAction must forward the durable request key to the API layer'
+  );
+  const imageActions = actions.slice(
+    actions.indexOf('export async function addImageAction('),
+    actions.indexOf('export async function fetchEffectiveFormAction(')
+  );
+  assert.equal(
+    (imageActions.match(/getProductWriteAuthOpts\(request.scope, idempotencyKey\)/g) ?? []).length,
+    4,
+    'every image action must verify the original tenant/actor scope'
+  );
+  assert.ok(
+    imageActions.includes('request.imageId,\n      idempotencyKey'),
+    'deleteImageAction must forward the durable request key'
+  );
+  assert.ok(
+    imageActions.includes('request.imageIds,\n      idempotencyKey'),
+    'reorderImagesAction must forward the durable request key'
   );
 });
 
@@ -391,8 +412,14 @@ test('host pages forward the intent key from the dialogs to the actions', () => 
     '../../../src/app/dashboard/product/[productId]/page.tsx'
   );
   assert.ok(
-    editorHost.includes('addImageAction(pid, img, idempotencyKey)'),
-    'editor host must forward the media intent key'
+    editorHost.includes('onAddImage={addImageAction}'),
+    'editor host must bind the durable media action directly'
+  );
+  assert.ok(
+    editorHost.includes('onDeleteImage={deleteImageAction}') &&
+      editorHost.includes('onReorderImages={reorderImagesAction}') &&
+      editorHost.includes('onUpdateImage={updateImageAction}'),
+    'all media actions must be available to normal editor and recovery mode'
   );
   assert.ok(
     editorHost.includes('addProductRelationAction(input, idempotencyKey)'),
@@ -434,11 +461,16 @@ test('host pages forward the intent key from the dialogs to the actions', () => 
       `editor page must forward the intent key: ${forward}`
     );
   }
+  for (const operation of ['image_add', 'image_update', 'image_delete', 'image_reorder']) {
+    assert.ok(
+      editorPage.includes('executeImageWrite(') &&
+        editorPage.includes("'" + operation + "'"),
+      'editor page must journal ' + operation
+    );
+  }
   assert.ok(
-    /await onAddImage\(\s*initialProduct\.id,[\s\S]*?\{ \.\.\.img, locale: activeLocale \},\s*idempotencyKey\s*\);/.test(
-      editorPage
-    ),
-    'editor page must forward the media intent key with the active content locale'
+    editorPage.includes('image_add: onAddImage ?? unavailable'),
+    'recovery must resume pending image writes with the original owner action'
   );
 
   const bundlesPage = read('./pages/bundles-page.tsx');

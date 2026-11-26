@@ -210,9 +210,13 @@ No tests, Rust compilation/macro expansion, database or mounted-client checks we
 1. Compile affected Rust owner/transport/admin crates, run the focused tests and PostgreSQL
    integration test, validate GraphQL/native parity, and exercise both mounted clients. The
    current source must not be represented as validated merely because formatting parsed it.
-2. Verify Taxonomy-owned reparenting participates in the schema validity fence; direct Product
-   operations alone do not prove all external hierarchy writers are coordinated. Measure full
-   tenant effective-form snapshot cost and lock contention at realistic catalog sizes.
+2. Verify Taxonomy-owned reparenting participates in the schema validity fence and refreshes
+   the Product category-path projection; direct Product operations alone do not prove all
+   external hierarchy writers are coordinated. Measure full tenant effective-form snapshot
+   cost and lock contention at realistic catalog sizes.
+   - Add active-Product impact validation for EAV requiredness/scope changes in effective
+     category schemas; current schema impact validation covers variant-axis policy but does not
+     revalidate existing active Product attribute completeness.
 3. Execute the new existing-axis planner/recovery scenarios and ignored PostgreSQL
    reconfiguration contract (position/tuple swaps, read-only preview, stable IDs/links,
    replay/stale refusal and axis-removal collisions). Measure maximum-bound transaction/lock

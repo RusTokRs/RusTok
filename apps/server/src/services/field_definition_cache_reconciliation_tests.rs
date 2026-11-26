@@ -170,6 +170,17 @@ async fn field_definition_cache_generation_recovers_two_replicas_across_faults()
     wait_for_empty(&cache_a, tenant_id).await;
     wait_for_empty(&cache_b, tenant_id).await;
 
+    // Exercise several supervisor retry intervals with the regressed
+    // durable value still present; neither replica may accept it as a seed.
+    let deadline = tokio::time::Instant::now() + Duration::from_millis(150);
+    while tokio::time::Instant::now() < deadline {
+        assert!(!handle_a.is_ready());
+        assert!(!handle_b.is_ready());
+        assert_eq!(handle_a.applied_generation(), 7);
+        assert_eq!(handle_b.applied_generation(), 7);
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+
     seed_stale(&cache_a, tenant_id, "during-regression-a").await;
     seed_stale(&cache_b, tenant_id, "during-regression-b").await;
     set_generation(&db, 8).await;
@@ -182,4 +193,30 @@ async fn field_definition_cache_generation_recovers_two_replicas_across_faults()
     assert!(handle_b.is_running());
     handle_a.abort();
     handle_b.abort();
+}
+
+#[tokio::test]
+async fn reconciliation_restart_rejects_a_lower_durable_seed() {
+    let db = sqlite_generation_db(3).await;
+    let cache = FieldDefinitionCache::new();
+    let tenant_id = Uuid::new_v4();
+    seed_stale(&cache, tenant_id, "before-restart").await;
+    let state = Arc::new(FieldDefinitionCacheGenerationState {
+        healthy: AtomicBool::new(false),
+        applied_generation: AtomicU64::new(7),
+    });
+
+    let error = tokio::time::timeout(
+        Duration::from_secs(1),
+        run_field_definition_cache_generation_once(
+            db, cache.clone(), Arc::clone(&state), Duration::from_secs(60),
+        ),
+    )
+    .await
+    .expect("regressed seed must be rejected without polling delay")
+    .expect_err("a restart must not discard the applied generation");
+    assert!(error.contains("regressed"));
+    assert!(!state.healthy.load(Ordering::Acquire));
+    assert_eq!(state.applied_generation.load(Ordering::Acquire), 7);
+    wait_for_empty(&cache, tenant_id).await;
 }

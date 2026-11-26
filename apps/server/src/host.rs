@@ -23,7 +23,6 @@ use crate::{
 
 const DEFAULT_JWT_ISSUER: &str = "rustok";
 const DEFAULT_JWT_AUDIENCE: &str = "rustok-admin";
-const MIN_PRODUCTION_MAC_ROOT_BYTES: usize = 64;
 const JWT_KEYRING_FILE_ENV: &str = "RUSTOK_JWT_KEYRING_FILE";
 const JWT_RELOAD_INTERVAL: Duration = Duration::from_secs(2);
 
@@ -137,7 +136,7 @@ pub async fn run() -> Result<()> {
         Some(authority) => Some(tokio::select! {
             biased;
             _ = &mut shutdown_signal => return Ok(()),
-            result = authority.open(auth_config.secret()) => result.map_err(crate::auth::auth_err)?,
+            result = authority.open_for(&auth_config) => result.map_err(crate::auth::auth_err)?,
         }),
         None if !production => None,
         None => return Err(Error::Message("Independent JWT authority and rollback witness are required in production".into())),
@@ -362,32 +361,8 @@ fn validate_oauth_metadata_issuer(
         return Ok(());
     }
 
-    let issuer = url::Url::parse(&config.issuer).map_err(|_| {
-        Error::BadRequest(
-            "OAuth discovery requires an explicit absolute issuer URL that matches JWT issuer claims"
-                .to_string(),
-        )
-    })?;
-    let is_local_http = issuer.scheme() == "http"
-        && matches!(issuer.host_str(), Some("localhost") | Some("127.0.0.1"));
-    let supported_scheme = issuer.scheme() == "https" || is_local_http;
-    let root_path = issuer.path().is_empty() || issuer.path() == "/";
-
-    if !supported_scheme
-        || issuer.host_str().is_none()
-        || config.issuer.contains('@')
-        || !issuer.username().is_empty()
-        || issuer.password().is_some()
-        || !root_path
-        || issuer.query().is_some()
-        || issuer.fragment().is_some()
-        || config.issuer.chars().any(char::is_whitespace)
-    {
-        return Err(Error::BadRequest(
-            "OAuth discovery issuer must be an absolute HTTPS URL (or http://localhost/127.0.0.1 for development), with no userinfo, path, query, or fragment, so the discovery issuer exactly matches JWT issuer claims"
-                .to_string(),
-        ));
-    }
+    crate::controllers::oauth_metadata::parse_metadata_issuer(&config.issuer)
+        .map_err(|error| Error::BadRequest(error.to_string()))?;
 
     Ok(())
 }
@@ -443,19 +418,7 @@ fn validate_auth_deployment(config: &crate::auth::AuthConfig, production: bool) 
         ));
     }
 
-    let mac_root = config.secret();
-    if mac_root.bytes().filter(|byte| !byte.is_ascii_whitespace()).count()
-        < MIN_PRODUCTION_MAC_ROOT_BYTES
-    {
-        return Err(Error::BadRequest(format!(
-            "Production MAC root must contain at least {MIN_PRODUCTION_MAC_ROOT_BYTES} non-whitespace bytes"
-        )));
-    }
-    if mac_root_looks_like_placeholder(mac_root) {
-        return Err(Error::BadRequest(
-            "Production MAC root looks like a placeholder or low-diversity value".to_string(),
-        ));
-    }
+    config.validate_production_mac_root().map_err(crate::auth::auth_err)?;
     rustok_auth::validate_auth_config(config).map_err(crate::auth::auth_err)?;
 
     Ok(())
@@ -493,29 +456,6 @@ fn validate_database_deployment(database_uri: &str, production: bool) -> Result<
     }
 
     Ok(())
-}
-
-fn mac_root_looks_like_placeholder(secret: &str) -> bool {
-    let normalized = secret.trim().to_ascii_lowercase();
-    const PLACEHOLDER_MARKERS: &[&str] = &[
-        "change_me",
-        "changeme",
-        "replace_me",
-        "replace-this",
-        "do-not-use",
-        "development",
-        "example-secret",
-        "test-secret",
-    ];
-
-    PLACEHOLDER_MARKERS
-        .iter()
-        .any(|marker| normalized.contains(marker))
-        || normalized
-            .chars()
-            .collect::<std::collections::HashSet<_>>()
-            .len()
-            < 16
 }
 
 fn application_router(
@@ -1139,6 +1079,12 @@ mod tests {
             "https://user:password@api.example.com",
             "https://@api.example.com",
             "https://api.example.com ",
+            "https:api.example.com",
+            "https:///api.example.com",
+            "https://api.example.com/issuer/..",
+            "https://api.example.com/%2e",
+            "https://api.example.com\\",
+            "https://api.example.com\u{0001}",
         ] {
             let config = test_auth_config(
                 "development-secret-value-with-more-than-thirty-two-bytes".to_string(),

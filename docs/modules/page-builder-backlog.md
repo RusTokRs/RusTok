@@ -1528,3 +1528,11 @@ integration tests; MySQL support is out of scope.
 
 2026-11-25 Prepared checkpoint retention (source only; not executed):
 - Protect live prepared receipts from memory/file/KV capacity eviction, select ordinary candidates first, recheck file protection under the token lock, and reject bounded admission when only prepared slots remain. Keep normal TTL expiry and explicit removal. Added memory admission and persistent capacity-prune regressions.
+
+Static publication follow-up (2026-11-26, source-only): reject ambiguous srcset comma
+boundaries in the shared Fly parser, so validation and browser URL tokenization cannot
+disagree on descriptor-less candidates. Policy v11 invalidates stale sanitization evidence;
+the registry and runtime-review projections match the Rust constants, and the existing
+runtime-review gate checks all three projections against the owning source. Previously
+published artifacts keep serving under the existing compatibility contract; review and
+re-publish affected documents before exact rebuild. Source regressions authored, unrun.

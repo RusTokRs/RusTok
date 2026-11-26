@@ -71,6 +71,15 @@ pub fn apply_translation_command(
     document: &mut ProjectDocument,
     command: &TranslationCommand,
 ) -> FlyResult<()> {
+    if matches!(
+        command,
+        TranslationCommand::Upsert { .. } | TranslationCommand::Remove { .. }
+    ) && invalid_catalog_shape(document)
+    {
+        return Err(FlyError::Decode(format!(
+            "{FLY_TRANSLATIONS_FIELD} must be an array"
+        )));
+    }
     match command {
         TranslationCommand::Upsert { entry } => {
             validate_translation_identity(entry)?;
@@ -91,7 +100,7 @@ pub fn apply_translation_command(
             let before = catalog.entries.len();
             catalog
                 .entries
-                .retain(|entry| entry.id != translation_id.trim());
+                .retain(|entry| entry.id.as_str() != translation_id.as_str());
             if catalog.entries.len() == before {
                 return Err(FlyError::Decode(format!(
                     "translation `{translation_id}` was not found"
@@ -133,7 +142,7 @@ pub fn materialize_project_translations(
         .and_then(Value::as_object)
         .cloned()
         .unwrap_or_default();
-    let mut diagnostics = Vec::new();
+    let mut diagnostics = catalog_shape_diagnostics(document);
     let mut resolved_translations = 0usize;
     let mut fallback_translations = 0usize;
     let mut unresolved_translations = 0usize;
@@ -198,11 +207,11 @@ pub fn materialize_project_translations(
 
 pub fn validate_translation_definitions(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
     let catalog = TranslationCatalog::from_document(document);
-    let mut diagnostics = Vec::new();
+    let mut diagnostics = catalog_shape_diagnostics(document);
     let mut ids = BTreeSet::new();
     for entry in &catalog.entries {
-        let id = entry.id.trim();
-        if id.is_empty() {
+        let id = entry.id.as_str();
+        if id.trim().is_empty() {
             diagnostics.push(translation_diagnostic(
                 ValidationSeverity::Error,
                 "translation_id_empty",
@@ -282,9 +291,29 @@ pub fn validate_translation_definitions(document: &ProjectDocument) -> Vec<Valid
     diagnostics
 }
 
+fn invalid_catalog_shape(document: &ProjectDocument) -> bool {
+    document
+        .project()
+        .extensions
+        .get(FLY_TRANSLATIONS_FIELD)
+        .is_some_and(|value| !value.is_array())
+}
+
+fn catalog_shape_diagnostics(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
+    if invalid_catalog_shape(document) {
+        return vec![translation_diagnostic(
+            ValidationSeverity::Error,
+            "translation_catalog_invalid",
+            None,
+            format!("{FLY_TRANSLATIONS_FIELD} must be an array"),
+        )];
+    }
+    Vec::new()
+}
+
 fn validate_translation_identity(entry: &TranslationEntry) -> FlyResult<()> {
-    let id = entry.id.trim();
-    if id.is_empty() {
+    let id = entry.id.as_str();
+    if id.trim().is_empty() {
         return Err(FlyError::Decode(
             "translation id must not be empty".to_string(),
         ));
@@ -432,6 +461,88 @@ mod tests {
                 .entries
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn translation_ids_are_validated_and_removed_without_lossy_trimming() {
+        let mut document = document();
+        let entry: TranslationEntry = serde_json::from_value(json!({
+            "id": " hero ",
+            "values": { "en": "Hello" }
+        }))
+        .unwrap();
+        let before_hash = document.hash();
+        assert!(apply_translation_command(
+            &mut document,
+            &TranslationCommand::Upsert {
+                entry: Box::new(entry),
+            },
+        )
+        .is_err());
+        assert_eq!(document.hash(), before_hash);
+
+        document.project_mut().extensions.insert(
+            FLY_TRANSLATIONS_FIELD.to_string(),
+            json!([
+                { "id": "hero", "values": { "en": "Canonical" } },
+                { "id": " hero ", "values": { "en": "Imported" } }
+            ]),
+        );
+        assert!(validate_translation_definitions(&document).iter().any(|diagnostic| {
+            diagnostic.code == "translation_id_invalid"
+        }));
+        apply_translation_command(
+            &mut document,
+            &TranslationCommand::Remove {
+                translation_id: " hero ".to_string(),
+            },
+        )
+        .expect("remove exact imported identity");
+        let catalog = TranslationCatalog::from_document(&document);
+        assert_eq!(catalog.entries.len(), 1);
+        assert_eq!(catalog.entries[0].id, "hero");
+        assert!(validate_translation_definitions(&document).is_empty());
+    }
+
+    #[test]
+    fn malformed_catalog_is_diagnosed_and_never_overwritten_by_commands() {
+        let mut document = document();
+        let malformed = json!({ "future": { "payload": true } });
+        document.project_mut().extensions.insert(
+            FLY_TRANSLATIONS_FIELD.to_string(),
+            malformed.clone(),
+        );
+        let before_hash = document.hash();
+        let entry: TranslationEntry = serde_json::from_value(json!({
+            "id": "hero",
+            "values": { "en": "Hello" }
+        }))
+        .unwrap();
+        for command in [
+            TranslationCommand::Upsert {
+                entry: Box::new(entry),
+            },
+            TranslationCommand::Remove {
+                translation_id: "hero".to_string(),
+            },
+        ] {
+            assert!(apply_translation_command(&mut document, &command).is_err());
+            assert_eq!(document.hash(), before_hash);
+            assert_eq!(
+                document.project().extensions[FLY_TRANSLATIONS_FIELD],
+                malformed
+            );
+        }
+        let diagnostics = validate_translation_definitions(&document);
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "translation_catalog_invalid"
+                && diagnostic.severity == ValidationSeverity::Error
+        }));
+        let materialized = materialize_project_translations(&document, &json!({}));
+        assert!(materialized.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "translation_catalog_invalid"
+                && diagnostic.severity == ValidationSeverity::Error
+        }));
     }
 
     #[test]

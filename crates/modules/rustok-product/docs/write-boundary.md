@@ -105,6 +105,18 @@ port, and use only the enclosing catalog receipt. Standalone Product value save/
 value Translation apply advance the Product business revision so a stale aggregate draft cannot
 overwrite those edits unnoticed. The embedded writer does not advance it again.
 
+## Variant business revision and Index watermark
+
+`product_variants.revision` is the predecessor CAS token for Variant update/delete.
+It is distinct from `product_variants.index_revision`, which is reserved for
+ProductVariant Index replay/source freshness. PostgreSQL advances the business
+revision on every Variant-row update; the existing Index trigger independently
+advances its watermark. Direct Pricing base-price writes touch the Product-owned
+Variant row and record the exact Index refresh cause in the same transaction, so
+stale catalog replacements conflict. Inventory quantity remains a separate
+Inventory-owned snapshot checked with `expected_inventory_quantity`; it does not
+reuse either ProductVariant counter.
+
 ## Value and Translation lock order
 
 Typed Product value patch/clear resolves category-dependent state only after locking Product.

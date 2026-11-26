@@ -5,6 +5,7 @@ mod reply_create_native_server_adapter;
 mod topic_fork_graphql_adapter;
 mod topic_merge_graphql_adapter;
 mod topic_merge_native_server_adapter;
+mod topic_move_graphql_adapter;
 mod topic_reply_range_graphql_adapter;
 mod topic_slug_rename_graphql_adapter;
 mod topic_split_graphql_adapter;
@@ -20,6 +21,9 @@ use crate::topic_fork_model::{
 };
 use crate::topic_merge_model::{
     ForumTopicMergeCandidate, ForumTopicMergeCommand, ForumTopicMergeReceipt,
+};
+use crate::topic_move_model::{
+    ForumTopicMoveCandidate, ForumTopicMoveCategory, ForumTopicMoveCommand, ForumTopicMoveReceipt,
 };
 use crate::topic_reply_range_model::{
     ForumReplyRangeMoveCandidate, ForumReplyRangeMoveCommand, ForumReplyRangeMoveReceipt,
@@ -343,6 +347,22 @@ pub async fn merge_topic(
     .map_err(|error| error.to_string())
 }
 
+pub async fn fetch_topic_move_candidates(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    locale: String,
+) -> Result<(Vec<ForumTopicMoveCandidate>, Vec<ForumTopicMoveCategory>), ApiError> {
+    topic_move_graphql_adapter::fetch_candidates(token, tenant_slug, locale).await
+}
+
+pub async fn move_topic(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    command: ForumTopicMoveCommand,
+) -> Result<ForumTopicMoveReceipt, ApiError> {
+    topic_move_graphql_adapter::move_topic(token, tenant_slug, command).await
+}
+
 pub async fn fetch_topic_slug_rename_candidates(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -500,6 +520,17 @@ mod tests {
         assert!(SOURCE.contains("cfg(any(feature = \"ssr\", feature = \"hydrate\"))"));
         assert!(SOURCE.contains("UiTransportPath::NativeServer"));
         assert!(SOURCE.contains("UiTransportPath::Graphql"));
+    }
+
+    #[test]
+    fn topic_move_uses_the_manager_graphql_transport_without_fallback() {
+        for operation in ["fetch_topic_move_candidates", "move_topic"] {
+            let source = function_source(operation);
+            assert!(source.contains("topic_move_graphql_adapter::"));
+            assert!(!source.contains("native_server_adapter"));
+            assert!(!source.contains("execute_selected_transport"));
+            assert!(!source.contains("fallback"));
+        }
     }
 
     #[test]

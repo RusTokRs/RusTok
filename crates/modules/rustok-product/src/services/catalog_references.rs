@@ -81,8 +81,8 @@ pub(super) async fn lock_sqlite_product_in_tx(
     Ok(txn.execute_raw(statement).await?.rows_affected() == 1)
 }
 
-/// Advances the existing Product Variant predecessor for a committed catalog base-price
-/// mutation, with the Pricing root envelope as the exact variant refresh cause.
+/// Advances the ProductVariant business predecessor and records the exact Index refresh cause
+/// for a committed catalog base-price mutation, with the Pricing root envelope as that cause.
 /// The co-located Pricing writer must hold the Variant write lock and use the same
 /// transaction for its price rows, PriceUpdated event and this owner operation.
 /// Contextual prices are not part of the catalog edit snapshot.
@@ -104,10 +104,10 @@ pub async fn record_catalog_base_price_change_in_tx(
     }
     let backend = txn.get_database_backend();
     let sql = match backend {
-        // PostgreSQL's existing BEFORE UPDATE trigger owns the increment.
-        DatabaseBackend::Postgres => "UPDATE product_variants SET index_revision = index_revision WHERE tenant_id = $1 AND product_id = $2 AND id = $3 AND index_revision > 0 AND index_revision < 9223372036854775807",
-        // SQLite has no Product revision trigger in the co-located test profile.
-        DatabaseBackend::Sqlite => "UPDATE product_variants SET index_revision = index_revision + 1 WHERE tenant_id = ?1 AND product_id = ?2 AND id = ?3 AND index_revision > 0 AND index_revision < 9223372036854775807",
+        // PostgreSQL's BEFORE UPDATE triggers independently advance both owner counters.
+        DatabaseBackend::Postgres => "UPDATE product_variants SET index_revision = index_revision WHERE tenant_id = $1 AND product_id = $2 AND id = $3 AND index_revision > 0 AND index_revision < 9223372036854775807 AND revision > 0 AND revision < 9223372036854775807",
+        // SQLite has no ProductVariant revision triggers in the co-located test profile.
+        DatabaseBackend::Sqlite => "UPDATE product_variants SET index_revision = index_revision + 1, revision = revision + 1 WHERE tenant_id = ?1 AND product_id = ?2 AND id = ?3 AND index_revision > 0 AND index_revision < 9223372036854775807 AND revision > 0 AND revision < 9223372036854775807",
         _ => return Err(CommerceError::Core(rustok_core::error::Error::Internal(
             "Catalog base-price revision requires PostgreSQL or SQLite".into(),
         ))),

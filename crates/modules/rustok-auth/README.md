@@ -65,8 +65,8 @@ OAuth application presentation copy is owner-localized in `oauth_app_translation
 - `AuthAdminMutationContext`
 - `AuthAdminMutationError`
 - `AuthConfig`
-- `build_auth_config`
-- `build_auth_config_with_env`
+- `AuthSettingsOverrides`
+- `build_auth_config_from_document`
 - `validate_auth_config`
 - `Claims`
 - `encode_access_token`
@@ -97,24 +97,20 @@ it never provisions a service or adds grants. Human transport authentication is 
 
 ### Known Limitations / Pending Implementation
 
-JWT purpose keyrings, immutable prepared snapshots, key selection and retirement are source-implemented;
-the two-key RS256 rotation regression is source-authored. Scoped compilation,
-regression execution and coordinated replica rollout evidence are pending.
-Optional process-local file-backed hot reload, durable generation fencing and
-identity tombstones are source-implemented;
-cluster lease/drain fencing and compatible rolling replica admission are
-source-implemented, including emergency enrolled-key revocation.
-RS256-only is the accepted target; mixed histories and active algorithm
-changes are rejected. Coordinated RSA-only bootstrap and consumer cutover,
-including removal of remaining homogeneous HS256 paths, is pending. The
-shared dev-only JWT fixture generator now supplies complete independent RSA
-keyrings to the Auth document bootstrap, server special-token regressions and
+JWT purpose keyrings, immutable prepared snapshots, fixed RS256 signing and
+verification, exact key selection and retirement are source-implemented.
+Mixed HS256/RS256 runtime branches, default key derivation, algorithm selectors
+and the transitional keyring-document marker have been removed. Scoped
+compilation, regression execution and coordinated replica rollout evidence
+remain pending. Optional process-local file-backed hot reload, durable
+generation fencing, identity tombstones, cluster lease/drain fencing,
+rolling replica admission and emergency enrolled-key revocation are
+source-implemented. The shared dev-only fixture generator supplies four
+independent RSA pairs to Auth bootstrap, server special-token regressions,
 durable fence, authority, witness, observability, local lease and immutable
-snapshot rotation scenarios. JWT primitive regressions now use complete RSA
-fixtures; embedded Auth test private keys have been removed from the owner
-sources. Explicit
-isolated dev/test provisioning of four independent RSA pairs is available
-through the [keyring provisioning command](docs/README.md#isolated-development-and-test-provisioning).
+snapshot rotation scenarios. Explicit isolated dev/test provisioning of four
+independent RSA pairs is available through the
+[keyring provisioning command](docs/README.md#isolated-development-and-test-provisioning).
 File bootstrap constructs the selected complete key source directly without
 instantiating default signing inputs. Candidate grant admission rejects local
 policy mismatches and unmanaged publishers before durable grant mutation.
@@ -124,7 +120,8 @@ All JWT purposes require an exact key ID; missing-ID access and raw-root
 verification bridges are removed. Access grant type/scopes and invite nonce
 are mandatory; previously accepted missing fields are rejected.
 The keyring document uses one unversioned format with a bounded monotonic
-generation. Password-reset credential binding and OAuth consent MAC proofs use one
+generation and contains no algorithm field or alternate key source.
+Password-reset credential binding and OAuth consent MAC proofs use one
 unversioned canonical format. Zero-legacy cleanup remains open for other
 unreleased token formats and broader config compatibility. Ambiguous or empty RSA key sources
 are rejected.

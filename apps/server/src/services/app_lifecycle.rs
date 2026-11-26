@@ -22,6 +22,7 @@ use rustok_seo::{SeoApplicationServices, SeoWorkerAuthorization};
 // ── Graceful-shutdown handle ─────────────────────────────────────────────────
 
 pub use crate::services::stop_handle::StopHandle;
+use crate::services::stop_handle::await_worker_startup_or_stop;
 
 static OUTBOX_RELAY_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 static OUTBOX_RETENTION_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
@@ -405,25 +406,53 @@ pub(crate) struct RuntimeWorkerSnapshot {
 pub(crate) fn additional_cache_reconciliation_worker_snapshots(
     ctx: &ServerRuntimeContext,
 ) -> Vec<RuntimeWorkerSnapshot> {
-    let snapshots = vec![RuntimeWorkerSnapshot {
-        name: "field_definition_cache_generation",
-        required: true,
-        finished: ctx.shared_map::<
-            crate::services::field_definition_cache::FieldDefinitionCacheGenerationReconciliationHandle,
-            _,
-        >(|worker| !worker.is_ready()),
-    }];
+    vec![
+        RuntimeWorkerSnapshot {
+            name: "field_definition_cache_generation",
+            required: true,
+            finished: ctx.shared_map::<
+                crate::services::field_definition_cache::FieldDefinitionCacheGenerationReconciliationHandle,
+                _,
+            >(|worker| !worker.is_ready()),
+        },
+        #[cfg(feature = "mod-seo")]
+        RuntimeWorkerSnapshot {
+            name: "seo_redirect_cache_reconciliation",
+            required: crate::services::seo_redirect_cache_reconciliation::seo_redirect_cache_reconciliation_required(ctx),
+            finished: ctx.shared_map::<
+                crate::services::seo_redirect_cache_reconciliation::SeoRedirectCacheReconciliationHandle,
+                _,
+            >(|worker| !worker.is_ready()),
+        },
+    ]
+}
 
-    #[cfg(feature = "mod-seo")]
-    snapshots.push(RuntimeWorkerSnapshot {
-        name: "seo_redirect_cache_reconciliation",
-        required: crate::services::seo_redirect_cache_reconciliation::seo_redirect_cache_reconciliation_required(ctx),
-        finished: ctx.shared_map::<
-            crate::services::seo_redirect_cache_reconciliation::SeoRedirectCacheReconciliationHandle,
-            _,
-        >(|worker| !worker.is_ready()),
-    });
-
+/// Shared inventory for readiness and Prometheus, including the workers
+/// whose requirement is determined by the selected event runtime.
+pub(crate) fn runtime_worker_snapshots(ctx: &ServerRuntimeContext) -> Vec<RuntimeWorkerSnapshot> {
+    let settings = ctx.settings();
+    let local = settings.runtime.runs_background_workers();
+    let event_runtime = ctx.shared_get::<std::sync::Arc<EventRuntime>>();
+    let mut snapshots = vec![
+        RuntimeWorkerSnapshot {
+            name: "outbox_relay",
+            required: local
+                && event_runtime.as_ref().is_some_and(|runtime| runtime.relay_config.is_some()),
+            finished: ctx.shared_map::<OutboxRelayWorkerHandle, _>(OutboxRelayWorkerHandle::is_finished),
+        },
+        RuntimeWorkerSnapshot {
+            name: "outbox_retention",
+            required: local
+                && event_runtime.as_ref().is_some_and(|runtime| runtime.outbox_retention.is_some()),
+            finished: ctx.shared_map::<OutboxRetentionWorkerHandle, _>(OutboxRetentionWorkerHandle::is_finished),
+        },
+        RuntimeWorkerSnapshot {
+            name: "remote_executor_reaper",
+            required: local && settings.registry.remote_executor.enabled,
+            finished: ctx.shared_map::<RemoteExecutorReaperHandle, _>(RemoteExecutorReaperHandle::is_finished),
+        },
+    ];
+    snapshots.extend(additional_runtime_worker_snapshots(ctx));
     snapshots
 }
 
@@ -680,11 +709,12 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     // Serialize the maintenance handle's take/join/reinsert lifecycle with both
     // concurrent startup calls and the shutdown drain.
     let artifact_initialization = ModuleArtifactMaintenanceInitializationLock::ensure(&runtime_ctx);
-    let _artifact_initialization_guard = artifact_initialization.0.lock().await;
-    if stop_handle.is_stopping() {
+    let Some(_artifact_initialization_guard) =
+        await_worker_startup_or_stop(&stop_handle, artifact_initialization.0.lock()).await
+    else {
         tracing::warn!("Shutdown requested while waiting for artifact maintenance initialization");
         return Ok(());
-    }
+    };
     let artifact_maintenance_running = match runtime_ctx
         .shared_take::<crate::services::module_artifact_maintenance::ModuleArtifactMaintenanceHandle>()
     {
@@ -2458,12 +2488,14 @@ mod tests {
                         | "comments_schedule_audit_handoff"
                         | "event_forwarder"
                 );
-                assert_eq!(
-                    worker.required,
-                    expected && !opt_in_consumer,
-                    "{}",
-                    worker.name
-                );
+                let required = match worker.name {
+                    "field_definition_cache_generation" => true,
+                    "seo_redirect_cache_reconciliation" => !matches!(
+                        mode, RuntimeHostMode::RegistryOnly | RuntimeHostMode::Worker
+                    ),
+                    _ => expected && !opt_in_consumer,
+                };
+                assert_eq!(worker.required, required, "{}", worker.name);
                 assert_eq!(worker.finished, None, "{}", worker.name);
             }
         }
@@ -2786,7 +2818,7 @@ mod tests {
             "the retention worker must not be started twice"
         );
 
-        let snapshots = super::additional_runtime_worker_snapshots(&runtime_ctx);
+        let snapshots = super::runtime_worker_snapshots(&runtime_ctx);
         for name in ["outbox_relay", "outbox_retention"] {
             let snapshot = snapshots
                 .iter()
@@ -2882,6 +2914,24 @@ mod tests {
         // Repeated stop is idempotent
         stop_handle.stop().await;
         assert!(stop_handle.is_stopping());
+    }
+
+    #[tokio::test]
+    async fn waiting_direct_worker_startup_exits_on_stop_without_acquiring_lock() {
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = crate::common::settings::RuntimeHostMode::Worker;
+        let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
+        let initialization = super::ModuleArtifactMaintenanceInitializationLock::ensure(&ctx);
+        let _held = initialization.0.lock().await;
+        let mut startup = Box::pin(connect_runtime_workers_with_runtime(ctx.clone()));
+        assert!(futures_util::poll!(&mut startup).is_pending());
+
+        super::StopHandle::ensure(&ctx).stop().await;
+        tokio::time::timeout(Duration::from_secs(1), startup)
+            .await
+            .expect("shutdown interrupts queued worker startup")
+            .expect("stopped worker startup is a no-op");
+        assert!(!ctx.shared_contains::<OutboxRelayWorkerHandle>());
     }
 
     #[tokio::test]

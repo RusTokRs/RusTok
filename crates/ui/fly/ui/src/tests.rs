@@ -509,6 +509,44 @@ fn save_acknowledgement_cannot_clean_edits_made_during_save() {
 }
 
 #[test]
+fn overlays_and_property_editor_follow_component_identity() {
+    let mut machine = FlyUiStateMachine::new(Presentation::Full);
+    let rect = legal_candidate().rect;
+    machine.dispatch(UiIntent::SetSelectedOverlay(Some(rect))).unwrap();
+    machine.dispatch(UiIntent::SetHoveredOverlay(Some(rect))).unwrap();
+    assert_eq!(machine.state.overlays, OverlayState::default());
+
+    machine.dispatch(UiIntent::Select(Some("a".into()))).unwrap();
+    machine.dispatch(UiIntent::Hover(Some("a".into()))).unwrap();
+    machine.dispatch(UiIntent::SetSelectedOverlay(Some(rect))).unwrap();
+    machine.dispatch(UiIntent::SetHoveredOverlay(Some(rect))).unwrap();
+    machine.state.selection.property_editor_id = Some("editor-a".into());
+    assert!(machine.state.overlays.resize_handles_visible);
+
+    // Repeated identity notifications do not discard still-valid geometry.
+    machine.dispatch(UiIntent::Select(Some("a".into()))).unwrap();
+    machine.dispatch(UiIntent::Hover(Some("a".into()))).unwrap();
+    assert_eq!(machine.state.overlays.selected, Some(rect));
+    assert_eq!(machine.state.overlays.hovered, Some(rect));
+    assert_eq!(machine.state.selection.property_editor_id.as_deref(), Some("editor-a"));
+
+    machine.dispatch(UiIntent::Select(Some("b".into()))).unwrap();
+    assert!(machine.state.overlays.selected.is_none());
+    assert!(!machine.state.overlays.resize_handles_visible);
+    assert!(machine.state.selection.property_editor_id.is_none());
+    assert_eq!(machine.state.overlays.hovered, Some(rect));
+
+    machine.dispatch(UiIntent::Hover(Some("b".into()))).unwrap();
+    assert!(machine.state.overlays.hovered.is_none());
+    machine.dispatch(UiIntent::SetSelectedOverlay(Some(rect))).unwrap();
+    machine.dispatch(UiIntent::SetHoveredOverlay(Some(rect))).unwrap();
+    machine.dispatch(UiIntent::Select(None)).unwrap();
+    machine.dispatch(UiIntent::Hover(None)).unwrap();
+    assert_eq!(machine.state.overlays, OverlayState::default());
+    assert!(!machine.state.dirty.dirty);
+}
+
+#[test]
 fn viewport_and_overlay_geometry_are_bounded_at_the_state_machine_boundary() {
     let mut machine = FlyUiStateMachine::new(Presentation::Full);
     machine.dispatch(UiIntent::SetViewport(ViewportState {
@@ -688,8 +726,10 @@ fn revision_conflict_fences_mutations_across_policy_refresh_and_rehydration() {
         block_id: "section".into(),
         component: ComponentNode::object("section"),
     })).expect("begin drag");
+    machine.dispatch(UiIntent::Select(Some("hero".into()))).expect("select");
     machine.dispatch(UiIntent::SetSelectedOverlay(Some(legal_candidate().rect)))
         .expect("resize overlay");
+    assert!(machine.state.overlays.resize_handles_visible);
     machine.dispatch(UiIntent::SaveConflict {
         request_id: None,
         expected: "rev-1".into(),

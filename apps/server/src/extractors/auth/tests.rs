@@ -177,6 +177,50 @@ fn service_current_user_builds_service_security_context() {
     );
 }
 
+async fn registered_service_token(
+    db: &DatabaseConnection,
+    config: &AuthConfig,
+    app: &oauth_apps::Model,
+    scopes: &[String],
+) -> String {
+    let token_id = Uuid::new_v4();
+    let token = encode_oauth_access_token(
+        config,
+        app.id,
+        app.tenant_id,
+        UserRole::Customer,
+        app.client_id,
+        scopes,
+        "client_credentials",
+        900,
+        token_id,
+    )
+    .expect("encode service access token");
+    let now = Utc::now();
+    oauth_tokens::ActiveModel {
+        id: Set(token_id),
+        app_id: Set(app.id),
+        user_id: Set(None),
+        tenant_id: Set(app.tenant_id),
+        token_hash: Set(crate::auth::hash_refresh_token(&token)),
+        family_id: Set(Some(token_id)),
+        authorization_code_id: Set(None),
+        grant_type: Set("client_credentials".to_string()),
+        token_kind: Set(oauth_tokens::TOKEN_KIND_ACCESS.to_string()),
+        consent_granted_at: Set(None),
+        scopes: Set(serde_json::json!(scopes)),
+        expires_at: Set((now + Duration::minutes(15)).into()),
+        revoked_at: Set(None),
+        last_used_at: Set(None),
+        created_at: Set(now.into()),
+        updated_at: Set(now.into()),
+    }
+    .insert(db)
+    .await
+    .expect("register service access token");
+    token
+}
+
 #[tokio::test]
 async fn oauth_service_token_intersects_app_permissions_with_scopes() {
     let db = setup_test_db_with_migrations::<Migrator>().await;
@@ -187,19 +231,19 @@ async fn oauth_service_token_intersects_app_permissions_with_scopes() {
         .expect("create tenant");
     let app = insert_oauth_app(&db, tenant.id, "service", &["client_credentials"], true).await;
 
-    let runtime_ctx = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
-    let (permissions, inferred_role) = resolve_service_token_permissions(
-        &runtime_ctx,
-        tenant.id,
-        app.id,
-        app.client_id,
-        UserRole::Customer,
+    let runtime = test_auth_runtime(db.clone());
+    let token = registered_service_token(
+        &db,
+        runtime.require_auth_config().unwrap(),
+        &app,
         &["forum:*".to_string()],
-        "",
-        None,
     )
-    .await
-    .expect("resolve service token permissions");
+    .await;
+    let current = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+        .await
+        .expect("resolve service token permissions");
+    let permissions = current.permissions;
+    let inferred_role = current.inferred_role;
 
     assert_eq!(
         permissions,
@@ -225,19 +269,19 @@ async fn oauth_service_token_authentication_does_not_depend_on_translation_stora
         .await
         .expect("drop translation table to isolate authentication lookup");
 
-    let runtime_ctx = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
-    let (permissions, inferred_role) = resolve_service_token_permissions(
-        &runtime_ctx,
-        tenant.id,
-        app.id,
-        app.client_id,
-        UserRole::Customer,
+    let runtime = test_auth_runtime(db.clone());
+    let token = registered_service_token(
+        &db,
+        runtime.require_auth_config().unwrap(),
+        &app,
         &["forum:*".to_string()],
-        "",
-        None,
     )
-    .await
-    .expect("OAuth authentication must not depend on presentation translations");
+    .await;
+    let current = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+        .await
+        .expect("OAuth authentication must not depend on presentation translations");
+    let permissions = current.permissions;
+    let inferred_role = current.inferred_role;
 
     assert_eq!(
         permissions,
@@ -259,21 +303,16 @@ async fn oauth_service_token_with_empty_scopes_has_no_effective_permissions() {
     .expect("create tenant");
     let app = insert_oauth_app(&db, tenant.id, "service", &["client_credentials"], true).await;
 
-    let runtime_ctx = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
-    let (permissions, _) = resolve_service_token_permissions(
-        &runtime_ctx,
-        tenant.id,
-        app.id,
-        app.client_id,
-        UserRole::Customer,
-        &[],
-        "",
-        None,
+    let runtime = test_auth_runtime(db.clone());
+    let token = registered_service_token(
+        &db, runtime.require_auth_config().unwrap(), &app, &[],
     )
-    .await
-    .expect("resolve service token permissions");
+    .await;
+    let current = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+        .await
+        .expect("resolve service token permissions");
 
-    assert!(permissions.is_empty());
+    assert!(current.permissions.is_empty());
 }
 
 #[test]
@@ -826,6 +865,34 @@ async fn websocket_lease_revalidates_live_authority_and_fails_closed() {
 }
 
 #[tokio::test]
+async fn registered_service_access_token_rejects_disabled_tenant() {
+    use sea_orm::IntoActiveModel;
+
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    ensure_oauth_apps_table(&db).await;
+    let runtime = test_auth_runtime(db.clone());
+    let tenant = tenants::ActiveModel::new("Service tenant", &format!("tenant-{}", Uuid::new_v4()))
+        .insert(&db)
+        .await
+        .expect("create tenant");
+    let tenant_id = tenant.id;
+    let app = insert_oauth_app(&db, tenant_id, "service", &["client_credentials"], true).await;
+    let token = registered_service_token(
+        &db, runtime.require_auth_config().unwrap(), &app, &["forum:*".to_string()],
+    )
+    .await;
+    assert!(resolve_current_user_from_access_token(&runtime, tenant_id, &token).await.is_ok());
+
+    let mut update = tenant.into_active_model();
+    update.is_active = Set(false);
+    update.update(&db).await.expect("disable tenant");
+    let error = resolve_current_user_from_access_token(&runtime, tenant_id, &token)
+        .await
+        .expect_err("disabled tenant must reject even a live registered service token");
+    assert_eq!(error, (axum::http::StatusCode::FORBIDDEN, "Tenant is unavailable"));
+}
+
+#[tokio::test]
 async fn websocket_lease_rejects_a_disabled_tenant() {
     use super::{WebSocketAuthLease, WebSocketAuthLeaseError};
     use sea_orm::IntoActiveModel;
@@ -856,11 +923,16 @@ async fn websocket_lease_rejects_a_disabled_tenant() {
     let current = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
         .await
         .expect("resolve initial authority");
-    let lease = WebSocketAuthLease::new(token, &current);
+    let lease = WebSocketAuthLease::new(token.clone(), &current);
     assert!(lease.revalidate(&runtime).await.is_ok());
+    let tenant_id = tenant.id;
     let mut update = tenant.into_active_model();
     update.is_active = Set(false);
     update.update(&db).await.expect("disable tenant");
+    let error = resolve_current_user_from_access_token(&runtime, tenant_id, &token)
+        .await
+        .expect_err("disabled tenant must reject a live first-party session");
+    assert_eq!(error, (axum::http::StatusCode::FORBIDDEN, "Tenant is unavailable"));
     assert_eq!(
         lease.revalidate(&runtime).await,
         Err(WebSocketAuthLeaseError::ResolutionFailed)

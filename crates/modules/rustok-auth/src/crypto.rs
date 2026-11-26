@@ -80,7 +80,11 @@ mod tests {
 
     #[test]
     fn host_mac_keys_are_stable_and_purpose_separated() {
-        let config = AuthConfig::new("test-secret-at-least-thirty-two-bytes".to_string());
+        let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
+        let config = crate::build_auth_config_from_document(
+            "test-secret-at-least-thirty-two-bytes".to_string(), 900, Default::default(),
+            fixture.document(1).to_string().as_bytes(),
+        ).unwrap().1;
         let csrf = AuthMacPurpose::OAuthConsentCsrf;
         let reset = AuthMacPurpose::PasswordResetCredential;
         assert_ne!(derive_key(&config, csrf).unwrap(), derive_key(&config, reset).unwrap());
@@ -102,9 +106,12 @@ mod tests {
 
     #[test]
     fn invalid_root_fails_closed_for_every_mac_purpose() {
+        let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
         let pair = rustok_test_utils::jwt::RsaKeyPairFixture::generate().unwrap();
         for root in ["short", pair.public_pem(), pair.private_pem()] {
-            let config = AuthConfig::new(root.to_string());
+            let config = AuthConfig::from_test_document_unvalidated(
+                root.to_string(), fixture.document(1).to_string().as_bytes(),
+            );
             for purpose in [AuthMacPurpose::OAuthConsentCsrf, AuthMacPurpose::PasswordResetCredential] {
                 assert!(auth_purpose_mac(&config, purpose, b"payload").is_err());
             }

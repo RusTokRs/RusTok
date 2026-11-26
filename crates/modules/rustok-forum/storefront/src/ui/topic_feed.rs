@@ -6,10 +6,10 @@ use super::composer::ComposerSignal;
 use super::member_card::ForumAuthorBadge;
 use crate::core::forum_storefront_topic_card_view_model;
 use crate::i18n::{count_message, slug_message, t};
-use crate::model::ForumTopicPage;
+use crate::model::{ForumTopicFeedOrder, ForumTopicPage, ForumTopicSelection};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TopicFilterMode {
+enum TopicFilterMode {
     Latest,
     Top,
     Unread,
@@ -18,6 +18,63 @@ pub enum TopicFilterMode {
 
 fn forum_storefront_content_lang(locale: &str) -> String {
     normalize_locale_tag(locale).unwrap_or_else(|| "en".to_string())
+}
+
+fn selection_mode(selection: &ForumTopicSelection) -> TopicFilterMode {
+    if selection.unread_only {
+        TopicFilterMode::Unread
+    } else if selection.solved_only {
+        TopicFilterMode::Solved
+    } else if selection.order == ForumTopicFeedOrder::Top {
+        TopicFilterMode::Top
+    } else {
+        TopicFilterMode::Latest
+    }
+}
+
+fn apply_mode(current: ForumTopicSelection, mode: TopicFilterMode) -> ForumTopicSelection {
+    match mode {
+        TopicFilterMode::Latest => ForumTopicSelection {
+            search: current.search,
+            order: ForumTopicFeedOrder::Latest,
+            solved_only: false,
+            unread_only: false,
+        },
+        TopicFilterMode::Top => ForumTopicSelection {
+            search: current.search,
+            order: ForumTopicFeedOrder::Top,
+            solved_only: false,
+            unread_only: false,
+        },
+        TopicFilterMode::Unread => ForumTopicSelection {
+            search: current.search,
+            order: ForumTopicFeedOrder::Latest,
+            solved_only: false,
+            unread_only: true,
+        },
+        TopicFilterMode::Solved => ForumTopicSelection {
+            search: current.search,
+            order: ForumTopicFeedOrder::Latest,
+            solved_only: true,
+            unread_only: false,
+        },
+    }
+}
+
+fn commit_search(selection: RwSignal<ForumTopicSelection>, raw: String) {
+    let next = {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    };
+    selection.update(|current| {
+        if current.search != next {
+            current.search = next;
+        }
+    });
 }
 
 #[component]
@@ -29,6 +86,7 @@ pub fn ForumTopicFeed(
     paging_busy: ReadSignal<bool>,
     paging_error: ReadSignal<Option<String>>,
     on_load_more: Callback<()>,
+    selection: RwSignal<ForumTopicSelection>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale.clone();
@@ -38,9 +96,6 @@ pub fn ForumTopicFeed(
         .cloned()
         .unwrap_or_else(|| "forum".to_string());
     let module_route_base = route_context.module_route_base(route_segment.as_str());
-
-    let (filter_mode, set_filter_mode) = signal(TopicFilterMode::Latest);
-    let (search_query, set_search_query) = signal(String::new());
 
     let empty_title = t(locale.as_deref(), "forum.feed.emptyTitle", "No topics yet");
     let empty_body = t(
@@ -62,11 +117,12 @@ pub fn ForumTopicFeed(
         "Could not load the next topic page",
     );
     let paging_locale = locale.clone();
-    // Card labels resolve per topic because each card interpolates its own count and slug.
     let feed_locale = locale.clone();
+    let (search_draft, set_search_draft) =
+        signal(selection.get_untracked().search.unwrap_or_default());
 
-    // An empty first page cannot be paged: the owner returns a cursor only with content.
-    if topics.get().items.is_empty() {
+    let is_default_selection = move || selection.get() == ForumTopicSelection::default();
+    if is_default_selection() && topics.get().items.is_empty() {
         return view! {
             <section class="rounded-[1.75rem] border border-dashed border-border p-8 text-center">
                 <h3 class="text-lg font-semibold text-card-foreground">{empty_title}</h3>
@@ -90,57 +146,8 @@ pub fn ForumTopicFeed(
         .into_any();
     }
 
-    // Tab counts and the filtered list read the accumulated pages, so they stay truthful as the
-    // reader loads more topics instead of describing only the first page.
-    let unread_total = move || {
-        topics
-            .get()
-            .items
-            .iter()
-            .filter(|t| t.is_unread.unwrap_or(false) || t.unread_count.unwrap_or(0) > 0)
-            .count()
-    };
-    let solved_total = move || {
-        topics
-            .get()
-            .items
-            .iter()
-            .filter(|t| t.solution_reply_id.is_some())
-            .count()
-    };
-
-    let filtered_items = move || {
-        let q = search_query.get().trim().to_lowercase();
-        let mode = filter_mode.get();
-        let mut list = topics.get().items;
-        if !q.is_empty() {
-            list.retain(|t| {
-                t.title.to_lowercase().contains(&q) || t.slug.to_lowercase().contains(&q)
-            });
-        }
-        match mode {
-            TopicFilterMode::Latest => {
-                list.sort_by(|a, b| match (a.is_pinned, b.is_pinned) {
-                    (true, false) => std::cmp::Ordering::Less,
-                    (false, true) => std::cmp::Ordering::Greater,
-                    _ => std::cmp::Ordering::Equal,
-                });
-            }
-            TopicFilterMode::Top => {
-                list.sort_by_key(|b| std::cmp::Reverse(b.reply_count));
-            }
-            TopicFilterMode::Unread => {
-                list.retain(|t| t.is_unread.unwrap_or(false) || t.unread_count.unwrap_or(0) > 0);
-            }
-            TopicFilterMode::Solved => {
-                list.retain(|t| t.solution_reply_id.is_some());
-            }
-        }
-        list
-    };
     view! {
         <section class="space-y-4 rounded-[1.75rem] border border-border bg-card p-6 shadow-sm">
-            // Header
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <div>
                     <p class="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
@@ -174,20 +181,19 @@ pub fn ForumTopicFeed(
                 </div>
             </div>
 
-            // Discourse / NodeBB Filter Tabs & Real-Time Search Box
             <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div class="flex flex-wrap items-center gap-1 rounded-2xl border border-border bg-muted/30 p-1">
                     <button
                         type="button"
                         class=move || format!(
                             "inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition {}",
-                            if filter_mode.get() == TopicFilterMode::Latest {
+                            if selection_mode(&selection.get()) == TopicFilterMode::Latest {
                                 "bg-background text-foreground shadow-xs"
                             } else {
                                 "text-muted-foreground hover:text-foreground"
                             }
                         )
-                        on:click=move |_| set_filter_mode.set(TopicFilterMode::Latest)
+                        on:click=move |_| selection.update(|current| *current = apply_mode(current.clone(), TopicFilterMode::Latest))
                     >
                         <span>"✨"</span>
                         <span>"Latest"</span>
@@ -197,13 +203,13 @@ pub fn ForumTopicFeed(
                         type="button"
                         class=move || format!(
                             "inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition {}",
-                            if filter_mode.get() == TopicFilterMode::Top {
+                            if selection_mode(&selection.get()) == TopicFilterMode::Top {
                                 "bg-background text-foreground shadow-xs"
                             } else {
                                 "text-muted-foreground hover:text-foreground"
                             }
                         )
-                        on:click=move |_| set_filter_mode.set(TopicFilterMode::Top)
+                        on:click=move |_| selection.update(|current| *current = apply_mode(current.clone(), TopicFilterMode::Top))
                     >
                         <span>"🔥"</span>
                         <span>"Top"</span>
@@ -213,67 +219,60 @@ pub fn ForumTopicFeed(
                         type="button"
                         class=move || format!(
                             "inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition {}",
-                            if filter_mode.get() == TopicFilterMode::Unread {
+                            if selection_mode(&selection.get()) == TopicFilterMode::Unread {
                                 "bg-background text-foreground shadow-xs"
                             } else {
                                 "text-muted-foreground hover:text-foreground"
                             }
                         )
-                        on:click=move |_| set_filter_mode.set(TopicFilterMode::Unread)
+                        on:click=move |_| selection.update(|current| *current = apply_mode(current.clone(), TopicFilterMode::Unread))
                     >
                         <span>"💬"</span>
                         <span>"Unread"</span>
-                        {move || {
-                            let unread_total = unread_total();
-                            (unread_total > 0).then(|| view! {
-                                <span class="ml-0.5 rounded-full bg-blue-500/20 px-1.5 py-0.2 text-[10px] font-bold text-blue-600 dark:text-blue-400">
-                                    {unread_total}
-                                </span>
-                            })
-                        }}
                     </button>
 
                     <button
                         type="button"
                         class=move || format!(
                             "inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition {}",
-                            if filter_mode.get() == TopicFilterMode::Solved {
+                            if selection_mode(&selection.get()) == TopicFilterMode::Solved {
                                 "bg-background text-foreground shadow-xs"
                             } else {
                                 "text-muted-foreground hover:text-foreground"
                             }
                         )
-                        on:click=move |_| set_filter_mode.set(TopicFilterMode::Solved)
+                        on:click=move |_| selection.update(|current| *current = apply_mode(current.clone(), TopicFilterMode::Solved))
                     >
                         <span>"✓"</span>
                         <span>"Solved"</span>
-                        {move || {
-                            let solved_total = solved_total();
-                            (solved_total > 0).then(|| view! {
-                                <span class="ml-0.5 rounded-full bg-emerald-500/20 px-1.5 py-0.2 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
-                                    {solved_total}
-                                </span>
-                            })
-                        }}
                     </button>
                 </div>
 
-                // Real-time Search Input
                 <div class="relative flex-1 sm:max-w-xs">
                     <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
                         "🔍"
                     </span>
                     <input
                         type="text"
-                        prop:value=move || search_query.get()
-                        on:input=move |ev| set_search_query.set(event_target_value(&ev))
+                        prop:value=move || search_draft.get()
+                        on:input=move |ev| set_search_draft.set(event_target_value(&ev))
+                        on:blur=move |_| commit_search(selection, search_draft.get_untracked())
+                        on:keydown=move |ev| {
+                            if ev.key() == "Enter" {
+                                ev.prevent_default();
+                                commit_search(selection, search_draft.get_untracked());
+                            }
+                        }
                         placeholder="Search discussions..."
                         class="w-full rounded-2xl border border-border bg-background/80 py-1.5 pl-8 pr-7 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-hidden"
                     />
-                    {move || (!search_query.get().is_empty()).then(|| view! {
+                    {move || (!search_draft.get().trim().is_empty()).then(|| view! {
                         <button
                             type="button"
-                            on:click=move |_| set_search_query.set(String::new())
+                            on:click=move |_| {
+                                set_search_draft.set(String::new());
+                                commit_search(selection, String::new());
+                            }
                             class="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-xs text-muted-foreground transition hover:text-foreground"
                         >
                             "✕"
@@ -282,7 +281,6 @@ pub fn ForumTopicFeed(
                 </div>
             </div>
 
-            // Filtered Topics List
             {
                 let selected_category_id = selected_category_id.clone();
                 let selected_topic_id = selected_topic_id.clone();
@@ -293,7 +291,7 @@ pub fn ForumTopicFeed(
                 let replies_label = replies_label.clone();
 
                 move || {
-                    let list = filtered_items();
+                    let list = topics.get().items;
                     if list.is_empty() {
                         return view! {
                             <div class="rounded-[1.5rem] border border-dashed border-border p-8 text-center">
@@ -306,10 +304,7 @@ pub fn ForumTopicFeed(
                                 <button
                                     type="button"
                                     class="mt-4 inline-flex items-center gap-1.5 rounded-xl border border-border bg-background px-4 py-2 text-xs font-semibold text-foreground shadow-xs transition hover:bg-muted"
-                                    on:click=move |_| {
-                                        set_filter_mode.set(TopicFilterMode::Latest);
-                                        set_search_query.set(String::new());
-                                    }
+                                    on:click=move |_| selection.set(ForumTopicSelection::default())
                                 >
                                     "Clear filters"
                                 </button>
@@ -358,42 +353,32 @@ pub fn ForumTopicFeed(
                                                 <div class="flex flex-wrap items-center gap-2">
                                                     <span class=card.status_badge_class>
                                                         {crate::i18n::status_label(
-                                                            locale.as_deref(),
+                                                            feed_locale.as_deref(),
                                                             &card.status,
                                                         )}
                                                     </span>
                                                     <span dir="ltr" class="rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
                                                         {card.effective_locale.clone()}
                                                     </span>
-
-                                                    // Solved Badge
                                                     {card.is_solved.then(|| view! {
                                                         <span class="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
                                                             <span>"✓"</span>
                                                             <span>"Solved"</span>
                                                         </span>
                                                     })}
-
-                                                    // Unread Badge
                                                     {card.is_unread.then(|| view! {
                                                         <span class=card.unread_badge_class>{unread_label}</span>
                                                     })}
-
-                                                    // Pinned Badge
                                                     {card.is_pinned.then(|| view! {
                                                         <span class="rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">
                                                             {pinned_label.clone()}
                                                         </span>
                                                     })}
-
-                                                    // Locked Badge
                                                     {card.is_locked.then(|| view! {
                                                         <span class="rounded-full bg-destructive/10 px-2.5 py-1 text-[11px] font-medium text-destructive">
                                                             {locked_label.clone()}
                                                         </span>
                                                     })}
-
-                                                    // Vote Score Badge
                                                     {(card.vote_score > 0).then(|| view! {
                                                         <span class="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
                                                             <span>"▲"</span>
@@ -432,9 +417,6 @@ pub fn ForumTopicFeed(
                 }
             }
 
-            // Cursor paging: the owner's `nextCursor` is the only source of "more topics exist", so
-            // the control disappears on the last page and a failed page is named instead of leaving
-            // the list silently short. The header count stays the owner-authored category total.
             {move || {
                 let page = topics.get();
                 let has_more = page.has_more();

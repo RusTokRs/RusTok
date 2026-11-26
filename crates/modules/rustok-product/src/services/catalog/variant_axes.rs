@@ -918,6 +918,7 @@ mod tests {
                 position: variant as i32,
                 created_at: now,
                 updated_at: now,
+                revision: 1,
                 index_revision: 1,
             })
             .collect::<Vec<_>>();

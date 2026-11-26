@@ -31,11 +31,9 @@ use crate::middleware::tenant::{
     TenantInvalidationListenerStatus, tenant_invalidation_listener_snapshot,
 };
 use crate::services::app_lifecycle::{
-    OutboxRelayWorkerHandle, OutboxRetentionWorkerHandle, RemoteExecutorReaperHandle,
     RuntimeWorkerLifecycleState, StopHandle, additional_cache_reconciliation_worker_snapshots,
-    additional_runtime_worker_snapshots,
+    runtime_worker_snapshots,
 };
-use crate::services::event_transport_factory;
 use crate::services::runtime_guardrails::{
     RuntimeGuardrailSnapshot, RuntimeGuardrailStatus, collect_runtime_guardrail_snapshot,
 };
@@ -407,7 +405,7 @@ async fn collect_readiness(
         }
         checks.push(email_backend_check(settings));
         if profile.includes_local_worker_checks() {
-            checks.extend(check_runtime_workers(&ctx, settings));
+            checks.extend(check_runtime_workers(&ctx));
         } else {
             checks.push(worker_host_mode_check());
             checks.extend(check_cache_reconciliation_workers(&ctx));
@@ -959,78 +957,51 @@ fn worker_host_mode_check() -> ReadinessCheck {
     }
 }
 
-fn check_runtime_workers(
-    ctx: &ServerRuntimeContext,
-    settings: &RustokSettings,
-) -> Vec<ReadinessCheck> {
-    let event_runtime = ctx.shared_get::<std::sync::Arc<event_transport_factory::EventRuntime>>();
-    let relay_required = event_runtime
-        .as_ref()
-        .and_then(|runtime| runtime.relay_config.clone())
-        .is_some();
-    let retention_required = event_runtime
-        .as_ref()
-        .and_then(|runtime| runtime.outbox_retention.clone())
-        .is_some();
+fn check_runtime_workers(ctx: &ServerRuntimeContext) -> Vec<ReadinessCheck> {
     let stop_requested = ctx
         .shared_map::<StopHandle, _>(StopHandle::is_stopping)
         .unwrap_or(false);
-
-    let mut checks = vec![runtime_worker_check(
-        "worker:outbox_relay",
-        relay_required,
-        ctx.shared_map::<OutboxRelayWorkerHandle, _>(OutboxRelayWorkerHandle::is_finished),
-        stop_requested,
-    )];
-
-    checks.push(runtime_worker_check(
-        "worker:outbox_retention",
-        retention_required,
-        ctx.shared_map::<OutboxRetentionWorkerHandle, _>(OutboxRetentionWorkerHandle::is_finished),
-        stop_requested,
-    ));
-
-    checks.push(runtime_worker_check(
-        "worker:remote_executor_reaper",
-        settings.registry.remote_executor.enabled,
-        ctx.shared_map::<RemoteExecutorReaperHandle, _>(RemoteExecutorReaperHandle::is_finished),
-        stop_requested,
-    ));
-
-    for worker in additional_runtime_worker_snapshots(ctx) {
-        checks.push(runtime_worker_check(
-            &format!("worker:{}", worker.name),
-            worker.required,
-            worker.finished,
-            stop_requested,
-        ));
-    }
+    let checks: Vec<_> = runtime_worker_snapshots(ctx)
+        .into_iter()
+        .map(|worker| {
+            runtime_worker_check(
+                &format!("worker:{}", worker.name),
+                worker.required,
+                worker.finished,
+                stop_requested,
+            )
+        })
+        .collect();
 
     #[cfg(feature = "mod-seo")]
-    {
+    let checks = {
+        let settings = ctx.settings();
+        let local = settings.runtime.runs_background_workers();
+        let mut checks = checks;
         let seo_worker_finished = ctx
             .shared_map::<crate::services::app_lifecycle::SeoBulkWorkerHandle, _>(
                 crate::services::app_lifecycle::SeoBulkWorkerHandle::is_finished,
             );
         checks.push(runtime_worker_check(
             "worker:seo_bulk",
-            settings.runtime.background_workers.seo_bulk_enabled,
+            local && settings.runtime.background_workers.seo_bulk_enabled,
             seo_worker_finished,
             stop_requested,
         ));
         checks.push(runtime_worker_check(
             "worker:seo_sitemap",
-            settings.runtime.background_workers.seo_sitemap_enabled,
+            local && settings.runtime.background_workers.seo_sitemap_enabled,
             seo_worker_finished,
             stop_requested,
         ));
         checks.push(runtime_worker_check(
             "worker:seo_index_repair",
-            settings.runtime.background_workers.seo_index_repair_enabled,
+            local && settings.runtime.background_workers.seo_index_repair_enabled,
             seo_worker_finished,
             stop_requested,
         ));
-    }
+        checks
+    };
 
     checks
 }
@@ -1463,7 +1434,7 @@ mod tests {
             sea_orm::DatabaseConnection::default(),
             RustokSettings::default(),
         );
-        let checks = check_runtime_workers(&ctx, ctx.settings());
+        let checks = check_runtime_workers(&ctx);
         let mut names = std::collections::HashSet::new();
 
         for check in &checks {
@@ -1515,7 +1486,7 @@ mod tests {
             RustokSettings::default(),
         );
         let check = || {
-            check_runtime_workers(&ctx, ctx.settings())
+            check_runtime_workers(&ctx)
                 .into_iter()
                 .find(|check| check.name == "worker:event_forwarder")
                 .expect("event-forwarder readiness check")
@@ -2128,7 +2099,7 @@ mod tests {
         let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
         let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
         let check = || {
-            check_runtime_workers(&ctx, ctx.settings())
+            check_runtime_workers(&ctx)
                 .into_iter()
                 .find(|check| check.name == "worker:module_event_dispatcher")
                 .unwrap()
@@ -2168,7 +2139,7 @@ mod tests {
         let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
         let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
         let check = || {
-            check_runtime_workers(&ctx, ctx.settings())
+            check_runtime_workers(&ctx)
                 .into_iter()
                 .find(|check| check.name == "worker:module_work_scheduler")
                 .unwrap()
@@ -2218,7 +2189,7 @@ mod tests {
         let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
         let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
         let check = || {
-            check_runtime_workers(&ctx, ctx.settings())
+            check_runtime_workers(&ctx)
                 .into_iter()
                 .find(|check| check.name == "worker:payment_provider_event_recovery")
                 .unwrap()

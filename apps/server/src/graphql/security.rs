@@ -5,7 +5,7 @@ use async_graphql::extensions::{
     Extension, ExtensionContext, ExtensionFactory, NextExecute, NextPrepareRequest, NextResolve,
     ResolveInfo,
 };
-use async_graphql::parser::types::{ExecutableDocument, OperationType, Selection, SelectionSet};
+use async_graphql::parser::types::{ExecutableDocument, OperationType, SelectionSet};
 use async_graphql::{FieldError, PathSegment, Pos, Request, Response, ServerResult, Value};
 use rustok_api::Permission;
 
@@ -87,43 +87,13 @@ fn collect_sensitive_fields_from_selection_set(
     selection_set: &SelectionSet,
     document: &ExecutableDocument,
     fields: &mut BTreeSet<SensitiveGraphqlField>,
-    visited_fragments: &mut BTreeSet<String>,
 ) {
-    for selection in &selection_set.items {
-        match &selection.node {
-            Selection::Field(field) => {
-                if let Some(sensitive_field) = SensitiveGraphqlField::from_root_field(
-                    operation_type,
-                    field.node.name.node.as_str(),
-                ) {
-                    fields.insert(sensitive_field);
-                }
-            }
-            Selection::FragmentSpread(fragment) => {
-                let fragment_name = &fragment.node.fragment_name.node;
-                if !visited_fragments.insert(fragment_name.to_string()) {
-                    continue;
-                }
-
-                if let Some(definition) = document.fragments.get(fragment_name) {
-                    collect_sensitive_fields_from_selection_set(
-                        operation_type,
-                        &definition.node.selection_set.node,
-                        document,
-                        fields,
-                        visited_fragments,
-                    );
-                }
-            }
-            Selection::InlineFragment(fragment) => collect_sensitive_fields_from_selection_set(
-                operation_type,
-                &fragment.node.selection_set.node,
-                document,
-                fields,
-                visited_fragments,
-            ),
+    let _completed = super::visit_selection_fields(document, selection_set, (), |field, ()| {
+        if let Some(field) = SensitiveGraphqlField::from_root_field(operation_type, field.name.node.as_str()) {
+            fields.insert(field);
         }
-    }
+        std::ops::ControlFlow::Continue(None)
+    });
 }
 
 fn sensitive_graphql_fields(
@@ -133,13 +103,11 @@ fn sensitive_graphql_fields(
     let mut fields = BTreeSet::new();
 
     for operation in super::selected_operations(document, operation_name) {
-        let mut visited_fragments = BTreeSet::new();
         collect_sensitive_fields_from_selection_set(
             operation.node.ty,
             &operation.node.selection_set.node,
             document,
             &mut fields,
-            &mut visited_fragments,
         );
     }
 

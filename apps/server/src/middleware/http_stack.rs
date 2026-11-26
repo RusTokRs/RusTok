@@ -7,7 +7,7 @@ use axum::http::{HeaderName, HeaderValue, Method, StatusCode, header};
 use axum::middleware::{Next, from_fn};
 use axum::response::{IntoResponse, Response};
 use tower::ServiceBuilder;
-use tower::limit::ConcurrencyLimitLayer;
+use tower::limit::GlobalConcurrencyLimitLayer;
 use tower_http::compression::CompressionLayer;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::sensitive_headers::SetSensitiveRequestHeadersLayer;
@@ -307,7 +307,7 @@ pub fn is_upload_request<B>(request: &axum::http::Request<B>) -> bool {
     // Extended deadlines belong to owner-declared binary upload transports,
     // not to any URL containing `/media` or any client-supplied Content-Type.
     // Media's owner streaming endpoint is `MEDIA_OWNER_STREAMING_UPLOAD_PATH`.
-    if method == Method::POST && multipart && path.trim_end_matches('/') == "/api/media" {
+    if method == Method::POST && multipart && matches!(path, "/api/media" | "/api/media/") {
         return true;
     }
     // Registry artifact publication is the host-owned artifact upload route.
@@ -317,25 +317,22 @@ pub fn is_upload_request<B>(request: &axum::http::Request<B>) -> bool {
 }
 
 fn path_matches_route_template(path: &str, template: &str) -> bool {
-    let path_segments: Vec<&str> = path
-        .split('/')
-        .filter(|segment| !segment.is_empty())
-        .collect();
-    let template_segments: Vec<&str> = template
-        .split('/')
-        .filter(|segment| !segment.is_empty())
-        .collect();
-    path_segments.len() == template_segments.len()
-        && path_segments
-            .iter()
-            .zip(template_segments.iter())
-            .all(|(actual, expected)| {
-                if expected.starts_with('{') && expected.ends_with('}') {
-                    !actual.is_empty()
-                } else {
-                    actual == expected
-                }
-            })
+    // Match the literal route grammar; do not collapse empty segments or
+    // silently accept an unregistered trailing slash. No per-request allocation.
+    let mut actual_segments = path.split('/');
+    for expected in template.split('/') {
+        let Some(actual) = actual_segments.next() else {
+            return false;
+        };
+        if expected.starts_with('{') && expected.ends_with('}') {
+            if actual.is_empty() {
+                return false;
+            }
+        } else if actual != expected {
+            return false;
+        }
+    }
+    actual_segments.next().is_none()
 }
 
 fn method_str(method: &Method) -> &'static str {
@@ -488,12 +485,29 @@ fn unmatched_metrics_path(path: &str) -> &'static str {
 /// 5. `record_http_metrics` (populates `HTTP_REQUESTS_TOTAL` and `HTTP_REQUEST_DURATION_SECONDS` with cardinality guards)
 /// 6. `CorsLayer` (explicit restricted origin preflight handling, credentials enabled, comprehensive headers)
 /// 7. `adaptive_timeout` (guards request deadline budget with extended timeout for upload mutations)
-/// 8. `CompressionLayer` (transparent response compression)
+/// 8. `GlobalConcurrencyLimitLayer` (one shared in-flight budget across routes)
+/// 9. `CompressionLayer` (transparent response compression)
 pub fn apply_http_edge_stack(
     router: axum::Router,
     is_production: bool,
     allowed_origins: Option<&[String]>,
     timeout_seconds: u64,
+) -> axum::Router {
+    apply_http_edge_stack_with_concurrency_limit(
+        router,
+        is_production,
+        allowed_origins,
+        timeout_seconds,
+        resolve_http_concurrency_limit(),
+    )
+}
+
+fn apply_http_edge_stack_with_concurrency_limit(
+    router: axum::Router,
+    is_production: bool,
+    allowed_origins: Option<&[String]>,
+    timeout_seconds: u64,
+    concurrency_limit: usize,
 ) -> axum::Router {
     init_http_timeouts(timeout_seconds, resolve_upload_timeout_seconds());
 
@@ -520,7 +534,6 @@ pub fn apply_http_edge_stack(
     ]);
     let compression_layer = CompressionLayer::new();
 
-    let concurrency_limit = resolve_http_concurrency_limit();
     let service_stack = ServiceBuilder::new()
         .layer(SetRequestIdLayer::new(
             x_request_id.clone(),
@@ -532,7 +545,9 @@ pub fn apply_http_edge_stack(
         .layer(from_fn(record_http_metrics))
         .layer(cors_layer)
         .layer(from_fn(adaptive_timeout))
-        .layer(ConcurrencyLimitLayer::new(concurrency_limit))
+        // Router::layer applies the layer to multiple route services.
+        // Share one semaphore instead of allocating a separate quota for each.
+        .layer(GlobalConcurrencyLimitLayer::new(concurrency_limit))
         .layer(compression_layer);
 
     // Route layers run after routing and can capture `MatchedPath` for the
@@ -630,6 +645,7 @@ mod tests {
         assert_eq!(slot.take().as_deref(), Some("/items/{id}"));
 
         let fallback = Router::new()
+            .route("/known", get(|| async { "known" }))
             .fallback(|| async { "spa" })
             .route_layer(from_fn(capture_matched_path));
         let slot = MatchedRouteSlot::default();
@@ -695,6 +711,96 @@ mod tests {
             .body(())
             .unwrap();
         assert!(!is_upload_request(&login_req));
+    }
+
+    #[test]
+    fn extended_upload_budget_does_not_normalize_unregistered_paths() {
+        for path in ["/api/media", "/api/media/"] {
+            let request = Request::builder()
+                .method("POST")
+                .uri(path)
+                .header("content-type", "multipart/form-data; boundary=abc")
+                .body(())
+                .unwrap();
+            assert!(is_upload_request(&request), "{path}");
+        }
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/media//")
+            .header("content-type", "multipart/form-data; boundary=abc")
+            .body(())
+            .unwrap();
+        assert!(!is_upload_request(&request));
+
+        for path in [
+            "/v2//catalog/publish/request/artifact",
+            "/v2/catalog/publish//artifact",
+            "/v2/catalog/publish/request//artifact",
+            "/v2/catalog/publish/request/artifact/",
+        ] {
+            let request = Request::builder()
+                .method("PUT")
+                .uri(path)
+                .body(())
+                .unwrap();
+            assert!(!is_upload_request(&request), "{path}");
+        }
+        assert!(path_matches_route_template(
+            "/v2/catalog/publish/request/artifact",
+            registry_publish_artifact_path(),
+        ));
+    }
+
+    #[tokio::test]
+    async fn http_edge_concurrency_budget_is_shared_across_routes() {
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let router = Router::new()
+            .route(
+                "/first",
+                get({
+                    let entered = Arc::clone(&entered);
+                    let release = Arc::clone(&release);
+                    move || {
+                        let entered = Arc::clone(&entered);
+                        let release = Arc::clone(&release);
+                        async move {
+                            entered.notify_one();
+                            release.notified().await;
+                            "first"
+                        }
+                    }
+                }),
+            )
+            .route("/second", get(|| async { "second" }));
+        let app = apply_http_edge_stack_with_concurrency_limit(router, false, None, 10, 1);
+        let first = tokio::spawn(app.clone().oneshot(
+            Request::builder().uri("/first").body(Body::empty()).unwrap(),
+        ));
+        tokio::time::timeout(Duration::from_secs(1), entered.notified())
+            .await
+            .expect("first handler must hold the only permit");
+        let second = app.oneshot(
+            Request::builder().uri("/second").body(Body::empty()).unwrap(),
+        );
+        tokio::pin!(second);
+        let early = tokio::time::timeout(Duration::from_millis(50), &mut second).await;
+        // Release the first request even if the assertion below fails.
+        release.notify_one();
+        assert!(early.is_err(), "a distinct route bypassed the shared permit");
+
+        assert_eq!(
+            first.await.unwrap().unwrap().status(),
+            StatusCode::OK,
+        );
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(1), second)
+                .await
+                .expect("second request must acquire the released permit")
+                .unwrap()
+                .status(),
+            StatusCode::OK,
+        );
     }
 
     #[tokio::test]

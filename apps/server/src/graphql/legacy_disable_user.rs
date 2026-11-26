@@ -1,10 +1,9 @@
-use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use async_graphql::extensions::{
     Extension, ExtensionContext, ExtensionFactory, NextExecute, NextPrepareRequest,
 };
-use async_graphql::parser::types::{ExecutableDocument, OperationType, Selection, SelectionSet};
+use async_graphql::parser::types::{ExecutableDocument, OperationType, SelectionSet};
 use async_graphql::{FieldError, Pos, Request, Response, ServerResult};
 use rustok_api::graphql::GraphQLError;
 
@@ -15,38 +14,15 @@ fn selection_contains_disable_user(
     operation_type: OperationType,
     selection_set: &SelectionSet,
     document: &ExecutableDocument,
-    visited_fragments: &mut BTreeSet<String>,
 ) -> bool {
-    selection_set
-        .items
-        .iter()
-        .any(|selection| match &selection.node {
-            Selection::Field(field) => {
-                operation_type == OperationType::Mutation
-                    && field.node.name.node.as_str() == "disableUser"
-            }
-            Selection::FragmentSpread(fragment) => {
-                let fragment_name = fragment.node.fragment_name.node.as_str();
-                visited_fragments.insert(fragment_name.to_owned())
-                    && document
-                        .fragments
-                        .get(fragment_name)
-                        .is_some_and(|definition| {
-                            selection_contains_disable_user(
-                                operation_type,
-                                &definition.node.selection_set.node,
-                                document,
-                                visited_fragments,
-                            )
-                        })
-            }
-            Selection::InlineFragment(fragment) => selection_contains_disable_user(
-                operation_type,
-                &fragment.node.selection_set.node,
-                document,
-                visited_fragments,
-            ),
-        })
+    super::visit_selection_fields(document, selection_set, (), |field, ()| {
+        if operation_type == OperationType::Mutation && field.name.node.as_str() == "disableUser" {
+            std::ops::ControlFlow::Break(())
+        } else {
+            std::ops::ControlFlow::Continue(None)
+        }
+    })
+    .is_break()
 }
 
 fn document_contains_disable_user(
@@ -60,7 +36,6 @@ fn document_contains_disable_user(
                 operation.node.ty,
                 &operation.node.selection_set.node,
                 document,
-                &mut BTreeSet::new(),
             )
         })
 }

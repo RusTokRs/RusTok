@@ -4,7 +4,7 @@ use std::sync::Arc;
 use async_graphql::extensions::{
     Extension, ExtensionContext, ExtensionFactory, NextExecute, NextPrepareRequest,
 };
-use async_graphql::parser::types::{ExecutableDocument, OperationType, Selection, SelectionSet};
+use async_graphql::parser::types::{ExecutableDocument, OperationType, SelectionSet};
 use async_graphql::{FieldError, Pos, Request, Response, ServerResult};
 use rustok_api::{Permission, graphql::GraphQLError, has_effective_permission};
 
@@ -45,35 +45,12 @@ fn collect_fields(
     document: &ExecutableDocument,
     fields: &mut BTreeSet<DashboardField>,
 ) {
-    let mut pending = vec![selection_set];
-    let mut visited_fragments = BTreeSet::new();
-
-    while let Some(selection_set) = pending.pop() {
-        for selection in &selection_set.items {
-            match &selection.node {
-                Selection::Field(field) => {
-                    if let Some(field) =
-                        DashboardField::classify(operation_type, field.node.name.node.as_str())
-                    {
-                        fields.insert(field);
-                    }
-                }
-                Selection::FragmentSpread(fragment) => {
-                    let fragment_name = fragment.node.fragment_name.node.as_str();
-                    if !visited_fragments.insert(fragment_name.to_owned()) {
-                        continue;
-                    }
-
-                    if let Some(definition) = document.fragments.get(fragment_name) {
-                        pending.push(&definition.node.selection_set.node);
-                    }
-                }
-                Selection::InlineFragment(fragment) => {
-                    pending.push(&fragment.node.selection_set.node);
-                }
-            }
+    let _completed = super::visit_selection_fields(document, selection_set, (), |field, ()| {
+        if let Some(field) = DashboardField::classify(operation_type, field.name.node.as_str()) {
+            fields.insert(field);
         }
-    }
+        std::ops::ControlFlow::Continue(None)
+    });
 }
 
 fn classify_document(request: &mut Request) -> ServerResult<()> {

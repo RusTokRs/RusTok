@@ -82,7 +82,10 @@ operation and must not be blocked by a release-readiness policy when the actor h
 - A deserialized controller has no active request identity.
 - The local `request_id` is correlation metadata only. It must not replace the stable server
   idempotency key bound to tenant, actor, page, expected revision and canonical project digest.
-- Peer-write messages contain page/revision/hash metadata, not document content or credentials.
+- Peer-write messages are structured objects containing page/revision/hash and editor-scoped
+  sender metadata, not document content or credentials. Require all four nonblank fields,
+  bounded to 256 UTF-8 bytes each, and a serialized size of at most 1024 UTF-8 bytes.
+  Malformed notifications cannot advance the baseline or fence an editor.
 - Peer-write fencing does not provide presence, locking, OT/CRDT, operation merging or durable
   cross-session reconciliation.
 

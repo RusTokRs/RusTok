@@ -47,6 +47,12 @@ impl ForumModerationReportService {
         }
     }
 
+    pub fn parse_reason_code(value: &str) -> ForumResult<ModerationReasonCode> {
+        ModerationReasonCode::parse(value.trim()).ok_or_else(|| {
+            ForumError::Validation("Unknown moderation reason code".to_string())
+        })
+    }
+
     pub async fn report_topic(
         &self,
         tenant_id: Uuid,

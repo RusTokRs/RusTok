@@ -163,6 +163,10 @@ export default async function ProductDetailPage({
           onAddVariant={addVariantAction}
           onUpdateVariant={updateVariantAction}
           onDeleteVariant={deleteVariantAction}
+          onAddImage={addImageAction}
+          onDeleteImage={deleteImageAction}
+          onReorderImages={reorderImagesAction}
+          onUpdateImage={updateImageAction}
         />
       </PageContainer>
     );
@@ -235,18 +239,10 @@ export default async function ProductDetailPage({
         onPreviewVariantAxes={previewVariantAxesAction}
         onSetVariantAxes={setVariantAxesAction}
         onDeleteVariant={deleteVariantAction}
-        onAddImage={async (pid, img, idempotencyKey) => {
-          await addImageAction(pid, img, idempotencyKey);
-        }}
-        onDeleteImage={async (pid, id) => {
-          await deleteImageAction(pid, id);
-        }}
-        onReorderImages={async (pid, ids) => {
-          await reorderImagesAction(pid, ids);
-        }}
-        onUpdateImage={async (pid, imageId, input, idempotencyKey) => {
-          await updateImageAction(pid, imageId, input, idempotencyKey);
-        }}
+        onAddImage={addImageAction}
+        onDeleteImage={deleteImageAction}
+        onReorderImages={reorderImagesAction}
+        onUpdateImage={updateImageAction}
         onFetchPriceLists={fetchActivePriceListsAction}
         onUpsertVariantPrice={async (pid, variantId, input) => {
           await upsertVariantPriceAction(pid, variantId, input);

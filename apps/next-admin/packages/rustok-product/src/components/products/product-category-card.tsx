@@ -37,6 +37,11 @@ import type {
   ProductEffectiveForm,
   ProductAttributeValuePatch
 } from '../../api/types';
+import {
+  formatProductDateTimeLocal,
+  parseProductDateTimeLocal,
+  parseProductIntegerInput
+} from '../../attribute-value-state';
 
 interface ProductCategoryCardProps {
   categories: CatalogCategorySummary[];
@@ -256,12 +261,10 @@ function renderAttributeControl(
             val.integer !== undefined && val.integer !== null ? val.integer : ''
           }
           onChange={(e) => {
-            const parsed =
-              e.target.value === '' ? null : parseInt(e.target.value, 10);
-            onChange({
-              kind: 'INTEGER',
-              integer: isNaN(parsed as number) ? null : parsed
-            });
+            const parsed = parseProductIntegerInput(e.target.value);
+            if (parsed !== undefined) {
+              onChange({ kind: 'INTEGER', integer: parsed });
+            }
           }}
           placeholder='0'
           className='h-9 rounded-xl font-mono text-xs'
@@ -304,15 +307,13 @@ function renderAttributeControl(
         <Input
           id={`attr-${attr.attributeId}`}
           type='datetime-local'
-          value={val.datetime ? val.datetime.slice(0, 16) : ''}
-          onChange={(e) =>
-            onChange({
-              kind: 'DATETIME',
-              datetime: e.target.value
-                ? new Date(e.target.value).toISOString()
-                : null
-            })
-          }
+          value={formatProductDateTimeLocal(val.datetime)}
+          onChange={(e) => {
+            const datetime = parseProductDateTimeLocal(e.target.value);
+            if (datetime !== undefined) {
+              onChange({ kind: 'DATETIME', datetime });
+            }
+          }}
           className='h-9 rounded-xl text-xs'
           disabled={disabled}
         />

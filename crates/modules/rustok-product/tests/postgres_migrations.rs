@@ -409,6 +409,7 @@ async fn assert_target_schema(db: &DatabaseConnection) -> Result<(), Box<dyn std
 
     assert_column_contract(db, "product_images", "media_id", "uuid", false).await?;
     assert_column_contract(db, "product_variants", "weight", "numeric", true).await?;
+    assert_column_contract(db, "product_variants", "revision", "bigint", false).await?;
     assert_table_missing(db, "product_catalog_category_taxonomy_bindings").await?;
     assert_table_missing(db, "catalog_category_closure").await?;
     assert_table_missing(db, "catalog_category_translations").await?;
@@ -447,6 +448,117 @@ VALUES (
     let weight: Decimal = row.try_get("", "weight")?;
     if weight != Decimal::new(125, 2) {
         return Err(format!("variant weight precision was not preserved: {weight}").into());
+    }
+
+    let revision_row = db
+        .query_one_raw(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT revision, index_revision FROM product_variants \
+             WHERE id = '00000000-0000-0000-0000-000000000121'",
+        ))
+        .await?
+        .ok_or("inserted variant must expose its initial revisions")?;
+    let initial_revision: i64 = revision_row.try_get("", "revision")?;
+    let initial_index_revision: i64 = revision_row.try_get("", "index_revision")?;
+    if initial_revision != 1 || initial_index_revision != 1 {
+        return Err(format!(
+            "new variant revisions must start at 1, got business={initial_revision}, index={initial_index_revision}"
+        ).into());
+    }
+
+    db.execute_unprepared(
+        "UPDATE product_variants SET inventory_quantity = inventory_quantity + 1 \
+         WHERE id = '00000000-0000-0000-0000-000000000121'",
+    )
+    .await?;
+    let updated_revision_row = db
+        .query_one_raw(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT revision, index_revision FROM product_variants \
+             WHERE id = '00000000-0000-0000-0000-000000000121'",
+        ))
+        .await?
+        .ok_or("updated variant must remain available")?;
+    let updated_revision: i64 = updated_revision_row.try_get("", "revision")?;
+    let updated_index_revision: i64 = updated_revision_row.try_get("", "index_revision")?;
+    if updated_revision != 2 || updated_index_revision != 2 {
+        return Err(format!(
+            "variant row updates must advance both counters once, got business={updated_revision}, index={updated_index_revision}"
+        ).into());
+    }
+
+    // Pricing's owner touch updates the Index watermark without changing another field.
+    // The independent business revision trigger must still advance the editor predecessor.
+    db.execute_unprepared(
+        "UPDATE product_variants SET index_revision = index_revision \
+         WHERE id = '00000000-0000-0000-0000-000000000121'",
+    )
+    .await?;
+    let touched_revision_row = db
+        .query_one_raw(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT revision, index_revision FROM product_variants \
+             WHERE id = '00000000-0000-0000-0000-000000000121'",
+        ))
+        .await?
+        .ok_or("touched variant must remain available")?;
+    let touched_revision: i64 = touched_revision_row.try_get("", "revision")?;
+    let touched_index_revision: i64 = touched_revision_row.try_get("", "index_revision")?;
+    if touched_revision != 3 || touched_index_revision != 3 {
+        return Err(format!(
+            "Pricing owner touch must advance both counters once, got business={touched_revision}, index={touched_index_revision}"
+        ).into());
+    }
+
+    // A reused hard-delete identity must seed its business revision above the retained
+    // predecessor as well as seeding the Index watermark above the tombstone.
+    db.execute_unprepared(
+        r#"
+INSERT INTO product_variants (id, product_id, tenant_id, position)
+VALUES (
+    '00000000-0000-0000-0000-000000000122',
+    '00000000-0000-0000-0000-000000000101',
+    '00000000-0000-0000-0000-000000000001',
+    1
+)
+"#,
+    )
+    .await?;
+    db.execute_unprepared(
+        "UPDATE product_variants SET inventory_quantity = inventory_quantity + 1 \
+         WHERE id = '00000000-0000-0000-0000-000000000122'",
+    )
+    .await?;
+    db.execute_unprepared(
+        "DELETE FROM product_variants WHERE id = '00000000-0000-0000-0000-000000000122'",
+    )
+    .await?;
+    db.execute_unprepared(
+        r#"
+INSERT INTO product_variants (id, product_id, tenant_id, position)
+VALUES (
+    '00000000-0000-0000-0000-000000000122',
+    '00000000-0000-0000-0000-000000000101',
+    '00000000-0000-0000-0000-000000000001',
+    1
+)
+"#,
+    )
+    .await?;
+    let recreated_revision_row = db
+        .query_one_raw(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT revision, index_revision FROM product_variants \
+             WHERE id = '00000000-0000-0000-0000-000000000122'",
+        ))
+        .await?
+        .ok_or("recreated variant must expose retained revisions")?;
+    let recreated_revision: i64 = recreated_revision_row.try_get("", "revision")?;
+    let recreated_index_revision: i64 = recreated_revision_row.try_get("", "index_revision")?;
+    if recreated_revision != 4 || recreated_index_revision != 4 {
+        return Err(format!(
+            "recreated variant revisions must advance above the delete tombstone, got business={recreated_revision}, index={recreated_index_revision}"
+        ).into());
     }
 
     let error = db

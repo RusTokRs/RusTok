@@ -25,7 +25,7 @@ struct ActionCounters {
 
 struct ActionResolution<'a> {
     routes: &'a InteractionRouteCatalog,
-    locale_candidates: &'a [String],
+    locale: &'a RuntimeLocaleSelection,
     form_ids: &'a FormIndex,
     providers: Option<&'a dyn FormProviderEndpointResolver>,
 }
@@ -47,11 +47,21 @@ pub fn materialize_component_actions_with_providers(
     providers: Option<&dyn FormProviderEndpointResolver>,
 ) -> ActionMaterialization {
     let routes = InteractionRouteCatalog::from_document(document);
-    let locale_candidates = RuntimeLocaleSelection::from_context(context).candidates();
+    let policy_context = crate::materialize_project_locale_context(document, context).context;
+    materialize_component_actions_with_routes(document, &policy_context, providers, &routes)
+}
+
+pub(crate) fn materialize_component_actions_with_routes(
+    document: &ProjectDocument,
+    context: &Value,
+    providers: Option<&dyn FormProviderEndpointResolver>,
+    routes: &InteractionRouteCatalog,
+) -> ActionMaterialization {
+    let locale = RuntimeLocaleSelection::from_context(context);
     let form_ids = collect_form_ids(document);
     let resolution = ActionResolution {
-        routes: &routes,
-        locale_candidates: &locale_candidates,
+        routes,
+        locale: &locale,
         form_ids: &form_ids,
         providers,
     };
@@ -205,9 +215,11 @@ fn materialize_component(
 }
 
 fn clear_interaction_materialization(component: &mut ComponentObject) {
-    for attribute in GENERATED_INTERACTION_ATTRIBUTES {
-        component.attributes.remove(*attribute);
-    }
+    component.attributes.retain(|name, _| {
+        !GENERATED_INTERACTION_ATTRIBUTES
+            .iter()
+            .any(|attribute| name.eq_ignore_ascii_case(attribute))
+    });
 }
 
 fn apply_form(
@@ -319,22 +331,22 @@ fn apply_action(
             fragment,
             fallback_href,
         } => {
-            let Some(page_index) = resolution.routes.page_index(page_id) else {
-                return AppliedAction::Unresolved(format!(
-                    "target page `{page_id}` does not exist"
-                ));
+            let page_index = match resolution.routes.page_index(page_id) {
+                Ok(index) => index,
+                Err(error) => return AppliedAction::Unresolved(error.to_string()),
             };
             let href = match resolution
                 .routes
-                .slug_for(page_index, resolution.locale_candidates)
+                .slug_for(page_index, resolution.locale)
             {
-                Some(slug) => build_interaction_href(
+                Ok(Some(slug)) => build_interaction_href(
                     base_path.as_deref(),
-                    slug,
+                    &slug,
                     query.as_deref(),
                     fragment.as_deref(),
                 ),
-                None => match fallback_href.as_deref() {
+                Err(error) => return AppliedAction::Unresolved(error.to_string()),
+                Ok(None) => match fallback_href.as_deref() {
                     Some(href) => {
                         mark_action_kind(component, action);
                         component.tag_name = Some("a".to_string());

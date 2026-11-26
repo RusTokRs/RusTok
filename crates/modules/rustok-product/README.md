@@ -244,6 +244,10 @@ tenant/locale data before retrying a refused migration.
   effective category schema and option ownership, keep localized text in the
   requested translation row, preserve detached values, and publish one outbox
   event per patch request.
+- `requiredLocales` is restricted to localized text-like attributes because
+  publication actively enforces locale coverage. Invalid base rules and
+  schema/category overrides are rejected before they can make effective forms
+  unusable; unrelated value-type rule groups remain inert by contract.
 - Product publication validates required effective attributes before a product
   becomes active; localized text-like required values need an explicit non-empty
   translation row, option attributes need stored option relations, and
@@ -258,18 +262,21 @@ tenant/locale data before retrying a refused migration.
   `group_code` bindings are available over native server functions plus
   parallel GraphQL, and the module-owned admin renders grouped typed editors
   with dirty-field patch semantics.
-- Own positive monotonic `index_revision` storage columns for Product and
-  ProductVariant. Product updates and Product-translation changes advance the
-  Product revision; every ProductVariant update advances the variant revision.
+- Own separate positive monotonic business `revision` counters and Index
+  `index_revision` watermarks for Product and ProductVariant. Product document
+  writes compare `products.revision`; Product and Product-translation changes
+  advance it. Variant update/delete writes compare `product_variants.revision`;
+  every ProductVariant row update advances that business predecessor and its
+  independent Index watermark. ProductVariant replay uses only `index_revision`.
   Variant insert/delete/move membership also advances the affected parent
-  Product revision. These are owner-input watermarks, not the complete Product
-  Index mutation clock.
+  Product revision. The Index watermarks are owner-input source versions, not
+  the complete Product Index mutation clock.
 - Own retained hard-delete replay state in `product_index_tombstones` and
   `product_variant_index_tombstones`. Physical Product deletion retains every
   current translation locale, direct translation deletion retains the exact
   removed locale, and ProductVariant deletion retains its non-localized key.
-  Recreated identities receive an `index_revision` strictly above the retained
-  delete before the tombstone is cleared.
+  Recreated identities seed both business `revision` and `index_revision`
+  strictly above the retained delete before the tombstone is cleared.
 - Own append-only `product_sales_channel_index_relation_snapshots` with a
   dedicated monotonic relation epoch, bounded current/change readers,
   idempotent complete-membership replacement, live-Product delete fencing, and

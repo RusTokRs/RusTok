@@ -67,6 +67,10 @@ Drop rechecks the current presentation and drag capability at commit time, inclu
 restored state contains a drag started under a different policy. Command construction also
 rejects illegal or malformed candidates, so direct callers and restored state cannot bypass
 candidate validation. Starting another drag clears the preceding insertion overlay.
+Selection and hover transitions invalidate the previous component's rectangle, and selection
+changes also clear resize handles and the property-editor identity. A rectangle without a
+corresponding selection or hover is discarded. Hosts must invalidate measured geometry after
+document changes and supply a fresh canvas snapshot.
 
 A save success is accepted only during an active `SaveStarted` transition and only when its
 request ID matches the active attempt. A stale success or failure, uncorrelated failure, or
@@ -79,8 +83,9 @@ Viewport dimensions and zoom are normalized at the intent boundary using the sam
 custom preview presets; invalid scroll offsets become zero. Non-finite overlay/drop geometry is
 rejected without changing editor state, and a resize event with malformed or overflowing pointer
 coordinates never emits non-finite CSS dimensions. Direct patch construction also rejects invalid
-rectangles and ignores changes on axes not controlled by the active handle; rounding a finite
-CSS dimension cannot overflow to infinity.
+rectangles and ignores changes on axes not controlled by the active handle. The CSS patch
+preserves the checked finite dimensions without a second rounding step that could violate a
+fractional bound or alter a locked aspect ratio.
 
 SaveStarted also checks current edit permission and unresolved conflicts. If the host has
 synchronized a hash, SaveSucceeded must match both the submitted hash and request ID rather than
@@ -95,5 +100,8 @@ Resize gestures leave untouched dimensions unchanged, including off-grid dimensi
 perpendicular arrow keys. A zero-displacement gesture produces no patch. Corner gestures with
 aspect-ratio preservation snap the driving dimension and constrain a single scale to both axes'
 size bounds; the aspect ratio and bounds take precedence over snapping the second dimension.
-Incompatible bounds leave the original geometry unchanged. West and north handles anchor their
-opposite edges to the initial rectangle.
+Incompatible bounds, collapsed geometry or an unrepresentable locked aspect ratio leave the
+original geometry unchanged. Preview and patch generation apply the same relative aspect-ratio
+check; subnormal quotients and inconsistent locked change flags fail closed. An unlocked gesture
+can still expand a collapsed element. West and north handles anchor
+their opposite edges to the initial rectangle.

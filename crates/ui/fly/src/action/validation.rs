@@ -24,10 +24,17 @@ struct ActionValidation<'a> {
 
 pub fn validate_component_actions(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
     let routes = InteractionRouteCatalog::from_document(document);
+    validate_component_actions_with_routes(document, &routes)
+}
+
+pub(crate) fn validate_component_actions_with_routes(
+    document: &ProjectDocument,
+    routes: &InteractionRouteCatalog,
+) -> Vec<ValidationDiagnostic> {
     let form_ids = collect_form_ids(document);
     let host_submitted_form_ids = collect_host_submitted_form_ids(document);
     let validation = ActionValidation {
-        routes: &routes,
+        routes,
         form_ids: &form_ids,
         host_submitted_form_ids: &host_submitted_form_ids,
     };
@@ -261,10 +268,10 @@ pub(super) fn validate_action_contract(
                 Ok(())
             })
             .and_then(|_| match routes.page_index(page_id) {
-                Some(page_index) if routes.has_route(page_index) => Ok(()),
-                Some(_) if fallback_href.is_some() => Ok(()),
-                Some(_) => Err(format!("target page `{page_id}` has no explicit slug")),
-                None => Err(format!("target page `{page_id}` does not exist")),
+                Ok(page_index) if routes.has_route(page_index) => Ok(()),
+                Ok(_) if fallback_href.is_some() => Ok(()),
+                Ok(_) => Err(format!("target page `{page_id}` has no explicit slug")),
+                Err(error) => Err(error.to_string()),
             }),
         ComponentAction::NavigateUrl { href, .. } => validate_safe_url(href, "navigation href"),
         ComponentAction::SubmitForm { form_id } => validate_identifier(form_id, "form id")

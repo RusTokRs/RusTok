@@ -6,26 +6,17 @@ use uuid::Uuid;
 
 use crate::entities::forum_topic;
 use crate::error::{ForumError, ForumResult};
-use crate::state_machine::TopicStatus;
 
+/// Locks the non-deleted topic row used by a vote write. Lifecycle policy
+/// (archived/pending/locked/closed) is applied by
+/// [`super::topic_engagement_guard`] after this returns.
 pub(crate) async fn lock_active_topic_vote_write_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     topic_id: Uuid,
 ) -> ForumResult<forum_topic::Model> {
     let mut topics = lock_topic_rows_for_votes_in_tx(txn, tenant_id, &[topic_id]).await?;
-    let topic = topics.pop().ok_or(ForumError::TopicNotFound(topic_id))?;
-    if topic.status == TopicStatus::Archived {
-        return Err(ForumError::Validation(
-            "Forum topic votes cannot be changed after topic archival".to_string(),
-        ));
-    }
-    if topic.status == TopicStatus::Pending {
-        // A held topic is not published yet; votes on it would let the
-        // author and moderators pre-rank content the audience cannot see.
-        return Err(ForumError::TopicAwaitingModeration);
-    }
-    Ok(topic)
+    topics.pop().ok_or(ForumError::TopicNotFound(topic_id))
 }
 
 pub(crate) async fn lock_topic_rows_for_votes_in_tx(

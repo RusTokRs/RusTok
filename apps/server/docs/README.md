@@ -251,7 +251,9 @@ A retained task still passes the shared liveness/stop guard; after shutdown
 it cannot be reported healthy and its handle remains available to the drain.
 When no handle remains, the stopped-host path returns without registering or
 starting work. Module-work still records the composition requirement used
-by readiness. The existing stop-before-start and restart-after-drain
+by readiness. A queued module-work initializer also observes the stop signal
+without waiting for the registration mutex; it cannot overwrite an existing
+requirement during cancellation. The existing stop-before-start and restart-after-drain
 regressions cover this no-op; the terminated-task regressions also check
 that retained handles are not acknowledged after stop. Tests are unexecuted.
 
@@ -319,7 +321,19 @@ includes their startup-mutex wait, initial cache/Redis recovery, and
 joins of previously aborted workers. A shared stop-watch helper checks
 the subscribed state to avoid losing a stop between check and wait;
 published task shutdown still uses each listener's own registry gate
-and bounded join/abort contract.
+and bounded join/abort contract. The server context and application router
+bootstrap entrypoints, as well as the direct worker startup entrypoint,
+also use this helper when acquiring their initialization mutexes. A queued
+startup exits on stop without waiting for the active initializer; admitted
+operations and published handles retain their existing shutdown contracts.
+Workflow cron also cancels pending startup-mutex acquisition and its read-only
+schema validation. Context bootstrap checks stop before durable SuperAdmin
+provisioning and before returning success; router bootstrap checks stop
+again after the worker starters, which may return a stopped-host no-op.
+Readiness and Prometheus use the same runtime snapshot for Outbox relay,
+Outbox retention, and remote-executor reaper, including host-mode admission.
+The cache reconciliation workers retain their independent serving-profile
+requirements; they are not limited to general background-worker hosts.
 
 
 Direct worker starters for Product Search channel repair, Notifications
@@ -571,6 +585,16 @@ the production CORS layer emits no `Access-Control-Allow-Origin` header,
 including for `http://127.0.0.1:5150`. Explicit origins must be valid
 HTTP(S) origins without URL credentials, paths, queries or fragments;
 invalid configuration entries are ignored with a bounded error code.
+Explicit environment origins take precedence over settings origins, which
+take precedence over development bind-host hints. An explicitly empty or
+entirely invalid allow-list grants no cross-origin access even in development;
+default development origins apply only when no origin policy is supplied.
+
+OAuth discovery and startup share one issuer validator. It rejects malformed
+absolute URLs, non-root literal paths (including normalized dot segments),
+userinfo, query, fragment, controls and backslashes before URL normalization.
+The configured issuer string is preserved exactly in JWTs and discovery.
+JWT-only deployments retain their independent issuer policy.
 Unspecified bind addresses (IPv4 `0.0.0.0` and IPv6 `[::]`) are
 rejected even when supplied as explicit CORS entries: they are network
 listeners, not browser-authorized origins. Explicit environment and settings
@@ -654,9 +678,12 @@ HTTP edge settings are bounded before reaching Tokio and Tower:
 600; `RUSTOK_HTTP_UPLOAD_TIMEOUT_SECONDS` defaults to 300 seconds and is capped
 at 3,600; `RUSTOK_HTTP_CONCURRENCY_LIMIT` defaults to 512 and is capped at
 16,384. Zero or malformed values use the defaults, while oversized values are
-clamped with a warning. Only exact `multipart/form-data` requests to
-`/api/media` and PUT requests to the registry artifact route receive the
-upload timeout budget. Active rate-limit windows are normalized to 1 second
+clamped with a warning. The concurrency quota uses a single semaphore shared
+by all route services in one composed HTTP router, not a quota per endpoint.
+Only POST `multipart/form-data` requests to `/api/media` or `/api/media/`
+and PUT requests matching the exact registry artifact route grammar receive
+the extended upload timeout budget; repeated separators and unregistered
+registry trailing slashes do not qualify. Active rate-limit windows are normalized to 1 second
 through 365 days for both memory and Redis backends, with fractional durations
 rounded up to millisecond precision; disabled limiters remain disabled.
 Redis rate-limit counters without an expiry are repaired in the atomic script.
@@ -782,7 +809,11 @@ executable document even when the request has no source text (for example,
 a server-supplied pre-parsed document); empty source is not a policy exemption.
 A request with neither source nor a parsed document fails parsing.
 Fragment-spread classification is cycle-safe because host preflight runs
-before GraphQL's normal document validation.
+before GraphQL's normal document validation. The host security policies share
+an explicit worklist rather than recursive fragment expansion, preserving root
+field scope and Forum traversal context without stack growth on long chains.
+GraphQL's own validation and execution limits remain separate. Source regression
+tests for long chains and context-sensitive cycles are present but unrun.
 
 ## Runtime surface
 
@@ -1879,3 +1910,28 @@ claim cancellation safety inside the connector's own constructor.
 Focused source regressions cover reuse without desired-policy reads, stopped
 initialization, and active-profile reporting. Compilation, formatting and tests
 were not run at the maintainer's request.
+
+## Access-token tenant admission and registration fixtures (2026-11-26)
+
+The common access-token resolver checks live tenant existence and activation
+before resolving direct, delegated or service authority, including global
+routes without tenant middleware and requests with an older cached tenant
+projection. Database failures remain internal errors. WebSocket lease
+revalidation uses the same check rather than a duplicate tenant lookup.
+This is an admission-time check, not a transaction-wide deactivation fence;
+an already admitted operation can still finish. Successful service-token
+extractor tests now issue signed credentials and persist matching access rows
+instead of bypassing the registration contract. Regression cases authored,
+unrun by request.
+
+## Flex field-definition generation reconciliation
+
+The supervised cache reconciler retains its last applied durable generation
+across retry cycles and replacement of a retained finished task. A lower
+seed or poll value keeps readiness unhealthy until storage again reports at
+least that generation. On every unexpected inner exit, including panic,
+readiness is withdrawn and the local cache is invalidated before restart
+backoff. Generation zero remains a valid initial seed. The watermark lives
+in the server runtime, not across process restarts; intentional database
+restoration to an older generation requires an operator-controlled recovery.
+Regression cases authored, not executed.

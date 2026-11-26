@@ -562,3 +562,16 @@ fn normalize_reason_code(reason_code: String) -> ForumResult<String> {
     }
     Ok(reason_code)
 }
+
+#[cfg(test)]
+mod write_path_cut_tests {
+    #[test]
+    fn topic_and_reply_creates_use_posting_rate_not_the_policy_evaluator() {
+        let topic = include_str!("topic.rs");
+        let reply = include_str!("reply_owner.rs");
+        assert!(topic.contains("posting_rate::enforce_new_topic_rate_in_tx"));
+        assert!(!topic.contains("ForumPostingPolicyEvaluator"));
+        assert!(reply.contains("posting_rate::enforce_new_reply_rate_in_tx"));
+        assert!(!reply.contains("ForumPostingPolicyEvaluator"));
+    }
+}

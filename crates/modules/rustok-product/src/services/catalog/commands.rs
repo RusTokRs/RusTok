@@ -483,6 +483,7 @@ impl CatalogService {
                 position: Set(variant_position),
                 created_at: Set(now.into()),
                 updated_at: Set(now.into()),
+                revision: Set(1),
                 index_revision: Set(1),
             };
             variant.insert(&txn).await.map_err(|error| {
@@ -1537,6 +1538,7 @@ impl CatalogService {
             position: Set(next_position),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
+            revision: Set(1),
             index_revision: Set(1),
         };
 

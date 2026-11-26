@@ -34,7 +34,6 @@ def generate_ring(purpose: str) -> dict:
         stderr=subprocess.DEVNULL,
     ).stdout
     return {
-        "algorithm": "RS256",
         "keyring": {"active_kid": f"{purpose}-{uuid.uuid4().hex}"},
         "rsa_private_key_pem": private.decode("ascii"),
         "rsa_public_key_pem": public.decode("ascii"),

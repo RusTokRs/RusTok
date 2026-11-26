@@ -4,10 +4,10 @@ use dioxus::prelude::*;
 use fly_browser::{BrowserIntentEnvelope, BrowserIntentKind};
 use fly_dioxus::FlyCanvasIframe;
 use fly_ui::{
-    CanvasRect, ResizeHandle, ResizePolicy, ResizeResult, ResizeSession, UiIntent, ViewportState,
+    CanvasRect, ResizeHandle, ResizeResult, ResizeSession, UiIntent, ViewportState,
 };
 
-use crate::core::session::EditorSessionState;
+use crate::core::{page_builder_resize_policy, session::EditorSessionState};
 use crate::editor::{CanvasComponentGeometry, CanvasResourceLimit};
 
 #[cfg(all(target_arch = "wasm32", feature = "dioxus-web"))]
@@ -298,10 +298,7 @@ pub fn DioxusIsolatedCanvas(
                     else {
                         return;
                     };
-                    let policy = ResizePolicy {
-                        grid_size: Some(4.0),
-                        ..ResizePolicy::default()
-                    };
+                    let policy = page_builder_resize_policy();
                     let active = BrowserResizeSession::begin_scaled(
                         component_id,
                         handle,
@@ -585,10 +582,7 @@ pub fn DioxusIsolatedCanvas(
                                                     start_rect: rect,
                                                     start_x: 0.0,
                                                     start_y: 0.0,
-                                                    policy: ResizePolicy {
-                                                        grid_size: Some(4.0),
-                                                        ..ResizePolicy::default()
-                                                    },
+                                                    policy: page_builder_resize_policy(),
                                                 };
                                                 let Some(result) = resize
                                                     .update_by_arrow_key(&event.key(), event.shift_key())
