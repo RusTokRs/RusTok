@@ -590,3 +590,62 @@ test('a touch ending with a different identifier cannot navigate the slider', as
   await expect(page.getByTestId('swipe-slide-1')).toBeVisible();
   await expect(page.getByTestId('swipe-slide-2')).toBeHidden();
 });
+
+test('a valid tab switch clears selection from a tab with a stale panel reference', async ({ page }) => {
+  await mount(page, `<main data-fly-page-body>${tabs('tabs')}</main>`);
+  await page.getByTestId('tabs-panel-1').evaluate((el) => el.remove());
+  await page.getByTestId('tabs-tab-1').evaluate((el) => el.classList.add('is-active'));
+  await page.getByTestId('tabs-tab-2').click();
+  await expect(page.getByTestId('tabs-tab-1')).toHaveAttribute('aria-selected', 'false');
+  await expect(page.getByTestId('tabs-tab-1')).not.toHaveClass(/is-active/);
+  await expect(page.getByTestId('tabs-tab-2')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('tabs-panel-2')).toBeVisible();
+});
+
+test('exclusive accordion rejects a sibling closure that would hide the clicked trigger atomically', async ({ page }) => {
+  await mount(page, `<main data-fly-page-body>
+    <div data-fly-accordion>
+      <button data-testid="first" aria-expanded="true"
+        data-fly-action='${action({ kind: 'toggle_accordion', target_id: 'first-panel' })}'>First</button>
+      <div id="first-panel" data-testid="first-panel">First panel</div>
+      <button data-testid="outer" aria-expanded="true"
+        data-fly-action='${action({ kind: 'toggle_accordion', target_id: 'outer-panel' })}'>Outer</button>
+      <div id="outer-panel" data-testid="outer-panel">
+        <button data-testid="inner" aria-expanded="false"
+          data-fly-action='${action({ kind: 'toggle_accordion', target_id: 'inner-panel', exclusive: true })}'>Inner</button>
+      </div>
+      <div id="inner-panel" data-testid="inner-panel" hidden>Inner panel</div>
+    </div>
+  </main>`);
+  await page.getByTestId('inner').click();
+  await expect(page.getByTestId('first')).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByTestId('first-panel')).toBeVisible();
+  await expect(page.getByTestId('outer')).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByTestId('outer-panel')).toBeVisible();
+  await expect(page.getByTestId('inner')).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByTestId('inner-panel')).toBeHidden();
+});
+
+test('slider rejects an out-of-range index and an ambiguous target identity without changing selection', async ({ page }) => {
+  await mount(page, `<main data-fly-page-body>${slider('carousel')}</main>`);
+  const trigger = page.getByTestId('carousel-next');
+  await trigger.evaluate((el) => el.setAttribute('data-fly-action', JSON.stringify({
+    kind: 'switch_slide', slider_id: 'self', index: 2,
+  })));
+  await trigger.click();
+  await expect(page.getByTestId('carousel-slide-1')).toBeVisible();
+  await expect(page.getByTestId('carousel-slide-2')).toBeHidden();
+
+  for (const name of ['carousel-slide-1', 'carousel-slide-2']) {
+    await page.getByTestId(name).evaluate((el) => el.setAttribute('data-fly-target-id', 'duplicate'));
+  }
+  await trigger.evaluate((el) => el.setAttribute('data-fly-action', JSON.stringify({
+    kind: 'switch_slide', slider_id: 'self', target_slide: 'duplicate',
+  })));
+  // Start from the second slide so choosing the first duplicate would visibly change state.
+  await page.getByTestId('carousel-dot-2').click();
+  await trigger.click();
+  await expect(page.getByTestId('carousel-slide-1')).toBeHidden();
+  await expect(page.getByTestId('carousel-slide-2')).toBeVisible();
+  await expect(page.getByTestId('carousel-dot-2')).toHaveAttribute('aria-selected', 'true');
+});

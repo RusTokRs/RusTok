@@ -274,10 +274,10 @@
     for (var i = 0; i < tabs.length; i++) {
       var tab = tabs[i];
       var panel = resolved[i];
-      if (!panel) continue;
       var isCurrent = tab === element;
       tab.setAttribute("aria-selected", isCurrent ? "true" : "false");
       tab.classList.toggle("is-active", isCurrent);
+      if (!panel) continue;
       var isTarget = panel === target;
       panel.classList.toggle("is-active", isTarget);
       setVisible(panel, isTarget);
@@ -305,6 +305,9 @@
     // are independent.
     if (action.exclusive === true && willExpand && accordionRoot) {
       var activeTriggers = accordionRoot.querySelectorAll('[aria-expanded="true"][data-fly-action]');
+      var closing = [];
+      // Resolve the entire transition before touching the DOM. A conflicting sibling
+      // can otherwise hide the clicked trigger or the panel we are about to open.
       for (var i = 0; i < activeTriggers.length; i++) {
         var otherTrigger = activeTriggers[i];
         var otherAction = parseAction(otherTrigger);
@@ -313,6 +316,13 @@
             !otherAction || otherAction.kind !== "toggle_accordion") continue;
         var otherTarget = accordionTarget(otherTrigger, otherAction, accordionRoot, root);
         if (!otherTarget) continue;
+        if (otherTarget.contains(element) || otherTarget.contains(target) ||
+            target.contains(otherTarget)) return;
+        closing.push({ trigger: otherTrigger, target: otherTarget });
+      }
+      for (var j = 0; j < closing.length; j++) {
+        otherTrigger = closing[j].trigger;
+        otherTarget = closing[j].target;
         otherTrigger.setAttribute("aria-expanded", "false");
         otherTrigger.classList.remove("is-expanded");
         otherTarget.classList.remove("is-expanded");
@@ -376,16 +386,21 @@
     } else if (action.direction === "prev") {
       nextIndex = (currentIndex - 1 + slides.length) % slides.length;
     } else if (Number.isSafeInteger(action.index) && action.index >= 0) {
-      nextIndex = Math.max(0, Math.min(action.index, slides.length - 1));
+      if (action.index >= slides.length) return;
+      nextIndex = action.index;
     } else if (typeof action.target_slide === "string" && action.target_slide) {
       var found = false;
       for (var a = 0; a < TARGET_ATTRIBUTES.length && !found; a++) {
+        var matchingIndex = -1;
         for (var s = 0; s < slides.length; s++) {
-          if (slides[s].getAttribute(TARGET_ATTRIBUTES[a]) === action.target_slide) {
-            nextIndex = s;
-            found = true;
-            break;
-          }
+          if (slides[s].getAttribute(TARGET_ATTRIBUTES[a]) !== action.target_slide) continue;
+          // A duplicate at the highest matching identity priority is ambiguous.
+          if (matchingIndex !== -1) return;
+          matchingIndex = s;
+        }
+        if (matchingIndex !== -1) {
+          nextIndex = matchingIndex;
+          found = true;
         }
       }
       if (!found) return;
