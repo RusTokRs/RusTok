@@ -1,4 +1,5 @@
 use crate::safe_url::{self, UrlAttributeKind, UrlPolicy};
+use crate::style_rule::{class_rule_selector, safe_media_query};
 use crate::{
     AssetCatalog, AssetPolicy, PageMetadata, ProjectDocument, RegistrySet, StyleRuleCatalog,
     StyleRuleScope, normalize_slug, validate_runtime_extensions,
@@ -907,12 +908,29 @@ fn validate_style_rules(
                 ));
             }
         }
-        if matches!(rule.scope.media_query(), Some(query) if query.trim().is_empty()) {
+        if let Some(query) = rule.scope.media_query() {
+            if query.trim().is_empty() {
+                report.diagnostics.push(diagnostic(
+                    ValidationSeverity::Error,
+                    "empty_media_query",
+                    &path,
+                    "responsive style rule has an empty media query",
+                ));
+            } else if !safe_media_query(query) {
+                report.diagnostics.push(diagnostic(
+                    ValidationSeverity::Warning,
+                    "unsupported_media_query",
+                    &path,
+                    "responsive style rule uses a media query outside the renderer's safe grammar; it is preserved but will not be rendered",
+                ));
+            }
+        }
+        if rule.component_id.is_none() && class_rule_selector(&rule.selector_names).is_none() {
             report.diagnostics.push(diagnostic(
-                ValidationSeverity::Error,
-                "empty_media_query",
+                ValidationSeverity::Warning,
+                "unsupported_style_selector",
                 &path,
-                "responsive style rule has an empty media query",
+                "style rule does not use a plain class selector; it is preserved but will not be rendered",
             ));
         }
         match &rule.scope {
@@ -1194,6 +1212,46 @@ mod tests {
         assert_eq!(report.page_count, 1);
         assert_eq!(report.asset_count, 2);
         assert_eq!(report.style_rule_count, 1);
+    }
+
+    #[test]
+    fn warns_when_style_rules_cannot_be_rendered() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{ "id": "hero", "type": "text", "content": "Hello" }]
+                }
+            }],
+            "styles": [
+                {
+                    "selectors": ["div > .hero"],
+                    "style": { "color": "red" }
+                },
+                {
+                    "selectors": [{ "name": "hero", "type": 2 }],
+                    "atRuleType": "media",
+                    "mediaText": "(max-width: 600px) } body { color: red",
+                    "style": { "color": "blue" }
+                }
+            ]
+        }))
+        .expect("document");
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
+        assert!(report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "unsupported_style_selector"
+                && diagnostic.severity == ValidationSeverity::Warning
+        }));
+        assert!(report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "unsupported_media_query"
+                && diagnostic.severity == ValidationSeverity::Warning
+        }));
     }
 
     #[test]

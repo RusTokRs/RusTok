@@ -577,6 +577,52 @@ fn normalize_query(query: &str) -> String {
     query.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+
+/// Return a selector only when every author-supplied selector is a plain CSS class name.
+/// Component-bound rules use their validated Fly style hook instead.
+pub(crate) fn class_rule_selector(selector_names: &[String]) -> Option<String> {
+    if selector_names.is_empty() {
+        return None;
+    }
+    let mut selector = String::new();
+    for name in selector_names {
+        let class = name.trim().trim_start_matches('.');
+        if class.is_empty()
+            || class.len() > 128
+            || !class.chars().all(|character| {
+                character.is_ascii_alphanumeric() || character == '-' || character == '_'
+            })
+            || class
+                .chars()
+                .next()
+                .is_some_and(|first| first.is_ascii_digit())
+        {
+            return None;
+        }
+        selector.push('.');
+        selector.push_str(class);
+    }
+    Some(selector)
+}
+
+/// The renderer's closed grammar for media queries. Kept beside style-rule identity so
+/// validation and rendering make the same admission decision.
+pub(crate) fn safe_media_query(query: &str) -> bool {
+    let normalized = query.trim().to_ascii_lowercase();
+    !normalized.is_empty()
+        && normalized.len() <= 256
+        && !normalized.contains('{')
+        && !normalized.contains('}')
+        && !normalized.contains(';')
+        && !normalized.contains("url(")
+        && !normalized.contains("expression(")
+        && !normalized.contains("@import")
+        && !normalized.contains('\\')
+        && normalized
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || "() :.-_%/,".contains(character))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

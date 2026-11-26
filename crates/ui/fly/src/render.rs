@@ -1,4 +1,5 @@
 use crate::safe_url::{self, UrlAttributeKind, UrlPolicy};
+use crate::style_rule::{class_rule_selector, safe_media_query};
 use crate::{
     ComponentNode, ComponentObject, FlyError, FlyResult, PageMetadata, ProjectDocument,
     ProjectPage, StyleRuleCatalog, StyleRuleScope,
@@ -1158,37 +1159,6 @@ fn append_component_style_rules(
     }
 }
 
-/// Build a CSS selector from GrapesJS selector names, accepting plain class names only.
-///
-/// Selector names arrive as author input (`"card"`, `".card"`, or selector objects flattened to
-/// their `name`). Anything that is not a single class name — combinators, element selectors,
-/// attribute selectors, `#id` — makes the whole rule unrenderable here: a class rule must never
-/// become a selector-injection path. Component-bound rules do not go through this function.
-fn class_rule_selector(selector_names: &[String]) -> Option<String> {
-    if selector_names.is_empty() {
-        return None;
-    }
-    let mut selector = String::new();
-    for name in selector_names {
-        let class = name.trim().trim_start_matches('.');
-        if class.is_empty()
-            || class.len() > 128
-            || !class.chars().all(|character| {
-                character.is_ascii_alphanumeric() || character == '-' || character == '_'
-            })
-            || class
-                .chars()
-                .next()
-                .is_some_and(|first| first.is_ascii_digit())
-        {
-            return None;
-        }
-        selector.push('.');
-        selector.push_str(class);
-    }
-    Some(selector)
-}
-
 fn push_rule(css: &mut String, selector: &str, declarations: &str) {
     css.push_str(selector);
     css.push('{');
@@ -1771,22 +1741,6 @@ fn css_resource_url_allowed(url: &str, allow_url: &mut impl FnMut(&str) -> bool)
         && !url.contains("/*")
         && !url.contains("*/")
         && allow_url(url)
-}
-
-fn safe_media_query(query: &str) -> bool {
-    let normalized = query.trim().to_ascii_lowercase();
-    !normalized.is_empty()
-        && normalized.len() <= 256
-        && !normalized.contains('{')
-        && !normalized.contains('}')
-        && !normalized.contains(';')
-        && !normalized.contains("url(")
-        && !normalized.contains("expression(")
-        && !normalized.contains("@import")
-        && !normalized.contains('\\')
-        && normalized
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || "() :.-_%/,".contains(character))
 }
 
 fn write_attribute(output: &mut String, name: &str, value: &str) {

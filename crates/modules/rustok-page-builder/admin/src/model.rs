@@ -38,16 +38,19 @@ impl AdminCanvasController {
         project_data: Value,
     ) -> Result<Self, AdminCanvasError> {
         let page_id = page_id.into();
+        let revision_id = revision_id.into();
         if page_id.trim().is_empty() {
             fly::drop_value_iteratively(project_data);
             return Err(AdminCanvasError::InvalidPageId);
         }
+        if revision_id.trim().is_empty() {
+            fly::drop_value_iteratively(project_data);
+            return Err(AdminCanvasError::InvalidRevisionId);
+        }
         let document = GrapesJsCodec::decode_value(project_data)?;
         let mut registries = RegistrySet::with_builtins();
         for definition in crate::asset_provider::builtin_asset_provider_definitions() {
-            if let Err(error) = registries.asset_providers.register(definition) {
-                tracing::warn!(?error, "Failed to register builtin asset provider definition");
-            }
+            registries.asset_providers.register(definition)?;
         }
         let editor = FlyEditor::new(document, registries);
         let mut ui = FlyUiStateMachine::new(Presentation::Full);
@@ -62,7 +65,7 @@ impl AdminCanvasController {
         }
         let mut controller = Self {
             page_id,
-            revision_id: revision_id.into(),
+            revision_id,
             editor,
             ui,
             clipboard: None,
@@ -779,6 +782,8 @@ pub enum AdminCanvasEffect {
 pub enum AdminCanvasError {
     #[error("page id must not be empty")]
     InvalidPageId,
+    #[error("revision id must not be empty")]
+    InvalidRevisionId,
     #[error("{0}")]
     Authoring(String),
     #[error(transparent)]
@@ -834,6 +839,13 @@ mod tests {
             }),
         )
         .expect("controller")
+    }
+
+    #[test]
+    fn controller_rejects_an_empty_revision_id_before_decoding_the_project() {
+        let error = AdminCanvasController::new("home", "  ", json!({ "pages": [] }))
+            .expect_err("empty revision id must be rejected");
+        assert!(matches!(error, AdminCanvasError::InvalidRevisionId));
     }
 
     #[test]
