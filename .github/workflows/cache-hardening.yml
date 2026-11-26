@@ -184,6 +184,15 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         with:
           shared-key: cache-hardening
+      - name: Channel lifecycle invariants (gate)
+        # Runs before the cargo steps on purpose: the workspace-wide check in this
+        # job is red on `main` for unrelated reasons, and a step that only runs after
+        # it succeeds would be a gate nobody executes. The gate itself is plain Node
+        # and pins the `m20261126_000013` invariants (migration SQL on both backends,
+        # the owner's clear-then-set ordering, its typed conflict mapping).
+        run: |
+          node scripts/verify/verify-channel-lifecycle-invariants.mjs
+          node --test scripts/verify/verify-channel-lifecycle-invariants.test.mjs
       - name: Format
         run: cargo fmt --all --check
       - name: Compile workspace with redis-cache
