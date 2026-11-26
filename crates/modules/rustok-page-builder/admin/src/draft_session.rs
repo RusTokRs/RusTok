@@ -135,6 +135,16 @@ impl PersistentDraftSessionRecord {
     /// Validate before both reads and writes so the store never persists a record
     /// that its own next read would reject. Legacy format 0 is accepted only
     /// without receipts and is upgraded on its next write.
+    fn validate_storage_key(&self, token: &str) -> Result<(), SsrDraftSessionError> {
+        FileSsrDraftSessionStore::validate_token(&self.token)?;
+        if self.token != token.trim() {
+            return Err(SsrDraftSessionError::Serialization(
+                "draft record token does not match its storage key".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
     fn validate(&self) -> Result<(), SsrDraftSessionError> {
         if self.format > DRAFT_SESSION_RECORD_FORMAT {
             return Err(SsrDraftSessionError::UnsupportedFormat {
@@ -1415,11 +1425,7 @@ impl FileSsrDraftSessionStore {
                 }
             };
 
-            if record.token != token {
-                return Err(SsrDraftSessionError::Serialization(
-                    "draft record token does not match its storage key".to_string(),
-                ));
-            }
+            record.validate_storage_key(token)?;
             if record.expires_at_unix_secs <= current_unix_secs() {
                 if self.collect_dead_record(&file_path, token, lock) == DeadRecord::Replaced {
                     continue;
@@ -2425,11 +2431,7 @@ impl PersistentDraftSessionBackend for ExternalKvDraftSessionBackend {
             // A record that cannot be parsed is reported, not deleted: the
             // driver removes it when the TTL it was stored with runs out.
             let record = PersistentDraftSessionRecord::decode(&bytes)?;
-            if record.token != token {
-                return Err(SsrDraftSessionError::Serialization(
-                    "draft record token does not match its storage key".to_string(),
-                ));
-            }
+            record.validate_storage_key(token)?;
             if record.expires_at_unix_secs > current_unix_secs() {
                 return Ok(Some(record));
             }
@@ -2781,6 +2783,7 @@ impl DurableSsrDraftSessionStore {
         };
         if let Some(persistent_record) = persistent_record.as_ref() {
             persistent_record.validate()?;
+            persistent_record.validate_storage_key(tok)?;
             if persistent_record.controller.page_id() != controller.page_id() {
                 return Err(SsrDraftSessionError::PageMismatch {
                     expected: persistent_record.controller.page_id().to_string(),
@@ -2855,6 +2858,7 @@ impl DurableSsrDraftSessionStore {
             };
             if let Some(record) = current.as_ref() {
                 record.validate()?;
+                record.validate_storage_key(&committed.token)?;
             }
             let current_generation = current
                 .as_ref()
@@ -2916,6 +2920,7 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
         let record = self.backend.load_record(token, owner)?
             .ok_or(SsrDraftSessionError::DraftUnavailable)?;
         record.validate()?;
+        record.validate_storage_key(token)?;
         if record.controller.page_id() != page_id {
             return Err(SsrDraftSessionError::PageMismatch {
                 expected: record.controller.page_id().to_string(),
@@ -2942,6 +2947,7 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
             return Ok(None);
         };
         record.validate()?;
+        record.validate_storage_key(token)?;
         if record.controller.page_id() != page_id {
             return Err(SsrDraftSessionError::PageMismatch {
                 expected: record.controller.page_id().to_string(),
@@ -2975,6 +2981,7 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
             return Err(SsrDraftSessionError::DraftUnavailable);
         };
         expected_record.validate()?;
+        expected_record.validate_storage_key(token)?;
         if expected_record.controller.page_id() != controller.page_id() {
             return Err(SsrDraftSessionError::PageMismatch {
                 expected: expected_record.controller.page_id().to_string(),
@@ -3047,6 +3054,7 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
                     return Err(SsrDraftSessionError::DraftUnavailable);
                 };
                 current.validate()?;
+                current.validate_storage_key(token)?;
                 if current.controller.page_id() != controller_page_id {
                     return Err(SsrDraftSessionError::PageMismatch {
                         expected: current.controller.page_id().to_string(),
@@ -3092,6 +3100,7 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
             return Ok(None);
         };
         record.validate()?;
+        record.validate_storage_key(token)?;
         if record.controller.page_id() != page_id {
             self.memory.evict(token)?;
             return Err(SsrDraftSessionError::PageMismatch {
@@ -3147,6 +3156,7 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
         // may be empty after a restart while the record lives on.
         if let Some(record) = self.backend.load_record(token, owner)? {
             record.validate()?;
+            record.validate_storage_key(token)?;
             ensure_session_owner(record.owner.as_ref(), owner)?;
         }
         self.memory.remove(token, owner)?;
