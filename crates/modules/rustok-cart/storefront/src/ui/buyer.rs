@@ -1264,8 +1264,8 @@ mod tests {
     #[test]
     fn selection_callback_cannot_acknowledge_a_disposed_owner() {
         init_test_executor();
-        let callback_owner = Owner::new();
-        let owner = Owner::new();
+        let root = Owner::new();
+        let (callback_owner, owner) = root.with(|| (Owner::new(), Owner::new()));
         let owner_to_dispose = owner.clone();
         let callback = callback_owner.with(|| {
             Callback::new(move |href: String| {

@@ -816,6 +816,7 @@ impl OrderService {
         let preferred_locale = Self::preferred_order_locale_from_metadata(&existing.metadata)
             .unwrap_or(load_tenant_default_locale(&txn, tenant_id).await?);
         if existing.status != STATUS_SHIPPED {
+            txn.rollback().await?;
             return Err(OrderError::InvalidTransition {
                 from: existing.status,
                 to: STATUS_DELIVERED.to_string(),
@@ -886,6 +887,7 @@ impl OrderService {
         let preferred_locale = Self::preferred_order_locale_from_metadata(&existing.metadata)
             .unwrap_or(load_tenant_default_locale(&txn, tenant_id).await?);
         if !can_cancel(&existing.status) {
+            txn.rollback().await?;
             return Err(OrderError::InvalidTransition {
                 from: existing.status,
                 to: STATUS_CANCELLED.to_string(),
@@ -958,6 +960,7 @@ impl OrderService {
         let preferred_locale = Self::preferred_order_locale_from_metadata(&existing.metadata)
             .unwrap_or(load_tenant_default_locale(&txn, tenant_id).await?);
         if existing.status != expected_from {
+            txn.rollback().await?;
             return Err(OrderError::InvalidTransition {
                 from: existing.status,
                 to: next_status.to_string(),
