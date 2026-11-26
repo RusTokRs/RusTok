@@ -498,6 +498,60 @@ fn snapshot_restore_is_hash_verified_and_participates_in_history() {
     );
 }
 
+fn deep_snapshot_value() -> Value {
+    let mut value = Value::Null;
+    for _ in 0..50_000 {
+        value = Value::Array(vec![value]);
+    }
+    value
+}
+
+#[test]
+fn borrowed_snapshot_restore_checks_depth_before_cloning() {
+    let mut editor = editor();
+    let before = editor.clone();
+    let mut snapshots = SnapshotCatalog::default();
+    let mut snapshot = snapshots
+        .capture("Initial", editor.document(), Map::new())
+        .expect("snapshot")
+        .clone();
+
+    snapshot.metadata.insert("deep".into(), deep_snapshot_value());
+    let result = editor.restore_snapshot(&snapshot);
+    crate::drop_value_iteratively(Value::Object(std::mem::take(&mut snapshot.metadata)));
+    assert!(matches!(result, Err(FlyError::MaximumDepthExceeded { .. })));
+    snapshot.project_data = deep_snapshot_value();
+    let result = editor.restore_snapshot(&snapshot);
+    crate::drop_value_iteratively(std::mem::take(&mut snapshot.project_data));
+    assert!(matches!(result, Err(FlyError::MaximumDepthExceeded { .. })));
+    assert_eq!(editor, before);
+}
+
+#[test]
+fn owned_batch_rejects_deep_snapshot_payloads_even_after_an_earlier_invalid_command() {
+    let mut editor = editor();
+    let before = editor.clone();
+    let mut snapshots = SnapshotCatalog::default();
+    let snapshot = snapshots
+        .capture("Initial", editor.document(), Map::new())
+        .expect("snapshot")
+        .clone();
+    let mut deep_metadata = snapshot.clone();
+    deep_metadata.metadata.insert("deep".into(), deep_snapshot_value());
+    let mut deep_payload = snapshot;
+    deep_payload.project_data = deep_snapshot_value();
+
+    let result = editor.apply(EditorCommand::batch([
+        EditorCommand::Remove { component_id: "missing".into() },
+        EditorCommand::batch([
+            EditorCommand::restore_snapshot(deep_metadata),
+            EditorCommand::restore_snapshot(deep_payload),
+        ]),
+    ]));
+    assert!(matches!(result, Err(FlyError::MaximumDepthExceeded { .. })));
+    assert_eq!(editor, before);
+}
+
 #[test]
 fn tampered_snapshot_does_not_change_document_or_history() {
     let mut editor = editor();

@@ -132,10 +132,17 @@ impl FlyEditor {
     }
 
     pub fn restore_snapshot(&mut self, snapshot: &ProjectSnapshot) -> FlyResult<ValidationReport> {
+        snapshot.validate_retained_depth()?;
         self.apply(EditorCommand::restore_snapshot(snapshot.clone()))
     }
 
     pub fn apply(&mut self, mut command: EditorCommand) -> FlyResult<ValidationReport> {
+        // Snapshot commands can arrive as owned, already parsed Rust values. Check
+        // every snapshot even if an earlier batch member would reject the transaction.
+        if let Err(error) = validate_snapshot_commands(&command) {
+            discard_snapshot_payloads(&mut command);
+            return Err(error);
+        }
         if let EditorCommand::Select { component_id } = &command {
             if let Some(id) = component_id.as_deref()
                 && !self.document.contains_component(id)
@@ -372,6 +379,35 @@ impl FlyEditor {
         };
         document.invalidate_caches();
         result
+    }
+}
+
+/// Check snapshot payloads before speculative mutation, cloning or history accounting.
+fn validate_snapshot_commands(command: &EditorCommand) -> FlyResult<()> {
+    let mut pending = vec![command];
+    while let Some(command) = pending.pop() {
+        match command {
+            EditorCommand::RestoreSnapshot { snapshot } => snapshot.validate_retained_depth()?,
+            EditorCommand::Batch { commands } => pending.extend(commands.iter().rev()),
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// An owned snapshot rejected for depth must not recursively drop its JSON fields.
+/// Clear every snapshot in the rejected transaction, including later batch members.
+fn discard_snapshot_payloads(command: &mut EditorCommand) {
+    let mut pending = vec![command];
+    while let Some(command) = pending.pop() {
+        match command {
+            EditorCommand::RestoreSnapshot { snapshot } => {
+                crate::drop_value_iteratively(std::mem::take(&mut snapshot.project_data));
+                crate::drop_value_iteratively(serde_json::Value::Object(std::mem::take(&mut snapshot.metadata)));
+            }
+            EditorCommand::Batch { commands } => pending.extend(commands.iter_mut()),
+            _ => {}
+        }
     }
 }
 

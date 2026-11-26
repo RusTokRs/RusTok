@@ -24,7 +24,7 @@ it then trusts for authorisation decisions, Fly cannot help.
 | CSS selectors built from ids | Allow-list escape, not a deny-list, at every writer: the renderer and the selection rule of the `fly-leptos` canvas | `render.rs::escape_css_attribute` (public) |
 | Component and page ids | `[A-Za-z0-9_.:-]`, non-empty, ≤128 bytes | `validation.rs::validate_identifier` |
 | URLs | One policy module; per-slot scheme allow-list with a shared 2048-byte limit, including stored actions | `safe_url.rs` |
-| Decode depth | Bounded to the parser ceiling; raw embed/rich-text/symbol values, bundle envelopes and snapshot payloads are checked before recursive clone, deserialization or digest computation | `codec.rs::MAXIMUM_DECODE_DEPTH` |
+| Decode depth | Bounded to the parser ceiling; raw embed/rich-text/symbol values, bundle envelopes and snapshot payloads are checked before recursive clone, deserialization or digest computation; editor snapshot commands also preflight retained metadata, including inside batches | `codec.rs::MAXIMUM_DECODE_DEPTH` |
 | Render traversal | Component depth, node count (including opaque children), page/asset/style-rule counts, and raw extension depth checked iteratively before recursive render helpers | `render.rs::ensure_render_component_limits` |
 | Document size | Bounded component/page/asset/style-rule counts and nesting depth | `validation.rs::ValidationLimits`, `DEFAULT_MAXIMUM_PAGES`, `DEFAULT_MAXIMUM_ASSETS`, `DEFAULT_MAXIMUM_STYLE_RULES` |
 | Undo history | Bounded by entry count *and* retained bytes | `command/model.rs::History` |

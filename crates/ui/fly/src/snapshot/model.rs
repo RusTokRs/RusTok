@@ -33,6 +33,15 @@ impl ProjectSnapshot {
         self.content_digest.is_some()
     }
 
+    /// Bound both JSON fields before retaining or cloning the snapshot as a history command.
+    pub(crate) fn validate_retained_depth(&self) -> FlyResult<()> {
+        ensure_depth_within_limit(&self.project_data, MAXIMUM_DECODE_DEPTH)?;
+        for value in self.metadata.values() {
+            ensure_depth_within_limit(value, MAXIMUM_DECODE_DEPTH - 1)?;
+        }
+        Ok(())
+    }
+
     /// Bound the payload depth, verify its digest, decode it and verify its fingerprint.
     ///
     /// The digest is checked before decoding and in constant time: it is the only integrity
@@ -41,7 +50,7 @@ impl ProjectSnapshot {
     pub fn restore(&self) -> FlyResult<crate::ProjectDocument> {
         ensure_depth_within_limit(&self.project_data, MAXIMUM_DECODE_DEPTH)?;
         self.verify_content_digest()?;
-        let document = GrapesJsCodec::decode_value(self.project_data.clone())?;
+        let document = GrapesJsCodec::decode_ref(&self.project_data)?;
         let actual = document.hash().hex();
         if actual != self.project_hash {
             return Err(FlyError::SnapshotHashMismatch {
