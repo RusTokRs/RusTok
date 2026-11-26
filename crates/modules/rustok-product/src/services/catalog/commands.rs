@@ -3,7 +3,8 @@ pub(super) mod variant_axes;
 
 use super::attached_localized_storage;
 use super::concurrency::{
-    ensure_expected_revision, ensure_expected_variant_revision, next_revision,
+    ensure_expected_revision, ensure_expected_variant_revision, ensure_variant_parent_matches,
+    next_revision,
     validate_patch_text_length,
 };
 use super::*;
@@ -1713,6 +1714,7 @@ impl CatalogService {
         let product_id = observed_variant.product_id;
         let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
         let variant = find_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
+        ensure_variant_parent_matches(product_id, variant.product_id)?;
         if input.has_changes() {
             ensure_expected_variant_revision(&variant, input.expected_revision.as_deref())?;
         }
@@ -1928,6 +1930,7 @@ impl CatalogService {
         let product_id = observed_variant.product_id;
         let product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
         let variant = find_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
+        ensure_variant_parent_matches(product_id, variant.product_id)?;
         ensure_expected_variant_revision(&variant, Some(&expected_revision))?;
 
         let count = entities::product_variant::Entity::find()

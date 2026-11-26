@@ -12,6 +12,7 @@
 use crate::CommerceError;
 use crate::CommerceResult;
 use crate::entities;
+use uuid::Uuid;
 
 /// Reserved message prefix of one predecessor-revision refusal.
 pub(crate) const REVISION_CONFLICT_PREFIX: &str = "product revision conflict";
@@ -142,6 +143,22 @@ pub(crate) fn ensure_expected_variant_revision(
     Ok(())
 }
 
+/// Refuses a Variant write when its owner changed after the parent lock key was observed.
+///
+/// Catalog mutations lock Product before Variant. Rechecking the locked child is required
+/// because a concurrent re-parent may commit between the discovery read and the child lock.
+pub(crate) fn ensure_variant_parent_matches(
+    observed_product_id: Uuid,
+    locked_product_id: Uuid,
+) -> CommerceResult<()> {
+    if observed_product_id != locked_product_id {
+        return Err(CommerceError::Conflict(
+            "Product variant owner changed while acquiring the catalog write locks".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn variant_revision_conflict_of(message: &str) -> bool {
     let message = message
         .strip_prefix("Product validation error: ")
@@ -169,6 +186,7 @@ pub(crate) fn variant_revision_conflict_of(message: &str) -> bool {
 mod tests {
     use super::{
         REVISION_CONFLICT_PREFIX, ensure_expected_revision, ensure_expected_variant_revision,
+        ensure_variant_parent_matches,
         expected_variant_revision, next_revision, revision_conflict, revision_conflict_of,
         validate_patch_text_length, variant_revision_conflict_of, CommerceError,
     };
@@ -249,6 +267,16 @@ mod tests {
         );
     }
 
+
+    #[test]
+    fn variant_write_refuses_when_parent_changed_before_child_lock() {
+        let observed_parent = Uuid::from_u128(3);
+        assert!(ensure_variant_parent_matches(observed_parent, observed_parent).is_ok());
+
+        let error = ensure_variant_parent_matches(observed_parent, Uuid::from_u128(4))
+            .expect_err("a moved variant must not be mutated under its former parent lock");
+        assert!(matches!(error, CommerceError::Conflict(_)));
+    }
 
     #[test]
     fn variant_revision_requires_a_positive_database_revision() {
