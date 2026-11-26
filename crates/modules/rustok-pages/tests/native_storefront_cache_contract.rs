@@ -179,8 +179,10 @@ where
     }
 
     let data = load_source().await?;
-    if let (Some(cache_runtime), Some(cache_key)) = (cache_runtime, cache_key) {
-        let _ = cache_runtime.put_json(cache_key, &data).await;
+    if let (Some(cache_runtime), Some(cache_key)) = (cache_runtime, cache_key)
+        && let Err(error) = cache_runtime.put_json(cache_key, &data).await
+    {
+        tracing::debug!(%error, "ignoring cache write error in fail-open storefront test");
     }
     Ok(data)
 }
