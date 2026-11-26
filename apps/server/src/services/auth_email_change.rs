@@ -343,7 +343,7 @@ impl AuthLifecycleService {
         let new_email = request.new_email.clone();
         let mut active: users::ActiveModel = user.clone().into();
         active.email = Set(new_email.clone());
-        let updated_at: chrono::DateTime<chrono::FixedOffset> = transition_at.into();
+        let updated_at: chrono::DateTime<chrono::FixedOffset> = transition_at.clone().into();
         active.email_verified_at = Set(Some(updated_at.clone()));
         active.updated_at = Set(updated_at);
         active.update(&tx).await.map_err(|error| {
