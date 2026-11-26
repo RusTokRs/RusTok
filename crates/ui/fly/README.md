@@ -193,6 +193,12 @@ A missing translation may use an explicit fallback URL, never an arbitrary first
 The runtime pipeline retains the authored route catalog separately from rendered metadata.
 Coverage summary lookup also uses the resolver's chain;
 required translation coverage still requires an exact locale entry, never a fallback.
+Translation IDs are exact, nonempty ASCII alphanumeric, hyphen or underscore identities:
+surrounding whitespace is invalid on authoring and validation, and removal addresses the
+exact stored ID so an invalid imported entry can be removed without deleting a different
+entry. A present non-array `flyTranslations` block is a blocking diagnostic and catalog
+mutations reject it without changing the source document; opaque array entries remain
+preserved.
 A page-targeting interaction requires a unique page ID. Duplicate imported page IDs are
 reported as ambiguous by both link and action validation/materialization, and cannot
 produce an href even when a fallback URL is configured.
