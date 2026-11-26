@@ -63,6 +63,25 @@ fn validate_product_variant_count(
     Ok(())
 }
 
+fn validate_variant_input_bounds(
+    axis_values_count: usize,
+    price_rows_count: usize,
+) -> CommerceResult<()> {
+    if axis_values_count > crate::dto::MAX_VARIANT_AXES {
+        return Err(CommerceError::Validation(format!(
+            "A variant can have at most {} axis assignments",
+            crate::dto::MAX_VARIANT_AXES
+        )));
+    }
+    if price_rows_count > crate::dto::MAX_VARIANT_PRICE_ROWS {
+        return Err(CommerceError::Validation(format!(
+            "A variant can have at most {} price rows",
+            crate::dto::MAX_VARIANT_PRICE_ROWS
+        )));
+    }
+    Ok(())
+}
+
 /// Reject oversized nested Product creation batches before Validate walks them
 /// or Shipping Profile performs any owner IO. DTO attributes repeat these bounds
 /// for generated contracts and callers that validate inputs independently.
@@ -88,18 +107,7 @@ fn validate_create_product_input_bounds(
         )));
     }
     for variant in &input.variants {
-        if variant.axis_values.len() > crate::dto::MAX_VARIANT_AXES {
-            return Err(CommerceError::Validation(format!(
-                "A variant can have at most {} axis assignments",
-                crate::dto::MAX_VARIANT_AXES
-            )));
-        }
-        if variant.prices.len() > crate::dto::MAX_VARIANT_PRICE_ROWS {
-            return Err(CommerceError::Validation(format!(
-                "A variant can have at most {} price rows",
-                crate::dto::MAX_VARIANT_PRICE_ROWS
-            )));
-        }
+        validate_variant_input_bounds(variant.axis_values.len(), variant.prices.len())?;
     }
     Ok(())
 }
@@ -1509,6 +1517,7 @@ impl CatalogService {
     ) -> CommerceResult<VariantResponse> {
         debug!("Creating product variant");
 
+        validate_variant_input_bounds(input.axis_values.len(), input.prices.len())?;
         input
             .validate()
             .map_err(|e| CommerceError::Validation(e.to_string()))?;
@@ -1719,6 +1728,10 @@ impl CatalogService {
     ) -> CommerceResult<VariantResponse> {
         debug!("Updating product variant");
 
+        validate_variant_input_bounds(
+            input.axis_values.as_ref().map_or(0, Vec::len),
+            input.prices.as_ref().map_or(0, Vec::len),
+        )?;
         input
             .validate()
             .map_err(|e| CommerceError::Validation(e.to_string()))?;
@@ -3343,6 +3356,16 @@ mod tests {
             validate_create_product_input_bounds(&input),
             Err(CommerceError::Validation(_))
         ));
+    }
+
+    #[test]
+    fn variant_input_nested_bounds_are_checked_before_validation() {
+        assert!(validate_variant_input_bounds(
+            crate::dto::MAX_VARIANT_AXES,
+            crate::dto::MAX_VARIANT_PRICE_ROWS
+        ).is_ok());
+        assert!(validate_variant_input_bounds(crate::dto::MAX_VARIANT_AXES + 1, 0).is_err());
+        assert!(validate_variant_input_bounds(0, crate::dto::MAX_VARIANT_PRICE_ROWS + 1).is_err());
     }
 
     #[test]
