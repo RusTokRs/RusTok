@@ -412,7 +412,10 @@ readers before using the new protocol. Persistent readers reject oversized recor
 duplicate operation identities, malformed receipt hashes, out-of-order or future
 receipt generations, and prepared reservations inconsistent with the current
 generation or record format. File and KV reads also verify the embedded token
-against the requested storage key before serving the record.
+against the requested storage key before serving the record. Restored controllers
+must match the document fingerprint and core/UI revision projections, including
+dirty and conflict flags. These consistency checks are not a cryptographic
+authentication mechanism for stored drafts.
 
 Durable draft commits stage candidates outside the memory cache and publish
 only after persistent CAS. Loads return the owner-scoped backend snapshot,

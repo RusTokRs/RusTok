@@ -129,7 +129,38 @@ impl PersistentDraftSessionRecord {
         let record: Self = serde_json::from_value(value)
             .map_err(|error| SsrDraftSessionError::Serialization(error.to_string()))?;
         record.validate_receipt_ledger()?;
+        record.validate_controller_revision()?;
         Ok(record)
+    }
+
+    /// The document and core revision own the working state. Persisted UI
+    /// projections must agree rather than silently overriding save admission.
+    fn validate_controller_revision(&self) -> Result<(), SsrDraftSessionError> {
+        let editor = self.controller.editor();
+        let revision = editor.revision();
+        if fly::ProjectHash::try_from_document(editor.document()) != Some(revision.project_hash) {
+            return Err(SsrDraftSessionError::Serialization(
+                "draft document does not match its recorded project fingerprint".to_string(),
+            ));
+        }
+        let ui = &self.controller.ui().state.dirty;
+        if ui.project_hash != Some(revision.project_hash)
+            || ui.command_sequence != revision.command_sequence
+            || ui.dirty != revision.dirty
+            || ui.save_failed != revision.save_failed
+            || ui.save_conflict != revision.save_conflict
+            || ui.last_acknowledged_revision != revision.last_acknowledged_revision
+        {
+            return Err(SsrDraftSessionError::Serialization(
+                "draft UI revision does not match the core revision".to_string(),
+            ));
+        }
+        if revision.save_conflict && (!revision.dirty || !revision.save_failed) {
+            return Err(SsrDraftSessionError::Serialization(
+                "draft save conflict has inconsistent save flags".to_string(),
+            ));
+        }
+        Ok(())
     }
 
     fn validate_receipt_ledger(&self) -> Result<(), SsrDraftSessionError> {
@@ -5269,6 +5300,37 @@ mod tests {
             }
             assert!(matches!(decode(&corrupted), Err(SsrDraftSessionError::Serialization(_))), "{path}");
         }
+    }
+
+    #[test]
+    fn persisted_drafts_reject_inconsistent_document_and_revision_projections() {
+        let record = record_json("tokRevision01", 1, 4_000_000_000);
+        let decode = |value: &Value| {
+            PersistentDraftSessionRecord::decode(&serde_json::to_vec(value).expect("json"))
+        };
+        assert!(decode(&record).is_ok());
+        let mut wrong_hash = record.clone();
+        let hash = wrong_hash["controller"]["editor"]["revision"]["project_hash"]
+            .as_u64().expect("project hash");
+        wrong_hash["controller"]["editor"]["revision"]["project_hash"] = json!(hash ^ 1);
+        wrong_hash["controller"]["ui"]["state"]["dirty"]["project_hash"] = json!(hash ^ 1);
+        assert!(matches!(decode(&wrong_hash), Err(SsrDraftSessionError::Serialization(_))));
+
+        for (field, value) in [
+            ("command_sequence", json!(1)),
+            ("dirty", json!(true)),
+            ("save_conflict", json!(true)),
+            ("save_failed", json!(true)),
+            ("last_acknowledged_revision", json!("different")),
+        ] {
+            let mut corrupted = record.clone();
+            corrupted["controller"]["ui"]["state"]["dirty"][field] = value;
+            assert!(matches!(decode(&corrupted), Err(SsrDraftSessionError::Serialization(_))), "{field}");
+        }
+        let mut invalid_conflict = record.clone();
+        invalid_conflict["controller"]["editor"]["revision"]["save_conflict"] = json!(true);
+        invalid_conflict["controller"]["ui"]["state"]["dirty"]["save_conflict"] = json!(true);
+        assert!(matches!(decode(&invalid_conflict), Err(SsrDraftSessionError::Serialization(_))));
     }
 
     #[test]
