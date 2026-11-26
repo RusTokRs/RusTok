@@ -10,7 +10,7 @@ use sea_orm::{
 };
 
 use crate::auth::{
-    AuthConfig, encode_access_token, generate_refresh_token, hash_password_async,
+    AuthConfig, generate_refresh_token, hash_password_async,
     hash_refresh_token, normalize_display_name, normalize_email, password_hash_needs_rehash,
     validate_password_policy, verify_password_async, MAX_PASSWORD_LENGTH_BYTES,
 };
@@ -45,20 +45,28 @@ pub struct AuthTokens {
 struct PreparedSessionTokens {
     access_token: String,
     refresh_token: String,
-    expires_in: u64,
+    access_deadline: chrono::DateTime<Utc>,
     refresh_deadline: chrono::DateTime<Utc>,
     effective_role: rustok_core::UserRole,
     permissions: Vec<String>,
 }
 
 impl PreparedSessionTokens {
+    fn ensure_live(&self, now: chrono::DateTime<Utc>) -> Result<(), AuthLifecycleError> {
+        AuthLifecycleService::remaining_refresh_lifetime(self.refresh_deadline, now)?;
+        AuthLifecycleService::remaining_refresh_lifetime(self.access_deadline, now)?;
+        Ok(())
+    }
+
     fn finish(self, now: chrono::DateTime<Utc>) -> Result<AuthTokens, AuthLifecycleError> {
         let refresh_expires_in =
             AuthLifecycleService::remaining_refresh_lifetime(self.refresh_deadline, now)?;
+        let expires_in =
+            AuthLifecycleService::remaining_refresh_lifetime(self.access_deadline, now)?;
         Ok(AuthTokens {
             access_token: self.access_token,
             refresh_token: self.refresh_token,
-            expires_in: self.expires_in,
+            expires_in,
             refresh_expires_in,
             effective_role: self.effective_role,
             permissions: self.permissions,
@@ -238,6 +246,19 @@ const LOGIN_LOCKOUT_MINUTES: i64 = 15;
 const REFRESH_REUSE_GRACE_SECONDS: i64 = 30;
 
 impl AuthLifecycleService {
+    /// Fresh DB corroboration on the same connection, then the live JWT gate.
+    async fn credential_now(db: &impl ConnectionTrait, config: &AuthConfig)
+        -> Result<chrono::DateTime<Utc>, AuthLifecycleError>
+    {
+        rustok_auth::application_clock::verified_now(db).await?;
+        Ok(config.credential_now()?)
+    }
+
+    fn response_now(config: &AuthConfig) -> Result<chrono::DateTime<Utc>, AuthLifecycleError> {
+        rustok_auth::application_clock::check_local()?;
+        Ok(config.credential_now()?)
+    }
+
     /// Acquire the tenant-scoped user mutation fence before reading the current
     /// row. PostgreSQL/MySQL use a row lock; SQLite reserves its writer before
     /// the read so a deferred read-to-write upgrade cannot race another user
@@ -582,10 +603,10 @@ impl AuthLifecycleService {
         )
         .await?;
 
-        let tokens = prepared_tokens.finish(Utc::now())?;
+        prepared_tokens.ensure_live(Self::credential_now(&tx, config).await?)?;
         tx.commit().await.map_err(AuthLifecycleError::from)?;
 
-        Ok((user, tokens))
+        Ok((user, prepared_tokens.finish(Self::response_now(config)?)?))
     }
 
     pub async fn login_runtime(
@@ -622,6 +643,8 @@ impl AuthLifecycleService {
         require_email_verification: bool,
     ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
         let db = ctx.db();
+        // Gate before lookup so a clock outage cannot distinguish known emails.
+        let admitted_at = Self::credential_now(db, config).await?;
         // Lookup-only canonicalization: login must not reject malformed
         // input with a distinct validation error (that would be an account
         // enumeration oracle), it simply finds no user and fails as
@@ -648,7 +671,7 @@ impl AuthLifecycleService {
         // so verifying the real hash here would create an unlimited password
         // oracle (InvalidCredentials vs AccountLocked). Match the unknown-user
         // path with the same dummy hash and generic failure.
-        if Self::is_login_locked(&user) {
+        if Self::is_login_locked_at(&user, admitted_at) {
             crate::auth::mask_auth_lookup_timing()
                 .await
                 .map_err(AuthLifecycleError::from)?;
@@ -709,7 +732,8 @@ impl AuthLifecycleService {
         if locked_user.password_hash != user.password_hash {
             return Err(AuthLifecycleError::InvalidCredentials);
         }
-        if Self::is_login_locked(&locked_user) {
+        let now = Self::credential_now(&txn, config).await?;
+        if Self::is_login_locked_at(&locked_user, now) {
             // The lock may have been activated after the initial user lookup.
             // Keep the result identical to the wrong-password path.
             return Err(AuthLifecycleError::InvalidCredentials);
@@ -722,7 +746,6 @@ impl AuthLifecycleService {
             return Err(AuthLifecycleError::EmailNotVerified);
         }
 
-        let now = Utc::now();
         let mut user_active: users::ActiveModel = locked_user.into();
         if let Some(upgraded_password_hash) = upgraded_password_hash {
             user_active.password_hash = Set(upgraded_password_hash);
@@ -747,12 +770,13 @@ impl AuthLifecycleService {
             DomainEvent::UserLoggedIn { user_id: user.id },
         )
         .await?;
-        let tokens = prepared_tokens.finish(Utc::now())?;
+        prepared_tokens.ensure_live(Self::credential_now(&txn, config).await?)?;
         txn.commit().await.map_err(AuthLifecycleError::from)?;
 
-        Ok((user, tokens))
+        Ok((user, prepared_tokens.finish(Self::response_now(config)?)?))
     }
 
+    #[cfg(test)]
     fn is_login_locked(user: &users::Model) -> bool {
         Self::is_login_locked_at(user, Utc::now())
     }
@@ -779,21 +803,24 @@ impl AuthLifecycleService {
         let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
         let user =
             Self::find_user_for_update_in_tx(&tx, tenant_id, observed_user.id).await?;
+        let now = rustok_auth::application_clock::verified_now(&tx).await?;
         if let Some(user) = user
-            .filter(|u| u.password_hash == observed_user.password_hash && !Self::is_login_locked(u))
+            .filter(|u| u.password_hash == observed_user.password_hash && !Self::is_login_locked_at(u, now))
         {
             let attempts = user.failed_login_count.saturating_add(1);
             let mut active: users::ActiveModel = user.into();
             if attempts >= MAX_FAILED_LOGIN_ATTEMPTS {
                 active.failed_login_count = Set(0);
                 active.locked_until = Set(Some(
-                    (Utc::now() + Duration::minutes(LOGIN_LOCKOUT_MINUTES)).into(),
+                    now.checked_add_signed(Duration::minutes(LOGIN_LOCKOUT_MINUTES))
+                        .ok_or(AuthLifecycleError::Internal(Error::InternalServerError))?.into(),
                 ));
             } else {
                 active.failed_login_count = Set(attempts);
             }
             active.update(&tx).await.map_err(AuthLifecycleError::from)?;
         }
+        rustok_auth::application_clock::verified_now(&tx).await?;
         tx.commit().await.map_err(AuthLifecycleError::from)?;
         Ok(())
     }
@@ -1004,6 +1031,7 @@ impl AuthLifecycleService {
         retry_key: Option<&AuthRefreshRetryKey>,
         expected_session_id: Option<uuid::Uuid>,
     ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
+        Self::credential_now(db, config).await?;
         let token_hash = hash_refresh_token(refresh_token);
         // Current and historical digests are only routing hints until the
         // tenant-scoped subject and session have been reloaded under locks.
@@ -1052,13 +1080,14 @@ impl AuthLifecycleService {
             Some(_) => return Err(AuthLifecycleError::InvalidRefreshToken),
             None => {
                 let eligible = Self::detect_refresh_reuse_in_tx(
-                    &txn, tenant_id, observed.id, user.id, &token_hash,
+                    &txn, config, tenant_id, observed.id, user.id, &token_hash,
                 ).await?;
                 match eligible {
                     Some((session, rotated_at)) => (session, Some(rotated_at)),
                     None => {
                         // Commit a possible lineage revocation before reporting
                         // an invalid historical credential.
+                        Self::credential_now(&txn, config).await?;
                         txn.commit().await.map_err(AuthLifecycleError::from)?;
                         return Err(AuthLifecycleError::InvalidRefreshToken);
                     }
@@ -1069,7 +1098,8 @@ impl AuthLifecycleService {
         if expected_session_id.is_some_and(|id| id != session.id) {
             return Err(AuthLifecycleError::SessionLineageMismatch);
         }
-        if !session.is_active() {
+        let now = Self::credential_now(&txn, config).await?;
+        if !session.is_active_at(now) {
             return Err(AuthLifecycleError::SessionExpired);
         }
         if !user.is_active() {
@@ -1079,7 +1109,6 @@ impl AuthLifecycleService {
             return Err(AuthLifecycleError::EmailNotVerified);
         }
 
-        let now = Utc::now();
         let absolute_deadline = session.absolute_deadline();
         if now >= absolute_deadline || now >= session.expires_at {
             return Err(AuthLifecycleError::SessionExpired);
@@ -1131,7 +1160,7 @@ impl AuthLifecycleService {
 
         // History lookups can outlast the observed session or retry window.
         // Recheck at the transition, not at a timestamp taken before IO.
-        let now = Utc::now();
+        let now = Self::credential_now(&txn, config).await?;
         if now >= absolute_deadline || now >= session.expires_at {
             return Err(AuthLifecycleError::SessionExpired);
         }
@@ -1169,28 +1198,30 @@ impl AuthLifecycleService {
         let effective_role = Self::resolve_effective_role(&txn, tenant_id, user.id).await?;
         let effective_permissions =
             Self::resolve_effective_permission_strings(&txn, tenant_id, user.id).await?;
-        Self::ensure_refresh_recovery_within_grace(recovery_rotation, Utc::now())?;
-        let access_token = encode_access_token(
-            config, user.id, tenant_id, effective_role.clone(), session_id,
-        ).map_err(AuthLifecycleError::from)?;
+        Self::ensure_refresh_recovery_within_grace(
+            recovery_rotation, Self::credential_now(&txn, config).await?,
+        )?;
+        let issued = rustok_auth::issue_direct_access_token(
+            config, user.id, tenant_id, effective_role.clone(), session_id, Some(expires_at),
+        )?;
         // Do not disclose a recovered credential after the exclusive window
         // closes during RBAC or signing. This operation was admitted during
         // grace; only a new historical presentation outside grace revokes.
-        let finished_at = Utc::now();
+        let finished_at = Self::credential_now(&txn, config).await?;
         Self::ensure_refresh_recovery_within_grace(recovery_rotation, finished_at)?;
         let tokens = PreparedSessionTokens {
-            access_token,
+            access_token: issued.token,
             refresh_token: new_refresh_token,
-            expires_in: config.access_expiration,
+            access_deadline: issued.expires_at,
             refresh_deadline: expires_at,
             effective_role,
             permissions: effective_permissions,
         };
         // Reject dead credentials before committing, but account for commit
         // latency too. A recovered operation does not change the lineage.
-        Self::remaining_refresh_lifetime(expires_at, finished_at)?;
+        tokens.ensure_live(finished_at)?;
         txn.commit().await.map_err(AuthLifecycleError::from)?;
-        let committed_at = Utc::now();
+        let committed_at = Self::response_now(config)?;
         Self::ensure_refresh_recovery_within_grace(recovery_rotation, committed_at)?;
         Ok((user, tokens.finish(committed_at)?))
     }
@@ -1220,6 +1251,7 @@ impl AuthLifecycleService {
     /// durably before the caller reports an invalid credential.
     async fn detect_refresh_reuse_in_tx(
         txn: &DatabaseTransaction,
+        config: &AuthConfig,
         tenant_id: uuid::Uuid,
         session_id: uuid::Uuid,
         user_id: uuid::Uuid,
@@ -1238,10 +1270,14 @@ impl AuthLifecycleService {
         let Some(session) = Self::find_session_by_id_for_update_in_tx(txn, tenant_id, session_id).await? else {
             return Ok(None);
         };
-        if session.user_id != user_id || !session.is_active() {
+        let now = Self::credential_now(txn, config).await?;
+        if session.user_id != user_id || !session.is_active_at(now) {
             return Ok(None);
         }
-        let now = Utc::now();
+        if history.rotated_at.is_some_and(|at| at.with_timezone(&Utc) > now) {
+            // Future rotation evidence cannot establish elapsed grace.
+            return Err(AuthLifecycleError::Internal(Error::InternalServerError));
+        }
         if let Some(rotated_at) = history.rotated_at
             && Self::refresh_rotation_within_grace(Some(rotated_at), now)
         {
@@ -1626,13 +1662,12 @@ impl AuthLifecycleService {
         user_agent: Option<String>,
     ) -> std::result::Result<AuthTokens, AuthLifecycleError> {
         let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
-        let tokens = Self::create_session_and_tokens_in_tx(
+        let prepared = Self::create_session_and_tokens_in_tx(
             &tx, config, tenant_id, user, ip_address, user_agent,
-        )
-        .await?
-        .finish(Utc::now())?;
+        ).await?;
+        prepared.ensure_live(Self::credential_now(&tx, config).await?)?;
         tx.commit().await.map_err(AuthLifecycleError::from)?;
-        Ok(tokens)
+        prepared.finish(Self::response_now(config)?)
     }
 
     async fn create_session_and_tokens_in_tx<C>(
@@ -1646,34 +1681,37 @@ impl AuthLifecycleService {
     where
         C: ConnectionTrait,
     {
-        let now = Utc::now();
+        let now = Self::credential_now(db, config).await?;
         let refresh_token = generate_refresh_token().map_err(AuthLifecycleError::from)?;
         let token_hash = hash_refresh_token(&refresh_token);
         let expires_at = Self::session_expiration(now, config.refresh_expiration)?;
-        let session = sessions::ActiveModel::new(
+        Self::remaining_refresh_lifetime(expires_at, now)?;
+        let mut model = sessions::ActiveModel::new(
             tenant_id, user.id, token_hash, expires_at, ip_address, user_agent,
-        )
-        .insert(db)
-        .await
-        .map_err(AuthLifecycleError::from)?;
+        );
+        // Keep creation and absolute cap on the same checked timeline,
+        // not the database default or a second unchecked wall sample.
+        model.created_at = Set(now.into());
+        model.updated_at = Set(now.into());
+        model.absolute_expires_at = Set(Some(Self::session_expiration(
+            now, (sessions::SESSION_ABSOLUTE_LIFETIME_DAYS as u64) * 86_400,
+        )?.into()));
+        let session = model.insert(db).await.map_err(AuthLifecycleError::from)?;
 
         let effective_role = Self::resolve_effective_role(db, tenant_id, user.id).await?;
         let effective_permissions =
             Self::resolve_effective_permission_strings(db, tenant_id, user.id).await?;
-        let access_token = encode_access_token(
-            config,
-            user.id,
-            tenant_id,
-            effective_role.clone(),
-            session.id,
-        )
-        .map_err(AuthLifecycleError::from)?;
+        let refresh_deadline = session.expires_at.with_timezone(&Utc).min(session.absolute_deadline());
+        Self::remaining_refresh_lifetime(refresh_deadline, Self::credential_now(db, config).await?)?;
+        let issued = rustok_auth::issue_direct_access_token(
+            config, user.id, tenant_id, effective_role.clone(), session.id, Some(refresh_deadline),
+        )?;
 
         Ok(PreparedSessionTokens {
-            access_token,
+            access_token: issued.token,
             refresh_token,
-            expires_in: config.access_expiration,
-            refresh_deadline: session.expires_at.with_timezone(&Utc).min(session.absolute_deadline()),
+            access_deadline: issued.expires_at,
+            refresh_deadline,
             effective_role,
             permissions: effective_permissions,
         })
@@ -1811,7 +1849,7 @@ mod tests {
         AUTH_CHANGE_PASSWORD_SESSIONS_REVOKED_TOTAL, AUTH_FLOW_INCONSISTENCY_TOTAL,
         AUTH_LOGIN_INACTIVE_USER_ATTEMPT_TOTAL, AUTH_PASSWORD_RESET_SESSIONS_REVOKED_TOTAL,
         AuthLifecycleError, AuthLifecycleMetricsSnapshot, AuthLifecycleService, Error,
-        REFRESH_REUSE_GRACE_SECONDS,
+        PreparedSessionTokens, REFRESH_REUSE_GRACE_SECONDS,
     };
     use crate::auth::{
         AuthConfig, MAX_PASSWORD_LENGTH_BYTES, decode_access_token, hash_password,
@@ -2145,6 +2183,23 @@ mod tests {
                 Err(AuthLifecycleError::SessionExpired)
             ));
         }
+    }
+
+    #[test]
+    fn prepared_session_reports_remaining_signed_and_refresh_lifetimes() {
+        let now = Utc::now();
+        let make = || PreparedSessionTokens {
+            access_token: "access".to_string(),
+            refresh_token: "refresh".to_string(),
+            access_deadline: now + Duration::seconds(5),
+            refresh_deadline: now + Duration::seconds(10),
+            effective_role: rustok_core::UserRole::Customer,
+            permissions: vec![],
+        };
+        let tokens = make().finish(now + Duration::milliseconds(2100)).unwrap();
+        assert_eq!(tokens.expires_in, 2);
+        assert_eq!(tokens.refresh_expires_in, 7);
+        assert!(matches!(make().finish(now + Duration::seconds(5)), Err(AuthLifecycleError::SessionExpired)));
     }
 
     #[tokio::test]
@@ -3374,6 +3429,40 @@ mod tests {
             session_refresh_history::Entity::find_by_id(first_hash)
                 .one(&db).await.expect("read history after purge").is_none()
         );
+    }
+
+    #[tokio::test]
+    async fn future_refresh_rotation_evidence_does_not_revoke_lineage() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Future rotation tenant", "future-rotation")
+            .insert(&db).await.unwrap();
+        let user = users::ActiveModel::new(tenant.id, "future-rotation@example.com", "hash")
+            .insert(&db).await.unwrap();
+        let current = "a1".repeat(32);
+        let previous = "b2".repeat(32);
+        let future = Utc::now() + Duration::minutes(1);
+        let mut model = sessions::ActiveModel::new(
+            tenant.id, user.id, hash_refresh_token(&current),
+            Utc::now() + Duration::hours(1), None, None,
+        );
+        model.previous_token_hash = Set(Some(hash_refresh_token(&previous)));
+        model.previous_token_revoked_at = Set(Some(future.into()));
+        let session = model.insert(&db).await.unwrap();
+        session_refresh_history::ActiveModel {
+            token_hash: Set(hash_refresh_token(&previous)),
+            session_id: Set(session.id),
+            rotated_at: Set(Some(future.into())),
+        }.insert(&db).await.unwrap();
+        let config = test_auth_config("future-rotation-secret", 600, 3600);
+        let result = AuthLifecycleService::refresh_with_config_db(
+            &db, &config, tenant.id, &previous, false, None, Some(session.id),
+        ).await;
+        assert!(matches!(result, Err(AuthLifecycleError::Internal(_))));
+        let persisted = sessions::Entity::find_by_id(session.id)
+            .one(&db).await.unwrap().unwrap();
+        assert_eq!(persisted.token_hash, session.token_hash);
+        assert_eq!(persisted.previous_token_hash, session.previous_token_hash);
+        assert!(persisted.revoked_at.is_none());
     }
 
     #[test]

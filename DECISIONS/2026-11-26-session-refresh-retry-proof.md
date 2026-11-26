@@ -59,7 +59,11 @@ cross-tenant lookups fail closed. Store and issuance failures propagate.
 Recovery rechecks immutable rotation evidence after history lookup, before
 signing, before commit preparation and after commit. A retry admitted within
 grace that outlasts the window conflicts without revoking the lineage; a new
-historical presentation outside grace still revokes it. The server refuses a
+historical presentation outside grace still revokes it, provided fresh
+application DB and live credential-clock observations support that decision.
+A future rotation timestamp is inconclusive, not theft evidence, and cannot
+revoke the live lineage. Both refresh and exact signed access lifetimes are
+checked before commit and recomputed at response preparation. The server refuses a
 recovery result outside grace at its final response preparation boundary;
 network delivery may still be delayed. The remaining refresh lifetime is
 recomputed after commit, so a committed rotation can return an expiry error

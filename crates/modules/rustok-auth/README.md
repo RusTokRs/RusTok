@@ -161,7 +161,7 @@ independent clock fault-injection and suspend evidence remain pending.
 The Auth-owned retention operation also corroborates host/application DB time
 at both transaction boundaries, retains the same session history for worker
 and CLI, and refuses deletion on time uncertainty. OAuth credential mutations,
-standalone consent grants and the common access extractor now corroborate
+standalone consent grants, direct login/registration/refresh and the common access extractor now corroborate
 application DB time with that same process-local guard; independent JWT
 authority remains separate.
 Independent production JWT authority and explicit offline import are source-implemented;

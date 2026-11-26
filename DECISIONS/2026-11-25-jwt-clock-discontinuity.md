@@ -79,8 +79,14 @@ another fallible DB read. Explicit security-reducing mutations are unchanged.
 A database fault does not mutate or fence the independent JWT authority.
 This assumes one trusted application primary per process. It does not order
 DB observations across independent processes or rule out a rollback within
-the allowed skew or between observations. Other direct login/refresh and
-recovery mutation boundaries remain follow-up work.
+the allowed skew or between observations. Direct registration/login and
+refresh now use the same clock checks at admission, locked transitions and
+pre-commit, plus local post-commit checks. Direct access expiry is bounded by
+the persisted session deadline before signing, and response TTLs account for
+commit latency. Failed login bookkeeping uses corroborated application time
+without requiring signing authority. Future refresh rotation evidence is
+inconclusive and cannot revoke a lineage. Other recovery mutation boundaries
+remain follow-up work.
 
 ## Destructive retention extension
 

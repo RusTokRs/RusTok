@@ -693,7 +693,16 @@ assuming a single trusted application primary; it is independent of the
 JWT authority latch. Slow/inconclusive DB observations deny the operation
 without asserting a discontinuity; observed faults remain sticky. This is
 not durable rollback protection across restarts or independent replicas.
-Direct login/refresh and other recovery mutations still require coverage.
+Direct registration/login/session creation and refresh/recovery now use the
+same application DB observer and live credential clock at the mutation and
+pre-commit boundaries. Login lockout admission uses checked time; failed
+attempt bookkeeping corroborates DB time without requiring a signing lease.
+Future session creation or rotation evidence cannot authorize refresh or
+trigger a time-based replay revoke. New session timestamps share the checked
+host timeline. Direct access signing returns its exact NumericDate deadline,
+bounded by the persisted session expiry and absolute cap. Both response
+lifetimes are measured after commit, and a closed local gate or elapsed
+deadline suppresses publication. Other recovery mutations still require coverage.
 
 Auth retention is now owned by `rustok_auth::retention`. Both the daily sweep
 and session-only CLI corroborate fresh application DB wall time with bounded

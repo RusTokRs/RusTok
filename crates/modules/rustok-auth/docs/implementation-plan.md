@@ -346,8 +346,13 @@ host timestamp; future-dated access registrations fail closed. Retention and
 credential paths share one process-local application-clock latch, independent
 of JWT signing authority. Retention retains the fixed conservative cutoff;
 the post-commit response checks the local latch without another DB round trip.
-Direct login/refresh, other recovery mutations, durable cross-restart and
-cross-replica rollback remain open. Independent processes require reliable
+Direct login/registration and refresh/recovery now sample the application
+DB and live credential clocks under the existing mutation fences and before
+commit; login failure counters use corroborated time. Direct access JWT expiry
+is bounded by the durable session and returned exactly from signing; both
+response lifetimes are recomputed after commit. Future rotation timestamps
+cannot classify replay as theft. Other recovery mutations, durable cross-restart
+and cross-replica rollback remain open. Independent processes require reliable
 time and a single trusted primary. Source regressions unrun.
 
 ## OAuth family lifetime and replay evidence (source only)
