@@ -203,3 +203,12 @@ lock contention and host/proxy body limits; verify external selected providers a
 links/projection replay. Full UI typing currently remains blocked by missing dependency/types
 and errors outside the checked Product surfaces. No storefront selector cutover, attribute/option
 retirement or destructive legacy cleanup is part of this slice; no historical migration changed.
+
+## Deferred combination identity and Variant revision
+
+The PostgreSQL option-row maintenance trigger computes the canonical combination identity at
+transaction end. It updates `product_variants` only when the stored identity differs from the
+computed value. Product writes may already store the complete identity before `COMMIT`; deferred
+triggers must not rewrite that row again, because each row update advances the Variant business
+revision and Index watermark. This keeps the revision returned and recorded by a Product command
+equal to the committed predecessor expected by the next edit.
