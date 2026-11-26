@@ -127,3 +127,8 @@ rather than reapplying the original command. Unknown outcomes keep preparation.
 
 If the final revision observation or checkpoint completion fails, the transport
 returns an unknown outcome instead of treating the original write as rejected.
+The hydrated facade also preserves unknown outcomes for server-function
+transport/decoding failures and for failed post-save observations. A save
+acknowledgement must identify the requested readable page and its persisted
+revision before the surrounding page state is updated. An explicit outer
+save classification takes precedence over nested transport error text.

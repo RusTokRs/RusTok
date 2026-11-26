@@ -75,11 +75,15 @@ impl PageBuilderAdminFacadeError {
     /// Rehydrates stable save codes from server-function suffixes and GraphQL business errors.
     pub fn new(message: impl Into<String>) -> Self {
         let message = message.into();
-        let stable_code = if message.contains("PAGE_DOCUMENT_REVISION_CONFLICT") {
+        // An explicit outer save code is authoritative. Otherwise an unknown
+        // outcome must win over a nested GraphQL revision-conflict message.
+        let stable_code = if message.ends_with(" (PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN)") {
+            Some("PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN")
+        } else if message.ends_with(" (REVISION_CONFLICT)") {
             Some("REVISION_CONFLICT")
         } else if message.contains("PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN") {
             Some("PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN")
-        } else if message.ends_with(" (REVISION_CONFLICT)") {
+        } else if message.contains("PAGE_DOCUMENT_REVISION_CONFLICT") {
             Some("REVISION_CONFLICT")
         } else {
             None
@@ -151,6 +155,28 @@ mod tests {
             error.stable_code.as_deref(),
             Some("PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN")
         );
+    }
+
+    #[test]
+    fn outer_save_code_wins_over_nested_conflict_text() {
+        let nested = "PAGE_DOCUMENT_REVISION_CONFLICT: receipt observation failed";
+        let wrapped = PageBuilderAdminFacadeError::with_stable_code(
+            nested,
+            "PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN",
+        );
+        let restored = PageBuilderAdminFacadeError::new(format!("Server function error: {wrapped}"));
+        assert_eq!(restored.stable_code.as_deref(), Some("PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN"));
+        assert_eq!(restored.message, format!("Server function error: {nested}"));
+
+        let graphql = PageBuilderAdminFacadeError::new(format!(
+            "PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN: {nested}"
+        ));
+        assert_eq!(graphql.stable_code.as_deref(), Some("PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN"));
+
+        let explicit_conflict = PageBuilderAdminFacadeError::new(
+            "Earlier PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN resolved (REVISION_CONFLICT)",
+        );
+        assert_eq!(explicit_conflict.stable_code.as_deref(), Some("REVISION_CONFLICT"));
     }
 
     #[test]
