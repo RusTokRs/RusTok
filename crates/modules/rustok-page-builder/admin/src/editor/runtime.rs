@@ -760,7 +760,8 @@ impl AdminEditorRuntime {
                         }
                     }
                     Some(Err(error)) => {
-                        let completion = self.finish_failed_request(capability, save_attempt.as_ref());
+                        let completion =
+                            self.finish_failed_request(capability, save_attempt.as_ref());
                         self.report_completion_failure(error, completion);
                     }
                     None => self.fail(
@@ -773,7 +774,8 @@ impl AdminEditorRuntime {
                     "Page Builder facade returned `{}` for a `{capability}` request",
                     response.capability()
                 );
-                let completion = self.finish_failed_request(capability, save_attempt.as_ref());
+                let completion =
+                            self.finish_failed_request(capability, save_attempt.as_ref());
                 self.report_completion_failure(message, completion);
             }
             Err(error) => {
@@ -939,7 +941,11 @@ mod tests {
     fn publish_conflict_without_attempt_is_reported_as_an_invariant_error() {
         let runtime = runtime();
         let error = runtime
-            .finish_conflicted_request(BuilderCapabilityKind::Publish, None, "revision conflict")
+            .finish_conflicted_request(
+                BuilderCapabilityKind::Publish,
+                None,
+                "revision conflict",
+            )
             .expect_err("a publish conflict must be correlated to its save attempt");
         assert!(error.contains("tracked save attempt"));
     }

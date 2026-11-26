@@ -41,7 +41,11 @@ pub const SUPPORTED_PSEUDO_CLASSES: &[&str] = &[
 /// pseudo-classes and pseudo-elements. This is the single gate every layer (codec identity,
 /// renderer, static publish policy) must use so the layers cannot drift apart.
 pub fn normalize_pseudo_class(value: &str) -> Option<String> {
-    let normalized = value.trim().trim_start_matches(':').to_ascii_lowercase();
+    let value = value.trim();
+    let normalized = value.strip_prefix(':').unwrap_or(value).to_ascii_lowercase();
+    if normalized.starts_with(':') {
+        return None;
+    }
     SUPPORTED_PSEUDO_CLASSES
         .contains(&normalized.as_str())
         .then_some(normalized)
@@ -241,9 +245,12 @@ pub(crate) fn remap_component_style_rule(raw: &mut Value, mapping: &BTreeMap<Str
     object.remove("id");
 
     fn remap_selector_name(name: &mut String, mapping: &BTreeMap<String, String>) {
-        let id = name.trim_start_matches('#');
+        let id = name.strip_prefix('#').unwrap_or(name);
+        if id.is_empty() || id.starts_with('#') {
+            return;
+        }
         if let Some(replacement) = mapping.get(id) {
-            let prefix = &name[..name.len() - id.len()];
+            let prefix = if name.starts_with('#') { "#" } else { "" };
             *name = format!("{prefix}{replacement}");
         }
     }
@@ -254,16 +261,21 @@ pub(crate) fn remap_component_style_rule(raw: &mut Value, mapping: &BTreeMap<Str
         }
         Some(Value::Array(selectors)) => {
             for selector in selectors {
-                let Some(selector) = selector.as_object_mut() else {
-                    continue;
-                };
-                let is_id = selector.get("type").and_then(Value::as_u64) == Some(2)
-                    || selector
-                        .get("name")
-                        .and_then(Value::as_str)
-                        .is_some_and(|name| name.starts_with('#'));
-                if is_id && let Some(Value::String(name)) = selector.get_mut("name") {
-                    remap_selector_name(name, mapping);
+                match selector {
+                    Value::String(name) if name.starts_with('#') => {
+                        remap_selector_name(name, mapping);
+                    }
+                    Value::Object(selector) => {
+                        let is_id = selector.get("type").and_then(Value::as_u64) == Some(2)
+                            || selector
+                                .get("name")
+                                .and_then(Value::as_str)
+                                .is_some_and(|name| name.starts_with('#'));
+                        if is_id && let Some(Value::String(name)) = selector.get_mut("name") {
+                            remap_selector_name(name, mapping);
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
@@ -506,18 +518,32 @@ fn selector_names(value: Option<&Value>) -> Vec<String> {
     }
 }
 
+fn component_id_from_selector_name(name: &str, selector_type: Option<u64>) -> Option<String> {
+    let component_id = if let Some(component_id) = name.strip_prefix('#') {
+        component_id
+    } else if selector_type == Some(2) {
+        name
+    } else {
+        return None;
+    };
+    if component_id.is_empty() || component_id.starts_with('#') {
+        return None;
+    }
+    Some(component_id.to_string())
+}
+
 fn component_id_from_selectors(value: Option<&Value>) -> Option<String> {
     match value {
-        Some(Value::Array(selectors)) => selectors.iter().find_map(|selector| {
-            let object = selector.as_object()?;
-            let name = object.get("name")?.as_str()?;
-            let selector_type = object.get("type").and_then(Value::as_u64);
-            (selector_type == Some(2) || name.starts_with('#'))
-                .then(|| name.trim_start_matches('#').to_string())
+        Some(Value::Array(selectors)) => selectors.iter().find_map(|selector| match selector {
+            Value::String(name) => component_id_from_selector_name(name, None),
+            Value::Object(object) => {
+                let name = object.get("name")?.as_str()?;
+                let selector_type = object.get("type").and_then(Value::as_u64);
+                component_id_from_selector_name(name, selector_type)
+            }
+            _ => None,
         }),
-        Some(Value::String(selector)) if selector.starts_with('#') => {
-            Some(selector.trim_start_matches('#').to_string())
-        }
+        Some(Value::String(selector)) => component_id_from_selector_name(selector, None),
         _ => None,
     }
 }
@@ -545,7 +571,7 @@ fn scope_from_rule_object(object: &Map<String, Value>) -> StyleRuleScope {
     let pseudo = object
         .get("state")
         .and_then(Value::as_str)
-        .map(|value| value.trim().trim_start_matches(':').to_ascii_lowercase());
+        .map(|value| value.trim().to_ascii_lowercase());
     match (media_query, pseudo) {
         (Some(query), Some(pseudo)) => StyleRuleScope::MediaState { query, pseudo },
         (Some(query), None) => StyleRuleScope::Media { query },
@@ -577,7 +603,6 @@ fn normalize_query(query: &str) -> String {
     query.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-
 /// Return a selector only when every author-supplied selector is a plain CSS class name.
 /// Component-bound rules use their validated Fly style hook instead.
 pub(crate) fn class_rule_selector(selector_names: &[String]) -> Option<String> {
@@ -586,16 +611,19 @@ pub(crate) fn class_rule_selector(selector_names: &[String]) -> Option<String> {
     }
     let mut selector = String::new();
     for name in selector_names {
-        let class = name.trim().trim_start_matches('.');
-        if class.is_empty()
-            || class.len() > 128
+        let name = name.trim();
+        let class = name.strip_prefix('.').unwrap_or(name);
+        let mut characters = class.chars();
+        let first = characters.next()?;
+        let second = characters.next();
+        let invalid_hyphen_prefix =
+            first == '-' && second.is_none_or(|character| character.is_ascii_digit());
+        if class.len() > 128
             || !class.chars().all(|character| {
                 character.is_ascii_alphanumeric() || character == '-' || character == '_'
             })
-            || class
-                .chars()
-                .next()
-                .is_some_and(|first| first.is_ascii_digit())
+            || first.is_ascii_digit()
+            || invalid_hyphen_prefix
         {
             return None;
         }
@@ -849,6 +877,20 @@ mod tests {
             "functional pseudo-classes stay out of the allow-list"
         );
         assert_eq!(normalize_pseudo_class("::before"), None);
+        assert_eq!(normalize_pseudo_class("::hover"), None);
+        let double_colon = StyleRuleIdentity::from_value(&json!({
+            "selectors": [{ "name": "hero", "type": 2 }],
+            "state": "::hover",
+            "style": {}
+        }))
+        .expect("identity");
+        assert_eq!(
+            double_colon.scope,
+            StyleRuleScope::State {
+                pseudo: "::hover".to_string()
+            }
+        );
+        assert_eq!(double_colon.scope.pseudo_class(), None);
         let scope = StyleRuleScope::State {
             pseudo: "nth-child(2)".to_string(),
         };
@@ -860,6 +902,48 @@ mod tests {
         }))
         .expect("identity");
         assert_eq!(identity.scope, scope, "raw state survives for round-trip");
+    }
+
+    #[test]
+    fn id_selector_arrays_are_component_bound_and_remap_one_marker() {
+        let identity = StyleRuleIdentity::from_value(&json!({
+            "selectors": ["#hero"],
+            "style": { "color": "red" }
+        }))
+        .expect("identity");
+        assert_eq!(identity.component_id.as_deref(), Some("hero"));
+
+        let malformed = StyleRuleIdentity::from_value(&json!({
+            "selectors": ["##hero"],
+            "style": { "color": "red" }
+        }))
+        .expect("identity");
+        assert_eq!(malformed.component_id, None);
+
+        let mapping = BTreeMap::from([("hero".to_string(), "hero-copy".to_string())]);
+        let mut copied = json!({ "selectors": ["#hero"], "style": { "color": "red" } });
+        remap_component_style_rule(&mut copied, &mapping);
+        assert_eq!(copied["selectors"][0], "#hero-copy");
+
+        let mut malformed_copy =
+            json!({ "selectors": ["##hero"], "style": { "color": "red" } });
+        remap_component_style_rule(&mut malformed_copy, &mapping);
+        assert_eq!(malformed_copy["selectors"][0], "##hero");
+    }
+
+    #[test]
+    fn class_rule_selector_rejects_malformed_identifiers() {
+        assert_eq!(
+            class_rule_selector(&["hero".to_string()]),
+            Some(".hero".to_string())
+        );
+        assert_eq!(
+            class_rule_selector(&[".hero".to_string()]),
+            Some(".hero".to_string())
+        );
+        for name in ["..hero", "1hero", "-1hero", "-"] {
+            assert_eq!(class_rule_selector(&[name.to_string()]), None, "{name}");
+        }
     }
 
     #[test]
