@@ -15,6 +15,7 @@ pub mod product_editor;
 pub mod product_grid;
 mod variant_axes;
 mod variant_create;
+mod variant_mutation;
 
 pub use attributes::AttributesPage;
 pub use catalog_facets::AdminCatalogFacetPanel;

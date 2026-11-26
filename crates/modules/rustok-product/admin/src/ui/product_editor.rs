@@ -7,6 +7,7 @@ use rustok_ui_core::UiRouteContext;
 use super::leptos::{ProductAttributeValuesSection, ProductVariantsPanel};
 use super::variant_axes::ProductVariantAxesSection;
 use super::variant_create::ProductVariantCreateSection;
+use super::variant_mutation::ProductVariantMutationSection;
 use crate::catalog_transport;
 use crate::core::{
     ProductAttributeEditorState, ProductKind, build_product_image_view_models, slugify,
@@ -14,6 +15,7 @@ use crate::core::{
 };
 use crate::model::{
     CatalogCategorySummary, ProductDetail, ProductDraft, ProductEffectiveForm, ProductImageDraft,
+    ProductVariant, VariantUpdateDraft,
 };
 
 fn next_product_revision_after_variant_delete(current: i32) -> Option<i32> {
@@ -45,6 +47,17 @@ pub fn ProductEditorPage(
     let (variant_locked, set_variant_locked) = signal(!is_new);
     let variant_record = RwSignal::new(None::<crate::core::variant_create::VariantCreateRecord>);
     let variant_storage_error = RwSignal::new(false);
+    let (variant_mutation_locked, set_variant_mutation_locked) = signal(!is_new);
+    let variant_mutation_record =
+        RwSignal::new(None::<crate::core::variant_mutation::VariantMutationRecord>);
+    let variant_mutation_storage_error = RwSignal::new(false);
+    let variant_update_request = RwSignal::new(None::<(String, VariantUpdateDraft)>);
+    let variant_delete_request = RwSignal::new(None::<(String, String)>);
+    let variant_mutation_lock_copy = StoredValue::new(crate::i18n::t(
+        locale.as_deref(),
+        "product-variantMutation-editorLocked",
+        "product-variantMutation-editorLocked",
+    ));
     let axis_lock_copy = StoredValue::new(crate::i18n::t(
         locale.as_deref(),
         "product-variantCreate-editorLocked",
@@ -110,6 +123,7 @@ pub fn ProductEditorPage(
     let product_write_blocked = move || {
         let axes = axes_record.get_untracked();
         let variant = variant_record.get_untracked();
+        let variant_mutation = variant_mutation_record.get_untracked();
         let axes_unresolved = !is_new
             && axes.as_ref().is_none_or(|record| {
                 !matches!(
@@ -132,12 +146,23 @@ pub fn ProductEditorPage(
             && variant
                 .as_ref()
                 .is_none_or(|record| crate::transport::write_journal::verify(record).is_err());
+        let variant_mutation_pending = !is_new
+            && variant_mutation
+                .as_ref()
+                .is_none_or(|record| record.state.is_pending());
+        let variant_mutation_unavailable = !is_new
+            && variant_mutation
+                .as_ref()
+                .is_none_or(|record| crate::transport::write_journal::verify(record).is_err());
         if axes_locked.get_untracked()
             || variant_locked.get_untracked()
+            || variant_mutation_locked.get_untracked()
             || axes_unresolved
             || variant_unresolved
+            || variant_mutation_pending
             || axes_unavailable
             || variant_unavailable
+            || variant_mutation_unavailable
             || (!is_new && loaded_product.get_untracked().is_none())
         {
             // A known pending/terminal request is a write fence, not corrupt storage.
@@ -149,7 +174,17 @@ pub fn ProductEditorPage(
                 variant_storage_error.set(true);
                 set_variant_locked.set(true);
             }
-            set_error_msg.set(Some(axis_lock_copy.get_value()));
+            if variant_mutation_unavailable {
+                variant_mutation_storage_error.set(true);
+                set_variant_mutation_locked.set(true);
+            }
+            set_error_msg.set(Some(
+                if variant_mutation_pending || variant_mutation_unavailable {
+                    variant_mutation_lock_copy.get_value()
+                } else {
+                    axis_lock_copy.get_value()
+                },
+            ));
             true
         } else {
             false
@@ -506,12 +541,6 @@ pub fn ProductEditorPage(
         },
     );
 
-    let variant_bootstrap_resource = Resource::new(
-        move || (token.get(), tenant.get()),
-        move |(tok, ten)| async move { catalog_transport::fetch_bootstrap(tok, ten).await },
-    );
-    let variant_bootstrap =
-        Signal::derive(move || variant_bootstrap_resource.get().and_then(Result::ok));
     let variant_reload_locale = locale.clone();
     let select_variant_editor_target_for_refresh = select_variant_editor_target.clone();
     let refresh_variant_projection = Callback::new(move |product_id: String| {
@@ -614,6 +643,40 @@ pub fn ProductEditorPage(
             refresh_variant_projection_for_delete.run(product_id);
         },
     );
+
+    let on_variant_update_saved = {
+        let select_variant_editor_target = select_variant_editor_target.clone();
+        Callback::new(move |saved: ProductVariant| {
+            let saved_id = saved.id.clone();
+            set_loaded_product.update(|product| {
+                if let Some(variant) = product.as_mut().and_then(|product| {
+                    product.variants.iter_mut().find(|variant| variant.id == saved_id)
+                }) {
+                    *variant = saved.clone();
+                }
+            });
+            if variant_target_id.get_untracked().as_deref() == Some(saved_id.as_str()) {
+                select_variant_editor_target.run(Some(saved));
+            }
+            set_success_msg.set(Some(
+                if is_ru {
+                    "Вариант сохранён. Документ товара не отправлялся."
+                } else {
+                    "Variant saved. The Product document was not submitted."
+                }
+                .to_string(),
+            ));
+        })
+    };
+    let delete_product_id = product_id.clone();
+    let on_variant_delete_saved = {
+        let on_variant_deleted = on_variant_deleted.clone();
+        Callback::new(move |variant_id: String| {
+            if let Some(product_id) = delete_product_id.clone() {
+                on_variant_deleted.run((product_id, variant_id));
+            }
+        })
+    };
 
     let initial_axes_seeded = RwSignal::new(false);
     Effect::new(move |_| {
@@ -944,6 +1007,54 @@ pub fn ProductEditorPage(
             ));
             return;
         }
+        let draft = VariantUpdateDraft::from_editor_state_with_price_clear(
+            &target_variant,
+            sku.get_untracked(),
+            barcode.get_untracked(),
+            variant_shipping_profile_slug.get_untracked(),
+            currency_code.get_untracked(),
+            variant_amount,
+            variant_compare,
+            inventory_quantity.get_untracked(),
+            inventory_policy.get_untracked(),
+            clear_primary_price.get_untracked(),
+        );
+        if !inventory_quantity_valid.get_untracked() {
+            set_error_msg.set(Some(
+                "Inventory must be a non-negative 32-bit integer.".to_string(),
+            ));
+            return;
+        }
+        if !draft.has_changes() {
+            return;
+        }
+        if let Err(message) = validate_editor_variant_draft(&draft) {
+            set_error_msg.set(Some(message));
+            return;
+        }
+        variant_update_request.set(Some((target_id, draft)));
+        set_error_msg.set(None);
+        set_success_msg.set(None);
+    };
+        let Some(target_variant) = loaded_product.get_untracked().and_then(|product| {
+            product
+                .variants
+                .into_iter()
+                .find(|variant| variant.id == target_id)
+        }) else {
+            set_error_msg.set(Some(
+                "The displayed variant is no longer available. Reload the editor.".to_string(),
+            ));
+            return;
+        };
+        let variant_amount = amount.get_untracked();
+        let variant_compare = compare_at_amount.get_untracked();
+        if variant_amount.trim().is_empty() && !variant_compare.trim().is_empty() {
+            set_error_msg.set(Some(
+                "A compare-at amount requires a base price.".to_string(),
+            ));
+            return;
+        }
         let draft = crate::model::VariantUpdateDraft::from_editor_state_with_price_clear(
             &target_variant,
             sku.get_untracked(),
@@ -1164,7 +1275,7 @@ pub fn ProductEditorPage(
                         let refresh_product_id = pid.clone();
                         view! {
                             <ProductVariantAxesSection product_id=pid locale=locale.clone() record=axes_record storage_error=axes_storage_error
-                                blocked=Signal::derive(move || variant_locked.get() || loaded_product.get().and_then(|product| product.primary_category_id).unwrap_or_default() != primary_category_id.get())
+                                blocked=Signal::derive(move || variant_locked.get() || variant_mutation_locked.get() || loaded_product.get().and_then(|product| product.primary_category_id).unwrap_or_default() != primary_category_id.get())
                                 parent_busy=Signal::derive(move || is_busy.get())
                                 before_begin=Callback::new(move |_| !product_write_blocked())
                                 on_lock_change=Callback::new(move |locked| set_axes_locked.set(locked))
@@ -1176,7 +1287,7 @@ pub fn ProductEditorPage(
             {current_edit_id.clone().filter(|_| is_editing).map(|pid| view! {
                 <ProductVariantCreateSection product_id=pid locale=locale.clone()
                     product=Signal::derive(move || loaded_product.get()) record=variant_record storage_error=variant_storage_error
-                    blocked=Signal::derive(move || axes_locked.get() || loaded_product.get().and_then(|product| product.primary_category_id).unwrap_or_default() != primary_category_id.get())
+                    blocked=Signal::derive(move || axes_locked.get() || variant_mutation_locked.get() || loaded_product.get().and_then(|product| product.primary_category_id).unwrap_or_default() != primary_category_id.get())
                     parent_busy=Signal::derive(move || is_busy.get())
                     before_begin=Callback::new(move |_| !product_write_blocked())
                     on_lock_change=Callback::new(move |locked| set_variant_locked.set(locked))
@@ -1184,8 +1295,25 @@ pub fn ProductEditorPage(
                 />
             })}
 
+            {current_edit_id.clone().filter(|_| is_editing).map(|pid| view! {
+                <ProductVariantMutationSection
+                    product_id=pid
+                    locale=locale.clone()
+                    update_request=variant_update_request
+                    delete_request=variant_delete_request
+                    record=variant_mutation_record
+                    storage_error=variant_mutation_storage_error
+                    parent_busy=Signal::derive(move || is_busy.get())
+                    set_parent_busy=set_is_busy
+                    blocked=Signal::derive(move || axes_locked.get() || variant_locked.get() || loaded_product.get().and_then(|product| product.primary_category_id).unwrap_or_default() != primary_category_id.get())
+                    on_lock_change=Callback::new(move |locked| set_variant_mutation_locked.set(locked))
+                    on_update_saved=on_variant_update_saved
+                    on_delete_saved=on_variant_delete_saved
+                />
+            })}
+
             // Recovery is deliberately outside the locked document fieldset.
-            <fieldset class="contents" disabled=move || is_busy.get() || axes_locked.get() || variant_locked.get() || (is_editing && loaded_product.get().is_none())>
+            <fieldset class="contents" disabled=move || is_busy.get() || axes_locked.get() || variant_locked.get() || variant_mutation_locked.get() || (is_editing && loaded_product.get().is_none())>
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
                 // Left Column (2 cols)
                 <div class="lg:col-span-2 flex flex-col gap-6">
@@ -1327,12 +1455,15 @@ pub fn ProductEditorPage(
                     {is_editing.then(|| {
                         let variant_locale = locale.clone();
                         view! { {move || view! {
-                            <ProductVariantsPanel locale=variant_locale.clone() product=loaded_product.get()
-                                token=token tenant=tenant bootstrap=variant_bootstrap
-                                busy=is_busy set_busy=set_is_busy set_error=set_error_msg
-                                blocked=Signal::derive(move || axes_locked.get() || variant_locked.get())
-                                on_variant_mutated=refresh_variant_projection
-                                on_variant_deleted=on_variant_deleted
+                            <ProductVariantsPanel
+                                locale=variant_locale.clone()
+                                product=loaded_product.get()
+                                busy=is_busy
+                                set_error=set_error_msg
+                                update_request=variant_update_request
+                                delete_request=variant_delete_request
+                                can_delete_variants=true
+                                blocked=Signal::derive(move || axes_locked.get() || variant_locked.get() || variant_mutation_locked.get() || loaded_product.get().and_then(|product| product.primary_category_id).unwrap_or_default() != primary_category_id.get())
                             />
                         }} }
                     })}
@@ -1351,13 +1482,13 @@ pub fn ProductEditorPage(
                                 </p>
                                 <button type="button"
                                     class="h-9 px-3 rounded-xl border border-border text-foreground disabled:opacity-50"
-                                    disabled=move || is_busy.get() || axes_locked.get() || variant_locked.get() || variant_target_id.get().is_none()
+                                    disabled=move || is_busy.get() || axes_locked.get() || variant_locked.get() || variant_mutation_locked.get() || variant_target_id.get().is_none()
                                     on:click=save_variant>
                                     {if is_ru { "Сохранить только этот вариант" } else { "Save only this variant" }}
                                 </button>
                                 <button type="button"
                                     class="h-9 px-3 rounded-xl border border-border text-foreground disabled:opacity-50"
-                                    disabled=move || is_busy.get() || axes_locked.get() || variant_locked.get() || variant_target_id.get().is_none()
+                                    disabled=move || is_busy.get() || axes_locked.get() || variant_locked.get() || variant_mutation_locked.get() || variant_target_id.get().is_none()
                                     on:click=move |_| {
                                         set_amount.set(String::new());
                                         set_compare_at_amount.set(String::new());

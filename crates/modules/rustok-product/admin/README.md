@@ -105,9 +105,10 @@ Variant controls are snapshotted before bootstrap/IO. Empty base-price input lea
 not an implicit free USD row; removing the primary-currency price requires the explicit Clear action.
 Zero and decimal precision remain valid. Invalid local scalars are refused before sending;
 SKU/barcode/shipping-profile clears remain explicit nullable patches, while untouched fields stay
-Keep. Full nullable Variant form coverage and immutable pending-request recovery for existing-row
-updates remain separate gaps; retained-key helpers are not durable snapshot recovery. Source regression tests are authored but unrun
-without Cargo/rustc. Source guards are not compilation, database or mounted-client evidence. Whole-screen multi-command
+Keep. Full nullable Variant form coverage remains a separate gap. Existing-row Variant update
+and delete now persist their exact request, expected revision and caller key in a per-Product
+session journal; reload recovery replays only that immutable snapshot. This is source wiring,
+not mounted-runtime certification. Source regression tests are authored but unrun without Cargo/rustc. Source guards are not compilation, database or mounted-client evidence. Whole-screen multi-command
 atomicity is not claimed: Product document/category/EAV/publication remains the atomic Save scope.
 
 
@@ -169,12 +170,13 @@ journals. Stale bootstrap/owner responses cannot change a new authenticated reco
 See [standalone semantics and unexecuted gates](../docs/variant-axis-reconfiguration.md#standalone-sku-creation-and-recovery).
 
 This continuation has no Rust compilation or mounted execution evidence and no tests were run.
-Axes, standalone SKU creation and dictionary definition lifecycle have durable Leptos browser
-recovery in source; other retained-key CRUD helpers remain memory-only. Product create and remaining CRUD still use
+Axes, standalone SKU creation, existing-row Variant update/delete and dictionary definition
+lifecycle have durable Leptos browser recovery in source; other retained-key CRUD helpers remain
+memory-only. Product create and remaining CRUD still use
 `transport/product_lifecycle_graphql.rs`; this is not a general native CRUD cutover. Unsubmitted
 local drafts/filters are not durable pending commands. Localization of other initial/schema
-controls, durable browser recovery for existing-row Variant update/delete, storefront work and
-runtime verification remain in the [Product plan](../docs/implementation-plan.md#variant-axis-continuation-2026-10-29).
+controls, storefront work and runtime verification remain in the
+[Product plan](../docs/implementation-plan.md#variant-axis-continuation-2026-10-29).
 
 
 ## Attribute and option definition recovery

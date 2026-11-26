@@ -108,7 +108,6 @@ struct UpdateVariantVariables {
 }
 
 #[derive(Debug, Serialize)]
-#[expect(dead_code, reason = "Product variant deletion transport pending UI caller integration")]
 struct DeleteVariantVariables {
     #[serde(rename = "idempotencyKey")]
     idempotency_key: String,
