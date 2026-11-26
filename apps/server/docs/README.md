@@ -311,6 +311,15 @@ artifact admission reverification recheck stop between independent
 stages and tenant/candidate iterations; an already-started durable
 effect is not interrupted by these new checks.
 
+Module transition and artifact-maintenance supervisors reject closed shutdown
+watches before admitting the first or next maintenance pass, prioritizing
+shutdown over a ready interval. The Redis status monitor also rejects a
+closed watch before invoking its factory or restarting. Social Graph Index
+position and poison-receipt observers use the common stop-aware retry wait
+and discard samples completed after shutdown; position observation rechecks
+admission between connection and snapshot. Already-admitted durable
+maintenance operations still finish before the next independent phase.
+
 The module artifact maintenance worker also retains a UUID keyset cursor for
 tenant data-object GC across its 60-second passes. A full page advances the
 cursor; a short or empty page wraps to the first page. Discovery and retention

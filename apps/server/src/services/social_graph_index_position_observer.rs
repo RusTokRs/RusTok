@@ -17,6 +17,7 @@ use crate::services::server_runtime_context::{
     ServerRuntimeContext, ServerRuntimeStartReservation, published_worker_running,
 };
 use crate::services::social_graph_index_worker::social_graph_index_consumer_enabled;
+use crate::services::stop_handle::{may_admit_next_worker_operation, wait_for_worker_retry_or_stop};
 
 const POLL_ENV: &str = "RUSTOK_SOCIAL_GRAPH_INDEX_POSITION_POLL_MS";
 const DEFAULT_POLL_MS: u64 = 5_000;
@@ -158,7 +159,7 @@ async fn position_observer_loop(
 ) {
     let mut observer = None;
     loop {
-        if *stop_rx.borrow() {
+        if !may_admit_next_worker_operation(&stop_rx) {
             record_position_unavailable();
             return;
         }
@@ -189,10 +190,18 @@ async fn position_observer_loop(
             }
         }
 
+        if !may_admit_next_worker_operation(&stop_rx) {
+            record_position_unavailable();
+            return;
+        }
         let snapshot_result = match observer.as_ref() {
             Some(connected) => Some(connected.snapshot().await),
             None => None,
         };
+        if !may_admit_next_worker_operation(&stop_rx) {
+            record_position_unavailable();
+            return;
+        }
         if let Some(snapshot_result) = snapshot_result {
             match snapshot_result {
                 Ok(snapshot) => {
@@ -232,7 +241,7 @@ async fn position_observer_loop(
             }
         }
 
-        if wait_or_stop(poll, &mut stop_rx).await {
+        if wait_for_worker_retry_or_stop(poll, &mut stop_rx).await {
             record_position_unavailable();
             return;
         }
@@ -261,13 +270,6 @@ fn position_poll_interval() -> Result<Duration> {
         )));
     }
     Ok(Duration::from_millis(value))
-}
-
-async fn wait_or_stop(delay: Duration, stop_rx: &mut tokio::sync::watch::Receiver<bool>) -> bool {
-    tokio::select! {
-        _ = tokio::time::sleep(delay) => false,
-        changed = stop_rx.changed() => changed.is_err() || *stop_rx.borrow(),
-    }
 }
 
 fn duration_millis(duration: Duration) -> u64 {

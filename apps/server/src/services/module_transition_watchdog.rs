@@ -66,9 +66,23 @@ pub fn spawn_module_transition_watchdog_handle(
         let mut reaper_cursor = None;
 
         loop {
+            if !may_admit_next_worker_operation(&stop_rx) {
+                break;
+            }
             tokio::select! {
+                biased;
+                changed = stop_rx.changed() => {
+                    if changed.is_err() || !may_admit_next_worker_operation(&stop_rx) {
+                        info!(
+                            worker = "module_transition_watchdog",
+                            instance_id,
+                            "Module transition watchdog stopping"
+                        );
+                        break;
+                    }
+                }
                 _ = ticker.tick() => {
-                    if *stop_rx.borrow() {
+                    if !may_admit_next_worker_operation(&stop_rx) {
                         info!(
                             worker = "module_transition_watchdog",
                             instance_id,
@@ -171,16 +185,6 @@ pub fn spawn_module_transition_watchdog_handle(
                         }
                     }
                 }
-                changed = stop_rx.changed() => {
-                    if changed.is_err() || *stop_rx.borrow() {
-                        info!(
-                            worker = "module_transition_watchdog",
-                            instance_id,
-                            "Module transition watchdog stopping"
-                        );
-                        break;
-                    }
-                }
             }
         }
     });
@@ -227,6 +231,21 @@ mod tests {
         handle.abort();
         tokio::time::sleep(Duration::from_millis(20)).await;
         assert!(handle.is_finished());
+    }
+
+    #[tokio::test]
+    async fn watchdog_exits_when_shutdown_channel_is_already_closed() {
+        let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+        drop(stop_tx);
+        let handle = spawn_module_transition_watchdog_handle(
+            sea_orm::DatabaseConnection::default(),
+            5,
+            stop_rx,
+        );
+        tokio::time::timeout(Duration::from_secs(1), handle.join())
+            .await
+            .expect("closed shutdown channel terminates watchdog")
+            .expect("watchdog task completed");
     }
 
     #[tokio::test]

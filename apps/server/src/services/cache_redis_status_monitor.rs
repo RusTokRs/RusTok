@@ -8,7 +8,10 @@ use rustok_cache::{CacheService, RedisCacheStatus};
 use tokio::task::JoinHandle;
 
 use crate::services::server_runtime_context::ServerRuntimeContext;
-use crate::services::stop_handle::{StopHandle, await_worker_startup_or_stop};
+use crate::services::stop_handle::{
+    StopHandle, await_worker_startup_or_stop, may_admit_next_worker_operation,
+    wait_for_worker_retry_or_stop,
+};
 
 const CACHE_REDIS_STATUS_INTERVAL: Duration = Duration::from_secs(10);
 const CACHE_REDIS_STATUS_RESTART_DELAY: Duration = Duration::from_secs(1);
@@ -204,24 +207,19 @@ async fn supervise_cache_redis_status_worker<F, Fut>(
     Fut: Future<Output = ()> + Send,
 {
     loop {
-        if *stop_rx.borrow() {
+        if !may_admit_next_worker_operation(&stop_rx) {
             return;
         }
 
         let worker = match std::panic::catch_unwind(AssertUnwindSafe(&mut worker_factory)) {
             Ok(worker) => worker,
             Err(_) => {
-                if *stop_rx.borrow() {
+                if !may_admit_next_worker_operation(&stop_rx) {
                     return;
                 }
                 record_monitor_restart("factory_panicked");
-                tokio::select! {
-                    _ = tokio::time::sleep(restart_delay) => {}
-                    changed = stop_rx.changed() => {
-                        if changed.is_err() || *stop_rx.borrow() {
-                            return;
-                        }
-                    }
+                if wait_for_worker_retry_or_stop(restart_delay, &mut stop_rx).await {
+                    return;
                 }
                 continue;
             }
@@ -230,14 +228,14 @@ async fn supervise_cache_redis_status_worker<F, Fut>(
         let outcome = tokio::select! {
             biased;
             changed = stop_rx.changed() => {
-                if changed.is_err() || *stop_rx.borrow() {
+                if changed.is_err() || !may_admit_next_worker_operation(&stop_rx) {
                     return;
                 }
                 continue;
             }
             outcome = AssertUnwindSafe(worker).catch_unwind() => outcome,
         };
-        if *stop_rx.borrow() {
+        if !may_admit_next_worker_operation(&stop_rx) {
             return;
         }
         if outcome.is_err() {
@@ -246,13 +244,8 @@ async fn supervise_cache_redis_status_worker<F, Fut>(
             record_monitor_restart("worker_exited");
         }
 
-        tokio::select! {
-            _ = tokio::time::sleep(restart_delay) => {}
-            changed = stop_rx.changed() => {
-                if changed.is_err() || *stop_rx.borrow() {
-                    return;
-                }
-            }
+        if wait_for_worker_retry_or_stop(restart_delay, &mut stop_rx).await {
+            return;
         }
     }
 }
@@ -403,6 +396,25 @@ mod tests {
         .await
         .expect("Redis status monitor supervisor should restart the worker");
         supervisor.abort();
+    }
+
+    #[tokio::test]
+    async fn closed_shutdown_channel_never_invokes_monitor_factory() {
+        let (stop, stop_rx) = StopHandle::new();
+        drop(stop);
+        let attempts = AtomicUsize::new(0);
+
+        supervise_cache_redis_status_worker(
+            || {
+                attempts.fetch_add(1, Ordering::SeqCst);
+                async {}
+            },
+            Duration::ZERO,
+            stop_rx,
+        )
+        .await;
+
+        assert_eq!(attempts.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]
