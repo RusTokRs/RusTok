@@ -406,26 +406,25 @@ pub(crate) struct RuntimeWorkerSnapshot {
 pub(crate) fn additional_cache_reconciliation_worker_snapshots(
     ctx: &ServerRuntimeContext,
 ) -> Vec<RuntimeWorkerSnapshot> {
-    let snapshots = vec![RuntimeWorkerSnapshot {
-        name: "field_definition_cache_generation",
-        required: true,
-        finished: ctx.shared_map::<
-            crate::services::field_definition_cache::FieldDefinitionCacheGenerationReconciliationHandle,
-            _,
-        >(|worker| !worker.is_ready()),
-    }];
-
-    #[cfg(feature = "mod-seo")]
-    snapshots.push(RuntimeWorkerSnapshot {
-        name: "seo_redirect_cache_reconciliation",
-        required: crate::services::seo_redirect_cache_reconciliation::seo_redirect_cache_reconciliation_required(ctx),
-        finished: ctx.shared_map::<
-            crate::services::seo_redirect_cache_reconciliation::SeoRedirectCacheReconciliationHandle,
-            _,
-        >(|worker| !worker.is_ready()),
-    });
-
-    snapshots
+    vec![
+        RuntimeWorkerSnapshot {
+            name: "field_definition_cache_generation",
+            required: true,
+            finished: ctx.shared_map::<
+                crate::services::field_definition_cache::FieldDefinitionCacheGenerationReconciliationHandle,
+                _,
+            >(|worker| !worker.is_ready()),
+        },
+        #[cfg(feature = "mod-seo")]
+        RuntimeWorkerSnapshot {
+            name: "seo_redirect_cache_reconciliation",
+            required: crate::services::seo_redirect_cache_reconciliation::seo_redirect_cache_reconciliation_required(ctx),
+            finished: ctx.shared_map::<
+                crate::services::seo_redirect_cache_reconciliation::SeoRedirectCacheReconciliationHandle,
+                _,
+            >(|worker| !worker.is_ready()),
+        },
+    ]
 }
 
 pub(crate) fn additional_runtime_worker_snapshots(

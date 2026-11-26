@@ -324,6 +324,10 @@ bootstrap entrypoints, as well as the direct worker startup entrypoint,
 also use this helper when acquiring their initialization mutexes. A queued
 startup exits on stop without waiting for the active initializer; admitted
 operations and published handles retain their existing shutdown contracts.
+Workflow cron also cancels pending startup-mutex acquisition and its read-only
+schema validation. Context bootstrap checks stop before durable SuperAdmin
+provisioning and before returning success; router bootstrap checks stop
+again after the worker starters, which may return a stopped-host no-op.
 
 
 Direct worker starters for Product Search channel repair, Notifications

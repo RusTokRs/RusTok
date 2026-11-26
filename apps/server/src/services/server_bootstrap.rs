@@ -49,6 +49,13 @@ pub async fn initialize_server_context(
     let cache = ensure_cache_service(runtime_ctx);
     start_channel_cache_invalidation_listener(runtime_ctx, cache.clone()).await?;
     start_rbac_cache_invalidation_listener(runtime_ctx, cache).await?;
+    // The listener starters return Ok when stop cancels their unpublished
+    // startup. That is not permission to begin durable account provisioning.
+    if stop.is_stopping() {
+        return Err(crate::error::Error::Message(
+            "server shutdown started before default SuperAdmin initialization".to_string(),
+        ));
+    }
     if should_initialize_default_superadmin(runtime_ctx) {
         crate::initializers::superadmin::ensure_default_superadmin(runtime_ctx).await?;
     } else {
@@ -56,6 +63,11 @@ pub async fn initialize_server_context(
             host_mode = ?runtime_ctx.settings().runtime.host_mode,
             "Skipping default SuperAdmin provisioning for a host mode without an administrative surface"
         );
+    }
+    if stop.is_stopping() {
+        return Err(crate::error::Error::Message(
+            "server shutdown started during runtime initialization".to_string(),
+        ));
     }
     Ok(())
 }
@@ -336,6 +348,11 @@ pub async fn bootstrap_application_router(
     .await?;
 
     connect_runtime_workers_with_runtime(runtime_ctx.clone()).await?;
+    if stop.is_stopping() {
+        return Err(crate::error::Error::Message(
+            "server shutdown started during runtime worker startup".to_string(),
+        ));
+    }
     tracing::info!("RusTok runtime workers connected");
     Ok(router)
 }
