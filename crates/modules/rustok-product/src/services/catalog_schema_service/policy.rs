@@ -211,14 +211,19 @@ impl ProductCatalogSchemaService {
         )
         .await?;
 
-        let mut snapshot = HashMap::new();
+        let mut signatures = HashMap::new();
+        let mut effective_forms = HashMap::new();
         for (category_id, form) in category_ids.into_iter().zip(forms) {
             let requirements = publish_requirements_for_form(&form)?;
             if !requirements.is_empty() {
-                snapshot.insert(category_id, requirements);
+                signatures.insert(category_id, requirements);
+                effective_forms.insert(category_id, form);
             }
         }
-        Ok(snapshot)
+        Ok(PublishRequirementSnapshot {
+            signatures,
+            forms: effective_forms,
+        })
     }
 
     async fn validate_publish_requirement_impacts_in(
@@ -228,11 +233,17 @@ impl ProductCatalogSchemaService {
         next: &PublishRequirementSnapshot,
     ) -> CommerceResult<()> {
         let mut changed = previous
+            .signatures
             .keys()
-            .chain(next.keys())
+            .chain(next.signatures.keys())
             .copied()
             .collect::<HashSet<_>>();
-        changed.retain(|category_id| previous.get(category_id) != next.get(category_id));
+        changed.retain(|category_id| {
+            publish_requirements_tightened(
+                previous.signatures.get(category_id),
+                next.signatures.get(category_id),
+            )
+        });
         let mut changed = changed.into_iter().collect::<Vec<_>>();
         changed.sort_unstable();
         if changed.is_empty() {
@@ -264,10 +275,22 @@ impl ProductCatalogSchemaService {
                 }
 
                 for product in &products {
-                    match ProductCatalogSchemaService::validate_product_publish_requirements_in(
+                    let form = next.forms.get(&product.primary_category_id).ok_or_else(|| {
+                        CommerceError::Core(rustok_core::error::Error::Internal(format!(
+                            "Effective Product schema snapshot is missing category {}",
+                            product.primary_category_id
+                        )))
+                    })?;
+                    if form.category_id != product.primary_category_id {
+                        return Err(CommerceError::Core(rustok_core::error::Error::Internal(
+                            "Effective Product schema snapshot category mismatch".to_owned(),
+                        )));
+                    }
+                    match ProductCatalogSchemaService::validate_product_publish_requirements_for_form_in(
                         txn,
                         tenant_id,
                         product.id,
+                        form,
                     )
                     .await
                     {
@@ -447,12 +470,53 @@ struct PublishRequirementAttribute {
 }
 
 type PublishRequirementAttributes = HashMap<Uuid, PublishRequirementAttribute>;
-type PublishRequirementSnapshot = HashMap<Uuid, PublishRequirementAttributes>;
+
+#[derive(Clone, Debug)]
+struct PublishRequirementSnapshot {
+    signatures: HashMap<Uuid, PublishRequirementAttributes>,
+    forms: HashMap<Uuid, EffectiveProductForm>,
+}
 
 #[derive(Clone, Debug)]
 pub(super) struct SchemaPolicySnapshot {
     axis_policies: AxisPolicySnapshot,
     publish_requirements: PublishRequirementSnapshot,
+}
+
+fn scope_includes_publish_requirement(scope: &str, target: &str) -> bool {
+    match (scope, target) {
+        ("product" | "both", "product") | ("variant" | "both", "variant") => true,
+        _ => false,
+    }
+}
+
+fn publish_requirements_tightened(
+    previous: Option<&PublishRequirementAttributes>,
+    next: Option<&PublishRequirementAttributes>,
+) -> bool {
+    let Some(next) = next else {
+        return false;
+    };
+    for (attribute_id, next_requirement) in next {
+        let Some(previous_requirement) = previous.and_then(|values| values.get(attribute_id)) else {
+            return true;
+        };
+        for target in ["product", "variant"] {
+            if scope_includes_publish_requirement(next_requirement.scope.as_str(), target)
+                && !scope_includes_publish_requirement(previous_requirement.scope.as_str(), target)
+            {
+                return true;
+            }
+        }
+        if next_requirement
+            .required_locales
+            .iter()
+            .any(|locale| !previous_requirement.required_locales.contains(locale))
+        {
+            return true;
+        }
+    }
+    false
 }
 
 fn publish_requirements_for_form(
@@ -604,6 +668,29 @@ mod tests {
             localized[&attribute_id].required_locales,
             vec!["en".to_owned(), "fr".to_owned()]
         );
+    }
+
+    #[test]
+    fn publish_requirement_impacts_only_scan_tightening_changes() {
+        let attribute_id = Uuid::from_u128(88);
+        let requirement = |scope: &str, required_locales: &[&str]| {
+            HashMap::from([(
+                attribute_id,
+                PublishRequirementAttribute {
+                    scope: scope.to_owned(),
+                    required_locales: required_locales.iter().map(|locale| (*locale).to_owned()).collect(),
+                },
+            )])
+        };
+        let product = requirement("product", &["en"]);
+        let both = requirement("both", &["en"]);
+        let product_and_more_locales = requirement("product", &["en", "fr"]);
+        assert!(publish_requirements_tightened(None, Some(&product)));
+        assert!(publish_requirements_tightened(Some(&product), Some(&both)));
+        assert!(publish_requirements_tightened(Some(&product), Some(&product_and_more_locales)));
+        assert!(!publish_requirements_tightened(Some(&both), Some(&product)));
+        assert!(!publish_requirements_tightened(Some(&product_and_more_locales), Some(&product)));
+        assert!(!publish_requirements_tightened(Some(&product), None));
     }
 
     #[test]
