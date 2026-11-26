@@ -12,7 +12,8 @@ runtime-scenario release policy.
 - validates through Fly registries and configurable node/depth limits;
 - keeps the decoded `ProjectDocument` and its `ValidationReport` together;
 - builds the layers tree from `pages[].component.components`;
-- returns component properties without the child subtree;
+- returns component properties without the child subtree, including anonymous nodes addressed by
+  the snapshot-local path IDs returned by the tree (not persistent component identities);
 - exposes the deterministic Fly project hash.
 
 All capabilities reject empty or whitespace-only page identities before calling their ports.
