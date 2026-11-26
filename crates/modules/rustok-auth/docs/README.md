@@ -809,8 +809,15 @@ admits application time, revalidates reset/verification JWTs using the live
 keyring, or checks the committed email-change deadline. Expired credentials,
 clock failures and invalid JWTs skip the sender and count as skipped sends.
 Old-mailbox security notifications are not credential-gated. This is a
-best-effort pre-sender check, not delivery-time validity, account-state
-revalidation, or durable email recovery. Source regressions are unrun.
+best-effort pre-sender check, not delivery-time validity or durable email
+recovery. Before invoking the email sender, the host re-reads the active account and
+checks the JWT's exact recipient, tenant, user and recovery revision. Reset
+also checks its password-hash MAC; already-verified accounts skip verification
+mail. Email-change dispatch reads the exact tenant/user/target/digest challenge
+and its owner in one statement, reuses the confirmation binding, and never
+extends the committed expiry. No account locks are held during SMTP; a change
+after the read can still make a link stale. Confirmation remains authoritative.
+Source regressions are unrun.
 
 All JWT issuers, including reset, verification and invite, sample the live
 credential clock before preparing claims and recheck it after RSA signing.

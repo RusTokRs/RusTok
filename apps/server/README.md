@@ -319,6 +319,15 @@ worker/backlog/history/recovery preflight. Original job/lease metadata grants no
 
 ## Recovery deadline and revision fence (2026-11-26)
 
+Before invoking the email sender, the host re-reads the active account and
+checks the JWT's exact recipient, tenant, user and recovery revision. Reset
+also checks its password-hash MAC; already-verified accounts skip verification
+mail. Email-change dispatch reads the exact tenant/user/target/digest challenge
+and its owner in one statement, reuses the confirmation binding, and never
+extends the committed expiry. No account locks are held during SMTP; a change
+after the read can still make a link stale. Confirmation remains authoritative.
+Source regressions are unrun.
+
 Stored email-change challenges use the account recovery revision in addition
 to their existing mailbox and password timestamp binding. Stop old binaries,
 apply the platform and Auth migrations, then deploy current readers and

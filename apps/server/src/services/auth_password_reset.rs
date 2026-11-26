@@ -87,7 +87,9 @@ impl AuthLifecycleService {
             .one(ctx.db())
             .await
             .map_err(AuthLifecycleError::from)?
-            .filter(|user| user.email == claims.sub && user.recovery_revision == claims.recovery_revision)
+            .filter(|user| user.matches_recovery_identity(
+                tenant_id, claims.user_id, &claims.sub, claims.recovery_revision,
+            ))
             .ok_or(AuthLifecycleError::InvalidResetToken)?;
         if !user.is_active() {
             return Err(AuthLifecycleError::UserInactive);
@@ -117,9 +119,10 @@ impl AuthLifecycleService {
         // Hashing runs outside the transaction. Recheck the account, mailbox,
         // status and original credential after the user lock and expiry check.
         if !current.is_active()
-            || current.email != user.email
+            || !current.matches_recovery_identity(
+                tenant_id, claims.user_id, &claims.sub, claims.recovery_revision,
+            )
             || current.password_hash != user.password_hash
-            || current.recovery_revision != claims.recovery_revision
             || !update_password_if_active(&tx, &current, &new_hash, now).await?
         {
             tx.rollback().await.map_err(AuthLifecycleError::from)?;

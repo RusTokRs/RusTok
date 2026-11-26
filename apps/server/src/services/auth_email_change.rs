@@ -95,6 +95,8 @@ impl AuthLifecycleService {
             new_email,
             token,
             expires_at,
+            tenant_id,
+            user_id,
         );
         Ok(())
     }
@@ -442,7 +444,29 @@ impl AuthLifecycleService {
     }
 }
 
-/// The same account-state predicate governs confirmation and reclamation.
+/// Read the exact still-pending challenge and its owner in one statement.
+/// Delivery is best-effort: confirmation remains the locked authority.
+pub(super) async fn pending_email_change_deadline(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    recipient: &str,
+    token_hash: &str,
+) -> Result<Option<chrono::DateTime<Utc>>, sea_orm::DbErr> {
+    let record = AuthEmailChangeRequests::find()
+        .filter(auth_email_change_requests::Column::TenantId.eq(tenant_id))
+        .filter(auth_email_change_requests::Column::UserId.eq(user_id))
+        .filter(auth_email_change_requests::Column::NewEmail.eq(recipient))
+        .filter(auth_email_change_requests::Column::TokenHash.eq(token_hash))
+        .find_also_related(Users)
+        .one(db).await?;
+    Ok(record.and_then(|(request, owner)| {
+        owner.filter(|user| email_change_request_matches_user(&request, user))
+            .map(|_| request.expires_at.with_timezone(&Utc))
+    }))
+}
+
+/// The same account-state predicate governs confirmation, reclamation and dispatch.
 fn email_change_request_matches_user(
     request: &auth_email_change_requests::Model,
     user: &users::Model,
@@ -779,6 +803,14 @@ mod tests {
         let request = &requests[0];
         assert_eq!(request.token_hash, new_hash);
         assert!(dispatch_deadline <= request.expires_at.with_timezone(&Utc));
+        assert!(pending_email_change_deadline(&db, tenant.id, user.id, "previous@example.com", &old_hash)
+            .await.unwrap().is_none());
+        assert_eq!(pending_email_change_deadline(&db, tenant.id, user.id, "new@example.com", &new_hash)
+            .await.unwrap(), Some(request.expires_at.with_timezone(&Utc)));
+        assert!(pending_email_change_deadline(&db, tenant.id, user.id, "wrong@example.com", &new_hash)
+            .await.unwrap().is_none());
+        assert!(pending_email_change_deadline(&db, Uuid::new_v4(), user.id, "new@example.com", &new_hash)
+            .await.unwrap().is_none());
         assert_eq!(request.new_email, "new@example.com");
         assert_eq!(request.recovery_revision, Some(user.recovery_revision));
         assert!(request.created_at.with_timezone(&Utc) >= before - Duration::milliseconds(1));
@@ -787,6 +819,14 @@ mod tests {
             request.expires_at.signed_duration_since(request.created_at),
             Duration::seconds(EMAIL_CHANGE_TOKEN_TTL_SECS as i64),
         );
+        // A mailbox ABA invalidates the retained pending row.
+        for email in ["temporary@example.com", "old@example.com"] {
+            users::ActiveModel {
+                id: Set(user.id), email: Set(email.to_string()), ..Default::default()
+            }.update(&db).await.unwrap();
+        }
+        assert!(pending_email_change_deadline(&db, tenant.id, user.id, "new@example.com", &new_hash)
+            .await.unwrap().is_none());
     }
 
     #[tokio::test]

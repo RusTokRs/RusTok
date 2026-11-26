@@ -17,6 +17,8 @@ pub struct SharedSmtpEmailService(pub Arc<rustok_email::SmtpEmailSender>);
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use rustok_email::{EmailError, RenderedEmail};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use crate::models::users;
 
 use crate::common::settings::EmailProvider;
 use crate::error::{Error, Result};
@@ -586,9 +588,12 @@ where
 /// revalidated against the current keyring; opaque challenges carry the
 /// committed deadline. Never log the credential.
 enum RecoveryEmailCredential {
-    PasswordReset { config: crate::auth::AuthConfig, token: String },
-    Verification { config: crate::auth::AuthConfig, token: String },
-    EmailChange { expires_at: DateTime<Utc> },
+    PasswordReset { config: crate::auth::AuthConfig, token: String, recipient: String },
+    Verification { config: crate::auth::AuthConfig, token: String, recipient: String },
+    EmailChange {
+        tenant_id: Uuid, user_id: Uuid, recipient: String, token_hash: String,
+        expires_at: DateTime<Utc>,
+    },
 }
 
 fn recovery_email_deadline_live(
@@ -608,15 +613,49 @@ async fn recovery_email_admitted(
         return false;
     };
     let expires_at = match credential {
-        RecoveryEmailCredential::PasswordReset { config, token } => {
+        RecoveryEmailCredential::PasswordReset { config, token, recipient } => {
+            let Ok(claims) = crate::auth::decode_password_reset_token(&config, &token) else {
+                return false;
+            };
+            let Ok(Some(user)) = users::Entity::find_by_id(claims.user_id)
+                .filter(users::Column::TenantId.eq(claims.tenant_id)).one(db).await else {
+                return false;
+            };
+            if recipient != claims.sub || !user.is_active()
+                || !user.matches_recovery_identity(claims.tenant_id, claims.user_id, &claims.sub, claims.recovery_revision)
+                || !crate::auth::password_reset_credential_matches(&config, &user.password_hash, &claims.credential_fingerprint)
+            {
+                return false;
+            }
+            // The account read may wait; revalidate the signature/key gate
+            // after the read, rather than relying on the earlier observation.
             crate::auth::decode_password_reset_token(&config, &token)
                 .map(|claims| claims.expires_at).ok()
         }
-        RecoveryEmailCredential::Verification { config, token } => {
+        RecoveryEmailCredential::Verification { config, token, recipient } => {
+            let Ok(claims) = crate::auth::decode_email_verification_token(&config, &token) else {
+                return false;
+            };
+            let Ok(Some(user)) = users::Entity::find_by_id(claims.user_id)
+                .filter(users::Column::TenantId.eq(claims.tenant_id)).one(db).await else {
+                return false;
+            };
+            if recipient != claims.sub || !user.is_active() || user.is_email_verified()
+                || !user.matches_recovery_identity(claims.tenant_id, claims.user_id, &claims.sub, claims.recovery_revision)
+            {
+                return false;
+            }
             crate::auth::decode_email_verification_token(&config, &token)
                 .map(|claims| claims.expires_at).ok()
         }
-        RecoveryEmailCredential::EmailChange { expires_at } => Some(expires_at),
+        RecoveryEmailCredential::EmailChange { tenant_id, user_id, recipient, token_hash, expires_at } => {
+            match super::auth_email_change::pending_email_change_deadline(
+                db, tenant_id, user_id, &recipient, &token_hash,
+            ).await {
+                Ok(Some(stored)) => Some(expires_at.min(stored)),
+                _ => None,
+            }
+        }
     };
     // A later observation may reject, but cannot extend the verified window.
     let observed_at = Utc::now();
@@ -715,7 +754,9 @@ pub fn spawn_password_reset_email(
     config: &crate::auth::AuthConfig,
     token: String,
 ) -> tokio::task::JoinHandle<()> {
-    let credential = RecoveryEmailCredential::PasswordReset { config: config.clone(), token };
+    let credential = RecoveryEmailCredential::PasswordReset {
+        config: config.clone(), token, recipient: recipient.clone(),
+    };
     spawn_email_task(ctx, "send_password_reset", Some(credential), move || async move {
         email_service
             .send_password_reset(PasswordResetEmail {
@@ -735,7 +776,7 @@ pub fn spawn_email_verification_send(
     config: &crate::auth::AuthConfig,
 ) -> tokio::task::JoinHandle<()> {
     let credential = RecoveryEmailCredential::Verification {
-        config: config.clone(), token: verification_token.clone(),
+        config: config.clone(), token: verification_token.clone(), recipient: recipient.clone(),
     };
     spawn_email_task(ctx, "send_email_verification", Some(credential), move || async move {
         email_service
@@ -754,8 +795,13 @@ pub fn spawn_email_change_confirmation_send(
     recipient: String,
     token: String,
     expires_at: DateTime<Utc>,
+    tenant_id: Uuid,
+    user_id: Uuid,
 ) -> tokio::task::JoinHandle<()> {
-    let credential = RecoveryEmailCredential::EmailChange { expires_at };
+    let credential = RecoveryEmailCredential::EmailChange {
+        tenant_id, user_id, recipient: recipient.clone(),
+        token_hash: crate::auth::hash_refresh_token(&token), expires_at,
+    };
     spawn_email_task(ctx, "send_email_change_confirmation", Some(credential), move || async move {
         email_service
             .send_email_change_confirmation(EmailChangeConfirmationEmail {
@@ -1063,37 +1109,63 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn recovery_email_dispatch_requires_clock_admission_and_live_deadline() {
+    async fn recovery_email_dispatch_revalidates_account_and_clock() {
         use crate::common::settings::RustokSettings;
+        use crate::models::tenants;
         use rustok_migrations::SqliteTestMigrator;
         use rustok_test_utils::db::setup_test_db_with_migrations;
+        use sea_orm::{ActiveModelTrait, Set};
 
         let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
-        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
-        for (expires_at, expected) in [
-            (Utc::now() - chrono::Duration::minutes(5), false),
-            (Utc::now() + chrono::Duration::minutes(5), true),
-        ] {
-            let (called_tx, mut called_rx) = tokio::sync::mpsc::channel(1);
-            let credential = RecoveryEmailCredential::EmailChange { expires_at };
-            spawn_email_task(&ctx, "test_recovery", Some(credential), move || async move {
-                called_tx.send(()).await.unwrap();
-                Ok(())
-            }).await.unwrap();
-            assert_eq!(called_rx.try_recv().is_ok(), expected);
-        }
-
-        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
-        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
-        let (called_tx, mut called_rx) = tokio::sync::mpsc::channel(1);
-        let credential = RecoveryEmailCredential::EmailChange {
-            expires_at: Utc::now() + chrono::Duration::minutes(5),
+        let tenant = tenants::ActiveModel::new("Email tenant", "email-dispatch")
+            .insert(&db).await.unwrap();
+        let user = users::ActiveModel::new(tenant.id, "owner@example.com", "old-hash")
+            .insert(&db).await.unwrap();
+        let config = crate::auth::test_auth_config(
+            "recovery-email-state-revalidation-test-secret".to_string(),
+        );
+        let reset = crate::auth::encode_password_reset_token(&config, &user, 900).unwrap();
+        let verify = crate::auth::encode_email_verification_token(&config, &user, 900).unwrap();
+        let reset_credential = |recipient: &str| RecoveryEmailCredential::PasswordReset {
+            config: config.clone(), token: reset.clone(), recipient: recipient.to_string(),
         };
-        spawn_email_task(&ctx, "test_missing_clock", Some(credential), move || async move {
-            called_tx.send(()).await.unwrap();
-            Ok(())
-        }).await.unwrap();
-        assert!(called_rx.try_recv().is_err());
+        let verify_credential = || RecoveryEmailCredential::Verification {
+            config: config.clone(), token: verify.clone(), recipient: user.email.clone(),
+        };
+        let ctx = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
+        let dispatch = |credential, expected| {
+            let ctx = ctx.clone();
+            async move {
+                let (called_tx, mut called_rx) = tokio::sync::mpsc::channel(1);
+                spawn_email_task(&ctx, "test_recovery", Some(credential), move || async move {
+                    called_tx.send(()).await.unwrap();
+                    Ok(())
+                }).await.unwrap();
+                assert_eq!(called_rx.try_recv().is_ok(), expected);
+            }
+        };
+        dispatch(reset_credential(&user.email), true).await;
+        dispatch(reset_credential("other@example.com"), false).await;
+        dispatch(verify_credential(), true).await;
+
+        users::ActiveModel {
+            id: Set(user.id), email_verified_at: Set(Some(Utc::now().into())),
+            ..Default::default()
+        }.update(&db).await.unwrap();
+        dispatch(verify_credential(), false).await;
+        dispatch(reset_credential(&user.email), true).await;
+
+        // Restoring the old hash must not resurrect either credential.
+        for hash in ["new-hash", "old-hash"] {
+            users::ActiveModel {
+                id: Set(user.id), password_hash: Set(hash.to_string()),
+                ..Default::default()
+            }.update(&db).await.unwrap();
+            dispatch(reset_credential(&user.email), false).await;
+        }
+        // A valid signature alone is insufficient without the clock store.
+        let missing = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        assert!(!recovery_email_admitted(&missing, reset_credential(&user.email)).await);
     }
 
     #[tokio::test]
