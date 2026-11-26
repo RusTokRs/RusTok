@@ -129,7 +129,12 @@ impl CreateProductAttributeInput {
         validate_code("attribute code", &self.code)?;
         validate_bounded_json_object("validation", &self.validation)?;
         attribute_validation::validate_declared_rule_keys(&self.validation)?;
-        attribute_validation::parse_product_attribute_validation(&self.validation)?;
+        let rules = attribute_validation::parse_product_attribute_validation(&self.validation)?;
+        attribute_validation::validate_required_locales_compatibility(
+            self.value_type.as_str(),
+            self.is_localized,
+            &rules,
+        )?;
         if let Some(default_value) = &self.default_value {
             validate_bounded_json("default_value", default_value)?;
         }

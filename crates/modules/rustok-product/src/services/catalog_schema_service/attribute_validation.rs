@@ -113,6 +113,38 @@ pub(crate) fn validate_declared_rule_keys(value: &Value) -> CommerceResult<()> {
     Ok(())
 }
 
+/// requiredLocales is actively enforced during publication, so it must target a localized
+/// text-like attribute. Other value-type rule groups intentionally remain inert when they do
+/// not apply to the current type.
+#[derive(FromQueryResult)]
+struct AttributeLocaleCompatibilityRow {
+    value_type: String,
+    is_localized: bool,
+    validation: Value,
+}
+
+pub(super) async fn validate_required_locales_compatibility_in(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    attribute_id: Uuid,
+    overrides: &Value,
+) -> CommerceResult<()> {
+    let row = AttributeLocaleCompatibilityRow::find_by_statement(Statement::from_sql_and_values(
+        txn.get_database_backend(),
+        "SELECT value_type, is_localized, validation FROM product_attributes WHERE tenant_id = $1 AND id = $2 AND archived_at IS NULL",
+        vec![tenant_id.into(), attribute_id.into()],
+    ))
+    .one(txn)
+    .await?
+    .ok_or_else(|| CommerceError::Validation("Product attribute not found".into()))?;
+
+    validate_declared_rule_keys(&row.validation)?;
+    validate_declared_rule_keys(overrides)?;
+    let effective = merge_product_attribute_validation(&row.validation, overrides);
+    let rules = parse_product_attribute_validation(&effective)?;
+    validate_required_locales_compatibility(&row.value_type, row.is_localized, &rules)
+}
+
 /// Authoring and lifecycle share the schema fence. A writer admitted after an archive
 /// must not introduce a dangling/foreign/archived option reference in a JSON rule.
 pub(super) async fn validate_rule_option_references_in(
@@ -513,6 +545,26 @@ fn datetime_rule(
         .map_err(|_| schema_failure(rule, "must be an RFC 3339 timestamp".to_string()))
 }
 
+/// requiredLocales is actively enforced during publication, so it must target a localized
+/// text-like attribute. Other value-type rule groups intentionally remain inert when they do
+/// not apply to the current type.
+pub(crate) fn validate_required_locales_compatibility(
+    value_type: &str,
+    is_localized: bool,
+    rules: &ProductAttributeValidationRules,
+) -> CommerceResult<()> {
+    if !rules.required_locales.is_empty()
+        && (!is_localized || !matches!(value_type, "text" | "textarea" | "richtext"))
+    {
+        return Err(schema_failure(
+            "requiredLocales",
+            "requires a localized text, textarea, or richtext attribute",
+        ));
+    }
+
+    Ok(())
+}
+
 /// Enforces every applicable rule of the merged effective rule object against one patch value.
 ///
 /// Rules of a different value-type group stay inert, so one attribute can keep a single declared
@@ -776,6 +828,33 @@ mod tests {
 
     fn date(year: i32, month: u32, day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(year, month, day).expect("fixture date")
+    }
+
+    #[test]
+    fn required_locales_requires_a_localized_text_like_attribute() {
+        let locale_rules = rules(json!({ "requiredLocales": ["en-US"] }));
+        assert!(validate_required_locales_compatibility("text", true, &locale_rules).is_ok());
+        assert!(validate_required_locales_compatibility("textarea", true, &locale_rules).is_ok());
+        assert!(validate_required_locales_compatibility("richtext", true, &locale_rules).is_ok());
+        assert!(validate_required_locales_compatibility("text", false, &locale_rules).is_err());
+        assert!(validate_required_locales_compatibility("integer", true, &locale_rules).is_err());
+
+        let no_locale_rules = rules(json!({}));
+        assert!(validate_required_locales_compatibility("integer", false, &no_locale_rules).is_ok());
+    }
+
+    #[test]
+    fn unrelated_value_type_rule_groups_remain_inert() {
+        let text_rules = rules(json!({ "minLength": 2 }));
+        assert!(
+            validate_attribute_value_rules(
+                attribute_id(),
+                &text_rules,
+                AttributeValueType::Integer,
+                &ProductAttributeValuePatchValue::Integer(1),
+            )
+            .is_ok()
+        );
     }
 
     #[test]

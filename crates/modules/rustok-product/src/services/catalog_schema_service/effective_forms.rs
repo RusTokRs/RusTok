@@ -10,6 +10,8 @@ struct ProductCategoryPathRow {
 struct AttributeValidationRow {
     id: Uuid,
     scope: String,
+    value_type: String,
+    is_localized: bool,
     validation: Value,
 }
 
@@ -37,23 +39,25 @@ where
     let declared = AttributeValidationRow::find_by_statement(Statement::from_sql_and_values(
         db.get_database_backend(),
         format!(
-            "SELECT id, scope, validation FROM product_attributes WHERE tenant_id = $1 AND archived_at IS NULL AND id IN ({placeholders})"
+            "SELECT id, scope, value_type, is_localized, validation FROM product_attributes WHERE tenant_id = $1 AND archived_at IS NULL AND id IN ({placeholders})"
         ),
         values,
     ))
     .all(db)
     .await?
     .into_iter()
-    .map(|row| (row.id, (row.scope, row.validation)))
+    .map(|row| (row.id, (row.scope, row.value_type, row.is_localized, row.validation)))
     .collect::<HashMap<_, _>>();
 
     for binding in &mut form.attributes {
-        let (scope, base) = declared.get(&binding.attribute_id).ok_or_else(|| {
-            CommerceError::Core(rustok_core::error::Error::Internal(format!(
-                "Effective Product schema references missing or archived attribute {}",
-                binding.attribute_id
-            )))
-        })?;
+        let (scope, value_type, is_localized, base) = declared
+            .get(&binding.attribute_id)
+            .ok_or_else(|| {
+                CommerceError::Core(rustok_core::error::Error::Internal(format!(
+                    "Effective Product schema references missing or archived attribute {}",
+                    binding.attribute_id
+                )))
+            })?;
         if !matches!(scope.as_str(), "product" | "variant" | "both") {
             return Err(CommerceError::Validation(format!(
                 "Product attribute {} has unsupported scope",
@@ -65,6 +69,14 @@ where
             base,
             &binding.validation_overrides,
         );
+        attribute_validation::validate_declared_rule_keys(&binding.validation)?;
+        let rules =
+            attribute_validation::parse_product_attribute_validation(&binding.validation)?;
+        attribute_validation::validate_required_locales_compatibility(
+            value_type,
+            *is_localized,
+            &rules,
+        )?;
     }
     Ok(())
 }

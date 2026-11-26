@@ -68,6 +68,10 @@ canonical large-module reference:
      omit it. A supplied revision is still checked, including before same-status no-ops.
    - Typed EAV writes remain a distinct receipt-bound surface without an editorial predecessor
      input; the Next and Leptos document+value save workflows are still multi-command and non-atomic.
+   - `requiredLocales` is checked against localization mode and text-like type at attribute
+     creation, schema/category binding, and effective-form load; it cannot make a nonlocalized
+     attribute permanently unpublishable. Other value-type rule groups retain their documented
+     inert behavior when they do not apply to the current type.
    - ProductVariant now owns a dedicated business `revision`; Variant update/delete compare it
      under the Variant lock. Direct Pricing base-price writes advance it through the Product owner
      row touch in the same transaction as the exact Index refresh record.

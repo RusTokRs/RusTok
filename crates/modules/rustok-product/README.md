@@ -244,6 +244,10 @@ tenant/locale data before retrying a refused migration.
   effective category schema and option ownership, keep localized text in the
   requested translation row, preserve detached values, and publish one outbox
   event per patch request.
+- `requiredLocales` is restricted to localized text-like attributes because
+  publication actively enforces locale coverage. Invalid base rules and
+  schema/category overrides are rejected before they can make effective forms
+  unusable; unrelated value-type rule groups remain inert by contract.
 - Product publication validates required effective attributes before a product
   becomes active; localized text-like required values need an explicit non-empty
   translation row, option attributes need stored option relations, and
