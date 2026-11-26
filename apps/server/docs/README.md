@@ -882,7 +882,12 @@ fails with `invalid_scope`. Consent grants must contain at least one scope.
 Token issuance and rotation also reject empty stored scope grants: omitted
 scope never bypasses validation of the selected default, and authorization
 code exchange cannot consume a code with an empty decoded scope list.
-Existing access-token admission and its empty-permission semantics are unchanged.
+Existing access-token admission and its empty-permission semantics are unchanged
+for well-formed grants.
+Stored authorization-code and consent scopes are decoded as complete JSON string
+arrays. A malformed element rejects the entire grant, including during locked
+token issuance and access-token consent admission. Consent lookups report an
+error rather than treating corrupt persisted consent as missing or valid.
 Focused regressions are authored but not executed.
 The `refresh_token` grant is valid only when the app also declares
 `authorization_code`. The server persists narrowed scopes on rotated

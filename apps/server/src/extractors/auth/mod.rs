@@ -195,7 +195,9 @@ async fn validate_active_user_consent(
             "OAuth token predates the current consent epoch",
         ));
     }
-    let consent_scopes = consent.scopes_list();
+    let consent_scopes = consent.scopes_list().map_err(|_| {
+        (StatusCode::UNAUTHORIZED, "Stored OAuth consent scopes are invalid")
+    })?;
     if token_scopes
         .iter()
         .all(|scope| scope_matches(&consent_scopes, scope))

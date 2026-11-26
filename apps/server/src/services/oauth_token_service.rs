@@ -160,7 +160,9 @@ impl OAuthTokenService {
                 let authorization =
                     validate_authorization_code(db, &app, tenant_id, code, redirect_uri, verifier)
                         .await?;
-                let scopes = authorization.scopes_list();
+                let scopes = authorization.scopes_list().map_err(|_| {
+                    OAuthTokenProtocolError::invalid_grant("Authorization code scopes are invalid")
+                })?;
                 let prepared = prepare_user_tokens(
                     db,
                     &app,
@@ -451,7 +453,9 @@ async fn validate_authorization_code(
         ));
     }
 
-    let scopes = code.scopes_list();
+    let scopes = code.scopes_list().map_err(|_| {
+        OAuthTokenProtocolError::invalid_grant("Authorization code scopes are invalid")
+    })?;
     validate_scope_subset(&app.scopes_list(), &scopes)?;
     let (user, consent_granted_at) =
         validate_active_subject_and_consent(db, app, tenant_id, code.user_id, &scopes).await?;
@@ -870,7 +874,10 @@ async fn validate_active_subject_and_consent(
             .ok_or_else(|| {
                 OAuthTokenProtocolError::invalid_grant("OAuth consent is missing or revoked")
             })?;
-        validate_scope_subset(&consent.scopes_list(), scopes)?;
+        let consent_scopes = consent.scopes_list().map_err(|_| {
+            OAuthTokenProtocolError::invalid_grant("Stored OAuth consent scopes are invalid")
+        })?;
+        validate_scope_subset(&consent_scopes, scopes)?;
         consent_granted_at = Some(consent.granted_at);
     }
 
@@ -905,7 +912,10 @@ where
             )
         })?;
 
-    validate_scope_subset(&consent.scopes_list(), scopes)?;
+    let consent_scopes = consent.scopes_list().map_err(|_| {
+        OAuthTokenProtocolError::invalid_grant("Stored OAuth consent scopes are invalid")
+    })?;
+    validate_scope_subset(&consent_scopes, scopes)?;
     if expected_granted_at.as_ref() != Some(&consent.granted_at) {
         return Err(OAuthTokenProtocolError::invalid_grant(
             "OAuth consent changed during token issuance",
@@ -1258,7 +1268,10 @@ async fn commit_authorization_code_exchange(
             "Authorization code redirect URI is no longer registered",
         ));
     }
-    validate_scope_subset(&current_app.scopes_list(), &code.scopes_list())?;
+    let code_scopes = code.scopes_list().map_err(|_| {
+        OAuthTokenProtocolError::invalid_grant("Authorization code scopes are invalid")
+    })?;
+    validate_scope_subset(&current_app.scopes_list(), &code_scopes)?;
     lock_active_oauth_subject(
         &tx,
         code.tenant_id,
@@ -1272,7 +1285,7 @@ async fn commit_authorization_code_exchange(
         &current_app,
         code.tenant_id,
         code.user_id,
-        &code.scopes_list(),
+        &code_scopes,
         prepared.consent_granted_at.clone(),
     )
     .await?;
@@ -1671,6 +1684,19 @@ mod tests {
             used_at: None,
             created_at: now.into(),
         };
+        assert_eq!(
+            code.scopes_list().expect("valid stored scopes"),
+            vec!["profile".to_string()]
+        );
+        for malformed in [
+            serde_json::json!(["profile", 42]),
+            serde_json::json!(["profile", null]),
+            serde_json::json!("profile"),
+        ] {
+            let mut damaged = code.clone();
+            damaged.scopes = malformed;
+            assert!(damaged.scopes_list().is_err());
+        }
         let older = (now - chrono::Duration::seconds(1)).into();
         let newer = (now + chrono::Duration::seconds(1)).into();
         assert!(super::validate_code_consent_epoch(&code, None).is_ok());
@@ -1855,11 +1881,29 @@ mod tests {
             tenant.id,
             user.id,
             &["profile".to_string(), "email".to_string()],
-            Some(narrowed.granted_at),
+            Some(narrowed.granted_at.clone()),
         )
         .await
         .expect_err("token scopes must still be covered by current consent");
         assert_eq!(widened_token.error, "invalid_scope");
+
+        let epoch = narrowed.granted_at.clone();
+        let mut malformed: oauth_consents::ActiveModel = narrowed.into();
+        malformed.scopes = Set(serde_json::json!(["profile", 42]));
+        let malformed = malformed.update(&db).await.expect("persist malformed consent");
+        assert!(malformed.scopes_list().is_err());
+
+        let error = super::validate_locked_oauth_consent(
+            &db,
+            &client,
+            tenant.id,
+            user.id,
+            &["profile".to_string()],
+            Some(epoch),
+        )
+        .await
+        .expect_err("partially malformed consent must not authorize token issuance");
+        assert_eq!(error.error, "invalid_grant");
     }
 
     #[tokio::test]

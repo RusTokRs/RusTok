@@ -661,10 +661,13 @@ impl OAuthAppService {
             let consent = OAuthConsents::find_active_consent(&tx, app_id, user.id, tenant_id)
                 .await
                 .map_err(|_| Error::InternalServerError)?;
-            let covered = consent.is_some_and(|consent| {
-                let granted = consent.scopes_list();
-                scopes.iter().all(|scope| scope_matches(&granted, scope))
-            });
+            let covered = match consent {
+                Some(consent) => {
+                    let granted = consent.scopes_list().map_err(|_| Error::InternalServerError)?;
+                    scopes.iter().all(|scope| scope_matches(&granted, scope))
+                }
+                None => false,
+            };
             if !covered {
                 if !approve_consent {
                     return Err(Error::Unauthorized(
@@ -858,7 +861,7 @@ impl OAuthAppService {
             .map_err(|_| Error::InternalServerError)?;
 
         if let Some(c) = consent {
-            let granted_scopes = c.scopes_list();
+            let granted_scopes = c.scopes_list().map_err(|_| Error::InternalServerError)?;
             // Check if all requested scopes are covered by granted scopes
             for req_scope in requested_scopes {
                 if !scope_matches(&granted_scopes, req_scope) {
