@@ -33,7 +33,7 @@ identifier. This enables browser-local recovery in `localStorage`: each tab
 writes immutable per-save records under its own writer identity and records the
 server base revision/document plus the unsaved document. Recovery selects only
 the latest sequence from each writer, while retaining older record references
-for safe cleanup if a tab was interrupted between writing and pruning. The host's
+for safe cleanup if a tab was interrupted between writing and pruning. Before selecting active records, the reader validates the complete persisted supersession graph; any cycle is a fatal recovery error and leaves every record untouched, even when unrelated writers have valid records. The host's
 `on_reload_requested` remains the authoritative
 refresh action; after reload, records from all tabs are reconciled against the
 latest server document using a conservative three-way merge. Object fields are
