@@ -534,7 +534,9 @@ The witness stores an HMAC-authenticated exact metadata checkpoint including
 a monotonically increasing revision and every grant/horizon. All reads and
 all five mutation paths verify it. Mutations lock authority then witness,
 commit witness first and return success only after both durable commits.
-Mismatch or uncertain write commit fences local JWT; recovery is offline.
+Mismatch or uncertain write commit fences local JWT, including cancellation
+of the asynchronous writer after entering the commit phase. The shared fault
+latch remains closed until restart after offline recovery.
 
 For an existing independent authority, stop all older hosts and writers,
 wait for all leases and drains to expire, provision an empty separate witness
