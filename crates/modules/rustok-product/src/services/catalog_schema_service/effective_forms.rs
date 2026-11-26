@@ -9,6 +9,7 @@ struct ProductCategoryPathRow {
 #[derive(FromQueryResult)]
 struct AttributeValidationRow {
     id: Uuid,
+    scope: String,
     validation: Value,
 }
 
@@ -36,23 +37,32 @@ where
     let declared = AttributeValidationRow::find_by_statement(Statement::from_sql_and_values(
         db.get_database_backend(),
         format!(
-            "SELECT id, validation FROM product_attributes WHERE tenant_id = $1 AND archived_at IS NULL AND id IN ({placeholders})"
+            "SELECT id, scope, validation FROM product_attributes WHERE tenant_id = $1 AND archived_at IS NULL AND id IN ({placeholders})"
         ),
         values,
     ))
     .all(db)
     .await?
     .into_iter()
-    .map(|row| (row.id, row.validation))
+    .map(|row| (row.id, (row.scope, row.validation)))
     .collect::<HashMap<_, _>>();
 
     for binding in &mut form.attributes {
-        let base = declared
-            .get(&binding.attribute_id)
-            .cloned()
-            .unwrap_or_else(|| Value::Object(Default::default()));
+        let (scope, base) = declared.get(&binding.attribute_id).ok_or_else(|| {
+            CommerceError::Core(rustok_core::error::Error::Internal(format!(
+                "Effective Product schema references missing or archived attribute {}",
+                binding.attribute_id
+            )))
+        })?;
+        if !matches!(scope.as_str(), "product" | "variant" | "both") {
+            return Err(CommerceError::Validation(format!(
+                "Product attribute {} has unsupported scope",
+                binding.attribute_id
+            )));
+        }
+        binding.scope = scope.clone();
         binding.validation = attribute_validation::merge_product_attribute_validation(
-            &base,
+            base,
             &binding.validation_overrides,
         );
     }
@@ -391,6 +401,7 @@ impl ProductCatalogSchemaService {
                 .push(AttributeBinding {
                     attribute_id: row.attribute_id,
                     group_code: row.group_code,
+                    scope: String::new(),
                     is_required: row.is_required,
                     is_disabled: row.is_disabled,
                     position: row.position,
@@ -516,6 +527,96 @@ mod tests {
         let cycle = HashMap::from([(root, Some(leaf)), (leaf, Some(root))]);
         assert!(matches!(
             taxonomy_ancestor_chain(leaf, &cycle),
+            Err(CommerceError::Core(rustok_core::error::Error::Internal(_)))
+        ));
+    }
+
+    fn effective_form(attribute_id: Uuid) -> EffectiveProductForm {
+        EffectiveProductForm {
+            category_id: Uuid::new_v4(),
+            attributes: vec![AttributeBinding {
+                attribute_id,
+                group_code: None,
+                scope: String::new(),
+                is_required: true,
+                is_disabled: false,
+                position: 0,
+                visibility_overrides: Default::default(),
+                validation_overrides: serde_json::json!({ "maxLength": 20 }),
+                validation: Value::Object(Default::default()),
+                source: EffectiveAttributeSource::Schema,
+                variant_axis_policy: "forbidden".to_string(),
+                default_variant_axis: false,
+            }],
+            detached_attribute_ids: Vec::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn effective_attribute_form_hydrates_definition_scope_and_validation() {
+        use sea_orm::Database;
+
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("in-memory SQLite");
+        db.execute_unprepared(
+            "CREATE TABLE product_attributes (
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                scope TEXT NOT NULL,
+                validation JSON NOT NULL,
+                archived_at TEXT NULL
+            )",
+        )
+        .await
+        .expect("create product_attributes");
+        let tenant_id = Uuid::new_v4();
+        let attribute_id = Uuid::new_v4();
+        db.execute_unprepared(&format!(
+            "INSERT INTO product_attributes (id, tenant_id, scope, validation, archived_at)
+             VALUES ('{attribute_id}', '{tenant_id}', 'variant', '{{\"required\":true}}', NULL)"
+        ))
+        .await
+        .expect("insert attribute definition");
+
+        let mut form = effective_form(attribute_id);
+        load_effective_attribute_validation(&db, tenant_id, &mut form)
+            .await
+            .expect("hydrate effective attribute");
+
+        assert_eq!(form.attributes[0].scope, "variant");
+        assert_eq!(form.attributes[0].validation["required"], true);
+        assert_eq!(form.attributes[0].validation["maxLength"], 20);
+    }
+
+    #[tokio::test]
+    async fn effective_attribute_form_fails_closed_for_missing_or_archived_definitions() {
+        use sea_orm::Database;
+
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("in-memory SQLite");
+        db.execute_unprepared(
+            "CREATE TABLE product_attributes (
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                scope TEXT NOT NULL,
+                validation JSON NOT NULL,
+                archived_at TEXT NULL
+            )",
+        )
+        .await
+        .expect("create product_attributes");
+
+        let mut form = effective_form(Uuid::new_v4());
+        let result = load_effective_attribute_validation(
+            &db,
+            Uuid::new_v4(),
+            &mut form,
+        )
+        .await;
+        assert!(matches!(
+            result,
             Err(CommerceError::Core(rustok_core::error::Error::Internal(_)))
         ));
     }
