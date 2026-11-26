@@ -29,6 +29,10 @@ pub struct AdminCanvasController {
     /// A request cannot be resumed after deserialization. Do not persist its identity.
     #[serde(skip)]
     active_save_request_id: Option<String>,
+    /// The page active immediately before the current page was selected. Kept only for
+    /// same-session undo when that newly selected page is removed from the document.
+    #[serde(skip)]
+    previous_active_page_id: Option<String>,
 }
 
 impl AdminCanvasController {
@@ -70,6 +74,7 @@ impl AdminCanvasController {
             ui,
             clipboard: None,
             active_save_request_id: None,
+            previous_active_page_id: None,
         };
         let report = controller.editor.validate();
         controller.synchronize(report);
@@ -217,6 +222,11 @@ impl AdminCanvasController {
             ));
         }
         self.validate_navigation_intent(&intent)?;
+        let previous_active_page_id = if matches!(&intent, UiIntent::ActivatePage { .. }) {
+            self.ui.state.page.active_page_id.clone()
+        } else {
+            None
+        };
         // A late hover from a removed component or a different page is not
         // a valid interaction target in the current canvas.
         let intent = match intent {
@@ -237,6 +247,11 @@ impl AdminCanvasController {
             if let Err(error) = self.apply_ui_effect(effect, &mut outgoing) {
                 *self = snapshot;
                 return Err(error);
+            }
+        }
+        if let Some(previous_page_id) = previous_active_page_id {
+            if self.ui.state.page.active_page_id.as_deref() != Some(previous_page_id.as_str()) {
+                self.previous_active_page_id = Some(previous_page_id);
             }
         }
         self.invalidate_geometry_after_document_change(snapshot.editor.revision().command_sequence);
@@ -734,15 +749,26 @@ impl AdminCanvasController {
         if summaries.is_empty() {
             self.ui.state.page.active_page_id = None;
             self.ui.state.page.active_page_index = 0;
+            self.previous_active_page_id = None;
             return;
         }
-        let current_id = self.ui.state.page.active_page_id.as_deref();
-        let index = current_id
-            .and_then(|id| {
+        let current_id = self.ui.state.page.active_page_id.clone();
+        let current_index = current_id.as_deref().and_then(|id| {
+            summaries
+                .iter()
+                .position(|summary| summary.id.as_deref() == Some(id))
+        });
+        let previous_index = if current_id.is_some() && current_index.is_none() {
+            self.previous_active_page_id.as_deref().and_then(|id| {
                 summaries
                     .iter()
                     .position(|summary| summary.id.as_deref() == Some(id))
             })
+        } else {
+            None
+        };
+        let index = current_index
+            .or(previous_index)
             .unwrap_or_else(|| {
                 self.ui
                     .state
@@ -750,6 +776,9 @@ impl AdminCanvasController {
                     .active_page_index
                     .min(summaries.len().saturating_sub(1))
             });
+        if current_id.is_some() && current_index.is_none() {
+            self.previous_active_page_id = None;
+        }
         self.ui.state.page.active_page_index = index;
         self.ui.state.page.active_page_id = summaries[index].id.clone();
     }
@@ -1324,6 +1353,43 @@ mod tests {
         assert!(controller.validate_preview_request(&about, sequence + 1).is_err());
         let foreign = PreviewPageBuilderInput::new("foreign", about.project_data.clone());
         assert!(controller.validate_preview_request(&foreign, sequence).is_err());
+    }
+
+    #[test]
+    fn undoing_a_new_page_restores_the_previously_active_page() {
+        let mut controller = controller();
+        for (index, id, title) in [
+            (1, "about", "About"),
+            (2, "contact", "Contact"),
+            (3, "landing", "Landing"),
+        ] {
+            controller
+                .dispatch(UiIntent::execute(EditorCommand::Page {
+                    command: PageCommand::Add {
+                        index,
+                        page: Box::new(blank_page(id, title)),
+                    },
+                }))
+                .expect("add page");
+        }
+        controller
+            .dispatch(UiIntent::ActivatePage {
+                page_id: Some("landing".to_string()),
+                page_index: 3,
+            })
+            .expect("activate new page");
+        assert_eq!(controller.active_page_index(), 3);
+
+        controller.dispatch(UiIntent::Undo).expect("undo page creation");
+
+        assert_eq!(controller.active_page_index(), 0);
+        assert_eq!(
+            controller
+                .active_page_summary()
+                .and_then(|summary| summary.id)
+                .as_deref(),
+            Some("home")
+        );
     }
 
     #[test]

@@ -180,8 +180,6 @@ Pages of a document in the default runtime (`src/editor/ssr_inspector.rs`):
 - **A caller without the edit capability cannot change the page.** The open page is kept in the
   draft session, which the host keeps for a caller that may edit, so the form is not rendered for
   anyone else. Such a caller sees the page the document opens on.
-- **Undoing a created page does not return to the page the author came from.** The page is
-  removed and the editor shows the last page that is left.
 
 SSR draft session storage (`src/draft_session.rs`):
 
