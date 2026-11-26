@@ -690,7 +690,7 @@ fn ws_should_forward_text(
     text: &str,
     operations: &mut WsOperationTracker,
 ) -> bool {
-    let Some(id) = ws_server_complete_id(text) else {
+    let Some(id) = ws_server_terminal_id(text) else {
         return true;
     };
     let cancelled_by_client = operations.release(&id);
@@ -700,9 +700,12 @@ fn ws_should_forward_text(
     !(cancelled_by_client && protocol == WebSocketProtocols::GraphQLWS)
 }
 
-fn ws_server_complete_id(text: &str) -> Option<String> {
+fn ws_server_terminal_id(text: &str) -> Option<String> {
     let value = serde_json::from_str::<serde_json::Value>(text).ok()?;
-    if value.get("type").and_then(serde_json::Value::as_str) != Some("complete") {
+    if !matches!(
+        value.get("type").and_then(serde_json::Value::as_str),
+        Some("complete" | "error")
+    ) {
         return None;
     }
     value
@@ -1042,21 +1045,80 @@ mod tests {
     fn graphql_ws_server_complete_releases_operation_slot() {
         let complete = serde_json::json!({ "type": "complete", "id": "op-1" }).to_string();
         assert_eq!(
-            super::ws_server_complete_id(&complete),
+            super::ws_server_terminal_id(&complete),
             Some("op-1".to_string())
         );
         let next = serde_json::json!({ "type": "next", "id": "op-1" }).to_string();
-        assert_eq!(super::ws_server_complete_id(&next), None);
+        assert_eq!(super::ws_server_terminal_id(&next), None);
 
         let mut tracker = super::WsOperationTracker::default();
         let start = serde_json::json!({ "type": "subscribe", "id": "op-1" }).to_string();
         tracker.observe_client_message(&start).expect("start");
-        if let Some(id) = super::ws_server_complete_id(&complete) {
+        if let Some(id) = super::ws_server_terminal_id(&complete) {
             tracker.release(&id);
         }
         tracker
             .observe_client_message(&start)
             .expect("id is reusable after complete");
+    }
+
+    #[test]
+    fn graphql_ws_server_error_releases_operation_slot() {
+        let error = serde_json::json!({
+            "type": "error",
+            "id": "op-1",
+            "payload": [{ "message": "resolver failed" }],
+        })
+        .to_string();
+        assert_eq!(
+            super::ws_server_terminal_id(&error),
+            Some("op-1".to_string())
+        );
+
+        let mut tracker = super::WsOperationTracker::default();
+        let start = serde_json::json!({ "type": "subscribe", "id": "op-1" }).to_string();
+        tracker.observe_client_message(&start).expect("start");
+        assert!(super::ws_should_forward_text(
+            WebSocketProtocols::GraphQLWS,
+            &error,
+            &mut tracker,
+        ));
+        assert!(!tracker.active.contains("op-1"));
+        tracker
+            .observe_client_message(&start)
+            .expect("id is reusable after terminal error");
+    }
+
+    #[test]
+    fn graphql_ws_client_cancellation_error_is_protocol_specific() {
+        for (protocol, start_type, stop_type, should_forward) in [
+            (WebSocketProtocols::GraphQLWS, "subscribe", "complete", false),
+            (
+                WebSocketProtocols::SubscriptionsTransportWS,
+                "start",
+                "stop",
+                true,
+            ),
+        ] {
+            let mut tracker = super::WsOperationTracker::default();
+            let start = serde_json::json!({ "type": start_type, "id": "op" }).to_string();
+            let stop = serde_json::json!({ "type": stop_type, "id": "op" }).to_string();
+            let error = serde_json::json!({
+                "type": "error",
+                "id": "op",
+                "payload": [{ "message": "resolver failed" }],
+            })
+            .to_string();
+
+            tracker.observe_client_message(&start).expect("start");
+            tracker.observe_client_message(&stop).expect("stop");
+            assert_eq!(
+                super::ws_should_forward_text(protocol, &error, &mut tracker),
+                should_forward
+            );
+            assert!(!tracker.active.contains("op"));
+            assert!(tracker.cancelling.is_empty());
+        }
     }
 
     #[test]
@@ -1166,7 +1228,7 @@ mod tests {
                 let Some(async_graphql::http::WsMessage::Text(text)) = message else {
                     panic!("expected completion")
                 };
-                let id = super::ws_server_complete_id(&text).expect("complete message");
+                let id = super::ws_server_terminal_id(&text).expect("complete message");
                 assert_eq!(id, format!("op-{index}"));
                 assert_eq!(
                     super::ws_should_forward_text(protocol, &text, &mut operations.lock().unwrap()),
@@ -1191,7 +1253,7 @@ mod tests {
             let Some(async_graphql::http::WsMessage::Text(text)) = completion else {
                 panic!("expected natural completion")
             };
-            let id = super::ws_server_complete_id(&text).unwrap();
+            let id = super::ws_server_terminal_id(&text).unwrap();
             assert_eq!(id, "natural");
             assert!(super::ws_should_forward_text(
                 protocol,
@@ -1215,7 +1277,7 @@ mod tests {
             let Some(async_graphql::http::WsMessage::Text(text)) = completion else {
                 panic!("expected reused natural completion")
             };
-            let id = super::ws_server_complete_id(&text).unwrap();
+            let id = super::ws_server_terminal_id(&text).unwrap();
             assert_eq!(id, "natural");
             assert!(super::ws_should_forward_text(
                 protocol,
@@ -1246,7 +1308,7 @@ mod tests {
             let Some(async_graphql::http::WsMessage::Text(text)) = completion else {
                 panic!("expected cancelled completion")
             };
-            let id = super::ws_server_complete_id(&text).unwrap();
+            let id = super::ws_server_terminal_id(&text).unwrap();
             assert_eq!(id, "race");
             assert_eq!(
                 super::ws_should_forward_text(protocol, &text, &mut operations.lock().unwrap()),
@@ -1264,7 +1326,7 @@ mod tests {
             let Some(async_graphql::http::WsMessage::Text(text)) = completion else {
                 panic!("expected reused race completion")
             };
-            let id = super::ws_server_complete_id(&text).unwrap();
+            let id = super::ws_server_terminal_id(&text).unwrap();
             assert_eq!(id, "race");
             assert!(super::ws_should_forward_text(
                 protocol,
@@ -1283,7 +1345,7 @@ mod tests {
             let Some(async_graphql::http::WsMessage::Text(text)) = old else {
                 panic!("expected old completion")
             };
-            let id = super::ws_server_complete_id(&text).unwrap();
+            let id = super::ws_server_terminal_id(&text).unwrap();
             assert_eq!(id, "reused");
             assert_eq!(
                 super::ws_should_forward_text(protocol, &text, &mut operations.lock().unwrap()),

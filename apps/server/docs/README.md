@@ -2145,3 +2145,13 @@ percent-decoding semantics as Axum's Path extractor. Encoded UUID hyphens
 can no longer bypass human-only or moderation-only route checks. Focused
 source regressions were added; compilation, formatting and tests were not run
 at the user's request.
+
+
+## GraphQL WebSocket terminal operation accounting (2026-11-26)
+
+The WebSocket operation tracker now releases operation IDs for both protocol
+terminal messages: successful completion and execution error. This prevents
+failed subscriptions from permanently consuming the per-connection operation
+budget. Client-cancellation races are covered for both supported WebSocket
+protocols. Source regressions were added; tests and formatting were not run
+at the user's request.
