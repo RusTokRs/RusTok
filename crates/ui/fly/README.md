@@ -199,12 +199,24 @@ A localized value map with two keys that normalize to the same locale is invalid
 even if the values agree. Authoring rejects such translation entries, imported maps
 remain lossless but unresolved, and coverage does not count ambiguous maps. Ambiguous
 localized slugs are excluded from inbound routing and reject outbound navigation
-without using the interaction fallback URL. Metadata collisions are diagnosed even
-when no project locale policy is configured.
+without using the interaction fallback URL. A malformed locale key likewise invalidates
+the entire map: no exact or fallback translation is selected, no required coverage is
+credited, and neither inbound nor outbound navigation uses its slugs. Runtime translation
+projection removes stale caller values for these invalid entries. Metadata key errors
+and collisions are diagnosed even when no project locale policy is configured. Required-locale coverage and collision checks
+share the PageMetadata text-field inventory, including Open Graph type and Twitter Card,
+title, description and image. Plain, non-localized metadata is not counted as a translation gap.
+The authoring metadata projection may show a sample translation for editing, but HTML head
+rendering and plain slug selection only use resolved text. Call the runtime locale resolver
+before rendering localized metadata; unresolved wrappers remain lossless and are not emitted
+as an arbitrary language in the rendered head.
 Translation IDs are exact, nonempty ASCII alphanumeric, hyphen or underscore identities:
 surrounding whitespace is invalid on authoring and validation, and removal addresses the
 exact stored ID so an invalid imported entry can be removed without deleting a different
-entry. A present non-array `flyTranslations` block is a blocking diagnostic and catalog
+entry. Duplicate decoded IDs never resolve at lookup or runtime, cannot satisfy required
+coverage, and cannot be silently overwritten by upsert. Explicit removal clears all
+decoded entries with that exact ID so it can be recreated unambiguously. A present
+non-array `flyTranslations` block is a blocking diagnostic and catalog
 mutations reject it without changing the source document; opaque array entries remain
 preserved.
 A page-targeting interaction requires a unique page ID. Duplicate imported page IDs are
@@ -294,6 +306,9 @@ Consumers must honor runtime error diagnostics before publishing.
 Page identities remain optional for legacy documents, but a page patch that sets `id` must supply a non-empty string; use `PagePatch.remove_fields` to clear an ID. Public document mutation helpers invalidate the cached project hash and component index, and compound theme/symbol commands publish changes only after validation succeeds.
 
 Mutating commands, including component patches, run the same full project validation before committing. A cached report is reused only for selection or an empty transaction; it cannot authorize a changed document. The patch-target validation API delegates to the canonical validator until dependency-complete incremental verification is available.
+Typed patch builders reconcile set/remove operations in call order. If a raw serialized
+patch contains both a set and a removal for the same exact attribute, field or style
+property, removal wins; unrelated writes remain in the same validated transaction.
 
 Snapshot comparisons fingerprint the actual document payload and retain the order and repeated identities of pages, assets and style rules. An entry whose position or payload changes appears in the corresponding changed collection (including shifted siblings); opaque entries retain their positions.
 

@@ -38,7 +38,9 @@ for safe cleanup if a tab was interrupted between writing and pruning. Before se
 refresh action; after reload, records from all tabs are reconciled against the
 latest server document using a conservative three-way merge. Object fields are
 merged recursively and arrays of uniquely identified objects are merged by
-stable `id`; simultaneous edits to the same value, ambiguous arrays and
+exact stable `id` without whitespace normalization; blank IDs are not merge keys.
+A replacement with a distinct ID is not an edit of the prior item. Simultaneous
+edits to the same value, ambiguous arrays and
 incompatible reorderings stop in a read-only conflict state. The local copies
 and conflicting paths remain visible until the author copies or explicitly
 discards them. Records are retired only after a confirmed save. Each save uses a fresh immutable
@@ -54,8 +56,15 @@ they are merged on a reload/reconciliation boundary, while BroadcastChannel
 notices remain advisory and server revision checks are authoritative.
 
 When the Pages facade returns `PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN`, Dioxus
-keeps the editor read-only and offers an exact same-request retry while mounted.
-The durable local recovery record also makes a full reload recoverable: if the
+keeps the editor read-only and retains the exact submitted page, revision and payload.
+The mounted retry is admitted only if the current draft still matches that request;
+edits made during the original save are preserved and require an authoritative reload
+instead of being submitted as a different retry. A generic retry failure or malformed
+response does not clear the unknown-outcome fence. Reload actions for both unknown
+outcomes and revision conflicts require confirmed browser recovery or an explicit
+copy confirmation for the current working hash and command sequence; a prior copy
+confirmation does not authorize discarding later edits. The durable local recovery
+record also makes a full reload recoverable: if the
 first request committed, the latest server document already contains the
 submitted draft; if it did not, the local draft can be merged against the
 unchanged server base. The server receipt remains the authority for whether a

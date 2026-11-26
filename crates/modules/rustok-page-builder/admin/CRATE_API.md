@@ -5,7 +5,7 @@
 - `PageBuilderAdmin`: Primary Leptos visual page builder presentation shell.
 - `PageBuilderAdminHostContext`: Context container for canvas controller and admin facade injection.
 - `PageBuilderAdminWithController`: Pre-wired component binding a specific `AdminCanvasController`.
-- `DioxusPageBuilderAdminHostContext`: Dioxus host context; `with_draft_recovery_scope` enables page- and actor-scoped browser-local recovery when configured with an opaque stable scope. The direct controller component exposes the equivalent `draft_recovery_scope` prop.
+- `DioxusPageBuilderAdminHostContext`: Dioxus host context; `with_draft_recovery_scope` enables page- and actor-scoped browser-local recovery when configured with an opaque stable scope. The direct controller component exposes the equivalent `draft_recovery_scope` prop. Three-way recovery compares reorder constraints on surviving base component identities; movement of an item deleted by the other writer does not conflict with an independent reorder of surviving items.
 - `ConsumerPropertiesPanel`: Property inspector component for editing consumer properties.
 
 ### Canvas & Controller

@@ -12,6 +12,7 @@ use crate::error::{AuthError, Result};
 pub enum AuthMacPurpose {
     OAuthConsentCsrf,
     PasswordResetCredential,
+    SessionRefreshRetry,
 }
 
 impl AuthMacPurpose {
@@ -19,6 +20,7 @@ impl AuthMacPurpose {
         match self {
             Self::OAuthConsentCsrf => b"oauth-consent-csrf",
             Self::PasswordResetCredential => b"password-reset-credential",
+            Self::SessionRefreshRetry => b"session-refresh-retry",
         }
     }
 }
@@ -65,6 +67,63 @@ pub fn auth_purpose_mac(
     hmac_sha256(&key, payload)
 }
 
+/// A secret, client-generated 256-bit operation key, not a public request ID.
+/// Never log its value. Clients retain the same key only for an ambiguous
+/// outcome of the same refresh attempt.
+pub const REFRESH_RETRY_KEY_HEADER: &str = "x-rustok-refresh-retry-key";
+
+#[derive(Clone)]
+pub struct AuthRefreshRetryKey([u8; 32]);
+
+impl AuthRefreshRetryKey {
+    /// Shared singleton-header admission for REST and GraphQL.
+    pub fn from_header_values<'a>(
+        mut values: impl Iterator<Item = &'a [u8]>,
+    ) -> Result<Option<Self>> {
+        let Some(raw) = values.next() else {
+            return Ok(None);
+        };
+        let invalid = || AuthError::Validation("Invalid refresh retry key".to_string());
+        if values.next().is_some() {
+            return Err(invalid());
+        }
+        let value = std::str::from_utf8(raw).map_err(|_| invalid())?;
+        if !is_canonical_auth_mac_tag(value) {
+            return Err(invalid());
+        }
+        let mut key = [0_u8; 32];
+        hex::decode_to_slice(value, &mut key).map_err(|_| invalid())?;
+        if key == [0_u8; 32] {
+            return Err(invalid());
+        }
+        Ok(Some(Self(key)))
+    }
+
+    /// Deterministically derive one opaque candidate for this operation and
+    /// session. The host MUST compare its digest with the authoritative
+    /// session and history under lock before returning or persisting it.
+    /// No credential or operation key is stored in recoverable form.
+    pub fn derive_token(
+        &self,
+        config: &AuthConfig,
+        tenant_id: uuid::Uuid,
+        session_id: uuid::Uuid,
+    ) -> Result<String> {
+        if tenant_id.is_nil() || session_id.is_nil() {
+            return Err(AuthError::Internal("Invalid refresh session identity".to_string()));
+        }
+        let mut payload = [0_u8; 64];
+        payload[..16].copy_from_slice(tenant_id.as_bytes());
+        payload[16..32].copy_from_slice(session_id.as_bytes());
+        payload[32..].copy_from_slice(&self.0);
+        Ok(hex::encode(auth_purpose_mac(
+            config,
+            AuthMacPurpose::SessionRefreshRetry,
+            &payload,
+        )?))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -97,6 +156,35 @@ mod tests {
     }
 
     #[test]
+    fn refresh_retry_key_is_singleton_and_canonical() {
+        let key = "ab".repeat(32);
+        assert!(AuthRefreshRetryKey::from_header_values(std::iter::empty()).unwrap().is_none());
+        assert!(AuthRefreshRetryKey::from_header_values([key.as_bytes()].into_iter()).unwrap().is_some());
+        assert!(AuthRefreshRetryKey::from_header_values([key.as_bytes(), key.as_bytes()].into_iter()).is_err());
+        for invalid in ["".to_string(), "00".repeat(32), "AB".repeat(32), "a".repeat(63), format!(" {key}")] {
+            assert!(AuthRefreshRetryKey::from_header_values([invalid.as_bytes()].into_iter()).is_err());
+        }
+    }
+
+    #[test]
+    fn refresh_retry_derivation_is_stable_and_session_scoped() {
+        let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
+        let config = crate::build_auth_config_from_document(
+            "test-secret-at-least-thirty-two-bytes".to_string(), 900, Default::default(),
+            fixture.document(1).to_string().as_bytes(),
+        ).unwrap().1;
+        let raw = "ab".repeat(32);
+        let key = AuthRefreshRetryKey::from_header_values([raw.as_bytes()].into_iter()).unwrap().unwrap();
+        let tenant = uuid::Uuid::new_v4();
+        let session = uuid::Uuid::new_v4();
+        let first = key.derive_token(&config, tenant, session).unwrap();
+        assert!(is_canonical_auth_mac_tag(&first));
+        assert_eq!(first, key.derive_token(&config.clone(), tenant, session).unwrap());
+        assert_ne!(first, key.derive_token(&config, uuid::Uuid::new_v4(), session).unwrap());
+        assert_ne!(first, key.derive_token(&config, tenant, uuid::Uuid::new_v4()).unwrap());
+    }
+
+    #[test]
     fn mac_tag_requires_full_lowercase_hex() {
         assert!(is_canonical_auth_mac_tag(&"a0".repeat(32)));
         for invalid in ["", "aa", &"A0".repeat(32), &"g0".repeat(32), &"a0".repeat(33)] {
@@ -112,7 +200,7 @@ mod tests {
             let config = AuthConfig::from_test_document_unvalidated(
                 root.to_string(), fixture.document(1).to_string().as_bytes(),
             );
-            for purpose in [AuthMacPurpose::OAuthConsentCsrf, AuthMacPurpose::PasswordResetCredential] {
+            for purpose in [AuthMacPurpose::OAuthConsentCsrf, AuthMacPurpose::PasswordResetCredential, AuthMacPurpose::SessionRefreshRetry] {
                 assert!(auth_purpose_mac(&config, purpose, b"payload").is_err());
             }
         }

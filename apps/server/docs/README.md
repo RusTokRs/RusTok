@@ -311,6 +311,15 @@ artifact admission reverification recheck stop between independent
 stages and tenant/candidate iterations; an already-started durable
 effect is not interrupted by these new checks.
 
+Module transition and artifact-maintenance supervisors reject closed shutdown
+watches before admitting the first or next maintenance pass, prioritizing
+shutdown over a ready interval. The Redis status monitor also rejects a
+closed watch before invoking its factory or restarting. Social Graph Index
+position and poison-receipt observers use the common stop-aware retry wait
+and discard samples completed after shutdown; position observation rechecks
+admission between connection and snapshot. Already-admitted durable
+maintenance operations still finish before the next independent phase.
+
 The module artifact maintenance worker also retains a UUID keyset cursor for
 tenant data-object GC across its 60-second passes. A full page advances the
 cursor; a short or empty page wraps to the first page. Discovery and retention
@@ -429,6 +438,13 @@ open completion gates.
 OAuth translation snapshots use the `rustok-auth` lifecycle enum directly.
 Its serialized `active` and `archived` values match persisted owner lifecycle
 spelling; server translation queries use SeaQuery's expression trait.
+
+REST invite acceptance retains its tenant/auth middleware boundary and skips
+unrelated channel and guest-cart resolution. The early dispatcher calls the
+registered controller; both entry paths share one bounded (64 KiB) JSON object
+decoder, require a single JSON Content-Type (HTTP 415 otherwise), and delegate
+to the same lifecycle service. Invalid or oversized bodies return HTTP 400
+without exposing credential values. Source regression authored, unrun.
 
 Invite acceptance and user-admin revocation share a transaction-scoped
 `auth_invites` row fence. The first committed transition wins; accepted invites
@@ -771,8 +787,14 @@ path. OAuth protocol `server_error` and `temporarily_unavailable`
 are emitted as HTTP 500/503, rather than misleading client-side 400 responses.
 OAuth client database lookup failures also become sanitized HTTP 500 errors, not
 misleading `invalid_client` / HTTP 401 responses.
-All `/api/oauth/*` responses, including consent HTML, authorization redirects,
-userinfo, and failures, carry `Cache-Control: no-store` and `Pragma: no-cache`.
+All `/api/oauth/*` and `/api/auth/*` responses, including consent HTML,
+authorization redirects, invite acceptance, userinfo, and early failures,
+carry `Cache-Control: no-store` and `Pragma: no-cache` at the outer HTTP
+edge. The same policy covers `POST /api/graphql` because that endpoint can
+return credentials and private identity data; playground and schema GETs
+retain their independent policy. Cookie-session refresh and logout require
+exactly one `x-rustok-session-request: 1` field; repeated or conflicting
+fields are rejected before session mutation.
 
 Direct refresh and bulk session revocation acquire the tenant-scoped user
 mutation fence before session locks. The initial refresh digest lookup is a
@@ -811,14 +833,18 @@ SQLite write fence before read), so a concurrent refresh cannot be overwritten
 by a stale ActiveModel snapshot. A cookie containing the
 immediately previous refresh token (for example, when a rotation response
 was lost) also revokes its still-live successor session under the same row
-lock. Refresh-reuse detection also resolves the immediately previous
-digest under that same backend-specific row lock before revoking the session,
-so a stale ActiveModel snapshot cannot overwrite a concurrent rotation. A replay
-inside the 30-second race window is rejected without revoking the live session,
-but this is not an idempotent response replay: a lost successful response still
-cannot be recovered from the old cookie. Older generations are not represented
-in the in-place session row and remain an open incident-detection gap. Multiple
-cookies with the
+lock. Refresh-reuse detection retains every recorded outgoing digest in
+session-owned history and acquires the user fence before the session lock.
+During the exclusive 30-second grace, only the immediately previous digest
+with the original secret retry proof may recover its current successor;
+a retry with the already-updated cookie and matching proof also recovers it.
+Recovery preserves the history and refresh deadline and signs a fresh RS256
+access JWT. Other duplicates conflict without revocation in grace; post-grace
+historical replay revokes the lineage. No raw token or proof is persisted.
+REST and GraphQL HTTP use the same `x-rustok-refresh-retry-key` header;
+built-in client proof handling and multi-replica evidence remain pending.
+See the [Auth owner contract](../../../crates/modules/rustok-auth/docs/README.md#direct-session-refresh-history-and-recovery).
+Multiple cookies with the
 `rustok-session` name are rejected, including across repeated Cookie headers,
 rather than selecting an order-dependent token. First-party session validity,
 new issuance and refresh rotation enforce the original 90-day absolute expiry
@@ -979,6 +1005,11 @@ tests for long chains and context-sensitive cycles are present but unrun.
   fanout, and candidate workers are also required readiness workers once started.
   A dead queue/reconciliation task cannot leave the HTTP host green while its
   durable work remains unprocessed.
+- Notification Outbox intake advances a bounded owner-provided chronological
+  keyset cursor after successful selection, even if every selected event fails.
+  A selection error preserves the cursor; end-of-scan wraps to pending work.
+  Failed envelopes remain unacknowledged, and restart begins at the oldest
+  pending row. Regression source authored, unrun.
 - Notification candidate, fanout, Outbox intake, Forum Search inbox,
   Forum Search contract, Product Index refresh and Social Graph Index worker
   startup have distinct process-local atomic lifecycle claims in
@@ -1152,6 +1183,7 @@ before the event forwarder. The Outbox relay supervisor owns and gracefully drai
 - Build-time runtime-extension wiring reads the canonical `[crate].entry_type` manifest field and fails when an extension omits it; it does not infer Rust types by scanning source text.
 - Auth host configuration parsing is fail-closed: malformed `settings.auth` input is returned as a startup error rather than being silently replaced by default auth overrides.
 - GraphQL/native password-reset requests keep the public result generic when token/email/URL preparation fails after an account lookup, so mail/configuration failures cannot disclose account existence.
+- Password-reset and email-verification confirmation retain the signed JWT expiry and recheck it after acquiring the tenant-scoped user mutation lock. Hashing or lock waits cannot extend a recovery token's lifetime. Email-change confirmation also checks its persisted deadline after the mailbox availability lookup, before changing the address. Already-admitted transactional operations retain their existing atomic completion behavior. Source regressions authored, unrun.
 - Auth lifecycle provider internal failures are logged on the server and exposed to lifecycle transports only as the stable `Auth lifecycle operation failed` error; database/provider diagnostic strings are not sent through GraphQL error messages.
 - User administration uses a transaction-scoped user lock fence; SQLite rereads the row after its write fence, custom-field writes reject stale metadata snapshots, OAuth admin reads are bounded to `1..=100`, and committed user mutations build their response projection before commit so post-commit RBAC reads cannot turn a successful mutation into a client-visible failure.
 - When token issuance succeeds but the provider cannot build the token-response projection, the freshly issued session is compensated by revocation using the signed access-token session claim; the token bundle is never returned to the caller.

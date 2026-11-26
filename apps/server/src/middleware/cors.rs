@@ -242,6 +242,7 @@ pub fn build_cors_layer(is_production: bool, allowed_origins: Option<&[String]>)
         HeaderName::from_static("x-locale"),
         HeaderName::from_static("x-rustok-runner-token"),
         HeaderName::from_static("x-rustok-session-request"),
+        HeaderName::from_static(rustok_auth::REFRESH_RETRY_KEY_HEADER),
         HeaderName::from_static("idempotency-key"),
         HeaderName::from_static("x-rustok-host-token"),
         HeaderName::from_static("x-rustok-setup-token"),
@@ -308,7 +309,7 @@ mod tests {
                     .header(header::ACCESS_CONTROL_REQUEST_METHOD, "POST")
                     .header(
                         header::ACCESS_CONTROL_REQUEST_HEADERS,
-                        "authorization, content-type, x-rustok-session-request, idempotency-key, x-rustok-host-token, x-rustok-setup-token, x-rustok-observability-token",
+                        "authorization, content-type, x-rustok-session-request, x-rustok-refresh-retry-key, idempotency-key, x-rustok-host-token, x-rustok-setup-token, x-rustok-observability-token",
                     )
                     .body(Body::empty())
                     .expect("preflight request"),
@@ -326,6 +327,7 @@ mod tests {
             .to_ascii_lowercase();
         for required in [
             "x-rustok-session-request",
+            "x-rustok-refresh-retry-key",
             "idempotency-key",
             "x-rustok-host-token",
             "x-rustok-setup-token",

@@ -140,8 +140,8 @@ impl AuthLifecycleService {
         password: &str,
         name: Option<String>,
     ) -> Result<AcceptedInvite, InviteAcceptanceError> {
-        // Canonical feature gate for every transport (REST middleware, REST
-        // handler, GraphQL/native provider). Keep the rejection deliberately
+        // Canonical feature gate for every transport (REST handler and
+        // GraphQL/native provider). Keep the rejection deliberately
         // indistinguishable from an invalid token so disabled invites do not
         // become an oracle for token validity.
         if !ctx.settings().features.invites_enabled {

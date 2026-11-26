@@ -72,6 +72,7 @@ mod m20261125_000045_fix_variant_attribute_translation_delete_revision;
 mod m20261125_000046_fix_product_attribute_value_translation_delete_revision;
 mod m20261126_000047_add_product_variant_revision;
 mod m20261126_000048_bump_product_revision_for_variant_membership;
+mod m20261126_000049_fix_variant_combination_identity_revision_updates;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -152,6 +153,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20261125_000046_fix_product_attribute_value_translation_delete_revision::Migration),
         Box::new(m20261126_000047_add_product_variant_revision::Migration),
         Box::new(m20261126_000048_bump_product_revision_for_variant_membership::Migration),
+        Box::new(m20261126_000049_fix_variant_combination_identity_revision_updates::Migration),
     ]
 }
 
@@ -182,6 +184,13 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
                 "m20260730_000001_add_product_index_revision",
                 "m20260731_000003_bump_product_index_revision_for_variant_membership",
                 "m20261007_000035_add_product_revision",
+            ],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20261126_000049_fix_variant_combination_identity_revision_updates",
+            vec![
+                "m20260918_000033_create_variant_axes_and_invariants",
+                "m20261126_000047_add_product_variant_revision",
             ],
         ),
         MigrationDependencyDescriptor::new(

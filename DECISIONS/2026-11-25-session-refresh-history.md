@@ -1,12 +1,12 @@
 # Direct Session Refresh History
 
 - Date: 2026-11-25
-- Decision status: Accepted
+- Decision status: Superseded
 - Implementation status: In progress
 - Owners: platform / auth
 - Extends: [Auth lifecycle invalidation](./2026-02-26-auth-lifecycle-unification-session-invalidation.md)
 - Supersedes: None
-- Superseded by: None
+- Superseded by: [Proof-bound direct session refresh recovery](./2026-11-26-session-refresh-retry-proof.md)
 
 ## Context
 

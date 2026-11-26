@@ -100,6 +100,15 @@ it never provisions a service or adds grants. Human transport authentication is 
 
 ### Known Limitations / Pending Implementation
 
+Direct first-party refresh has source-level proof-bound recovery through the
+raw and cookie REST endpoints and GraphQL HTTP transport. Clients without
+an independently generated, retained retry key still cannot recover a lost
+rotation response. Next Admin BFF source-wires generation-bound proofs with
+an independent HttpOnly login seed and bounded retry. Leptos, Next Storefront,
+mobile/native proof handling, generated API header documentation, compilation
+and multi-replica runtime evidence remain pending. See the
+[proof-bound refresh ADR](../../../DECISIONS/2026-11-26-session-refresh-retry-proof.md).
+
 JWT purpose keyrings, immutable prepared snapshots, fixed RS256 signing and
 verification, exact key selection and retirement are source-implemented.
 Mixed HS256/RS256 runtime branches, default key derivation, algorithm selectors

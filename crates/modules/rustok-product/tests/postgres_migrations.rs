@@ -732,6 +732,21 @@ async fn product_revision_pair(
     ))
 }
 
+async fn product_variant_revision(
+    db: &DatabaseConnection,
+    tenant_id: &str,
+    variant_id: &str,
+) -> Result<i64, Box<dyn std::error::Error>> {
+    let row = db
+        .query_one_raw(Statement::from_string(
+            DbBackend::Postgres,
+            format!("SELECT revision FROM product_variants WHERE tenant_id = '{tenant_id}' AND id = '{variant_id}'"),
+        ))
+        .await?
+        .ok_or("ProductVariant revision row must exist")?;
+    Ok(row.try_get("", "revision")?)
+}
+
 async fn assert_variant_membership_revision_contract(
     db: &DatabaseConnection,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -741,6 +756,8 @@ async fn assert_variant_membership_revision_contract(
     const EXHAUSTED_PRODUCT: &str = "00000000-0000-0000-0000-000000000204";
     const VARIANT_ID: &str = "00000000-0000-0000-0000-000000000223";
     const EXHAUSTED_VARIANT_ID: &str = "00000000-0000-0000-0000-000000000224";
+    const PRODUCT_C: &str = "00000000-0000-0000-0000-000000000205";
+    const AXIS_VARIANT_ID: &str = "00000000-0000-0000-0000-000000000225";
 
     db.execute_unprepared(&format!(
         "INSERT INTO products (id, tenant_id) VALUES
@@ -761,6 +778,66 @@ async fn assert_variant_membership_revision_contract(
     .await?;
     if product_revision_pair(db, PRODUCT_A).await? != (2, 2) {
         return Err("variant insertion must advance the parent Product business and Index revisions once".into());
+    }
+
+    // Simulate the Product write path: it persists the full derived identity before COMMIT.
+    // Deferred option-row triggers must not rewrite the Variant after its response snapshot.
+    db.execute_unprepared(&format!(
+        "INSERT INTO products (id, tenant_id) VALUES ('{PRODUCT_C}', '{TENANT_ID}')"
+    )).await?;
+    db.execute_unprepared(&format!(
+        "INSERT INTO product_variants (id, product_id, tenant_id, position) VALUES ('{AXIS_VARIANT_ID}', '{PRODUCT_C}', '{TENANT_ID}', 0)"
+    )).await?;
+    if product_revision_pair(db, PRODUCT_C).await? != (2, 2) {
+        return Err("axis test Variant insertion must advance its parent Product once".into());
+    }
+    const ATTRIBUTE_A: &str = "00000000-0000-0000-0000-000000000301";
+    const ATTRIBUTE_B: &str = "00000000-0000-0000-0000-000000000302";
+    const OPTION_A: &str = "00000000-0000-0000-0000-000000000311";
+    const OPTION_B: &str = "00000000-0000-0000-0000-000000000312";
+    const AXIS_A: &str = "00000000-0000-0000-0000-000000000321";
+    const AXIS_B: &str = "00000000-0000-0000-0000-000000000322";
+    const AXIS_VALUE_A: &str = "00000000-0000-0000-0000-000000000331";
+    const AXIS_VALUE_B: &str = "00000000-0000-0000-0000-000000000332";
+    const VALUE_A: &str = "00000000-0000-0000-0000-000000000341";
+    const VALUE_B: &str = "00000000-0000-0000-0000-000000000342";
+    let combination_identity = format!("{ATTRIBUTE_A}:{OPTION_A};{ATTRIBUTE_B}:{OPTION_B}");
+    db.execute_unprepared(&format!(
+        r#"
+BEGIN;
+INSERT INTO product_attributes (id, tenant_id, code, value_type, scope) VALUES
+    ('{ATTRIBUTE_A}', '{TENANT_ID}', 'size_revision_test', 'select', 'variant'),
+    ('{ATTRIBUTE_B}', '{TENANT_ID}', 'color_revision_test', 'select', 'variant');
+INSERT INTO product_attribute_options (id, tenant_id, attribute_id, code) VALUES
+    ('{OPTION_A}', '{TENANT_ID}', '{ATTRIBUTE_A}', 'small'),
+    ('{OPTION_B}', '{TENANT_ID}', '{ATTRIBUTE_B}', 'blue');
+INSERT INTO product_variant_axes (id, tenant_id, product_id, attribute_id, position) VALUES
+    ('{AXIS_A}', '{TENANT_ID}', '{PRODUCT_C}', '{ATTRIBUTE_A}', 0),
+    ('{AXIS_B}', '{TENANT_ID}', '{PRODUCT_C}', '{ATTRIBUTE_B}', 1);
+INSERT INTO product_variant_axis_values (id, tenant_id, axis_id, option_id, position) VALUES
+    ('{AXIS_VALUE_A}', '{TENANT_ID}', '{AXIS_A}', '{OPTION_A}', 0),
+    ('{AXIS_VALUE_B}', '{TENANT_ID}', '{AXIS_B}', '{OPTION_B}', 0);
+INSERT INTO product_variant_attribute_values (id, tenant_id, variant_id, attribute_id) VALUES
+    ('{VALUE_A}', '{TENANT_ID}', '{AXIS_VARIANT_ID}', '{ATTRIBUTE_A}'),
+    ('{VALUE_B}', '{TENANT_ID}', '{AXIS_VARIANT_ID}', '{ATTRIBUTE_B}');
+INSERT INTO product_variant_attribute_value_options (tenant_id, value_id, option_id) VALUES
+    ('{TENANT_ID}', '{VALUE_A}', '{OPTION_A}'),
+    ('{TENANT_ID}', '{VALUE_B}', '{OPTION_B}');
+UPDATE product_variants
+SET combination_identity = '{combination_identity}'
+WHERE tenant_id = '{TENANT_ID}' AND id = '{AXIS_VARIANT_ID}';
+COMMIT;
+"#
+    )).await?;
+    let revision_after_axis_assignment =
+        product_variant_revision(db, TENANT_ID, AXIS_VARIANT_ID).await?;
+    if revision_after_axis_assignment != 2 {
+        return Err(format!(
+            "deferred combination identity triggers must not bump an already-current Variant revision; got {revision_after_axis_assignment}, expected 2"
+        ).into());
+    }
+    if product_revision_pair(db, PRODUCT_C).await? != (2, 2) {
+        return Err("axis value maintenance must not advance the parent Product revision".into());
     }
 
     // Ordinary Variant field updates are not membership changes and must not advance Product CAS.

@@ -70,7 +70,11 @@ an earlier snapshot leaves subsequent edits dirty and does not overwrite their p
 Concurrent save requests and retries after an unresolved revision conflict are rejected by
 `RequestSave`. Resolving a conflict requires the host to reload/rebase the draft; Fly does not
 implement automatic merge. Host transports must carry the `SaveAttempt` end-to-end. The local
-request ID is not a server idempotency key.
+request ID is not a server idempotency key. Like the core revision state, the UI rejects
+mutating intents when the command sequence is exhausted instead of saturating the
+counter and emitting an untrackable write. Rejection leaves the state (including an
+active drag and insertion overlay) unchanged. Non-mutating intents and saving the
+existing document remain available subject to the usual policy.
 Drop rechecks the current presentation and drag capability at commit time, including when
 restored state contains a drag started under a different policy. Command construction also
 rejects illegal or malformed candidates, so direct callers and restored state cannot bypass

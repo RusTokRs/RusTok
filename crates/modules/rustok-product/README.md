@@ -565,8 +565,11 @@ is not Rust/mounted-client certification; no tests were run.
 Both admin clients freeze complete input, caller key, original locale and authenticated scope
 before IO, recover without Product GET and retain terminal input for explicit correction. Next
 extends the existing Product journal; Leptos shares the axes journal/browser adapter and selects
-native JSON or GraphQL before IO. Unknown outcomes never rotate or retarget the saved request;
-a Variant UUID is not a new Product revision. No receipt or historical migration changed.
+native JSON or GraphQL before IO. Unknown outcomes never rotate or retarget the saved request.
+The Product owner enforces at most 64 price rows per variant for create/update and every initial
+variant in Product creation. Standalone SKU membership create/delete advances the live Product
+revision once; existing-row edits advance the SKU business revision only. A Variant UUID is an
+identifier, not a Product revision acknowledgement. No receipt format changed.
 See the [bounded owner contract and unexecuted gates](docs/variant-axis-reconfiguration.md#standalone-sku-creation-and-recovery).
 This is source implementation, not runtime or cross-owner certification; no tests were run.
 

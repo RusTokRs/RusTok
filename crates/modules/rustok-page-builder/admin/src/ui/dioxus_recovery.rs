@@ -830,8 +830,10 @@ fn merge_arrays_by_id(
         let mut order = Vec::with_capacity(values.len());
         let mut items = BTreeMap::new();
         for value in values {
-            let id = value.get("id")?.as_str()?.trim();
-            if id.is_empty() || items.contains_key(id) {
+            // Identity is exact. Trimming here aliases different authored IDs
+            // and can turn a delete/insert into an edit of the previous item.
+            let id = value.get("id")?.as_str()?;
+            if id.trim().is_empty() || items.contains_key(id) {
                 return None;
             }
             order.push(id.to_string());
@@ -878,37 +880,21 @@ fn merge_arrays_by_id(
         }
     }
 
-    let surviving_base = |order: &[String], present: &BTreeSet<String>| {
+    // Compare relative order only among base items surviving the merge. A move
+    // involving a node deleted by the other writer imposes no ordering constraint
+    // on the final array and must not mask a real reorder of the remaining items.
+    let surviving_base = |order: &[String]| {
         order
             .iter()
-            .filter(|id| base_ids.contains(*id) && present.contains(*id))
+            .filter(|id| base_ids.contains(*id) && merged_items.contains_key(*id))
             .cloned()
             .collect::<Vec<_>>()
     };
-    let server_base_order = surviving_base(&server_order, &server_ids);
-    let local_base_order = surviving_base(&local_order, &local_ids);
-    let expected_server_order = base_order
-        .iter()
-        .filter(|id| server_ids.contains(*id))
-        .cloned()
-        .collect::<Vec<_>>();
-    let expected_local_order = base_order
-        .iter()
-        .filter(|id| local_ids.contains(*id))
-        .cloned()
-        .collect::<Vec<_>>();
-    let server_reordered = server_base_order != expected_server_order;
-    let local_reordered = local_base_order != expected_local_order;
-    let merged_server_base_order = server_base_order
-        .iter()
-        .filter(|id| merged_items.contains_key(*id))
-        .cloned()
-        .collect::<Vec<_>>();
-    let merged_local_base_order = local_base_order
-        .iter()
-        .filter(|id| merged_items.contains_key(*id))
-        .cloned()
-        .collect::<Vec<_>>();
+    let merged_original_base_order = surviving_base(&base_order);
+    let merged_server_base_order = surviving_base(&server_order);
+    let merged_local_base_order = surviving_base(&local_order);
+    let server_reordered = merged_server_base_order != merged_original_base_order;
+    let local_reordered = merged_local_base_order != merged_original_base_order;
     if server_reordered
         && local_reordered
         && merged_server_base_order != merged_local_base_order
@@ -917,18 +903,13 @@ fn merge_arrays_by_id(
         return None;
     }
 
-    let preferred_base_order = if local_reordered && !server_reordered {
-        &local_base_order
+    let merged_base_order = if local_reordered && !server_reordered {
+        merged_local_base_order
     } else if server_reordered {
-        &server_base_order
+        merged_server_base_order
     } else {
-        &base_order
+        merged_original_base_order
     };
-    let merged_base_order = preferred_base_order
-        .iter()
-        .filter(|id| merged_items.contains_key(*id))
-        .cloned()
-        .collect::<Vec<_>>();
     let surviving_base_ids = merged_base_order.iter().cloned().collect::<BTreeSet<_>>();
     let merged_item_ids = merged_items.keys().cloned().collect::<BTreeSet<_>>();
 
@@ -1178,6 +1159,29 @@ mod tests {
     }
 
     #[test]
+    fn three_way_merge_never_aliases_ids_that_differ_by_whitespace() {
+        let base = json!({"items":[{"id":"a","content":"original"}]});
+        let server = json!({"items":[{"id":" a ","content":"original"}]});
+        let local = json!({"items":[{"id":"a","content":"local edit"}]});
+        let mut conflicts = Vec::new();
+        let _ = merge_optional(Some(&base), Some(&server), Some(&local), "$", &mut conflicts);
+        assert!(conflicts.iter().any(|path| path.contains("id=a")));
+
+        // Independent insertions with distinct exact IDs must not be collapsed.
+        let base = json!({"items":[]});
+        let server = json!({"items":[{"id":"a","content":"server"}]});
+        let local = json!({"items":[{"id":" a ","content":"local"}]});
+        let mut conflicts = Vec::new();
+        let merged = merge_optional(Some(&base), Some(&server), Some(&local), "$", &mut conflicts)
+            .expect("merge");
+        assert!(conflicts.is_empty());
+        assert_eq!(merged, Some(json!({"items":[
+            {"id":"a","content":"server"},
+            {"id":" a ","content":"local"}
+        ]})));
+    }
+
+    #[test]
     fn three_way_merge_reports_overlapping_edits_without_overwriting_either_side() {
         let base = json!({"components":[{"id":"a","content":"one"}]});
         let server = json!({"components":[{"id":"a","content":"server"}]});
@@ -1383,6 +1387,46 @@ mod tests {
     }
 
 
+
+    #[test]
+    fn three_way_merge_preserves_surviving_reorder_when_other_writer_only_moved_deleted_item() {
+        let base = json!([
+            { "id": "a" }, { "id": "b" }, { "id": "c" }, { "id": "d" }
+        ]);
+        let moved_deleted = json!([
+            { "id": "d" }, { "id": "a" }, { "id": "b" }, { "id": "c" }
+        ]);
+        let surviving_reorder = json!([
+            { "id": "b" }, { "id": "a" }, { "id": "c" }
+        ]);
+        for (server, local) in [
+            (&moved_deleted, &surviving_reorder),
+            (&surviving_reorder, &moved_deleted),
+        ] {
+            let mut conflicts = Vec::new();
+            let merged = merge_optional(
+                Some(&base), Some(server), Some(local), "$", &mut conflicts,
+            );
+            assert!(conflicts.is_empty(), "{conflicts:?}");
+            assert_eq!(merged, Some(Some(surviving_reorder.clone())));
+        }
+    }
+
+    #[test]
+    fn three_way_merge_still_rejects_incompatible_surviving_reorders() {
+        let base = json!([
+            { "id": "a" }, { "id": "b" }, { "id": "c" }, { "id": "d" }
+        ]);
+        let server = json!([
+            { "id": "b" }, { "id": "a" }, { "id": "c" }, { "id": "d" }
+        ]);
+        let local = json!([
+            { "id": "a" }, { "id": "c" }, { "id": "b" }
+        ]);
+        let mut conflicts = Vec::new();
+        assert!(merge_optional(Some(&base), Some(&server), Some(&local), "$", &mut conflicts).is_none());
+        assert_eq!(conflicts, vec!["$/$order"]);
+    }
 
     fn test_recovery_record(
         writer_id: &str,

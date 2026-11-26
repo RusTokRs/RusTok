@@ -139,10 +139,12 @@ impl ComponentPatch {
     pub(super) fn apply(self, component: &mut ComponentObject) -> FlyResult<()> {
         self.validate_reserved_fields()?;
 
+        // Typed builders reconcile conflicting operations at construction time.
+        // Raw/deserialized patches may contain both: removal is authoritative.
+        component.attributes.extend(self.attributes);
         for attribute in self.remove_attributes {
             component.attributes.remove(&attribute);
         }
-        component.attributes.extend(self.attributes);
 
         if self.clear_style {
             component.style = None;
@@ -165,16 +167,6 @@ impl ComponentPatch {
             }
         }
 
-        for field in self.remove_fields {
-            match field.as_str() {
-                COMPONENT_TYPE_FIELD => component.component_type = None,
-                TAG_NAME_FIELD => component.tag_name = None,
-                PROVIDER_FIELD => component.provider = None,
-                _ => {
-                    component.remove_extension_field(&field);
-                }
-            }
-        }
         for (key, value) in self.fields {
             match key.as_str() {
                 COMPONENT_TYPE_FIELD => {
@@ -184,6 +176,16 @@ impl ComponentPatch {
                 PROVIDER_FIELD => component.provider = value.as_str().map(ToString::to_string),
                 _ => {
                     component.set_extension_field(key, value);
+                }
+            }
+        }
+        for field in self.remove_fields {
+            match field.as_str() {
+                COMPONENT_TYPE_FIELD => component.component_type = None,
+                TAG_NAME_FIELD => component.tag_name = None,
+                PROVIDER_FIELD => component.provider = None,
+                _ => {
+                    component.remove_extension_field(&field);
                 }
             }
         }
@@ -372,6 +374,27 @@ mod tests {
         .expect("patch");
         patch.apply(&mut component).expect("apply");
         assert_eq!(component.style, Some(json!({"padding": "8px"})));
+    }
+
+    #[test]
+    fn serialized_removals_win_over_conflicting_attribute_and_field_sets() {
+        let mut component = component();
+        component.provider = Some("provider.original".to_string());
+        component.attributes.insert("title".to_string(), json!("Old"));
+        component.extensions.insert("content".to_string(), json!("Old"));
+        let patch: ComponentPatch = serde_json::from_value(json!({
+            "attributes": { "title": "New", "aria-label": "Keep" },
+            "remove_attributes": ["title", "absent"],
+            "fields": { "content": "New", "provider": "provider.new", "custom": true },
+            "remove_fields": ["content", "provider", "absent"]
+        }))
+        .expect("patch");
+        patch.apply(&mut component).expect("apply");
+        assert!(!component.attributes.contains_key("title"));
+        assert_eq!(component.attributes["aria-label"], "Keep");
+        assert!(!component.extensions.contains_key("content"));
+        assert!(component.provider.is_none());
+        assert_eq!(component.extensions["custom"], true);
     }
 
     #[test]

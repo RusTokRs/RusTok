@@ -335,20 +335,27 @@ async fn notification_outbox_intake_loop(
     worker: NotificationOutboxIntakeWorker,
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
 ) {
+    // This cursor is only a fairness hint, never a durable receipt.
+    // Failed envelopes remain pending and are revisited after wrap/restart.
+    let mut cursor = None;
     loop {
         if !may_admit_next_worker_operation(&stop_rx) {
             tracing::info!("Notification outbox intake stopped");
             return;
         }
 
-        let event_ids = match worker.pending_outbox_event_ids().await {
-            Ok(event_ids) => event_ids,
+        let event_ids = match worker.pending_outbox_page_after(cursor.as_ref()).await {
+            Ok(page) => {
+                cursor = page.next_cursor;
+                page.event_ids
+            }
             Err(error) => {
                 tracing::error!(
                     error_code = error.stable_code(),
                     retryable = error.is_retryable(),
                     "Notification outbox intake failed to select committed envelopes"
                 );
+                // Keep the current position on selection failure.
                 Vec::new()
             }
         };

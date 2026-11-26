@@ -108,6 +108,8 @@ pub struct AxisAllowedValueResponse {
 /// exactly as before, so persisted pre-preview request hashes remain replayable.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema, Validate)]
 pub struct SetVariantAxesInput {
+    // Keep this literal aligned with MAX_VARIANT_AXES below.
+    #[validate(length(max = 32, message = "A Product can have at most 32 variant axes"))]
     #[validate(nested)]
     pub axes: Vec<VariantAxisInput>,
     /// Required for a new application; never part of the proposal fingerprint itself.
@@ -115,6 +117,8 @@ pub struct SetVariantAxesInput {
     pub expected_state: Option<String>,
     /// Explicit full target tuple for each reassigned SKU. Omitted SKUs retain their EAV values.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    // Keep this literal aligned with MAX_VARIANT_AXIS_RECONFIGURATION_VARIANTS below.
+    #[validate(length(max = 256, message = "A Product can reassign at most 256 variants"))]
     #[validate(nested)]
     pub reassignments: Vec<VariantAxisReassignmentInput>,
 }
@@ -131,6 +135,8 @@ pub const MAX_VARIANT_AXIS_CONFLICT_EXAMPLES: usize = 8;
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Validate)]
 pub struct VariantAxisReassignmentInput {
     pub variant_id: Uuid,
+    // Keep this literal aligned with MAX_VARIANT_AXES.
+    #[validate(length(max = 32, message = "A variant can have at most 32 axis assignments"))]
     #[validate(nested)]
     pub axis_values: Vec<VariantAxisValueInput>,
 }
@@ -198,7 +204,12 @@ pub struct VariantAxisInput {
     pub attribute_id: Uuid,
     #[serde(default)]
     pub position: i32,
-    #[validate(length(min = 1, message = "At least one option required per variant axis"))]
+    // Keep this literal aligned with MAX_VARIANT_AXIS_VALUES below.
+    #[validate(length(
+        min = 1,
+        max = 256,
+        message = "A variant axis must contain 1-256 allowed options"
+    ))]
     pub allowed_option_ids: Vec<Uuid>,
 }
 
@@ -214,4 +225,69 @@ pub struct VariantAxisValueResponse {
     pub option_id: Uuid,
     pub code: Option<String>,
     pub label: Option<String>,
+}
+
+#[cfg(test)]
+mod dto_bound_tests {
+    use super::*;
+    use validator::Validate;
+
+    fn axis() -> VariantAxisInput {
+        VariantAxisInput {
+            attribute_id: Uuid::new_v4(),
+            position: 0,
+            allowed_option_ids: vec![Uuid::new_v4()],
+        }
+    }
+
+    #[test]
+    fn variant_axis_dtos_enforce_owner_batch_bounds() {
+        let mut axis_input = axis();
+        axis_input.allowed_option_ids = vec![Uuid::new_v4(); MAX_VARIANT_AXIS_VALUES];
+        assert!(axis_input.validate().is_ok());
+        axis_input.allowed_option_ids.push(Uuid::new_v4());
+        assert!(axis_input.validate().is_err());
+
+        let mut axes = SetVariantAxesInput {
+            axes: vec![axis(); MAX_VARIANT_AXES],
+            ..Default::default()
+        };
+        assert!(axes.validate().is_ok());
+        axes.axes.push(axis());
+        assert!(axes.validate().is_err());
+
+        let mut reassignments = SetVariantAxesInput {
+            reassignments: vec![
+                VariantAxisReassignmentInput {
+                    variant_id: Uuid::new_v4(),
+                    axis_values: Vec::new(),
+                };
+                MAX_VARIANT_AXIS_RECONFIGURATION_VARIANTS
+            ],
+            ..Default::default()
+        };
+        assert!(reassignments.validate().is_ok());
+        reassignments.reassignments.push(VariantAxisReassignmentInput {
+            variant_id: Uuid::new_v4(),
+            axis_values: Vec::new(),
+        });
+        assert!(reassignments.validate().is_err());
+
+        let mut reassignment = VariantAxisReassignmentInput {
+            variant_id: Uuid::new_v4(),
+            axis_values: vec![
+                VariantAxisValueInput {
+                    attribute_id: Uuid::new_v4(),
+                    option_id: Uuid::new_v4(),
+                };
+                MAX_VARIANT_AXES
+            ],
+        };
+        assert!(reassignment.validate().is_ok());
+        reassignment.axis_values.push(VariantAxisValueInput {
+            attribute_id: Uuid::new_v4(),
+            option_id: Uuid::new_v4(),
+        });
+        assert!(reassignment.validate().is_err());
+    }
 }

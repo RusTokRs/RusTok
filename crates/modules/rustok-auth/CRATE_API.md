@@ -76,7 +76,7 @@
 
 - Password hashing must use Argon2 with salt and configured cost parameters.
 - Multi-tenant tenant boundary checks are mandatory on all user lookups and mutations.
-- Refresh tokens must be hashed before persistence; plaintext refresh tokens are returned exactly once upon generation.
+- Refresh tokens must be hashed before persistence. `AuthRefreshRetryKey` and `REFRESH_RETRY_KEY_HEADER` define optional proof-bound direct-session recovery: the same current successor may be returned again during grace only after the host revalidates the exact operation, tenant, subject, session and history. Never log the key or credential.
 - Expired or revoked tokens must fail verification closed.
 - OAuth access JWTs must be registered (`jti` -> `oauth_tokens.token_kind = access`); the host
   extractor must reject missing/revoked/mismatched access rows, and family revocation must

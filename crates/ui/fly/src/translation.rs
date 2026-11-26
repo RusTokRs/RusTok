@@ -7,7 +7,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::BTreeSet;
-use crate::runtime_locale::duplicate_locale_key;
+use crate::runtime_locale::{duplicate_locale_key, invalid_locale_key};
 
 pub const FLY_TRANSLATIONS_FIELD: &str = "flyTranslations";
 pub const RUNTIME_TRANSLATIONS_CONTEXT_FIELD: &str = "translations";
@@ -55,7 +55,24 @@ impl TranslationCatalog {
     }
 
     pub fn get(&self, translation_id: &str) -> Option<&TranslationEntry> {
-        self.entries.iter().find(|entry| entry.id == translation_id)
+        let mut matches = self.entries.iter().filter(|entry| entry.id == translation_id);
+        let entry = matches.next()?;
+        if matches.next().is_some() {
+            return None;
+        }
+        Some(entry)
+    }
+
+    /// IDs with multiple decoded owners cannot be used as runtime bindings.
+    pub(crate) fn duplicate_ids(&self) -> BTreeSet<&str> {
+        let mut seen = BTreeSet::new();
+        let mut duplicates = BTreeSet::new();
+        for entry in &self.entries {
+            if !seen.insert(entry.id.as_str()) {
+                duplicates.insert(entry.id.as_str());
+            }
+        }
+        duplicates
     }
 }
 
@@ -85,6 +102,12 @@ pub fn apply_translation_command(
         TranslationCommand::Upsert { entry } => {
             validate_translation_identity(entry)?;
             let mut catalog = TranslationCatalog::from_document(document);
+            if catalog.duplicate_ids().contains(entry.id.as_str()) {
+                return Err(FlyError::Decode(format!(
+                    "translation `{}` has multiple owners; remove the duplicate entries before upsert",
+                    entry.id
+                )));
+            }
             if let Some(index) = catalog
                 .entries
                 .iter()
@@ -148,9 +171,25 @@ pub fn materialize_project_translations(
     let mut fallback_translations = 0usize;
     let mut unresolved_translations = 0usize;
 
+    let duplicate_ids = catalog.duplicate_ids();
+    for id in &duplicate_ids {
+        translated.remove(*id);
+        diagnostics.push(translation_diagnostic(
+            ValidationSeverity::Error,
+            "duplicate_translation_id",
+            Some((*id).to_string()),
+            format!("translation `{id}` is duplicated"),
+        ));
+    }
     for entry in &catalog.entries {
-        if duplicate_locale_key(&entry.values).is_some() {
-            // A caller-provided projection must not mask an ambiguous authored value.
+        if duplicate_ids.contains(entry.id.as_str()) {
+            unresolved_translations = unresolved_translations.saturating_add(1);
+            continue;
+        }
+        if invalid_locale_key(&entry.values).is_some()
+            || duplicate_locale_key(&entry.values).is_some()
+        {
+            // A caller-provided projection must not mask an invalid authored locale map.
             translated.remove(&entry.id);
         }
         let mut localized_wrapper = Map::new();
@@ -651,6 +690,86 @@ mod tests {
         assert_eq!(result.resolved_translations, 0);
         assert!(result.context["translations"].get("hero").is_none());
         assert_eq!(result.context["translations"]["other"], "Keep");
+    }
+
+    #[test]
+    fn duplicated_translation_ids_never_choose_an_owner_and_can_be_removed() {
+        for (first, second) in [("First", "Second"), ("Second", "First")] {
+            let mut document = document();
+            let raw = json!([
+                { "id": "hero", "values": { "en": first } },
+                { "id": "hero", "values": { "en": second } },
+                { "id": "other", "values": { "en": "Keep" } }
+            ]);
+            document.project_mut().extensions.insert(
+                FLY_TRANSLATIONS_FIELD.to_string(), raw.clone(),
+            );
+            let catalog = TranslationCatalog::from_document(&document);
+            assert!(catalog.get("hero").is_none());
+            assert!(catalog.get("other").is_some());
+            let result = materialize_project_translations(
+                &document,
+                &json!({ "$locale": "en", "translations": { "hero": "Stale" } }),
+            );
+            assert_eq!(result.resolved_translations, 1);
+            assert_eq!(result.unresolved_translations, 2);
+            assert!(result.context["translations"].get("hero").is_none());
+            assert_eq!(result.context["translations"]["other"], "Keep");
+            assert!(result.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == "duplicate_translation_id"
+                    && diagnostic.severity == ValidationSeverity::Error
+            }));
+
+            let replacement = TranslationEntry {
+                id: "hero".to_string(),
+                values: Map::from_iter([("en".to_string(), json!("Replacement"))]),
+                fallback_locale: None,
+                extensions: Map::new(),
+            };
+            assert!(apply_translation_command(
+                &mut document,
+                &TranslationCommand::Upsert { entry: Box::new(replacement.clone()) },
+            ).is_err());
+            assert_eq!(document.project().extensions[FLY_TRANSLATIONS_FIELD], raw);
+            apply_translation_command(
+                &mut document,
+                &TranslationCommand::Remove { translation_id: "hero".to_string() },
+            ).expect("remove ambiguous identity");
+            apply_translation_command(
+                &mut document,
+                &TranslationCommand::Upsert { entry: Box::new(replacement) },
+            ).expect("recreate unique identity");
+            let result = materialize_project_translations(&document, &json!({ "$locale": "en" }));
+            assert_eq!(result.context["translations"]["hero"], "Replacement");
+            assert_eq!(result.resolved_translations, 2);
+            assert_eq!(result.unresolved_translations, 0);
+        }
+    }
+
+    #[test]
+    fn invalid_catalog_locale_cannot_resolve_or_retain_stale_projection() {
+        let mut document = document();
+        for values in [
+            json!({ "invalid locale": "Invalid" }),
+            json!({ "en": "Valid", "invalid locale": "Invalid" }),
+        ] {
+            document.project_mut().extensions.insert(
+                FLY_TRANSLATIONS_FIELD.to_string(),
+                json!([{ "id": "hero", "values": values }]),
+            );
+            let result = materialize_project_translations(
+                &document,
+                &json!({ "$locale": "en", "translations": { "hero": "Stale", "other": "Keep" } }),
+            );
+            assert_eq!(result.resolved_translations, 0);
+            assert_eq!(result.unresolved_translations, 1);
+            assert!(result.context["translations"].get("hero").is_none());
+            assert_eq!(result.context["translations"]["other"], "Keep");
+            assert!(result.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == "runtime_localized_value_locale_invalid"
+                    && diagnostic.severity == ValidationSeverity::Error
+            }));
+        }
     }
 
     #[test]

@@ -237,9 +237,9 @@ impl FlyUiStateMachine {
                     .active_candidate()
                     .ok_or_else(|| UiError::IllegalDrop("no active drop candidate".to_string()))?;
                 let command = command_for_drop(drag.source.clone(), candidate)?;
+                self.mark_dirty()?;
                 self.state.drag = None;
                 self.state.overlays.insertion = None;
-                self.mark_dirty();
                 vec![
                     UiEffect::Command(Box::new(command)),
                     UiEffect::Announce("Component dropped".to_string()),
@@ -266,12 +266,12 @@ impl FlyUiStateMachine {
                         "cut requires a selected component".to_string(),
                     ));
                 }
-                self.mark_dirty();
+                self.mark_dirty()?;
                 vec![UiEffect::CutSelection]
             }
             UiIntent::PasteClipboard => {
                 self.require_edit_capability(EditorCapability::Clipboard)?;
-                self.mark_dirty();
+                self.mark_dirty()?;
                 vec![UiEffect::PasteClipboard]
             }
             UiIntent::Execute(command) => {
@@ -286,19 +286,19 @@ impl FlyUiStateMachine {
                         ));
                     }
                     if !matches!(command.as_ref(), EditorCommand::Batch { commands } if commands.is_empty()) {
-                        self.mark_dirty();
+                        self.mark_dirty()?;
                     }
                 }
                 vec![UiEffect::Command(command)]
             }
             UiIntent::Undo => {
                 self.require_edit_capability(EditorCapability::History)?;
-                self.mark_dirty();
+                self.mark_dirty()?;
                 vec![UiEffect::Undo]
             }
             UiIntent::Redo => {
                 self.require_edit_capability(EditorCapability::History)?;
-                self.mark_dirty();
+                self.mark_dirty()?;
                 vec![UiEffect::Redo]
             }
             UiIntent::RequestSave => {
@@ -508,9 +508,13 @@ impl FlyUiStateMachine {
 
     /// Mirrors `RevisionState::mark_changed`: an edit after a failed save keeps `save_failed`
     /// set, because the changes are still unsaved. `SaveStarted` and `SaveSucceeded` clear it.
-    fn mark_dirty(&mut self) {
+    fn mark_dirty(&mut self) -> UiResult<()> {
+        let sequence = self.state.dirty.command_sequence.checked_add(1).ok_or_else(|| {
+            UiError::CapabilityUnavailable("document command sequence is exhausted".to_string())
+        })?;
         self.state.dirty.dirty = true;
-        self.state.dirty.command_sequence = self.state.dirty.command_sequence.saturating_add(1);
+        self.state.dirty.command_sequence = sequence;
+        Ok(())
     }
 }
 

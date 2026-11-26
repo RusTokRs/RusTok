@@ -320,9 +320,9 @@ regressions authored; compilation and runtime verification remain pending.
 ## Direct session mutation ordering (source only)
 
 Refresh and bulk session revocation use the shared tenant-scoped user mutation
-fence before acquiring session locks. Bulk self-service revocation checks the
-current session again under lock. SQLite history-only replay reserves its writer
-before reading the evidence. Regressions exercise lock ordering and stale current
+fence before acquiring session locks, including history-only recovery and
+replay. Bulk self-service revocation checks the current session again under
+lock. SQLite reserves its writer at the user fence before reading the evidence. Regressions exercise lock ordering and stale current
 session rejection; PostgreSQL contention, compilation and the remediation gate
 remain maintainer-run.
 
@@ -335,6 +335,35 @@ session and previous-cookie logout contract are preserved. Older overwritten dig
 cannot be recovered. Apply the migration before deploying the new host, with old host
 writers stopped. Regression definitions, PostgreSQL backfill, cascade, rollback and
 concurrency checks remain unrun.
+
+## Proof-bound direct session refresh recovery (source only)
+
+The host accepts the owner-defined secret retry header for raw/cookie REST
+refresh and GraphQL HTTP refresh, derives the opaque successor under the
+independent MAC root, verifies the current digest and history under the
+user/session fences, and preserves the original refresh deadline and history
+on recovery. The GraphQL provider preserves rotation conflicts as CONFLICT.
+See [the recovery ADR](../../../../DECISIONS/2026-11-26-session-refresh-retry-proof.md).
+
+Next Admin BFF source-wires a 256-bit independent login seed in the same
+HttpOnly envelope as the refresh token, deriving the per-generation proof
+with HMAC-SHA256 over tenant slug and presented token. The original envelope
+survives loss of an upstream or BFF response, and replicas derive the same
+proof. One bounded automatic retry handles ambiguous upstream refresh results;
+the domain GraphQL operation is never automatically replayed. The BFF
+rejects duplicate/malformed cookies and redirects, checks the refreshed
+subject and does not clear cookies on transient refresh failures. Existing
+bare-cookie sessions require coordinated revocation and new sign-in.
+
+Remaining implementation: shared Leptos direct/native and SSR paths,
+Next Storefront (currently observation-only, without its own refresh flow),
+mobile/native consumers, generated API header reference updates, and
+header secrecy in proxies/telemetry. Next Admin browser/runtime and
+cross-replica evidence, late cookie delivery and Auth.js logout failure
+handling remain pending. OAuth refresh-family recovery is separate.
+Run scoped Auth and server compilation, retry-proof and lifecycle tests,
+mounted REST/GraphQL/CORS contracts, PostgreSQL contention and cross-replica
+lost-response injection, plus the remediation gate. None has been executed.
 
 ## Password recovery parity (source only)
 

@@ -109,11 +109,13 @@ Fresh admission prepares one complete input: nullable SKU/barcode/shipping profi
 axis assignments, every supplied price/compare-at, and explicit inventory quantity/policy.
 Prices use exact nonnegative decimal strings; blank price means absent, not a zero-priced row.
 The client bounds are 100 characters per optional text field, 32 distinct axis assignments,
-64 prices and canonical decimal strings up to 64 characters. The Product owner independently
-rejects negative `i32` stock and accepts only the normalized `deny`/`continue` inventory
-policies. It enforces one shared maximum of 256 SKUs for initial and standalone creation,
-consistent with complete reads, axis reconfiguration and deletion. A no-axis Product still has
-exactly one default SKU. The owner remains responsible for current schema/tuple/uniqueness
+64 prices per variant and canonical decimal strings up to 64 characters. The Product owner enforces
+256 variants per Product, 32 axes, 256 allowed options per axis, 32 assignments per SKU and 64
+price rows per SKU at DTO and command boundaries. Initial Product creation rejects oversized
+nested batches before nested validation or collaborator IO; standalone axis reconfiguration
+applies the same bounds before opening its transaction. The owner independently rejects negative
+`i32` stock and accepts only the normalized `deny`/`continue` inventory policies. A no-axis Product
+still has exactly one default SKU. The owner remains responsible for current schema/tuple/uniqueness
 admission.
 
 Both clients persist and read back the full request, original locale, caller key and authenticated
@@ -147,8 +149,10 @@ The root write fence verifies both persisted journals at fresh admission. Pendin
 requests fence other Product writes but are not reported as corrupt storage merely for being
 unresolved. Missing/changed storage does refuse IO. Explicit terminal correction retains the
 complete saved draft, including unavailable assignments/currencies. A confirmed attempt needs
-an explicit fresh document: its Variant UUID does not supply a new Product revision or authorize
-rebasing dirty document fields. Other lifecycle writers were not cut over by this work.
+an explicit fresh document: its Variant UUID acknowledgement does not include the Product revision or authorize
+rebasing dirty document fields. Standalone SKU membership create/delete advances the live Product revision once;
+existing-row edits use the Variant business revision and do not advance Product revision. Other lifecycle writers
+were not cut over by this work.
 
 ### Next
 
@@ -199,3 +203,12 @@ lock contention and host/proxy body limits; verify external selected providers a
 links/projection replay. Full UI typing currently remains blocked by missing dependency/types
 and errors outside the checked Product surfaces. No storefront selector cutover, attribute/option
 retirement or destructive legacy cleanup is part of this slice; no historical migration changed.
+
+## Deferred combination identity and Variant revision
+
+The PostgreSQL option-row maintenance trigger computes the canonical combination identity at
+transaction end. It updates `product_variants` only when the stored identity differs from the
+computed value. Product writes may already store the complete identity before `COMMIT`; deferred
+triggers must not rewrite that row again, because each row update advances the Variant business
+revision and Index watermark. This keeps the revision returned and recorded by a Product command
+equal to the committed predecessor expected by the next edit.

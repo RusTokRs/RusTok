@@ -1,0 +1,115 @@
+# Proof-bound direct session refresh recovery
+
+- Date: 2026-11-26
+- Decision status: Accepted
+- Implementation status: In progress
+- Owners: platform / auth
+- Supersedes: [Direct session refresh history](./2026-11-25-session-refresh-history.md)
+- Superseded by: None
+
+## Context and decision
+
+Hash-only rotation history detects theft but cannot recover a committed
+successor when the response is lost. Returning that successor to anyone
+presenting the previous bearer token would turn the concurrency grace into
+an additional theft window. Direct first-party clients may supply the secret
+`x-rustok-refresh-retry-key` header: exactly one 64-character lowercase hex
+encoding of a nonzero 256-bit secret, independently CSPRNG-generated
+or pseudorandomly derived from an independently CSPRNG-generated client
+seed using a purpose-separated PRF, available before the attempt. The client must never reuse the key for a
+different rotation or send it to a different service. It is not the public
+Idempotency-Key header and must never be logged.
+
+Auth derives a 256-bit opaque successor using HMAC-SHA256 with the existing
+HKDF-SHA256 independent host MAC root and a new closed purpose,
+`session-refresh-retry`. The fixed 64-byte payload is tenant UUID bytes,
+session UUID bytes, then the decoded retry key. The initial login credential
+and rotations without a retry key remain OS-CSPRNG-generated. The latter
+are deliberately non-recoverable, not a fallback for an incorrect proof.
+JWT signing and verification remain exclusively RS256.
+
+## Authority and permitted transitions
+
+The session row is the tenant, subject, current digest, revocation and expiry
+authority. The immutable session-owned history contains the outgoing digest
+and its rotation timestamp, linked with delete cascade. No new persistence,
+raw credential, raw proof, encrypted credential or per-process result cache
+is required. The previous-token projection remains for last-rotation lookup
+and logout, not independent replay authority.
+
+Under the tenant-scoped user-before-session locks, revalidate the current
+subject, email-verification policy, active session and original absolute
+90-day cap. On rotation, record the outgoing digest and replace the current
+digest in one transaction. Never reissue a candidate digest already present
+in history.
+
+A replay of a historical digest outside its exclusive 30-second grace
+(including missing or future timestamps) revokes the live lineage durably.
+Within grace, recovery is allowed only when the presented digest is the
+immediately preceding one and the derived successor digest equals the
+currently persisted digest. All other historical requests conflict without
+revoking a live session during grace. The same operation may also present
+the current credential when a Set-Cookie was applied before the response
+body was lost; the matching derived digest and last history timestamp
+recognize it during the same window. Outside that window a matching current
+credential with its already-used key conflicts, without revoking the valid
+session. Revoked or expired sessions never recover. Unknown credentials and
+cross-tenant lookups fail closed. Store and issuance failures propagate.
+
+Recovery returns the identical refresh credential, without a second history
+insert, sliding expiry extension or change to rotation time. It signs a
+fresh access JWT with the currently authorized role and permissions, rather
+than reproducing stale access claims or the old signing key. This is
+idempotent session state, not byte-identical HTTP response replay.
+
+REST raw and cookie refresh endpoints and GraphQL HTTP refresh mutations
+accept the same header. A malformed or repeated header is a bad request,
+not permission to rotate without proof. The cookie endpoint retains the
+existing CSRF header requirement. Unrecoverable concurrency conflicts remain
+REST 409 and GraphQL CONFLICT rather than an authentication failure. No
+OAuth token-family semantics are changed.
+
+## Concurrency, deployment and limitations
+
+All replicas must share the same validated independent host MAC root and
+use the same owner database. Deploy the host changes together; an earlier
+randomly generated successor cannot be reconstructed and still conflicts.
+Retain the existing history migration and backfill; overwritten
+pre-migration history cannot be recreated. No database migration is added.
+Do not rotate the independent host root across in-flight recovery windows;
+root rotation and session-store rollback remain separately governed work.
+
+Clients must retain the secret and presented credential (or cookie) until
+the response is known, retry only the same operation during grace, and
+discard the proof after resolution. A new operation uses a fresh key.
+For an HttpOnly BFF, the seed and bearer may be retained in one canonical
+cookie envelope. The Next Admin BFF generates a fresh seed before sign-in,
+derives one proof with HMAC-SHA256 over the fixed client purpose, tenant
+slug and presented refresh token, and forwards only the bare token and
+derived proof. It retains the seed when the bearer rotates. The fixed
+purpose and JSON array framing separate the inputs; each presented
+generation has an independent pseudorandom proof, shared across BFF
+replicas without a result cache. A lost BFF response carrying the successor
+can be retried with the unchanged envelope within grace. A browser that
+already received the new envelope starts a new operation if refresh is
+needed. A coordinated BFF cutover must revoke old bare-cookie sessions
+and establish fresh ones; do not parse them as recovery-capable envelopes.
+The seed must never leave the BFF cookie except in protected process memory.
+A stolen bearer token alone cannot recover the committed successor; theft of
+both bearer and proof is still credential compromise. This is not
+sender-constrained authentication. TLS, client storage discipline, avoiding
+header logging and normal credential revocation remain required. Client
+integration across the Leptos, Next Storefront and mobile/other native
+paths, Next Admin mounted/cross-replica verification, generated API header
+documentation, and failure-injection verification remain pending. Without a proof-bearing
+client, a lost response is not recoverable.
+
+## Verification
+
+Source regressions cover canonical singleton admission, domain and session
+separation, lost response with old/new cookie, wrong/missing proof,
+unchanged persisted deadline/history, key reuse, and post-grace revocation.
+Run scoped Auth and server checks, mounted REST and GraphQL request/error
+mapping, PostgreSQL concurrency and history retention, cross-replica
+lost-response injection, client storage/header redaction and API reference
+verification. Compilation and runtime checks are not yet executed.

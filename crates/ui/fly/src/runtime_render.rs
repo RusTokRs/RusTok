@@ -190,6 +190,62 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn unresolved_metadata_never_uses_authoring_preview_in_rendered_head_or_slug() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "flyPageMeta": {
+                    "title": { "$localized": { "en": "English title", "ru": "Russian title" } },
+                    "slug": { "$localized": { "en": "english", "ru": "russian" } },
+                    "canonical_url": { "$localized": { "en": "/english", "ru": "/russian" } },
+                    "twitter_title": { "$localized": { "en": "English tweet", "ru": "Russian tweet" } }
+                },
+                "component": { "id": "root", "type": "wrapper" }
+            }]
+        }))
+        .expect("document");
+        let policy = RenderPolicy::default();
+        let page = &document.project().pages[0];
+        assert!(crate::PageMetadata::from_page(page).title.is_some());
+
+        let unresolved = render_page_with_runtime_context(
+            &document, &PageSelection::First, &policy, &json!({ "$locale": "de" }),
+        ).expect("unresolved metadata can still render the body");
+        assert!(unresolved.page.metadata.title.is_none());
+        assert!(unresolved.page.head.title.is_none());
+        assert!(unresolved.page.head.canonical_url.is_none());
+        assert!(unresolved.page.head.twitter_title.is_none());
+        assert!(unresolved.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "runtime_localized_value_unresolved"
+        }));
+        assert!(render_page_with_runtime_context(
+            &document,
+            &PageSelection::Slug("english".to_string()),
+            &policy,
+            &json!({ "$locale": "de" }),
+        ).is_err());
+
+        let resolved = render_page_with_runtime_context(
+            &document,
+            &PageSelection::Slug("russian".to_string()),
+            &policy,
+            &json!({ "$locale": "ru" }),
+        ).expect("localized render");
+        assert_eq!(resolved.page.head.title.as_deref(), Some("Russian title"));
+        assert_eq!(resolved.page.head.canonical_url.as_deref(), Some("/russian"));
+        assert_eq!(resolved.page.head.twitter_title.as_deref(), Some("Russian tweet"));
+
+        let fallback = render_page_with_runtime_context(
+            &document,
+            &PageSelection::Slug("english".to_string()),
+            &policy,
+            &json!({ "$locale": "de", "$fallback_locales": ["en"] }),
+        ).expect("explicit fallback");
+        assert_eq!(fallback.page.head.title.as_deref(), Some("English title"));
+        assert!(page.extensions[crate::FLY_PAGE_METADATA_FIELD]["title"].is_object());
+    }
+
+    #[test]
     fn runtime_renderer_applies_context_bindings_and_repeaters_in_order() {
         let document = GrapesJsCodec::decode_value(json!({
             "pages": [{

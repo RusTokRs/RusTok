@@ -63,6 +63,55 @@ fn validate_product_variant_count(
     Ok(())
 }
 
+fn validate_variant_input_bounds(
+    axis_values_count: usize,
+    price_rows_count: usize,
+) -> CommerceResult<()> {
+    if axis_values_count > crate::dto::MAX_VARIANT_AXES {
+        return Err(CommerceError::Validation(format!(
+            "A variant can have at most {} axis assignments",
+            crate::dto::MAX_VARIANT_AXES
+        )));
+    }
+    if price_rows_count > crate::dto::MAX_VARIANT_PRICE_ROWS {
+        return Err(CommerceError::Validation(format!(
+            "A variant can have at most {} price rows",
+            crate::dto::MAX_VARIANT_PRICE_ROWS
+        )));
+    }
+    Ok(())
+}
+
+/// Reject oversized nested Product creation batches before Validate walks them
+/// or Shipping Profile performs any owner IO. DTO attributes repeat these bounds
+/// for generated contracts and callers that validate inputs independently.
+fn validate_create_product_input_bounds(
+    input: &crate::dto::CreateProductInput,
+) -> CommerceResult<()> {
+    validate_product_variant_count(0, input.variants.len())?;
+
+    if input.variant_axes.len() > crate::dto::MAX_VARIANT_AXES {
+        return Err(CommerceError::Validation(format!(
+            "A Product can have at most {} variant axes",
+            crate::dto::MAX_VARIANT_AXES
+        )));
+    }
+    if input
+        .variant_axes
+        .iter()
+        .any(|axis| axis.allowed_option_ids.len() > crate::dto::MAX_VARIANT_AXIS_VALUES)
+    {
+        return Err(CommerceError::Validation(format!(
+            "A variant axis can have at most {} allowed options",
+            crate::dto::MAX_VARIANT_AXIS_VALUES
+        )));
+    }
+    for variant in &input.variants {
+        validate_variant_input_bounds(variant.axis_values.len(), variant.prices.len())?;
+    }
+    Ok(())
+}
+
 fn validate_variant_inventory_quantity(quantity: i32) -> CommerceResult<()> {
     if quantity < 0 {
         return Err(CommerceError::Validation(
@@ -83,12 +132,19 @@ fn normalize_variant_inventory_policy(value: &str) -> CommerceResult<String> {
 }
 
 fn validate_variant_prices(prices: &[PriceInput]) -> CommerceResult<()> {
+    if prices.len() > crate::dto::MAX_VARIANT_PRICE_ROWS {
+        return Err(CommerceError::Validation(format!(
+            "A variant can have at most {} price rows",
+            crate::dto::MAX_VARIANT_PRICE_ROWS
+        )));
+    }
+
     let mut seen = HashSet::new();
     for price in prices {
         let currency = price.currency_code.trim().to_ascii_uppercase();
         if currency.len() != 3 || !currency.bytes().all(|byte| byte.is_ascii_uppercase()) {
             return Err(CommerceError::Validation(format!(
-                "Currency code `{}` must contain exactly 3 ASCII letters (ISO 4217)",
+                "Currency code `{}` must contain exactly 3 ASCII letters",
                 price.currency_code
             )));
         }
@@ -264,6 +320,7 @@ impl CatalogService {
             "Creating product"
         );
 
+        validate_create_product_input_bounds(&input)?;
         input
             .validate()
             .map_err(|e| CommerceError::Validation(e.to_string()))?;
@@ -1460,6 +1517,7 @@ impl CatalogService {
     ) -> CommerceResult<VariantResponse> {
         debug!("Creating product variant");
 
+        validate_variant_input_bounds(input.axis_values.len(), input.prices.len())?;
         input
             .validate()
             .map_err(|e| CommerceError::Validation(e.to_string()))?;
@@ -1670,6 +1728,10 @@ impl CatalogService {
     ) -> CommerceResult<VariantResponse> {
         debug!("Updating product variant");
 
+        validate_variant_input_bounds(
+            input.axis_values.as_ref().map_or(0, Vec::len),
+            input.prices.as_ref().map_or(0, Vec::len),
+        )?;
         input
             .validate()
             .map_err(|e| CommerceError::Validation(e.to_string()))?;
@@ -3258,6 +3320,55 @@ mod tests {
     }
 
     #[test]
+    fn create_product_batch_bounds_are_rejected_before_nested_validation() {
+        let variant = || crate::dto::CreateVariantInput {
+            sku: None,
+            barcode: None,
+            shipping_profile_slug: None,
+            axis_values: Vec::new(),
+            prices: Vec::new(),
+            inventory_quantity: 0,
+            inventory_policy: "deny".to_owned(),
+            weight: None,
+            weight_unit: None,
+        };
+        let input = crate::dto::CreateProductInput {
+            variants: vec![variant(); crate::dto::MAX_PRODUCT_VARIANTS + 1],
+            ..Default::default()
+        };
+        assert!(matches!(
+            validate_create_product_input_bounds(&input),
+            Err(CommerceError::Validation(_))
+        ));
+
+        let input = crate::dto::CreateProductInput {
+            variant_axes: vec![
+                crate::dto::VariantAxisInput {
+                    attribute_id: Uuid::new_v4(),
+                    position: 0,
+                    allowed_option_ids: vec![Uuid::new_v4()],
+                };
+                crate::dto::MAX_VARIANT_AXES + 1
+            ],
+            ..Default::default()
+        };
+        assert!(matches!(
+            validate_create_product_input_bounds(&input),
+            Err(CommerceError::Validation(_))
+        ));
+    }
+
+    #[test]
+    fn variant_input_nested_bounds_are_checked_before_validation() {
+        assert!(validate_variant_input_bounds(
+            crate::dto::MAX_VARIANT_AXES,
+            crate::dto::MAX_VARIANT_PRICE_ROWS
+        ).is_ok());
+        assert!(validate_variant_input_bounds(crate::dto::MAX_VARIANT_AXES + 1, 0).is_err());
+        assert!(validate_variant_input_bounds(0, crate::dto::MAX_VARIANT_PRICE_ROWS + 1).is_err());
+    }
+
+    #[test]
     fn product_variant_capacity_is_enforced_without_overflow() {
         assert!(validate_product_variant_count(0, 1).is_ok());
         assert!(validate_product_variant_count(0, crate::dto::MAX_PRODUCT_VARIANTS).is_ok());
@@ -3384,6 +3495,29 @@ mod tests {
                 Err(CommerceError::Validation(_))
             ));
         }
+    }
+
+    #[test]
+    fn validate_variant_prices_enforces_the_per_variant_owner_limit() {
+        let prices = |count: usize| {
+            (0..count)
+                .map(|index| PriceInput {
+                    currency_code: "USD".to_owned(),
+                    channel_id: Some(Uuid::from_u128(index as u128 + 1)),
+                    channel_slug: None,
+                    amount: Decimal::new(100, 2),
+                    compare_at_amount: None,
+                })
+                .collect::<Vec<_>>()
+        };
+
+        assert!(
+            validate_variant_prices(&prices(crate::dto::MAX_VARIANT_PRICE_ROWS)).is_ok()
+        );
+        assert!(matches!(
+            validate_variant_prices(&prices(crate::dto::MAX_VARIANT_PRICE_ROWS + 1)),
+            Err(CommerceError::Validation(_))
+        ));
     }
 
     #[test]

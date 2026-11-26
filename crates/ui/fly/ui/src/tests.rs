@@ -463,6 +463,65 @@ fn uncorrelated_failure_cannot_clear_an_active_save() {
 }
 
 #[test]
+fn exhausted_sequence_rejects_all_mutating_intents_without_state_changes() {
+    let mut machine = FlyUiStateMachine::new(Presentation::Full);
+    machine.dispatch(UiIntent::Select(Some("hero".to_string()))).expect("select");
+    machine.dispatch(UiIntent::BeginDrag(DragSource::PaletteBlock {
+        block_id: "section".to_string(),
+        component: ComponentNode::object("section"),
+    })).expect("begin drag");
+    machine.dispatch(UiIntent::UpdateHitTest(vec![legal_candidate()])).expect("candidate");
+    machine.state.dirty.command_sequence = u64::MAX;
+
+    for intent in [
+        UiIntent::Drop,
+        UiIntent::CutSelection,
+        UiIntent::PasteClipboard,
+        UiIntent::execute(EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: ComponentPatch::default().set_field("content", json!("edit")),
+        }),
+        UiIntent::Undo,
+        UiIntent::Redo,
+    ] {
+        let before = machine.clone();
+        assert!(matches!(machine.dispatch(intent), Err(UiError::CapabilityUnavailable(message))
+            if message.contains("sequence is exhausted")));
+        assert_eq!(machine, before);
+    }
+
+    let before = machine.clone();
+    machine.dispatch(UiIntent::execute(EditorCommand::batch([]))).expect("empty batch");
+    assert_eq!(machine, before);
+    machine.dispatch(UiIntent::CancelDrag).expect("cancel");
+    machine.dispatch(UiIntent::RequestSave).expect("existing document can still be saved");
+}
+
+#[test]
+fn final_sequence_increment_is_visible_to_save_acknowledgement() {
+    let mut machine = FlyUiStateMachine::new(Presentation::Full);
+    let hash = fly::ProjectHash::from_bytes(b"submitted");
+    machine.state.dirty.command_sequence = u64::MAX - 1;
+    machine.state.dirty.project_hash = Some(hash);
+    machine.dispatch(UiIntent::SaveStarted { request_id: "req-last".into() }).expect("start");
+    machine.dispatch(UiIntent::execute(EditorCommand::Patch {
+        component_id: "hero".to_string(),
+        patch: ComponentPatch::default().set_field("content", json!("last edit")),
+    })).expect("last representable edit");
+    assert_eq!(machine.state.dirty.command_sequence, u64::MAX);
+    let before = machine.clone();
+    assert!(machine.dispatch(UiIntent::Undo).is_err());
+    assert_eq!(machine, before);
+    machine.dispatch(UiIntent::SaveSucceeded {
+        request_id: "req-last".into(),
+        revision: "rev-last".into(),
+        project_hash: hash,
+    }).expect("acknowledge earlier snapshot");
+    assert!(machine.state.dirty.dirty);
+    assert_eq!(machine.state.dirty.command_sequence, u64::MAX);
+}
+
+#[test]
 fn save_acknowledgement_cannot_clean_edits_made_during_save() {
     let mut machine = FlyUiStateMachine::new(Presentation::Full);
     let document = fly::GrapesJsCodec::decode_value(json!({ "pages": [] })).expect("document");

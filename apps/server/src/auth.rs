@@ -24,6 +24,7 @@ pub struct PasswordResetClaims {
     pub sub: String,
     pub tenant_id: uuid::Uuid,
     pub credential_fingerprint: String,
+    pub expires_at: chrono::DateTime<chrono::Utc>,
 }
 
 /// Server-owned email verification claims bound to a concrete account id.
@@ -35,6 +36,7 @@ pub struct EmailVerificationClaims {
     pub sub: String,
     pub tenant_id: uuid::Uuid,
     pub user_id: uuid::Uuid,
+    pub expires_at: chrono::DateTime<chrono::Utc>,
 }
 
 // ─── Server adapter ───────────────────────────────────────────────────
@@ -143,6 +145,8 @@ pub fn decode_password_reset_token(
         sub: email.to_string(),
         tenant_id: claims.tenant_id,
         credential_fingerprint: credential_fingerprint.to_string(),
+        expires_at: signed_recovery_expiry(claims.exp)
+            .ok_or_else(|| auth_err(AuthError::InvalidResetToken))?,
     })
 }
 
@@ -199,7 +203,14 @@ pub fn decode_email_verification_token(
         sub: email.to_string(),
         tenant_id: claims.tenant_id,
         user_id,
+        expires_at: signed_recovery_expiry(claims.exp)
+            .ok_or_else(|| auth_err(AuthError::InvalidVerificationToken))?,
     })
+}
+
+// Retain the authenticated JWT deadline for the post-lock admission check.
+fn signed_recovery_expiry(exp: usize) -> Option<chrono::DateTime<chrono::Utc>> {
+    chrono::DateTime::<chrono::Utc>::from_timestamp(i64::try_from(exp).ok()?, 0)
 }
 
 pub fn encode_invite_token(

@@ -47,6 +47,15 @@ impl AuthLifecycleService {
         // and in-transaction check below must decide whether this token is
         // still valid for the current address.
         let tx = ctx.db().begin().await.map_err(AuthLifecycleError::from)?;
+        let (current, _) = Self::lock_user_for_recovery(
+            &tx, tenant_id, user.id, claims.expires_at,
+        )
+        .await
+        .map_err(AuthLifecycleError::from)?
+        .ok_or(AuthLifecycleError::InvalidVerificationToken)?;
+        if current.email != user.email {
+            return Err(AuthLifecycleError::InvalidVerificationToken);
+        }
         let updated = verify_unchanged_email(&tx, tenant_id, user.id, &user.email).await?;
 
         if updated {
@@ -105,6 +114,49 @@ mod tests {
     use rustok_migrations::SqliteTestMigrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{ActiveModelTrait, Set};
+
+    #[tokio::test]
+    async fn recovery_fence_rejects_expired_deadline_before_account_mutation() {
+        let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
+        let tenant = tenants::ActiveModel::new("Tenant", "recovery-deadline")
+            .insert(&db)
+            .await
+            .expect("tenant");
+        let user = users::ActiveModel::new(tenant.id, "user@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("user");
+
+        let tx = db.begin().await.expect("transaction");
+        assert!(
+            AuthLifecycleService::lock_user_for_recovery(
+                &tx, tenant.id, user.id, Utc::now(),
+            )
+            .await
+            .expect("expired recovery fence")
+            .is_none()
+        );
+        tx.rollback().await.expect("rollback");
+        let stored = Users::find_by_id(user.id)
+            .one(&db)
+            .await
+            .expect("query")
+            .expect("user");
+        assert_eq!(stored.password_hash, user.password_hash);
+        assert!(stored.email_verified_at.is_none());
+
+        let tx = db.begin().await.expect("transaction");
+        let deadline = Utc::now() + chrono::Duration::minutes(5);
+        let (locked, admitted_at) = AuthLifecycleService::lock_user_for_recovery(
+            &tx, tenant.id, user.id, deadline,
+        )
+        .await
+        .expect("live recovery fence")
+        .expect("live user");
+        assert_eq!(locked.id, user.id);
+        assert!(admitted_at < deadline);
+        tx.rollback().await.expect("rollback");
+    }
 
     #[tokio::test]
     async fn stale_address_cannot_verify_a_changed_mailbox() {

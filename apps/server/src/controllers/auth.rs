@@ -3,9 +3,9 @@ use crate::error::Result;
 use axum::response::Response;
 use axum::{
     Json,
-    extract::State,
-    extract::{ConnectInfo, Path, Query},
-    http::header::{CACHE_CONTROL, USER_AGENT},
+    body::{Body, to_bytes},
+    extract::{ConnectInfo, FromRequest, Path, Query, Request, State},
+    http::{StatusCode, header::{CACHE_CONTROL, CONTENT_TYPE, USER_AGENT}},
     middleware::Next,
     routing::{delete, get, post},
 };
@@ -17,6 +17,7 @@ use std::net::SocketAddr;
 
 use crate::auth::encode_email_verification_token;
 use crate::common::{RequestContext, RustokSettings};
+use crate::context::TenantContextExt;
 use crate::extractors::{auth::CurrentUser, tenant::CurrentTenant};
 use crate::models::{
     sessions,
@@ -197,14 +198,24 @@ async fn login(
     }))
 }
 
+fn parse_refresh_retry_key(headers: &axum::http::HeaderMap) -> Result<Option<rustok_auth::AuthRefreshRetryKey>> {
+    rustok_auth::AuthRefreshRetryKey::from_header_values(
+        headers.get_all(rustok_auth::REFRESH_RETRY_KEY_HEADER).iter().map(|value| value.as_bytes()),
+    )
+    .map_err(AuthLifecycleError::from)
+    .map_err(Error::from)
+}
+
 #[utoipa::path(post, path = "/api/auth/refresh", tag = "auth", request_body = RefreshRequest,
     responses((status = 200, description = "Token refreshed", body = AuthResponse),(status = 401, description = "Invalid or expired refresh token"),(status = 409, description = "Refresh token was already rotated by another concurrent request")))]
 async fn refresh(
     State(ctx): State<ServerAuthRuntime>,
     CurrentTenant(tenant): CurrentTenant,
+    headers: axum::http::HeaderMap,
     Json(params): Json<RefreshRequest>,
 ) -> Result<Response> {
     tracing::debug!("auth::refresh entry");
+    let retry_key = parse_refresh_retry_key(&headers)?;
     let runtime_ctx = ctx.runtime_ctx();
     let config = ctx
         .auth_config()
@@ -216,6 +227,7 @@ async fn refresh(
         tenant.id,
         &params.refresh_token,
         runtime_ctx.settings().features.email_verification,
+        retry_key.as_ref(),
     )
     .await
     .map_err(|e: AuthLifecycleError| Error::from(e))?;
@@ -328,10 +340,12 @@ fn parse_session_cookie(headers: &axum::http::HeaderMap) -> Result<Option<String
 }
 
 fn require_session_request_header(headers: &axum::http::HeaderMap) -> Result<()> {
-    match headers
-        .get(SESSION_REQUEST_HEADER)
-        .and_then(|value| value.to_str().ok())
-    {
+    let mut values = headers.get_all(SESSION_REQUEST_HEADER).iter();
+    let first = values.next();
+    if values.next().is_some() {
+        return Err(Error::BadRequest("Ambiguous session request header".into()));
+    }
+    match first.and_then(|value| value.to_str().ok()) {
         Some("1") => Ok(()),
         _ => Err(Error::BadRequest("Missing session request header".into())),
     }
@@ -471,6 +485,7 @@ async fn session_refresh(
 ) -> Result<Response> {
     tracing::debug!("auth::session_refresh entry");
     require_session_request_header(&headers)?;
+    let retry_key = parse_refresh_retry_key(&headers)?;
     let refresh_token = parse_session_cookie(&headers)?
         .ok_or_else(|| Error::Unauthorized("Invalid refresh token".into()))?;
 
@@ -485,6 +500,7 @@ async fn session_refresh(
         tenant.id,
         &refresh_token,
         runtime_ctx.settings().features.email_verification,
+        retry_key.as_ref(),
     )
     .await
     .map_err(|e: AuthLifecycleError| Error::from(e))?;
@@ -559,14 +575,92 @@ async fn me(
     )))
 }
 
+pub(crate) const INVITE_ACCEPT_PATH: &str = "/api/auth/invite/accept";
+const MAX_INVITE_REQUEST_BYTES: usize = 64 * 1024;
+
+fn invite_request_error(status: StatusCode, code: &'static str, message: &'static str) -> Error {
+    rustok_web::HttpError::new(status, code, message).into()
+}
+
+async fn decode_invite_request(request: Request) -> Result<AcceptInviteParams> {
+    let unsupported_media = || {
+        invite_request_error(
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "unsupported_media_type",
+            "Invite requests require a single JSON Content-Type",
+        )
+    };
+    let invalid_json = || {
+        invite_request_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "Invite request must be a valid JSON object",
+        )
+    };
+
+    if request.headers().get_all(CONTENT_TYPE).iter().count() != 1 {
+        return Err(unsupported_media());
+    }
+
+    // Preserve the smaller legacy invite limit, independent of Axum's
+    // general JSON body limit and any enclosing router configuration.
+    let (parts, body) = request.into_parts();
+    let bytes = to_bytes(body, MAX_INVITE_REQUEST_BYTES).await.map_err(|_| {
+        invite_request_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "Invite request body is invalid or too large",
+        )
+    })?;
+    let is_object = bytes
+        .iter()
+        .copied()
+        .find(|byte| !matches!(*byte, b' ' | b'\n' | b'\r' | b'\t'))
+        == Some(b'{');
+
+    // Use the same media-type and JSON decoder as the other Auth routes.
+    // Do not expose serde diagnostics containing caller-supplied credentials.
+    let Json(params) = Json::<AcceptInviteParams>::from_request(
+        Request::from_parts(parts, Body::from(bytes)),
+        &(),
+    )
+    .await
+    .map_err(|rejection| {
+        if rejection.status() == StatusCode::UNSUPPORTED_MEDIA_TYPE {
+            unsupported_media()
+        } else {
+            invalid_json()
+        }
+    })?;
+    // Serde structs may deserialize positional arrays; the REST DTO is an object.
+    if !is_object {
+        return Err(invalid_json());
+    }
+    Ok(params)
+}
+
 #[utoipa::path(post, path = "/api/auth/invite/accept", tag = "auth", request_body = AcceptInviteParams,
-    responses((status = 200, description = "Invite accepted", body = InviteAcceptResponse),(status = 401, description = "Invalid or expired invite token")))]
-async fn accept_invite(
+    responses((status = 200, description = "Invite accepted", body = InviteAcceptResponse),
+    (status = 400, description = "Invalid or oversized invite request"),
+    (status = 401, description = "Invalid or expired invite token"),
+    (status = 415, description = "Missing, ambiguous or unsupported JSON media type")))]
+pub(crate) async fn accept_invite(
     State(ctx): State<ServerAuthRuntime>,
-    CurrentTenant(tenant): CurrentTenant,
-    Json(params): Json<AcceptInviteParams>,
+    request: Request,
 ) -> Result<Response> {
     tracing::debug!("auth::accept_invite entry");
+    let tenant_id = request
+        .extensions()
+        .tenant_context()
+        .map(|tenant| tenant.id)
+        .ok_or_else(|| {
+            invite_request_error(
+                StatusCode::NOT_FOUND,
+                "tenant_not_found",
+                "Tenant context is required",
+            )
+        })?;
+    let params = decode_invite_request(request).await?;
     let config = ctx
         .auth_config()
         .cloned()
@@ -574,18 +668,13 @@ async fn accept_invite(
     let accepted = AuthLifecycleService::accept_invite_once_runtime(
         ctx.runtime_ctx(),
         &config,
-        tenant.id,
+        tenant_id,
         &params.token,
         &params.password,
         params.name,
     )
     .await
-    .map_err(|error| match error {
-        crate::services::auth_invite::InviteAcceptanceError::EmailAlreadyExists => {
-            Error::BadRequest("A user with this email already exists".into())
-        }
-        other => Error::from(other),
-    })?;
+    .map_err(Error::from)?;
 
     Ok(json_response(InviteAcceptResponse {
         status: "ok",
@@ -966,7 +1055,7 @@ pub fn router() -> crate::routes::ServerRouter {
         .route("/api/auth/session/refresh", post(session_refresh))
         .route("/api/auth/session/logout", post(session_logout))
         .route("/api/auth/me", get(me))
-        .route("/api/auth/invite/accept", post(accept_invite))
+        .route(INVITE_ACCEPT_PATH, post(accept_invite))
         .route("/api/auth/reset/request", post(request_reset))
         .route("/api/auth/reset/confirm", post(confirm_reset))
         .route("/api/auth/verify/request", post(request_verification))
@@ -987,6 +1076,62 @@ fn clamp_session_limit(limit: Option<u64>) -> u64 {
 mod tests {
     use super::{disable_auth_response_caching, ensure_registration_enabled};
     use crate::common::RustokSettings;
+
+    #[tokio::test]
+    async fn invite_decoder_rejects_non_json_ambiguous_and_oversized_requests() {
+        use axum::{
+            body::Body,
+            http::{Request, StatusCode, header::CONTENT_TYPE},
+            response::IntoResponse,
+        };
+
+        let valid = r#"{"token":"test-token","password":"test-password","name":null}"#;
+        let request = |content_type: Option<&str>, body: String| {
+            let mut builder = Request::builder();
+            if let Some(content_type) = content_type {
+                builder = builder.header(CONTENT_TYPE, content_type);
+            }
+            builder.body(Body::from(body)).unwrap()
+        };
+        let params = super::decode_invite_request(request(
+            Some("application/json; charset=utf-8"),
+            valid.to_string(),
+        ))
+        .await
+        .expect("valid invite object");
+        assert_eq!(params.token, "test-token");
+
+        for content_type in [None, Some("text/plain")] {
+            let error = super::decode_invite_request(request(content_type, valid.to_string()))
+                .await
+                .err()
+                .expect("unsupported media type");
+            assert_eq!(error.into_response().status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+        }
+
+        for second in ["application/json", "text/plain"] {
+            let mut duplicate = request(Some("application/json"), valid.to_string());
+            duplicate.headers_mut().append(CONTENT_TYPE, second.parse().unwrap());
+            let error = super::decode_invite_request(duplicate)
+                .await
+                .err()
+                .expect("ambiguous media type");
+            assert_eq!(error.into_response().status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+        }
+
+        for body in [
+            r#"["test-token","test-password",null]"#.to_string(),
+            r#"{"token":"first","token":"second","password":"test-password"}"#.to_string(),
+            "{".to_string(),
+            format!("{valid}{}", " ".repeat(super::MAX_INVITE_REQUEST_BYTES)),
+        ] {
+            let error = super::decode_invite_request(request(Some("application/json"), body))
+                .await
+                .err()
+                .expect("invalid invite body");
+            assert_eq!(error.into_response().status(), StatusCode::BAD_REQUEST);
+        }
+    }
 
     #[test]
     fn registration_policy_respects_feature_flag() {
@@ -1162,6 +1307,30 @@ mod tests {
         assert!(cookie.contains("Max-Age=864000"));
         assert!(cookie.contains("; Secure"));
         assert!(!cookie.contains("Max-Age=7776000"));
+    }
+
+    #[test]
+    fn session_request_header_requires_one_exact_marker() {
+        use axum::http::{HeaderMap, HeaderValue};
+
+        let mut headers = HeaderMap::new();
+        assert!(super::require_session_request_header(&headers).is_err());
+
+        for marker in ["0", "1, 1", ""] {
+            headers.insert(super::SESSION_REQUEST_HEADER, HeaderValue::from_static(marker));
+            assert!(super::require_session_request_header(&headers).is_err());
+        }
+
+        headers.insert(super::SESSION_REQUEST_HEADER, HeaderValue::from_static("1"));
+        assert!(super::require_session_request_header(&headers).is_ok());
+        headers.append(super::SESSION_REQUEST_HEADER, HeaderValue::from_static("1"));
+        assert!(super::require_session_request_header(&headers).is_err());
+
+        for (first, second) in [("1", "0"), ("0", "1")] {
+            headers.insert(super::SESSION_REQUEST_HEADER, HeaderValue::from_static(first));
+            headers.append(super::SESSION_REQUEST_HEADER, HeaderValue::from_static(second));
+            assert!(super::require_session_request_header(&headers).is_err());
+        }
     }
 
     #[test]

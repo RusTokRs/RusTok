@@ -574,7 +574,7 @@ pub fn render_page_with_rich_text_and_embed_registry(
         &identities,
         &mut html,
     );
-    let metadata = PageMetadata::from_page(page);
+    let metadata = PageMetadata::from_rendered_page(page);
     let head = PageHead::from_metadata(&metadata);
     let css = if policy.emit_style_hooks {
         render_project_styles(document, page, policy, &theme_tokens)
@@ -608,7 +608,9 @@ pub fn resolve_page<'a>(
             .project()
             .pages
             .iter()
-            .position(|page| PageMetadata::from_page(page).slug.as_deref() == Some(slug.as_str()))
+            .position(|page| {
+                PageMetadata::from_rendered_page(page).slug.as_deref() == Some(slug.as_str())
+            })
             .ok_or_else(|| FlyError::PageNotFound(slug.clone()))?,
     };
     document
