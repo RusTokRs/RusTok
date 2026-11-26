@@ -165,7 +165,8 @@
 
   function toggleVisibility(element, action) {
     var target = findTarget(action, element);
-    if (!target) return;
+    // Hiding the trigger itself or one of its ancestors makes the action impossible to undo.
+    if (!target || target === element || target.contains(element)) return;
     var mode = action.mode || "toggle";
     var isHidden = target.hidden ||
       target.ownerDocument.defaultView.getComputedStyle(target).display === "none";

@@ -35,6 +35,7 @@ function fixture(reducedMotion) {
     ownerDocument: document,
     closest() { return root; },
     getAttribute(attribute) { return attribute === 'id' ? 'destination' : null; },
+    contains(element) { return element === target; },
     scrollIntoView(options) { calls.push(['scroll', { ...options }]); },
     focus(options) { calls.push(['focus', { ...options }]); },
     animate(keyframes, options) { calls.push(['animate', keyframes, options]); },
@@ -77,6 +78,25 @@ for (const [label, preference, behavior] of [
     ]);
   });
 }
+
+test('visibility toggle refuses to hide its own trigger', () => {
+  const { actions, target } = fixture();
+  actions.handleAction(
+    { kind: 'toggle_visibility', target_id: 'destination', mode: 'hide' },
+    target,
+  );
+  assert.equal(target.hidden, undefined);
+});
+
+test('visibility toggle refuses to hide an ancestor containing its trigger', () => {
+  const { actions, target, trigger } = fixture();
+  target.contains = (element) => element === trigger;
+  actions.handleAction(
+    { kind: 'toggle_visibility', target_id: 'destination', mode: 'hide' },
+    trigger,
+  );
+  assert.equal(target.hidden, undefined);
+});
 
 test('animation uses the target document motion preference', () => {
   const reduced = fixture(true);
