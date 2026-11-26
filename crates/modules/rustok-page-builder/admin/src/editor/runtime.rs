@@ -775,7 +775,7 @@ impl AdminEditorRuntime {
                     response.capability()
                 );
                 let completion =
-                            self.finish_failed_request(capability, save_attempt.as_ref());
+                    self.finish_failed_request(capability, save_attempt.as_ref());
                 self.report_completion_failure(message, completion);
             }
             Err(error) => {
