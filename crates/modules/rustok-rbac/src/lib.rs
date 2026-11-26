@@ -17,6 +17,8 @@ pub mod error;
 pub mod graphql;
 mod invalidation_generation;
 mod membership_revision;
+mod role_grant_revision;
+pub(crate) mod m20261127_000003_create_rbac_role_grant_revision;
 pub(crate) mod m20261127_000001_create_rbac_membership_revision;
 pub(crate) mod m20260714_900001_enforce_rbac_relation_tenant_integrity;
 pub(crate) mod m20260714_900002_create_rbac_invalidation_state;
@@ -33,6 +35,7 @@ pub mod services;
 
 pub use module::RbacModule;
 pub use membership_revision::read_user_membership_revision_on;
+pub use role_grant_revision::lock_invite_role_grant_binding_on;
 
 pub use artifact_permission_assignment::{
     ArtifactPermissionAssignmentError, ArtifactPermissionAssignmentScope,

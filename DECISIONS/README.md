@@ -53,6 +53,7 @@ Non-ADR plans and research documents do not belong in this registry.
 
 | ADR | Title | Decision status | Implementation status | Relations |
 | --- | --- | --- | --- | --- |
+| [2026-11-27](./2026-11-27-rbac-role-grant-revision.md) | Durable RBAC static role grant revision | Accepted | In progress | Extends [Membership revision](./2026-11-27-rbac-membership-revision.md) |
 | [2026-11-27](./2026-11-27-rbac-membership-revision.md) | Durable RBAC membership revision | Accepted | In progress | Extends [RBAC source of truth](./2026-02-26-rbac-relation-source-of-truth-cutover.md) |
 | [2026-11-26](./2026-11-26-auth-recovery-revision.md) | Monotonic account recovery revision | Accepted | In progress | Extends [Canonical JWT claims](./2026-11-25-jwt-canonical-claims.md) |
 | [2026-11-26](./2026-11-26-forum-transactional-settings-capability.md) | Forum configured policy requires transactional settings for writes | Accepted | In progress | Partially supersedes missing-reader fallback in [Vote policy settings](./2026-10-09-forum-vote-policy-settings.md) and [Delete policy admission](./2026-11-26-forum-delete-policy-admission.md) |

@@ -81,7 +81,11 @@ preserves accepted receipts and prior revocations, and requires new invitations.
 Invites also bind the RBAC-owned membership revision under the same user
 fence. Membership removal/reassignment ABA cannot revive an older invitation.
 The binding migration revokes previously unbound pending invites, preserving
-consumption history. This is not a durable history of role grants or module policy,
+consumption history. The ledger also binds the exact IDs and static grant revisions of every issuer
+membership role and the destination role. Those roles are locked before grant
+reads; missing or changed bindings deny acceptance. Missing built-in destinations
+are initialized by RBAC at issuance without rewriting existing grants. Legacy
+unbound invites are revoked at cutover. This is not a durable history of module policy,
 nor a transaction-spanning module-policy fence.
 
 The host additionally composition-gates the OAuth protocol surface and discovery metadata with

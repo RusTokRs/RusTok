@@ -146,6 +146,22 @@ impl RbacRoleAssignmentDbWriter {
             .await
     }
 
+    /// Materialize a missing built-in role, without reconciling an existing one.
+    /// The caller owns the transaction and authorization decision.
+    pub async fn ensure_builtin_role_definition_on(
+        db: &sea_orm::DatabaseTransaction,
+        tenant_id: Uuid,
+        role: &UserRole,
+    ) -> Result<(), RbacRoleAssignmentError> {
+        ensure_supported_backend(db.get_database_backend())?;
+        let writer = ConnectionRoleAssignmentWriter { db };
+        let ensured = writer.ensure_role(tenant_id, role).await?;
+        if ensured.created {
+            writer.reconcile_role_permissions(ensured.id, tenant_id, role).await?;
+        }
+        Ok(())
+    }
+
     /// Replace memberships after the caller has obtained an owner mutation plan.
     /// Host commit and post-commit invalidation remain outside this operation.
     pub async fn replace_role_on<C>(
@@ -318,10 +334,11 @@ where
             });
         }
 
+        let proposed_id = rustok_core::generate_id();
         self.execute(
             "INSERT INTO roles (id, tenant_id, name, slug, description, is_system) VALUES ({id}, {tenant}, {name}, {slug}, NULL, TRUE) ON CONFLICT (tenant_id, slug) DO NOTHING",
             vec![
-                rustok_core::generate_id().into(),
+                proposed_id.into(),
                 tenant_id.into(),
                 slug.clone().into(),
                 slug.clone().into(),
@@ -335,7 +352,9 @@ where
             .ok_or(RbacRoleAssignmentError::MissingPersistedRecord("role"))?;
         Ok(EnsuredRole {
             id: validate_builtin_role(tenant_id, &slug, id, is_system)?,
-            created: true,
+            // A concurrent initializer may have won the unique slug insert.
+            // Never reconcile that existing role as though we created it.
+            created: id == proposed_id,
         })
     }
 

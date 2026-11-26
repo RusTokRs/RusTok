@@ -31,6 +31,10 @@ documentation for this module must live inside the crate, not spread across
   the caller's user mutation fence. Relation insert/delete/changed identity
   advances affected users atomically, independent of cache invalidation.
   See the [membership epoch ADR](../../../../DECISIONS/2026-11-27-rbac-membership-revision.md).
+- `lock_invite_role_grant_binding_on` locks all issuer membership roles and
+  the requested role in stable identity order and returns their canonical
+  revision binding. Static grants and role identity changes advance the role
+  epoch transactionally; see the [role epoch ADR](../../../../DECISIONS/2026-11-27-rbac-role-grant-revision.md).
 - `load_role_user_ids_on` owns exact persisted role-membership reads and excludes
   cross-tenant subjects even when malformed membership rows exist;
 - authenticated request snapshots are inputs to the owner `PermissionResolver`

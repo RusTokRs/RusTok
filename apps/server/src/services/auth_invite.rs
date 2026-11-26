@@ -247,6 +247,12 @@ impl AuthLifecycleService {
         if issued.issuer_membership_revision != Some(membership_revision) {
             return Err(InviteAcceptanceError::InvalidToken);
         }
+        let role_binding = rustok_rbac::lock_invite_role_grant_binding_on(
+            &tx, tenant_id, issuer_id, &ledger_role,
+        ).await.map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
+        if role_binding.is_none() || issued.role_grant_binding != role_binding {
+            return Err(InviteAcceptanceError::InvalidToken);
+        }
         let mut issuer_permissions =
             RbacService::get_user_permissions_authoritative(&tx, &tenant_id, &issuer_id)
                 .await
@@ -603,6 +609,7 @@ mod tests {
                 issued_by TEXT NULL, \
                 issuer_recovery_revision BIGINT NULL, \
                 issuer_membership_revision BIGINT NULL, \
+                role_grant_binding TEXT NULL, \
                 expires_at TEXT NOT NULL, \
                 revoked_at TEXT NULL, \
                 created_at TEXT NOT NULL\
@@ -623,6 +630,7 @@ mod tests {
             issued_by: Set(None),
             issuer_recovery_revision: Set(None),
             issuer_membership_revision: Set(None),
+            role_grant_binding: Set(None),
             expires_at: Set((now + chrono::Duration::days(7)).into()),
             revoked_at: Set(None),
             created_at: Set(now.into()),
@@ -698,6 +706,7 @@ mod tests {
             issued_by: None,
             issuer_recovery_revision: None,
             issuer_membership_revision: None,
+            role_grant_binding: None,
             expires_at: expires_at.into(),
             revoked_at: None,
             created_at: now.into(),

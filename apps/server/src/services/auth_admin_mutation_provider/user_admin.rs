@@ -1061,6 +1061,16 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         let membership_revision = rustok_rbac::read_user_membership_revision_on(
             &tx, context.tenant_id, context.actor_id,
         ).await.map_err(super::internal_admin_error)?;
+        if custom_slug.is_none() {
+            rustok_rbac::RbacRoleAssignmentDbWriter::ensure_builtin_role_definition_on(
+                &tx, context.tenant_id, &role,
+            ).await.map_err(super::internal_admin_error)?;
+        }
+        let target_slug = custom_slug.clone().unwrap_or_else(|| role.to_string());
+        let role_binding = rustok_rbac::lock_invite_role_grant_binding_on(
+            &tx, context.tenant_id, context.actor_id, &target_slug,
+        ).await.map_err(super::internal_admin_error)?
+            .ok_or_else(|| AuthAdminMutationError::NotFound("invitation role".to_string()))?;
         let persisted_permissions = RbacService::get_user_permissions_authoritative(
             &tx, &context.tenant_id, &context.actor_id,
         )
@@ -1116,6 +1126,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             issued_by: Set(Some(context.actor_id)),
             issuer_recovery_revision: Set(Some(issuer.recovery_revision)),
             issuer_membership_revision: Set(Some(membership_revision)),
+            role_grant_binding: Set(Some(role_binding)),
             expires_at: Set(expires_at.into()),
             revoked_at: Set(None),
             created_at: Set(now.into()),
@@ -1358,6 +1369,7 @@ mod tests {
             issued_by: Set(None),
             issuer_recovery_revision: Set(None),
             issuer_membership_revision: Set(None),
+            role_grant_binding: Set(None),
             expires_at: Set((now + chrono::Duration::hours(1)).into()),
             revoked_at: Set(None),
             created_at: Set(now.into()),
