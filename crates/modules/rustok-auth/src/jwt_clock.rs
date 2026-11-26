@@ -75,7 +75,7 @@ impl ClockGuard {
 
     pub(crate) fn trip(&self) {
         if !self.faulted.swap(true, Ordering::AcqRel) {
-            tracing::error!("JWT lease clock fault; restart only after clock remediation");
+            tracing::error!("Auth clock fault; restart only after clock remediation");
         }
     }
 

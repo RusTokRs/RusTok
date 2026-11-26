@@ -67,7 +67,21 @@ water mark. Browser confirmation MAC issuance and verification and all code
 issuance paths use the live credential clock. The verified confirmation expiry
 survives into the locked mutation, which checks it before consent/code writes
 and commit. Code publication rechecks the gate and code expiry after commit.
-Standalone consent grants, application DB time and retention remain follow-up work.
+Standalone consent grants and application DB time at credential-admission
+boundaries remain follow-up work.
+
+## Destructive retention extension
+
+Auth retention is a separate time-sensitive operation, not JWT signing. The
+worker and session-only CLI use one owner implementation with a process-lifetime
+ClockGuard and bounded application DB clock observations inside the purge
+transaction before deletion and before commit. The cutoff is fixed from the
+earlier of the first host/DB observations minus two seconds. A later observation
+cannot move the cutoff forward; a detected rollback or inconclusive sample
+aborts the transaction. The CLI retains the same 30-day session history as the
+worker; the OAuth family and code windows remain unchanged. This needs no JWT
+signing material. A process restart with coherently incorrect host and DB time
+remains outside the guarantee; do not run manual cleanup during a clock incident.
 
 ## Recovery and limits
 

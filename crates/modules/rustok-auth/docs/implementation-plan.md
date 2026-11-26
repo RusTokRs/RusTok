@@ -163,8 +163,9 @@ See [owner contract](README.md#operational-observability).
    not register a task for this operation.
 
 6. **Keep session maintenance in the auth-owned CLI adapter.**
-   `rustok-cli auth sessions-cleanup` removes expired auth sessions without the
-   server task bridge.
+   `rustok-cli auth sessions-cleanup` calls the Auth owner's session-only
+   retention operation without a server task bridge, preserves the same
+   30-day horizon as the worker and refuses dry-run.
 
 7. **Completed — keep bootstrap identity provisioning in the auth owner.**
    `AuthUserBootstrapDbWriter` provides idempotent tenant-scoped user creation
@@ -338,8 +339,12 @@ the code-issuance transaction rechecks it with the shared credential clock
 after locks, before consent, before code insert and before commit. Code issuance
 also verifies its persisted expiry before response; a post-commit fault
 suppresses publication rather than undoing a durable grant. Application DB clock
-checks, standalone consent grants, retention and durable cross-restart/replica
-rollback remain open. Source regressions unrun.
+credential-admission checks, standalone consent grants and durable
+cross-restart/replica rollback remain open. The Auth owner now shares retention
+between the worker and session-only CLI, corroborates host and application DB
+clock before deletion and commit, uses a conservative fixed cutoff, and
+rolls back on invalid time. Clock faults remain latched across sweeps in the
+process; independent processes still require reliable time. Source regressions unrun.
 
 ## OAuth family lifetime and replay evidence (source only)
 

@@ -32,7 +32,7 @@ impl CommandProvider for AuthCommandProvider {
                 "create-app",
                 "Create an OAuth application for an explicitly selected tenant",
             ),
-            CommandDescriptor::new("auth", "sessions-cleanup", "Remove expired auth sessions"),
+            CommandDescriptor::new("auth", "sessions-cleanup", "Remove auth sessions past the retention window"),
             CommandDescriptor::new(
                 "auth", "jwt-authority-init",
                 "Import the offline JWT ledger into a new independent authority",
@@ -55,6 +55,10 @@ impl CommandProvider for AuthCommandProvider {
     async fn execute(&self, request: CommandRequest) -> CliCoreResult<CommandOutcome> {
         match (request.namespace.as_str(), request.name.as_str()) {
             ("oauth", "create-app") => self.create_app(request.args).await,
+            ("auth", "sessions-cleanup") if request.dry_run => Err(CliCoreError::DryRunNotSupported {
+                namespace: request.namespace,
+                name: request.name,
+            }),
             ("auth", "sessions-cleanup") => self.cleanup_sessions().await,
             ("auth", "jwt-revoke" | "jwt-authority-init" | "jwt-witness-init" | "jwt-witness-recover") if request.dry_run => Err(CliCoreError::DryRunNotSupported {
                 namespace: request.namespace,
@@ -138,16 +142,12 @@ impl AuthCommandProvider {
 
     async fn cleanup_sessions(&self) -> CliCoreResult<CommandOutcome> {
         let db = db_clone(self.runtime.require_host().map_err(command_failed)?);
-        let result = db
-            .execute_raw(Statement::from_string(
-                db.get_database_backend(),
-                "DELETE FROM sessions WHERE expires_at < CURRENT_TIMESTAMP".to_string(),
-            ))
+        let deleted = rustok_auth::retention::purge_expired_sessions(&db)
             .await
             .map_err(command_failed)?;
         Ok(
-            CommandOutcome::success("Expired auth sessions removed").with_data(serde_json::json!({
-                "deleted_sessions": result.rows_affected(),
+            CommandOutcome::success("Auth sessions past retention removed").with_data(serde_json::json!({
+                "deleted_sessions": deleted,
             })),
         )
     }

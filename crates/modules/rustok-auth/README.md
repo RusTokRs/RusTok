@@ -158,6 +158,9 @@ Clock discontinuity detection and dual-deadline leases are source-implemented;
 browser code issuance carries the authenticated confirmation expiry through
 locked consent and code writes and checks the shared live credential clock;
 independent clock fault-injection and suspend evidence remain pending.
+The Auth-owned retention operation also corroborates host/application DB time
+at both transaction boundaries, retains the same session history for worker
+and CLI, and refuses deletion on time uncertainty.
 Independent production JWT authority and explicit offline import are source-implemented;
 a separately configured rollback witness detects authority-only rollback and
 supports exact offline recovery. Joint-store rollback and application session

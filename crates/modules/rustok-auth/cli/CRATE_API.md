@@ -7,7 +7,7 @@
 
 ### Commands
 - `oauth create-app`: registers a new OAuth application for an explicitly specified tenant.
-- `auth sessions-cleanup`: removes expired session and token records.
+- `auth sessions-cleanup`: removes session rows (and cascading refresh history) only more than 30 days past expiry, using the Auth owner's bounded host/database clock checks and conservative margin. It is session-only and rejects dry-run rather than deleting.
 - `auth jwt-authority-init --confirm`: offline one-time import of the trusted application JWT ledger into the separately configured empty PostgreSQL authority. Never overwrites an existing target.
 - `auth jwt-witness-init --confirm`: initializes the third-store witness once against the trusted offline authority, preserving its ledger.
 - `auth jwt-witness-recover --confirm`: copies only the latest authenticated witness snapshot into the offline pinned authority. Never lowers its revision or resets the witness.

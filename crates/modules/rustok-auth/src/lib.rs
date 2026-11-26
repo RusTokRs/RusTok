@@ -33,6 +33,7 @@ pub mod migrations;
 pub mod module;
 pub mod oauth_app_translation;
 pub mod rest;
+pub mod retention;
 pub mod validation;
 pub mod worker_context;
 

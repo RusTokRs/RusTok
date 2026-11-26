@@ -1171,11 +1171,15 @@ tests for long chains and context-sensitive cycles are present but unrun.
   page and receipt and aborts startup if shutdown begins; already acknowledged
   receipts are safe for replay during a later startup. In-flight DB operations
   still run to completion before the next stop check.
-- Auth retention cleanup stays transactional across all artifact tables.
-  Expired pending email-change requests are deleted on the daily sweep across
-  all tenants, even without a subsequent email-change attempt. The expiry
-  predicate matches the issuance-time cleanup; live challenges are preserved,
-  and the committed count is included in worker diagnostics.
+- Auth retention cleanup delegates to the Auth owner and stays transactional
+  across all artifact tables. A bounded host/application DB clock observation
+  before deletion and before commit is mandatory; the sweep uses a fixed
+  conservative cutoff and rolls back on time uncertainty. Expired pending
+  email-change requests are deleted on the daily sweep across all tenants,
+  even without a subsequent email-change attempt. A two-second clock margin
+  delays edge-of-expiry cleanup; live challenges are preserved, and committed
+  counts are included in worker diagnostics. The session-only CLI uses the
+  same 30-day retention horizon.
   A successful run keeps its daily cadence; a failed purge retries after
   15 minutes instead of deferring every affected cleanup for another full day.
   The failure log is a fixed machine code, not a raw database error.

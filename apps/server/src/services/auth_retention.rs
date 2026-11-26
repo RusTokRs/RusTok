@@ -1,135 +1,15 @@
-//! Bounded retention for authentication artifacts.
-//!
-//! Sessions and invite bookkeeping only need to outlive their security
-//! purpose: a session row and its cascading refresh-token history are
-//! worthless once the whole lineage has expired, and an
-//! invite digest only has to survive until the signed token expires.
-//! Rows are purged 30 days past expiry, so storage stays bounded
-//! without weakening exactly-once acceptance or theft detection. Pending
-//! mailbox-change challenges are deleted as soon as expired: they have no
-//! replay-evidence role after expiry and retain both email addresses. The
-//! host runs this daily via the auth retention worker; the
-//! `auth sessions-cleanup` CLI remains available for one-off runs.
+//! Host adapter for the Auth owner's bounded, transactional retention sweep.
 
-use chrono::{Duration, Utc};
-use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, QueryFilter, Statement, TransactionTrait};
+use sea_orm::DatabaseConnection;
 
 use crate::error::Result;
-use crate::models::{
-    auth_email_change_requests, auth_invite_consumptions, auth_invites, oauth_authorization_codes,
-    sessions,
+pub use rustok_auth::retention::{
+    AUTH_ARTIFACT_RETENTION_DAYS, AuthRetentionPurge, OAUTH_AUTHORIZATION_CODE_RETENTION_DAYS,
+    OAUTH_TOKEN_RETENTION_DAYS,
 };
 
-/// How long expired auth artifacts are kept for audit before deletion.
-pub const AUTH_ARTIFACT_RETENTION_DAYS: i64 = 30;
-
-/// OAuth token rows are retained longer: a rotated lineage can live
-/// up to the 90-day family cap, and the revoked rows are the reuse
-/// evidence (plus the root row anchors the family deadline). They
-/// are purged as a complete family 120 days past its latest member's
-/// expiry — family cap plus the usual 30-day audit window.
-pub const OAUTH_TOKEN_RETENTION_DAYS: i64 = 120;
-
-/// Authorization codes are short-lived, but a used code is the replay anchor
-/// for the delegated refresh lineage it issued. Keep that evidence for the
-/// same outer window as the token family itself; purging it earlier would let
-/// a late code replay fail closed without revoking the still-live lineage.
-pub const OAUTH_AUTHORIZATION_CODE_RETENTION_DAYS: i64 = OAUTH_TOKEN_RETENTION_DAYS;
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct AuthRetentionPurge {
-    pub sessions: u64,
-    pub invite_consumptions: u64,
-    pub invites: u64,
-    pub email_change_requests: u64,
-    pub oauth_tokens: u64,
-    pub oauth_authorization_codes: u64,
-}
-
-/// Delete expired authentication artifacts in one transaction. A failed purge
-/// must not leave some artifact families deleted while later cleanup fails.
-/// Returns per-table deletion counts only after the transaction commits.
 pub async fn purge_expired_auth_artifacts(db: &DatabaseConnection) -> Result<AuthRetentionPurge> {
-    let now = Utc::now();
-    let cutoff = now - Duration::days(AUTH_ARTIFACT_RETENTION_DAYS);
-    let oauth_cutoff = now - Duration::days(OAUTH_TOKEN_RETENTION_DAYS);
-    let oauth_code_cutoff = now - Duration::days(OAUTH_AUTHORIZATION_CODE_RETENTION_DAYS);
-    let tx = db.begin().await?;
-
-    let result: Result<AuthRetentionPurge> = async {
-        let sessions = sessions::Entity::delete_many()
-            .filter(sessions::Column::ExpiresAt.lt(cutoff))
-            .exec(&tx)
-            .await?;
-
-        let invite_consumptions = auth_invite_consumptions::Entity::delete_many()
-            .filter(auth_invite_consumptions::Column::ExpiresAt.lt(cutoff))
-            .exec(&tx)
-            .await?;
-
-        let invites = auth_invites::Entity::delete_many()
-            .filter(auth_invites::Column::ExpiresAt.lt(cutoff))
-            .exec(&tx)
-            .await?;
-
-        // Match the on-demand cleanup at email-change issuance. Expired
-        // challenges no longer reserve an address or authorize confirmation.
-        let email_change_requests = auth_email_change_requests::Entity::delete_many()
-            .filter(auth_email_change_requests::Column::ExpiresAt.lte(now))
-            .exec(&tx)
-            .await?;
-
-        // Keep every generation and its root until the entire family's
-        // retention window closes. Descendants go first for SQLite's
-        // immediate root guard; PostgreSQL also has a deferred root FK.
-        let backend = tx.get_database_backend();
-        let parameter = match backend {
-            DbBackend::Postgres => "$1",
-            DbBackend::Sqlite => "?",
-            _ => return Err(sea_orm::DbErr::Custom("Unsupported OAuth retention database".into()).into()),
-        };
-        let descendants = tx.execute_raw(Statement::from_sql_and_values(
-            backend,
-            format!("DELETE FROM oauth_tokens WHERE id <> family_id AND family_id IN (SELECT family_id FROM oauth_tokens GROUP BY family_id HAVING MAX(expires_at) < {parameter})"),
-            [oauth_cutoff.into()],
-        )).await?;
-        let roots = tx.execute_raw(Statement::from_sql_and_values(
-            backend,
-            format!("DELETE FROM oauth_tokens WHERE id = family_id AND family_id IN (SELECT family_id FROM oauth_tokens GROUP BY family_id HAVING MAX(expires_at) < {parameter}) AND NOT EXISTS (SELECT 1 FROM oauth_tokens member WHERE member.family_id = oauth_tokens.id AND member.id <> oauth_tokens.id)"),
-            [oauth_cutoff.into()],
-        )).await?;
-
-        // A code is replay evidence as long as any token from its exchange
-        // remains. Do not purge it solely because its own TTL is older.
-        let oauth_authorization_codes = tx.execute_raw(Statement::from_sql_and_values(
-            backend,
-            format!("DELETE FROM oauth_authorization_codes WHERE expires_at < {parameter} AND NOT EXISTS (SELECT 1 FROM oauth_tokens token WHERE token.authorization_code_id = oauth_authorization_codes.id)"),
-            [oauth_code_cutoff.into()],
-        )).await?;
-
-        Ok(AuthRetentionPurge {
-            sessions: sessions.rows_affected,
-            invite_consumptions: invite_consumptions.rows_affected,
-            invites: invites.rows_affected,
-            email_change_requests: email_change_requests.rows_affected,
-            oauth_tokens: descendants.rows_affected() + roots.rows_affected(),
-            oauth_authorization_codes: oauth_authorization_codes.rows_affected(),
-        })
-    }
-    .await;
-
-    match result {
-        Ok(report) => {
-            tx.commit().await?;
-            Ok(report)
-        }
-        Err(error) => {
-            // Explicit rollback keeps the failure visible and prevents later
-            // runs from observing a partially committed retention sweep.
-            tx.rollback().await?;
-            Err(error)
-        }
-    }
+    Ok(rustok_auth::retention::purge_expired_auth_artifacts(db).await?)
 }
 
 #[cfg(test)]
@@ -137,7 +17,8 @@ mod tests {
     use super::*;
     use crate::models::{oauth_apps, oauth_authorization_codes, tenants, users};
     use crate::services::oauth_app::{CreateOAuthAppInput, OAuthAppService};
-    use chrono::Duration;
+    use chrono::{Duration, Utc};
+    use crate::models::{auth_email_change_requests, sessions};
     use rustok_migrations::SqliteTestMigrator as Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
