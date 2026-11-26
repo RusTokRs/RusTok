@@ -47,7 +47,7 @@ impl FlyProjectInspection {
         registries: &RegistrySet,
         limits: ValidationLimits,
     ) -> FlyProjectAdapterResult<Self> {
-        let document = GrapesJsCodec::decode_value(project_data.clone())
+        let document = GrapesJsCodec::decode_ref(project_data)
             .map_err(|error| FlyProjectAdapterError::Decode(error.to_string()))?;
         let validation = validate_project(&document, registries, limits);
         Ok(Self {
@@ -302,6 +302,21 @@ mod tests {
         assert_eq!(properties["type"], "section");
         assert_eq!(properties["attributes"]["class"], "rtk-hero");
         assert!(properties.get("components").is_none());
+    }
+
+    #[test]
+    fn fly_inspection_rejects_excessive_json_depth() {
+        let mut nested = Value::Null;
+        for _ in 0..256 {
+            nested = Value::Array(vec![nested]);
+        }
+        let project = Value::Object(serde_json::Map::from_iter([
+            ("payload".to_string(), nested),
+        ]));
+        assert!(matches!(
+            FlyProjectInspection::decode(&project),
+            Err(FlyProjectAdapterError::Decode(_))
+        ));
     }
 
     #[test]

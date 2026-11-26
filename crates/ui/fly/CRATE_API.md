@@ -8,7 +8,7 @@ Fly Visual Editor Engine: framework-neutral visual editor engine, AST models, de
 - `FlyEditor`: Command processor and state coordinator managing document revisions, transaction batches, undo/redo history, and host embed-provider validation (`with_embed_registry`). The embed registry is host runtime policy and is not serialized with the project.
 - `ProjectDocument`: Root document tree containing components, style rules, symbols, and asset registries.
 - `ComponentNode`: Individual component node representing HTML elements, text nodes, or custom blocks with typed and opaque attribute storage.
-- `GrapesJsCodec`: Lossless bidirectional serializer and deserializer for GrapesJS project schemas.
+- `GrapesJsCodec`: Lossless bidirectional serializer and deserializer for GrapesJS project schemas. Use `decode_ref` for borrowed JSON values; it validates root shape and depth before cloning, with the same limits as `decode_value`.
 - `History`, `HistoryEntry`: Undo/redo history manager with configurable serialized-size budget (`DEFAULT_HISTORY_MEMORY_BUDGET_BYTES`), accounting for both snapshot stacks and commands.
 - `ProjectDocument::clone_as_page(&mut IdGenerator) -> FlyResult<ProjectDocument>` and `ProjectFragment::remap_ids(&mut IdGenerator) -> FlyResult<BTreeMap<String, String>>`: reissue owned identities and references; ambiguous source identities fail before consuming the generator.
 - `EditorCommand`: Atomic document manipulation commands (`InsertComponent`, `RemoveComponent`, `UpdateAttributes`, `PatchStyleRule`, etc.).
