@@ -6,7 +6,7 @@
 - Owners: `rustok-forum` (`VoteService`, `ForumSettingsProviders`, `ForumModuleSettings`); `rustok-tenant` (static module settings rows read through `StaticModuleSettingsTransactionReader`)
 - Extends: `DECISIONS/2026-10-09-forum-vote-subscription-write-audience.md`
 - Supersedes: None
-- Superseded by: None
+- Superseded by: [Transactional settings capability](./2026-11-26-forum-transactional-settings-capability.md) for the missing-reader fallback only; all other rules remain active
 
 ## Context
 

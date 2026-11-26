@@ -55,12 +55,18 @@ impl ReactionSubjectProviderFactory for ForumReactionSubjectProviderFactory {
         &self,
         host: &HostRuntimeContext,
     ) -> ReactionProviderResult<Arc<dyn ReactionSubjectProvider>> {
-        Ok(Arc::new(ForumReactionSubjectProvider::new(
-            host.db_clone(),
-            host.shared_get::<SharedForumNotificationRecipientContextPort>(),
-            host.shared_get::<SharedForumAudienceFactsPort>(),
-            host.shared_get::<SharedStaticModuleSettingsReader>(),
-        )))
+        Ok(Arc::new(
+            ForumReactionSubjectProvider::new(
+                host.db_clone(),
+                host.shared_get::<SharedForumNotificationRecipientContextPort>(),
+                host.shared_get::<SharedForumAudienceFactsPort>(),
+                host.shared_get::<SharedStaticModuleSettingsReader>(),
+            )
+            .with_taxonomy_port(
+                host.shared_get::<Arc<dyn crate::ForumTaxonomyPort>>()
+                    .unwrap_or_else(|| Arc::new(crate::NoopForumTaxonomyPort)),
+            ),
+        ))
     }
 }
 
@@ -70,6 +76,7 @@ struct ForumReactionSubjectProvider {
     recipient_context_port: Option<SharedForumNotificationRecipientContextPort>,
     facts_port: Option<SharedForumAudienceFactsPort>,
     settings_reader: Option<SharedStaticModuleSettingsReader>,
+    taxonomy_port: Arc<dyn crate::ForumTaxonomyPort>,
 }
 
 impl ForumReactionSubjectProvider {
@@ -84,7 +91,13 @@ impl ForumReactionSubjectProvider {
             recipient_context_port,
             facts_port,
             settings_reader,
+            taxonomy_port: Arc::new(crate::NoopForumTaxonomyPort),
         }
+    }
+
+    fn with_taxonomy_port(mut self, port: Arc<dyn crate::ForumTaxonomyPort>) -> Self {
+        self.taxonomy_port = port;
+        self
     }
 
     fn visibility_service(&self) -> ForumTopicAudienceVisibilityService {
@@ -93,6 +106,7 @@ impl ForumReactionSubjectProvider {
             None => ForumSettingsProviders::default(),
         };
         ForumTopicAudienceVisibilityService::new(self.db.clone(), self.facts_port.clone())
+            .with_taxonomy_port(self.taxonomy_port.clone())
             .with_settings_providers(settings)
     }
 

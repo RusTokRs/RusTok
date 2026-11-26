@@ -68,10 +68,11 @@ impl ForumStorefrontAudienceTopicsQuery {
         let requested_limit = per_page.map(|value| value.max(0) as u64);
         let per_page = match requested_limit {
             Some(value) => crate::dto::bounded_forum_read_limit(Some(value)),
-            None => super::forum_graphql_runtime(ctx)
-                .default_topics_per_page(tenant_id)
-                .await
-                .map_err(|error| async_graphql::Error::new(error.to_string()))?,
+            None => {
+                super::forum_graphql_runtime(ctx)
+                    .default_topics_per_page(tenant_id)
+                    .await?
+            }
         };
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
 
@@ -80,10 +81,11 @@ impl ForumStorefrontAudienceTopicsQuery {
             .topic_audience_list_service(db.clone(), event_bus.clone());
         let order = match order {
             Some(order) => order,
-            None => super::forum_graphql_runtime(ctx)
-                .default_topic_order(tenant_id)
-                .await
-                .map_err(|error| async_graphql::Error::new(error.to_string()))?,
+            None => {
+                super::forum_graphql_runtime(ctx)
+                    .default_topic_order(tenant_id)
+                    .await?
+            }
         };
         let filter = crate::ListTopicsFilter {
             search,

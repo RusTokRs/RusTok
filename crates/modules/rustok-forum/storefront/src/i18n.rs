@@ -77,6 +77,14 @@ mod tests {
     }
 
     #[test]
+    fn every_catalog_locale_names_the_solved_topic_badge() {
+        for (locale, expected) in [("en", "Solved"), ("ru", "Решено"), ("ar", "محلولة")]
+        {
+            assert_eq!(t(Some(locale), "forum.topic.solved", "?"), expected);
+        }
+    }
+
+    #[test]
     fn every_catalog_locale_names_the_topic_statuses() {
         for (locale, open, closed, archived, pending, approved, deleted) in [
             (

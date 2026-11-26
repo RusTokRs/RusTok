@@ -42,7 +42,7 @@ forum-feed-threads =
         [one] { $count } thread
        *[other] { $count } threads
     }
-forum-feed-title = Latest discussions
+forum-feed-title = Discussions
 forum-member-replies = replies
 forum-member-solutions = solutions
 forum-member-topics = topics
@@ -101,3 +101,15 @@ forum-topic-unreadCount = { $count } unread
 forum-topic-updatedUnread = Updated
 forum-view-categories = Categories
 forum-view-discussions = Discussions
+
+# Owner-selected topic feeds
+forum-feed-latest = Latest
+forum-feed-top = Top
+forum-feed-unread = Unread
+forum-feed-solved = Solved
+forum-feed-search = Search discussions
+forum-feed-clear = Clear filters
+forum-feed-noMatches = No matching discussions found
+forum-feed-noMatchesBody = No topics match the selected feed or search.
+forum-feed-newTopic = New topic
+forum-topic-solved = Solved

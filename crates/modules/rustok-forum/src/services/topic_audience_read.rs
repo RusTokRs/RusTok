@@ -43,6 +43,15 @@ impl ForumTopicAudienceReadService {
         Self::with_optional_audience_facts(db, event_bus, Some(facts_port))
     }
 
+    pub fn with_taxonomy_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
+    ) -> Self {
+        self.topic_service = self.topic_service.with_taxonomy_port(port.clone());
+        self.visibility = self.visibility.with_taxonomy_port(port);
+        self
+    }
+
     pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
         self.visibility = self.visibility.with_settings_providers(settings);
         self

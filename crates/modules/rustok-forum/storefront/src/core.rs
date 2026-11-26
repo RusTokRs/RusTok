@@ -745,3 +745,66 @@ mod composer_tests {
         ));
     }
 }
+
+/// Feed controls project one owner selection; they never transform loaded rows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ForumTopicFeedMode {
+    Latest,
+    Top,
+    Unread,
+    Solved,
+}
+
+impl crate::model::ForumTopicSelection {
+    pub fn mode(&self) -> ForumTopicFeedMode {
+        if self.unread_only {
+            ForumTopicFeedMode::Unread
+        } else if self.solved_only {
+            ForumTopicFeedMode::Solved
+        } else if self.order == crate::model::ForumTopicFeedOrder::Top {
+            ForumTopicFeedMode::Top
+        } else {
+            ForumTopicFeedMode::Latest
+        }
+    }
+
+    pub fn set_mode(&mut self, mode: ForumTopicFeedMode) {
+        self.order = if mode == ForumTopicFeedMode::Top {
+            crate::model::ForumTopicFeedOrder::Top
+        } else {
+            crate::model::ForumTopicFeedOrder::Latest
+        };
+        self.solved_only = mode == ForumTopicFeedMode::Solved;
+        self.unread_only = mode == ForumTopicFeedMode::Unread;
+    }
+}
+
+#[cfg(test)]
+mod feed_selection_tests {
+    use super::ForumTopicFeedMode;
+    use crate::model::{ForumTopicFeedOrder, ForumTopicSelection};
+
+    #[test]
+    fn every_tab_resets_previous_predicates_and_preserves_search() {
+        let mut selection = ForumTopicSelection {
+            search: Some("older page match".into()),
+            ..Default::default()
+        };
+        for mode in [
+            ForumTopicFeedMode::Solved,
+            ForumTopicFeedMode::Top,
+            ForumTopicFeedMode::Unread,
+            ForumTopicFeedMode::Latest,
+        ] {
+            selection.set_mode(mode);
+            assert_eq!(selection.mode(), mode);
+            assert_eq!(selection.search.as_deref(), Some("older page match"));
+            assert_eq!(selection.unread_only, mode == ForumTopicFeedMode::Unread);
+            assert_eq!(selection.solved_only, mode == ForumTopicFeedMode::Solved);
+            assert_eq!(
+                selection.order == ForumTopicFeedOrder::Top,
+                mode == ForumTopicFeedMode::Top
+            );
+        }
+    }
+}

@@ -1524,7 +1524,8 @@ impl TopicService {
         input: CreateTopicCommandInput,
     ) -> ForumResult<TopicResponse> {
         let create_audience =
-            ForumTopicCreateAudienceAuthorizationService::without_facts_provider(self.db.clone());
+            ForumTopicCreateAudienceAuthorizationService::without_facts_provider(self.db.clone())
+                .with_taxonomy_port(self.taxonomy_port.clone());
         self.create_with_audience_authorization(tenant_id, security, None, input, &create_audience)
             .await
     }
@@ -1572,18 +1573,10 @@ impl TopicService {
         lock_category_tree_in_tx(&txn, tenant_id).await?;
         create_audience
             .require_in_tx(&txn, tenant_id, input.category_id, &security, context)
-            .await
-            .and_then(|authorization| {
-                if authorization.allowed {
-                    Ok(())
-                } else {
-                    Err(ForumError::forbidden(
-                        "Forum topic creation is unavailable for the current audience",
-                    ))
-                }
-            })?;
+            .await?;
         CategoryService::ensure_exists_in_tx(&txn, tenant_id, input.category_id).await?;
         super::category_lifecycle::ensure_category_tree_target_is_active_in_tx(
+            self.taxonomy_port.as_ref(),
             &txn,
             tenant_id,
             input.category_id,
@@ -1814,6 +1807,29 @@ impl TopicService {
         lock_category_tree_in_tx(&txn, tenant_id).await?;
         let claimed_updated_at =
             Self::claim_topic_update_in_tx(&txn, tenant_id, topic_id, expected_updated_at).await?;
+        // The claim may wait behind another writer. Use the locked source and
+        // the policy/time observed after that wait, never the preflight model.
+        let topic = Self::find_topic_in_tx(&txn, tenant_id, topic_id).await?;
+        enforce_owned_scope(
+            &security,
+            Resource::ForumTopics,
+            Action::Update,
+            topic.author_id,
+        )?;
+        if topic.status == TopicStatus::Archived {
+            return Err(ForumError::TopicArchived);
+        }
+        enforce_author_edit_window(
+            &security,
+            Resource::ForumTopics,
+            topic.author_id,
+            topic.created_at,
+            self.settings
+                .module_settings_in_tx(&txn, tenant_id)
+                .await?
+                .max_edit_window_minutes,
+            Utc::now(),
+        )?;
         // A content edit in a pre-moderated tenant re-enters moderation only when
         // normalized title or body actually changes: otherwise no-op saves (or metadata/tag-only edits)
         // would falsely de-publish an already approved topic.

@@ -2,6 +2,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { containsMarker } from "./lib/forum-source-verification.mjs";
 import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -31,7 +32,7 @@ function rejectText(source, marker, message) {
 // rules: `channel::` also occurs inside Forum's own `forum_category_audience_channel::Entity`, so an
 // unanchored check reported a dependency that does not exist.
 function matchesMarker(source, marker) {
-  return marker instanceof RegExp ? marker.test(source) : source.includes(marker);
+  return containsMarker(source, marker);
 }
 
 /**
@@ -88,6 +89,7 @@ const owner = [
   .filter((value, index, all) => value.length > 0 && all.indexOf(value) === index)
   .join("\n");
 const audience = read(contract.audience_contract_file ?? "");
+const storage = read(contract.storage_file ?? "");
 const migration = read(contract.migration_file ?? "");
 const migrations = read(contract.migration_registry_file ?? "");
 const entities = read(contract.entities_file ?? "");
@@ -207,11 +209,18 @@ for (const marker of [
   "ancestors.reverse()",
   "effective_layers",
   "Root-to-target non-empty layers. Every layer must allow the viewer.",
-  "ensure_storage_bound(",
+  "crate::services::audience_storage::load_audience_layers_raw(",
+  "load_category_audience_policy_with_port( self.inner.taxonomy_port.as_ref(), &txn, (&txn).into(),",
   "MAX_FORUM_CATEGORY_TREE_NODES + 1",
   "MAX_FORUM_CATEGORY_TREE_DEPTH",
 ]) {
   requireText(owner, marker, `category audience owner is missing ${marker}`);
+}
+for (const marker of [
+  "let fetch_limit = subject_ids", "LIMIT {fetch_limit}",
+  "if rows.len() == fetch_limit", "Forum audience storage contains an empty local layer",
+]) {
+  requireText(storage, marker, `shared category audience storage is missing ${marker}`);
 }
 requireInAny(
   blocksFor(owner, "pub async fn get(", "category audience owner get"),

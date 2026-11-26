@@ -13,20 +13,41 @@ Leptos storefront UI package for the `rustok-forum` module.
 - Keeps forum-specific storefront UX inside the module package.
 - Participates in the manifest-driven UI composition path through `rustok-module.toml`.
 - Owns dual-path storefront data access for category feeds, selected threads, reply rendering, authenticated visible-topic unread state, canonical topic-route admission, and composer topic/reply writes with inline quotes.
-- Adds native Leptos `#[server]` calls while keeping GraphQL as a required parallel fallback.
+- Provides native Leptos `#[server]` calls and GraphQL as required parallel transports selected by build profile, never as runtime fallbacks.
 - Builds topic-card links with the localized canonical route `/{locale}/forum/t/{short_id}/{slug}` instead of UUID query links.
 - Presents the module as a NodeBB-inspired public discussion surface.
 - Ships package-owned `storefront/locales/en.ftl`, `storefront/locales/ru.ftl`, and `storefront/locales/ar.ftl` bundles declared through `[provides.storefront_ui.i18n]`; every composer and thread label resolves through `crate::i18n::t` with the locale published by `UiRouteContext`, and every label that carries a number or a slug resolves through `crate::i18n::count_message` / `crate::i18n::slug_message` so the catalog binds `$count`/`$slug` itself. A caller-side `"{count} threads"` template is not an acceptable substitute: Fluent reports a format error for an unbound argument, the shared resolver turns any format error into `Failed`, and the caller literal then wins in every locale, which silently deletes all plural variants.
 
 ## Topic selection and continuation
 
-`ForumTopicSelection` is a typed transport projection (`search`, `order`, `solvedOnly`)
-of the Forum owner list contract. Both native and GraphQL initial/page requests forward it;
-`StorefrontForumData.topic_selection` retains it so Load more cannot accidentally switch back
-to an unselected feed. `read_state_available` still selects the original read-state/audience
-owner; a failed continuation never switches transport or query. Current Leptos UI requests
-Latest by default; this is transport parity, not a claim that it exposes Next's new controls.
-No search/ranking predicate runs in this package. See the
+`ForumTopicSelection` is a typed transport projection (`search`, `order`, `solvedOnly`,
+`unreadOnly`) of the Forum list/read-state owners. Latest, Top, Solved, submitted search,
+and authenticated Unread controls change the resource key; no predicate or ranking is
+applied to loaded rows. Search is submitted explicitly instead of scanning the owner
+on every keystroke. Controls remain mounted while the result reloads, including an
+empty result, so the reader can change/reset the selection without losing input focus.
+The search editor observes only changes to the applied search string: switching feed
+modes does not erase unsubmitted text. Solved-topic badges use package-owned catalog
+copy in English, Russian and Arabic rather than a hardcoded English label.
+
+Both native and GraphQL initial/page requests forward the selection;
+`StorefrontForumData.topic_selection` retains it so Load more cannot switch back to an
+unselected feed. `read_state_available` selects the original read-state/audience owner;
+an unread-only request cannot degrade to a public/full feed. A failed continuation
+never switches transport or query. Category overrides are tracked inside the resource
+source and clear a thread selected by the previous route. Reloads recreate the result
+page state; topic and reply continuations check disposal and the complete captured
+resource key (category, thread, locale, refresh nonce and selection) both before
+dispatch and after completion. Initial results carry the originating request key
+alongside the data; a retained Suspense result never adopts the current key when it
+mounts or updates read-state availability for a newer selection. A retained result
+cannot accept an old page or error during reload. Composer drafts belong to the
+mounted Forum view, not the reloading results.
+
+The GraphQL category connection reads `pageInfo.totalCount`; `total` is only the
+package's internal projection, never a GraphQL connection field. Actual embedded
+headless documents are validated by the Forum schema contract test, and response
+fixtures exercise the category mapping. See the
 [owner feed decision](../../../../DECISIONS/2026-10-17-forum-topic-feed-selection.md).
 
 ## Entry Points
@@ -75,8 +96,9 @@ No search/ranking predicate runs in this package. See the
   transport resolves them through the shared module-settings readers), appended pages are
   identity-deduplicated in `Forum{Topic,Reply}Page::append_page`, a failed page is shown inline with a
   retry instead of looking like the end of the thread, and the header count stays server-authored.
-  Categories stay at 12 because the owner exposes no category page-size setting, category filtering
-  runs client-side over the fetched page, and a filtered feed does not offer a next page.
+  The category overview remains limited to its initial page of 12 (the owner has no
+  category page-size setting); it has no category continuation control. Selecting
+  any loaded category requests an owner-filtered, cursor-paged topic feed.
 - Vote, subscribe, and report mutations stay unreachable in this surface, so `is_subscribed` and
   `current_user_vote` are not part of the read model this package renders.
 

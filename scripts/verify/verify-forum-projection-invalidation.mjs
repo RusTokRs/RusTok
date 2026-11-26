@@ -2,6 +2,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { containsMarker } from "./lib/forum-source-verification.mjs";
 
 const root = process.env.RUSTOK_VERIFY_REPO_ROOT
   ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
@@ -18,7 +19,7 @@ function read(relativePath) {
 }
 
 function requireMarker(source, marker, label) {
-  if (!source.includes(marker)) failures.push(`${label}: missing ${marker}`);
+  if (!containsMarker(source, marker)) failures.push(`${label}: missing ${marker}`);
 }
 
 function rejectMarker(source, marker, label) {
@@ -29,16 +30,16 @@ const outboxBusPath = "crates/libs/rustok-outbox-storage/src/transactional.rs";
 const outboxTransportPath = "crates/libs/rustok-outbox-storage/src/transport.rs";
 const helperPath = "crates/modules/rustok-forum/src/services/projection_invalidation.rs";
 const servicesModPath = "crates/modules/rustok-forum/src/services/mod.rs";
-const categoryProjectionPath = "crates/modules/rustok-forum/src/services/category_projection_owner.rs";
-const categoryCommandPath = "crates/modules/rustok-forum/src/services/category_command_owner.rs";
-const categoryLifecyclePath = "crates/modules/rustok-forum/src/services/category_lifecycle_owner.rs";
+const categoryProjectionPath = "crates/modules/rustok-forum/src/services/category.rs";
+const categoryCommandPath = "crates/modules/rustok-forum/src/services/category_command.rs";
+const categoryLifecyclePath = "crates/modules/rustok-forum/src/services/category_lifecycle.rs";
 const categoryVisibilityPath = "crates/modules/rustok-forum/src/services/category_visibility.rs";
 const categoryAudiencePath = "crates/modules/rustok-forum/src/services/category_audience_owner.rs";
-const topicAudiencePath = "crates/modules/rustok-forum/src/services/topic_audience_owner.rs";
-const topicInlinePath = "crates/modules/rustok-forum/src/services/topic_inline.rs";
+const topicAudiencePath = "crates/modules/rustok-forum/src/services/topic_audience.rs";
+const topicInlinePath = "crates/modules/rustok-forum/src/services/topic.rs";
 const topicOwnerPath = "crates/modules/rustok-forum/src/services/topic_owner.rs";
 const replyOwnerPath = "crates/modules/rustok-forum/src/services/reply_owner.rs";
-const replyInlinePath = "crates/modules/rustok-forum/src/services/reply_inline.rs";
+const replyInlinePath = "crates/modules/rustok-forum/src/services/reply.rs";
 const moderationOwnerPath = "crates/modules/rustok-forum/src/services/moderation_owner.rs";
 const searchContractPath = "crates/modules/rustok-forum/contracts/forum-search-projection.json";
 const contractPath = "crates/modules/rustok-forum/contracts/forum-projection-invalidation.json";
@@ -182,13 +183,11 @@ for (const marker of [
 ]) {
   requireMarker(replyOwner, marker, replyOwnerPath);
 }
-for (const marker of [
-  'target_type: "forum_topic".to_string()',
-  "target_id: Some(topic_id)",
-  ".publish_in_tx(",
-]) {
-  requireMarker(replyInline, marker, replyInlinePath);
-}
+requireMarker(
+  replyInline,
+  /publish_forum_topic_projection_in_tx\(\s*&self\.event_bus,\s*&txn,\s*tenant_id,\s*security\.user_id,\s*topic_id,?\s*\)/,
+  replyInlinePath,
+);
 for (const marker of [
   "set_topic_locked",
   "mark_solution_with_optional_audience_context",
@@ -211,9 +210,12 @@ for (const marker of [
   "pub use moderation::ModerationService;",
   "ForumCategoryAudiencePolicyOwnerService as ForumCategoryAudiencePolicyService",
   "ForumTopicAudiencePolicyOwnerService as ForumTopicAudiencePolicyService",
-  'include!("category_projection_owner.rs")',
-  'include!("category_command_owner.rs")',
-  'include!("category_lifecycle_owner.rs")',
+  "mod category;",
+  "mod category_command;",
+  "mod category_lifecycle;",
+  "mod topic_audience;",
+  "mod reply;",
+  "mod topic;",
 ]) {
   requireMarker(servicesMod, marker, servicesModPath);
 }
@@ -241,7 +243,7 @@ for (const forbidden of ["impl Deref", "pub struct ModerationPublicService", "pu
 rejectMarker(moderationOwner, "inner: super::moderation_owner::ModerationService", moderationOwnerPath);
 
 for (const marker of [
-  "search.reindex_requested",
+  "index.reindex_requested",
   "owner transaction",
   "PostgreSQL-only",
   "validation only",
@@ -257,6 +259,14 @@ if (contract) {
   if (contract.upstream_task !== "FORUM-20BJ") failures.push(`${contractPath}: unexpected upstream task`);
   if (contract.downstream_task !== "FORUM-20BP") failures.push(`${contractPath}: unexpected downstream task`);
   if (contract.root_event !== "rustok_events::DomainEvent::ReindexRequested") failures.push(`${contractPath}: root event drift`);
+  for (const [key, expected] of Object.entries({
+    event_type: "index.reindex_requested",
+    outbox_transaction_api: outboxBusPath,
+    outbox_storage_api: outboxTransportPath,
+    owner_note: notePath,
+  })) {
+    if (contract[key] !== expected) failures.push(`${contractPath}: ${key} drift`);
+  }
   if (contract.visibility_scoped_bulk_read_contract !== visibilityBulkPath) failures.push(`${contractPath}: visible bulk handoff drift`);
   if (contract.rebuild_scope_preservation_contract !== rebuildPath) failures.push(`${contractPath}: rebuild handoff drift`);
   if (contract.approved_reply_search_contract !== approvedReplyPath) failures.push(`${contractPath}: approved reply handoff drift`);

@@ -74,14 +74,24 @@ pub struct VoteService {
     db: DatabaseConnection,
     settings: ForumSettingsProviders,
     audience_facts: Option<SharedForumAudienceFactsPort>,
+    taxonomy_port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
 }
 
 impl VoteService {
+    pub fn with_taxonomy_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
+    ) -> Self {
+        self.taxonomy_port = port;
+        self
+    }
+
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
             db,
             settings: ForumSettingsProviders::default(),
             audience_facts: None,
+            taxonomy_port: std::sync::Arc::new(crate::NoopForumTaxonomyPort),
         }
     }
 
@@ -128,6 +138,7 @@ impl VoteService {
             &self.db,
             &txn,
             self.audience_facts.clone(),
+            self.taxonomy_port.clone(),
             tenant_id,
             topic_id,
             &security,
@@ -244,6 +255,7 @@ impl VoteService {
             &self.db,
             &txn,
             self.audience_facts.clone(),
+            self.taxonomy_port.clone(),
             tenant_id,
             parent.topic_id,
             &security,

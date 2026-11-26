@@ -5,7 +5,7 @@ language: en
 status: active
 owners:
   - rustok-forum
-last_reviewed: 2026-10-28
+last_reviewed: 2026-11-26
 ---
 
 # `rustok-forum` canonical implementation plan
@@ -33,6 +33,763 @@ migration or degraded-mode behavior. A task is `done` only after implementation,
 integration, migration/backfill, tests, public contracts, documentation and
 required runtime evidence are complete. Source-ready slices remain
 `in_progress`.
+
+## Forum correctness remediation — 2026-11-26
+
+Branch `arena/336e29d4-rustok`, base `710fb31ee330cadfa80aad304e99e951b1a7f27b`.
+This is ordinary scoped remediation, not advancement of an audit ledger.
+**Status: in_progress; remediation packets, including trusted moderation effects, are source-ready. Rust compilation/service/concurrency, full migration-chain and mounted-browser validation remain open.**
+
+- Reply edit re-pending, moderation and removal share post-status publication effects; accepted
+  reply/solution member statistics change in one write. Archived reply removal does
+  not double-release category/member counts; delete/restore is in the shared regression.
+  Category/topic projection
+  invalidations are atomic with re-pending.
+- Direct topic/reply deletion no longer relies on a preflight-only author policy.
+  It rechecks locked source ownership and transactional tenant settings before
+  snapshot/destructive writes. Reply direct deletion and internal moderation retain
+  one shared locking/effects core without applying author policy to moderation.
+  The [delete admission decision](../../../../DECISIONS/2026-11-26-forum-delete-policy-admission.md)
+  replaces only the earlier accepted preflight ordering. Ten cases across both
+  source kinds are authored for each SQLite/PostgreSQL service matrix, covering
+  differing static/transactional policy, capability failure, missing transactional
+  reader, staff/system reasons and foreign ownership. Refusal checkpoints cover
+  source/bodies/revisions/solution/statistics, snapshot counts and outbox; positive
+  cases assert snapshot reasons. These Rust cases remain unrun. Eight supplemental
+  source-guard fixtures pass and reject loss of transactional checks or shared core.
+- Reply restore now rejects archived parents under the topic lock, before replaying
+  the tombstone/snapshot. The previous owner path admitted ordinary replies there
+  but failed on the database solution-target guard for accepted replies. The active
+  [parent admission decision](../../../../DECISIONS/2026-11-26-forum-reply-restore-parent-admission.md)
+  makes reopen -> restore explicit for both cases. The shared SQLite/PostgreSQL
+  source regression checks exact persisted checkpoints on rejection and repeated
+  restoration, plus original solution metadata after reopen/retry. REST/GraphQL
+  already delegate to this owner; the existing HTTP conflict mapping is unchanged.
+- Whole-topic restoration of an already-archived accepted thread previously failed
+  on the same active-solution guard. Unlike a standalone reply restore, its deleted
+  parent cannot first be reopened. Migration 47 admits only the original historical
+  solution INSERT named by the tenant/topic and approved child delete snapshots;
+  ordinary archived INSERTs and target UPDATEs remain forbidden. The owner acquires
+  the solution scope after restoring/locking the parent and before child writes;
+  archived snapshot restoration skips public author contributions. Shared SQLite /
+  PostgreSQL service regression sources cover archived restore with/without a
+  solution, original marker metadata, no publication, no revived independently
+  deleted replies, snapshot consumption, repeated restore and explicit reopen.
+  See the active [topic replay decision](../../../../DECISIONS/2026-11-26-forum-topic-restore-solution-replay.md).
+- Migration 46 restores SQLite archived-category predicate parity and rebuilds prior
+  counter/last-reply drift without rewriting content or lifecycle history. Its topic
+  repair excludes immutable soft-deleted rows, not live archived rows. An unscoped
+  repair was reproduced failing on PostgreSQL's tombstone guard and corrected;
+  SQL regressions execute that guard on both backends. Quiesce writers for migration
+  and rebuild Forum search projections before ranking reads.
+- Repair and edit-window regression setup uses typed ORM UUID bindings, not text
+  UUID interpolation that matches no SQLite BLOB rows. The shared repair regression
+  includes a real deleted thread, repeated repair, unchanged content/history and
+  rejection of subsequent tombstone mutation on SQLite and PostgreSQL.
+- Slug rename uses the configured GraphQL runtime owner and transactional lifecycle /
+  edit-window admission. Standalone quote commands recheck source/parent state and
+  the window under the write fence; ordinary content commands recheck the window too.
+- Leptos category/selection changes drive the resource source; loaded pages are not
+  filtered/sorted locally. Unread mode is an owner predicate on both transports and
+  every page. Controls survive empty/reloading results, stale page responses are
+  fenced by the entire resource key for both topics and replies, including while a
+  previous Suspense result is retained, and composer draft state survives reloads.
+- Native/headless category GraphQL reads `pageInfo.totalCount`. Schema tests consume
+  the actual embedded operations; category DTO, selection and reactive-source tests
+  supplement existing owner integration tests.
+- Cursor verification follows the current topic owner and tenant ranking defaults;
+  discovery verification includes the typed SEO error mapping rather than an obsolete
+  chain spelling. Mention persistence verification now pins live CRATE_API transaction /
+  identity guarantees and the actual module registration instead of deleted rollout
+  notes. Slug owner/GraphQL guards and the Rust source-contract test now require the
+  configured runtime owner and live CRATE_API/README contracts rather than direct
+  construction or deleted handoff notes; four negative/positive guard tests pass.
+  Quote/mention integration guards now follow the current ordinary owner modules and
+  the consolidated relation tests instead of deleted inline fragments and handoff
+  records. Nine guard fixtures include negative cases for lost REST/GraphQL settings,
+  skipped transactional admission, private transport persistence and a removed CAS
+  source lock. The existing quote-window Rust matrix now supplies both settings
+  readers, and a new matrix admits preflight but rejects a stricter or failed
+  transactional policy for topic and reply commands, with no added relation revision.
+  These Rust tests are source-only until the toolchain checks below run.
+  Source checks remain supplemental to behavior tests.
+
+Local evidence: 137 scoped Next client tests and 65 source-verifier fixture tests
+passed, as did Forum owner/storefront/admin boundary, cursor paging, anonymous
+discovery, mention persistence/integration/events, quote command composition,
+delete-policy admission, event/runtime static inventories and UI i18n catalog parity checks. The generic i18n-contract guard now passes: its multilingual registry
+followed an obsolete foundation path after the MCP migration moved to its owner.
+The registry now names the existing MCP-owned migration without closing its
+localization gap or changing migration identity; four guard regression tests pass
+(`npm run test:verify:i18n:contract`). UI key validation also passes (3,539 references
+across 73 packages). Global docs/ADR verification remains red on unchanged registry /
+metadata/heading defects in November 24–25 Fly, Pages and JWT decisions, plus the
+Pages implementation plan's broken decision link; no Forum or multilingual-contract
+failure was reported. These unrelated documentation defects are not fixed here.
+The full-key continuation admission has reactive Rust regression sources, not mounted
+browser evidence: its Rust tests still require the toolchain checks below.
+The remediation gate's diff checks passed; its architecture dependency check could
+not run without Cargo. An in-memory Python SQLite harness executed the repository trigger/repair
+SQL for withdrawal and open/archived reply removal with/without solution, prior split-statistic failure, archive /
+restore, repair idempotence and content preservation. WASM rustfmt parsed/formatted
+changed Rust files; this is not compilation. The environment has no Cargo toolchain.
+A later scoped check ran **3 SQLite + 3 PostgreSQL 17.6 SQL regressions** in
+`scripts/verify/verify-forum-topic-repair.py`: the script extracts the actual topic
+repair statement and lifecycle/counter guards, verifies the pre-fix failure,
+checks repeated repair of live/open and live/archived projections, preserves deleted
+topics and canonical reply state, and proves the tombstone guard remains enabled.
+PostgreSQL used an isolated temporary schema on a local Unix-socket-only test server
+(provisioned from `@embedded-postgres/linux-x64@17.6.0-beta.15`, not an application
+dependency). This is SQL evidence on a minimal fixture, **not** the full Rust
+migration chain, service tests, lock-contention evidence or mounted-browser proof.
+`scripts/verify/verify-forum-reply-restore.py` now passes **10 SQLite checks +
+7 PostgreSQL 17.6 checks**. Three SQLite checks reproduce standalone-reply parent
+admission; the other seven scenarios execute the migration-47 SQL templates on
+both databases. They reproduce the pre-fix whole-topic failure, admit only exact
+snapshot target INSERTs, reject 15 source/snapshot mismatch cases, reject archived
+target UPDATEs, close admission on snapshot consumption, retain normal non-archived
+writes, and verify strict down/corrected up behavior. The repair matrix was also
+rerun green on both databases after extracting the optional PostgreSQL connection
+helper shared by the two scripts. These remain minimal, isolated extracted-SQL
+fixtures, not Rust MigrationTrait/service execution or concurrency evidence.
+Reproduce without Cargo:
+
+```bash
+python scripts/verify/verify-forum-reply-restore.py
+python scripts/verify/verify-forum-topic-repair.py
+# Install pg8000 in a test virtualenv; set RUSTOK_FORUM_TEST_DATABASE_URL.
+python scripts/verify/verify-forum-reply-restore.py --postgres
+python scripts/verify/verify-forum-topic-repair.py --postgres
+```
+
+### Trusted moderation effects — source-ready, runtime validation open
+
+The follow-up in `src/moderation_subject.rs` now routes approved → hidden/rejected
+through the shared publication effects after persisting status. It removes accepted
+solutions, changes reply/solution statistics in one guarded write, and avoids a second
+category/member withdrawal under archived topics. Hide/reject invalidates the topic
+projection; removal invalidates it when the reply was public or a solution was removed.
+Category invalidation and status events remain in the same transaction. Exact receipt
+replay and same-target hide/reject no-ops keep their existing no-write semantics.
+
+Admission now acquires category → parent topic → solution scope → subject/revision,
+and revalidates a reply's discovered parent. SQLite reserves its writer through the
+revision table before discovering the parent, without invoking source update triggers.
+PostgreSQL keeps Serializable transactions and reviewed-revision fencing. This is a
+source-level lock-order correction, not runtime contention/deadlock evidence.
+
+The shared `tests/support/moderation_effects.rs` matrix is mounted by
+`logic_review_remediation_sqlite`: hide/reject/remove × ordinary/accepted reply ×
+open/archived topic on each backend (12 scenarios each). It asserts aggregates,
+solution cleanup, status events, PostgreSQL projection-ledger changes, immutable
+receipt replay, same-target no-ops and rollback after an injected status-outbox failure.
+Rust execution remains blocked by missing Cargo. Existing PostgreSQL content-edit
+concurrency tests must also be rerun before integration.
+
+Unintegrated migration 46 now removes invalid solution relations targeting nonpublic
+or deleted replies before rebuilding aggregates; approved solutions under live archived
+topics survive. Rollback does not resurrect invalid relations. This amends this branch's
+new migration, not a previously deployed migration. Run with writers quiesced and
+rebuild search projections as already required. The extracted repair SQL/guard harness
+passes **4 SQLite + 4 PostgreSQL 17.6 cases**; this is not full migration-chain evidence.
+The supplemental effects guard has **11 passing positive/negative Node fixtures**;
+three additional lost-response guard fixtures pin rustfmt-tolerant replay assertions.
+The scoped combined regression run passes **46 Node tests**, 12 source contracts
+(event inventory in `--static-only` mode), i18n and `git diff --check`. The remediation
+gate passes diff invariants but cannot run the architecture metadata guard because
+Cargo is absent; it is not reported green. No audit phase has been advanced.
+
+```bash
+npm run verify:forum:moderation-effects
+npm run test:verify:forum:moderation-effects
+cargo test -p rustok-forum --test logic_review_remediation_sqlite trusted_moderation_effects
+cargo test -p rustok-forum --test moderation_effect_contract_postgres
+cargo test -p rustok-forum --test moderation_revision_concurrency_postgres
+cargo test -p rustok-forum --test moderation_terminal_concurrency_postgres
+```
+
+### Fresh recheck — 2026-11-26
+
+A fresh source review found and corrected three remaining admission/identity risks:
+
+- Topic edits now CAS-claim the source **before** reading transactional edit-window
+  settings/time, then reload and recheck ownership and archived status. A writer
+  wait cannot consume the remaining window while preserving an earlier admission.
+  `tests/support/edit_policy.rs`, mounted by `logic_review_remediation_sqlite`,
+  adds SQLite/PostgreSQL service cases: preflight allows 60 minutes, transactional
+  policy allows 10, and a 30-minute-old source must be rejected. The reader asserts
+  that the source claim already happened; the persisted checkpoint must be unchanged.
+  These cases are authored/formatted, **not executed** without Cargo. The supplemental
+  bounded ordering guard has nine passing positive/negative fixtures.
+- Standalone reply quote admission explicitly locks the reply after its parent and
+  before evaluating ownership/settings/time; the later relation-persistence lock
+  cannot retroactively protect an earlier time check. A negative guard fixture
+  detects replacing this admission lock with a plain read (10 quote fixtures pass).
+- Initial Leptos resources return their originating key together with the data;
+  `ForumShowcase` uses that key for continuation identity instead of reading the
+  newest key when a retained result mounts. Stale initial results cannot update
+  read-state availability. Four paging-guard fixtures cover the current wiring and
+  removal of these protections. Mounted-browser verification remains open.
+
+The recheck also repaired the read-model verifier's reference to a removed source
+file: shared ordering lives in `src/services/topic.rs`, while call-site checks stay
+bounded to `read_model_owner.rs`. The storefront now reexports `ForumTopicSelection`
+and `ForumTopicFeedOrder`, so callers of the public fetch API can name its selection
+argument; a Rust public-crate-path regression is authored but unrun.
+
+Latest executed evidence supersedes earlier local-run counts above:
+
+- **169/169 Node source-verifier fixture tests**, including the generic multilingual
+  registry regressions. These are not Rust/service or mounted-UI evidence.
+- **121/121 scoped Next client tests** via `npm --prefix apps/next-frontend run test:forum`.
+  The first attempt was blocked by missing `@apollo/client`; a separate ignored
+  test dependency install resolved the environment without changing project manifests.
+- **15 Forum source contracts**, including static-only read-model verification;
+  generic i18n contract and its four fixtures; `git diff --check`.
+- Extracted repository SQL rerun: repair **4/4 SQLite + 4/4 PostgreSQL 17.6**,
+  restoration **10/10 SQLite + 7/7 PostgreSQL 17.6**. The temporary Unix-socket-only
+  PostgreSQL server was stopped afterward. This remains minimal SQL-fixture evidence,
+  not full migration-chain or Rust transaction/concurrency evidence.
+
+Reproduce the supplemental checks:
+
+```bash
+npm run verify:forum:edit-policy
+npm run test:verify:forum:edit-policy
+npm run test:verify:forum:cursor-paging
+node --test scripts/verify/*forum*.test.mjs scripts/verify/verify-db-multilingual-contract.test.mjs
+```
+
+### Configured settings capability — source-ready, runtime validation open
+
+A subsequent review found that `module_settings_in_tx` silently used defaults when
+only the static settings reader was configured. That could admit preflight against
+stored policy and then replace its window with `0` (unlimited), or bypass configured
+pre-moderation/vote policy. The shared provider now rejects this incomplete host
+configuration with `FORUM_TRANSACTIONAL_SETTINGS_UNAVAILABLE`. Read-only consumers
+still use the static reader. Explicit no-reader default-only services and paired
+readers returning no stored row retain their existing defaults. The accepted
+[capability decision](../../../../DECISIONS/2026-11-26-forum-transactional-settings-capability.md)
+partially supersedes the earlier missing-reader fallback, not policy values or scopes.
+
+Provider unit regressions cover all four reader configurations and nontransactional
+reads. Transaction-only providers now refuse ordinary and transactional policy reads
+with `FORUM_STATIC_SETTINGS_UNAVAILABLE`, including engagement-mode reads (which
+previously read the static field directly). The SQLite/PostgreSQL edit-policy matrix
+covers a stricter transactional window and either incomplete reader pair, comparing the
+source/translation/history/aggregate/outbox checkpoint after refusal. Topic/reply
+quote regressions assert no added relation revision. Direct-delete matrices add
+static-only staff/system refusal alongside author refusal (12 cases/source/backend)
+and assert the typed capability error instead of an incidental false-policy denial.
+These Rust cases are authored and WASM-formatted, not compiled or executed.
+
+Boundary review found runtime assembly erasing incomplete capability configurations.
+REST (one), GraphQL (one), native composers (two), initial read (one), and continuation
+(two) now pass both optional readers unchanged through the shared
+`ForumSettingsProviders::from_optional_readers` constructor. Native admin already
+requires both capabilities. Supplemental fixtures mutate each capability at every
+composition file and verify constructor retention, static/transactional admission,
+and both stable codes. No transport may turn a partial pair into default-only services.
+REST host-runtime Rust regressions cover both incomplete pairs and HTTP 503;
+a GraphQL source-error regression retains both codes and nonretryability.
+These runtime regressions remain unexecuted.
+
+The scoped source fixtures remain supplemental to the required Rust service/concurrency
+checks below. No migration, client-specific policy or audit ledger advancement is involved.
+
+The same pass fixed two Leptos feed regressions: mode-only selection changes no longer
+reset unsubmitted search text (the effect observes an equality-checked memo of the
+applied query), and solved badges resolve `forum.topic.solved` from all three catalogs.
+Two negative source fixtures reject restoring the draft reset or hardcoded badge;
+a localized badge Rust test is authored but unrun. Mounted-browser behavior remains open.
+
+Executed follow-up evidence: **196/196 Node source-fixture tests**; **15 scoped
+owner/transport guards**, read-model/runtime-baseline static modes; generic i18n contract;
+**3,540 UI-key references across 73 packages**; `git diff --check`. No Rust execution
+is claimed. Global ADR verification still fails on the previously recorded Fly/Pages/
+JWT registry/metadata defects; it reports no diagnostic for the new capability ADR.
+The earlier Next and extracted-SQL results above were not rerun in this follow-up,
+which changes neither Next code nor database SQL.
+
+### Fresh recheck — projection/SEO verification reconciled
+
+The two previously recorded source-verifier failures are now corrected against the
+current owners, not bypassed. `verify-forum-projection-invalidation.mjs` reads the
+actual category/topic/reply modules and requires the reply publication call to carry
+the event bus, caller transaction, tenant, actor and topic. Public discovery checks
+both SEO provider registration calls in `module.rs`, retaining the `lib.rs` module
+and export checks. The missing canonical projection note is restored at its existing
+contract path; its event name is `index.reindex_requested`. Contract outbox paths
+now point to `crates/libs/rustok-outbox-storage`, matching the executable owner.
+Fifteen new positive/negative fixtures reject missing publication, transaction
+binding, module declaration, provider registration, event identity, outbox paths and
+contract documentation. Run `npm run verify:forum:projection-ownership` and
+`npm run test:verify:forum:projection-ownership`.
+
+Executed projection/SEO recheck evidence (before the subsequent GraphQL fix below):
+
+- **211/211 Node source-fixture tests**, no failures/skips;
+- **17 scoped Forum owner/transport guards**, plus read-model/runtime-baseline
+  `--static-only` checks;
+- **121/121 scoped Next frontend tests**, no failures/skips;
+- extracted repair SQL: **4 SQLite + 4 PostgreSQL** cases;
+- extracted restore/solution SQL: **10 SQLite + 7 PostgreSQL** cases;
+- generic i18n contract and **3,540 UI-key references across 73 packages**;
+- WASM Rust formatting: **36 changed/new Rust files**, no formatting differences;
+- `git diff --check`.
+
+The PostgreSQL fixtures used an isolated local test schema; an initial connection
+attempt used the nonexistent `postgres` role, then the successful run used the
+cluster's existing `user` role. The database process was stopped afterwards. These
+are extracted-SQL checks, not Rust migrations, the complete migration chain or
+owner/concurrency execution. Temporary Next dependency wiring was removed after
+its test run. No new production-logic defect was confirmed in this recheck.
+
+Global ADR verification was rerun and still fails outside these Forum decisions
+(Fly/Pages/JWT/Dioxus registry/metadata); it reports no Forum decision diagnostic.
+Cargo remains unavailable (the targeted engagement-mode test exits 127), so Rust
+compilation, service/concurrency matrices and mounted native/headless UI validation
+remain required. WASM formatting and passing source fixtures do not satisfy those
+gates. No audit ledger or integration status is advanced.
+
+### GraphQL settings-error provenance — source-ready, runtime validation open
+
+A further boundary review found eight GraphQL default-setting reads converting
+`ForumError` to `async_graphql::Error::new(error.to_string())`. That erased the
+precise capability code and retryability/retry hint; aliased fields could not even
+use the legacy Forum-path fallback. Topic order and topic/reply page-size defaults
+now propagate the typed error via `?` in ordinary queries, audience topic lists and
+storefront unread/reply lists. Policy values, source reads and payloads are unchanged.
+The capability ADR and CRATE_API now explicitly cover this transport invariant.
+
+`graphql_settings_error_contract` mounts the real Forum query schema and all eight
+branches, with field aliases, a transaction-only host and a transient static-reader
+failure. It asserts exact codes, `retryable`, `retryAfter`, diagnostic redaction and
+the reader call count. The fixture has no Forum source/outbox tables, so admission
+must fail before an owner can proceed. This Rust regression is authored and
+WASM-formatted, **not compiled or executed**: its targeted Cargo command exits 127.
+Eleven new source fixtures cover the three resolver files and mutation of every
+one of the eight default accessors. The guard rejected the original code before
+its string conversions were removed.
+
+Current executed evidence: **222/222 Node source-fixture tests**, **17 scoped Forum
+owner/transport guards**, read-model/runtime-baseline static modes, generic i18n
+contract, WASM formatting of **40 changed/new Rust files**, and `git diff --check`.
+The **121 Next tests** and **25 extracted-SQL cases** recorded above are historical
+for the immediately preceding pass, not rerun for this GraphQL-only change. Rust
+services/full migrations/concurrency and mounted native/headless UI remain open.
+
+### Selected GraphQL reads: typed domain failures — source-ready, runtime validation open
+
+The follow-up removed eight more source-erasing conversions: selected category/topic
+catch-all branches, topic-route resolution/visibility/disclosure, and member-card
+normalization/composition/fallback reads. The transport now preserves `ForumError`
+through `?`/`into()` under aliases, without changing existing absence-to-`null`
+branches or foreign owner error mappings. The settings regression schema fixture
+was factored for reuse and extended with four aliased selected-read/route storage
+failure cases and nil-user member-card validation. These Rust cases are authored
+and WASM-formatted, **not compiled or executed**; the targeted Cargo command still
+exits 127 (`cargo: command not found`). Route fixture identity length and permission
+admission were checked against the source, not against a running schema.
+
+The new bounded `verify-forum-graphql-error-provenance.mjs` guard and **13 positive/
+mutation fixtures** cover all eight sites and retained absence branches; package
+scripts expose both commands. Latest executed evidence: **235/235 Node fixtures**
+(Forum plus multilingual-contract fixtures), **18 scoped source guards** (event
+contract in `--static-only` mode), read-model/runtime-baseline static modes, generic
+i18n, **42 Rust files** with zero WASM formatting differences, and `git diff --check`.
+Running the event guard without `--static-only` also stopped at its unavailable
+Cargo formatting step; only its static result is claimed. Earlier Next and
+extracted-SQL results remain historical, not rerun in this follow-up.
+
+Native/headless feed-order inspection found the same explicit `ForumTopicSelection`
+order serialized by GraphQL and mapped by native `selected_topic_filter`; both use
+`Latest` as the explicit UI default. That is not evidence of a missing native
+settings-default lookup, so no policy change was made. This was source inspection,
+not mounted UI/runtime parity evidence. Also corrected stale README text: enabled
+`use_reactions` with missing/disabled Reactions fails with the existing capability
+code; it does not silently fall back to internal votes.
+
+No audit ledger/integration status is advanced. Rust services/full migrations/
+concurrency and mounted native/headless UI checks remain required.
+
+### Category-route error provenance follow-up — runtime and wiring blockers remain
+
+The category-route resolver had three additional `ForumError` erasures hidden behind
+`internal_error(error.to_string())`: route resolution, audience-context validation,
+and exact category visibility. They now propagate typed errors with `?`/`into()`.
+The generic helper is retained for foreign Channel errors, not Forum failures.
+The existing category/route-not-found-to-`null` branches remain unchanged.
+
+The bounded provenance guard now covers this resolver and its original helper
+wrapper. **20/20 focused fixtures** pass (seven added positive/mutation cases).
+The real-schema Rust regression adds invalid-locale validation under aliases for
+category and both topic route fields, plus malformed-identity `null` cases that
+terminate before owner reads. Those cases are authored and WASM-formatted, **not
+compiled or executed**: Cargo remains unavailable. They must not be represented
+as successful resolution or authorization of real Taxonomy-backed routes.
+
+Latest executed evidence: **242/242 Node fixtures**, **18 scoped source guards**
+(event contract static-only), read-model/runtime-baseline static modes, generic
+i18n, **43 changed/new Rust files** with zero WASM formatting differences, and
+`git diff --check`. No Next, extracted-SQL, mounted UI, full migration or service
+runtime evidence was produced by this follow-up.
+
+**Finding at that pass; consumer propagation repaired below:** GraphQL
+`category_route_query.rs` and native `storefront_category_route_native` constructed
+`ForumCategoryRouteService::new` without `with_port`, installing Noop whose route
+lookup always returns `None`. GraphQL runtime can receive an optional
+`Arc<dyn ForumTaxonomyPort>`, but it did not forward that capability to route and
+category audience owners. The subsequent trace also confirmed that `apps/server`
+at that pass had no concrete provider implementation/registration. This was a
+separate blocker (host source implemented in the continuation below): changing error shape or forwarding an absent port cannot make
+Taxonomy-backed production routing available. No audit ledger/integration status
+is advanced.
+
+### Injected Taxonomy read capability propagation — evidence before host adapter implementation
+
+Configured providers now reach GraphQL category routes and category audience reads,
+REST selected/list/tree reads, native category data/route reads, Search projection
+canonical routes and public discovery, and server Search category subtree expansion.
+`ForumCategoryAudienceReadService::with_taxonomy_port` forwards to both metadata and
+visibility composition; the base category floor and richer inherited audience layers
+now use the injected hierarchy rather than the standalone root-only fallback.
+Provider-backed hierarchy reads retain the caller's borrowed connection; visibility
+policy operations also retain their transaction. No-op standalone behavior remains
+unchanged and does not produce a canonical category route.
+
+SEO now carries a generic cloned `ModuleRuntimeExtensions` snapshot in
+`SeoTargetRuntimeContext.runtime_extensions`, preserving the acyclic ownership seam.
+The host SEO service forwards it to providers; Forum's category mapper, route and
+public-discovery compositions retrieve their own typed port from that snapshot.
+All workspace context struct literals were updated, including Pages fixtures. The
+Taxonomy ADR and affected API/README contracts record this context addition. Forum's
+remaining production Taxonomy dependency was moved to dev-dependencies, matching
+the accepted port boundary; the remaining source imports are test-only.
+
+`tests/taxonomy_read_wiring.rs` adds **eight authored Rust regressions** using a
+read-only injected provider and Forum-only tables: canonical/alias routes, provider
+failure at route/hierarchy/snapshot stages, inherited authenticated/richer audience
+refusal, standalone route absence, direct audience metadata/failure, cross-tenant
+refusal before provider invocation and unknown-route absence. Unexpected fake writes
+panic. A separate SEO unit regression checks provider capability identity and
+snapshot independence. These Rust tests are WASM-formatted, **not compiled or
+executed**; `cargo test -p rustok-forum --test taxonomy_read_wiring` exits 127 because
+Cargo is absent. Native/SEO/Search runtime parity is not established by source pins.
+
+Executed evidence: **302/302 Node fixtures**, including **60 new Taxonomy wiring/
+route-guard fixtures** over **28 bounded composition edges**; **20 scoped source
+guards** (event contract static-only); read-model/runtime-baseline static modes,
+generic i18n, WASM formatting of **65 changed/new Rust files**, and `git diff --check`.
+The existing SEO source guard now follows the injected route factory rather than
+requiring a bare constructor in the wrapper, and still checks canonical registration.
+The affected category-route transport source guard/Rust contract test also referred
+to removed include slices and a removed per-slice document. They now inspect the
+live owner/adapter files and canonical docs index; FORUM-24N historical compatibility
+flags remain historical, not a claim that later route mounting never happened.
+Positive and missing-factory/owner fixtures exercise the refreshed Node guard;
+the Rust source contract remains unexecuted.
+Next/extracted-SQL results above remain historical, not rerun here.
+
+**Still open:** implement/register the concrete `ForumTaxonomyPort` adapter in an
+acyclic host composition, including transaction-preserving hierarchy/category/tag
+mutations and error mapping. The accepted ADR already marks this cutover incomplete.
+The fake provider proves no actual Taxonomy storage integration, and consumer
+propagation must not be called production route readiness. Full Rust compilation,
+provider-backed migration/service tests and mounted native/headless checks remain
+required. No audit ledger or integration status is advanced.
+
+### Deep re-review of Taxonomy read wiring — three confirmed defects corrected
+
+The re-review traced the changed host/runtime/SEO/Search composition into category
+metadata, base/richer visibility, list/tree and transactional policy owners, then
+reviewed the new fixtures and source guards. This was a targeted code review of the
+affected boundary, not an audit-ledger pass or full-crate runtime certification.
+
+1. **Least-privilege failure:** the storefront selected-category owner admitted
+   `forum_categories:list` but the shared metadata path demanded `read` again.
+   The now-reachable provider-backed route therefore rejected list-only readers.
+   A private `CategorySelectedReadAccess` mode carries either owner-read or
+   storefront-list admission through both owners. Ordinary selected reads remain
+   read-gated; no permission snapshot is augmented and read-only does not grant list.
+2. **Unvalidated provider membership:** parent maps were trusted without checking
+   all requested local IDs or parent references. An empty map could produce no
+   hidden IDs on a public list, and extra IDs could enter ancestor traversal.
+   `category_hierarchy::validate_category_parent_projection` now validates exact
+   tenant-local membership, all parent references, cycles and the depth limit before
+   overrides or visibility filtering. All four whole-tenant parent-map consumers
+   (base visibility, richer audience, direct Search subtree and read-tracking subtree)
+   use it. Direct Search scope also forwards its port to its visibility owner.
+3. **Tree panic:** a same-length projection with duplicate/foreign IDs passed the
+   old cardinality check, leaving a missing canonical map entry at `.expect` during
+   sorting. The tree mapper now checks every identity and duplicate insertion, then
+   validates the complete parent graph before sorting.
+
+`taxonomy_read_wiring` now has **12 authored integration tests** (four added test
+functions, including permission combinations, malformed hierarchy/list/Search,
+malformed tree metadata and a provider failure on the second hierarchy read after
+policy persistence). The failure fixture requires `Transaction` connections and
+asserts that the policy write rolls back before success publication. Three new pure
+Rust unit tests cover empty/valid graphs, missing/foreign/cyclic maps and the exact
+depth boundary. **None of these Rust tests were compiled or executed**: the scoped
+Cargo command still exits 127. The fixture/source inspection is not rollback proof.
+
+Latest executed evidence: **336/336 Node fixtures**, including **94 Taxonomy source
+fixtures** over **45 bounded wiring/integrity/admission pins**, **20 scoped source
+guards** (event contract static-only), read-model/runtime-baseline static modes,
+generic i18n, WASM formatting of **71 changed/new Rust files**, and `git diff --check`.
+Those source fixtures would not replace the newly added behavioral regressions.
+No new SQL/Next/mounted-UI evidence was produced; earlier numbers remain historical.
+At that pass the missing concrete server Taxonomy adapter and unexecuted Rust/runtime
+checks were explicit blockers. The continuation below implements the adapter source;
+its runtime checks remain pending. No audit ledger or integration status is advanced.
+
+### Real in-process Forum Taxonomy host adapter — implementation, runtime pending
+
+The continuation implements the previously missing concrete provider at
+`apps/server/src/services/forum_taxonomy.rs`. The composition root depends on both
+modules; neither Forum nor Taxonomy gains a new production dependency on the other.
+All 12 port operations delegate to Taxonomy owner APIs; category reads and
+category/tag mutation scopes are fixed to `forum`. There are no direct foreign entities/table reads in this host adapter.
+
+Host registration runs at the start of `module_event_dispatcher.rs` host-provider
+assembly, before any source capability materialization. It is feature-gated and
+requires both modules in the distribution
+registry, not merely compiled Cargo features. It occurs before Search/SEO/GraphQL/
+native extension snapshots. Forum-only registries preserve the isolated Noop
+profile. Category sync retains `forum-category-{uuid}` canonical identity and
+Taxonomy-owned append-only alias history; hierarchy/tag writes keep the consumer
+transaction. Reads dispatch `Connection` and `Transaction` unchanged. `None` fails
+with `FORUM_TAXONOMY_CONNECTION_REQUIRED`, never a fresh pool read.
+
+Two missing owner-API capabilities were added in Taxonomy rather than accessing
+its tables from the host:
+
+- `resolve_term_route_for_module_in`: route lookup and alias provenance both use
+  the supplied connection; the pool method now delegates to it without changing
+  its locale/scope precedence. The Forum adapter refuses global-scope fallbacks.
+- `load_module_category_parents_in_strict`: selected IDs must all be Categories in
+  the requested tenant/module scope with explicit placements. No translation is
+  needed. Missing terms/placements fail, rather than inheriting the generic legacy
+  reader's synthetic root default. Whole-tenant graph validation remains Forum-owned.
+
+Six host tests are authored using actual Taxonomy migrations and owner APIs:
+transaction-local sync/canonical+alias routes/localized copy/tags and rollback;
+committed tenant/scope/empty-selection behavior; hierarchy commands and cycle
+refusal; missing connection/storage errors; joint-registry selection; and typed
+redacted provider-error mapping. A separate Taxonomy regression removes a placement
+and verifies that the strict parent reader rejects it. These seven tests are
+**uncompiled and unexecuted** in this environment; source inspection is not rollback
+or full-migration evidence. No production runtime certification is claimed.
+
+The source guard now includes host registration/dispatch, strict scope/placement,
+owner alias sync and transaction-aware route/alias reads. Executed evidence for
+this continuation: **364/364 Node fixtures**, including **122 Taxonomy source
+fixtures** over **59 bounded pins**; **20 scoped source guards** (event contract
+static-only); read-model/runtime-baseline static modes; generic i18n; **77 changed/
+new Rust files** with zero WASM formatting differences; and `git diff --check`.
+These are source/format checks, not execution of the seven new Rust regressions.
+`cargo test -p rustok-server --no-default-features --features mod-forum --lib
+services::forum_taxonomy::tests` exits 127 (`cargo: command not found`).
+The remediation gate's diff invariants passed, but its mandatory architecture
+check could not run: `cargo metadata` is unavailable (Cargo absent). This gate is
+**blocked**, not green. No manifest cycle is introduced by the source dependency
+inspection, but Cargo must confirm it. PostgreSQL/full mounted transports and
+remote-provider/distributed transaction behavior remain outside this evidence;
+the delivered adapter is explicitly shared-database/in-process.
+
+#### In progress: inherited policy capability propagation
+
+The confirmed topic base/richer inheritance gap has a partial source repair:
+
+- `ForumTopicVisibilityService`, richer topic/reply readers and lists receive the
+  selected hierarchy provider. Generic policy composition passes the actual pool
+  or transaction connection; topic-policy management retains its transaction.
+- GraphQL/REST/native and SEO/Search/discovery factories, Reactions/Notifications,
+  widget preview and storefront unread/read-state composites forward the provider.
+- Vote and topic-subscription write gates use the selected provider inside their
+  existing category-tree writer transaction. Report audience preflights use it
+  before revision/intake access. Blind subscription clears remain non-probing.
+- Category topic/reply-create owners, topic-local reply-create policy and both
+  create-authorization owners receive the selected provider and actual connection.
+  Context-aware and contextless public creation use the same configured admission
+  owner; missing context no longer selects an unconfigured raw command path.
+- Native storefront composer and native admin reply creation forward the hierarchy
+  provider; the admin write now also forwards host audience facts and the exact
+  authenticated native `PortContext`. GraphQL/REST keep their configured facade.
+- Split/fork/reply-range services and GraphQL adapters carry the provider through
+  both source and target visibility/reply-create policy comparisons in the writer
+  transaction. Reply-range comparison also checks the inherited base public/auth
+  floor. There is one canonical reply-create loader, not a Noop compatibility copy.
+- Four additional Forum-only Rust regressions cover create-policy transactions,
+  local clearing/inheritance, denied and allowed admission, context/contextless
+  writes and rollback after a post-write provider failure. Three range-move unit
+  regressions cover uncommitted base/richer/reply-create policy comparisons,
+  unrestricted equality and provider error propagation. All remain unexecuted.
+- The anonymous transactional owner gate now enforces the inherited base floor.
+  A dedicated unit regression writes an ancestor restriction inside an uncommitted
+  transaction, checks denial, rolls back and checks visibility is restored; a
+  second regression checks provider failure. These tests are authored, not run.
+- Forum-only topic/reply regressions cover inherited base and richer denials,
+  local rules that cannot broaden ancestors, read/discovery/Search denial before
+  content hydration, selected-provider failures and topic-policy transactions.
+  Engagement/read-state/report regressions assert exact denied-target errors
+  without mutation/content tables. These tests are likewise uncompiled/unexecuted.
+
+- Richer category policy management, moderation category management/authorization
+  and the public `ModerationService` now carry the selected hierarchy. Canonical
+  moderation policy loaders require a provider and retain the actual pool/writer
+  transaction; errors propagate without standalone fallback. GraphQL/HTTP
+  moderation factories forward the provider alongside optional facts. Exact
+  topic-author solution authorization remains separate from moderator admission.
+- Six additional Forum-only regressions cover managed local clearing/inheritance,
+  post-replacement provider failure/rollback, ancestor denial and positive
+  authorization, uncommitted transaction policy, denied command effects, and
+  configured GraphQL/mounted HTTP factories. They are **authored, not executed**;
+  no mounted transport runtime evidence is claimed. No client schema, UI or
+  migration changed. Trusted `moderation_subject` effects are a distinct workflow.
+- Corrected the stale moderation contract wording: authorization belongs inside
+  the locked writer transaction, before domain effects, not before transaction
+  creation. The source guard checks the selected canonical loader; mutation
+  fixtures reject a missing provider gate or owner.
+
+#### Deep re-review corrections
+
+- **P1 — invalid ORM FK declarations in the new consumer fixtures:** all 24
+  category/topic audience relation entities pointed only to `category_id` or
+  `topic_id`, although the policy PK is `(tenant_id, subject_id)`. SeaORM 2.0.4's
+  schema builder emits those declared FKs. An isolated SQLite execution with
+  foreign keys enabled reproduced `foreign key mismatch`; disabling FK checks
+  would conceal the defect and break policy-clear cascades. Corrected both FK
+  sides to the composite tuple. Production migrations already have this shape;
+  no migration or client/DTO change is required. Six added Rust schema regressions
+  are authored, not executed.
+- **P2 — transactional require contract returned a denied success:** both create
+  audience `require_in_tx` methods returned `Ok(allowed: false)` from the evaluator.
+  Current raw writers compensated with additional checks, so this review does
+  **not** establish an existing write bypass. Moved typed denial conversion into
+  a shared private `require_allowed`, used by pool and transactional require, and
+  removed duplicate writer conversions. Two private Rust regressions exercise
+  inherited denial/rollback recovery and topic-local reply narrowing; unexecuted.
+- Strengthened the moderation local-clear regression: it now creates a real
+  child policy and checks two layers before clearing to one inherited layer.
+  Previously its moderation half cleared an already-empty child. Removed the
+  unnecessary `unused_variables` suppression from the shared fake and explicitly
+  named unused write arguments instead.
+- New relation guards inspect all 24 declarations, reject loss of either tenant
+  column, and execute a projection of the FK tuples under SQLite. Their passing
+  result does not substitute for the six SeaORM-generated schema regressions.
+
+#### Structural/lifecycle and tombstone continuation
+
+- Move/merge selected-provider builders now preserve inherited target-policy
+  reads in their writer transaction; both GraphQL merge commands forward the
+  runtime provider. Manager move/merge may change audience, unlike range movement;
+  no new equality restriction is imposed. Exact receipt replay remains ahead of
+  current category/provider checks and preserves immutable receipts/events.
+- The common placement/restore lifecycle gate no longer hardcodes Noop or requests
+  localized category snapshots. It uses the selected parent-only projection,
+  validates complete tenant membership and bounded graph integrity, and retains
+  the caller transaction. The previous Noop snapshot path rejected nonempty
+  trees as incomplete; this is not evidence of a lifecycle authorization bypass.
+  Topic create, category create/move, split/fork/move/merge/range and topic/reply
+  restore all forward their selected provider. Reply facade retains it in the
+  restore owner; category parent wrappers preserve typed capability/storage errors.
+- Deeper helper review confirmed that tenant-operation lock helpers already took
+  the same PostgreSQL hierarchy key implicitly; the later split/fork calls were
+  redundant. This is **not** a demonstrated prior deadlock/race. Separated receipt
+  serialization from the shared hierarchy scope: all five commands now call the
+  canonical tree-lock owner explicitly after immutable replay and before counter/
+  topic rows. Removed duplicated inline hierarchy SQL from operation helpers.
+  The ordering guards pin this ownership, not a PostgreSQL concurrency proof.
+- Delete snapshots use selected base visibility and richer audience with the
+  actual writer transaction. Errors abort the transaction; existing immutable
+  history remains unchanged. The sealed boolean read side needs no new provider.
+- Six private Rust regressions in `services/structural_taxonomy_tests.rs` cover
+  selected lifecycle/uncommitted ancestor/rollback recovery, incomplete projection
+  and typed failure, post-write move/merge rollback (including moved reply state),
+  tombstone base/richer ancestor privacy and provider errors. They are authored,
+  **not compiled or executed**. Their Forum-only entity schema is not production
+  migration or host-provider evidence.
+- Repaired all three stale visibility/tombstone guards against live owners,
+  selectors, consolidated native adapter route scope and canonical docs, without
+  recreating deleted modules. Move guard now pins selected transaction calls.
+  Isolated mutation fixtures reject missing owner files and missing owner calls.
+
+Local supplemental evidence: the taxonomy wiring guard checks 259 bounded composition
+edges and five structural lock orders; all 522 wiring fixtures and 32 additional
+structural-order/live-guard fixtures pass. Creation guards follow the live raw
+owners and the single mounted REST command route instead of deleted include files
+or handlers; 30 base/richer/create/moderation guard fixtures check current source,
+removed gates and missing owners. Category/topic policy guards inspect the shared
+bounded storage and live Rust modules instead of removed helper/include files.
+The broader Forum/DB-multilingual Node suite passes 900/900 tests, including
+74 relation-schema guard cases and SQLite execution of declaration-projected FK
+tuples (not SeaORM-generated DDL or services). All 31 additional targeted Forum
+source guards pass; `git diff --check` passes. These are not Rust/runtime evidence:
+they detect source-contract drift and lost wiring, not Rust type errors, runtime
+registration or real owner storage behavior.
+
+The scoped remediation gate passes diff invariants but is **blocked** in its
+architecture dependency phase: `cargo metadata` cannot start because Cargo is
+missing. `cargo test -p rustok-forum --lib services::structural_taxonomy_tests`
+likewise exits 127. Do not treat this as a passing gate or compiled verification.
+
+**Remaining mandatory repair/verification (release blocker):**
+
+1. Broaden positive/negative split/fork/range and move/merge consumer/transport
+   regressions beyond these source guards, private transaction tests and current
+   range-move helper tests. Run the authored regressions, fixing any compiler or
+   runtime failures rather than treating static success as service evidence.
+2. Run Forum and host Rust suites, real-owner PostgreSQL concurrency, migration
+   DDL and mounted transport acceptance. No Rust build, concurrency or mounted-client
+   evidence exists for this continuation because Cargo is absent. No UI/wire
+   schema change is introduced by provider wiring.
+
+No adapter-only/source result closes this boundary. Inheritance acceptance
+remains in progress; the README limitations mirror the unresolved evidence gates.
+
+Required maintainer checks before integration:
+
+```bash
+cargo test -p rustok-server --no-default-features --features mod-forum --lib services::forum_taxonomy::tests
+cargo test -p rustok-taxonomy --test owner_category_read strict_module_parent_projection
+cargo test -p rustok-forum --lib category_hierarchy
+cargo test -p rustok-forum --test taxonomy_read_wiring
+cargo test -p rustok-forum --test audience_relation_schema
+cargo test -p rustok-forum --lib create_audience_authorization_tests
+cargo test -p rustok-forum --lib structural_taxonomy_tests
+cargo test -p rustok-forum --lib topic_audience_visibility::tests
+cargo test -p rustok-forum --lib topic_reply_range_move::policy_tests
+cargo check -p rustok-forum-admin --features ssr
+cargo check -p rustok-forum-storefront --features ssr
+cargo test -p rustok-seo --lib target_context_keeps_the_same_injected_provider_capability
+cargo check -p rustok-seo-targets --features server
+cargo check -p rustok-server --features mod-forum
+cargo test -p rustok-forum --lib standalone_quote_commands
+cargo test -p rustok-forum --lib services::engagement_mode
+cargo test -p rustok-forum --lib static_only_host_settings
+cargo test -p rustok-forum --lib transaction_only_host_settings
+cargo test -p rustok-forum --lib preserves_transactional_settings_capability_code
+cargo test -p rustok-forum --test graphql_settings_error_contract
+cargo test -p rustok-forum --test logic_review_remediation_sqlite
+cargo test -p rustok-forum --test storefront_category_connection_graphql_contract
+cargo test -p rustok-forum --test topic_slug_rename_sqlite
+cargo test -p rustok-forum --test topic_slug_rename_graphql_contract
+cargo test -p rustok-forum --test mention_quote_runtime_postgres
+cargo test -p rustok-forum --test soft_delete_revision_postgres
+cargo test -p rustok-forum-storefront --lib
+cargo check -p rustok-forum-storefront --features ssr
+cargo check -p rustok-forum-storefront --target wasm32-unknown-unknown --features hydrate
+```
+
+Set `RUSTOK_FORUM_TEST_DATABASE_URL` for the PostgreSQL cases (including the case
+in `logic_review_remediation_sqlite`); a skipped database test is not green evidence.
+Run mounted native/headless category -> search/Top/Solved/Unread -> load-more tests,
+including an empty result, selection change during an outstanding page, and an open
+composer draft. Measure tenant policy-lock contention and sparse-feed scan/query
+amplification before changing the serialization or completeness contracts; neither
+risk is claimed eliminated by these correctness changes.
 
 ## Scoped forum audit remediation — 2026-10-28
 

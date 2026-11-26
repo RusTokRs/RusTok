@@ -4,6 +4,7 @@
   "delivered_through": "FORUM-20H",
   "scope": "Normalized persistence and conjunctive inheritance for category audience layers",
   "owner_file": "crates/modules/rustok-forum/src/services/category_audience.rs",
+  "storage_file": "crates/modules/rustok-forum/src/services/audience_storage.rs",
   "audience_contract_file": "crates/modules/rustok-forum/src/audience.rs",
   "topic_contract": "crates/modules/rustok-forum/contracts/forum-topic-audience-policy.json",
   "migration_file": "crates/modules/rustok-forum/src/migrations/m20260725_000001_add_forum_category_audience_policy.rs",

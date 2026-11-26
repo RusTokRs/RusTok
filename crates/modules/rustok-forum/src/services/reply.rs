@@ -14,7 +14,6 @@ use rustok_content::{
     available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
 };
 use rustok_core::SecurityContext;
-use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::{
@@ -697,6 +696,12 @@ impl ReplyService {
         if locked_topic.is_locked {
             return Err(ForumError::TopicLocked);
         }
+        super::topic_solution_lock::lock_topic_solution_scopes_in_tx(
+            &txn,
+            tenant_id,
+            &[initial_topic_id],
+        )
+        .await?;
         super::relation_quote_input::lock_source_and_assert_latest_in_tx(
             &txn,
             tenant_id,
@@ -717,6 +722,17 @@ impl ReplyService {
             Resource::ForumReplies,
             Action::Update,
             existing.author_id,
+        )?;
+        enforce_author_edit_window(
+            &security,
+            Resource::ForumReplies,
+            existing.author_id,
+            existing.created_at,
+            self.settings
+                .module_settings_in_tx(&txn, tenant_id)
+                .await?
+                .max_edit_window_minutes,
+            Utc::now(),
         )?;
         let topic_id = existing.topic_id;
 
@@ -764,40 +780,6 @@ impl ReplyService {
                 // below (built from `existing`), which would otherwise
                 // rewrite the stale `Approved` status over this change.
                 repended_for_moderation = true;
-                super::topic_facade::TopicService::adjust_reply_count_in_tx(
-                    &txn, tenant_id, topic_id, -1,
-                )
-                .await?;
-                super::category::CategoryService::adjust_counters_in_tx(
-                    &txn,
-                    tenant_id,
-                    category.id,
-                    0,
-                    -1,
-                )
-                .await?;
-                crate::services::UserStatsService::adjust_reply_count_in_tx(
-                    &txn,
-                    tenant_id,
-                    existing.author_id,
-                    -1,
-                )
-                .await?;
-                let solution_removed = forum_solution::Entity::delete_many()
-                    .filter(forum_solution::Column::TenantId.eq(tenant_id))
-                    .filter(forum_solution::Column::TopicId.eq(topic_id))
-                    .filter(forum_solution::Column::ReplyId.eq(reply_id))
-                    .exec(&txn)
-                    .await?;
-                if solution_removed.rows_affected > 0 {
-                    crate::services::UserStatsService::adjust_solution_count_in_tx(
-                        &txn,
-                        tenant_id,
-                        existing.author_id,
-                        -1,
-                    )
-                    .await?;
-                }
             }
         }
         if body_changed && let Some(stored_body) = stored_body {
@@ -813,18 +795,31 @@ impl ReplyService {
         if repended_for_moderation {
             active.status = Set(ReplyStatus::Pending);
         }
-        active.update(&txn).await?;
-        self.event_bus
-            .publish_in_tx(
+        let updated = active.update(&txn).await?;
+        if repended_for_moderation {
+            // Counter guards query canonical rows: persist Pending before applying
+            // the same public-state effects as an explicit moderation transition.
+            let category_id = super::reply_publication::apply_publication_change_in_tx(
+                &txn, tenant_id, &updated, false,
+            )
+            .await?;
+            super::projection_invalidation::publish_forum_category_projection_in_tx(
+                &self.event_bus,
                 &txn,
                 tenant_id,
                 security.user_id,
-                DomainEvent::ReindexRequested {
-                    target_type: "forum_topic".to_string(),
-                    target_id: Some(topic_id),
-                },
+                category_id,
             )
             .await?;
+        }
+        super::projection_invalidation::publish_forum_topic_projection_in_tx(
+            &self.event_bus,
+            &txn,
+            tenant_id,
+            security.user_id,
+            topic_id,
+        )
+        .await?;
         txn.commit().await?;
         self.get(tenant_id, security, reply_id, &locale).await
     }

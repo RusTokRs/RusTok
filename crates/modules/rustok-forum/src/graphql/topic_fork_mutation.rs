@@ -31,8 +31,12 @@ impl ForumTopicForkMutation {
         )?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
+        let taxonomy = ctx
+            .data::<super::ForumGraphqlRuntimeData>()?
+            .taxonomy_port();
 
         execute_fork_forum_topic_reply_branch(
+            taxonomy,
             db,
             event_bus,
             tenant_id,
@@ -45,6 +49,7 @@ impl ForumTopicForkMutation {
 }
 
 async fn execute_fork_forum_topic_reply_branch(
+    taxonomy: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
     db: &DatabaseConnection,
     event_bus: &TransactionalEventBus,
     tenant_id: Uuid,
@@ -53,6 +58,7 @@ async fn execute_fork_forum_topic_reply_branch(
     input: ForkForumTopicReplyBranchGraphqlInput,
 ) -> Result<GqlForumTopicFork> {
     let result = ForumTopicForkService::new(db.clone(), event_bus.clone())
+        .with_taxonomy_port(taxonomy)
         .fork_reply_branch(
             tenant_id,
             source_topic_id,

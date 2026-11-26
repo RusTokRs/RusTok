@@ -13,8 +13,8 @@ use crate::error::{ForumError, ForumResult};
 use crate::state_machine::TopicStatus;
 
 use super::category_audience::lock_category_tree_in_tx;
-use super::category_visibility::is_category_public_to_anonymous;
-use super::topic_audience::load_policy_for_topic;
+use super::category_visibility::is_category_public_to_anonymous_with_port;
+use super::topic_audience::load_policy_for_topic_with_port;
 use super::topic_audience_lock::lock_topic_audience_scopes_in_tx;
 
 const MAX_FORUM_ROUTE_TOMBSTONE_CHANNEL_SLUG_LEN: usize = 128;
@@ -61,6 +61,7 @@ impl ForumTopicRouteTombstoneVisibilityService {
     /// Records one exact immutable snapshot after the caller has locked and reloaded the topic row.
     /// Existing rows are compared only; replay never appends channels to an earlier snapshot.
     pub(crate) async fn record_locked_delete_snapshot_in_tx(
+        port: &dyn crate::ForumTaxonomyPort,
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
         topic: &forum_topic::Model,
@@ -68,8 +69,15 @@ impl ForumTopicRouteTombstoneVisibilityService {
         let channel_slugs = load_source_channel_slugs(txn, tenant_id, topic.id).await?;
         let snapshot = StoredForumTopicRouteTombstoneVisibility {
             publicly_disclosable: topic.status == TopicStatus::Open
-                && is_category_public_to_anonymous(txn, tenant_id, topic.category_id).await?
-                && topic_audience_allows_public_in_tx(txn, tenant_id, topic).await?,
+                && is_category_public_to_anonymous_with_port(
+                    port,
+                    txn,
+                    txn.into(),
+                    tenant_id,
+                    topic.category_id,
+                )
+                .await?
+                && topic_audience_allows_public_in_tx(port, txn, tenant_id, topic).await?,
             route_channel_restricted: !channel_slugs.is_empty(),
             route_channel_count: u64::try_from(channel_slugs.len())
                 .map_err(|_| ForumError::TopicRouteResolutionConflict)?,
@@ -126,11 +134,12 @@ impl ForumTopicRouteTombstoneVisibilityService {
 }
 
 async fn topic_audience_allows_public_in_tx(
+    port: &dyn crate::ForumTaxonomyPort,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     topic: &forum_topic::Model,
 ) -> ForumResult<bool> {
-    let policy = load_policy_for_topic(txn, tenant_id, topic).await?;
+    let policy = load_policy_for_topic_with_port(port, txn, txn.into(), tenant_id, topic).await?;
     let security = SecurityContext::public_read();
     let facts = ForumAudienceFacts::default();
     for layer in &policy.inherited_category_layers {

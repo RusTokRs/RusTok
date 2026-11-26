@@ -87,7 +87,8 @@ pub async fn get_category_tree(
             ForumCategoryAudienceReadService::with_audience_facts(runtime.db_clone(), facts)
         }
         None => ForumCategoryAudienceReadService::new(runtime.db_clone()),
-    };
+    }
+    .with_taxonomy_port(runtime.taxonomy_port.clone());
 
     let started_at = Instant::now();
     let tree = service

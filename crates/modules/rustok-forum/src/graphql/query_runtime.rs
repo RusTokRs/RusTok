@@ -132,18 +132,16 @@ impl ForumContentQuery {
         let requested_limit = per_page.map(|value| value.max(0) as u64);
         let per_page = match requested_limit {
             Some(value) => crate::dto::bounded_forum_read_limit(Some(value)),
-            None => forum_runtime(ctx)
-                .default_topics_per_page(tenant_id)
-                .await
-                .map_err(|error| async_graphql::Error::new(error.to_string()))?,
+            None => {
+                forum_runtime(ctx)
+                    .default_topics_per_page(tenant_id)
+                    .await?
+            }
         };
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
         let order = match order {
             Some(order) => order,
-            None => forum_runtime(ctx)
-                .default_topic_order(tenant_id)
-                .await
-                .map_err(|error| async_graphql::Error::new(error.to_string()))?,
+            None => forum_runtime(ctx).default_topic_order(tenant_id).await?,
         };
         let filter = crate::ListTopicsFilter {
             search,
@@ -254,7 +252,7 @@ impl ForumContentQuery {
         {
             Ok(category) => category,
             Err(ForumError::CategoryNotFound(_)) => return Ok(None),
-            Err(error) => return Err(async_graphql::Error::new(error.to_string())),
+            Err(error) => return Err(error.into()),
         };
 
         Ok(Some(map_category_response(category)))
@@ -300,7 +298,7 @@ impl ForumContentQuery {
         {
             Ok(topic) => topic,
             Err(ForumError::TopicNotFound(_)) => return Ok(None),
-            Err(error) => return Err(async_graphql::Error::new(error.to_string())),
+            Err(error) => return Err(error.into()),
         };
         let author_profiles = load_author_profiles_map(
             ctx,
@@ -339,10 +337,11 @@ impl ForumContentQuery {
         let requested_limit = per_page.map(|value| value.max(0) as u64);
         let per_page = match requested_limit {
             Some(value) => crate::dto::bounded_forum_read_limit(Some(value)),
-            None => forum_runtime(ctx)
-                .default_replies_per_page(tenant_id)
-                .await
-                .map_err(|error| async_graphql::Error::new(error.to_string()))?,
+            None => {
+                forum_runtime(ctx)
+                    .default_replies_per_page(tenant_id)
+                    .await?
+            }
         };
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
         let filter = crate::ListRepliesFilter {
@@ -553,10 +552,11 @@ impl ForumContentQuery {
         let requested_limit = per_page.map(|value| value.max(0) as u64);
         let per_page = match requested_limit {
             Some(value) => crate::dto::bounded_forum_read_limit(Some(value)),
-            None => forum_runtime(ctx)
-                .default_replies_per_page(tenant_id)
-                .await
-                .map_err(|error| async_graphql::Error::new(error.to_string()))?,
+            None => {
+                forum_runtime(ctx)
+                    .default_replies_per_page(tenant_id)
+                    .await?
+            }
         };
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
         let filter = crate::ListRepliesFilter {

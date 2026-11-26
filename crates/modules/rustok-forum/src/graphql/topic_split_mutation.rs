@@ -31,13 +31,25 @@ impl ForumTopicSplitMutation {
         )?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
+        let taxonomy = ctx
+            .data::<super::ForumGraphqlRuntimeData>()?
+            .taxonomy_port();
 
-        execute_split_forum_topic_replies(db, event_bus, tenant_id, auth, source_topic_id, input)
-            .await
+        execute_split_forum_topic_replies(
+            taxonomy,
+            db,
+            event_bus,
+            tenant_id,
+            auth,
+            source_topic_id,
+            input,
+        )
+        .await
     }
 }
 
 async fn execute_split_forum_topic_replies(
+    taxonomy: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
     db: &DatabaseConnection,
     event_bus: &TransactionalEventBus,
     tenant_id: Uuid,
@@ -46,6 +58,7 @@ async fn execute_split_forum_topic_replies(
     input: SplitForumTopicRepliesGraphqlInput,
 ) -> Result<GqlForumTopicSplit> {
     let result = ForumTopicSplitService::new(db.clone(), event_bus.clone())
+        .with_taxonomy_port(taxonomy)
         .split_selected_replies(
             tenant_id,
             source_topic_id,

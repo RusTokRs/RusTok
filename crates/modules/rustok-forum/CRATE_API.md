@@ -24,7 +24,7 @@
 
 - **`rustok-content`**: Node-based backing storage for forum content items (`forum_category`, `forum_topic`, `forum_reply`).
 - **`rustok-media`**: Retention and release of media asset references associated with forum attachments.
-- **`rustok-taxonomy`**: Shared category route descriptors, localization projections, and topic tag associations.
+- **Taxonomy owner via `ForumTaxonomyPort`**: Shared category route descriptors, localization projections, hierarchy and topic tag associations. `rustok-taxonomy` is a test-only Cargo dependency; the joint Forum+Taxonomy server distribution registers an in-process owner adapter before consumer snapshots; Rust/runtime verification remains pending.
 - **`rustok-reactions`**: Pluggable engagement provider based on the `forum.useReactions` setting.
 - **`rustok-moderation`**: Subject adapter integration for automated and manual topic/reply moderation.
 - **`rustok-notifications`**: Domain event notifications for user mentions and subscription digests.
@@ -200,20 +200,109 @@ See [the decision](../../../DECISIONS/2026-10-17-forum-topic-feed-selection.md).
 - Existing legacy and inline-quote owner paths, plus their composed GraphQL and REST transports, inherit the topic check without DTO or transport changes.
 - PostgreSQL and SQLite enforce tenant/topic ownership, typed relations, immutable rows, and bounded direct channel/group/allow/deny inserts.
 - Run `node scripts/verify/verify-forum-topic-reply-create-audience-policy.mjs`, `node scripts/verify/verify-forum-reply-create-audience-enforcement.mjs`, and `node scripts/verify/verify-forum-reply-create-audience-transport-composition.mjs` after changing this boundary.
+### Selected hierarchy for create admission
+
+Category topic/reply-create policy owners, the topic-local reply-create policy
+owner and both create-authorization services accept `with_taxonomy_port`. They
+use the selected provider for inherited layers and retain the actual connection;
+managed policy reads/replacements and command admission retain their transaction.
+Every public topic/reply create path uses its configured audience owner even when `PortContext` is absent.
+Local selectors still need no facts capability; unresolved external selectors
+still fail closed without exact context/facts. A topic can narrow but never broaden
+its category reply-create policy. Provider failure is not an unrestricted policy.
+GraphQL/REST/native commands reuse the existing configured facade; no DTO or
+client schema changes are introduced by this wiring.
+
+Rust tests remain uncompiled/unexecuted because Cargo is absent. Source checks
+and WASM formatting are not runtime evidence. The Forum-only
+`taxonomy_read_wiring` suite includes authored inheritance, provider failure,
+transaction retention and rollback regressions for this boundary. Structural command
+and tombstone continuation evidence and remaining runtime gates are tracked in `docs/implementation-plan.md`.
+
+### Audience authorization and ORM relation invariants
+
+- `evaluate*` methods may return a denied authorization for previews. Both pool
+  `require` and crate-private transactional `require_in_tx` must instead return
+  `ForumError::Forbidden` on denial. They share one denial conversion per owner;
+  raw topic/reply writers must not need a second `allowed` check to enforce it.
+- All 24 normalized category/topic audience role/channel/group/user entity
+  relations use `(TenantId, CategoryId/TopicId)` on **both** sides of the policy
+  FK. Production migrations already use those composite keys; no migration is
+  introduced. Single-column ORM relations generate invalid SQLite FKs against a
+  composite primary key and do not express tenant-scoped ORM joins.
+- `tests/audience_relation_schema.rs` contains six authored SeaORM schema/FK/
+  cascade regressions with foreign keys enabled. Two private
+  `create_audience_authorization_tests` regressions directly exercise transactional
+  require denial, rollback recovery and topic-local reply narrowing. All remain
+  uncompiled/unexecuted. `tests/support/audience_schema.rs` is test-only.
+- `npm run verify:forum:audience-relation-schema` checks declarations;
+  `npm run test:verify:forum:audience-relation-schema` adds 74 guard cases, including
+  SQLite execution of **declaration-projected** FK tuples and reproduction of the
+  old mismatch. This is not execution of SeaORM-generated DDL or domain services.
+
+### Selected hierarchy for structural commands
+
+`ForumTopicSplitService`, `ForumTopicForkService`, `ForumReplyRangeMoveService`,
+`ForumTopicMoveService` and `ForumTopicMergeService` accept `with_taxonomy_port`.
+Split/fork/range source/target
+visibility and reply-create comparisons use the selected hierarchy inside the
+writer transaction; the GraphQL adapters forward the manifest runtime provider.
+Reply-range moves also compare inherited public/authenticated base visibility,
+not just richer topic/category layers. Provider failure aborts the command.
+Standalone operation uses the explicit default Noop service capability; there is
+no separate standalone reply-create projection implementation.
+
+Split and range movement preserve source reply identities where applicable;
+fork source reply identities remain unchanged and its new copies preserve original quote targets.
+The fork target starts unsolved and does not copy votes/subscriptions/read state.
+Move/merge validate the target's inherited policy with the selected provider inside
+the writer transaction. They intentionally may change effective audience: unlike
+reply-range movement, they do not require source/target audience equality. Both
+GraphQL merge commands forward the selected runtime capability. Exact receipt
+replay still returns the original result before current hierarchy/policy checks.
+
+All structural placement and topic/reply restore gates use the same selected
+ancestor lifecycle loader. It reads only parent IDs, validates complete tenant
+membership/graph bounds and preserves provider errors. Topic creation and category
+create/move parent validation use it too. The public reply facade forwards the
+provider into its restore owner. Structural commands take the shared category-tree
+scope before topic/counter row locks, consistently with delete/restore; replay is
+kept ahead of those current-state gates.
+
+Deletion captures anonymous base visibility and richer inherited audience in the
+writer transaction through the selected provider. Existing immutable tombstone
+history is not recomputed or rewritten. Provider errors abort the new snapshot,
+not become public disclosure. The read-side boolean service needs no hierarchy
+capability because it reads that sealed history only.
+
+Six private `structural_taxonomy_tests` regressions cover selected lifecycle,
+uncommitted ancestor/rollback recovery, invalid projection/provider failure,
+post-write move/merge rollback and tombstone base/richer disclosure/failure.
+Rust tests remain uncompiled/unexecuted; source guards cannot certify rollback,
+concurrency, or mounted transport behavior. Broader consumer/host acceptance
+remains mandatory in the canonical plan.
+
 ### Category moderation audience policy
 - `ForumCategoryModerationAudiencePolicyService` stores a normalized category-local moderator audience independently from content visibility and posting eligibility.
 - `FORUM-20AY` evaluates every inherited root-to-category layer before topic/reply moderation writes; explicit deny retains precedence and a child cannot broaden an ancestor.
 - Managed `get` and atomic replacement `set` require `forum_categories:manage`; empty constraints restore inheritance.
 - Existing context-free moderation methods preserve unrestricted, role-only, and explicit-user behavior. Trust, Channel, or Groups selectors require exact context plus `SharedForumAudienceFactsPort` and otherwise fail closed.
-- `ModerationService::with_audience_facts` and context-aware command variants cover reply status, topic pin/lock/status, and solution commands before their write transactions.
+- `ModerationService::with_audience_facts` and context-aware command variants cover reply status, topic pin/lock/status, and solution commands. Admission runs **inside** the writer transaction after the category-tree fence and before domain effects; a pre-transaction preview is not a write authorization.
 - Topic authors retain the existing owned-update path for marking or clearing solutions; only the moderator fallback is audience-gated.
 - PostgreSQL and SQLite enforce tenant/category ownership, immutable rows, bounded relations, and one shared advisory key for owner replacement and direct bounded inserts.
 - GraphQL/REST exact context composition remains `FORUM-20AZ`; no moderation DTO changed in `FORUM-20AY`.
+- `ForumCategoryAudiencePolicyService`, `ForumCategoryModerationAudiencePolicyService`, `ForumModerationAudienceAuthorizationService` and `ModerationService` expose `with_taxonomy_port(Arc<dyn ForumTaxonomyPort>)`. Managed reads/replacements and moderation admission retain the selected hierarchy and actual transaction. GraphQL/HTTP factories forward the host selection, with or without audience facts. Standalone Noop is used only when deliberately unconfigured; a selected provider failure propagates without fallback.
+- `tests/support/taxonomy_moderation_authorization.rs`, mounted by `taxonomy_read_wiring`, contains six authored, unexecuted regressions: richer/moderation local clearing, post-replacement provider failure/rollback, ancestor denial and positive authorization, uncommitted transaction policy, denied owner effects, and configured GraphQL/mounted HTTP composition. No UI/DTO/migration change is required. The trusted host `moderation_subject` adapter is a distinct workflow, not this public moderation audience owner.
 - Run `node scripts/verify/verify-forum-moderation-audience-policy.mjs` after changing this boundary.
 ### Category presentation ownership
 - Canonical Category identity, localized copy, hierarchy, routes, aliases and presentation are owned by `rustok-taxonomy`.
 - Forum Category commands pass `icon` and `color` through the Taxonomy owner-sync boundary; Forum does not normalize or persist a second canonical presentation model.
-- Forum Category reads consume the Taxonomy-owned `TaxonomyOwnerCategory` projection, including locale, hierarchy and presentation fields.
+- Forum Category reads consume provider-owned `ForumTaxonomyCategorySnapshot` values through `ForumTaxonomyPort`, including locale, hierarchy and presentation fields. The external adapter may map `TaxonomyOwnerCategory`; Forum does not import that persistence owner's DTO at this boundary.
+- `ForumCategoryAudienceReadService::with_taxonomy_port`, `ForumCategoryAudienceVisibilityService::with_taxonomy_port`, `ForumCategoryVisibilityPolicyService::with_taxonomy_port`, `ForumPublicDiscoveryService::with_taxonomy_port` and `ForumSearchCategoryAudienceScopeService::with_taxonomy_port` preserve an injected provider. Category metadata and inherited base/richer audience layers use the same port; connection/transaction reads pass the caller's borrowed connection. `CategoryService::with_taxonomy_port` also forwards it to its base visibility service.
+- GraphQL runtime composes `category_route_service` and category audience reads with the host port; REST selected/list/tree reads and native category data/route reads forward it too. Search projection routes and discovery share the source's injected port, while server Search subtree expansion forwards the extension binding. SEO category mapping/routes/discovery resolve the port from `SeoTargetRuntimeContext.runtime_extensions`. A configured provider failure propagates; it is not replaced with Noop or an empty successful route.
+- Noop remains the explicit degraded standalone fallback and returns no canonical category route. The server implements `ServerForumTaxonomyPort` through Taxonomy owner APIs and registers it only for a joint Forum+Taxonomy distribution, before capability snapshots. `Connection`/`Transaction` are preserved and `None` returns `FORUM_TAXONOMY_CONNECTION_REQUIRED`; the adapter never silently falls back to its pool. Strict module-scoped parents and metadata do not synthesize missing placements. Owned alias history, hierarchy commands and tag writes delegate on the same transaction. Consumer/source evidence and authored real-owner tests still do not establish production taxonomy routing. Run `npm run verify:forum:taxonomy-wiring` / `npm run test:verify:forum:taxonomy-wiring`; `cargo test -p rustok-forum --test taxonomy_read_wiring` remains required.
+- Whole-tenant parent projections must match the local Forum category ID set exactly; missing/extra IDs, foreign parent references, cycles and excessive depth return typed validation failures before visibility filtering or local overrides. The shared `category_hierarchy` validator applies to base visibility, richer audience ancestry, category trees, direct Search subtree scope and read-tracking subtree enumeration. Tree metadata additionally rejects duplicate/foreign snapshot identities before sorting; matching vector length alone is not enough.
+- Storefront selected-category reads keep the `forum_categories:list` boundary all the way through metadata loading. Ordinary selected-category owner reads still require `forum_categories:read`. The private `CategorySelectedReadAccess` mode preserves that distinction without adding permissions to a security snapshot. The `taxonomy_read_wiring` suite includes authored, unexecuted least-privilege, malformed-provider and post-write transactional-failure regressions; `category_hierarchy` has authored pure validation/depth tests.
 - Category Media identities are typed Taxonomy references. Media remains the binary lifecycle owner; Forum does not resolve Category-cover Media capability, store Media URLs/paths, read Media persistence, or expose a duplicate cover error surface.
 - Forum attachment relations remain separate and use the Media owner-reference retention contract.
 
@@ -253,11 +342,22 @@ See [the decision](../../../DECISIONS/2026-10-17-forum-topic-feed-selection.md).
 - Invalid or unavailable relation identity returns `FORUM_RELATION_REVISION_UNAVAILABLE` without disclosing cross-tenant existence.
 - No REST or GraphQL relation endpoint is added in FORUM-12C.
 - Run `node scripts/verify/verify-forum-mention-events.mjs` after changing this boundary.
+### Topic slug rename
+- `TopicService::rename_slug` owns localized slug mutation and is exposed as `renameForumTopicSlug` with `RenameForumTopicSlugGraphqlInput` and `GqlForumTopicSlugRename`.
+- GraphQL requires the enabled Forum module and `forum_topics:update`; tenant authority comes from routed `TenantContext`, and any optional tenant argument must match it. Ownership remains owner-defined, never bypassed by the adapter.
+- GraphQL composes the configured topic owner through `ForumGraphqlRuntimeData`, including its transactional author edit window. The locked owner rechecks ownership, the window and archived state before writing.
+- The route owner locks the localized route, writes one immutable old-route alias with reason `Topic slug changed`, and updates the canonical slug in the same transaction as topic projection invalidation.
+- An exact normalized replay returns `changed = false`; a changed write returns its alias identity, previous slug/path and canonical descriptor. Deleted and merged route resolution remain owned by the route lifecycle services.
+- The adapter never reads route-alias tables or implements route business logic. Schema and owner regression sources exist; Rust execution remains a release check in a toolchain-enabled environment.
+- Source checks: `node scripts/verify/verify-forum-topic-slug-rename-owner.mjs` and `node scripts/verify/verify-forum-topic-slug-rename-graphql-transport.mjs`.
+
 ### Quote owner commands
 - `SetForumQuotesInput` contains an exact source locale and a full replacement list of typed `ForumQuoteReferenceInput` values.
 - Exact duplicates are normalized deterministically and the submitted set is capped at 32 references.
 - An empty list explicitly clears quotes while retaining mentions extracted from the unchanged canonical body.
 - `ForumQuoteCommandService` requires the corresponding topic/reply update owner scope, prepares outside the transaction, persists the immutable relation revision and materializes the bounded response before commit.
+- Standalone quote commands recheck source ownership, deletion, parent lifecycle and the author edit window inside the write transaction under category -> topic -> source locking. Archived parents reject all quote edits; locked parents reject reply quote edits. Failed transactional settings reads reject the command without a new relation revision.
+- REST and GraphQL obtain the quote owner from their configured runtime, including both static and transactional settings providers, rather than constructing an unconfigured service. Omitting the required standalone quote list is rejected; inline omitted-update semantics remain separate.
 - Identical replacement replays the current relation revision; missing, cross-tenant or mismatched quote targets use `FORUM_QUOTE_TARGET_UNAVAILABLE`.
 - REST entry points: `PUT /api/forum/topics/{id}/quotes` and `PUT /api/forum/replies/{id}/quotes`.
 - GraphQL entry points: `setForumTopicQuotes` and `setForumReplyQuotes`.
@@ -283,8 +383,25 @@ See [the decision](../../../DECISIONS/2026-10-17-forum-topic-feed-selection.md).
 - `FORUM-20AY` adds `with_audience_facts` plus context-aware variants for every topic/reply moderation command and moderator solution fallback.
 ### Moderation GraphQL mutations
 - Added: `pinForumTopic(id: UUID!, pinned: Boolean!)`, `lockForumTopic(id: UUID!, locked: Boolean!)`, `closeForumTopic(id: UUID!)`, `reopenForumTopic(id: UUID!)` with `Permission::FORUM_TOPICS_MANAGE`.
-- Added: `deleteForumReply(id: UUID!)`, `restoreForumReply(id: UUID!)` with `Permission::FORUM_REPLIES_DELETE`.
+- Added: `deleteForumReply(id: UUID!)` with `Permission::FORUM_REPLIES_DELETE` and `restoreForumReply(id: UUID!)` with `Permission::FORUM_REPLIES_MANAGE`.
+- `ReplyService::restore` and both REST/GraphQL adapters reject an archived parent with `FORUM_TOPIC_ARCHIVED` (REST HTTP 409), for ordinary and previously accepted replies alike. Reopen the parent explicitly before retrying; the owner never implicitly reopens it or drops historical solution metadata. Rejected restoration preserves the tombstone, delete snapshot, revisions, aggregates and outbox. Successful restoration serializes category → topic → solution scope → reply and retains the existing atomic snapshot replay. See [parent admission decision](../../../DECISIONS/2026-11-26-forum-reply-restore-parent-admission.md).
 - Added: `approveForumReply(replyId: UUID!, topicId: UUID!)`, `rejectForumReply(replyId: UUID!, topicId: UUID!)` with `Permission::FORUM_REPLIES_MODERATE`.
+### Trusted moderation adapter effects
+- Approved reply hide/reject uses the shared publication effects: persist canonical status, clear an accepted-solution relation, then update topic/category/member projections. Reply and solution member counts change together; archived parents do not release category/member contributions twice.
+- Admission follows category → parent topic → solution → subject/revision scope order, rechecks a discovered reply parent and retains reviewed-revision fencing. SQLite claims its writer before parent reads; PostgreSQL keeps Serializable isolation.
+- Hide/reject and public/solution removal publish topic projection invalidation atomically with existing category/status events. Exact receipt replay and same-target hide/reject remain no-write paths. No transport payload or Leptos/Next.js contract changes.
+- Run `npm run verify:forum:moderation-effects` and `npm run test:verify:forum:moderation-effects` for supplemental guards. `cargo test -p rustok-forum --test logic_review_remediation_sqlite trusted_moderation_effects` mounts the shared SQLite/PostgreSQL owner matrix; set `RUSTOK_FORUM_TEST_DATABASE_URL` for PostgreSQL. Rust service/concurrency execution remains required. See [effects verification](./docs/forum-moderation-effect-postgres-contract.md).
+### Delete policy admission
+- Public topic/reply `delete` commands repeat ownership and author-policy admission after their source write fence using transactional Forum settings. Preflight is only an early refusal. Snapshot capture and destructive writes occur after this admission; rejection preserves source/body/revision/solution/statistics state, snapshots and outbox.
+- Default-only services (no settings readers) retain canonical defaults. When a host configures a static settings reader, an absent transactional reader fails with `FORUM_TRANSACTIONAL_SETTINGS_UNAVAILABLE` instead of replacing stored policy with defaults; read-only consumers remain supported. A transaction-only configuration fails ordinary and transactional policy reads with `FORUM_STATIC_SETTINGS_UNAVAILABLE`. REST/GraphQL/native composition uses `ForumSettingsProviders::from_optional_readers` to retain both options; only an actually empty pair denotes default-only services. A functioning paired reader with no saved row retains defaults, and reader failures propagate. This shared rule covers every transactional settings consumer, including edit, quote, slug, posting, vote and delete commands; see [Transactional settings capability](../../../DECISIONS/2026-11-26-forum-transactional-settings-capability.md).
+- GraphQL default-setting reads (topic order and topic/reply page sizes) propagate the typed `ForumError` unchanged, including aliased fields. Missing capability retains its exact stable code and `retryable: false`; transient reader failure retains `FORUM_CAPABILITY_FAILURE`, `retryable: true` and `retryAfter: 5`, without exposing owner diagnostics. `cargo test -p rustok-forum --test graphql_settings_error_contract` exercises all eight resolver branches; runtime execution remains required.
+- Staff/system All-scoped callers keep their false-policy exemption and moderation/system snapshot reasons; capability failures are not silently ignored.
+- Reply direct deletion and internal moderation removal share one locking path and effects core. The internal API remains authorized by its caller and does not inherit author self-deletion policy. Both REST and GraphQL already supply configured owner services; no client payload changes or migration is required.
+- Run `npm run verify:forum:delete-policy` and `npm run test:verify:forum:delete-policy` for supplemental source checks. The shared owner matrix is `cargo test -p rustok-forum --test logic_review_remediation_sqlite direct_delete_rechecks_policy`; set `RUSTOK_FORUM_TEST_DATABASE_URL` for PostgreSQL. See [delete policy decision](../../../DECISIONS/2026-11-26-forum-delete-policy-admission.md).
+### Topic delete-snapshot restoration
+- `TopicService::restore` restores the exact pre-delete status, lock and thread snapshot, including an already-archived topic's original accepted solution. It does not implicitly reopen the topic or revive replies deleted independently before the thread deletion.
+- Migration 47 permits an archived solution INSERT only while matching tenant/topic/reply delete snapshots admit that exact previously approved target. Parent and reply must already be live; ordinary archived INSERTs and target UPDATEs remain rejected. Successful restore consumes the snapshots in the same transaction, closing this replay admission.
+- Archived restoration retains zero category/member contributions and emits no new publication event. An explicit later reopen restores those contributions once. Marker identity and time are replayed from the snapshot by the owner; no new API fields or client-specific restore paths are introduced. See [topic solution snapshot replay decision](../../../DECISIONS/2026-11-26-forum-topic-restore-solution-replay.md).
 ### VoteService
 - Added `set_topic_vote(tenant_id, topic_id, security, value)` and `clear_topic_vote(tenant_id, topic_id, security)`
 - Added `set_reply_vote(tenant_id, reply_id, security, value)` and `clear_reply_vote(tenant_id, reply_id, security)`
@@ -302,8 +419,8 @@ Quote owner commands and inline quote preservation intentionally use an exact ex
 
 ## Slug contract
 - `CategoryResponse` / `CategoryListItem` return locale-aware slug at the `forum_category_translation` level; the slug follows the same resolved translation as `name` / `description`.
-- `TopicResponse` / `TopicListItem` return a stable topic slug. When creating a new topic translation, the slug is copied from the seed-translation, unless a separate topic-level slug workflow is explicitly introduced.
-- The current forum public contract remains ID-based: the forum API does not promise lookup by slug. If such a read-path is added later, it must use the same locale fallback contract as the rest of the forum read-path.
+- `TopicResponse` / `TopicListItem` return a stable topic slug. When creating a new topic translation, the slug is copied from the seed translation; subsequent localized slug changes use `TopicService::rename_slug`.
+- ID-based content APIs remain available. Public topic-route resolution uses the stable short ID plus localized slug through `ForumTopicRouteService`, retaining shared locale fallback and audience admission; slug text alone is not topic identity.
 
 ## Events
 Publishes forum domain events through the outbox pipeline:
@@ -326,7 +443,7 @@ Legacy Forum lifecycle events remain root `DomainEvent` variants. Mention events
 - Quote replacement is exposed only through `ForumQuoteCommandService`; inline quote create/edit is exposed through topic/reply command facades.
 - The legacy facade methods convert into command DTOs and preserve existing quotes on body updates.
 - Relation snapshots are read only through `ForumRelationReadService` or materialized inside an active owner transaction.
-- Moderation transports must call `ModerationService`; audience evaluation remains owner-side and precedes every moderation write transaction.
+- Moderation transports must call `ModerationService`; audience evaluation remains owner-side, inside the locked writer transaction and before domain effects.
 - Run `node scripts/verify/verify-forum-owner-boundary.mjs` after changing topic/reply service visibility or workspace consumers.
 
 ## Dependencies on Other RusToK Crates
@@ -367,7 +484,7 @@ Legacy Forum lifecycle events remain root `DomainEvent` variants. Mention events
 - Builds reply-create audience identity from DTO fields or bypasses the exact transport context and host-composed `ReplyService`.
 - Reuses `forum_topic_audience_*` visibility rows for topic-local reply-create narrowing instead of the separate owner policy.
 - Applies moderator audience policy to a topic author's owned solution command instead of only the moderation fallback.
-- Opens a moderation write transaction before category audience authorization or queries Channel/Groups tables directly.
+- Treats a pre-transaction moderation preview as write authorization, evaluates audience outside the locked writer transaction, or queries Channel/Groups tables directly.
 - Passes methods to `ModerationService` without `tenant_id` — it is now required.
 
 ## Minimum Contract Set
@@ -416,6 +533,7 @@ Legacy Forum lifecycle events remain root `DomainEvent` variants. Mention events
 
 ### Errors / Failure Codes
 - Public `*Error`/`*Result` types of the module define the failure contract and must not lose semantics when mapped to HTTP/GraphQL/CLI.
+- GraphQL selected category/topic reads, topic-route resolution/disclosure, category-route resolution/audience context/visibility and member-card validation/composition propagate `ForumError` through `?` or `error.into()`, not `Error::new(error.to_string())` or `internal_error(error.to_string())`. `ForumGraphqlErrorExtension` retains the source's code and retryability even when the field is aliased. Storage failures stay redacted, retryable `FORUM_INTERNAL_ERROR`; validation stays nonretryable `FORUM_VALIDATION_FAILED`. Existing privacy-safe missing/denied/not-found branches still return `null`, and empty member-card input still returns an empty list. Foreign owner errors (such as raw Profiles/Channel errors) keep their separate mappings; this rule does not relabel them as Forum failures. Run `npm run verify:forum:graphql-error-provenance` and its `test:verify` counterpart; `graphql_settings_error_contract` contains the authored, not-yet-executed resolver regressions.
 - For validation/auth/conflict/not-found scenarios, a stable error-class must be maintained, used by tests and adapters.
 - Optional capability absence uses `ForumError::CapabilityUnavailable` and a stable owner-specific code; actual provider failures use `ForumError::CapabilityFailure` and preserve source code and retryability.
 - Missing or unauthorized mention targets share `FORUM_MENTION_TARGET_UNAVAILABLE` so the contract does not expose a profile-existence oracle.

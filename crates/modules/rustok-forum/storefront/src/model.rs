@@ -20,7 +20,7 @@ where
 }
 
 /// Typed projection of the owner's GraphQL/native feed selection (not a local filter).
-#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ForumTopicFeedOrder {
     #[default]
@@ -28,12 +28,13 @@ pub enum ForumTopicFeedOrder {
     Top,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ForumTopicSelection {
     pub search: Option<String>,
     pub order: ForumTopicFeedOrder,
     pub solved_only: bool,
+    pub unread_only: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -393,17 +394,18 @@ mod tests {
             search: Some("needle".into()),
             order: ForumTopicFeedOrder::Top,
             solved_only: true,
+            unread_only: false,
         };
         assert_eq!(
             serde_json::to_value(selection).unwrap(),
             serde_json::json!({
-                "search": "needle", "order": "TOP", "solvedOnly": true,
+                "search": "needle", "order": "TOP", "solvedOnly": true, "unreadOnly": false,
             })
         );
         assert_eq!(
             serde_json::to_value(ForumTopicSelection::default()).unwrap(),
             serde_json::json!({
-                "search": null, "order": "LATEST", "solvedOnly": false,
+                "search": null, "order": "LATEST", "solvedOnly": false, "unreadOnly": false,
             })
         );
         assert!(

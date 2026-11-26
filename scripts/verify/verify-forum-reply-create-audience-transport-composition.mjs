@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { containsMarker } from "./lib/forum-source-verification.mjs";
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -20,7 +21,7 @@ function read(relativePath) {
 }
 
 function requireText(source, marker, message) {
-  if (!source.includes(marker)) failures.push(message);
+  if (!containsMarker(source, marker)) failures.push(message);
 }
 
 function rejectText(source, marker, message) {
@@ -46,7 +47,7 @@ const graphqlStandard = read(contract.graphql_standard_mutation_file ?? "");
 const graphqlCommand = read(contract.graphql_command_mutation_file ?? "");
 const graphqlTypes = read("crates/modules/rustok-forum/src/graphql/types.rs");
 const httpRuntime = read(contract.http_runtime_file ?? "");
-const httpStandard = read(contract.http_standard_create_file ?? "");
+requireText(httpRuntime, "post(content_commands::create_reply)", "REST must mount the canonical reply create command");
 const httpCommand = read(contract.http_command_create_file ?? "");
 const owner = read(contract.owner_enforcement_file ?? "");
 const note = read(contract.owner_note ?? "");
@@ -71,8 +72,7 @@ for (const key of [
   "resolved_route_channel_forwarding",
   "graphql_standard_create_composed",
   "graphql_command_create_composed",
-  "rest_standard_create_composed",
-  "rest_command_create_composed",
+  "rest_create_composed",
   "graphql_runtime_facts_consumed",
   "http_runtime_facts_consumed",
   "host_extension_facts_reused",
@@ -185,12 +185,6 @@ for (const marker of [
 ]) {
   requireText(httpRuntime, marker, `Forum HTTP runtime is missing ${marker}`);
 }
-const standardRestCreate = between(
-  httpStandard,
-  "pub async fn create_reply(",
-  "pub async fn update_reply(",
-  "standard REST reply-create",
-);
 const commandRestCreate = between(
   httpCommand,
   "pub async fn create_reply(",
@@ -198,7 +192,6 @@ const commandRestCreate = between(
   "command REST reply-create",
 );
 for (const [source, label, commandMarker] of [
-  [standardRestCreate, "standard REST reply-create", ".create_with_audience_context("],
   [commandRestCreate, "command REST reply-create", ".create_command_with_audience_context("],
 ]) {
   for (const marker of [
@@ -218,18 +211,9 @@ const ownerCreateHelper = between(
   "pub async fn get(",
   "reply-create owner helper",
 );
-for (const marker of [
-  ".require(tenant_id, topic_id, &security, context)",
-  ".create_command(tenant_id, security, topic_id, input)",
-]) {
-  requireText(ownerCreateHelper, marker, `reply-create owner helper is missing ${marker}`);
-}
-if (
-  ownerCreateHelper.indexOf(".require(tenant_id, topic_id, &security, context)") >
-  ownerCreateHelper.indexOf(".create_command(tenant_id, security, topic_id, input)")
-) {
-  failures.push("transport composition must preserve reply audience authorization before owner writes");
-}
+requireText(ownerCreateHelper, ".create_command_with_audience_authorization(", "reply transport must delegate transactional audience admission");
+requireText(ownerCreateHelper, "&self.create_audience", "reply transport must retain the configured audience owner");
+rejectText(ownerCreateHelper, ".create_command(", "reply transport must not bypass configured admission");
 
 const standardInput = between(
   graphqlTypes,
@@ -252,16 +236,8 @@ for (const [input, label] of [
   }
 }
 
-for (const marker of [
-  "# FORUM-20AW reply-create audience transport composition",
-  "source-verified / runtime evidence pending",
-  "Tenant and actor identity come only from authenticated transport extensions",
-  "same optional `SharedForumAudienceFactsPort`",
-  "No Forum-to-Groups crate dependency was added",
-  "Canonical plan synchronization",
-  "Source checks executed on 2026-08-11",
-]) {
-  requireText(note, marker, `reply-create transport owner note is missing ${marker}`);
+for (const marker of ["### Selected hierarchy for create admission", "Rust tests remain uncompiled/unexecuted", "configured audience owner even when `PortContext` is absent"]) {
+  requireText(note, marker, `create transport documentation is missing ${marker}`);
 }
 for (const marker of [
   "ReplyService::create_with_audience_context",

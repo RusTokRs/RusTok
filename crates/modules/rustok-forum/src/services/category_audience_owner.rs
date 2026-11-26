@@ -1,5 +1,5 @@
-use tracing::instrument;
 use super::*;
+use tracing::instrument;
 
 /// Transactional owner facade for category audience policy replacement.
 ///
@@ -18,6 +18,14 @@ impl ForumCategoryAudiencePolicyOwnerService {
             inner: ForumCategoryAudiencePolicyService::new(db.clone()),
             db,
         }
+    }
+
+    pub fn with_taxonomy_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
+    ) -> Self {
+        self.inner = self.inner.with_taxonomy_port(port);
+        self
     }
 
     pub async fn get(
@@ -42,7 +50,14 @@ impl ForumCategoryAudiencePolicyOwnerService {
 
         let txn = self.db.begin().await?;
         lock_category_tree_in_tx(&txn, tenant_id).await?;
-        load_category_ancestor_ids(&txn, tenant_id, category_id).await?;
+        load_category_ancestor_ids_with_port(
+            self.inner.taxonomy_port.as_ref(),
+            &txn,
+            (&txn).into(),
+            tenant_id,
+            category_id,
+        )
+        .await?;
 
         forum_category_audience_policy::Entity::delete_many()
             .filter(forum_category_audience_policy::Column::TenantId.eq(tenant_id))
@@ -66,7 +81,14 @@ impl ForumCategoryAudiencePolicyOwnerService {
             insert_users(&txn, tenant_id, category_id, &constraints).await?;
         }
 
-        let result = load_category_audience_policy(&txn, tenant_id, category_id).await?;
+        let result = load_category_audience_policy_with_port(
+            self.inner.taxonomy_port.as_ref(),
+            &txn,
+            (&txn).into(),
+            tenant_id,
+            category_id,
+        )
+        .await?;
         crate::services::projection_invalidation::publish_forum_projection_scope_direct_in_tx(
             &txn,
             tenant_id,

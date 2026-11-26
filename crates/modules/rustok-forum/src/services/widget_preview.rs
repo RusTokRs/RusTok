@@ -44,6 +44,7 @@ pub struct ForumWidgetPreviewService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
     audience_facts: Option<SharedForumAudienceFactsPort>,
+    taxonomy_port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
 }
 
 impl ForumWidgetPreviewService {
@@ -58,7 +59,16 @@ impl ForumWidgetPreviewService {
             db,
             event_bus,
             audience_facts,
+            taxonomy_port: std::sync::Arc::new(crate::NoopForumTaxonomyPort),
         }
+    }
+
+    pub fn with_taxonomy_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
+    ) -> Self {
+        self.taxonomy_port = port;
+        self
     }
 
     /// Previews one widget for an authenticated caller.
@@ -145,6 +155,7 @@ impl ForumWidgetPreviewService {
 
     fn visibility_service(&self) -> ForumTopicAudienceVisibilityService {
         ForumTopicAudienceVisibilityService::new(self.db.clone(), self.audience_facts.clone())
+            .with_taxonomy_port(self.taxonomy_port.clone())
     }
 
     fn topic_audience_read_service(&self) -> ForumTopicAudienceReadService {
@@ -156,6 +167,7 @@ impl ForumWidgetPreviewService {
             ),
             None => ForumTopicAudienceReadService::new(self.db.clone(), self.event_bus.clone()),
         }
+        .with_taxonomy_port(self.taxonomy_port.clone())
     }
 
     fn reply_audience_read_service(&self) -> ForumReplyAudienceReadService {
@@ -167,6 +179,7 @@ impl ForumWidgetPreviewService {
             ),
             None => ForumReplyAudienceReadService::new(self.db.clone(), self.event_bus.clone()),
         }
+        .with_taxonomy_port(self.taxonomy_port.clone())
     }
 
     async fn preview_topic_list(
@@ -184,6 +197,7 @@ impl ForumWidgetPreviewService {
         let sort = required_string(props, "sort")?;
         let visibility = self.visibility_service();
         let (items, total) = TopicService::new(self.db.clone(), self.event_bus.clone())
+            .with_taxonomy_port(self.taxonomy_port.clone())
             .list_widget_preview_owner_visible(
                 tenant_id,
                 security,

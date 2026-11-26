@@ -583,6 +583,7 @@ pub struct ReplyService {
     event_bus: TransactionalEventBus,
     relations: MentionRelationService,
     settings: ForumSettingsProviders,
+    taxonomy_port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
     inner: reply::ReplyService,
 }
 
@@ -592,9 +593,18 @@ impl ReplyService {
             inner: reply::ReplyService::new(db.clone(), event_bus.clone()),
             relations: MentionRelationService::new(db.clone()),
             settings: ForumSettingsProviders::default(),
+            taxonomy_port: std::sync::Arc::new(crate::NoopForumTaxonomyPort),
             db,
             event_bus,
         }
+    }
+
+    pub fn with_taxonomy_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
+    ) -> Self {
+        self.taxonomy_port = port;
+        self
     }
 
     pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
@@ -694,14 +704,27 @@ impl ReplyService {
             existing.author_id,
         )?;
         let settings = self.settings.module_settings(tenant_id).await?;
-        let delete_reason = enforce_author_deletion_policy(
+        enforce_author_deletion_policy(
             &security,
             Resource::ForumReplies,
             settings.allow_user_content_deletion,
         )?;
 
         let txn = self.db.begin().await?;
-        let outcome = Self::remove_in_tx(&txn, tenant_id, reply_id, delete_reason).await?;
+        let (topic, reply) = Self::lock_reply_removal_in_tx(&txn, tenant_id, reply_id).await?;
+        enforce_owned_scope(
+            &security,
+            Resource::ForumReplies,
+            Action::Delete,
+            reply.author_id,
+        )?;
+        let settings = self.settings.module_settings_in_tx(&txn, tenant_id).await?;
+        let delete_reason = enforce_author_deletion_policy(
+            &security,
+            Resource::ForumReplies,
+            settings.allow_user_content_deletion,
+        )?;
+        let outcome = Self::remove_locked_in_tx(&txn, &topic, &reply, delete_reason).await?;
 
         self.event_bus
             .publish_in_tx(
@@ -768,6 +791,18 @@ impl ReplyService {
         lock_category_tree_in_tx(&txn, tenant_id).await?;
         let topic =
             TopicService::find_topic_for_update_in_tx(&txn, tenant_id, initial_topic_id).await?;
+        // A restore replays content and possibly a solution. Admit the parent
+        // before either write so ordinary and accepted replies behave alike;
+        // the solution-target guard must not become an incidental API error.
+        if topic.status == TopicStatus::Archived {
+            return Err(ForumError::TopicArchived);
+        }
+        super::topic_solution_lock::lock_topic_solution_scopes_in_tx(
+            &txn,
+            tenant_id,
+            &[initial_topic_id],
+        )
+        .await?;
         let reply = Self::find_reply_for_update_in_tx(&txn, tenant_id, reply_id).await?;
         if reply.topic_id != initial_topic_id {
             return Err(ForumError::TopicUpdateConflict(initial_topic_id));
@@ -784,7 +819,13 @@ impl ReplyService {
         {
             return Err(ForumError::ReplyRestoreUnavailable(reply_id));
         }
-        ensure_category_restore_target_is_active_in_tx(&txn, tenant_id, topic.category_id).await?;
+        ensure_category_restore_target_is_active_in_tx(
+            self.taxonomy_port.as_ref(),
+            &txn,
+            tenant_id,
+            topic.category_id,
+        )
+        .await?;
         let snapshot = load_reply_delete_snapshot_in_tx(&txn, tenant_id, reply_id)
             .await?
             .ok_or(ForumError::ReplyRestoreUnavailable(reply_id))?;
@@ -885,6 +926,15 @@ impl ReplyService {
         reply_id: Uuid,
         reason: DeleteSnapshotReason,
     ) -> ForumResult<ReplyRemovalOutcome> {
+        let (topic, reply) = Self::lock_reply_removal_in_tx(txn, tenant_id, reply_id).await?;
+        Self::remove_locked_in_tx(txn, &topic, &reply, reason).await
+    }
+
+    async fn lock_reply_removal_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+    ) -> ForumResult<(crate::entities::forum_topic::Model, forum_reply::Model)> {
         // Keep reply deletion behind the same category-tree lifecycle boundary as
         // topic delete/restore and category archive/restore. This prevents a reply
         // counter mutation from racing a concurrent category lifecycle decision.
@@ -897,6 +947,12 @@ impl ReplyService {
         // deadlock on inverted row-lock acquisition.
         let topic =
             TopicService::find_topic_for_update_in_tx(txn, tenant_id, initial_topic_id).await?;
+        super::topic_solution_lock::lock_topic_solution_scopes_in_tx(
+            txn,
+            tenant_id,
+            &[initial_topic_id],
+        )
+        .await?;
         let reply =
             reply::ReplyService::find_reply_for_update_in_tx(txn, tenant_id, reply_id).await?;
         if reply.topic_id != initial_topic_id {
@@ -905,6 +961,19 @@ impl ReplyService {
         if reply.status == ReplyStatus::Deleted {
             return Err(ForumError::ReplyDeleted);
         }
+        Ok((topic, reply))
+    }
+
+    // All removal paths use this core after the same locks. Direct deletion
+    // additionally re-admits ownership/policy; moderation owns its admission.
+    async fn remove_locked_in_tx(
+        txn: &DatabaseTransaction,
+        topic: &crate::entities::forum_topic::Model,
+        reply: &forum_reply::Model,
+        reason: DeleteSnapshotReason,
+    ) -> ForumResult<ReplyRemovalOutcome> {
+        let tenant_id = reply.tenant_id;
+        let reply_id = reply.id;
         reply.status.validate_transition(&ReplyStatus::Deleted)?;
         let solution = forum_solution::Entity::find()
             .filter(forum_solution::Column::TenantId.eq(tenant_id))
@@ -916,26 +985,27 @@ impl ReplyService {
             .filter(|solution| solution.reply_id == reply_id);
         let solution_removed = solution_for_snapshot.is_some();
 
-        record_reply_delete_snapshot_in_tx(txn, tenant_id, &reply, solution_for_snapshot, reason)
+        record_reply_delete_snapshot_in_tx(txn, tenant_id, reply, solution_for_snapshot, reason)
             .await?;
 
-        forum_solution::Entity::delete_many()
-            .filter(forum_solution::Column::TenantId.eq(tenant_id))
-            .filter(forum_solution::Column::ReplyId.eq(reply_id))
-            .exec(txn)
-            .await?;
         mark_reply_deleted_in_tx(txn, tenant_id, reply_id).await?;
 
         let was_public = reply.status == ReplyStatus::Approved;
         if was_public {
-            TopicService::adjust_reply_count_in_tx(txn, tenant_id, reply.topic_id, -1).await?;
-            CategoryService::adjust_counters_in_tx(txn, tenant_id, topic.category_id, 0, -1)
+            super::reply_publication::apply_publication_change_in_tx(txn, tenant_id, reply, false)
                 .await?;
-            UserStatsService::adjust_reply_count_in_tx(txn, tenant_id, reply.author_id, -1).await?;
-        }
-        if solution_removed {
-            UserStatsService::adjust_solution_count_in_tx(txn, tenant_id, reply.author_id, -1)
+        } else if solution_removed {
+            // Clean up an existing non-public solution without pretending the
+            // reply crossed the public boundary a second time.
+            forum_solution::Entity::delete_many()
+                .filter(forum_solution::Column::TenantId.eq(tenant_id))
+                .filter(forum_solution::Column::ReplyId.eq(reply_id))
+                .exec(txn)
                 .await?;
+            if topic.status != TopicStatus::Archived {
+                UserStatsService::adjust_solution_count_in_tx(txn, tenant_id, reply.author_id, -1)
+                    .await?;
+            }
         }
 
         Ok(ReplyRemovalOutcome {
@@ -1385,14 +1455,9 @@ impl ReplyService {
             CategoryService::find_category_for_update_in_tx(&txn, tenant_id, topic.category_id)
                 .await?;
 
-        let authorization = create_audience
+        create_audience
             .require_in_tx(&txn, tenant_id, &topic, &security, context)
             .await?;
-        if !authorization.allowed {
-            return Err(ForumError::forbidden(
-                "Forum reply creation is unavailable for the current audience",
-            ));
-        }
 
         match topic.status {
             TopicStatus::Closed => return Err(ForumError::TopicClosed),

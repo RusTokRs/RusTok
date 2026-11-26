@@ -3,6 +3,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { containsMarker } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -11,6 +12,10 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
 const failures = [];
 
 function read(relativePath) {
+  if (typeof relativePath !== "string" || relativePath.length === 0) {
+    failures.push("<missing path>: required file is missing");
+    return "";
+  }
   const absolute = path.join(repoRoot, relativePath);
   if (!existsSync(absolute)) {
     failures.push(`${relativePath}: required file is missing`);
@@ -20,7 +25,7 @@ function read(relativePath) {
 }
 
 function requireText(source, marker, message) {
-  if (!source.includes(marker)) failures.push(message);
+  if (!containsMarker(source, marker)) failures.push(message);
 }
 
 function requireOrder(source, markers, message) {
@@ -56,6 +61,16 @@ function collectRustFiles(root, relative = "") {
 const contract = JSON.parse(
   read("crates/modules/rustok-forum/contracts/forum-mention-write-boundary.json") || "{}",
 );
+for (const [name, entry] of Object.entries(contract.owner_entrypoints ?? {})) {
+  const owner = read(entry.owner);
+  const implementation = read(entry.implementation);
+  if (typeof entry.delegate !== "string" || entry.delegate.length === 0) {
+    failures.push(`${name}: owner delegate must be declared`);
+  } else {
+    requireText(owner, entry.delegate, `${name}: declared owner delegate is missing`);
+    requireText(implementation, entry.delegate, `${name}: declared implementation is missing`);
+  }
+}
 const dto = read(contract.quote_command?.dto ?? "");
 const service = read(contract.quote_command?.service ?? "");
 const relationTests = read("crates/modules/rustok-forum/src/services/mention_relation_tests.rs");
@@ -64,12 +79,17 @@ const routes = read("crates/modules/rustok-forum/src/controllers/mod.rs");
 const graphql = read("crates/modules/rustok-forum/src/graphql/quote_commands.rs");
 const graphqlRoot = read("crates/modules/rustok-forum/src/graphql/mod.rs");
 const openapi = read("crates/modules/rustok-forum/src/openapi.rs");
-const d1Record = read("crates/modules/rustok-forum/docs/forum-12d1-quote-commands.md");
+const api = read("crates/modules/rustok-forum/CRATE_API.md");
+const ownerReadme = read("crates/modules/rustok-forum/README.md");
+const graphqlRuntime = read("crates/modules/rustok-forum/src/graphql/runtime_data.rs");
 
 for (const [field, expected] of [
   ["quotes_field_required", true],
   ["empty_set_clears", true],
   ["reject_deleted_source", true],
+  ["reject_archived_parent", true],
+  ["reject_locked_reply_parent", true],
+  ["recheck_author_window_in_tx", true],
   ["response_before_commit", true],
 ]) {
   if (contract.quote_command?.[field] !== expected) {
@@ -112,12 +132,25 @@ requireOrder(
     "enforce_owned_scope",
     ".prepare(",
     "let txn = self.db.begin().await?;",
+    "lock_category_tree_in_tx(&txn, tenant_id)",
+    ".enforce_source_edit_in_tx(&txn, tenant_id, source, &security)",
     ".persist_in_tx(&txn, prepared)",
     "load_snapshot_in_tx(",
     "txn.commit().await?;",
   ],
   "quote replacement and its response must stay inside one owner transaction",
 );
+const transactionalAdmission = service.slice(
+  service.indexOf("    async fn enforce_source_edit_in_tx("),
+  service.indexOf("    async fn load_source("),
+);
+requireOrder(transactionalAdmission, [
+  "find_topic_for_update_in_tx(",
+  "find_reply_for_update_in_tx(",
+  "enforce_owned_scope(",
+  "module_settings_in_tx(",
+  "enforce_author_edit_window(",
+], "quote admission must lock parent and reply before checking policy/time");
 requireText(service, "input.quotes", "an explicit empty quote list must reach owner replacement");
 requireText(service, "quote_inputs_are_deduplicated_and_bounded", "quote bounds need owner unit coverage");
 reject(service, /rustok_notifications|NotificationService/, "quote commands must not call Notifications");
@@ -128,7 +161,11 @@ for (const marker of [
   "identical replacement should replay",
   "explicit empty list should clear quotes",
   "cross-tenant quoted revision must fail closed",
-  "checked_sub(3)",
+  "before_foreign",
+  "failed quote replacement must not append a relation revision",
+  "standalone_quote_commands_recheck_transactional_policy_before_relation_writes",
+  "must read the transactional policy",
+  "rejected transactional admission must append no relation revision",
 ]) {
   requireText(relationTests, marker, `quote owner runtime scenario is missing ${marker}`);
 }
@@ -185,8 +222,7 @@ const topicFacade = read("crates/modules/rustok-forum/src/services/topic_facade.
 const replyFacade = read("crates/modules/rustok-forum/src/services/reply_facade.rs");
 const contentController = read("crates/modules/rustok-forum/src/controllers/content_commands.rs");
 const contentGraphql = read("crates/modules/rustok-forum/src/graphql/content_commands.rs");
-const inlineTests = read("crates/modules/rustok-forum/src/services/relation_quote_input_tests.rs");
-const d2Record = read("crates/modules/rustok-forum/docs/forum-12d2-inline-quote-commands.md");
+const inlineTests = read(inline.runtime_tests ?? "");
 
 for (const marker of [
   "CreateTopicCommandInput",
@@ -266,16 +302,12 @@ for (const marker of [
 ]) {
   requireText(topicFacade + replyFacade, marker, `legacy facade compatibility is missing ${marker}`);
 }
-for (const marker of [
-  'include!("topic.rs")',
-  'include!("topic_inline.rs")',
-  'include!("reply.rs")',
-  'include!("reply_inline.rs")',
-  'include!("topic_owner_inline.rs")',
-  'include!("reply_owner_inline.rs")',
-]) {
-  requireText(moduleComposition, marker, `module composition is missing ${marker}`);
+// Ordinary modules replaced the removed inline fragments. Check registration,
+// never require restoring source stitching merely to satisfy a stale pin.
+for (const name of ["topic", "reply", "topic_owner", "reply_owner", "relation_quote_input"]) {
+  requireText(moduleComposition, `mod ${name};`, `module composition is missing ${name}`);
 }
+reject(moduleComposition, /include!\s*\(/, "owner modules must not use source stitching");
 
 for (const marker of [
   "content_commands::create_topic",
@@ -328,26 +360,35 @@ for (const root of contract.transport_roots ?? []) {
   }
 }
 
+// The live owner contract supersedes removed per-slice handoff records.
 for (const marker of [
-  "FORUM-12D1",
-  "full replacement",
-  "exact locale",
-  "empty list clears",
-  "omitting the list is rejected",
-  "soft-deleted sources reject",
-  "Maintainer verification was not executed",
+  "### Quote owner commands", "exact source locale", "full replacement",
+  "An empty list explicitly clears quotes", "FORUM_QUOTE_TARGET_UNAVAILABLE",
+  "Identical replacement replays", "Standalone quote commands recheck",
+  "### Inline quote create and edit commands", "quotes: []", "FORUM_RELATION_REVISION_CONFLICT",
+  "Existing `TopicService::create/update` and `ReplyService::create/update`",
 ]) {
-  requireText(d1Record, marker, `FORUM-12D1 implementation record is missing ${marker}`);
+  requireText(api, marker, `canonical quote API contract is missing ${marker}`);
 }
+for (const marker of ["author edit window", "Archived topics are immutable", "locked topics reject reply quote edits"]) {
+  requireText(ownerReadme, marker, `quote lifecycle contract is missing ${marker}`);
+}
+for (const [source, label] of [[routes, "REST runtime"], [graphqlRuntime, "GraphQL runtime"]]) {
+  const start = source.indexOf("fn quote_command_service(");
+  const factory = source.slice(start, source.indexOf("\n    }", start) + 6);
+  requireText(factory, "fn quote_command_service(", `${label} must compose a quote owner`);
+  requireText(factory, ".with_settings_providers(self.settings_providers.clone())", `${label} must pass configured settings`);
+}
+requireText(controller, ".quote_command_service()", "REST must use the configured quote owner");
+requireText(graphql, "super::forum_graphql_runtime(ctx)", "GraphQL must use its routed runtime");
+requireText(graphql, ".quote_command_service(db.clone())", "GraphQL must use the configured quote owner");
+reject(controller + graphql, /ForumQuoteCommandService::new\s*\(/, "quote transports must not bypass the configured owner");
+const admission = service.slice(service.indexOf("async fn enforce_source_edit_in_tx("), service.indexOf("async fn load_source("));
 for (const marker of [
-  "FORUM-12D2",
-  "omitted updates preserve",
-  "explicit empty list clears",
-  "FORUM_RELATION_REVISION_CONFLICT",
-  "legacy Rust DTOs remain unchanged",
-  "Maintainer verification was not executed",
+  "enforce_source_edit_in_tx", "find_topic_for_update_in_tx", "TopicStatus::Archived",
+  "topic.is_locked", "module_settings_in_tx", "enforce_author_edit_window",
 ]) {
-  requireText(d2Record, marker, `FORUM-12D2 implementation record is missing ${marker}`);
+  requireText(admission, marker, `transactional quote admission is missing ${marker}`);
 }
 
 if (failures.length > 0) {

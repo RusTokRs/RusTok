@@ -700,38 +700,69 @@ impl rustok_api::StaticModuleSettingsReader for QuoteEditSettings {
     }
 }
 
-#[tokio::test]
-async fn standalone_quote_commands_obey_the_author_edit_window_for_topics_and_replies() {
-    use rustok_api::{Permission, SharedStaticModuleSettingsReader};
-    use rustok_core::UserRole;
+struct QuoteTransactionSettings {
+    settings: Arc<QuoteEditSettings>,
+    calls: Arc<std::sync::atomic::AtomicUsize>,
+}
 
-    let db = setup_db().await;
+#[async_trait]
+impl rustok_api::StaticModuleSettingsTransactionReader for QuoteTransactionSettings {
+    async fn settings_in_tx(
+        &self,
+        _txn: &sea_orm::DatabaseTransaction,
+        tenant_id: Uuid,
+        module_slug: &str,
+    ) -> Result<Option<rustok_api::StaticModuleSettingsSnapshot>, rustok_api::PortError> {
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        rustok_api::StaticModuleSettingsReader::settings(
+            self.settings.as_ref(),
+            tenant_id,
+            module_slug,
+        )
+        .await
+    }
+}
+
+async fn insert_owned_aged_quote_sources(db: &DatabaseConnection) -> (Uuid, Uuid, Uuid, Uuid) {
     let tenant_id = Uuid::new_v4();
     let topic_id = Uuid::new_v4();
     let reply_id = Uuid::new_v4();
     let author_id = Uuid::new_v4();
-    insert_topic_source(&db, tenant_id, topic_id, "Topic").await;
-    insert_reply_source(&db, tenant_id, topic_id, reply_id, "Reply").await;
-    apply_relation_migrations(&db).await;
+    insert_topic_source(db, tenant_id, topic_id, "Topic").await;
+    insert_reply_source(db, tenant_id, topic_id, reply_id, "Reply").await;
+    apply_relation_migrations(db).await;
     let created_at = (Utc::now() - chrono::Duration::minutes(30)).fixed_offset();
     let mut topic = forum_topic::Entity::find_by_id(topic_id)
-        .one(&db)
+        .one(db)
         .await
         .unwrap()
         .unwrap()
         .into_active_model();
     topic.author_id = Set(Some(author_id));
     topic.created_at = Set(created_at);
-    topic.update(&db).await.unwrap();
+    topic.update(db).await.unwrap();
     let mut reply = forum_reply::Entity::find_by_id(reply_id)
-        .one(&db)
+        .one(db)
         .await
         .unwrap()
         .unwrap()
         .into_active_model();
     reply.author_id = Set(Some(author_id));
     reply.created_at = Set(created_at);
-    reply.update(&db).await.unwrap();
+    reply.update(db).await.unwrap();
+
+    (tenant_id, topic_id, reply_id, author_id)
+}
+
+#[tokio::test]
+async fn standalone_quote_commands_obey_the_author_edit_window_for_topics_and_replies() {
+    use rustok_api::{
+        Permission, SharedStaticModuleSettingsReader, SharedStaticModuleSettingsTransactionReader,
+    };
+    use rustok_core::UserRole;
+
+    let db = setup_db().await;
+    let (tenant_id, topic_id, reply_id, author_id) = insert_owned_aged_quote_sources(&db).await;
 
     for (minutes, unavailable, staff, allowed) in [
         (10, false, false, false), // Expired author window.
@@ -752,12 +783,17 @@ async fn standalone_quote_commands_obey_the_author_edit_window_for_topics_and_re
                 ],
             )
         };
+        let settings = Arc::new(QuoteEditSettings {
+            tenant_id,
+            minutes,
+            unavailable,
+        });
         let command = ForumQuoteCommandService::new(db.clone()).with_settings_providers(
-            super::engagement_mode::ForumSettingsProviders::default().with_static_reader(
-                SharedStaticModuleSettingsReader(Arc::new(QuoteEditSettings {
-                    tenant_id,
-                    minutes,
-                    unavailable,
+            super::engagement_mode::ForumSettingsProviders::default().with_static_readers(
+                SharedStaticModuleSettingsReader(settings.clone()),
+                SharedStaticModuleSettingsTransactionReader(Arc::new(QuoteTransactionSettings {
+                    settings,
+                    calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
                 })),
             ),
         );
@@ -785,6 +821,92 @@ async fn standalone_quote_commands_obey_the_author_edit_window_for_topics_and_re
                 assert_eq!(relation_revision_count(&db, tenant_id).await, before);
                 if !unavailable {
                     assert_eq!(result.unwrap_err().stable_code(), "FORUM_VALIDATION_FAILED");
+                }
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn standalone_quote_commands_recheck_transactional_policy_before_relation_writes() {
+    use rustok_api::{
+        Permission, SharedStaticModuleSettingsReader, SharedStaticModuleSettingsTransactionReader,
+    };
+    use rustok_core::UserRole;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let db = setup_db().await;
+    let (tenant_id, topic_id, reply_id, author_id) = insert_owned_aged_quote_sources(&db).await;
+    let security = SecurityContext::from_permissions(
+        UserRole::Customer,
+        Some(author_id),
+        [
+            Permission::FORUM_TOPICS_UPDATE,
+            Permission::FORUM_REPLIES_UPDATE,
+        ],
+    );
+    for (minutes, unavailable, allowed) in [
+        (10, false, false),
+        (60, false, true),
+        (0, false, true),
+        (0, true, false),
+    ] {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let providers = super::engagement_mode::ForumSettingsProviders::default()
+            .with_static_readers(
+                // Preflight always admits the 30-minute-old source. The transactional
+                // policy can close the window or fail after that read has completed.
+                SharedStaticModuleSettingsReader(Arc::new(QuoteEditSettings {
+                    tenant_id,
+                    minutes: 60,
+                    unavailable: false,
+                })),
+                SharedStaticModuleSettingsTransactionReader(Arc::new(QuoteTransactionSettings {
+                    settings: Arc::new(QuoteEditSettings {
+                        tenant_id,
+                        minutes,
+                        unavailable,
+                    }),
+                    calls: calls.clone(),
+                })),
+            );
+        let command = ForumQuoteCommandService::new(db.clone()).with_settings_providers(providers);
+        for is_reply in [false, true] {
+            let before = relation_revision_count(&db, tenant_id).await;
+            let reads = calls.load(Ordering::SeqCst);
+            let input = SetForumQuotesInput {
+                locale: "en".into(),
+                quotes: Vec::new(),
+            };
+            let result = if is_reply {
+                command
+                    .set_reply_quotes(tenant_id, reply_id, security.clone(), input)
+                    .await
+            } else {
+                command
+                    .set_topic_quotes(tenant_id, topic_id, security.clone(), input)
+                    .await
+            };
+            assert_eq!(
+                calls.load(Ordering::SeqCst),
+                reads + 1,
+                "must read the transactional policy"
+            );
+            assert_eq!(
+                result.is_ok(),
+                allowed,
+                "minutes={minutes}, unavailable={unavailable}, reply={is_reply}: {result:?}"
+            );
+            if !allowed {
+                assert_eq!(
+                    relation_revision_count(&db, tenant_id).await,
+                    before,
+                    "rejected transactional admission must append no relation revision"
+                );
+                if !unavailable {
+                    assert!(
+                        matches!(result, Err(crate::ForumError::Validation(ref message)) if message.contains("edit window has closed"))
+                    );
                 }
             }
         }
@@ -900,4 +1022,54 @@ async fn inline_quote_preserve_detects_concurrent_relation_replacement() {
         expectation,
         super::relation_quote_input::InlineQuoteExpectation::Any
     );
+}
+
+#[tokio::test]
+async fn standalone_quote_commands_reject_read_only_settings_without_relation_writes() {
+    use rustok_api::{Permission, SharedStaticModuleSettingsReader};
+    use rustok_core::UserRole;
+
+    let db = setup_db().await;
+    let (tenant_id, topic_id, reply_id, author_id) = insert_owned_aged_quote_sources(&db).await;
+    let security = SecurityContext::from_permissions(
+        UserRole::Customer,
+        Some(author_id),
+        [
+            Permission::FORUM_TOPICS_UPDATE,
+            Permission::FORUM_REPLIES_UPDATE,
+        ],
+    );
+    let settings = super::engagement_mode::ForumSettingsProviders::default().with_static_reader(
+        SharedStaticModuleSettingsReader(Arc::new(QuoteEditSettings {
+            tenant_id,
+            minutes: 60,
+            unavailable: false,
+        })),
+    );
+    let command = ForumQuoteCommandService::new(db.clone()).with_settings_providers(settings);
+    for is_reply in [false, true] {
+        let before = relation_revision_count(&db, tenant_id).await;
+        let input = SetForumQuotesInput {
+            locale: "en".into(),
+            quotes: Vec::new(),
+        };
+        let result = if is_reply {
+            command
+                .set_reply_quotes(tenant_id, reply_id, security.clone(), input)
+                .await
+        } else {
+            command
+                .set_topic_quotes(tenant_id, topic_id, security.clone(), input)
+                .await
+        };
+        assert!(
+            matches!(result, Err(ref error) if error.stable_code() == "FORUM_TRANSACTIONAL_SETTINGS_UNAVAILABLE"),
+            "{result:?}"
+        );
+        assert_eq!(
+            relation_revision_count(&db, tenant_id).await,
+            before,
+            "missing transactional settings must not admit a relation write"
+        );
+    }
 }

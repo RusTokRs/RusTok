@@ -47,6 +47,7 @@ pub struct TopicService {
     event_bus: TransactionalEventBus,
     inner: topic::TopicService,
     settings: ForumSettingsProviders,
+    taxonomy_port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
 }
 
 impl TopicService {
@@ -56,6 +57,7 @@ impl TopicService {
             db,
             event_bus,
             settings: ForumSettingsProviders::default(),
+            taxonomy_port: std::sync::Arc::new(crate::NoopForumTaxonomyPort),
         }
     }
 
@@ -69,7 +71,8 @@ impl TopicService {
         mut self,
         port: std::sync::Arc<dyn crate::ports::taxonomy::ForumTaxonomyPort>,
     ) -> Self {
-        self.inner = self.inner.with_taxonomy_port(port);
+        self.inner = self.inner.with_taxonomy_port(port.clone());
+        self.taxonomy_port = port;
         self
     }
 
@@ -161,19 +164,28 @@ impl TopicService {
         if topic_id.is_nil() {
             return Err(ForumError::Validation("topic_id must not be nil".into()));
         }
-        let existing = self.inner.find_topic(tenant_id, topic_id).await?;
-        if existing.status == TopicStatus::Archived {
-            return Err(ForumError::TopicArchived);
-        }
+        let txn = self.db.begin().await?;
+        lock_category_tree_in_tx(&txn, tenant_id).await?;
+        let existing =
+            topic::TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
         enforce_owned_scope(
             &security,
             Resource::ForumTopics,
             Action::Update,
             existing.author_id,
         )?;
-
-        let txn = self.db.begin().await?;
-        lock_category_tree_in_tx(&txn, tenant_id).await?;
+        if existing.status == TopicStatus::Archived {
+            return Err(ForumError::TopicArchived);
+        }
+        let settings = self.settings.module_settings_in_tx(&txn, tenant_id).await?;
+        super::edit_window::enforce_author_edit_window(
+            &security,
+            Resource::ForumTopics,
+            existing.author_id,
+            existing.created_at,
+            settings.max_edit_window_minutes,
+            Utc::now(),
+        )?;
         let result =
             ForumTopicRouteService::rename_topic_slug_in_tx(&txn, tenant_id, topic_id, &input)
                 .await?;
@@ -216,7 +228,7 @@ impl TopicService {
             existing.author_id,
         )?;
         let settings = self.settings.module_settings(tenant_id).await?;
-        let delete_reason = enforce_author_deletion_policy(
+        enforce_author_deletion_policy(
             &security,
             Resource::ForumTopics,
             settings.allow_user_content_deletion,
@@ -233,6 +245,18 @@ impl TopicService {
         )
         .await?;
         let topic = topic::TopicService::find_topic_in_tx(&txn, tenant_id, topic_id).await?;
+        enforce_owned_scope(
+            &security,
+            Resource::ForumTopics,
+            Action::Delete,
+            topic.author_id,
+        )?;
+        let settings = self.settings.module_settings_in_tx(&txn, tenant_id).await?;
+        let delete_reason = enforce_author_deletion_policy(
+            &security,
+            Resource::ForumTopics,
+            settings.allow_user_content_deletion,
+        )?;
 
         let public_reply_count = forum_reply::Entity::find()
             .filter(forum_reply::Column::TenantId.eq(tenant_id))
@@ -268,7 +292,10 @@ impl TopicService {
         )
         .await?;
         ForumTopicRouteTombstoneVisibilityService::record_locked_delete_snapshot_in_tx(
-            &txn, tenant_id, &topic,
+            self.taxonomy_port.as_ref(),
+            &txn,
+            tenant_id,
+            &topic,
         )
         .await?;
         ForumTopicRouteService::record_delete_tombstones_in_tx(
@@ -384,7 +411,13 @@ impl TopicService {
         {
             return Err(ForumError::TopicRestoreUnavailable(topic_id));
         }
-        ensure_category_restore_target_is_active_in_tx(&txn, tenant_id, topic.category_id).await?;
+        ensure_category_restore_target_is_active_in_tx(
+            self.taxonomy_port.as_ref(),
+            &txn,
+            tenant_id,
+            topic.category_id,
+        )
+        .await?;
         if topic::TopicService::is_topic_deleted(&txn, tenant_id, topic_id).await? != Some(true) {
             return Err(ForumError::TopicRestoreUnavailable(topic_id));
         }
@@ -424,12 +457,18 @@ impl TopicService {
         }
 
         unarchive_topic_for_restore_in_tx(&txn, tenant_id, topic_id, &snapshot).await?;
+        // The parent restoration write acquires its row before the solution
+        // scope, which must precede child writes and historical solution replay.
+        super::topic_solution_lock::lock_topic_solution_scopes_in_tx(&txn, tenant_id, &[topic_id])
+            .await?;
 
         for reply_snapshot in &reply_snapshots {
             restore_reply_from_delete_snapshot_in_tx(&txn, tenant_id, topic_id, reply_snapshot)
                 .await?;
 
-            if reply_snapshot.previous_status == ReplyStatus::Approved {
+            if snapshot.previous_status != TopicStatus::Archived
+                && reply_snapshot.previous_status == ReplyStatus::Approved
+            {
                 UserStatsService::adjust_reply_count_in_tx(
                     &txn,
                     tenant_id,
@@ -458,13 +497,15 @@ impl TopicService {
             )
             .await?;
 
-            UserStatsService::adjust_solution_count_in_tx(
-                &txn,
-                tenant_id,
-                snapshot.solution_author_id,
-                1,
-            )
-            .await?;
+            if snapshot.previous_status != TopicStatus::Archived {
+                UserStatsService::adjust_solution_count_in_tx(
+                    &txn,
+                    tenant_id,
+                    snapshot.solution_author_id,
+                    1,
+                )
+                .await?;
+            }
         }
 
         let public_reply_count = count_approved_replies_in_tx(&txn, tenant_id, topic_id).await?;

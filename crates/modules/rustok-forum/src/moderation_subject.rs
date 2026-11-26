@@ -18,11 +18,14 @@ use sea_orm::{
 use uuid::Uuid;
 
 use crate::error::{ForumError, ForumResult};
+use crate::services::category_audience::lock_category_tree_in_tx;
 use crate::services::projection_invalidation::{
     publish_forum_category_projection_direct_in_tx, publish_forum_topic_projection_direct_in_tx,
 };
-use crate::services::user_stats::UserStatsService;
-use crate::services::{CategoryService, DeleteSnapshotReason, ReplyService, TopicService};
+use crate::services::{
+    DeleteSnapshotReason, ReplyService, TopicService, apply_publication_change_in_tx,
+    lock_topic_solution_scopes_in_tx,
+};
 use crate::state_machine::ReplyStatus;
 
 pub const FORUM_MODERATION_MODULE: &str = "forum";
@@ -327,13 +330,7 @@ async fn apply_reply_non_public_status_effect_in_tx(
     ReplyService::set_status_in_tx(transaction, tenant_id, reply_id, target).await?;
 
     let changed_category_id = if reply.status == ReplyStatus::Approved {
-        let topic =
-            TopicService::adjust_reply_count_in_tx(transaction, tenant_id, topic_id, -1).await?;
-        CategoryService::adjust_counters_in_tx(transaction, tenant_id, topic.category_id, 0, -1)
-            .await?;
-        UserStatsService::adjust_reply_count_in_tx(transaction, tenant_id, reply.author_id, -1)
-            .await?;
-        Some(topic.category_id)
+        Some(apply_publication_change_in_tx(transaction, tenant_id, &reply, false).await?)
     } else {
         None
     };
@@ -361,6 +358,7 @@ async fn apply_reply_non_public_status_effect_in_tx(
         )
         .await?;
     }
+    publish_forum_topic_projection_direct_in_tx(transaction, tenant_id, actor_id, topic_id).await?;
 
     Ok(true)
 }
@@ -402,6 +400,15 @@ async fn apply_reply_removed_effect_in_tx(
         )
         .await?;
     }
+    if outcome.was_public || outcome.solution_removed {
+        publish_forum_topic_projection_direct_in_tx(
+            transaction,
+            tenant_id,
+            actor_id,
+            outcome.topic_id,
+        )
+        .await?;
+    }
 
     Ok(true)
 }
@@ -430,6 +437,27 @@ async fn lock_active_subject_and_revision(
     let backend = transaction.get_database_backend();
     let subject_table = subject_table(kind)?;
     let (revision_table, revision_id_column) = revision_table(kind)?;
+
+    lock_category_tree_in_tx(transaction, tenant_id)
+        .await
+        .map_err(forum_error)?;
+    if backend == DatabaseBackend::Sqlite {
+        // Category policy uses no SQLite advisory lock. Reserve the writer
+        // before reading a parent, without firing source UPDATE triggers.
+        let reserve_sql = format!(
+            "UPDATE {revision_table} SET revision = revision WHERE tenant_id = ? AND {revision_id_column} = ?"
+        );
+        transaction
+            .execute_raw(Statement::from_sql_and_values(
+                backend,
+                reserve_sql,
+                vec![tenant_id.into(), subject_id.into()],
+            ))
+            .await
+            .map_err(database_error)?;
+    }
+    let parent_topic_id =
+        lock_subject_parent_scopes_in_tx(transaction, tenant_id, kind, subject_id).await?;
 
     match backend {
         DatabaseBackend::Postgres => {
@@ -464,21 +492,8 @@ async fn lock_active_subject_and_revision(
             }
         }
         DatabaseBackend::Sqlite => {
-            // SQLite has no SELECT FOR UPDATE. Reserve the database writer through
-            // the dedicated revision row instead of touching the subject row and
-            // invoking unrelated Forum UPDATE triggers.
-            let reserve_sql = format!(
-                "UPDATE {revision_table} SET revision = revision WHERE tenant_id = ? AND {revision_id_column} = ?"
-            );
-            transaction
-                .execute_raw(Statement::from_sql_and_values(
-                    DatabaseBackend::Sqlite,
-                    reserve_sql,
-                    vec![tenant_id.into(), subject_id.into()],
-                ))
-                .await
-                .map_err(database_error)?;
-
+            // The writer was reserved before parent admission. Verify the
+            // revision/source without changing their canonical state.
             let revision_sql = format!(
                 "SELECT revision FROM {revision_table} WHERE tenant_id = ? AND {revision_id_column} = ?"
             );
@@ -516,8 +531,73 @@ async fn lock_active_subject_and_revision(
             ));
         }
     }
+    if kind == ModerationSubjectKind::ForumPost {
+        let reply = ReplyService::find_reply_in_tx(transaction, tenant_id, subject_id)
+            .await
+            .map_err(forum_error)?;
+        if reply.topic_id != parent_topic_id {
+            return Err(PortError::conflict(
+                "forum.moderation_subject_parent_changed",
+                "Forum reply moved while its moderation scope was being acquired",
+            ));
+        }
+    }
 
     Ok(())
+}
+
+// Never acquire a reply/revision before its parent topic/solution scope. Direct
+// deletion, content edits and reply-moving owners acquire these in this order.
+async fn lock_subject_parent_scopes_in_tx(
+    transaction: &DatabaseTransaction,
+    tenant_id: Uuid,
+    kind: ModerationSubjectKind,
+    subject_id: Uuid,
+) -> Result<Uuid, PortError> {
+    let backend = transaction.get_database_backend();
+    let topic_id = if kind == ModerationSubjectKind::ForumPost {
+        let row = transaction.query_one_raw(Statement::from_sql_and_values(
+            backend,
+            "SELECT topic_id FROM forum_replies WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL",
+            vec![tenant_id.into(), subject_id.into()],
+        )).await.map_err(database_error)?.ok_or_else(subject_unavailable)?;
+        row.try_get::<Uuid>("", "topic_id")
+            .map_err(database_error)?
+    } else {
+        subject_id
+    };
+    let topic_sql = match backend {
+        DatabaseBackend::Postgres => {
+            "SELECT id FROM forum_topics WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL FOR UPDATE"
+        }
+        DatabaseBackend::Sqlite => {
+            "SELECT id FROM forum_topics WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL"
+        }
+        _ => {
+            return Err(PortError::unavailable(
+                "forum.moderation_database_backend_unsupported",
+                "Forum moderation application database backend is unsupported",
+            ));
+        }
+    };
+    if transaction
+        .query_one_raw(Statement::from_sql_and_values(
+            backend,
+            topic_sql,
+            vec![tenant_id.into(), topic_id.into()],
+        ))
+        .await
+        .map_err(database_error)?
+        .is_none()
+    {
+        return Err(subject_unavailable());
+    }
+    if kind == ModerationSubjectKind::ForumPost {
+        lock_topic_solution_scopes_in_tx(transaction, tenant_id, &[topic_id])
+            .await
+            .map_err(forum_error)?;
+    }
+    Ok(topic_id)
 }
 
 pub(crate) async fn current_subject_revision(

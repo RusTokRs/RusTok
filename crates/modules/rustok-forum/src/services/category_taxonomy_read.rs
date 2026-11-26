@@ -14,6 +14,7 @@ use crate::dto::{CategoryListItem, CategoryResponse};
 use crate::entities::{forum_category, forum_category_lifecycle};
 use crate::error::{ForumError, ForumResult};
 use crate::ports::taxonomy::{ForumTaxonomyPort, NoopForumTaxonomyPort};
+use crate::services::category_owner::CategorySelectedReadAccess;
 use crate::services::rbac::enforce_scope;
 use crate::services::subscription::SubscriptionService;
 
@@ -56,15 +57,16 @@ impl CategoryTaxonomyReadService {
         self
     }
 
-    pub(in crate::services) async fn get_with_locale_fallback(
+    pub(in crate::services) async fn get_selected_with_access(
         &self,
         tenant_id: Uuid,
         security: SecurityContext,
         category_id: Uuid,
         locale: &str,
         fallback_locale: Option<&str>,
+        access: CategorySelectedReadAccess,
     ) -> ForumResult<CategoryResponse> {
-        enforce_scope(&security, Resource::ForumCategories, Action::Read)?;
+        enforce_scope(&security, Resource::ForumCategories, access.action())?;
 
         let category = forum_category::Entity::find_by_id(category_id)
             .filter(forum_category::Column::TenantId.eq(tenant_id))

@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { containsMarker } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -15,12 +16,12 @@ const paths = {
   graphqlMod: "crates/modules/rustok-forum/src/graphql/mod.rs",
   routeOwner: "crates/modules/rustok-forum/src/services/category_route.rs",
   audienceOwner: "crates/modules/rustok-forum/src/services/category_audience_read.rs",
-  audienceInline: "crates/modules/rustok-forum/src/services/category_audience_read_inline.rs",
+  audienceInline: "crates/modules/rustok-forum/src/services/category_audience_read.rs",
   model: "crates/modules/rustok-forum/storefront/src/model.rs",
   graphqlAdapter:
-    "crates/modules/rustok-forum/storefront/src/transport/category_route_graphql_adapter.rs",
+    "crates/modules/rustok-forum/storefront/src/transport/graphql_adapter.rs",
   nativeAdapter:
-    "crates/modules/rustok-forum/storefront/src/transport/native_server_adapter_category_route.rs",
+    "crates/modules/rustok-forum/storefront/src/transport/native_server_adapter.rs",
   nativeShared:
     "crates/modules/rustok-forum/storefront/src/transport/native_server_adapter.rs",
   transportMod: "crates/modules/rustok-forum/storefront/src/transport/mod.rs",
@@ -29,7 +30,7 @@ const paths = {
     "crates/modules/rustok-forum/contracts/forum-category-route-storefront-transport.json",
   contractTest:
     "crates/modules/rustok-forum/tests/category_route_storefront_transport_contract.rs",
-  docs: "crates/modules/rustok-forum/docs/forum-24n-category-route-storefront-transport.md",
+  docs: "crates/modules/rustok-forum/docs/README.md",
 };
 
 function read(relativePath) {
@@ -42,7 +43,7 @@ function read(relativePath) {
 }
 
 function requireText(content, marker, label) {
-  if (!content.includes(marker)) failures.push(`${label}: missing ${marker}`);
+  if (!containsMarker(content, marker)) failures.push(`${label}: missing ${marker}`);
 }
 
 function forbidText(content, marker, label) {
@@ -64,7 +65,7 @@ for (const marker of [
   "pub(crate) struct ForumCategoryRouteQuery",
   "async fn forum_storefront_category_route(",
   "require_module_enabled(ctx, MODULE_SLUG)",
-  "ForumCategoryRouteService::new(db.clone())",
+  "runtime.category_route_service(db.clone())",
   "Some(tenant.default_locale.as_str())",
   "if !forum_channel_enabled(ctx).await?",
   "runtime.category_audience_read_service(db.clone())",
@@ -93,7 +94,7 @@ for (const marker of [
   "pub struct ForumCategoryRouteService",
   "pub async fn resolve(",
   "pub alias_id: Option<Uuid>",
-  ".resolve_term_route_for_module(",
+  ".resolve_category_route(",
 ]) {
   requireText(source.routeOwner, marker, paths.routeOwner);
 }
@@ -154,8 +155,6 @@ requireText(
 );
 
 for (const marker of [
-  "include!(\"category_route_graphql_adapter.rs\")",
-  "include!(\"native_server_adapter_category_route.rs\")",
   "pub async fn resolve_storefront_category_route(",
   "resolve_storefront_category_route_server",
   "resolve_storefront_category_route_graphql",
@@ -183,12 +182,8 @@ for (const marker of [
 }
 
 for (const marker of [
-  "source-ready / maintainer execution pending",
-  "Alias ownership is not visibility authorization",
-  "get_authenticated_storefront_list_visible_with_audience_context",
-  "forum_categories:list",
-  "No host router or UI invokes it in this slice",
-  "No tests, verifiers, formatting, Cargo commands",
+  "FORUM-24N exposes visibility-safe category route decisions",
+  "FORUM-24O mounts the canonical localized category route",
 ]) {
   requireText(source.docs, marker, paths.docs);
 }

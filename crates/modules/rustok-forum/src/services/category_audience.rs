@@ -17,6 +17,7 @@ use crate::audience::ForumAudienceConstraints;
 use crate::dto::{MAX_FORUM_CATEGORY_TREE_DEPTH, MAX_FORUM_CATEGORY_TREE_NODES};
 use crate::entities::{forum_category, forum_category_audience_policy};
 use crate::error::{ForumError, ForumResult};
+use crate::ports::taxonomy::{ForumTaxonomyConnection, ForumTaxonomyPort, NoopForumTaxonomyPort};
 use crate::services::audience_policy::{AudienceLayer, AudiencePolicy, CategoryScope};
 use crate::services::rbac::enforce_scope;
 
@@ -47,11 +48,23 @@ pub struct SetForumCategoryAudiencePolicyInput {
 /// an ancestor. Evaluation and owner-read composition remain separate slices.
 pub struct ForumCategoryAudiencePolicyService {
     db: DatabaseConnection,
+    taxonomy_port: std::sync::Arc<dyn ForumTaxonomyPort>,
 }
 
 impl ForumCategoryAudiencePolicyService {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self {
+            db,
+            taxonomy_port: std::sync::Arc::new(NoopForumTaxonomyPort),
+        }
+    }
+
+    pub fn with_taxonomy_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
+    ) -> Self {
+        self.taxonomy_port = port;
+        self
     }
 
     /// Policy details may contain explicit user and group identifiers and are
@@ -65,7 +78,14 @@ impl ForumCategoryAudiencePolicyService {
         enforce_scope(&security, Resource::ForumCategories, Action::Manage)?;
         let txn = self.db.begin().await?;
         lock_category_tree_in_tx(&txn, tenant_id).await?;
-        let result = load_category_audience_policy(&txn, tenant_id, category_id).await?;
+        let result = load_category_audience_policy_with_port(
+            self.taxonomy_port.as_ref(),
+            &txn,
+            (&txn).into(),
+            tenant_id,
+            category_id,
+        )
+        .await?;
         txn.commit().await?;
         Ok(result)
     }
@@ -158,15 +178,18 @@ pub(super) async fn insert_users(
     .await
 }
 
-pub(crate) async fn load_category_audience_policy<C>(
+pub(crate) async fn load_category_audience_policy_with_port<C: ConnectionTrait>(
+    port: &dyn ForumTaxonomyPort,
     db: &C,
+    taxonomy_connection: ForumTaxonomyConnection<'_>,
     tenant_id: Uuid,
     category_id: Uuid,
-) -> ForumResult<ForumCategoryAudiencePolicy>
-where
-    C: ConnectionTrait,
-{
-    let generic = load_category_audience_policy_generic(db, tenant_id, category_id).await?;
+) -> ForumResult<ForumCategoryAudiencePolicy> {
+    let ancestor_ids =
+        load_category_ancestor_ids_with_port(port, db, taxonomy_connection, tenant_id, category_id)
+            .await?;
+    let generic =
+        category_audience_policy_from_ancestors(db, tenant_id, category_id, ancestor_ids).await?;
     Ok(ForumCategoryAudiencePolicy {
         category_id: generic.subject_id,
         configured_constraints: generic.configured_constraints,
@@ -181,16 +204,12 @@ where
     })
 }
 
-/// Ideal generic store: single `AudiencePolicy<Scope>` replaces 4× copy-paste `ForumCategory*AudiencePolicy`.
-pub(crate) async fn load_category_audience_policy_generic<C>(
+async fn category_audience_policy_from_ancestors<C: ConnectionTrait>(
     db: &C,
     tenant_id: Uuid,
     category_id: Uuid,
-) -> ForumResult<AudiencePolicy<CategoryScope>>
-where
-    C: ConnectionTrait,
-{
-    let ancestor_ids = load_category_ancestor_ids(db, tenant_id, category_id).await?;
+    ancestor_ids: Vec<Uuid>,
+) -> ForumResult<AudiencePolicy<CategoryScope>> {
     let layers = load_local_layers(db, tenant_id, &ancestor_ids).await?;
     let configured_constraints = layers.get(&category_id).cloned();
     let effective_layers = ancestor_ids
@@ -209,26 +228,10 @@ where
     ))
 }
 
-pub(crate) async fn load_category_ancestor_ids<C>(
-    db: &C,
-    tenant_id: Uuid,
-    category_id: Uuid,
-) -> ForumResult<Vec<Uuid>>
-where
-    C: ConnectionTrait,
-{
-    load_category_ancestor_ids_with_port(
-        &crate::ports::taxonomy::NoopForumTaxonomyPort,
-        db,
-        tenant_id,
-        category_id,
-    )
-    .await
-}
-
 pub(crate) async fn load_category_ancestor_ids_with_port<C>(
     port: &dyn crate::ports::taxonomy::ForumTaxonomyPort,
     db: &C,
+    taxonomy_connection: ForumTaxonomyConnection<'_>,
     tenant_id: Uuid,
     category_id: Uuid,
 ) -> ForumResult<Vec<Uuid>>
@@ -248,15 +251,13 @@ where
     }
 
     let category_ids = categories.iter().map(|c| c.id).collect::<Vec<_>>();
-    // Convert generic connection to ForumTaxonomyConnection via raw pointer/noop or pass to port
-    // In standalone mode or when port is passed:
     let parents = port
-        .load_category_parents(
-            crate::ports::taxonomy::ForumTaxonomyConnection::None,
-            tenant_id,
-            &category_ids,
-        )
+        .load_category_parents(taxonomy_connection, tenant_id, &category_ids)
         .await?;
+    crate::services::category_hierarchy::validate_category_parent_projection(
+        &category_ids,
+        &parents,
+    )?;
     if !parents.contains_key(&category_id) {
         return Err(ForumError::CategoryNotFound(category_id));
     }

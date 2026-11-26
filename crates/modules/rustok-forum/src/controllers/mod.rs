@@ -88,12 +88,15 @@ impl ForumHttpRuntime {
             }
             None => crate::ReplyService::new(self.db_clone(), self.event_bus()),
         };
-        service.with_settings_providers(self.settings_providers.clone())
+        service
+            .with_taxonomy_port(self.taxonomy_port.clone())
+            .with_settings_providers(self.settings_providers.clone())
     }
 
     fn vote_service(&self) -> crate::VoteService {
         let service = crate::VoteService::new(self.db_clone())
             .with_settings_providers(self.settings_providers.clone());
+        let service = service.with_taxonomy_port(self.taxonomy_port.clone());
         match self.audience_facts.clone() {
             Some(facts) => service.with_audience_facts(facts),
             None => service,
@@ -102,6 +105,7 @@ impl ForumHttpRuntime {
 
     fn subscription_service(&self) -> crate::SubscriptionService {
         let service = crate::SubscriptionService::new(self.db_clone());
+        let service = service.with_taxonomy_port(self.taxonomy_port.clone());
         match self.audience_facts.clone() {
             Some(facts) => service.with_audience_facts(facts),
             None => service,
@@ -114,17 +118,19 @@ impl ForumHttpRuntime {
             self.event_bus(),
             self.audience_facts.clone(),
         )
+        .with_taxonomy_port(self.taxonomy_port.clone())
     }
 
     fn moderation_service(&self) -> crate::ModerationService {
-        match self.audience_facts.clone() {
+        let service = match self.audience_facts.clone() {
             Some(facts) => crate::ModerationService::with_audience_facts(
                 self.db_clone(),
                 self.event_bus(),
                 facts,
             ),
             None => crate::ModerationService::new(self.db_clone(), self.event_bus()),
-        }
+        };
+        service.with_taxonomy_port(self.taxonomy_port.clone())
     }
 }
 
@@ -138,15 +144,10 @@ impl ForumHttpRuntime {
                         .to_string(),
                 )
             })?;
-        let settings_providers = match (
+        let settings_providers = ForumSettingsProviders::from_optional_readers(
             runtime.shared_get::<SharedStaticModuleSettingsReader>(),
             runtime.shared_get::<SharedStaticModuleSettingsTransactionReader>(),
-        ) {
-            (Some(reader), Some(transactional_reader)) => {
-                ForumSettingsProviders::default().with_static_readers(reader, transactional_reader)
-            }
-            _ => ForumSettingsProviders::default(),
-        };
+        );
 
         let taxonomy_port = runtime
             .shared_get::<Arc<dyn ForumTaxonomyPort>>()
@@ -469,6 +470,116 @@ mod tests {
     use sea_orm::{ConnectionTrait, Database};
     use std::sync::Arc;
     use uuid::Uuid;
+
+    #[tokio::test]
+    async fn static_only_host_settings_remain_readable_but_fail_transactional_admission() {
+        use async_trait::async_trait;
+        use rustok_api::{
+            HostRuntimeContext, PortError, SharedStaticModuleSettingsReader,
+            StaticModuleSettingsReader, StaticModuleSettingsSnapshot,
+        };
+        use sea_orm::TransactionTrait;
+
+        struct ReadOnlySettings;
+        #[async_trait]
+        impl StaticModuleSettingsReader for ReadOnlySettings {
+            async fn settings(
+                &self,
+                _tenant: Uuid,
+                _slug: &str,
+            ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
+                Ok(Some(StaticModuleSettingsSnapshot {
+                    enabled: Some(true),
+                    settings: serde_json::json!({"max_edit_window_minutes": 10}),
+                }))
+            }
+        }
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let event_bus = rustok_outbox::TransactionalEventBus::new(Arc::new(
+            rustok_outbox::OutboxTransport::new(db.clone()),
+        ));
+        let host = HostRuntimeContext::new(db.clone())
+            .with_shared_value(event_bus)
+            .with_shared_value(SharedStaticModuleSettingsReader(Arc::new(ReadOnlySettings)));
+        let runtime = ForumHttpRuntime::from_host(&host).unwrap();
+        let tenant = Uuid::new_v4();
+        assert_eq!(
+            runtime
+                .settings_providers
+                .module_settings(tenant)
+                .await
+                .unwrap()
+                .max_edit_window_minutes,
+            10
+        );
+        let txn = db.begin().await.unwrap();
+        let error = runtime
+            .settings_providers
+            .module_settings_in_tx(&txn, tenant)
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error.stable_code(),
+            "FORUM_TRANSACTIONAL_SETTINGS_UNAVAILABLE"
+        );
+        let http = super::map_forum_error(error);
+        assert_eq!(http.status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(http.code, "FORUM_TRANSACTIONAL_SETTINGS_UNAVAILABLE");
+        txn.rollback().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn transaction_only_host_settings_cannot_be_erased_into_defaults() {
+        use async_trait::async_trait;
+        use rustok_api::{
+            HostRuntimeContext, PortError, SharedStaticModuleSettingsTransactionReader,
+            StaticModuleSettingsSnapshot, StaticModuleSettingsTransactionReader,
+        };
+        use sea_orm::{DatabaseTransaction, TransactionTrait};
+
+        struct TransactionOnlySettings;
+        #[async_trait]
+        impl StaticModuleSettingsTransactionReader for TransactionOnlySettings {
+            async fn settings_in_tx(
+                &self,
+                _txn: &DatabaseTransaction,
+                _tenant: Uuid,
+                _slug: &str,
+            ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
+                panic!("an incomplete host must be rejected before reading settings");
+            }
+        }
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let event_bus = rustok_outbox::TransactionalEventBus::new(Arc::new(
+            rustok_outbox::OutboxTransport::new(db.clone()),
+        ));
+        let host = HostRuntimeContext::new(db.clone())
+            .with_shared_value(event_bus)
+            .with_shared_value(SharedStaticModuleSettingsTransactionReader(Arc::new(
+                TransactionOnlySettings,
+            )));
+        let runtime = ForumHttpRuntime::from_host(&host).unwrap();
+        let tenant = Uuid::new_v4();
+        assert_eq!(
+            runtime
+                .settings_providers
+                .module_settings(tenant)
+                .await
+                .unwrap_err()
+                .stable_code(),
+            "FORUM_STATIC_SETTINGS_UNAVAILABLE"
+        );
+        let txn = db.begin().await.unwrap();
+        let error = runtime
+            .settings_providers
+            .module_settings_in_tx(&txn, tenant)
+            .await
+            .unwrap_err();
+        let http = super::map_forum_error(error);
+        assert_eq!(http.status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(http.code, "FORUM_STATIC_SETTINGS_UNAVAILABLE");
+        txn.rollback().await.unwrap();
+    }
 
     async fn runtime_with_module_table() -> ForumHttpRuntime {
         let db = Database::connect("sqlite::memory:")

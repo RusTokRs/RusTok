@@ -192,6 +192,28 @@ requireText(
   "set_replies_error.set(Some(error.to_string()))",
   "reply page failures are surfaced"
 );
+// The initial result must retain the key used by its fetch, not adopt whatever
+// key happens to be current when Suspense eventually mounts its subtree.
+requireText(ui, "let (category_id, topic_id, locale, _, selection) = requested_key.clone();", "initial fetch captures request identity");
+requireText(ui, ".map(|data| (requested_key, data))", "initial fetch returns request identity");
+requireText(ui, "Ok((page_key, data))", "initial response consumes request identity");
+requireText(ui, "if forum_page_is_current(resource_key, &page_key)", "read-state availability ignores stale initial results");
+requireText(ui, "page_key: ForumResourceKey", "showcase receives the fetched identity");
+requireText(ui, "let topic_page_key = page_key;", "paging uses the fetched identity");
+forbidText(ui, "let topic_page_key = resource_key.get_untracked();", "a retained result cannot adopt a new request identity");
+// A retained Suspense subtree is not necessarily disposed when its resource key
+// changes. Both loaders must fence dispatch and completion against the entire key.
+for (const [loader, end] of [
+  ["topics", "    let load_more_replies ="],
+  ["replies", "    view! {"],
+]) {
+  const start = ui.indexOf(`    let load_more_${loader} =`);
+  const finish = ui.indexOf(end, start);
+  const body = ui.slice(start, finish);
+  requireText(body, "forum_page_is_current(resource_key, &requested_key)", `${loader} response scope fence`);
+  requireText(body, `${loader}_page.try_get_untracked().is_none()`, `${loader} disposal fence`);
+  requireText(body, `forum_page_is_current(resource_key, &${loader === "topics" ? "topic" : "reply"}_page_key)`, `${loader} dispatch scope fence`);
+}
 requireText(ui, "on_load_more=load_more_topics", "feed receives the loader");
 requireText(ui, "on_load_more=load_more_replies", "thread receives the loader");
 requireText(ui, "paging_busy=topics_busy", "feed busy state");
@@ -262,7 +284,15 @@ forbidText(core, "total_template", "category rail labels must not carry an unrea
 requireText(core, "slug_label: &str,", "topic card view model takes a resolved slug label");
 requireText(core, "slug_label: slug_label.to_string(),", "topic card view model keeps the resolved label");
 
+requireText(feed, "let applied_search = Memo::new(move |_| selection.get().search.unwrap_or_default());", "search draft observes only changes to the applied query");
+requireText(feed, "set_search_draft.set(applied_search.get());", "mode-only changes preserve the unsubmitted search draft");
+forbidText(feed, "set_search_draft.set(selection.get().search.unwrap_or_default());", "mode-only changes cannot reset search draft");
+requireText(feed, '"forum.topic.solved"', "solved badge resolves through the catalog");
+requireText(feed, "<span>{solved_label.clone()}</span>", "solved badge renders localized copy");
+forbidText(feed, '<span>"Solved"</span>', "solved badge cannot hardcode English");
+
 const pagingKeys = [
+  "forum-topic-solved",
   "forum-feed-loadMore",
   "forum-feed-loading",
   "forum-feed-loaded",
@@ -292,7 +322,7 @@ const ownerFilter = read("crates/modules/rustok-forum/src/dto/topic.rs");
 for (const marker of ["pub search: Option<String>", "pub order: ForumTopicListOrder", "pub solved_only: bool", "selection_scope"]) {
   requireText(ownerFilter, marker, "canonical topic selection");
 }
-const listOwner = read("crates/modules/rustok-forum/src/services/topic_visibility_list.rs");
+const listOwner = read("crates/modules/rustok-forum/src/services/topic.rs");
 for (const marker of ["filter.normalize_selection()?", "filter.matches_selection(&topic)", "ReplyCount", "after.selection_scope != Some(scope)"]) {
   requireText(listOwner, marker, "paged selection owner");
 }
@@ -300,17 +330,20 @@ for (const file of ["query_runtime.rs", "storefront_audience_topics.rs", "storef
   const adapter = read(`crates/modules/rustok-forum/src/graphql/${file}`);
   requireText(adapter, "search: Option<String>", `${file} search input`);
   requireText(adapter, "order: Option<crate::ForumTopicListOrder>", `${file} typed order`);
-  requireText(adapter, "order: order.unwrap_or_default()", `${file} owner delegation`);
+  requireText(adapter, "default_topic_order(tenant_id)", `${file} tenant ranking default`);
   requireText(adapter, "solved_only,", `${file} solved input delegation`);
 }
 const restTopics = read("crates/modules/rustok-forum/src/controllers/topics.rs");
-for (const field of ["search", "order", "solved_only"]) {
+for (const field of ["search", "solved_only"]) {
   requireText(restTopics, `${field}: query.${field}`, "REST owner selection");
 }
+requireText(restTopics, "let order = match query.order", "REST resolves explicit/default ranking");
+requireText(restTopics, "default_topic_order(tenant.id)", "REST tenant ranking default");
+requireText(restTopics, "        order,", "REST owner ranking delegation");
 requireText(model, "pub topic_selection: ForumTopicSelection", "retained initial selection");
-requireText(ui, "let selection = topic_selection.clone()", "same selection on continuation");
+requireText(ui, "let requested_selection = topic_selection.clone()", "same selection on continuation");
 requireText(read(`${storefront}/src/transport/native_server_adapter.rs`), "selected_topic_filter(topic_filter, selection.clone())", "initial native selection");
-requireText(pages, "selected_topic_filter(filter, selection)", "continuation native selection");
+requireText(pages, "selected_topic_filter(filter, selection.clone())", "continuation native selection");
 for (const field of ["search", "order", "solvedOnly"]) {
   requireText(graphql, `${field}: $${field}`, "GraphQL topic selection");
 }
@@ -318,6 +351,14 @@ const nextFeed = read("apps/next-frontend/packages/rustok-forum/src/components/t
 for (const marker of ["topics.filter(", ".sort(", "filteredTopics", "filtersLoadedOnly"]) {
   forbidText(nextFeed, marker, "Next must preserve the owner selection and order");
 }
+
+for (const marker of ["list.retain(", "list.sort_by", "filtered_items", "TopicFilterMode"]) {
+  forbidText(feed, marker, "Leptos must preserve owner selection and order");
+}
+requireText(ui, "selection.get()", "resource tracks owner selection");
+requireText(ui, "category_override.get()", "resource tracks category override");
+requireText(graphql, "unreadOnly: $unreadOnly", "unread mode is an owner predicate");
+requireText(pages, "selection.unread_only", "native continuation unread predicate");
 
 if (failures.length > 0) {
   console.error("forum storefront cursor paging verification failed:");

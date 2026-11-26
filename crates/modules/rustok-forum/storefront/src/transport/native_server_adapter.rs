@@ -45,6 +45,15 @@ pub(super) fn forum_settings_providers(
 }
 
 #[cfg(feature = "ssr")]
+pub(super) fn forum_taxonomy_port(
+    runtime: &rustok_api::HostRuntimeContext,
+) -> std::sync::Arc<dyn rustok_forum::ForumTaxonomyPort> {
+    runtime
+        .shared_get::<std::sync::Arc<dyn rustok_forum::ForumTaxonomyPort>>()
+        .unwrap_or_else(|| std::sync::Arc::new(rustok_forum::NoopForumTaxonomyPort))
+}
+
+#[cfg(feature = "ssr")]
 pub(super) fn selected_topic_filter(
     mut filter: rustok_forum::ListTopicsFilter,
     selection: crate::model::ForumTopicSelection,
@@ -138,19 +147,12 @@ async fn storefront_forum_native(
         let audience_facts = runtime_ctx.shared_get::<SharedForumAudienceFactsPort>();
         // Page sizes are the tenant's own settings, resolved through the owner accessor the
         // REST and GraphQL transports use: the widget must not freeze a constant that skips a
-        // configured `topics_per_page` / `replies_per_page`. Absent readers yield the owner
-        // defaults, not a bypass.
-        let settings_providers = match (
+        // configured `topics_per_page` / `replies_per_page`. Only an empty reader pair
+        // yields owner defaults; incomplete capabilities remain visible to the owner.
+        let settings_providers = ForumSettingsProviders::from_optional_readers(
             runtime_ctx.shared_get::<SharedStaticModuleSettingsReader>(),
             runtime_ctx.shared_get::<SharedStaticModuleSettingsTransactionReader>(),
-        ) {
-            (Some(static_reader), Some(transactional_reader)) => ForumSettingsProviders::default()
-                .with_static_readers(static_reader, transactional_reader),
-            (Some(static_reader), None) => {
-                ForumSettingsProviders::default().with_static_reader(static_reader)
-            }
-            (None, _) => ForumSettingsProviders::default(),
-        };
+        );
         let topics_per_page = settings_providers
             .default_topics_per_page(tenant.id)
             .await
@@ -163,6 +165,7 @@ async fn storefront_forum_native(
             Some(facts) => ForumCategoryAudienceReadService::with_audience_facts(db.clone(), facts),
             None => ForumCategoryAudienceReadService::new(db.clone()),
         }
+        .with_taxonomy_port(forum_taxonomy_port(&runtime_ctx))
         .with_settings_providers(settings_providers.clone());
         let topic_audience_service = match audience_facts.clone() {
             Some(facts) => ForumTopicAudienceReadService::with_audience_facts(
@@ -172,6 +175,7 @@ async fn storefront_forum_native(
             ),
             None => ForumTopicAudienceReadService::new(db.clone(), event_bus.clone()),
         }
+        .with_taxonomy_port(forum_taxonomy_port(&runtime_ctx))
         .with_settings_providers(settings_providers.clone());
         let topic_audience_list_service = match audience_facts.clone() {
             Some(facts) => ForumTopicAudienceListService::with_audience_facts(
@@ -181,6 +185,7 @@ async fn storefront_forum_native(
             ),
             None => ForumTopicAudienceListService::new(db.clone(), event_bus.clone()),
         }
+        .with_taxonomy_port(forum_taxonomy_port(&runtime_ctx))
         .with_settings_providers(settings_providers.clone());
         let reply_audience_service = match audience_facts.clone() {
             Some(facts) => ForumReplyAudienceReadService::with_audience_facts(
@@ -190,6 +195,7 @@ async fn storefront_forum_native(
             ),
             None => ForumReplyAudienceReadService::new(db.clone(), event_bus.clone()),
         }
+        .with_taxonomy_port(forum_taxonomy_port(&runtime_ctx))
         .with_settings_providers(settings_providers.clone());
         let read_state_service = match audience_facts {
             Some(facts) => ForumStorefrontReadStateService::with_audience_facts(
@@ -199,6 +205,7 @@ async fn storefront_forum_native(
             ),
             None => ForumStorefrontReadStateService::new(db.clone(), event_bus.clone()),
         }
+        .with_taxonomy_port(forum_taxonomy_port(&runtime_ctx))
         .with_settings_providers(settings_providers.clone());
         let channel_slug = request.channel_slug.as_deref();
 
@@ -314,7 +321,7 @@ async fn storefront_forum_native(
                         audience_context,
                         topic_filter,
                         Some(tenant.default_locale.as_str()),
-                        false, // Preserve the full personalized feed and its read-state badges.
+                        selection.unread_only,
                     )
                     .await
                     .map_err(server_error)?;
@@ -329,6 +336,11 @@ async fn storefront_forum_native(
                     true,
                 )
             } else {
+                if selection.unread_only {
+                    return Err(ServerFnError::new(
+                        "Forum read state is unavailable for this principal",
+                    ));
+                }
                 let page = topic_audience_list_service
                     .list_public_storefront_visible_with_locale_fallback(
                         tenant.id,
@@ -543,7 +555,8 @@ async fn storefront_topic_mark_read_native(
                 ForumStorefrontReadStateService::with_audience_facts(db, event_bus, facts)
             }
             None => ForumStorefrontReadStateService::new(db, event_bus),
-        };
+        }
+        .with_taxonomy_port(forum_taxonomy_port(&runtime_ctx));
         match service
             .mark_topic_read_current_audience_visible(
                 tenant.id,
@@ -971,7 +984,8 @@ async fn storefront_category_mark_read_native(
                 ForumStorefrontReadStateService::with_audience_facts(db, event_bus, facts)
             }
             None => ForumStorefrontReadStateService::new(db, event_bus),
-        };
+        }
+        .with_taxonomy_port(forum_taxonomy_port(&runtime_ctx));
         let result = match service
             .mark_category_read_audience_visible(
                 tenant.id,
@@ -1068,7 +1082,8 @@ async fn storefront_all_topics_mark_read_native(
                 ForumStorefrontReadStateService::with_audience_facts(db, event_bus, facts)
             }
             None => ForumStorefrontReadStateService::new(db, event_bus),
-        };
+        }
+        .with_taxonomy_port(forum_taxonomy_port(&runtime_ctx));
         let result = service
             .mark_all_read_audience_visible(
                 tenant.id,
@@ -1164,6 +1179,7 @@ async fn storefront_category_route_native(
         }
 
         let resolution = match ForumCategoryRouteService::new(db.clone())
+            .with_port(forum_taxonomy_port(&runtime_ctx))
             .resolve(
                 tenant.id,
                 &locale,
@@ -1183,6 +1199,7 @@ async fn storefront_category_route_native(
             Some(facts) => ForumCategoryAudienceReadService::with_audience_facts(db, facts),
             None => ForumCategoryAudienceReadService::new(db),
         }
+        .with_taxonomy_port(forum_taxonomy_port(&runtime_ctx))
         .with_settings_providers(settings_providers);
         let visible = if let Some(auth) = auth.as_ref() {
             let security =
@@ -1359,6 +1376,7 @@ async fn storefront_topic_route_native(
             Some(facts) => ForumTopicAudienceReadService::with_audience_facts(db, event_bus, facts),
             None => ForumTopicAudienceReadService::new(db, event_bus),
         }
+        .with_taxonomy_port(forum_taxonomy_port(&runtime_ctx))
         .with_settings_providers(settings_providers);
         let visible = if let Some(auth) = auth.as_ref() {
             let security =
@@ -1534,6 +1552,7 @@ async fn storefront_topic_current_revision_native(
             }
             None => ForumTopicAudienceReadService::new(db.clone(), event_bus),
         }
+        .with_taxonomy_port(forum_taxonomy_port(&runtime_ctx))
         .with_settings_providers(super::native_server_adapter::forum_settings_providers(
             &runtime_ctx,
         ));
@@ -1618,6 +1637,7 @@ async fn storefront_reply_current_revision_native(
             }
             None => ForumReplyAudienceReadService::new(db.clone(), event_bus),
         }
+        .with_taxonomy_port(forum_taxonomy_port(&runtime_ctx))
         .with_settings_providers(super::native_server_adapter::forum_settings_providers(
             &runtime_ctx,
         ));

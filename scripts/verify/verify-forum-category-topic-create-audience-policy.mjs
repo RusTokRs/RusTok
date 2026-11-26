@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { containsMarker } from "./lib/forum-source-verification.mjs";
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -21,7 +22,7 @@ function read(relativePath) {
 }
 
 function requireText(source, marker, message) {
-  if (!source.includes(marker)) failures.push(message);
+  if (!containsMarker(source, marker)) failures.push(message);
 }
 
 function rejectText(source, marker, message) {
@@ -111,7 +112,7 @@ for (const marker of [
   "enforce_scope(&security, Resource::ForumCategories, Action::Manage)",
   "let constraints = input.constraints.normalize()?",
   "lock_category_tree_in_tx(&txn, tenant_id)",
-  "load_category_ancestor_ids(&txn, tenant_id, category_id)",
+  "load_category_ancestor_ids_with_port( self.taxonomy_port.as_ref(), &txn, (&txn).into(), tenant_id, category_id, )",
   "forum_category_topic_create_audience_policy::Entity::delete_many()",
   "if !constraints_are_empty(&constraints)",
   "load_category_topic_create_audience_policy",

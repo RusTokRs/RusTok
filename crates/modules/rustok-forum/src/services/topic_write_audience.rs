@@ -22,6 +22,7 @@ use super::topic_audience_visibility::{
 pub(crate) async fn topic_write_audience_allows(
     db: &DatabaseConnection,
     facts_port: Option<SharedForumAudienceFactsPort>,
+    taxonomy_port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
     tenant_id: Uuid,
     topic_id: Uuid,
     security: &SecurityContext,
@@ -29,6 +30,7 @@ pub(crate) async fn topic_write_audience_allows(
 ) -> ForumResult<bool> {
     let viewer = ForumTopicAudienceViewer::authenticated(security.clone(), context)?;
     ForumTopicAudienceVisibilityService::new(db.clone(), facts_port)
+        .with_taxonomy_port(taxonomy_port)
         .is_topic_owner_visible(tenant_id, topic_id, &viewer)
         .await
 }
@@ -40,6 +42,7 @@ pub(crate) async fn topic_write_audience_allows_in_tx(
     db: &DatabaseConnection,
     txn: &sea_orm::DatabaseTransaction,
     facts_port: Option<SharedForumAudienceFactsPort>,
+    taxonomy_port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
     tenant_id: Uuid,
     topic_id: Uuid,
     security: &SecurityContext,
@@ -47,6 +50,7 @@ pub(crate) async fn topic_write_audience_allows_in_tx(
 ) -> ForumResult<bool> {
     let viewer = ForumTopicAudienceViewer::authenticated(security.clone(), context)?;
     ForumTopicAudienceVisibilityService::new(db.clone(), facts_port)
+        .with_taxonomy_port(taxonomy_port)
         .is_topic_owner_visible_in_tx(txn, tenant_id, topic_id, &viewer)
         .await
 }

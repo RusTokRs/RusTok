@@ -58,6 +58,14 @@ impl ModerationService {
         }
     }
 
+    pub fn with_taxonomy_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
+    ) -> Self {
+        self.audience = self.audience.with_taxonomy_port(port);
+        self
+    }
+
     #[instrument(skip(self, security))]
     pub async fn pin_topic(
         &self,
@@ -887,41 +895,16 @@ impl ModerationService {
             .await?;
         }
 
-        if stopped_being_public {
-            let solution_removed = forum_solution::Entity::delete_many()
-                .filter(forum_solution::Column::TenantId.eq(tenant_id))
-                .filter(forum_solution::Column::TopicId.eq(topic_id))
-                .filter(forum_solution::Column::ReplyId.eq(reply_id))
-                .exec(&txn)
-                .await?;
-
-            if solution_removed.rows_affected > 0 {
-                UserStatsService::adjust_solution_count_in_tx(&txn, tenant_id, reply.author_id, -1)
-                    .await?;
-            }
-        }
-
         let changed_category_id = if became_public || stopped_being_public {
-            let public_delta = if became_public { 1 } else { -1 };
-            let topic =
-                TopicService::adjust_reply_count_in_tx(&txn, tenant_id, topic_id, public_delta)
-                    .await?;
-            CategoryService::adjust_counters_in_tx(
-                &txn,
-                tenant_id,
-                topic.category_id,
-                0,
-                public_delta,
+            Some(
+                super::reply_publication::apply_publication_change_in_tx(
+                    &txn,
+                    tenant_id,
+                    &reply,
+                    became_public,
+                )
+                .await?,
             )
-            .await?;
-            UserStatsService::adjust_reply_count_in_tx(
-                &txn,
-                tenant_id,
-                reply.author_id,
-                public_delta,
-            )
-            .await?;
-            Some(topic.category_id)
         } else {
             None
         };

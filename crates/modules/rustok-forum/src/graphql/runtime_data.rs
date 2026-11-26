@@ -64,16 +64,10 @@ impl From<ForumGraphqlRuntimeError> for String {
 pub fn attach_schema_data(
     inputs: &GraphqlRuntimeInputs,
 ) -> Result<ForumGraphqlRuntimeData, ForumGraphqlRuntimeError> {
-    let settings_providers = match (
+    let settings_providers = ForumSettingsProviders::from_optional_readers(
         inputs.shared_get::<SharedStaticModuleSettingsReader>(),
         inputs.shared_get::<SharedStaticModuleSettingsTransactionReader>(),
-    ) {
-        (Some(reader), Some(transactional_reader)) => {
-            ForumSettingsProviders::default().with_static_readers(reader, transactional_reader)
-        }
-        (Some(reader), None) => ForumSettingsProviders::default().with_static_reader(reader),
-        (None, _) => ForumSettingsProviders::default(),
-    };
+    );
 
     let attachment_hold_media = inputs.shared_get::<Arc<dyn MediaAssetReadPort>>();
     let notification_reconciliation = inputs
@@ -99,6 +93,12 @@ impl ForumGraphqlRuntimeData {
         self.settings_providers
             .anonymous_reading_allowed(tenant_id)
             .await
+    }
+
+    pub(crate) fn taxonomy_port(&self) -> Arc<dyn ForumTaxonomyPort> {
+        self.taxonomy_port
+            .clone()
+            .unwrap_or_else(|| Arc::new(crate::NoopForumTaxonomyPort))
     }
 
     pub(crate) fn attachment_hold_reconciliation_media(
@@ -130,6 +130,17 @@ impl ForumGraphqlRuntimeData {
         service
     }
 
+    pub(crate) fn category_route_service(
+        &self,
+        db: DatabaseConnection,
+    ) -> crate::ForumCategoryRouteService {
+        let service = crate::ForumCategoryRouteService::new(db);
+        match self.taxonomy_port.clone() {
+            Some(port) => service.with_port(port),
+            None => service,
+        }
+    }
+
     pub(crate) fn category_audience_read_service(
         &self,
         db: DatabaseConnection,
@@ -137,6 +148,10 @@ impl ForumGraphqlRuntimeData {
         let service = match self.audience_facts.clone() {
             Some(facts) => ForumCategoryAudienceReadService::with_audience_facts(db, facts),
             None => ForumCategoryAudienceReadService::new(db),
+        };
+        let service = match self.taxonomy_port.clone() {
+            Some(port) => service.with_taxonomy_port(port),
+            None => service,
         };
         service.with_settings_providers(self.settings_providers.clone())
     }
@@ -160,11 +175,15 @@ impl ForumGraphqlRuntimeData {
         &self,
         db: DatabaseConnection,
     ) -> ForumModerationReportService {
-        ForumModerationReportService::new(
+        let service = ForumModerationReportService::new(
             db,
             self.audience_facts.clone(),
             self.moderation_report.clone(),
-        )
+        );
+        match self.taxonomy_port.clone() {
+            Some(port) => service.with_taxonomy_port(port),
+            None => service,
+        }
     }
 
     pub(crate) fn quote_command_service(
@@ -177,6 +196,10 @@ impl ForumGraphqlRuntimeData {
 
     pub(crate) fn vote_service(&self, db: DatabaseConnection) -> VoteService {
         let service = VoteService::new(db).with_settings_providers(self.settings_providers.clone());
+        let service = match self.taxonomy_port.clone() {
+            Some(port) => service.with_taxonomy_port(port),
+            None => service,
+        };
         match self.audience_facts.clone() {
             Some(facts) => service.with_audience_facts(facts),
             None => service,
@@ -185,6 +208,10 @@ impl ForumGraphqlRuntimeData {
 
     pub(crate) fn subscription_service(&self, db: DatabaseConnection) -> SubscriptionService {
         let service = SubscriptionService::new(db);
+        let service = match self.taxonomy_port.clone() {
+            Some(port) => service.with_taxonomy_port(port),
+            None => service,
+        };
         match self.audience_facts.clone() {
             Some(facts) => service.with_audience_facts(facts),
             None => service,
@@ -200,6 +227,10 @@ impl ForumGraphqlRuntimeData {
             Some(facts) => ReplyService::with_audience_facts(db, event_bus, facts),
             None => ReplyService::new(db, event_bus),
         };
+        let service = match self.taxonomy_port.clone() {
+            Some(port) => service.with_taxonomy_port(port),
+            None => service,
+        };
         service.with_settings_providers(self.settings_providers.clone())
     }
 
@@ -212,6 +243,10 @@ impl ForumGraphqlRuntimeData {
             Some(facts) => ForumReplyAudienceReadService::with_audience_facts(db, event_bus, facts),
             None => ForumReplyAudienceReadService::new(db, event_bus),
         };
+        let service = match self.taxonomy_port.clone() {
+            Some(port) => service.with_taxonomy_port(port),
+            None => service,
+        };
         service.with_settings_providers(self.settings_providers.clone())
     }
 
@@ -220,10 +255,11 @@ impl ForumGraphqlRuntimeData {
         db: DatabaseConnection,
         event_bus: TransactionalEventBus,
     ) -> ModerationService {
-        match self.audience_facts.clone() {
+        let service = match self.audience_facts.clone() {
             Some(facts) => ModerationService::with_audience_facts(db, event_bus, facts),
             None => ModerationService::new(db, event_bus),
-        }
+        };
+        service.with_taxonomy_port(self.taxonomy_port())
     }
 
     pub(crate) fn topic_audience_read_service(
@@ -234,6 +270,10 @@ impl ForumGraphqlRuntimeData {
         let service = match self.audience_facts.clone() {
             Some(facts) => ForumTopicAudienceReadService::with_audience_facts(db, event_bus, facts),
             None => ForumTopicAudienceReadService::new(db, event_bus),
+        };
+        let service = match self.taxonomy_port.clone() {
+            Some(port) => service.with_taxonomy_port(port),
+            None => service,
         };
         service.with_settings_providers(self.settings_providers.clone())
     }
@@ -275,6 +315,10 @@ impl ForumGraphqlRuntimeData {
             Some(facts) => ForumTopicAudienceListService::with_audience_facts(db, event_bus, facts),
             None => ForumTopicAudienceListService::new(db, event_bus),
         };
+        let service = match self.taxonomy_port.clone() {
+            Some(port) => service.with_taxonomy_port(port),
+            None => service,
+        };
         service.with_settings_providers(self.settings_providers.clone())
     }
 
@@ -289,6 +333,10 @@ impl ForumGraphqlRuntimeData {
             }
             None => ForumStorefrontReadStateService::new(db, event_bus),
         };
+        let service = match self.taxonomy_port.clone() {
+            Some(port) => service.with_taxonomy_port(port),
+            None => service,
+        };
         service.with_settings_providers(self.settings_providers.clone())
     }
 
@@ -296,9 +344,13 @@ impl ForumGraphqlRuntimeData {
         &self,
         db: DatabaseConnection,
     ) -> ForumVisibilityScopedReadStateService {
-        match self.audience_facts.clone() {
+        let service = match self.audience_facts.clone() {
             Some(facts) => ForumVisibilityScopedReadStateService::with_audience_facts(db, facts),
             None => ForumVisibilityScopedReadStateService::new(db),
+        };
+        match self.taxonomy_port.clone() {
+            Some(port) => service.with_taxonomy_port(port),
+            None => service,
         }
     }
 }

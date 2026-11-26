@@ -3,7 +3,7 @@
 - Date: 2026-10-09
 - Decision status: Accepted
 - Implementation status: Implemented
-- Owners: `rustok-forum` (`services/edit_window.rs`, topic and reply update paths in `services/topic_inline.rs` and `services/reply_inline.rs`, storefront list in `services/topic_visibility_list.rs`, `rustok-module.toml`, `README.md`)
+- Owners: `rustok-forum` (`services/edit_window.rs`, topic and reply update paths in `services/topic.rs` and `services/reply.rs`, storefront list in `services/topic.rs`, `rustok-module.toml`, `README.md`)
 - Extends: `DECISIONS/2026-10-09-forum-remove-vote-undo-window-setting.md`, `DECISIONS/2026-10-09-forum-soft-default-settings.md`
 - Supersedes: None
 - Superseded by: None
@@ -81,7 +81,7 @@ No events and no projections.
 ## Sources of truth and ownership
 
 - `ForumModuleSettings` in `dto/settings.rs` and `rustok-module.toml` declare both fields.
-- `services/edit_window.rs` is the only place that applies the window. `services/topic_visibility_list.rs` is the only
+- `services/edit_window.rs` is the only place that applies the window. `services/topic.rs` is the only
   place that applies the locked-topic filter to storefront lists.
 
 ## Migration and cutover
@@ -114,3 +114,19 @@ No events and no projections.
 
 - Two settings take effect. Defaults do not change behaviour.
 - The README lists the remaining unread settings with the reason each one is not wired.
+
+## Edit command consistency — 2026-11-26
+
+The author edit surface includes a standalone slug rename and a standalone quote
+relation update, not only the combined content command. They use the same configured
+edit window and moderation-scope exemption. Write paths revalidate the window using
+the transactional settings reader after acquiring the write fence; a successful
+preflight check is not authority to write after a lock wait or policy change.
+
+Slug rename locks and rereads the topic before checking archive state and never
+bypasses the configured runtime owner. Standalone quote writes use the content
+writer's category -> topic -> source lock order and recheck deletion/ownership and
+parent state before persisting the prepared relation. Archived topics reject topic
+and reply relation edits; a locked topic rejects reply relation edits. Locking does
+not newly prohibit the topic author's own topic edits. Existing canonical source
+fingerprint/revision checks remain mandatory after lifecycle admission.

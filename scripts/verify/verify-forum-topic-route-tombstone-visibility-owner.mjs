@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { containsMarker } from "./lib/forum-source-verification.mjs";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,7 +16,6 @@ const paths = {
     "crates/modules/rustok-forum/src/migrations/m20260806_000025_add_forum_topic_route_tombstone_visibility.rs",
   migrationsMod: "crates/modules/rustok-forum/src/migrations/mod.rs",
   topicOwner: "crates/modules/rustok-forum/src/services/topic_owner.rs",
-  topicOwnerInline: "crates/modules/rustok-forum/src/services/topic_owner_inline.rs",
   servicesMod: "crates/modules/rustok-forum/src/services/mod.rs",
   snapshotOwner:
     "crates/modules/rustok-forum/src/services/topic_route_tombstone_visibility.rs",
@@ -23,12 +23,12 @@ const paths = {
   topicAudienceLock: "crates/modules/rustok-forum/src/services/topic_audience_lock.rs",
   graphql: "crates/modules/rustok-forum/src/graphql/topic_route_query.rs",
   native:
-    "crates/modules/rustok-forum/storefront/src/transport/native_server_adapter_topic_route.rs",
+    "crates/modules/rustok-forum/storefront/src/transport/native_server_adapter.rs",
   host: "apps/storefront/src/forum_topic_route.rs",
   contract:
     "crates/modules/rustok-forum/contracts/forum-topic-route-tombstone-visibility-owner.json",
   test: "crates/modules/rustok-forum/tests/topic_route_tombstone_visibility_contract.rs",
-  docs: "crates/modules/rustok-forum/docs/forum-24j-topic-route-tombstone-visibility.md",
+  docs: "crates/modules/rustok-forum/docs/README.md",
 };
 
 function read(relativePath) {
@@ -41,7 +41,7 @@ function read(relativePath) {
 }
 
 function requireText(content, marker, label) {
-  if (!content.includes(marker)) failures.push(`${label}: missing ${marker}`);
+  if (!containsMarker(content, marker)) failures.push(`${label}: missing ${marker}`);
 }
 
 function forbidText(content, marker, label) {
@@ -108,13 +108,13 @@ requireOrder(
 // `route_tombstone_visibility` inside the internal owner module, which is what this boundary
 // actually asserts. Pinning one spelling made the guard red on a tree that satisfies it.
 if (
-  !/include!\(\s*"topic_route_tombstone_visibility\.rs"\s*\)/.test(source.topicOwnerInline) &&
+  !/include!\(\s*"topic_route_tombstone_visibility\.rs"\s*\)/.test(source.topicOwner) &&
   !/#\[path\s*=\s*"topic_route_tombstone_visibility\.rs"\s*\]\s*\npub\s+mod\s+route_tombstone_visibility;/.test(
-    source.topicOwnerInline,
+    source.topicOwner,
   )
 ) {
   failures.push(
-    `${paths.topicOwnerInline}: topic route tombstone visibility must be composed into the owner module with include! or a #[path] module declaration`,
+    `${paths.topicOwner}: topic route tombstone visibility must be composed into the owner module with include! or a #[path] module declaration`,
   );
 }
 requireText(
@@ -126,8 +126,8 @@ requireText(
 for (const marker of [
   "lock_category_tree_in_tx(txn, tenant_id).await",
   "lock_topic_audience_scopes_in_tx(txn, tenant_id, &[topic_id]).await",
-  "is_category_public_to_anonymous(txn, tenant_id, topic.category_id)",
-  "load_policy_for_topic(txn, tenant_id, topic)",
+  "is_category_public_to_anonymous_with_port( port, txn, txn.into(), tenant_id, topic.category_id, )",
+  "load_policy_for_topic_with_port(port, txn, txn.into(), tenant_id, topic)",
   "ForumAudienceEvaluator::decide(",
   "SecurityContext::public_read()",
   "topic.status == TopicStatus::Open",
@@ -168,7 +168,10 @@ requireText(
   paths.categoryVisibility,
 );
 
-for (const content of [source.graphql, source.native]) {
+const nativeRouteStart = source.native.indexOf("async fn storefront_topic_route_native(");
+const nativeRouteEnd = source.native.indexOf("fn map_native_topic_route_resolution(", nativeRouteStart);
+if (nativeRouteStart < 0 || nativeRouteEnd < nativeRouteStart) failures.push("native route owner region missing");
+for (const content of [source.graphql, source.native.slice(nativeRouteStart, nativeRouteEnd)]) {
   requireText(
     content,
     "ForumTopicRouteTombstoneVisibilityService",
@@ -200,14 +203,8 @@ for (const marker of [
   requireText(source.test, marker, paths.test);
 }
 
-for (const marker of [
-  "source-ready / maintainer execution pending",
-  "FORUM-24K",
-  "route_channel_count",
-  "SHA-256",
-  "same order as the canonical topic audience owner",
-  "No tests, verifiers, formatting, Cargo commands, migrations, workflows",
-]) {
+// Canonical living documentation, not a removed historical status report.
+for (const marker of ["FORUM-24J", "FORUM-24K", "SHA-256", "route-channel snapshot", "selected provider", "writer transaction"]) {
   requireText(source.docs, marker, paths.docs);
 }
 

@@ -1,5 +1,5 @@
-use tracing::instrument;
 use std::collections::BTreeSet;
+use tracing::instrument;
 
 use rustok_api::{Action, Resource, RichTextDocument, normalize_locale_tag};
 use rustok_core::SecurityContext;
@@ -139,6 +139,8 @@ impl ForumQuoteCommandService {
             .await?;
         let txn = self.db.begin().await?;
         crate::services::category_audience::lock_category_tree_in_tx(&txn, tenant_id).await?;
+        self.enforce_source_edit_in_tx(&txn, tenant_id, source, &security)
+            .await?;
         let result = relations.persist_in_tx(&txn, prepared).await?;
         let response = load_snapshot_in_tx(
             &txn,
@@ -150,6 +152,75 @@ impl ForumQuoteCommandService {
         .await?;
         txn.commit().await?;
         Ok(response)
+    }
+
+    // A relation-only edit is still a content edit. Recheck lifecycle and
+    // ownership under the same category -> topic -> source lock order as the
+    // content writers, rather than trusting the pre-transaction preparation.
+    async fn enforce_source_edit_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        source: ForumQuoteSource,
+        security: &SecurityContext,
+    ) -> ForumResult<()> {
+        let initial_reply = match source {
+            ForumQuoteSource::Reply(id) => {
+                Some(super::reply_facade::ReplyService::find_reply_in_tx(txn, tenant_id, id).await?)
+            }
+            ForumQuoteSource::Topic(_) => None,
+        };
+        let topic_id = match source {
+            ForumQuoteSource::Topic(id) => id,
+            ForumQuoteSource::Reply(_) => {
+                initial_reply
+                    .as_ref()
+                    .ok_or_else(ForumError::relation_revision_unavailable)?
+                    .topic_id
+            }
+        };
+        let topic = super::topic_facade::TopicService::find_topic_for_update_in_tx(
+            txn, tenant_id, topic_id,
+        )
+        .await?;
+        if topic.status == crate::state_machine::TopicStatus::Archived {
+            return Err(ForumError::TopicArchived);
+        }
+        let (owner_id, created_at) = match source {
+            ForumQuoteSource::Topic(_) => (topic.author_id, topic.created_at),
+            ForumQuoteSource::Reply(id) => {
+                if topic.is_locked {
+                    return Err(ForumError::TopicLocked);
+                }
+                let reply = super::reply_facade::ReplyService::find_reply_for_update_in_tx(
+                    txn, tenant_id, id,
+                )
+                .await?;
+                if reply.topic_id != topic_id {
+                    return Err(ForumError::TopicUpdateConflict(topic_id));
+                }
+                ensure_not_deleted(
+                    txn,
+                    "forum_replies",
+                    "id",
+                    tenant_id,
+                    id,
+                    ForumError::ReplyDeleted,
+                )
+                .await?;
+                (reply.author_id, reply.created_at)
+            }
+        };
+        enforce_owned_scope(security, source.resource(), Action::Update, owner_id)?;
+        let settings = self.settings.module_settings_in_tx(txn, tenant_id).await?;
+        enforce_author_edit_window(
+            security,
+            source.resource(),
+            owner_id,
+            created_at,
+            settings.max_edit_window_minutes,
+            chrono::Utc::now(),
+        )
     }
 
     async fn load_source(
@@ -221,8 +292,8 @@ impl ForumQuoteCommandService {
     }
 }
 
-async fn ensure_not_deleted(
-    db: &DatabaseConnection,
+async fn ensure_not_deleted<C: ConnectionTrait>(
+    db: &C,
     table: &'static str,
     id_column: &'static str,
     tenant_id: Uuid,

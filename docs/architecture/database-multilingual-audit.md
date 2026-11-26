@@ -134,6 +134,10 @@ runtime cutover target:
   the current uniqueness key. The owner needs a locale-neutral workflow key before
   the atomic storage/runtime cutover.
 - `mcp-management-display-copy`: MCP client display name/description remain inline.
+  The schema evidence is the MCP-owned migration
+  `crates/modules/rustok-mcp/src/migrations/m20260319_000001_create_mcp_management_tables.rs`,
+  registered by that owner's migration source, not a foundation migration.
+  Moving the schema owner does not close this localization gap.
   `token_name` must be explicitly classified as a language-neutral operator label
   or moved to locale-attributed presentation storage; it must not remain
   semantically ambiguous.

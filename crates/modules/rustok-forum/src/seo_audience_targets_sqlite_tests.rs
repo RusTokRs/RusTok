@@ -206,6 +206,7 @@ async fn open_forum_seo_loads_topics_and_pages_only_public_owner_candidates() {
         .await
         .expect("topic audience fixture");
     let mut runtime = SeoTargetRuntimeContext {
+        runtime_extensions: Default::default(),
         db,
         event_bus,
         static_settings_reader: Some(reader),

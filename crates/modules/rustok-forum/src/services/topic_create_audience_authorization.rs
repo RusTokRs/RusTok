@@ -29,6 +29,7 @@ pub struct ForumTopicCreateAudienceAuthorization {
 pub struct ForumTopicCreateAudienceAuthorizationService {
     db: sea_orm::DatabaseConnection,
     facts_resolver: ForumAudienceFactsResolver,
+    taxonomy_port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
 }
 
 impl ForumTopicCreateAudienceAuthorizationService {
@@ -39,7 +40,16 @@ impl ForumTopicCreateAudienceAuthorizationService {
         Self {
             db,
             facts_resolver: ForumAudienceFactsResolver::new(facts_port),
+            taxonomy_port: std::sync::Arc::new(crate::NoopForumTaxonomyPort),
         }
+    }
+
+    pub fn with_taxonomy_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
+    ) -> Self {
+        self.taxonomy_port = port;
+        self
     }
 
     pub fn without_facts_provider(db: sea_orm::DatabaseConnection) -> Self {
@@ -54,8 +64,13 @@ impl ForumTopicCreateAudienceAuthorizationService {
         context: Option<PortContext>,
     ) -> ForumResult<ForumTopicCreateAudienceAuthorization> {
         enforce_scope(security, Resource::ForumTopics, Action::Create)?;
-        let policy =
-            load_category_topic_create_audience_policy(&self.db, tenant_id, category_id).await?;
+        let policy = load_category_topic_create_audience_policy(
+            self.taxonomy_port.as_ref(),
+            &self.db,
+            tenant_id,
+            category_id,
+        )
+        .await?;
         self.evaluate_policy(tenant_id, category_id, security, context, policy)
             .await
     }
@@ -69,10 +84,17 @@ impl ForumTopicCreateAudienceAuthorizationService {
         context: Option<PortContext>,
     ) -> ForumResult<ForumTopicCreateAudienceAuthorization> {
         enforce_scope(security, Resource::ForumTopics, Action::Create)?;
-        let policy =
-            load_category_topic_create_audience_policy(txn, tenant_id, category_id).await?;
-        self.evaluate_policy(tenant_id, category_id, security, context, policy)
-            .await
+        let policy = load_category_topic_create_audience_policy(
+            self.taxonomy_port.as_ref(),
+            txn,
+            tenant_id,
+            category_id,
+        )
+        .await?;
+        let authorization = self
+            .evaluate_policy(tenant_id, category_id, security, context, policy)
+            .await?;
+        self.require_allowed(authorization)
     }
 
     async fn evaluate_policy(
@@ -123,6 +145,13 @@ impl ForumTopicCreateAudienceAuthorizationService {
         let authorization = self
             .evaluate(tenant_id, category_id, security, context)
             .await?;
+        self.require_allowed(authorization)
+    }
+
+    fn require_allowed(
+        &self,
+        authorization: ForumTopicCreateAudienceAuthorization,
+    ) -> ForumResult<ForumTopicCreateAudienceAuthorization> {
         if !authorization.allowed {
             return Err(ForumError::forbidden(
                 "Forum topic creation is unavailable for the current audience",

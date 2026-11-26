@@ -66,6 +66,32 @@ admission and absence watermarks still require the shared database profile.
 See the [configuration reference](../../docs/operations/configuration-reference.md#51-fba-provider-selectors)
 and [FBA contract](../../docs/backend/module-backend-architecture.md#fba-contracts).
 
+### Forum / Taxonomy in-process composition
+
+When the distribution registry selects both `forum` and `taxonomy`, host assembly
+registers `services/forum_taxonomy.rs` as `Arc<dyn ForumTaxonomyPort>` before
+Search/SEO/GraphQL/native capability snapshots. Compiling the Cargo features alone
+does not enable the adapter for a Forum-only registry. The adapter accesses only
+Taxonomy owner APIs and preserves each read's supplied connection or transaction;
+missing connections fail explicitly. Sync retains owner alias history and the
+canonical `forum-category-{uuid}` key. Hierarchy/tag writes use the same aggregate
+transaction. There is no new module dependency cycle or direct host Taxonomy SQL.
+
+Scoped acceptance commands (not executed here: Cargo is absent):
+
+```sh
+cargo test -p rustok-server --no-default-features --features mod-forum --lib services::forum_taxonomy::tests
+cargo test -p rustok-taxonomy --test owner_category_read strict_module_parent_projection
+cargo test -p rustok-forum --test taxonomy_read_wiring
+```
+
+The adapter tests use real Taxonomy migrations/APIs, not a fake provider. They cover
+transaction-local canonical/alias routes, hierarchy, tags and rollback, tenant/scope
+refusal, storage failure and joint-registry selection. Their source and Node guards
+are not runtime or mounted cross-client evidence; production readiness remains open.
+This adapter is in-process/shared-database only. See the canonical
+[Forum plan](../../crates/modules/rustok-forum/docs/implementation-plan.md).
+
 ### Mounted Product storefront evidence
 
 Build the host HTTP test executable with the Commerce profile selected.
@@ -177,6 +203,19 @@ the `Secure` flag is enabled only when trusted proxy context reports HTTPS.
 
 ## Known Limitations / Pending Implementation
 
+- Forum's selected hierarchy provider now reaches base/richer topic/reply reads,
+  dependent discovery/read-state consumers, vote/subscription transaction gates
+  and report preflights in source, plus create-policy admission/management and
+  split/fork/reply-range policy comparisons. Native storefront/admin creation
+  forwards the same capabilities. Richer/moderation category management and public
+  moderation admission now preserve the selected provider/transaction too,
+  including GraphQL/HTTP moderation factories. Move/merge comparisons and
+  route-tombstone snapshots still contain standalone loaders. Full inherited-policy acceptance remains a
+  security-related blocker tracked in the Forum implementation plan; source
+  wiring and authored-but-unexecuted Rust tests are not runtime certification.
+- The Forum/Taxonomy host adapter's Rust/real-owner regressions and mounted
+  GraphQL/REST/native/SEO/Search acceptance remain unexecuted in this environment;
+  source registration does not prove production runtime readiness.
 - Platform build history and the process-local build-event hub are exposed to
   tenant module-read permissions. The host-global versus tenant visibility
   contract is unresolved and must be decided before changing all transports and

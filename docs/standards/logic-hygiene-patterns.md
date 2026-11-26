@@ -115,6 +115,8 @@ without evidence of a failure is recorded separately below.
 | `P-DUPLICATE-LEDGER-INSERT` | Signed bootstrap duplicated the release ledger's idempotency insert and omitted the expression for `correlation_id`. PostgreSQL rejected every valid import before it wrote the release. Bootstrap, admission and revocation now use the same insert. | [Release ledger](../../crates/modules/rustok-modules/src/distribution_release.rs), [PostgreSQL test](../../crates/utils/rustok-installer-persistence/tests/postgres_base_distribution_import.rs) |
 | `P-DB-INTEGER-WIDTH` | The build lookup and worker claim decoded the attempt counter as `i64`. PostgreSQL returned `INT4` and rejected the decode. Both readers now use the same backend-aware counter decoder. | [Build and claim reads](../../crates/modules/rustok-modules/src/distribution.rs), [PostgreSQL test](../../crates/utils/rustok-installer-persistence/tests/postgres_base_distribution_import.rs) |
 | `P-DB-CHECK` | Forum reconciliation counted approved replies without excluding archived or deleted parent topics. Change `d55c32c990` aligns the predicates and adds corrective migration. | [Reconciler](../../crates/modules/rustok-forum/src/services/solution_reconciliation.rs), [migration](../../crates/modules/rustok-forum/src/migrations/m20261110_000045_reconcile_archived_counters.rs) |
+| `P-CANONICAL-STATE-BEFORE-AGGREGATES` | Forum edit re-pending adjusted counters before persisting Pending, so counter guards restored values from the still-public reply. Persist canonical state first, remove dependent solution relations, then update derived aggregates. When one guard recalculates several statistics, change those statistics in one guarded write: separate decrements can recalculate a sibling to zero before its decrement. Aggregate repair must also exclude immutable soft-deleted rows: no-op writes still fire lifecycle guards and can abort migration. Keep live archived projections repairable without weakening tombstone guards. Trusted moderation adapters must reuse those same effects, parent-first lock order and transactional topic invalidations, not just status writes. Repair invalid current solution targets before rebuilding statistics while preserving approved archived relations. Regression sources cover edit/moderation with and without an accepted solution on SQLite/PostgreSQL; topic repair SQL/guard tests executed on SQLite and PostgreSQL 17.6, Rust suites unrun in the remediation environment. | [Shared reply effects](../../crates/modules/rustok-forum/src/services/reply_publication.rs), [Regressions](../../crates/modules/rustok-forum/tests/logic_review_remediation_sqlite.rs) |
+| `P-RESTORE-PARENT-ADMISSION` | Forum restored ordinary replies beneath archived topics but failed with an incidental solution-target SQL error for accepted replies. Re-admit the locked parent before snapshot replay, keep database guards, preserve the snapshot on rejection, and require explicit reopen before retry. SQLite SQL reproductions pass; shared SQLite/PostgreSQL owner regressions are authored, unrun. | [Reply restore owner](../../crates/modules/rustok-forum/src/services/reply_owner.rs), [Decision](../../DECISIONS/2026-11-26-forum-reply-restore-parent-admission.md) |
 | `P-ANTI-SWALLOW` | Channel's SQLite migration discarded an `ALTER TABLE` error. Change `dfaab54060` handles the known duplicate-column case and propagates other errors. Its message-based compatibility branch remains a separate limitation. | [Channel migration](../../crates/modules/rustok-channel/src/migrations/m20260730_000010_add_channel_index_revision.rs) |
 | `P-ANTI-SWALLOW` | A migration composition error could become an empty plan, and failed serialization could become an empty receipt value or the same digest for unrelated inputs. Database entrypoints now check the composed inventory, and receipt and digest builders propagate serialization errors. | [Migration entrypoints](../../crates/utils/rustok-migrations/src/lib.rs), [Schema digests](../../crates/utils/rustok-migrations/src/schema_diff.rs), [Receipt persistence](../../crates/utils/rustok-installer-persistence/src/persistence.rs) |
 | `P-ZERO-INCLUDE` | Forum's `1c5a07dc8b` mechanically inlined source when removing `include!`. Follow-up `37bb36fd80` repaired the resulting module structure. | [Forum services](../../crates/modules/rustok-forum/src/services/mod.rs) |
@@ -896,6 +898,17 @@ flowchart TD
   had yet to commit deleting. The usage row serialized the upserts only after
   they had already computed stale counts. Blog enters its tenant tag lock
   before changing any relation or acquiring a post or term write lock.
+  Forum direct deletion likewise admitted `allow_user_content_deletion` only
+  through preflight, then could ignore a stricter transactional policy. Its public
+  topic/reply owners now re-admit locked source ownership and transactional policy
+  before snapshots and destructive writes. Internal moderation shares locking and
+  removal effects but keeps its own authorization; do not accidentally impose author
+  self-deletion policy on moderation. Ten policy cases per topic/reply kind are
+  authored for SQLite/PostgreSQL; Rust execution is pending. Eight supplemental
+  source-guard fixtures pass. A transactional read does not by itself prove
+  serialization against every later settings-writer commit.
+  Detection: `rg -n 'pub async fn delete|module_settings_in_tx|enforce_author_deletion_policy' crates/modules/rustok-forum/src/services/{topic_owner,reply_owner}.rs`
+  and `npm run verify:forum:delete-policy`.
 * **Pattern Solution:**
   Always acquire the mutex or advisory lock first, and verify preconditions *inside* the protected critical section:
   ```rust
@@ -2821,3 +2834,77 @@ envelope, releases all queue permits, and exits before the shutdown deadline.
 - **Canonical remediation:** bind both original request intent and the effective authority set displayed to the user in the authenticated confirmation. Recompute and verify before any approval side effects; keep the transactional owner-side authorization check. In this flow `issue_consent_csrf(..., &validated.requested_scopes, ...)` and `verify_consent_csrf(..., &validated.requested_scopes, ...)` share a canonical set encoding; changed authority requires fresh confirmation.
 - **Fast detection:** `rg -n 'issue_consent_csrf|verify_consent_csrf|validate_authorization_scopes' apps/server/src/controllers/oauth.rs`; trace mutable default resolution across GET-to-POST flows.
 - **Verification:** test omitted-scope expansion and contraction, unchanged explicit requests and equivalent scope ordering. Source tests authored, unrun.
+
+### P-RESTORE-PARENT-ADMISSION — Lifecycle inverses must re-admit the current parent
+
+- **Category / logic dimensions:** lifecycle integrity, branch completeness and transactional ordering.
+- **Observed failure:** Forum reply restoration replayed the source and optional solution
+  before admitting parent lifecycle. Ordinary replies could restore under an archived
+  topic, but an accepted reply's solution replay raised a storage error because the
+  database correctly required a non-archived target. Historical snapshot contents
+  accidentally selected the public failure behavior.
+- **Canonical remediation:** acquire the parent write fence, validate its current
+  lifecycle before replay, then lock dependent scopes and restore atomically. Keep
+  the database invariant; do not omit optional historical relations to make replay
+  succeed. Preserve the snapshot for a later explicit parent reopen and retry.
+
+```rust
+let topic = TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
+if topic.status == TopicStatus::Archived {
+    return Err(ForumError::TopicArchived);
+}
+// Lock solution/reply, then replay source, relations, aggregates and outbox.
+```
+
+- **Inverse-boundary completeness:** whole-thread restoration differs from a child
+  command beneath a still-archived parent. Forum topic restoration must also restore
+  a topic that was already archived before deletion, including its original solution.
+  A blanket active-solution guard stranded that valid snapshot. Migration 47 permits
+  only historical solution INSERTs tied to the exact tenant/topic and approved child
+  delete snapshots; target UPDATEs and ordinary archived INSERTs stay forbidden.
+  Consume the admission snapshots in the same transaction and keep archived public
+  contributions at zero. Do not temporarily publish the parent or drop its relation
+  to make an inverse pass. Seven extracted-SQL scenarios pass on SQLite/PostgreSQL
+  17.6, including 15 mismatch subcases and down/up behavior; owner tests remain unrun.
+- **Fast detection:** `rg -n 'pub async fn restore|restore_reply_from_delete_snapshot_in_tx|TopicArchived' crates/modules/rustok-forum/src/services/{reply_owner,topic_owner}.rs`.
+- **Verification:** test ordinary and accepted replies, exact persisted checkpoints
+  before/after refusal, explicit reopen then successful retry with original solution
+  metadata, and a second restore without new counts/events. Three minimal SQLite
+  SQL checks reproduce the guard discrepancy and the valid reopened target; Rust
+  service tests (SQLite/PostgreSQL) remain unexecuted without Cargo.
+
+### P-OWNER-READ-CONNECTION-ESCAPE — Keep provider reads on the aggregate connection
+
+- **Category / logic dimensions:** capability composition, transaction ordering,
+  branch completeness and tenant isolation.
+- **Observed failure:** the Forum consumer port accepts a borrowed transaction,
+  but Taxonomy's module route+alias API originally exposed only its service pool.
+  Calling that API from a host adapter would miss uncommitted route/alias changes
+  or contend with the caller's own SQLite write. The generic parent reader also
+  filled absent placements as roots, unsuitable for authorization inheritance.
+- **Canonical remediation:** expose a connection-aware owner API, delegate both
+  route registry and alias provenance reads on that connection, and fail explicit
+  missing connections. Keep strict module-membership/placement reads separate
+  from generic APIs whose documented semantics allow implicit root placements.
+  Register the adapter before host capability snapshots; merely installing it
+  later cannot repair already-materialized consumers.
+
+```rust
+match connection {
+    ForumTaxonomyConnection::Transaction(txn) =>
+        TaxonomyService::resolve_term_route_for_module_in(
+            txn, tenant_id, kind, module, locale, fallback, slug,
+        ).await,
+    // Connection delegates on the supplied connection; None is a typed failure.
+}
+```
+
+- **Fast detection:** `rg -n 'resolve_term_route_for_module|load_module_category_parents_in_strict|on_connection|forum_taxonomy::register' crates/modules/rustok-taxonomy/src apps/server/src/services`.
+  Trace both route matching and alias provenance; inspect factory materialization
+  order rather than relying only on the final extension registry contents.
+- **Verification:** authored real-owner server tests read uncommitted canonical/
+  alias routes, names and parent mappings, then roll back and check absence. Also
+  test missing connections, missing schema, wrong tenant/scope and joint-registry
+  selection. Rust tests remain unexecuted without Cargo; Node guards are source
+  evidence only. Topic-policy provider propagation remains an explicit subsequent
+  phase, not a guarantee supplied by this adapter.

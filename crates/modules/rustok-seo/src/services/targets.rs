@@ -175,6 +175,7 @@ impl SeoService {
 
     pub(super) fn target_runtime(&self) -> SeoTargetRuntimeContext {
         SeoTargetRuntimeContext {
+            runtime_extensions: self.runtime_extensions.clone(),
             db: self.db.clone(),
             event_bus: self.event_bus.clone(),
             static_settings_reader: self.static_settings_reader.clone(),
@@ -270,5 +271,54 @@ async fn map_open_graph(
             }
             images
         },
+    }
+}
+
+#[cfg(test)]
+mod runtime_capability_tests {
+    use std::sync::Arc;
+
+    use rustok_outbox::{OutboxTransport, TransactionalEventBus};
+    use rustok_seo_targets::SeoTargetRegistry;
+    use sea_orm::Database;
+
+    use super::SeoService;
+
+    struct ProviderCapability;
+
+    #[tokio::test]
+    async fn target_context_keeps_the_same_injected_provider_capability() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+        let mut service = SeoService::new(db, bus, Arc::new(SeoTargetRegistry::default()));
+        assert!(
+            service
+                .target_runtime()
+                .runtime_extensions
+                .get::<Arc<ProviderCapability>>()
+                .is_none()
+        );
+        let capability = Arc::new(ProviderCapability);
+        service.runtime_extensions.insert(capability.clone());
+        let mut context = service.target_runtime();
+        assert!(Arc::ptr_eq(
+            context
+                .runtime_extensions
+                .get::<Arc<ProviderCapability>>()
+                .unwrap(),
+            &capability
+        ));
+        // A runtime snapshot may replace a binding locally without mutating the service registry.
+        context
+            .runtime_extensions
+            .insert(Arc::new(ProviderCapability));
+        assert!(Arc::ptr_eq(
+            service
+                .target_runtime()
+                .runtime_extensions
+                .get::<Arc<ProviderCapability>>()
+                .unwrap(),
+            &capability
+        ));
     }
 }

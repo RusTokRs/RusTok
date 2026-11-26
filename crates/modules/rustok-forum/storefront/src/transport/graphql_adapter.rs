@@ -29,9 +29,9 @@ impl Display for ApiError {
 
 impl std::error::Error for ApiError {}
 
-const STOREFRONT_FORUM_CATEGORIES_QUERY: &str = "query StorefrontForumCategories($tenantId: UUID, $locale: String, $pagination: PaginationInput) { forumStorefrontCategories(tenantId: $tenantId, locale: $locale, pagination: $pagination) { total items { id effectiveLocale name slug description icon color parentId topicCount replyCount } } }";
+const STOREFRONT_FORUM_CATEGORIES_QUERY: &str = "query StorefrontForumCategories($tenantId: UUID, $locale: String, $pagination: PaginationInput) { forumStorefrontCategories(tenantId: $tenantId, locale: $locale, pagination: $pagination) { pageInfo { totalCount } items { id effectiveLocale name slug description icon color parentId topicCount replyCount } } }";
 const STOREFRONT_FORUM_AUDIENCE_TOPICS_QUERY: &str = "query StorefrontForumAudienceTopics($tenantId: UUID, $categoryId: UUID, $locale: String, $after: String, $perPage: Int, $search: String, $order: ForumTopicListOrder, $solvedOnly: Boolean!) { forumStorefrontAudienceTopics(tenantId: $tenantId, categoryId: $categoryId, locale: $locale, after: $after, perPage: $perPage, search: $search, order: $order, solvedOnly: $solvedOnly) { nextCursor items { id effectiveLocale categoryId authorId title slug status isPinned isLocked replyCount createdAt solutionReplyId voteScore } } }";
-const STOREFRONT_FORUM_UNREAD_TOPICS_QUERY: &str = "query StorefrontForumUnreadTopics($tenantId: UUID, $categoryId: UUID, $locale: String, $after: String, $limit: Int, $search: String, $order: ForumTopicListOrder, $solvedOnly: Boolean!) { forumStorefrontUnreadTopics(tenantId: $tenantId, categoryId: $categoryId, locale: $locale, after: $after, limit: $limit, search: $search, order: $order, solvedOnly: $solvedOnly) { nextCursor items { id effectiveLocale categoryId authorId title slug status isPinned isLocked replyCount createdAt readStateExplicit lastReadPosition lastReadRevision unreadCount hasUnreadTopicRevision isUnread } } }";
+const STOREFRONT_FORUM_UNREAD_TOPICS_QUERY: &str = "query StorefrontForumUnreadTopics($tenantId: UUID, $categoryId: UUID, $locale: String, $after: String, $limit: Int, $search: String, $order: ForumTopicListOrder, $solvedOnly: Boolean!, $unreadOnly: Boolean!) { forumStorefrontUnreadTopics(tenantId: $tenantId, categoryId: $categoryId, locale: $locale, after: $after, limit: $limit, unreadOnly: $unreadOnly, search: $search, order: $order, solvedOnly: $solvedOnly) { nextCursor items { id effectiveLocale categoryId authorId title slug status isPinned isLocked replyCount createdAt readStateExplicit lastReadPosition lastReadRevision unreadCount hasUnreadTopicRevision isUnread } } }";
 const STOREFRONT_FORUM_TOPIC_QUERY: &str = "query StorefrontForumTopic($tenantId: UUID, $id: UUID!, $locale: String) { forumStorefrontAudienceTopic(tenantId: $tenantId, id: $id, locale: $locale) { id effectiveLocale availableLocales categoryId authorId title slug body { document html } bodyPlainText status tags isPinned isLocked replyCount createdAt updatedAt } }";
 const STOREFRONT_FORUM_REPLIES_QUERY: &str = "query StorefrontForumReplies($tenantId: UUID, $topicId: UUID!, $locale: String, $after: String, $perPage: Int) { forumStorefrontReplies(tenantId: $tenantId, topicId: $topicId, locale: $locale, after: $after, perPage: $perPage) { nextCursor items { id effectiveLocale topicId authorId content { document html } contentPlainText status parentReplyId createdAt updatedAt } } }";
 const STOREFRONT_FORUM_MEMBER_CARDS_QUERY: &str = "query StorefrontForumMemberCards($userIds: [UUID!]!, $locale: String) { forumMemberCards(userIds: $userIds, locale: $locale) { userId profile { userId handle displayName tags avatarMediaId preferredLocale } forumStats { topicCount replyCount solutionCount } } }";
@@ -42,7 +42,20 @@ const MARK_ALL_STOREFRONT_FORUM_TOPICS_READ_MUTATION: &str = "mutation MarkAllSt
 #[derive(Debug, Deserialize)]
 struct StorefrontForumCategoriesResponse {
     #[serde(rename = "forumStorefrontCategories")]
-    forum_storefront_categories: ForumCategoryConnection,
+    forum_storefront_categories: StorefrontCategoryConnection,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StorefrontCategoryConnection {
+    items: Vec<crate::model::ForumCategoryListItem>,
+    page_info: StorefrontCategoryPageInfo,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StorefrontCategoryPageInfo {
+    total_count: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -327,7 +340,7 @@ pub async fn fetch_storefront_forum_graphql(
     .await;
     let (topics, read_state_available) = match personalized {
         Ok(response) => (response.forum_storefront_unread_topics, true),
-        Err(error) if personalization_unavailable(&error) => {
+        Err(error) if !selection.unread_only && personalization_unavailable(&error) => {
             let response: StorefrontForumAudienceTopicsResponse = request(
                 STOREFRONT_FORUM_AUDIENCE_TOPICS_QUERY,
                 TopicsVariables {
@@ -387,7 +400,13 @@ pub async fn fetch_storefront_forum_graphql(
 
     Ok(StorefrontForumData {
         topic_selection: selection,
-        categories: categories_response.forum_storefront_categories,
+        categories: ForumCategoryConnection {
+            total: categories_response
+                .forum_storefront_categories
+                .page_info
+                .total_count,
+            items: categories_response.forum_storefront_categories.items,
+        },
         topics,
         selected_category_id: resolved_category_id,
         selected_topic_id: resolved_topic_id,
@@ -410,6 +429,11 @@ pub async fn fetch_storefront_forum_topic_page_graphql(
     read_state_available: bool,
     selection: crate::model::ForumTopicSelection,
 ) -> Result<ForumTopicPage, ApiError> {
+    if selection.unread_only && !read_state_available {
+        return Err(ApiError::Graphql(
+            "Forum read state is unavailable for this principal".into(),
+        ));
+    }
     if read_state_available {
         let response: StorefrontForumUnreadTopicsResponse = request(
             STOREFRONT_FORUM_UNREAD_TOPICS_QUERY,
@@ -792,5 +816,75 @@ mod revision_tests {
             assert!(!query.to_lowercase().contains("reaction"));
             assert!(!query.contains("actorId"));
         }
+    }
+}
+
+#[cfg(test)]
+mod category_connection_tests {
+    use super::{StorefrontForumCategoriesResponse, UnreadTopicsVariables};
+    use crate::model::ForumTopicSelection;
+
+    #[test]
+    fn categories_decode_the_owner_page_info_including_an_empty_page() {
+        let response: StorefrontForumCategoriesResponse =
+            serde_json::from_value(serde_json::json!({
+                "forumStorefrontCategories": { "items": [], "pageInfo": { "totalCount": 42 } }
+            }))
+            .unwrap();
+        assert!(response.forum_storefront_categories.items.is_empty());
+        assert_eq!(
+            response.forum_storefront_categories.page_info.total_count,
+            42
+        );
+        assert!(
+            serde_json::from_value::<StorefrontForumCategoriesResponse>(serde_json::json!({
+                "forumStorefrontCategories": { "items": [], "total": 42 }
+            }))
+            .is_err(),
+            "a stale response must not silently turn into an empty/zero category list"
+        );
+    }
+
+    #[test]
+    fn unread_mode_is_sent_on_initial_and_cursor_requests() {
+        for after in [None, Some("owner-cursor".to_string())] {
+            let variables = UnreadTopicsVariables {
+                selection: ForumTopicSelection {
+                    unread_only: true,
+                    ..Default::default()
+                },
+                tenant_id: None,
+                category_id: None,
+                locale: Some("en".into()),
+                after: after.clone(),
+                limit: None,
+            };
+            let wire = serde_json::to_value(variables).unwrap();
+            assert_eq!(wire["unreadOnly"], true);
+            assert_eq!(wire["after"], serde_json::to_value(after).unwrap());
+        }
+    }
+}
+
+#[cfg(test)]
+mod unread_admission_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn a_public_cursor_cannot_silently_drop_unread_selection() {
+        let result = fetch_storefront_forum_topic_page_graphql(
+            None,
+            "public-cursor".into(),
+            None,
+            false,
+            crate::model::ForumTopicSelection {
+                unread_only: true,
+                ..Default::default()
+            },
+        )
+        .await;
+        assert!(
+            matches!(result, Err(ApiError::Graphql(ref message)) if message.contains("read state is unavailable"))
+        );
     }
 }
