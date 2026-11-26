@@ -206,8 +206,11 @@ proofs, OAuth consent CSRF, credential binding and durable authority/witness
 domains. HMAC-SHA256, HKDF-SHA256 and Argon2id remain in their non-JWT roles.
 The root must be independently provisioned symmetric secret material; PEM
 public/private keys and certificates are rejected at JWT preparation, host
-MAC proof derivation and durable fence MAC derivation. The length and PEM
-checks do not prove entropy or independence of arbitrarily encoded material.
+MAC proof derivation and durable fence MAC derivation. Production additionally
+requires at least 64 non-whitespace bytes and rejects known placeholders and
+low-diversity values. These representation checks do not prove entropy or
+independence of arbitrarily encoded material. Auth validates this policy
+without exposing the root through the public AuthConfig API.
 
 The Auth-owned database-free `validate-jwt-keyring` command uses the same
 document parser and policy checks as the host. Full development Compose runs

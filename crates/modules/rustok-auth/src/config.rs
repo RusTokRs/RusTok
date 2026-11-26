@@ -18,6 +18,7 @@ use crate::jwt_keyring::{
 const DEFAULT_ACCESS_EXPIRATION_SECS: u64 = 900; // 15 minutes
 const DEFAULT_REFRESH_EXPIRATION_SECS: u64 = 60 * 60 * 24 * 30; // 30 days
 pub(crate) const MIN_SYMMETRIC_SECRET_BYTES: usize = 32;
+const MIN_PRODUCTION_MAC_ROOT_BYTES: usize = 64;
 
 /// The shared minimum for symmetric cryptographic material, independent of
 /// JWT signing policy. Interior whitespace does not count toward the floor.
@@ -34,6 +35,16 @@ pub(crate) fn symmetric_secret_has_min_length(secret: &str) -> bool {
 /// representation and length floor, not the entropy of supplied material.
 pub(crate) fn mac_root_is_valid(root: &str) -> bool {
     symmetric_secret_has_min_length(root) && !root.contains("-----BEGIN ")
+}
+
+fn mac_root_looks_like_placeholder(root: &str) -> bool {
+    let normalized = root.trim().to_ascii_lowercase();
+    const PLACEHOLDER_MARKERS: &[&str] = &[
+        "change_me", "changeme", "replace_me", "replace-this", "do-not-use",
+        "development", "example-secret", "test-secret",
+    ];
+    PLACEHOLDER_MARKERS.iter().any(|marker| normalized.contains(marker))
+        || normalized.chars().collect::<std::collections::HashSet<_>>().len() < 16
 }
 
 const MIN_ACCESS_EXPIRATION_SECS: u64 = 60;
@@ -236,8 +247,28 @@ impl std::fmt::Debug for AuthConfig {
 
 impl AuthConfig {
     /// Stable host MAC root, distinct from the active JWT signing material.
-    pub fn secret(&self) -> &str {
+    /// Keep extraction inside Auth; downstream consumers use purpose-scoped APIs.
+    pub(crate) fn secret(&self) -> &str {
         &self.root
+    }
+
+    /// Enforce the stronger deployment-only MAC root policy without exporting
+    /// the raw root to host composition or other dependent crates.
+    pub fn validate_production_mac_root(&self) -> Result<()> {
+        let root = self.secret();
+        if root.bytes().filter(|byte| !byte.is_ascii_whitespace()).count()
+            < MIN_PRODUCTION_MAC_ROOT_BYTES
+        {
+            return Err(AuthError::Validation(format!(
+                "Production MAC root must contain at least {MIN_PRODUCTION_MAC_ROOT_BYTES} non-whitespace bytes"
+            )));
+        }
+        if mac_root_looks_like_placeholder(root) {
+            return Err(AuthError::Validation(
+                "Production MAC root looks like a placeholder or low-diversity value".to_string(),
+            ));
+        }
+        Ok(())
     }
 
     fn key_snapshot(&self) -> Result<Arc<JwtKeyState>> {
@@ -1259,6 +1290,27 @@ mod tests {
             );
             assert!(validate_auth_config(&config).is_err());
         }
+    }
+
+    #[test]
+    fn production_mac_root_policy_rejects_short_placeholders_and_low_diversity() {
+        let fixture = JwtKeyringFixture::generate().unwrap();
+        let document = fixture.document(1).to_string();
+        for weak in [
+            "short".to_string(),
+            "development".repeat(8),
+            "aB3!".repeat(20),
+        ] {
+            let config = AuthConfig::from_test_document_unvalidated(
+                weak, document.as_bytes(),
+            );
+            assert!(config.validate_production_mac_root().is_err());
+        }
+
+        let strong = AuthConfig::from_test_document_unvalidated(
+            "aB3!zY7@qW8#eR2$".repeat(5), document.as_bytes(),
+        );
+        assert!(strong.validate_production_mac_root().is_ok());
     }
 
     #[test]
