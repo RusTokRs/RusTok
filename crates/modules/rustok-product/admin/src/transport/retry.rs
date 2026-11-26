@@ -63,30 +63,26 @@ fn retained_caller_key(
         .idempotency_key_for(operation, &intent)
 }
 
-fn mark_lifecycle_succeeded(slot: &str) {
+fn clear_lifecycle_identity_if_current(slot: &str, idempotency_key: &str) {
     let mut registry = retry_registry()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    if let Some(identity) = registry.get_mut(slot) {
-        identity.mark_succeeded();
+    let should_remove = registry
+        .get_mut(slot)
+        .is_some_and(|identity| identity.clear_if_key_matches(idempotency_key));
+    if should_remove {
+        registry.remove(slot);
     }
-    registry.remove(slot);
-}
-
-fn mark_lifecycle_rejected(slot: &str) {
-    retry_registry()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .remove(slot);
 }
 
 fn finish_lifecycle_result<T>(
     slot: &str,
+    idempotency_key: &str,
     result: Result<T, GraphqlOperationError>,
 ) -> Result<T, GraphqlHttpError> {
     match result {
         Ok(value) => {
-            mark_lifecycle_succeeded(slot);
+            clear_lifecycle_identity_if_current(slot, idempotency_key);
             Ok(value)
         }
         Err(error) => {
@@ -95,7 +91,7 @@ fn finish_lifecycle_result<T>(
                     && extensions.retryable == Some(false)
             });
             if durable_rejection {
-                mark_lifecycle_rejected(slot);
+                clear_lifecycle_identity_if_current(slot, idempotency_key);
             }
             Err(error.error)
         }
@@ -143,11 +139,11 @@ pub(crate) async fn create_product(
         tenant_slug,
         tenant_id,
         user_id,
-        idempotency_key,
+        idempotency_key.clone(),
         draft,
     )
     .await;
-    finish_lifecycle_result(&slot, result)
+    finish_lifecycle_result(&slot, &idempotency_key, result)
 }
 
 pub(crate) async fn update_product(
@@ -168,11 +164,11 @@ pub(crate) async fn update_product(
         tenant_id,
         user_id,
         id,
-        idempotency_key,
+        idempotency_key.clone(),
         draft,
     )
     .await;
-    finish_lifecycle_result(&slot, result)
+    finish_lifecycle_result(&slot, &idempotency_key, result)
 }
 
 pub(crate) async fn change_product_status(
@@ -194,10 +190,10 @@ pub(crate) async fn change_product_status(
         user_id,
         id,
         status,
-        idempotency_key,
+        idempotency_key.clone(),
     )
     .await;
-    finish_lifecycle_result(&slot, result)
+    finish_lifecycle_result(&slot, &idempotency_key, result)
 }
 
 pub(crate) async fn delete_product(
@@ -217,10 +213,10 @@ pub(crate) async fn delete_product(
         tenant_id,
         user_id,
         id,
-        idempotency_key,
+        idempotency_key.clone(),
     )
     .await;
-    finish_lifecycle_result(&slot, result)
+    finish_lifecycle_result(&slot, &idempotency_key, result)
 }
 
 fn effective_optional_text(value: Option<&str>) -> Option<&str> {
@@ -293,11 +289,11 @@ pub(crate) async fn update_product_variant(
         tenant_id,
         user_id,
         variant_id,
-        idempotency_key,
+        idempotency_key.clone(),
         draft,
     )
     .await;
-    finish_lifecycle_result(&slot, result)
+    finish_lifecycle_result(&slot, &idempotency_key, result)
 }
 
 pub(crate) async fn delete_product_variant(
@@ -324,10 +320,10 @@ pub(crate) async fn delete_product_variant(
         user_id,
         variant_id,
         expected_revision,
-        idempotency_key,
+        idempotency_key.clone(),
     )
     .await;
-    finish_lifecycle_result(&slot, result)
+    finish_lifecycle_result(&slot, &idempotency_key, result)
 }
 
 pub(crate) async fn add_product_image(
@@ -351,11 +347,11 @@ pub(crate) async fn add_product_image(
         tenant_id,
         user_id,
         product_id,
-        idempotency_key,
+        idempotency_key.clone(),
         draft,
     )
     .await;
-    finish_lifecycle_result(&slot, result)
+    finish_lifecycle_result(&slot, &idempotency_key, result)
 }
 
 pub(crate) async fn update_product_image(
@@ -379,11 +375,11 @@ pub(crate) async fn update_product_image(
         user_id,
         product_id,
         image_id,
-        idempotency_key,
+        idempotency_key.clone(),
         draft,
     )
     .await;
-    finish_lifecycle_result(&slot, result)
+    finish_lifecycle_result(&slot, &idempotency_key, result)
 }
 
 pub(crate) async fn delete_product_image(
@@ -406,10 +402,10 @@ pub(crate) async fn delete_product_image(
         user_id,
         product_id,
         image_id,
-        idempotency_key,
+        idempotency_key.clone(),
     )
     .await;
-    finish_lifecycle_result(&slot, result)
+    finish_lifecycle_result(&slot, &idempotency_key, result)
 }
 
 pub(crate) async fn reorder_product_images(
@@ -433,10 +429,10 @@ pub(crate) async fn reorder_product_images(
         user_id,
         product_id,
         image_ids,
-        idempotency_key,
+        idempotency_key.clone(),
     )
     .await;
-    finish_lifecycle_result(&slot, result)
+    finish_lifecycle_result(&slot, &idempotency_key, result)
 }
 
 #[cfg(test)]
@@ -547,7 +543,7 @@ mod variant_retry_tests {
             }),
         };
 
-        assert!(finish_lifecycle_result::<()>(slot, Err(error)).is_err());
+        assert!(finish_lifecycle_result::<()>(slot, &first, Err(error)).is_err());
         let retry = retained_caller_key(
             slot,
             ProductAdminLifecycleOperation::DeleteVariant,
@@ -555,7 +551,51 @@ mod variant_retry_tests {
         );
 
         assert_ne!(first, retry);
-        mark_lifecycle_rejected(slot);
+        clear_lifecycle_identity_if_current(slot, &retry);
+    }
+
+    #[test]
+    fn late_success_from_an_old_request_cannot_clear_a_newer_pending_identity() {
+        let slot = "product-late-success-retry-test";
+        let operation = ProductAdminLifecycleOperation::DeleteVariant;
+        let intent = "same-variant-delete-intent".to_owned();
+        let first = retained_caller_key(slot, operation, intent.clone());
+
+        // Two in-flight requests may share the first key. The first response completes
+        // and a later identical user action starts a fresh logical invocation.
+        assert!(finish_lifecycle_result::<()>(slot, &first, Ok(())).is_ok());
+        let second = retained_caller_key(slot, operation, intent.clone());
+        assert_ne!(first, second);
+
+        // The delayed response from the second copy of the old request must not erase
+        // the key belonging to the new invocation.
+        assert!(finish_lifecycle_result::<()>(slot, &first, Ok(())).is_ok());
+        assert_eq!(second, retained_caller_key(slot, operation, intent));
+        clear_lifecycle_identity_if_current(slot, &second);
+    }
+
+    #[test]
+    fn late_terminal_rejection_from_an_old_intent_cannot_clear_a_newer_pending_identity() {
+        let slot = "product-late-rejection-retry-test";
+        let operation = ProductAdminLifecycleOperation::UpdateVariant;
+        let old_intent = "old-variant-edit".to_owned();
+        let new_intent = "new-variant-edit".to_owned();
+        let first = retained_caller_key(slot, operation, old_intent);
+        let second = retained_caller_key(slot, operation, new_intent.clone());
+        assert_ne!(first, second);
+
+        let error = GraphqlOperationError {
+            error: GraphqlHttpError::Graphql("old request rejected".to_owned()),
+            extensions: Some(rustok_graphql::GraphqlErrorExtensions {
+                code: Some("PRODUCT_VARIANT_CONFLICT".to_owned()),
+                retryable: Some(false),
+                outcome: Some("rejected".to_owned()),
+            }),
+        };
+        assert!(finish_lifecycle_result::<()>(slot, &first, Err(error)).is_err());
+
+        assert_eq!(second, retained_caller_key(slot, operation, new_intent));
+        clear_lifecycle_identity_if_current(slot, &second);
     }
 
     #[test]
@@ -572,7 +612,7 @@ mod variant_retry_tests {
             extensions: None,
         };
 
-        assert!(finish_lifecycle_result::<()>(slot, Err(error)).is_err());
+        assert!(finish_lifecycle_result::<()>(slot, &first, Err(error)).is_err());
         let retry = retained_caller_key(
             slot,
             ProductAdminLifecycleOperation::UpdateProduct,
@@ -580,7 +620,7 @@ mod variant_retry_tests {
         );
 
         assert_eq!(first, retry);
-        mark_lifecycle_rejected(slot);
+        clear_lifecycle_identity_if_current(slot, &retry);
     }
 
 }
