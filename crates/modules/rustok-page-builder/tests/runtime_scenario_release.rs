@@ -155,6 +155,29 @@ async fn publish(
 }
 
 #[tokio::test]
+async fn publish_rejects_blank_page_id_before_project_write() {
+    let store = CountingProjectStore::default();
+    let writes = Arc::clone(&store.writes);
+    let service = FlyAdapterBackedPageBuilderService::new(store, NoopRenderer);
+
+    for page_id in ["", " \t\n"] {
+        let error = service
+            .publish(
+                &context(),
+                PublishPageBuilderInput::new(page_id, "rev-2", project("home")),
+            )
+            .await
+            .expect_err("blank page identity must fail");
+        assert!(matches!(
+            error,
+            rustok_page_builder::service::PageBuilderServiceError::Validation(message)
+                if message == "page_id must not be empty"
+        ));
+    }
+    assert_eq!(writes.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
 async fn stable_baseline_allows_project_write() {
     let store = CountingProjectStore::default();
     let writes = Arc::clone(&store.writes);

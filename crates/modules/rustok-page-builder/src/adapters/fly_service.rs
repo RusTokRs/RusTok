@@ -115,6 +115,11 @@ where
         context: &PortContext,
         input: crate::dto::PreviewPageBuilderInput,
     ) -> PageBuilderServiceResult<crate::dto::PreviewPageBuilderResult> {
+        if input.page_id.trim().is_empty() {
+            return Err(PageBuilderServiceError::Validation(
+                "page_id must not be empty".to_string(),
+            ));
+        }
         self.inspect(&input.project_data)?;
         input
             .runtime
@@ -217,6 +222,11 @@ where
         context: &PortContext,
         input: crate::dto::PublishPageBuilderInput,
     ) -> PageBuilderServiceResult<crate::dto::PublishPageBuilderResult> {
+        if input.page_id.trim().is_empty() {
+            return Err(PageBuilderServiceError::Validation(
+                "page_id must not be empty".to_string(),
+            ));
+        }
         if input.revision_id.trim().is_empty() {
             return Err(PageBuilderServiceError::Validation(
                 "revision_id must not be empty".to_string(),

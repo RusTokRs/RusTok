@@ -15,6 +15,7 @@ runtime-scenario release policy.
 - returns component properties without the child subtree;
 - exposes the deterministic Fly project hash.
 
+All capabilities reject empty or whitespace-only page identities before calling their ports.
 Preview and publish call `require_valid()` before invoking persistence or rendering ports.
 Structural errors such as duplicate component IDs or resource-limit violations reject the
 operation.
@@ -48,6 +49,7 @@ The preview sequence is:
 
 ```text
 PreviewPageBuilderInput
+  -> page identity validation
   -> FlyProjectInspection::decode_with
   -> inspection.require_valid
   -> preview runtime DTO validation
@@ -60,6 +62,7 @@ Publish retains the independent release sequence:
 
 ```text
 PublishPageBuilderInput
+  -> page and revision identity validation
   -> FlyProjectInspection::decode_with
   -> inspection.require_valid
   -> optional runtime-scenario release gate

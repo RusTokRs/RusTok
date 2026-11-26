@@ -118,6 +118,26 @@ async fn preview_passes_canonical_runtime_to_port_and_response() {
 }
 
 #[tokio::test]
+async fn preview_rejects_blank_page_id_before_renderer() {
+    let renderer = RecordingRenderer::default();
+    let calls = Arc::clone(&renderer.calls);
+    let service = FlyAdapterBackedPageBuilderService::new(NoopStore, renderer);
+
+    for page_id in ["", " \t\n"] {
+        let error = service
+            .preview(&port_context(), PreviewPageBuilderInput::new(page_id, project()))
+            .await
+            .expect_err("blank page identity must fail");
+        assert!(matches!(
+            error,
+            rustok_page_builder::service::PageBuilderServiceError::Validation(message)
+                if message == "page_id must not be empty"
+        ));
+    }
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
 async fn preview_rejects_non_object_runtime_before_renderer() {
     let renderer = RecordingRenderer::default();
     let calls = Arc::clone(&renderer.calls);
