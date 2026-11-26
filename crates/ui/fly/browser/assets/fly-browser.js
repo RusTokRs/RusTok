@@ -437,15 +437,31 @@ function draftStorageKey(pageId) {
   return `${DRAFT_PREFIX}${pageId || "unbound"}`;
 }
 
-function readDraftSession(pageId) {
+function readDraftSession(pageId, renderedBinding = null) {
+  // The server-rendered identity is authoritative for strict hosts. Never
+  // replace it with a stale token left by another render in sessionStorage.
+  // Storage remains a compatibility path for legacy hosts only.
+  if (isObject(renderedBinding) && renderedBinding.required === true) {
+    const token = nonEmptyString(renderedBinding.token);
+    if (!token) return null;
+    const rawGeneration = renderedBinding.generation;
+    const parsedGeneration = typeof rawGeneration === "string" &&
+      /^[1-9]\d*$/.test(rawGeneration)
+      ? Number(rawGeneration)
+      : null;
+    return {
+      token,
+      generation: Number.isSafeInteger(parsedGeneration) ? parsedGeneration : null,
+    };
+  }
   try {
     const raw = globalThis.sessionStorage?.getItem(draftStorageKey(pageId));
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (!isObject(parsed) || typeof parsed.token !== "string") return null;
+    if (!isObject(parsed) || !nonEmptyString(parsed.token)) return null;
     return {
       token: parsed.token,
-      generation: Number.isSafeInteger(parsed.generation)
+      generation: Number.isSafeInteger(parsed.generation) && parsed.generation >= 1
         ? parsed.generation
         : null,
     };
@@ -455,7 +471,7 @@ function readDraftSession(pageId) {
 }
 
 function writeDraftSession(pageId, token, generation) {
-  if (typeof token !== "string" || !token) return;
+  if (!nonEmptyString(token) || !Number.isSafeInteger(generation) || generation < 1) return;
   try {
     globalThis.sessionStorage?.setItem(
       draftStorageKey(pageId),
@@ -968,8 +984,16 @@ export class FlyBrowserAdapter {
     // No credential is read from `localStorage`. The same-origin session cookie is sent by
     // `credentials: "same-origin"` on the intent request, so a token copy in script-readable
     // storage would only widen the XSS surface without authenticating anything new.
-    this.draftSession = readDraftSession(this.pageId);
-    this.requiresOperationReceipts = root.dataset.flyDraftContract === "rendered" && Boolean(root.dataset.flyRenderedDraftToken);
+    this.requiresOperationReceipts = root.dataset.flyDraftContract === "rendered";
+    this.draftSession = readDraftSession(this.pageId, {
+      required: this.requiresOperationReceipts,
+      token: root.dataset.flyRenderedDraftToken,
+      generation: root.dataset.flyRenderedDraftGeneration,
+    });
+    if (this.requiresOperationReceipts &&
+        Number.isSafeInteger(this.draftSession?.generation)) {
+      writeDraftSession(this.pageId, this.draftSession.token, this.draftSession.generation);
+    }
     this.pendingOperation = this.requiresOperationReceipts
       ? readPendingOperation(this.pageId)
       : null;
@@ -1735,7 +1759,9 @@ export class FlyBrowserAdapter {
     }
     this.pendingOperationUnresolved = true;
     // Never resolve an old envelope against a different draft's receipt namespace.
-    if (pendingRequest.page_id !== this.pageId ||
+    if (!nonEmptyString(this.pageId) ||
+        !nonEmptyString(pendingRequest.page_id) ||
+        pendingRequest.page_id !== this.pageId ||
         pendingRequest.draft_token !== this.draftSession?.token ||
         !samePendingRequest(readPendingOperation(this.pageId)?.request, pendingRequest)) {
       showPendingOperationNotice(this, "unavailable");
@@ -1758,10 +1784,14 @@ export class FlyBrowserAdapter {
     if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED ||
         this.authoritativeInFlight || this.pendingResolutionInFlight) return null;
     if (
+      !nonEmptyString(this.pageId) ||
+      !nonEmptyString(request.page_id) ||
       request.page_id !== this.pageId ||
+      !nonEmptyString(request.draft_token) ||
       request.draft_token !== this.draftSession?.token ||
       typeof request.operation_id !== "string" ||
-      !Number.isSafeInteger(request.draft_generation)
+      !Number.isSafeInteger(request.draft_generation) ||
+      request.draft_generation < 1
     ) {
       showPendingOperationNotice(this, "unavailable");
       return null;
@@ -1958,6 +1988,7 @@ export class FlyBrowserAdapter {
     if (resolvesOperation && (
       !this.requiresOperationReceipts ||
       !this.pendingOperation?.request ||
+      !nonEmptyString(request.page_id) ||
       request.operation_id !== this.pendingOperation.request.operation_id ||
       request.page_id !== this.pendingOperation.request.page_id ||
       request.draft_token !== this.pendingOperation.request.draft_token ||
@@ -2018,13 +2049,15 @@ export class FlyBrowserAdapter {
       if (!request.operation_id) request.operation_id = createOperationId();
       if (
         !request.operation_id ||
-        !request.draft_token ||
-        !Number.isSafeInteger(request.draft_generation)
+        !nonEmptyString(request.page_id) ||
+        !nonEmptyString(request.draft_token) ||
+        !Number.isSafeInteger(request.draft_generation) ||
+        request.draft_generation < 1
       ) {
         reportBrowserProblem(this, {
           result: {
             code: "PENDING_OPERATION_IDENTITY_UNAVAILABLE",
-            error: "The editor could not establish a durable operation identity and draft generation. No request was sent.",
+            error: "The editor could not establish a durable operation identity, page binding, and draft generation. No request was sent.",
           },
           request,
         }, "PENDING_OPERATION_IDENTITY_UNAVAILABLE");
@@ -2309,6 +2342,15 @@ export class FlyBrowserAdapter {
             this.draftSession.token,
             this.draftSession.generation,
           );
+          if (this.requiresOperationReceipts &&
+              nonEmptyString(this.draftSession.token) &&
+              Number.isSafeInteger(this.draftSession.generation) &&
+              this.draftSession.generation >= 1) {
+            // Keep the DOM binding current if this root is remounted without
+            // a full document navigation.
+            this.root.dataset.flyRenderedDraftToken = this.draftSession.token;
+            this.root.dataset.flyRenderedDraftGeneration = String(this.draftSession.generation);
+          }
         }
         // A save failure of this response was reported and parked by the response listener
         // (`settleSaveFailure`) before the reload below.

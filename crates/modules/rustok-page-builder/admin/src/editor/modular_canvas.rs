@@ -30,6 +30,19 @@ use rustok_ui_core::{UiCspNonce, UiRouteContext};
 use serde_json::Value;
 use std::sync::Arc;
 
+fn browser_draft_binding_attributes(
+    binding: Option<SsrDraftRenderBinding>,
+) -> (Option<&'static str>, Option<String>, Option<String>) {
+    match binding.and_then(|binding| binding.session) {
+        Some((token, generation)) => (
+            Some("rendered"),
+            Some(token),
+            Some(generation.to_string()),
+        ),
+        None => (None, None, None),
+    }
+}
+
 #[component]
 pub fn AdminCanvas(
     controller: AdminCanvasController,
@@ -154,12 +167,8 @@ pub fn AdminCanvas(
     // The host policy admits an inline script only with the nonce of this response.
     let browser_script_nonce = use_context::<UiCspNonce>().map(|nonce| nonce.as_str().to_string());
     let root_csrf_token = browser_csrf_token.clone();
-    let draft_render_binding = use_context::<SsrDraftRenderBinding>();
-    let draft_contract = draft_render_binding.as_ref().map(|_| "rendered");
-    let (rendered_draft_token, rendered_draft_generation) = draft_render_binding
-        .and_then(|binding| binding.session)
-        .map(|(token, generation)| (Some(token), Some(generation.to_string())))
-        .unwrap_or((None, None));
+    let (draft_contract, rendered_draft_token, rendered_draft_generation) =
+        browser_draft_binding_attributes(use_context::<SsrDraftRenderBinding>());
     let draft_recovery_message = t(
         locale.as_deref(),
         "page_builder.draftRecovery.message",
@@ -307,5 +316,34 @@ pub fn AdminCanvas(
                 })}
             </div>
         </div>
+    }
+}
+
+#[cfg(test)]
+mod browser_draft_binding_tests {
+    use super::browser_draft_binding_attributes;
+    use crate::SsrDraftRenderBinding;
+
+    #[test]
+    fn no_session_does_not_advertise_the_strict_receipt_contract() {
+        assert_eq!(
+            browser_draft_binding_attributes(Some(SsrDraftRenderBinding { session: None })),
+            (None, None, None),
+        );
+        assert_eq!(browser_draft_binding_attributes(None), (None, None, None));
+    }
+
+    #[test]
+    fn rendered_session_emits_its_exact_token_and_generation() {
+        assert_eq!(
+            browser_draft_binding_attributes(Some(SsrDraftRenderBinding {
+                session: Some(("draft-token".to_string(), 42)),
+            })),
+            (
+                Some("rendered"),
+                Some("draft-token".to_string()),
+                Some("42".to_string()),
+            ),
+        );
     }
 }
