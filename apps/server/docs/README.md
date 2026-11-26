@@ -48,9 +48,13 @@ non-yielding task is not guaranteed.
 The durable worker admission helper also treats a closed shutdown watch as a
 terminal signal even if its last value is `false`. The payment provider,
 marketplace financial recovery, outbox retention, forum search inbox,
-notification intake/candidate/fanout and Social Graph consumer loops use this
-check before new work. Already-admitted durable operations are not cancelled
-by channel closure. Source regressions were added but not executed.
+notification intake/candidate/fanout, Social Graph consumer, Product Media
+release and paid-order label recovery loops use this check before new work.
+The Product Media and paid-order label loops prioritize a ready shutdown
+signal over a ready periodic tick. Product Media also rechecks admission
+before resolving the catalog runtime snapshot. Already-admitted durable
+operations are not cancelled by channel closure. Source regressions were
+added but not executed.
 
 ## Forwarded authority parsing (2026-11-25)
 
@@ -579,7 +583,9 @@ to serialized origins and opaque URL schemes; unknown opaque schemes are
 replaced with a fixed marker, not copied into logs. Both report formats require
 an object body and a nonblank directive; only the exact known script/style
 directive names and their elem/attr variants enter those telemetry buckets;
-legacy directive source lists are ignored for classification.
+legacy directive source lists are ignored for classification. Multiple
+Content-Type header fields are rejected with HTTP 415 before report parsing,
+including duplicate equal values.
 Rate-limit Redis failures carry only fixed operation diagnostics or timeout
 information across REST, readiness and GraphQL; backend reply text is not
 propagated. See the

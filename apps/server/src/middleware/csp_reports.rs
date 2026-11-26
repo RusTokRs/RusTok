@@ -94,9 +94,15 @@ pub(crate) async fn handle(request: Request) -> Response {
 }
 
 fn content_type_is_supported(request: &Request) -> bool {
-    let Some(value) = request.headers().get(CONTENT_TYPE) else {
+    let mut values = request.headers().get_all(CONTENT_TYPE).iter();
+    let Some(value) = values.next() else {
         return true;
     };
+    // Content-Type is a singleton field, not a list. Selecting the first
+    // value would accept ambiguous or contradictory request metadata.
+    if values.next().is_some() {
+        return false;
+    }
     let Ok(value) = value.to_str() else {
         return false;
     };
@@ -292,6 +298,52 @@ fn sanitized_location(value: Option<&str>) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn rejects_duplicate_content_type_fields_before_collecting_reports() {
+        use axum::{body::Body, http::HeaderValue};
+
+        for second in ["application/csp-report", "text/plain"] {
+            let mut request = axum::http::Request::builder()
+                .method(Method::POST)
+                .uri(CSP_REPORT_PATH)
+                .header(CONTENT_TYPE, "application/csp-report")
+                .body(Body::from(
+                    r#"{"csp-report":{"effective-directive":"script-src"}}"#,
+                ))
+                .expect("report request");
+            request
+                .headers_mut()
+                .append(CONTENT_TYPE, HeaderValue::from_static(second));
+
+            assert_eq!(
+                handle(request).await.status(),
+                StatusCode::UNSUPPORTED_MEDIA_TYPE
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn accepts_single_or_missing_content_type_for_valid_report() {
+        use axum::body::Body;
+
+        for content_type in [
+            None,
+            Some("application/csp-report"),
+            Some("application/json; charset=utf-8"),
+        ] {
+            let mut request = axum::http::Request::builder().method(Method::POST).uri(CSP_REPORT_PATH);
+            if let Some(content_type) = content_type {
+                request = request.header(CONTENT_TYPE, content_type);
+            }
+            let request = request
+                .body(Body::from(
+                    r#"{"csp-report":{"effective-directive":"script-src"}}"#,
+                ))
+                .expect("report request");
+            assert_eq!(handle(request).await.status(), StatusCode::NO_CONTENT);
+        }
+    }
 
     #[test]
     fn parses_legacy_csp_report_without_script_sample() {
