@@ -160,6 +160,14 @@ The following aspects require integration tests with a DB:
 - [ ] Token revocation persistence (write to `oauth_tokens.revoked_at`)
 - [ ] Authorization code single-use (`used_at` update)
 - [ ] Refresh token rotation (revoke old + issue new)
+- [ ] Proof-bearing rotation: submit a secret nonzero 256-bit lowercase hex
+  `x-rustok-refresh-retry-key` header, discard the successful response, retry
+  the same old bearer, client authentication and scope within 30 seconds
+  on another replica; compare the identical refresh successor, fresh access
+  registration and unchanged refresh expiry/history. Wrong/duplicate proof,
+  changed scopes, revoked or superseded successors must not recover. A new
+  post-grace replay must revoke the family. The header must be sensitive
+  before request tracing and must never be echoed or logged by proxies.
 - [ ] Tenant isolation (cross-tenant access denied)
 - [ ] `sync_app_connections` upsert logic
 - [ ] Consent scope coverage check

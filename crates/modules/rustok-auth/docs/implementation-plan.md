@@ -332,6 +332,9 @@ recovery is source-wired using an optional secret singleton header and an
 independent purpose over tenant/app/family/predecessor/proof. The owner
 rechecks current app, subject, consent, exact scopes, live successor and
 exclusive grace under lock; recovery inserts only a fresh access row.
+The canonical CORS allowlist already admits the proof header; HTTP edge
+redaction now explicitly covers it for direct and OAuth refresh. Source
+regressions cover a superseded successor and delayed admission beyond grace.
 Client integration and cross-replica fault-injection evidence remain open.
 Root resolution now rejects unconsumed roots, mismatched consent epochs,
 widened descendant scopes and future timestamps. The app/subject-locked

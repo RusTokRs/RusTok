@@ -1498,6 +1498,9 @@ async fn recover_refresh_in_tx<C: ConnectionTrait>(
     };
     window.ensure_live(Utc::now())?;
     ensure_single_live_refresh(db, &successor, family, Utc::now()).await?;
+    let now = Utc::now();
+    window.ensure_live(now)?;
+    validate_prepared_deadlines(prepared, now, Some(absolute_deadline))?;
     // Fresh access JWT, same refresh bearer. Never insert the prepared
     // refresh model or update the successor's lifetime during recovery.
     prepared.access_model.clone().insert(db).await
@@ -1565,15 +1568,20 @@ async fn commit_refresh_rotation(
     ensure_refresh_family_live(&family, now)?;
     validate_prepared_deadlines(prepared, now, Some(refresh_family_deadline(family.created_at)?))?;
     ensure_single_live_refresh(&tx, &stored, &family, now).await?;
-    if stored.revoked_at.is_some() && allow_recovery
-        && (current.revoked_at.is_some() || within_refresh_rotation_grace(&stored, now))
-    {
-        // An admitted recovery timing out under lock is not theft evidence.
+    if stored.revoked_at.is_some() && allow_recovery {
+        // Preflight admitted a live predecessor or a rotated one in grace.
+        // If the request ages out while waiting, refuse recovery without
+        // converting the admitted request into theft evidence. New post-grace
+        // presentations are handled by validate_refresh_token at admission.
         let window = recover_refresh_in_tx(&tx, &stored, &family, prepared).await?;
         tx.commit().await.map_err(|_| OAuthTokenProtocolError::server_error("Failed to commit OAuth refresh recovery"))?;
         window.ensure_live(Utc::now())?;
         return Ok(Some(window));
     }
+    // The lineage queries can consume the last portion of the lifetime.
+    let now = Utc::now();
+    ensure_refresh_family_live(&family, now)?;
+    validate_prepared_deadlines(prepared, now, Some(refresh_family_deadline(family.created_at)?))?;
     let consumed = OAuthTokens::update_many()
         .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
         .col_expr(oauth_tokens::Column::LastUsedAt, Expr::value(now))
@@ -1605,6 +1613,7 @@ async fn commit_refresh_rotation(
     }
 
     persist_prepared_tokens(&tx, prepared).await?;
+    validate_prepared_deadlines(prepared, Utc::now(), Some(refresh_family_deadline(family.created_at)?))?;
     tx.commit().await.map_err(|_| {
         OAuthTokenProtocolError::server_error("Failed to commit refresh-token rotation")
     })?;
@@ -2836,6 +2845,34 @@ mod tests {
             .filter(oauth_tokens::Column::TokenKind.eq(oauth_tokens::TOKEN_KIND_REFRESH))
             .count(&db).await.unwrap(), 2);
         assert_eq!(oauth_tokens::Entity::find().count(&db).await.unwrap(), 4);
+
+        // Once B rotates to C, the proof for A cannot recover B or C.
+        let next_hash = "next-generation-refresh";
+        commit_refresh_rotation(&db, &client, &successor, &replacement(next_hash), false, false)
+            .await.expect("rotate successor");
+        let error = commit_refresh_rotation(
+            &db, &client, &current, &replacement("replacement-1"), false, true,
+        ).await.expect_err("superseded successor must not recover");
+        assert_eq!(error.error, "invalid_grant");
+        let next = oauth_tokens::Entity::find()
+            .filter(oauth_tokens::Column::TokenHash.eq(next_hash))
+            .one(&db).await.unwrap().unwrap();
+        assert!(next.revoked_at.is_none());
+
+        // Model a request admitted before grace elapsed, then delayed.
+        let past = (Utc::now() - chrono::Duration::seconds(31)).fixed_offset();
+        let mut old: oauth_tokens::ActiveModel = oauth_tokens::Entity::find_by_id(current_id)
+            .one(&db).await.unwrap().unwrap().into();
+        old.created_at = Set(past - chrono::Duration::seconds(1));
+        old.revoked_at = Set(Some(past));
+        old.last_used_at = Set(Some(past));
+        let old = old.update(&db).await.expect("age historical rotation");
+        let delayed = commit_refresh_rotation(
+            &db, &client, &old, &replacement("replacement-1"), false, true,
+        ).await.expect_err("admitted recovery must not succeed beyond grace");
+        assert_eq!(delayed.error, "invalid_grant");
+        assert!(oauth_tokens::Entity::find_by_id(next.id)
+            .one(&db).await.unwrap().unwrap().revoked_at.is_none());
 
         let mut changed_subject: users::ActiveModel = users::Entity::find_by_id(user_id)
             .one(&db)

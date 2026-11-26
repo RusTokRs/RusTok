@@ -673,8 +673,11 @@ secret singleton `x-rustok-refresh-retry-key` (64 lowercase nonzero hex).
 Retry the same request with the same scope and proof within 30 seconds.
 Only a matching live successor is returned; a fresh access row is registered,
 without another refresh row or expiry extension. Wrong proof, changed scope,
-revoked successor or elapsed grace fail closed. SDK adoption, CORS/header
-policy, generated reference verification, compilation and PostgreSQL
+revoked successor or elapsed grace fail closed. An admitted recovery that
+outlasts grace fails without revoking the lineage. The existing CORS
+allowlist covers the header and the HTTP edge marks it sensitive before
+tracing for both direct and OAuth refresh. SDK adoption, generated reference
+verification, compilation and PostgreSQL
 lost-response/concurrency evidence remain pending.
 
 ## Direct session concurrency

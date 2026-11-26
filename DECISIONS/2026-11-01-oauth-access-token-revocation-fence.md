@@ -79,7 +79,10 @@ consent-presence check alone could not distinguish an old epoch from a new grant
     original exclusive 30-second window. It registers fresh access only;
     refresh history and deadlines are unchanged. Non-proof clients retain
     non-recoverable CSPRNG rotations. The header is rejected for other
-    grants. Never log proofs or raw credentials.
+    grants. Never log proofs or raw credentials. The shared HTTP edge
+    marks the proof header sensitive before tracing. A proof-bearing
+    request admitted while the predecessor is live or in grace may fail
+    after waiting, but does not become a fresh replay revocation.
 
 ## Sources of truth and ownership
 

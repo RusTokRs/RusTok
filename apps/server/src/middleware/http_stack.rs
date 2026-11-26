@@ -559,6 +559,7 @@ fn apply_http_edge_stack_with_concurrency_limit(
         HeaderName::from_static("x-rustok-setup-token"),
         HeaderName::from_static("x-rustok-observability-token"),
         HeaderName::from_static("x-api-key"),
+        HeaderName::from_static(rustok_auth::REFRESH_RETRY_KEY_HEADER),
     ]);
     let compression_layer = CompressionLayer::new();
 
@@ -997,7 +998,10 @@ mod tests {
                     .get("proxy-authorization")
                     .map(|v| v.is_sensitive())
                     .unwrap_or(false);
-                if runner && host && setup && auth && obs && api_key && proxy_auth {
+                let retry_key = headers
+                    .get(rustok_auth::REFRESH_RETRY_KEY_HEADER)
+                    .is_some_and(|value| value.is_sensitive());
+                if runner && host && setup && auth && obs && api_key && proxy_auth && retry_key {
                     StatusCode::OK
                 } else {
                     StatusCode::BAD_REQUEST
@@ -1017,6 +1021,7 @@ mod tests {
                     .header("x-rustok-setup-token", "setup-secret")
                     .header("x-rustok-observability-token", "obs-secret")
                     .header("x-api-key", "api-secret")
+                    .header(rustok_auth::REFRESH_RETRY_KEY_HEADER, "ab".repeat(32))
                     .body(Body::empty())
                     .unwrap(),
             )
