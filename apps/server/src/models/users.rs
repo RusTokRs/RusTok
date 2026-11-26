@@ -50,6 +50,19 @@ impl Model {
 }
 
 impl ActiveModel {
+    /// A trusted password replacement starts a new credential epoch and clears
+    /// failures attributable to the old password. Do not use for login rehash.
+    pub(crate) fn set_replacement_password(
+        &mut self, password_hash: String, now: chrono::DateTime<chrono::Utc>,
+    ) {
+        use sea_orm::ActiveValue::Set;
+        self.password_hash = Set(password_hash);
+        self.password_changed_at = Set(Some(now.into()));
+        self.failed_login_count = Set(0);
+        self.locked_until = Set(None);
+        self.updated_at = Set(now.into());
+    }
+
     pub fn new(tenant_id: Uuid, email: &str, password_hash: &str) -> Self {
         Self {
             id: sea_orm::ActiveValue::Set(generate_id()),
@@ -102,6 +115,26 @@ impl Entity {
 mod tests {
     use super::*;
     use chrono::{Duration, TimeZone, Utc};
+
+    #[test]
+    fn password_replacement_clears_old_lockout_and_records_epoch() {
+        use sea_orm::ActiveValue::Set;
+
+        let now = Utc::now();
+        let mut user = ActiveModel::new(Uuid::new_v4(), "user@example.test", "old-hash");
+        user.failed_login_count = Set(4);
+        user.locked_until = Set(Some((now + Duration::minutes(10)).into()));
+        user.status = Set(UserStatus::Banned);
+
+        user.set_replacement_password("new-hash".to_string(), now);
+
+        assert_eq!(user.password_hash, Set("new-hash".to_string()));
+        assert_eq!(user.password_changed_at, Set(Some(now.into())));
+        assert_eq!(user.failed_login_count, Set(0));
+        assert_eq!(user.locked_until, Set(None));
+        assert_eq!(user.updated_at, Set(now.into()));
+        assert_eq!(user.status, Set(UserStatus::Banned));
+    }
 
     #[test]
     fn delegated_credential_epoch_rejects_tokens_issued_at_or_before_change() {

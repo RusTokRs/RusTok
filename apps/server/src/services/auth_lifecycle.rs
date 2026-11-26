@@ -1390,10 +1390,7 @@ impl AuthLifecycleService {
 
         let now = Utc::now();
         let mut user_active: users::ActiveModel = user.into();
-        user_active.password_hash = Set(new_password_hash);
-        user_active.password_changed_at = Set(Some(now.into()));
-        user_active.failed_login_count = Set(0);
-        user_active.locked_until = Set(None);
+        user_active.set_replacement_password(new_password_hash, now);
         user_active
             .update(&txn)
             .await
@@ -1761,8 +1758,10 @@ impl AuthLifecycleService {
     where
         C: sea_orm::ConnectionTrait,
     {
+        let now = Utc::now();
         let mut query = sessions::Entity::update_many()
-            .col_expr(sessions::Column::RevokedAt, Expr::value(Utc::now()))
+            .col_expr(sessions::Column::RevokedAt, Expr::value(now))
+            .col_expr(sessions::Column::UpdatedAt, Expr::value(now))
             .filter(sessions::Column::TenantId.eq(tenant_id))
             .filter(sessions::Column::UserId.eq(user_id))
             .filter(sessions::Column::RevokedAt.is_null());
@@ -3714,12 +3713,24 @@ mod tests {
         let first = AuthLifecycleService::revoke_user_sessions_db(&db, tenant.id, user.id, None)
             .await
             .expect("first revoke should succeed");
+        let read_sessions = || {
+            sessions::Entity::find()
+                .filter(sessions::Column::TenantId.eq(tenant.id))
+                .filter(sessions::Column::UserId.eq(user.id))
+                .order_by_asc(sessions::Column::Id)
+        };
+        let revoked = read_sessions().all(&db).await.expect("revoked sessions");
+        assert_eq!(revoked.len(), 2);
+        for session in &revoked {
+            assert_eq!(session.revoked_at, Some(session.updated_at));
+        }
         let second = AuthLifecycleService::revoke_user_sessions_db(&db, tenant.id, user.id, None)
             .await
             .expect("second revoke should succeed");
 
         assert_eq!(first, 2);
         assert_eq!(second, 0);
+        assert_eq!(read_sessions().all(&db).await.expect("unchanged sessions"), revoked);
     }
 
     #[tokio::test]

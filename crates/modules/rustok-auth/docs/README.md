@@ -660,7 +660,13 @@ The host uses user-before-session locking for direct refresh (including history-
 recovery and replay) and bulk self-service revocation, matching credential changes.
 Refresh revalidates the digest and subject under the locks. Bulk self-service
 revocation requires a still-active current session. SQLite acquires its writer
-at the user fence before transactional reads.
+at the user fence before transactional reads. Administrative and self-service
+password replacements clear the old password's failed-login counter and
+temporary lockout without changing account status. Password reset retains
+the same lockout-clearing behavior. Administrative credential mutations and
+password reset reuse the lifecycle's tenant/user-scoped bulk session
+revocation; the shared writer updates both revocation and modification
+timestamps and does not rewrite previously revoked rows.
 
 ## Direct session refresh history and recovery
 

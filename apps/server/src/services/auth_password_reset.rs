@@ -9,7 +9,7 @@ use crate::auth::{
     AuthConfig, decode_password_reset_token, encode_password_reset_token, hash_password_async,
     mask_auth_lookup_timing, password_reset_credential_matches, validate_password_policy,
 };
-use crate::models::{auth_email_change_requests, sessions, users};
+use crate::models::{auth_email_change_requests, users};
 use crate::services::email::{
     PASSWORD_RESET_TOKEN_TTL_SECS, email_service_from_ctx, password_reset_url,
     spawn_password_reset_email,
@@ -122,15 +122,9 @@ impl AuthLifecycleService {
             return Err(AuthLifecycleError::InvalidResetToken);
         }
 
-        let revoked_sessions = sessions::Entity::update_many()
-            .col_expr(sessions::Column::RevokedAt, Expr::value(now))
-            .col_expr(sessions::Column::UpdatedAt, Expr::value(now))
-            .filter(sessions::Column::TenantId.eq(tenant_id))
-            .filter(sessions::Column::UserId.eq(user.id))
-            .filter(sessions::Column::RevokedAt.is_null())
-            .exec(&tx)
-            .await
-            .map_err(AuthLifecycleError::from)?;
+        let revoked_sessions = Self::revoke_user_sessions_db_with_connection(
+            &tx, tenant_id, user.id, None,
+        ).await?;
 
         let _revoked_oauth_tokens =
             crate::services::oauth_token_service::revoke_user_delegated_tokens_in_tx(
@@ -167,7 +161,7 @@ impl AuthLifecycleService {
         .await?;
 
         tx.commit().await.map_err(AuthLifecycleError::from)?;
-        Self::record_password_reset_sessions_revoked(revoked_sessions.rows_affected);
+        Self::record_password_reset_sessions_revoked(revoked_sessions);
         Ok(())
     }
 }
