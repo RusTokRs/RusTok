@@ -302,7 +302,11 @@ Batch transactions and content patches that remove scalar text children do not c
 local inverse; undo and redo restore the retained before/after snapshots only when
 the entry is connected to the current document and the destination satisfies current validation
 limits and provider policy. Rejection leaves both stacks, selection and revision unchanged. Style inverses
-restore the complete original style slot, including absence.
+restore the complete original style slot, including absence. Updating the entry limit
+preserves the configured byte budget and nearest contiguous undo/redo entries.
+Asset removal has a local inverse only for a unique tail entry. Theme renames and
+theme edits that normalize the original raw representation rely on snapshot history
+rather than an inexact local inverse.
 
 Snapshot capture verifies canonical payload round-trip, derives the fingerprint from that
 payload rather than a cached document hash, and commits its sequence only on success.

@@ -97,7 +97,7 @@ fn structural_diff_tracks_component_changes() {
     let before = document("Hello");
     let mut after = document("Hello world");
     after
-        .project()
+        .project_mut()
         .assets
         .push(json!({ "id": "hero", "src": "/hero.png" }));
     let diff = compare_projects(&before, &after);

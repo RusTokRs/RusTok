@@ -221,6 +221,12 @@ impl History {
         }
     }
 
+    /// Change the entry limit and retain the nearest contiguous history.
+    pub(super) fn set_limit(&mut self, limit: usize) {
+        self.limit = limit.max(1);
+        self.enforce_budget();
+    }
+
     /// Override the budget and evict old entries immediately if it was lowered.
     pub fn with_memory_budget(mut self, memory_budget_bytes: usize) -> Self {
         self.memory_budget_bytes = memory_budget_bytes.max(1);

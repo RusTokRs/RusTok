@@ -53,8 +53,9 @@ impl FlyEditor {
         }
     }
 
+    /// Change the retained entry limit without resetting history or its byte budget.
     pub fn with_history_limit(mut self, limit: usize) -> Self {
-        self.history = History::new(limit);
+        self.history.set_limit(limit);
         self
     }
 
@@ -721,58 +722,77 @@ pub fn invert_command(
                 }
             }
             AssetCommand::Remove { asset_id } => {
-                let existing = document.project().assets.iter().find(|candidate| {
-                    AssetDescriptor::from_value((*candidate).clone())
+                // Upsert appends a removed asset; it can only recover the exact
+                // ordering when the removed identity occurred once at the tail.
+                let (last, preceding) = document.project().assets.split_last()?;
+                let matches = |candidate: &serde_json::Value| {
+                    AssetDescriptor::from_value(candidate.clone())
                         .is_some_and(|candidate| candidate.id == *asset_id)
-                })?;
+                };
+                if !matches(last) || preceding.iter().any(matches) {
+                    return None;
+                }
                 Some(EditorCommand::Asset {
                     command: AssetCommand::Upsert {
-                        asset: existing.clone(),
+                        asset: last.clone(),
                     },
                 })
             }
         },
-        EditorCommand::Theme { command } => match command {
-            crate::ThemeCommand::Upsert { token } => {
-                let current_tokens = crate::decode_theme_tokens(document).ok()?;
-                if let Some(existing) = current_tokens.iter().find(|t| t.name == token.name) {
+        EditorCommand::Theme { command } => {
+            // Theme writes canonicalize the raw extension. An inverse built
+            // from decoded tokens cannot recover discarded representation.
+            let current_tokens = crate::decode_theme_tokens(document).ok()?;
+            let canonical = if current_tokens.is_empty() {
+                None
+            } else {
+                let tokens = current_tokens
+                    .iter()
+                    .map(|token| {
+                        (token.name.clone(), serde_json::Value::String(token.value.clone()))
+                    })
+                    .collect::<serde_json::Map<String, serde_json::Value>>();
+                Some(serde_json::json!({ "tokens": tokens }))
+            };
+            if document.project().extensions.get(crate::FLY_THEME_FIELD) != canonical.as_ref() {
+                return None;
+            }
+            match command {
+                crate::ThemeCommand::Upsert { token } => {
+                    if let Some(existing) = current_tokens.iter().find(|t| t.name == token.name) {
+                        Some(EditorCommand::Theme {
+                            command: crate::ThemeCommand::Upsert {
+                                token: existing.clone(),
+                            },
+                        })
+                    } else {
+                        Some(EditorCommand::Theme {
+                            command: crate::ThemeCommand::Remove {
+                                name: token.name.clone(),
+                            },
+                        })
+                    }
+                }
+                crate::ThemeCommand::Remove { name } => {
+                    let existing = current_tokens.iter().find(|t| t.name == *name)?;
                     Some(EditorCommand::Theme {
                         command: crate::ThemeCommand::Upsert {
                             token: existing.clone(),
                         },
                     })
-                } else {
+                }
+                // A reverse rename also rewrites references to the new name
+                // which may have existed before the original rename.
+                crate::ThemeCommand::Rename { .. } => None,
+                crate::ThemeCommand::Replace { .. } => {
                     Some(EditorCommand::Theme {
-                        command: crate::ThemeCommand::Remove {
-                            name: token.name.clone(),
+                        command: crate::ThemeCommand::Replace {
+                            tokens: current_tokens,
                         },
                     })
                 }
             }
-            crate::ThemeCommand::Remove { name } => {
-                let current_tokens = crate::decode_theme_tokens(document).ok()?;
-                let existing = current_tokens.iter().find(|t| t.name == *name)?;
-                Some(EditorCommand::Theme {
-                    command: crate::ThemeCommand::Upsert {
-                        token: existing.clone(),
-                    },
-                })
-            }
-            crate::ThemeCommand::Rename { old_name, new_name } => Some(EditorCommand::Theme {
-                command: crate::ThemeCommand::Rename {
-                    old_name: new_name.clone(),
-                    new_name: old_name.clone(),
-                },
-            }),
-            crate::ThemeCommand::Replace { .. } => {
-                let current_tokens = crate::decode_theme_tokens(document).ok()?;
-                Some(EditorCommand::Theme {
-                    command: crate::ThemeCommand::Replace {
-                        tokens: current_tokens,
-                    },
-                })
-            }
-        },
+        }
         // Inverting every step against the initial document is incorrect:
         // previous steps may change indices, assets or the existence of targets.
         // Use the already retained exact before/after snapshots for transactions.

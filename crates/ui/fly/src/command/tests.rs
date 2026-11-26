@@ -360,6 +360,59 @@ fn style_inverse_restores_absent_and_replaced_style_slots() {
 }
 
 #[test]
+fn asset_removal_only_has_local_inverse_when_it_preserves_order() {
+    let mut document = editor().document().clone();
+    document.project_mut().assets = vec![
+        json!({ "id": "first", "src": "/first.png" }),
+        json!({ "id": "last", "src": "/last.png" }),
+    ];
+    let mut editor = FlyEditor::new(document, RegistrySet::with_builtins());
+    let before = editor.document().clone();
+    let remove = |id: &str| EditorCommand::Asset {
+        command: AssetCommand::Remove { asset_id: id.to_string() },
+    };
+    assert!(invert_command(&before, &remove("first")).is_none());
+    editor.apply(remove("first")).expect("remove first");
+    assert!(editor.history().undo_entries().last().unwrap().inverse().is_none());
+    editor.undo().expect("restore exact order");
+    assert_eq!(editor.document(), &before);
+    let inverse = invert_command(&before, &remove("last")).expect("tail inverse");
+    editor.apply(remove("last")).expect("remove last");
+    editor.apply(inverse).expect("append last");
+    assert_eq!(editor.document(), &before);
+}
+
+#[test]
+fn theme_inverse_does_not_claim_to_restore_normalized_or_rewritten_data() {
+    let mut document = editor().document().clone();
+    document.project_mut().extensions.insert(
+        crate::FLY_THEME_FIELD.to_string(),
+        json!({ "tokens": { "brand": " red " }, "future": true }),
+    );
+    let update = EditorCommand::Theme {
+        command: crate::ThemeCommand::Upsert {
+            token: crate::DesignToken { name: "brand".into(), value: "blue".into() },
+        },
+    };
+    assert!(invert_command(&document, &update).is_none());
+
+    document.project_mut().extensions.insert(
+        crate::FLY_THEME_FIELD.to_string(),
+        json!({ "tokens": { "brand": "red" } }),
+    );
+    let rename = EditorCommand::Theme {
+        command: crate::ThemeCommand::Rename { old_name: "brand".into(), new_name: "primary".into() },
+    };
+    assert!(invert_command(&document, &rename).is_none());
+    assert!(invert_command(&document, &update).is_some());
+    let mut editor = FlyEditor::new(document, RegistrySet::with_builtins());
+    let before = editor.document().clone();
+    editor.apply(rename).expect("rename");
+    editor.undo().expect("snapshot undo");
+    assert_eq!(editor.document(), &before);
+}
+
+#[test]
 fn content_patch_that_removes_text_children_has_no_local_inverse() {
     let document = GrapesJsCodec::decode_value(json!({
         "pages": [{"id": "home", "component": {"id": "root", "type": "wrapper",
@@ -505,6 +558,32 @@ fn history_evicts_oldest_entries_once_the_entry_limit_is_reached() {
 }
 
 #[test]
+fn changing_history_limit_preserves_budget_and_nearest_transitions() {
+    let mut editor = editor().with_history_memory_budget(1_000_000);
+    for step in 1..=3 {
+        editor.apply(EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: ComponentPatch::default().set_attribute("data-step", json!(step)),
+        }).expect("edit");
+    }
+    editor.undo().expect("undo third edit");
+    let before = editor.document().clone();
+    let revision = editor.revision().clone();
+    let mut editor = editor.with_history_limit(2);
+    assert_eq!(editor.history().memory_budget_bytes(), 1_000_000);
+    assert_eq!(editor.history().undo_len(), 1);
+    assert_eq!(editor.history().redo_len(), 1);
+    assert_eq!(editor.document(), &before);
+    assert_eq!(editor.revision(), &revision);
+    editor.undo().expect("nearest undo");
+    assert_eq!(editor.document().component("hero").unwrap().attributes["data-step"], 1);
+    editor.redo().expect("nearest redo");
+    assert_eq!(editor.document(), &before);
+    editor.redo().expect("third edit remains");
+    assert_eq!(editor.document().component("hero").unwrap().attributes["data-step"], 3);
+}
+
+#[test]
 fn history_respects_its_memory_budget_but_always_keeps_one_entry() {
     let mut editor = editor().with_history_memory_budget(1);
 
@@ -555,7 +634,7 @@ fn retained_bytes_include_redo_after_undoing_everything() {
 fn history_budget_counts_snapshots_even_for_a_small_invertible_patch() {
     let mut document = editor().document().clone();
     document
-        .project()
+        .project_mut()
         .extensions
         .insert("large".to_string(), json!("x".repeat(50_000)));
     let serialized_size = serde_json::to_vec(&document).expect("document json").len();
