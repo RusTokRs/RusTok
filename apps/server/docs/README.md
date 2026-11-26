@@ -1215,7 +1215,8 @@ tests for long chains and context-sensitive cycles are present but unrun.
   language subtag rather than an arbitrary `ru` prefix. This improves graceful
   shutdown **only**: email delivery remains best-effort, without a durable
   queue, retry lease, or crash recovery. Credential-bearing sends independently
-  admit application time immediately before sender invocation; JWTs are reverified
+  admit application time after account/challenge reads; JWTs are reverified
+  after the final durable clock wait, before sender invocation,
   and opaque email changes retain their committed deadline. Rejected dispatches
   count as skipped, not delivered. Old-mailbox notifications remain independent.
   Dispatch re-reads the account's exact recovery identity, checks reset's MAC,

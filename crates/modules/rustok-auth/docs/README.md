@@ -837,8 +837,10 @@ timestamps and does not rewrite previously revoked rows.
 ## Account recovery revision
 
 Before dispatching a recovery email, the tracked host task independently
-admits application time, revalidates reset/verification JWTs using the live
-keyring, or checks the committed email-change deadline. Expired credentials,
+admits application time after account/challenge reads, then revalidates
+reset/verification JWTs using the live keyring or checks the committed
+email-change deadline. The earlier local latch check does not substitute
+for the final durable admission. Expired credentials,
 clock failures and invalid JWTs skip the sender and count as skipped sends.
 Old-mailbox security notifications are not credential-gated. This is a
 best-effort pre-sender check, not delivery-time validity or durable email

@@ -608,60 +608,75 @@ async fn recovery_email_admitted(
     db: &sea_orm::DatabaseConnection,
     credential: RecoveryEmailCredential,
 ) -> bool {
-    // Independent admission; no domain transaction or business row locks.
-    let Ok(verified_at) = rustok_auth::application_clock::admit_now(db).await else {
+    // Fail fast on a local fault. The authoritative durable observation
+    // belongs after the potentially blocking account/challenge reads.
+    if rustok_auth::application_clock::check_local().is_err() {
         return false;
-    };
-    let expires_at = match credential {
+    }
+    let expires_at = match &credential {
         RecoveryEmailCredential::PasswordReset { config, token, recipient } => {
-            let Ok(claims) = crate::auth::decode_password_reset_token(&config, &token) else {
+            let Ok(claims) = crate::auth::decode_password_reset_token(config, token) else {
                 return false;
             };
             let Ok(Some(user)) = users::Entity::find_by_id(claims.user_id)
                 .filter(users::Column::TenantId.eq(claims.tenant_id)).one(db).await else {
                 return false;
             };
-            if recipient != claims.sub || !user.is_active()
+            if recipient != &claims.sub || !user.is_active()
                 || !user.matches_recovery_identity(claims.tenant_id, claims.user_id, &claims.sub, claims.recovery_revision)
-                || !crate::auth::password_reset_credential_matches(&config, &user.password_hash, &claims.credential_fingerprint)
+                || !crate::auth::password_reset_credential_matches(config, &user.password_hash, &claims.credential_fingerprint)
             {
                 return false;
             }
-            // The account read may wait; revalidate the signature/key gate
-            // after the read, rather than relying on the earlier observation.
-            crate::auth::decode_password_reset_token(&config, &token)
-                .map(|claims| claims.expires_at).ok()
+            Some(claims.expires_at)
         }
         RecoveryEmailCredential::Verification { config, token, recipient } => {
-            let Ok(claims) = crate::auth::decode_email_verification_token(&config, &token) else {
+            let Ok(claims) = crate::auth::decode_email_verification_token(config, token) else {
                 return false;
             };
             let Ok(Some(user)) = users::Entity::find_by_id(claims.user_id)
                 .filter(users::Column::TenantId.eq(claims.tenant_id)).one(db).await else {
                 return false;
             };
-            if recipient != claims.sub || !user.is_active() || user.is_email_verified()
+            if recipient != &claims.sub || !user.is_active() || user.is_email_verified()
                 || !user.matches_recovery_identity(claims.tenant_id, claims.user_id, &claims.sub, claims.recovery_revision)
             {
                 return false;
             }
-            crate::auth::decode_email_verification_token(&config, &token)
-                .map(|claims| claims.expires_at).ok()
+            Some(claims.expires_at)
         }
         RecoveryEmailCredential::EmailChange { tenant_id, user_id, recipient, token_hash, expires_at } => {
             match super::auth_email_change::pending_email_change_deadline(
-                db, tenant_id, user_id, &recipient, &token_hash,
+                db, *tenant_id, *user_id, recipient, token_hash,
             ).await {
-                Ok(Some(stored)) => Some(expires_at.min(stored)),
+                Ok(Some(stored)) => Some((*expires_at).min(stored)),
                 _ => None,
             }
         }
     };
-    // A later observation may reject, but cannot extend the verified window.
+    let Some(expires_at) = expires_at else { return false; };
+    // Independently persist the final database-corroborated observation.
+    // No domain transaction or business row lock is held during this wait.
+    let Ok(verified_at) = rustok_auth::application_clock::admit_now(db).await else {
+        return false;
+    };
+    if verified_at >= expires_at {
+        return false;
+    }
+    // The clock admission itself can wait. Revalidate the live JWT key
+    // gate after that last async step and retain the original deadline.
+    let still_valid = match &credential {
+        RecoveryEmailCredential::PasswordReset { config, token, .. } =>
+            crate::auth::decode_password_reset_token(config, token)
+                .is_ok_and(|claims| claims.expires_at == expires_at),
+        RecoveryEmailCredential::Verification { config, token, .. } =>
+            crate::auth::decode_email_verification_token(config, token)
+                .is_ok_and(|claims| claims.expires_at == expires_at),
+        RecoveryEmailCredential::EmailChange { .. } => true,
+    };
     let observed_at = Utc::now();
-    rustok_auth::application_clock::check_local().is_ok()
-        && expires_at.is_some_and(|expires_at|
-            recovery_email_deadline_live(verified_at, observed_at, expires_at))
+    still_valid && rustok_auth::application_clock::check_local().is_ok()
+        && recovery_email_deadline_live(verified_at, observed_at, expires_at)
 }
 
 fn spawn_email_task<F, Fut>(
@@ -1111,10 +1126,10 @@ mod tests {
     #[tokio::test]
     async fn recovery_email_dispatch_revalidates_account_and_clock() {
         use crate::common::settings::RustokSettings;
-        use crate::models::tenants;
+        use crate::models::{auth_email_change_requests, tenants};
         use rustok_migrations::SqliteTestMigrator;
         use rustok_test_utils::db::setup_test_db_with_migrations;
-        use sea_orm::{ActiveModelTrait, Set};
+        use sea_orm::{ActiveModelTrait, ConnectionTrait, Set};
 
         let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
         let tenant = tenants::ActiveModel::new("Email tenant", "email-dispatch")
@@ -1148,6 +1163,34 @@ mod tests {
         dispatch(reset_credential("other@example.com"), false).await;
         dispatch(verify_credential(), true).await;
 
+        // Exercise the opaque dispatch boundary with a real persisted
+        // challenge. Neither the queued deadline nor the row may extend
+        // the other. Deleting the exact challenge suppresses delivery.
+        let now = Utc::now();
+        let challenge = auth_email_change_requests::ActiveModel {
+            id: Set(Uuid::new_v4()), tenant_id: Set(tenant.id), user_id: Set(user.id),
+            current_email: Set(user.email.clone()), new_email: Set("new@example.com".to_string()),
+            password_changed_at: Set(user.password_changed_at),
+            recovery_revision: Set(Some(user.recovery_revision)),
+            token_hash: Set("a".repeat(64)),
+            expires_at: Set((now + chrono::Duration::minutes(5)).into()),
+            created_at: Set(now.into()),
+        }.insert(&db).await.unwrap();
+        let opaque = |expires_at| RecoveryEmailCredential::EmailChange {
+            tenant_id: tenant.id, user_id: user.id, recipient: challenge.new_email.clone(),
+            token_hash: challenge.token_hash.clone(), expires_at,
+        };
+        dispatch(opaque(now + chrono::Duration::minutes(10)), true).await;
+        dispatch(opaque(now - chrono::Duration::seconds(1)), false).await;
+        auth_email_change_requests::ActiveModel {
+            id: Set(challenge.id), expires_at: Set((now - chrono::Duration::seconds(1)).into()),
+            ..Default::default()
+        }.update(&db).await.unwrap();
+        dispatch(opaque(now + chrono::Duration::minutes(10)), false).await;
+        auth_email_change_requests::Entity::delete_by_id(challenge.id)
+            .exec(&db).await.unwrap();
+        dispatch(opaque(now + chrono::Duration::minutes(10)), false).await;
+
         users::ActiveModel {
             id: Set(user.id), email_verified_at: Set(Some(Utc::now().into())),
             ..Default::default()
@@ -1163,9 +1206,16 @@ mod tests {
             }.update(&db).await.unwrap();
             dispatch(reset_credential(&user.email), false).await;
         }
-        // A valid signature alone is insufficient without the clock store.
-        let missing = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
-        assert!(!recovery_email_admitted(&missing, reset_credential(&user.email)).await);
+        // The clock failure fixture must retain a valid account/token;
+        // a missing users table or stale revision would mask the clock gate.
+        let current = users::Entity::find_by_id(user.id).one(&db).await.unwrap().unwrap();
+        let fresh = crate::auth::encode_password_reset_token(&config, &current, 900).unwrap();
+        let fresh_credential = || RecoveryEmailCredential::PasswordReset {
+            config: config.clone(), token: fresh.clone(), recipient: current.email.clone(),
+        };
+        dispatch(fresh_credential(), true).await;
+        db.execute_unprepared("DROP TABLE auth_application_clock").await.unwrap();
+        dispatch(fresh_credential(), false).await;
     }
 
     #[tokio::test]
