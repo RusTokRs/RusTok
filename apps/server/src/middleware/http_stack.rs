@@ -1,10 +1,9 @@
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use axum::extract::{MatchedPath, Request};
+use axum::extract::{MatchedPath, Request, State};
 use axum::http::{HeaderName, HeaderValue, Method, StatusCode, header};
-use axum::middleware::{Next, from_fn};
+use axum::middleware::{Next, from_fn, from_fn_with_state};
 use axum::response::{IntoResponse, Response};
 use tower::ServiceBuilder;
 use tower::limit::GlobalConcurrencyLimitLayer;
@@ -26,8 +25,18 @@ const MAX_HTTP_REQUEST_TIMEOUT_SECONDS: u64 = 600;
 const MAX_HTTP_UPLOAD_TIMEOUT_SECONDS: u64 = 3_600;
 const MAX_HTTP_CONCURRENCY_LIMIT: usize = 16_384;
 
-static HTTP_REQUEST_TIMEOUT_SECS: AtomicU64 = AtomicU64::new(DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS);
-static HTTP_UPLOAD_TIMEOUT_SECS: AtomicU64 = AtomicU64::new(DEFAULT_HTTP_UPLOAD_TIMEOUT_SECONDS);
+#[derive(Clone, Copy)]
+struct HttpTimeouts {
+    request: Duration,
+    upload: Duration,
+}
+
+// Compatibility defaults for callers using adaptive_timeout as a standalone
+// middleware. Composed routers carry their own immutable policy instead.
+static STANDALONE_HTTP_TIMEOUTS: Mutex<HttpTimeouts> = Mutex::new(HttpTimeouts {
+    request: Duration::from_secs(DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS),
+    upload: Duration::from_secs(DEFAULT_HTTP_UPLOAD_TIMEOUT_SECONDS),
+});
 
 fn bounded_timeout_seconds(
     value: u64,
@@ -112,22 +121,42 @@ pub fn resolve_http_concurrency_limit() -> usize {
     parse_http_concurrency_limit(raw.as_deref())
 }
 
-/// Configures global lock-free timeout thresholds for HTTP request budgets.
+impl HttpTimeouts {
+    fn new(request_secs: u64, upload_secs: u64) -> Self {
+        let request = bounded_timeout_seconds(
+            request_secs,
+            DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS,
+            MAX_HTTP_REQUEST_TIMEOUT_SECONDS,
+            "RUSTOK_HTTP_REQUEST_TIMEOUT_SECONDS",
+        );
+        let upload = bounded_timeout_seconds(
+            upload_secs,
+            DEFAULT_HTTP_UPLOAD_TIMEOUT_SECONDS,
+            MAX_HTTP_UPLOAD_TIMEOUT_SECONDS,
+            "RUSTOK_HTTP_UPLOAD_TIMEOUT_SECONDS",
+        );
+        Self {
+            request: Duration::from_secs(request),
+            upload: Duration::from_secs(upload),
+        }
+    }
+
+    fn for_request<B>(self, request: &axum::http::Request<B>) -> Duration {
+        if is_upload_request(request) {
+            self.upload.max(self.request)
+        } else {
+            self.request
+        }
+    }
+}
+
+/// Configures the standalone adaptive_timeout middleware. Already composed
+/// HTTP routers retain the timeout policy captured when they were built.
 pub fn init_http_timeouts(request_secs: u64, upload_secs: u64) {
-    let req = bounded_timeout_seconds(
-        request_secs,
-        DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS,
-        MAX_HTTP_REQUEST_TIMEOUT_SECONDS,
-        "RUSTOK_HTTP_REQUEST_TIMEOUT_SECONDS",
-    );
-    let upl = bounded_timeout_seconds(
-        upload_secs,
-        DEFAULT_HTTP_UPLOAD_TIMEOUT_SECONDS,
-        MAX_HTTP_UPLOAD_TIMEOUT_SECONDS,
-        "RUSTOK_HTTP_UPLOAD_TIMEOUT_SECONDS",
-    );
-    HTTP_REQUEST_TIMEOUT_SECS.store(req, Ordering::Relaxed);
-    HTTP_UPLOAD_TIMEOUT_SECS.store(upl, Ordering::Relaxed);
+    let timeouts = HttpTimeouts::new(request_secs, upload_secs);
+    *STANDALONE_HTTP_TIMEOUTS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = timeouts;
 }
 
 pub fn resolve_http_timeout_seconds() -> u64 {
@@ -257,25 +286,24 @@ pub(crate) fn trace_path_family(path: &str) -> &'static str {
     }
 }
 
-/// Adaptive request timeout middleware.
-///
-/// Regular requests are budgeted with `HTTP_REQUEST_TIMEOUT_SECS` (default 30s).
-/// Large multipart / artifact upload endpoints receive an extended budget
-/// `HTTP_UPLOAD_TIMEOUT_SECS` (default 300s / 5m) to avoid terminating
-/// legitimate slow uploads on slow client networks.
-///
-/// Both limits are read lock-free from atomics with zero heap allocations and
-/// zero system calls per request.
+/// Standalone adaptive request timeout middleware. The canonical edge stack
+/// uses a router-local immutable policy instead of these compatibility defaults.
 pub async fn adaptive_timeout(request: Request, next: Next) -> Response {
-    let is_upload = is_upload_request(&request);
-    let request_timeout = Duration::from_secs(HTTP_REQUEST_TIMEOUT_SECS.load(Ordering::Relaxed));
-    let upload_timeout = Duration::from_secs(HTTP_UPLOAD_TIMEOUT_SECS.load(Ordering::Relaxed));
-    let timeout = if is_upload {
-        upload_timeout.max(request_timeout)
-    } else {
-        request_timeout
-    };
+    let timeouts = *STANDALONE_HTTP_TIMEOUTS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    scoped_adaptive_timeout(State(timeouts), request, next).await
+}
 
+/// Regular requests use the captured request budget. Owner upload routes
+/// receive at least that budget and may use the larger upload budget.
+/// No global configuration is read or mutated on this request path.
+async fn scoped_adaptive_timeout(
+    State(timeouts): State<HttpTimeouts>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let timeout = timeouts.for_request(&request);
     enforce_request_timeout(timeout, next.run(request)).await
 }
 
@@ -484,7 +512,7 @@ fn unmatched_metrics_path(path: &str) -> &'static str {
 /// 4. `TraceLayer` (per-request spans with latency in ms, status, and embedded `x-request-id` + `x-correlation-id`)
 /// 5. `record_http_metrics` (populates `HTTP_REQUESTS_TOTAL` and `HTTP_REQUEST_DURATION_SECONDS` with cardinality guards)
 /// 6. `CorsLayer` (explicit restricted origin preflight handling, credentials enabled, comprehensive headers)
-/// 7. `adaptive_timeout` (guards request deadline budget with extended timeout for upload mutations)
+/// 7. `scoped_adaptive_timeout` (router-local request budget with extended timeout for upload mutations)
 /// 8. `GlobalConcurrencyLimitLayer` (one shared in-flight budget across routes)
 /// 9. `CompressionLayer` (transparent response compression)
 pub fn apply_http_edge_stack(
@@ -509,7 +537,7 @@ fn apply_http_edge_stack_with_concurrency_limit(
     timeout_seconds: u64,
     concurrency_limit: usize,
 ) -> axum::Router {
-    init_http_timeouts(timeout_seconds, resolve_upload_timeout_seconds());
+    let timeouts = HttpTimeouts::new(timeout_seconds, resolve_upload_timeout_seconds());
 
     let x_request_id = HeaderName::from_static("x-request-id");
     let cors_layer = build_cors_layer(is_production, allowed_origins);
@@ -544,7 +572,7 @@ fn apply_http_edge_stack_with_concurrency_limit(
         .layer(trace_layer)
         .layer(from_fn(record_http_metrics))
         .layer(cors_layer)
-        .layer(from_fn(adaptive_timeout))
+        .layer(from_fn_with_state(timeouts, scoped_adaptive_timeout))
         // Router::layer applies the layer to multiple route services.
         // Share one semaphore instead of allocating a separate quota for each.
         .layer(GlobalConcurrencyLimitLayer::new(concurrency_limit))
@@ -801,6 +829,75 @@ mod tests {
                 .status(),
             StatusCode::OK,
         );
+    }
+
+    #[tokio::test]
+    async fn composed_routers_keep_independent_request_budgets() {
+        let release_long = Arc::new(tokio::sync::Notify::new());
+        let short = apply_http_edge_stack(
+            Router::new().route("/wait", get(|| async {
+                std::future::pending::<&'static str>().await
+            })),
+            false,
+            None,
+            1,
+        );
+        let long = apply_http_edge_stack(
+            Router::new().route("/wait", get({
+                let release_long = Arc::clone(&release_long);
+                move || {
+                    let release_long = Arc::clone(&release_long);
+                    async move {
+                        release_long.notified().await;
+                        "long"
+                    }
+                }
+            })),
+            false,
+            None,
+            10,
+        );
+
+        let short_request = short.oneshot(
+            Request::builder().uri("/wait").body(Body::empty()).unwrap(),
+        );
+        let long_request = long.oneshot(
+            Request::builder().uri("/wait").body(Body::empty()).unwrap(),
+        );
+
+        let (short_response, long_response) = tokio::time::timeout(
+            Duration::from_secs(3),
+            async {
+                tokio::join!(
+                    async {
+                        let response = short_request.await.unwrap();
+                        release_long.notify_one();
+                        response
+                    },
+                    long_request,
+                )
+            },
+        )
+        .await
+        .expect("building the second router must not extend the first deadline");
+        assert_eq!(short_response.status(), StatusCode::GATEWAY_TIMEOUT);
+        assert_eq!(long_response.unwrap().status(), StatusCode::OK);
+    }
+
+    #[test]
+    fn upload_timeout_never_shortens_the_regular_request_budget() {
+        let upload = Request::builder()
+            .method("PUT")
+            .uri("/v2/catalog/publish/request/artifact")
+            .body(())
+            .unwrap();
+        let regular = Request::builder().uri("/health").body(()).unwrap();
+        let timeouts = HttpTimeouts::new(30, 5);
+        assert_eq!(timeouts.for_request(&upload), Duration::from_secs(30));
+        assert_eq!(timeouts.for_request(&regular), Duration::from_secs(30));
+        let timeouts = HttpTimeouts::new(30, 90);
+        assert_eq!(timeouts.for_request(&upload), Duration::from_secs(90));
+        assert_eq!(timeouts.for_request(&regular), Duration::from_secs(30));
     }
 
     #[tokio::test]
