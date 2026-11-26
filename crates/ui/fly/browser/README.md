@@ -113,7 +113,7 @@ The adapter blocks new mutations while the outcome is unknown and exposes
 explicit status-check and same-request retry controls; it never automatically
 retries the mutation. A restored pending envelope immediately shows its recovery
 notice and starts a receipt lookup. Lookups and retries of the same operation are
-mutually exclusive. A tab/page pending slot cannot be overwritten by a second mounted root, and clearing it requires the exact original envelope. A stale mount that loses slot ownership cannot apply a late response, overwrite draft metadata, publish a response event, or initiate another lookup of the displaced operation; it must reload. A committed receipt must match the operation ID and draft token, advance the original generation, and include a usable editor snapshot. Unconfirmed success is not returned as a usable result.
+mutually exclusive. A tab/page pending slot cannot be overwritten by a second mounted root, and clearing it requires the exact original envelope. A stale mount that loses slot ownership cannot apply a late response, overwrite draft metadata, publish a response event, or initiate another lookup of the displaced operation; it must reload. A committed receipt must match the operation ID, page ID and draft token, advance the original generation, and include a usable editor snapshot. Unconfirmed success is not returned as a usable result.
 Selection and hover cannot supersede recovery. The editable Pages server also commits
 draft generation for view-state intents, so strict transport serializes and receipts
 all such requests, not only document commands. A receipt lookup is the only pure

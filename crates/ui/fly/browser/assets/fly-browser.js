@@ -536,6 +536,8 @@ function isCommittedOperationReceipt(result, request) {
   const state = isObject(result.result) ? result.result : result;
   return result.operation_status === "committed" &&
     result.operation_id === request.operation_id &&
+    nonEmptyString(request.page_id) !== null &&
+    state.page_id === request.page_id &&
     result.draft_token === request.draft_token &&
     Number.isSafeInteger(result.draft_generation) &&
     Number.isSafeInteger(request.draft_generation) &&

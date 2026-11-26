@@ -54,6 +54,21 @@ fn strict_draft_operation_identity_survives_reload_and_is_reconciled_without_aut
 }
 
 #[test]
+fn committed_receipts_are_bound_to_the_original_page_and_draft() {
+    let source = include_str!("../assets/fly-browser.js");
+    let start = source.find("function isCommittedOperationReceipt")
+        .expect("committed receipt validator");
+    let end = source[start..].find("\n}\n")
+        .map(|offset| start + offset)
+        .expect("validator end");
+    let validator = &source[start..end];
+    assert!(validator.contains("nonEmptyString(request.page_id) !== null"));
+    assert!(validator.contains("state.page_id === request.page_id"));
+    assert!(validator.contains("result.draft_token === request.draft_token"));
+    assert!(validator.contains("result.operation_id === request.operation_id"));
+}
+
+#[test]
 fn every_non_mutating_rust_intent_is_read_only_in_the_browser_receipt_policy() {
     let source = include_str!("../assets/fly-browser.js");
     let start = source
