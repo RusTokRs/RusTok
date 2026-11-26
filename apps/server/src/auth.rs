@@ -1,8 +1,9 @@
 // Re-export types from rustok-auth (these don't need error conversion).
 pub use rustok_auth::{
     AuthConfig, AuthError, AuthSettingsOverrides, Claims, DEFAULT_MIN_PASSWORD_LENGTH_CHARS,
-    InviteClaims, MIN_PASSWORD_LENGTH_FLOOR_CHARS, normalize_display_name,
-    normalize_email, password_hash_needs_rehash, validate_password_policy,
+    InviteClaims, MAX_PASSWORD_LENGTH_BYTES, MIN_PASSWORD_LENGTH_FLOOR_CHARS,
+    normalize_display_name, normalize_email, password_hash_needs_rehash,
+    validate_password_policy,
 };
 
 use crate::error::{Error, Result};
