@@ -50,7 +50,7 @@ impl AuthLifecycleService {
         // and in-transaction check below must decide whether this token is
         // still valid for the current address.
         let tx = ctx.db().begin().await.map_err(AuthLifecycleError::from)?;
-        let (current, _) = Self::lock_user_for_recovery(
+        let (current, verified_at) = Self::lock_user_for_recovery(
             &tx, tenant_id, user.id, claims.expires_at,
         )
         .await
@@ -61,7 +61,15 @@ impl AuthLifecycleService {
         {
             return Err(AuthLifecycleError::InvalidVerificationToken);
         }
-        let updated = verify_unchanged_email(&tx, tenant_id, user.id, &user.email, claims.recovery_revision).await?;
+        let updated = verify_unchanged_email(
+            &tx,
+            tenant_id,
+            user.id,
+            &user.email,
+            claims.recovery_revision,
+            verified_at,
+        )
+        .await?;
 
         if updated {
             Self::publish_user_event_in_tx(
@@ -106,9 +114,10 @@ async fn verify_unchanged_email<C: ConnectionTrait>(
     user_id: uuid::Uuid,
     email: &str,
     recovery_revision: i64,
+    verified_at: chrono::DateTime<Utc>,
 ) -> Result<bool, AuthLifecycleError> {
     let updated = users::Entity::update_many()
-        .col_expr(users::Column::EmailVerifiedAt, Expr::value(Utc::now()))
+        .col_expr(users::Column::EmailVerifiedAt, Expr::value(verified_at))
         .filter(users::Column::Id.eq(user_id))
         .filter(users::Column::TenantId.eq(tenant_id))
         .filter(users::Column::Email.eq(email))
@@ -201,8 +210,10 @@ mod tests {
         .await
         .expect("change address");
 
+        let verified_at = chrono::DateTime::<Utc>::from_timestamp(1_800_000_000, 0)
+            .expect("fixed verification timestamp");
         assert!(
-            !verify_unchanged_email(&db, tenant.id, user.id, &user.email, user.recovery_revision)
+            !verify_unchanged_email(&db, tenant.id, user.id, &user.email, user.recovery_revision, verified_at)
                 .await
                 .expect("compare and swap")
         );
@@ -214,16 +225,19 @@ mod tests {
         assert_eq!(current.email, "new@example.com");
         assert!(current.email_verified_at.is_none());
         assert!(
-            verify_unchanged_email(&db, tenant.id, user.id, &current.email, current.recovery_revision)
+            verify_unchanged_email(&db, tenant.id, user.id, &current.email, current.recovery_revision, verified_at)
                 .await
                 .expect("verify current address")
         );
         let verified = Users::find_by_id(user.id).one(&db).await.unwrap().unwrap();
         assert_eq!(verified.recovery_revision, current.recovery_revision);
+        assert_eq!(verified.email_verified_at, Some(verified_at.into()));
         assert!(
-            !verify_unchanged_email(&db, tenant.id, user.id, &current.email, current.recovery_revision)
+            !verify_unchanged_email(&db, tenant.id, user.id, &current.email, current.recovery_revision, verified_at + chrono::Duration::seconds(1))
                 .await
                 .expect("already verified")
         );
+        let replayed = Users::find_by_id(user.id).one(&db).await.unwrap().unwrap();
+        assert_eq!(replayed.email_verified_at, verified.email_verified_at);
     }
 }

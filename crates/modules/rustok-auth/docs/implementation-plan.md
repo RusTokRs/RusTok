@@ -567,6 +567,8 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
 - PostgreSQL/SQLite fresh and incremental migration, rollback, contention and transport execution evidence remain pending. Source regressions are unrun. No transport or readiness status promotion.
 - Durable high-water time, commit-time deadline semantics, issuer authority history, and immediate reclamation of stale cross-account mailbox reservations remain separate unresolved boundaries.
 
+- Verification records the corroborated post-lock admission timestamp, not a separate wall-clock observation; repeated verification preserves that timestamp. Email-change confirmation resolves competing mailbox claims at the unique-index write inside a savepoint; the conflict consumes the exact challenge without changing the user, with a fresh deadline/session check after the wait. SQLite regression source exercises the conflict write and replay rejection; PostgreSQL savepoint/contention evidence and compilation remain unrun.
+
 ## Durable application clock admission (2026-11-26)
 
 - Auth migration adds singleton host/DB millisecond floors; admission commits independently of domain rollback, serializing before observation. Missing state fails closed.

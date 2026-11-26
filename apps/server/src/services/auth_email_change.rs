@@ -344,15 +344,9 @@ impl AuthLifecycleService {
             None
         };
 
-        let existing_user = Users::find()
-            .filter(users::Column::TenantId.eq(tenant_id))
-            .filter(users::Column::Email.eq(&request.new_email))
-            .one(&tx)
-            .await
-            .map_err(AuthLifecycleError::from)?;
-
-        // Expiry is checked again after all row-lock waits, session
-        // validation and the mailbox-availability lookup.
+        // Expiry is checked again after all row-lock waits and session
+        // validation. The unique tenant/email index decides mailbox ownership
+        // at the actual write, not at a racy availability preflight.
         let transition_at = rustok_auth::application_clock::verified_now(&tx).await?;
         if proving_session.as_ref().is_some_and(|session| !session.is_active_at(transition_at)) {
             return Err(AuthLifecycleError::SessionExpired);
@@ -363,12 +357,6 @@ impl AuthLifecycleService {
             return Err(AuthLifecycleError::InvalidEmailChangeToken);
         }
 
-        if existing_user.is_some_and(|existing| existing.id != user.id) {
-            delete_email_change_request(&tx, request.id, token_hash).await?;
-            tx.commit().await.map_err(AuthLifecycleError::from)?;
-            return Err(AuthLifecycleError::EmailAlreadyExists);
-        }
-
         let old_email = user.email.clone();
         let new_email = request.new_email.clone();
         let mut active: users::ActiveModel = user.clone().into();
@@ -376,16 +364,37 @@ impl AuthLifecycleService {
         let updated_at: chrono::DateTime<chrono::FixedOffset> = transition_at.clone().into();
         active.email_verified_at = Set(Some(updated_at.clone()));
         active.updated_at = Set(updated_at);
-        active.update(&tx).await.map_err(|error| {
-            if matches!(
-                error.sql_err(),
-                Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
-            ) {
-                AuthLifecycleError::EmailAlreadyExists
-            } else {
-                AuthLifecycleError::from(error)
+        // PostgreSQL aborts the current transaction on a constraint error.
+        // Isolate the mailbox write in a savepoint so a competing claim can
+        // consume this exact challenge without committing any identity change.
+        // Only email (the mutable part of the tenant/email unique key) changes
+        // among the user's unique columns.
+        let mailbox_tx = tx.begin().await.map_err(AuthLifecycleError::from)?;
+        match active.update(&mailbox_tx).await {
+            Ok(_) => mailbox_tx.commit().await.map_err(AuthLifecycleError::from)?,
+            Err(error) => {
+                mailbox_tx.rollback().await.map_err(AuthLifecycleError::from)?;
+                if !matches!(
+                    error.sql_err(),
+                    Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+                ) {
+                    return Err(AuthLifecycleError::from(error));
+                }
+                // The unique-index wait may have outlived either credential.
+                // Do not let an expired proving session consume the challenge.
+                let conflict_now = rustok_auth::application_clock::verified_now(&tx).await?;
+                if proving_session.as_ref().is_some_and(|session| !session.is_active_at(conflict_now)) {
+                    return Err(AuthLifecycleError::SessionExpired);
+                }
+                delete_email_change_request(&tx, request.id, token_hash).await?;
+                tx.commit().await.map_err(AuthLifecycleError::from)?;
+                return Err(if request.expires_at.with_timezone(&Utc) <= conflict_now {
+                    AuthLifecycleError::InvalidEmailChangeToken
+                } else {
+                    AuthLifecycleError::EmailAlreadyExists
+                });
             }
-        })?;
+        }
 
         // Keep only the session that proved the current user identity. A
         // token-only confirmation revokes every session. Delegated OAuth
@@ -980,5 +989,16 @@ mod tests {
             .await
             .expect("query request");
         assert!(pending.is_none());
+        let unchanged = Users::find_by_id(user.id).one(&db).await.unwrap().unwrap();
+        assert_eq!(unchanged.email, user.email);
+        assert_eq!(unchanged.email_verified_at, user.email_verified_at);
+        assert_eq!(unchanged.recovery_revision, user.recovery_revision);
+        assert!(matches!(
+            AuthLifecycleService::confirm_email_change_db(
+                &ServerRuntimeContext::new(db.clone(), Default::default()),
+                tenant.id, &token_hash, None, None,
+            ).await,
+            Err(AuthLifecycleError::InvalidEmailChangeToken)
+        ));
     }
 }

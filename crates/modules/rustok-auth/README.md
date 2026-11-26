@@ -192,6 +192,9 @@ like reset and verification JWTs. Legacy pending email changes are removed
 at migration; no revision backfill or compatibility reader is provided.
 Recovery mutations recheck credential expiry before requesting commit and
 roll back late transitions; this does not establish durable clock safety.
+Verification records the corroborated post-lock timestamp. Email-change
+confirmation uses the unique mailbox index as the conflict authority and a
+savepoint to consume a conflicting challenge without changing the account.
 See the [recovery revision ADR](../../../DECISIONS/2026-11-26-auth-recovery-revision.md)
 and the [Auth implementation plan](./docs/implementation-plan.md) for remaining evidence.
 
