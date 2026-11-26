@@ -1724,6 +1724,11 @@ for caller identity, bounded IO, operator permissions and unexecuted runtime gat
   metrics instead of false success.
 - Tenant-scoped DLQ listing reports the total matching failed events independently
   of its bounded response page, and resolves equal timestamps with stable ID ordering.
+  The indexed UUID tenant predicate and the legacy JSON text predicate use
+  independently typed bind parameters on PostgreSQL and SQLite. Both list and
+  atomic replay keep the canonical tenant precedence; null or malformed
+  canonical JSON does not grant access through the nested legacy key.
+  A transaction-local PostgreSQL regression fixture is authored but unrun.
 - Refresh-token rotation verifies that the referenced user belongs to the
   same tenant as the selected refresh session, preventing a malformed
   cross-tenant reference from issuing a token with inconsistent authority.
