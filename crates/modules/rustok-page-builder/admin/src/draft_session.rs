@@ -4285,8 +4285,7 @@ mod tests {
             ));
             let after = store.load(token, "home", None).expect("load").expect("session");
             assert_eq!(after.generation, before.generation);
-            assert_eq!(after.runtime_context, before.runtime_context);
-            assert_eq!(after.controller.ui().state.selection, before.controller.ui().state.selection);
+            assert_eq!(after, before, "failed commit changed the stored session");
         }
     }
 
@@ -4307,6 +4306,73 @@ mod tests {
         assert_exhausted_generation_is_immutable(&file, &first.token);
         let durable = DurableSsrDraftSessionStore::new(InMemorySsrDraftSessionStore::default(), file);
         assert_exhausted_generation_is_immutable(&durable, &first.token);
+        fs::remove_dir_all(dir).expect("cleanup");
+    }
+
+    fn assert_receipt_generation_exhaustion_is_immutable(
+        store: &dyn SsrDraftSessionStore,
+        token: &str,
+        generation: u64,
+        operation_id: &str,
+        response: Value,
+    ) {
+        let before = store.load(token, "home", None).expect("load").expect("session");
+        assert_eq!(before.generation, generation);
+        let request_hash = "a".repeat(64);
+        assert!(matches!(
+            store.commit_with_operation_receipt(
+                token,
+                generation,
+                before.controller.clone(),
+                before.runtime_context.clone(),
+                before.owner.as_ref(),
+                operation_id,
+                &request_hash,
+                response,
+            ),
+            Err(SsrDraftSessionError::GenerationExhausted)
+        ));
+        let after = store.load(token, "home", None).expect("load").expect("session");
+        assert_eq!(after, before, "failed receipt commit changed the stored session");
+    }
+
+    #[test]
+    fn receipt_commits_fail_closed_at_generation_exhaustion() {
+        let memory = InMemorySsrDraftSessionStore::default();
+        let first = memory.commit(None, None, controller("home"), None).expect("create");
+        memory.entries.write().expect("entries")
+            .get_mut(&first.token).expect("entry").generation = u64::MAX;
+        assert_receipt_generation_exhaustion_is_immutable(
+            &memory, &first.token, u64::MAX, "overflow-final", json!({"saved": true}),
+        );
+        memory.entries.write().expect("entries")
+            .get_mut(&first.token).expect("entry").generation = u64::MAX - 1;
+        assert_receipt_generation_exhaustion_is_immutable(
+            &memory, &first.token, u64::MAX - 1, "overflow-prepared",
+            json!({"prepared_save": true}),
+        );
+
+        let dir = temp_store_dir();
+        let file = file_store(&dir);
+        let first = file.commit(None, None, controller("home"), None).expect("create");
+        let mut record = file.load_record(&first.token, None).expect("load").expect("record");
+        record.generation = u64::MAX;
+        file.save_record(&record).expect("seed exhausted generation");
+        assert_receipt_generation_exhaustion_is_immutable(
+            &file, &first.token, u64::MAX, "overflow-final", json!({"saved": true}),
+        );
+        record.generation = u64::MAX - 1;
+        file.save_record(&record).expect("seed prepared exhaustion");
+        assert_receipt_generation_exhaustion_is_immutable(
+            &file, &first.token, u64::MAX - 1, "overflow-prepared",
+            json!({"prepared_save": true}),
+        );
+
+        let durable = DurableSsrDraftSessionStore::new(InMemorySsrDraftSessionStore::default(), file);
+        assert_receipt_generation_exhaustion_is_immutable(
+            &durable, &first.token, u64::MAX - 1, "overflow-prepared-durable",
+            json!({"prepared_save": true}),
+        );
         fs::remove_dir_all(dir).expect("cleanup");
     }
 
