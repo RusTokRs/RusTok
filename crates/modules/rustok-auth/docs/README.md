@@ -678,10 +678,14 @@ refresh. Proof reuse cannot resurrect a historical digest. Unrecoverable
 duplicates return REST 409 / GraphQL CONFLICT. No proof or plaintext token is
 stored, and the key must not be logged.
 
-Clients must generate and persist the secret before the request, reuse it
-only for that attempt, and discard it on resolution. Without client support,
-lost responses still cannot be recovered. Built-in Leptos/Next.js and native
-client integration and runtime verification remain pending.
+Clients must generate and retain an independent secret before the request,
+reuse its proof only for that attempt, and discard it on resolution. A BFF
+may retain an independent CSPRNG login seed in an HttpOnly envelope and
+derive a separate generation-bound proof from that seed. Next Admin uses
+this scheme and retries one ambiguous upstream refresh with unchanged
+inputs. Without client support, lost responses still cannot be recovered.
+Leptos, Next Storefront and native client integration and all mounted
+runtime verification remain pending.
 See [the ADR](../../../../DECISIONS/2026-11-26-session-refresh-retry-proof.md).
 
 ## GraphQL credential throttling

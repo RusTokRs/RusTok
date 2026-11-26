@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import {
   RUSTOK_ACCESS_COOKIE_NAME,
   RUSTOK_ACCESS_COOKIE_PATH,
@@ -8,7 +8,15 @@ import {
   RUSTOK_SESSION_COOKIE_NAME,
   RUSTOK_SESSION_COOKIE_PATH,
   RUSTOK_SESSION_REQUEST_HEADER,
-  parseRustokSessionCookie
+  RUSTOK_REFRESH_RETRY_HEADER,
+  encodeRustokRefreshCredential,
+  newRustokRefreshSeed,
+  parseRustokHostCookies,
+  parseRustokSessionCookie,
+  retryAmbiguousRefresh,
+  rustokRefreshRetryKey,
+  type RustokHostCookies,
+  type RustokRefreshCredential
 } from './auth-session';
 
 const API_BASE_URL = (
@@ -32,6 +40,7 @@ export interface RustokSessionCredentials {
   accessToken: string;
   expiresIn: number;
   refreshToken: string;
+  retrySeed: string;
   refreshMaxAge: number;
   user: RustokSessionUser;
 }
@@ -111,12 +120,14 @@ function copyLocaleHeaders(source: Headers, target: Headers): void {
 
 function toCredentials(
   response: SessionResponse,
-  cookie: { value: string; maxAge: number }
+  cookie: { value: string; maxAge: number },
+  retrySeed: string
 ): RustokSessionCredentials {
   return {
     accessToken: response.access_token,
     expiresIn: response.expires_in,
     refreshToken: cookie.value,
+    retrySeed,
     refreshMaxAge: cookie.maxAge,
     user: response.user
   };
@@ -134,6 +145,7 @@ async function requestSession(
     response = await fetch(API_BASE_URL + path, {
       ...init,
       cache: 'no-store',
+      redirect: 'error',
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
     });
   } catch {
@@ -173,6 +185,7 @@ export async function createRustokSession(input: {
   name?: string;
   request: Request;
 }): Promise<RustokSessionCredentials> {
+  const retrySeed = newRustokRefreshSeed();
   const headers = new Headers({
     'content-type': 'application/json',
     'x-tenant-slug': input.tenantSlug
@@ -206,18 +219,19 @@ export async function createRustokSession(input: {
     );
   }
 
-  return toCredentials(data, cookie);
+  return toCredentials(data, cookie, retrySeed);
 }
 
 async function refreshOnce(
-  refreshToken: string,
+  credential: RustokRefreshCredential,
   tenantSlug: string,
   tenantId?: string | null,
   source?: Headers
 ): Promise<RustokSessionCredentials> {
   const headers = new Headers({
-    cookie: RUSTOK_SESSION_COOKIE_NAME + '=' + refreshToken,
+    cookie: RUSTOK_SESSION_COOKIE_NAME + '=' + credential.token,
     [RUSTOK_SESSION_REQUEST_HEADER]: '1',
+    [RUSTOK_REFRESH_RETRY_HEADER]: rustokRefreshRetryKey(credential, tenantSlug),
     'x-tenant-slug': tenantSlug
   });
   if (tenantId) headers.set('x-tenant-id', tenantId);
@@ -239,33 +253,23 @@ async function refreshOnce(
     );
   }
 
-  return toCredentials(data, cookie);
+  return toCredentials(data, cookie, credential.retrySeed);
 }
 
-const refreshes = new Map<string, Promise<RustokSessionCredentials>>();
-
-/** Coalesce same-token refreshes within this Next.js process. */
-export function refreshRustokSession(
-  refreshToken: string,
+/** Repeat at most once after an ambiguous upstream result. The original
+ * credential and proof remain unchanged; backend history is the distributed
+ * authority, not a process-local promise map. Never retry a rejected request.
+ */
+export async function refreshRustokSession(
+  credential: RustokRefreshCredential,
   tenantSlug: string,
   tenantId?: string | null,
   source?: Headers
 ): Promise<RustokSessionCredentials> {
-  const key = tenantSlug + '\u0000' + refreshToken;
-  const existing = refreshes.get(key);
-  if (existing) return existing;
-
-  const pending = refreshOnce(refreshToken, tenantSlug, tenantId, source);
-  refreshes.set(key, pending);
-  void pending.then(
-    () => {
-      if (refreshes.get(key) === pending) refreshes.delete(key);
-    },
-    () => {
-      if (refreshes.get(key) === pending) refreshes.delete(key);
-    }
+  return retryAmbiguousRefresh(
+    () => refreshOnce(credential, tenantSlug, tenantId, source),
+    (error) => error instanceof RustokSessionError && error.outcome === 'unknown'
   );
-  return pending;
 }
 
 export async function revokeRustokSession(
@@ -286,6 +290,7 @@ export async function revokeRustokSession(
       method: 'POST',
       headers,
       cache: 'no-store',
+      redirect: 'error',
       signal: AbortSignal.timeout(LOGOUT_TIMEOUT_MS)
     });
   } catch {
@@ -318,7 +323,12 @@ export async function persistRustokSessionCookies(
   session: RustokSessionCredentials
 ): Promise<void> {
   const store = await cookies();
-  store.set(RUSTOK_SESSION_COOKIE_NAME, session.refreshToken, {
+  // One cookie atomically carries the bearer and its independent BFF seed.
+  // A torn pair would turn a recoverable response loss into a false replay.
+  store.set(RUSTOK_SESSION_COOKIE_NAME, encodeRustokRefreshCredential({
+    token: session.refreshToken,
+    retrySeed: session.retrySeed
+  }), {
     ...cookieOptions(RUSTOK_SESSION_COOKIE_PATH),
     maxAge: session.refreshMaxAge
   });
@@ -332,15 +342,8 @@ export async function persistRustokSessionCookies(
   });
 }
 
-export async function readRustokSessionCookies(): Promise<{
-  accessToken: string | null;
-  refreshToken: string | null;
-}> {
-  const store = await cookies();
-  return {
-    accessToken: store.get(RUSTOK_ACCESS_COOKIE_NAME)?.value ?? null,
-    refreshToken: store.get(RUSTOK_SESSION_COOKIE_NAME)?.value ?? null
-  };
+export async function readRustokSessionCookies(): Promise<RustokHostCookies> {
+  return parseRustokHostCookies((await headers()).get('cookie'));
 }
 
 export async function clearRustokSessionCookies(): Promise<void> {

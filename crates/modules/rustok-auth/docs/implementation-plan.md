@@ -345,11 +345,22 @@ user/session fences, and preserves the original refresh deadline and history
 on recovery. The GraphQL provider preserves rotation conflicts as CONFLICT.
 See [the recovery ADR](../../../../DECISIONS/2026-11-26-session-refresh-retry-proof.md).
 
-Remaining implementation: client-generated CSPRNG proof persistence before
-send, forwarding and resolution in the shared Leptos direct/native and Next.js
-BFF/SSR paths, mobile/native consumers, and generated API header reference
-updates. Verify header secrecy in proxies and telemetry. No proof-bearing
-client is claimed complete. OAuth refresh-family recovery is separate.
+Next Admin BFF source-wires a 256-bit independent login seed in the same
+HttpOnly envelope as the refresh token, deriving the per-generation proof
+with HMAC-SHA256 over tenant slug and presented token. The original envelope
+survives loss of an upstream or BFF response, and replicas derive the same
+proof. One bounded automatic retry handles ambiguous upstream refresh results;
+the domain GraphQL operation is never automatically replayed. The BFF
+rejects duplicate/malformed cookies and redirects, checks the refreshed
+subject and does not clear cookies on transient refresh failures. Existing
+bare-cookie sessions require coordinated revocation and new sign-in.
+
+Remaining implementation: shared Leptos direct/native and SSR paths,
+Next Storefront (currently observation-only, without its own refresh flow),
+mobile/native consumers, generated API header reference updates, and
+header secrecy in proxies/telemetry. Next Admin browser/runtime and
+cross-replica evidence, late cookie delivery and Auth.js logout failure
+handling remain pending. OAuth refresh-family recovery is separate.
 Run scoped Auth and server compilation, retry-proof and lifecycle tests,
 mounted REST/GraphQL/CORS contracts, PostgreSQL contention and cross-replica
 lost-response injection, plus the remediation gate. None has been executed.

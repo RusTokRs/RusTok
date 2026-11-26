@@ -1,13 +1,12 @@
 import { auth } from '@/auth';
 import {
   clearRustokSessionCookies,
-  isRustokAccessTokenExpiring,
   persistRustokSessionCookies,
   readRustokSessionCookies,
   refreshRustokSession,
   RustokSessionError
 } from '@/shared/api/auth-server';
-import { isSameOriginRequest } from '@/shared/api/auth-session';
+import { isRustokAccessTokenExpiring, isSameOriginRequest } from '@/shared/api/auth-session';
 
 const API_BASE_URL = (
   process.env.RUSTOK_API_URL ??
@@ -112,6 +111,13 @@ export async function POST(request: Request): Promise<Response> {
 
   const session = await auth();
   const stored = await readRustokSessionCookies();
+  if (stored.invalid) {
+    return graphQLError(
+      'UNAUTHORIZED',
+      'Invalid Rustok session cookies. Sign in again.',
+      401
+    );
+  }
   const upstreamHeaders = new Headers({
     'content-type': 'application/json'
   });
@@ -156,7 +162,7 @@ export async function POST(request: Request): Promise<Response> {
 
     let accessToken = stored.accessToken;
     if (!accessToken || isRustokAccessTokenExpiring(accessToken)) {
-      if (!stored.refreshToken) {
+      if (!stored.refreshCredential) {
         return graphQLError(
           'UNAUTHORIZED',
           'Rustok session expired. Sign in again.',
@@ -166,11 +172,15 @@ export async function POST(request: Request): Promise<Response> {
 
       try {
         const refreshed = await refreshRustokSession(
-          stored.refreshToken,
+          stored.refreshCredential,
           tenantSlug,
           tenantId,
           request.headers
         );
+        if (refreshed.user.id !== session.user.id) {
+          // Do not attach another subject's credential to this Auth.js identity.
+          return graphQLError('FORBIDDEN', 'Session identity does not match', 403);
+        }
         await persistRustokSessionCookies(refreshed);
         accessToken = refreshed.accessToken;
       } catch (error) {
@@ -190,7 +200,7 @@ export async function POST(request: Request): Promise<Response> {
         }
         if (
           error instanceof RustokSessionError &&
-          error.outcome === 'rejected'
+          error.status === 401
         ) {
           await clearRustokSessionCookies();
           return graphQLError(
@@ -200,11 +210,21 @@ export async function POST(request: Request): Promise<Response> {
           );
         }
 
+        if (error instanceof RustokSessionError && error.outcome === 'rejected') {
+          return graphQLError(
+            error.status === 429 ? 'RATE_LIMITED' : 'SESSION_REFRESH_REJECTED',
+            'Session refresh was rejected; the GraphQL operation was not forwarded.',
+            error.status,
+            'rejected',
+            error.status === 429
+          );
+        }
         return graphQLError(
           'SERVICE_UNAVAILABLE',
-          'Session refresh outcome is unknown; inspect current state before retrying.',
+          'Session could not be refreshed; the GraphQL operation was not forwarded.',
           503,
-          'unknown'
+          'rejected',
+          true
         );
       }
     }
@@ -240,7 +260,8 @@ export async function POST(request: Request): Promise<Response> {
       method: 'POST',
       headers: upstreamHeaders,
       body,
-      cache: 'no-store'
+      cache: 'no-store',
+      redirect: 'error'
     });
   } catch {
     return graphQLError(
