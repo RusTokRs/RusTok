@@ -205,9 +205,11 @@ fn materialize_component(
 }
 
 fn clear_interaction_materialization(component: &mut ComponentObject) {
-    for attribute in GENERATED_INTERACTION_ATTRIBUTES {
-        component.attributes.remove(*attribute);
-    }
+    component.attributes.retain(|name, _| {
+        !GENERATED_INTERACTION_ATTRIBUTES
+            .iter()
+            .any(|attribute| name.eq_ignore_ascii_case(attribute))
+    });
 }
 
 fn apply_form(

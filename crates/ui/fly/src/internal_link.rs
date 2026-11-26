@@ -320,9 +320,11 @@ fn record_unresolved(
 }
 
 fn clear_internal_link_materialization(component: &mut ComponentObject) {
-    for attribute in GENERATED_INTERNAL_LINK_ATTRIBUTES {
-        component.attributes.remove(*attribute);
-    }
+    component.attributes.retain(|name, _| {
+        !GENERATED_INTERNAL_LINK_ATTRIBUTES
+            .iter()
+            .any(|attribute| name.eq_ignore_ascii_case(attribute))
+    });
 }
 
 fn normalize_base_path(value: Option<&str>) -> Result<Option<String>, String> {

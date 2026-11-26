@@ -186,6 +186,9 @@ required translation coverage still requires an exact locale entry, never a fall
 A page-targeting interaction requires a unique page ID. Duplicate imported page IDs are
 reported as ambiguous by both link and action validation/materialization, and cannot
 produce an href even when a fallback URL is configured.
+Link, action and form materialization removes all ASCII case variants of the HTML
+attributes it owns before validation or regeneration; an authored uppercase spelling
+cannot retain a stale destination, method or runtime action marker.
 
 ## Runtime binding ownership
 

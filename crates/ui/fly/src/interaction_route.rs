@@ -163,12 +163,12 @@ mod tests {
                     "components": [{
                         "id": "link",
                         "type": "link",
-                        "attributes": { "href": "/stale" },
+                        "attributes": { "href": "/stale", "HREF": "/stale-uppercase" },
                         "flyPageLink": { "page_id": "about", "fallback_href": "/fallback" }
                     }, {
                         "id": "action",
                         "type": "button",
-                        "attributes": { "href": "/stale" },
+                        "attributes": { "href": "/stale", "HREF": "/stale-uppercase" },
                         "flyAction": {
                             "kind": "navigate_page", "page_id": "about",
                             "fallback_href": "/fallback"
@@ -214,8 +214,10 @@ mod tests {
         assert_eq!(materialized.fallback_internal_links, 0);
         assert_eq!(materialized.fallback_actions, 0);
         for id in ["link", "action"] {
-            assert!(!materialized.document.component(id).unwrap().attributes.contains_key("href"));
+            let attributes = &materialized.document.component(id).unwrap().attributes;
+            assert!(!attributes.keys().any(|name| name.eq_ignore_ascii_case("href")));
             assert_eq!(document.component(id).unwrap().attributes["href"], "/stale");
+            assert_eq!(document.component(id).unwrap().attributes["HREF"], "/stale-uppercase");
         }
     }
 
