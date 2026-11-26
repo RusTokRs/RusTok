@@ -179,6 +179,35 @@ The precondition does not authenticate decoded JWT claims; the Auth server
 still validates signatures, live state and authorization. It does not bind
 startup discovery to an identity not yet observed, order browser Set-Cookie
 delivery, or carry arbitrary queued domain intents through a change of Auth.js
-identity. Auth.js sign-out events preserve Rustok cookies on failed revocation,
-but Auth.js itself can still clear its own session; explicit confirmed logout
-and mounted verification remain pending.
+identity. Next Admin owns explicit sign-out admission rather than relying
+on an Auth.js event, as described below.
+
+## Confirmed Next Admin logout
+
+The credentials-only Next Admin catch-all admits a closed set of Auth.js
+actions. The generic signout action is never forwarded: GET is rejected;
+POST must present an exact same-origin Origin and the canonical
+`x-rustok-expected-session-id` captured from the displayed Auth.js identity.
+The host compares the ID against its authenticated identity, requires the
+canonical refresh envelope and resolved tenant UUID, and forwards the
+precondition to the Auth owner. A missing, malformed, conflicting or
+unconfirmed credential does not confirm logout or clear cookies.
+
+Only after the owner confirms revocation does the host invoke its private
+Auth.js server sign-out helper, then clear the Rustok cookies in the same
+response. Success requires explicit confirmation, not an arbitrary redirect
+or empty 2xx. No sign-out event owns revocation; no second client-side
+Auth.js signout request is made. Header/sidebar and post-credential-change
+UI use the shared confirmed logout transport, report failures separately
+from already committed credential changes, and navigate only on confirmation.
+Rejected login never clears an unrelated existing session; compensation
+targets only the newly issued lineage.
+
+This ordering permits a same-lineage retry after an ambiguous upstream
+revocation while both credentials remain present. It does not provide an
+atomic transaction spanning backend revocation, framework cookies and
+browser delivery. Cleanup failures after revocation, complete/partial
+response loss, simultaneous login/logout, expired Auth.js identity with a
+remaining Rustok cookie, and noncooperating delayed Set-Cookie responses
+remain mounted verification or recovery gates. Explicit sign-out does not
+prevent normal Auth.js expiry or guarantee cross-tab projection convergence.

@@ -812,3 +812,14 @@ Expected logout requires possession of a digest of the exact tenant lineage
 Leptos retained-session transitions and Next Admin's Auth.js-bound session
 forward the precondition. Startup discovery and delayed response ordering
 remain separate concerns. See the [recovery ADR](../../../../DECISIONS/2026-11-26-session-refresh-retry-proof.md).
+
+### Next Admin confirmed logout (source only)
+
+The Next Admin host owns signout admission; the Auth.js catch-all never
+forwards generic signout. Same-origin POST carries the expected lineage from
+the displayed session. The owner confirms matching refresh revocation before
+the private Auth.js cleanup helper and Rustok cookie clearing. The shared
+client requires explicit success and keeps an ambiguous revocation retryable.
+See the [recovery ADR](../../../../DECISIONS/2026-11-26-session-refresh-retry-proof.md).
+Mounted Auth.js route/cookie behavior and late or partial response recovery
+remain unverified; this is not distributed atomic cookie delivery.

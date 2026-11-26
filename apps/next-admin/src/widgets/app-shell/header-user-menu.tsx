@@ -15,7 +15,8 @@ import {
   IconLogout,
   IconUserCircle
 } from '@tabler/icons-react';
-import { signOut, useSession } from 'next-auth/react';
+import { useSession } from 'next-auth/react';
+import { useConfirmedSignOut } from '@/shared/hooks/use-confirmed-sign-out';
 import { useTranslations } from '@rustok/next-fluent/client';
 import { useRouter } from 'next/navigation';
 
@@ -35,9 +36,7 @@ export function HeaderUserMenu() {
   const role = user?.role || 'user';
   const initial = getInitials(displayName, tMenu('userInitial'));
 
-  const handleLogout = () => {
-    signOut({ callbackUrl: '/auth/sign-in' });
-  };
+  const { signOut, isSigningOut } = useConfirmedSignOut(user?.rustokSessionId);
 
   return (
     <DropdownMenu>
@@ -81,11 +80,12 @@ export function HeaderUserMenu() {
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          onClick={handleLogout}
+          onClick={() => { void signOut(); }}
+          disabled={isSigningOut}
           className='text-destructive focus:text-destructive'
         >
           <IconLogout className='mr-2 h-4 w-4' />
-          {tMenu('signOut')}
+          {tMenu(isSigningOut ? 'signingOut' : 'signOut')}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

@@ -387,20 +387,26 @@ digest belongs to the locked tenant lineage (including retained history);
 missing/mismatched credentials do not clear cookies. Leptos projects the
 expected ID through CSR/hydrate and Next Admin pins Auth.js to the direct
 session, compares tenant/subject/lineage before dispatch, and avoids clearing
-cookies on rejected refresh. Next Auth.js sign-out events preserve Rustok
-cookies on revocation failure but cannot prevent Auth.js's own session clearing.
+cookies on rejected refresh. Next Admin explicit logout is now source-wired:
+the closed credentials-only Auth.js route admits same-origin POST with a
+frozen expected lineage, revokes through Auth before any cookie cleanup,
+then invokes the private Auth.js sign-out helper and clears Rustok cookies.
+UI header/sidebar and credential-change flows share the transport; failures
+are localized and do not repeat a committed credential change. Failed login
+does not clear unrelated cookies. Generic Auth.js signout bypass is removed.
 Regressions cover current/historical mismatch, matching proof recovery,
-historical logout retry, header parsing and adapter forwarding.
+historical logout retry, header parsing, adapter forwarding, route admission,
+cleanup ordering and explicit response confirmation.
 Out-of-order noncooperating responses, SSR navigation, discovery without
-expected identity, explicit confirmed Next logout and mounted verification
-remain open.
+expected identity, expired Auth.js identity recovery, post-revocation cleanup
+failure and mounted verification remain open.
 
 Remaining implementation: standalone Storefront SSR validated composition,
 Next Storefront (currently observation-only, without its own refresh flow),
 mobile/native consumers, generated API header reference updates, and
 header secrecy in proxies/telemetry. Next Admin browser/runtime and
-cross-replica evidence, late cookie delivery and Auth.js logout failure
-handling remain pending. OAuth refresh-family recovery is separate.
+cross-replica evidence, late cookie delivery and post-revocation cookie
+cleanup recovery remain pending. OAuth refresh-family recovery is separate.
 Run scoped Auth and server compilation, retry-proof and lifecycle tests,
 mounted REST/GraphQL/CORS contracts, PostgreSQL contention and cross-replica
 lost-response injection, plus the remediation gate. None has been executed.

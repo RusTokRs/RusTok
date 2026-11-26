@@ -1,6 +1,7 @@
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import { fetchCurrentTenant } from '@/shared/api/tenant-api';
+import { handleConfirmedLogout } from '@/shared/api/auth-session';
 import {
   clearRustokSessionCookies,
   createRustokSession,
@@ -13,7 +14,7 @@ function asString(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
 }
 
-export const { handlers, signIn, signOut, auth } = NextAuth({
+const { handlers, signIn, signOut: clearAuthJsSession, auth } = NextAuth({
   providers: [
     Credentials({
       credentials: {
@@ -83,9 +84,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             }
           }
 
-          await clearRustokSessionCookies().catch(() => {
-            console.warn('Rustok session cookie cleanup failed');
-          });
+          // A rejected login must not clear a pre-existing or concurrently
+          // established session. Only the newly issued lineage is compensable.
           return null;
         }
       }
@@ -130,30 +130,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       return session;
     }
   },
-  events: {
-    async signOut(message) {
-      const token = 'token' in message ? message.token : null;
-      const tenantSlug =
-        typeof token?.tenantSlug === 'string' ? token.tenantSlug : null;
-      const tenantId =
-        typeof token?.tenantId === 'string' ? token.tenantId : null;
-
-      const expectedSessionId = typeof token?.rustokSessionId === 'string' ? token.rustokSessionId : null;
-      try {
-        const stored = await readRustokSessionCookies();
-        if (stored.invalid || !stored.refreshCredential || !tenantSlug || !expectedSessionId) {
-          throw new Error('Expected Rustok logout credential is unavailable');
-        }
-        await revokeRustokSession(stored.refreshCredential, tenantSlug, expectedSessionId, tenantId);
-        await clearRustokSessionCookies();
-      } catch {
-        // Auth.js events do not gate its own cookie clearing. Preserve Rustok
-        // credentials on ambiguity or mismatch; an explicit logout flow must
-        // surface confirmation before Auth.js signOut (tracked in the Auth plan).
-        console.warn('Rustok server session revocation could not be confirmed during sign-out');
-      }
-    }
-  },
   pages: {
     signIn: '/auth/sign-in'
   },
@@ -162,3 +138,32 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     maxAge: 30 * 24 * 60 * 60
   }
 });
+
+export { handlers, signIn, auth };
+
+// The raw Auth.js signOut helper stays private. The route admits the caller
+// before any mutation; Auth.js cleanup runs only after owner confirmation.
+export async function confirmedSignOut(request: Request): Promise<Response> {
+  return handleConfirmedLogout(request, {
+    async readIdentity() {
+      const session = await auth();
+      return session?.user ? {
+        sessionId: session.user.rustokSessionId,
+        tenantId: session.user.tenantId,
+        tenantSlug: session.user.tenantSlug
+      } : null;
+    },
+    readCookies: readRustokSessionCookies,
+    revoke: revokeRustokSession,
+    async clearApplicationSession() {
+      const target = await clearAuthJsSession({ redirect: false, redirectTo: '/auth/sign-in' });
+      // The supported server helper returns the target URL when redirect is
+      // false. An Auth.js error redirect is not local cleanup confirmation.
+      if (typeof target !== 'string' ||
+          new URL(target, request.url).href !== new URL('/auth/sign-in', request.url).href) {
+        throw new Error('Auth.js sign-out was not confirmed');
+      }
+    },
+    clearRustokCookies: clearRustokSessionCookies
+  });
+}

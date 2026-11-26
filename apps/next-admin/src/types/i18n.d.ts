@@ -74,6 +74,10 @@ export type AppMessageKey =
   | 'app.menu.security'
   | 'app-menu-signOut'
   | 'app.menu.signOut'
+  | 'app-menu-signingOut'
+  | 'app.menu.signingOut'
+  | 'app-menu-signOutFailed'
+  | 'app.menu.signOutFailed'
   | 'app-menu-userInitial'
   | 'app.menu.userInitial'
   | 'app-nav-access'
@@ -2618,6 +2622,10 @@ export interface AppMessageArgs {
   'app-menu-security'?: Record<string, never>;
   'app.menu.signOut'?: Record<string, never>;
   'app-menu-signOut'?: Record<string, never>;
+  'app-menu-signingOut'?: Record<string, never>;
+  'app.menu.signingOut'?: Record<string, never>;
+  'app-menu-signOutFailed'?: Record<string, never>;
+  'app.menu.signOutFailed'?: Record<string, never>;
   'app.menu.userInitial'?: Record<string, never>;
   'app-menu-userInitial'?: Record<string, never>;
   'app.nav.access'?: Record<string, never>;

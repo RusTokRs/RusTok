@@ -38,7 +38,8 @@ import {
   IconLogout,
   IconUserCircle
 } from '@tabler/icons-react';
-import { useSession, signOut } from 'next-auth/react';
+import { useSession } from 'next-auth/react';
+import { useConfirmedSignOut } from '@/shared/hooks/use-confirmed-sign-out';
 import { useTranslations } from '@rustok/next-fluent/client';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -106,9 +107,7 @@ export default function AppSidebar() {
 
   React.useEffect(() => {}, [isOpen]);
 
-  const handleLogout = () => {
-    signOut({ callbackUrl: '/auth/sign-in' });
-  };
+  const { signOut, isSigningOut } = useConfirmedSignOut(session?.user.rustokSessionId);
 
   // Adapt the session shape to the sidebar avatar component.
   const avatarUser = session?.user
@@ -234,9 +233,9 @@ export default function AppSidebar() {
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout}>
+                <DropdownMenuItem onClick={() => { void signOut(); }} disabled={isSigningOut}>
                   <IconLogout className='mr-2 h-4 w-4' />
-                  {tMenu('signOut')}
+                  {tMenu(isSigningOut ? 'signingOut' : 'signOut')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
