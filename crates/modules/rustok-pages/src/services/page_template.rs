@@ -224,6 +224,7 @@ impl PageTemplateService {
             .map(|row| row.symbol_id)
             .collect::<BTreeSet<_>>();
         if ids != present {
+            tx.rollback().await?;
             return Err(PagesError::validation(
                 "Template references a missing site symbol in this tenant/locale",
             ));
@@ -237,6 +238,7 @@ impl PageTemplateService {
         let revision = match existing {
             Some(row) => {
                 if expected_revision != Some(row.revision) {
+                    tx.rollback().await?;
                     return Err(PagesError::translation_conflict(
                         "Template revision changed; reload before saving",
                     ));
@@ -263,6 +265,7 @@ impl PageTemplateService {
                     .exec(&tx)
                     .await?;
                 if updated.rows_affected != 1 {
+                    tx.rollback().await?;
                     return Err(PagesError::translation_conflict(
                         "Template changed during save",
                     ));
@@ -271,6 +274,7 @@ impl PageTemplateService {
             }
             None => {
                 if expected_revision.is_some() {
+                    tx.rollback().await?;
                     return Err(PagesError::translation_conflict(
                         "Template does not exist at the expected revision",
                     ));
@@ -330,6 +334,7 @@ impl PageTemplateService {
             .await?
             .is_some();
         if used {
+            tx.rollback().await?;
             return Err(PagesError::validation(
                 "Cannot delete a template used by a page",
             ));
@@ -342,6 +347,7 @@ impl PageTemplateService {
             .exec(&tx)
             .await?;
         if deleted.rows_affected != 1 {
+            tx.rollback().await?;
             return Err(PagesError::translation_conflict(
                 "Template revision changed or template not found",
             ));

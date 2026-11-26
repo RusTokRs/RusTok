@@ -4,7 +4,7 @@ use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseTransaction,
-    DbBackend, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
+    DbBackend, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};

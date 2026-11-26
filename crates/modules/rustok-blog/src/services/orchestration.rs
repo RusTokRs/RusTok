@@ -203,7 +203,7 @@ pub async fn create_promoted_post_in_tx(
         tenant_id: Set(input.tenant_id),
         author_id: Set(input.author_id),
         category_id: Set(input.category_id),
-        status: Set(status_to_storage(status)),
+        status: Set(status_to_storage(status).to_string()),
         slug: Set(input.slug),
         metadata: Set(input.metadata),
         featured_image_url: Set(None),

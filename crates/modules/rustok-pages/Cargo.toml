@@ -25,7 +25,6 @@ runtime = ["rustok-api/runtime", "dep:rustok-runtime"]
 workspace = true
 
 [dependencies]
-anyhow.workspace = true
 async-graphql.workspace = true
 async-trait.workspace = true
 axum.workspace = true

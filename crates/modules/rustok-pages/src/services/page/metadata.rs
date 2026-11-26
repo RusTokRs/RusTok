@@ -1,5 +1,5 @@
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, TransactionTrait};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set};
 use tracing::instrument;
 use uuid::Uuid;
 

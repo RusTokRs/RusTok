@@ -25,7 +25,7 @@ use rustok_translation_targets::{
     },
     validate_translation_apply_context, validate_translation_read_context,
 };
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
 use crate::{

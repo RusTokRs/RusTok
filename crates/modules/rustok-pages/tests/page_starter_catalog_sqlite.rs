@@ -67,7 +67,7 @@ async fn setup_db_with_connections(
     .await?;
 
     let manager = SchemaManager::new(&db);
-    let _ = rustok_outbox::SysEventsMigration.up(&manager).await;
+    rustok_outbox::SysEventsMigration.up(&manager).await?;
     let migrations = PagesModule.migrations();
     // Run the additive migrations for bodies, translations, symbols, templates, and starters
     for migration in migrations {
@@ -75,8 +75,8 @@ async fn setup_db_with_connections(
             || migration.name().ends_with("add_page_starter_revision")
         {
             migration.up(&manager).await?;
-        } else {
-            let _ = migration.up(&manager).await;
+        } else if let Err(error) = migration.up(&manager).await {
+            tracing::debug!(migration = migration.name(), %error, "ignoring pre-existing schema migration");
         }
     }
     Ok(db)

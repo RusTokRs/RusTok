@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use rustok_brand::dto::{BrandFilter, BrandTranslationInput, CreateBrandInput, UpdateBrandInput};
 use rustok_brand::error::BrandError;
 use rustok_brand::migrations::Migrator;
@@ -38,8 +40,8 @@ async fn assert_migrated_owner_behavior(db: &DatabaseConnection) {
         translations,
     };
 
-    // The second row conflicts after normalization. The earlier inserts in
-    // this transaction must disappear as well, so the slug is reusable.
+    // Duplicate locales after normalization are rejected before inserting rows,
+    // keeping the error typed as InvalidInput and leaving the slug reusable.
     assert!(matches!(
         service
             .create_brand(
@@ -50,7 +52,7 @@ async fn assert_migrated_owner_behavior(db: &DatabaseConnection) {
                 ])
             )
             .await,
-        Err(BrandError::Database(_))
+        Err(BrandError::InvalidInput(_))
     ));
     assert!(matches!(
         service.get_brand_by_slug(tenant, "acme", None).await,

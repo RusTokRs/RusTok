@@ -7,7 +7,7 @@ use rustok_events::DomainEvent;
 use rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseTransaction,
-    DbBackend, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
+    DbBackend, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};

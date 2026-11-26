@@ -109,6 +109,7 @@ impl PageService {
             DbBackend::Sqlite => page_query().one(&txn).await?,
             DbBackend::Postgres | DbBackend::MySql => page_query().lock_shared().one(&txn).await?,
             backend => {
+                txn.rollback().await?;
                 return Err(PagesError::validation(format!(
                     "unsupported SeaORM database backend: {:?}",
                     backend
@@ -116,6 +117,7 @@ impl PageService {
             }
         };
         if page.is_none() {
+            txn.rollback().await?;
             return Err(PagesError::PageNotFound(page_id));
         }
 

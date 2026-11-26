@@ -52,12 +52,14 @@ impl DocumentService {
             .await?;
 
         if existing.is_some() {
+            txn.rollback().await?;
             return Err(DocsError::SlugConflict { slug, tenant_id });
         }
 
         // 2. Validate parent if specified
         if let Some(parent_id) = dto.parent_id {
             if parent_id.is_nil() {
+                txn.rollback().await?;
                 return Err(DocsError::Validation(
                     "Parent page ID cannot be a nil UUID".to_string(),
                 ));
@@ -71,6 +73,7 @@ impl DocumentService {
                 .await?;
 
             if parent.is_none() {
+                txn.rollback().await?;
                 return Err(DocsError::InvalidParent(parent_id));
             }
         }

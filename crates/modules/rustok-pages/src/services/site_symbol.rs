@@ -194,12 +194,14 @@ impl SiteSymbolService {
                 .one(&tx)
                 .await?;
         if existing.is_none() {
+            tx.rollback().await?;
             return Err(PagesError::validation("Site symbol not found"));
         }
 
         let template_refs =
             crate::services::page::template_symbol_ids(&tx, tenant_id, &locale).await?;
         if template_refs.contains(&symbol_id) {
+            tx.rollback().await?;
             return Err(PagesError::validation(format!(
                 "Cannot delete site symbol `{symbol_id}` because it is referenced by a page template"
             )));
@@ -208,6 +210,7 @@ impl SiteSymbolService {
         if crate::services::page::symbol_used_by_any_page(&tx, tenant_id, &locale, &symbol_id)
             .await?
         {
+            tx.rollback().await?;
             return Err(PagesError::validation(format!(
                 "Cannot delete site symbol `{symbol_id}` because it is referenced by a page"
             )));
@@ -221,6 +224,7 @@ impl SiteSymbolService {
             .await?;
 
         if deleted.rows_affected != 1 {
+            tx.rollback().await?;
             return Err(PagesError::validation(
                 "Site symbol not found during deletion",
             ));

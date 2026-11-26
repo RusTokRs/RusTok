@@ -255,10 +255,8 @@ async fn concurrent_identical_saves_on_two_sqlite_connections_have_one_receipt_a
         Some("two-sockets-identical".to_string()),
     ).await?;
     let canonical_json = serde_json::to_value(&canonical)?;
-    for outcome in [left, right] {
-        if let Ok(accepted) = outcome {
-            assert_eq!(serde_json::to_value(accepted)?, canonical_json);
-        }
+    for accepted in [left, right].into_iter().flatten() {
+        assert_eq!(serde_json::to_value(accepted)?, canonical_json);
     }
     assert_eq!(revisions(&primary, tenant_id, page_id).await?.len(), 1);
     assert_eq!(draft_body(&secondary, tenant_id, page_id).await?.content,

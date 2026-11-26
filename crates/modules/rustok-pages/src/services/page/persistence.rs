@@ -353,7 +353,7 @@ impl PageService {
             format: Set(format.to_string()),
             source: Set(source.as_str().to_string()),
             body_revision: Set(body_revision.to_string()),
-            created_at: Set(now.into()),
+            created_at: Set(now),
             created_by: Set(created_by),
         }
         .insert(txn)

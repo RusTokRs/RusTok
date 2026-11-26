@@ -218,6 +218,7 @@ impl PageBuilderScenarioBaselineService {
             .await?;
         let promotion_note = normalized_promotion_note(promotion_note.as_deref());
         if enforce_expected_state && existing.is_some() && promotion_note.is_none() {
+            txn.rollback().await?;
             return Err(PagesError::validation(format!(
                 "{PAGE_BUILDER_SCENARIO_BASELINE_PROMOTION_NOTE_REQUIRED_ERROR_CODE}: replacing an existing scenario baseline requires a review note"
             )));
@@ -269,6 +270,7 @@ impl PageBuilderScenarioBaselineService {
                     .exec(&txn)
                     .await?;
                 if result.rows_affected != 1 {
+                    txn.rollback().await?;
                     return Err(baseline_conflict(page_id));
                 }
                 record_baseline_revision_in_tx(
@@ -290,6 +292,7 @@ impl PageBuilderScenarioBaselineService {
                 .await?;
             }
             (Some(_), None) if enforce_expected_state => {
+                txn.rollback().await?;
                 return Err(baseline_conflict(page_id));
             }
             (Some(existing), None) => {
@@ -323,7 +326,10 @@ impl PageBuilderScenarioBaselineService {
                 )
                 .await?;
             }
-            (None, Some(_)) => return Err(baseline_conflict(page_id)),
+            (None, Some(_)) => {
+                txn.rollback().await?;
+                return Err(baseline_conflict(page_id));
+            }
             (None, None) => {
                 let insert = page_builder_scenario_baseline::ActiveModel {
                     id: Set(Uuid::new_v4()),
@@ -343,6 +349,7 @@ impl PageBuilderScenarioBaselineService {
                 .insert(&txn)
                 .await;
                 if let Err(error) = insert {
+                    txn.rollback().await?;
                     if enforce_expected_state {
                         return Err(baseline_conflict(page_id));
                     }
@@ -441,6 +448,7 @@ impl PageBuilderScenarioBaselineService {
             .await?;
 
         if enforce_expected_state && expected_baseline_hash.is_none() {
+            txn.rollback().await?;
             return if existing.is_some() {
                 Err(baseline_conflict(page_id))
             } else {
@@ -457,6 +465,7 @@ impl PageBuilderScenarioBaselineService {
         }
         let result = delete.exec(&txn).await?;
         if enforce_expected_state && result.rows_affected != 1 {
+            txn.rollback().await?;
             return Err(baseline_conflict(page_id));
         }
         if result.rows_affected == 1

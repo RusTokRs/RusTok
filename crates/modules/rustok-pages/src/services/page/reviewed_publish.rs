@@ -17,7 +17,7 @@ use rustok_page_builder::{
 use rustok_tenant::TenantService;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseTransaction,
-    DbBackend, EntityTrait, QueryFilter, QuerySelect, Select, TransactionTrait,
+    DbBackend, EntityTrait, QueryFilter, QuerySelect, Select,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};

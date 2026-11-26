@@ -161,7 +161,7 @@ pub fn compile_materialized_static_landing(
             .unwrap_or_else(|| "Static default".to_string()),
         runtime.context.clone(),
     );
-    let runtime_snapshots = (0..document.project.pages.len())
+    let runtime_snapshots = (0..document.project().pages.len())
         .map(|page_index| {
             RuntimeScenarioRenderSnapshot::capture_with_providers(
                 &document,

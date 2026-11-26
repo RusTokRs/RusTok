@@ -9,7 +9,7 @@ use rustok_page_builder::{
 };
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseTransaction,
-    DbBackend, EntityTrait, QueryFilter, QuerySelect, TransactionTrait,
+    DbBackend, EntityTrait, QueryFilter, QuerySelect,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};

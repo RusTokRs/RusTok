@@ -1590,6 +1590,7 @@ impl MediaService {
                 || existing.media_id != media_id
                 || existing.owner_module != owner_module
             {
+                transaction.rollback().await?;
                 return Err(MediaError::AssetReferenceConflict(input.reference_id));
             }
             transaction.commit().await?;
@@ -1607,6 +1608,7 @@ impl MediaService {
             .await?
             .ok_or(MediaError::NotFound(media_id))?;
         if asset.lifecycle_state != AssetState::Active.as_str() {
+            transaction.rollback().await?;
             return Err(MediaError::AssetReferenceNotAdmissible(media_id));
         }
 
@@ -1621,6 +1623,7 @@ impl MediaService {
             .exec(&transaction)
             .await?;
         if locked.rows_affected != 1 {
+            transaction.rollback().await?;
             return Err(MediaError::AssetReferenceNotAdmissible(media_id));
         }
 
@@ -1634,6 +1637,7 @@ impl MediaService {
             .await?
             .ok_or(MediaError::AssetReferenceNotAdmissible(media_id))?;
         if active_blob.state != BlobState::Ready.as_str() {
+            transaction.rollback().await?;
             return Err(MediaError::AssetReferenceNotAdmissible(media_id));
         }
 
@@ -1665,6 +1669,7 @@ impl MediaService {
             || existing.media_id != media_id
             || existing.owner_module != owner_module
         {
+            transaction.rollback().await?;
             return Err(MediaError::AssetReferenceConflict(input.reference_id));
         }
 
@@ -1707,6 +1712,7 @@ impl MediaService {
             || existing.media_id != media_id
             || existing.owner_module != owner_module
         {
+            transaction.rollback().await?;
             return Err(MediaError::AssetReferenceConflict(input.reference_id));
         }
         AssetReferenceEntity::delete_by_id(input.reference_id)
