@@ -7,7 +7,8 @@ import type {
   ProductWriteRequests,
   ProductWriteScope,
   ProductWriteOutcome,
-  ProductVariantCreateRequest
+  ProductVariantCreateRequest,
+  ProductImageWriteOperation
 } from './write-attempt';
 
 import {
@@ -56,6 +57,17 @@ const intentQuery = (kind: CatalogJournalKind) =>
 export const PRODUCT_RECOVERY_UNAVAILABLE =
   'Product recovery is unavailable. No new operation will be sent. Restore browser storage and retry recovery; do not discard an unresolved attempt.';
 export type ProductWriteOperation = keyof ProductWriteRequests;
+export const isProductImageWriteOperation = (
+  operation: unknown
+): operation is ProductImageWriteOperation =>
+  operation === 'image_add' ||
+  operation === 'image_update' ||
+  operation === 'image_delete' ||
+  operation === 'image_reorder';
+const retainsSettledRequest = (operation: unknown) =>
+  operation === 'variant' ||
+  operation === 'definition' ||
+  isProductImageWriteOperation(operation);
 export type ProductPendingAttempt = {
   [K in ProductWriteOperation]: {
     operation: K;
@@ -68,7 +80,10 @@ export type ProductJournalRecord =
   | { phase: 'pending'; attempt: ProductPendingAttempt }
   | {
       phase: 'settled';
-      operation: Exclude<ProductWriteOperation, 'variant' | 'definition'>;
+      operation: Exclude<
+        ProductWriteOperation,
+        'variant' | 'definition' | ProductImageWriteOperation
+      >;
       key: string;
       outcome: Exclude<ProductWriteOutcome, { status: 'unknown' }>;
     }
@@ -78,7 +93,16 @@ export type ProductJournalRecord =
       key: string;
       request: ProductVariantCreateRequest;
       outcome: Exclude<ProductWriteOutcome, { status: 'unknown' }>;
-    };
+    }
+  | {
+      [K in ProductImageWriteOperation]: {
+        phase: 'settled';
+        operation: K;
+        key: string;
+        request: ProductWriteRequests[K];
+        outcome: Exclude<ProductWriteOutcome, { status: 'unknown' }>;
+      };
+    }[ProductImageWriteOperation];
 
 // Terminal dictionary requests retain their full body, just like standalone SKU attempts.
 export type AttributeDefinitionJournalRecord = {
@@ -243,6 +267,75 @@ export class ProductWriteJournal {
         );
       }
       return false;
+    }
+    if (operation === 'image_add') {
+      const input = value.input;
+      return (
+        this.resource !== 'new' &&
+        value.id === this.resource &&
+        only(value, ['id', 'scope', 'input']) &&
+        object(input) &&
+        only(input, ['mediaId', 'altText', 'locale']) &&
+        typeof input.mediaId === 'string' &&
+        uuid.test(input.mediaId) &&
+        optionalText(input.altText) &&
+        (input.altText === undefined ||
+          input.altText === null ||
+          (input.altText as string).length <= 2048) &&
+        optionalText(input.locale) &&
+        (input.locale === undefined ||
+          input.locale === null ||
+          ((input.locale as string).length > 0 &&
+            (input.locale as string).length <= 32))
+      );
+    }
+    if (operation === 'image_update') {
+      const input = value.input;
+      return (
+        this.resource !== 'new' &&
+        value.id === this.resource &&
+        typeof value.imageId === 'string' &&
+        uuid.test(value.imageId) &&
+        only(value, ['id', 'imageId', 'scope', 'input']) &&
+        object(input) &&
+        only(input, ['position', 'altText', 'locale']) &&
+        (input.position === undefined ||
+          (Number.isInteger(input.position) &&
+            (input.position as number) >= 0 &&
+            (input.position as number) <= 2147483647)) &&
+        optionalText(input.altText) &&
+        (input.altText === undefined ||
+          input.altText === null ||
+          (input.altText as string).length <= 2048) &&
+        optionalText(input.locale) &&
+        (input.locale === undefined ||
+          input.locale === null ||
+          ((input.locale as string).length > 0 &&
+            (input.locale as string).length <= 32)) &&
+        (input.position !== undefined || input.altText !== undefined)
+      );
+    }
+    if (operation === 'image_delete') {
+      return (
+        this.resource !== 'new' &&
+        value.id === this.resource &&
+        typeof value.imageId === 'string' &&
+        uuid.test(value.imageId) &&
+        only(value, ['id', 'imageId', 'scope'])
+      );
+    }
+    if (operation === 'image_reorder') {
+      return (
+        this.resource !== 'new' &&
+        value.id === this.resource &&
+        only(value, ['id', 'imageIds', 'scope']) &&
+        Array.isArray(value.imageIds) &&
+        value.imageIds.length <= 256 &&
+        value.imageIds.every(
+          (imageId) => typeof imageId === 'string' && uuid.test(imageId)
+        ) &&
+        new Set(value.imageIds).size === value.imageIds.length
+      );
     }
     if (operation === 'definition' || operation === 'variant_update' || operation === 'variant_delete') return false;
     if (operation === 'variant') {
@@ -515,7 +608,17 @@ export class ProductWriteJournal {
     const record = raw.record;
     const allowedOperations =
       this.resourceKind === 'product'
-        ? ['save', 'status', 'delete', 'axes', 'variant']
+        ? [
+            'save',
+            'status',
+            'delete',
+            'axes',
+            'variant',
+            'image_add',
+            'image_update',
+            'image_delete',
+            'image_reorder'
+          ]
         : this.resourceKind === 'attribute_definition'
           ? ['definition']
           : ['variant_update', 'variant_delete'];
@@ -540,7 +643,7 @@ export class ProductWriteJournal {
       record.phase === 'settled' &&
       only(
         record,
-        record.operation === 'variant' || record.operation === 'definition'
+        retainsSettledRequest(record.operation)
           ? ['phase', 'operation', 'key', 'request', 'outcome']
           : ['phase', 'operation', 'key', 'outcome']
       ) &&
@@ -549,10 +652,10 @@ export class ProductWriteJournal {
       typeof record.key === 'string' &&
       uuid.test(record.key) &&
       object(record.outcome) &&
-      (!['variant', 'definition'].includes(record.operation as string) ||
+      (!retainsSettledRequest(record.operation) ||
         this.requestValid(
-          record.operation as 'variant' | 'definition',
-          record.request
+          record.operation as ProductWriteOperation,
+          (record as { request: unknown }).request
         ))
     ) {
       const outcome = record.outcome;
@@ -620,7 +723,8 @@ export class ProductWriteJournal {
         record.operation === 'variant' ||
         record.operation === 'definition' ||
         record.operation === 'variant_update' ||
-        record.operation === 'variant_delete'
+        record.operation === 'variant_delete' ||
+        isProductImageWriteOperation(record.operation)
           ? outcome.value.revision === null
           : outcome.value.revision !== null && revision(outcome.value.revision))
       )
@@ -668,16 +772,9 @@ export class ProductWriteJournal {
           canonical.phase === 'settled' &&
           expected.attempt.operation === canonical.operation &&
           expected.attempt.key === canonical.key &&
-          (!['variant', 'definition'].includes(canonical.operation) ||
+          (!retainsSettledRequest(canonical.operation) ||
             JSON.stringify(expected.attempt.request) ===
-              JSON.stringify(
-                (
-                  canonical as Extract<
-                    ProductJournalRecord,
-                    { operation: 'variant' | 'definition' }
-                  >
-                ).request
-              ));
+              JSON.stringify((canonical as { request: unknown }).request));
     if (!transition) throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
     this.driver.write(text);
     // Read-after-write detects an unsuccessful storage adapter before owner IO.

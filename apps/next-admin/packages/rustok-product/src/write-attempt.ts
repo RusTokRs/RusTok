@@ -98,6 +98,33 @@ export type ProductVariantDeleteRequest = {
   scope: ProductWriteScope;
 };
 
+export type ProductImageAddRequest = {
+  id: string;
+  scope: ProductWriteScope;
+  input: { mediaId: string; altText?: string; locale?: string };
+};
+export type ProductImageUpdateRequest = {
+  id: string;
+  imageId: string;
+  scope: ProductWriteScope;
+  input: { position?: number; altText?: string; locale?: string };
+};
+export type ProductImageDeleteRequest = {
+  id: string;
+  imageId: string;
+  scope: ProductWriteScope;
+};
+export type ProductImageReorderRequest = {
+  id: string;
+  imageIds: string[];
+  scope: ProductWriteScope;
+};
+export type ProductImageWriteOperation =
+  | 'image_add'
+  | 'image_update'
+  | 'image_delete'
+  | 'image_reorder';
+
 export type ProductWriteRequests = {
   definition: AttributeDefinitionWriteRequest;
   variant: ProductVariantCreateRequest;
@@ -112,12 +139,17 @@ export type ProductWriteRequests = {
   delete: { id: string; scope: ProductWriteScope };
   variant_update: ProductVariantUpdateRequest;
   variant_delete: ProductVariantDeleteRequest;
+  image_add: ProductImageAddRequest;
+  image_update: ProductImageUpdateRequest;
+  image_delete: ProductImageDeleteRequest;
+  image_reorder: ProductImageReorderRequest;
 };
 type Operation = keyof ProductWriteRequests;
-import type {
-  ProductWriteJournal,
-  ProductJournalRecord,
-  ProductPendingAttempt
+import {
+  isProductImageWriteOperation,
+  type ProductWriteJournal,
+  type ProductJournalRecord,
+  type ProductPendingAttempt
 } from './write-journal';
 
 export const UNKNOWN_PRODUCT_WRITE =
@@ -198,9 +230,10 @@ export class ProductWriteAttempt {
           (this.cached.phase === 'pending' &&
             record.phase === 'settled' &&
             (record.operation === 'variant' ||
-              record.operation === 'definition') &&
+              record.operation === 'definition' ||
+              isProductImageWriteOperation(record.operation)) &&
             JSON.stringify(this.cached.attempt.request) !==
-              JSON.stringify(record.request))
+              JSON.stringify((record as { request: unknown }).request))
         ) {
           throw new Error(UNKNOWN_PRODUCT_WRITE);
         }
@@ -250,6 +283,22 @@ export class ProductWriteAttempt {
       case 'variant_delete':
         return handlers.variant_delete
           ? this.execute('variant_delete', attempt.request, handlers.variant_delete)
+          : null;
+      case 'image_add':
+        return handlers.image_add
+          ? this.execute('image_add', attempt.request, handlers.image_add)
+          : null;
+      case 'image_update':
+        return handlers.image_update
+          ? this.execute('image_update', attempt.request, handlers.image_update)
+          : null;
+      case 'image_delete':
+        return handlers.image_delete
+          ? this.execute('image_delete', attempt.request, handlers.image_delete)
+          : null;
+      case 'image_reorder':
+        return handlers.image_reorder
+          ? this.execute('image_reorder', attempt.request, handlers.image_reorder)
           : null;
     }
   }
@@ -328,7 +377,8 @@ export class ProductWriteAttempt {
             operation === 'variant' ||
             operation === 'definition' ||
             operation === 'variant_update' ||
-            operation === 'variant_delete'
+            operation === 'variant_delete' ||
+            isProductImageWriteOperation(operation)
               ? value.revision !== null
               : !Number.isInteger(value.revision) ||
                 value.revision === null ||
@@ -375,7 +425,9 @@ export class ProductWriteAttempt {
                 operation,
                 key: attempt.key,
                 outcome,
-                ...(operation === 'variant' || operation === 'definition'
+                ...(operation === 'variant' ||
+                operation === 'definition' ||
+                isProductImageWriteOperation(operation)
                   ? { request: snapshot }
                   : {})
               } as ProductJournalRecord,

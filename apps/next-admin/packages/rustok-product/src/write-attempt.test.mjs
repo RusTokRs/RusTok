@@ -199,6 +199,77 @@ test('an acknowledgement for a different existing Product is not a success', asy
   assert.equal(attempt.pendingOperation, 'status');
 });
 
+test('image mutations retain their exact request/key through reload recovery', async () => {
+  const productId = '00000000-0000-4000-8000-000000000001';
+  const imageId = '00000000-0000-4000-8000-000000000003';
+  const requests = [
+    [
+      'image_add',
+      {
+        id: productId,
+        scope: testScope,
+        input: {
+          mediaId: '00000000-0000-4000-8000-000000000002',
+          altText: 'Front view',
+          locale: 'en'
+        }
+      }
+    ],
+    [
+      'image_update',
+      {
+        id: productId,
+        imageId,
+        scope: testScope,
+        input: { altText: 'Updated alt text', locale: 'en' }
+      }
+    ],
+    ['image_delete', { id: productId, imageId, scope: testScope }],
+    [
+      'image_reorder',
+      {
+        id: productId,
+        imageIds: [
+          imageId,
+          '00000000-0000-4000-8000-000000000004'
+        ],
+        scope: testScope
+      }
+    ]
+  ];
+
+  for (const [operation, request] of requests) {
+    const storage = { text: null, locked: false };
+    const first = new ProductWriteAttempt(
+      memoryJournal(productId, storage, testScope)
+    );
+    let original;
+    const pending = await first.execute(operation, request, async (snapshot, key) => {
+      original = { snapshot, key };
+      return unknown;
+    });
+    assert.equal(pending.outcome.status, 'unknown');
+    assert.equal(JSON.parse(storage.text).attempt.operation, operation);
+
+    const reloaded = new ProductWriteAttempt(
+      memoryJournal(productId, storage, testScope)
+    );
+    const result = await reloaded.resume({
+      [operation]: async (snapshot, key) => {
+        assert.deepEqual({ snapshot, key }, original);
+        return {
+          status: 'confirmed',
+          value: { id: productId, revision: null }
+        };
+      }
+    });
+    assert.equal(result.outcome.status, 'confirmed');
+    assert.equal(reloaded.recovery.phase, 'settled');
+    assert.equal(reloaded.recovery.key, original.key);
+    assert.deepEqual(JSON.parse(storage.text).request, original.snapshot);
+  }
+});
+
 test('unknown retries retain their original actor/tenant scope', async () => {
   const attempt = new ProductWriteAttempt(memoryJournal());
   await attempt.execute('save', payload(), async () => unknown);

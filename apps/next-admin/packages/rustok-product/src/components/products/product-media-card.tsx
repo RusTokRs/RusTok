@@ -40,7 +40,6 @@ import {
   ExternalLink
 } from 'lucide-react';
 import type { ProductImage } from '../../api/types';
-import { isDefinitiveProductWriteRefusal } from '../../api/write-outcome';
 import { SearchableSelect } from '../shared/searchable-select';
 
 /** Slim media-library entry for the in-dialog picker. */
@@ -56,17 +55,17 @@ const MEDIA_UUID_PATTERN =
 
 interface ProductMediaCardProps {
   images: ProductImage[];
-  onAddImage?: (
-    input: { mediaId: string; altText?: string; locale?: string },
-    idempotencyKey: string
-  ) => Promise<void>;
+  onAddImage?: (input: {
+    mediaId: string;
+    altText?: string;
+    locale?: string;
+  }) => Promise<void>;
   onDeleteImage?: (id: string) => Promise<void>;
   onReorderImages?: (imageIds: string[]) => Promise<void>;
   /** Edits the localized alt text (and optionally the position) of an image. */
   onUpdateImage?: (
     id: string,
-    input: { position?: number; altText?: string; locale?: string },
-    idempotencyKey: string
+    input: { position?: number; altText?: string; locale?: string }
   ) => Promise<void>;
   /** Loads the tenant media library for the picker (first page, ~100 items). */
   onListMedia?: () => Promise<ProductMediaLibraryItem[]>;
@@ -86,15 +85,6 @@ export function ProductMediaCard({
   const [mediaIdInput, setMediaIdInput] = React.useState('');
   const [altTextInput, setAltTextInput] = React.useState('');
   const [isBusy, setIsBusy] = React.useState(false);
-  // One idempotency key per submitted intent: an ambiguous (network-level)
-  // failure keeps it so a retry replays the owner receipt instead of attaching
-  // a duplicate image; confirmed or definitively refused attempts rotate it.
-  const addAttemptKey = React.useRef<string | null>(null);
-
-  const resetAddAttempt = () => {
-    addAttemptKey.current = null;
-  };
-
   const [mediaItems, setMediaItems] = React.useState<
     ProductMediaLibraryItem[] | null
   >(null);
@@ -104,7 +94,6 @@ export function ProductMediaCard({
   >(null);
 
   const openAddDialog = () => {
-    resetAddAttempt();
     setDialogOpen(true);
     if (onListMedia && mediaItems === null) {
       setMediaLoading(true);
@@ -122,12 +111,7 @@ export function ProductMediaCard({
   const [editAltInput, setEditAltInput] = React.useState('');
   const [editLocale, setEditLocale] = React.useState('en');
   const [isEditing, setIsEditing] = React.useState(false);
-  // Same one-key-per-intent contract as the add dialog: an ambiguous failure
-  // keeps the key so a retry replays the owner receipt.
-  const editAttemptKey = React.useRef<string | null>(null);
-
   const openEditDialog = (imageId: string, currentAlt: string | null) => {
-    editAttemptKey.current = null;
     setEditingImageId(imageId);
     setEditAltInput(currentAlt ?? '');
     setEditLocale('en');
@@ -141,18 +125,14 @@ export function ProductMediaCard({
       return;
     }
     setIsEditing(true);
-    editAttemptKey.current ??= crypto.randomUUID();
     try {
       await onUpdateImage(
         editingImageId,
-        { altText: editAltInput.trim(), locale: editLocale },
-        editAttemptKey.current
+        { altText: editAltInput.trim(), locale: editLocale }
       );
-      editAttemptKey.current = null;
       setEditDialogOpen(false);
       setEditingImageId(null);
     } catch (err) {
-      if (isDefinitiveProductWriteRefusal(err)) editAttemptKey.current = null;
       toast.error(
         err instanceof Error ? err.message : 'Failed to update image alt text.'
       );
@@ -174,21 +154,15 @@ export function ProductMediaCard({
       return;
     }
     setIsBusy(true);
-    addAttemptKey.current ??= crypto.randomUUID();
     try {
-      await onAddImage(
-        {
-          mediaId: mediaIdInput.trim(),
-          altText: altTextInput.trim() || undefined
-        },
-        addAttemptKey.current
-      );
-      resetAddAttempt();
+      await onAddImage({
+        mediaId: mediaIdInput.trim(),
+        altText: altTextInput.trim() || undefined
+      });
       setMediaIdInput('');
       setAltTextInput('');
       setDialogOpen(false);
     } catch (err) {
-      if (isDefinitiveProductWriteRefusal(err)) resetAddAttempt();
       toast.error(
         err instanceof Error ? err.message : 'Failed to attach image.'
       );
@@ -392,7 +366,6 @@ export function ProductMediaCard({
                     const item = mediaItems.find(
                       (candidate) => candidate.id === value
                     );
-                    resetAddAttempt();
                     setSelectedMedia(item ?? null);
                     setMediaIdInput(value);
                   }}
@@ -418,12 +391,12 @@ export function ProductMediaCard({
                 id='img-media-id'
                 value={mediaIdInput}
                 onChange={(e) => {
-                  resetAddAttempt();
                   setSelectedMedia(null);
                   setMediaIdInput(e.target.value);
                 }}
                 placeholder='e.g. 550e8400-e29b-41d4-a716-446655440000'
                 className='h-9 rounded-xl font-mono text-xs'
+                disabled={disabled || isBusy}
               />
             </div>
             <div className='space-y-1.5'>
@@ -431,12 +404,10 @@ export function ProductMediaCard({
               <Input
                 id='img-alt'
                 value={altTextInput}
-                onChange={(e) => {
-                  resetAddAttempt();
-                  setAltTextInput(e.target.value);
-                }}
+                onChange={(e) => setAltTextInput(e.target.value)}
                 placeholder='Front view of keyboard with RGB lighting'
                 className='h-9 rounded-xl text-xs'
+                disabled={disabled || isBusy}
               />
             </div>
           </div>
@@ -453,7 +424,7 @@ export function ProductMediaCard({
             <Button
               type='button'
               onClick={handleAddImage}
-              disabled={isBusy || !mediaIdInput.trim()}
+              disabled={disabled || isBusy || !mediaIdInput.trim()}
               className='h-9 rounded-xl text-xs font-semibold'
             >
               {isBusy ? 'Adding...' : 'Attach Image'}
@@ -479,7 +450,7 @@ export function ProductMediaCard({
                 id='edit-image-locale'
                 value={editLocale}
                 onChange={(e) => setEditLocale(e.target.value)}
-                disabled={isEditing}
+                disabled={disabled || isEditing}
                 className='border-input bg-background focus-visible:ring-ring h-9 w-full rounded-md border px-3 py-1 text-sm focus-visible:ring-1 focus-visible:outline-none disabled:opacity-50'
               >
                 <option value='en'>English (EN)</option>
@@ -493,7 +464,7 @@ export function ProductMediaCard({
                 value={editAltInput}
                 onChange={(e) => setEditAltInput(e.target.value)}
                 placeholder='Describe the image for screen readers'
-                disabled={isEditing}
+                disabled={disabled || isEditing}
               />
             </div>
           </div>
@@ -510,7 +481,7 @@ export function ProductMediaCard({
             <Button
               type='button'
               onClick={handleUpdateAlt}
-              disabled={isEditing || !editAltInput.trim()}
+              disabled={disabled || isEditing || !editAltInput.trim()}
               className='h-9 rounded-xl text-xs font-semibold'
             >
               {isEditing ? 'Saving...' : 'Save Alt Text'}

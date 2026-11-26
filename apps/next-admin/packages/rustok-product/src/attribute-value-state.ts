@@ -51,7 +51,8 @@ export function toProductAttributeValueMap(
  * locale's batch so the owner never receives duplicate global patches.
  */
 export function buildProductAttributeValueBatches(
-  state: ProductAttributeValueDraftState
+  state: ProductAttributeValueDraftState,
+  allowedAttributeIds?: ReadonlySet<string>
 ): ProductAttributeValueBatch[] {
   const batches = new Map<string, ProductAttributeValuePatch[]>();
 
@@ -64,7 +65,9 @@ export function buildProductAttributeValueBatches(
     const patches = ids
       .map((id) => state.valuesByLocale[locale]?.[id])
       .filter(
-        (patch): patch is ProductAttributeValuePatch => patch !== undefined
+        (patch): patch is ProductAttributeValuePatch =>
+          patch !== undefined &&
+          (!allowedAttributeIds || allowedAttributeIds.has(patch.attributeId))
       );
     if (patches.length > 0) batches.set(locale, patches);
   }
@@ -73,6 +76,7 @@ export function buildProductAttributeValueBatches(
     state.dirtyNonLocalizedAttributeIds
   )
     .sort(compareStrings)
+    .filter((id) => !allowedAttributeIds || allowedAttributeIds.has(id))
     .map((id) => state.nonLocalizedValues[id])
     .filter(
       (patch): patch is ProductAttributeValuePatch => patch !== undefined
@@ -91,4 +95,33 @@ export function buildProductAttributeValueBatches(
   return Array.from(batches.entries())
     .sort(([left], [right]) => compareStrings(left, right))
     .map(([locale, patches]) => ({ locale, patches }));
+}
+
+/** Returns undefined for an invalid intermediate value, null for an explicit clear. */
+export function parseProductIntegerInput(
+  raw: string
+): number | null | undefined {
+  if (raw === '') return null;
+  const value = Number(raw);
+  return Number.isSafeInteger(value) ? value : undefined;
+}
+
+/** Format an ISO instant as the local wall-clock value required by datetime-local. */
+export function formatProductDateTimeLocal(
+  value: string | null | undefined
+): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
+/** Convert a datetime-local wall-clock value to an ISO instant without truncation. */
+export function parseProductDateTimeLocal(
+  raw: string
+): string | null | undefined {
+  if (raw === '') return null;
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
