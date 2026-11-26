@@ -167,7 +167,9 @@ crates/ui/fly/
   charset is the backstop. `ensure_stable_ids` rewrites non-conforming ids rather than preserving
   them, so a bad id can never deadlock the editor.
 - **Decode is depth-bounded.** `GrapesJsCodec` rejects payloads nested deeper than
-  `MAXIMUM_DECODE_DEPTH` before any recursive code touches them.
+  `MAXIMUM_DECODE_DEPTH` before any recursive code touches them. Bundle value imports
+  preflight the full envelope, and snapshot restoration/digest computation and bundle hashing
+  preflight their payloads before recursive work.
 - **Rendering escapes at every sink.** HTML text, attribute values, CSS attribute selectors and the
   `<style>` element body each have their own escape; URLs are filtered by `RenderPolicy`.
   Action, attribute and head URL checks share parsed HTTP(S) authority validation. SSR and

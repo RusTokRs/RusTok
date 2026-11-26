@@ -60,7 +60,7 @@ impl GrapesJsCodec {
  * nesting recursively. A value rejected by the depth guard (or root-shape check) must
  * therefore be dismantled iteratively before returning the error.
  */
-fn drop_value_iteratively(value: Value) {
+pub(crate) fn drop_value_iteratively(value: Value) {
     let mut pending = vec![value];
     while let Some(value) = pending.pop() {
         match value {
@@ -299,7 +299,10 @@ mod tests {
         for _ in 0..50_000 {
             nested = serde_json::Value::Array(vec![nested]);
         }
-        let project = json!({ "payload": nested });
+        // json! would serialize the deeply nested Value before reaching the guard.
+        let project = Value::Object(serde_json::Map::from_iter([
+            ("payload".to_string(), nested),
+        ]));
         assert!(matches!(
             GrapesJsCodec::decode_value(project),
             Err(FlyError::MaximumDepthExceeded {

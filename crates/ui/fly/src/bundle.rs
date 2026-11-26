@@ -3,6 +3,7 @@ use crate::{
     RegistrySet, ValidationLimits, ValidationReport, audit_page, constant_time_eq,
     validate_project,
 };
+use crate::codec::{MAXIMUM_DECODE_DEPTH, drop_value_iteratively, ensure_depth_within_limit};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -138,6 +139,12 @@ pub fn decode_project_bundle_value(
     value: Value,
     policy: &BundleDecodePolicy,
 ) -> FlyResult<DecodedProjectBundle> {
+    // Value callers can bypass serde_json's parser recursion ceiling. Reject before
+    // cloning, deserializing or digesting any part of the envelope, including metadata.
+    if let Err(error) = ensure_depth_within_limit(&value, MAXIMUM_DECODE_DEPTH) {
+        drop_value_iteratively(value);
+        return Err(error);
+    }
     let imported_from_raw_project = value
         .as_object()
         .is_some_and(|object| !object.contains_key("project_hash"));
@@ -229,6 +236,7 @@ pub fn inspect_project_bundle(
 }
 
 pub fn bundle_hash(bundle: &ProjectBundle) -> FlyResult<ProjectHash> {
+    ensure_depth_within_limit(&bundle.project_data, MAXIMUM_DECODE_DEPTH)?;
     let document = GrapesJsCodec::decode_value(bundle.project_data.clone())?;
     Ok(document.hash())
 }
@@ -257,6 +265,48 @@ mod tests {
             }]
         }))
         .expect("document")
+    }
+
+    fn deeply_nested_value() -> Value {
+        let mut value = Value::Null;
+        for _ in 0..50_000 {
+            value = Value::Array(vec![value]);
+        }
+        value
+    }
+
+    #[test]
+    fn value_import_rejects_deep_raw_and_wrapped_projects_before_recursive_work() {
+        for wrapped in [false, true] {
+            let mut fields = Map::new();
+            if wrapped {
+                fields.insert("project_hash".to_string(), Value::String("unused".to_string()));
+                fields.insert("project_data".to_string(), deeply_nested_value());
+            } else {
+                fields.insert("payload".to_string(), deeply_nested_value());
+            }
+            assert!(matches!(
+                decode_project_bundle_value(Value::Object(fields), &BundleDecodePolicy::default()),
+                Err(FlyError::MaximumDepthExceeded { maximum: MAXIMUM_DECODE_DEPTH })
+            ));
+        }
+    }
+
+    #[test]
+    fn bundle_hash_rejects_deep_values_before_cloning() {
+        let mut bundle = ProjectBundle {
+            project_hash: String::new(),
+            content_digest: None,
+            project_data: deeply_nested_value(),
+            metadata: BundleMetadata::default(),
+            extensions: Map::new(),
+        };
+        let result = bundle_hash(&bundle);
+        drop_value_iteratively(std::mem::take(&mut bundle.project_data));
+        assert!(matches!(
+            result,
+            Err(FlyError::MaximumDepthExceeded { maximum: MAXIMUM_DECODE_DEPTH })
+        ));
     }
 
     #[test]
