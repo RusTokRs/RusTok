@@ -24,7 +24,7 @@ async fn main() {
     use rustok_admin::app::{
         App, DRAFT_SESSION_PRUNE_INTERVAL, admin_security_headers,
         auth_ssr::{
-            bearer_tenant_slug_from_headers, bearer_token_from_headers, verify_auth_snapshot,
+            bearer_tenant_slug_from_headers, bearer_token_from_headers, single_header_value, verify_auth_snapshot,
         },
         request_auth_snapshot, request_csp_nonce, shell, spawn_draft_session_prune,
         validate_admin_security_profile,
@@ -75,7 +75,7 @@ async fn main() {
                         "Page Builder access token is missing",
                     )
                 })?;
-                let csrf_header = header_value(&headers, FLY_CSRF_HEADER_NAME);
+                let csrf_header = single_header_value(&headers, FLY_CSRF_HEADER_NAME);
                 // The CSRF secret is the session id: stable across refresh-token rotation
                 // (unlike the access token), unguessable, and only ever embedded into pages this
                 // host renders for the authenticated browser. The page that embeds it derives it
@@ -126,7 +126,7 @@ async fn main() {
                 })?;
         let editor_capabilities =
             pages_editor_capabilities_for_snapshot(role_capabilities, &rollout);
-        let default_locale = header_value(&headers, "accept-language")
+        let default_locale = single_header_value(&headers, "accept-language")
             .and_then(|header| {
                 rustok_ui_i18n::preferred_catalog_locale_from_accept_language(Some(header.as_str()))
             })
@@ -148,15 +148,6 @@ async fn main() {
             .await
             .map(Json)
             .map_err(page_builder_error)
-    }
-
-    fn header_value(headers: &HeaderMap, name: &str) -> Option<String> {
-        headers
-            .get(name)
-            .and_then(|value| value.to_str().ok())
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToString::to_string)
     }
 
     fn auth_transport_error(error: AuthError) -> (StatusCode, Json<Value>) {
@@ -300,7 +291,7 @@ async fn main() {
         let verified_user = auth.user.clone().ok_or_else(|| {
             auth_error(StatusCode::UNAUTHORIZED, "Authenticated user was not found")
         })?;
-        let default_locale = header_value(&headers, "accept-language")
+        let default_locale = single_header_value(&headers, "accept-language")
             .and_then(|header| {
                 rustok_ui_i18n::preferred_catalog_locale_from_accept_language(Some(header.as_str()))
             })

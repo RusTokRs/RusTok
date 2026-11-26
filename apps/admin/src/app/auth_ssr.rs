@@ -11,6 +11,19 @@ use rustok_auth_ui::ui::leptos::{
 
 /// Parse a single explicit Bearer authorization header. HTTP auth scheme names are
 /// case-insensitive; malformed and duplicate headers fail closed.
+/// Read one unambiguous header value. Duplicate values fail closed rather than
+/// letting different HTTP layers choose different CSRF or locale values.
+pub fn single_header_value(headers: &HeaderMap, name: &str) -> Option<String> {
+    let mut values = headers.get_all(name).iter();
+    let value = values.next()?.to_str().ok()?.trim();
+    if values.next().is_some() || value.is_empty() {
+        return None;
+    }
+    Some(value.to_string())
+}
+
+/// Parse a single explicit Bearer authorization header. HTTP auth scheme names are
+/// case-insensitive; malformed and duplicate headers fail closed.
 pub fn bearer_token_from_headers(headers: &HeaderMap) -> Option<String> {
     let mut values = headers.get_all(header::AUTHORIZATION).iter();
     let raw = values.next()?.to_str().ok()?;
@@ -143,6 +156,18 @@ mod tests {
         let snapshot = request_auth_snapshot(&parts);
         assert_eq!(snapshot.user.unwrap().id, "user-1");
         assert_eq!(snapshot.session.unwrap().tenant, "demo");
+    }
+
+    #[test]
+    fn single_header_value_rejects_duplicate_values() {
+        let mut headers = HeaderMap::new();
+        headers.append("x-csrf-token", HeaderValue::from_static("valid-token"));
+        assert_eq!(
+            single_header_value(&headers, "x-csrf-token").as_deref(),
+            Some("valid-token")
+        );
+        headers.append("x-csrf-token", HeaderValue::from_static("second-token"));
+        assert_eq!(single_header_value(&headers, "x-csrf-token"), None);
     }
 
     #[test]
