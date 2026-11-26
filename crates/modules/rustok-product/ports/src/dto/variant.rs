@@ -97,6 +97,8 @@ pub struct UpdateVariantInput {
     #[serde(default, skip_serializing_if = "Patch::is_keep")]
     #[schema(value_type = Option<String>)]
     pub weight_unit: Patch<String>,
+    // Keep this literal aligned with MAX_VARIANT_AXES in dto/variant_axis.rs.
+    #[validate(length(max = 32, message = "A variant can have at most 32 axis assignments"))]
     #[validate(nested)]
     pub axis_values: Option<Vec<VariantAxisValueInput>>,
 }
@@ -199,6 +201,24 @@ mod patch_tests {
         );
         assert!(
             create_input(valid_axis_values(MAX_VARIANT_AXES + 1))
+                .validate()
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn update_variant_axis_assignment_count_is_bounded() {
+        let update_input = |axis_values| UpdateVariantInput {
+            axis_values: Some(axis_values),
+            ..Default::default()
+        };
+        assert!(
+            update_input(valid_axis_values(MAX_VARIANT_AXES))
+                .validate()
+                .is_ok()
+        );
+        assert!(
+            update_input(valid_axis_values(MAX_VARIANT_AXES + 1))
                 .validate()
                 .is_err()
         );
