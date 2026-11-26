@@ -50,7 +50,11 @@ pub struct PriceInput {
     ))]
     pub currency_code: String,
     pub channel_id: Option<Uuid>,
-    #[validate(length(max = 100, message = "Channel slug must be max 100 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 100,
+        message = "Channel slug must be 1-100 characters"
+    ))]
     pub channel_slug: Option<String>,
     pub amount: Decimal,
     pub compare_at_amount: Option<Decimal>,
