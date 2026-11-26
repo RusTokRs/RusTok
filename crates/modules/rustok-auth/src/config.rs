@@ -2,6 +2,7 @@ use std::sync::{Arc, OnceLock, RwLock};
 use std::time::Duration;
 
 use crate::jwt_clock::{ClockGuard, ClockSample, LeaseDeadline};
+use crate::jwt_fence::LocalJwtHistory;
 
 use jsonwebtoken::{Algorithm, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
@@ -102,6 +103,7 @@ struct VersionedJwtKeys {
     clock: Arc<ClockGuard>,
     authority_clock: Option<Arc<ClockGuard>>,
     emergency_fenced: bool,
+    local_history: Option<LocalJwtHistory>,
 }
 
 impl VersionedJwtKeys {
@@ -392,6 +394,13 @@ impl AuthConfig {
         }
         validate_auth_config(&self)?;
         let keys = self.key_snapshot()?;
+        let local_history = if lease_required {
+            None
+        } else {
+            Some(LocalJwtHistory::enroll(
+                generation, keys.prepared(self.secret())?, self.secret(),
+            )?)
+        };
         self.key_state = JwtKeySource::Live(Arc::new(RwLock::new(VersionedJwtKeys {
             generation,
             keys,
@@ -400,6 +409,7 @@ impl AuthConfig {
             clock: Arc::new(ClockGuard::new()),
             authority_clock: None,
             emergency_fenced: false,
+            local_history,
         })));
         let publisher = JwtKeyringPublisher { config: self.clone(), incarnation: uuid::Uuid::new_v4() };
         Ok((self, publisher))
@@ -594,10 +604,13 @@ impl JwtKeyringPublisher {
         // A cluster runtime cannot use this candidate until the database
         // grants a lease for its exact metadata. It may legitimately skip
         // intervening generations already validated by the durable ledger.
-        if !guard.lease_required {
-            guard.keys.prepared(self.config.secret())?.validate_successor(next)?;
-        }
         let lease_required = guard.lease_required;
+        let local_history = if lease_required {
+            None
+        } else {
+            Some(guard.local_history.as_ref().ok_or_else(invalid_rotation)?
+                .advance(generation, next, self.config.secret())?)
+        };
         if lease_required && deadline.is_none() {
             return Err(invalid_rotation());
         }
@@ -623,7 +636,7 @@ impl JwtKeyringPublisher {
             .or_else(|| guard.authority_clock.clone());
         *guard = VersionedJwtKeys {
             generation, keys, lease_required, lease_until: deadline,
-            clock, authority_clock, emergency_fenced: false,
+            clock, authority_clock, emergency_fenced: false, local_history,
         };
         Ok(true)
     }
@@ -1171,6 +1184,46 @@ mod tests {
         publisher.publish(g, retired).unwrap();
         assert!(decode_access_token(&existing_clone, &old).is_err());
         assert!(decode_access_token(&existing_clone, &fresh).is_ok());
+        assert_eq!(publisher.generation().unwrap(), 4);
+    }
+
+    #[test]
+    fn live_rotation_preserves_terminal_key_history_and_nonincreasing_cutoffs() {
+        let fixture = JwtKeyringFixture::generate().unwrap();
+        let second = RsaKeyPairFixture::generate().unwrap();
+        let (g, first) = build_auth_config_from_document(
+            secret(), 900, Default::default(),
+            &document(&fixture, 1, "one", &fixture.access),
+        ).unwrap();
+        let (_, publisher) = first.into_live_jwt(g).unwrap();
+        let until = chrono::Utc::now().timestamp() + 3600;
+        let candidate = |generation, active_kid, active_key, history_kid, history_key, cutoff| {
+            let doc = fixture.document_with_access(
+                generation, active_kid, active_key, Some((history_kid, history_key, cutoff)),
+            );
+            publisher.prepare_document(doc.to_string().as_bytes()).unwrap()
+        };
+        let (g, staged) = candidate(2, "one", &fixture.access, "two", &second, until);
+        publisher.publish(g, staged).unwrap();
+
+        let (g, extended) = candidate(3, "one", &fixture.access, "two", &second, until + 60);
+        assert!(publisher.publish(g, extended).is_err());
+        assert_eq!(publisher.generation().unwrap(), 2);
+
+        let (g, promoted) = candidate(3, "two", &second, "one", &fixture.access, until);
+        publisher.publish(g, promoted).unwrap();
+        let (g, demoted_signer) = candidate(4, "one", &fixture.access, "two", &second, until);
+        assert!(publisher.publish(g, demoted_signer).is_err());
+        assert_eq!(publisher.generation().unwrap(), 3);
+
+        let (g, retired) = publisher.prepare_document(
+            &document(&fixture, 4, "two", &second),
+        ).unwrap();
+        publisher.publish(g, retired).unwrap();
+        let (g, reintroduced) = candidate(5, "two", &second, "one", &fixture.access, until);
+        assert!(publisher.publish(g, reintroduced).is_err());
+        let (g, renamed) = candidate(5, "two", &second, "renamed", &fixture.access, until);
+        assert!(publisher.publish(g, renamed).is_err());
         assert_eq!(publisher.generation().unwrap(), 4);
     }
 

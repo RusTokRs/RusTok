@@ -184,7 +184,11 @@ cutoff is checked both during selection and after signature verification.
 The mandatory generation-bearing file is the only executable host source and
 supports atomic process-local hot reload. Auth request paths reuse prepared
 encoding/decoding keys and indexed verification history; the JWT library still
-constructs its internal crypto providers per operation.
+constructs its internal crypto providers per operation. Unmanaged process-local
+publishers share the durable ledger's terminal key-identity and non-increasing
+retirement rules for their entire process lifetime. They do not preserve
+history across restart or coordinate replicas; executable hosts still require
+durable admission.
 
 Focused regressions cover staging, promotion, retirement and exact key
 selection with two independent RS256 key pairs, plus OAuth access and missing-ID

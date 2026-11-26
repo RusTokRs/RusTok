@@ -292,6 +292,30 @@ impl FenceMac {
     }
 }
 
+/// Process-lifetime key lifecycle for explicitly unmanaged embedders.
+/// Reuse the durable ledger's transition rules without granting any durable
+/// or cross-replica authority. The ledger stores only keyed identities.
+pub(crate) struct LocalJwtHistory(Ledger);
+
+impl LocalJwtHistory {
+    pub(crate) fn enroll(
+        generation: u64, keys: &crate::jwt_keyring::ValidatedJwtKeyrings, root: &str,
+    ) -> Result<Self> {
+        let mac = FenceMac::new(root)?;
+        let snapshot = keys.fence_snapshot(|identity| mac.identity(identity))?;
+        Ok(Self(Ledger::enroll(generation, snapshot)))
+    }
+
+    pub(crate) fn advance(
+        &self, generation: u64, keys: &crate::jwt_keyring::ValidatedJwtKeyrings, root: &str,
+    ) -> Result<Self> {
+        let mac = FenceMac::new(root)?;
+        let snapshot = keys.fence_snapshot(|identity| mac.identity(identity))?;
+        self.0.clone().advance(generation, snapshot, chrono::Utc::now().timestamp())
+            .map(Self)
+    }
+}
+
 /// Auth-owned database authority. Call only from trusted deployment composition.
 /// The store admits a snapshot; it does not distribute secrets or publish keys
 /// into a process. No database access is added to the JWT request path.
