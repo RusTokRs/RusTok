@@ -69,6 +69,18 @@ consent-presence check alone could not distinguish an old epoch from a new grant
     with multiple live refresh branches refuses rotation rather than
     arbitrarily selecting a branch.
 
+12. OAuth refresh optionally accepts the secret singleton
+    `x-rustok-refresh-retry-key` header. The Auth-owned HKDF/HMAC purpose
+    `oauth-refresh-retry` binds tenant, app, family, predecessor UUIDs and
+    the 256-bit proof in a fixed 96-byte payload. The successor's digest
+    is persisted by the ordinary rotation transaction. Recovery requires
+    the same predecessor and proof, exact committed scopes, live successor,
+    consistent lineage and consent, current client and subject, and the
+    original exclusive 30-second window. It registers fresh access only;
+    refresh history and deadlines are unchanged. Non-proof clients retain
+    non-recoverable CSPRNG rotations. The header is rejected for other
+    grants. Never log proofs or raw credentials.
+
 ## Sources of truth and ownership
 
 - Canonical owner: `rustok-auth` owns JWT claims and auth migrations;

@@ -395,6 +395,9 @@ fn oauth_token_http_response(
     post,
     path = "/api/oauth/token",
     tag = "oauth",
+    params(
+        ("x-rustok-refresh-retry-key" = Option<String>, Header, description = "Secret 256-bit lowercase hex retry key; refresh_token grant only. Never log or reuse for another rotation.")
+    ),
     request_body(
         description = "OAuth token request; supports HTTP Basic client_secret_basic and body client_secret_post authentication. JSON is retained for compatibility and form encoding is RFC-compliant",
         content(
@@ -414,12 +417,16 @@ pub(crate) async fn token_handler(
     request: Request,
 ) -> axum::response::Response {
     tracing::debug!("oauth::token_handler entry");
+    let retry_key = match parse_oauth_refresh_retry_key(request.headers()) {
+        Ok(key) => key,
+        Err(error) => return oauth_error_response(error),
+    };
     let req = match parse_token_request(request, &ctx).await {
         Ok(request) => request,
         Err(error) => return add_basic_auth_challenge(oauth_error_response(error)),
     };
 
-    match OAuthTokenService::exchange(&ctx, tenant_ctx.id, &req).await {
+    match OAuthTokenService::exchange(&ctx, tenant_ctx.id, &req, retry_key.as_ref()).await {
         Ok(response) => oauth_token_http_response(StatusCode::OK, response),
         Err(error) => oauth_token_http_response(
             error.status,
@@ -429,6 +436,15 @@ pub(crate) async fn token_handler(
             },
         ),
     }
+}
+
+fn parse_oauth_refresh_retry_key(
+    headers: &HeaderMap,
+) -> Result<Option<rustok_auth::AuthRefreshRetryKey>, TokenErrorResponse> {
+    rustok_auth::AuthRefreshRetryKey::from_header_values(
+        headers.get_all(rustok_auth::REFRESH_RETRY_KEY_HEADER).iter().map(|value| value.as_bytes()),
+    )
+    .map_err(|_| oauth_invalid_request_error("Invalid refresh retry key"))
 }
 
 async fn parse_token_request(
@@ -1917,6 +1933,21 @@ mod tests {
             Some("no-cache"),
         );
     }
+    #[test]
+    fn oauth_refresh_retry_header_is_singleton_and_canonical() {
+        let mut headers = HeaderMap::new();
+        let name = rustok_auth::REFRESH_RETRY_KEY_HEADER;
+        assert!(parse_oauth_refresh_retry_key(&headers).unwrap().is_none());
+        let proof = "ab".repeat(32);
+        headers.insert(name, HeaderValue::from_str(&proof).unwrap());
+        assert!(parse_oauth_refresh_retry_key(&headers).unwrap().is_some());
+        headers.append(name, HeaderValue::from_str(&proof).unwrap());
+        assert!(parse_oauth_refresh_retry_key(&headers).is_err());
+        headers.remove(name);
+        headers.insert(name, HeaderValue::from_static("not-a-proof"));
+        assert!(parse_oauth_refresh_retry_key(&headers).is_err());
+    }
+
     #[test]
     fn token_form_content_type_accepts_optional_parameters() {
         assert!(is_form_encoded_content_type(

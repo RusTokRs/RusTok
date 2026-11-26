@@ -667,7 +667,15 @@ seconds. Ordinary revocation is not rotation evidence. Source regression
 definitions are unrun. Refresh descendants also require committed root
 rotation evidence, matching consent/code identities and root-bounded scopes.
 A forked family with multiple live refresh branches fails closed under the
-mutation lock. Proof-bound OAuth response recovery remains pending.
+mutation lock. Proof-bound OAuth refresh recovery is source-wired at the token endpoint.
+Clients may retain the original refresh bearer and an independently generated
+secret singleton `x-rustok-refresh-retry-key` (64 lowercase nonzero hex).
+Retry the same request with the same scope and proof within 30 seconds.
+Only a matching live successor is returned; a fresh access row is registered,
+without another refresh row or expiry extension. Wrong proof, changed scope,
+revoked successor or elapsed grace fail closed. SDK adoption, CORS/header
+policy, generated reference verification, compilation and PostgreSQL
+lost-response/concurrency evidence remain pending.
 
 ## Direct session concurrency
 

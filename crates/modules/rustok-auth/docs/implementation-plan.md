@@ -327,7 +327,12 @@ consumption and delegated responses report the remaining access lifetime.
 Grace requires matching rotation timestamps and valid temporal evidence, not
 merely a recent revocation. Focused boundary and transactional regressions
 are unrun. Existing pre-change access registrations retain their stored expiry;
-proof-bound recovery and canonical family identity migration remain open.
+canonical family identity migration remains open. Proof-bound OAuth refresh
+recovery is source-wired using an optional secret singleton header and an
+independent purpose over tenant/app/family/predecessor/proof. The owner
+rechecks current app, subject, consent, exact scopes, live successor and
+exclusive grace under lock; recovery inserts only a fresh access row.
+Client integration and cross-replica fault-injection evidence remain open.
 Root resolution now rejects unconsumed roots, mismatched consent epochs,
 widened descendant scopes and future timestamps. The app/subject-locked
 rotation refuses a family with multiple live refresh branches. Focused

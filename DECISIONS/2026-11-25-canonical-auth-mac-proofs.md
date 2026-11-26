@@ -24,6 +24,12 @@ future proofs. Keep the existing length-framed binding of authorization
 parameters, normalized effective scope set, PKCE challenge and direct
 session, and preserve the existing transactional authorization boundary.
 
+The optional OAuth refresh retry proof uses the same canonical secret
+header encoding as direct refresh, with a distinct closed
+`oauth-refresh-retry` purpose and tenant/app/family/predecessor binding.
+See [OAuth access-token revocation fence](2026-11-01-oauth-access-token-revocation-fence.md).
+No proof or plaintext successor is persisted.
+
 ## Cutover and verification
 
 Stop all old hosts and deploy together. Restart outstanding consent

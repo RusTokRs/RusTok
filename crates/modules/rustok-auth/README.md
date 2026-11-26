@@ -103,7 +103,8 @@ it never provisions a service or adds grants. Human transport authentication is 
 OAuth policy changes and consent re-grants now durably revoke previous
 credentials at the source level. Compilation, focused regressions and
 PostgreSQL contention/rollback evidence remain pending. OAuth refresh-family
-recovery and full OAuth lifecycle verification remain open. Newly issued
+proof-bound recovery is source-wired for the token endpoint; client adoption,
+generated references and full OAuth lifecycle verification remain open. Newly issued
 credentials are bounded by the original refresh-family deadline, and
 rotation requires consistent consumed-root evidence and rejects multiple
 live refresh branches. Pre-existing access registrations keep their stored

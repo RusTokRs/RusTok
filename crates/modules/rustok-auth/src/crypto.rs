@@ -13,6 +13,7 @@ pub enum AuthMacPurpose {
     OAuthConsentCsrf,
     PasswordResetCredential,
     SessionRefreshRetry,
+    OAuthRefreshRetry,
 }
 
 impl AuthMacPurpose {
@@ -21,6 +22,7 @@ impl AuthMacPurpose {
             Self::OAuthConsentCsrf => b"oauth-consent-csrf",
             Self::PasswordResetCredential => b"password-reset-credential",
             Self::SessionRefreshRetry => b"session-refresh-retry",
+            Self::OAuthRefreshRetry => b"oauth-refresh-retry",
         }
     }
 }
@@ -138,6 +140,30 @@ impl AuthRefreshRetryKey {
             config,
             AuthMacPurpose::SessionRefreshRetry,
             &payload,
+        )?))
+    }
+
+    /// Bind the proof to one predecessor, not just a client or family.
+    /// The host must compare the resulting digest with durable lineage.
+    pub fn derive_oauth_token(
+        &self,
+        config: &AuthConfig,
+        tenant_id: uuid::Uuid,
+        app_id: uuid::Uuid,
+        family_id: uuid::Uuid,
+        predecessor_id: uuid::Uuid,
+    ) -> Result<String> {
+        let ids = [tenant_id, app_id, family_id, predecessor_id];
+        if ids.iter().any(|id| id.is_nil()) {
+            return Err(AuthError::Internal("Invalid OAuth refresh identity".into()));
+        }
+        let mut payload = [0_u8; 96];
+        for (index, id) in ids.iter().enumerate() {
+            payload[index * 16..(index + 1) * 16].copy_from_slice(id.as_bytes());
+        }
+        payload[64..].copy_from_slice(&self.0);
+        Ok(hex::encode(auth_purpose_mac(
+            config, AuthMacPurpose::OAuthRefreshRetry, &payload,
         )?))
     }
 }
@@ -305,6 +331,24 @@ mod tests {
         assert_eq!(first, key.derive_token(&config.clone(), tenant, session).unwrap());
         assert_ne!(first, key.derive_token(&config, uuid::Uuid::new_v4(), session).unwrap());
         assert_ne!(first, key.derive_token(&config, tenant, uuid::Uuid::new_v4()).unwrap());
+        let app = uuid::Uuid::new_v4();
+        let predecessor = uuid::Uuid::new_v4();
+        let oauth = key.derive_oauth_token(&config, tenant, app, session, predecessor).unwrap();
+        assert!(is_canonical_auth_mac_tag(&oauth));
+        assert_ne!(first, oauth);
+        assert_eq!(oauth, key.derive_oauth_token(&config.clone(), tenant, app, session, predecessor).unwrap());
+        for ids in [
+            [uuid::Uuid::new_v4(), app, session, predecessor],
+            [tenant, uuid::Uuid::new_v4(), session, predecessor],
+            [tenant, app, uuid::Uuid::new_v4(), predecessor],
+            [tenant, app, session, uuid::Uuid::new_v4()],
+        ] {
+            assert_ne!(oauth, key.derive_oauth_token(&config, ids[0], ids[1], ids[2], ids[3]).unwrap());
+        }
+        let wrong = "ac".repeat(32);
+        let wrong = AuthRefreshRetryKey::from_header_values([wrong.as_bytes()].into_iter()).unwrap().unwrap();
+        assert_ne!(oauth, wrong.derive_oauth_token(&config, tenant, app, session, predecessor).unwrap());
+        assert!(key.derive_oauth_token(&config, tenant, app, session, uuid::Uuid::nil()).is_err());
     }
 
     #[test]
@@ -323,7 +367,7 @@ mod tests {
             let config = AuthConfig::from_test_document_unvalidated(
                 root.to_string(), fixture.document(1).to_string().as_bytes(),
             );
-            for purpose in [AuthMacPurpose::OAuthConsentCsrf, AuthMacPurpose::PasswordResetCredential, AuthMacPurpose::SessionRefreshRetry] {
+            for purpose in [AuthMacPurpose::OAuthConsentCsrf, AuthMacPurpose::PasswordResetCredential, AuthMacPurpose::SessionRefreshRetry, AuthMacPurpose::OAuthRefreshRetry] {
                 assert!(auth_purpose_mac(&config, purpose, b"payload").is_err());
             }
         }
