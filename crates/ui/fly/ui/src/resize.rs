@@ -350,15 +350,9 @@ fn clamp_dimension(value: f64, minimum: f64, maximum: Option<f64>) -> Option<f64
 }
 
 fn px(value: f64) -> String {
-    // Scaling a large but finite dimension by 100 can overflow. At that
-    // magnitude there are no representable fractional CSS pixels to round.
-    let scaled = value * 100.0;
-    let rounded = if scaled.is_finite() {
-        scaled.round() / 100.0
-    } else {
-        value
-    };
-    format!("{rounded}px")
+    // The result has already been snapped, bounded and aspect-ratio checked.
+    // Rounding here could move it outside its bounds or change the ratio.
+    format!("{value}px")
 }
 
 #[cfg(test)]
@@ -624,7 +618,7 @@ mod tests {
     }
 
     #[test]
-    fn finite_resize_dimension_cannot_overflow_during_css_rounding() {
+    fn finite_resize_dimension_remains_finite_in_css() {
         let resize = session(ResizeHandle::East);
         let result = ResizeResult {
             rect: CanvasRect {
@@ -642,6 +636,46 @@ mod tests {
             .parse::<f64>()
             .expect("numeric width");
         assert!(number.is_finite());
+    }
+
+    #[test]
+    fn css_patch_preserves_fractional_resize_bounds() {
+        let mut resize = session(ResizeHandle::East);
+        resize.policy.minimum_width = 24.004;
+        resize.policy.maximum_width = Some(200.006);
+
+        for (pointer_x, expected) in [(0.0, 24.004), (300.0, 200.006)] {
+            let result = resize.update(pointer_x, resize.start_y);
+            assert!(result.width_changed);
+            assert_eq!(result.rect.width, expected);
+            let style = resize.component_patch(result).style.expect("style");
+            assert_eq!(style["width"], format!("{expected}px"));
+        }
+    }
+
+    #[test]
+    fn css_patch_preserves_aspect_locked_fractional_geometry() {
+        let mut resize = session(ResizeHandle::SouthEast);
+        resize.start_rect.height = 103.0;
+        resize.policy.preserve_aspect_ratio = true;
+        let result = resize.update(219.0, 100.0);
+        assert!(result.width_changed && result.height_changed);
+
+        let style = resize.component_patch(result).style.expect("style");
+        let width = style["width"]
+            .as_str()
+            .expect("width")
+            .trim_end_matches("px")
+            .parse::<f64>()
+            .expect("numeric width");
+        let height = style["height"]
+            .as_str()
+            .expect("height")
+            .trim_end_matches("px")
+            .parse::<f64>()
+            .expect("numeric height");
+        assert_eq!(width, result.rect.width);
+        assert_eq!(height, result.rect.height);
     }
 
     #[test]

@@ -79,8 +79,9 @@ Viewport dimensions and zoom are normalized at the intent boundary using the sam
 custom preview presets; invalid scroll offsets become zero. Non-finite overlay/drop geometry is
 rejected without changing editor state, and a resize event with malformed or overflowing pointer
 coordinates never emits non-finite CSS dimensions. Direct patch construction also rejects invalid
-rectangles and ignores changes on axes not controlled by the active handle; rounding a finite
-CSS dimension cannot overflow to infinity.
+rectangles and ignores changes on axes not controlled by the active handle. The CSS patch
+preserves the checked finite dimensions without a second rounding step that could violate a
+fractional bound or alter a locked aspect ratio.
 
 SaveStarted also checks current edit permission and unresolved conflicts. If the host has
 synchronized a hash, SaveSucceeded must match both the submitted hash and request ID rather than
