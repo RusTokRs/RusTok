@@ -146,23 +146,7 @@ impl PostService {
         Ok(Some(response))
     }
 
-    /// Slug lookup of one post by its owner.
-    ///
-    /// **The channel allowlist is the caller's decision, not this method's.**
-    /// The method answers with the post's *status* view only: `Published` for a
-    /// caller without tenant-wide `blog_posts:read`, any status otherwise. A
-    /// published post that is restricted to a subset of channels is still
-    /// returned here, because the two callers apply the boundary at their own
-    /// layer and need the row to answer correctly:
-    ///
-    /// * GraphQL `postBySlug` filters the result through `post_is_readable`
-    ///   (channel-aware) before exposing it;
-    /// * the SEO provider (`integrations/seo_targets.rs::resolve_route`) applies
-    ///   its own load scope and `is_post_visible_for_channel`.
-    ///
-    /// Any new caller that serves a public surface must do the same or call
-    /// [`Self::get_post`] under its own visibility rule — this method alone is
-    /// not a public read.
+    /// Slug lookup for a caller without a channel in scope.
     #[instrument(skip(self, security))]
     pub async fn get_post_by_slug(
         &self,
@@ -171,18 +155,23 @@ impl PostService {
         locale: &str,
         slug: &str,
     ) -> BlogResult<Option<PostResponse>> {
-        self.get_post_by_slug_with_locale_fallback(tenant_id, security, locale, slug, None)
+        self.get_post_by_slug_on_channel(tenant_id, security, locale, slug, None, None)
             .await
     }
 
+    /// Resolves a slug within the tenant and enforces post visibility before
+    /// loading localized response data. Tenant-wide readers can see any post.
+    /// A reader with Own scope can see their own post within a visible channel.
+    /// Other readers see only visible posts with an intact publication stamp.
     #[instrument(skip(self, security))]
-    pub async fn get_post_by_slug_with_locale_fallback(
+    pub async fn get_post_by_slug_on_channel(
         &self,
         tenant_id: Uuid,
         security: SecurityContext,
         locale: &str,
         slug: &str,
         fallback_locale: Option<&str>,
+        channel_slug: Option<&str>,
     ) -> BlogResult<Option<PostResponse>> {
         if tenant_id.is_nil() {
             return Err(BlogError::validation("Tenant ID must not be nil"));
@@ -208,7 +197,8 @@ impl PostService {
             .user_id
             .map(|u| u == post.author_id)
             .unwrap_or(false);
-        let can_read_this_post = can_read_non_public_posts(&security)
+        let can_read_any_post = can_read_non_public_posts(&security);
+        let can_read_this_post = can_read_any_post
             || (is_author
                 && matches!(
                     security.get_scope(Resource::BlogPosts, Action::Read),
@@ -221,8 +211,18 @@ impl PostService {
             return Ok(None);
         }
 
-        let translations = self.load_translations(tenant_id, post.id).await?;
         let channel_slugs = self.load_channel_slugs(tenant_id, post.id).await?;
+        if !can_read_any_post && !is_post_visible_for_channel(&channel_slugs, channel_slug) {
+            return Ok(None);
+        }
+        if !can_read_this_post
+            && !self
+                .channel_is_public_visible(tenant_id, channel_slug)
+                .await?
+        {
+            return Ok(None);
+        }
+        let translations = self.load_translations(tenant_id, post.id).await?;
         self.build_post_response(
             post,
             translations,

@@ -33,7 +33,7 @@ pub(crate) fn print_module_usage() {
     println!(
         "  cargo xtask module new <slug> [--title <title>] [--description <desc>] [--category <cat>] [--with-db] [--ui <dual|admin|storefront|none>]"
     );
-    println!("  cargo xtask module lint <slug> [--embedded | --fba]");
+    println!("  cargo xtask module lint <slug> [--embedded | --fba | --cli]");
     println!("  cargo xtask module validate [slug]");
     println!("  cargo xtask module test <slug> [--dry-run]");
     println!(
@@ -78,7 +78,8 @@ pub(crate) fn module_lint_command(args: &[String]) -> Result<()> {
     let (slug, selector) = match args {
         [slug] => (slug, "--module"),
         [slug, mode] if mode == "--embedded" => (slug, "--embedded"),
-        _ => anyhow::bail!("Usage: cargo xtask module lint <slug> [--embedded | --fba]"),
+        [slug, mode] if mode == "--cli" => (slug, "--cli"),
+        _ => anyhow::bail!("Usage: cargo xtask module lint <slug> [--embedded | --fba | --cli]"),
     };
     if slug.starts_with('-') {
         anyhow::bail!("module lint requires a native module slug, not an option");
@@ -105,7 +106,7 @@ pub(crate) fn module_lint_command(args: &[String]) -> Result<()> {
     if !status.success() {
         anyhow::bail!("Architecture lint failed for '{slug}' (status {status})");
     }
-    if selector == "--module" {
+    if selector != "--embedded" {
         crate::fba_layout::lint(&root, slug, false)?;
     }
     Ok(())

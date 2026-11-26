@@ -18,6 +18,7 @@ struct PostTranslationUpsertInput {
 
 use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Patch, Resource};
 use rustok_channel::ChannelService;
+use rustok_channel_ports::ChannelPublicModuleReadPort;
 use rustok_content::{
     available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
 };
@@ -62,6 +63,7 @@ pub struct PostService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
     pub(crate) taxonomy_port: Arc<dyn BlogTaxonomyPort>,
+    channel_public_module_port: Arc<dyn ChannelPublicModuleReadPort>,
 }
 
 #[derive(Debug, Clone)]
@@ -97,6 +99,7 @@ mod tests;
 impl PostService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
+            channel_public_module_port: Arc::new(ChannelService::new(db.clone())),
             db,
             event_bus,
             taxonomy_port: Arc::new(NoopBlogTaxonomyPort),
@@ -105,6 +108,12 @@ impl PostService {
 
     pub fn with_taxonomy_port(mut self, port: Arc<dyn BlogTaxonomyPort>) -> Self {
         self.taxonomy_port = port;
+        self
+    }
+
+    /// Composes the selected Channel provider for public post reads.
+    pub fn with_channel_public_module_port(mut self, port: Arc<dyn ChannelPublicModuleReadPort>) -> Self {
+        self.channel_public_module_port = port;
         self
     }
 }
@@ -422,7 +431,7 @@ const RESERVED_POST_METADATA_KEYS: &[&str] = &[
 const MAX_POST_METADATA_BYTES: usize = 64 * 1024;
 const MAX_POST_CHANNEL_SLUGS: usize = 32;
 const MAX_POST_CHANNEL_SLUG_BYTES: usize = 100;
-const MAX_POST_SLUG_BYTES: usize = 255;
+const MAX_POST_SLUG_BYTES: usize = rustok_blog_ports::MAX_BLOG_POST_SLUG_BYTES;
 const MAX_POST_EXCERPT_CHARS: usize = 1000;
 const MAX_POST_SEO_TITLE_CHARS: usize = 255;
 const MAX_POST_SEO_DESCRIPTION_CHARS: usize = 1000;

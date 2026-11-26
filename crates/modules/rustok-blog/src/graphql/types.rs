@@ -515,6 +515,40 @@ impl From<PostResponse> for GqlPost {
     }
 }
 
+impl From<rustok_blog_ports::BlogPublishedPost> for GqlPost {
+    fn from(post: rustok_blog_ports::BlogPublishedPost) -> Self {
+        Self {
+            tenant_id: post.tenant_id,
+            id: post.id,
+            requested_locale: post.requested_locale,
+            effective_locale: post.effective_locale,
+            available_locales: post.available_locales,
+            title: post.title,
+            slug: Some(post.slug),
+            excerpt: post.excerpt,
+            content: post.content,
+            content_plain_text: post.content_plain_text,
+            status: GqlContentStatus::Published,
+            author_id: Some(post.author_id),
+            author_profile: None,
+            category_id: post.category_id,
+            category_name: post.category_name,
+            created_at: post.created_at.to_rfc3339(),
+            updated_at: post.updated_at.to_rfc3339(),
+            published_at: Some(post.published_at.to_rfc3339()),
+            scheduled_at: None,
+            is_pinned: post.is_pinned,
+            pinned_at: post.pinned_at.map(|value| value.to_rfc3339()),
+            tags: post.tags,
+            featured_image_url: post.featured_image_url,
+            seo_title: post.seo_title,
+            seo_description: post.seo_description,
+            channel_slugs: post.channel_slugs,
+            version: post.version,
+        }
+    }
+}
+
 impl From<DomainCommentListItem> for GqlPublicCommentListItem {
     fn from(comment: DomainCommentListItem) -> Self {
         Self {

@@ -206,12 +206,12 @@ ${options.missingTenantFallbackBinding ? "" : `super::configured_fallback_tenant
 ChannelService::new
 .is_module_enabled_for_tenant(tenant_id, channel_id, MODULE_SLUG)
 normalize_channel_slug
-is_visible_for_public_channel
+read_published_post
 ctx.channel_slug
 Blog is not available for the current channel
 ${options.missingComments ? "" : `CommentService::from_runtime_capabilities
 list_public_comments_with_snapshot(
-SecurityContext::public_read()
+published_post_read_context
 ${pagination ? "comments_page,\nCOMMENTS_PAGE_SIZE,\n" : ""}map_comment_list_item
 `}
 ${canonicalRichtext ? "content: Some(post.content)\ncontent_plain_text: Some(post.content_plain_text)" : "body: Some(post.body)\nbody_format: post.body_format"}

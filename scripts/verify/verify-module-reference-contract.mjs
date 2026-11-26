@@ -569,7 +569,7 @@ forbid("crates/modules/rustok-blog/src/module.rs", [
 requireAll("crates/modules/rustok-blog/src/integrations/seo_targets.rs", [
   "let service = PostService::new(runtime.db.clone(), runtime.event_bus.clone());",
   /service\s*\.get_post_with_locale_fallback\(/,
-  /service\s*\.get_post_by_slug_with_locale_fallback\(/,
+  /service\s*\.get_post_by_slug_on_channel\(/,
   "fn optional_post(result: crate::BlogResult<PostResponse>) -> AnyResult<Option<PostResponse>>",
   "Err(BlogError::PostNotFound(_)) => Ok(None)",
 ]);
@@ -1110,8 +1110,12 @@ requireAll("crates/modules/rustok-blog/src/services/post/commands.rs", [
   "Archive reason cannot exceed",
 ]);
 
+requireAll("crates/modules/rustok-blog/ports/src/published_post.rs", [
+  "pub const MAX_BLOG_POST_SLUG_BYTES: usize = 255;",
+]);
+
 requireAll("crates/modules/rustok-blog/src/services/post/mod.rs", [
-  "const MAX_POST_SLUG_BYTES: usize = 255;",
+  "const MAX_POST_SLUG_BYTES: usize = rustok_blog_ports::MAX_BLOG_POST_SLUG_BYTES;",
   "const MAX_POST_EXCERPT_CHARS: usize = 1000;",
   "const MAX_POST_SEO_TITLE_CHARS: usize = 255;",
   "const MAX_POST_SEO_DESCRIPTION_CHARS: usize = 1000;",

@@ -4,7 +4,10 @@
 //! (`rustok-content-orchestration`) and cross-module boundaries without leaking
 //! private persistence entities.
 
+mod published_post;
+
 pub use crate::services::orchestration::*;
 pub use crate::services::tag::lock_tag_attachments_writer_in_tx;
 pub use crate::services::taxonomy;
 pub use crate::services::taxonomy::*;
+pub use published_post::published_post_read_context;

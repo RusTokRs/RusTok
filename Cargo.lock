@@ -14309,6 +14309,7 @@ dependencies = [
  "rand 0.10.4",
  "rustok-api",
  "rustok-auth",
+ "rustok-blog-ports",
  "rustok-channel",
  "rustok-comments",
  "rustok-content",
@@ -14401,6 +14402,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-blog-ports"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rustok-api",
+ "serde",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-blog-storefront"
 version = "0.1.0"
 dependencies = [
@@ -14410,6 +14422,7 @@ dependencies = [
  "rustok-api",
  "rustok-auth-ui",
  "rustok-blog",
+ "rustok-blog-ports",
  "rustok-channel",
  "rustok-comments-storefront-support",
  "rustok-core",

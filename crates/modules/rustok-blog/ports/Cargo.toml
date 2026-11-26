@@ -1,0 +1,23 @@
+[package]
+name = "rustok-blog-ports"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+description = "Published RusToK Blog owner contracts"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints]
+workspace = true
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+rustok-api.workspace = true
+serde.workspace = true
+uuid.workspace = true

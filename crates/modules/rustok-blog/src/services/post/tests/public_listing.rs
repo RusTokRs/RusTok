@@ -6,6 +6,12 @@
 /// customer does not — the list used to filter on `status` only and showed it.
 #[tokio::test]
 async fn public_visible_listing_filters_by_typed_channel_relation() {
+    use rustok_api::{PortActor, PortContext};
+    use rustok_blog_ports::{
+        BLOG_PUBLISHED_POST_READ_CLAIM, BlogPublishedPostReadPort, ReadBlogPublishedPost,
+    };
+    use std::time::Duration;
+
     let db = setup_test_db().await;
     ensure_blog_schema(&db).await;
 
@@ -19,14 +25,21 @@ async fn public_visible_listing_filters_by_typed_channel_relation() {
     seed_channel(&db, tenant_id, "mobile").await;
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
 
-    for (slug, title, channel_slugs) in [
-        ("web-visible", "Web Visible", Some(vec!["web".to_string()])),
+    for (slug, title, channel_slugs, publish) in [
+        (
+            "web-visible",
+            "Web Visible",
+            Some(vec!["web".to_string()]),
+            true,
+        ),
         (
             "mobile-only",
             "Mobile Only",
             Some(vec!["mobile".to_string()]),
+            true,
         ),
-        ("global", "Global", None),
+        ("global", "Global", None, true),
+        ("draft", "Draft", Some(vec!["web".to_string()]), false),
     ] {
         post_service
             .create_post(
@@ -39,7 +52,7 @@ async fn public_visible_listing_filters_by_typed_channel_relation() {
                     content: crate::richtext::article_document_from_plain_text("Body"),
                     excerpt: None,
                     slug: Some(slug.to_string()),
-                    publish: true,
+                    publish,
                     tags: vec![],
                     category_id: None,
                     featured_image_url: None,
@@ -77,6 +90,90 @@ async fn public_visible_listing_filters_by_typed_channel_relation() {
     assert!(slugs.contains(&"web-visible".to_string()));
     assert!(slugs.contains(&"global".to_string()));
     assert!(!slugs.contains(&"mobile-only".to_string()));
+    assert!(!slugs.contains(&"draft".to_string()));
+
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::service("storefront"),
+        "fr",
+        "test",
+    )
+    .with_channel(" WEB ")
+    .with_claim(BLOG_PUBLISHED_POST_READ_CLAIM)
+    .with_deadline(Duration::from_secs(5));
+    let port: &dyn BlogPublishedPostReadPort = &post_service;
+    let post = port
+        .read_published_post(
+            context,
+            ReadBlogPublishedPost {
+                slug: "web-visible".to_string(),
+                fallback_locale: Some("en".to_string()),
+            },
+        )
+        .await
+        .expect("visible slug lookup should succeed")
+        .expect("the web channel should see its post");
+    assert_eq!(post.requested_locale, "fr");
+    assert_eq!(post.effective_locale, "en");
+    assert_eq!(post.available_locales, vec!["en".to_string()]);
+
+    for (tenant, slug, channel) in [
+        (tenant_id, "mobile-only", Some("web")),
+        (tenant_id, "web-visible", None),
+        (tenant_id, "global", Some("missing-channel")),
+        (tenant_id, "draft", Some("web")),
+        (Uuid::new_v4(), "web-visible", Some("web")),
+    ] {
+        assert!(
+            post_service
+                .get_post_by_slug_on_channel(
+                    tenant,
+                    SecurityContext::public_read(),
+                    "en",
+                    slug,
+                    None,
+                    channel,
+                )
+                .await
+                .expect("an unavailable post should have a normal absence result")
+                .is_none(),
+            "{slug} should be hidden in tenant {tenant} and channel {channel:?}"
+        );
+    }
+
+    assert!(
+        post_service
+            .get_post_by_slug_on_channel(tenant_id, admin, "en", "mobile-only", None, Some("web"))
+            .await
+            .expect("tenant-wide editor lookup should succeed")
+            .is_some()
+    );
+
+    let channels = rustok_channel::ChannelService::new(db.clone());
+    let web = channels
+        .get_channel_by_slug(tenant_id, "web")
+        .await
+        .expect("channel lookup should succeed")
+        .expect("web channel should exist");
+    channels
+        .bind_module(
+            web.id,
+            rustok_channel::BindChannelModuleInput {
+                module_slug: "blog".to_string(),
+                is_enabled: false,
+                settings: None,
+            },
+        )
+        .await
+        .expect("the channel owner should disable Blog");
+    let customer = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
+    assert!(
+        post_service
+            .get_post_by_slug_on_channel(tenant_id, customer, "en", "global", None, Some("web"))
+            .await
+            .expect("disabled Blog binding should produce a normal absence result")
+            .is_none()
+    );
 }
 
 #[tokio::test]

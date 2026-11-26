@@ -121,6 +121,9 @@ Classic Next.js packages remain Next-host owned; live UI wiring is checked by
 the generic native-module lint, while functional cross-client parity needs
 separate evidence.
 
+Generation of module-local `cli/` packages is tracked in the
+[scaffolding plan](./docs/implementation-plan.md#module-local-cli-generation).
+
 ### Recovering an interrupted scaffold
 
 The next live scaffold recovers first. To recover without generating a module,
@@ -241,7 +244,7 @@ Use `--no-bootstrap` to only prepare env files, or `--dry-run` to inspect the ac
 - `cargo xtask validate-manifest` validates the central composition contract for every module declared in `modules.toml`.
 - `cargo xtask module validate` validates every local `source = "path"` module declared in `modules.toml`.
 - `cargo xtask module validate <slug>` validates one declared module.
-- `cargo xtask module lint <slug>` checks native source layout, FFA package structure, live Next.js package/route wiring and the nested FBA ports package when present. This is independent of publish-readiness. The scaffold command runs lint before validate unless `--skip-validate` is supplied.
+- `cargo xtask module lint <slug>` checks native source layout, FFA package structure, live Next.js package/route wiring and the nested FBA ports package when present. Add `--cli` to require and verify a module-local operational adapter. Blog includes this check by default. The scaffold command runs lint before publish-metadata validation unless `--skip-validate` is supplied.
 - `cargo xtask module lint <slug> --fba` requires and checks the [owner ports package](../docs/backend/module-backend-implementation.md#remote-fba-module-layout), declared runtime dependencies, and any present gRPC and standalone source. New and converted modules share the same layout. The native generator records it in the owner plan.
 - `cargo xtask module test <slug>` builds and runs the targeted smoke plan for one declared module.
 - Central docs drift is part of the contract: `validate-manifest` checks `docs/modules/registry.md`, and `module validate <slug>` checks that the module's row and dependency bucket stay aligned with `modules.toml`.

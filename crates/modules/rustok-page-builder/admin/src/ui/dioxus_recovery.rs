@@ -123,9 +123,83 @@ fn recovery_record_is_newer(
     )
 }
 
+/// Validate the complete persisted lineage before projecting one record per writer.
+/// Superseded records can still participate in a cycle, and an unrelated live
+/// record must not hide that corruption.
+fn recovery_lineage_has_cycle(
+    entries: &[(RecoveryRecordRef, DraftRecoveryRecord)],
+) -> bool {
+    let keys = entries
+        .iter()
+        .map(|(reference, _)| reference.key.clone())
+        .collect::<BTreeSet<_>>();
+    let mut outgoing = BTreeMap::<String, BTreeSet<String>>::new();
+    let mut indegree = keys
+        .iter()
+        .cloned()
+        .map(|key| (key, 0usize))
+        .collect::<BTreeMap<_, _>>();
+
+    for (reference, record) in entries {
+        let edges = outgoing.entry(reference.key.clone()).or_default();
+        for superseded_key in &record.supersedes {
+            if !keys.contains(superseded_key) || !edges.insert(superseded_key.clone()) {
+                continue;
+            }
+            let Some(degree) = indegree.get_mut(superseded_key) else {
+                return true;
+            };
+            let Some(next) = degree.checked_add(1) else {
+                return true;
+            };
+            *degree = next;
+        }
+    }
+
+    // Kahn's algorithm examines every connected component. A disconnected
+    // cycle is still fatal even when another writer has a valid latest record.
+    let mut ready = indegree
+        .iter()
+        .filter_map(|(key, degree)| (*degree == 0).then_some(key.clone()))
+        .collect::<BTreeSet<_>>();
+    let mut visited = 0usize;
+
+    while let Some(key) = ready.iter().next().cloned() {
+        ready.remove(&key);
+        let Some(next_visited) = visited.checked_add(1) else {
+            return true;
+        };
+        visited = next_visited;
+
+        if let Some(superseded_keys) = outgoing.get(&key) {
+            for superseded_key in superseded_keys {
+                let Some(degree) = indegree.get_mut(superseded_key) else {
+                    return true;
+                };
+                let Some(next) = degree.checked_sub(1) else {
+                    return true;
+                };
+                *degree = next;
+                if next == 0 {
+                    ready.insert(superseded_key.clone());
+                }
+            }
+        }
+    }
+
+    visited != keys.len()
+}
+
 fn latest_recovery_records(
     entries: Vec<(RecoveryRecordRef, DraftRecoveryRecord)>,
 ) -> Result<LoadedRecoveryRecords, String> {
+    if recovery_lineage_has_cycle(&entries) {
+        return Err(
+            "Local recovery records contain a cyclic supersession chain; all records were left untouched."
+                .to_string(),
+        );
+    }
+
     let mut references = Vec::with_capacity(entries.len());
     let mut by_writer = BTreeMap::<String, (String, DraftRecoveryRecord)>::new();
 
@@ -1411,6 +1485,33 @@ mod tests {
             ),
         ]);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn recovery_lineage_rejects_cycles_hidden_by_newer_and_unrelated_records() {
+        let result = latest_recovery_records(vec![
+            (
+                test_record_ref("a1"),
+                test_recovery_record("writer-a", "a1", 1, &["b1"]),
+            ),
+            (
+                test_record_ref("a2"),
+                test_recovery_record("writer-a", "a2", 2, &["a1"]),
+            ),
+            (
+                test_record_ref("b1"),
+                test_recovery_record("writer-b", "b1", 1, &["a1"]),
+            ),
+            (
+                test_record_ref("c1"),
+                test_recovery_record("writer-c", "c1", 1, &[]),
+            ),
+        ]);
+
+        assert!(
+            result.is_err(),
+            "a cycle in superseded history must not be hidden by a newer record or an unrelated writer"
+        );
     }
 
 

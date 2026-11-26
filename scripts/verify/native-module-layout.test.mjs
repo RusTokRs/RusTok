@@ -42,6 +42,24 @@ function lint(ctx) {
   return lintNativeModule(ctx.root, ctx.path("."), "sample");
 }
 
+function writeCliAdapter(ctx) {
+  ctx.write("rustok-module.toml",
+    '[module]\nslug = "sample"\nui_classification = "no_ui"\n[crate]\nentry_type = "SampleModule"\n' +
+    '[provides.cli]\nfactory = "rustok_sample_cli::command_provider"\n');
+  ctx.write("cli/Cargo.toml", '[package]\nname = "rustok-sample-cli"\n');
+  ctx.write("cli/src/lib.rs",
+    'mod provider;\nmod commands;\npub use provider::command_provider;\n#[cfg(test)]\nmod tests;\n');
+  ctx.write("cli/src/provider.rs", 'impl CommandProvider for SampleProvider {}\n');
+  ctx.write("cli/src/commands/mod.rs", 'mod inspect;\n');
+  ctx.write("cli/src/commands/inspect.rs", 'pub(crate) fn execute() {}\n');
+  ctx.write("cli/src/tests/mod.rs", 'mod contract;\n');
+  ctx.write("cli/src/tests/contract.rs", '#[test]\nfn contract() {}\n');
+}
+
+function lintCli(ctx) {
+  return lintNativeModule(ctx.root, ctx.path("."), "sample", { cli: true });
+}
+
 function writeFfaSurface(ctx, side) {
   const crateName = "rustok-sample-" + side;
   ctx.write(side + "/Cargo.toml", '[package]\nname = "' + crateName + '"\n');
@@ -92,6 +110,64 @@ test("a minimal native module omits unused responsibility directories", () => {
       ctx.path("").replaceAll("\\", "/")
     );
     assert.deepEqual(lint(ctx), []);
+  });
+});
+
+test("the module-local CLI layout is reusable without UI or a runtime binding", () => {
+  fixture((ctx) => {
+    assert.match(lintCli(ctx).join("\n"), /module-local CLI source directory is missing/);
+    writeCliAdapter(ctx);
+    assert.deepEqual(lintCli(ctx), []);
+
+    ctx.write("cli/src/commands/mod.rs", 'mod inspect;\nmod list;\n');
+    ctx.write("cli/src/commands/list/mod.rs", 'mod page;\n');
+    ctx.write("cli/src/commands/list/page.rs", 'pub(crate) fn execute() {}\n');
+    assert.deepEqual(lintCli(ctx), []);
+  });
+});
+
+test("module-local CLI validation ties the provider to the owner Cargo package", () => {
+  fixture((ctx) => {
+    writeCliAdapter(ctx);
+    ctx.write("cli/Cargo.toml", '[package]\nname = "rustok-other-cli"\n');
+    assert.match(lintCli(ctx).join("\n"), /Cargo package name must be rustok-sample-cli/);
+
+    ctx.write("cli/Cargo.toml", '[package]\nname = "rustok-sample-cli"\n');
+    const baseManifest = '[module]\nslug = "sample"\nui_classification = "no_ui"\n' +
+      '[crate]\nentry_type = "SampleModule"\n[provides.cli]\n';
+    for (const declaration of [
+      '# factory = "rustok_sample_cli::command_provider"\n',
+      'factory = "rustok_other_cli::command_provider"\n',
+      'factory = ""\nprovider = "rustok_sample_cli::Provider"\n',
+      'factory = "rustok_sample_cli::command_provider"\nprovider = "rustok_sample_cli::Provider"\n',
+    ]) {
+      ctx.write("rustok-module.toml", baseManifest + declaration);
+      assert.match(lintCli(ctx).join("\n"), /must select one factory or provider from rustok-sample-cli/);
+    }
+    ctx.write("rustok-module.toml", baseManifest + 'provider = "rustok_sample_cli::Provider"\n');
+    assert.deepEqual(lintCli(ctx), []);
+  });
+});
+
+test("module-local CLI validation rejects unused source slots and empty or unwired commands and tests", () => {
+  fixture((ctx) => {
+    writeCliAdapter(ctx);
+    ctx.write("cli/src/lib.rs",
+      'mod provider;\n// mod commands;\nmod tests;\nfn dispatch_here() {}\n');
+    ctx.write("cli/src/runtime.rs", 'fn bind() {}\n');
+    ctx.write("cli/src/bin/cli.rs", 'fn main() {}\n');
+    ctx.write("cli/src/commands/inspect.rs", '// command not implemented\n');
+    ctx.write("cli/src/commands/unwired.rs", 'pub(crate) fn execute() {}\n');
+    ctx.write("cli/src/tests/contract.rs", '// #[test]\n');
+    const failures = lintCli(ctx).join("\n");
+    assert.match(failures, /CLI lib\.rs must remain a module and re-export facade/);
+    assert.match(failures, /CLI lib\.rs must declare commands/);
+    assert.match(failures, /CLI lib\.rs must declare the runtime binding/);
+    assert.match(failures, /noncanonical CLI source slot/);
+    assert.match(failures, /CLI command module inspect requires one nonempty source entrypoint/);
+    assert.match(failures, /CLI command source is not wired by commands\/mod\.rs/);
+    assert.match(failures, /CLI contract tests must be wired through cfg\(test\) and mod contract/);
+    assert.match(failures, /CLI contract test file has no tests/);
   });
 });
 

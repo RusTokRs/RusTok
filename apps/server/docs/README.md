@@ -1722,8 +1722,20 @@ for caller identity, bounded IO, operator permissions and unexecuted runtime gat
 - A healthy outbox with zero pending events reports a pending lag of zero and
   a successful metric collection status; database failures still yield unknown
   metrics instead of false success.
+- Flex field-definition broadcast invalidation clears cached schemas and advances
+  fill generations when the consumer exits or panics, then clears again after
+  a replacement subscription is established. Replacing a terminated runtime
+  consumer follows the same subscribe-before-clear ordering on the shared cache.
+  This fences stale fills from the subscription gap; the durable generation
+  reconciler and cache TTL remain the recovery mechanisms while the listener
+  is unavailable. Source regressions are authored but unrun.
 - Tenant-scoped DLQ listing reports the total matching failed events independently
   of its bounded response page, and resolves equal timestamps with stable ID ordering.
+  The indexed UUID tenant predicate and the legacy JSON text predicate use
+  independently typed bind parameters on PostgreSQL and SQLite. Both list and
+  atomic replay keep the canonical tenant precedence; null or malformed
+  canonical JSON does not grant access through the nested legacy key.
+  A transaction-local PostgreSQL regression fixture is authored but unrun.
 - Refresh-token rotation verifies that the referenced user belongs to the
   same tenant as the selected refresh session, preventing a malformed
   cross-tenant reference from issuing a token with inconsistent authority.

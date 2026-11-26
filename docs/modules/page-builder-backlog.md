@@ -33,7 +33,9 @@ has source integration for the isolated iframe, pointer/drag/drop and bounded re
 Dioxus recovery is now implemented in source behind an explicit opaque tenant/actor scope:
 each tab writes a separate browser-local record with its server base revision/document and current
 draft; after reload, records are merged against the latest server document using recursive object
-merging and stable-id array merging. Ambiguous or overlapping changes remain preserved and put
+merging and stable-id array merging. Before selecting active records, the reader validates every
+persisted supersession link as an acyclic graph; a cycle is fatal and preserves all records even
+when an unrelated valid writer remains. Ambiguous or overlapping changes remain preserved and put
 the editor in a read-only conflict state; storage errors expose a manual JSON-copy path. The
 localStorage record ceiling is 2 MiB and this is recovery, not live collaborative editing.
 The default file-backed SSR editor store uses a persistent per-user state directory and
