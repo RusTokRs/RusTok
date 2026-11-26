@@ -456,8 +456,13 @@ the driver mapping.
   the listener bus while the dispatcher retains its prior subscription
   disconnects relay delivery. Serialize construction and return the existing
   graph before reading mutable desired deployment settings.
+  Apply the same rule to the host cache singleton: a failed insert followed
+  by a separate lookup must never fall back to an unregistered cache bus.
+  Detect split singleton resolution with
+  `rg -n 'shared_insert_if_absent|unwrap_or\(candidate\)' apps/server/src/services`.
 - **Verification:** Source-level concurrency and configured-transport
-  identity regressions authored, not run.
+  identity regressions authored, not run. The cache regression checks shared
+  broadcast channel identity and independent runtime isolation without Redis.
 
 ### P-TENANT-ERROR-INPUT-REFLECTION — do not echo untrusted routing facts
 

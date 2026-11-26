@@ -665,6 +665,14 @@ configured transport. Explicitly preinstalled transports remain
 authoritative; the change does not add retries or alter the selected
 delivery profile.
 
+The host cache resolver likewise uses the atomic typed runtime singleton API,
+rather than returning a private fallback after a failed insertion. Concurrent
+bootstraps share the registered local invalidation bus; independent runtime
+contexts retain separate buses. The contention regression observes channel
+identity without contacting Redis. Redis URL precedence and blank-value tests
+remain in the cache owner, where the pure resolver avoids changing the
+process-wide environment. These source changes have not been compiled or tested.
+
 Tenant resolution HTTP failures now return bounded static client
 messages. The status and error code still distinguish missing/conflicting
 tenant headers, invalid hosts, invalid identifiers, base-domain slug
