@@ -834,7 +834,13 @@ verified; after verification, a still-live registration session can be used.
 Cookie-session logout treats a missing, expired, or already-revoked refresh
 token idempotently, but returns a failure when revocation persistence or
 transactional event publication fails. The server must not claim logout
-success while a refresh token could remain valid. Session-id logout now locks
+success while a refresh token could remain valid. Expected-lineage logout locks
+the retained tenant/session row even after revocation and proves the presented
+current, previous or historical digest before reporting an inactive session.
+The cookie transport can therefore confirm a retry without another revocation
+or event; a wrong credential or tenant still conflicts. Other session-id
+lookups retain the unrevoked-row predicate. Regression extended, unrun.
+Session-id logout now locks
 the active row before building its revocation update (PostgreSQL/MySQL row lock;
 SQLite write fence before read), so a concurrent refresh cannot be overwritten
 by a stale ActiveModel snapshot. A cookie containing the

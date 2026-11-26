@@ -835,10 +835,25 @@ impl AuthLifecycleService {
         tenant_id: uuid::Uuid,
         session_id: uuid::Uuid,
     ) -> std::result::Result<Option<sessions::Model>, AuthLifecycleError> {
+        Self::find_session_record_for_update_in_tx(txn, tenant_id, session_id, false).await
+    }
+
+    // Expected-lineage logout needs retained revocation evidence, while all
+    // other callers of the active-row helper must continue excluding revoked rows.
+    async fn find_session_record_for_update_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: uuid::Uuid,
+        session_id: uuid::Uuid,
+        include_revoked: bool,
+    ) -> std::result::Result<Option<sessions::Model>, AuthLifecycleError> {
         let query = || {
-            sessions::Entity::find_by_id(session_id)
-                .filter(sessions::Column::TenantId.eq(tenant_id))
-                .filter(sessions::Column::RevokedAt.is_null())
+            let query = sessions::Entity::find_by_id(session_id)
+                .filter(sessions::Column::TenantId.eq(tenant_id));
+            if include_revoked {
+                query
+            } else {
+                query.filter(sessions::Column::RevokedAt.is_null())
+            }
         };
         match txn.get_database_backend() {
             DatabaseBackend::Postgres | DatabaseBackend::MySql => query()
@@ -850,9 +865,14 @@ impl AuthLifecycleService {
                 // The id is already known, so reserve the SQLite write lock
                 // before reading. A concurrent refresh/logout cannot change
                 // the session between the state read and the revocation write.
+                let sql = if include_revoked {
+                    "UPDATE sessions SET last_used_at = last_used_at WHERE tenant_id = ?1 AND id = ?2"
+                } else {
+                    "UPDATE sessions SET last_used_at = last_used_at WHERE tenant_id = ?1 AND id = ?2 AND revoked_at IS NULL"
+                };
                 let statement = Statement::from_sql_and_values(
                     DatabaseBackend::Sqlite,
-                    "UPDATE sessions SET last_used_at = last_used_at WHERE tenant_id = ?1 AND id = ?2 AND revoked_at IS NULL",
+                    sql,
                     [tenant_id.into(), session_id.into()],
                 );
                 let result = txn
@@ -1377,8 +1397,11 @@ impl AuthLifecycleService {
             // Lock the expected row, then independently prove possession of
             // a credential of that exact tenant and lineage. History permits
             // a confirmed retry of logout after multiple lost rotations.
-            let session = Self::find_session_by_id_for_update_in_tx(&txn, tenant_id, expected)
-                .await?.ok_or(AuthLifecycleError::SessionLineageMismatch)?;
+            let session = Self::find_session_record_for_update_in_tx(
+                &txn, tenant_id, expected, true,
+            )
+            .await?
+            .ok_or(AuthLifecycleError::SessionLineageMismatch)?;
             let known = session.token_hash == token_hash
                 || session.previous_token_hash.as_deref() == Some(token_hash.as_str())
                 || session_refresh_history::Entity::find_by_id(token_hash.clone())
@@ -2932,9 +2955,41 @@ mod tests {
         AuthLifecycleService::logout_by_refresh_token_runtime(
             &runtime, tenant.id, &previous, Some(actual.id),
         ).await.unwrap();
-        assert!(matches!(AuthLifecycleService::logout_by_refresh_token_runtime(
-            &runtime, tenant.id, &previous, Some(actual.id),
-        ).await, Err(AuthLifecycleError::SessionExpired)));
+        let revoked = sessions::Entity::find_by_id(actual.id)
+            .one(&db).await.unwrap().unwrap();
+        assert!(revoked.revoked_at.is_some());
+        for token in [&current, &previous] {
+            assert!(matches!(
+                AuthLifecycleService::logout_by_refresh_token_runtime(
+                    &runtime, tenant.id, token, Some(actual.id),
+                ).await,
+                Err(AuthLifecycleError::SessionExpired)
+            ));
+        }
+        for (requested_tenant, token) in [
+            (tenant.id, "not-a-lineage-credential"),
+            (Uuid::new_v4(), current.as_str()),
+        ] {
+            assert!(matches!(
+                AuthLifecycleService::logout_by_refresh_token_runtime(
+                    &runtime, requested_tenant, token, Some(actual.id),
+                ).await,
+                Err(AuthLifecycleError::SessionLineageMismatch)
+            ));
+        }
+        let after_retry = sessions::Entity::find_by_id(actual.id)
+            .one(&db).await.unwrap().unwrap();
+        assert_eq!(after_retry.revoked_at, revoked.revoked_at);
+        assert_eq!(after_retry.token_hash, revoked.token_hash);
+
+        let tx = db.begin().await.unwrap();
+        assert!(
+            AuthLifecycleService::find_session_by_id_for_update_in_tx(
+                &tx, tenant.id, actual.id,
+            ).await.unwrap().is_none(),
+            "active-only callers must not see revoked session records"
+        );
+        tx.rollback().await.unwrap();
     }
 
     #[tokio::test]
