@@ -132,6 +132,6 @@ enabling edits. Strict mounts use those server-rendered values as authoritative;
 stale `sessionStorage` metadata must never replace them. A rendered no-session
 binding must also suppress legacy storage fallback. The adapter advances the
 rendered binding only after a correlated receipt, and a missing page/session identity
-fails closed. This protocol is currently
+fails closed. The Pages endpoint also rejects editable requests that omit an operation ID or owner-bound draft identity; read-only requests remain receipt-free. This protocol is currently
 implemented by the Pages SSR host; other hosts must not opt into the strict
 contract without matching server-side atomic receipts.
