@@ -319,6 +319,15 @@ worker/backlog/history/recovery preflight. Original job/lease metadata grants no
 
 ## Recovery deadline and revision fence (2026-11-26)
 
+Administrative custom-role provisioning now validates both request-bound and
+current persisted delegation under actor, module-policy and ordered role-grant
+fences, then uses the same direct role creation path as invitation acceptance.
+The target account has no temporary Customer membership; metadata, localized
+values and response projection stay inside the transaction. Existing-account
+role replacement retains its separate continuity checks. Built-in admin
+provisioning still uses its previous request-authority contract. Source
+regression unrun; PostgreSQL contention remains unverified.
+
 Custom-role invitation acceptance inserts the account and assigns only the
 already-authorized persisted target role inside the consumption transaction.
 It does not bootstrap, assign or remove a temporary Customer membership, so

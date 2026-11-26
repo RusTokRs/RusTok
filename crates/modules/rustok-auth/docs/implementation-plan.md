@@ -562,6 +562,8 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
 
 ## Recovery lifecycle continuation (2026-11-26)
 
+- Admin custom-role provisioning uses the shared direct creation path after checking active actor and both request/persisted delegation under module and ordered role locks. No temporary Customer. Source regression covers stale request grants and exact final membership/revision; unrun. Built-in admin creation and cross-owner contention remain open.
+
 - Custom-role invite acceptance assigns the locked persisted target directly, sharing validated account insertion with built-in creation. No intermediate Customer membership or role bootstrap; the receipt, user and final role remain atomic. Source regression checks exact membership, single revision increment, absent Customer and rollback on missing role; unrun. Admin provisioning and full PostgreSQL contention are separate open paths.
 
 - Invite acceptance locates the issuer outside its transaction, locks issuer before invite (matching issuer deletion/FK SET NULL order), and revalidates current ledger digest, issuer epoch and revocation. A committed receipt short-circuits before module/RBAC locks; the unique digest insert remains authoritative. Stale-locator and revocation source regressions authored, unrun; PostgreSQL lock contention and remaining cross-owner lock order unverified.
