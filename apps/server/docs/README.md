@@ -1722,7 +1722,11 @@ for caller identity, bounded IO, operator permissions and unexecuted runtime gat
   guarded by the shared sensitive-field GraphQL document preflight policy and
   in the resolvers. A document containing both fields requires both effective
   permissions; a single-field document does not acquire the other field's
-  permission requirement.
+  permission requirement. The mounted native dashboard server functions also
+  enforce these field-specific permissions against the authenticated tenant
+  before querying data. Native query failures are redacted, and both recent
+  activity transports order by creation time and then immutable user ID,
+  descending, to keep limited result sets deterministic.
 - The root GraphQL user connection orders results by creation time then
   immutable user ID, and treats search text literally rather than allowing
   SQL LIKE wildcards to expand the result set.

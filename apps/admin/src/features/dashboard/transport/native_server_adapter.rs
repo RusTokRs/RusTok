@@ -7,6 +7,8 @@ use crate::features::dashboard::model::{DashboardStatsResponse, RecentActivityRe
 #[cfg(feature = "ssr")]
 use chrono::Utc;
 #[cfg(feature = "ssr")]
+use rustok_api::{AuthContext, HostRuntimeContext, Permission, TenantContext, has_effective_permission};
+#[cfg(feature = "ssr")]
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 
 #[server(prefix = "/api/fn", endpoint = "admin/dashboard-stats")]
@@ -15,13 +17,15 @@ pub(super) async fn dashboard_stats_native() -> Result<DashboardStatsResponse, S
     {
         use chrono::Duration;
 
-        let _auth = leptos_axum::extract::<rustok_api::AuthContext>()
+        let auth = leptos_axum::extract::<AuthContext>()
             .await
-            .map_err(|err| server_error(err.to_string()))?;
-        let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
+            .map_err(|_| server_error("Authentication required"))?;
+        let tenant = leptos_axum::extract::<TenantContext>()
             .await
-            .map_err(|err| server_error(err.to_string()))?;
-        let runtime = expect_context::<rustok_api::HostRuntimeContext>();
+            .map_err(|_| server_error("Tenant context is required"))?;
+        require_dashboard_permission(&auth, tenant.id, Permission::ANALYTICS_READ)?;
+        let runtime = use_context::<HostRuntimeContext>()
+            .ok_or_else(|| server_error("Dashboard runtime is unavailable"))?;
         let now = Utc::now();
         let current_period_start = now - Duration::days(30);
         let previous_period_start = current_period_start - Duration::days(30);
@@ -35,7 +39,7 @@ pub(super) async fn dashboard_stats_native() -> Result<DashboardStatsResponse, S
             None,
         )
         .await
-        .map_err(|err| server_error(err.to_string()))?;
+        .map_err(dashboard_read_error)?;
         Ok(DashboardStatsResponse {
             dashboard_stats: Some(DashboardStats {
                 total_users: user_stats.total_count,
@@ -66,17 +70,19 @@ pub(super) async fn recent_activity_native(
 ) -> Result<RecentActivityResponse, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let _auth = leptos_axum::extract::<rustok_api::AuthContext>()
+        let auth = leptos_axum::extract::<AuthContext>()
             .await
-            .map_err(|err| server_error(err.to_string()))?;
-        let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
+            .map_err(|_| server_error("Authentication required"))?;
+        let tenant = leptos_axum::extract::<TenantContext>()
             .await
-            .map_err(|err| server_error(err.to_string()))?;
-        let runtime = expect_context::<rustok_api::HostRuntimeContext>();
+            .map_err(|_| server_error("Tenant context is required"))?;
+        require_dashboard_permission(&auth, tenant.id, Permission::USERS_LIST)?;
+        let runtime = use_context::<HostRuntimeContext>()
+            .ok_or_else(|| server_error("Dashboard runtime is unavailable"))?;
         Ok(RecentActivityResponse {
             recent_activity: load_recent_activity(runtime.db(), tenant.id, limit.clamp(1, 50))
                 .await
-                .map_err(|err| server_error(err.to_string()))?,
+                .map_err(dashboard_read_error)?,
         })
     }
     #[cfg(not(feature = "ssr"))]
@@ -87,6 +93,27 @@ pub(super) async fn recent_activity_native(
         ))
     }
 }
+#[cfg(feature = "ssr")]
+fn require_dashboard_permission(
+    auth: &AuthContext,
+    tenant_id: uuid::Uuid,
+    permission: Permission,
+) -> Result<(), ServerFnError> {
+    if auth.tenant_id != tenant_id || !has_effective_permission(&auth.permissions, &permission) {
+        return Err(server_error(format!("Permission denied: {permission} required")));
+    }
+    Ok(())
+}
+
+#[cfg(feature = "ssr")]
+fn dashboard_read_error(_error: sea_orm::DbErr) -> ServerFnError {
+    tracing::error!(
+        error_code = "dashboard_read_failed",
+        "Dashboard read failed"
+    );
+    server_error("Dashboard read failed")
+}
+
 #[cfg(feature = "ssr")]
 #[derive(Debug, Clone, Copy, Default)]
 pub(super) struct PeriodCountSnapshot {
@@ -196,7 +223,7 @@ pub(crate) async fn load_recent_activity(
             SELECT id, email, name, created_at
             FROM users
             WHERE tenant_id = ?1
-            ORDER BY created_at DESC
+            ORDER BY created_at DESC, id DESC
             LIMIT ?2
             "#,
             vec![tenant_id.into(), limit.into()],
@@ -207,7 +234,7 @@ pub(crate) async fn load_recent_activity(
             SELECT id, email, name, created_at
             FROM users
             WHERE tenant_id = $1
-            ORDER BY created_at DESC
+            ORDER BY created_at DESC, id DESC
             LIMIT $2
             "#,
             vec![tenant_id.into(), limit.into()],
@@ -235,4 +262,51 @@ pub(crate) async fn load_recent_activity(
             })
         })
         .collect()
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod tests {
+    use super::*;
+    use uuid::Uuid;
+
+    fn auth(tenant_id: Uuid, permissions: Vec<Permission>) -> AuthContext {
+        AuthContext {
+            user_id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions,
+            client_id: None,
+            scopes: Vec::new(),
+            grant_type: "password".to_owned(),
+        }
+    }
+
+    #[test]
+    fn native_dashboard_reads_require_field_specific_tenant_authority() {
+        let tenant_id = Uuid::new_v4();
+        let no_grants = auth(tenant_id, vec![]);
+        let analyst = auth(tenant_id, vec![Permission::ANALYTICS_READ]);
+        let user_reader = auth(tenant_id, vec![Permission::USERS_LIST]);
+        let user_manager = auth(tenant_id, vec![Permission::USERS_MANAGE]);
+
+        for required in [Permission::ANALYTICS_READ, Permission::USERS_LIST] {
+            assert!(require_dashboard_permission(&no_grants, tenant_id, required).is_err());
+            let other_tenant = auth(Uuid::new_v4(), vec![required]);
+            assert!(require_dashboard_permission(&other_tenant, tenant_id, required).is_err());
+        }
+        assert!(require_dashboard_permission(&analyst, tenant_id, Permission::ANALYTICS_READ).is_ok());
+        assert!(require_dashboard_permission(&analyst, tenant_id, Permission::USERS_LIST).is_err());
+        assert!(require_dashboard_permission(&user_reader, tenant_id, Permission::USERS_LIST).is_ok());
+        assert!(require_dashboard_permission(&user_reader, tenant_id, Permission::ANALYTICS_READ).is_err());
+        assert!(require_dashboard_permission(&user_manager, tenant_id, Permission::USERS_LIST).is_ok());
+    }
+
+    #[test]
+    fn dashboard_database_errors_are_redacted() {
+        let error = dashboard_read_error(sea_orm::DbErr::Custom(
+            "database credentials and private query details".to_owned(),
+        ));
+        assert!(error.to_string().contains("Dashboard read failed"));
+        assert!(!error.to_string().contains("private query details"));
+    }
 }

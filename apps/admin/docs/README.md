@@ -110,6 +110,10 @@ GraphQL request or server-function call.
 
 The host-owned dashboard keeps its read DTOs, GraphQL selected path, SQL snapshots and native
 server functions in `src/features/dashboard/`. Its page owns only host composition and rendering.
+The native read endpoints require `analytics:read` for statistics and `users:list`
+for recent activity, using the effective permissions of the authenticated tenant.
+They reject missing runtime context and redact database failures. Recent activity
+is ordered by creation timestamp and immutable user ID, both descending, as in GraphQL.
 
 The host-owned email settings page keeps its settings DTOs and selected read/write transport in
 `src/features/email/`; its page component owns form state only and does not issue raw GraphQL or
