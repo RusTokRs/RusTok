@@ -1,7 +1,9 @@
 use crate::{
     FLY_LOCALES_FIELD, FLY_PAGE_METADATA_FIELD, LOCALIZED_VALUES_FIELD, ProjectDocument,
-    ProjectLocalePolicy, TranslationCatalog, normalize_locale_tag,
+    LocaleResolver, ProjectLocalePolicy, TranslationCatalog, default_locale_resolver,
+    normalize_locale_tag,
 };
+use crate::runtime_locale::has_unambiguous_locale;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -76,16 +78,13 @@ impl LocaleCoverageReport {
     }
 
     pub fn summary_for(&self, locale: &str) -> Option<&LocaleCoverageSummary> {
-        let locale = normalize_locale_tag(locale)?;
-        self.summaries
-            .iter()
-            .find(|summary| summary.locale == locale)
-            .or_else(|| {
-                locale.split_once('-').and_then(|(language, _)| {
-                    self.summaries
-                        .iter()
-                        .find(|summary| summary.locale == language)
-                })
+        default_locale_resolver()
+            .fallback_chain(locale)
+            .into_iter()
+            .find_map(|candidate| {
+                self.summaries
+                    .iter()
+                    .find(|summary| summary.locale == candidate)
             })
     }
 
@@ -95,7 +94,7 @@ impl LocaleCoverageReport {
 }
 
 pub fn analyze_project_locale_coverage(document: &ProjectDocument) -> LocaleCoverageReport {
-    let policy_present = document.project.extensions.contains_key(FLY_LOCALES_FIELD);
+    let policy_present = document.project().extensions.contains_key(FLY_LOCALES_FIELD);
     let policy =
         ProjectLocalePolicy::from_document(document).and_then(|policy| policy.normalized().ok());
     let policy_valid = !policy_present || policy.is_some();
@@ -124,12 +123,12 @@ pub fn analyze_project_locale_coverage(document: &ProjectDocument) -> LocaleCove
         let translation_present = catalog
             .entries
             .iter()
-            .filter(|entry| has_locale(&entry.values, locale))
+            .filter(|entry| has_unambiguous_locale(&entry.values, locale))
             .count();
         for entry in catalog
             .entries
             .iter()
-            .filter(|entry| !has_locale(&entry.values, locale))
+            .filter(|entry| !has_unambiguous_locale(&entry.values, locale))
         {
             gaps.push(LocaleCoverageGap {
                 locale: locale.clone(),
@@ -142,11 +141,11 @@ pub fn analyze_project_locale_coverage(document: &ProjectDocument) -> LocaleCove
 
         let metadata_present = metadata
             .iter()
-            .filter(|field| has_locale(&field.values, locale))
+            .filter(|field| has_unambiguous_locale(&field.values, locale))
             .count();
         for field in metadata
             .iter()
-            .filter(|field| !has_locale(&field.values, locale))
+            .filter(|field| !has_unambiguous_locale(&field.values, locale))
         {
             gaps.push(LocaleCoverageGap {
                 locale: locale.clone(),
@@ -196,7 +195,7 @@ struct MetadataField {
 
 fn collect_metadata(document: &ProjectDocument) -> Vec<MetadataField> {
     let mut result = Vec::new();
-    for (page_index, page) in document.project.pages.iter().enumerate() {
+    for (page_index, page) in document.project().pages.iter().enumerate() {
         let page_label = page
             .id
             .clone()
@@ -265,12 +264,6 @@ fn push_locale(locales: &mut Vec<String>, locale: Option<&str>) {
     }
 }
 
-fn has_locale(values: &Map<String, Value>, required: &str) -> bool {
-    values
-        .keys()
-        .any(|locale| normalize_locale_tag(locale).as_deref() == Some(required))
-}
-
 const LOCALIZED_METADATA_FIELDS: &[&str] = &[
     "title",
     "description",
@@ -325,6 +318,46 @@ mod tests {
                 .iter()
                 .any(|gap| gap.label == "home.description")
         );
+    }
+
+    #[test]
+    fn summary_lookup_prefers_script_without_satisfying_exact_required_coverage() {
+        let report = report(json!({
+            "flyLocales": {
+                "supported_locales": ["zh", "zh-Hant", "zh-Hant-TW"],
+                "required_locales": ["zh-Hant-TW"],
+                "enforce_required_locales": true
+            },
+            "flyTranslations": [
+                { "id": "hero", "values": { "zh": "Generic", "zh-Hant": "Traditional" } }
+            ],
+            "pages": [{ "component": { "id": "root", "type": "wrapper" } }]
+        }));
+        assert_eq!(report.summary_for("zh-Hant-HK").unwrap().locale, "zh-Hant");
+        assert_eq!(report.summary_for("zh-Hant-TW").unwrap().missing, 1);
+        assert!(!report.strict_ready());
+    }
+
+    #[test]
+    fn ambiguous_locale_maps_do_not_satisfy_required_coverage() {
+        let report = report(json!({
+            "flyLocales": {
+                "supported_locales": ["ru-RU"],
+                "required_locales": ["ru-RU"],
+                "enforce_required_locales": true
+            },
+            "flyTranslations": [{
+                "id": "hero", "values": { "ru-RU": "First", "ru_RU": "Second" }
+            }],
+            "pages": [{
+                "flyPageMeta": {
+                    "title": { "$localized": { "ru-RU": "First", "ru_RU": "Second" } }
+                },
+                "component": { "id": "root", "type": "wrapper" }
+            }]
+        }));
+        assert_eq!(report.summary_for("ru-RU").unwrap().missing, 2);
+        assert!(!report.strict_ready());
     }
 
     #[test]

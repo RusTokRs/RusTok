@@ -146,7 +146,7 @@ pub struct StyleRuleCatalog {
 impl StyleRuleCatalog {
     pub fn from_document(document: &ProjectDocument) -> Self {
         let mut catalog = Self::default();
-        for raw in &document.project.styles {
+        for raw in &document.project().styles {
             match StyleRuleDescriptor::from_value(raw.clone()) {
                 Some(rule) => catalog.rules.push(rule),
                 None => catalog.unknown_entries.push(raw.clone()),
@@ -307,7 +307,7 @@ pub fn apply_style_rule_command(
             }
             let existing = find_component_rule_index(document, component_id, scope);
             if let Some(index) = existing {
-                let object = document.project.styles[index]
+                let object = document.project_mut().styles[index]
                     .as_object_mut()
                     .ok_or_else(|| {
                         FlyError::Encode("style rule must remain an object".to_string())
@@ -324,7 +324,7 @@ pub fn apply_style_rule_command(
                 style.extend(declarations.clone());
                 synchronize_rule_identity(object, component_id, scope);
             } else if !declarations.is_empty() {
-                document.project.styles.push(component_rule_value(
+                document.project_mut().styles.push(component_rule_value(
                     component_id,
                     scope,
                     declarations.clone(),
@@ -341,13 +341,13 @@ pub fn apply_style_rule_command(
             component_id,
             scope,
         } => {
-            let before = document.project.styles.len();
+            let before = document.project().styles.len();
             let scope_key = scope.stable_key();
-            document.project.styles.retain(|raw| {
+            document.project_mut().styles.retain(|raw| {
                 StyleRuleIdentity::from_value(raw)
                     .is_none_or(|rule| !rule.targets(component_id, scope_key.as_str()))
             });
-            if document.project.styles.len() == before {
+            if document.project().styles.len() == before {
                 return Err(FlyError::StyleRuleNotFound(format!(
                     "{}:{}",
                     component_id,
@@ -375,7 +375,7 @@ fn upsert_raw_style_rule(document: &mut ProjectDocument, rule: Value) -> FlyResu
         return Err(FlyError::ComponentNotFound(component_id.to_string()));
     }
     let descriptor_scope_key = descriptor.scope.stable_key();
-    if let Some(index) = document.project.styles.iter().position(|raw| {
+    if let Some(index) = document.project().styles.iter().position(|raw| {
         StyleRuleIdentity::from_value(raw).is_some_and(|candidate| {
             candidate.id == descriptor.id.as_str()
                 || candidate.component_id.is_some()
@@ -383,9 +383,9 @@ fn upsert_raw_style_rule(document: &mut ProjectDocument, rule: Value) -> FlyResu
                     && candidate.scope.stable_key() == descriptor_scope_key
         })
     }) {
-        document.project.styles[index] = rule;
+        document.project_mut().styles[index] = rule;
     } else {
-        document.project.styles.push(rule);
+        document.project_mut().styles.push(rule);
     }
     Ok(())
 }
@@ -471,14 +471,14 @@ fn find_component_rule_index(
     scope: &StyleRuleScope,
 ) -> Option<usize> {
     let scope_key = scope.stable_key();
-    document.project.styles.iter().position(|raw| {
+    document.project().styles.iter().position(|raw| {
         StyleRuleIdentity::from_value(raw)
             .is_some_and(|rule| rule.targets(component_id, scope_key.as_str()))
     })
 }
 
 fn remove_empty_component_rules(document: &mut ProjectDocument) {
-    document.project.styles.retain(|raw| {
+    document.project_mut().styles.retain(|raw| {
         let has_declarations = raw
             .get("style")
             .and_then(Value::as_object)
@@ -634,7 +634,7 @@ mod tests {
     #[test]
     fn upsert_preserves_unknown_rule_fields() {
         let mut document = document();
-        document.project.styles.push(json!({
+        document.project_mut().styles.push(json!({
             "selectors": [{ "name": "hero", "type": 2 }],
             "style": { "color": "red" },
             "flyComponentId": "hero",
@@ -654,11 +654,11 @@ mod tests {
         )
         .expect("rule");
         assert_eq!(
-            document.project.styles[0]["customPluginField"]["keep"],
+            document.project().styles[0]["customPluginField"]["keep"],
             true
         );
-        assert_eq!(document.project.styles[0]["style"]["color"], "red");
-        assert_eq!(document.project.styles[0]["style"]["width"], "100%");
+        assert_eq!(document.project().styles[0]["style"]["color"], "red");
+        assert_eq!(document.project().styles[0]["style"]["width"], "100%");
     }
 
     #[test]
@@ -694,9 +694,9 @@ mod tests {
             },
         )
         .expect("second rule");
-        assert_eq!(document.project.styles.len(), 1);
-        assert_eq!(document.project.styles[0]["style"]["color"], "red");
-        assert_eq!(document.project.styles[0]["style"]["padding"], "24px");
+        assert_eq!(document.project().styles.len(), 1);
+        assert_eq!(document.project().styles[0]["style"]["color"], "red");
+        assert_eq!(document.project().styles[0]["style"]["padding"], "24px");
     }
 
     #[test]
@@ -757,8 +757,8 @@ mod tests {
             },
         )
         .expect("rule");
-        assert_eq!(document.project.styles[0]["state"], "hover");
-        assert!(document.project.styles[0].get("atRuleType").is_none());
+        assert_eq!(document.project().styles[0]["state"], "hover");
+        assert!(document.project().styles[0].get("atRuleType").is_none());
         let rule = StyleRuleCatalog::from_document(&document)
             .component_rule(
                 "hero",
@@ -774,7 +774,7 @@ mod tests {
     #[test]
     fn media_state_rule_keeps_both_dimensions() {
         let mut document = document();
-        document.project.styles.push(json!({
+        document.project_mut().styles.push(json!({
             "selectors": [{ "name": "hero", "type": 2 }],
             "atRuleType": "media",
             "mediaText": "(max-width: 767px)",

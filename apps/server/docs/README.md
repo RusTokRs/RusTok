@@ -1,5 +1,92 @@
 # Documentation: `apps/server`
 
+## Registry direct-session admission (2026-11-25)
+
+Registry V2 controller and publication/artifact/owner-transfer middleware now
+share the canonical direct-session grant classifier. Invalid identities,
+ambiguous grant facts and OAuth delegated/service grants cannot construct
+request authority through these entry points. Direct sessions continue to use
+request-effective permissions; runner credentials and public catalog reads
+remain separate. Persisted principal JSON is validated against the canonical
+structured shape; malformed or legacy string payloads fail the marketplace
+projection instead of being rewritten to a synthetic `legacy:unknown` label.
+Registry authority cannot be built through unchecked public constructors.
+Owner-transfer requests reject nil target identities before dry-run or mutation.
+
+## Default SuperAdmin bootstrap identity and conflict recovery (2026-11-25)
+
+The configured email is normalized by the Auth owner before tenant provisioning
+and account lookup. A typed duplicate-email creation result is reconciled
+only by reading the exact tenant/email identity outside the failed creation
+transaction. Existing users retain their role, status, password and profile;
+other creation errors and conflicts without a matching identity remain errors.
+This is idempotent bootstrap, not account recovery or privilege elevation.
+
+## External Iggy configuration validation parity (2026-11-25)
+
+External Iggy settings save, readiness and startup share connector-owned
+connection-string validation, including the resolved password, TCP protocol
+and inherited TLS parameters. Deployment and stored address lists are
+normalized before use, preserving first occurrence and endpoint priority.
+Validation is structural and does not prove broker reachability or
+authentication. Bundled mode validation is unchanged.
+
+## Worker group cancellation ordering (2026-11-25)
+
+When a runtime worker group exhausts its cooperative shutdown deadline, the
+host aborts every remaining group member before awaiting any individual
+cleanup. Group members then share a separate one-second abort-join grace;
+single runtime/module workers use the same bounded grace. Installer job tasks
+retain their separately configured abort-join grace. A handle still unresponsive
+after its grace is released so the shutdown helper does not await it indefinitely.
+Cancellation of the drain still aborts its owned handles. The runtime-wide
+StopHandle uses the atomic shared singleton primitive, with no unregistered
+fallback handle. Producer/dispatcher/forwarder shutdown order is unchanged.
+Abort remains cooperative at Tokio cancellation points, so cleanup of a
+non-yielding task is not guaranteed.
+
+## Forwarded authority parsing (2026-11-25)
+
+The shared request-trust boundary preserves quoted RFC Forwarded delimiters,
+rejects duplicate parameter names and malformed selected elements, and
+distinguishes missing forwarded host from invalid forwarded host. Ambiguous
+direct Host fields are rejected consistently for tenant and channel selection.
+Proxy CIDR trust, rightmost-hop selection and X-Forwarded-* precedence are
+unchanged; the edge must still append or replace untrusted forwarding facts.
+
+## Redis rate-limit recovery and acquisition deadlines (2026-11-25)
+
+The two-second Redis connection acquisition deadline includes time waiting for
+the shared initialization slot as well as the connection attempt. Failed or
+cancelled initialization leaves the slot retryable; no memory fallback is
+introduced. The atomic counter script assigns a recovery TTL to a persistent
+key before reading or incrementing it, so wrong-type and overflowing counters
+fail closed without blocking that identity indefinitely. Existing positive
+TTLs are not extended. Redis command execution retains its separate deadline.
+
+## HTTP observability response integrity (2026-11-25)
+
+Readiness GET responses cannot promote an HTTP failure to success based on
+a contradictory JSON status. Unknown or contradictory readiness states
+return a generic unhealthy response; public redaction emits a new aggregate
+representation without privileged body metadata. HEAD and unsupported methods
+retain the router's status. Health and metrics responses carry
+`Cache-Control: private, no-store` from the outer HTTP edge, including
+short-circuited failures. The observability authentication path classification
+is shared between user-auth exclusion, monitoring authentication and edge
+cache policy. Host authority and monitoring-token admission remain separate.
+
+## Global event configuration persistence (2026-11-25)
+
+Event-delivery profile and Iggy connector saves use a database-level singleton
+upsert, preserving the original creation timestamp and replacing the mutable
+configuration and actor together. Concurrent first saves no longer race through
+a separate existence check. This retains the existing last-writer-wins policy;
+it is not a cross-table compare-and-swap or a live transport reconfiguration.
+External Iggy addresses accept bare host:port (including bracketed IPv6) with
+a nonzero port, not URL credentials, paths, query strings or fragments. Invalid
+address errors omit the submitted value.
+
 ### Workflow durable cron admission / outcome review refinement (2026-11-23)
 
 Cron now atomically checks the current firing attempt and locked workflow
@@ -164,18 +251,25 @@ A retained task still passes the shared liveness/stop guard; after shutdown
 it cannot be reported healthy and its handle remains available to the drain.
 When no handle remains, the stopped-host path returns without registering or
 starting work. Module-work still records the composition requirement used
-by readiness. The existing stop-before-start and restart-after-drain
+by readiness. A queued module-work initializer also observes the stop signal
+without waiting for the registration mutex; it cannot overwrite an existing
+requirement during cancellation. The existing stop-before-start and restart-after-drain
 regressions cover this no-op; the terminated-task regressions also check
 that retained handles are not acknowledged after stop. Tests are unexecuted.
 
 ## Server audit continuation — locked login credential-oracle closure (2026-11-25)
 
 Login now checks an active lockout before verifying the user's stored password
-hash. It performs the same dummy-hash verification used for unknown accounts
-and returns the generic `InvalidCredentials` result for every password while
-the account is locked. The transactional post-verification check applies the
-same generic result if another request activates the lockout after the initial
-lookup. This prevents the lockout window from becoming an unlimited online
+hash. Unknown-account and locked-account paths run a fixed-cost Argon2 verification
+with an internal candidate, so empty or oversized submitted passwords cannot
+skip the timing mask. When a known row has a malformed or weaker-than-current
+hash, or the submitted value would short-circuit verification, the stored verifier
+and dummy verifier run concurrently; sequential padding would make legacy rows
+measurably slower than unknown-account lookups. Current-format hashes use their
+normal verifier. The dummy hash is prewarmed during server initialization. The
+transactional post-verification check applies the same generic
+`InvalidCredentials` result if another request activates the lockout after the
+initial lookup. This prevents the lockout window from becoming an online
 password oracle while preserving atomic failed-attempt accounting. Regression
 coverage is authored but unexecuted.
 
@@ -206,6 +300,24 @@ artifact admission reverification recheck stop between independent
 stages and tenant/candidate iterations; an already-started durable
 effect is not interrupted by these new checks.
 
+The module artifact maintenance worker also retains a UUID keyset cursor for
+tenant data-object GC across its 60-second passes. A full page advances the
+cursor; a short or empty page wraps to the first page. Discovery and retention
+snapshot failures keep the current cursor, while individual tenant failures
+do not prevent later tenants from receiving a sweep. The cursor is process-local
+and resets on restart; durable candidate rows provide restart recovery.
+
+The same worker carries an installation-ID cursor for admission reverification.
+The owner returns the last row examined, including fresh rows, so the 32-candidate
+limit and 8,192-row scan budget continue across passes. Per-candidate failures
+advance with the page and are retried after wrap; a scan failure preserves the
+cursor.
+
+The remote-executor reaper also listens for host stop while a pass is active.
+Its per-claim transactions commit independently, so completed requeues remain
+durable and cancellation leaves the remaining expired leases discoverable on
+the next run instead of holding shutdown until the entire backlog is scanned.
+
 
 Channel and RBAC cache-invalidation, tenant-cache and tenant-locale
 generation, and Redis-status listener starters now cancel pending
@@ -214,7 +326,19 @@ includes their startup-mutex wait, initial cache/Redis recovery, and
 joins of previously aborted workers. A shared stop-watch helper checks
 the subscribed state to avoid losing a stop between check and wait;
 published task shutdown still uses each listener's own registry gate
-and bounded join/abort contract.
+and bounded join/abort contract. The server context and application router
+bootstrap entrypoints, as well as the direct worker startup entrypoint,
+also use this helper when acquiring their initialization mutexes. A queued
+startup exits on stop without waiting for the active initializer; admitted
+operations and published handles retain their existing shutdown contracts.
+Workflow cron also cancels pending startup-mutex acquisition and its read-only
+schema validation. Context bootstrap checks stop before durable SuperAdmin
+provisioning and before returning success; router bootstrap checks stop
+again after the worker starters, which may return a stopped-host no-op.
+Readiness and Prometheus use the same runtime snapshot for Outbox relay,
+Outbox retention, and remote-executor reaper, including host-mode admission.
+The cache reconciliation workers retain their independent serving-profile
+requirements; they are not limited to general background-worker hosts.
 
 
 Direct worker starters for Product Search channel repair, Notifications
@@ -298,7 +422,14 @@ spelling; server translation queries use SeaQuery's expression trait.
 Invite acceptance and user-admin revocation share a transaction-scoped
 `auth_invites` row fence. The first committed transition wins; accepted invites
 cannot be retroactively revoked, and replayed revocations do not publish another
-`UserInviteRevoked` event.
+`UserInviteRevoked` event. Invite acceptance resolves the host module-availability
+snapshot before opening the transaction to avoid waiting for a second pooled
+connection while holding the first. This snapshot is not a transactional module
+policy fence; persisted issuer and role authority are checked in the transaction.
+Storage failures during role authority validation remain internal errors rather
+than being reported as invalid invitations. Administrative user creation and
+password replacement enforce the runtime's configured minimum password length,
+matching public account lifecycle operations.
 
 OAuth consent grants and revocations lock the app row and then the subject row,
 matching token issuance's lock order before reading or changing consent. This
@@ -421,7 +552,13 @@ remain separate unfinished control-plane work.
 The CSP report collector accepts legacy browser reports containing both
 `effective-directive` and `violated-directive`, preferring the nonblank
 effective value for bounded telemetry. The 512-byte location limit applies
-to both serialized origins and opaque URL schemes. See the
+to both serialized origins and opaque URL schemes. Both report formats require
+an object body and a nonblank directive; only the exact known script/style
+directive names and their elem/attr variants enter those telemetry buckets;
+legacy directive source lists are ignored for classification.
+Rate-limit Redis failures carry only fixed operation diagnostics or timeout
+information across REST, readiness and GraphQL; backend reply text is not
+propagated. See the
 [CSP collection contract](../../../docs/security/csp-report-only-inventory.md).
 Focused parser and middleware regressions are authored; execution remains
 with maintainer verification.
@@ -459,6 +596,16 @@ the production CORS layer emits no `Access-Control-Allow-Origin` header,
 including for `http://127.0.0.1:5150`. Explicit origins must be valid
 HTTP(S) origins without URL credentials, paths, queries or fragments;
 invalid configuration entries are ignored with a bounded error code.
+Explicit environment origins take precedence over settings origins, which
+take precedence over development bind-host hints. An explicitly empty or
+entirely invalid allow-list grants no cross-origin access even in development;
+default development origins apply only when no origin policy is supplied.
+
+OAuth discovery and startup share one issuer validator. It rejects malformed
+absolute URLs, non-root literal paths (including normalized dot segments),
+userinfo, query, fragment, controls and backslashes before URL normalization.
+The configured issuer string is preserved exactly in JWTs and discovery.
+JWT-only deployments retain their independent issuer policy.
 Unspecified bind addresses (IPv4 `0.0.0.0` and IPv6 `[::]`) are
 rejected even when supplied as explicit CORS entries: they are network
 listeners, not browser-authorized origins. Explicit environment and settings
@@ -493,8 +640,13 @@ the same lock that guards dispatcher start, publication and take.
 Concurrently started dispatchers and child workers remain protected by
 typed startup reservations. The product-media starter now also uses a
 drop-safe reservation, releasing a rejected attempt instead of leaving
-a permanent no-handle marker. No worker restarts or event-delivery
-contracts are changed.
+a permanent no-handle marker. All four recovery starters now resolve
+liveness, reservation and handle publication under that same registration
+lock. Repeated bootstrap returns an error for a terminated handle or an
+interrupted shutdown admission, rather than claiming a successful start.
+The existing handle stays owned by shutdown; process restart is required.
+Missing optional dependencies still release their reservation for retry.
+No worker restarts or event-delivery contracts are changed.
 
 The in-process `EventBus` forwarder and `TransactionalEventBus`
 now obtain their `Arc<dyn EventTransport>` from one atomic,
@@ -542,9 +694,15 @@ HTTP edge settings are bounded before reaching Tokio and Tower:
 600; `RUSTOK_HTTP_UPLOAD_TIMEOUT_SECONDS` defaults to 300 seconds and is capped
 at 3,600; `RUSTOK_HTTP_CONCURRENCY_LIMIT` defaults to 512 and is capped at
 16,384. Zero or malformed values use the defaults, while oversized values are
-clamped with a warning. Only exact `multipart/form-data` requests to
-`/api/media` and PUT requests to the registry artifact route receive the
-upload timeout budget. Active rate-limit windows are normalized to 1 second
+clamped with a warning. Request and upload timeouts are captured together
+when the HTTP router is composed; constructing another router cannot modify
+an existing router's budgets. The standalone timeout middleware retains its
+separate compatibility defaults. The concurrency quota uses a single semaphore shared
+by all route services in one composed HTTP router, not a quota per endpoint.
+Only POST `multipart/form-data` requests to `/api/media` or `/api/media/`
+and PUT requests matching the exact registry artifact route grammar receive
+the extended upload timeout budget; repeated separators and unregistered
+registry trailing slashes do not qualify. Active rate-limit windows are normalized to 1 second
 through 365 days for both memory and Redis backends, with fractional durations
 rounded up to millisecond precision; disabled limiters remain disabled.
 Redis rate-limit counters without an expiry are repaired in the atomic script.
@@ -654,6 +812,14 @@ for a likely concurrent duplicate, but the request still receives `invalid_grant
 the replacement token is not replayed, so a lost successful response cannot
 be recovered from the old refresh token.
 
+RBAC cache invalidation serializes local and Redis event application, periodic
+reconciliation and durable watchdog recovery through one runtime-owned gate.
+A tracker offset from before a database restore cannot advance a lower
+durable checkpoint; events beyond the recovered checkpoint trigger a full
+cache clear against the database generation until the tracker catches up.
+This protects local checkpoint ordering, not in-flight request snapshots
+or cross-replica delivery latency.
+
 GraphQL request-preparation policies classify only the operation selected by
 `operationName` (or the sole operation when no name is required). The selected
 operation is an execution selector, not an authorization grant: field permissions
@@ -662,7 +828,16 @@ executable document even when the request has no source text (for example,
 a server-supplied pre-parsed document); empty source is not a policy exemption.
 A request with neither source nor a parsed document fails parsing.
 Fragment-spread classification is cycle-safe because host preflight runs
-before GraphQL's normal document validation.
+before GraphQL's normal document validation. The host security policies share
+an explicit worklist rather than recursive fragment expansion, preserving root
+field scope and Forum traversal context without stack growth on long chains.
+Tenant argument classification also uses a worklist for nested literal and
+variable values, scans each nested variable once per selected operation, and
+stores distinct tenant IDs. A direct tenantId use is still checked separately.
+Security-policy diagnostics record operation-name presence and requested tenant
+count rather than raw request-controlled names or tenant ID lists.
+GraphQL's own validation and execution limits remain separate. Source regression
+tests for long chains and context-sensitive cycles are present but unrun.
 
 ## Runtime surface
 
@@ -736,17 +911,23 @@ before GraphQL's normal document validation.
   later event-runtime validation fails.
 - The HTTP server bootstrap is serialized per `ServerRuntimeContext` and shares
   its initialization fence with shutdown. Shutdown signals workers first, then
-  waits for bootstrap to finish registering handles before taking the drain
-  snapshot, so concurrent bootstrap cannot orphan newly spawned workers.
-  `connect_runtime_workers_with_runtime` can also be called directly, without
-  this router-bootstrap mutex. Its separate artifact/runtime-worker startup
-  mutex now fences shutdown's handle snapshot too: shutdown waits for the
-  direct initializer to finish before taking any worker handle. The mutex is
-  released *before* concurrent task drains, preventing a lock cycle with
-  artifact maintenance's own shutdown drain. New startup calls recheck the
-  signaled stop channel after acquiring the mutex and cannot admit more work.
-  The barrier prevents a live but detached late `JoinHandle`; it does not
-  provide a process-crash shutdown guarantee.
+  gives bootstrap and direct worker initializers one shared five-second
+  startup-publication deadline before taking the drain snapshot. If that
+  barrier expires, shutdown continues through each worker's stop/admission
+  fence instead of waiting indefinitely. The active-manifest read, storage and
+  tenant-cache preparation, Alloy executor construction, and product/profile
+  deployment-provider connects are stop-interruptible before publication.
+  Manifest-managed OAuth synchronization is allowed to finish its database
+  work and then rechecks stop before starting further workers. Module-work registration cancels its unpublished
+  scheduler preparation when stop wins, so a late callback cannot publish a
+  new scheduler. `connect_runtime_workers_with_runtime` can also be called
+  directly, without this router-bootstrap mutex. Its separate
+  artifact/runtime-worker startup mutex participates in the same bounded
+  barrier and is released *before* concurrent task drains, preventing a lock
+  cycle with artifact maintenance's own shutdown drain. New startup calls
+  recheck the signaled stop channel before task admission. These are
+  process-local publication protections, not a process-crash shutdown
+  guarantee.
 - Once started, the opt-in Product Index, Social Graph Index, and Forum Search
   contract consumers are required readiness workers. Their durable broker
   offsets remain uncommitted on terminal delivery failure; the readiness probe
@@ -803,7 +984,11 @@ before GraphQL's normal document validation.
   shutdown snapshot. Repeated startup of a terminated task now emits a stable
   error diagnostic and retains the old handle for shutdown accounting; modes
   without tasks (`Disabled`, `Unavailable`, `NotApplicableOutbox`) remain
-  idempotent and do not impede event delivery.
+  idempotent and do not impede event delivery. The scanner's read-only
+  connect and scan futures are now supervised by the shared stop-watch
+  helper, so stalled broker I/O does not delay graceful shutdown. The
+  publisher remains outside the cancelled loop and clears its evaluation
+  on exit. No broker acknowledgements or persisted offsets are involved.
 - Social Graph Index position and poison-receipt observers have independent
   single-owner startup reservations and a shared admission lock that the
   shutdown drain also acquires before snapshotting observer JoinHandles.
@@ -1000,8 +1185,9 @@ before the event forwarder. The Outbox relay supervisor owns and gracefully drai
 - OAuth REST token, authorize/consent, browser-session, and revoke handlers extract `ServerAuthRuntime`
   or `ServerRuntimeContext`; host-wide context does not participate in OAuth request state.
 - Optional JWT hot reload uses one trusted complete versioned file (`RUSTOK_JWT_KEYRING_FILE`). Startup and reload share production policy validation; all host AuthConfig clones share the published keys. The host supervisor polls and renews the cluster JWT lease every two seconds through bootstrap and serving. Durable generation and lifetime identity admission precede publication; compatible staged generations can overlap using exact registered replica grants, while incompatible changes use the lease drain. Expired local leases fail the critical readiness check; emergency revocation via the trusted Auth CLI changes the authenticated ledger and fences affected local JWT runtimes on renewal independently of the mounted file. See [Auth owner contract](../../../crates/modules/rustok-auth/docs/README.md#cluster-jwt-lease-and-drain-barrier). Source regressions unrun.
-- Auth derives separate host MAC keys for OAuth CSRF and password reset via HKDF-SHA256 and uses library HMAC-SHA256. MAC v5 and reset fingerprint v2 invalidate outstanding previous forms/links; JWT signing and session storage are unchanged. Deploy host instances together. Source regressions unrun.
-- OAuth browser confirmation MAC v4 binds the current direct session and bounds the expiry. JWT validation rejects future or inconsistent issuance times and future `nbf`; duration conversion is checked. RS256 configuration still requires a strong symmetric secret for host MACs. Source regressions unrun.
+- Auth derives separate host MAC keys for OAuth CSRF and password reset via HKDF-SHA256 and uses library HMAC-SHA256. The unversioned canonical consent and reset proof encodings invalidate outstanding previous forms/links; JWT signing, durable authority MACs and session storage are unchanged. See [canonical Auth MAC proofs](../../../DECISIONS/2026-11-25-canonical-auth-mac-proofs.md). Deploy host instances together. Source regressions unrun.
+- Server host-policy, runtime-context, OAuth confirmation and extractor regressions now construct complete RSA fixtures. Each extractor runtime uses its own keyring and signs with that exact runtime configuration; independent stores must not share generated private keys. Source regressions unrun. The executable still has its pre-cutover static/default startup path; mandatory complete file provisioning is pending coordinated deployment and CI updates.
+- OAuth browser confirmation MAC binds the current direct session and bounds the expiry. JWT validation rejects future or inconsistent issuance times and future `nbf`; duration conversion is checked. RS256 configuration still requires a strong symmetric secret for host MACs. Source regressions unrun.
 - OAuth RFC 7009 revocation revalidates the authenticated client snapshot (identity, active state, app type, and secret hash) under the app mutation lock before looking up any token. Unknown tokens still succeed for authenticated clients. Source regression unrun.
 - OAuth authorization locks app, subject and direct session in that order, rechecks email policy and credential expiry, and commits browser approval and code issuance together. A stale session cannot grant consent or issue codes. Redirect registration and authorization admission reject callback query names reserved for OAuth responses (`code`, `state`, `error`, `error_description`, `error_uri`), including percent-encoded names. Legacy conflicting callbacks must be corrected before issuing new codes; unrelated query parameters are preserved. Source regressions unrun.
 - OAuth consent re-grant invalidates pending codes for that app, tenant and subject in the same transaction. Code exchange rejects a newer consent epoch and rechecks the refresh grant if a refresh credential was prepared. OAuth replay grace uses the exact elapsed duration and rejects future timestamps. Source regressions unrun.
@@ -1142,7 +1328,12 @@ before the event forwarder. The Outbox relay supervisor owns and gracefully drai
 - `settings.rustok.runtime.background_workers` governs only maintenance workers on top of the already published HTTP/GraphQL surface. In `development.yaml`, for standalone admin debug, `workflow_cron_enabled`, `seo_bulk_enabled`, `seo_sitemap_enabled`, and `seo_index_repair_enabled` are disabled so that maintenance loops do not saturate the local PostgreSQL pool; the production/default runtime keeps them enabled.
 - The generic module-work host supplies artifact queues with an active-tenant
   enumerator from `rustok-tenant` and a server-composed CAS-backed Rhai/WASM
-  executor before artifact registrations run. The runtime CAS is obtained from
+  executor before artifact registrations run. Enumeration reads bounded active-ID
+  pages ordered by UUID, using the last returned ID as an exclusive cursor.
+  Deletion of an earlier tenant cannot shift subsequent pages; there is no
+  separate count or offset. This is not a snapshot or authorization decision:
+  activation behind the cursor is picked up on the next sweep. Owner and host
+  regression tests were authored but not executed. The runtime CAS is obtained from
   the same operation-scoped `ModuleControlPlane` as artifact capability,
   installation, audit, and sandbox-policy services, so the server does not
   create an independent artifact staging identity source. Executor registration
@@ -1743,3 +1934,28 @@ claim cancellation safety inside the connector's own constructor.
 Focused source regressions cover reuse without desired-policy reads, stopped
 initialization, and active-profile reporting. Compilation, formatting and tests
 were not run at the maintainer's request.
+
+## Access-token tenant admission and registration fixtures (2026-11-26)
+
+The common access-token resolver checks live tenant existence and activation
+before resolving direct, delegated or service authority, including global
+routes without tenant middleware and requests with an older cached tenant
+projection. Database failures remain internal errors. WebSocket lease
+revalidation uses the same check rather than a duplicate tenant lookup.
+This is an admission-time check, not a transaction-wide deactivation fence;
+an already admitted operation can still finish. Successful service-token
+extractor tests now issue signed credentials and persist matching access rows
+instead of bypassing the registration contract. Regression cases authored,
+unrun by request.
+
+## Flex field-definition generation reconciliation
+
+The supervised cache reconciler retains its last applied durable generation
+across retry cycles and replacement of a retained finished task. A lower
+seed or poll value keeps readiness unhealthy until storage again reports at
+least that generation. On every unexpected inner exit, including panic,
+readiness is withdrawn and the local cache is invalidated before restart
+backoff. Generation zero remains a valid initial seed. The watermark lives
+in the server runtime, not across process restarts; intentional database
+restoration to an older generation requires an operator-controlled recovery.
+Regression cases authored, not executed.

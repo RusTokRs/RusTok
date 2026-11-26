@@ -27,7 +27,10 @@ user permissions, and provider health. Its result is the editable capability cei
 Presentation modes only mask that ceiling. Switching to preview or read-only temporarily exposes a
 read-only effective profile; switching back to full or inline restores the previously evaluated
 ceiling rather than `CapabilityState::full()`. Revoking edit or drag-and-drop capabilities also
-cleans up transient drag, insertion, and resize state immediately.
+cleans up transient drag, insertion, and resize state immediately. Command admission intersects
+the public capability projection with the host-evaluated ceiling and normalizes edit-dependent
+permissions again; a restored or externally modified projection cannot grant a denied operation.
+Resize handles also require the effective style-edit capability.
 
 Framework and host packages may resolve authentication, RBAC, tenant rollout, and provider health,
 but they pass only the evaluated `CapabilityState` into `fly-ui`. Browser/SSR adapters must apply the
@@ -64,17 +67,31 @@ Drop rechecks the current presentation and drag capability at commit time, inclu
 restored state contains a drag started under a different policy. Command construction also
 rejects illegal or malformed candidates, so direct callers and restored state cannot bypass
 candidate validation. Starting another drag clears the preceding insertion overlay.
+Selection and hover transitions invalidate the previous component's rectangle, and selection
+changes also clear resize handles and the property-editor identity. A rectangle without a
+corresponding selection or hover is discarded. Hosts must invalidate measured geometry after
+document changes and supply a fresh canvas snapshot.
 
 A save success is accepted only during an active `SaveStarted` transition and only when its
 request ID matches the active attempt. A stale success or failure, uncorrelated failure, or
-unrelated operation never implicitly clears a standing revision conflict.
+unrelated operation never implicitly clears a standing revision conflict. The conflict also
+forces the effective capabilities to read-only and clears drag/resize affordances. Refreshing
+host capabilities or switching presentation cannot lift this fence; the host capability ceiling
+is retained separately. The conflict remains authoritative after deserialization.
 
 Viewport dimensions and zoom are normalized at the intent boundary using the same limits as
 custom preview presets; invalid scroll offsets become zero. Non-finite overlay/drop geometry is
 rejected without changing editor state, and a resize event with malformed or overflowing pointer
-coordinates never emits non-finite CSS dimensions.
+coordinates never emits non-finite CSS dimensions. Direct patch construction also rejects invalid
+rectangles and ignores changes on axes not controlled by the active handle. The CSS patch
+preserves the checked finite dimensions without a second rounding step that could violate a
+fractional bound or alter a locked aspect ratio.
 
-SaveStarted also checks current edit permission and unresolved conflicts. If the host has
+RequestSave and SaveStarted share admission: edit permission, blocking document diagnostics,
+unresolved conflicts and an existing attempt. SaveSucceeded rejects blank revision labels
+without retiring the active request, and a changed working hash remains dirty even if the
+sequence has not changed. Page Builder's generic controller dispatch cannot accept lifecycle
+events; its correlated save APIs update both Fly revision and UI state. If the host has
 synchronized a hash, SaveSucceeded must match both the submitted hash and request ID rather than
 merely the latest server revision; a mismatched acknowledgement leaves the active save untouched.
 The request ID and active sequence are transient and are not restored from serialized UI state.
@@ -87,5 +104,8 @@ Resize gestures leave untouched dimensions unchanged, including off-grid dimensi
 perpendicular arrow keys. A zero-displacement gesture produces no patch. Corner gestures with
 aspect-ratio preservation snap the driving dimension and constrain a single scale to both axes'
 size bounds; the aspect ratio and bounds take precedence over snapping the second dimension.
-Incompatible bounds leave the original geometry unchanged. West and north handles anchor their
-opposite edges to the initial rectangle.
+Incompatible bounds, collapsed geometry or an unrepresentable locked aspect ratio leave the
+original geometry unchanged. Preview and patch generation apply the same relative aspect-ratio
+check; subnormal quotients and inconsistent locked change flags fail closed. An unlocked gesture
+can still expand a collapsed element. West and north handles anchor
+their opposite edges to the initial rectangle.

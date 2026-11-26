@@ -6,6 +6,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::BTreeSet;
+use crate::runtime_locale::{duplicate_locale_key, has_unambiguous_locale};
 
 pub const FLY_LOCALES_FIELD: &str = "flyLocales";
 
@@ -28,7 +29,7 @@ pub struct ProjectLocalePolicy {
 impl ProjectLocalePolicy {
     pub fn from_document(document: &ProjectDocument) -> Option<Self> {
         document
-            .project
+            .project()
             .extensions
             .get(FLY_LOCALES_FIELD)
             .cloned()
@@ -95,7 +96,7 @@ pub fn set_project_locale_policy(
     let value =
         serde_json::to_value(policy).map_err(|error| FlyError::Encode(error.to_string()))?;
     document
-        .project
+        .project_mut()
         .extensions
         .insert(FLY_LOCALES_FIELD.to_string(), value);
     document.invalidate_caches();
@@ -103,7 +104,7 @@ pub fn set_project_locale_policy(
 }
 
 pub fn clear_project_locale_policy(document: &mut ProjectDocument) {
-    if document.project.extensions.remove(FLY_LOCALES_FIELD).is_some() {
+    if document.project_mut().extensions.remove(FLY_LOCALES_FIELD).is_some() {
         document.invalidate_caches();
     }
 }
@@ -112,7 +113,7 @@ pub fn materialize_project_locale_context(
     document: &ProjectDocument,
     input_context: &Value,
 ) -> LocalePolicyMaterialization {
-    let Some(raw_policy) = document.project.extensions.get(FLY_LOCALES_FIELD) else {
+    let Some(raw_policy) = document.project().extensions.get(FLY_LOCALES_FIELD) else {
         return LocalePolicyMaterialization {
             context: input_context.clone(),
             diagnostics: Vec::new(),
@@ -246,7 +247,39 @@ pub fn materialize_project_locale_context(
 }
 
 pub fn validate_project_locale_policy(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
-    let Some(raw_policy) = document.project.extensions.get(FLY_LOCALES_FIELD) else {
+    let mut diagnostics = validate_metadata_locale_collisions(document);
+    diagnostics.extend(validate_locale_policy_coverage(document));
+    diagnostics
+}
+
+fn validate_metadata_locale_collisions(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
+    let mut diagnostics = Vec::new();
+    for (page_index, page) in document.project().pages.iter().enumerate() {
+        let Some(metadata) = page.extensions.get(FLY_PAGE_METADATA_FIELD) else {
+            continue;
+        };
+        for field in LOCALIZED_METADATA_FIELDS {
+            let Some(values) = metadata.get(*field)
+                .and_then(|wrapper| wrapper.get(LOCALIZED_VALUES_FIELD))
+                .and_then(Value::as_object)
+            else {
+                continue;
+            };
+            if let Some(locale) = duplicate_locale_key(values) {
+                diagnostics.push(locale_coverage_diagnostic(
+                    ValidationSeverity::Error,
+                    "localized_metadata_locale_ambiguous",
+                    format!("project.pages[{page_index}].{FLY_PAGE_METADATA_FIELD}.{field}"),
+                    format!("localized metadata contains multiple values for locale `{locale}`"),
+                ));
+            }
+        }
+    }
+    diagnostics
+}
+
+fn validate_locale_policy_coverage(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
+    let Some(raw_policy) = document.project().extensions.get(FLY_LOCALES_FIELD) else {
         return Vec::new();
     };
     let decoded = match serde_json::from_value::<ProjectLocalePolicy>(raw_policy.clone()) {
@@ -294,7 +327,7 @@ pub fn validate_project_locale_policy(document: &ProjectDocument) -> Vec<Validat
     let catalog = TranslationCatalog::from_document(document);
     for entry in &catalog.entries {
         for locale in &policy.required_locales {
-            if !map_contains_locale(&entry.values, locale) {
+            if !has_unambiguous_locale(&entry.values, locale) {
                 diagnostics.push(locale_coverage_diagnostic(
                     missing_severity,
                     "translation_required_locale_missing",
@@ -308,7 +341,7 @@ pub fn validate_project_locale_policy(document: &ProjectDocument) -> Vec<Validat
         }
     }
 
-    for (page_index, page) in document.project.pages.iter().enumerate() {
+    for (page_index, page) in document.project().pages.iter().enumerate() {
         let Some(metadata) = page
             .extensions
             .get(FLY_PAGE_METADATA_FIELD)
@@ -337,7 +370,7 @@ pub fn validate_project_locale_policy(document: &ProjectDocument) -> Vec<Validat
                 }
             }
             for locale in &policy.required_locales {
-                if !map_contains_locale(values, locale) {
+                if !has_unambiguous_locale(values, locale) {
                     diagnostics.push(locale_coverage_diagnostic(
                         missing_severity,
                         "localized_metadata_required_locale_missing",
@@ -390,12 +423,6 @@ fn runtime_locale_list(value: &Value) -> Vec<String> {
             .collect(),
         _ => Vec::new(),
     }
-}
-
-fn map_contains_locale(values: &Map<String, Value>, required_locale: &str) -> bool {
-    values
-        .keys()
-        .any(|locale| normalize_locale_tag(locale).as_deref() == Some(required_locale))
 }
 
 fn locale_policy_diagnostic(
@@ -461,7 +488,7 @@ mod tests {
         assert_eq!(policy.extensions["providerFuture"], true);
         clear_project_locale_policy(&mut document);
         assert_ne!(document.hash(), before_clear_hash);
-        assert!(!document.project.extensions.contains_key(FLY_LOCALES_FIELD));
+        assert!(!document.project().extensions.contains_key(FLY_LOCALES_FIELD));
     }
 
     #[test]
@@ -566,7 +593,7 @@ mod tests {
                 && diagnostic.severity == ValidationSeverity::Warning
         }));
 
-        document.project.extensions[FLY_LOCALES_FIELD]["enforce_required_locales"] = json!(true);
+        document.project_mut().extensions[FLY_LOCALES_FIELD]["enforce_required_locales"] = json!(true);
         let diagnostics = validate_project_locale_policy(&document);
         assert!(diagnostics.iter().any(|diagnostic| {
             diagnostic.code == "translation_required_locale_missing"

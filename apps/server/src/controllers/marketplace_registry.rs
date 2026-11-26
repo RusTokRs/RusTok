@@ -2529,12 +2529,16 @@ async fn transfer_owner(
                 Error::Unauthorized("Registry owner transfer requires authentication".into())
             })?;
         let authority = authority_from_auth(&headers, auth, "Registry owner transfer operations")?;
+        let new_owner = crate::services::registry_principal::RegistryPrincipalRef::user(
+            request.new_owner_user_id,
+        )
+        .ok_or_else(|| Error::BadRequest(
+            "Registry owner transfer requires a non-nil new_owner_user_id".to_string(),
+        ))?;
         RegistryGovernanceService::new(ctx.db_clone())
             .transfer_registry_slug_owner(
                 &request.slug,
-                &crate::services::registry_principal::RegistryPrincipalRef::user(
-                    request.new_owner_user_id,
-                ),
+                &new_owner,
                 reason,
                 reason_code,
                 &authority,
@@ -3154,6 +3158,11 @@ fn validate_owner_transfer_request(
     request: &RegistryOwnerTransferRequest,
 ) -> Result<Vec<String>, Error> {
     validate_registry_slug(&request.slug)?;
+    if request.new_owner_user_id.is_nil() {
+        return Err(Error::BadRequest(
+            "Registry owner transfer requires a non-nil new_owner_user_id".to_string(),
+        ));
+    }
 
     let mut warnings = Vec::new();
     if request
@@ -3206,7 +3215,7 @@ fn reject_legacy_registry_headers(headers: &HeaderMap) -> Result<(), Error> {
 /// Derive registry authority for a mutating operation from verified
 /// authentication context.
 ///
-/// Missing auth maps to HTTP 401. OAuth service tokens are rejected with HTTP
+/// Missing auth maps to HTTP 401. Non-direct or invalid grants map to HTTP
 /// 403 because registry write-paths require a session-backed user principal.
 ///
 /// Legacy actor/publisher headers are intentionally ignored: they are untrusted
@@ -3223,15 +3232,11 @@ fn authority_from_auth(
         None => Err(Error::Unauthorized(format!(
             "{action_label} requires authentication"
         ))),
-        Some(AuthContextExtension(ctx)) if ctx.client_id.is_some() && ctx.session_id.is_nil() => {
-            Err(http_error(HttpError::forbidden(
+        Some(AuthContextExtension(ctx)) => RegistryAuthority::from_session(ctx)
+            .ok_or_else(|| http_error(HttpError::forbidden(
                 "forbidden",
-                format!(
-                    "{action_label} requires a user session; OAuth service tokens are not supported"
-                ),
-            )))
-        }
-        Some(auth) => Ok(RegistryAuthority::from_auth(auth)),
+                format!("{action_label} requires a direct user session"),
+            ))),
     }
 }
 
@@ -3240,14 +3245,7 @@ fn optional_authority_from_auth(
     auth: Option<&AuthContextExtension>,
 ) -> Result<Option<RegistryAuthority>, Error> {
     reject_legacy_registry_headers(headers)?;
-    Ok(match auth {
-        Some(AuthContextExtension(ctx))
-            if !(ctx.client_id.is_some() && ctx.session_id.is_nil()) =>
-        {
-            Some(RegistryAuthority::from_auth_context(ctx))
-        }
-        _ => None,
-    })
+    Ok(auth.and_then(|extension| RegistryAuthority::from_session(&extension.0)))
 }
 
 /// Builds the sole command-evidence representation accepted by tenant-scoped
@@ -3665,6 +3663,51 @@ mod marketplace_registry_tests {
             showcase_admin_surfaces: Vec::new(),
             settings_schema: std::collections::HashMap::new(),
         }
+    }
+
+    #[test]
+    fn owner_transfer_rejects_nil_new_owner_before_dry_run_or_live_mutation() {
+        let request = super::RegistryOwnerTransferRequest {
+            schema_version: 1,
+            dry_run: true,
+            slug: "valid-module".to_string(),
+            new_owner_user_id: uuid::Uuid::nil(),
+            reason: None,
+            reason_code: None,
+        };
+        assert!(super::validate_owner_transfer_request(&request).is_err());
+    }
+
+    #[test]
+    fn required_and_optional_registry_authority_share_direct_session_policy() {
+        use axum::response::IntoResponse;
+        use rustok_api::context::{AuthContext, AuthContextExtension};
+        use uuid::Uuid;
+
+        let headers = HeaderMap::new();
+        assert_eq!(
+            super::authority_from_auth(&headers, None, "Publish")
+                .unwrap_err().into_response().status(),
+            StatusCode::UNAUTHORIZED
+        );
+        let mut auth = AuthContextExtension(AuthContext {
+            user_id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            client_id: None,
+            permissions: vec![rustok_api::Permission::MODULES_MANAGE],
+            scopes: Vec::new(),
+            grant_type: "direct".to_string(),
+        });
+        assert!(super::authority_from_auth(&headers, Some(&auth), "Publish").is_ok());
+        assert!(super::optional_authority_from_auth(&headers, Some(&auth)).unwrap().is_some());
+        auth.0.session_id = Uuid::nil();
+        assert_eq!(
+            super::authority_from_auth(&headers, Some(&auth), "Publish")
+                .unwrap_err().into_response().status(),
+            StatusCode::FORBIDDEN
+        );
+        assert!(super::optional_authority_from_auth(&headers, Some(&auth)).unwrap().is_none());
     }
 
     #[test]

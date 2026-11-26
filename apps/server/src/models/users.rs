@@ -15,17 +15,15 @@ impl Model {
         self.email_verified_at.is_some()
     }
 
-    /// Fail closed for delegated OAuth tokens minted at or before the last
-    /// password change. JWT `iat` has second granularity, so equality is
-    /// rejected to avoid accepting a token issued earlier in the same second.
+    /// Fail closed for delegated OAuth credentials minted at or before the last
+    /// password change. Callers pass the persisted authorization-code, refresh-
+    /// token, or access-row creation time so subsecond ordering is preserved.
     pub fn rejects_delegated_token_issued_at(
         &self,
         issued_at: chrono::DateTime<chrono::Utc>,
     ) -> bool {
         self.password_changed_at
-            .map(|changed_at| {
-                issued_at.timestamp() <= changed_at.with_timezone(&chrono::Utc).timestamp()
-            })
+            .map(|changed_at| issued_at <= changed_at.with_timezone(&chrono::Utc))
             .unwrap_or(false)
     }
 
@@ -116,9 +114,15 @@ mod tests {
             user.rejects_delegated_token_issued_at(
                 Utc.timestamp_opt(1_800_000_000, 100_000_000).unwrap()
             ),
-            "credential and password change in the same JWT second must be rejected"
+            "credential issued earlier in the same second must be rejected"
         );
         assert!(user.rejects_delegated_token_issued_at(changed_at));
+        assert!(
+            !user.rejects_delegated_token_issued_at(
+                Utc.timestamp_opt(1_800_000_000, 950_000_000).unwrap()
+            ),
+            "credential issued later in the same second must be accepted"
+        );
         assert!(!user.rejects_delegated_token_issued_at(changed_at + Duration::seconds(1)));
     }
 

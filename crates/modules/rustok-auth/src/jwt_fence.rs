@@ -1,15 +1,28 @@
 //! Durable admission of complete JWT generations. No key material is persisted.
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
+use std::sync::Arc;
+use crate::jwt_clock::{ClockGuard, ClockSample, LeaseDeadline, KEY_CLOCK_MARGIN_MS};
 
 use hkdf::Hkdf;
 use hmac::{Hmac, KeyInit, Mac};
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, QueryResult, Statement, Value};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
-use crate::{AuthConfig, AuthError, JwtAlgorithm, JwtKeyringPublisher};
+use crate::{AuthConfig, AuthError, JwtKeyringPublisher};
 use crate::error::Result;
+
+pub(crate) const RS256_ALGORITHM_MARKER: &str = "RS256";
+
+mod authority;
+mod observability;
+mod witness;
+use witness::Witness;
+pub use authority::JwtAuthorityConfig;
+use authority::AuthorityBinding;
+pub use observability::{JwtClusterObservation, JwtOperationalMetrics, JwtReloadOutcome};
+use observability::OperationMetrics;
 
 const MAX_ENROLLED_KEYS: usize = 8192;
 const MAX_LEDGER_BYTES: usize = 4 * 1024 * 1024;
@@ -64,24 +77,32 @@ pub(crate) struct KeyMetadata {
     pub(crate) identity: String,
     pub(crate) verification_identity: String,
     pub(crate) verify_until: Option<i64>,
-}
-
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct LegacyMetadata {
-    pub(crate) kid: String,
-    pub(crate) verify_until: i64,
+    pub(crate) algorithm: String,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RingMetadata {
-    pub(crate) algorithm: JwtAlgorithm,
+    pub(crate) algorithm: String,
     pub(crate) keys: BTreeMap<String, KeyMetadata>,
-    pub(crate) legacy: Option<LegacyMetadata>,
+}
+
+impl KeyMetadata {
+    fn same_verifier(&self, candidate: &Self) -> bool {
+        self.algorithm == candidate.algorithm
+            && self.identity == candidate.identity
+            && self.verification_identity == candidate.verification_identity
+    }
 }
 
 pub(crate) type Snapshot = BTreeMap<String, RingMetadata>;
+
+fn homogeneous_snapshot(snapshot: &Snapshot) -> bool {
+    snapshot.values().all(|ring| {
+        ring.algorithm == RS256_ALGORITHM_MARKER
+            && ring.keys.values().all(|key| key.algorithm == RS256_ALGORITHM_MARKER)
+    })
+}
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -96,19 +117,16 @@ type ReplicaGrants = BTreeMap<String, ReplicaGrant>;
 /// Directional transition: preserve old verification and permit both signers
 /// throughout the overlap. The operator separately budgets outgoing JWT TTL.
 fn rolling_compatible(old: &Snapshot, next: &Snapshot, now_ms: i64, horizon_ms: i64) -> bool {
-    let now = now_ms / 1000;
+    let now = now_ms.saturating_sub(KEY_CLOCK_MARGIN_MS) / 1000;
     let until = horizon_ms.saturating_add(OVERLAP_MARGIN_MS).saturating_add(999) / 1000;
     if old.len() != next.len() {
         return false;
     }
     for (purpose, before) in old {
         let Some(after) = next.get(purpose) else { return false; };
-        if before.algorithm != after.algorithm || before.legacy != after.legacy {
+        if before.algorithm != after.algorithm {
             return false;
         }
-        let matches = |a: &KeyMetadata, b: &KeyMetadata| {
-            a.identity == b.identity && a.verification_identity == b.verification_identity
-        };
         // Every currently accepted old verifier remains accepted, with no
         // shortened history deadline. The outgoing signer covers overlap.
         for (kid, key) in &before.keys {
@@ -116,7 +134,7 @@ fn rolling_compatible(old: &Snapshot, next: &Snapshot, now_ms: i64, horizon_ms: 
                 continue;
             }
             let Some(other) = after.keys.get(kid) else { return false; };
-            if !matches(key, other) {
+            if !key.same_verifier(other) {
                 return false;
             }
             match (key.verify_until, other.verify_until) {
@@ -128,7 +146,7 @@ fn rolling_compatible(old: &Snapshot, next: &Snapshot, now_ms: i64, horizon_ms: 
         // Every new signer was already a verifier on the older holder.
         for (kid, signer) in after.keys.iter().filter(|(_, key)| key.verify_until.is_none()) {
             let Some(other) = before.keys.get(kid) else { return false; };
-            if !matches(signer, other) || other.verify_until.is_some_and(|cutoff| cutoff <= until) {
+            if !other.same_verifier(signer) || other.verify_until.is_some_and(|cutoff| cutoff <= until) {
                 return false;
             }
         }
@@ -177,7 +195,10 @@ impl Ledger {
     }
 
     fn advance(mut self, generation: u64, next: Snapshot, now: i64) -> Result<Self> {
-        if generation <= self.generation || next.len() != self.current.len() || self.contains_revoked(&next) {
+        if generation <= self.generation || next.len() != self.current.len()
+            || !homogeneous_snapshot(&next) || !homogeneous_snapshot(&self.current)
+            || self.contains_revoked(&next)
+        {
             return Err(rejected());
         }
 
@@ -186,19 +207,12 @@ impl Ledger {
             if old.algorithm != ring.algorithm {
                 return Err(rejected());
             }
-            match (&old.legacy, &ring.legacy) {
-                (_, None) => {}
-                (Some(before), Some(after))
-                    if before.kid == after.kid && after.verify_until <= before.verify_until => {}
-                _ => return Err(rejected()),
-            }
             for (kid, key) in &ring.keys {
                 let previous = old.keys.get(kid);
                 let seen = self.seen.get(purpose).and_then(|keys| keys.get(kid));
                 match (previous, seen) {
                     (Some(before), Some(binding)) => {
-                        if key.identity != binding.identity || key.identity != before.identity
-                            || key.verification_identity != before.verification_identity
+                        if key.identity != binding.identity || !before.same_verifier(key)
                         {
                             return Err(rejected());
                         }
@@ -242,10 +256,15 @@ impl Ledger {
 struct FenceMac {
     identity: [u8; 32],
     state: [u8; 32],
+    authority: [u8; 32],
+    witness: [u8; 32],
 }
 
 impl FenceMac {
     fn new(root: &str) -> Result<Self> {
+        if !crate::config::mac_root_is_valid(root) {
+            return Err(rejected());
+        }
         let hkdf = Hkdf::<Sha256>::new(
             Some(b"rustok/auth/jwt-generation-fence/v1"), root.as_bytes(),
         );
@@ -253,7 +272,11 @@ impl FenceMac {
         let mut state = [0_u8; 32];
         hkdf.expand(b"key-identity", &mut identity).map_err(|_| unavailable())?;
         hkdf.expand(b"state-envelope", &mut state).map_err(|_| unavailable())?;
-        Ok(Self { identity, state })
+        let mut authority = [0_u8; 32];
+        hkdf.expand(b"external-authority-identity", &mut authority).map_err(|_| unavailable())?;
+        let mut witness = [0_u8; 32];
+        hkdf.expand(b"external-authority-witness/v1", &mut witness).map_err(|_| unavailable())?;
+        Ok(Self { identity, state, authority, witness })
     }
 
     fn identity(&self, digest: &[u8; 32]) -> Result<String> {
@@ -272,8 +295,13 @@ impl FenceMac {
 /// Auth-owned database authority. Call only from trusted deployment composition.
 /// The store admits a snapshot; it does not distribute secrets or publish keys
 /// into a process. No database access is added to the JWT request path.
+#[derive(Clone)]
 pub struct JwtGenerationFence {
     db: DatabaseConnection,
+    metrics: OperationMetrics,
+    clock: Arc<ClockGuard>,
+    binding: Option<AuthorityBinding>,
+    witness: Option<Witness>,
 }
 
 struct StoredFence {
@@ -285,6 +313,7 @@ struct StoredFence {
     untracked_until_ms: i64,
     replica_grants: String,
     now_ms: i64,
+    revision: i64,
 }
 
 impl StoredFence {
@@ -294,8 +323,14 @@ impl StoredFence {
         }
         let mut grants: ReplicaGrants = serde_json::from_str(&self.replica_grants)
             .map_err(|_| unavailable())?;
-        if grants.len() > MAX_GRANTS || grants.values().any(|grant| {
-            grant.until_ms <= 0 || grant.until_ms > self.lease_until_ms
+        if grants.len() > MAX_GRANTS || grants.iter().any(|(key, grant)| {
+            let valid_key = key.split_once(':').is_some_and(|(incarnation, generation)| {
+                uuid::Uuid::parse_str(incarnation).ok().is_some_and(|id| {
+                    !id.is_nil() && id.to_string() == incarnation
+                }) && generation == grant.generation.to_string()
+            });
+            !valid_key || !homogeneous_snapshot(&grant.snapshot)
+                || grant.until_ms <= 0 || grant.until_ms > self.lease_until_ms
                 || i64::try_from(grant.generation).ok().is_none_or(|g| g > self.generation)
         }) {
             return Err(unavailable());
@@ -324,6 +359,7 @@ impl StoredFence {
         mac.state_mac(&self.payload)?.verify_slice(&tag).map_err(|_| unavailable())?;
         let ledger: Ledger = serde_json::from_str(&self.payload).map_err(|_| unavailable())?;
         if i64::try_from(ledger.generation).ok() != Some(self.generation)
+            || !homogeneous_snapshot(&ledger.current)
             || ledger.seen.values().map(BTreeMap::len).sum::<usize>() > MAX_ENROLLED_KEYS
         {
             return Err(unavailable());
@@ -334,20 +370,60 @@ impl StoredFence {
 
 impl JwtGenerationFence {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self { db, metrics: OperationMetrics::default(), clock: Arc::new(ClockGuard::new()), binding: None, witness: None }
+    }
+
+    fn checked_mac(&self, root: &str) -> Result<FenceMac> {
+        let mac = FenceMac::new(root)?;
+        if let Some(binding) = &self.binding {
+            binding.verify_mac(&mac)?;
+        }
+        Ok(mac)
+    }
+
+    fn statement(&self, backend: DbBackend, sql: &str, values: Vec<Value>) -> Result<Statement> {
+        match &self.binding {
+            Some(binding) => binding.bind_statement(backend, sql, values),
+            None => Ok(Statement::from_sql_and_values(backend, sql, values)),
+        }
     }
 
     async fn load(&self) -> Result<StoredFence> {
-        let backend = self.db.get_database_backend();
+        self.load_at(ClockSample::now()).await
+    }
+
+    async fn load_at(&self, before: ClockSample) -> Result<StoredFence> {
+        if !self.clock.healthy_at(before) {
+            return Err(unavailable());
+        }
+        let stored = self.load_raw().await?;
+        if !self.clock.validate_db(before, ClockSample::now(), stored.now_ms) {
+            return Err(unavailable());
+        }
+        Ok(stored)
+    }
+
+    // Only emergency revocation may read without using the clock as an
+    // expiry oracle: it never grants, removes or extends authority.
+    async fn load_raw(&self) -> Result<StoredFence> {
+        match &self.witness {
+            Some(witness) => witness.read(self).await,
+            None => self.read_on(&self.db, false, false).await,
+        }
+    }
+
+    async fn read_on(&self, db: &impl ConnectionTrait, witnessed: bool, lock: bool) -> Result<StoredFence> {
+        let backend = db.get_database_backend();
         let clock = match backend {
             DbBackend::Postgres => "CAST(EXTRACT(EPOCH FROM clock_timestamp()) * 1000 AS BIGINT)",
             DbBackend::Sqlite => "CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)",
             _ => return Err(unavailable()),
         };
-        let row = self.db.query_one_raw(Statement::from_string(
-            backend,
-            format!("SELECT generation, payload, tag, lease_until_ms, drain_until_ms, untracked_until_ms, replica_grants, {clock} AS now_ms FROM auth_jwt_generation_fence WHERE id = 1"),
-        )).await.map_err(|_| unavailable())?.ok_or_else(unavailable)?;
+        let revision = if witnessed { "witness_revision" } else { "CAST(0 AS BIGINT)" };
+        let locking = if lock && backend == DbBackend::Postgres { " FOR UPDATE" } else { "" };
+        let sql = format!("SELECT generation, payload, tag, lease_until_ms, drain_until_ms, untracked_until_ms, replica_grants, {revision} AS witness_revision, {clock} AS now_ms FROM auth_jwt_generation_fence WHERE id = 1{locking}");
+        let statement = self.statement(backend, &sql, vec![])?;
+        let row = db.query_one_raw(statement).await.map_err(|_| unavailable())?.ok_or_else(unavailable)?;
         let stored = StoredFence {
             generation: row.try_get("", "generation").map_err(|_| unavailable())?,
             payload: row.try_get("", "payload").map_err(|_| unavailable())?,
@@ -357,8 +433,9 @@ impl JwtGenerationFence {
             untracked_until_ms: row.try_get("", "untracked_until_ms").map_err(|_| unavailable())?,
             replica_grants: row.try_get("", "replica_grants").map_err(|_| unavailable())?,
             now_ms: row.try_get("", "now_ms").map_err(|_| unavailable())?,
+            revision: row.try_get("", "witness_revision").map_err(|_| unavailable())?,
         };
-        if stored.now_ms <= 0 || stored.lease_until_ms < 0 || stored.drain_until_ms < 0
+        if stored.revision < 0 || stored.now_ms <= 0 || stored.lease_until_ms < 0 || stored.drain_until_ms < 0
             || stored.untracked_until_ms < 0 || stored.untracked_until_ms > stored.lease_until_ms
         {
             return Err(unavailable());
@@ -366,9 +443,18 @@ impl JwtGenerationFence {
         Ok(stored)
     }
 
-    /// Refuse configuration-source downgrade after the first file enrollment.
-    pub async fn ensure_static_allowed(&self) -> Result<()> {
-        if self.load().await?.is_empty() { Ok(()) } else { Err(rejected()) }
+    async fn execute_checked(&self, statement: Statement, revision: i64) -> Result<u64> {
+        match &self.witness {
+            Some(witness) => Ok(witness.apply(self, statement, revision, false).await?.0),
+            None => Ok(self.db.execute_raw(statement).await.map_err(|_| unavailable())?.rows_affected()),
+        }
+    }
+
+    async fn query_checked(&self, statement: Statement, revision: i64) -> Result<Option<QueryResult>> {
+        match &self.witness {
+            Some(witness) => Ok(witness.apply(self, statement, revision, true).await?.1),
+            None => self.db.query_one_raw(statement).await.map_err(|_| unavailable()),
+        }
     }
 
     /// Trusted operator command, not a request/tenant capability.
@@ -378,14 +464,12 @@ impl JwtGenerationFence {
         &self, root: &str, purpose: &str, kid: &str,
     ) -> Result<JwtRevocationReceipt> {
         let purpose = revocation_purpose(purpose)?;
-        if !crate::config::hs256_secret_has_min_length(root)
-            || !crate::jwt_keyring::valid_kid(kid)
-        {
+        if !crate::jwt_keyring::valid_kid(kid) {
             return Err(rejected());
         }
-        let mac = FenceMac::new(root)?;
+        let mac = self.checked_mac(root)?;
         for _ in 0..MAX_CAS_ATTEMPTS {
-            let stored = self.load().await?;
+            let stored = self.load_raw().await?;
             let mut ledger = stored.ledger(&mac)?.ok_or_else(rejected)?;
             let binding = ledger.seen.get_mut(purpose)
                 .and_then(|keys| keys.get_mut(kid)).ok_or_else(rejected)?;
@@ -414,10 +498,10 @@ impl JwtGenerationFence {
                 DbBackend::Sqlite => "UPDATE auth_jwt_generation_fence SET payload = ?1, tag = ?2 WHERE id = 1 AND generation = ?3 AND tag = ?4 RETURNING lease_until_ms",
                 _ => return Err(unavailable()),
             };
-            let updated = self.db.query_one_raw(Statement::from_sql_and_values(
+            let updated = self.query_checked(self.statement(
                 backend, sql, vec![payload.into(), tag.into(), stored.generation.into(),
                     stored.tag.into()],
-            )).await.map_err(|_| unavailable())?;
+            )?, stored.revision).await?;
             if let Some(row) = updated {
                 let existing_lease_until_ms: i64 = row.try_get("", "lease_until_ms")
                     .map_err(|_| unavailable())?;
@@ -435,7 +519,21 @@ impl JwtGenerationFence {
     /// Renew only the exact local generation. A grant is bounded from before
     /// DB IO; an expired/delayed grant cannot revive a local deadline.
     pub async fn renew(&self, publisher: &JwtKeyringPublisher) -> Result<bool> {
-        let mac = FenceMac::new(publisher.lease_root())?;
+        let result = self.renew_inner(publisher).await;
+        if self.clock.faulted() {
+            publisher.fence_clock()?;
+        }
+        self.metrics.record("renew", match &result {
+            Ok(true) => "granted", Ok(false) => "denied", Err(_) => "error",
+        });
+        result
+    }
+
+    async fn renew_inner(&self, publisher: &JwtKeyringPublisher) -> Result<bool> {
+        if !publisher.clock_healthy()? {
+            return Err(unavailable());
+        }
+        let mac = self.checked_mac(publisher.lease_root())?;
         let (generation, snapshot) = publisher.lease_metadata(|identity| mac.identity(identity))?;
         let Some(deadline) = self.grant(publisher, generation, snapshot, &mac, true).await? else {
             return Ok(false);
@@ -448,11 +546,27 @@ impl JwtGenerationFence {
     pub async fn activate(
         &self, publisher: &JwtKeyringPublisher, generation: u64, candidate: AuthConfig,
     ) -> Result<bool> {
-        if generation <= publisher.generation()? || candidate.secret() != publisher.lease_root() {
+        let result = self.activate_inner(publisher, generation, candidate).await;
+        if self.clock.faulted() {
+            publisher.fence_clock()?;
+        }
+        self.metrics.record("activate", match &result {
+            Ok(true) => "applied", Ok(false) => "denied", Err(_) => "error",
+        });
+        result
+    }
+
+    async fn activate_inner(
+        &self, publisher: &JwtKeyringPublisher, generation: u64, candidate: AuthConfig,
+    ) -> Result<bool> {
+        if !publisher.clock_healthy()? {
+            return Err(unavailable());
+        }
+        if !publisher.accepts_grant_candidate(generation, &candidate)? {
             return Err(rejected());
         }
         crate::validate_auth_config(&candidate)?;
-        let mac = FenceMac::new(candidate.secret())?;
+        let mac = self.checked_mac(candidate.secret())?;
         let snapshot = candidate.fence_snapshot(|identity| mac.identity(identity))?;
         let Some(deadline) = self.grant(publisher, generation, snapshot, &mac, false).await? else {
             return Ok(false);
@@ -462,7 +576,12 @@ impl JwtGenerationFence {
         }
         // Only after the local write fence has drained old crypto and
         // installed the new generation may this incarnation ACK replacement.
-        self.acknowledge(publisher, generation, &mac).await?;
+        let started = Instant::now();
+        let ack = self.acknowledge(publisher, generation, &mac).await;
+        self.metrics.record_ack(started.elapsed(), match &ack {
+            Ok(true) => "complete", Ok(false) => "deferred", Err(_) => "error",
+        });
+        ack?;
         Ok(true)
     }
 
@@ -471,7 +590,7 @@ impl JwtGenerationFence {
     /// renewal cannot reinstall an older grant after this ACK.
     async fn acknowledge(
         &self, publisher: &JwtKeyringPublisher, applied: u64, mac: &FenceMac,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let prefix = format!("{}:", publisher.incarnation());
         for _ in 0..MAX_CAS_ATTEMPTS {
             let stored = self.load().await?;
@@ -481,7 +600,7 @@ impl JwtGenerationFence {
             let before = grants.len();
             grants.retain(|key, grant| !key.starts_with(&prefix) || grant.generation >= applied);
             if grants.len() == before {
-                return Ok(());
+                return Ok(true);
             }
             let horizon = grants.values().map(|grant| grant.until_ms)
                 .chain(std::iter::once(stored.untracked_until_ms)).max().unwrap_or(0);
@@ -492,41 +611,49 @@ impl JwtGenerationFence {
                 DbBackend::Sqlite => "UPDATE auth_jwt_generation_fence SET lease_until_ms = ?1, replica_grants = ?2 WHERE id = 1 AND generation = ?3 AND tag = ?4 AND drain_until_ms = ?5 AND lease_until_ms = ?6 AND replica_grants = ?7",
                 _ => return Err(unavailable()),
             };
-            let updated = self.db.execute_raw(Statement::from_sql_and_values(
+            let updated = self.execute_checked(self.statement(
                 backend, sql, vec![horizon.into(), encoded.into(), stored.generation.into(),
                     stored.tag.into(), stored.drain_until_ms.into(), stored.lease_until_ms.into(),
                     stored.replica_grants.into()],
-            )).await.map_err(|_| unavailable())?;
-            if updated.rows_affected() == 1 {
-                return Ok(());
+            )?, stored.revision).await?;
+            if updated == 1 {
+                return Ok(true);
             }
         }
         // Contention does not invalidate the installed lease. Renewal will
         // retry the ACK; until then the old grant conservatively remains.
-        Ok(())
+        Ok(false)
     }
 
     async fn grant(
         &self, publisher: &JwtKeyringPublisher, generation: u64, snapshot: Snapshot, mac: &FenceMac,
         already_applied: bool,
-    ) -> Result<Option<Instant>> {
+    ) -> Result<Option<LeaseDeadline>> {
         let generation_sql = i64::try_from(generation).map_err(|_| rejected())?;
+        if generation_sql <= 0 {
+            return Err(rejected());
+        }
         let key = format!("{}:{generation}", publisher.incarnation());
         for _ in 0..MAX_CAS_ATTEMPTS {
-            let started = Instant::now();
-            let stored = self.load().await?;
+            let started = ClockSample::now();
+            let stored = self.load_at(started).await?;
             let ledger = stored.ledger(mac)?;
             if ledger.as_ref().is_some_and(|ledger| ledger.contains_revoked(&snapshot)) {
                 if already_applied {
                     publisher.fence_revoked_generation(generation)?;
                 }
+                self.metrics.record("grant", "revoked");
                 return Ok(None);
             }
-            let admitted = match ledger {
-                None => generation == 0,
-                Some(ledger) => generation == ledger.generation && snapshot == ledger.current,
-            };
-            if !admitted || stored.drain_until_ms > stored.now_ms {
+            let admitted = ledger
+                .as_ref()
+                .is_some_and(|ledger| generation == ledger.generation && snapshot == ledger.current);
+            if !admitted {
+                self.metrics.record("grant", "not_admitted");
+                return Ok(None);
+            }
+            if stored.drain_until_ms > stored.now_ms {
+                self.metrics.record("grant", "draining");
                 return Ok(None);
             }
             let mut grants = stored.live_grants()?;
@@ -537,6 +664,7 @@ impl JwtGenerationFence {
                 grants.retain(|key, grant| !key.starts_with(&prefix) || grant.generation >= generation);
             }
             if !grants.contains_key(&key) && grants.len() >= MAX_GRANTS {
+                self.metrics.record("grant", "capacity");
                 return Ok(None);
             }
             let until = stored.now_ms.checked_add(DB_LEASE_MS).ok_or_else(unavailable)?;
@@ -551,6 +679,7 @@ impl JwtGenerationFence {
             });
             let encoded = serde_json::to_string(&grants).map_err(|_| unavailable())?;
             if encoded.len() > MAX_GRANT_BYTES {
+                self.metrics.record("grant", "capacity");
                 return Ok(None);
             }
             let horizon = grants.values().map(|grant| grant.until_ms)
@@ -561,27 +690,48 @@ impl JwtGenerationFence {
                 DbBackend::Sqlite => "UPDATE auth_jwt_generation_fence SET lease_until_ms = ?1, replica_grants = ?2 WHERE id = 1 AND generation = ?3 AND tag = ?4 AND drain_until_ms = ?5 AND lease_until_ms = ?6 AND replica_grants = ?7",
                 _ => return Err(unavailable()),
             };
-            let updated = self.db.execute_raw(Statement::from_sql_and_values(
+            let updated = self.execute_checked(self.statement(
                 backend, sql, vec![horizon.into(), encoded.into(),
                     generation_sql.into(), stored.tag.into(), stored.drain_until_ms.into(),
                     stored.lease_until_ms.into(), stored.replica_grants.into()],
-            )).await.map_err(|_| unavailable())?;
-            if updated.rows_affected() == 1 {
-                return Ok(Some(started.checked_add(LOCAL_LEASE).ok_or_else(unavailable)?));
+            )?, stored.revision).await?;
+            if updated == 1 {
+                if !self.clock.healthy_at(ClockSample::now()) {
+                    return Err(unavailable());
+                }
+                let deadline = LeaseDeadline::new(started, LOCAL_LEASE, self.clock.clone())
+                    .ok_or_else(unavailable)?;
+                return Ok(Some(match &self.witness {
+                    Some(witness) => deadline.with_witness_fault(witness.fault.clone()),
+                    None => deadline,
+                }));
             }
         }
+        self.metrics.record("grant", "contention");
         Ok(None)
     }
 
     /// Admit before local publication. Same generation is idempotent only for
-    /// the same canonical snapshot, including cutoffs and legacy mapping.
+    /// the same canonical snapshot, including exact verifier identities and cutoffs.
     pub async fn admit(&self, generation: u64, candidate: &AuthConfig) -> Result<JwtAdmission> {
+        let result = self.admit_inner(generation, candidate).await;
+        self.metrics.record("admit", match &result {
+            Ok(JwtAdmission::Admitted) => "admitted",
+            Ok(JwtAdmission::Draining) => "draining",
+            Ok(JwtAdmission::AwaitingReplicas) => "awaiting_replicas",
+            Err(AuthError::Validation(_)) => "rejected",
+            Err(_) => "error",
+        });
+        result
+    }
+
+    async fn admit_inner(&self, generation: u64, candidate: &AuthConfig) -> Result<JwtAdmission> {
         let generation_sql = i64::try_from(generation).map_err(|_| rejected())?;
         if generation_sql <= 0 {
             return Err(rejected());
         }
         crate::validate_auth_config(candidate)?;
-        let mac = FenceMac::new(candidate.secret())?;
+        let mac = self.checked_mac(candidate.secret())?;
         let snapshot = candidate.fence_snapshot(|identity| mac.identity(identity))?;
         for _ in 0..MAX_CAS_ATTEMPTS {
             let stored = self.load().await?;
@@ -602,7 +752,8 @@ impl JwtGenerationFence {
                 Some(ledger) if generation == ledger.generation => {
                     return if snapshot == ledger.current { Ok(JwtAdmission::Admitted) } else { Err(rejected()) };
                 }
-                Some(ledger) => ledger.advance(generation, snapshot.clone(), stored.now_ms / 1000)?,
+                Some(ledger) => ledger.advance(generation, snapshot.clone(),
+                    stored.now_ms.saturating_add(KEY_CLOCK_MARGIN_MS) / 1000)?,
             };
             // Reject an oversized ledger before closing renewal. A candidate
             // that cannot be persisted must not start an avoidable drain.
@@ -634,10 +785,10 @@ impl JwtGenerationFence {
                     DbBackend::Sqlite => "UPDATE auth_jwt_generation_fence SET drain_until_ms = ?1 WHERE id = 1 AND generation = ?2 AND tag = ?3 AND drain_until_ms = ?4",
                     _ => return Err(unavailable()),
                 };
-                let updated = self.db.execute_raw(Statement::from_sql_and_values(
+                let updated = self.execute_checked(self.statement(
                     backend, sql, vec![until.into(), stored.generation.into(), stored.tag.into(), stored.drain_until_ms.into()],
-                )).await.map_err(|_| unavailable())?;
-                if updated.rows_affected() == 1 {
+                )?, stored.revision).await?;
+                if updated == 1 {
                     return Ok(JwtAdmission::Draining);
                 }
                 continue;
@@ -651,12 +802,12 @@ impl JwtGenerationFence {
                 DbBackend::Sqlite => "UPDATE auth_jwt_generation_fence SET generation = ?1, payload = ?2, tag = ?3, lease_until_ms = ?4, drain_until_ms = 0, untracked_until_ms = 0, replica_grants = ?5 WHERE id = 1 AND generation = ?6 AND tag = ?7 AND lease_until_ms = ?8 AND drain_until_ms = ?9 AND replica_grants = ?10",
                 _ => return Err(unavailable()),
             };
-            let updated = self.db.execute_raw(Statement::from_sql_and_values(
+            let updated = self.execute_checked(self.statement(
                 backend, sql, vec![generation_sql.into(), payload.into(), tag.into(), retained_horizon.into(),
                     encoded.into(), stored.generation.into(), stored.tag.into(), stored.lease_until_ms.into(),
                     stored.drain_until_ms.into(), stored.replica_grants.into()],
-            )).await.map_err(|_| unavailable())?;
-            if updated.rows_affected() == 1 {
+            )?, stored.revision).await?;
+            if updated == 1 {
                 return Ok(JwtAdmission::Admitted);
             }
         }
@@ -670,59 +821,180 @@ mod tests {
     use sea_orm::Database;
     use sea_orm_migration::SchemaManager;
 
-    const ROOT: &str = "stable-host-root-for-fence-tests-only-32bytes";
-    const OLD: &str = "first-independent-signing-key-at-least-32-bytes";
-    const NEW: &str = "second-independent-signing-key-at-least-32-bytes";
-    const THIRD: &str = "third-independent-signing-key-at-least-32-bytes";
-
-    fn config(root: &str, kid: &str, material: &str, history: Option<(&str, &str, i64)>,
-        legacy: Option<(&str, i64)>) -> AuthConfig {
-        let mut access = serde_json::json!({"active_kid": kid, "active_hs256_secret": material});
-        if let Some((kid, material, until)) = history {
-            access["verification_keys"] = serde_json::json!([{
-                "kid": kid, "material": material, "verify_until": until,
-            }]);
+    pub(super) const ROOT: &str = "stable-host-root-for-fence-tests-only-32bytes";
+    #[test]
+    fn fence_mac_rejects_invalid_independent_root() {
+        let pair = rustok_test_utils::jwt::RsaKeyPairFixture::generate().unwrap();
+        for root in ["short", pair.public_pem(), pair.private_pem()] {
+            assert!(FenceMac::new(root).is_err());
         }
-        if let Some((kid, until)) = legacy {
-            access["legacy_without_kid"] = serde_json::json!({"kid": kid, "verify_until": until});
-        }
-        let doc = serde_json::json!({
-            "schema_version": 1, "generation": 1,
-            "access": {"keyring": access},
-            "password_reset": {"keyring": {"active_kid": "reset"}},
-            "email_verification": {"keyring": {"active_kid": "email"}},
-            "invite": {"keyring": {"active_kid": "invite"}},
-        });
-        AuthConfig::new(root.to_string()).prepare_jwt_document(
-            &serde_json::to_vec(&doc).unwrap(),
-        ).unwrap().1
+        assert!(FenceMac::new(ROOT).is_ok());
     }
 
-    async fn database() -> DatabaseConnection {
+    use rustok_test_utils::jwt::{JwtKeyringFixture, RsaKeyPairFixture};
+
+    /// Fresh key identities per isolated ledger, reused only within that test.
+    pub(super) struct FenceKeys {
+        rings: JwtKeyringFixture,
+        pub(super) next: RsaKeyPairFixture,
+        third: RsaKeyPairFixture,
+    }
+
+    impl FenceKeys {
+        pub(super) fn generate() -> Self {
+            Self {
+                rings: JwtKeyringFixture::generate().unwrap(),
+                next: RsaKeyPairFixture::generate().unwrap(),
+                third: RsaKeyPairFixture::generate().unwrap(),
+            }
+        }
+
+        pub(super) fn old(&self) -> &RsaKeyPairFixture {
+            &self.rings.access
+        }
+
+        pub(super) fn config(
+            &self, root: &str, kid: &str, pair: &RsaKeyPairFixture,
+            history: Option<(&str, &RsaKeyPairFixture, i64)>,
+        ) -> AuthConfig {
+            let doc = self.rings.document_with_access(1, kid, pair, history);
+            crate::build_auth_config_from_document(
+                root.to_string(), 900, Default::default(),
+                doc.to_string().as_bytes(),
+            ).unwrap().1
+        }
+    }
+
+    #[test]
+    fn durable_snapshot_rejects_non_rs256_markers() {
+        let keys = FenceKeys::generate();
+        let config = keys.config(ROOT, "old", keys.old(),
+            Some(("new", &keys.next, 4_000_000_000)));
+        let mac = FenceMac::new(ROOT).unwrap();
+        let snapshot = config.fence_snapshot(|identity| mac.identity(identity)).unwrap();
+        assert!(homogeneous_snapshot(&snapshot));
+
+        let mut ring_marker = snapshot.clone();
+        ring_marker.get_mut("JWT").unwrap().algorithm = "HS256".to_string();
+        assert!(!homogeneous_snapshot(&ring_marker));
+
+        let mut key_marker = snapshot;
+        key_marker.get_mut("JWT").unwrap().keys.get_mut("new").unwrap().algorithm = "HS256".to_string();
+        assert!(!homogeneous_snapshot(&key_marker));
+    }
+
+    #[test]
+    fn durable_key_metadata_requires_the_fixed_rs256_marker() {
+        let old = r#"{"identity":"material","verification_identity":"verifier","verify_until":null}"#;
+        assert!(serde_json::from_str::<KeyMetadata>(old).is_err());
+        let null = r#"{"identity":"material","verification_identity":"verifier","verify_until":null,"algorithm":null}"#;
+        assert!(serde_json::from_str::<KeyMetadata>(null).is_err());
+        let canonical = r#"{"identity":"material","verification_identity":"verifier","verify_until":null,"algorithm":"RS256"}"#;
+        let key: KeyMetadata = serde_json::from_str(canonical).unwrap();
+        assert_eq!(key.algorithm, RS256_ALGORITHM_MARKER);
+        assert_eq!(serde_json::to_string(&key).unwrap(), canonical);
+        let mut different = key.clone();
+        different.algorithm = "HS256".to_string();
+        assert!(!key.same_verifier(&different));
+    }
+
+    #[test]
+    fn prepared_snapshot_records_only_rs256_metadata() {
+        let keys = FenceKeys::generate();
+        let cfg = keys.config(ROOT, "old", keys.old(), Some(("new", &keys.next, 4_000_000_000)));
+        let mac = FenceMac::new(ROOT).unwrap();
+        let snapshot = cfg.fence_snapshot(|identity| mac.identity(identity)).unwrap();
+        let ring = snapshot.get("JWT").unwrap();
+        assert_eq!(ring.keys.len(), 2);
+        assert_eq!(snapshot.len(), 4);
+        let identities: std::collections::HashSet<_> = snapshot.values()
+            .flat_map(|ring| ring.keys.values().map(|key| key.identity.as_str()))
+            .collect();
+        assert_eq!(identities.len(), 5);
+        assert!(snapshot.values().all(|ring| ring.algorithm == RS256_ALGORITHM_MARKER
+            && ring.keys.values().all(|key| key.algorithm == RS256_ALGORITHM_MARKER)));
+        let serialized = serde_json::to_string(&snapshot).unwrap();
+        let decoded: Snapshot = serde_json::from_str(&serialized).unwrap();
+        assert!(snapshot == decoded);
+    }
+
+    pub(super) async fn database() -> DatabaseConnection {
         let db = Database::connect("sqlite::memory:").await.unwrap();
-        for name in [
-            "m20261125_000002_create_auth_jwt_generation_fence",
-            "m20261125_000003_add_auth_jwt_cluster_lease",
-            "m20261125_000004_add_auth_jwt_replica_grants",
-        ] {
-            let migration = crate::migrations::migrations().into_iter()
-                .find(|migration| migration.name() == name).unwrap();
+        for migration in crate::migrations::jwt_fence_migrations() {
             migration.up(&SchemaManager::new(&db)).await.unwrap();
         }
         db
     }
 
     #[tokio::test]
+    async fn jwt_schema_fresh_install_and_unused_rollback_preserve_empty_contract() {
+        let db = database().await;
+        let manager = SchemaManager::new(&db);
+        let check_empty = || async {
+            let fence = JwtGenerationFence::new(db.clone());
+            let stored = fence.load().await.unwrap();
+            assert!(stored.is_empty());
+            assert_eq!(stored.lease_until_ms, 0);
+            assert_eq!(stored.drain_until_ms, 0);
+            assert_eq!(stored.untracked_until_ms, 0);
+            assert_eq!(stored.replica_grants, "{}");
+            assert!(stored.live_grants().unwrap().is_empty());
+        };
+        check_empty().await;
+        for migration in crate::migrations::jwt_fence_migrations().into_iter().rev() {
+            migration.down(&manager).await.unwrap();
+        }
+        assert!(!manager.has_table("auth_jwt_generation_fence").await.unwrap());
+        for migration in crate::migrations::jwt_fence_migrations() {
+            migration.up(&manager).await.unwrap();
+        }
+        check_empty().await;
+        assert!(db.execute_unprepared(
+            "INSERT INTO auth_jwt_generation_fence (id, generation, payload, tag) VALUES (2, 0, '', '')",
+        ).await.is_err());
+        assert!(db.execute_unprepared(
+            "UPDATE auth_jwt_generation_fence SET generation = -1 WHERE id = 1",
+        ).await.is_err());
+        assert!(db.execute_unprepared(
+            "UPDATE auth_jwt_generation_fence SET generation = 1 WHERE id = 1",
+        ).await.is_err());
+        for column in ["lease_until_ms", "drain_until_ms", "untracked_until_ms"] {
+            assert!(db.execute_unprepared(&format!(
+                "UPDATE auth_jwt_generation_fence SET {column} = -1 WHERE id = 1",
+            )).await.is_err());
+        }
+        check_empty().await;
+    }
+
+    #[tokio::test]
+    async fn jwt_schema_rollback_refuses_enrollment() {
+        let keys = FenceKeys::generate();
+        let first = keys.config(ROOT, "old", keys.old(), None);
+        let enrolled_db = database().await;
+        let enrolled = JwtGenerationFence::new(enrolled_db.clone());
+        assert_eq!(enrolled.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
+        let before = enrolled.load().await.unwrap();
+        let last = crate::migrations::jwt_fence_migrations().pop().unwrap();
+        assert!(last.down(&SchemaManager::new(&enrolled_db)).await.is_err());
+        let after = enrolled.load().await.unwrap();
+        assert_eq!(before.generation, after.generation);
+        assert_eq!(before.payload, after.payload);
+        assert_eq!(before.tag, after.tag);
+        assert_eq!(before.replica_grants, after.replica_grants);
+    }
+
+    #[tokio::test]
     async fn emergency_revocation_fences_current_and_stale_replicas_without_file_change() {
+        let keys = FenceKeys::generate();
         use crate::{decode_access_token, encode_access_token};
         use rustok_core::UserRole;
         use uuid::Uuid;
         let db = database().await;
         let fence = JwtGenerationFence::new(db.clone());
         let until = chrono::Utc::now().timestamp() + 3600;
-        let first = config(ROOT, "old", OLD, None, None);
-        let staged = config(ROOT, "old", OLD, Some(("new", NEW, until)), None);
-        let clean = config(ROOT, "new", NEW, None, None);
+        let first = keys.config(ROOT, "old", keys.old(), None);
+        let staged = keys.config(ROOT, "old", keys.old(), Some(("new", &keys.next, until)));
+        let clean = keys.config(ROOT, "new", &keys.next, None);
         assert!(fence.revoke_key(ROOT, "access", "old").await.is_err());
         assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
         let (live_a, a) = first.clone().into_cluster_jwt(1).unwrap();
@@ -752,7 +1024,8 @@ mod tests {
         assert!(issue(&live_a).is_err());
         assert!(decode_access_token(&live_b, &token).is_err());
         assert!(!a.lease_readiness().unwrap().is_ready());
-        assert!(!a.install_lease(2, Instant::now() + LOCAL_LEASE).unwrap());
+        let deadline = LeaseDeadline::new(ClockSample::now(), LOCAL_LEASE, fence.clock.clone()).unwrap();
+        assert!(!a.install_lease(2, deadline).unwrap());
         assert_eq!(reopened.admit(3, &clean).await.unwrap(), JwtAdmission::Draining);
         db.execute_unprepared("UPDATE auth_jwt_generation_fence SET lease_until_ms = 0, replica_grants = '{}' WHERE id = 1")
             .await.unwrap();
@@ -761,16 +1034,17 @@ mod tests {
         assert!(issue(&live_a).is_ok());
         assert!(decode_access_token(&live_a, &token).is_err());
         assert!(!reopened.renew(&b).await.unwrap());
-        assert!(reopened.admit(4, &config(ROOT, "renamed", OLD, None, None)).await.is_err());
+        assert!(reopened.admit(4, &keys.config(ROOT, "renamed", keys.old(), None)).await.is_err());
         assert!(reopened.admit(4, &staged).await.is_err());
     }
 
     #[tokio::test]
     async fn emergency_revocation_serializes_with_renewal_and_reports_horizon() {
+        let keys = FenceKeys::generate();
         let db = database().await;
         let fence = JwtGenerationFence::new(db.clone());
         let other = JwtGenerationFence::new(db);
-        let first = config(ROOT, "old", OLD, None, None);
+        let first = keys.config(ROOT, "old", keys.old(), None);
         assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
         let (_, publisher) = first.into_cluster_jwt(1).unwrap();
         let (renewal, revoked) = tokio::join!(
@@ -787,10 +1061,11 @@ mod tests {
 
     #[tokio::test]
     async fn emergency_revocation_of_history_requires_removal_before_renewal() {
+        let keys = FenceKeys::generate();
         let db = database().await;
         let fence = JwtGenerationFence::new(db.clone());
         let until = chrono::Utc::now().timestamp() + 3600;
-        let first = config(ROOT, "new", NEW, Some(("old", OLD, until)), None);
+        let first = keys.config(ROOT, "new", &keys.next, Some(("old", keys.old(), until)));
         assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
         let (_, publisher) = first.clone().into_cluster_jwt(1).unwrap();
         assert!(fence.renew(&publisher).await.unwrap());
@@ -798,7 +1073,7 @@ mod tests {
         assert!(!fence.renew(&publisher).await.unwrap());
         assert!(!publisher.lease_readiness().unwrap().is_ready());
         assert!(fence.admit(2, &first).await.is_err());
-        let clean = config(ROOT, "new", NEW, None, None);
+        let clean = keys.config(ROOT, "new", &keys.next, None);
         assert_eq!(fence.admit(2, &clean).await.unwrap(), JwtAdmission::Draining);
         db.execute_unprepared("UPDATE auth_jwt_generation_fence SET lease_until_ms = 0, replica_grants = '{}' WHERE id = 1")
             .await.unwrap();
@@ -810,15 +1085,16 @@ mod tests {
 
     #[tokio::test]
     async fn rolling_stage_and_promotion_wait_for_old_replica_grants() {
+        let keys = FenceKeys::generate();
         use crate::{decode_access_token, encode_access_token};
         use rustok_core::UserRole;
         use uuid::Uuid;
         let db = database().await;
         let fence = JwtGenerationFence::new(db.clone());
         let until = chrono::Utc::now().timestamp() + 3600;
-        let first = config(ROOT, "old", OLD, None, None);
-        let staged = config(ROOT, "old", OLD, Some(("new", NEW, until)), None);
-        let promoted = config(ROOT, "new", NEW, Some(("old", OLD, until)), None);
+        let first = keys.config(ROOT, "old", keys.old(), None);
+        let staged = keys.config(ROOT, "old", keys.old(), Some(("new", &keys.next, until)));
+        let promoted = keys.config(ROOT, "new", &keys.next, Some(("old", keys.old(), until)));
         assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
         let (live_a, a) = first.clone().into_cluster_jwt(1).unwrap();
         let (live_b, b) = first.into_cluster_jwt(1).unwrap();
@@ -854,13 +1130,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn incompatible_policy_or_unmanaged_runtime_never_reserves_candidate_grant() {
+        let keys = FenceKeys::generate();
+        let fence = JwtGenerationFence::new(database().await);
+        let until = chrono::Utc::now().timestamp() + 3600;
+        let first = keys.config(ROOT, "old", keys.old(), None);
+        let staged = keys.config(ROOT, "old", keys.old(), Some(("new", &keys.next, until)));
+        assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
+        let (_, publisher) = first.clone().into_cluster_jwt(1).unwrap();
+        let (_, unmanaged) = first.into_live_jwt(1).unwrap();
+        assert!(fence.renew(&publisher).await.unwrap());
+        assert_eq!(fence.admit(2, &staged).await.unwrap(), JwtAdmission::Admitted);
+        let before = fence.load().await.unwrap();
+        for candidate in [
+            staged.clone().with_issuer("different-issuer"),
+            staged.clone().with_audience("different-audience"),
+            staged.clone().with_expiration(1800, staged.refresh_expiration),
+            staged.clone().with_expiration(staged.access_expiration, staged.refresh_expiration + 1),
+            staged.clone().with_min_password_length(staged.min_password_length + 1),
+        ] {
+            assert!(fence.activate(&publisher, 2, candidate).await.is_err());
+        }
+        assert!(fence.activate(&unmanaged, 2, staged.clone()).await.is_err());
+        let after = fence.load().await.unwrap();
+        assert_eq!(before.replica_grants, after.replica_grants);
+        assert_eq!(before.lease_until_ms, after.lease_until_ms);
+        assert_eq!(before.revision, after.revision);
+        assert_eq!(publisher.generation().unwrap(), 1);
+        assert!(fence.activate(&publisher, 2, staged).await.unwrap());
+        assert_eq!(publisher.generation().unwrap(), 2);
+    }
+
+    #[tokio::test]
     async fn candidate_grant_is_not_an_ack_until_local_publication() {
+        let keys = FenceKeys::generate();
         let db = database().await;
         let fence = JwtGenerationFence::new(db.clone());
         let until = chrono::Utc::now().timestamp() + 3600;
-        let first = config(ROOT, "old", OLD, None, None);
-        let staged = config(ROOT, "old", OLD, Some(("new", NEW, until)), None);
-        let promoted = config(ROOT, "new", NEW, Some(("old", OLD, until)), None);
+        let first = keys.config(ROOT, "old", keys.old(), None);
+        let staged = keys.config(ROOT, "old", keys.old(), Some(("new", &keys.next, until)));
+        let promoted = keys.config(ROOT, "new", &keys.next, Some(("old", keys.old(), until)));
         assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
         let (_, a) = first.clone().into_cluster_jwt(1).unwrap();
         let (_, b) = first.into_cluster_jwt(1).unwrap();
@@ -895,13 +1204,14 @@ mod tests {
 
     #[tokio::test]
     async fn cluster_drain_fences_old_holders_before_advancing() {
+        let keys = FenceKeys::generate();
         use crate::{decode_access_token, encode_access_token};
         use rustok_core::UserRole;
         use uuid::Uuid;
         let db = database().await;
         let fence = JwtGenerationFence::new(db.clone());
-        let first = config(ROOT, "old", OLD, None, None);
-        let second = config(ROOT, "new", NEW, None, None);
+        let first = keys.config(ROOT, "old", keys.old(), None);
+        let second = keys.config(ROOT, "new", &keys.next, None);
         assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
         let (live_a, a) = first.clone().into_cluster_jwt(1).unwrap();
         let (live_b, b) = first.into_cluster_jwt(1).unwrap();
@@ -937,33 +1247,33 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn static_lease_blocks_first_enrollment_and_expired_drain_recovers() {
+    async fn malformed_registry_keys_are_refused_before_expiry_or_ack() {
+        let keys = FenceKeys::generate();
         let db = database().await;
         let fence = JwtGenerationFence::new(db.clone());
-        let first = config(ROOT, "old", OLD, None, None);
-        let (_, static_runtime) = AuthConfig::new(ROOT.into()).into_cluster_jwt(0).unwrap();
-        assert!(fence.renew(&static_runtime).await.unwrap());
-        assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Draining);
-        assert!(!fence.renew(&static_runtime).await.unwrap());
-        db.execute_unprepared("UPDATE auth_jwt_generation_fence SET drain_until_ms = 0 WHERE id = 1")
-            .await.unwrap();
-        assert!(fence.renew(&static_runtime).await.unwrap());
-        assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Draining);
-        static_runtime.revoke_lease();
-        db.execute_unprepared("UPDATE auth_jwt_generation_fence SET lease_until_ms = 0, replica_grants = '{}' WHERE id = 1")
-            .await.unwrap();
+        let first = keys.config(ROOT, "old", keys.old(), None);
         assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
-        assert!(!fence.renew(&static_runtime).await.unwrap());
-        assert!(fence.ensure_static_allowed().await.is_err());
+        let (_, publisher) = first.into_cluster_jwt(1).unwrap();
+        assert!(fence.renew(&publisher).await.unwrap());
+        let stored = fence.load().await.unwrap();
+        let mut grants = stored.live_grants().unwrap();
+        let key = grants.keys().next().unwrap().clone();
+        let grant = grants.remove(&key).unwrap();
+        grants.insert("invalid-incarnation:1".to_string(), grant);
+        db.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+            "UPDATE auth_jwt_generation_fence SET replica_grants = ?1 WHERE id = 1",
+            vec![serde_json::to_string(&grants).unwrap().into()],
+        )).await.unwrap();
+        assert!(fence.renew(&publisher).await.is_err());
     }
 
     #[tokio::test]
     async fn persists_floor_and_tombstones_across_store_recreation() {
+        let keys = FenceKeys::generate();
         let db = database().await;
-        let first = config(ROOT, "old", OLD, None, None);
-        let second = config(ROOT, "new", NEW, None, None);
+        let first = keys.config(ROOT, "old", keys.old(), None);
+        let second = keys.config(ROOT, "new", &keys.next, None);
         let fence = JwtGenerationFence::new(db.clone());
-        assert!(fence.ensure_static_allowed().await.is_ok());
         fence.admit(1, &first).await.unwrap();
         fence.admit(2, &second).await.unwrap();
         drop(fence);
@@ -971,40 +1281,41 @@ mod tests {
         restarted.admit(2, &second).await.unwrap();
         assert!(restarted.admit(1, &first).await.is_err());
         assert!(restarted.admit(2, &first).await.is_err());
-        assert!(restarted.ensure_static_allowed().await.is_err());
         assert!(restarted.admit(3, &first).await.is_err());
-        assert!(restarted.admit(3, &config(ROOT, "renamed", OLD, None, None)).await.is_err());
-        assert!(restarted.admit(3, &config(ROOT, "old", THIRD, None, None)).await.is_err());
-        assert!(restarted.admit(3, &config("different-host-root-for-fence-tests-32bytes", "new", NEW, None, None)).await.is_err());
-        restarted.admit(3, &config(ROOT, "third", THIRD, None, None)).await.unwrap();
+        assert!(restarted.admit(3, &keys.config(ROOT, "renamed", keys.old(), None)).await.is_err());
+        assert!(restarted.admit(3, &keys.config(ROOT, "old", &keys.third, None)).await.is_err());
+        assert!(restarted.admit(3, &keys.config("different-host-root-for-fence-tests-32bytes", "new", &keys.next, None)).await.is_err());
+        restarted.admit(3, &keys.config(ROOT, "third", &keys.third, None)).await.unwrap();
         let row = restarted.load().await.unwrap();
-        assert!(!row.payload.contains(OLD) && !row.payload.contains(NEW) && !row.payload.contains(ROOT));
+        assert!(!row.payload.contains("-----BEGIN ") && !row.payload.contains(ROOT));
+        assert!(!row.payload.contains(keys.old().public_pem()));
+        assert!(!row.payload.contains(keys.next.public_pem()));
     }
 
     #[tokio::test]
     async fn staged_keys_promote_once_and_retirement_is_terminal() {
+        let keys = FenceKeys::generate();
         let fence = JwtGenerationFence::new(database().await);
         let until = chrono::Utc::now().timestamp() + 3600;
-        let first = config(ROOT, "old", OLD, None, Some(("old", until)));
+        let first = keys.config(ROOT, "old", keys.old(), None);
         fence.admit(1, &first).await.unwrap();
-        let staged = config(ROOT, "old", OLD, Some(("new", NEW, until)), Some(("old", until)));
+        let staged = keys.config(ROOT, "old", keys.old(), Some(("new", &keys.next, until)));
         fence.admit(2, &staged).await.unwrap();
-        let extended = config(ROOT, "old", OLD, Some(("new", NEW, until + 1)), Some(("old", until)));
+        let extended = keys.config(ROOT, "old", keys.old(), Some(("new", &keys.next, until + 1)));
         assert!(fence.admit(3, &extended).await.is_err());
-        let promoted = config(ROOT, "new", NEW, Some(("old", OLD, until)), None);
+        let promoted = keys.config(ROOT, "new", &keys.next, Some(("old", keys.old(), until)));
         fence.admit(3, &promoted).await.unwrap();
         assert!(fence.admit(4, &staged).await.is_err());
-        let reenabled = config(ROOT, "new", NEW, Some(("old", OLD, until)), Some(("old", until)));
-        assert!(fence.admit(4, &reenabled).await.is_err());
-        let demoted = config(ROOT, "old", OLD, Some(("new", NEW, until)), None);
+        let demoted = keys.config(ROOT, "old", keys.old(), Some(("new", &keys.next, until)));
         assert!(fence.admit(4, &demoted).await.is_err());
-        fence.admit(4, &config(ROOT, "new", NEW, None, None)).await.unwrap();
+        fence.admit(4, &keys.config(ROOT, "new", &keys.next, None)).await.unwrap();
         assert!(fence.admit(5, &promoted).await.is_err());
     }
 
     #[test]
     fn same_reuse_identity_cannot_change_exact_verifier() {
-        let config = config(ROOT, "old", OLD, None, None);
+        let keys = FenceKeys::generate();
+        let config = keys.config(ROOT, "old", keys.old(), None);
         let mac = FenceMac::new(config.secret()).unwrap();
         let current = config.fence_snapshot(|identity| mac.identity(identity)).unwrap();
         let mut next = current.clone();
@@ -1016,38 +1327,39 @@ mod tests {
 
     #[tokio::test]
     async fn missing_or_tampered_authority_is_not_reenrolled() {
+        let keys = FenceKeys::generate();
         let db = database().await;
         let fence = JwtGenerationFence::new(db.clone());
-        let first = config(ROOT, "old", OLD, None, None);
+        let first = keys.config(ROOT, "old", keys.old(), None);
         fence.admit(1, &first).await.unwrap();
         db.execute_unprepared(
             "UPDATE auth_jwt_generation_fence SET tag = '0000000000000000000000000000000000000000000000000000000000000000' WHERE id = 1",
         ).await.unwrap();
         assert!(matches!(fence.admit(1, &first).await, Err(AuthError::Internal(_))));
-        assert!(fence.ensure_static_allowed().await.is_err());
         db.execute_unprepared("DELETE FROM auth_jwt_generation_fence WHERE id = 1")
             .await.unwrap();
-        assert!(fence.ensure_static_allowed().await.is_err());
         assert!(matches!(fence.admit(2, &first).await, Err(AuthError::Internal(_))));
     }
 
     #[tokio::test]
     async fn pre_enrollment_history_cannot_become_a_signer() {
+        let keys = FenceKeys::generate();
         let fence = JwtGenerationFence::new(database().await);
         let until = chrono::Utc::now().timestamp() + 3600;
-        let first = config(ROOT, "old", OLD, Some(("new", NEW, until)), None);
+        let first = keys.config(ROOT, "old", keys.old(), Some(("new", &keys.next, until)));
         fence.admit(1, &first).await.unwrap();
-        let promoted = config(ROOT, "new", NEW, Some(("old", OLD, until)), None);
+        let promoted = keys.config(ROOT, "new", &keys.next, Some(("old", keys.old(), until)));
         assert!(fence.admit(2, &promoted).await.is_err());
     }
 
     #[tokio::test]
     async fn concurrent_same_generation_conflict_has_one_authority() {
+        let keys = FenceKeys::generate();
         let db = database().await;
         let a = JwtGenerationFence::new(db.clone());
         let b = JwtGenerationFence::new(db);
-        let first = config(ROOT, "one", OLD, None, None);
-        let second = config(ROOT, "two", NEW, None, None);
+        let first = keys.config(ROOT, "one", keys.old(), None);
+        let second = keys.config(ROOT, "two", &keys.next, None);
         let (left, right) = tokio::join!(a.admit(1, &first), b.admit(1, &second));
         assert_ne!(left.is_ok(), right.is_ok());
         if left.is_ok() {

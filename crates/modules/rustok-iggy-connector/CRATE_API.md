@@ -4,6 +4,11 @@
 - Implements `RusToKModule` via `IggyConnectorModule`.
 - Implements low-level connection lifecycle management for bundled and external Iggy servers.
 
+The `ExternalConnectorConfig::validate_connection_settings` method validates
+SDK connection-string preconditions without network I/O or returning a
+credential-bearing string. The actual connection-string builder uses the same
+method.
+
 ## Domain Collaborations
 - Collaborates with `rustok-iggy` as the low-level connection and socket streaming layer.
 - Collaborates with `rustok-iggy-connector-admin` for administrative mode selection.

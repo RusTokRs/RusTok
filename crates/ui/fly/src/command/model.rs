@@ -221,6 +221,12 @@ impl History {
         }
     }
 
+    /// Change the entry limit and retain the nearest contiguous history.
+    pub(super) fn set_limit(&mut self, limit: usize) {
+        self.limit = limit.max(1);
+        self.enforce_budget();
+    }
+
     /// Override the budget and evict old entries immediately if it was lowered.
     pub fn with_memory_budget(mut self, memory_budget_bytes: usize) -> Self {
         self.memory_budget_bytes = memory_budget_bytes.max(1);
@@ -336,6 +342,14 @@ impl History {
         self.enforce_budget();
     }
 
+    pub(super) fn peek_undo(&self) -> Option<&HistoryEntry> {
+        self.undo.back()
+    }
+
+    pub(super) fn peek_redo(&self) -> Option<&HistoryEntry> {
+        self.redo.back()
+    }
+
     pub(super) fn pop_undo(&mut self) -> FlyResult<(HistoryEntry, usize)> {
         let entry = self.undo.pop_back().ok_or(FlyError::UndoHistoryEmpty)?;
         let size = self.undo_sizes.pop_back().unwrap_or_default();
@@ -386,7 +400,7 @@ impl ProjectHash {
     pub fn try_from_document(document: &ProjectDocument) -> Option<Self> {
         let bytes = GrapesJsCodec::encode_vec(document)
             .ok()
-            .or_else(|| serde_json::to_vec(&document.project).ok())?;
+            .or_else(|| serde_json::to_vec(&document.project()).ok())?;
         Some(Self::from_bytes(&bytes))
     }
 
@@ -539,7 +553,13 @@ impl RevisionState {
                 "save response does not match the active submitted attempt".to_string(),
             ));
         }
-        self.last_acknowledged_revision = Some(revision.into());
+        let revision = revision.into();
+        if revision.trim().is_empty() {
+            return Err(FlyError::InvalidSaveState(
+                "save response revision is empty".to_string(),
+            ));
+        }
+        self.last_acknowledged_revision = Some(revision);
         self.dirty = self.command_sequence != saving_sequence
             || self.project_hash != submitted_hash;
         self.saving_snapshot = None;

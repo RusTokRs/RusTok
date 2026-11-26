@@ -52,7 +52,7 @@ impl SymbolDescriptor {
 
     /// Raw definition entries in document order with their `flySymbols` path.
     pub fn entries_from_document(document: &ProjectDocument) -> Vec<(String, Value)> {
-        let Some(block) = document.project.extensions.get(FLY_SYMBOLS_FIELD) else {
+        let Some(block) = document.project().extensions.get(FLY_SYMBOLS_FIELD) else {
             return Vec::new();
         };
         if crate::codec::ensure_depth_within_limit(block, crate::MAXIMUM_DECODE_DEPTH).is_err() {
@@ -82,10 +82,10 @@ impl SymbolDescriptor {
 /// Replaces the stored definition list with `symbols` (used by command application).
 pub fn set_symbol_descriptors(document: &mut ProjectDocument, symbols: Vec<Value>) {
     if symbols.is_empty() {
-        document.project.extensions.remove(FLY_SYMBOLS_FIELD);
+        document.project_mut().extensions.remove(FLY_SYMBOLS_FIELD);
     } else {
         document
-            .project
+            .project_mut()
             .extensions
             .insert(FLY_SYMBOLS_FIELD.to_string(), Value::Array(symbols));
     }
@@ -114,7 +114,7 @@ fn apply_symbol_command_inner(
 ) -> FlyResult<()> {
     use crate::SymbolCommand;
 
-    if let Some(block) = document.project.extensions.get(FLY_SYMBOLS_FIELD) {
+    if let Some(block) = document.project().extensions.get(FLY_SYMBOLS_FIELD) {
         crate::codec::ensure_depth_within_limit(block, crate::MAXIMUM_DECODE_DEPTH)
             .map_err(|error| FlyError::InvalidSymbolReference(format!(
                 "symbol catalog exceeds safe JSON depth: {error}"
@@ -136,13 +136,13 @@ fn apply_symbol_command_inner(
                             "symbol asset must be an object with src, source, or url".to_string(),
                         )
                     })?;
-                if let Some(index) = document.project.assets.iter().position(|candidate| {
+                if let Some(index) = document.project().assets.iter().position(|candidate| {
                     crate::AssetDescriptor::from_value(candidate.clone())
                         .is_some_and(|candidate| candidate.id == asset_descriptor.id)
                 }) {
-                    document.project.assets[index] = asset.clone();
+                    document.project_mut().assets[index] = asset.clone();
                 } else {
-                    document.project.assets.push(asset.clone());
+                    document.project_mut().assets.push(asset.clone());
                 }
             }
             let mut entries: Vec<Value> = SymbolDescriptor::entries_from_document(document)
@@ -176,7 +176,7 @@ fn apply_symbol_command_inner(
                 .collect();
             let before = entries.len();
             let mut referenced = 0usize;
-            document.project.visit_components(|component, _, _| {
+            document.project().visit_components(|component, _, _| {
                 if component.symbol_id.as_deref() == Some(symbol_id.as_str()) {
                     referenced += 1;
                 }
@@ -385,7 +385,7 @@ pub fn resolve_symbol_instances(document: &ProjectDocument) -> FlyResult<Project
         page_dom: BTreeSet::new(),
     };
     let mut pending_styles = Vec::new();
-    for page in &mut resolved.project.pages {
+    for page in &mut resolved.project_mut().pages {
         if let Some(root) = page.component.as_mut() {
             identities.page_dom =
                 crate::id_reference::materialized_dom_ids(std::iter::once(&*root));
@@ -399,28 +399,28 @@ pub fn resolve_symbol_instances(document: &ProjectDocument) -> FlyResult<Project
             )?;
         }
     }
-    resolved.project.styles.extend(pending_styles);
+    resolved.project_mut().styles.extend(pending_styles);
     Ok(resolved)
 }
 
 /// True when a page contains at least one unresolved symbol instance.
 pub fn document_has_symbol_instances(document: &ProjectDocument) -> bool {
     let mut found = false;
-    document.project.visit_components(|component, _, _| {
+    document.project().visit_components(|component, _, _| {
         found = found || component.symbol_id.is_some();
     });
     found
 }
 
 fn strict_catalog(document: &ProjectDocument) -> FlyResult<BTreeMap<String, SymbolDescriptor>> {
-    if let Some(block) = document.project.extensions.get(FLY_SYMBOLS_FIELD) {
+    if let Some(block) = document.project().extensions.get(FLY_SYMBOLS_FIELD) {
         crate::codec::ensure_depth_within_limit(block, crate::MAXIMUM_DECODE_DEPTH)
             .map_err(|error| FlyError::InvalidSymbolReference(format!(
                 "symbol catalog exceeds safe JSON depth: {error}"
             )))?;
     }
     if document
-        .project
+        .project()
         .extensions
         .get(FLY_SYMBOLS_FIELD)
         .is_some_and(|block| !block.is_array())
@@ -798,7 +798,7 @@ mod tests {
 
         // Style rules were re-attached with remapped component references and
         // without stale rule identity, so ids derive from the new component ids.
-        let styles = &resolved.project.styles;
+        let styles = &resolved.project().styles;
         assert_eq!(styles.len(), 2);
         let mut targets: Vec<&str> = styles
             .iter()
@@ -995,7 +995,7 @@ mod tests {
             })],
         );
         let mut separate = document_with(instance("contact", "form"), vec![definition.clone()]);
-        separate.project.pages.push(serde_json::from_value(json!({
+        separate.project_mut().pages.push(serde_json::from_value(json!({
             "id": "second", "component": {"id": "other", "type": "section", "attributes": {"id": "contact"}}
         })).unwrap());
         resolve_symbol_instances(&separate).expect("a DOM id on another page does not collide");
@@ -1257,7 +1257,7 @@ mod tests {
     #[test]
     fn invalid_catalog_block_fails_closed() {
         let mut document = document_with(object("root", "wrapper", vec![]), Vec::new());
-        document.project.extensions.insert(
+        document.project_mut().extensions.insert(
             FLY_SYMBOLS_FIELD.to_string(),
             serde_json::json!({"bad": true}),
         );
@@ -1371,7 +1371,7 @@ mod tests {
         assert!(matches!(error, FlyError::SymbolCycle(_)));
         assert_eq!(document, before);
         assert_eq!(document.hash(), before_hash);
-        assert!(document.project.assets.is_empty());
+        assert!(document.project().assets.is_empty());
         assert!(!SymbolDescriptor::catalog_from_document(&document).contains_key("symbol-a"));
     }
 }

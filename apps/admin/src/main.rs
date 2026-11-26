@@ -22,7 +22,10 @@ async fn main() {
     use leptos::prelude::*;
     use leptos_axum::{LeptosRoutes, generate_route_list};
     use rustok_admin::app::{
-        App, DRAFT_SESSION_PRUNE_INTERVAL, admin_security_headers, auth_ssr::verify_auth_snapshot,
+        App, DRAFT_SESSION_PRUNE_INTERVAL, admin_security_headers,
+        auth_ssr::{
+            bearer_tenant_slug_from_headers, bearer_token_from_headers, verify_auth_snapshot,
+        },
         request_auth_snapshot, request_csp_nonce, shell, spawn_draft_session_prune,
         validate_admin_security_profile,
     };
@@ -47,22 +50,25 @@ async fn main() {
         headers: HeaderMap,
         Json(envelope): Json<BrowserIntentEnvelope>,
     ) -> Result<Json<PagesBrowserIntentResponse>, (StatusCode, Json<Value>)> {
-        // One authority per request. An `authorization: Bearer` request is an API client, which
-        // may state its tenant in `x-tenant-slug` (the documented transport contract); a request
-        // without one is the standalone admin's own browser session, and then BOTH the token and
-        // the tenant come from that session alone, and a valid `x-csrf-token` header derived from
-        // the session token is required to protect ambient cookie authentication against cross-origin
-        // request forgery (CLEAN-060 / P1-10).
-        let (token, tenant_slug) = match bearer_token(&headers) {
-            Some(token) => {
-                let tenant_slug = header_value(&headers, "x-tenant-slug")
-                    .or_else(|| auth.session.as_ref().map(|session| session.tenant.clone()))
-                    .ok_or_else(|| {
-                        auth_error(StatusCode::BAD_REQUEST, "Page Builder tenant is missing")
-                    })?;
-                (token, tenant_slug)
-            }
-            None => {
+        // One authority per request. A Bearer API request must provide its own tenant header;
+        // it never inherits the tenant from an ambient browser session. A request without an
+        // Authorization header is the standalone admin's browser session and requires a valid
+        // `x-csrf-token` derived from that verified session to protect cookie authentication.
+        let (token, tenant_slug) = if headers.contains_key(AUTHORIZATION) {
+            let token = bearer_token_from_headers(&headers).ok_or_else(|| {
+                auth_error(
+                    StatusCode::UNAUTHORIZED,
+                    "Authorization header must contain one valid Bearer token",
+                )
+            })?;
+            let tenant_slug = bearer_tenant_slug_from_headers(&headers).ok_or_else(|| {
+                auth_error(
+                    StatusCode::BAD_REQUEST,
+                    "Page Builder Bearer authentication requires one x-tenant-slug header",
+                )
+            })?;
+            (token, tenant_slug)
+        } else {
                 let session = auth.session.as_ref().ok_or_else(|| {
                     auth_error(
                         StatusCode::UNAUTHORIZED,
@@ -142,16 +148,6 @@ async fn main() {
             .await
             .map(Json)
             .map_err(page_builder_error)
-    }
-
-    fn bearer_token(headers: &HeaderMap) -> Option<String> {
-        headers
-            .get(AUTHORIZATION)
-            .and_then(|value| value.to_str().ok())
-            .and_then(|value| value.strip_prefix("Bearer "))
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToString::to_string)
     }
 
     fn header_value(headers: &HeaderMap, name: &str) -> Option<String> {

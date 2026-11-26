@@ -1,5 +1,6 @@
 use async_graphql::Positioned;
-use async_graphql::parser::types::{ExecutableDocument, OperationDefinition};
+use async_graphql::parser::types::{ExecutableDocument, Field, OperationDefinition, Selection, SelectionSet};
+use std::{collections::BTreeSet, ops::ControlFlow};
 
 /// Return only the GraphQL operation selected by the request.
 ///
@@ -27,6 +28,48 @@ pub(crate) fn selected_operations<'a>(
             _ => Vec::new(),
         },
     }
+}
+
+/// Walk the selected operation's fields before GraphQL validates its fragment graph.
+/// The explicit worklist avoids consuming the call stack on long fragment chains.
+/// A fragment is expanded once per traversal state (e.g. inside/outside Forum).
+/// Returning Continue(None) visits only the current field, Continue(Some(state))
+/// also visits its children, and Break(()) stops classification early.
+fn visit_selection_fields<'a, S: Copy + Ord>(
+    document: &'a ExecutableDocument,
+    selection_set: &'a SelectionSet,
+    state: S,
+    mut visit: impl FnMut(&'a Field, S) -> ControlFlow<(), Option<S>>,
+) -> ControlFlow<()> {
+    let mut pending = vec![(selection_set.items.iter(), state)];
+    let mut visited_fragments = BTreeSet::new();
+
+    while let Some((mut selections, state)) = pending.pop() {
+        let Some(selection) = selections.next() else {
+            continue;
+        };
+        // Keep the parent continuation below its child to preserve document order.
+        pending.push((selections, state));
+        match &selection.node {
+            Selection::Field(field) => {
+                if let Some(child_state) = visit(&field.node, state)? {
+                    pending.push((field.node.selection_set.node.items.iter(), child_state));
+                }
+            }
+            Selection::FragmentSpread(fragment) => {
+                let name = &fragment.node.fragment_name.node;
+                if visited_fragments.insert((name.as_str(), state))
+                    && let Some(definition) = document.fragments.get(name)
+                {
+                    pending.push((definition.node.selection_set.node.items.iter(), state));
+                }
+            }
+            Selection::InlineFragment(fragment) => {
+                pending.push((fragment.node.selection_set.node.items.iter(), state));
+            }
+        }
+    }
+    ControlFlow::Continue(())
 }
 
 mod artifact_lifecycle;
@@ -70,6 +113,74 @@ pub mod transition_lifecycle;
 pub mod types;
 
 pub use schema::{AppSchema, GraphqlSchemaDependencies, SharedGraphqlSchema, build_schema};
+
+#[cfg(test)]
+mod selection_walk_tests {
+    use super::{selected_operations, visit_selection_fields};
+    use std::ops::ControlFlow;
+
+    #[test]
+    fn long_fragment_chain_is_classified_without_recursive_stack_growth() {
+        let mut query = String::from("query Protected { ...F0 }");
+        for index in 0..4096 {
+            query.push_str(&format!(" fragment F{index} on Query {{ ...F{} }}", index + 1));
+        }
+        query.push_str(" fragment F4096 on Query { protectedField }");
+        let document = async_graphql::parser::parse_query(&query).expect("document parses");
+        let operations = selected_operations(&document, Some("Protected"));
+        let result = visit_selection_fields(
+            &document,
+            &operations[0].node.selection_set.node,
+            (),
+            |field, ()| {
+                if field.name.node.as_str() == "protectedField" {
+                    ControlFlow::Break(())
+                } else {
+                    ControlFlow::Continue(None)
+                }
+            },
+        );
+        assert!(result.is_break());
+    }
+
+    #[test]
+    fn fragment_visits_preserve_context_and_skip_field_children_when_requested() {
+        let document = async_graphql::parser::parse_query(
+            "query { ...Shared root { ...Shared } } fragment Shared on Query { leaf ...Shared }",
+        )
+        .expect("document parses");
+        let operations = selected_operations(&document, None);
+        let mut contexts = Vec::new();
+        let result = visit_selection_fields(
+            &document,
+            &operations[0].node.selection_set.node,
+            false,
+            |field, inside| {
+                match field.name.node.as_str() {
+                    "leaf" => contexts.push(inside),
+                    "root" => return ControlFlow::Continue(Some(true)),
+                    _ => unreachable!(),
+                }
+                ControlFlow::Continue(None)
+            },
+        );
+        assert!(result.is_continue());
+        assert_eq!(contexts, vec![false, true]);
+
+        let mut root_fields = Vec::new();
+        let result = visit_selection_fields(
+            &document,
+            &operations[0].node.selection_set.node,
+            (),
+            |field, ()| {
+                root_fields.push(field.name.node.as_str());
+                ControlFlow::Continue(None)
+            },
+        );
+        assert!(result.is_continue());
+        assert_eq!(root_fields, vec!["leaf", "root"]);
+    }
+}
 
 #[cfg(test)]
 mod operation_selection_tests {

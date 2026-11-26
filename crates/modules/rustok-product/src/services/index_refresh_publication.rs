@@ -80,6 +80,7 @@ impl ProductIndexRefreshCanonicalWriter {
             record.root_event_id(),
             record.tenant_id(),
             record.product_id(),
+            None,
             event,
         )
         .await
@@ -109,6 +110,7 @@ impl ProductIndexRefreshCanonicalWriter {
             record.root_event_id(),
             record.tenant_id(),
             record.product_id(),
+            Some(record.variant_id()),
             event,
         )
         .await
@@ -121,13 +123,14 @@ async fn publish_once<E>(
     root_event_id: Uuid,
     tenant_id: Uuid,
     product_id: Uuid,
+    variant_id: Option<Uuid>,
     event: E,
 ) -> Result<Uuid, ProductIndexRefreshPublicationError>
 where
     E: ProductIndexRefreshContract,
 {
     let actor_id =
-        load_product_root_actor(transaction, root_event_id, tenant_id, product_id).await?;
+        load_product_root_actor(transaction, root_event_id, tenant_id, product_id, variant_id).await?;
 
     TransactionalEventBus::publish_contract_once_direct_in_tx_with_envelope_id_and_causation(
         transaction,
@@ -146,6 +149,7 @@ async fn load_product_root_actor(
     root_event_id: Uuid,
     tenant_id: Uuid,
     product_id: Uuid,
+    variant_id: Option<Uuid>,
 ) -> Result<Option<Uuid>, ProductIndexRefreshPublicationError> {
     let stored = SysEvents::find_by_id(root_event_id)
         .one(transaction)
@@ -179,6 +183,10 @@ async fn load_product_root_actor(
         | DomainEvent::VariantCreated { product_id, .. }
         | DomainEvent::VariantUpdated { product_id, .. }
         | DomainEvent::VariantDeleted { product_id, .. } => *product_id,
+        // Pricing is a valid cause only for the exact SKU whose catalog
+        // predecessor advanced, never for a locale or sibling SKU.
+        DomainEvent::PriceUpdated { product_id, variant_id: priced_variant, .. }
+            if variant_id == Some(*priced_variant) => *product_id,
         _ => return Err(ProductIndexRefreshPublicationError::CausationMismatch),
     };
     if root_product_id != product_id {

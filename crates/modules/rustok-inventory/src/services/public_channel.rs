@@ -1,10 +1,14 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use rustok_commerce_foundation::{
-    entities::{inventory_item, inventory_level, stock_location},
+    entities::{product, product_variant, stock_location},
     error::{CommerceError, CommerceResult},
 };
-use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, FromQueryResult, QueryFilter,
+    QueryOrder, QuerySelect,
+};
+use sea_orm::entity::prelude::DateTimeWithTimeZone;
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -28,11 +32,12 @@ pub fn extract_allowed_channel_slugs(metadata: &Value) -> Vec<String> {
 
     let mut normalized = BTreeSet::new();
     for value in values {
-        if let Some(slug) = value
-            .as_str()
-            .and_then(|value| normalize_public_channel_slug(Some(value)))
-        {
-            normalized.insert(slug);
+        if let Some(raw_slug) = value.as_str() {
+            if let Some(slug) = normalize_public_channel_slug(Some(raw_slug))
+                .filter(|slug| slug.as_str() == raw_slug)
+            {
+                normalized.insert(slug);
+            }
         }
     }
 
@@ -61,7 +66,129 @@ pub fn is_metadata_visible_for_public_channel(
     public_channel_slug: Option<&str>,
 ) -> bool {
     let allowed_channel_slugs = extract_allowed_channel_slugs(metadata);
+    let explicit_allowlist = metadata
+        .as_object()
+        .and_then(|object| object.get("channel_visibility"))
+        .and_then(Value::as_object)
+        .and_then(|object| object.get("allowed_channel_slugs"));
+    let malformed_nonempty_allowlist = match explicit_allowlist {
+        Some(Value::Array(values)) => !values.is_empty() && allowed_channel_slugs.is_empty(),
+        Some(_) => true,
+        None => false,
+    };
+    if malformed_nonempty_allowlist {
+        return false;
+    }
+
     is_allowlist_visible_for_public_channel(&allowed_channel_slugs, public_channel_slug)
+}
+
+pub(super) async fn require_tenant_variant_identities<C: ConnectionTrait>(
+    conn: &C,
+    tenant_id: Uuid,
+    variant_ids: &[Uuid],
+) -> Result<(), sea_orm::DbErr> {
+    let requested = variant_ids.iter().copied().collect::<BTreeSet<_>>();
+    let expected = requested.iter().copied().collect::<Vec<_>>();
+    let actual = product_variant::Entity::find()
+        .inner_join(product::Entity)
+        .select_only()
+        .column(product_variant::Column::Id)
+        .filter(product_variant::Column::TenantId.eq(tenant_id))
+        .filter(product::Column::TenantId.eq(tenant_id))
+        .filter(product_variant::Column::Id.is_in(requested.iter().copied()))
+        .order_by_asc(product_variant::Column::Id)
+        .into_tuple::<Uuid>()
+        .all(conn)
+        .await?;
+    if actual != expected {
+        return Err(sea_orm::DbErr::Custom(
+            "Inventory variant identities are not all owned by the requested tenant".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// Minimal location data needed by Inventory quantity projections. Avoid loading
+/// address/contact fields merely to prove a tenant-owned level binding.
+#[derive(Debug, Clone, FromQueryResult)]
+pub(super) struct TenantLocationProjection {
+    pub(super) id: Uuid,
+    pub(super) tenant_id: Uuid,
+    pub(super) deleted_at: Option<DateTimeWithTimeZone>,
+    pub(super) metadata: Value,
+}
+
+fn tenant_location_identity_error() -> sea_orm::DbErr {
+    sea_orm::DbErr::Custom(
+        "Inventory level references a missing or foreign tenant location".into(),
+    )
+}
+
+fn validate_tenant_location_rows(
+    tenant_id: Uuid,
+    expected_ids: &BTreeSet<Uuid>,
+    rows: Vec<TenantLocationProjection>,
+) -> Result<HashMap<Uuid, TenantLocationProjection>, sea_orm::DbErr> {
+    if tenant_id.is_nil() || expected_ids.iter().any(|id| id.is_nil()) {
+        return Err(tenant_location_identity_error());
+    }
+
+    let mut locations = HashMap::with_capacity(expected_ids.len());
+    for location in rows {
+        if location.id.is_nil()
+            || location.tenant_id != tenant_id
+            || !expected_ids.contains(&location.id)
+            || locations.insert(location.id, location).is_some()
+        {
+            return Err(tenant_location_identity_error());
+        }
+    }
+    if locations.len() != expected_ids.len() {
+        return Err(tenant_location_identity_error());
+    }
+    Ok(locations)
+}
+
+/// Proves every saved level location belongs to the requested tenant.
+/// Archived same-tenant locations are returned so admin totals can retain them;
+/// storefront callers apply active/visibility policy only after this proof.
+pub(super) async fn load_tenant_locations<C: ConnectionTrait>(
+    conn: &C,
+    tenant_id: Uuid,
+    location_ids: &BTreeSet<Uuid>,
+) -> Result<HashMap<Uuid, TenantLocationProjection>, sea_orm::DbErr> {
+    if tenant_id.is_nil() || location_ids.iter().any(|id| id.is_nil()) {
+        return Err(tenant_location_identity_error());
+    }
+    if location_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let requested = location_ids.iter().copied().collect::<Vec<_>>();
+    let mut locations = HashMap::with_capacity(requested.len());
+    for chunk in requested.chunks(256) {
+        let expected = chunk.iter().copied().collect::<BTreeSet<_>>();
+        let rows = stock_location::Entity::find()
+            .select_only()
+            .column(stock_location::Column::Id)
+            .column(stock_location::Column::TenantId)
+            .column(stock_location::Column::DeletedAt)
+            .column(stock_location::Column::Metadata)
+            .filter(stock_location::Column::TenantId.eq(tenant_id))
+            .filter(stock_location::Column::Id.is_in(chunk.iter().copied()))
+            .order_by_asc(stock_location::Column::Id)
+            .limit((chunk.len() + 1) as u64)
+            .into_model::<TenantLocationProjection>()
+            .all(conn)
+            .await?;
+        locations.extend(validate_tenant_location_rows(tenant_id, &expected, rows)?);
+    }
+
+    if locations.len() != location_ids.len() {
+        return Err(tenant_location_identity_error());
+    }
+    Ok(locations)
 }
 
 /// Validates request-level storefront inventory semantics before any DB lookup.
@@ -88,24 +215,43 @@ pub async fn check_variant_availability_for_public_channel(
     requested_quantity: i32,
     public_channel_slug: Option<&str>,
 ) -> CommerceResult<bool> {
+    // The projection input is retained for source compatibility, not authority.
+    // Its policy can be stale or supplied by an untrusted caller.
+    check_current_variant_availability_for_public_channel(
+        db, tenant_id, variant.variant_id, requested_quantity, public_channel_slug,
+    ).await
+}
+
+pub(super) async fn check_current_variant_availability_for_public_channel(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    variant_id: Uuid,
+    requested_quantity: i32,
+    public_channel_slug: Option<&str>,
+) -> CommerceResult<bool> {
     if tenant_id.is_nil() {
         return Err(CommerceError::Validation(
             "tenant_id cannot be nil".to_string(),
         ));
     }
-    if variant.variant_id.is_nil() {
+    if variant_id.is_nil() {
         return Err(CommerceError::Validation(
             "variant_id cannot be nil".to_string(),
         ));
     }
-    if check_public_channel_inventory_request(variant.inventory_policy, requested_quantity)? {
+    // Validate quantity before any lookup, regardless of the saved policy.
+    check_public_channel_inventory_request("deny", requested_quantity)?;
+    let variant = crate::product_port::find_variant_info_from_conn(db, tenant_id, variant_id)
+        .await?
+        .ok_or(CommerceError::VariantNotFound(variant_id))?;
+    if check_public_channel_inventory_request(&variant.inventory_policy, requested_quantity)? {
         return Ok(true);
     }
 
     let available_inventory = load_available_inventory_for_variant_in_public_channel(
         db,
         tenant_id,
-        variant.variant_id,
+        variant_id,
         public_channel_slug,
     )
     .await?;
@@ -202,41 +348,29 @@ where
         return Ok(HashMap::new());
     }
 
-    let inventory_items = inventory_item::Entity::find()
-        .filter(inventory_item::Column::VariantId.is_in(variant_ids.iter().copied()))
-        .all(db)
-        .await?;
-    if inventory_items.is_empty() {
-        return Ok(HashMap::new());
-    }
+    // INVARIANT: prove every Product Variant belongs to this tenant before querying
+    // tenant-less Inventory items or levels. A foreign/stale ID is not empty stock.
+    require_tenant_variant_identities(db, tenant_id, variant_ids).await?;
 
-    let item_to_variant: HashMap<Uuid, Uuid> = inventory_items
-        .iter()
-        .map(|item| (item.id, item.variant_id))
-        .collect();
-
-    let levels = inventory_level::Entity::find()
-        .filter(inventory_level::Column::InventoryItemId.is_in(item_to_variant.keys().copied()))
-        .all(db)
-        .await?;
+    let item_to_variant = super::quantity::load_projection_item_bindings(db, variant_ids).await?;
+    let levels = super::quantity::load_projection_levels(db, &item_to_variant).await?;
     if levels.is_empty() {
-        return Ok(HashMap::new());
+        return super::quantity::available_by_variant(&item_to_variant, std::iter::empty());
     }
 
-    let locations = stock_location::Entity::find()
-        .filter(stock_location::Column::TenantId.eq(tenant_id))
-        .filter(stock_location::Column::DeletedAt.is_null())
-        .filter(stock_location::Column::Id.is_in(levels.iter().map(|level| level.location_id)))
-        .all(db)
-        .await?;
-
-    let visible_location_ids: HashSet<Uuid> = locations
+    let location_ids = levels
+        .iter()
+        .map(|level| level.location_id)
+        .collect::<BTreeSet<_>>();
+    let locations = load_tenant_locations(db, tenant_id, &location_ids).await?;
+    let visible_location_ids = locations
         .into_iter()
-        .filter(|location| {
-            is_metadata_visible_for_public_channel(&location.metadata, public_channel_slug)
+        .filter_map(|(location_id, location)| {
+            (location.deleted_at.is_none()
+                && is_metadata_visible_for_public_channel(&location.metadata, public_channel_slug))
+            .then_some(location_id)
         })
-        .map(|location| location.id)
-        .collect();
+        .collect::<HashSet<_>>();
 
     super::quantity::available_by_variant(
         &item_to_variant,
@@ -280,11 +414,39 @@ mod tests {
         PublicChannelInventoryVariantProjectionInput, check_public_channel_inventory_request,
         extract_allowed_channel_slugs, is_allowlist_visible_for_public_channel,
         is_metadata_visible_for_public_channel, normalize_public_channel_slug,
-        public_channel_inventory_projection_map,
+        public_channel_inventory_projection_map, validate_tenant_location_rows,
+        TenantLocationProjection,
     };
 
-    use std::collections::HashMap;
+    use std::collections::{BTreeSet, HashMap};
+    use chrono::Utc;
     use uuid::Uuid;
+
+    #[test]
+    fn tenant_location_projection_requires_complete_same_tenant_bindings() {
+        let tenant_id = Uuid::new_v4();
+        let location_id = Uuid::new_v4();
+        let expected = BTreeSet::from([location_id]);
+
+        let foreign = TenantLocationProjection {
+            id: location_id,
+            tenant_id: Uuid::new_v4(),
+            deleted_at: None,
+            metadata: serde_json::json!({}),
+        };
+        assert!(validate_tenant_location_rows(tenant_id, &expected, vec![foreign]).is_err());
+        assert!(validate_tenant_location_rows(tenant_id, &expected, Vec::new()).is_err());
+
+        let archived = TenantLocationProjection {
+            id: location_id,
+            tenant_id,
+            deleted_at: Some(Utc::now().into()),
+            metadata: serde_json::json!({}),
+        };
+        let loaded = validate_tenant_location_rows(tenant_id, &expected, vec![archived])
+            .expect("an archived same-tenant location remains valid admin identity");
+        assert!(loaded.get(&location_id).is_some_and(|location| location.deleted_at.is_some()));
+    }
 
     #[test]
     fn normalize_public_channel_slug_trims_and_lowercases() {
@@ -332,10 +494,10 @@ mod tests {
     }
 
     #[test]
-    fn metadata_visibility_uses_normalized_allowlist() {
+    fn metadata_visibility_uses_canonical_allowlist_and_normalized_request() {
         let metadata = serde_json::json!({
             "channel_visibility": {
-                "allowed_channel_slugs": ["Web"]
+                "allowed_channel_slugs": ["web"]
             }
         });
 
@@ -348,6 +510,96 @@ mod tests {
             Some("mobile")
         ));
         assert!(!is_metadata_visible_for_public_channel(&metadata, None));
+    }
+
+    #[test]
+    fn malformed_nonempty_channel_allowlists_fail_closed() {
+        let invalid_values = serde_json::json!({
+            "channel_visibility": { "allowed_channel_slugs": ["", 42, null] }
+        });
+        let noncanonical_values = serde_json::json!({
+            "channel_visibility": { "allowed_channel_slugs": ["WEB"] }
+        });
+        let wrong_shape = serde_json::json!({
+            "channel_visibility": { "allowed_channel_slugs": "web" }
+        });
+        let null_values = serde_json::json!({
+            "channel_visibility": { "allowed_channel_slugs": null }
+        });
+        let valid_values = serde_json::json!({
+            "channel_visibility": { "allowed_channel_slugs": ["web"] }
+        });
+
+        for metadata in [&invalid_values, &noncanonical_values, &wrong_shape, &null_values] {
+            assert!(!is_metadata_visible_for_public_channel(metadata, Some("web")));
+            assert!(!is_metadata_visible_for_public_channel(metadata, None));
+        }
+        assert!(is_metadata_visible_for_public_channel(&valid_values, Some("web")));
+        assert!(!is_metadata_visible_for_public_channel(&valid_values, Some("mobile")));
+        assert!(is_metadata_visible_for_public_channel(
+            &serde_json::json!({ "channel_visibility": { "allowed_channel_slugs": [] } }),
+            None,
+        ));
+        assert!(is_metadata_visible_for_public_channel(&serde_json::json!({}), Some("web")));
+    }
+
+    #[tokio::test]
+    async fn public_channel_stock_reads_prove_tenant_variant_identity_before_inventory_lookup() {
+        use sea_orm::{ConnectionTrait, Database, DatabaseBackend, Statement};
+
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("connect tenant identity fixture");
+        db.execute_raw(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            "CREATE TABLE products (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL)",
+        ))
+        .await
+        .expect("create Product identity table");
+        db.execute_raw(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            "CREATE TABLE product_variants (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL, product_id TEXT NOT NULL)",
+        ))
+        .await
+        .expect("create ProductVariant identity table");
+        let tenant_id = Uuid::new_v4();
+        let foreign_tenant_id = Uuid::new_v4();
+        let foreign_product_id = Uuid::new_v4();
+        let foreign_variant_id = Uuid::new_v4();
+        db.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "INSERT INTO products (id, tenant_id) VALUES (?, ?)",
+            [foreign_product_id.into(), foreign_tenant_id.into()],
+        ))
+        .await
+        .expect("insert foreign Product identity");
+        db.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "INSERT INTO product_variants (id, tenant_id, product_id) VALUES (?, ?, ?)",
+            [foreign_variant_id.into(), tenant_id.into(), foreign_product_id.into()],
+        ))
+        .await
+        .expect("insert tenant Variant with foreign parent");
+
+        let error = load_available_inventory_by_variant_for_public_channel(
+            &db,
+            tenant_id,
+            &[foreign_variant_id],
+            Some("web"),
+        )
+        .await
+        .expect_err("foreign Variant must fail before tenantless Inventory lookup");
+        assert!(error.to_string().contains("not all owned by the requested tenant"));
+
+        let unscoped_error =
+            crate::services::bootstrap::BootstrapService::load_available_quantities(
+                &db,
+                tenant_id,
+                &[foreign_variant_id],
+            )
+            .await
+            .expect_err("admin projection must prove the Variant parent tenant too");
+        assert!(unscoped_error.to_string().contains("not all owned by the requested tenant"));
     }
 
     #[test]

@@ -441,11 +441,18 @@ pub(crate) async fn load_post_tags_map(
         .await?;
 
     for relation in relations {
+        // A relation can point at a Taxonomy term that no longer exists (a term
+        // deleted outside Blog, or a partial cleanup after a crash). A single
+        // orphan row must not take down every post-list read: degrade by
+        // skipping the missing tag and logging it, keeping the rest of the
+        // projection intact.
         let Some(term) = names.get(&relation.tag_id) else {
-            return Err(BlogError::invariant(format!(
-                "Blog post {} references missing Taxonomy tag {}",
-                relation.post_id, relation.tag_id
-            )));
+            tracing::warn!(
+                post_id = %relation.post_id,
+                tag_id = %relation.tag_id,
+                "Blog post references a missing Taxonomy tag; skipping it in the tag projection"
+            );
+            continue;
         };
         tags_by_post
             .entry(relation.post_id)

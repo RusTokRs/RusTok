@@ -59,18 +59,12 @@ fn derive_follow_up_operation_id(merge_operation_id: Uuid, domain_tag: &str) -> 
 
 /// Runs every merge follow-up reconciliation owner inside `txn`.
 ///
-/// Same-category merges reconcile all five topic-scoped relations; the source
-/// row is the archived locked tombstone and the retained target accepts the
-/// relations under each owner's conflict policy (idempotent replay, exact-hash
-/// equality, source-emptiness verification). Cross-category merges keep the
-/// relations stranded on the tombstone on purpose: audience/subscription
-/// semantics are category-local and the per-domain owners reject category
-/// mismatches — moving them there would silently change membership meaning.
-/// The merge receipt (`forum.topic.merged` event plus the merge operation row)
-/// keeps the operator-facing record, so the reconciliation remains replayable
-/// through the public per-domain entry points whenever a later process moves
-/// the topics back into one category (the durable merge receipt is the
-/// recovery hook for that repair).
+/// Same-category and cross-category merges both reconcile all five topic-scoped
+/// relations in this transaction. The source row is the archived locked
+/// tombstone (and may remain in its original category); the retained target
+/// accepts the relations under each owner's conflict policy. Per-domain owners
+/// bind the merge receipt to the retained target's category rather than
+/// requiring the source tombstone to share that category.
 #[instrument(skip_all)]
 pub(crate) async fn reconcile_topic_merge_follow_up_relations_in_tx(
     db: &DatabaseConnection,
@@ -79,12 +73,7 @@ pub(crate) async fn reconcile_topic_merge_follow_up_relations_in_tx(
     tenant_id: Uuid,
     merge_operation_id: Uuid,
     actor_id: Uuid,
-    is_cross_category: bool,
 ) -> ForumResult<()> {
-    if is_cross_category {
-        return Ok(());
-    }
-
     ForumTopicMergeSubscriptionReconciliationService::new(db.clone())
         .reconcile_in_tx(
             txn,

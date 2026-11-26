@@ -2,9 +2,7 @@ use crate::{
     ComponentObject, ProjectDocument, RuntimeLocaleSelection, ValidationDiagnostic,
     ValidationSeverity,
     component_visit::{visit_project_components, visit_project_components_mut},
-    interaction_route::{
-        InteractionRouteCatalog, build_interaction_href, interaction_locale_candidates,
-    },
+    interaction_route::{InteractionRouteCatalog, PageTargetError, build_interaction_href},
     safe_url::normalize_safe_url,
 };
 use serde::{Deserialize, Serialize};
@@ -74,7 +72,7 @@ struct InternalLinkCounters {
 
 struct InternalLinkResolution<'a> {
     routes: &'a InteractionRouteCatalog,
-    locale_candidates: &'a [String],
+    locale: &'a RuntimeLocaleSelection,
 }
 
 pub fn materialize_internal_page_links(
@@ -82,17 +80,25 @@ pub fn materialize_internal_page_links(
     context: &Value,
 ) -> InternalLinkMaterialization {
     let routes = InteractionRouteCatalog::from_document(document);
-    let locale_candidates =
-        interaction_locale_candidates(&RuntimeLocaleSelection::from_context(context));
+    let policy_context = crate::materialize_project_locale_context(document, context).context;
+    materialize_internal_page_links_with_routes(document, &policy_context, &routes)
+}
+
+pub(crate) fn materialize_internal_page_links_with_routes(
+    document: &ProjectDocument,
+    context: &Value,
+    routes: &InteractionRouteCatalog,
+) -> InternalLinkMaterialization {
+    let locale = RuntimeLocaleSelection::from_context(context);
     let resolution = InternalLinkResolution {
-        routes: &routes,
-        locale_candidates: &locale_candidates,
+        routes,
+        locale: &locale,
     };
     let mut materialized = document.clone();
     let mut diagnostics = Vec::new();
     let mut counters = InternalLinkCounters::default();
 
-    visit_project_components_mut(&mut materialized.project, |component, visit| {
+    visit_project_components_mut(materialized.project_mut(), |component, visit| {
         materialize_component(
             component,
             visit.path(),
@@ -113,10 +119,17 @@ pub fn materialize_internal_page_links(
 
 pub fn validate_internal_page_links(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
     let routes = InteractionRouteCatalog::from_document(document);
+    validate_internal_page_links_with_routes(document, &routes)
+}
+
+pub(crate) fn validate_internal_page_links_with_routes(
+    document: &ProjectDocument,
+    routes: &InteractionRouteCatalog,
+) -> Vec<ValidationDiagnostic> {
     let mut diagnostics = Vec::new();
 
-    visit_project_components(&document.project, |component, visit| {
-        validate_component(component, visit.path(), &routes, &mut diagnostics);
+    visit_project_components(document.project(), |component, visit| {
+        validate_component(component, visit.path(), routes, &mut diagnostics);
     });
     diagnostics
 }
@@ -161,36 +174,47 @@ fn materialize_component(
         }
     };
 
-    let Some(target_page_index) = resolution.routes.page_index(&link.page_id) else {
-        record_unresolved(
-            diagnostics,
-            counters,
-            path,
-            component_id,
-            "internal_page_link_target_missing",
-            format!(
-                "internal page link target `{}` does not exist",
-                link.page_id
-            ),
-        );
-        return;
+    let target_page_index = match resolution.routes.page_index(&link.page_id) {
+        Ok(index) => index,
+        Err(error) => {
+            record_unresolved(
+                diagnostics,
+                counters,
+                path,
+                component_id,
+                page_target_diagnostic_code(&error),
+                error.to_string(),
+            );
+            return;
+        }
     };
 
-    if let Some(slug) = resolution
-        .routes
-        .slug_for(target_page_index, resolution.locale_candidates)
-    {
-        apply_href(
-            component,
-            build_interaction_href(
-                link.base_path.as_deref(),
-                slug,
-                link.query.as_deref(),
-                link.fragment.as_deref(),
-            ),
-        );
-        counters.resolved = counters.resolved.saturating_add(1);
-        return;
+    match resolution.routes.slug_for(target_page_index, resolution.locale) {
+        Ok(Some(slug)) => {
+            apply_href(
+                component,
+                build_interaction_href(
+                    link.base_path.as_deref(),
+                    &slug,
+                    link.query.as_deref(),
+                    link.fragment.as_deref(),
+                ),
+            );
+            counters.resolved = counters.resolved.saturating_add(1);
+            return;
+        }
+        Ok(None) => {}
+        Err(error) => {
+            record_unresolved(
+                diagnostics,
+                counters,
+                path,
+                component_id,
+                "internal_page_link_route_conflict",
+                error.to_string(),
+            );
+            return;
+        }
     }
 
     if let Some(fallback_href) = link.fallback_href {
@@ -259,8 +283,8 @@ fn validate_component(
     };
 
     match routes.page_index(&link.page_id) {
-        Some(page_index) if routes.has_route(page_index) => {}
-        Some(_) if link.fallback_href.is_some() => diagnostics.push(link_diagnostic(
+        Ok(page_index) if routes.has_route(page_index) => {}
+        Ok(_) if link.fallback_href.is_some() => diagnostics.push(link_diagnostic(
             ValidationSeverity::Info,
             "internal_page_link_route_missing_with_fallback",
             path,
@@ -270,7 +294,7 @@ fn validate_component(
                 link.page_id
             ),
         )),
-        Some(_) => diagnostics.push(link_diagnostic(
+        Ok(_) => diagnostics.push(link_diagnostic(
             ValidationSeverity::Warning,
             "internal_page_link_route_missing",
             path,
@@ -280,16 +304,20 @@ fn validate_component(
                 link.page_id
             ),
         )),
-        None => diagnostics.push(link_diagnostic(
+        Err(error) => diagnostics.push(link_diagnostic(
             ValidationSeverity::Error,
-            "internal_page_link_target_missing",
+            page_target_diagnostic_code(&error),
             path,
             component_id,
-            format!(
-                "internal page link target `{}` does not exist",
-                link.page_id
-            ),
+            error.to_string(),
         )),
+    }
+}
+
+fn page_target_diagnostic_code(error: &PageTargetError) -> &'static str {
+    match error {
+        PageTargetError::Missing(_) => "internal_page_link_target_missing",
+        PageTargetError::Ambiguous(_) => "internal_page_link_target_ambiguous",
     }
 }
 
@@ -319,9 +347,11 @@ fn record_unresolved(
 }
 
 fn clear_internal_link_materialization(component: &mut ComponentObject) {
-    for attribute in GENERATED_INTERNAL_LINK_ATTRIBUTES {
-        component.attributes.remove(*attribute);
-    }
+    component.attributes.retain(|name, _| {
+        !GENERATED_INTERNAL_LINK_ATTRIBUTES
+            .iter()
+            .any(|attribute| name.eq_ignore_ascii_case(attribute))
+    });
 }
 
 fn normalize_base_path(value: Option<&str>) -> Result<Option<String>, String> {
@@ -477,7 +507,7 @@ mod tests {
     #[test]
     fn fallback_href_is_used_when_target_page_has_no_slug() {
         let mut document = document();
-        document.project.pages[1]
+        document.project_mut().pages[1]
             .extensions
             .remove(crate::FLY_PAGE_METADATA_FIELD);
         document

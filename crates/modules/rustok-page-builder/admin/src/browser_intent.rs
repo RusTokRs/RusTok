@@ -1237,7 +1237,7 @@ mod tests {
         .expect("locale policy");
         assert!(result.dirty);
         assert_eq!(
-            controller.editor().document().project.extensions["flyLocales"]["default_locale"],
+            controller.editor().document().project().extensions["flyLocales"]["default_locale"],
             "ru"
         );
     }
@@ -1269,7 +1269,7 @@ mod tests {
         .expect("localized metadata");
         assert!(result.dirty);
         assert!(
-            controller.editor().document().project.pages[0].extensions["flyPageMeta"]["title"]
+            controller.editor().document().project().pages[0].extensions["flyPageMeta"]["title"]
                 ["$localized"]
                 .is_object()
         );

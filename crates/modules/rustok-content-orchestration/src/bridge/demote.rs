@@ -151,7 +151,7 @@ pub(crate) async fn demote_post_to_topic(
     .await?;
 
     delete_comments_for_post_in_tx(txn, tenant_id, post.id).await?;
-    delete_demoted_post_in_tx(blog_taxonomy, txn, tenant_id, post.id)
+    delete_demoted_post_in_tx(blog_taxonomy, txn, tenant_id, post.id, actor_id)
         .await
         .map_err(crate::errors::blog_error_to_content_error)?;
 

@@ -100,7 +100,7 @@ pub(crate) fn ensure_depth_within_limit(value: &Value, maximum: usize) -> FlyRes
 /// This used to deep-clone the entire project on every encode — and encode runs on every hash,
 /// every snapshot and every save.
 fn canonical_project(document: &ProjectDocument) -> &GrapesProject {
-    &document.project
+    &document.project()
 }
 
 #[cfg(test)]
@@ -126,9 +126,9 @@ mod tests {
         }))
         .expect("decode");
 
-        assert!(document.project.pages[0].component.is_none());
+        assert!(document.project().pages[0].component.is_none());
         assert_eq!(
-            document.project.pages[0].frames.as_ref().unwrap()[0]["component"]["id"],
+            document.project().pages[0].frames.as_ref().unwrap()[0]["component"]["id"],
             "root"
         );
     }

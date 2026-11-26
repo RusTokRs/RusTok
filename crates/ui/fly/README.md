@@ -22,14 +22,17 @@ RusToK Page Builder admin integrates both `fly-leptos` and `fly-dioxus`: Leptos 
 ### Extraction readiness
 
 This directory is laid out so it can become an independent repository
-(`github.com/rustok/fly`). Both of the blockers that previously prevented it are resolved:
+(`github.com/rustok/fly`). The runtime dependency has been inverted, but manifest extraction still requires preparation:
 
 - **Platform i18n dependency — inverted.** Locale identity goes through the `LocaleResolver`
   trait (`src/locale_resolver.rs`). `rustok-ui-i18n` is now an optional dependency behind the
   `platform-i18n` feature, which is **on by default**, so host builds are unchanged.
-- **Workspace template — completed.** `standalone-Cargo.toml` supplies `[workspace.package]`,
+- **Workspace template — source-checked.** `standalone-Cargo.toml` supplies `[workspace.package]`,
   `[workspace.dependencies]` and `[workspace.lints]`, and
-  `scripts/verify/verify-fly-standalone-workspace.mjs` fails when it drifts from the host.
+  `scripts/verify/verify-fly-standalone-workspace.mjs` checks inherited pins and lint policy.
+  It does not build an extracted workspace. Cargo resolves inherited optional dependencies
+  even when their features are disabled; a standalone export must resolve or remove the
+  platform dependency and its feature wiring before Cargo can load the manifests.
 
 ### What a standalone build gives up
 
@@ -169,7 +172,45 @@ crates/ui/fly/
   `<style>` element body each have their own escape; URLs are filtered by `RenderPolicy`.
   Action, attribute and head URL checks share parsed HTTP(S) authority validation. SSR and
   document validation share bounded srcset candidate checks, including numeric descriptor
-  uniqueness, positive density/width and one descriptor family.
+  uniqueness, positive density/width, one descriptor family and unambiguous comma boundaries.
+  A bare candidate URL requires whitespace on at least one side of a following comma; encode
+  literal URL commas as %2C. CSS url(), image(), src(),
+  image-set() and -webkit-image-set() resource strings are checked against the same
+  resource policy, including nested image functions; escaped or malformed strings fail closed.
+  Original quoted resource URLs are validated before token masking, and SSR and static
+  publication share a single source-order resource scan with atomic URL tokens.
+  Masking uses disjoint original UTF-8 ranges without rescanning modified text. CSS variable substitution is also blocked
+  in reflection masks (`-webkit-box-reflect`).
+
+## Runtime locale selection
+
+Runtime values, localized page routes, internal page links and navigation actions share the
+same ordered locale fallback chain. Outgoing navigation selects the authored slug with the
+runtime value resolver (including explicit field fallback or a single translation), then
+checks that the inbound route resolves to the intended page under the same locale. A
+shadowed or ambiguous slug is unresolved, not an invitation to use a fallback URL.
+A missing translation may use an explicit fallback URL, never an arbitrary first locale.
+The runtime pipeline retains the authored route catalog separately from rendered metadata.
+Coverage summary lookup also uses the resolver's chain;
+required translation coverage still requires an exact locale entry, never a fallback.
+A localized value map with two keys that normalize to the same locale is invalid,
+even if the values agree. Authoring rejects such translation entries, imported maps
+remain lossless but unresolved, and coverage does not count ambiguous maps. Ambiguous
+localized slugs are excluded from inbound routing and reject outbound navigation
+without using the interaction fallback URL. Metadata collisions are diagnosed even
+when no project locale policy is configured.
+Translation IDs are exact, nonempty ASCII alphanumeric, hyphen or underscore identities:
+surrounding whitespace is invalid on authoring and validation, and removal addresses the
+exact stored ID so an invalid imported entry can be removed without deleting a different
+entry. A present non-array `flyTranslations` block is a blocking diagnostic and catalog
+mutations reject it without changing the source document; opaque array entries remain
+preserved.
+A page-targeting interaction requires a unique page ID. Duplicate imported page IDs are
+reported as ambiguous by both link and action validation/materialization, and cannot
+produce an href even when a fallback URL is configured.
+Link, action and form materialization removes all ASCII case variants of the HTML
+attributes it owns before validation or regeneration; an authored uppercase spelling
+cannot retain a stale destination, method or runtime action marker.
 
 ## Runtime binding ownership
 
@@ -216,6 +257,20 @@ nested expansion; the existing public counter continues to count repeater instan
 
 ## Identity and history contracts
 
+Unique component IDs retain their existing bounded textual shape and serialized generator
+state. Native generation uses clock/process/instance information; browser WASM uses UUIDv4
+entropy for the stamp and generator salt. Constructing an editor must not call unsupported
+WASM standard-library clock or process APIs.
+
+**Dependency decision — WASM ID entropy.** Reuse the workspace UUID crate with its existing
+`v4` and `js` support rather than implement a separate browser RNG or require a browser
+framework in the core. This target-specific edge does not add a native dependency or change
+the persisted document contract; the workspace lock already contains UUID and its dependencies.
+A future alternative must preserve collision resistance across tabs and the identifier limit.
+Browser execution and WASM bundle impact remain to be verified; a compile-only check is not
+evidence that the entropy path executed successfully.
+
+
 `ProjectDocument::clone_as_page` and `ProjectFragment::remap_ids` return `FlyResult`; callers
 must handle ambiguous source IDs instead of assuming a copy succeeded. Component IDs and authored
 HTML IDs are reissued separately, along with their recognized references and component-bound
@@ -236,12 +291,22 @@ Consumers must honor runtime error diagnostics before publishing.
 
 Page identities remain optional for legacy documents, but a page patch that sets `id` must supply a non-empty string; use `PagePatch.remove_fields` to clear an ID. Public document mutation helpers invalidate the cached project hash and component index, and compound theme/symbol commands publish changes only after validation succeeds.
 
+Mutating commands, including component patches, run the same full project validation before committing. A cached report is reused only for selection or an empty transaction; it cannot authorize a changed document. The patch-target validation API delegates to the canonical validator until dependency-complete incremental verification is available.
+
+Snapshot comparisons fingerprint the actual document payload and retain the order and repeated identities of pages, assets and style rules. An entry whose position or payload changes appears in the corresponding changed collection (including shifted siblings); opaque entries retain their positions.
+
 History budgets both undo and redo snapshots plus commands using a serialized-size estimate. It
 preserves one oversized entry, and recomputes the accounting after deserialization. The estimate
 is not an exact heap measurement and may count shared snapshots more than once.
 Batch transactions and content patches that remove scalar text children do not claim a
-local inverse; undo and redo restore the retained before/after snapshots. Style inverses
-restore the complete original style slot, including absence.
+local inverse; undo and redo restore the retained before/after snapshots only when
+the entry is connected to the current document and the destination satisfies current validation
+limits and provider policy. Rejection leaves both stacks, selection and revision unchanged. Style inverses
+restore the complete original style slot, including absence. Updating the entry limit
+preserves the configured byte budget and nearest contiguous undo/redo entries.
+Asset removal has a local inverse only for a unique tail entry. Theme renames and
+theme edits that normalize the original raw representation rely on snapshot history
+rather than an inexact local inverse.
 
 Snapshot capture verifies canonical payload round-trip, derives the fingerprint from that
 payload rather than a cached document hash, and commits its sequence only on success.
@@ -262,11 +327,9 @@ caps. The `fly` crate has no cross-page store: consumer modules such as
 
 ## Known Limitations / Pending Implementation
 
-- **Raw project mutation can bypass cache invalidation.** `ProjectDocument.project` is still public.
-  Use `project_mut()`, `component_mut()`, or the owner command API for writes; indexed mutable
-  component access now invalidates both caches. Closing the field requires migrating all
-  workspace consumers and source guards together. This remaining cutover is tracked in the
-  [Page Builder backlog](../../../docs/modules/page-builder-backlog.md).
+- **Project access is cache-safe.** `ProjectDocument::project()` exposes a read-only view;
+  `project_mut()` and `component_mut()` invalidate both derived caches before returning a mutable
+  borrow. The raw `project` field is private, preventing downstream code from bypassing this invariant.
 
 `CHANGELOG.md` carries the release-level *Known gaps*. This section lists the boundaries an
 integrator can hit today, each implemented to a stated point and deliberately no further. An
@@ -323,25 +386,34 @@ the owner of the missing half.
   integration. Cross-tab messages fence stale editors but do not merge documents; the server
   revision check remains authoritative. Mounted Dioxus browser/runtime verification is still
   a release gate.
-- **Session and CSRF posture of the standalone admin.** The intent route authenticates with the
-  same-origin session cookie; issuing that session server-side and adding an explicit server-side
-  CSRF check are the admin shell's change, tracked as `CLEAN-060` — see `SECURITY.md`.
+- **Session lifecycle of the standalone admin.** Cookie-authenticated intent writes already
+  require the server-verified `x-csrf-token` derived from the authenticated session ID; Bearer API
+  requests must provide both an explicit Authorization header and an unambiguous `x-tenant-slug`
+  header, and never inherit a tenant from the browser session. The remaining `CLEAN-060` gap is session
+  issuance: the admin shell still mirrors a `localStorage` token into a script-readable cookie
+  instead of using a server-issued HttpOnly session. See `SECURITY.md`.
 - **Embeds use an explicit provider catalog; there is no custom-code block.** Built-in providers
   cover YouTube, Vimeo and Google Maps. Hosts can extend the catalog with `EmbedProviderRegistry`,
   configure the same registry on `FlyEditor::with_embed_registry`, and pass it to
   `render_page_with_embed_registry` or `render_page_with_runtime_context_with_embed_registry`.
   URLs are parsed as HTTPS, credentials and non-default ports are rejected, and normalized paths
-  must remain within an exact provider path boundary. Static publishing refuses `fly_embed`
-  explicitly — embeds go through dynamic routes. Arbitrary unregistered embeds and custom code
-  stay out by design, while `raw_html` stays escaped (above). Owner: `fly` embed registry.
+  must remain within an exact provider path boundary. The iframe sandbox permits scripts and
+  same-origin access for player compatibility, so custom registrations must use dedicated
+  cross-origin provider hosts and must never include the storefront/admin origin. Static publishing
+  refuses `fly_embed` explicitly — embeds go through dynamic routes. Arbitrary unregistered embeds
+  and custom code stay out by design, while `raw_html` stays escaped (above). Owner: `fly` embed registry.
 - **Design tokens exist with usage checks and reference rewriting.**
   A project carries a `flyTheme` extension (`fly::theme`): validated tokens render as `:root`
-  custom properties and style declarations reference them with `var(--name)`. Token mutations
+  custom properties and style declarations reference them with `var(--name)`. References must
+  target declared Fly tokens; var() is disallowed in resource-bearing properties because host
+  CSS can override custom properties through the cascade. Theme values also reject resource-bearing
+  url(), image(), src() and image-set() strings. Token mutations
   are editor commands (`EditorCommand::Theme`), and both adapter workspaces (`fly-leptos`,
   `fly-dioxus`) ship an editable token panel on the same command. Renaming a token
-  (`ThemeCommand::Rename`) automatically rewrites all `var(--old_name)` occurrences across
-  component styles, style catalog rules, and sibling token definitions with full undo/redo
-  reversibility, and `find_token_usages` provides pre-flight usage discovery. `ThemeCommand::Replace`
+  (`ThemeCommand::Rename`) rewrites exact custom-property arguments in CSS `var()` functions,
+  including nested fallbacks, across component styles, style catalog rules, and sibling token
+  definitions. Quoted strings, comments and unrelated text remain untouched. Renames retain
+  full undo/redo reversibility, and `find_token_usages` provides pre-flight usage discovery. `ThemeCommand::Replace`
   rejects duplicate token names rather than silently discarding one. Site-wide style
   inheritance remains cascade-driven by design. Owner: `fly` theme model.
 - **Collaboration is out of scope for the engine.** No presence, locking, OT/CRDT, or merge:
@@ -358,11 +430,27 @@ the owner of the missing half.
 See [Extraction readiness](#extraction-readiness) first, in particular what a standalone build
 gives up on locale fallback.
 
-Rename `standalone-Cargo.toml` to `Cargo.toml` and build the root crate with
-`default-features = false`.
-All sub-crates reference each other using purely relative paths (`path = ".."`, `path = "../ui"`, `path = "../web"`), ensuring zero coupling to the host project.
+The workspace template is a manifest fragment, not a replacement for Fly's root package manifest.
+Merge its workspace tables into the existing root `Cargo.toml`, retaining the package,
+dependencies, targets and features. Before building outside RusToK, provide a resolvable
+`rustok-ui-i18n` workspace dependency or remove the platform-specific dependency and
+feature-gated implementation from the export. Merely passing `--no-default-features` does
+not resolve a missing inherited dependency, and disabling the root feature alone does not
+prevent a sibling crate from enabling it.
+
+The standalone structural resolver is already implemented; producing and verifying a
+self-contained export (including all sibling packages) remains an explicit delivery gap.
+All sub-crates reference each other using purely relative paths (`path = ".."`, `path = "../ui"`, `path = "../web"`).
 
 Validated no-op commands (empty batches and idempotent document changes) no longer create
 history entries or advance the document revision. A no-op still validates the resulting project,
 and an empty batch still requires edit permission at the UI capability gate; it cannot mutate a
 read-only session or silently clear redo history.
+
+Composed component style patches preserve sequential merge semantics: a non-object style
+replaces the entire slot, and subsequent object merges cannot restore discarded properties.
+The composed patch remains a single atomic, reversible editor command.
+
+The enclosing `RenderPolicy` also gates iframe resources and rich-text navigation links.
+Fly filters link marks before either the built-in fallback or a host-supplied
+`RichTextHtmlRenderer` receives the payload; the host port remains responsible for safe HTML.

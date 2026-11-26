@@ -61,7 +61,7 @@ impl AuthenticatedInlineEditSession {
         }
         let document = GrapesJsCodec::decode_value(project_data)?;
         let page_index = selected_page_index(&document, &selection)?;
-        let page_id = document.project.pages[page_index]
+        let page_id = document.project().pages[page_index]
             .id
             .as_deref()
             .ok_or(InlineEditError::SelectedPageMissingId)?;
@@ -317,7 +317,7 @@ fn editable_component_ids_from_document(
     let page_index = selected_page_index(document, selection)?;
     let runtime_owned = runtime_owned_component_ids(document);
     let mut ids = Vec::new();
-    if let Some(root) = document.project.pages[page_index].component.as_ref() {
+    if let Some(root) = document.project().pages[page_index].component.as_ref() {
         collect_editable_ids(root, &runtime_owned, &mut ids);
     }
     Ok(ids)
@@ -346,7 +346,7 @@ fn runtime_owned_component_ids(document: &ProjectDocument) -> BTreeSet<String> {
     let mut direct = BTreeSet::new();
     for collection in RUNTIME_COMPONENT_COLLECTIONS {
         let Some(entries) = document
-            .project
+            .project()
             .extensions
             .get(collection)
             .and_then(Value::as_array)
@@ -367,7 +367,7 @@ fn runtime_owned_component_ids(document: &ProjectDocument) -> BTreeSet<String> {
     }
 
     let mut blocked = direct.clone();
-    for page in &document.project.pages {
+    for page in &document.project().pages {
         if let Some(root) = page.component.as_ref() {
             collect_runtime_owned_subtree(root, false, &direct, &mut blocked);
         }
@@ -399,10 +399,10 @@ fn selected_page_index(
     selection: &PageSelection,
 ) -> Result<usize, InlineEditError> {
     let index = match selection {
-        PageSelection::First => (!document.project.pages.is_empty()).then_some(0),
-        PageSelection::Index(index) => document.project.pages.get(*index).map(|_| *index),
+        PageSelection::First => (!document.project().pages.is_empty()).then_some(0),
+        PageSelection::Index(index) => document.project().pages.get(*index).map(|_| *index),
         PageSelection::Id(id) => document
-            .project
+            .project()
             .pages
             .iter()
             .position(|page| page.id.as_deref() == Some(id.as_str())),

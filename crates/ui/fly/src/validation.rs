@@ -118,8 +118,8 @@ pub fn validate_project_with_embed_registry(
     if report.page_count > DEFAULT_MAXIMUM_PAGES {
         return report;
     }
-    if document.project.assets.len() > DEFAULT_MAXIMUM_ASSETS {
-        report.asset_count = document.project.assets.len();
+    if document.project().assets.len() > DEFAULT_MAXIMUM_ASSETS {
+        report.asset_count = document.project().assets.len();
         report.diagnostics.push(diagnostic(
             ValidationSeverity::Error,
             "maximum_assets_exceeded",
@@ -131,8 +131,8 @@ pub fn validate_project_with_embed_registry(
         ));
         return report;
     }
-    if document.project.styles.len() > DEFAULT_MAXIMUM_STYLE_RULES {
-        report.style_rule_count = document.project.styles.len();
+    if document.project().styles.len() > DEFAULT_MAXIMUM_STYLE_RULES {
+        report.style_rule_count = document.project().styles.len();
         report.diagnostics.push(diagnostic(
             ValidationSeverity::Error,
             "maximum_style_rules_exceeded",
@@ -173,11 +173,11 @@ pub fn validate_project_with_embed_registry(
     report
 }
 
-/// Incrementally validate a patched component against an existing baseline report.
+/// Validate a patched component against the complete current project.
 ///
-/// Avoids re-walking the entire document tree for single-component property or style patches.
-/// Returns `None` if the component cannot be resolved via the index or if full validation
-/// is required.
+/// The baseline report is not proof of the new document's cross-component
+/// invariants. Until a dependency-complete incremental validator exists, use
+/// the canonical project validator. Returns `None` if the component is absent.
 pub fn validate_patch_incremental(
     document: &ProjectDocument,
     component_id: &str,
@@ -196,168 +196,20 @@ pub fn validate_patch_incremental(
     )
 }
 
-/// Incrementally validate a patch using the same host embed catalog as full validation.
+/// Validate a patched project using the host embed catalog.
+/// The baseline is retained in the public call contract, not trusted as evidence.
 pub fn validate_patch_incremental_with_embed_registry(
     document: &ProjectDocument,
     component_id: &str,
-    previous_report: &ValidationReport,
+    _previous_report: &ValidationReport,
     registries: &RegistrySet,
     limits: ValidationLimits,
     embeds: &EmbedProviderRegistry,
 ) -> Option<ValidationReport> {
-    let index = document.component_index();
-    let location = index.location(component_id)?;
-    let component = index.get_component(document, component_id)?;
-    let path = index.diagnostic_path(component_id)?;
-
-    let mut diagnostics = Vec::new();
-
-    if let Err(reason) = validate_identifier(component_id) {
-        diagnostics.push(diagnostic(
-            ValidationSeverity::Error,
-            "invalid_component_id",
-            format!("{path}.id"),
-            format!("component id `{component_id}` is not a valid identifier: {reason}"),
-        ));
-    }
-    if location.depth > limits.maximum_depth {
-        diagnostics.push(diagnostic(
-            ValidationSeverity::Error,
-            "maximum_depth_exceeded",
-            &path,
-            format!(
-                "component depth {} exceeds configured maximum {}",
-                location.depth, limits.maximum_depth
-            ),
-        ));
-    }
-
-    let component_type = component.component_type();
-    let component_type_registered = registries.components.contains(component_type);
-    if !component_type_registered {
-        diagnostics.push(diagnostic(
-            ValidationSeverity::Warning,
-            "missing_component_provider",
-            &path,
-            format!(
-                "component type `{component_type}` has no registered provider; node is preserved"
-            ),
-        ));
-        if let Some(parent) = location
-            .parent_component_id
-            .as_deref()
-            .and_then(|parent_id| index.get_component(document, parent_id))
-        {
-            let parent_type = parent.component_type();
-            if !registries.accepts_child_type(Some(parent_type), component_type) {
-                diagnostics.push(diagnostic(
-                    ValidationSeverity::Error,
-                    "invalid_component_child",
-                    &path,
-                    format!(
-                        "component type `{parent_type}` does not accept `{component_type}` children"
-                    ),
-                ));
-            }
-        }
-        for (child_index, child) in component.children().iter().enumerate() {
-            if let Some(child_obj) = child.as_object() {
-                let child_type = child_obj.component_type();
-                if !registries.accepts_child_type(Some(component_type), child_type) {
-                    diagnostics.push(diagnostic(
-                        ValidationSeverity::Error,
-                        "invalid_component_child",
-                        format!("{path}.components[{child_index}]"),
-                        format!("component type `{component_type}` does not accept `{child_type}` children"),
-                    ));
-                }
-            }
-        }
-    }
-
-    check_component_public_urls(component, &path, &mut diagnostics);
-    check_raw_html_content(component, &path, &mut diagnostics);
-    if let Some(raw) = component.extensions.get(crate::FLY_RICH_TEXT_FIELD)
-        && let Err(reason) = crate::decode_rich_text_payload(raw)
-    {
-        diagnostics.push(diagnostic(
-            ValidationSeverity::Error,
-            "rich_text_payload_invalid",
-            format!("{path}.{}", crate::FLY_RICH_TEXT_FIELD),
-            reason,
-        ));
-    }
-    if let Some(raw) = component.extensions.get(crate::FLY_EMBED_FIELD)
-        && let Err(reason) = crate::decode_embed_spec_with_registry(raw, embeds)
-    {
-        diagnostics.push(diagnostic(
-            ValidationSeverity::Error,
-            "embed_invalid",
-            format!("{path}.{}", crate::FLY_EMBED_FIELD),
-            reason,
-        ));
-    }
-
-    if component_type == "page_content_slot" {
-        let document_kind = document.document_kind();
-        if document_kind != crate::DocumentKind::LayoutTemplate {
-            diagnostics.push(diagnostic(
-                ValidationSeverity::Error,
-                "forbidden_page_content_slot",
-                &path,
-                "page_content_slot is only allowed inside layout templates",
-            ));
-        }
-        if !component.children().is_empty() {
-            diagnostics.push(diagnostic(
-                ValidationSeverity::Error,
-                "page_content_slot_cannot_have_children",
-                &path,
-                "page_content_slot cannot contain child components in persisted state",
-            ));
-        }
-    }
-
-    let has_page_link = component
-        .extensions
-        .contains_key(crate::FLY_PAGE_LINK_FIELD);
-    let has_action = component.extensions.contains_key(crate::FLY_ACTION_FIELD);
-    let has_form = component.extensions.contains_key(crate::FLY_FORM_FIELD);
-    if has_page_link && has_action {
-        diagnostics.push(diagnostic(
-            ValidationSeverity::Error,
-            "component_navigation_contract_conflict",
-            &path,
-            format!(
-                "component cannot define both `{}` and `{}`",
-                crate::FLY_PAGE_LINK_FIELD,
-                crate::FLY_ACTION_FIELD
-            ),
-        ));
-    }
-    if has_form && (has_page_link || has_action) {
-        diagnostics.push(diagnostic(
-            ValidationSeverity::Error,
-            "component_form_interaction_contract_conflict",
-            &path,
-            format!(
-                "component cannot combine `{}` with `{}` or `{}`",
-                crate::FLY_FORM_FIELD,
-                crate::FLY_PAGE_LINK_FIELD,
-                crate::FLY_ACTION_FIELD
-            ),
-        ));
-    }
-
-    let mut new_report = previous_report.clone();
-    let prefix = format!("{path}.");
-    new_report
-        .diagnostics
-        .retain(|d| d.path != path && !d.path.starts_with(&prefix));
-    new_report.diagnostics.extend(diagnostics);
-    deduplicate_diagnostics(&mut new_report.diagnostics);
-
-    Some(new_report)
+    document.component(component_id)?;
+    Some(validate_project_with_embed_registry(
+        document, registries, limits, embeds,
+    ))
 }
 
 /// Design tokens are project-level data: one malformed token fails the whole theme
@@ -374,7 +226,7 @@ fn validate_theme_tokens(document: &ProjectDocument, report: &mut ValidationRepo
 }
 
 fn validate_pages(document: &ProjectDocument, report: &mut ValidationReport) {
-    report.page_count = document.project.pages.len();
+    report.page_count = document.project().pages.len();
     if report.page_count > DEFAULT_MAXIMUM_PAGES {
         report.diagnostics.push(diagnostic(
             ValidationSeverity::Error,
@@ -387,7 +239,7 @@ fn validate_pages(document: &ProjectDocument, report: &mut ValidationReport) {
         ));
         return;
     }
-    if document.project.pages.is_empty() {
+    if document.project().pages.is_empty() {
         report.diagnostics.push(ValidationDiagnostic {
             severity: ValidationSeverity::Error,
             code: "missing_pages".to_string(),
@@ -398,7 +250,7 @@ fn validate_pages(document: &ProjectDocument, report: &mut ValidationReport) {
     }
 
     let mut page_ids = BTreeSet::new();
-    for (index, page) in document.project.pages.iter().enumerate() {
+    for (index, page) in document.project().pages.iter().enumerate() {
         let path = format!("pages[{index}]");
         match page.id.as_deref() {
             Some(id) if id.trim().is_empty() => report.diagnostics.push(diagnostic(
@@ -638,7 +490,7 @@ fn validate_components(
     let mut ids = BTreeSet::new();
     let document_kind = document.document_kind();
     let mut slot_count = 0;
-    for (page_index, page) in document.project.pages.iter().enumerate() {
+    for (page_index, page) in document.project().pages.iter().enumerate() {
         let Some(root) = page.component.as_ref() else {
             continue;
         };
@@ -889,7 +741,7 @@ fn walk_component(
 
 pub fn validate_component_public_urls(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
     let mut diagnostics = Vec::new();
-    document.project.visit_components(|component, _, path| {
+    document.project().visit_components(|component, _, path| {
         check_component_public_urls(component, path, &mut diagnostics);
     });
     diagnostics
@@ -1131,7 +983,7 @@ fn diagnostic(
 }
 
 fn validate_symbols(document: &ProjectDocument, report: &mut ValidationReport) {
-    if let Some(block) = document.project.extensions.get(FLY_SYMBOLS_FIELD) {
+    if let Some(block) = document.project().extensions.get(FLY_SYMBOLS_FIELD) {
         if let Err(error) =
             crate::codec::ensure_depth_within_limit(block, crate::MAXIMUM_DECODE_DEPTH)
         {
@@ -1145,7 +997,7 @@ fn validate_symbols(document: &ProjectDocument, report: &mut ValidationReport) {
         }
     }
     if document
-        .project
+        .project()
         .extensions
         .get(FLY_SYMBOLS_FIELD)
         .is_some_and(|block| !block.is_array())
@@ -1239,7 +1091,7 @@ fn validate_symbols(document: &ProjectDocument, report: &mut ValidationReport) {
             format!("symbol definitions form a reference cycle: {cycle}"),
         ));
     }
-    document.project.visit_components(|component, _, path| {
+    document.project().visit_components(|component, _, path| {
         let Some(symbol_id) = component.symbol_id.as_deref() else {
             return;
         };

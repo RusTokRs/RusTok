@@ -12,6 +12,9 @@ const read = (relativePath) =>
 const contract = JSON.parse(
   read("crates/modules/rustok-page-builder/contracts/page-builder-publish-runtime-review.json"),
 );
+const registry = JSON.parse(
+  read("crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json"),
+);
 const provider = read(contract.provider.source);
 const sanitizer = read(contract.provider.sanitization.source);
 const publishPolicy = read(contract.provider.sanitization.policy.source);
@@ -80,13 +83,28 @@ if (
 ) {
   fail("review, policy, sanitization and receipt identities must use sha256");
 }
+// Runtime constants own the format identities; contract JSON is a projection.
+const sanitizationFormat = sanitizer.match(
+  /pub const PAGE_BUILDER_STATIC_SANITIZATION_FORMAT:\s*&str\s*=\s*"([^"]+)";/,
+)?.[1];
+const policyFormat = publishPolicy.match(
+  /pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT:\s*&str\s*=\s*"([^"]+)";/,
+)?.[1];
+const registrySanitization = registry.provider.static_sanitization_contract;
+const pagesPublish = registry.consumers.find(
+  (consumer) => consumer.module_slug === "pages",
+)?.atomic_publish;
 if (
-  contract.provider.sanitization.format !==
-    "page_builder_static_publish_sanitization_v2" ||
-  contract.provider.sanitization.policy.format !==
-    "page_builder_static_publish_policy_v2"
+  !sanitizationFormat ||
+  !policyFormat ||
+  contract.provider.sanitization.format !== sanitizationFormat ||
+  contract.provider.sanitization.policy.format !== policyFormat ||
+  registrySanitization?.format !== sanitizationFormat ||
+  registrySanitization?.policy?.format !== policyFormat ||
+  pagesPublish?.sanitization_format !== sanitizationFormat ||
+  pagesPublish?.policy_format !== policyFormat
 ) {
-  fail("static publish sanitization/policy formats are not current");
+  fail("static publish sanitization/policy formats disagree with runtime constants");
 }
 if (
   JSON.stringify(contract.provider.sanitization.hash_payload) !==

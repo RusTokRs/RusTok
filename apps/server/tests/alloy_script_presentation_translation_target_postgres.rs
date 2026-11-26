@@ -1,5 +1,7 @@
 #![cfg(feature = "mod-alloy")]
 
+mod support;
+
 use std::{error::Error, io, sync::Arc, time::Duration};
 
 use alloy::storage::{
@@ -106,7 +108,8 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     )
     .await?;
 
-    let seed_provider = registered_provider(seed_connection.clone())?;
+    let auth_config = support::test_auth_config();
+    let seed_provider = registered_provider(seed_connection.clone(), auth_config.clone())?;
     let descriptor = seed_provider.descriptor();
     if descriptor.owner_slug.as_str() != OWNER_SLUG
         || descriptor.resource_kind.as_str() != RESOURCE_KIND
@@ -273,8 +276,8 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
 
     let first_connection = connect_postgres(database_url).await?;
     let second_connection = connect_postgres(database_url).await?;
-    let first_provider = registered_provider(first_connection.clone())?;
-    let second_provider = registered_provider(second_connection.clone())?;
+    let first_provider = registered_provider(first_connection.clone(), auth_config.clone())?;
+    let second_provider = registered_provider(second_connection.clone(), auth_config.clone())?;
 
     let initial_patch = patch_from_snapshot(&source_updated, "Description FR initial", "initial");
     let initial_receipt = first_provider
@@ -618,7 +621,7 @@ async fn verify_legacy_und_and_change_state_backfill(
         .into());
     }
 
-    let provider = registered_provider(database.clone())?;
+    let provider = registered_provider(database.clone(), auth_config.clone())?;
     let listed = provider
         .list_resources(read_context(tenant_id, "legacy-list"), list_request()?)
         .await?;
@@ -646,7 +649,7 @@ async fn verify_legacy_und_and_change_state_backfill(
     Ok(())
 }
 
-fn registered_provider(db: DatabaseConnection) -> TestResult<Arc<dyn TranslationTargetProvider>> {
+fn registered_provider(db: DatabaseConnection, auth_config: AuthConfig) -> TestResult<Arc<dyn TranslationTargetProvider>> {
     let registry = ModuleRegistry::new().register(AlloyModule);
     let settings = RustokSettings::default();
     let runtime_ctx = ServerRuntimeContext::new(db, settings.clone());
@@ -654,7 +657,7 @@ fn registered_provider(db: DatabaseConnection) -> TestResult<Arc<dyn Translation
         &registry,
         &settings,
         runtime_ctx,
-        AuthConfig::new("test-secret-key-for-alloy-translation-32bytes!".to_string()),
+        auth_config,
     )?;
     let targets = translation_target_registry(&extensions)
         .ok_or_else(|| test_error("host composition did not publish TranslationTargetRegistry"))?;

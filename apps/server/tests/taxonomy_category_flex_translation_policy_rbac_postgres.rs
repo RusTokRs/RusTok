@@ -1,6 +1,9 @@
 #![cfg(all(feature = "mod-taxonomy", feature = "mod-flex"))]
 #![recursion_limit = "512"]
 
+mod support;
+use support::test_auth_config;
+
 use std::{collections::HashMap, error::Error, io, sync::Arc, time::Duration};
 
 use async_graphql::{EmptySubscription, Request, Response, Schema};
@@ -88,6 +91,7 @@ async fn taxonomy_category_flex_attached_policy_rbac_evidence_postgres() -> Test
 }
 
 async fn run_contract(database_url: &str) -> TestResult<()> {
+    let auth_config = test_auth_config();
     let db = connect_postgres(database_url).await?;
     Migrator::up(&db, None).await?;
 
@@ -108,7 +112,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         .await?
         .ok_or_else(|| test_error("source attached values were not persisted"))?;
 
-    let provider = registered_provider(db.clone())?;
+    let provider = registered_provider(db.clone(), auth_config.clone())?;
     let identity = provider_identity(provider.as_ref(), tenant_id, category_id).await?;
     let read_request = ReadTranslationResourceRequest {
         identity,
@@ -550,7 +554,7 @@ fn assert_content_revisions_unchanged(
     Ok(())
 }
 
-fn registered_provider(db: DatabaseConnection) -> TestResult<Arc<dyn TranslationTargetProvider>> {
+fn registered_provider(db: DatabaseConnection, auth_config: AuthConfig) -> TestResult<Arc<dyn TranslationTargetProvider>> {
     let registry = ModuleRegistry::new()
         .register(FlexModule)
         .register(TaxonomyModule);
@@ -560,7 +564,7 @@ fn registered_provider(db: DatabaseConnection) -> TestResult<Arc<dyn Translation
         &registry,
         &settings,
         runtime_ctx,
-        AuthConfig::new("test-secret-key-for-flex-policy-rbac-evidence-32bytes!".to_string()),
+        auth_config,
     )?;
     let targets = translation_target_registry(&extensions)
         .ok_or_else(|| test_error("host composition did not publish TranslationTargetRegistry"))?;

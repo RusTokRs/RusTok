@@ -300,7 +300,6 @@ pub(crate) async fn update_product_variant(
     finish_lifecycle_result(&slot, result)
 }
 
-#[expect(dead_code, reason = "Product variant deletion transport pending UI caller integration")]
 pub(crate) async fn delete_product_variant(
     token: Option<String>,
     tenant_slug: Option<String>,

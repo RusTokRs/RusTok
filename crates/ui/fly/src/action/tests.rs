@@ -86,9 +86,13 @@ fn materialization_clears_stale_interaction_attributes() {
                     "type": "wrapper",
                     "attributes": {
                         "action": "/current",
+                        "ACTION": "/stale-endpoint",
+                        "METHOD": "post",
+                        "ENCTYPE": "multipart/form-data",
                         "enctype": "multipart/form-data",
                         "novalidate": "",
                         "data-fly-form-provider": "current",
+                        "DATA-FLY-FORM-PROVIDER": "stale",
                         "data-fly-form-action": "send",
                         "data-fly-form-input": "{}",
                         "href": "/stale",
@@ -102,6 +106,9 @@ fn materialization_clears_stale_interaction_attributes() {
                     "tagName": "a",
                     "attributes": {
                         "href": "/current",
+                        "HREF": "/stale",
+                        "TYPE": "submit",
+                        "DATA-FLY-ACTION": "stale",
                         "target": "_blank",
                         "rel": "opener",
                         "form": "current-form",
@@ -126,6 +133,9 @@ fn materialization_clears_stale_interaction_attributes() {
     let form = result.document.component("search-form").unwrap();
     assert_eq!(form.tag_name.as_deref(), Some("form"));
     assert_eq!(form.attributes["method"], "get");
+    for attribute in ["ACTION", "METHOD", "ENCTYPE", "DATA-FLY-FORM-PROVIDER"] {
+        assert!(!form.attributes.contains_key(attribute), "{attribute}");
+    }
     for attribute in [
         "action",
         "enctype",
@@ -143,6 +153,9 @@ fn materialization_clears_stale_interaction_attributes() {
     let action = result.document.component("track").unwrap();
     assert_eq!(action.tag_name.as_deref(), Some("button"));
     assert_eq!(action.attributes["type"], "button");
+    for attribute in ["HREF", "TYPE", "DATA-FLY-ACTION"] {
+        assert!(!action.attributes.contains_key(attribute), "{attribute}");
+    }
     assert_eq!(action.attributes[FLY_ACTION_KIND_ATTRIBUTE], "emit_event");
     assert!(action.attributes.contains_key(FLY_ACTION_DATA_ATTRIBUTE));
     for attribute in [

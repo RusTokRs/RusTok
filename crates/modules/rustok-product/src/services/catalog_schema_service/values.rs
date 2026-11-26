@@ -31,6 +31,53 @@ async fn lock_product_for_update_in_tx(
     product.ok_or(CommerceError::ProductNotFound(product_id))
 }
 
+#[derive(FromQueryResult)]
+struct ProductAttributeScopeRow {
+    id: Uuid,
+    scope: String,
+}
+
+async fn load_active_attribute_scopes_in<C>(
+    conn: &C,
+    tenant_id: Uuid,
+    bindings: &[crate::services::catalog_schema::AttributeBinding],
+) -> CommerceResult<HashMap<Uuid, String>>
+where
+    C: ConnectionTrait,
+{
+    let mut attribute_ids = bindings
+        .iter()
+        .filter(|binding| !binding.is_disabled)
+        .map(|binding| binding.attribute_id)
+        .collect::<Vec<_>>();
+    attribute_ids.sort();
+    attribute_ids.dedup();
+    if attribute_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let (placeholders, values) = uuid_filter_values(tenant_id, &attribute_ids);
+    let rows = ProductAttributeScopeRow::find_by_statement(Statement::from_sql_and_values(
+        conn.get_database_backend(),
+        format!(
+            "SELECT id, scope FROM product_attributes WHERE tenant_id = $1 AND archived_at IS NULL AND id IN ({placeholders})"
+        ),
+        values,
+    ))
+    .all(conn)
+    .await?;
+
+    Ok(rows.into_iter().map(|row| (row.id, row.scope)).collect())
+}
+
+fn attribute_scope_includes_product(scope: &str) -> bool {
+    matches!(scope, "product" | "both")
+}
+
+fn attribute_scope_includes_variant(scope: &str) -> bool {
+    matches!(scope, "variant" | "both")
+}
+
 /// Standalone value commands invalidate document drafts too. Catalog composition
 /// does not call this helper: the enclosing document command advances once.
 async fn advance_product_value_revision_in_tx(
@@ -167,114 +214,158 @@ impl ProductCatalogSchemaService {
         else {
             return Ok(());
         };
-        let mut required_attribute_ids = Vec::new();
-        let mut required_locales_by_attribute: HashMap<Uuid, Vec<String>> = HashMap::new();
+
+        let attribute_scopes =
+            load_active_attribute_scopes_in(conn, tenant_id, &form.attributes).await?;
+
+        let mut required_product_attribute_ids = Vec::new();
+        let mut required_variant_attribute_ids = Vec::new();
+        let mut required_product_locales: HashMap<Uuid, Vec<String>> = HashMap::new();
+        let mut required_variant_locales: HashMap<Uuid, Vec<String>> = HashMap::new();
+
         for binding in form
             .attributes
             .iter()
             .filter(|binding| !binding.is_disabled)
         {
+            let Some(scope) = attribute_scopes.get(&binding.attribute_id).map(String::as_str)
+            else {
+                continue;
+            };
             let rules =
                 attribute_validation::parse_product_attribute_validation(&binding.validation)?;
-            if binding.is_required || rules.required || !rules.required_locales.is_empty() {
-                required_attribute_ids.push(binding.attribute_id);
+            let is_required =
+                binding.is_required || rules.required || !rules.required_locales.is_empty();
+
+            if !matches!(scope, "product" | "variant" | "both") {
+                return Err(CommerceError::Validation(format!(
+                    "attribute {} has an unsupported scope",
+                    binding.attribute_id
+                )));
+            }
+
+            if is_required && attribute_scope_includes_product(scope) {
+                required_product_attribute_ids.push(binding.attribute_id);
+            }
+            if is_required && attribute_scope_includes_variant(scope) {
+                required_variant_attribute_ids.push(binding.attribute_id);
             }
             if !rules.required_locales.is_empty() {
-                required_locales_by_attribute.insert(binding.attribute_id, rules.required_locales);
+                if attribute_scope_includes_product(scope) {
+                    required_product_locales
+                        .insert(binding.attribute_id, rules.required_locales.clone());
+                }
+                if attribute_scope_includes_variant(scope) {
+                    required_variant_locales
+                        .insert(binding.attribute_id, rules.required_locales);
+                }
             }
         }
-        if required_attribute_ids.is_empty() {
-            return Ok(());
-        }
-        required_attribute_ids.sort();
-        required_attribute_ids.dedup();
 
-        let (placeholders, mut values) = uuid_filter_values(tenant_id, &required_attribute_ids);
-        let product_placeholder = format!("${}", values.len() + 1);
-        values.push(product_id.into());
-        let rows = ProductPublishRequirementRow::find_by_statement(Statement::from_sql_and_values(
-            conn.get_database_backend(),
-            format!(
-                r#"
-                SELECT
-                    pa.id AS attribute_id,
-                    pa.code,
-                    pa.value_type,
-                    pa.is_localized,
-                    pav.value_text,
-                    pav.value_integer,
-                    pav.value_decimal,
-                    pav.value_boolean,
-                    pav.value_date,
-                    pav.value_datetime,
-                    pav.value_json,
-                    EXISTS (
-                        SELECT 1
-                        FROM product_attribute_value_options pavo
-                        WHERE pavo.value_id = pav.id
-                    ) AS has_option,
-                    EXISTS (
-                        SELECT 1
-                        FROM product_attribute_value_translations pavt
-                        WHERE pavt.value_id = pav.id
-                          AND NULLIF(TRIM(pavt.value_text), '') IS NOT NULL
-                    ) AS has_localized_text
-                FROM product_attributes pa
-                LEFT JOIN product_attribute_values pav
-                  ON pav.tenant_id = pa.tenant_id
-                 AND pav.attribute_id = pa.id
-                 AND pav.product_id = {product_placeholder}
-                WHERE pa.tenant_id = $1
-                  AND pa.archived_at IS NULL
-                  AND pa.id IN ({placeholders})
-                "#
-            ),
-            values,
-        ))
-        .all(conn)
-        .await?;
+        required_product_attribute_ids.sort();
+        required_product_attribute_ids.dedup();
+        required_variant_attribute_ids.sort();
+        required_variant_attribute_ids.dedup();
 
-        let present_rows = rows
-            .iter()
-            .map(|row| row.attribute_id)
-            .collect::<HashSet<_>>();
-        let mut missing = required_attribute_ids
-            .iter()
-            .filter(|attribute_id| !present_rows.contains(attribute_id))
-            .map(|attribute_id| attribute_id.to_string())
-            .collect::<Vec<_>>();
-        for row in &rows {
-            if !row.is_filled()? {
-                missing.push(row.code.clone());
-            }
-        }
-        missing.sort();
-        missing.dedup();
-        if !missing.is_empty() {
-            return Err(CommerceError::Validation(format!(
-                "required product attributes are missing: {}",
-                missing.join(", ")
-            )));
-        }
-
-        if !required_locales_by_attribute.is_empty() {
-            let missing_locales = load_missing_required_locales(
-                conn,
-                tenant_id,
-                product_id,
-                &required_locales_by_attribute,
-                &present_rows,
+        if !required_product_attribute_ids.is_empty() {
+            let (placeholders, mut values) =
+                uuid_filter_values(tenant_id, &required_product_attribute_ids);
+            let product_placeholder = format!("${}", values.len() + 1);
+            values.push(product_id.into());
+            let rows = ProductPublishRequirementRow::find_by_statement(
+                Statement::from_sql_and_values(
+                    conn.get_database_backend(),
+                    format!(
+                        r#"
+                        SELECT
+                            pa.id AS attribute_id,
+                            pa.code,
+                            pa.value_type,
+                            pa.is_localized,
+                            pav.value_text,
+                            pav.value_integer,
+                            pav.value_decimal,
+                            pav.value_boolean,
+                            pav.value_date,
+                            pav.value_datetime,
+                            pav.value_json,
+                            EXISTS (
+                                SELECT 1
+                                FROM product_attribute_value_options pavo
+                                WHERE pavo.value_id = pav.id
+                            ) AS has_option,
+                            EXISTS (
+                                SELECT 1
+                                FROM product_attribute_value_translations pavt
+                                WHERE pavt.value_id = pav.id
+                                  AND NULLIF(TRIM(pavt.value_text), '') IS NOT NULL
+                            ) AS has_localized_text
+                        FROM product_attributes pa
+                        LEFT JOIN product_attribute_values pav
+                          ON pav.tenant_id = pa.tenant_id
+                         AND pav.attribute_id = pa.id
+                         AND pav.product_id = {product_placeholder}
+                        WHERE pa.tenant_id = $1
+                          AND pa.archived_at IS NULL
+                          AND pa.id IN ({placeholders})
+                        "#
+                    ),
+                    values,
+                ),
             )
+            .all(conn)
             .await?;
-            if let Some((attribute_id, locales)) = missing_locales {
-                return Err(attribute_validation::rule_failure(
-                    attribute_id,
-                    "requiredLocales",
-                    format!("missing locales {}", locales.join(", ")),
-                ));
+
+            let present_rows = rows
+                .iter()
+                .map(|row| row.attribute_id)
+                .collect::<HashSet<_>>();
+            let mut missing = required_product_attribute_ids
+                .iter()
+                .filter(|attribute_id| !present_rows.contains(attribute_id))
+                .map(|attribute_id| attribute_id.to_string())
+                .collect::<Vec<_>>();
+            for row in &rows {
+                if !row.is_filled()? {
+                    missing.push(row.code.clone());
+                }
+            }
+            missing.sort();
+            missing.dedup();
+            if !missing.is_empty() {
+                return Err(CommerceError::Validation(format!(
+                    "required product attributes are missing: {}",
+                    missing.join(", ")
+                )));
+            }
+
+            if !required_product_locales.is_empty() {
+                let missing_locales = load_missing_required_locales(
+                    conn,
+                    tenant_id,
+                    product_id,
+                    &required_product_locales,
+                    &present_rows,
+                )
+                .await?;
+                if let Some((attribute_id, locales)) = missing_locales {
+                    return Err(attribute_validation::rule_failure(
+                        attribute_id,
+                        "requiredLocales",
+                        format!("missing locales {}", locales.join(", ")),
+                    ));
+                }
             }
         }
-        Ok(())
+
+        validate_variant_publish_requirements_in(
+            conn,
+            tenant_id,
+            product_id,
+            &required_variant_attribute_ids,
+            &required_variant_locales,
+        )
+        .await
     }
 
     pub async fn validate_new_product_publish_requirements(
@@ -301,12 +392,15 @@ impl ProductCatalogSchemaService {
         };
         let form =
             Self::load_effective_form_for_category_in(db, tenant_id, category_id, &[]).await?;
+        let attribute_scopes =
+            load_active_attribute_scopes_in(db, tenant_id, &form.attributes).await?;
         let mut required_attribute_ids = Vec::new();
-        for binding in form
-            .attributes
-            .iter()
-            .filter(|binding| !binding.is_disabled)
-        {
+        for binding in form.attributes.iter().filter(|binding| {
+            !binding.is_disabled
+                && attribute_scopes
+                    .get(&binding.attribute_id)
+                    .is_some_and(|scope| attribute_scope_includes_product(scope.as_str()))
+        }) {
             let rules =
                 attribute_validation::parse_product_attribute_validation(&binding.validation)?;
             if binding.is_required || rules.required || !rules.required_locales.is_empty() {
@@ -628,6 +722,175 @@ fn canonical_value_locale(locale: &str) -> CommerceResult<String> {
 }
 
 #[derive(FromQueryResult)]
+struct MissingVariantAttributeRow {
+    variant_label: String,
+    attribute_code: String,
+}
+
+#[derive(FromQueryResult)]
+struct MissingVariantRequiredLocaleRow {
+    variant_label: String,
+    attribute_code: String,
+    locale: String,
+}
+
+async fn validate_variant_publish_requirements_in<C>(
+    conn: &C,
+    tenant_id: Uuid,
+    product_id: Uuid,
+    required_attribute_ids: &[Uuid],
+    required_locales_by_attribute: &HashMap<Uuid, Vec<String>>,
+) -> CommerceResult<()>
+where
+    C: ConnectionTrait,
+{
+    if !required_attribute_ids.is_empty() {
+        let (placeholders, mut values) = uuid_filter_values(tenant_id, required_attribute_ids);
+        let product_placeholder = format!("${}", values.len() + 1);
+        values.push(product_id.into());
+        let missing = MissingVariantAttributeRow::find_by_statement(
+            Statement::from_sql_and_values(
+                conn.get_database_backend(),
+                format!(
+                    r#"
+                    SELECT
+                        COALESCE(NULLIF(TRIM(pv.sku), ''), CAST(pv.id AS TEXT)) AS variant_label,
+                        pa.code AS attribute_code
+                    FROM product_variants pv
+                    JOIN product_attributes pa
+                      ON pa.tenant_id = pv.tenant_id
+                     AND pa.archived_at IS NULL
+                     AND pa.id IN ({placeholders})
+                    LEFT JOIN product_variant_attribute_values pvav
+                      ON pvav.tenant_id = pv.tenant_id
+                     AND pvav.variant_id = pv.id
+                     AND pvav.attribute_id = pa.id
+                    WHERE pv.tenant_id = $1
+                      AND pv.product_id = {product_placeholder}
+                      AND NOT (
+                          CASE
+                              WHEN pa.is_localized THEN EXISTS (
+                                  SELECT 1
+                                  FROM product_variant_attribute_value_translations pvavt
+                                  WHERE pvavt.value_id = pvav.id
+                                    AND NULLIF(TRIM(pvavt.value_text), '') IS NOT NULL
+                              )
+                              WHEN pa.value_type IN ('text', 'textarea', 'richtext')
+                                  THEN NULLIF(TRIM(pvav.value_text), '') IS NOT NULL
+                              WHEN pa.value_type = 'integer'
+                                  THEN pvav.value_integer IS NOT NULL
+                              WHEN pa.value_type = 'decimal'
+                                  THEN pvav.value_decimal IS NOT NULL
+                              WHEN pa.value_type = 'boolean'
+                                  THEN pvav.value_boolean IS NOT NULL
+                              WHEN pa.value_type = 'date'
+                                  THEN pvav.value_date IS NOT NULL
+                              WHEN pa.value_type = 'datetime'
+                                  THEN pvav.value_datetime IS NOT NULL
+                              WHEN pa.value_type IN ('select', 'multiselect') THEN EXISTS (
+                                  SELECT 1
+                                  FROM product_variant_attribute_value_options pvaavo
+                                  WHERE pvaavo.value_id = pvav.id
+                              )
+                              WHEN pa.value_type = 'json'
+                                  THEN pvav.value_json IS NOT NULL
+                              ELSE FALSE
+                          END
+                      )
+                    ORDER BY pv.position, pv.id, pa.position, pa.code
+                    LIMIT 1
+                    "#
+                ),
+                values,
+            ),
+        )
+        .one(conn)
+        .await?;
+        if let Some(row) = missing {
+            return Err(CommerceError::Validation(format!(
+                "required variant attribute `{}` is missing for variant `{}`",
+                row.attribute_code, row.variant_label
+            )));
+        }
+    }
+
+    let mut required_pairs = required_locales_by_attribute
+        .iter()
+        .flat_map(|(attribute_id, locales)| {
+            locales
+                .iter()
+                .map(move |locale| (*attribute_id, locale.clone()))
+        })
+        .collect::<Vec<_>>();
+    required_pairs.sort_by(|left, right| {
+        left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1))
+    });
+    required_pairs.dedup();
+
+    if !required_pairs.is_empty() {
+        let mut values: Vec<sea_orm::Value> = vec![tenant_id.into(), product_id.into()];
+        let mut required_rows = Vec::with_capacity(required_pairs.len());
+        for (attribute_id, locale) in required_pairs {
+            let attribute_placeholder = format!("${}", values.len() + 1);
+            values.push(attribute_id.to_string().into());
+            let locale_placeholder = format!("${}", values.len() + 1);
+            values.push(locale.into());
+            required_rows.push(format!("({attribute_placeholder}, {locale_placeholder})"));
+        }
+
+        let missing = MissingVariantRequiredLocaleRow::find_by_statement(
+            Statement::from_sql_and_values(
+                conn.get_database_backend(),
+                format!(
+                    r#"
+                    WITH required_locales(attribute_id, locale) AS (
+                        VALUES {}
+                    )
+                    SELECT
+                        COALESCE(NULLIF(TRIM(pv.sku), ''), CAST(pv.id AS TEXT)) AS variant_label,
+                        pa.code AS attribute_code,
+                        required_locales.locale
+                    FROM product_variants pv
+                    JOIN required_locales ON TRUE
+                    JOIN product_attributes pa
+                      ON pa.tenant_id = pv.tenant_id
+                     AND CAST(pa.id AS TEXT) = required_locales.attribute_id
+                     AND pa.archived_at IS NULL
+                    LEFT JOIN product_variant_attribute_values pvav
+                      ON pvav.tenant_id = pv.tenant_id
+                     AND pvav.variant_id = pv.id
+                     AND pvav.attribute_id = pa.id
+                    WHERE pv.tenant_id = $1
+                      AND pv.product_id = $2
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM product_variant_attribute_value_translations pvavt
+                          WHERE pvavt.value_id = pvav.id
+                            AND pvavt.locale = required_locales.locale
+                            AND NULLIF(TRIM(pvavt.value_text), '') IS NOT NULL
+                      )
+                    ORDER BY pv.position, pv.id, pa.position, pa.code, required_locales.locale
+                    LIMIT 1
+                    "#,
+                    required_rows.join(", ")
+                ),
+                values,
+            ),
+        )
+        .one(conn)
+        .await?;
+        if let Some(row) = missing {
+            return Err(CommerceError::Validation(format!(
+                "required variant attribute `{}` is missing locale `{}` for variant `{}`",
+                row.attribute_code, row.locale, row.variant_label
+            )));
+        }
+    }
+
+    Ok(())
+}
+
+#[derive(FromQueryResult)]
 struct ProductAttributeValueLocaleRow {
     attribute_id: Uuid,
     locale: String,
@@ -706,6 +969,146 @@ where
 
 
 #[cfg(test)]
+mod variant_publish_requirement_tests {
+    use super::*;
+    use sea_orm::Database;
+
+    async fn publish_requirement_database() -> sea_orm::DatabaseConnection {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        db.execute_unprepared(
+            "CREATE TABLE product_variants (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, product_id TEXT NOT NULL, sku TEXT, position INTEGER NOT NULL)",
+        )
+        .await
+        .unwrap();
+        db.execute_unprepared(
+            "CREATE TABLE product_attributes (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, code TEXT NOT NULL, value_type TEXT NOT NULL, is_localized BOOLEAN NOT NULL, archived_at TEXT NULL, position INTEGER NOT NULL)",
+        )
+        .await
+        .unwrap();
+        db.execute_unprepared(
+            "CREATE TABLE product_variant_attribute_values (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, variant_id TEXT NOT NULL, attribute_id TEXT NOT NULL, value_text TEXT NULL, value_integer INTEGER NULL, value_decimal NUMERIC NULL, value_boolean BOOLEAN NULL, value_date TEXT NULL, value_datetime TEXT NULL, value_json TEXT NULL)",
+        )
+        .await
+        .unwrap();
+        db.execute_unprepared(
+            "CREATE TABLE product_variant_attribute_value_options (value_id TEXT NOT NULL, option_id TEXT NOT NULL)",
+        )
+        .await
+        .unwrap();
+        db.execute_unprepared(
+            "CREATE TABLE product_variant_attribute_value_translations (value_id TEXT NOT NULL, locale TEXT NOT NULL, value_text TEXT NOT NULL)",
+        )
+        .await
+        .unwrap();
+        db
+    }
+
+    async fn insert_two_variants(
+        db: &sea_orm::DatabaseConnection,
+        tenant_id: Uuid,
+        product_id: Uuid,
+        first_variant_id: Uuid,
+        second_variant_id: Uuid,
+    ) {
+        db.execute_unprepared(&format!(
+            "INSERT INTO product_variants (id, tenant_id, product_id, sku, position) VALUES ('{first_variant_id}', '{tenant_id}', '{product_id}', 'SKU-1', 0), ('{second_variant_id}', '{tenant_id}', '{product_id}', 'SKU-2', 1)"
+        ))
+        .await
+        .unwrap();
+    }
+
+    #[test]
+    fn publish_requirements_are_scoped_to_the_correct_owner() {
+        assert!(attribute_scope_includes_product("product"));
+        assert!(!attribute_scope_includes_product("variant"));
+        assert!(attribute_scope_includes_product("both"));
+        assert!(!attribute_scope_includes_variant("product"));
+        assert!(attribute_scope_includes_variant("variant"));
+        assert!(attribute_scope_includes_variant("both"));
+    }
+
+    #[tokio::test]
+    async fn required_variant_value_must_exist_for_every_variant() {
+        let db = publish_requirement_database().await;
+        let tenant_id = Uuid::new_v4();
+        let product_id = Uuid::new_v4();
+        let first_variant_id = Uuid::new_v4();
+        let second_variant_id = Uuid::new_v4();
+        let attribute_id = Uuid::new_v4();
+        insert_two_variants(&db, tenant_id, product_id, first_variant_id, second_variant_id)
+            .await;
+        db.execute_unprepared(&format!(
+            "INSERT INTO product_attributes (id, tenant_id, code, value_type, is_localized, archived_at, position) VALUES ('{attribute_id}', '{tenant_id}', 'material', 'text', 0, NULL, 0)"
+        ))
+        .await
+        .unwrap();
+        db.execute_unprepared(&format!(
+            "INSERT INTO product_variant_attribute_values (id, tenant_id, variant_id, attribute_id, value_text) VALUES ('{}', '{tenant_id}', '{first_variant_id}', '{attribute_id}', 'cotton')",
+            Uuid::new_v4()
+        ))
+        .await
+        .unwrap();
+
+        let error = validate_variant_publish_requirements_in(
+            &db,
+            tenant_id,
+            product_id,
+            &[attribute_id],
+            &HashMap::new(),
+        )
+        .await
+        .expect_err("a required Variant value cannot be satisfied by another SKU");
+        assert!(error.to_string().contains("SKU-2"));
+        assert!(error.to_string().contains("material"));
+    }
+
+    #[tokio::test]
+    async fn required_variant_locales_are_checked_for_every_variant() {
+        let db = publish_requirement_database().await;
+        let tenant_id = Uuid::new_v4();
+        let product_id = Uuid::new_v4();
+        let first_variant_id = Uuid::new_v4();
+        let second_variant_id = Uuid::new_v4();
+        let attribute_id = Uuid::new_v4();
+        let first_value_id = Uuid::new_v4();
+        let second_value_id = Uuid::new_v4();
+        insert_two_variants(&db, tenant_id, product_id, first_variant_id, second_variant_id)
+            .await;
+        db.execute_unprepared(&format!(
+            "INSERT INTO product_attributes (id, tenant_id, code, value_type, is_localized, archived_at, position) VALUES ('{attribute_id}', '{tenant_id}', 'care', 'text', 1, NULL, 0)"
+        ))
+        .await
+        .unwrap();
+        db.execute_unprepared(&format!(
+            "INSERT INTO product_variant_attribute_values (id, tenant_id, variant_id, attribute_id) VALUES ('{first_value_id}', '{tenant_id}', '{first_variant_id}', '{attribute_id}'), ('{second_value_id}', '{tenant_id}', '{second_variant_id}', '{attribute_id}')"
+        ))
+        .await
+        .unwrap();
+        db.execute_unprepared(&format!(
+            "INSERT INTO product_variant_attribute_value_translations (value_id, locale, value_text) VALUES ('{first_value_id}', 'en', 'care en'), ('{first_value_id}', 'fr', 'care fr'), ('{second_value_id}', 'en', 'care en')"
+        ))
+        .await
+        .unwrap();
+
+        let required_locales = HashMap::from([(
+            attribute_id,
+            vec!["en".to_owned(), "fr".to_owned()],
+        )]);
+        let error = validate_variant_publish_requirements_in(
+            &db,
+            tenant_id,
+            product_id,
+            &[attribute_id],
+            &required_locales,
+        )
+        .await
+        .expect_err("each Variant must contain every required locale");
+        assert!(error.to_string().contains("SKU-2"));
+        assert!(error.to_string().contains("fr"));
+    }
+}
+
+#[cfg(test)]
 mod localized_clear_tests {
     use super::*;
     use sea_orm::{Database, DatabaseBackend, Statement};
@@ -746,7 +1149,7 @@ mod localized_clear_tests {
     }
 
     async fn count_rows(db: &DatabaseConnection, sql: &str) -> i64 {
-        db.query_one(&Statement::from_string(
+        db.query_one_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             sql.to_owned(),
         ))

@@ -1,17 +1,18 @@
 # Standalone Cargo workspace template for Fly
 #
 # When extracting `crates/ui/fly` into an independent repository (e.g. `github.com/rustok/fly`),
-# rename this file to `Cargo.toml`.
+# merge these workspace tables into Fly's existing root Cargo.toml; keep the root package.
 #
 # Every sub-crate uses `version.workspace = true` and `<dep>.workspace = true`, so the template has
 # to supply `[workspace.package]` and `[workspace.dependencies]`. Keep the dependency versions in
 # step with the host workspace's root `Cargo.toml`; `scripts/verify/verify-fly-standalone-workspace.mjs`
 # fails the build when they drift.
 #
-# The former extraction blocker is resolved: `rustok-ui-i18n` is now an optional dependency behind
-# the `platform-i18n` feature, and locale identity goes through the `LocaleResolver` trait
-# (`src/locale_resolver.rs`). An extracted repository builds with `default-features = false`,
-# which substitutes Fly's own structural BCP-47 resolver.
+# Locale identity goes through the LocaleResolver trait (src/locale_resolver.rs).
+# rustok-ui-i18n is optional behind platform-i18n, but Cargo still resolves inherited
+# optional dependencies. An export must supply that dependency or remove its manifest
+# declaration and platform feature wiring. default-features = false selects the structural
+# resolver only after the manifests can be resolved and all consumers respect that feature.
 #
 # That substitution is not free: without CLDR likely-subtag data, `zh-TW` falls back to `zh`
 # instead of `zh-Hant`, and legacy codes such as `iw` are not canonicalized to `he`. If the
@@ -57,6 +58,8 @@ repository = "https://github.com/rustok/fly"
 [workspace.dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+url = "2.5"
+uuid = { version = "1.25.0", features = ["v4", "v5", "v7", "serde", "js"] }
 sha2 = "0.11"
 thiserror = "2.0.18"
 leptos = "=0.8.21"

@@ -3,7 +3,7 @@ use crate::{
     AssetDescriptor, FlyError, FlyResult, ProjectDocument, ProjectSnapshot, RegistrySet,
     UniqueIdGenerator, ValidationLimits, ValidationReport, apply_binding_command,
     apply_context_command, apply_dynamic_command, apply_page_command, apply_style_rule_command,
-    apply_symbol_command, apply_translation_command, extend_with_runtime_validation,
+    apply_symbol_command, apply_translation_command,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -53,8 +53,9 @@ impl FlyEditor {
         }
     }
 
+    /// Change the retained entry limit without resetting history or its byte budget.
     pub fn with_history_limit(mut self, limit: usize) -> Self {
-        self.history = History::new(limit);
+        self.history.set_limit(limit);
         self
     }
 
@@ -74,7 +75,7 @@ impl FlyEditor {
         self
     }
 
-    /// Use a host-provided embed catalog for both incremental and full validation.
+    /// Use a host-provided embed catalog for command and history validation.
     ///
     /// Pass the same registry to the corresponding render function so validation and rendering
     /// enforce one provider/host/path policy.
@@ -118,9 +119,15 @@ impl FlyEditor {
     }
 
     pub fn validate(&self) -> ValidationReport {
-        extend_with_runtime_validation(
-            &self.document,
-            crate::validate_project_with_embed_registry(&self.document, &self.registries, self.validation_limits, &self.embed_registry),
+        self.validate_document(&self.document)
+    }
+
+    fn validate_document(&self, document: &ProjectDocument) -> ValidationReport {
+        crate::validate_project_with_embed_registry(
+            document,
+            &self.registries,
+            self.validation_limits,
+            &self.embed_registry,
         )
     }
 
@@ -160,71 +167,14 @@ impl FlyEditor {
         // Keep even ID allocation transactional: a refused edit must not advance editor state.
         let mut generator = self.id_generator.clone();
 
-        // Fast path: incremental validation for non-structural patch commands when last_report is valid.
-        // When incremental validation declines, the already-applied working copy is handed to the
-        // full path below instead of being cloned and applied a second time.
-        let mut speculative = None;
-        if let EditorCommand::Patch { component_id, .. } = &command
-            && let Some(prev_report) = &self.last_report
-            && prev_report.is_valid()
-        {
-            let component_id = component_id.clone();
-            let mut after = (*self.document).clone();
-            Self::apply_to_document(&mut after, &mut command, &mut generator, false)?;
-            if let Some(inc_report) = crate::validate_patch_incremental_with_embed_registry(
-                &after,
-                &component_id,
-                prev_report,
-                &self.registries,
-                self.validation_limits,
-                &self.embed_registry,
-            ) {
-                let errors = inc_report.errors().cloned().collect::<Vec<_>>();
-                if !errors.is_empty() {
-                    return Err(FlyError::Validation(errors));
-                }
-                if after == *self.document {
-                    self.last_report = Some(inc_report.clone());
-                    return Ok(inc_report);
-                }
-                let inverse = invert_command(&self.document, &command);
-                self.id_generator = generator;
-                let after = Arc::new(after);
-                let history_after = Arc::clone(&after);
-                let before = std::mem::replace(&mut self.document, after);
-                self.selection = self
-                    .selection
-                    .take()
-                    .filter(|id| self.document.contains_component(id));
-                self.history.push(HistoryEntry {
-                    command,
-                    before,
-                    after: history_after,
-                    inverse,
-                });
-                self.revision.mark_changed(&self.document);
-                self.last_report = Some(inc_report.clone());
-                return Ok(inc_report);
-            }
-            speculative = Some(after);
-        }
-
-        // One speculative copy to mutate. A command must not leave a partially applied document
-        // behind when validation rejects it, so the working copy is unavoidable — but it is now
-        // the only deep copy on this path.
-        let mut after = match speculative {
-            Some(after) => after,
-            None => {
-                let mut after = (*self.document).clone();
-                Self::apply_to_document(&mut after, &mut command, &mut generator, false)?;
-                after
-            }
-        };
+        // A patch can change project-wide invariants (form identity, action targets,
+        // parent/child contracts, layout slots and runtime bindings). The prior report
+        // cannot prove those invariants after a mutation. Use one speculative document
+        // and one canonical validation path for every mutating command.
+        let mut after = (*self.document).clone();
+        Self::apply_to_document(&mut after, &mut command, &mut generator, false)?;
         after.ensure_stable_ids(&mut generator);
-        let report = extend_with_runtime_validation(
-            &after,
-            crate::validate_project_with_embed_registry(&after, &self.registries, self.validation_limits, &self.embed_registry),
-        );
+        let report = self.validate_document(&after);
         let errors = report.errors().cloned().collect::<Vec<_>>();
         if !errors.is_empty() {
             return Err(FlyError::Validation(errors));
@@ -264,6 +214,8 @@ impl FlyEditor {
     }
 
     pub fn undo(&mut self) -> FlyResult<&ProjectDocument> {
+        let entry = self.history.peek_undo().ok_or(FlyError::UndoHistoryEmpty)?;
+        let report = self.validate_history_transition(&entry.after, &entry.before, "undo")?;
         let (entry, size) = self.history.pop_undo()?;
         self.document = Arc::clone(&entry.before);
         self.history.push_redo(entry, size);
@@ -272,11 +224,13 @@ impl FlyEditor {
             .take()
             .filter(|id| self.document.contains_component(id));
         self.revision.mark_changed(&self.document);
-        self.last_report = None;
+        self.last_report = Some(report);
         Ok(&self.document)
     }
 
     pub fn redo(&mut self) -> FlyResult<&ProjectDocument> {
+        let entry = self.history.peek_redo().ok_or(FlyError::RedoHistoryEmpty)?;
+        let report = self.validate_history_transition(&entry.before, &entry.after, "redo")?;
         let (entry, size) = self.history.pop_redo()?;
         self.document = Arc::clone(&entry.after);
         self.history.push_undo(entry, size);
@@ -285,8 +239,32 @@ impl FlyEditor {
             .take()
             .filter(|id| self.document.contains_component(id));
         self.revision.mark_changed(&self.document);
-        self.last_report = None;
+        self.last_report = Some(report);
         Ok(&self.document)
+    }
+
+    /// History is serialized independently of the live document. Verify its
+    /// endpoint and the current host policy before moving either stack.
+    fn validate_history_transition(
+        &self,
+        expected: &ProjectDocument,
+        candidate: &ProjectDocument,
+        operation: &str,
+    ) -> FlyResult<ValidationReport> {
+        if expected != self.document.as_ref() {
+            return Err(FlyError::Validation(vec![crate::ValidationDiagnostic {
+                severity: crate::ValidationSeverity::Error,
+                code: "history_base_mismatch".to_string(),
+                path: format!("history.{operation}"),
+                message: "history entry does not belong to the current document state".to_string(),
+            }]));
+        }
+        let report = self.validate_document(candidate);
+        let errors = report.errors().cloned().collect::<Vec<_>>();
+        if !errors.is_empty() {
+            return Err(FlyError::Validation(errors));
+        }
+        Ok(report)
     }
 
     fn apply_to_document(
@@ -433,10 +411,10 @@ fn prepare_insert_ids(
         let page_root = match parent_id {
             Some(parent_id) => document
                 .component_location(parent_id)
-                .and_then(|location| document.project.pages.get(location.page_index))
+                .and_then(|location| document.project().pages.get(location.page_index))
                 .and_then(|page| page.component.as_ref()),
             None => document
-                .project
+                .project()
                 .pages
                 .iter()
                 .find_map(|page| page.component.as_ref()),
@@ -513,23 +491,23 @@ fn apply_asset_command(document: &mut ProjectDocument, command: &AssetCommand) -
                     "asset must be an object with src, source, or url".to_string(),
                 )
             })?;
-            if let Some(index) = document.project.assets.iter().position(|candidate| {
+            if let Some(index) = document.project().assets.iter().position(|candidate| {
                 AssetDescriptor::from_value(candidate.clone())
                     .is_some_and(|candidate| candidate.id == descriptor.id)
             }) {
-                document.project.assets[index] = asset.clone();
+                document.project_mut().assets[index] = asset.clone();
             } else {
-                document.project.assets.push(asset.clone());
+                document.project_mut().assets.push(asset.clone());
             }
             Ok(())
         }
         AssetCommand::Remove { asset_id } => {
-            let before = document.project.assets.len();
-            document.project.assets.retain(|candidate| {
+            let before = document.project().assets.len();
+            document.project_mut().assets.retain(|candidate| {
                 AssetDescriptor::from_value(candidate.clone())
                     .is_none_or(|candidate| candidate.id != *asset_id)
             });
-            if document.project.assets.len() == before {
+            if document.project().assets.len() == before {
                 return Err(FlyError::AssetNotFound(asset_id.clone()));
             }
             Ok(())
@@ -726,7 +704,7 @@ pub fn invert_command(
         EditorCommand::Asset { command } => match command {
             AssetCommand::Upsert { asset } => {
                 let descriptor = AssetDescriptor::from_value(asset.clone())?;
-                if let Some(existing) = document.project.assets.iter().find(|candidate| {
+                if let Some(existing) = document.project().assets.iter().find(|candidate| {
                     AssetDescriptor::from_value((*candidate).clone())
                         .is_some_and(|candidate| candidate.id == descriptor.id)
                 }) {
@@ -744,58 +722,77 @@ pub fn invert_command(
                 }
             }
             AssetCommand::Remove { asset_id } => {
-                let existing = document.project.assets.iter().find(|candidate| {
-                    AssetDescriptor::from_value((*candidate).clone())
+                // Upsert appends a removed asset; it can only recover the exact
+                // ordering when the removed identity occurred once at the tail.
+                let (last, preceding) = document.project().assets.split_last()?;
+                let matches = |candidate: &serde_json::Value| {
+                    AssetDescriptor::from_value(candidate.clone())
                         .is_some_and(|candidate| candidate.id == *asset_id)
-                })?;
+                };
+                if !matches(last) || preceding.iter().any(matches) {
+                    return None;
+                }
                 Some(EditorCommand::Asset {
                     command: AssetCommand::Upsert {
-                        asset: existing.clone(),
+                        asset: last.clone(),
                     },
                 })
             }
         },
-        EditorCommand::Theme { command } => match command {
-            crate::ThemeCommand::Upsert { token } => {
-                let current_tokens = crate::decode_theme_tokens(document).ok()?;
-                if let Some(existing) = current_tokens.iter().find(|t| t.name == token.name) {
+        EditorCommand::Theme { command } => {
+            // Theme writes canonicalize the raw extension. An inverse built
+            // from decoded tokens cannot recover discarded representation.
+            let current_tokens = crate::decode_theme_tokens(document).ok()?;
+            let canonical = if current_tokens.is_empty() {
+                None
+            } else {
+                let tokens = current_tokens
+                    .iter()
+                    .map(|token| {
+                        (token.name.clone(), serde_json::Value::String(token.value.clone()))
+                    })
+                    .collect::<serde_json::Map<String, serde_json::Value>>();
+                Some(serde_json::json!({ "tokens": tokens }))
+            };
+            if document.project().extensions.get(crate::FLY_THEME_FIELD) != canonical.as_ref() {
+                return None;
+            }
+            match command {
+                crate::ThemeCommand::Upsert { token } => {
+                    if let Some(existing) = current_tokens.iter().find(|t| t.name == token.name) {
+                        Some(EditorCommand::Theme {
+                            command: crate::ThemeCommand::Upsert {
+                                token: existing.clone(),
+                            },
+                        })
+                    } else {
+                        Some(EditorCommand::Theme {
+                            command: crate::ThemeCommand::Remove {
+                                name: token.name.clone(),
+                            },
+                        })
+                    }
+                }
+                crate::ThemeCommand::Remove { name } => {
+                    let existing = current_tokens.iter().find(|t| t.name == *name)?;
                     Some(EditorCommand::Theme {
                         command: crate::ThemeCommand::Upsert {
                             token: existing.clone(),
                         },
                     })
-                } else {
+                }
+                // A reverse rename also rewrites references to the new name
+                // which may have existed before the original rename.
+                crate::ThemeCommand::Rename { .. } => None,
+                crate::ThemeCommand::Replace { .. } => {
                     Some(EditorCommand::Theme {
-                        command: crate::ThemeCommand::Remove {
-                            name: token.name.clone(),
+                        command: crate::ThemeCommand::Replace {
+                            tokens: current_tokens,
                         },
                     })
                 }
             }
-            crate::ThemeCommand::Remove { name } => {
-                let current_tokens = crate::decode_theme_tokens(document).ok()?;
-                let existing = current_tokens.iter().find(|t| t.name == *name)?;
-                Some(EditorCommand::Theme {
-                    command: crate::ThemeCommand::Upsert {
-                        token: existing.clone(),
-                    },
-                })
-            }
-            crate::ThemeCommand::Rename { old_name, new_name } => Some(EditorCommand::Theme {
-                command: crate::ThemeCommand::Rename {
-                    old_name: new_name.clone(),
-                    new_name: old_name.clone(),
-                },
-            }),
-            crate::ThemeCommand::Replace { .. } => {
-                let current_tokens = crate::decode_theme_tokens(document).ok()?;
-                Some(EditorCommand::Theme {
-                    command: crate::ThemeCommand::Replace {
-                        tokens: current_tokens,
-                    },
-                })
-            }
-        },
+        }
         // Inverting every step against the initial document is incorrect:
         // previous steps may change indices, assets or the existence of targets.
         // Use the already retained exact before/after snapshots for transactions.

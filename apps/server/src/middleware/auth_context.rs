@@ -18,6 +18,7 @@ use rustok_core::SecurityActorKind;
 use crate::auth::decode_access_token;
 use crate::extractors::auth::{resolve_current_user, resolve_current_user_from_access_token};
 use crate::host_authority::{take_host_authority, with_host_authority_scope};
+use crate::middleware::metrics_auth::is_observability_auth_path;
 use crate::middleware::tenant_route_policy::{TenantRouteScope, tenant_route_scope};
 use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
 use crate::services::server_runtime_context::ServerAuthRuntime;
@@ -312,18 +313,6 @@ fn is_oauth_client_auth_request(method: &str, path: &str) -> bool {
     method == "POST" && matches!(path, "/api/oauth/token" | "/api/oauth/revoke")
 }
 
-fn is_observability_auth_path(path: &str) -> bool {
-    matches!(
-        path,
-        "/metrics"
-            | "/metrics/"
-            | "/api/_health/metrics"
-            | "/health/ready"
-            | "/health/runtime"
-            | "/health/modules"
-    )
-}
-
 fn is_direct_user_self_service_principal(principal_kind: AuthPrincipalKind) -> bool {
     principal_kind.is_direct_user()
 }
@@ -491,7 +480,7 @@ mod tests {
 
     #[test]
     fn global_auth_uses_only_the_verified_jwt_tenant_claim() {
-        let config = crate::auth::AuthConfig::new(
+        let config = crate::auth::test_auth_config(
             "test-secret-key-for-auth-context-32bytes-long".to_string(),
         );
         let tenant_id = Uuid::new_v4();
@@ -512,7 +501,7 @@ mod tests {
 
     #[test]
     fn invalid_global_auth_token_cannot_provide_a_tenant_claim() {
-        let config = crate::auth::AuthConfig::new(
+        let config = crate::auth::test_auth_config(
             "test-secret-key-for-auth-context-32bytes-long".to_string(),
         );
 
@@ -821,22 +810,20 @@ mod tests {
 
     #[test]
     fn nil_tenant_id_in_access_token_is_rejected() {
-        const SIGNING_KEY: &str = "auth-context-independent-test-signing-key-32bytes";
-        let config = rustok_auth::build_auth_config_with_env(
+        let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate()
+            .expect("generate independent RSA test keyring");
+        let document = fixture.document(1).to_string();
+        let (generation, config) = crate::auth::auth_config_from_host_document(
             "test-secret-key-for-auth-context-32bytes-long".to_string(),
             900,
-            crate::auth::AuthSettingsOverrides {
-                jwt_keyring_env: Some("TEST_JWT_RING".into()),
-                ..Default::default()
-            },
-            |_| Ok(serde_json::json!({
-                "active_kid": "test-access",
-                "active_hs256_secret": SIGNING_KEY
-            }).to_string()),
-        ).expect("valid test keyring");
+            None,
+            document.as_bytes(),
+        )
+        .expect("prepare complete RS256 test keyring");
+        assert_eq!(generation, 1);
+
         // The canonical encoder refuses nil identifiers, so forge the
-        // token directly to exercise the decode-side guard (a token
-        // could also arrive from a foreign issuer in RS256 setups).
+        // token directly with the same RSA signer to exercise decode policy.
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("system time")
@@ -855,22 +842,20 @@ mod tests {
             grant_type: "direct".to_string(),
             jti: None,
         };
-        let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256);
-        header.kid = Some("test-access".into());
-        let key = jsonwebtoken::EncodingKey::from_secret(SIGNING_KEY.as_bytes());
+        let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
+        header.kid = Some("access".into());
+        let key = jsonwebtoken::EncodingKey::from_rsa_pem(
+            fixture.access.private_pem().as_bytes(),
+        )
+        .expect("fixture RSA private key");
         // Positive control: the exact same key/header accepts a valid tenant.
         let mut valid_claims = serde_json::to_value(&claims).unwrap();
         let valid_tenant = Uuid::new_v4();
         valid_claims["tenant_id"] = serde_json::json!(valid_tenant);
         let valid = jsonwebtoken::encode(&header, &valid_claims, &key).unwrap();
         assert_eq!(verified_tenant_id_from_access_token(&config, &valid), Ok(valid_tenant));
-        let token = jsonwebtoken::encode(&header, &claims, &key)
-        .expect("forge access token");
+        let token = jsonwebtoken::encode(&header, &claims, &key).expect("forge access token");
 
-        // The canonical decoder rejects nil tenant claims before the
-        // middleware's own guard runs, so the caller sees the generic
-        // credential failure; the middleware check stays as defense in
-        // depth if decoder policy ever relaxes.
         assert_eq!(
             verified_tenant_id_from_access_token(&config, &token),
             Err((StatusCode::UNAUTHORIZED, "Invalid token signature"))

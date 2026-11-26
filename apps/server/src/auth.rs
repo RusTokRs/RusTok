@@ -1,17 +1,17 @@
 // Re-export types from rustok-auth (these don't need error conversion).
 pub use rustok_auth::{
     AuthConfig, AuthError, AuthSettingsOverrides, Claims, DEFAULT_MIN_PASSWORD_LENGTH_CHARS,
-    InviteClaims, JwtAlgorithm, MIN_PASSWORD_LENGTH_FLOOR_CHARS, normalize_display_name,
-    normalize_email, password_hash_needs_rehash, validate_password_policy,
+    InviteClaims, MAX_PASSWORD_LENGTH_BYTES, MIN_PASSWORD_LENGTH_FLOOR_CHARS,
+    normalize_display_name, normalize_email, password_hash_needs_rehash,
+    validate_password_policy,
 };
 
 use crate::error::{Error, Result};
 use serde::Deserialize;
-use rustok_auth::{AuthMacPurpose, auth_purpose_mac};
+use rustok_auth::{AuthMacPurpose, auth_purpose_mac, is_canonical_auth_mac_tag};
 use subtle::ConstantTimeEq;
 
 const TOKEN_SUBJECT_SEPARATOR: char = '\u{001f}';
-const PASSWORD_RESET_FINGERPRINT_VERSION: &str = "v2:";
 
 /// Server-owned password reset claims.
 ///
@@ -41,25 +41,33 @@ pub struct EmailVerificationClaims {
 // Thin wrappers that convert `rustok_auth::AuthError` to the server error bridge.
 // All server code imports from `crate::auth`, never directly from `rustok_auth`.
 
-/// Build `AuthConfig` from the host configuration snapshot.
-pub fn auth_config_from_host_settings(
-    secret: String,
-    access_expiration: u64,
-    settings: Option<&serde_json::Value>,
-) -> Result<AuthConfig> {
+fn parse_auth_settings(settings: Option<&serde_json::Value>) -> Result<AuthSettingsOverrides> {
     let app_settings = settings
         .map(|value| serde_json::from_value::<AppSettings>(value.clone()))
         .transpose()?;
-    let auth_settings = app_settings.and_then(|s| s.auth).unwrap_or_default();
-    auth_config_from_parts(secret, access_expiration, auth_settings)
+    Ok(app_settings.and_then(|s| s.auth).unwrap_or_default())
 }
 
-fn auth_config_from_parts(
-    secret: String,
+/// The file source supplies all JWT keys; never build an unused startup signer.
+pub(crate) fn auth_config_from_host_document(
+    mac_root: String,
     access_expiration: u64,
-    auth_settings: AuthSettingsOverrides,
-) -> Result<AuthConfig> {
-    rustok_auth::build_auth_config(secret, access_expiration, auth_settings).map_err(auth_err)
+    settings: Option<&serde_json::Value>,
+    bytes: &[u8],
+) -> Result<(u64, AuthConfig)> {
+    rustok_auth::build_auth_config_from_document(
+        mac_root, access_expiration, parse_auth_settings(settings)?, bytes,
+    ).map_err(auth_err)
+}
+
+/// Fresh, complete RSA configuration for an isolated server test runtime.
+/// Tests sharing one security store must clone this configuration rather
+/// than generating another one for token issuance.
+#[cfg(test)]
+pub(crate) fn test_auth_config(mac_root: String) -> AuthConfig {
+    let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().expect("RSA fixture");
+    auth_config_from_host_document(mac_root, 900, None, fixture.document(1).to_string().as_bytes())
+        .expect("valid test JWT configuration").1
 }
 
 // ─── Token functions ─────────────────────────────────────────────────
@@ -128,7 +136,7 @@ pub fn decode_password_reset_token(
     let (email, credential_fingerprint) = claims
         .sub
         .rsplit_once(TOKEN_SUBJECT_SEPARATOR)
-        .filter(|(email, fingerprint)| !email.is_empty() && !fingerprint.is_empty())
+        .filter(|(email, fingerprint)| !email.is_empty() && is_canonical_auth_mac_tag(fingerprint))
         .ok_or_else(|| auth_err(AuthError::InvalidResetToken))?;
 
     Ok(PasswordResetClaims {
@@ -143,6 +151,9 @@ pub fn password_reset_credential_matches(
     password_hash: &str,
     expected_fingerprint: &str,
 ) -> bool {
+    if !is_canonical_auth_mac_tag(expected_fingerprint) {
+        return false;
+    }
     let Ok(actual) = password_reset_credential_fingerprint(config, password_hash) else {
         return false;
     };
@@ -155,7 +166,7 @@ pub fn password_reset_credential_matches(
 fn password_reset_credential_fingerprint(config: &AuthConfig, password_hash: &str) -> Result<String> {
     let tag = auth_purpose_mac(config, AuthMacPurpose::PasswordResetCredential, password_hash.as_bytes())
         .map_err(auth_err)?;
-    Ok(format!("{PASSWORD_RESET_FINGERPRINT_VERSION}{}", hex::encode(tag)))
+    Ok(hex::encode(tag))
 }
 
 pub fn encode_email_verification_token(
@@ -313,7 +324,7 @@ struct AppSettings {
 mod tests {
     use super::*;
 
-    fn secret() -> String {
+    fn mac_root() -> String {
         "test-secret-key-for-unit-tests-only-32bytes!".to_string()
     }
 
@@ -328,29 +339,15 @@ mod tests {
     }
 
     #[test]
-    fn auth_config_defaults_to_hs256() {
-        let config = auth_config_from_parts(secret(), 900, AuthSettingsOverrides::default())
-            .expect("auth config");
+    fn auth_config_from_complete_rsa_document_preserves_host_policy() {
+        let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
+        let (generation, config) = auth_config_from_host_document(
+            mac_root(), 900, None, fixture.document(7).to_string().as_bytes(),
+        ).expect("auth config");
 
-        assert_eq!(config.algorithm().unwrap(), JwtAlgorithm::HS256);
+        assert_eq!(generation, 7);
         assert_eq!(config.access_expiration, 900);
         assert_eq!(config.refresh_expiration, 60 * 60 * 24 * 30);
-        assert!(config.rsa_private_key_pem().unwrap().is_none());
-        assert!(config.rsa_public_key_pem().unwrap().is_none());
-    }
-
-    #[test]
-    fn auth_config_rejects_rs256_without_keys() {
-        let result = auth_config_from_parts(
-            secret(),
-            900,
-            AuthSettingsOverrides {
-                algorithm: Some(JwtAlgorithm::RS256),
-                ..AuthSettingsOverrides::default()
-            },
-        );
-
-        assert!(result.is_err());
     }
 
     #[test]
@@ -360,10 +357,31 @@ mod tests {
                 "algorithm": "RS999"
             }
         });
+        let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
+        let document = fixture.document(1).to_string();
 
-        let result = auth_config_from_host_settings(secret(), 900, Some(&settings));
+        let result = auth_config_from_host_document(
+            mac_root(), 900, Some(&settings), document.as_bytes(),
+        );
 
         assert!(matches!(result, Err(crate::error::Error::Json(_))));
+    }
+
+    #[test]
+    fn auth_config_rejects_startup_algorithm_overrides_with_file_source() {
+        let settings = serde_json::json!({
+            "auth": {
+                "algorithm": "RS256"
+            }
+        });
+        let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
+        let document = fixture.document(1).to_string();
+
+        let result = auth_config_from_host_document(
+            mac_root(), 900, Some(&settings), document.as_bytes(),
+        );
+
+        assert!(result.is_err());
     }
 
     #[test]
@@ -377,9 +395,15 @@ mod tests {
         );
     }
 
+    fn rsa_test_config(root: String, document: &serde_json::Value) -> AuthConfig {
+        auth_config_from_host_document(root, 900, None, document.to_string().as_bytes())
+            .expect("complete RSA test keyring").1
+    }
+
     #[test]
     fn password_reset_token_is_bound_to_credential_state() {
-        let config = AuthConfig::new(secret());
+        let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
+        let config = rsa_test_config(mac_root(), &fixture.document(1));
         let tenant_id = uuid::Uuid::new_v4();
         let token = encode_password_reset_token(
             &config,
@@ -393,7 +417,7 @@ mod tests {
 
         assert_eq!(claims.sub, "user@example.com");
         assert_eq!(claims.tenant_id, tenant_id);
-        assert!(claims.credential_fingerprint.starts_with("v2:"));
+        assert!(is_canonical_auth_mac_tag(&claims.credential_fingerprint));
         assert!(password_reset_credential_matches(
             &config,
             "old-password-hash",
@@ -408,18 +432,33 @@ mod tests {
 
     #[test]
     fn reset_binding_rejects_legacy_and_different_secrets() {
-        let config = AuthConfig::new(secret());
+        let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
+        let document = fixture.document(1);
+        let config = rsa_test_config(mac_root(), &document);
         let tag = password_reset_credential_fingerprint(&config, "hash").unwrap();
-        assert!(!password_reset_credential_matches(&config, "hash", &tag[3..]));
-        let other = AuthConfig::new("another-secret-at-least-thirty-two-bytes".to_string());
+        assert!(password_reset_credential_matches(&config, "hash", &tag));
+        assert!(!password_reset_credential_matches(&config, "hash", &format!("v2:{tag}")));
+        assert!(!password_reset_credential_matches(&config, "hash", &tag[2..]));
+        let tenant = uuid::Uuid::new_v4();
+        for invalid in [format!("v2:{tag}"), tag.to_uppercase(), tag[2..].to_string()] {
+            let subject = format!("user@example.com{TOKEN_SUBJECT_SEPARATOR}{invalid}");
+            let token = rustok_auth::encode_password_reset_token(&config, tenant, &subject, 900).unwrap();
+            assert!(decode_password_reset_token(&config, &token).is_err());
+        }
+        let other = rsa_test_config("another-secret-at-least-thirty-two-bytes".to_string(), &document);
         assert!(!password_reset_credential_matches(&other, "hash", &tag));
-        let weak = AuthConfig::new("short".to_string());
-        assert!(!password_reset_credential_matches(&weak, "hash", &tag));
+        assert!(
+            auth_config_from_host_document(
+                "short".to_string(), 900, None, document.to_string().as_bytes(),
+            ).is_err(),
+            "a weak MAC root must fail during Auth preparation",
+        );
     }
 
     #[test]
     fn email_verification_token_is_bound_to_user_id() {
-        let config = AuthConfig::new(secret());
+        let fixture = rustok_test_utils::jwt::JwtKeyringFixture::generate().unwrap();
+        let config = rsa_test_config(mac_root(), &fixture.document(1));
         let tenant_id = uuid::Uuid::new_v4();
         let user_id = uuid::Uuid::new_v4();
         let token =

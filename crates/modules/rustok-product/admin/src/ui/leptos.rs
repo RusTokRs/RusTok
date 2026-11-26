@@ -1706,10 +1706,18 @@ pub(super) fn ProductVariantsPanel(
     set_busy: WriteSignal<bool>,
     set_error: WriteSignal<Option<String>>,
     on_variant_mutated: Callback<String>,
+    #[prop(optional)] on_variant_deleted: Option<Callback<(String, String)>>,
     #[prop(optional)] blocked: Option<Signal<bool>>,
 ) -> impl IntoView {
     let blocked = blocked.unwrap_or_else(|| Signal::derive(|| false));
     let copy = build_product_variants_panel_copy(locale.as_deref());
+    let delete_confirm_label = crate::i18n::t(
+        locale.as_deref(),
+        "product-variants-deleteConfirm",
+        "Are you sure you want to delete this variant?",
+    );
+    let cancel_delete_label =
+        crate::i18n::t(locale.as_deref(), "product-variants-deleteCancel", "Cancel");
     let clear_price_label = crate::i18n::t(
         locale.as_deref(),
         "product-variantUpdate-clearPrimaryPrice",
@@ -1723,6 +1731,8 @@ pub(super) fn ProductVariantsPanel(
     let (edit_stock, set_edit_stock) = signal(0_i32);
     let (edit_stock_text, set_edit_stock_text) = signal("0".to_string());
     let edit_stock_valid = RwSignal::new(true);
+    let (confirming_delete_variant_id, set_confirming_delete_variant_id) =
+        signal(Option::<String>::None);
 
     let Some(product) = product else {
         return view! { <div /> }.into_any();
@@ -1781,9 +1791,20 @@ pub(super) fn ProductVariantsPanel(
                     let variants_for_edit = product_variants.clone();
                     let default_curr = default_currency.clone();
                     let on_mutated_edit = on_variant_mutated;
+                    let on_variant_deleted_for_rows = on_variant_deleted.clone();
+                    let delete_label = copy.delete.clone();
+                    let cannot_delete_only_label = copy.cannot_delete_only.clone();
+                    let delete_confirm_label = delete_confirm_label.clone();
+                    let cancel_delete_label = cancel_delete_label.clone();
 
                     Callback::new(move |(row, col_id): (VariantRowViewModel, String)| {
                         let variant_id = row.id.clone();
+                        let is_confirming_delete = {
+                            let v_id = variant_id.clone();
+                            Signal::derive(move || {
+                                confirming_delete_variant_id.get().as_deref() == Some(&v_id)
+                            })
+                        };
                         let is_editing_this = {
                             let v_id = variant_id.clone();
                             Signal::derive(move || editing_variant_id.get().as_deref() == Some(&v_id))
@@ -1909,10 +1930,17 @@ pub(super) fn ProductVariantsPanel(
                                     .cloned();
                                 let original_for_start = original_variant.clone();
                                 let on_start_edit = move |_| {
+                                    if busy.get_untracked()
+                                        || blocked.get_untracked()
+                                        || editing_variant_id.get_untracked().is_some()
+                                    {
+                                        return;
+                                    }
                                     let Some(original) = original_for_start.as_ref() else {
                                         set_error.set(Some("The selected variant is no longer available. Reload the catalog.".into()));
                                         return;
                                     };
+                                    set_confirming_delete_variant_id.set(None);
                                     set_edit_sku.set(original.sku.clone().unwrap_or_default());
                                     set_edit_shipping_profile_slug.set(
                                         original.shipping_profile_slug.clone().unwrap_or_default()
@@ -1985,6 +2013,111 @@ pub(super) fn ProductVariantsPanel(
                                     });
                                 };
 
+                                let row_can_delete = row.can_delete;
+                                let can_delete = row_can_delete && on_variant_deleted_for_rows.is_some();
+                                let cannot_delete_only = cannot_delete_only_label.clone();
+                                let variant_id_for_request = variant_id.clone();
+                                let on_request_delete = move |_| {
+                                    if busy.get_untracked()
+                                        || blocked.get_untracked()
+                                        || editing_variant_id.get_untracked().is_some()
+                                        || confirming_delete_variant_id.get_untracked().is_some()
+                                    {
+                                        return;
+                                    }
+                                    if !row_can_delete {
+                                        set_error.set(Some(cannot_delete_only.clone()));
+                                        return;
+                                    }
+                                    set_confirming_delete_variant_id
+                                        .set(Some(variant_id_for_request.clone()));
+                                };
+
+                                let original_for_delete = original_variant.clone();
+                                let on_variant_deleted_for_confirm = on_variant_deleted_for_rows.clone();
+                                let on_mutated_delete_reconcile = on_mutated_edit.clone();
+                                let product_id_for_delete = product_id_for_edit.clone();
+                                let variant_id_for_confirm = variant_id.clone();
+                                let cannot_delete_only_for_confirm = cannot_delete_only_label.clone();
+                                let on_confirm_delete = move |_| {
+                                    if busy.get_untracked() || blocked.get_untracked() {
+                                        return;
+                                    }
+                                    if !row_can_delete {
+                                        set_error.set(Some(cannot_delete_only_for_confirm.clone()));
+                                        return;
+                                    }
+                                    if confirming_delete_variant_id.get_untracked().as_deref()
+                                        != Some(variant_id_for_confirm.as_str())
+                                    {
+                                        return;
+                                    }
+                                    let Some(original) = original_for_delete.clone() else {
+                                        set_error.set(Some("The selected variant is no longer available. Reload the catalog.".into()));
+                                        return;
+                                    };
+                                    let Some(on_deleted) = on_variant_deleted_for_confirm.clone() else {
+                                        set_error.set(Some("Product variant deletion is unavailable in this editor.".into()));
+                                        return;
+                                    };
+                                    let Some(bootstrap) = bootstrap.get_untracked() else {
+                                        set_error.set(Some("Product session data is unavailable. Reload it before deleting an SKU.".into()));
+                                        return;
+                                    };
+                                    let token_val = token.get_untracked();
+                                    let tenant_val = tenant.get_untracked();
+                                    let deleted_variant_id = original.id.clone();
+                                    let expected_revision = original.revision.clone();
+                                    let deleted_product_id = product_id_for_delete.clone();
+                                    let reconcile_product_id = product_id_for_delete.clone();
+                                    let reconcile_projection = on_mutated_delete_reconcile.clone();
+
+                                    set_busy.set(true);
+                                    set_error.set(None);
+                                    spawn_local(async move {
+                                        match catalog_transport::delete_product_variant(
+                                            token_val,
+                                            tenant_val,
+                                            bootstrap.current_tenant.id,
+                                            bootstrap.me.id,
+                                            deleted_variant_id.clone(),
+                                            expected_revision,
+                                        ).await {
+                                            Ok(true) => {
+                                                set_confirming_delete_variant_id.set(None);
+                                                set_editing_variant_id.set(None);
+                                                on_deleted.run((deleted_product_id, deleted_variant_id));
+                                            }
+                                            Ok(false) => {
+                                                set_error.set(Some(
+                                                    "Product variant deletion was not acknowledged.".into()
+                                                ));
+                                                reconcile_projection.run(reconcile_product_id.clone());
+                                            }
+                                            Err(err) => {
+                                                set_error.set(Some(err.to_string()));
+                                                // Reconcile after definitive conflicts and unknown
+                                                // outcomes. An unsettled owner receipt still replays
+                                                // the same request through the retained retry key.
+                                                reconcile_projection.run(reconcile_product_id.clone());
+                                            }
+                                        }
+                                        set_busy.set(false);
+                                    });
+                                };
+
+                                let cancel_variant_id = variant_id.clone();
+                                let on_cancel_delete = move |_| {
+                                    if confirming_delete_variant_id.get_untracked().as_deref()
+                                        == Some(cancel_variant_id.as_str())
+                                    {
+                                        set_confirming_delete_variant_id.set(None);
+                                    }
+                                };
+
+                                let delete_label = delete_label.clone();
+                                let delete_confirm_label = delete_confirm_label.clone();
+                                let cancel_delete_label = cancel_delete_label.clone();
                                 view! {
                                     <div class="inline-flex items-center gap-1 justify-end w-full">
                                         {move || if is_editing_this.get() {
@@ -2005,17 +2138,48 @@ pub(super) fn ProductVariantsPanel(
                                                     "Cancel"
                                                 </button>
                                             }.into_any()
+                                        } else if is_confirming_delete.get() {
+                                            view! {
+                                                <span class="max-w-40 text-left text-[10px] text-muted-foreground">
+                                                    {delete_confirm_label.clone()}
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    class="inline-flex rounded-lg border border-rose-300 px-2 py-1 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-50"
+                                                    disabled=move || busy.get()
+                                                    on:click=on_confirm_delete.clone()
+                                                >
+                                                    {delete_label.clone()}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    class="inline-flex rounded-lg border border-border px-2 py-1 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
+                                                    disabled=move || busy.get()
+                                                    on:click=on_cancel_delete.clone()
+                                                >
+                                                    {cancel_delete_label.clone()}
+                                                </button>
+                                            }.into_any()
                                         } else {
                                             view! {
                                                 <button
                                                     type="button"
                                                     class="inline-flex rounded-lg border border-border px-2 py-1 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
-                                                    disabled=move || busy.get()
+                                                    disabled=move || busy.get() || editing_variant_id.get().is_some() || confirming_delete_variant_id.get().is_some()
                                                     on:click=on_start_edit.clone()
                                                 >
                                                     "Edit"
                                                 </button>
-
+                                                {can_delete.then(|| view! {
+                                                    <button
+                                                        type="button"
+                                                        class="inline-flex rounded-lg border border-rose-300 px-2 py-1 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-50"
+                                                        disabled=move || busy.get() || editing_variant_id.get().is_some() || confirming_delete_variant_id.get().is_some()
+                                                        on:click=on_request_delete.clone()
+                                                    >
+                                                        {delete_label.clone()}
+                                                    </button>
+                                                })}
                                             }.into_any()
                                         }}
                                     </div>

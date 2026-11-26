@@ -1,12 +1,12 @@
 # План глубокого сквозного аудита на базе GitNexus Knowledge Graph
 
-## Deep GitNexus Audit Cycle — Round 1 (Fresh Start from Scratch)
+## Deep GitNexus Audit Cycle — Round 2 (Fresh Start from Scratch)
 
 - **Status:** ACTIVE
-- **Active Cycle:** Round 1 (Fresh Start from Scratch)
-- **Active Phase:** Phase GN-05 — Social, Community & Communication Modules (15 модулей)
-- **Next Pending Component:** [`crates/modules/rustok-profiles`](../../crates/modules/rustok-profiles)
-- **Current main SHA:** `853a20f30f`
+- **Active Cycle:** Round 2 (Fresh Start from Scratch)
+- **Active Phase:** Phase GN-03 — Commerce, Financial & Marketplace Modules (20 модулей)
+- **Next Pending Component:** [`crates/modules/rustok-order`](../../crates/modules/rustok-order) *(note: `crates/modules/rustok-auth` пропущен по запросу пользователя — глобальный рефакторинг)*
+- **Current main SHA:** `c7f032b462`
 - **Active Branch:** `main`
 
 ### Canonical Trigger
@@ -203,7 +203,7 @@ flowchart TD
 | Компонент / Пакет | Путь в репозитории | В1..В4 | В5..В8 | В9..В12 | В13..В18 |
 |---|---|:---:|:---:|:---:|:---:|
 | `rustok-tenant` | `crates/modules/rustok-tenant` | [x] | [x] | [x] | [x] |
-| `rustok-auth` (вкл. `cli`, `ui`) | `crates/modules/rustok-auth` | [x] | [x] | [x] | [x] |
+| `rustok-auth` (вкл. `cli`, `ui`) | `crates/modules/rustok-auth` *(пропущен: рефакторинг)* | [-] | [-] | [-] | [-] |
 | `rustok-rbac` (вкл. `cli`) | `crates/modules/rustok-rbac` | [x] | [x] | [x] | [x] |
 | `rustok-security` | `crates/modules/rustok-security` | [x] | [x] | [x] | [x] |
 
@@ -213,51 +213,51 @@ flowchart TD
 | `rustok-commerce` | `crates/modules/rustok-commerce` | [x] | [x] | [x] | [x] |
 | `rustok-commerce-foundation` | `crates/modules/rustok-commerce-foundation` | [x] | [x] | [x] | [x] |
 | `rustok-cart` | `crates/modules/rustok-cart` | [x] | [x] | [x] | [x] |
-| `rustok-order` | `crates/modules/rustok-order` | [x] | [x] | [x] | [x] |
-| `rustok-payment` | `crates/modules/rustok-payment` | [x] | [x] | [x] | [x] |
-| `rustok-pricing` | `crates/modules/rustok-pricing` | [x] | [x] | [x] | [x] |
-| `rustok-tax` | `crates/modules/rustok-tax` | [x] | [x] | [x] | [x] |
-| `rustok-billing` | `crates/modules/rustok-billing` | [x] | [x] | [x] | [x] |
-| `rustok-finance` | `crates/modules/rustok-finance` | [x] | [x] | [x] | [x] |
-| `rustok-accounting` | `crates/modules/rustok-accounting` | [x] | [x] | [x] | [x] |
-| `rustok-fulfillment` | `crates/modules/rustok-fulfillment` | [x] | [x] | [x] | [x] |
-| `rustok-inventory` | `crates/modules/rustok-inventory` | [x] | [x] | [x] | [x] |
-| `rustok-distribution` | `crates/modules/rustok-distribution` | [x] | [x] | [x] | [x] |
-| `rustok-marketplace` | `crates/modules/rustok-marketplace` | [x] | [x] | [x] | [x] |
-| `rustok-marketplace-seller` | `crates/modules/rustok-marketplace-seller` | [x] | [x] | [x] | [x] |
-| `rustok-marketplace-listing` | `crates/modules/rustok-marketplace-listing` | [x] | [x] | [x] | [x] |
-| `rustok-marketplace-commission` | `crates/modules/rustok-marketplace-commission` | [x] | [x] | [x] | [x] |
-| `rustok-marketplace-balance` | `crates/modules/rustok-marketplace-balance` | [x] | [x] | [x] | [x] |
-| `rustok-marketplace-payout` | `crates/modules/rustok-marketplace-payout` | [x] | [x] | [x] | [x] |
-| `rustok-marketplace-allocation` | `crates/modules/rustok-marketplace-allocation` | [x] | [x] | [x] | [x] |
+| `rustok-order` | `crates/modules/rustok-order` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-payment` | `crates/modules/rustok-payment` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-pricing` | `crates/modules/rustok-pricing` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-tax` | `crates/modules/rustok-tax` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-billing` | `crates/modules/rustok-billing` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-finance` | `crates/modules/rustok-finance` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-accounting` | `crates/modules/rustok-accounting` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-fulfillment` | `crates/modules/rustok-fulfillment` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-inventory` | `crates/modules/rustok-inventory` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-distribution` | `crates/modules/rustok-distribution` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-marketplace` | `crates/modules/rustok-marketplace` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-marketplace-seller` | `crates/modules/rustok-marketplace-seller` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-marketplace-listing` | `crates/modules/rustok-marketplace-listing` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-marketplace-commission` | `crates/modules/rustok-marketplace-commission` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-marketplace-balance` | `crates/modules/rustok-marketplace-balance` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-marketplace-payout` | `crates/modules/rustok-marketplace-payout` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-marketplace-allocation` | `crates/modules/rustok-marketplace-allocation` | [ ] | [ ] | [ ] | [ ] |
 
 ### Phase GN-04 — Catalog, Media, Content & CMS Modules (14 модулей)
 | Компонент / Пакет | Путь в репозитории | В1..В4 | В5..В8 | В9..В12 | В13..В18 |
 |---|---|:---:|:---:|:---:|:---:|
-| `rustok-product` (вкл. `ports`) | `crates/modules/rustok-product` | [x] | [x] | [x] | [x] |
-| `rustok-product-bundles` | `crates/modules/rustok-product-bundles` | [x] | [x] | [x] | [x] |
-| `rustok-product-relations` | `crates/modules/rustok-product-relations` | [x] | [x] | [x] | [x] |
-| `rustok-taxonomy` | `crates/modules/rustok-taxonomy` | [x] | [x] | [x] | [x] |
-| `rustok-navigation` | `crates/modules/rustok-navigation` | [x] | [x] | [x] | [x] |
-| `rustok-brand` | `crates/modules/rustok-brand` | [x] | [x] | [x] | [x] |
-| `rustok-content` | `crates/modules/rustok-content` | [x] | [x] | [x] | [x] |
-| `rustok-content-orchestration` | `crates/modules/rustok-content-orchestration` | [x] | [x] | [x] | [x] |
-| `rustok-pages` | `crates/modules/rustok-pages` | [x] | [x] | [x] | [x] |
-| `rustok-page-builder` | `crates/modules/rustok-page-builder` | [x] | [x] | [x] | [x] |
-| `rustok-media` (вкл. `ports`, `cli`) | `crates/modules/rustok-media` | [x] | [x] | [x] | [x] |
-| `rustok-deal` | `crates/modules/rustok-deal` | [x] | [x] | [x] | [x] |
-| `rustok-forms` | `crates/modules/rustok-forms` | [x] | [x] | [x] | [x] |
-| `rustok-docs` | `crates/modules/rustok-docs` | [x] | [x] | [x] | [x] |
+| `rustok-product` (вкл. `ports`) | `crates/modules/rustok-product` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-product-bundles` | `crates/modules/rustok-product-bundles` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-product-relations` | `crates/modules/rustok-product-relations` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-taxonomy` | `crates/modules/rustok-taxonomy` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-navigation` | `crates/modules/rustok-navigation` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-brand` | `crates/modules/rustok-brand` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-content` | `crates/modules/rustok-content` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-content-orchestration` | `crates/modules/rustok-content-orchestration` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-pages` | `crates/modules/rustok-pages` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-page-builder` | `crates/modules/rustok-page-builder` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-media` (вкл. `ports`, `cli`) | `crates/modules/rustok-media` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-deal` | `crates/modules/rustok-deal` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-forms` | `crates/modules/rustok-forms` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-docs` | `crates/modules/rustok-docs` | [ ] | [ ] | [ ] | [ ] |
 
 ### Phase GN-05 — Social, Community & Communication Modules (15 модулей)
 | Компонент / Пакет | Путь в репозитории | В1..В4 | В5..В8 | В9..В12 | В13..В18 |
 |---|---|:---:|:---:|:---:|:---:|
-| `rustok-forum` | `crates/modules/rustok-forum` | [x] | [x] | [x] | [x] |
-| `rustok-comments` | `crates/modules/rustok-comments` | [x] | [x] | [x] | [x] |
-| `rustok-reactions` | `crates/modules/rustok-reactions` | [x] | [x] | [x] | [x] |
-| `rustok-blog` (вкл. `cli`) | `crates/modules/rustok-blog` | [x] | [x] | [x] | [x] |
-| `rustok-newsletter` | `crates/modules/rustok-newsletter` | [x] | [x] | [x] | [x] |
-| `rustok-customer` | `crates/modules/rustok-customer` | [x] | [x] | [x] | [x] |
+| `rustok-forum` | `crates/modules/rustok-forum` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-comments` | `crates/modules/rustok-comments` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-reactions` | `crates/modules/rustok-reactions` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-blog` (вкл. `cli`) | `crates/modules/rustok-blog` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-newsletter` | `crates/modules/rustok-newsletter` | [ ] | [ ] | [ ] | [ ] |
+| `rustok-customer` | `crates/modules/rustok-customer` | [ ] | [ ] | [ ] | [ ] |
 | `rustok-profiles` (вкл. `cli`) | `crates/modules/rustok-profiles` | [ ] | [ ] | [ ] | [ ] |
 | `rustok-party` | `crates/modules/rustok-party` | [ ] | [ ] | [ ] | [ ] |
 | `rustok-groups` | `crates/modules/rustok-groups` | [ ] | [ ] | [ ] | [ ] |
@@ -363,11 +363,11 @@ flowchart TD
 | Компонент / Пакет | Путь в репозитории | В1..В4 | В5..В8 | В9..В12 | В13..В18 |
 |---|---|:---:|:---:|:---:|:---:|
 | `rustok-content-revisions` | `crates/integration/rustok-content-revisions`| [ ] | [ ] | [ ] | [ ] |
-| `apps/server` | `apps/server` | [x] | [x] | [x] | [x] |
+| `apps/server` | `apps/server` | [ ] | [ ] | [ ] | [ ] |
 | `apps/next-admin` (18 пакетов) | `apps/next-admin` | [ ] | [ ] | [ ] | [ ] |
 | `apps/next-frontend` (12 пакетов) | `apps/next-frontend` | [ ] | [ ] | [ ] | [ ] |
 | `apps/admin` (Leptos Admin Host) | `apps/admin` | [ ] | [ ] | [ ] | [ ] |
-| `apps/storefront` (Leptos Storefront)| `apps/storefront` | [x] | [x] | [x] | [x] |
+| `apps/storefront` (Leptos Storefront)| `apps/storefront` | [ ] | [ ] | [ ] | [ ] |
 | `apps/dioxus-admin` (Dioxus Admin) | `apps/dioxus-admin` | [ ] | [ ] | [ ] | [ ] |
 
 ---
@@ -418,3 +418,7 @@ flowchart LR
    node .gitnexus/run.cjs analyze --pdg --force
    ```
 6. Аудитор или агент не останавливается, а немедленно приступает к выполнению первого компонента нового цикла.
+
+
+### История циклов
+- **Round 1 (сброшен по запросу пользователя 2026-11-26, SHA `c7f032b462`):** частично пройдены Phase GN-01..GN-04, GN-05 до `rustok-moderation`, а также `apps/server` и `apps/storefront`. Матрица очищена для чистого прохода Round 2 с нуля.

@@ -37,14 +37,17 @@ const RATE_LIMIT_REDIS_OPERATION_TIMEOUT: Duration = Duration::from_secs(2);
 // Repair legacy or restored counters that exist without an expiry. A counter
 // that cannot be given a TTL must fail closed rather than rate-limit forever.
 const RATE_LIMIT_REDIS_SCRIPT_SOURCE: &str = r#"
--- A corrupt nonpositive or noncanonical counter must not advance toward
--- an admissible count on repeated requests. Give persistent corrupt keys a
--- recovery deadline, but reject them until they expire.
+-- Repair a persistent key before GET or INCR can fail. Redis does not
+-- roll back script writes on error. Never extend an existing expiry.
+local previous_ttl = redis.call('PTTL', KEYS[1])
+if previous_ttl == -1 then
+    if redis.call('PEXPIRE', KEYS[1], ARGV[1]) ~= 1 then
+        return redis.error_reply('rate-limit key expiry could not be established')
+    end
+end
+-- Corrupt counters must not advance toward an admissible count.
 local previous = redis.call('GET', KEYS[1])
 if previous and not string.match(previous, '^[1-9][0-9]*$') then
-    if redis.call('PTTL', KEYS[1]) == -1 then
-        redis.call('PEXPIRE', KEYS[1], ARGV[1])
-    end
     return redis.error_reply('invalid rate-limit counter')
 end
 local current = redis.call('INCR', KEYS[1])
@@ -227,16 +230,14 @@ impl RateLimiter {
         client: &redis::Client,
         connection: &Arc<OnceCell<redis::aio::ConnectionManager>>,
     ) -> Result<redis::aio::ConnectionManager, String> {
-        let manager = connection
-            .get_or_try_init(|| async {
-                redis_with_timeout(
-                    RATE_LIMIT_REDIS_OPERATION_TIMEOUT,
-                    "redis rate-limit connection",
-                    client.get_connection_manager(),
-                )
-                .await
-            })
-            .await?;
+        // Bound acquisition including time queued behind another initializer.
+        // Failed or cancelled initialization leaves the shared slot retryable.
+        let manager = redis_with_timeout(
+            RATE_LIMIT_REDIS_OPERATION_TIMEOUT,
+            "redis rate-limit connection",
+            connection.get_or_try_init(|| client.get_connection_manager()),
+        )
+        .await?;
         Ok(manager.clone())
     }
 
@@ -371,16 +372,7 @@ impl RateLimiter {
         .await
         .map_err(RateLimitCheckError::BackendUnavailable)?;
 
-        let current = usize::try_from(current)
-            .ok()
-            .filter(|count| *count > 0)
-            .ok_or_else(|| RateLimitCheckError::BackendUnavailable(
-                "invalid Redis rate-limit counter".to_string(),
-            ))?;
-        let ttl = u64::try_from(ttl).map_err(|_| {
-            RateLimitCheckError::BackendUnavailable("invalid Redis rate-limit expiry".to_string())
-        })?;
-        let reset_after = ttl.div_ceil(1_000);
+        let (current, reset_after) = decode_redis_rate_limit_result(current, ttl)?;
         let retry_after = reset_after.max(1);
 
         if current > self.config.max_requests {
@@ -433,9 +425,7 @@ impl RateLimiter {
                 if response.eq_ignore_ascii_case("PONG") {
                     Ok(())
                 } else {
-                    Err(format!(
-                        "unexpected redis rate-limit ping response: {response}"
-                    ))
+                    Err("unexpected redis rate-limit ping response".to_string())
                 }
             }
         }
@@ -733,6 +723,22 @@ fn redis_rate_limit_key(key_prefix: &str, identity: &str) -> String {
     )
 }
 
+fn decode_redis_rate_limit_result(
+    current: i64,
+    ttl: i64,
+) -> Result<(usize, u64), RateLimitCheckError> {
+    let current = usize::try_from(current)
+        .ok()
+        .filter(|count| *count > 0)
+        .ok_or_else(|| {
+            RateLimitCheckError::BackendUnavailable("invalid Redis rate-limit counter".to_string())
+        })?;
+    let ttl = u64::try_from(ttl).map_err(|_| {
+        RateLimitCheckError::BackendUnavailable("invalid Redis rate-limit expiry".to_string())
+    })?;
+    Ok((current, ttl.div_ceil(1_000)))
+}
+
 fn bounded_redis_window_millis(window: Duration) -> i64 {
     window.as_millis().clamp(1, i64::MAX as u128) as i64
 }
@@ -753,17 +759,19 @@ fn rate_limit_key_fingerprint(key: &str) -> String {
 
 async fn redis_with_timeout<T, E, F>(
     timeout: Duration,
-    operation: &str,
+    operation: &'static str,
     future: F,
 ) -> Result<T, String>
 where
     F: std::future::Future<Output = Result<T, E>>,
-    E: std::fmt::Display,
 {
     tokio::time::timeout(timeout, future)
         .await
         .map_err(|_| format!("{operation} timed out after {} ms", timeout.as_millis()))?
-        .map_err(|error| format!("{operation} failed: {error}"))
+        // Redis errors can include server replies and connection details.
+        // These diagnostics cross into module GraphQL logs; retain only the
+        // fixed operation label, never the backend's uncontrolled text.
+        .map_err(|_| format!("{operation} failed"))
 }
 
 fn insert_header_if_valid(headers: &mut axum::http::HeaderMap, key: &'static str, value: String) {

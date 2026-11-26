@@ -18,10 +18,10 @@ fn module_metadata() {
 #[test]
 fn module_exposes_locale_policy_migration_contract() {
     let module = TenantModule;
-    assert_eq!(module.migrations().len(), 1);
+    assert_eq!(module.migrations().len(), 3);
 
     let dependencies = module.migration_dependencies();
-    assert_eq!(dependencies.len(), 1);
+    assert_eq!(dependencies.len(), 3);
     assert_eq!(
         dependencies[0].migration,
         "m20260726_000001_enforce_tenant_locale_policy"
@@ -29,6 +29,22 @@ fn module_exposes_locale_policy_migration_contract() {
     assert_eq!(
         dependencies[0].after,
         vec!["m20260405_000001_expand_locale_storage_columns"]
+    );
+    assert_eq!(
+        dependencies[1].migration,
+        "m20261102_000002_tenant_identity_keys"
+    );
+    assert_eq!(
+        dependencies[1].after,
+        vec!["m20250101_000001_create_tenants"]
+    );
+    assert_eq!(
+        dependencies[2].migration,
+        "m20261103_000003_tenant_identity_index"
+    );
+    assert_eq!(
+        dependencies[2].after,
+        vec!["m20261102_000002_tenant_identity_keys"]
     );
 }
 

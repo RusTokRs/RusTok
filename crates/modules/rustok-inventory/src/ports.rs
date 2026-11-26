@@ -951,7 +951,7 @@ where
         return Ok(BTreeMap::new());
     }
     let variants =
-        crate::product_port::get_variants_info_from_conn(conn, tenant_id, variant_ids).await?;
+        crate::product_port::find_variants_info_from_conn(conn, tenant_id, variant_ids).await?;
 
     let mut map = BTreeMap::new();
     for v in variants {

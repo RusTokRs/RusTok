@@ -4,7 +4,7 @@ use std::sync::Arc;
 use async_graphql::extensions::{
     Extension, ExtensionContext, ExtensionFactory, NextExecute, NextPrepareRequest,
 };
-use async_graphql::parser::types::{ExecutableDocument, OperationType, Selection, SelectionSet};
+use async_graphql::parser::types::{ExecutableDocument, OperationType, SelectionSet};
 use async_graphql::{FieldError, Pos, Request, Response, ServerResult};
 use rustok_api::{Permission, graphql::GraphQLError, has_effective_permission};
 
@@ -129,40 +129,13 @@ fn collect_fields(
     selection_set: &SelectionSet,
     document: &ExecutableDocument,
     fields: &mut BTreeSet<ModuleGraphqlField>,
-    visited_fragments: &mut BTreeSet<String>,
 ) {
-    for selection in &selection_set.items {
-        match &selection.node {
-            Selection::Field(field) => {
-                if let Some(field) =
-                    ModuleGraphqlField::classify(operation_type, field.node.name.node.as_str())
-                {
-                    fields.insert(field);
-                }
-            }
-            Selection::FragmentSpread(fragment) => {
-                let fragment_name = fragment.node.fragment_name.node.as_str();
-                if visited_fragments.insert(fragment_name.to_owned()) {
-                    if let Some(definition) = document.fragments.get(fragment_name) {
-                        collect_fields(
-                            operation_type,
-                            &definition.node.selection_set.node,
-                            document,
-                            fields,
-                            visited_fragments,
-                        );
-                    }
-                }
-            }
-            Selection::InlineFragment(fragment) => collect_fields(
-                operation_type,
-                &fragment.node.selection_set.node,
-                document,
-                fields,
-                visited_fragments,
-            ),
+    let _completed = super::visit_selection_fields(document, selection_set, (), |field, ()| {
+        if let Some(field) = ModuleGraphqlField::classify(operation_type, field.name.node.as_str()) {
+            fields.insert(field);
         }
-    }
+        std::ops::ControlFlow::Continue(None)
+    });
 }
 
 fn classify_document(request: &mut Request) -> ServerResult<()> {
@@ -175,7 +148,6 @@ fn classify_document(request: &mut Request) -> ServerResult<()> {
             &operation.node.selection_set.node,
             document,
             &mut fields,
-            &mut BTreeSet::new(),
         );
     }
     if !fields.is_empty() {
@@ -228,7 +200,7 @@ impl Extension for GraphqlModuleSecurityPolicyExtension {
             if !denied.is_empty() {
                 tracing::warn!(
                     denied_fields = ?denied.iter().map(|field| field.name).collect::<Vec<_>>(),
-                    operation_name = ?operation_name,
+                    operation_name_present = operation_name.is_some(),
                     "Rejected module GraphQL document before resolver execution"
                 );
                 let required = denied

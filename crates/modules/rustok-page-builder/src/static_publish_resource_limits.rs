@@ -139,9 +139,9 @@ pub fn validate_static_publish_resource_limits(
     limits.verify_integrity()?;
 
     let project_bytes = serialized_project_bytes(document, limits.max_project_bytes)?;
-    let page_count = document.project.pages.len();
-    let asset_count = document.project.assets.len();
-    let style_rule_count = document.project.styles.len();
+    let page_count = document.project().pages.len();
+    let asset_count = document.project().assets.len();
+    let style_rule_count = document.project().styles.len();
     let (component_count, max_component_depth) = component_observation(document, &limits);
     let observed = PageBuilderStaticPublishResourceObservation {
         project_bytes,
@@ -218,7 +218,7 @@ fn serialized_project_bytes(
     maximum: usize,
 ) -> Result<usize, PageBuilderStaticPublishResourceLimitError> {
     let mut counter = BoundedByteCounter::new(maximum);
-    match serde_json::to_writer(&mut counter, &document.project) {
+    match serde_json::to_writer(&mut counter, document.project()) {
         Ok(()) => Ok(counter.bytes),
         Err(_) if counter.exceeded => Ok(maximum.saturating_add(1)),
         Err(error) => Err(PageBuilderStaticPublishResourceLimitError::Encode(
@@ -268,7 +268,7 @@ fn component_observation(
     let mut component_count = 0usize;
     let mut max_component_depth = 0usize;
 
-    for page in &document.project.pages {
+    for page in &document.project().pages {
         let Some(root) = page.component.as_ref() else {
             continue;
         };

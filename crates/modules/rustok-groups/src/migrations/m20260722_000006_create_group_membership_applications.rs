@@ -275,7 +275,7 @@ impl MigrationTrait for Migration {
                         "status IN ('pending', 'approved', 'rejected', 'cancelled')",
                     ))
                     .check(Expr::cust(
-                        "(status = 'pending' AND reviewed_at IS NULL AND reviewed_by_user_id IS NULL) OR (status <> 'pending' AND reviewed_at IS NOT NULL)",
+                        "(status IN ('pending', 'cancelled') AND reviewed_at IS NULL AND reviewed_by_user_id IS NULL) OR (status IN ('approved', 'rejected') AND reviewed_at IS NOT NULL)",
                     ))
                     .foreign_key(
                         ForeignKey::create()

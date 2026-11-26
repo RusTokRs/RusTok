@@ -30,8 +30,9 @@ pub fn selected_transport_profile(value: Option<&str>) -> ProfilesStorefrontTran
     let normalized = value.unwrap_or_default().trim().to_ascii_lowercase();
 
     match normalized.as_str() {
+        "" | "native" => ProfilesStorefrontTransportProfile::Native,
         "graphql" => ProfilesStorefrontTransportProfile::Graphql,
-        _ => ProfilesStorefrontTransportProfile::Native,
+        other => panic!("unsupported profiles storefront transport profile: {other}"),
     }
 }
 
@@ -115,19 +116,25 @@ mod tests {
     }
 
     #[test]
-    fn invalid_transport_profile_falls_back_to_native() {
+    fn valid_transport_profiles_resolve_explicitly() {
         assert_eq!(
-            selected_transport_profile(Some("rest")),
+            selected_transport_profile(None),
             ProfilesStorefrontTransportProfile::Native
         );
         assert_eq!(
-            selected_transport_profile(None),
+            selected_transport_profile(Some("native")),
             ProfilesStorefrontTransportProfile::Native
         );
         assert_eq!(
             selected_transport_profile(Some("graphql")),
             ProfilesStorefrontTransportProfile::Graphql
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "unsupported profiles storefront transport profile")]
+    fn invalid_transport_profile_fails_closed() {
+        let _ = selected_transport_profile(Some("rest"));
     }
 
     #[test]

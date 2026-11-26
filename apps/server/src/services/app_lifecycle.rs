@@ -22,6 +22,7 @@ use rustok_seo::{SeoApplicationServices, SeoWorkerAuthorization};
 // ── Graceful-shutdown handle ─────────────────────────────────────────────────
 
 pub use crate::services::stop_handle::StopHandle;
+use crate::services::stop_handle::await_worker_startup_or_stop;
 
 static OUTBOX_RELAY_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 static OUTBOX_RETENTION_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
@@ -405,25 +406,53 @@ pub(crate) struct RuntimeWorkerSnapshot {
 pub(crate) fn additional_cache_reconciliation_worker_snapshots(
     ctx: &ServerRuntimeContext,
 ) -> Vec<RuntimeWorkerSnapshot> {
-    let snapshots = vec![RuntimeWorkerSnapshot {
-        name: "field_definition_cache_generation",
-        required: true,
-        finished: ctx.shared_map::<
-            crate::services::field_definition_cache::FieldDefinitionCacheGenerationReconciliationHandle,
-            _,
-        >(|worker| !worker.is_ready()),
-    }];
+    vec![
+        RuntimeWorkerSnapshot {
+            name: "field_definition_cache_generation",
+            required: true,
+            finished: ctx.shared_map::<
+                crate::services::field_definition_cache::FieldDefinitionCacheGenerationReconciliationHandle,
+                _,
+            >(|worker| !worker.is_ready()),
+        },
+        #[cfg(feature = "mod-seo")]
+        RuntimeWorkerSnapshot {
+            name: "seo_redirect_cache_reconciliation",
+            required: crate::services::seo_redirect_cache_reconciliation::seo_redirect_cache_reconciliation_required(ctx),
+            finished: ctx.shared_map::<
+                crate::services::seo_redirect_cache_reconciliation::SeoRedirectCacheReconciliationHandle,
+                _,
+            >(|worker| !worker.is_ready()),
+        },
+    ]
+}
 
-    #[cfg(feature = "mod-seo")]
-    snapshots.push(RuntimeWorkerSnapshot {
-        name: "seo_redirect_cache_reconciliation",
-        required: crate::services::seo_redirect_cache_reconciliation::seo_redirect_cache_reconciliation_required(ctx),
-        finished: ctx.shared_map::<
-            crate::services::seo_redirect_cache_reconciliation::SeoRedirectCacheReconciliationHandle,
-            _,
-        >(|worker| !worker.is_ready()),
-    });
-
+/// Shared inventory for readiness and Prometheus, including the workers
+/// whose requirement is determined by the selected event runtime.
+pub(crate) fn runtime_worker_snapshots(ctx: &ServerRuntimeContext) -> Vec<RuntimeWorkerSnapshot> {
+    let settings = ctx.settings();
+    let local = settings.runtime.runs_background_workers();
+    let event_runtime = ctx.shared_get::<std::sync::Arc<EventRuntime>>();
+    let mut snapshots = vec![
+        RuntimeWorkerSnapshot {
+            name: "outbox_relay",
+            required: local
+                && event_runtime.as_ref().is_some_and(|runtime| runtime.relay_config.is_some()),
+            finished: ctx.shared_map::<OutboxRelayWorkerHandle, _>(OutboxRelayWorkerHandle::is_finished),
+        },
+        RuntimeWorkerSnapshot {
+            name: "outbox_retention",
+            required: local
+                && event_runtime.as_ref().is_some_and(|runtime| runtime.outbox_retention.is_some()),
+            finished: ctx.shared_map::<OutboxRetentionWorkerHandle, _>(OutboxRetentionWorkerHandle::is_finished),
+        },
+        RuntimeWorkerSnapshot {
+            name: "remote_executor_reaper",
+            required: local && settings.registry.remote_executor.enabled,
+            finished: ctx.shared_map::<RemoteExecutorReaperHandle, _>(RemoteExecutorReaperHandle::is_finished),
+        },
+    ];
+    snapshots.extend(additional_runtime_worker_snapshots(ctx));
     snapshots
 }
 
@@ -680,11 +709,12 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     // Serialize the maintenance handle's take/join/reinsert lifecycle with both
     // concurrent startup calls and the shutdown drain.
     let artifact_initialization = ModuleArtifactMaintenanceInitializationLock::ensure(&runtime_ctx);
-    let _artifact_initialization_guard = artifact_initialization.0.lock().await;
-    if stop_handle.is_stopping() {
+    let Some(_artifact_initialization_guard) =
+        await_worker_startup_or_stop(&stop_handle, artifact_initialization.0.lock()).await
+    else {
         tracing::warn!("Shutdown requested while waiting for artifact maintenance initialization");
         return Ok(());
-    }
+    };
     let artifact_maintenance_running = match runtime_ctx
         .shared_take::<crate::services::module_artifact_maintenance::ModuleArtifactMaintenanceHandle>()
     {
@@ -974,56 +1004,72 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     tracing::info!("Stopping background workers");
     stop.stop().await;
 
-    // Wait for any in-flight bootstrap to finish registering its workers
-    // before taking the shutdown snapshot. The stop signal above ensures a
-    // bootstrap that was already running will not start long-lived work.
-    let bootstrap_initialization = ServerBootstrapInitializationLock::ensure(runtime_ctx);
-    let _bootstrap_guard = bootstrap_initialization.lock().await;
+    // A single deadline bounds the startup-publication barrier. Every worker
+    // starter has its own stop/admission fence; if a pre-publication operation
+    // stalls, shutdown must still reach the worker drains instead of waiting
+    // indefinitely on the outer bootstrap mutex.
+    let timeout_duration = Duration::from_secs(5);
+    let startup_deadline = tokio::time::Instant::now() + timeout_duration;
 
-    // Direct event-runtime construction can bypass router bootstrap. Wait
-    // for its publication owner before taking worker snapshots.
-    // Lock order matches router startup: bootstrap -> event runtime.
+    let bootstrap_initialization = ServerBootstrapInitializationLock::ensure(runtime_ctx);
+    let _bootstrap_guard = match tokio::time::timeout_at(
+        startup_deadline,
+        bootstrap_initialization.lock(),
+    )
+    .await
+    {
+        Ok(guard) => Some(guard),
+        Err(_) => {
+            tracing::warn!(
+                "Server bootstrap did not quiesce within the shutdown startup barrier; continuing with per-worker stop fences"
+            );
+            None
+        }
+    };
+
+    // Direct event-runtime construction can bypass router bootstrap. Give its
+    // publication owner the same bounded window before taking worker snapshots.
     let event_initialization =
         crate::services::event_transport_factory::EventRuntimeInitializationLock::ensure(runtime_ctx);
-    let event_guard = event_initialization.lock().await;
-    drop(event_guard);
+    match tokio::time::timeout_at(startup_deadline, event_initialization.lock()).await {
+        Ok(guard) => drop(guard),
+        Err(_) => tracing::warn!(
+            "Event runtime initialization did not quiesce within the shutdown startup barrier"
+        ),
+    }
 
     // Router bootstrap holds the lock above, but this public startup function
-    // can also be invoked directly. It uses the artifact maintenance lock
-    // across *all* additional worker registration. Wait for that caller to
-    // finish before the shutdown snapshot, or a late worker could publish its
-    // handle after the drain already took the old value.
-    //
-    // Lock order matches router bootstrap: bootstrap -> runtime workers.
-    // Release the workers lock before join! (the artifact worker's own drain
-    // acquires it again). New callers see the stop flag after acquiring it
-    // and do not start more workers.
+    // can also be invoked directly. Its own stop gate prevents late publication
+    // if the shared startup barrier expires.
     let worker_initialization = ModuleArtifactMaintenanceInitializationLock::ensure(runtime_ctx);
-    let _worker_initialization_guard = worker_initialization.0.lock().await;
-    drop(_worker_initialization_guard);
+    match tokio::time::timeout_at(startup_deadline, worker_initialization.0.lock()).await {
+        Ok(guard) => drop(guard),
+        Err(_) => tracing::warn!(
+            "Module artifact maintenance initialization did not quiesce within the shutdown startup barrier"
+        ),
+    }
 
-    // Direct observer startup can bypass router bootstrap. Wait for each
-    // observer's check-stop -> spawn -> publish sequence to complete before
-    // taking the shutdown JoinHandle snapshot. Lock order is bootstrap ->
-    // runtime workers -> observer; observer starters never acquire either
-    // outer lock while holding this one.
+    // Direct observer startup can bypass router bootstrap. Bound its
+    // check-stop -> spawn -> publish barrier by the same deadline.
     #[cfg(feature = "mod-social_graph")]
-    let observer_initialization = SocialGraphObserverInitializationLock::ensure(runtime_ctx);
-    #[cfg(feature = "mod-social_graph")]
-    let _observer_initialization_guard = observer_initialization.0.lock().await;
-    #[cfg(feature = "mod-social_graph")]
-    drop(_observer_initialization_guard);
+    {
+        let observer_initialization = SocialGraphObserverInitializationLock::ensure(runtime_ctx);
+        match tokio::time::timeout_at(startup_deadline, observer_initialization.0.lock()).await {
+            Ok(guard) => drop(guard),
+            Err(_) => tracing::warn!(
+                "Social Graph observer initialization did not quiesce within the shutdown startup barrier"
+            ),
+        }
+    }
 
-    // Direct DLQ observer/projection startup may bypass router bootstrap.
-    // Synchronize both check-stop -> publish paths with the shutdown snapshot.
+    // Direct DLQ observer/projection startup uses a synchronous critical
+    // section, so this lock cannot be held across an asynchronous operation.
     let dlq_observer_initialization = EventDlqObserverInitializationLock::ensure(runtime_ctx);
     let _dlq_observer_guard = dlq_observer_initialization
         .0
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     drop(_dlq_observer_guard);
-
-    let timeout_duration = Duration::from_secs(5);
 
     let rate_limit_cleanup_drain = async {
         // Retain the terminal registry even if shutdown wins before the first
@@ -1546,8 +1592,9 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     event_forwarder_drain.await;
 }
 
-/// Guard a task handle so cancellation of the shutdown future cannot turn a
-/// locally owned JoinHandle into a detached task.
+/// Guard a task handle so cancellation of the shutdown future always requests
+/// abort. A handle that remains unresponsive after the bounded abort grace is
+/// released so the host shutdown path does not wait on it indefinitely.
 struct ShutdownJoinHandle(Option<JoinHandle<()>>);
 
 impl ShutdownJoinHandle {
@@ -1579,8 +1626,8 @@ impl Drop for ShutdownJoinHandle {
     }
 }
 
-/// Drain runtime-owned tasks after broadcasting stop. On timeout, abort and
-/// join them so dropping the runtime context cannot detach them.
+/// Drain runtime-owned tasks after broadcasting stop. A graceful timeout
+/// broadcasts abort and then joins only for a separate bounded grace period.
 fn await_runtime_worker_shutdown(
     worker: &'static str,
     task: Option<JoinHandle<()>>,
@@ -1607,6 +1654,43 @@ fn await_runtime_worker_shutdown_with_timeout(
     )
 }
 
+const RUNTIME_WORKER_ABORT_JOIN_GRACE: Duration = Duration::from_secs(1);
+
+async fn join_shutdown_handle_until(
+    worker: &'static str,
+    mut task: ShutdownJoinHandle,
+    deadline: tokio::time::Instant,
+) {
+    match tokio::time::timeout_at(deadline, task.handle_mut()).await {
+        Ok(Ok(())) => task.disarm(),
+        Ok(Err(error)) if error.is_cancelled() => task.disarm(),
+        Ok(Err(error)) => {
+            task.disarm();
+            tracing::warn!(worker, ?error, "Worker exited with error after abort");
+        }
+        Err(_) => {
+            tracing::warn!(
+                worker,
+                "Worker did not stop after abort grace; releasing its join handle to keep shutdown bounded"
+            );
+        }
+    }
+}
+
+async fn abort_and_join_shutdown_handle_with_timeout(
+    worker: &'static str,
+    task: ShutdownJoinHandle,
+    abort_join_grace: Duration,
+) {
+    task.abort();
+    join_shutdown_handle_until(
+        worker,
+        task,
+        tokio::time::Instant::now() + abort_join_grace,
+    )
+    .await;
+}
+
 fn await_runtime_worker_shutdown_until(
     worker: &'static str,
     task: JoinHandle<()>,
@@ -1623,13 +1707,12 @@ fn await_runtime_worker_shutdown_until(
             }
             Err(_) => {
                 tracing::warn!(worker, "Runtime worker shutdown timed out; aborting");
-                task.abort();
-                if let Err(error) = task.handle_mut().await {
-                    if !error.is_cancelled() {
-                        tracing::warn!(worker, ?error, "Runtime worker failed after abort");
-                    }
-                }
-                task.disarm();
+                abort_and_join_shutdown_handle_with_timeout(
+                    worker,
+                    task,
+                    RUNTIME_WORKER_ABORT_JOIN_GRACE,
+                )
+                .await;
             }
         }
     }
@@ -1657,25 +1740,17 @@ fn await_runtime_worker_shutdown_tasks_with_timeout(
                         worker,
                         "Runtime worker shutdown timed out; aborting remaining tasks"
                     );
-                    task.abort();
-                    if let Err(error) = task.handle_mut().await {
-                        if !error.is_cancelled() {
-                            tracing::warn!(worker, ?error, "Runtime worker failed after abort");
-                        }
-                    }
-                    task.disarm();
-
-                    let remaining: Vec<_> = remaining.collect();
+                    // Broadcast cancellation to the entire remaining group
+                    // before waiting for any task's cleanup. A task's Drop
+                    // may depend on resources owned by another group member.
+                    let remaining: Vec<_> = std::iter::once(task).chain(remaining).collect();
                     for task in &remaining {
                         task.abort();
                     }
-                    for mut task in remaining {
-                        if let Err(error) = task.handle_mut().await {
-                            if !error.is_cancelled() {
-                                tracing::warn!(worker, ?error, "Runtime worker failed after abort");
-                            }
-                        }
-                        task.disarm();
+                    let abort_join_deadline =
+                        tokio::time::Instant::now() + RUNTIME_WORKER_ABORT_JOIN_GRACE;
+                    for task in remaining {
+                        join_shutdown_handle_until(worker, task, abort_join_deadline).await;
                     }
                     return;
                 }
@@ -1731,13 +1806,12 @@ fn await_module_worker_shutdown_with_timeout(
             }
             Err(_) => {
                 tracing::warn!(worker, "Module worker shutdown timed out; aborting");
-                task.abort();
-                if let Err(error) = task.handle_mut().await {
-                    if !error.is_cancelled() {
-                        tracing::warn!(worker, ?error, "Module worker failed after abort");
-                    }
-                }
-                task.disarm();
+                abort_and_join_shutdown_handle_with_timeout(
+                    worker,
+                    task,
+                    RUNTIME_WORKER_ABORT_JOIN_GRACE,
+                )
+                .await;
             }
         }
     }
@@ -1911,6 +1985,24 @@ fn spawn_seo_bulk_worker_handle(
     }
 }
 
+/// Runs the database-only reaper pass until it completes or host shutdown is
+/// signalled. Each candidate is committed in its own transaction, so cancelling
+/// the pass preserves completed requeues and leaves uncommitted expired leases
+/// eligible for discovery on the next run.
+async fn run_remote_executor_reaper_pass<F>(
+    stop_rx: &mut tokio::sync::watch::Receiver<bool>,
+    pass: F,
+) -> Option<F::Output>
+where
+    F: std::future::Future,
+{
+    tokio::select! {
+        biased;
+        _ = stop_rx.changed() => None,
+        result = pass => Some(result),
+    }
+}
+
 async fn remote_executor_reaper_loop(
     runtime_ctx: ServerRuntimeContext,
     scan_interval_ms: u64,
@@ -1925,7 +2017,18 @@ async fn remote_executor_reaper_loop(
             return;
         }
 
-        match governance.requeue_expired_remote_validation_claims().await {
+        let Some(result) = run_remote_executor_reaper_pass(
+            &mut stop_rx,
+            governance.requeue_expired_remote_validation_claims(),
+        )
+        .await
+        else {
+            tracing::info!(
+                "Remote executor reaper stopped during an active pass; committed requeues remain durable"
+            );
+            return;
+        };
+        match result {
             Ok(requeued) if requeued > 0 => tracing::info!(
                 requeued,
                 "Remote executor reaper requeued expired validation stage claims"
@@ -2385,12 +2488,14 @@ mod tests {
                         | "comments_schedule_audit_handoff"
                         | "event_forwarder"
                 );
-                assert_eq!(
-                    worker.required,
-                    expected && !opt_in_consumer,
-                    "{}",
-                    worker.name
-                );
+                let required = match worker.name {
+                    "field_definition_cache_generation" => true,
+                    "seo_redirect_cache_reconciliation" => !matches!(
+                        mode, RuntimeHostMode::RegistryOnly | RuntimeHostMode::Worker
+                    ),
+                    _ => expected && !opt_in_consumer,
+                };
+                assert_eq!(worker.required, required, "{}", worker.name);
                 assert_eq!(worker.finished, None, "{}", worker.name);
             }
         }
@@ -2456,6 +2561,91 @@ mod tests {
 
         let registry = ctx.shared_get_or_insert_with(RateLimitCleanupTaskRegistry::default);
         assert!(registry.with_open::<()>(|_| panic!("late startup admitted work")).is_err());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn runtime_worker_group_aborts_all_members_before_joining_cleanup() {
+        struct WaitForPeerDrop {
+            peer: std::sync::mpsc::Receiver<()>,
+            observed: Option<tokio::sync::oneshot::Sender<bool>>,
+        }
+        impl Drop for WaitForPeerDrop {
+            fn drop(&mut self) {
+                // Bounded even on regression: the old drain would not abort
+                // the peer until this cleanup returned.
+                let peer_stopped = self.peer.recv_timeout(Duration::from_secs(3)).is_ok();
+                if let Some(observed) = self.observed.take() {
+                    let _ = observed.send(peer_stopped);
+                }
+            }
+        }
+        struct SignalPeerDrop(Option<std::sync::mpsc::Sender<()>>);
+        impl Drop for SignalPeerDrop {
+            fn drop(&mut self) {
+                if let Some(sender) = self.0.take() {
+                    let _ = sender.send(());
+                }
+            }
+        }
+
+        let (peer_tx, peer_rx) = std::sync::mpsc::channel();
+        let (observed_tx, observed_rx) = tokio::sync::oneshot::channel();
+        let (first_started_tx, first_started_rx) = tokio::sync::oneshot::channel();
+        let first = tokio::spawn(async move {
+            let _cleanup = WaitForPeerDrop {
+                peer: peer_rx,
+                observed: Some(observed_tx),
+            };
+            first_started_tx.send(()).expect("first task started");
+            std::future::pending::<()>().await;
+        });
+        let (peer_started_tx, peer_started_rx) = tokio::sync::oneshot::channel();
+        let peer = tokio::spawn(async move {
+            let _cleanup = SignalPeerDrop(Some(peer_tx));
+            peer_started_tx.send(()).expect("peer task started");
+            std::future::pending::<()>().await;
+        });
+        first_started_rx.await.expect("first cleanup installed");
+        peer_started_rx.await.expect("peer cleanup installed");
+
+        super::await_runtime_worker_shutdown_tasks_with_timeout(
+            "test worker group",
+            vec![first, peer],
+            Duration::from_millis(1),
+        )
+        .await;
+
+        assert!(
+            observed_rx.await.expect("first cleanup finished"),
+            "all remaining tasks must be cancelled before the first join"
+        );
+    }
+
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn runtime_worker_abort_join_grace_bounds_non_cancellable_blocking_task() {
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (finished_tx, finished_rx) = tokio::sync::oneshot::channel();
+        let task = tokio::task::spawn_blocking(move || {
+            started_tx.send(()).expect("blocking worker started");
+            std::thread::sleep(Duration::from_millis(250));
+            let _ = finished_tx.send(());
+        });
+        started_rx.await.expect("blocking worker must start before abort");
+
+        super::abort_and_join_shutdown_handle_with_timeout(
+            "test non-cancellable worker",
+            super::ShutdownJoinHandle::new(task),
+            Duration::from_millis(10),
+        )
+        .await;
+
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), finished_rx)
+                .await
+                .is_err(),
+            "shutdown must release an unresponsive join handle after the abort grace"
+        );
     }
 
     #[tokio::test]
@@ -2628,7 +2818,7 @@ mod tests {
             "the retention worker must not be started twice"
         );
 
-        let snapshots = super::additional_runtime_worker_snapshots(&runtime_ctx);
+        let snapshots = super::runtime_worker_snapshots(&runtime_ctx);
         for name in ["outbox_relay", "outbox_retention"] {
             let snapshot = snapshots
                 .iter()
@@ -2724,6 +2914,24 @@ mod tests {
         // Repeated stop is idempotent
         stop_handle.stop().await;
         assert!(stop_handle.is_stopping());
+    }
+
+    #[tokio::test]
+    async fn waiting_direct_worker_startup_exits_on_stop_without_acquiring_lock() {
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = crate::common::settings::RuntimeHostMode::Worker;
+        let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
+        let initialization = super::ModuleArtifactMaintenanceInitializationLock::ensure(&ctx);
+        let _held = initialization.0.lock().await;
+        let mut startup = Box::pin(connect_runtime_workers_with_runtime(ctx.clone()));
+        assert!(futures_util::poll!(&mut startup).is_pending());
+
+        super::StopHandle::ensure(&ctx).stop().await;
+        tokio::time::timeout(Duration::from_secs(1), startup)
+            .await
+            .expect("shutdown interrupts queued worker startup")
+            .expect("stopped worker startup is a no-op");
+        assert!(!ctx.shared_contains::<OutboxRelayWorkerHandle>());
     }
 
     #[tokio::test]
@@ -3115,5 +3323,36 @@ mod installer_job_task_registry_tests {
             "aborting the timed-out JoinSet must drop the in-flight task"
         );
         assert!(!registry.spawn(async {}), "drained registry stays closed");
+    }
+}
+
+#[cfg(test)]
+mod remote_executor_reaper_shutdown_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn stop_cancels_an_in_flight_reaper_pass() {
+        let (stop_tx, mut stop_rx) = tokio::sync::watch::channel(false);
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(async move {
+            let pass = async move {
+                let _ = started_tx.send(());
+                std::future::pending::<usize>().await
+            };
+            run_remote_executor_reaper_pass(&mut stop_rx, pass).await
+        });
+
+        started_rx.await.expect("reaper pass started");
+        stop_tx.send(true).expect("send stop signal");
+        assert!(task.await.expect("join reaper task").is_none());
+    }
+
+    #[tokio::test]
+    async fn completed_reaper_pass_returns_its_result() {
+        let (_stop_tx, mut stop_rx) = tokio::sync::watch::channel(false);
+        assert_eq!(
+            run_remote_executor_reaper_pass(&mut stop_rx, async { 7_usize }).await,
+            Some(7)
+        );
     }
 }

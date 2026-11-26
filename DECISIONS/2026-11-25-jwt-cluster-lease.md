@@ -24,7 +24,8 @@ after each synchronous JWT encode/decode under the existing runtime read
 fence. Local publication clears the lease. The host supervisor renews only
 after confirming the exact canonical current generation and metadata
 against the durable authority. Static mode can lease only while the authority
-is empty. Standalone fixed AuthConfig constructors remain unmanaged for
+is empty and all live registered static grants match the exact key metadata;
+an outstanding anonymous lease prevents a static grant until expiry. Standalone fixed AuthConfig constructors remain unmanaged for
 embedders; they are not the HTTP host composition path.
 
 ## Authority and concurrency
@@ -49,7 +50,8 @@ is ten seconds from before the database read, and the DB deadline is
 fifteen seconds from its clock sample. A delayed response cannot extend
 local authority. This assumes bounded clock-rate error, no forward DB
 clock discontinuity, and no host suspend that stops the local monotonic
-clock while database time advances. The five-second safety margin is
+clock while database time advances. The later [clock discontinuity contract](2026-11-25-jwt-clock-discontinuity.md)
+adds dual local deadlines and bounded, sticky clock checks. The five-second safety margin is
 not a proof against arbitrary clock or infrastructure failure. Use
 disciplined clocks and no suspended hosts. The trusted database primary
 must serialize all writes; read replicas cannot serve this authority.

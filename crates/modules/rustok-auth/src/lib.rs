@@ -27,6 +27,7 @@ pub mod graphql;
 pub mod jwt;
 pub mod jwt_keyring;
 mod jwt_fence;
+mod jwt_clock;
 pub mod lifecycle;
 pub mod migrations;
 pub mod module;
@@ -51,18 +52,20 @@ pub use admin_mutations::{
 pub use backfill::AuthUserBackfillDbReader;
 pub use bootstrap::{AuthUserBootstrapDbWriter, AuthUserBootstrapRecord, AuthUserBootstrapRequest};
 pub use config::{
-    AuthConfig, AuthSettingsOverrides, JwtAlgorithm, JwtKeyringPublisher, JwtLeaseReadiness,
-    MAX_JWT_KEYRING_DOCUMENT_BYTES, build_auth_config, build_auth_config_with_env,
-    validate_auth_config,
+    AuthConfig, AuthSettingsOverrides, JwtKeyringPublisher, JwtLeaseReadiness,
+    MAX_JWT_KEYRING_DOCUMENT_BYTES, build_auth_config_from_document, validate_auth_config,
 };
 pub use credentials::{
     DEFAULT_MIN_PASSWORD_LENGTH_CHARS, MAX_MIN_PASSWORD_LENGTH_CHARS, MAX_PASSWORD_LENGTH_BYTES,
     MIN_PASSWORD_LENGTH_FLOOR_CHARS, generate_refresh_token, hash_password, hash_refresh_token,
     password_hash_needs_rehash, validate_password_policy, verify_password,
 };
-pub use crypto::{AuthMacPurpose, auth_purpose_mac};
+pub use crypto::{AuthMacPurpose, auth_purpose_mac, is_canonical_auth_mac_tag};
 pub use error::AuthError;
-pub use jwt_fence::{JwtAdmission, JwtGenerationFence, JwtRevocationReceipt};
+pub use jwt_fence::{
+    JwtAdmission, JwtAuthorityConfig, JwtClusterObservation, JwtGenerationFence, JwtOperationalMetrics,
+    JwtReloadOutcome, JwtRevocationReceipt,
+};
 pub use jwt::{
     Claims, EmailVerificationClaims, InviteClaims, OauthAccessTokenInput, PasswordResetClaims,
     decode_access_token, decode_email_verification_token, decode_invite_token,

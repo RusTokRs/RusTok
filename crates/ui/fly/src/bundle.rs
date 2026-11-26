@@ -208,7 +208,7 @@ pub fn inspect_project_bundle(
     let validation = validate_project(&decoded.document, registries, limits);
     let mut audit_error_count = 0usize;
     let mut audit_warning_count = 0usize;
-    for index in 0..decoded.document.project.pages.len() {
+    for index in 0..decoded.document.project().pages.len() {
         let audit = audit_page(&decoded.document, &PageLocator::by_index(index));
         audit_error_count = audit_error_count.saturating_add(audit.error_count);
         audit_warning_count = audit_warning_count.saturating_add(audit.warning_count);

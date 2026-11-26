@@ -143,7 +143,8 @@ impl ProductCatalogSchemaService {
         validate_uuid("variant_id", variant_id)?;
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         let owner = load_variant_owner_for_update(&txn, tenant_id, variant_id).await?;
-        let product = load_product_primary_category(&txn, tenant_id, owner.product_id).await?;
+        let product =
+            super::lock_product_for_update_in_tx(&txn, tenant_id, owner.product_id).await?;
         let Some(primary_category_id) = product.primary_category_id else {
             return Err(CommerceError::Validation(
                 "variant product must have a primary structural category before attribute values can be saved"
@@ -231,6 +232,15 @@ impl ProductCatalogSchemaService {
                 patch,
             )
             .await?;
+        }
+        if !patches.is_empty()
+            && product.status == crate::entities::product::ProductStatus::Active
+        {
+            // Variant EAV writes must preserve the same publish invariants as Product EAV writes.
+            // Validate the whole Product while its owner row remains locked, so clearing a required
+            // value on any SKU cannot leave an Active Product in an invalid state.
+            self.validate_product_publish_requirements_in(&txn, tenant_id, owner.product_id)
+                .await?;
         }
         if !patches.is_empty() {
             touch_variant_owner(&txn, tenant_id, variant_id).await?;
@@ -793,7 +803,7 @@ mod localized_clear_tests {
     }
 
     async fn count_rows(db: &DatabaseConnection, sql: &str) -> i64 {
-        db.query_one(&Statement::from_string(
+        db.query_one_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             sql.to_owned(),
         ))

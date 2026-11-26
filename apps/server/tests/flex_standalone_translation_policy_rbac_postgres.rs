@@ -1,5 +1,7 @@
 #![cfg(feature = "mod-flex")]
 
+mod support;
+
 use std::{error::Error, io, sync::Arc, time::Duration};
 
 use async_graphql::{EmptySubscription, Request, Response, Schema};
@@ -128,7 +130,8 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         )
         .await?;
 
-    let provider = registered_provider(db.clone())?;
+    let auth_config = support::test_auth_config();
+    let provider = registered_provider(db.clone(), auth_config.clone())?;
     let identity = provider_identity(provider.as_ref(), tenant_id, entry.id).await?;
     let read_request = ReadTranslationResourceRequest {
         identity,
@@ -591,7 +594,7 @@ fn assert_content_revisions_unchanged(
     Ok(())
 }
 
-fn registered_provider(db: DatabaseConnection) -> TestResult<Arc<dyn TranslationTargetProvider>> {
+fn registered_provider(db: DatabaseConnection, auth_config: AuthConfig) -> TestResult<Arc<dyn TranslationTargetProvider>> {
     let registry = ModuleRegistry::new().register(FlexModule);
     let settings = RustokSettings::default();
     let runtime_ctx = ServerRuntimeContext::new(db, settings.clone());
@@ -599,7 +602,7 @@ fn registered_provider(db: DatabaseConnection) -> TestResult<Arc<dyn Translation
         &registry,
         &settings,
         runtime_ctx,
-        AuthConfig::new("test-secret-key-for-flex-standalone-policy-evidence-32bytes!".to_string()),
+        auth_config,
     )?;
     let targets = translation_target_registry(&extensions)
         .ok_or_else(|| test_error("host composition did not publish TranslationTargetRegistry"))?;

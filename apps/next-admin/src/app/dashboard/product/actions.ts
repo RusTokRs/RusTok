@@ -20,6 +20,10 @@ import {
   type ProductVariantCreateRequest,
   type ProductVariantUpdateRequest,
   type ProductVariantDeleteRequest,
+  type ProductImageAddRequest,
+  type ProductImageUpdateRequest,
+  type ProductImageDeleteRequest,
+  type ProductImageReorderRequest,
   isVariantCreateInput,
   isVariantId,
   isVariantRevision,
@@ -381,52 +385,73 @@ export async function setVariantAxesAction(
 }
 
 export async function addImageAction(
-  productId: string,
-  input: { mediaId: string; altText?: string; locale?: string },
-  idempotencyKey?: string
-) {
-  const opts = await getAuthOpts();
-  const res = await addProductImage(
-    opts,
-    productId,
-    {
-      mediaId: input.mediaId,
-      altText: input.altText,
-      locale: input.locale
-    },
-    idempotencyKey
-  );
-  revalidatePath(`/dashboard/product/${productId}`);
-  return res;
+  request: ProductImageAddRequest,
+  idempotencyKey: string
+): Promise<ProductWriteOutcome> {
+  const outcome = await productWriteOutcome(async () => {
+    const opts = await getProductWriteAuthOpts(request.scope, idempotencyKey);
+    await addProductImage(opts, request.id, request.input, idempotencyKey);
+    return { id: request.id, revision: null };
+  });
+  await refreshProductAfterWrite(outcome);
+  return outcome;
 }
 
-export async function deleteImageAction(productId: string, id: string) {
-  const opts = await getAuthOpts();
-  const res = await deleteProductImage(opts, productId, id);
-  revalidatePath(`/dashboard/product/${productId}`);
-  return res;
+export async function deleteImageAction(
+  request: ProductImageDeleteRequest,
+  idempotencyKey: string
+): Promise<ProductWriteOutcome> {
+  const outcome = await productWriteOutcome(async () => {
+    const opts = await getProductWriteAuthOpts(request.scope, idempotencyKey);
+    const deleted = await deleteProductImage(
+      opts,
+      request.id,
+      request.imageId,
+      idempotencyKey
+    );
+    if (!deleted) throw new Error('Product image deletion was not acknowledged.');
+    return { id: request.id, revision: null };
+  });
+  await refreshProductAfterWrite(outcome);
+  return outcome;
 }
 
 export async function updateImageAction(
-  productId: string,
-  id: string,
-  input: { position?: number; altText?: string; locale?: string },
+  request: ProductImageUpdateRequest,
   idempotencyKey: string
-) {
-  const opts = await getAuthOpts();
-  const res = await updateProductImage(opts, productId, id, input, idempotencyKey);
-  revalidatePath(`/dashboard/product/${productId}`);
-  return res;
+): Promise<ProductWriteOutcome> {
+  const outcome = await productWriteOutcome(async () => {
+    const opts = await getProductWriteAuthOpts(request.scope, idempotencyKey);
+    await updateProductImage(
+      opts,
+      request.id,
+      request.imageId,
+      request.input,
+      idempotencyKey
+    );
+    return { id: request.id, revision: null };
+  });
+  await refreshProductAfterWrite(outcome);
+  return outcome;
 }
 
 export async function reorderImagesAction(
-  productId: string,
-  imageIds: string[]
-) {
-  const opts = await getAuthOpts();
-  const res = await reorderProductImages(opts, productId, imageIds);
-  revalidatePath(`/dashboard/product/${productId}`);
-  return res;
+  request: ProductImageReorderRequest,
+  idempotencyKey: string
+): Promise<ProductWriteOutcome> {
+  const outcome = await productWriteOutcome(async () => {
+    const opts = await getProductWriteAuthOpts(request.scope, idempotencyKey);
+    const reordered = await reorderProductImages(
+      opts,
+      request.id,
+      request.imageIds,
+      idempotencyKey
+    );
+    if (!reordered) throw new Error('Product image reorder was not acknowledged.');
+    return { id: request.id, revision: null };
+  });
+  await refreshProductAfterWrite(outcome);
+  return outcome;
 }
 
 export async function fetchEffectiveFormAction(

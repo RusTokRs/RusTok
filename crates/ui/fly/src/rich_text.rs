@@ -29,10 +29,10 @@ pub const RICH_TEXT_CAPABILITY: &str = "richtext";
 
 /// Renders a validated rich-text payload to **safe HTML**.
 ///
-/// Implementations own profile validation and sanitization (in RusToK:
-/// `rustok-content::richtext::render_html`). The returned string is trusted by the Fly
-/// renderer exactly to the extent the host trusts its own rich-text capability; returning
-/// `None` declines the payload and Fly uses its escaped fallback projection instead.
+/// Fly filters link marks against the enclosing RenderPolicy before calling this port.
+/// Implementations still own profile validation and safe HTML generation (in RusToK:
+/// rustok-content::richtext::render_html). The returned string is trusted HTML; returning
+/// None declines the payload and Fly uses its escaped fallback projection instead.
 pub trait RichTextHtmlRenderer {
     fn render_rich_text(&self, payload: &RichTextPayload) -> Option<String>;
 }
@@ -43,6 +43,74 @@ where
 {
     fn render_rich_text(&self, payload: &RichTextPayload) -> Option<String> {
         self(payload)
+    }
+}
+
+/// Decode and validate a rich-text extension, then collect its link targets for host policy checks.
+pub fn validated_rich_text_link_hrefs(raw: &Value) -> Result<Vec<String>, String> {
+    let payload = decode_rich_text_payload(raw)?;
+    let mut hrefs = Vec::new();
+    collect_rich_text_link_hrefs(&payload.payload, &mut hrefs);
+    Ok(hrefs)
+}
+
+fn collect_rich_text_link_hrefs(node: &Value, hrefs: &mut Vec<String>) {
+    let Some(object) = node.as_object() else {
+        return;
+    };
+
+    if let Some(marks) = object.get("marks").and_then(Value::as_array) {
+        for mark in marks {
+            if mark.get("type").and_then(Value::as_str) == Some("link")
+                && let Some(href) = mark
+                    .get("attrs")
+                    .and_then(|attrs| attrs.get("href"))
+                    .and_then(Value::as_str)
+            {
+                hrefs.push(href.to_string());
+            }
+        }
+    }
+
+    if let Some(children) = object.get("content").and_then(Value::as_array) {
+        for child in children {
+            collect_rich_text_link_hrefs(child, hrefs);
+        }
+    }
+}
+
+/// Remove link marks that do not satisfy the enclosing page's navigation URL policy.
+/// This runs before either the host HTML renderer or Fly's fallback sees the payload, so a
+/// trusted host renderer cannot accidentally re-enable a link disabled by RenderPolicy.
+pub(crate) fn filter_rich_text_links_for_policy(
+    payload: &mut RichTextPayload,
+    policy: &UrlPolicy,
+) {
+    filter_rich_text_node_links(&mut payload.payload, policy);
+}
+
+fn filter_rich_text_node_links(node: &mut Value, policy: &UrlPolicy) {
+    let Some(object) = node.as_object_mut() else {
+        return;
+    };
+
+    if let Some(marks) = object.get_mut("marks").and_then(Value::as_array_mut) {
+        marks.retain(|mark| {
+            if mark.get("type").and_then(Value::as_str) != Some("link") {
+                return true;
+            }
+            let href = mark
+                .get("attrs")
+                .and_then(|attrs| attrs.get("href"))
+                .and_then(Value::as_str);
+            href.is_some_and(|href| url_allowed(href, UrlAttributeKind::Navigation, policy))
+        });
+    }
+
+    if let Some(children) = object.get_mut("content").and_then(Value::as_array_mut) {
+        for child in children {
+            filter_rich_text_node_links(child, policy);
+        }
     }
 }
 
@@ -148,19 +216,27 @@ fn collect_text(node: &Value, output: &mut String) {
 /// types and marks listed here are projected; anything else degrades to its text content,
 /// which is the safe direction for unknown node types.
 pub fn rich_text_fallback_html(payload: &RichTextPayload) -> String {
+    rich_text_fallback_html_with_policy(payload, &UrlPolicy::permissive())
+}
+
+/// Project links under the same URL restrictions as the enclosing page.
+pub(crate) fn rich_text_fallback_html_with_policy(
+    payload: &RichTextPayload,
+    policy: &UrlPolicy,
+) -> String {
     let mut html = String::new();
     if let Some(content) = payload.payload.get("content").and_then(Value::as_array) {
         for node in content {
-            render_block(node, &mut html);
+            render_block(node, &mut html, policy);
         }
     }
     html
 }
 
-fn render_block(node: &Value, html: &mut String) {
+fn render_block(node: &Value, html: &mut String, policy: &UrlPolicy) {
     let kind = node.get("type").and_then(Value::as_str).unwrap_or_default();
     match kind {
-        "paragraph" => wrap(html, "p", node),
+        "paragraph" => wrap(html, "p", node, policy),
         "heading" => {
             let level = node
                 .get("attrs")
@@ -168,12 +244,12 @@ fn render_block(node: &Value, html: &mut String) {
                 .and_then(Value::as_u64)
                 .unwrap_or(2)
                 .clamp(1, 6);
-            wrap(html, &format!("h{level}"), node)
+            wrap(html, &format!("h{level}"), node, policy)
         }
-        "blockquote" => wrap(html, "blockquote", node),
-        "bulletList" => wrap(html, "ul", node),
-        "orderedList" => wrap(html, "ol", node),
-        "listItem" => wrap(html, "li", node),
+        "blockquote" => wrap(html, "blockquote", node, policy),
+        "bulletList" => wrap(html, "ul", node, policy),
+        "orderedList" => wrap(html, "ol", node, policy),
+        "listItem" => wrap(html, "li", node, policy),
         "codeBlock" => {
             html.push_str("<pre><code>");
             let mut text = String::new();
@@ -182,11 +258,11 @@ fn render_block(node: &Value, html: &mut String) {
             html.push_str("</code></pre>");
         }
         "horizontalRule" => html.push_str("<hr>"),
-        _ => render_inline_children(node, html),
+        _ => render_inline_children(node, html, policy),
     }
 }
 
-fn wrap(html: &mut String, tag: &str, node: &Value) {
+fn wrap(html: &mut String, tag: &str, node: &Value, policy: &UrlPolicy) {
     html.push('<');
     html.push_str(tag);
     html.push('>');
@@ -207,9 +283,9 @@ fn wrap(html: &mut String, tag: &str, node: &Value) {
                     | "listItem"
                     | "codeBlock"
             ) {
-                render_block(child, html);
+                render_block(child, html, policy);
             } else {
-                render_inline(child, html);
+                render_inline(child, html, policy);
             }
         }
     }
@@ -218,15 +294,15 @@ fn wrap(html: &mut String, tag: &str, node: &Value) {
     html.push('>');
 }
 
-fn render_inline_children(node: &Value, html: &mut String) {
+fn render_inline_children(node: &Value, html: &mut String, policy: &UrlPolicy) {
     if let Some(content) = node.get("content").and_then(Value::as_array) {
         for child in content {
-            render_inline(child, html);
+            render_inline(child, html, policy);
         }
     }
 }
 
-fn render_inline(node: &Value, html: &mut String) {
+fn render_inline(node: &Value, html: &mut String, policy: &UrlPolicy) {
     if let Some(text) = node.get("text").and_then(Value::as_str) {
         let mut open = String::new();
         let mut close = String::new();
@@ -255,8 +331,7 @@ fn render_inline(node: &Value, html: &mut String) {
                             .and_then(|attrs| attrs.get("href"))
                             .and_then(Value::as_str)
                             .unwrap_or_default();
-                        if url_allowed(href, UrlAttributeKind::Navigation, &UrlPolicy::permissive())
-                        {
+                        if url_allowed(href, UrlAttributeKind::Navigation, policy) {
                             open.push_str("<a href=\"");
                             push_escaped_attribute(&mut open, href);
                             open.push_str("\">");
@@ -274,7 +349,7 @@ fn render_inline(node: &Value, html: &mut String) {
     }
     match node.get("type").and_then(Value::as_str) {
         Some("hardBreak") => html.push_str("<br>"),
-        _ => render_inline_children(node, html),
+        _ => render_inline_children(node, html, policy),
     }
 }
 
@@ -314,6 +389,80 @@ mod tests {
             "unsafe links degrade to text, text stays escaped: {html}"
         );
         assert_eq!(rich_text_plain_text(&payload), "5 < 10 & linkedbold");
+    }
+
+    #[test]
+    fn fallback_links_respect_navigation_flags_in_nested_blocks() {
+        let payload = payload(json!({
+            "type": "doc",
+            "content": [{
+                "type": "blockquote",
+                "content": [{
+                    "type": "paragraph",
+                    "content": [
+                        {"type": "text", "text": "mail", "marks": [
+                            {"type": "link", "attrs": {"href": "mailto:demo@example.test"}}
+                        ]},
+                        {"type": "text", "text": "phone", "marks": [
+                            {"type": "link", "attrs": {"href": "tel:123456"}}
+                        ]},
+                        {"type": "text", "text": "fragment", "marks": [
+                            {"type": "link", "attrs": {"href": "#section"}}
+                        ]},
+                        {"type": "text", "text": "local", "marks": [
+                            {"type": "link", "attrs": {"href": "/local"}}
+                        ]}
+                    ]
+                }]
+            }]
+        }));
+        let policy = UrlPolicy {
+            allow_mailto: false,
+            allow_tel: false,
+            allow_hash_urls: false,
+            allow_relative_urls: false,
+            ..UrlPolicy::permissive()
+        };
+        assert_eq!(
+            rich_text_fallback_html_with_policy(&payload, &policy),
+            "<blockquote><p>mailphonefragmentlocal</p></blockquote>"
+        );
+        assert!(rich_text_fallback_html(&payload).contains("href=\"/local\""));
+    }
+
+    #[test]
+    fn link_href_extraction_walks_nested_content_and_ignores_other_marks() {
+        let raw = json!({
+            "capability": RICH_TEXT_CAPABILITY,
+            "payload": {
+                "type": "doc",
+                "content": [{
+                    "type": "blockquote",
+                    "content": [{
+                        "type": "paragraph",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "external",
+                                "marks": [
+                                    {"type": "bold"},
+                                    {"type": "link", "attrs": {"href": "https://example.test/page"}}
+                                ]
+                            },
+                            {
+                                "type": "text",
+                                "text": "local",
+                                "marks": [{"type": "link", "attrs": {"href": "/local"}}]
+                            }
+                        ]
+                    }]
+                }]
+            }
+        });
+        assert_eq!(
+            validated_rich_text_link_hrefs(&raw).expect("valid rich-text extension"),
+            vec!["https://example.test/page".to_string(), "/local".to_string()]
+        );
     }
 
     #[test]

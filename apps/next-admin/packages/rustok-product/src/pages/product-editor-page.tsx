@@ -24,6 +24,13 @@ import {
   type ProductVariantCreateRequest,
   type ProductVariantUpdateRequest,
   type ProductVariantDeleteRequest,
+  type ProductImageAddRequest,
+  type ProductImageUpdateRequest,
+  type ProductImageDeleteRequest,
+  type ProductImageReorderRequest,
+  type ProductImageWriteOperation,
+  type ProductWriteRequests,
+  type ProductWriteHandlers,
   type ProductSavePayload,
   type ProductWriteOutcome,
   type ProductWriteScope
@@ -164,19 +171,10 @@ export interface ProductEditorPageProps {
     request: ProductAxesWriteRequest,
     idempotencyKey: string
   ) => Promise<ProductWriteOutcome>;
-  onAddImage?: (
-    productId: string,
-    input: { mediaId: string; altText?: string; locale?: string },
-    idempotencyKey: string
-  ) => Promise<void>;
-  onDeleteImage?: (productId: string, id: string) => Promise<void>;
-  onReorderImages?: (productId: string, imageIds: string[]) => Promise<void>;
-  onUpdateImage?: (
-    productId: string,
-    id: string,
-    input: { position?: number; altText?: string; locale?: string },
-    idempotencyKey: string
-  ) => Promise<void>;
+  onAddImage?: ProductWriteHandlers['image_add'];
+  onDeleteImage?: ProductWriteHandlers['image_delete'];
+  onReorderImages?: ProductWriteHandlers['image_reorder'];
+  onUpdateImage?: ProductWriteHandlers['image_update'];
   onListMedia?: () => Promise<
     Array<{ id: string; name: string; url: string | null }>
   >;
@@ -803,6 +801,19 @@ export function ProductEditorPage({
         variant_delete: onDeleteVariant ?? unavailable
       });
       if (result?.outcome.status === 'confirmed') {
+        // A recovered delete may already be reflected in the Product loaded on this page.
+        // If the Variant is still present, this recovery just committed the membership change.
+        if (
+          !variantRecoveryOnly &&
+          result.operation === 'variant_delete' &&
+          initialProduct?.variants?.some(
+            (variant) => variant.id === result.request.variantId
+          )
+        ) {
+          setDocumentRevision((current) =>
+            current === null ? null : current + 1
+          );
+        }
         if (variantRecoveryOnly) router.push('/dashboard/product');
         else router.refresh();
       } else if (result?.outcome.status === 'rejected') {
@@ -846,7 +857,11 @@ export function ProductEditorPage({
           : unavailable,
         delete: onDeleteProduct
           ? (request, key) => onDeleteProduct(request.id, key, request.scope)
-          : unavailable
+          : unavailable,
+        image_add: onAddImage ?? unavailable,
+        image_update: onUpdateImage ?? unavailable,
+        image_delete: onDeleteImage ?? unavailable,
+        image_reorder: onReorderImages ?? unavailable
       });
       if (result && result.outcome.status !== 'confirmed') {
         setErrorMessage(
@@ -1053,6 +1068,12 @@ export function ProductEditorPage({
         setErrorMessage(message);
         throw new Error(message);
       }
+      // Variant membership advances the owning Product revision exactly once. Only a
+      // confirmed receipt advances this local predecessor; concurrent external writes
+      // still leave it stale and are rejected by the Product owner on the next save.
+      setDocumentRevision((current) =>
+        current === null ? null : current + 1
+      );
       router.refresh();
     } finally {
       syncVariantRecoveryState();
@@ -1082,6 +1103,11 @@ export function ProductEditorPage({
     if (deletedProduct.current) return;
     if (writeAttempt.current.pendingOperation) {
       await handleResume();
+      return;
+    }
+    if (writeAttempt.current.recovery?.phase === 'settled') return;
+    if (selectedCategoryId && !effectiveForm) {
+      setErrorMessage('Load the selected category form before saving.');
       return;
     }
     setErrorMessage(null);
@@ -1122,13 +1148,21 @@ export function ProductEditorPage({
       );
 
       // Preserve every edited locale and emit shared fields only once.
-      const attributeValueBatches = buildProductAttributeValueBatches({
-        activeLocale,
-        valuesByLocale: attributeValuesByLocale,
-        nonLocalizedValues: nonLocalizedAttributeValues,
-        dirtyLocalizedAttributeIdsByLocale,
-        dirtyNonLocalizedAttributeIds
-      });
+      const writableAttributeIds = new Set(
+        (effectiveForm?.attributes ?? [])
+          .filter((attribute) => !attribute.isDisabled && attribute.scope !== 'variant')
+          .map((attribute) => attribute.attributeId)
+      );
+      const attributeValueBatches = buildProductAttributeValueBatches(
+        {
+          activeLocale,
+          valuesByLocale: attributeValuesByLocale,
+          nonLocalizedValues: nonLocalizedAttributeValues,
+          dirtyLocalizedAttributeIdsByLocale,
+          dirtyNonLocalizedAttributeIds
+        },
+        writableAttributeIds
+      );
 
       const attempt = await writeAttempt.current.execute(
         'save',
@@ -1311,6 +1345,33 @@ export function ProductEditorPage({
       throw new Error(
         'Resolve the previous Product operation before making other changes.'
       );
+    }
+  };
+
+  const executeImageWrite = async <K extends ProductImageWriteOperation,>(
+    operation: K,
+    request: ProductWriteRequests[K],
+    send: ProductWriteHandlers[K]
+  ) => {
+    assertEditorialWriteResolved();
+    const writer = writeAttempt.current;
+    if (!writer) throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
+    setIsSaving(true);
+    setErrorMessage(null);
+    try {
+      const result = await writer.execute(operation, request, send);
+      if (!result || result.outcome.status !== 'confirmed') {
+        const message =
+          result?.outcome.status === 'rejected'
+            ? result.outcome.message
+            : UNKNOWN_PRODUCT_WRITE;
+        setErrorMessage(message);
+        throw new Error(message);
+      }
+      router.refresh();
+    } finally {
+      syncRecoveryState();
+      setIsSaving(false);
     }
   };
 
@@ -1896,53 +1957,68 @@ export function ProductEditorPage({
                   images={images}
                   onAddImage={
                     initialProduct?.id && onAddImage
-                      ? async (img, idempotencyKey) => {
-                          assertEditorialWriteResolved();
-                          await onAddImage(
-                            initialProduct.id,
-                            // Alt text is authored against the active content
-                            // locale; the card itself stays locale-agnostic.
-                            { ...img, locale: activeLocale },
-                            idempotencyKey
-                          );
-                          router.refresh();
-                        }
+                      ? (img) =>
+                          executeImageWrite(
+                            'image_add',
+                            {
+                              id: initialProduct.id,
+                              scope: writeScope,
+                              input: { ...img, locale: activeLocale }
+                            } satisfies ProductImageAddRequest,
+                            onAddImage
+                          )
                       : undefined
                   }
                   onDeleteImage={
                     initialProduct?.id && onDeleteImage
-                      ? async (imgId) => {
-                          assertEditorialWriteResolved();
-                          await onDeleteImage(initialProduct.id, imgId);
-                          router.refresh();
-                        }
+                      ? (imageId) =>
+                          executeImageWrite(
+                            'image_delete',
+                            {
+                              id: initialProduct.id,
+                              imageId,
+                              scope: writeScope
+                            } satisfies ProductImageDeleteRequest,
+                            onDeleteImage
+                          )
                       : undefined
                   }
                   onReorderImages={
                     initialProduct?.id && onReorderImages
-                      ? async (ids) => {
-                          assertEditorialWriteResolved();
-                          await onReorderImages(initialProduct.id, ids);
-                          router.refresh();
-                        }
+                      ? (imageIds) =>
+                          executeImageWrite(
+                            'image_reorder',
+                            {
+                              id: initialProduct.id,
+                              imageIds,
+                              scope: writeScope
+                            } satisfies ProductImageReorderRequest,
+                            onReorderImages
+                          )
                       : undefined
                   }
                   onUpdateImage={
                     initialProduct?.id && onUpdateImage
-                      ? async (imageId, imageInput, idempotencyKey) => {
-                          assertEditorialWriteResolved();
-                          await onUpdateImage(
-                            initialProduct.id,
-                            imageId,
-                            imageInput,
-                            idempotencyKey
-                          );
-                          router.refresh();
-                        }
+                      ? (imageId, input) =>
+                          executeImageWrite(
+                            'image_update',
+                            {
+                              id: initialProduct.id,
+                              imageId,
+                              scope: writeScope,
+                              input
+                            } satisfies ProductImageUpdateRequest,
+                            onUpdateImage
+                          )
                       : undefined
                   }
                   onListMedia={onListMedia}
-                  disabled={isSaving || pendingOperation !== null}
+                  disabled={
+                    isSaving ||
+                    pendingOperation !== null ||
+                    settledWrite !== null ||
+                    pendingVariantOperation !== null
+                  }
                 />
 
                 {/* SEO Card */}

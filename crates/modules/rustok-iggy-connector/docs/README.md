@@ -4,6 +4,11 @@
 stack. It owns bundled/external mode switching, connection lifecycle and
 low-level message I/O, without taking away transport-level semantics from `rustok-iggy`.
 
+Host-side configuration checks use
+`ExternalConnectorConfig::validate_connection_settings` before reporting
+external connection settings as configured. This is a structural check, not
+a broker authentication or reachability probe.
+
 ## Purpose
 
 - publish the canonical connector contract for the Iggy-based transport stack;

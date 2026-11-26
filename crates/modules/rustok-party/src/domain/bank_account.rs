@@ -46,9 +46,21 @@ impl BankAccount {
         currency: impl Into<String>,
         is_primary: bool,
     ) -> PartyResult<Self> {
-        let account_number = account_number.into();
-        let bank_name = bank_name.into();
-        let currency = currency.into().to_uppercase();
+        if party_id.is_nil() {
+            return Err(PartyError::Validation("Party ID cannot be nil".into()));
+        }
+
+        let account_number = account_number.into().trim().to_string();
+        let bank_name = bank_name.into().trim().to_string();
+        let bik = bik.map(|value| value.trim().to_string());
+        let corr_account = corr_account.map(|value| value.trim().to_string());
+        let currency = currency.into().trim().to_ascii_uppercase();
+
+        if bank_name.is_empty() {
+            return Err(PartyError::Validation(
+                "Bank name cannot be empty".into(),
+            ));
+        }
 
         validate_account_number(&account_number)?;
 
@@ -59,7 +71,7 @@ impl BankAccount {
             validate_account_number(ca)?;
         }
 
-        if currency.len() != 3 {
+        if currency.len() != 3 || !currency.chars().all(|c| c.is_ascii_alphabetic()) {
             return Err(PartyError::Validation(format!(
                 "Currency must be a 3-letter ISO code, got '{currency}'"
             )));
@@ -81,9 +93,9 @@ impl BankAccount {
 /// Validates that an account number is either a 20-digit national account or a valid IBAN length.
 pub fn validate_account_number(account: &str) -> PartyResult<()> {
     let trimmed = account.trim();
-    if trimmed.is_empty() {
+    if trimmed.is_empty() || trimmed.bytes().all(|b| b == b'0') {
         return Err(PartyError::Validation(
-            "Account number cannot be empty".into(),
+            "Account number cannot be empty or all zeros".into(),
         ));
     }
 
@@ -105,9 +117,12 @@ pub fn validate_account_number(account: &str) -> PartyResult<()> {
 /// Validates a 9-digit Russian Bank Identifier Code (БИК).
 pub fn validate_bik(bik: &str) -> PartyResult<()> {
     let trimmed = bik.trim();
-    if trimmed.len() != 9 || !trimmed.chars().all(|c| c.is_ascii_digit()) {
+    if trimmed.len() != 9
+        || !trimmed.chars().all(|c| c.is_ascii_digit())
+        || trimmed.bytes().all(|b| b == b'0')
+    {
         return Err(PartyError::Validation(format!(
-            "BIK must be exactly 9 numeric digits, got '{trimmed}'"
+            "BIK must be a valid non-zero 9-digit number, got '{trimmed}'"
         )));
     }
     Ok(())
@@ -140,6 +155,48 @@ mod tests {
     fn test_invalid_bik() {
         assert!(validate_bik("04452522").is_err()); // 8 digits
         assert!(validate_bik("044525225A").is_err()); // 10 chars
+        assert!(validate_bik("000000000").is_err()); // all zeros
         assert!(validate_bik("044525225").is_ok());
+    }
+
+    #[test]
+    fn test_bank_account_rejects_invalid_party_bank_name_and_currency() {
+        let party_id = Uuid::new_v4();
+        assert!(
+            BankAccount::new(
+                Uuid::nil(),
+                "40702810938000012345",
+                "Sberbank",
+                None,
+                None,
+                "RUB",
+                false
+            )
+            .is_err()
+        );
+        assert!(
+            BankAccount::new(
+                party_id,
+                "40702810938000012345",
+                "   ",
+                None,
+                None,
+                "RUB",
+                false
+            )
+            .is_err()
+        );
+        assert!(
+            BankAccount::new(
+                party_id,
+                "40702810938000012345",
+                "Sberbank",
+                None,
+                None,
+                "12!",
+                false
+            )
+            .is_err()
+        );
     }
 }

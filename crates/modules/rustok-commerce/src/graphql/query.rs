@@ -978,7 +978,7 @@ impl CommerceQuery {
         let auth = ctx
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-        let customer_id = resolve_optional_storefront_customer_id(&db, tenant_id, Some(&auth))
+        let customer_id = resolve_optional_storefront_customer_id(db, tenant_id, Some(auth))
             .await?
             .ok_or_else(<FieldError as GraphQLError>::unauthenticated)?;
 

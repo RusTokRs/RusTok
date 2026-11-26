@@ -36,8 +36,9 @@ pub fn selected_transport_profile(value: Option<&str>) -> GroupsAdminTransportPr
         .to_ascii_lowercase()
         .as_str()
     {
+        "" | "native" => GroupsAdminTransportProfile::Native,
         "graphql" => GroupsAdminTransportProfile::Graphql,
-        _ => GroupsAdminTransportProfile::Native,
+        other => panic!("unsupported groups admin transport profile: {other}"),
     }
 }
 
@@ -289,6 +290,12 @@ mod tests {
             selected_transport_profile(Some("native")),
             GroupsAdminTransportProfile::Native
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "unsupported groups admin transport profile")]
+    fn invalid_transport_profile_fails_closed() {
+        let _ = selected_transport_profile(Some("rest"));
     }
 
     #[test]

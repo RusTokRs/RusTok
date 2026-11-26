@@ -15,7 +15,7 @@ use subtle::ConstantTimeEq;
 use crate::models::users;
 use crate::services::marketplace_catalog::RegistryOwnerTransferRequest;
 use crate::services::registry_governance::RegistryGovernanceService;
-use crate::services::registry_principal::RegistryAuthority;
+use crate::services::registry_principal::{RegistryAuthority, is_registry_session};
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const ARTIFACT_CONTENT_TYPE: &str = "application/octet-stream";
@@ -135,7 +135,7 @@ async fn validate_owner_transfer(
         Some(extension) => &extension.0,
         None => return unauthorized("Registry owner transfer requires authentication"),
     };
-    if auth.client_id.is_some() && auth.session_id.is_nil() {
+    if !is_registry_session(auth) {
         return forbidden("Registry owner transfer requires a user session");
     }
 
@@ -194,13 +194,9 @@ async fn authorize_user_access(
     let auth_extension = auth_extension
         .ok_or_else(|| unauthorized("Registry publish request access requires authentication"))?;
     let auth = &auth_extension.0;
-    if auth.client_id.is_some() && auth.session_id.is_nil() {
-        return Err(forbidden(
-            "Registry publish request access requires a user session",
-        ));
-    }
-
-    let authority = RegistryAuthority::from_auth(auth_extension);
+    let authority = RegistryAuthority::from_session(auth).ok_or_else(|| {
+        forbidden("Registry publish request access requires a user session")
+    })?;
     let snapshot = RegistryGovernanceService::new(ctx.db_clone())
         .publish_request_status_snapshot_for_authority(request_id, Some(&authority))
         .await
@@ -441,6 +437,33 @@ mod tests {
         assert!(is_remote_runner_path("/v2/catalog/runner/claim_1/fail"));
         assert!(!is_remote_runner_path("/v2/catalog/runner/claim_1"));
         assert!(!is_remote_runner_path("/v2/catalog/publish/rpr_1"));
+    }
+
+    #[tokio::test]
+    async fn invalid_session_is_rejected_before_registry_database_access() {
+        use crate::common::settings::RustokSettings;
+        use crate::services::server_runtime_context::ServerRuntimeContext;
+        use rustok_api::context::{AuthContext, AuthContextExtension};
+        use rustok_api::Permission;
+        use uuid::Uuid;
+
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let auth = AuthContextExtension(AuthContext {
+            user_id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            session_id: Uuid::nil(),
+            client_id: None,
+            permissions: vec![Permission::MODULES_MANAGE],
+            scopes: Vec::new(),
+            grant_type: "direct".to_string(),
+        });
+        let denied = super::authorize_user_access(
+            &ctx, Some(&auth), "rpr_test", super::PublishAccess::Manage,
+        ).await.expect_err("nil session must be denied without a database");
+        assert_eq!(denied.status(), axum::http::StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]

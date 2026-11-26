@@ -17,11 +17,29 @@ services:
     container_name: rustok_migrate
     environment:
       DATABASE_URL: postgres://rustok:rustok@db:5432/rustok_dev
+      RUSTOK_ENV: development
+      RUSTOK_JWT_KEYRING_FILE: /run/rustok-jwt/jwt.json
     depends_on:
       db-bootstrap:
         condition: service_completed_successfully
     volumes:
+      # Validate the complete keyring with rustok-auth before any DB migration.
+      # Mount the directory so atomic keyring replacement semantics match the host.
+      - type: bind
+        source: ${RUSTOK_DEV_JWT_KEYRING_DIR:-${HOME}/.local/share/rustok-dev}
+        target: /run/rustok-jwt
+        read_only: true
+        bind:
+          create_host_path: false
       - cargo_cache:/usr/local/cargo/registry
+    command:
+      - /bin/bash
+      - -euo
+      - pipefail
+      - -c
+      - |
+        cargo run --locked -p rustok-server --bin rustok-server -- validate-jwt-keyring
+        cargo run --locked -p rustok-migrations --bin rustok-migrate -- up
     restart: "no"
     profiles:
       - full-dev
@@ -41,6 +59,7 @@ services:
     environment:
       DATABASE_URL: postgres://rustok:rustok@db:5432/rustok_dev
       RUSTOK_ENV: development
+      RUSTOK_JWT_KEYRING_FILE: /run/rustok-jwt/jwt.json
       RUST_LOG: debug
       SUPERADMIN_EMAIL: admin@localhost.invalid
       SUPERADMIN_PASSWORD: DevelopmentOnly-2026!ChangeMe
@@ -52,6 +71,14 @@ services:
       - ./apps/server:/workspace/apps/server
       - ./crates:/workspace/crates
       - ./modules.toml:/workspace/modules.toml:ro
+      # Mount the dedicated directory, not one inode: atomic keyring file
+      # replacement must remain visible to the supervisor.
+      - type: bind
+        source: ${RUSTOK_DEV_JWT_KEYRING_DIR:-${HOME}/.local/share/rustok-dev}
+        target: /run/rustok-jwt
+        read_only: true
+        bind:
+          create_host_path: false
       - cargo_cache:/usr/local/cargo/registry
     depends_on:
       migrate:

@@ -612,13 +612,13 @@ export async function addProductImage(
 export async function deleteProductImage(
   opts: GqlOpts,
   productId: string,
-  id: string
+  id: string,
+  idempotencyKey: string = crypto.randomUUID()
 ): Promise<boolean> {
   if (!opts.token || !opts.tenantSlug || !opts.tenantId) {
     throw new Error('Sign in again to manage images.');
   }
 
-  const idempotencyKey = crypto.randomUUID();
   const executor = opts.graphql ?? graphqlRequest;
   const data = await executor<
     { idempotencyKey: string; productId: string; id: string },
@@ -636,13 +636,13 @@ export async function deleteProductImage(
 export async function reorderProductImages(
   opts: GqlOpts,
   productId: string,
-  imageIds: string[]
+  imageIds: string[],
+  idempotencyKey: string = crypto.randomUUID()
 ): Promise<boolean> {
   if (!opts.token || !opts.tenantSlug || !opts.tenantId) {
     throw new Error('Sign in again to manage images.');
   }
 
-  const idempotencyKey = crypto.randomUUID();
   const executor = opts.graphql ?? graphqlRequest;
   const data = await executor<
     { idempotencyKey: string; productId: string; imageIds: string[] },
@@ -686,13 +686,13 @@ export async function saveProductAttributeValues(
   opts: GqlOpts,
   productId: string,
   locale: string,
-  patches: ProductAttributeValuePatch[]
+  patches: ProductAttributeValuePatch[],
+  idempotencyKey: string = crypto.randomUUID()
 ): Promise<ProductAttributeValueItem[]> {
   if (!opts.token || !opts.tenantSlug || !opts.tenantId) {
     throw new Error('Sign in again to save attribute values.');
   }
 
-  const idempotencyKey = crypto.randomUUID();
   const executor = opts.graphql ?? graphqlRequest;
   const data = await executor<
     {

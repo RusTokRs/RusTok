@@ -490,9 +490,9 @@ fn normalize_subject(mut subject: ModerationSubjectRef) -> ModerationResult<Mode
         ));
     }
     subject.module = normalize_identifier(subject.module, "subject.module", MAX_MODULE_BYTES)?;
-    if subject.revision < 0 {
+    if subject.revision < 1 {
         return Err(ModerationError::Validation(
-            "subject.revision must not be negative".to_string(),
+            "subject.revision must be at least 1".to_string(),
         ));
     }
     Ok(subject)
@@ -629,6 +629,30 @@ mod tests {
                 revision: 1,
             })
             .is_err()
+        );
+    }
+
+    #[test]
+    fn subject_rejects_non_positive_revision() {
+        for revision in [0, -1] {
+            assert!(
+                normalize_subject(ModerationSubjectRef {
+                    module: "forum".to_string(),
+                    kind: ModerationSubjectKind::ForumPost,
+                    id: Uuid::new_v4(),
+                    revision,
+                })
+                .is_err()
+            );
+        }
+        assert!(
+            normalize_subject(ModerationSubjectRef {
+                module: "forum".to_string(),
+                kind: ModerationSubjectKind::ForumPost,
+                id: Uuid::new_v4(),
+                revision: 1,
+            })
+            .is_ok()
         );
     }
 

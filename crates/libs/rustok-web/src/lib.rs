@@ -12,8 +12,6 @@
 //! - [`CspNonce`]: Per-response Content Security Policy nonce generator.
 //! - [`BrowserAssetRegistry`]: Release-qualified content-addressed asset serving with strong ETags.
 
-use std::fmt::Write as _;
-
 #[cfg(test)]
 mod contract_tests;
 
@@ -233,16 +231,19 @@ pub fn embedded_asset_response(
         })
 }
 
-fn content_etag(bytes: &[u8]) -> String {
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
     let digest = Sha256::digest(bytes);
-    let mut encoded = String::with_capacity(digest.len() * 2 + 2);
-    encoded.push('"');
-    // INVARIANT: Formatting fixed Sha256 byte digest into in-memory String cannot fail.
+    let mut encoded = String::with_capacity(digest.len() * 2);
     for byte in digest {
-        let _ = write!(&mut encoded, "{byte:02x}");
+        encoded.push(HEX[usize::from(byte >> 4)] as char);
+        encoded.push(HEX[usize::from(byte & 0x0f)] as char);
     }
-    encoded.push('"');
     encoded
+}
+
+fn content_etag(bytes: &[u8]) -> String {
+    format!("\"{}\"", sha256_hex(bytes))
 }
 
 fn if_none_match_matches(value: &str, etag: &str) -> bool {

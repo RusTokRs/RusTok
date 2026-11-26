@@ -24,6 +24,14 @@ fn all_topic_list_fields_expose_the_same_typed_owner_selection() {
     let schema = Schema::build(ForumQuery::default(), EmptyMutation, EmptySubscription).finish();
     let sdl = schema.sdl();
     assert!(sdl.contains("enum ForumTopicListOrder"));
+    let order_enum = sdl
+        .split("enum ForumTopicListOrder")
+        .nth(1)
+        .expect("ForumTopicListOrder SDL");
+    assert!(
+        order_enum.contains("LATEST") && order_enum.contains("TOP"),
+        "GraphQL ForumTopicListOrder must match the storefront wire LATEST/TOP"
+    );
     for field in [
         "forumTopics",
         "forumStorefrontAudienceTopics",

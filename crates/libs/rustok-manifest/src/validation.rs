@@ -129,7 +129,7 @@ fn validate_dependency_graph(manifest: &ModulesManifest) -> Result<()> {
     }
 
     if visited_count != manifest.modules.len() {
-        let cyclic_nodes: Vec<String> = in_degrees
+        let mut cyclic_nodes: Vec<String> = in_degrees
             .into_iter()
             .filter_map(|(node, degree)| {
                 if degree > 0 {
@@ -139,6 +139,7 @@ fn validate_dependency_graph(manifest: &ModulesManifest) -> Result<()> {
                 }
             })
             .collect();
+        cyclic_nodes.sort();
         return Err(ManifestError::CyclicDependency(cyclic_nodes.join(", ")));
     }
 

@@ -31,7 +31,7 @@ pub(crate) fn fixture() -> (CartResponse, ProductResponse) {
         "tags": [], "metadata": {}, "created_at": time, "updated_at": time,
         "published_at": time, "revision": 1, "translations": [], "images": [],
         "variant_axes": [], "variants": [{
-            "id": variant_id, "product_id": product_id, "sku": "renamed-catalog-sku",
+            "id": variant_id, "revision": "1", "product_id": product_id, "sku": "renamed-catalog-sku",
             "title": "Current catalog title", "translations": [], "axis_values": [],
             "prices": [], "inventory_quantity": 5, "inventory_policy": "deny",
             "in_stock": true, "position": 0

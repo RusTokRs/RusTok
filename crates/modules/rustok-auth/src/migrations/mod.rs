@@ -23,7 +23,7 @@ use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
 
 pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-    vec![
+    let migrations: Vec<Box<dyn MigrationTrait>> = vec![
         Box::new(m20260308_000001_create_oauth_apps::Migration),
         Box::new(m20260308_000002_create_oauth_tokens::Migration),
         Box::new(m20260308_000003_create_oauth_codes::Migration),
@@ -39,6 +39,13 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20261025_000004_create_auth_invites::Migration),
         Box::new(m20261101_000002_add_oauth_token_authorization_code::Migration),
         Box::new(m20261101_000003_add_oauth_token_kind_and_consent_epoch::Migration),
+    ];
+    migrations.into_iter().chain(jwt_fence_migrations()).collect()
+}
+
+/// Reuse the exact Auth-owned schema in the independently provisioned store.
+pub(crate) fn jwt_fence_migrations() -> Vec<Box<dyn MigrationTrait>> {
+    vec![
         Box::new(m20261125_000002_create_auth_jwt_generation_fence::Migration),
         Box::new(m20261125_000003_add_auth_jwt_cluster_lease::Migration),
         Box::new(m20261125_000004_add_auth_jwt_replica_grants::Migration),

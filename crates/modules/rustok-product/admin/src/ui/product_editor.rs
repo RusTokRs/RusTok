@@ -16,6 +16,10 @@ use crate::model::{
     CatalogCategorySummary, ProductDetail, ProductDraft, ProductEffectiveForm, ProductImageDraft,
 };
 
+fn next_product_revision_after_variant_delete(current: i32) -> Option<i32> {
+    current.checked_add(1)
+}
+
 #[component]
 pub fn ProductEditorPage(
     #[prop(optional)] is_new: bool,
@@ -466,6 +470,42 @@ pub fn ProductEditorPage(
         }
     };
 
+    let select_variant_editor_target = Callback::new(
+        move |variant: Option<crate::model::ProductVariant>| {
+            if let Some(variant) = variant {
+                set_variant_target_id.set(Some(variant.id.clone()));
+                set_sku.set(variant.sku.clone().unwrap_or_default());
+                set_barcode.set(variant.barcode.clone().unwrap_or_default());
+                set_variant_shipping_profile_slug
+                    .set(variant.shipping_profile_slug.clone().unwrap_or_default());
+                set_inventory_quantity.set(variant.inventory_quantity);
+                set_inventory_quantity_text.set(variant.inventory_quantity.to_string());
+                set_inventory_quantity_valid.set(variant.inventory_quantity >= 0);
+                set_inventory_policy.set(variant.inventory_policy.clone());
+                if let Some(price) = variant.prices.first() {
+                    set_currency_code.set(price.currency_code.clone());
+                    set_amount.set(price.amount.clone());
+                    set_compare_at_amount.set(price.compare_at_amount.clone().unwrap_or_default());
+                } else {
+                    set_amount.set(String::new());
+                    set_compare_at_amount.set(String::new());
+                }
+            } else {
+                set_variant_target_id.set(None);
+                set_sku.set(String::new());
+                set_barcode.set(String::new());
+                set_variant_shipping_profile_slug.set(String::new());
+                set_inventory_quantity.set(0);
+                set_inventory_quantity_text.set("0".to_string());
+                set_inventory_quantity_valid.set(true);
+                set_inventory_policy.set("deny".to_string());
+                set_amount.set(String::new());
+                set_compare_at_amount.set(String::new());
+            }
+            set_clear_primary_price.set(false);
+        },
+    );
+
     let variant_bootstrap_resource = Resource::new(
         move || (token.get(), tenant.get()),
         move |(tok, ten)| async move { catalog_transport::fetch_bootstrap(tok, ten).await },
@@ -473,10 +513,12 @@ pub fn ProductEditorPage(
     let variant_bootstrap =
         Signal::derive(move || variant_bootstrap_resource.get().and_then(Result::ok));
     let variant_reload_locale = locale.clone();
+    let select_variant_editor_target_for_refresh = select_variant_editor_target.clone();
     let refresh_variant_projection = Callback::new(move |product_id: String| {
         let tok = token.get_untracked();
         let ten = tenant.get_untracked();
         let loc = variant_reload_locale.clone();
+        let select_variant_editor_target = select_variant_editor_target_for_refresh.clone();
         spawn_local(async move {
             let result = async {
                 let bootstrap =
@@ -498,18 +540,80 @@ pub fn ProductEditorPage(
                 return;
             }
             match result {
-                Ok(Some(detail)) => set_loaded_product.update(|current| {
-                    if let Some(current) = current.as_mut().filter(|current| current.id == detail.id) {
-                        // Never rebase document fields/revision or the separately targeted Variant
-                        // controls from an independent SKU/axis acknowledgement.
-                        current.variants = detail.variants; current.variant_axes = detail.variant_axes;
+                Ok(Some(detail)) => {
+                    let loaded_id = loaded_product
+                        .get_untracked()
+                        .as_ref()
+                        .map(|current| current.id.clone());
+                    if loaded_id.as_deref() != Some(detail.id.as_str()) {
+                        return;
                     }
-                }),
+                    let target_missing = variant_target_id
+                        .get_untracked()
+                        .as_deref()
+                        .is_some_and(|target_id| {
+                            !detail
+                                .variants
+                                .iter()
+                                .any(|variant| variant.id.as_str() == target_id)
+                        });
+                    let fallback_variant = if target_missing {
+                        detail.variants.first().cloned()
+                    } else {
+                        None
+                    };
+                    let detail_id = detail.id.clone();
+                    set_loaded_product.update(|current| {
+                        if let Some(current) = current
+                            .as_mut()
+                            .filter(|current| current.id == detail_id)
+                        {
+                            // Keep document fields/revision and any surviving target's dirty
+                            // controls untouched. A retired target alone is moved to a survivor.
+                            current.variants = detail.variants;
+                            current.variant_axes = detail.variant_axes;
+                        }
+                    });
+                    if target_missing {
+                        select_variant_editor_target.run(fallback_variant);
+                    }
+                }
                 Ok(None) => set_error_msg.set(Some("The changed Product is no longer available".into())),
                 Err(error) => set_error_msg.set(Some(format!("Variant operation was acknowledged, but its projection could not be refreshed: {error}"))),
             }
         });
     });
+    let select_variant_editor_target_for_delete = select_variant_editor_target.clone();
+    let refresh_variant_projection_for_delete = refresh_variant_projection.clone();
+    let on_variant_deleted = Callback::new(
+        move |(product_id, deleted_variant_id): (String, String)| {
+            if variant_target_id.get_untracked().as_deref()
+                == Some(deleted_variant_id.as_str())
+            {
+                let next_variant = loaded_product.get_untracked().and_then(|product| {
+                    product
+                        .variants
+                        .into_iter()
+                        .find(|variant| variant.id != deleted_variant_id)
+                });
+                select_variant_editor_target_for_delete.run(next_variant);
+            }
+            set_loaded_product.update(|current| {
+                if let Some(current) = current.as_mut().filter(|current| current.id == product_id) {
+                    current.variants.retain(|variant| variant.id != deleted_variant_id);
+                    // The Product owner advances the aggregate revision once for this confirmed
+                    // membership change. Keep the local editor predecessor aligned; any concurrent
+                    // Product write still leaves it stale and will be rejected on the next save.
+                    if let Some(next_revision) =
+                        next_product_revision_after_variant_delete(current.revision)
+                    {
+                        current.revision = next_revision;
+                    }
+                }
+            });
+            refresh_variant_projection_for_delete.run(product_id);
+        },
+    );
 
     let initial_axes_seeded = RwSignal::new(false);
     Effect::new(move |_| {
@@ -1228,6 +1332,7 @@ pub fn ProductEditorPage(
                                 busy=is_busy set_busy=set_is_busy set_error=set_error_msg
                                 blocked=Signal::derive(move || axes_locked.get() || variant_locked.get())
                                 on_variant_mutated=refresh_variant_projection
+                                on_variant_deleted=on_variant_deleted
                             />
                         }} }
                     })}
@@ -1770,5 +1875,21 @@ pub fn ProductEditorPage(
             </div>
             </fieldset>
         </div>
+    }
+}
+
+
+#[cfg(test)]
+mod variant_membership_revision_tests {
+    use super::next_product_revision_after_variant_delete;
+
+    #[test]
+    fn confirmed_variant_deletion_advances_the_local_product_revision_once() {
+        assert_eq!(next_product_revision_after_variant_delete(7), Some(8));
+    }
+
+    #[test]
+    fn product_revision_overflow_does_not_wrap_or_saturate() {
+        assert_eq!(next_product_revision_after_variant_delete(i32::MAX), None);
     }
 }

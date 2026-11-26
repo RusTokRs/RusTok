@@ -258,7 +258,7 @@ fn require_static_publish_policy(document: &ProjectDocument) -> LandingProjectRe
 
 fn require_secure_resource_urls(document: &ProjectDocument) -> LandingProjectResult<()> {
     let mut diagnostics = Vec::new();
-    document.project.visit_components(|component, _, path| {
+    document.project().visit_components(|component, _, path| {
         for (attribute, value) in &component.attributes {
             let attribute = attribute.to_ascii_lowercase();
             if !matches!(attribute.as_str(), "src" | "poster") {
@@ -448,8 +448,8 @@ mod tests {
     fn compiler_rechecks_materialized_resource_limits_before_recursive_policy() {
         let compiler = StaticLandingCompiler::default();
         let mut document = compiler.prepare_document(&project()).expect("prepared");
-        let page = document.project.pages[0].clone();
-        document.project.pages =
+        let page = document.project().pages[0].clone();
+        document.project_mut().pages =
             vec![page; PageBuilderStaticPublishResourceLimits::default().max_pages + 1];
 
         let error = compiler
@@ -608,6 +608,20 @@ mod tests {
         };
         assert!(diagnostics.iter().any(|diagnostic| {
             diagnostic.code == "landing_srcset_rejected"
+                && diagnostic.path.ends_with("attributes.srcset")
+        }));
+    }
+
+    #[test]
+    fn compiler_rejects_ambiguous_srcset_before_artifact_creation() {
+        let error = StaticLandingCompiler::default()
+            .compile_publish(&project_with_srcset("/a.webp,/b.webp 2x"))
+            .expect_err("ambiguous candidate separator must be rejected");
+        let LandingProjectError::Validation { diagnostics } = error else {
+            panic!("expected typed validation diagnostics");
+        };
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "runtime_public_url_invalid"
                 && diagnostic.path.ends_with("attributes.srcset")
         }));
     }

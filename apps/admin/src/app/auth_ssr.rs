@@ -18,6 +18,36 @@ fn cookie_request_is_secure(headers: &HeaderMap) -> bool {
     forwarded_https || origin_https
 }
 
+/// Parse a single explicit Bearer authorization header. HTTP auth scheme names are
+/// case-insensitive; malformed and duplicate headers fail closed.
+pub fn bearer_token_from_headers(headers: &HeaderMap) -> Option<String> {
+    let mut values = headers.get_all(header::AUTHORIZATION).iter();
+    let raw = values.next()?.to_str().ok()?;
+    if values.next().is_some() {
+        return None;
+    }
+    let (scheme, token) = raw.trim().split_once(' ')?;
+    let token = token.trim();
+    if !scheme.eq_ignore_ascii_case("bearer")
+        || token.is_empty()
+        || token.chars().any(char::is_whitespace)
+    {
+        return None;
+    }
+    Some(token.to_string())
+}
+
+/// A Bearer API request must provide its tenant explicitly. Never infer it from a
+/// simultaneously-present browser session.
+pub fn bearer_tenant_slug_from_headers(headers: &HeaderMap) -> Option<String> {
+    let mut values = headers.get_all("x-tenant-slug").iter();
+    let value = values.next()?.to_str().ok()?.trim();
+    if values.next().is_some() || value.is_empty() {
+        return None;
+    }
+    Some(value.to_string())
+}
+
 /// Exchange the HttpOnly BFF refresh cookie (set by the native auth
 /// server functions at sign-in) for a verified auth snapshot.
 ///
@@ -79,6 +109,16 @@ pub async fn verify_auth_snapshot(mut request: Request<Body>, next: Next) -> Res
     {
         return next.run(request).await;
     }
+    // An explicit Authorization header is the sole authority for API requests. Do not
+    // refresh or attach an ambient browser session as a second credential, and insert an
+    // anonymous snapshot because some API handlers still require the Extension extractor.
+    if request.headers().contains_key(header::AUTHORIZATION) {
+        request
+            .extensions_mut()
+            .insert(ServerAuthSnapshot::default());
+        return next.run(request).await;
+    }
+
     let (snapshot, set_cookie) = verified_snapshot_from_headers(request.headers()).await;
     request.extensions_mut().insert(snapshot);
 
@@ -130,6 +170,54 @@ mod tests {
         let snapshot = request_auth_snapshot(&parts);
         assert_eq!(snapshot.user.unwrap().id, "user-1");
         assert_eq!(snapshot.session.unwrap().tenant, "demo");
+    }
+
+    #[test]
+    fn bearer_authorization_parser_is_case_insensitive_and_rejects_ambiguous_headers() {
+        let mut headers = HeaderMap::new();
+        assert_eq!(bearer_token_from_headers(&headers), None);
+
+        headers.insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_static("bEaReR access-token"),
+        );
+        assert_eq!(
+            bearer_token_from_headers(&headers).as_deref(),
+            Some("access-token")
+        );
+
+        headers.insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_static("Basic credentials"),
+        );
+        assert_eq!(bearer_token_from_headers(&headers), None);
+
+        headers.insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer token with-space"),
+        );
+        assert_eq!(bearer_token_from_headers(&headers), None);
+
+        headers.append(
+            header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer second-token"),
+        );
+        assert_eq!(bearer_token_from_headers(&headers), None);
+    }
+
+    #[test]
+    fn bearer_tenant_must_be_explicit_and_unambiguous() {
+        let mut headers = HeaderMap::new();
+        assert_eq!(bearer_tenant_slug_from_headers(&headers), None);
+
+        headers.insert("x-tenant-slug", HeaderValue::from_static(" tenant-a "));
+        assert_eq!(
+            bearer_tenant_slug_from_headers(&headers).as_deref(),
+            Some("tenant-a")
+        );
+
+        headers.append("x-tenant-slug", HeaderValue::from_static("tenant-b"));
+        assert_eq!(bearer_tenant_slug_from_headers(&headers), None);
     }
 
     #[tokio::test]

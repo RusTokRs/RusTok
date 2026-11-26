@@ -282,12 +282,14 @@ fn signed_availability_preserves_backorders_and_wide_intermediate_cancellation()
     backorder.stocked_quantity = 3;
     assert_eq!(checked_available_quantity(&[backorder]).unwrap(), -5);
     let mut negative = level(41, i32::MAX);
-    negative.stocked_quantity = i32::MIN;
-    let mut positive = level(42, 0);
+    negative.stocked_quantity = 0;
+    let mut second = level(42, i32::MAX);
+    second.stocked_quantity = 0;
+    let mut positive = level(43, 0);
     positive.stocked_quantity = i32::MAX;
     assert_eq!(
-        checked_available_quantity(&[negative, positive]).unwrap(),
-        i32::MIN
+        checked_available_quantity(&[negative, second, positive]).unwrap(),
+        -i32::MAX
     );
 }
 
@@ -295,11 +297,25 @@ fn signed_availability_preserves_backorders_and_wide_intermediate_cancellation()
 fn availability_overflow_negative_reserved_and_level_bound_refuse_without_saturation() {
     let mut huge = level(41, 0);
     huge.stocked_quantity = i32::MAX;
-    assert!(checked_available_quantity(&[huge.clone(), huge]).is_err());
+    let mut another = level(42, 0);
+    another.stocked_quantity = i32::MAX;
+    assert!(checked_available_quantity(&[huge.clone(), another]).is_err());
+    let mut small = level(41, 0);
+    small.stocked_quantity = 1;
+    assert!(checked_available_quantity(&[small.clone(), small]).is_err());
     let mut too_negative = level(41, 1);
     too_negative.stocked_quantity = i32::MIN;
     assert!(checked_available_quantity(&[too_negative]).is_err());
     assert!(checked_available_quantity(&[level(41, -1)]).is_err());
+    let mut negative_stock = level(41, 0);
+    negative_stock.stocked_quantity = -1;
+    assert!(checked_available_quantity(&[negative_stock]).is_err());
+    let mut negative_incoming = level(41, 0);
+    negative_incoming.incoming_quantity = -1;
+    assert!(checked_available_quantity(&[negative_incoming]).is_err());
+    let mut wrong_item = level(42, 0);
+    wrong_item.inventory_item_id = id(99);
+    assert!(checked_available_quantity(&[level(41, 0), wrong_item]).is_err());
     assert!(checked_available_quantity(&vec![level(41, 0); STOCK_LEVEL_READ_LIMIT + 1]).is_err());
     assert_eq!(checked_available_quantity(&[]).unwrap(), 0);
 }

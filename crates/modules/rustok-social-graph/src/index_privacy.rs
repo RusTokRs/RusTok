@@ -1,7 +1,7 @@
 use std::{collections::BTreeSet, sync::Arc};
 
 use async_trait::async_trait;
-use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError};
+use rustok_api::{PortCallPolicy, PortContext, PortError};
 use rustok_index::{
     FieldName, FieldPath, FilterExpr, IndexQuery, IndexQueryExecutionError, IndexQueryPort,
     IndexQueryScope, IndexValue, Pagination, SharedIndexQueryRuntime,
@@ -9,9 +9,10 @@ use rustok_index::{
 use uuid::Uuid;
 
 use crate::index::social_graph_relation_index_schema;
+use crate::ports::{parse_tenant_id, validate_source_actor};
 use crate::{
-    MAX_SOCIAL_GRAPH_FOLLOW_TARGETS, SocialGraphFollowBatchRequest, SocialGraphFollowBatchResult,
-    SocialGraphPairRequest, SocialGraphPrivacyReadPort, SocialRelationKind,
+    SocialGraphFollowBatchRequest, SocialGraphFollowBatchResult, SocialGraphPairRequest,
+    SocialGraphPrivacyReadPort, SocialRelationKind,
 };
 
 const SOURCE_USER_ID_FIELD: &str = "source_user_id";
@@ -136,7 +137,7 @@ impl SocialGraphPrivacyReadPort for IndexSocialGraphPrivacyReadPort {
         request: SocialGraphPairRequest,
     ) -> Result<bool, PortError> {
         context.require_policy(PortCallPolicy::read())?;
-        validate_pair(request.source_user_id, request.target_user_id)?;
+        request.validate()?;
         let tenant_id = parse_tenant_id(&context)?;
         let contract = relation_contract()?;
         self.relation_exists(
@@ -173,7 +174,7 @@ impl SocialGraphPrivacyReadPort for IndexSocialGraphPrivacyReadPort {
         request: SocialGraphPairRequest,
     ) -> Result<bool, PortError> {
         context.require_policy(PortCallPolicy::read())?;
-        validate_pair(request.source_user_id, request.target_user_id)?;
+        request.validate()?;
         let tenant_id = parse_tenant_id(&context)?;
         let contract = relation_contract()?;
         self.relation_exists(
@@ -196,8 +197,8 @@ impl SocialGraphPrivacyReadPort for IndexSocialGraphPrivacyReadPort {
         request: SocialGraphPairRequest,
     ) -> Result<bool, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        request.validate()?;
         validate_source_actor(&context, request.source_user_id)?;
-        validate_pair(request.source_user_id, request.target_user_id)?;
         let tenant_id = parse_tenant_id(&context)?;
         let contract = relation_contract()?;
         self.relation_exists(
@@ -220,18 +221,10 @@ impl SocialGraphPrivacyReadPort for IndexSocialGraphPrivacyReadPort {
         request: SocialGraphFollowBatchRequest,
     ) -> Result<SocialGraphFollowBatchResult, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        request.validate()?;
         validate_source_actor(&context, request.source_user_id)?;
-        if request.target_user_ids.len() > MAX_SOCIAL_GRAPH_FOLLOW_TARGETS {
-            return Err(PortError::validation(
-                "social_graph.follow_batch_too_large",
-                "social graph follow reads accept at most 100 target users",
-            ));
-        }
         let tenant_id = parse_tenant_id(&context)?;
         let target_user_ids = request.target_user_ids.into_iter().collect::<BTreeSet<_>>();
-        for target_user_id in &target_user_ids {
-            validate_pair(request.source_user_id, *target_user_id)?;
-        }
 
         Ok(SocialGraphFollowBatchResult {
             followed_target_user_ids: self
@@ -264,37 +257,6 @@ fn field_path(name: &str) -> Result<FieldPath, PortError> {
     FieldName::new(name)
         .map(FieldPath::new)
         .map_err(|_| contract_invariant())
-}
-
-fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
-        PortError::validation(
-            "social_graph.tenant_id_invalid",
-            "social graph ports require a valid tenant identifier",
-        )
-    })
-}
-
-fn validate_pair(source_user_id: Uuid, target_user_id: Uuid) -> Result<(), PortError> {
-    if source_user_id == target_user_id {
-        return Err(PortError::validation(
-            "social_graph.self_relation",
-            "social graph relation cannot target the source user",
-        ));
-    }
-    Ok(())
-}
-
-fn validate_source_actor(context: &PortContext, source_user_id: Uuid) -> Result<(), PortError> {
-    if matches!(&context.actor.kind, PortActorKind::User)
-        && Uuid::parse_str(&context.actor.id).ok() != Some(source_user_id)
-    {
-        return Err(PortError::forbidden(
-            "social_graph.source_actor_mismatch",
-            "user actors may mutate or read only relations they own",
-        ));
-    }
-    Ok(())
 }
 
 fn map_index_error(error: IndexQueryExecutionError) -> PortError {
@@ -535,5 +497,57 @@ mod tests {
 
         assert_eq!(error.kind, PortErrorKind::Forbidden);
         assert_eq!(error.code, "social_graph.source_actor_mismatch");
+    }
+
+    #[tokio::test]
+    async fn nil_identifiers_and_invalid_actor_ids_fail_closed() {
+        let fake = FakeIndexPort::new(Ok(empty_page()));
+        let port = IndexSocialGraphPrivacyReadPort::from_port(fake);
+        let valid_tenant = Uuid::from_u128(1);
+        let valid_user = Uuid::from_u128(2);
+        let other_user = Uuid::from_u128(3);
+
+        let nil_tenant_error = port
+            .blocks_between(
+                context(Uuid::nil()),
+                SocialGraphPairRequest {
+                    source_user_id: valid_user,
+                    target_user_id: other_user,
+                },
+            )
+            .await
+            .expect_err("nil tenant_id must fail validation");
+        assert_eq!(nil_tenant_error.code, "social_graph.tenant_id_invalid");
+
+        let nil_target_error = port
+            .source_mutes_target(
+                context(valid_tenant),
+                SocialGraphPairRequest {
+                    source_user_id: valid_user,
+                    target_user_id: Uuid::nil(),
+                },
+            )
+            .await
+            .expect_err("nil target_user_id must fail validation");
+        assert_eq!(nil_target_error.code, "social_graph.target_user_id_invalid");
+
+        let invalid_actor_context = PortContext::new(
+            valid_tenant.to_string(),
+            PortActor::user("not-a-uuid"),
+            "und",
+            "privacy-test-correlation",
+        )
+        .with_deadline(Duration::from_secs(1));
+        let invalid_actor_error = port
+            .source_follows_target(
+                invalid_actor_context,
+                SocialGraphPairRequest {
+                    source_user_id: valid_user,
+                    target_user_id: other_user,
+                },
+            )
+            .await
+            .expect_err("invalid actor UUID must fail validation");
+        assert_eq!(invalid_actor_error.code, "social_graph.actor_id_invalid");
     }
 }

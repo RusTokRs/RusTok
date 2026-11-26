@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
 
@@ -81,36 +82,126 @@ fn last_forwarded_header_value(headers: &HeaderMap, name: &str) -> Option<String
     values
         .iter()
         .next_back()
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.rsplit(',').next())
+        // Only the proxy-appended value is authoritative. An opaque byte
+        // in an earlier caller-controlled value must not poison that suffix.
+        .and_then(|value| value.as_bytes().rsplit(|byte| *byte == b',').next())
+        .filter(|entry| entry.is_ascii())
+        .and_then(|entry| std::str::from_utf8(entry).ok())
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
 }
 
-fn parse_forwarded_pair<'a>(forwarded: &'a str, key: &str) -> Option<&'a str> {
-    forwarded
-        .split(',')
-        .next()
-        .and_then(|entry| {
-            entry.split(';').find_map(|part| {
-                let (candidate_key, candidate_value) = part.trim().split_once('=')?;
-                (candidate_key.eq_ignore_ascii_case(key))
-                    .then(|| candidate_value.trim_matches('"').trim())
-            })
-        })
-        .filter(|value| !value.is_empty())
+/// Split from the trusted end without interpreting an earlier, untrusted
+/// prefix. RFC Forwarded permits delimiters inside quoted-string values.
+fn forwarded_parts_from_right(
+    bytes: &[u8],
+    separator: u8,
+    respect_quotes: bool,
+) -> impl Iterator<Item = &[u8]> + '_ {
+    let mut remaining = Some(bytes);
+    std::iter::from_fn(move || {
+        let field = remaining.take()?;
+        let mut in_quotes = false;
+        for index in (0..field.len()).rev() {
+            let byte = field[index];
+            if respect_quotes && byte == b'"' {
+                let escaped = field[..index]
+                    .iter()
+                    .rev()
+                    .take_while(|&&previous| previous == b'\\')
+                    .count()
+                    % 2
+                    != 0;
+                if !escaped {
+                    in_quotes = !in_quotes;
+                }
+            } else if byte == separator && !in_quotes {
+                remaining = Some(&field[..index]);
+                return Some(&field[index + 1..]);
+            }
+        }
+        Some(field)
+    })
 }
 
-fn last_forwarded_pair(headers: &HeaderMap, key: &str) -> Option<String> {
+fn forwarded_parameter_value(value: &str) -> Result<&str, ()> {
+    if let Some(quoted) = value.strip_prefix('"') {
+        let inner = quoted.strip_suffix('"').ok_or(())?;
+        let mut escaped = false;
+        for byte in inner.bytes() {
+            if escaped {
+                escaped = false;
+            } else if byte == b'\\' {
+                escaped = true;
+            } else if byte == b'"' {
+                return Err(());
+            }
+        }
+        if escaped {
+            return Err(());
+        }
+        Ok(inner)
+    } else if value.is_empty()
+        || value.bytes().any(|byte| {
+            byte.is_ascii_whitespace() || matches!(byte, b'"' | b'\\' | b',' | b';')
+        })
+    {
+        Err(())
+    } else {
+        Ok(value)
+    }
+}
+
+/// Distinguish an absent selector in a valid element from malformed input.
+/// Never select the first of multiple case-insensitively identical parameters.
+fn parse_forwarded_pair<'a>(element: &'a str, key: &str) -> Result<Option<&'a str>, ()> {
+    let mut seen = HashSet::new();
+    let mut selected = None;
+    for part in forwarded_parts_from_right(element.as_bytes(), b';', true) {
+        let part = std::str::from_utf8(part).map_err(|_| ())?;
+        let (name, value) = part.trim().split_once('=').ok_or(())?;
+        let name = name.trim();
+        if name.is_empty()
+            || !name.bytes().all(|byte| {
+                byte.is_ascii_alphanumeric()
+                    || b"!#$%&'*+-.^_`|~".contains(&byte)
+            })
+            || !seen.insert(name.to_ascii_lowercase())
+        {
+            return Err(());
+        }
+        let value = forwarded_parameter_value(value.trim())?;
+        if name.eq_ignore_ascii_case(key) {
+            // Authority selectors need no quoted-pair escapes or whitespace.
+            // Reject them rather than passing a differently interpreted value
+            // to a downstream host, IP or scheme parser.
+            if value.is_empty()
+                || value.bytes().any(|byte| {
+                    byte.is_ascii_whitespace() || matches!(byte, b'\\' | b'"' | b',' | b';')
+                })
+            {
+                return Err(());
+            }
+            selected = Some(value);
+        }
+    }
+    Ok(selected)
+}
+
+fn last_forwarded_pair(headers: &HeaderMap, key: &str) -> Result<Option<String>, ()> {
     let values = headers.get_all(FORWARDED);
-    values
-        .iter()
-        .next_back()
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.rsplit(',').next())
-        .and_then(|entry| parse_forwarded_pair(entry, key))
-        .map(ToOwned::to_owned)
+    let Some(field) = values.iter().next_back() else {
+        return Ok(None);
+    };
+    let entry = forwarded_parts_from_right(field.as_bytes(), b',', true)
+        .next()
+        .ok_or(())?;
+    if !entry.is_ascii() {
+        return Err(());
+    }
+    let entry = std::str::from_utf8(entry).map_err(|_| ())?;
+    parse_forwarded_pair(entry, key).map(|value| value.map(ToOwned::to_owned))
 }
 
 fn parse_forwarded_for_ip(value: &str) -> Option<IpAddr> {
@@ -146,7 +237,11 @@ fn client_ip_from_forwarded_chain(
         // Decode each hop only after establishing that it belongs to the
         // trusted side of the chain. An opaque byte in a caller-controlled
         // earlier hop must not invalidate a proxy-appended client address.
-        for entry in field.as_bytes().rsplit(|byte| *byte == b',') {
+        for entry in forwarded_parts_from_right(
+            field.as_bytes(),
+            b',',
+            header_name.eq_ignore_ascii_case(FORWARDED.as_str()),
+        ) {
             if !trusted_nets.iter().any(|net| net.contains(&current)) {
                 return Some(current);
             }
@@ -160,7 +255,10 @@ fn client_ip_from_forwarded_chain(
 }
 
 fn parse_forwarded_element_ip(element: &str) -> Option<IpAddr> {
-    parse_forwarded_pair(element, "for").and_then(parse_forwarded_for_ip)
+    parse_forwarded_pair(element, "for")
+        .ok()
+        .flatten()
+        .and_then(parse_forwarded_for_ip)
 }
 
 pub fn extract_effective_host(
@@ -168,6 +266,20 @@ pub fn extract_effective_host(
     peer_ip: Option<IpAddr>,
     settings: &RequestTrustSettings,
 ) -> Option<String> {
+    let host_values = headers.get_all(HOST);
+    let mut host_values = host_values.iter();
+    let direct_host = host_values.next();
+    if host_values.next().is_some() {
+        return None;
+    }
+    let direct_host = || {
+        direct_host
+            .and_then(|value| value.to_str().ok())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+    };
+
     if forwarded_headers_trusted(peer_ip, settings) {
         // X-Forwarded-Host takes precedence when it is present. An invalid
         // last hop must fail closed instead of switching to a potentially
@@ -175,23 +287,15 @@ pub fn extract_effective_host(
         if headers.contains_key("x-forwarded-host") {
             return last_forwarded_header_value(headers, "x-forwarded-host");
         }
-        return last_forwarded_pair(headers, "host").or_else(|| {
-            headers
-                .get(HOST)
-                .and_then(|value| value.to_str().ok())
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(ToOwned::to_owned)
-        });
+        return match last_forwarded_pair(headers, "host") {
+            Ok(Some(host)) => Some(host),
+            Ok(None) => direct_host(),
+            Err(()) => None,
+        };
     }
 
     warn_ignored_forwarded_headers(headers, peer_ip, "untrusted_or_ignored_forwarded_host");
-    headers
-        .get(HOST)
-        .and_then(|value| value.to_str().ok())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
+    direct_host()
 }
 
 pub fn extract_effective_client_ip(
@@ -271,7 +375,7 @@ pub fn extract_effective_proto(
         let value = if headers.contains_key("x-forwarded-proto") {
             last_forwarded_header_value(headers, "x-forwarded-proto")
         } else {
-            last_forwarded_pair(headers, "proto")
+            last_forwarded_pair(headers, "proto").ok().flatten()
         };
         return value
             .map(|value| value.to_ascii_lowercase())
@@ -403,6 +507,161 @@ mod tests {
             extract_effective_proto(&headers, peer, &settings).as_deref(),
             Some("https"),
         );
+    }
+
+    #[test]
+    fn opaque_earlier_values_do_not_poison_proxy_appended_host_and_proto() {
+        let peer = Some(IpAddr::from([10, 1, 2, 3]));
+        let settings = trusted_settings();
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-forwarded-host",
+            HeaderValue::from_bytes(b"\xff, tenant.example.test").unwrap(),
+        );
+        headers.insert(
+            "x-forwarded-proto",
+            HeaderValue::from_bytes(b"\xff, https").unwrap(),
+        );
+        assert_eq!(
+            extract_effective_host(&headers, peer, &settings).as_deref(),
+            Some("tenant.example.test")
+        );
+        assert_eq!(
+            extract_effective_proto(&headers, peer, &settings).as_deref(),
+            Some("https")
+        );
+        assert!(secure_cookie_required_for_environment(
+            &headers, peer, &settings, false,
+        ));
+
+        // Separate header fields from the trusted proxy are equivalent.
+        headers.insert("x-forwarded-host", HeaderValue::from_bytes(b"\xff").unwrap());
+        headers.append(
+            "x-forwarded-host",
+            HeaderValue::from_static("tenant.example.test"),
+        );
+        headers.insert("x-forwarded-proto", HeaderValue::from_bytes(b"\xff").unwrap());
+        headers.append("x-forwarded-proto", HeaderValue::from_static("https"));
+        assert_eq!(
+            extract_effective_host(&headers, peer, &settings).as_deref(),
+            Some("tenant.example.test")
+        );
+        assert_eq!(
+            extract_effective_proto(&headers, peer, &settings).as_deref(),
+            Some("https")
+        );
+
+        // Invalid nearest values must not select earlier or conflicting values.
+        headers.insert(
+            FORWARDED,
+            HeaderValue::from_static("host=other.example.test;proto=https"),
+        );
+        headers.insert(
+            "x-forwarded-host",
+            HeaderValue::from_bytes(b"tenant.example.test, \xff").unwrap(),
+        );
+        headers.insert(
+            "x-forwarded-proto",
+            HeaderValue::from_bytes(b"https, \xff").unwrap(),
+        );
+        assert_eq!(extract_effective_host(&headers, peer, &settings), None);
+        assert_eq!(extract_effective_proto(&headers, peer, &settings), None);
+    }
+
+    #[test]
+    fn opaque_earlier_rfc_forwarded_values_do_not_poison_last_element() {
+        let peer = Some(IpAddr::from([10, 1, 2, 3]));
+        let settings = trusted_settings();
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            FORWARDED,
+            HeaderValue::from_bytes(
+                b"for=\xff, for=203.0.113.8;host=tenant.example.test;proto=https",
+            )
+            .unwrap(),
+        );
+        assert_eq!(
+            extract_effective_host(&headers, peer, &settings).as_deref(),
+            Some("tenant.example.test")
+        );
+        assert_eq!(
+            extract_effective_proto(&headers, peer, &settings).as_deref(),
+            Some("https")
+        );
+        assert_eq!(
+            extract_effective_host(&headers, peer, &RequestTrustSettings::default()),
+            None
+        );
+        assert_eq!(
+            extract_effective_proto(&headers, peer, &RequestTrustSettings::default()),
+            None
+        );
+
+        headers.insert(
+            FORWARDED,
+            HeaderValue::from_bytes(b"host=tenant.example.test;proto=https, for=\xff").unwrap(),
+        );
+        assert_eq!(extract_effective_host(&headers, peer, &settings), None);
+        assert_eq!(extract_effective_proto(&headers, peer, &settings), None);
+    }
+
+    #[test]
+    fn rfc_forwarded_rejects_ambiguous_or_malformed_authority_parameters() {
+        let peer = Some(IpAddr::from([10, 1, 2, 3]));
+        let settings = trusted_settings();
+        let mut headers = HeaderMap::new();
+        headers.insert(HOST, HeaderValue::from_static("backend.internal"));
+        for value in [
+            "for=203.0.113.8;FOR=198.51.100.1;host=tenant.example.test;proto=https",
+            "for=203.0.113.8;host=tenant.example.test;HOST=other.example.test;proto=https",
+            "for=203.0.113.8;host=tenant.example.test;proto=https;Proto=http",
+            "for=203.0.113.8;host=\"tenant.example.test;proto=https",
+            "for=203.0.113.8;host=;proto=https",
+        ] {
+            headers.insert(FORWARDED, HeaderValue::from_str(value).unwrap());
+            assert_eq!(extract_effective_host(&headers, peer, &settings), None, "{value}");
+        }
+        headers.insert(
+            FORWARDED,
+            HeaderValue::from_static("for=203.0.113.8;FOR=198.51.100.1;proto=https"),
+        );
+        assert_eq!(extract_effective_client_ip(&headers, peer, &settings), peer);
+        assert_eq!(extract_effective_proto(&headers, peer, &settings), None);
+    }
+
+    #[test]
+    fn rfc_forwarded_quoted_delimiters_do_not_create_authority_parameters() {
+        let peer = Some(IpAddr::from([10, 1, 2, 3]));
+        let settings = trusted_settings();
+        let mut headers = HeaderMap::new();
+        headers.insert(HOST, HeaderValue::from_static("backend.internal"));
+        headers.insert(
+            FORWARDED,
+            HeaderValue::from_static(
+                "for=198.51.100.1, for=203.0.113.8;host=\"tenant.example.test\";proto=https;ext=\"a,b;host=other.example.test;proto=http\"",
+            ),
+        );
+        assert_eq!(extract_effective_host(&headers, peer, &settings).as_deref(), Some("tenant.example.test"));
+        assert_eq!(extract_effective_proto(&headers, peer, &settings).as_deref(), Some("https"));
+        assert_eq!(extract_effective_client_ip(&headers, peer, &settings), Some(IpAddr::from([203, 0, 113, 8])));
+
+        // The quoted extension does not supply a host when no host exists.
+        headers.insert(
+            FORWARDED,
+            HeaderValue::from_static("for=203.0.113.8;ext=\"a;host=other.example.test\""),
+        );
+        assert_eq!(extract_effective_host(&headers, peer, &settings).as_deref(), Some("backend.internal"));
+    }
+
+    #[test]
+    fn duplicate_direct_host_is_never_an_authoritative_value() {
+        let mut headers = HeaderMap::new();
+        headers.append(HOST, HeaderValue::from_static("first.example.test"));
+        headers.append(HOST, HeaderValue::from_static("second.example.test"));
+        let peer = Some(IpAddr::from([10, 1, 2, 3]));
+        assert_eq!(extract_effective_host(&headers, peer, &RequestTrustSettings::default()), None);
+        headers.insert("x-forwarded-host", HeaderValue::from_static("tenant.example.test"));
+        assert_eq!(extract_effective_host(&headers, peer, &trusted_settings()), None);
     }
 
     #[test]

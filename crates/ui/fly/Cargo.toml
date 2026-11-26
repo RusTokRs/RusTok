@@ -33,6 +33,11 @@ url.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 
+# Browser WASM cannot call std::time::SystemTime::now or std::process::id.
+# Reuse the workspace UUID provider (v4 + js); native builds do not add this edge.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+uuid.workspace = true
+
 [[bench]]
 name = "fly_core_bench"
 harness = false

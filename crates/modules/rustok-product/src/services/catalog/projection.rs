@@ -859,7 +859,7 @@ impl CatalogService {
                 if variant_ids.is_empty() {
                     Ok::<_, CommerceError>(HashMap::new())
                 } else if let Some(port) = &self.inventory_port {
-                    port.load_available_quantities(conn.as_inventory_connection(), &variant_ids)
+                    port.load_available_quantities(conn.as_inventory_connection(), tenant_id, &variant_ids)
                         .await
                 } else {
                     Ok(HashMap::new())
@@ -925,14 +925,15 @@ impl CatalogService {
                     locale,
                     variant_title_fallback_locale,
                 );
-                let available_inventory = available_inventory_by_variant
-                    .get(&variant.id)
-                    .copied()
-                    .unwrap_or(0);
+                let available_inventory = resolve_variant_inventory_quantity(
+                    variant.id,
+                    variant.inventory_quantity,
+                    &available_inventory_by_variant,
+                );
 
                 VariantResponse {
                     id: variant.id,
-                    revision: variant.index_revision.to_string(),
+                    revision: variant.revision.to_string(),
                     product_id: variant.product_id,
                     sku: variant.sku,
                     barcode: variant.barcode,
@@ -950,7 +951,8 @@ impl CatalogService {
                     prices: price_responses,
                     inventory_quantity: available_inventory,
                     inventory_policy: variant.inventory_policy.clone(),
-                    in_stock: available_inventory > 0 || variant.inventory_policy == "continue",
+                    in_stock: available_inventory > 0
+                        || inventory_policy_allows_backorder(&variant.inventory_policy),
                     weight: variant.weight,
                     weight_unit: variant.weight_unit,
                     position: variant.position,
@@ -1115,7 +1117,7 @@ impl CatalogService {
                 if variant_ids.is_empty() {
                     Ok::<_, CommerceError>(HashMap::new())
                 } else if let Some(port) = &self.inventory_port {
-                    port.load_available_quantities(conn.as_inventory_connection(), &variant_ids)
+                    port.load_available_quantities(conn.as_inventory_connection(), tenant_id, &variant_ids)
                         .await
                 } else {
                     Ok(HashMap::new())
@@ -1153,14 +1155,15 @@ impl CatalogService {
             PLATFORM_FALLBACK_LOCALE,
             PLATFORM_FALLBACK_LOCALE,
         );
-        let available_inventory = available_inventory_by_variant
-            .get(&variant.id)
-            .copied()
-            .unwrap_or(0);
+        let available_inventory = resolve_variant_inventory_quantity(
+            variant.id,
+            variant.inventory_quantity,
+            &available_inventory_by_variant,
+        );
 
         Ok(VariantResponse {
             id: variant.id,
-            revision: variant.index_revision.to_string(),
+            revision: variant.revision.to_string(),
             product_id: variant.product_id,
             sku: variant.sku,
             barcode: variant.barcode,
@@ -1178,7 +1181,8 @@ impl CatalogService {
             prices: price_responses,
             inventory_quantity: available_inventory,
             inventory_policy: variant.inventory_policy.clone(),
-            in_stock: available_inventory > 0 || variant.inventory_policy == "continue",
+            in_stock: available_inventory > 0
+                || inventory_policy_allows_backorder(&variant.inventory_policy),
             weight: variant.weight,
             weight_unit: variant.weight_unit,
             position: variant.position,
@@ -1201,6 +1205,36 @@ mod tests {
             locale: locale.to_owned(),
             alt_text: alt_text.map(str::to_owned),
         }
+    }
+
+    #[test]
+    fn legacy_inventory_is_used_only_when_inventory_has_no_item_identity() {
+        let variant_id = Uuid::new_v4();
+        let missing_inventory = HashMap::new();
+        assert_eq!(
+            resolve_variant_inventory_quantity(variant_id, 7, &missing_inventory),
+            7,
+        );
+
+        let authoritative_zero = HashMap::from([(variant_id, 0)]);
+        assert_eq!(
+            resolve_variant_inventory_quantity(variant_id, 7, &authoritative_zero),
+            0,
+        );
+
+        let authoritative_stock = HashMap::from([(variant_id, 12)]);
+        assert_eq!(
+            resolve_variant_inventory_quantity(variant_id, 7, &authoritative_stock),
+            12,
+        );
+    }
+
+    #[test]
+    fn backorder_policy_is_case_insensitive_and_trimmed_in_catalog_projection() {
+        assert!(inventory_policy_allows_backorder("continue"));
+        assert!(inventory_policy_allows_backorder(" CONTINUE "));
+        assert!(inventory_policy_allows_backorder("Continue"));
+        assert!(!inventory_policy_allows_backorder("deny"));
     }
 
     #[test]

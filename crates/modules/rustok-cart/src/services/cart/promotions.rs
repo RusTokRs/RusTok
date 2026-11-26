@@ -20,10 +20,15 @@ use super::helpers::{
 };
 use super::types::{CartPromotionKind, CartPromotionPreview};
 
+enum PromotionAmountSpec {
+    Percentage(Decimal),
+    Fixed(Decimal),
+}
+
 struct PromotionAdjustmentInput<'a> {
     line_item_id: Option<Uuid>,
     source_id: &'a str,
-    amount: Decimal,
+    amount_spec: PromotionAmountSpec,
     scope: &'a str,
     metadata: Value,
 }
@@ -78,15 +83,7 @@ impl CartService {
         discount_percent: Decimal,
         metadata: Value,
     ) -> CartResult<CartResponse> {
-        let preview = self
-            .preview_percentage_promotion(
-                tenant_id,
-                cart_id,
-                line_item_id,
-                source_id,
-                discount_percent,
-            )
-            .await?;
+        super::helpers::validate_promotion_percent(discount_percent)?;
         let metadata = promotion_metadata(
             metadata,
             CartPromotionKind::PercentageDiscount,
@@ -105,7 +102,7 @@ impl CartService {
             PromotionAdjustmentInput {
                 line_item_id,
                 source_id,
-                amount: preview.adjustment_amount,
+                amount_spec: PromotionAmountSpec::Percentage(discount_percent),
                 scope: if line_item_id.is_some() {
                     LINE_ITEM_PROMOTION_SCOPE
                 } else {
@@ -168,20 +165,12 @@ impl CartService {
         amount: Decimal,
         metadata: Value,
     ) -> CartResult<CartResponse> {
-        let preview = self
-            .preview_fixed_promotion(tenant_id, cart_id, line_item_id, source_id, amount)
-            .await?;
-        let metadata = promotion_metadata(
-            metadata,
-            CartPromotionKind::FixedDiscount,
-            if line_item_id.is_some() {
-                LINE_ITEM_PROMOTION_SCOPE
-            } else {
-                CART_PROMOTION_SCOPE
-            },
-            None,
-            Some(preview.adjustment_amount),
-        );
+        super::helpers::validate_fixed_promotion_amount(amount)?;
+        let scope = if line_item_id.is_some() {
+            LINE_ITEM_PROMOTION_SCOPE
+        } else {
+            CART_PROMOTION_SCOPE
+        };
 
         self.apply_promotion_adjustment(
             tenant_id,
@@ -189,12 +178,8 @@ impl CartService {
             PromotionAdjustmentInput {
                 line_item_id,
                 source_id,
-                amount: preview.adjustment_amount,
-                scope: if line_item_id.is_some() {
-                    LINE_ITEM_PROMOTION_SCOPE
-                } else {
-                    CART_PROMOTION_SCOPE
-                },
+                amount_spec: PromotionAmountSpec::Fixed(amount),
+                scope,
                 metadata,
             },
         )
@@ -244,9 +229,7 @@ impl CartService {
         discount_percent: Decimal,
         metadata: Value,
     ) -> CartResult<CartResponse> {
-        let preview = self
-            .preview_percentage_shipping_promotion(tenant_id, cart_id, source_id, discount_percent)
-            .await?;
+        super::helpers::validate_promotion_percent(discount_percent)?;
         let metadata = promotion_metadata(
             metadata,
             CartPromotionKind::PercentageDiscount,
@@ -261,7 +244,7 @@ impl CartService {
             PromotionAdjustmentInput {
                 line_item_id: None,
                 source_id,
-                amount: preview.adjustment_amount,
+                amount_spec: PromotionAmountSpec::Percentage(discount_percent),
                 scope: SHIPPING_PROMOTION_SCOPE,
                 metadata,
             },
@@ -314,16 +297,7 @@ impl CartService {
         amount: Decimal,
         metadata: Value,
     ) -> CartResult<CartResponse> {
-        let preview = self
-            .preview_fixed_shipping_promotion(tenant_id, cart_id, source_id, amount)
-            .await?;
-        let metadata = promotion_metadata(
-            metadata,
-            CartPromotionKind::FixedDiscount,
-            SHIPPING_PROMOTION_SCOPE,
-            None,
-            Some(preview.adjustment_amount),
-        );
+        super::helpers::validate_fixed_promotion_amount(amount)?;
 
         self.apply_promotion_adjustment(
             tenant_id,
@@ -331,7 +305,7 @@ impl CartService {
             PromotionAdjustmentInput {
                 line_item_id: None,
                 source_id,
-                amount: preview.adjustment_amount,
+                amount_spec: PromotionAmountSpec::Fixed(amount),
                 scope: SHIPPING_PROMOTION_SCOPE,
                 metadata,
             },
@@ -348,7 +322,7 @@ impl CartService {
         let PromotionAdjustmentInput {
             line_item_id,
             source_id,
-            amount,
+            amount_spec,
             scope,
             metadata,
         } = input;
@@ -369,6 +343,7 @@ impl CartService {
         if let Some(line_item_id) = line_item_id
             && !line_items.iter().any(|item| item.id == line_item_id)
         {
+            txn.rollback().await?;
             return Err(CartError::Validation(format!(
                 "cart line item {line_item_id} does not belong to cart {cart_id}"
             )));
@@ -384,15 +359,38 @@ impl CartService {
                 resolve_promotion_base_amount(&line_items, &adjustments, line_item_id, &source_id)?
             }
         };
-        if amount > base_amount {
-            return Err(CartError::Validation(match scope {
-                SHIPPING_PROMOTION_SCOPE => {
-                    "shipping promotion amount cannot exceed the remaining shipping amount"
-                        .to_string()
+        let (amount, metadata) = match amount_spec {
+            PromotionAmountSpec::Percentage(discount_percent) => {
+                let adjusted_amount = round_to_currency(
+                    base_amount * ((Decimal::from(100) - discount_percent) / Decimal::from(100)),
+                    &cart.currency_code,
+                )?;
+                let adjustment_amount =
+                    round_to_currency(base_amount - adjusted_amount, &cart.currency_code)?;
+                (adjustment_amount, metadata)
+            }
+            PromotionAmountSpec::Fixed(fixed_amount) => {
+                if fixed_amount > base_amount {
+                    txn.rollback().await?;
+                    return Err(CartError::Validation(match scope {
+                        SHIPPING_PROMOTION_SCOPE => {
+                            "shipping promotion amount cannot exceed the remaining shipping amount"
+                                .to_string()
+                        }
+                        _ => "promotion amount cannot exceed the remaining base amount".to_string(),
+                    }));
                 }
-                _ => "promotion amount cannot exceed the remaining base amount".to_string(),
-            }));
-        }
+                let rounded = round_to_currency(fixed_amount, &cart.currency_code)?;
+                let metadata = promotion_metadata(
+                    metadata,
+                    CartPromotionKind::FixedDiscount,
+                    scope,
+                    None,
+                    Some(rounded),
+                );
+                (rounded, metadata)
+            }
+        };
 
         let mut delete_query = entities::cart_adjustment::Entity::delete_many()
             .filter(entities::cart_adjustment::Column::CartId.eq(cart_id))

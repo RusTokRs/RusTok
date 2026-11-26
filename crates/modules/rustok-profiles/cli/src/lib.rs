@@ -67,6 +67,11 @@ impl ProfilesCommandProvider {
         let options = options(&request.args)?;
         let tenant_id = required_uuid(options, "tenant_id")?;
         let limit = optional_u64(options, "limit")?.unwrap_or(500);
+        if limit == 0 {
+            return Err(CliCoreError::InvalidInput {
+                message: "--limit must be greater than 0".to_string(),
+            });
+        }
         let visibility = visibility(options)?;
         let dry_run = request.dry_run || flag(options, "dry_run");
         let emit_events = !dry_run;
@@ -106,24 +111,26 @@ impl ProfilesCommandProvider {
                     error,
                 )
             })?;
-        let enrichments = CustomerService::new(db.clone())
-            .list_profile_enrichment(
-                tenant_id,
-                &users.iter().map(|user| user.id).collect::<Vec<_>>(),
-            )
-            .await
-            .map_err(|error| {
-                backfill_failed(
-                    &telemetry,
-                    "enrichment_read",
-                    BACKFILL_ENRICHMENT_READ_ERROR,
-                    true,
-                    error,
-                )
-            })?
-            .into_iter()
-            .map(|item| (item.user_id, item))
-            .collect::<HashMap<_, _>>();
+        let customer_service = CustomerService::new(db.clone());
+        let user_ids = users.iter().map(|user| user.id).collect::<Vec<_>>();
+        let mut enrichments = HashMap::new();
+        for chunk in user_ids.chunks(500) {
+            let chunk_items = customer_service
+                .list_profile_enrichment(tenant_id, chunk)
+                .await
+                .map_err(|error| {
+                    backfill_failed(
+                        &telemetry,
+                        "enrichment_read",
+                        BACKFILL_ENRICHMENT_READ_ERROR,
+                        true,
+                        error,
+                    )
+                })?;
+            for item in chunk_items {
+                enrichments.insert(item.user_id, item);
+            }
+        }
         let event_bus = TransactionalEventBus::new(
             Arc::new(OutboxTransport::new(db.clone())) as Arc<dyn EventTransport>
         );
@@ -231,6 +238,15 @@ fn required_uuid(
             Uuid::parse_str(raw).map_err(|_| CliCoreError::InvalidInput {
                 message: format!("--{key} must be a UUID"),
             })
+        })
+        .and_then(|uuid| {
+            if uuid.is_nil() {
+                Err(CliCoreError::InvalidInput {
+                    message: format!("--{key} must not be nil"),
+                })
+            } else {
+                Ok(uuid)
+            }
         })
 }
 
@@ -462,5 +478,16 @@ mod tests {
             preferred_locale: None,
         };
         assert_eq!(display_name(&item_empty), None);
+    }
+
+    #[test]
+    fn test_required_uuid_rejects_nil_uuid() {
+        let mut options = serde_json::Map::new();
+        options.insert(
+            "tenant_id".to_string(),
+            serde_json::Value::String(Uuid::nil().to_string()),
+        );
+        let err = super::required_uuid(&options, "tenant_id").unwrap_err();
+        assert!(matches!(err, CliCoreError::InvalidInput { .. }));
     }
 }

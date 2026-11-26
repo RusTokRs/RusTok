@@ -117,8 +117,7 @@ fn parse_reports(body: &[u8]) -> Result<Vec<ParsedCspReport>, CspReportParseErro
         serde_json::from_slice(body).map_err(|_| CspReportParseError::InvalidJson)?;
 
     if let Some(report) = value.get("csp-report") {
-        let violation = serde_json::from_value(report.clone())
-            .map_err(|_| CspReportParseError::UnsupportedShape)?;
+        let violation = parse_violation(report)?;
         return Ok(vec![ParsedCspReport {
             format: "legacy",
             violation,
@@ -140,10 +139,8 @@ fn parse_reports(body: &[u8]) -> Result<Vec<ParsedCspReport>, CspReportParseErro
     {
         let body = entry
             .get("body")
-            .cloned()
             .ok_or(CspReportParseError::UnsupportedShape)?;
-        let violation =
-            serde_json::from_value(body).map_err(|_| CspReportParseError::UnsupportedShape)?;
+        let violation = parse_violation(body)?;
         reports.push(ParsedCspReport {
             format: "reporting_api",
             violation,
@@ -155,6 +152,20 @@ fn parse_reports(body: &[u8]) -> Result<Vec<ParsedCspReport>, CspReportParseErro
     }
 
     Ok(reports)
+}
+
+fn parse_violation(value: &Value) -> Result<CspViolation, CspReportParseError> {
+    // Serde structs also accept positional sequences. Browser reports are
+    // objects, and a payload without a directive is not evidence of a violation.
+    if !value.is_object() {
+        return Err(CspReportParseError::UnsupportedShape);
+    }
+    let violation: CspViolation =
+        serde_json::from_value(value.clone()).map_err(|_| CspReportParseError::UnsupportedShape)?;
+    if selected_directive(&violation).is_none() {
+        return Err(CspReportParseError::UnsupportedShape);
+    }
+    Ok(violation)
 }
 
 fn record_report(report: ParsedCspReport) {
@@ -194,22 +205,35 @@ fn normalized_disposition(value: Option<&str>) -> &'static str {
     }
 }
 
-fn report_directive(violation: &CspViolation) -> &'static str {
+fn selected_directive(violation: &CspViolation) -> Option<&str> {
     // Legacy browser reports can carry both fields. Prefer the actual check.
-    normalized_directive(
-        violation
-            .effective_directive
-            .as_deref()
-            .filter(|value| !value.trim().is_empty())
-            .or(violation.violated_directive.as_deref()),
-    )
+    violation
+        .effective_directive
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            violation
+                .violated_directive
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+        })
+}
+
+fn report_directive(violation: &CspViolation) -> &'static str {
+    normalized_directive(selected_directive(violation))
 }
 
 fn normalized_directive(value: Option<&str>) -> &'static str {
-    let value = value.unwrap_or_default().trim().to_ascii_lowercase();
-    if value.starts_with("script-src") {
+    // Older violated-directive values may include the directive source list.
+    let value = value
+        .unwrap_or_default()
+        .split_ascii_whitespace()
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if matches!(value.as_str(), "script-src" | "script-src-elem" | "script-src-attr") {
         "script-src"
-    } else if value.starts_with("style-src") {
+    } else if matches!(value.as_str(), "style-src" | "style-src-elem" | "style-src-attr") {
         "style-src"
     } else {
         match value.as_str() {
@@ -356,6 +380,9 @@ mod tests {
         assert_eq!(normalized_directive(Some("script-src-attr")), "script-src");
         assert_eq!(normalized_directive(Some("style-src-elem")), "style-src");
         assert_eq!(normalized_directive(Some("unknown-directive")), "other");
+        assert_eq!(normalized_directive(Some("script-src-unrelated")), "other");
+        assert_eq!(normalized_directive(Some("script-src 'self'")), "script-src");
+        assert_eq!(normalized_directive(Some("style-src-unrelated")), "other");
     }
 
     #[test]
@@ -368,6 +395,31 @@ mod tests {
             sanitized_location(Some("/private/path?token=secret")).as_deref(),
             Some("opaque")
         );
+    }
+
+    #[test]
+    fn rejects_violation_bodies_without_object_shape_or_nonblank_directive() {
+        for body in [
+            r#"{"csp-report":{}}"#,
+            r#"{"csp-report":{"effective-directive":" ","violated-directive":""}}"#,
+            r#"{"csp-report":[null,null,"script-src",null,null,null,null,null,null]}"#,
+            r#"[{"type":"csp-violation","body":{}}]"#,
+            r#"[{"type":"csp-violation","body":[null,null,"script-src",null,null,null,null,null,null]}]"#,
+        ] {
+            assert_eq!(
+                parse_reports(body.as_bytes()).expect_err("malformed violation body"),
+                CspReportParseError::UnsupportedShape
+            );
+        }
+    }
+
+    #[test]
+    fn accepts_unknown_nonblank_directives_without_misclassifying_them() {
+        let reports = parse_reports(
+            br#"{"csp-report":{"effective-directive":"script-src-future"}}"#,
+        )
+        .expect("unknown directive remains observable");
+        assert_eq!(report_directive(&reports[0].violation), "other");
     }
 
     #[test]

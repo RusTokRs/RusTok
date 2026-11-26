@@ -784,7 +784,7 @@ impl ForumContentMutation {
     async fn report_forum_topic(
         &self,
         ctx: &Context<'_>,
-        tenant_id: Uuid,
+        tenant_id: Option<Uuid>,
         topic_id: Uuid,
         reason_code: String,
         locale: Option<String>,
@@ -798,6 +798,7 @@ impl ForumContentMutation {
         )?;
         let reason_code = parse_report_reason_code(&reason_code)?;
         let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
         let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
 
         let report_context = topic_read_audience_port_context(
@@ -832,7 +833,7 @@ impl ForumContentMutation {
     async fn report_forum_reply(
         &self,
         ctx: &Context<'_>,
-        tenant_id: Uuid,
+        tenant_id: Option<Uuid>,
         reply_id: Uuid,
         reason_code: String,
         locale: Option<String>,
@@ -846,6 +847,7 @@ impl ForumContentMutation {
         )?;
         let reason_code = parse_report_reason_code(&reason_code)?;
         let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
         let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
 
         let report_context = topic_read_audience_port_context(

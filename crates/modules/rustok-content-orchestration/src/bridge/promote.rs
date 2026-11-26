@@ -123,12 +123,13 @@ pub(crate) async fn promote_topic_to_post(
 
     create_promoted_post_in_tx(
         txn,
-        CreatePromotedPostInput {
-            post_id,
-            tenant_id,
-            author_id,
-            category_id: input.blog_category_id,
-            status: post_status.to_string(),
+            CreatePromotedPostInput {
+                post_id,
+                tenant_id,
+                author_id,
+                actor_id,
+                category_id: input.blog_category_id,
+                status: post_status.to_string(),
             slug: slug.clone(),
             metadata: serde_json::json!({
                 "orchestration": {

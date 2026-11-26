@@ -13,6 +13,68 @@ and the anonymous release prerequisite. Current context, canonical transactional
 Search refetch are wired in source; regression sources remain uncompiled/unrun. Rust digests,
 actual SQL/relay/Iggy/restart/Search, generic Index and Product step 8 are not certified.
 
+Product initial stock bootstrap admits the complete bounded SKU batch
+(distinct nonnil identities, actor and nonnegative quantities) before creating
+a location. It proves the tenant-owned SKU and parent under the existing
+Variant lock, then re-reads and locks the actual active tenant-owned location
+before creating item/level/history rows. A stale, foreign or archived location
+model is not proof of permission to allocate stock. The direct bootstrap
+entry point independently verifies the same ownership. Product retains its
+caller-owned transaction; no new warehouse fallback is introduced. Focused
+integration regressions are authored, not executed.
+
+Anonymous reserve verifies that the selected level's saved reserved counter
+covers all active claims, including keyed consumer allocations, under the
+shared item lock. The shared claim aggregate explicitly refuses sums above
+i32::MAX before casting; missing groups represent zero only after that check.
+The selected level uses a current locking read with a bounded identity check;
+the counter update matches the original item, location and counters. This
+prevents additional allocation against underreported claims, without releasing
+or repairing existing reservations. Regression sources are authored, unrun;
+real database concurrency and ambiguous commit recovery remain unverified.
+
+Native quantity reservation/check responses and Product quantity projections
+share the checked availability reducer. All three physical counters
+(stocked, reserved, incoming) must be nonnegative; signed net availability
+is retained for legitimate backorders. The reducer refuses nil identities,
+duplicate SKU item bindings, duplicate level IDs and item/location bindings,
+and more than 4096 selected levels per item. Anonymous release also refuses
+negative physical stock before applying its plan. Existing empty-item
+projections still yield zero; a missing item is not synthesized. The
+visibility and identity selection of each caller is unchanged, and the
+projection's per-item reduction bound is not a database query row limit.
+Regression sources are authored or corrected, not executed.
+
+Native availability checks, zero-quantity reserve/release, positive anonymous
+release and reserve item selection now use a bounded two-row identity probe.
+Multiple or invalid items are refusals rather than arbitrary first matches;
+missing-item semantics remain unchanged. Global and channel Product projections
+share chunked item/level loaders: at most 256 requested SKU identities per
+item query and at most 16 items per level query with an explicit overflow
+sentinel and per-item 4096 original-level bound. Public location reads are
+chunked as well. Excess original levels refuse before visibility filtering.
+No incomplete result is returned as a valid stock total. The bounds limit
+each query, not the total memory of an arbitrary caller batch. Tests are
+authored, not executed.
+
+Physical quantity set/adjust now retains the complete locked level snapshot
+and verifies the saved ordered level identities and counters against the
+planned successor before source history and event publication. Exact-one
+affected rows alone are not proof that the planned quantity persisted.
+Unexpected counter changes (including other original levels) refuse the
+caller transaction. The no-op path is unchanged; Product's quantity hook
+shares the verification. Regression source is authored, not executed.
+This does not introduce a durable receipt or a new cross-owner revision.
+
+The exported channel availability check and native service now resolve the
+current tenant-owned SKU and parent before applying backorder policy. The
+compatibility projection-input policy is not authorization: stale or forged
+continue cannot bypass the current Product policy or a missing SKU. Negative
+request quantities refuse before storage reads. The positive backorder result
+remains advisory availability, not a warehouse allocation or a reservation
+receipt; actual allocation retains its own locked channel eligibility checks.
+Regression source authored, not executed.
+
 ## Purpose
 
 - inventory service logic;

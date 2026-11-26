@@ -41,7 +41,9 @@ inside the caller-owned transaction before publishing. It reads `root_event_id` 
 - durable row event type and schema version to match the decoded envelope;
 - envelope tenant to match the ledger tenant;
 - the root payload to be `ProductCreated`, `ProductUpdated`, `ProductPublished` or `ProductDeleted`;
-- the root payload Product identity to match the ledger Product identity.
+- the root payload Product identity to match the ledger Product identity;
+- a `PriceUpdated` cause is additionally admitted only for a Variant refresh
+  whose exact Variant identity matches the root payload, never a locale refresh.
 
 A missing, non-root, corrupt or mismatched predecessor returns
 `ProductIndexRefreshPublicationError::CausationMismatch`. Database read failures remain

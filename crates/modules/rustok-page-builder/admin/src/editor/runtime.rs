@@ -1,15 +1,14 @@
 #[cfg(not(target_arch = "wasm32"))]
 use crate::capability_access::intent_allowed;
+use crate::core::session::PreviewAttempt;
 use crate::{
     AdminCanvasController, AdminCanvasEffect, PageBuilderAdminFacade,
     PageBuilderAdminFacadeError, SaveAttempt,
 };
-use fly::{GrapesJsCodec, ProjectHash, TraitSchemaRegistry};
+use fly::{ProjectHash, TraitSchemaRegistry};
 #[cfg(not(target_arch = "wasm32"))]
 use fly_browser::BrowserIntentKind;
 use fly_ui::{EditorCapability, EditorCapabilityEvaluation, UiIntent};
-#[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
-use fly_ui::CapabilityState;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use rustok_page_builder::dto::{
@@ -45,13 +44,6 @@ fn make_peer_write_channel(
             controller.mark_peer_write_conflict(expected, actual)
         }) {
             tracing::warn!(?error, "Failed to mark peer-tab save conflict");
-        }
-        // Retiring an in-flight attempt makes its delayed response stale; the response can no
-        // longer clear this conflict or move the local revision backwards.
-        if let Some(Err(error)) = controller.try_update(|controller| {
-            controller.dispatch(UiIntent::SetEditableCapabilities(CapabilityState::read_only()))
-        }) {
-            tracing::warn!(?error, "Failed to fence Page Builder after peer-tab write");
         }
         peer_write_conflict.set(Some(conflict.clone()));
         last_error.set(Some(format!(
@@ -131,7 +123,7 @@ pub struct AdminEditorRuntime {
     pub active_runtime_scenario: RwSignal<Option<String>>,
     pub runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
     pub runtime_publish_gate_evaluation: RwSignal<Option<RuntimePublishGateEvaluation>>,
-    preview_request: RwSignal<Option<(ProjectHash, usize, Value, Option<String>)>>,
+    preview_request: RwSignal<Option<PreviewAttempt>>,
     facade: Option<Arc<dyn PageBuilderAdminFacade>>,
     on_request: Option<Callback<PageBuilderCapabilityExecution>>,
     facade_missing: String,
@@ -314,6 +306,8 @@ impl AdminEditorRuntime {
         self.active_runtime_scenario.set(Some(scenario.id.clone()));
         self.runtime_publish_gate_evaluation.set(None);
         self.server_preview_html.set(None);
+        self.preview_request.set(None);
+        self.preview_in_progress.set(false);
         self.last_error.set(None);
         self.announce(format!("Preview scenario applied: {}", scenario.label));
         true
@@ -325,6 +319,8 @@ impl AdminEditorRuntime {
         self.active_runtime_scenario.set(None);
         self.runtime_publish_gate_evaluation.set(None);
         self.server_preview_html.set(None);
+        self.preview_request.set(None);
+        self.preview_in_progress.set(false);
     }
 
     pub fn evaluate_runtime_publish_gate(&self) -> Option<RuntimePublishGateEvaluation> {
@@ -353,15 +349,7 @@ impl AdminEditorRuntime {
         let runtime_scenario_id = self.active_runtime_scenario.get_untracked();
         let request = self.controller.with(|controller| {
             let active_page_index = controller.active_page_index();
-            let mut document = controller.editor().document().clone();
-            document.project.pages = document
-                .project
-                .pages
-                .get(active_page_index)
-                .cloned()
-                .into_iter()
-                .collect();
-            GrapesJsCodec::encode_value(&document)
+            controller.active_page_project()
                 .map(|project_data| {
                     (
                         PageBuilderCapabilityRequest::Preview(
@@ -381,25 +369,27 @@ impl AdminEditorRuntime {
         });
         match request {
             Ok((request, project_hash, active_page_index, runtime_context, scenario_id)) => {
-                self.preview_request.set(Some((
+                self.preview_request.set(Some(PreviewAttempt::new(
                     project_hash,
                     active_page_index,
                     runtime_context,
                     scenario_id,
                 )));
-                self.execute_request(request, None);
+                let sequence = self.controller.with_untracked(|controller| {
+                    controller.editor().revision().command_sequence
+                });
+                self.execute_request(request, None, sequence);
             }
             Err(error) => self.fail(error),
         }
     }
 
     pub fn dispatch(&self, intent: UiIntent) {
-        if matches!(
-            &intent,
-            UiIntent::Execute(_) | UiIntent::Undo | UiIntent::Redo | UiIntent::ActivatePage { .. }
-        ) {
+        if intent.mutates_document() || matches!(&intent, UiIntent::ActivatePage { .. }) {
             self.runtime_publish_gate_evaluation.set(None);
             self.server_preview_html.set(None);
+            self.preview_request.set(None);
+            self.preview_in_progress.set(false);
         }
         if self.peer_write_conflicted() && intent.mutates_document() {
             self.reject_peer_write_conflict();
@@ -481,22 +471,34 @@ impl AdminEditorRuntime {
                             self.fail("Preview already in progress");
                             continue;
                         }
-                        // The browser provides its own runtime context. Capture
-                        // that context and active page before the async preview
-                        // so the response can be checked against what was sent.
+                        if let Err(error) = self.controller.with(|controller| {
+                            controller.validate_preview_request(preview, command_sequence)
+                        }) {
+                            self.fail(error.to_string());
+                            continue;
+                        }
+                        // The browser supplies its own runtime context. Retire any
+                        // cached render/gate for different inputs before adopting it.
                         let context = preview.runtime.context.clone();
                         let scenario = preview.runtime.scenario_id.clone();
+                        if !self.runtime_context_configured.get_untracked()
+                            || self.runtime_context.get_untracked() != context
+                            || self.active_runtime_scenario.get_untracked() != scenario
+                        {
+                            self.runtime_publish_gate_evaluation.set(None);
+                            self.server_preview_html.set(None);
+                        }
                         self.runtime_context.set(context.clone());
                         self.runtime_context_configured.set(true);
                         self.active_runtime_scenario.set(scenario.clone());
-                        self.preview_request.set(Some((
+                        self.preview_request.set(Some(PreviewAttempt::new(
                             actual_hash,
                             active_page_index,
                             context,
                             scenario,
                         )));
                     }
-                    self.execute_request(request, expected_hash);
+                    self.execute_request(request, expected_hash, command_sequence);
                 }
             }
         }
@@ -523,8 +525,8 @@ impl AdminEditorRuntime {
             AdminCanvasEffect::Request {
                 request,
                 expected_hash,
-                ..
-            } => self.execute_request(request, expected_hash),
+                command_sequence,
+            } => self.execute_request(request, expected_hash, command_sequence),
         }
     }
 
@@ -532,6 +534,7 @@ impl AdminEditorRuntime {
         &self,
         request: PageBuilderCapabilityRequest,
         expected_hash: Option<ProjectHash>,
+        command_sequence: u64,
     ) {
         let capability = request.capability();
         if capability == BuilderCapabilityKind::Publish && self.reject_peer_write_conflict() {
@@ -556,7 +559,9 @@ impl AdminEditorRuntime {
             if self.facade.is_some() || self.on_request.is_some() {
                 let start = self
                     .controller
-                    .try_update(|controller| controller.mark_save_started_with_id());
+                    .try_update(|controller| {
+                        controller.begin_save_request(&request, expected_hash, command_sequence)
+                    });
                 match start {
                     Some(Ok(attempt_id)) => Some(attempt_id),
                     Some(Err(error)) => {
@@ -574,9 +579,16 @@ impl AdminEditorRuntime {
         } else {
             None
         };
-        if capability == BuilderCapabilityKind::Preview {
+        let preview_attempt_id = if capability == BuilderCapabilityKind::Preview {
+            let Some(attempt) = self.preview_request.get_untracked() else {
+                self.fail("Preview request has no tracked attempt");
+                return;
+            };
             self.preview_in_progress.set(true);
-        }
+            Some(attempt.id)
+        } else {
+            None
+        };
 
         if let Some(facade) = self.facade.as_ref() {
             let facade = Arc::clone(facade);
@@ -587,6 +599,7 @@ impl AdminEditorRuntime {
                     capability,
                     expected_hash,
                     save_attempt,
+                    preview_attempt_id,
                     outcome,
                 );
             });
@@ -602,6 +615,7 @@ impl AdminEditorRuntime {
                     capability,
                     completion_hash.clone(),
                     completion_attempt.clone(),
+                    preview_attempt_id,
                     outcome,
                 );
             });
@@ -611,13 +625,26 @@ impl AdminEditorRuntime {
                 on_complete,
             });
         } else {
-            self.preview_in_progress.set(false);
-            self.preview_request.set(None);
-            // SaveStarted is emitted before the host callback is selected. If neither a facade
-            // nor a callback exists, retire that exact attempt instead of leaving the editor
-            // permanently stuck in save_in_progress.
-            self.finish_failed_request(capability, save_attempt.as_ref());
-            self.fail(self.facade_missing.clone());
+            // A missing host must retire only the preview it failed to dispatch. A stale
+            // dispatch must never clear a newer preview or replace its error message.
+            if capability == BuilderCapabilityKind::Preview {
+                let active = preview_attempt_id.is_some_and(|id| {
+                    self.preview_in_progress.get_untracked()
+                        && self.preview_request.get_untracked()
+                            .is_some_and(|attempt| attempt.id == id)
+                });
+                if active {
+                    self.preview_in_progress.set(false);
+                    self.preview_request.set(None);
+                    self.fail(self.facade_missing.clone());
+                }
+            } else {
+                // SaveStarted is emitted before the host callback is selected. If neither a
+                // facade nor a callback exists, retire that exact attempt instead of leaving the
+                // editor permanently stuck in save_in_progress.
+                self.finish_failed_request(capability, save_attempt.as_ref());
+                self.fail(self.facade_missing.clone());
+            }
         }
     }
 
@@ -626,8 +653,18 @@ impl AdminEditorRuntime {
         capability: BuilderCapabilityKind,
         expected_hash: Option<ProjectHash>,
         save_attempt: Option<SaveAttempt>,
+        preview_attempt_id: Option<uuid::Uuid>,
         outcome: Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError>,
     ) {
+        if capability == BuilderCapabilityKind::Preview
+            && (!self.preview_in_progress.get_untracked()
+                || preview_attempt_id.is_none()
+                || self.preview_request.get_untracked().map(|attempt| attempt.id) != preview_attempt_id)
+        {
+            // An old callback (including a duplicate completion) must not
+            // consume the correlation state or error of a newer preview.
+            return;
+        }
         match outcome {
             Ok(PageBuilderCapabilityResponse::Preview(response))
                 if capability == BuilderCapabilityKind::Preview =>
@@ -663,7 +700,7 @@ impl AdminEditorRuntime {
                     return;
                 }
                 if preview_request.is_none_or(|expected| {
-                    expected
+                    expected.snapshot
                         != (
                             current.1,
                             current.2,
@@ -771,17 +808,7 @@ impl AdminEditorRuntime {
             .unwrap_or_else(|| "newer server revision".to_string());
         self.controller
             .try_update(|controller| {
-                let conflicted = controller.mark_save_conflict_for_attempt(
-                    attempt,
-                    expected,
-                    actual,
-                )?;
-                if conflicted {
-                    controller.dispatch(UiIntent::SetEditableCapabilities(
-                        fly_ui::CapabilityState::read_only(),
-                    ))?;
-                }
-                Ok::<_, crate::model::AdminCanvasError>(conflicted)
+                controller.mark_save_conflict_for_attempt(attempt, expected, actual)
             })
             .is_some_and(|result| result.unwrap_or(false))
     }

@@ -8,8 +8,7 @@ use axum::{
 use crate::common::settings::EmailProvider;
 use crate::error::Result;
 use crate::services::app_lifecycle::{
-    OutboxRelayWorkerHandle, OutboxRetentionWorkerHandle, RemoteExecutorReaperHandle,
-    RuntimeWorkerLifecycleState, StopHandle, additional_runtime_worker_snapshots,
+    RuntimeWorkerLifecycleState, StopHandle, runtime_worker_snapshots,
 };
 use crate::services::event_transport_factory::{
     EventRuntime, OutboxRelaySupervisorMetricsSnapshot, outbox_relay_supervisor_metrics_snapshot,
@@ -87,6 +86,7 @@ pub async fn metrics(
                 payload.push_str(&render_search_metrics(&ctx).await);
             }
             payload.push_str(&render_runtime_guardrail_metrics(&ctx).await);
+            payload.push_str(&render_jwt_operational_metrics(&ctx).await);
 
             Ok((
                 StatusCode::OK,
@@ -108,6 +108,22 @@ pub fn router() -> crate::routes::ServerRouter {
     axum::Router::new()
         .route("/metrics", get(metrics))
         .route("/metrics/", get(metrics))
+}
+
+async fn render_jwt_operational_metrics(ctx: &ServerRuntimeContext) -> String {
+    let Some(metrics) = ctx.shared_get::<rustok_auth::JwtOperationalMetrics>() else {
+        return "# TYPE rustok_auth_jwt_collection_status gauge\nrustok_auth_jwt_collection_status 0\n".to_string();
+    };
+    let cluster = match tokio::time::timeout(
+        std::time::Duration::from_secs(2), metrics.cluster_snapshot(),
+    ).await {
+        Ok(Ok(snapshot)) => Some(snapshot),
+        Ok(Err(_)) | Err(_) => {
+            warn!("failed to collect JWT operational metrics");
+            None
+        }
+    };
+    metrics.render(cluster.as_ref())
 }
 
 async fn sync_rate_limit_metrics(ctx: &ServerRuntimeContext) {
@@ -468,41 +484,12 @@ rustok_outbox_relay_latency_samples {processed_total}\n",
 fn render_runtime_worker_metrics(ctx: &ServerRuntimeContext) -> String {
     let settings = ctx.settings();
     let local_workers = settings.runtime.runs_background_workers();
-    let event_runtime = ctx.shared_get::<Arc<EventRuntime>>();
-    let relay_required = local_workers
-        && event_runtime
-            .as_ref()
-            .and_then(|runtime| runtime.relay_config.clone())
-            .is_some();
-    let retention_required = local_workers
-        && event_runtime
-            .as_ref()
-            .and_then(|runtime| runtime.outbox_retention.clone())
-            .is_some();
     let stop_requested = ctx
         .shared_map::<StopHandle, _>(StopHandle::is_stopping)
         .unwrap_or(false);
 
     let mut payload = String::new();
-    payload.push_str(&format_runtime_worker_state(
-        "outbox_relay",
-        relay_required,
-        ctx.shared_map::<OutboxRelayWorkerHandle, _>(OutboxRelayWorkerHandle::is_finished),
-        stop_requested,
-    ));
-    payload.push_str(&format_runtime_worker_state(
-        "outbox_retention",
-        retention_required,
-        ctx.shared_map::<OutboxRetentionWorkerHandle, _>(OutboxRetentionWorkerHandle::is_finished),
-        stop_requested,
-    ));
-    payload.push_str(&format_runtime_worker_state(
-        "remote_executor_reaper",
-        local_workers && settings.registry.remote_executor.enabled,
-        ctx.shared_map::<RemoteExecutorReaperHandle, _>(RemoteExecutorReaperHandle::is_finished),
-        stop_requested,
-    ));
-    for worker in additional_runtime_worker_snapshots(ctx) {
+    for worker in runtime_worker_snapshots(ctx) {
         payload.push_str(&format_runtime_worker_state(
             worker.name,
             worker.required,

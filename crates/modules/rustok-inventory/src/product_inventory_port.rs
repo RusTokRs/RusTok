@@ -13,7 +13,7 @@
 //! Provides transactional stock bootstrap, quantity updates, variant deletion cleanup,
 //! and available stock projections without exposing private Inventory entities or table structures to Product.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -101,16 +101,17 @@ impl ProductInventoryPort for InventoryProductInventoryPortAdapter {
     async fn load_available_quantities(
         &self,
         conn: InventoryConnection<'_>,
+        tenant_id: Uuid,
         variant_ids: &[Uuid],
     ) -> Result<HashMap<Uuid, i32>, CommerceError> {
         match conn {
             InventoryConnection::Connection(c) => {
-                BootstrapService::load_available_quantities(c, variant_ids)
+                BootstrapService::load_available_quantities(c, tenant_id, variant_ids)
                     .await
                     .map_err(CommerceError::from)
             }
             InventoryConnection::Transaction(tx) => {
-                BootstrapService::load_available_quantities(tx, variant_ids)
+                BootstrapService::load_available_quantities(tx, tenant_id, variant_ids)
                     .await
                     .map_err(CommerceError::from)
             }
@@ -147,6 +148,29 @@ impl ProductInventoryPort for InventoryProductInventoryPortAdapter {
     ) -> Result<(), CommerceError> {
         if items.is_empty() {
             return Ok(());
+        }
+        // Admit every identity before creating a location or any inventory rows.
+        if tenant_id.is_nil() || actor_id.is_nil()
+            || items.len() > rustok_product::dto::MAX_PRODUCT_VARIANTS
+            || items.iter().any(|item| item.variant_id.is_nil() || item.available_quantity < 0)
+        {
+            return Err(CommerceError::InventoryQuantityBlocked(
+                ProductInventoryQuantityBlocker::InvalidRequest,
+            ));
+        }
+        let variant_ids: BTreeSet<_> = items.iter().map(|item| item.variant_id).collect();
+        if variant_ids.len() != items.len() {
+            return Err(CommerceError::InventoryQuantityBlocked(
+                ProductInventoryQuantityBlocker::InvalidRequest,
+            ));
+        }
+        // Lock all tenant-owned SKUs in stable order before obtaining any
+        // location lock. The low-level bootstrap independently verifies ownership.
+        for variant_id in variant_ids {
+            crate::product_port::find_variant_info_for_reservation(txn, tenant_id, variant_id)
+                .await
+                .map_err(CommerceError::Database)?
+                .ok_or(CommerceError::VariantNotFound(variant_id))?;
         }
         let location = BootstrapService::ensure_default_location_in_tx(txn, tenant_id)
             .await

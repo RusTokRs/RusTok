@@ -121,7 +121,7 @@ fn stable_id_assignment_avoids_existing_ids() {
     let mut generator = SequentialIdGenerator::default();
     document.ensure_stable_ids(&mut generator);
     let ids = document
-        .project
+        .project()
         .pages
         .iter()
         .filter_map(|page| page.component.as_ref())
@@ -153,7 +153,7 @@ fn stable_id_assignment_repairs_duplicate_component_ids() {
     let mut generator = SequentialIdGenerator::new("repair");
     document.ensure_stable_ids(&mut generator);
     let mut ids = Vec::new();
-    document.project.pages[0]
+    document.project().pages[0]
         .component
         .as_ref()
         .expect("root")
@@ -176,7 +176,7 @@ fn binding_validation_reports_runtime_binding_target_missing() {
     }))
     .expect("document");
 
-    document.project.extensions.insert(
+    document.project_mut().extensions.insert(
         FLY_RUNTIME_BINDINGS_FIELD.to_string(),
         json!([{
             "id": "missing-target",
@@ -632,7 +632,7 @@ fn grapesjs_fixture_corpus_decodes_renders_and_encodes_idempotently() {
             &RegistrySet::with_builtins(),
             ValidationLimits::default(),
         );
-        if !document.project.pages.is_empty() {
+        if !document.project().pages.is_empty() {
             render_page(&document, &PageSelection::First, &RenderPolicy::default())
                 .unwrap_or_else(|error| panic!("fixture {file} must render: {error}"));
         }

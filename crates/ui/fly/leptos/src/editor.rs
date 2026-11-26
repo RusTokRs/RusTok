@@ -1841,10 +1841,10 @@ pub fn FlyAssets(
 ///
 /// When the host passes `on_intent`, hydrated wasm-client builds use typed callbacks
 /// against the authoritative controller. Before hydration, the default SSR workspace keeps
-/// only controls with a browser transport: palette/layer selection plus named theme/style
-/// intent forms. Page, component-property, asset and inline-preview panels that require
-/// Leptos event handlers stay hidden until hydration; the Page Builder host supplies their
-/// SSR equivalents outside this workspace. The browser adapter yields mutation ownership
+/// controls with a browser transport: palette/layer selection, undo/redo, and named theme/style
+/// intent forms. Mode toggles and page, component-property, asset and inline-preview panels that
+/// require Leptos event handlers stay hidden until hydration; the Page Builder host supplies
+/// their SSR equivalents outside this workspace. The browser adapter yields mutation ownership
 /// to Leptos after hydration, preventing the same action from being submitted twice.
 #[component]
 pub fn FlyEditorWorkspace(
@@ -2142,7 +2142,7 @@ pub fn FlyEditorWorkspace(
         });
         match apply_result {
             Some(Ok(_)) => {
-                let remaining = remove_editor.with(|editor| editor.document().project.pages.len());
+                let remaining = remove_editor.with(|editor| editor.document().project().pages.len());
                 let current = active_page.get_untracked();
                 let clamped = if remaining == 0 {
                     0
@@ -2676,7 +2676,7 @@ pub fn FlyEditorWorkspace(
                 .or_else(|| summaries.first().cloned());
             let metadata = summary
                 .as_ref()
-                .and_then(|summary| editor.document().project.pages.get(summary.index))
+                .and_then(|summary| editor.document().project().pages.get(summary.index))
                 .map(PageMetadata::from_page)
                 .unwrap_or_default();
             (summary, metadata, summaries.len())
@@ -2872,6 +2872,7 @@ pub fn FlyEditorWorkspace(
     };
 
     let palette_messages = theme_messages.clone();
+    let has_intent_transport = on_intent.is_some();
     let wasm_hydrated = RwSignal::new(false);
     #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
     Effect::new(move |_| wasm_hydrated.set(true));
@@ -2888,12 +2889,13 @@ pub fn FlyEditorWorkspace(
             <div
                 class="fly-editor__toolbar"
                 data-fly-ssr-only="true"
-                hidden=move || !wasm_hydrated.get()
+                hidden=move || !wasm_hydrated.get() && !has_intent_transport
                 role="toolbar"
                 aria-label=toolbar_label
             >
                 <button
                     type="button"
+                    data-fly-action=has_intent_transport.then_some("intent:undo")
                     disabled=move || {
                         !effective_capabilities.get().history
                             || if on_intent.is_some() {
@@ -2930,6 +2932,7 @@ pub fn FlyEditorWorkspace(
                 </button>
                 <button
                     type="button"
+                    data-fly-action=has_intent_transport.then_some("intent:redo")
                     disabled=move || {
                         !effective_capabilities.get().history
                             || if on_intent.is_some() {
@@ -2964,7 +2967,11 @@ pub fn FlyEditorWorkspace(
                 >
                     {redo_label}
                 </button>
-                <div class="fly-editor__toolbar-group" role="group">
+                <div
+                    class="fly-editor__toolbar-group"
+                    role="group"
+                    hidden=move || !wasm_hydrated.get()
+                >
                     <button
                         type="button"
                         class=move || {
@@ -3392,11 +3399,11 @@ mod tests {
     }
 
     #[test]
-    fn ssr_workspace_hides_controls_that_require_wasm_hydration() {
+    fn ssr_workspace_exposes_browser_history_actions_but_hides_wasm_only_modes() {
         let html = view! {
             <FlyEditorWorkspace
                 document=sample_document()
-                page_index=0
+                initial_page=0
                 on_intent=Callback::new(|_: BrowserIntentEnvelope| {})
             />
         }
@@ -3404,7 +3411,16 @@ mod tests {
 
         assert!(html.contains("data-fly-wasm-hydrated=\"false\""));
         assert!(html.contains("data-fly-ssr-only=\"true\""));
-        assert!(html.contains("hidden"));
+        let toolbar = opening_tag(&html, "data-fly-ssr-only=\"true\"");
+        assert!(!toolbar.contains("hidden"), "{toolbar}");
+
+        let undo = opening_tag(&html, "data-fly-action=\"intent:undo\"");
+        assert!(undo.starts_with("<button"), "{undo}");
+        let redo = opening_tag(&html, "data-fly-action=\"intent:redo\"");
+        assert!(redo.starts_with("<button"), "{redo}");
+
+        let mode_group = opening_tag(&html, "fly-editor__toolbar-group");
+        assert!(mode_group.contains("hidden"), "{mode_group}");
     }
 
     #[test]

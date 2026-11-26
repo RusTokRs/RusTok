@@ -82,11 +82,12 @@ pub fn verify_password(password: &str, password_hash: &str) -> Result<bool> {
 /// Only a *weaker-than-current* hash counts: a future parameter raise then
 /// upgrades every active account on its next login without a mass reset, and
 /// hashes already at (or above) the target parameters are left untouched.
-/// Malformed hashes report `false` — verification rejects them anyway, so
-/// there is nothing to upgrade.
+/// Malformed hashes report `true` as well. They cannot be upgraded without
+/// a valid password, but failed-login paths use this signal to run dummy
+/// Argon2 work instead of making corrupt or legacy rows a timing oracle.
 pub fn password_hash_needs_rehash(password_hash: &str) -> bool {
     let Ok(parsed) = PasswordHash::new(password_hash) else {
-        return false;
+        return true;
     };
     if parsed.algorithm.as_str() != "argon2id" {
         return true;
@@ -256,9 +257,9 @@ mod tests {
     }
 
     #[test]
-    fn malformed_or_foreign_hash_needs_no_rehash() {
-        assert!(!password_hash_needs_rehash("not-a-hash"));
-        assert!(!password_hash_needs_rehash(""));
+    fn malformed_or_foreign_hash_requires_timing_equalization() {
+        assert!(password_hash_needs_rehash("not-a-hash"));
+        assert!(password_hash_needs_rehash(""));
     }
 
     #[test]

@@ -779,7 +779,7 @@ mod tests {
         assert_eq!(doc1.document_kind(), DocumentKind::Page);
 
         let mut ids1 = HashSet::new();
-        doc1.project.visit_components(|c, _, _| {
+        doc1.project().visit_components(|c, _, _| {
             if let Some(id) = c.id.as_ref() {
                 assert!(
                     ids1.insert(id.clone()),
@@ -794,7 +794,7 @@ mod tests {
             GrapesJsCodec::decode_value(value2).expect("second instantiated doc must decode");
 
         let mut ids2 = HashSet::new();
-        doc2.project.visit_components(|c, _, _| {
+        doc2.project().visit_components(|c, _, _| {
             if let Some(id) = c.id.as_ref() {
                 ids2.insert(id.clone());
             }

@@ -355,6 +355,14 @@ pub(crate) fn validate_price_precision(
         ("Compare at price", compare_at_amount),
     ] {
         if let Some(value) = value {
+            // Both decimal money columns are NUMERIC(16,6) in the Pricing
+            // schema. The platform i64 minor-unit range alone is wider.
+            let storage_max = Decimal::new(9_999_999_999_999_999, 6);
+            if value < Decimal::ZERO || value > storage_max || value.normalize().scale() > 6 {
+                return Err(CommerceError::InvalidPrice(format!(
+                    "{label} is outside the Pricing decimal storage range"
+                )));
+            }
             money::to_minor_units_exact(value, currency_code).map_err(|error| {
                 CommerceError::InvalidPrice(format!(
                     "{label} {value} is not representable in {currency_code} minor units: {error}"
@@ -408,6 +416,19 @@ pub(crate) fn validate_discount_percent(discount_percent: Decimal) -> CommerceRe
     Ok(())
 }
 
+/// Persisted list rules use NUMERIC(16,6); unlike a one-off adjustment,
+/// their percentage must round-trip exactly through the database.
+#[allow(clippy::result_large_err)]
+pub(crate) fn validate_price_list_percentage(percent: Decimal) -> CommerceResult<()> {
+    validate_discount_percent(percent)?;
+    if percent.normalize().scale() > 6 {
+        return Err(CommerceError::InvalidPrice(
+            "Price-list percentage must have at most six fractional digits".into(),
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn channel_scope_matches(
     scoped_channel_id: Option<Uuid>,
     scoped_channel_slug: Option<&str>,
@@ -434,4 +455,43 @@ pub(crate) fn channel_scope_matches(
     }
 
     true
+}
+
+#[cfg(test)]
+mod price_storage_tests {
+    use super::*;
+
+    #[test]
+    fn price_money_must_fit_both_currency_and_decimal_storage() {
+        let outside = Decimal::new(10_000_000_000, 0);
+        for (currency, largest) in [
+            ("JPY", Decimal::new(9_999_999_999, 0)),
+            ("USD", Decimal::new(999_999_999_999, 2)),
+            ("KWD", Decimal::new(9_999_999_999_999, 3)),
+            ("CLF", Decimal::new(99_999_999_999_999, 4)),
+        ] {
+            assert!(money::to_minor_units_exact(outside, currency).is_ok());
+            assert!(validate_price_precision(largest, Some(largest), currency).is_ok());
+            assert!(validate_price_precision(outside, None, currency).is_err());
+            assert!(validate_price_precision(Decimal::ONE, Some(outside), currency).is_err());
+        }
+        assert!(validate_price_precision(Decimal::new(1000, 3), None, "JPY").is_ok());
+        assert!(validate_price_precision(Decimal::new(1001, 3), None, "USD").is_err());
+    }
+}
+
+#[cfg(test)]
+mod price_list_percentage_tests {
+    use super::*;
+
+    #[test]
+    fn persisted_rule_requires_exact_six_decimal_precision() {
+        for value in [Decimal::new(1, 6), Decimal::new(12345678, 6), Decimal::new(1000000000, 7)] {
+            assert!(validate_price_list_percentage(value).is_ok());
+        }
+        for value in [Decimal::ZERO, Decimal::new(1, 7), Decimal::new(123456789, 7), Decimal::new(1000000001, 7)] {
+            assert!(validate_price_list_percentage(value).is_err());
+        }
+        assert!(validate_discount_percent(Decimal::new(1, 7)).is_ok());
+    }
 }

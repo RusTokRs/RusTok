@@ -21,6 +21,18 @@ pub(crate) async fn resolve_channel_id_in_tx(
     channel_id: Option<Uuid>,
     channel_slug: Option<&str>,
 ) -> CommerceResult<Option<Uuid>> {
+    resolve_channel_identity(txn, tenant_id, channel_id, channel_slug)
+        .await
+        .map(|channel| channel.map(|model| model.id))
+}
+
+/// Resolve both aliases once, without losing the authoritative current slug.
+pub(super) async fn resolve_channel_identity<C: ConnectionTrait>(
+    conn: &C,
+    tenant_id: Uuid,
+    channel_id: Option<Uuid>,
+    channel_slug: Option<&str>,
+) -> CommerceResult<Option<channel::Model>> {
     if tenant_id.is_nil() {
         return Err(CommerceError::Validation(
             "tenant_id must not be a nil UUID".to_string(),
@@ -39,7 +51,7 @@ pub(crate) async fn resolve_channel_id_in_tx(
         Some(channel_id) => {
             let model = channel::Entity::find_by_id(channel_id)
                 .filter(channel::Column::TenantId.eq(tenant_id))
-                .one(txn)
+                .one(conn)
                 .await?
                 .ok_or_else(|| {
                     CommerceError::Validation(
@@ -58,14 +70,14 @@ pub(crate) async fn resolve_channel_id_in_tx(
                         .to_string(),
                 ));
             }
-            Ok(Some(model.id))
+            Ok(Some(model))
         }
         None => {
             if let Some(slug) = normalized_slug {
                 let model = channel::Entity::find()
                     .filter(channel::Column::TenantId.eq(tenant_id))
                     .filter(channel::Column::Slug.eq(slug))
-                    .one(txn)
+                    .one(conn)
                     .await?
                     .ok_or_else(|| {
                         CommerceError::Validation(
@@ -73,7 +85,7 @@ pub(crate) async fn resolve_channel_id_in_tx(
                                 .to_string(),
                         )
                     })?;
-                Ok(Some(model.id))
+                Ok(Some(model))
             } else {
                 Ok(None)
             }

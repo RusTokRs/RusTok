@@ -180,8 +180,12 @@ pub fn absolute_url_has_authority(value: &str, scheme: &str) -> bool {
     // explicit authority requirement before parsing the host and port.
     !authority.is_empty()
         && !authority.starts_with(':')
+        && !authority.contains('@')
         && Url::parse(value).is_ok_and(|url| {
-            matches!(url.scheme(), "http" | "https") && url.has_host()
+            matches!(url.scheme(), "http" | "https")
+                && url.has_host()
+                && url.username().is_empty()
+                && url.password().is_none()
         })
 }
 
@@ -218,7 +222,10 @@ pub fn head_url(value: &str, allow_data_image: bool) -> Option<&str> {
 /// Validate the bounded, deliberately conservative image candidate grammar.
 /// Compare descriptor values numerically (1x and 1.0x are the same density).
 /// Inline data images are forbidden because their commas conflict with the
-/// candidate separator. A bad candidate rejects the entire attribute.
+/// candidate separator. A comma after a descriptor-less URL must be separated
+/// from the next URL (or the preceding URL) by ASCII whitespace, otherwise
+/// the browser would consume it as part of a single URL. A bad candidate
+/// rejects the entire attribute.
 pub(crate) fn srcset_allowed(value: &str, policy: &UrlPolicy) -> bool {
     validate_srcset_candidates(value, 16, |url| {
         url_allowed(url, UrlAttributeKind::Resource, policy)
@@ -237,7 +244,8 @@ pub fn validate_srcset_candidates(
     }
     let mut descriptors = BTreeSet::new();
     let mut family = None;
-    for (index, candidate) in value.split(',').enumerate() {
+    let mut candidates = value.split(',').enumerate().peekable();
+    while let Some((index, candidate)) = candidates.next() {
         if index >= max_candidates {
             return false;
         }
@@ -250,7 +258,17 @@ pub fn validate_srcset_candidates(
         {
             return false;
         }
-        let descriptor = tokens.next().unwrap_or("1x");
+        let descriptor = tokens.next();
+        // HTML srcset tokenization collects a URL up to ASCII whitespace,
+        // not up to the first comma. A bare URL immediately followed by a
+        // comma and another URL would be fetched as one unchecked resource.
+        if descriptor.is_none()
+            && !candidate.ends_with(' ')
+            && candidates.peek().is_some_and(|(_, next)| !next.starts_with(' '))
+        {
+            return false;
+        }
+        let descriptor = descriptor.unwrap_or("1x");
         if tokens.next().is_some() {
             return false;
         }
@@ -401,6 +419,9 @@ mod tests {
             "https://example.test:abc/a",
             "https://[invalid]/a",
             "https://@/a",
+            "https://user:pass@example.test/a",
+            "https://user@example.test/a",
+            "https://example.test@attacker.test/a",
             "https:///example.test/a",
         ] {
             assert!(normalize_safe_url(value, "URL").is_err(), "{value}");
@@ -434,6 +455,26 @@ mod tests {
         assert!(srcset_allowed("/a 800w, /b 1600w", &policy));
         let oversized = (1..=17).map(|i| format!("/image-{i} {i}w")).collect::<Vec<_>>().join(", ");
         assert!(!srcset_allowed(&oversized, &policy));
+    }
+
+    #[test]
+    fn srcset_rejects_commas_that_the_browser_would_include_in_a_url() {
+        let policy = UrlPolicy::permissive();
+        for value in [
+            "/a,/b 2x",
+            "/a,https://example.test/b 2x",
+            "/a 2x,/b,/c 3x",
+        ] {
+            assert!(!srcset_allowed(value, &policy), "{value}");
+        }
+        for value in [
+            "/a, /b 2x",
+            "/a ,/b 2x",
+            "/a 1x,/b 2x",
+            "/a%2Cb 2x",
+        ] {
+            assert!(srcset_allowed(value, &policy), "{value}");
+        }
     }
 
     #[test]

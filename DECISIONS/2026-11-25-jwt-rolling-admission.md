@@ -8,6 +8,9 @@
 - Supersedes: None
 - Superseded by: None
 
+
+The missing-ID and raw-root compatibility provisions (where present) are superseded by [Mandatory JWT key identity](2026-11-25-jwt-mandatory-key-identity.md). The remaining security invariants are retained.
+
 ## Context
 
 Draining every generation prevents incompatible concurrent crypto but also
@@ -81,7 +84,7 @@ guarantee: delayed file distribution can fence individual replicas,
 capacity/contention can deny grants, incompatible removal drains,
 and an operator must provision a sufficient historical JWT TTL window.
 [Emergency key revocation](2026-11-25-jwt-emergency-revocation.md) extends this contract.
-Clock discontinuity protection, database rollback protection and root/algorithm migration remain open.
+[Clock discontinuity protection](2026-11-25-jwt-clock-discontinuity.md) extends the lease contract with bounded detection. The [independent JWT authority](2026-11-25-jwt-independent-authority.md) protects the ledger against application DB restore; [JWT rollback witness](2026-11-25-jwt-rollback-witness.md) extends protection to authority-only rollback. [JWT algorithm migration](2026-11-25-jwt-algorithm-migration.md) permits staged mixed-algorithm promotion under the same replica checks. Root rotation remains open.
 
 ## Verification
 

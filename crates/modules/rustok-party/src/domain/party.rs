@@ -10,7 +10,10 @@
 
 //! Party aggregate root, legal types, and corporate invariants.
 
-use super::tax_details::TaxDetails;
+use super::tax_details::{
+    TaxDetails, validate_inn_10, validate_inn_12, validate_kpp, validate_ogrn_13,
+    validate_ogrnip_15,
+};
 use crate::error::{PartyError, PartyResult};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -104,9 +107,21 @@ impl Party {
         legal_name: Option<String>,
         tax_details: Option<TaxDetails>,
     ) -> PartyResult<Self> {
+        if tenant_id.is_nil() {
+            return Err(PartyError::Validation("Tenant ID cannot be nil".into()));
+        }
+
         let name = name.into().trim().to_string();
         if name.is_empty() {
             return Err(PartyError::Validation("Party name cannot be empty".into()));
+        }
+
+        let legal_name = legal_name
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+
+        if let Some(ref details) = tax_details {
+            validate_tax_details_for_kind(kind, details)?;
         }
 
         let now = Utc::now();
@@ -129,10 +144,15 @@ impl Party {
 
     /// Activates counterparty for commercial operations, verifying required master data.
     pub fn activate(&mut self) -> PartyResult<()> {
-        if self.kind == PartyKind::LegalEntity && self.tax_details.is_none() {
-            return Err(PartyError::Validation(
-                "Legal entities must have verified tax details before activation".into(),
-            ));
+        if self.kind == PartyKind::LegalEntity {
+            let Some(ref details) = self.tax_details else {
+                return Err(PartyError::Validation(
+                    "Legal entities must have verified tax details before activation".into(),
+                ));
+            };
+            validate_tax_details_for_kind(self.kind, details)?;
+        } else if let Some(ref details) = self.tax_details {
+            validate_tax_details_for_kind(self.kind, details)?;
         }
 
         self.status.transition_to(PartyStatus::Active)?;
@@ -146,6 +166,46 @@ impl Party {
         self.updated_at = Utc::now();
         Ok(())
     }
+}
+
+fn validate_tax_details_for_kind(kind: PartyKind, details: &TaxDetails) -> PartyResult<()> {
+    let inn = details.inn.trim();
+    let has_vat = details
+        .vat_code
+        .as_deref()
+        .is_some_and(|code| !code.trim().is_empty());
+
+    if inn.is_empty() && !has_vat {
+        return Err(PartyError::Validation(
+            "Tax details must include an INN or VAT code".into(),
+        ));
+    }
+
+    if !inn.is_empty() || !has_vat {
+        match kind {
+            PartyKind::LegalEntity if !has_vat => {
+                validate_inn_10(inn)?;
+                if let Some(ref kpp) = details.kpp {
+                    validate_kpp(kpp.trim())?;
+                }
+                if let Some(ref ogrn) = details.ogrn {
+                    validate_ogrn_13(ogrn.trim())?;
+                }
+            }
+            PartyKind::SoleProprietor if !has_vat => {
+                validate_inn_12(inn)?;
+                if let Some(ref ogrnip) = details.ogrn {
+                    validate_ogrnip_15(ogrnip.trim())?;
+                }
+            }
+            PartyKind::Individual if !inn.is_empty() => {
+                validate_inn_12(inn)?;
+            }
+            _ => {}
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -180,5 +240,21 @@ mod tests {
 
         assert!(legal_entity.activate().is_ok());
         assert_eq!(legal_entity.status, PartyStatus::Active);
+    }
+
+    #[test]
+    fn test_party_rejects_nil_tenant_and_empty_tax_details() {
+        assert!(Party::new(Uuid::nil(), PartyKind::Individual, "John Doe", None, None).is_err());
+
+        let mut entity = Party::new(
+            Uuid::new_v4(),
+            PartyKind::LegalEntity,
+            "Empty Tax Entity",
+            None,
+            None,
+        )
+        .unwrap();
+        entity.tax_details = Some(TaxDetails::default());
+        assert!(entity.activate().is_err());
     }
 }

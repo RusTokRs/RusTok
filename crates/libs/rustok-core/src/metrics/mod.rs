@@ -212,8 +212,11 @@ impl Histogram {
         }
     }
 
-    /// Observe a value (in seconds)
+    /// Observe a value (in seconds). Non-finite or negative durations are ignored.
     pub fn observe(&self, value: f64) {
+        if !value.is_finite() || value < 0.0 {
+            return;
+        }
         // Store as nanoseconds for precision
         let nanos = (value * 1_000_000_000.0) as u64;
         self.sum.fetch_add(nanos, Ordering::Relaxed);
@@ -251,6 +254,10 @@ impl Histogram {
 
     /// Get percentile (0.0 - 1.0)
     pub fn percentile(&self, p: f64) -> Option<f64> {
+        if !p.is_finite() {
+            return None;
+        }
+        let p = p.clamp(0.0, 1.0);
         if let Ok(buckets) = self.buckets.read() {
             if buckets.is_empty() {
                 return None;
@@ -488,9 +495,17 @@ fn format_labels(labels: &HashMap<String, String>) -> String {
         return String::new();
     }
 
-    let label_str: Vec<String> = labels
-        .iter()
-        .map(|(k, v)| format!("{}=\"{}\"", k, v))
+    let mut pairs: Vec<(&String, &String)> = labels.iter().collect();
+    pairs.sort_by_key(|(a, _)| *a);
+    let label_str: Vec<String> = pairs
+        .into_iter()
+        .map(|(k, v)| {
+            let escaped = v
+                .replace('\\', "\\\\")
+                .replace('"', "\\\"")
+                .replace('\n', "\\n");
+            format!("{k}=\"{escaped}\"")
+        })
         .collect();
 
     format!("{{{}}}", label_str.join(","))
@@ -563,6 +578,13 @@ mod tests {
 
         let p50 = histogram.p50().unwrap();
         assert!((0.1..=0.3).contains(&p50));
+
+        // Non-finite and negative observations are ignored
+        histogram.observe(-1.0);
+        histogram.observe(f64::NAN);
+        histogram.observe(f64::INFINITY);
+        assert_eq!(histogram.count(), 3);
+        assert_eq!(histogram.percentile(f64::NAN), None);
     }
 
     #[test]

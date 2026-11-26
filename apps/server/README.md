@@ -95,23 +95,42 @@ Every release build also enforces the host's production-security posture even wh
 
 `apps/server/src/auth.rs` adapts the host configuration snapshot into
 `rustok-auth`.
-`auth.jwt.secret` remains the HS256 default secret source. Optional runtime
-overrides live under `settings.rustok.auth`:
+Production also requires an independently provisioned JWT authority via
+`RUSTOK_JWT_AUTHORITY_DATABASE_URL`, `RUSTOK_JWT_AUTHORITY_ID` and
+`RUSTOK_JWT_WITNESS_DATABASE_URL`. Both external DB URIs require
+`sslmode=verify-full`. Follow the
+[offline import and recovery contract](../../crates/modules/rustok-auth/docs/README.md#independent-jwt-authority)
+before starting a new production host; no automatic fallback is allowed.
 
-- `refresh_expiration`, `issuer`, `audience`
-- `algorithm`: `HS256` or `RS256`
-- `rsa_private_key_env`, `rsa_public_key_env`: preferred production key sources
-- `rsa_private_key_pem`, `rsa_public_key_pem`: development/test fallback values
+`auth.jwt.secret` is the independent host MAC root for host MAC proofs,
+OAuth consent CSRF, credential binding and durable authority/witness
+authentication. It is never JWT signing or verification material.
 
-When the OAuth surface is mounted (`settings.features.oauth_enabled` is true and the host mode is not
-`worker` or `registry_only`), `settings.rustok.auth.issuer` must be an absolute root URL:
+The executable requires `RUSTOK_JWT_KEYRING_FILE` in every environment. The
+file must contain a complete generation-bearing document with four distinct
+RSA pairs: access (including OAuth access), password reset, email verification
+and invite. All four rings must be RS256; missing files, missing pairs,
+invalid history and key reuse fail closed. There is no static/default HS256
+fallback and no inline, environment or `settings.auth.algorithm` crypto
+override. `settings.auth` is limited to policy fields:
+`refresh_expiration`, `issuer`, `audience` and `min_password_length`.
+
+The host validates the document before connecting to the application database
+or applying migrations, then admits the generation through the durable fence
+before publishing the signer. Production still requires the independent
+authority and witness; development uses the same admission interface with its
+local fence. Full development Compose runs the Auth-owned
+`validate-jwt-keyring` command in the migration container before any
+application migration. Both migration and server containers mount the
+dedicated keyring directory read-only so atomic replacement remains visible.
+See the [root quick start](../../README.md#local-stack-launch).
+
+When `settings.features.oauth_enabled` is true and the host mode is not
+`worker` or `registry_only`, `settings.auth.issuer` must be an absolute root URL:
 HTTPS in production, or HTTPS / `http://localhost` / `http://127.0.0.1` in
 development. Userinfo, path, query, and fragment components are rejected.
 OAuth discovery advertises this exact JWT issuer; it never derives an issuer
 from request Host or forwarded headers.
-
-When `algorithm` is `RS256`, both RSA keys are required and boot-time config
-assembly must fail instead of silently falling back to `HS256`.
 
 ## Request trust and client IP
 
@@ -128,10 +147,18 @@ an untrusted peer cannot supply an authoritative forwarding header. If both
 header formats are present, `X-Forwarded-For` takes precedence. For
 forwarded host and scheme, the host consumes the most recently appended
 (rightmost) value instead of trusting a potentially spoofed first value.
+The selected value is decoded only after isolating it from the preceding
+chain: opaque bytes in caller-controlled earlier values do not invalidate a
+valid proxy-appended host or scheme. An opaque nearest value remains invalid.
 When `X-Forwarded-Host` or `X-Forwarded-Proto` is present but malformed,
 it is not silently replaced by a conflicting RFC `Forwarded` value.
 RFC `Forwarded` remains a fallback only when the corresponding `X-Forwarded-*`
 header is absent; forwarded schemes other than `http` and `https` are ignored.
+RFC Forwarded elements are split from the trusted end with quoted delimiters
+preserved. Duplicate parameter names and malformed selected elements are
+rejected; malformed forwarded host values do not fall back to the direct Host.
+A valid element with no host still permits the direct Host fallback. Duplicate
+direct Host fields are never authoritative, even with trusted forwarding.
 
 **Ingress requirement:** the edge proxy must discard untrusted incoming
 forwarded headers or append the actual observed client IP. A proxy that
@@ -177,14 +204,15 @@ the `Secure` flag is enabled only when trusted proxy context reports HTTPS.
   lose a non-transactional event. Business mutations requiring atomic publication
   must use `TransactionalEventBus`. Search lag and worker readiness do not cover
   all failure modes; see the server implementation plan.
-- First-party in-place refresh rotation retains only the immediately previous
-  token digest. Older revoked generations are rejected as unknown but cannot
-  trigger full-lineage theft revocation. A replay inside the 30-second race
-  window is rejected without revoking the live session, but the server does
-  not replay the successful refresh response; if that response was lost, the
-  client cannot recover its replacement cookie from the old token. Durable
-  rotation history, idempotent response recovery, and incident reconciliation
-  remain open; see the implementation plan.
+- First-party in-place refresh rotation records each superseded refresh-token
+  digest in `session_refresh_history` in the same transaction as the rotation.
+  Reuse of any recorded generation after the 30-second concurrency grace
+  revokes the session; a replay inside that grace window is rejected without
+  revoking the live session. The migration backfills only the last previous
+  digest retained by legacy session rows, so older pre-migration generations
+  cannot be reconstructed. The server still does not replay a successful
+  refresh response after a lost acknowledgement; idempotent response recovery
+  and incident reconciliation remain open; see the implementation plan.
 - OAuth refresh-token reuse now propagates failed revocation persistence as
   `server_error`, allowing the caller to retry after a storage outage instead of
   falsely reporting only an invalid grant. Its 30-second grace window suppresses

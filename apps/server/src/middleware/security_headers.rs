@@ -126,7 +126,16 @@ pub async fn security_headers(mut request: Request, next: Next) -> Response {
              magnetometer=(), microphone=(), payment=(), usb=()",
         ),
     );
-    if let Some(cache_control) = richtext_cache_control(&path) {
+    // Operational responses are time-sensitive and may vary by credentials.
+    // Set this at the outer edge, including rate-limit/auth/timeout failures.
+    if super::metrics_auth::is_observability_auth_path(&path)
+        || matches!(path.as_str(), "/health" | "/health/live")
+    {
+        headers.insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("private, no-store"),
+        );
+    } else if let Some(cache_control) = richtext_cache_control(&path) {
         headers.insert(
             header::CACHE_CONTROL,
             HeaderValue::from_static(cache_control),
@@ -408,6 +417,35 @@ mod tests {
             REPORTING_ENDPOINTS,
             "rustok-csp=\"/api/security/csp-report\""
         );
+    }
+
+    #[tokio::test]
+    async fn operational_responses_are_never_cacheable() {
+        let app = Router::new()
+            .route("/health/ready", get(|| async { StatusCode::OK }))
+            .route("/health/runtime", get(|| async { StatusCode::FORBIDDEN }))
+            .route("/metrics", get(|| async { StatusCode::TOO_MANY_REQUESTS }))
+            .route("/health/live", get(|| async { StatusCode::OK }))
+            .route("/api/other", get(|| async { StatusCode::OK }))
+            .layer(middleware::from_fn(security_headers));
+
+        for path in ["/health/ready", "/health/runtime", "/metrics", "/health/live"] {
+            let response = app
+                .clone()
+                .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+                .await
+                .expect("operational response");
+            assert_eq!(
+                response.headers().get("cache-control").and_then(|v| v.to_str().ok()),
+                Some("private, no-store"),
+                "{path}",
+            );
+        }
+        let response = app
+            .oneshot(Request::builder().uri("/api/other").body(Body::empty()).unwrap())
+            .await
+            .expect("unrelated API response");
+        assert!(!response.headers().contains_key("cache-control"));
     }
 
     #[tokio::test]

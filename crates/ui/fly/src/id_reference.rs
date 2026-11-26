@@ -22,7 +22,7 @@ use std::collections::{BTreeMap, BTreeSet};
 /// HTML ids during materialization. The public generator need not know anything about a project.
 pub(crate) fn project_identity_ids(document: &crate::ProjectDocument) -> BTreeSet<String> {
     let mut ids = Vec::new();
-    for page in &document.project.pages {
+    for page in &document.project().pages {
         if let Some(root) = &page.component {
             root.collect_ids(&mut ids);
             root.collect_dom_ids(&mut ids);
@@ -35,7 +35,7 @@ pub(crate) fn project_identity_ids(document: &crate::ProjectDocument) -> BTreeSe
 /// Form identities are document-wide provider resources, unlike per-page HTML ids.
 pub(crate) fn project_form_ids(document: &crate::ProjectDocument) -> BTreeSet<String> {
     let mut ids = Vec::new();
-    for page in &document.project.pages {
+    for page in &document.project().pages {
         if let Some(root) = &page.component {
             root.collect_form_ids(&mut ids);
         }

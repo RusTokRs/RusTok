@@ -3,6 +3,7 @@ use crate::{
     ProjectDocument, RUNTIME_LOCALE_FIELD, RuntimeLocaleSelection, ValidationDiagnostic,
     ValidationSeverity, materialize_project_locale_context, normalize_locale_tag, normalize_slug,
 };
+use crate::runtime_locale::duplicate_locale_key;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -41,7 +42,7 @@ impl LocalizedPageRouteResolution {
 
 pub fn localized_page_route_index(document: &ProjectDocument) -> Vec<LocalizedPageRouteEntry> {
     let mut entries = Vec::new();
-    for (page_index, page) in document.project.pages.iter().enumerate() {
+    for (page_index, page) in document.project().pages.iter().enumerate() {
         let Some(metadata) = page
             .extensions
             .get(FLY_PAGE_METADATA_FIELD)
@@ -61,6 +62,9 @@ pub fn localized_page_route_index(document: &ProjectDocument) -> Vec<LocalizedPa
                     .get(LOCALIZED_VALUES_FIELD)
                     .and_then(Value::as_object)
                 {
+                    if duplicate_locale_key(localized).is_some() {
+                        continue;
+                    }
                     for (locale, slug) in localized {
                         let Some(locale) = normalize_locale_tag(locale) else {
                             continue;
@@ -95,32 +99,11 @@ pub fn resolve_localized_page_route(
     let policy_context = materialize_project_locale_context(document, input_context).context;
     let selection = RuntimeLocaleSelection::from_context(&policy_context);
     let requested_locale = selection.locale.clone();
-    let candidates = locale_candidates(&selection);
+    let candidates = selection.candidates();
     let entries = localized_page_route_index(document);
 
-    let mut matched = None;
-    for locale in &candidates {
-        let matches = matching_entries(&entries, &requested_slug, Some(locale));
-        matched = unique_match(matches, &requested_slug, Some(locale))?;
-        if matched.is_some() {
-            break;
-        }
-    }
-    if matched.is_none() {
-        matched = unique_match(
-            matching_entries(&entries, &requested_slug, None),
-            &requested_slug,
-            None,
-        )?;
-    }
-    if matched.is_none() {
-        let matches = entries
-            .iter()
-            .filter(|entry| entry.slug == requested_slug)
-            .collect::<Vec<_>>();
-        matched = unique_match(matches, &requested_slug, None)?;
-    }
-    let matched = matched.ok_or_else(|| FlyError::PageNotFound(requested_slug.clone()))?;
+    let matched = match_route_entry(&entries, &requested_slug, &candidates)?
+        .ok_or_else(|| FlyError::PageNotFound(requested_slug.clone()))?;
 
     let mut context = policy_context.as_object().cloned().unwrap_or_default();
     let inferred_locale = requested_locale.is_none() && matched.locale.is_some();
@@ -200,7 +183,7 @@ pub fn validate_localized_page_routes(document: &ProjectDocument) -> Vec<Validat
 
 fn validate_raw_slug_values(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
     let mut diagnostics = Vec::new();
-    for (page_index, page) in document.project.pages.iter().enumerate() {
+    for (page_index, page) in document.project().pages.iter().enumerate() {
         let Some(slug) = page
             .extensions
             .get(FLY_PAGE_METADATA_FIELD)
@@ -287,6 +270,38 @@ fn push_route_entry(
     }
 }
 
+/// Resolve a normalized slug using the same precedence for inbound requests and
+/// outbound destination verification.
+pub(crate) fn match_route_entry<'a>(
+    entries: &'a [LocalizedPageRouteEntry],
+    requested_slug: &str,
+    candidates: &[String],
+) -> FlyResult<Option<&'a LocalizedPageRouteEntry>> {
+    let mut matched = None;
+    for locale in candidates {
+        let matches = matching_entries(entries, requested_slug, Some(locale));
+        matched = unique_match(matches, requested_slug, Some(locale))?;
+        if matched.is_some() {
+            break;
+        }
+    }
+    if matched.is_none() {
+        matched = unique_match(
+            matching_entries(entries, requested_slug, None),
+            requested_slug,
+            None,
+        )?;
+    }
+    if matched.is_none() {
+        let matches = entries
+            .iter()
+            .filter(|entry| entry.slug == requested_slug)
+            .collect::<Vec<_>>();
+        matched = unique_match(matches, requested_slug, None)?;
+    }
+    Ok(matched)
+}
+
 fn matching_entries<'a>(
     entries: &'a [LocalizedPageRouteEntry],
     slug: &str,
@@ -327,7 +342,7 @@ fn canonical_slug_for_page(
                 locale: Some(locale.to_string()),
                 fallback_locales: Vec::new(),
             };
-            locale_candidates(&selection)
+            selection.candidates()
         })
         .unwrap_or_default();
     for candidate in candidates {
@@ -342,32 +357,6 @@ fn canonical_slug_for_page(
         .find(|entry| entry.page_index == page_index && entry.locale.is_none())
         .or_else(|| entries.iter().find(|entry| entry.page_index == page_index))
         .map(|entry| entry.slug.clone())
-}
-
-fn locale_candidates(selection: &RuntimeLocaleSelection) -> Vec<String> {
-    let mut candidates = Vec::new();
-    if let Some(locale) = selection.locale.as_deref() {
-        push_candidate(&mut candidates, locale);
-    }
-    for locale in &selection.fallback_locales {
-        push_candidate(&mut candidates, locale);
-    }
-    candidates
-}
-
-fn push_candidate(candidates: &mut Vec<String>, locale: &str) {
-    let Some(locale) = normalize_locale_tag(locale) else {
-        return;
-    };
-    if !candidates.contains(&locale) {
-        candidates.push(locale.clone());
-    }
-    if let Some((language, _)) = locale.split_once('-') {
-        let language = language.to_string();
-        if !candidates.contains(&language) {
-            candidates.push(language);
-        }
-    }
 }
 
 fn route_diagnostic(
@@ -430,6 +419,30 @@ mod tests {
         assert_eq!(resolution.context[RUNTIME_LOCALE_FIELD], "ru");
         assert!(resolution.fallback_used);
         assert_eq!(resolution.selection(), PageSelection::Index(0));
+    }
+
+    #[test]
+    fn script_specific_slug_wins_over_the_generic_language_route() {
+        let document = document(json!({
+            "pages": [{
+                "id": "generic",
+                "flyPageMeta": { "slug": { "$localized": { "zh": "shared" } } },
+                "component": { "id": "generic-root", "type": "wrapper" }
+            }, {
+                "id": "traditional",
+                "flyPageMeta": { "slug": { "$localized": { "zh-Hant": "shared" } } },
+                "component": { "id": "traditional-root", "type": "wrapper" }
+            }]
+        }));
+        let resolution = resolve_localized_page_route(
+            &document,
+            "shared",
+            &json!({ "$locale": "zh-Hant-TW" }),
+        )
+        .expect("script-specific route");
+        assert_eq!(resolution.page_id.as_deref(), Some("traditional"));
+        assert_eq!(resolution.matched_locale.as_deref(), Some("zh-Hant"));
+        assert!(resolution.fallback_used);
     }
 
     #[test]

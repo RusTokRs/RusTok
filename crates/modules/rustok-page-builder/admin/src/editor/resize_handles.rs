@@ -4,9 +4,11 @@ use leptos::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use fly::ComponentPatch;
 #[cfg(any(target_arch = "wasm32", test))]
+use crate::core::page_builder_resize_policy;
+#[cfg(any(target_arch = "wasm32", test))]
 use fly_ui::{CanvasRect, ResizeHandle, ViewportState};
 #[cfg(target_arch = "wasm32")]
-use fly_ui::{ResizePolicy, ResizeResult, ResizeSession};
+use fly_ui::{ResizeResult, ResizeSession};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
@@ -26,6 +28,11 @@ struct SvgRectGeometry {
 struct SvgPoint {
     x: f64,
     y: f64,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn can_start_resize_pointer(listeners_ready: bool, button: i16, is_primary: bool) -> bool {
+    listeners_ready && button == 0 && is_primary
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -130,10 +137,7 @@ pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
                                     start_rect: rect,
                                     start_x: 0.0,
                                     start_y: 0.0,
-                                    policy: ResizePolicy {
-                                        grid_size: Some(4.0),
-                                        ..ResizePolicy::default()
-                                    },
+                                    policy: page_builder_resize_policy(),
                                 };
                                 let Some(result) =
                                     resize.update_by_arrow_key(&event.key(), event.shift_key())
@@ -154,9 +158,11 @@ pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
                         on:pointerdown={
                             let runtime = runtime.clone();
                             move |event: PointerEvent| {
-                                event.prevent_default();
-                                event.stop_propagation();
-                                if !listeners_ready || event.button() != 0 || !event.is_primary() {
+                                if !can_start_resize_pointer(
+                                    listeners_ready,
+                                    event.button(),
+                                    event.is_primary(),
+                                ) {
                                     return;
                                 }
                                 let Some((component_id, rect, zoom)) = runtime.controller.with(|controller| {
@@ -181,10 +187,7 @@ pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
                                     handle,
                                     rect,
                                     &event,
-                                    ResizePolicy {
-                                        grid_size: Some(4.0),
-                                        ..ResizePolicy::default()
-                                    },
+                                    page_builder_resize_policy(),
                                     f64::from(zoom),
                                 );
                                 let Some(element) = event
@@ -200,6 +203,10 @@ pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
                                     runtime.fail(error.to_string());
                                     return;
                                 }
+                                // Only consume the event after the resize session and pointer
+                                // capture are ready. Failed setup must not block canvas clicks.
+                                event.prevent_default();
+                                event.stop_propagation();
                                 captured_element.set_value(Some(element));
                                 session.set_value(Some(resize));
                                 preview.set(None);
@@ -446,6 +453,25 @@ pub fn ResizeHandles(runtime: AdminEditorRuntime) -> impl IntoView {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fly_ui::{MAX_RESIZE_DIMENSION_PX, MIN_RESIZE_HEIGHT_PX, MIN_RESIZE_WIDTH_PX};
+
+    #[test]
+    fn resize_pointerdown_only_consumes_primary_left_gestures() {
+        assert!(can_start_resize_pointer(true, 0, true));
+        assert!(!can_start_resize_pointer(false, 0, true));
+        assert!(!can_start_resize_pointer(true, 2, true));
+        assert!(!can_start_resize_pointer(true, 0, false));
+    }
+
+    #[test]
+    fn page_builder_resize_policy_matches_server_dimension_limit() {
+        let policy = page_builder_resize_policy();
+        assert_eq!(policy.minimum_width, MIN_RESIZE_WIDTH_PX);
+        assert_eq!(policy.minimum_height, MIN_RESIZE_HEIGHT_PX);
+        assert_eq!(policy.maximum_width, Some(MAX_RESIZE_DIMENSION_PX));
+        assert_eq!(policy.maximum_height, Some(MAX_RESIZE_DIMENSION_PX));
+        assert_eq!(policy.grid_size, Some(4.0));
+    }
 
     #[test]
     fn resize_geometry_uses_svg_attributes_and_bounded_cursor_classes() {

@@ -1,8 +1,10 @@
 #![cfg(feature = "mod-moderation")]
 
+mod support;
+use support::test_auth_config;
+
 use std::sync::Arc;
 
-use rustok_auth::AuthConfig;
 use rustok_core::{MigrationSource, ModuleRegistry, ModuleRuntimeExtensions, RusToKModule};
 use rustok_index::IndexModule;
 use rustok_moderation::{
@@ -82,7 +84,7 @@ async fn compose(registry: &ModuleRegistry) -> Result<Arc<ModuleRuntimeExtension
         registry,
         &settings,
         runtime,
-        AuthConfig::new(TEST_AUTH_SECRET.to_string()),
+        test_auth_config(),
     )
 }
 

@@ -96,6 +96,7 @@ impl CommentService {
                     "create",
                     post_id,
                     command_id,
+                    self.comments_port_timeout(tenant_id).await,
                 )?,
                 ApiCreateCommentInput {
                     target_type: TARGET_TYPE_BLOG_POST.to_string(),
@@ -168,6 +169,7 @@ impl CommentService {
                     "delete-after-public-target-loss",
                     comment_id,
                     compensation_command_id,
+                    self.comments_port_timeout(tenant_id).await,
                 )?,
                 comment_id,
             )
@@ -202,6 +204,7 @@ impl CommentService {
                     &SecurityContext::system(),
                     input.locale.as_str(),
                     comment_id,
+                    self.comments_port_timeout(tenant_id).await,
                 )?,
                 comment_id,
                 None,
@@ -227,6 +230,7 @@ impl CommentService {
                     "update",
                     comment_id,
                     input.command_id,
+                    self.comments_port_timeout(tenant_id).await,
                 )?,
                 comment_id,
                 domain_input,
@@ -276,6 +280,7 @@ impl CommentService {
                     &SecurityContext::system(),
                     locale,
                     comment_id,
+                    self.comments_port_timeout(tenant_id).await,
                 )?,
                 comment_id,
                 fallback_locale.map(str::to_owned),
@@ -301,6 +306,7 @@ impl CommentService {
                         "moderate",
                         comment_id,
                         input.command_id,
+                        self.comments_port_timeout(tenant_id).await,
                     )?
                     .with_claim(format!("blog_moderator:{moderator_id}")),
                     None => comments_write_port_context(
@@ -310,6 +316,7 @@ impl CommentService {
                         "moderate",
                         comment_id,
                         input.command_id,
+                        self.comments_port_timeout(tenant_id).await,
                     )?,
                 },
                 comment_id,
@@ -349,6 +356,7 @@ impl CommentService {
                     &SecurityContext::system(),
                     PLATFORM_FALLBACK_LOCALE,
                     comment_id,
+                    self.comments_port_timeout(tenant_id).await,
                 )?,
                 comment_id,
                 None,
@@ -367,6 +375,7 @@ impl CommentService {
                     "delete",
                     comment_id,
                     command_id,
+                    self.comments_port_timeout(tenant_id).await,
                 )?,
                 comment_id,
             )

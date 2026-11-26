@@ -27,7 +27,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Project root directory
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$PROJECT_ROOT"
 
 # ============================================================================
@@ -65,12 +65,62 @@ check_env() {
     fi
 }
 
+# Require an already-provisioned file before Compose can start migrations.
+# This command is not a provisioner, rotation tool or recovery mechanism.
+check_jwt_keyring() {
+    local directory="${RUSTOK_DEV_JWT_KEYRING_DIR:-${HOME:?HOME must be set}/.local/share/rustok-dev}"
+    if [ ! -d "$directory" ] || [ ! -f "$directory/jwt.json" ] || [ -L "$directory/jwt.json" ] || [ ! -r "$directory/jwt.json" ]; then
+        print_error "Missing readable dev JWT keyring (jwt.json in a dedicated private directory)."
+        print_info "For a fresh isolated store, follow the explicit RSA provisioning instructions in README.md."
+        print_info "For an existing enrolled store, restore its authorized keyring; do not generate a replacement."
+        return 1
+    fi
+    directory="$(cd "$directory" && pwd -P)" || return 1
+    case "$directory/" in
+        "$PROJECT_ROOT/"*)
+            print_error "Keep the private JWT keyring directory outside the repository."
+            return 1
+            ;;
+    esac
+    if ! python3 - "$directory" "$PROJECT_ROOT" <<'PY'
+import os
+import stat
+import sys
+from pathlib import Path
+
+directory = Path(sys.argv[1])
+repository = Path(sys.argv[2])
+# Do not mount a broad ancestor (including HOME) into the container.
+if directory == Path.home().resolve() or directory in repository.parents:
+    sys.exit(1)
+try:
+    parent = directory.stat()
+    file = (directory / "jwt.json").lstat()
+except OSError:
+    sys.exit(1)
+if not (
+    stat.S_ISDIR(parent.st_mode)
+    and stat.S_ISREG(file.st_mode)
+    and parent.st_uid == file.st_uid == os.getuid()
+    and not (stat.S_IMODE(parent.st_mode) & 0o077)
+    and not (stat.S_IMODE(file.st_mode) & 0o077)
+):
+    sys.exit(1)
+PY
+    then
+        print_error "Use a dedicated private JWT directory and file owned by the caller (0700/0600), not HOME or a repository ancestor. Python 3 is required."
+        return 1
+    fi
+    export RUSTOK_DEV_JWT_KEYRING_DIR="$directory"
+}
+
 # Start services
 start_services() {
     local profile=${1:-full-dev}
     
     print_header "Starting RusToK Development Stack (profile: $profile)"
     
+    check_jwt_keyring || return 1
     check_env
     
     print_info "Starting services with Docker Compose..."
@@ -100,6 +150,7 @@ stop_services() {
 
 # Restart services
 restart_services() {
+    check_jwt_keyring || return 1
     stop_services
     sleep 2
     start_services "$@"
@@ -225,6 +276,9 @@ case "${1:-start}" in
         echo "  restart [profile]  Restart all services"
         echo "  logs [service]     Follow logs (all services or specific service)"
         echo "  status             Show service status"
+        echo ""
+        echo "Before start: provision or restore a complete RSA keyring as described in README.md."
+        echo "Set RUSTOK_DEV_JWT_KEYRING_DIR in the shell for a non-default directory."
         echo ""
         echo "Profiles:"
         echo "  full-dev           All services (default)"

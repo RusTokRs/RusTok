@@ -68,6 +68,10 @@ pub mod m20261116_000041_move_product_attached_localized_values;
 pub mod m20261116_000042_add_product_flex_schema_projection;
 mod m20261116_000043_order_product_index_refresh_ledger_commits;
 mod m20261117_000044_order_product_channel_convergence_commits;
+mod m20261125_000045_fix_variant_attribute_translation_delete_revision;
+mod m20261125_000046_fix_product_attribute_value_translation_delete_revision;
+mod m20261126_000047_add_product_variant_revision;
+mod m20261126_000048_bump_product_revision_for_variant_membership;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -144,6 +148,10 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20261116_000042_add_product_flex_schema_projection::Migration),
         Box::new(m20261116_000043_order_product_index_refresh_ledger_commits::Migration),
         Box::new(m20261117_000044_order_product_channel_convergence_commits::Migration),
+        Box::new(m20261125_000045_fix_variant_attribute_translation_delete_revision::Migration),
+        Box::new(m20261125_000046_fix_product_attribute_value_translation_delete_revision::Migration),
+        Box::new(m20261126_000047_add_product_variant_revision::Migration),
+        Box::new(m20261126_000048_bump_product_revision_for_variant_membership::Migration),
     ]
 }
 
@@ -152,6 +160,29 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20261117_000044_order_product_channel_convergence_commits",
             vec!["m20260807_000012_add_product_sales_channel_relation_convergence"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20261125_000045_fix_variant_attribute_translation_delete_revision",
+            vec!["m20260913_000030_add_product_variant_attribute_value_translation_target"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20261125_000046_fix_product_attribute_value_translation_delete_revision",
+            vec!["m20260913_000029_add_product_attribute_value_translation_target"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20261126_000047_add_product_variant_revision",
+            vec![
+                "m20260730_000002_add_product_variant_index_revision",
+                "m20260731_000004_add_product_index_tombstones",
+            ],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20261126_000048_bump_product_revision_for_variant_membership",
+            vec![
+                "m20260730_000001_add_product_index_revision",
+                "m20260731_000003_bump_product_index_revision_for_variant_membership",
+                "m20261007_000035_add_product_revision",
+            ],
         ),
         MigrationDependencyDescriptor::new(
             "m20261116_000043_order_product_index_refresh_ledger_commits",

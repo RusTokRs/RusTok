@@ -26,7 +26,7 @@ controller modules re-export or import those owner DTOs only for OpenAPI/route c
 
 ## Scope
 
-- auth configuration, JWT algorithms and host-provided override assembly/validation;
+- auth configuration, complete RS256 keyring-document validation, and host policy assembly/validation;
 - encode/decode helpers for access/reset/invite/email-verification token flows; JWT encoders reject TTL values that cannot be represented safely as a checked `chrono` duration;
 - password hashing, password verification and refresh-token helpers; refresh-token generation uses the OS RNG and propagates RNG failures as a typed `AuthError::RefreshTokenGenerationFailed` instead of panicking;
 - auth-owned migrations;
@@ -97,10 +97,15 @@ must not introduce a competing JSON or request-local fallback in the meantime.
 
 Auth derives distinct 32-byte keys with HKDF-SHA256 for OAuth browser confirmation
 and password-reset credential binding. Host adapters use `auth_purpose_mac` rather
-than raw shared-secret hashing or local HMAC. MAC v5 and reset fingerprint v2
-replace earlier formats without fallback; outstanding forms and reset links must
-be restarted. Persisted session/refresh digests are unchanged.
-Source regressions unrun. Deploy all host instances together.
+than raw shared-secret hashing or local HMAC. The canonical purpose labels
+and proof encodings are unversioned: reset credential fingerprints are exactly
+64 lowercase hex characters; OAuth consent proofs are a canonical positive
+decimal expiry, dot and 64 lowercase hex characters. No prior-format decoder
+or key derivation fallback is allowed. Outstanding forms and reset links must
+be restarted after the coordinated pre-release host cutover. Persisted
+session/refresh digests, JWT key derivation and durable authority MAC domains
+are unchanged. See [canonical Auth MAC proofs](../../../../DECISIONS/2026-11-25-canonical-auth-mac-proofs.md).
+Source regressions unrun.
 
 
 ## JWT keyring and rotation
@@ -113,107 +118,197 @@ prepares all four rings as one immutable snapshot; clones share both the raw
 key inputs and the prepared result. Direct
 constructors prepare on first use. Key configuration changes detach the candidate
 before mutation; invalid candidates never replace the prior snapshot. Only Auth-emitted JOSE
-fields are accepted; unknown fields, duplicate IDs and explicit null IDs fail
-closed even during the missing-ID migration.
+fields are accepted; unknown fields, duplicate IDs and missing or null IDs
+fail closed for every JWT purpose.
 
 Unknown fields in `settings.auth` fail configuration deserialization rather than
 silently falling back to JWT defaults. Correct misspelled or obsolete override
 names before startup.
 
-Set `settings.auth.jwt_keyring_env` to the environment variable holding access
-ring JSON. Access uses the existing `algorithm` and RSA settings. Set
-`settings.auth.jwt_special_keyrings_env` to a separate environment variable holding
-an object with optional `password_reset`, `email_verification` and `invite`
-entries. Each entry has `algorithm` (HS256 by default), `keyring`, and, for RS256,
-`rsa_private_key_pem` plus `rsa_public_key_pem`. Do not commit secret JSON.
+The executable server accepts exactly one JWT key source: the complete
+generation-bearing document named by `RUSTOK_JWT_KEYRING_FILE`. This variable
+is mandatory in development and production. Missing files, incomplete purpose
+rings, non-RS256 rings, invalid RSA material, mismatched key pairs and invalid
+history fail closed. The executable has no HS256/default-key fallback and does
+not accept startup RSA, inline PEM or keyring environment overrides.
 
-Each ring object accepts:
+`settings.auth` is policy-only: `refresh_expiration`, `issuer`,
+`audience` and `min_password_length`. Algorithm selectors and key-source
+fields are rejected when the file source is selected; they are not silently
+ignored. The host MAC root remains separate from JWT signing and verification
+material.
+
+The current unversioned document schema requires four entries: `access`,
+`password_reset`, `email_verification` and `invite`. Each entry requires
+a `keyring`, `rsa_private_key_pem` and `rsa_public_key_pem`; no algorithm
+field is accepted. The four RSA moduli must be distinct. Each keyring accepts:
 
 - `active_kid`: 1–64 ASCII letters, digits, hyphens or underscores.
-- `active_hs256_secret`: optional independent signing secret for HS256.
-  If omitted, HKDF-SHA256 derives an independent purpose key from the host
-  MAC root. The raw root is never an active JWT key.
-- `verification_keys`: up to 16 objects with `kid`, `material` (actual HS256
-  signing secret or RSA public PEM), and exclusive Unix-second `verify_until`.
-- `legacy_without_kid`: access-only bounded migration setting with `kid` and
-  `verify_until`. Special rings reject this setting.
+- `verification_keys`: up to 16 objects with `kid`, public RSA PEM
+  `material`, and exclusive Unix-second `verify_until`.
+- No symmetric key material, algorithm override or fallback field is accepted.
+  The independent MAC root is never used or HKDF-derived as JWT key material.
 
-The unconfigured access ID is `default`; special IDs are `reset-default`,
-`verify-default`, and `invite-default`. Example special configuration shape
-(use independent high-entropy secret material supplied by the secret manager):
+RSA keys must parse as actual public/private RSA material with a modulus of at
+least 2048 bits. The signing boundary checks that the private key matches the
+configured public key; purpose isolation uses canonical RSA moduli, not PEM
+formatting. All four pairs are prepared as one immutable candidate before
+admission. The MAC root is separately validated for minimum length and PEM
+exclusion; those checks do not prove its entropy or independence.
+
+### Cutover and rotation
+
+All access and special JWTs require an explicit valid key ID. The raw host
+MAC root cannot enter any JWT ring, including history. There is no migration
+bridge for missing-ID or shared-root tokens. Reissue development tokens and
+special links through canonical issuance. The format cutover requires all
+hosts and operators to stop and follows the retained-state rules below.
+See [mandatory JWT key identity](../../../../DECISIONS/2026-11-25-jwt-mandatory-key-identity.md).
+
+Access JWTs explicitly carry `grant_type` and `scopes`, including direct
+session tokens with an empty scope list. Missing or null fields are rejected;
+no principal is inferred from absent claims. Direct sessions have no OAuth
+client or durable OAuth access-token ID; OAuth access requires both.
+Every invite has a mandatory non-nil unique `jti`; missing, null and nil
+nonces are rejected. The exact token digest remains the single-use authority.
+A baseline-role invite may omit its optional custom-role slug.
+Reissue noncanonical development credentials. See the
+[canonical JWT claims ADR](../../../../DECISIONS/2026-11-25-jwt-canonical-claims.md).
+
+For RS256 rotations, distribute the next public verification material to
+all replicas first, then promote its matching private signer and retain the
+outgoing public key until its JWTs expire. Verification history is public-only;
+never reuse key IDs or RSA moduli across purposes or identities. The exclusive
+cutoff is checked both during selection and after signature verification.
+The mandatory generation-bearing file is the only executable host source and
+supports atomic process-local hot reload. Auth request paths reuse prepared
+encoding/decoding keys and indexed verification history; the JWT library still
+constructs its internal crypto providers per operation.
+
+Focused regressions cover staging, promotion, retirement and exact key
+selection with two independent RS256 key pairs, plus OAuth access and missing-ID
+rejection. Compile and multi-replica execution evidence remain pending.
+See [purpose keyring ADR](../../../../DECISIONS/2026-11-25-jwt-purpose-keyrings.md).
+
+### RS256-only cutover
+
+The accepted [RS256-only JWT architecture](../../../../DECISIONS/2026-11-25-rs256-only-jwt.md)
+replaces algorithm migration. The executable host now accepts only complete
+generation-bearing documents containing four independent RS256 purpose rings.
+The keyring file is mandatory for every server environment; static/default
+startup fallback is removed, and every startup candidate passes durable
+generation admission before publication. Generation zero is no longer a
+runtime mode.
+
+The independent MAC root is not JWT material. It continues to serve host MAC
+proofs, OAuth consent CSRF, credential binding and durable authority/witness
+domains. HMAC-SHA256, HKDF-SHA256 and Argon2id remain in their non-JWT roles.
+The root must be independently provisioned symmetric secret material; PEM
+public/private keys and certificates are rejected at JWT preparation, host
+MAC proof derivation and durable fence MAC derivation. Production additionally
+requires at least 64 non-whitespace bytes and rejects known placeholders and
+low-diversity values. These representation checks do not prove entropy or
+independence of arbitrarily encoded material. Auth validates this policy
+without exposing the root through the public AuthConfig API.
+
+The Auth-owned database-free `validate-jwt-keyring` command uses the same
+document parser and policy checks as the host. Full development Compose runs
+it in the migration container before applying application migrations. The
+browser-smoke and reference-artifact CI host jobs provision fresh isolated
+RSA keyrings in runner temporary storage and remove them after use; private
+keys are not placed in the repository, logs, artifacts or caches.
+
+The durable authenticated metadata retains its fixed `RS256` assertion only
+for state continuity; it is not a selector, and persisted `HS256` metadata is
+rejected. Removing that marker requires a separately authorized authenticated
+offline converter preserving tombstones, revoked identities, generation and
+witness revision. No converter is delivered here. Never reset authority or
+witness to bypass admission; block retained-state deployments until conversion
+is available. Only explicitly disposable development state may be replaced
+together with fresh keys and invalidation of old tokens.
+The cutover does not authorize data deletion.
+
+### Isolated development and test provisioning
+
+On POSIX systems with Python 3.9+ and OpenSSL, explicitly create a new
+generation-1 file for a **fresh, isolated** development/test security store:
+
+```sh
+install -d -m 0700 "$HOME/.local/share/rustok-dev"
+python3 scripts/dev/provision-jwt-keyring.py --output "$HOME/.local/share/rustok-dev/jwt.json"
+export RUSTOK_JWT_KEYRING_FILE="$HOME/.local/share/rustok-dev/jwt.json"
+```
+
+The full development Compose stack mounts the same dedicated directory
+read-only into both the migration and server containers. Before any application
+migration, the migration container runs `rustok-server validate-jwt-keyring`;
+this invokes the Auth-owned parser and cryptographic validation rather than a
+shell/Python duplicate. The dev startup script checks ownership and file
+permissions before Compose starts and does not generate keys or reset security
+state. Direct executable launches also require
+`RUSTOK_JWT_KEYRING_FILE`; there is no static fallback.
+
+The provisioning helper creates four independent RSA key pairs with distinct
+key IDs and writes a complete file with mode `0600` outside the checkout. It
+refuses replacement even if concurrent provisioning targets the same path.
+File data and the published directory entry are synchronized before reporting
+success; an uncertain directory sync must not trigger key regeneration. The
+launcher rejects mounting HOME or a repository ancestor. It never generates or
+modifies the independent MAC root. Supply that root separately. The file uses
+the currently admitted document shape; no startup generation, production
+fallback, or authority/witness reset is introduced.
+
+Do not use this command as a rotation, recovery or conversion procedure for
+an enrolled store. Use a different private output path for each isolated
+test store. The server executable uses the generation-bearing RS256-only
+keyring. No runtime algorithm selector or document-level algorithm field
+remains. The fixed `RS256` assertion in authenticated durable authority
+metadata is intentionally retained until an offline converter can preserve
+tombstones, revoked identities, generation and witness revision; it is not a
+runtime selector.
+
+### Process-local hot reload
+
+`RUSTOK_JWT_KEYRING_FILE` is mandatory and must identify a trusted
+secret-manager-mounted JSON file. No startup algorithm, inline RSA PEM, keyring or environment-backed key
+source is accepted; those fields are unknown and fail closed. Auth validates
+the complete document as one candidate. `AuthSettingsOverrides` contains
+policy fields only and is applied separately from key preparation. There is
+no startup key environment resolver or alternate key source.
+The file is limited to 256 KiB and requires a generation from 1 through 2^63-1 and a complete
+set of four purpose entries. The document has one unversioned format;
+obsolete schema tags and unknown fields are rejected. Generation is a
+monotonic security-state identifier, not a format version.
+See the [canonical keyring document ADR](../../../../DECISIONS/2026-11-25-jwt-canonical-keyring-document.md).
+Example shape (replace every placeholder with a distinct, matching RSA key pair):
 
 ```json
 {
+  "generation": 1,
+  "access": {
+    "keyring": { "active_kid": "access-1" },
+    "rsa_private_key_pem": "<access-private-pem>",
+    "rsa_public_key_pem": "<access-public-pem>"
+  },
   "password_reset": {
-    "algorithm": "HS256",
-    "keyring": {
-      "active_kid": "reset-next",
-      "active_hs256_secret": "<independent-secret>"
-    }
+    "keyring": { "active_kid": "reset-1" },
+    "rsa_private_key_pem": "<reset-private-pem>",
+    "rsa_public_key_pem": "<reset-public-pem>"
+  },
+  "email_verification": {
+    "keyring": { "active_kid": "verify-1" },
+    "rsa_private_key_pem": "<verification-private-pem>",
+    "rsa_public_key_pem": "<verification-public-pem>"
+  },
+  "invite": {
+    "keyring": { "active_kid": "invite-1" },
+    "rsa_private_key_pem": "<invite-private-pem>",
+    "rsa_public_key_pem": "<invite-public-pem>"
   }
 }
 ```
 
-RSA keys must parse as actual public/private RSA material with a modulus of at
-least 2048 bits. The signing boundary checks that the private key matches the
-configured public key; isolation uses canonical RSA moduli, not PEM formatting.
-All explicit symmetric material is subject to production secret policy even
-with RSA access. Snapshot preparation rejects key material reuse across rings before any key can
-be used. Derived
-keys isolate disclosure of a derived signing key, not compromise of the
-common root; use independent explicit material for stronger isolation.
-
-### Cutover and rotation
-
-For previous default HS256 access deployments, configure a new active ID
-and put the old raw host secret under the old ID `default` in access
-`verification_keys`, with a cutoff covering the remaining access JWT lifetime.
-If necessary, configure `legacy_without_kid` to point to that old entry.
-Existing independent access signing material or RSA access pairs can retain
-their IDs. The old raw host secret is not allowed as an active signing key.
-Old shared-key special links are intentionally rejected and must be reissued.
-Keep the host MAC root unchanged during this migration; refresh sessions are
-not rewritten or revoked. Coordinate all replicas for this cutover.
-
-For subsequent same-algorithm rotations, distribute the next verification
-material to all replicas first, then promote it and retain the outgoing
-material until its JWTs expire. For derived HS256 keys, the historical
-material is the actual lowercase hex-encoded HKDF output (not the root).
-Prefer explicit independent secrets for operational rotations. Remove
-expired history; never reuse IDs or key material. The exclusive cutoff is
-checked both during selection and after signature verification. HS256 verification material
-is cryptographically capable of signing; use RSA for distribution to
-untrusted verifiers. Startup environment configuration remains supported. An optional
-versioned file source supports process-local hot reload (below). Auth request paths reuse
-prepared encoding/decoding keys and indexed verification history; the JWT library
-still constructs its internal crypto providers per operation.
-A source regression now exercises staging, promotion, retirement and exact
-key selection using two independent RS256 key pairs, including OAuth access and
-bounded missing-ID migration. It is not yet executed. Algorithm migration and
-multi-replica execution evidence are pending.
-See [purpose keyring ADR](../../../../DECISIONS/2026-11-25-jwt-purpose-keyrings.md).
-
-### Process-local hot reload
-
-Set `RUSTOK_JWT_KEYRING_FILE` to a trusted secret-manager-mounted JSON file.
-Do not combine this source with startup JWT algorithm, RSA or keyring overrides.
-The file is limited to 256 KiB and requires a generation from 1 through 2^63-1 and a complete
-set of four purpose entries. Example shape (replace placeholders with actual
-independent high-entropy material or use the documented derived defaults):
-
-```json
-{
-  "schema_version": 1,
-  "generation": 1,
-  "access": {"algorithm": "HS256", "keyring": {"active_kid": "access-1"}},
-  "password_reset": {"algorithm": "HS256", "keyring": {"active_kid": "reset-1"}},
-  "email_verification": {"algorithm": "HS256", "keyring": {"active_kid": "verify-1"}},
-  "invite": {"algorithm": "HS256", "keyring": {"active_kid": "invite-1"}}
-}
-```
-
-For RS256 entries provide the matching private and public PEM fields alongside
-the keyring. Every update is a complete snapshot, not a patch. Replace the
+ Replace the
 mounted file atomically and increase `generation`. The host checks every two
 seconds, validates all four rings and production secret policy before publication,
 then replaces the generation and prepared keys together under a write fence.
@@ -227,8 +322,26 @@ rotated here.
 
 ### Durable generation admission
 
-Apply the Auth-owned migration before starting the host (including static
-configuration mode). The database singleton authenticates canonical key metadata
+The Auth-owned fence migration inventory is shared by application schema
+installation, the independent authority import and Auth regression fixtures.
+The durable fence, authority, witness and observability regressions use fresh
+independent RSA pairs per isolated ledger, with stable identity across its
+generations and public-only history. Source checks require the fixed RS256
+metadata assertion and reject HS256 snapshots. The marker is persisted only
+for authenticated-state continuity; it never selects a verifier. Removing it
+requires the separately authorized retained-state converter.
+These source regressions have not been executed.
+The three pending migration identities remain append-only until the
+[consolidation admission guide](../../../../docs/guides/safe-database-migrations-and-squashing.md)
+is satisfied. Do not infer permission to reset a retained security database
+from the pre-release label. The implementation plan records the candidate
+range and remaining verification gates.
+
+Apply the Auth-owned migration before starting the host. Generation zero is
+reserved exclusively for the empty/uninitialized ledger; no runtime can use
+it or acquire a JWT lease at that generation. Every server startup requires
+a complete file candidate and durable admission. The database singleton
+authenticates canonical key metadata
 and lifetime key ID/material bindings with keys derived from the stable host
 MAC root. It does not store signing keys, raw HMAC secrets or PEMs. A candidate
 must be admitted durably before a local publication, including startup. An
@@ -238,13 +351,13 @@ renames the material or places it in another purpose. RSA modulus reuse and
 exact modulus/exponent continuity are checked separately. An active key moved to
 history cannot sign again; newly staged verification keys can be promoted once
 before expiry. Initial history is conservatively verification-only; enroll
-before staging a future signer. Retained deadlines can only shorten; a removed
-missing-ID mapping cannot be enabled again. The 8192-identity ledger limit
+before staging a future signer. Retained deadlines can only shorten.
+The 8192-identity ledger limit
 fails closed rather than forgetting retired identities.
 
-The first file enrollment prevents subsequent static-mode startup against
-the same database. Keep the MAC root and database authority stable; do not
-restore an older database or run an older host binary. Stop old writers before
+There is no static-mode HTTP runtime: every host uses an admitted positive
+generation. Keep the MAC root and database authority stable; do not restore
+an older database or run an older host binary. Stop old writers before
 enrollment. An unavailable database or unknown publication result terminates
 the host during admission; a crash after durable commit but before local
 publication can recover by restarting with the committed generation. A
@@ -252,11 +365,14 @@ rejected candidate retains the local snapshot.
 
 ### Cluster JWT lease and drain barrier
 
-All upgraded HTTP hosts (including static mode) require a current database
-lease for JWT signing and verification. Renewal confirms the exact durable
-generation and canonical metadata. Auth checks a ten-second local monotonic
+All HTTP hosts require a current database lease for JWT signing and
+verification; there is no static mode. Renewal confirms the exact durable
+generation and canonical metadata. Auth checks a ten-second local monotonic and wall-clock
 deadline before and after crypto; the DB records a conservative fifteen-second
-maximum lease horizon. The host supervisor runs every two seconds from
+maximum lease horizon. Candidate activation checks the fixed source, immutable local policy,
+cluster-managed publisher and monotonic generation before reserving a durable
+replica grant; publication rechecks compatibility under its write fence.
+The host supervisor runs every two seconds from
 bootstrap through serving. For an incompatible generation change the database
 closes old renewal for up to 60 seconds and returns Draining until all old
 lease horizons have elapsed. The same candidate is retried without requiring
@@ -266,15 +382,16 @@ receiving the committed document. An abandoned drain expires and permits
 the still-current generation to resume renewing.
 
 The fallback drain may briefly interrupt JWT operations. It assumes a
-single authoritative database primary, disciplined clock rates with no forward
-DB clock jump, and no host suspend that stops the monotonic clock. Stop all
+single authoritative database primary and independently disciplined host clocks.
+Clock guards now detect bounded discontinuities and close the local gate;
+see the clock protection contract below. Stop all
 older/unmanaged host binaries and apply the Auth migrations before cutover.
-A database error terminates the host; static mode exits when its lease is
-denied. File-backed stale hosts keep polling with JWT crypto fenced after
-expiry. The host's critical `jwt_cluster_lease` readiness check samples the
+A database error terminates the host. A missing or denied lease fences JWT
+operations; the mandatory file-backed host keeps polling for an admitted
+successor while its previous lease is fenced after expiry. The host's critical `jwt_cluster_lease` readiness check samples the
 same local gate after awaited dependency probes, returning 503 when the lease
 is unavailable. In-flight business transactions already authorized are not cancelled.
-Root rotation and rollback of the database itself remain separate work. Keys removed before first enrollment are
+Root rotation and rollback of the independent authority itself remain separate work. Keys removed before first enrollment are
 not known to the ledger.
 
 ### Rolling replica admission
@@ -289,7 +406,7 @@ signer; distribute it before promoting the new signer in the next document.
 Retain the previous signer as verification history for the full remaining
 JWT lifetime. Both generations must verify each other's signer for the
 entire overlap plus a safety margin, and existing live verification
-deadlines and legacy mapping must be preserved. A compatible promotion
+deadlines must be preserved. A compatible promotion
 waits for all outstanding older incompatible grants to be acknowledged
 or expire without closing renewal for the current generation (AwaitingReplicas). A new
 local lease and the new keys are installed atomically. An incompatible
@@ -326,12 +443,12 @@ material. A replica observing revocation fences its whole local JWT runtime
 and readiness, including if its file is unchanged; disconnected replicas
 expire their local lease. Existing grants can remain usable for up to ten
 seconds from their local grant start under the documented clock assumptions.
-Recovery requires a higher complete generation without the revoked key or
-its legacy mapping, and a conservative drain of incompatible outstanding
-grants. Retain only uncompromised material. Already-authorized business IO
-is not cancelled. Static generation zero is not an enrolled identity
-authority. Stop older binaries before use; unmanaged embedders, root
-compromise and database rollback are outside the contract.
+Recovery requires a higher complete generation without the revoked key
+and a conservative drain of incompatible outstanding grants. Retain only
+uncompromised material. Already-authorized business IO is not cancelled.
+Generation zero is reserved for the empty ledger and cannot represent an
+enrolled runtime or JWT authority. Stop older binaries before use; unmanaged embedders, root
+compromise and rollback of the independent authority are outside the contract.
 
 Source regressions are authored, unrun.
 
@@ -339,6 +456,150 @@ See [emergency revocation ADR](../../../../DECISIONS/2026-11-25-jwt-emergency-re
 [durable generation fence ADR](../../../../DECISIONS/2026-11-25-jwt-generation-fence.md),
 [cluster lease barrier ADR](../../../../DECISIONS/2026-11-25-jwt-cluster-lease.md)
 and [rolling replica admission ADR](../../../../DECISIONS/2026-11-25-jwt-rolling-admission.md).
+
+### Clock discontinuity protection
+
+Managed leases expire when either the ten-second monotonic or wall-clock
+deadline elapses. Both clocks are checked before and after crypto. Local
+and authority clocks are anchored for their lifetime; divergence over one
+second latches a fault. Authority reads must finish within one second and
+the sampled database timestamp must be within the host read interval plus
+or minus 500 ms. Slow samples are refused; detected clock faults are sticky.
+A diagnostic scrape can close the same gate, never renew it. A new generation
+cannot clear a fault. Fix independent UTC synchronization and restart only
+after the conservative lease window has elapsed on a reliable external clock.
+Emergency revocation remains possible during an incident because it never
+grants or expires authority; its wall-clock receipt is not elapsed-time proof.
+
+This does not detect coherent failure of all clocks or a freshly started
+host with a false time source. Independently synchronize hosts to UTC within
+500 ms, keep the primary trusted and stop older binaries. Independent-authority rollback protection remains open. No migration is needed. See the
+[clock discontinuity ADR](../../../../DECISIONS/2026-11-25-jwt-clock-discontinuity.md) for assumptions, recovery and
+verification. Source regressions are unrun.
+
+A lease that has been observed expired cannot reopen on a backward wall-clock
+step. A fresh durable grant is required. Generation zero is not a runtime
+generation and cannot obtain a JWT lease.
+
+### Independent JWT authority
+
+Production requires an independently administered PostgreSQL database outside
+the application backup/restore domain. Set `RUSTOK_JWT_AUTHORITY_DATABASE_URL`
+and a stable, non-nil `RUSTOK_JWT_AUTHORITY_ID` UUID through trusted deployment
+configuration. Partial configuration is refused. The UUID is authenticated
+with the stable host MAC root and verified with the ledger on every authority
+read and CAS write; callers must match the pinned root even at generation zero.
+No host creates or reseeds the independent store automatically.
+Development hosts may use the application DB only if both settings are absent;
+that mode has no rollback protection. Revocation CLI always requires the
+independent settings.
+
+Cut over offline: apply existing source migrations, stop all older hosts
+and CLI writers, wait for every lease and drain to expire, and back up the
+trusted source. Create a new empty PostgreSQL database in a separate restore
+domain; set the authority settings and `RUSTOK_JWT_REVOCATION_ROOT`, point
+the CLI runtime at the trusted source, then run:
+
+```sh
+rustok-cli auth jwt-authority-init --confirm
+```
+
+Import preserves the authenticated ledger and all grant/horizon fields in
+one destination transaction. Existing schemas and active source leases/drains
+are refused. Never initialize from an old application snapshot during recovery.
+The source remains historical evidence, not a runtime fallback. All hosts
+and emergency commands must use the same pinned authority. Provision restricted
+runtime credentials, verified TLS and independent backup/failover.
+
+Restoring application data does not roll back JWT generation, key tombstones
+or revocations. It does not protect restored sessions, refresh tokens, OAuth
+or RBAC, or protect against loss/rollback of the independent witness itself.
+Generation zero represents only the empty ledger and cannot be used as a
+runtime. Do not resume traffic after loss of current authority. See the [independent authority ADR](../../../../DECISIONS/2026-11-25-jwt-independent-authority.md).
+No new application migration. Compilation and PostgreSQL restore/cutover
+evidence remain pending.
+
+### JWT rollback witness
+
+The independent authority now also requires `RUSTOK_JWT_WITNESS_DATABASE_URL`
+in a third restore domain. Both external PostgreSQL URIs require an explicit
+TCP host/database and `sslmode=verify-full`; only `sslrootcert`, `sslcert`
+and `sslkey` may be supplied additionally. Partial configuration is rejected.
+The witness stores an HMAC-authenticated exact metadata checkpoint including
+a monotonically increasing revision and every grant/horizon. All reads and
+all five mutation paths verify it. Mutations lock authority then witness,
+commit witness first and return success only after both durable commits.
+Mismatch or uncertain write commit fences local JWT; recovery is offline.
+
+For an existing independent authority, stop all older hosts and writers,
+wait for all leases and drains to expire, provision an empty separate witness
+database and run (with the stable root in `RUSTOK_JWT_REVOCATION_ROOT`):
+
+```sh
+rustok-cli auth jwt-witness-init --confirm
+```
+
+Fresh deployments must first run the independent authority import above.
+Do not reimport an existing authority. After a rollback or interrupted commit,
+stop all writers, wait for leases and independently verify the current witness;
+then run `rustok-cli auth jwt-witness-recover --confirm`. This copies only the
+authenticated checkpoint, preserves grants and refuses to lower the authority
+revision. Never reset/reseed the witness or restore it from an older backup.
+Restart fresh processes only after successful recovery. A joint rollback of the
+authority and witness cannot be detected by this model. See the
+[witness ADR](../../../../DECISIONS/2026-11-25-jwt-rollback-witness.md) for durability, failure-domain and runtime
+verification requirements.
+
+### Operational observability
+
+The existing host-authorized metrics endpoint exports `rustok_auth_jwt_*`.
+`independent_authority` reports whether an external pinned authority is configured.
+`witness_configured` and `witness_fenced` report witness configuration and sticky
+fault status; `JwtWitnessFenced` is a critical alert.
+The Auth owner reads the same authority row and authenticates its ledger;
+the read never renews a lease or modifies the database. The host bounds the
+diagnostic query to two seconds. Failure exports `collection_status=0`
+and NaN for unknown cluster gauges; local metrics remain available.
+No key IDs, fingerprints, paths, replica UUIDs, tenant IDs or secrets are exported.
+
+- `local_generation`, `local_ready`, `local_emergency_fenced`,
+  `local_state_available` and `local_lease_remaining_seconds` sample the
+  actual local crypto gate after DB IO. `local_clock_fenced` and
+  `authority_clock_fenced` expose sticky detected clock faults.
+- `durable_generation` and signed `generation_lag` compare independent
+  database and local samples. Every HTTP host reports an admitted positive
+  generation; generation zero represents only the empty ledger.
+- `current_grants`, `stale_grants`, `current_grant_replicas` and
+  `stale_grant_replicas` count unexpired conservative grants and distinct
+  incarnations within each class. An incarnation may be in both classes.
+  A grant is not proof of local installation or an online replica.
+- `revoked_bindings` counts durable lifetime revocations (a gauge).
+  `current_revoked` and `revoked_grants` identify current and outstanding
+  material affected by revocation, including independent CLI operations.
+- `drain_remaining_seconds`, `untracked_remaining_seconds` and
+  `lease_horizon_remaining_seconds` use database time.
+- `operations_total{operation,outcome}` has bounded labels for renewal,
+  activation, grant denial, admission, ACK and reload. Counters are local,
+  reset on restart, and can overlap (e.g. renewal denial and its reason).
+- `ack_attempt_duration_seconds_sum/count` measures the immediate
+  post-installation ACK attempt, including deferred/error results, not
+  cluster-wide convergence. Later renewal cleanup is reflected in the
+  outstanding grant gauges.
+- `pending_generation` and `pending_seconds` track continuous local waiting
+  for the same generation across drain, replica and grant retries. Clear on
+  source loss, rejection, unchanged processed file or publication. This
+  excludes pre-listener startup waiting.
+
+Scrape each target with the deployment's existing host-read authority.
+Use max, not sum, for the replicated database gauges; local gauges and
+counters are per target. Sustained negative lag may indicate regression,
+but transient negative values may be a sampling race. Monitor missing
+targets and scrape failure via up and deployment inventory. Initial
+Prometheus rules cover unavailable collection, closed gate, generation
+lag, revoked current material and waiting rotation. They are operational
+signals, not authorization. No new migration or public API is required.
+Compilation, regressions, promtool and independent-replica runtime scrape
+evidence remain pending.
 
 ## JWT principal and invite admission
 
@@ -352,15 +613,14 @@ checks. Invite issuance and verification share the same custom-role predicate:
 custom roles require the Customer baseline and a nonblank slug of at most 64
 bytes. New invitation JWTs carry a random non-nil `jti` so independent issuances
 with identical claims and timestamps cannot collide in the unique token-digest
-ledger. Previously issued invitations without a `jti` remain admissible subject
-to the same persisted exact-digest and one-use checks. Source regressions are
-not yet executed.
+ledger. Legacy invitations without a `jti` are rejected and must be reissued
+through the canonical issuer. Source regressions are not yet executed.
 
 ## JWT and browser confirmation hardening
 
-Both HS256 and RS256 host configuration require at least 32 non-whitespace
-bytes of symmetric secret because browser confirmation and credential binding
-still use it. JWT validation enforces `iat > 0`, `iat <= now`, `iat < exp`,
+The independent MAC root requires at least 32 non-whitespace bytes (64 in
+production) because browser confirmation and credential binding use it. The
+root is not JWT signing or verification material. JWT validation enforces `iat > 0`, `iat <= now`, `iat < exp`,
 and `nbf` when present; checked duration construction rejects out-of-range TTL.
 OAuth browser confirmation MAC v4 includes the direct session ID and rejects
 expiries beyond its ten-minute window. Source regressions unrun.
@@ -431,13 +691,16 @@ and composition, but must not duplicate auth policy or token semantics.
 
 ## Config Lifecycle Surface
 
-The canonical `AuthConfig` assembly is performed via `build_auth_config` /
-`build_auth_config_with_env`: the host passes framework configuration, and
-`rustok-auth` applies defaults, `AuthSettingsOverrides`, RS256 env key
-resolution and validation. `apps/server` must not duplicate these rules, but
-only map `AuthError` to a transport-specific error type.
+The executable host assembles `AuthConfig` only through
+`build_auth_config_from_document`, which consumes the mandatory complete
+generation-bearing file. `AuthSettingsOverrides` is policy-only: issuer,
+audience, refresh TTL and password policy cannot select or supply JWT keys.
+There is no default AuthConfig constructor, algorithm selector, symmetric
+JWT signer or alternate key source. Unknown algorithm and key-source fields
+fail deserialization. The complete generation-bearing document is the sole
+production source of JWT material.
 
-For RS256, validation parses both PEM values and signs and verifies a probe at
+ and signs and verifies a probe at
 startup. Malformed or mismatched key pairs therefore fail configuration assembly
 before the server accepts traffic.
 
@@ -482,7 +745,7 @@ Primary owner for auth/JWT/RBAC incidents — Platform security/auth on-call. Es
 On auth degradation:
 
 1. Check `/health/ready`, `email_backend` and recent auth/API errors without logging secrets, reset/invite tokens or refresh tokens.
-2. Verify effective `AuthConfig`: algorithm/key pairing, issuer, audience, TTL bounds and production policy.
+2. Verify effective `AuthConfig`: all four RSA key pairs and purpose isolation, issuer, audience, TTL bounds and production policy.
 3. If the issue relates to email reset/verification delivery, escalate also to the owner of host email transport.
 4. If the issue relates to RBAC, verify `AUTH_USER_PERMISSIONS`, server registry/security hints and actual transport guards.
 5. After rollback preserve evidence: artifact id, config snapshot without secrets, affected flows, health snapshot and list of revoked/rotated credentials if rotation was performed.

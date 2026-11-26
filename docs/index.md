@@ -35,6 +35,7 @@ Component-local documents live in `apps/*/docs/`, `crates/{libs,modules,ui,utils
 - [ADR Registry](../DECISIONS/README.md)
 - [Proposed ADR: Workflow cron durable scheduling and recovery](../DECISIONS/2026-11-23-workflow-cron-durable-scheduling-and-recovery.md) — workflow-owned schedule cursors, per-firing claims, conservative recovery and operator evidence.
 - [ADR: Direct session refresh history](../DECISIONS/2026-11-25-session-refresh-history.md) — retain all recorded rotated refresh digests until session deletion.
+- [ADR: Canonical Auth MAC proofs](../DECISIONS/2026-11-25-canonical-auth-mac-proofs.md) — unversioned reset and consent proofs with strict encoding.
 - [ADR: OAuth browser authorization CSRF boundary](../DECISIONS/2026-11-25-oauth-browser-authorization-csrf.md) — cookie-authenticated authorization GETs are side-effect-free and require a CSRF-bound POST before code issuance.
 - [ADR: Installer HTTP job crash quarantine](../DECISIONS/2026-11-24-installer-http-job-crash-quarantine.md) — heartbeat-based interruption detection, fail-closed recovery status, and no automatic lease takeover or target replay.
 - [ADR: Fly save-attempt correlation and peer-write fencing](../DECISIONS/2026-11-24-fly-save-attempt-correlation-and-peer-write-fencing.md) — UUID-backed save response correlation, editor-scoped cross-tab fencing, and the boundary between draft save and release gating.
@@ -108,6 +109,14 @@ RusToK provides a sandboxed, extensible module runtime supporting native Rust cr
 
 ### Domain Module Documentation
 
+- [ADR: Canonical JWT keyring document](../DECISIONS/2026-11-25-jwt-canonical-keyring-document.md) — unversioned file shape and bounded monotonic generations.
+- [ADR: Canonical JWT claims](../DECISIONS/2026-11-25-jwt-canonical-claims.md) — explicit access grant type/scopes and mandatory invitation nonce.
+- [ADR: Mandatory JWT key identity](../DECISIONS/2026-11-25-jwt-mandatory-key-identity.md) — no missing-ID or raw-root JWT bridge.
+- [ADR: RS256-only JWT architecture](../DECISIONS/2026-11-25-rs256-only-jwt.md) — RS256-only runtime and keyring documents; retained HS256 durable state requires authenticated offline conversion.
+- [ADR: Canonical JWT algorithm metadata](../DECISIONS/2026-11-25-jwt-canonical-algorithm-metadata.md) — superseded historical algorithm metadata contract.
+- [ADR: JWT authority rollback witness](../DECISIONS/2026-11-25-jwt-rollback-witness.md) — authenticated full-state checkpoint, witness-first commits and offline recovery.
+- [ADR: Independent JWT authority](../DECISIONS/2026-11-25-jwt-independent-authority.md) — separate restore domain, pinned identity and offline cutover.
+- [ADR: JWT clock discontinuity protection](../DECISIONS/2026-11-25-jwt-clock-discontinuity.md) — dual lease deadlines, bounded DB clock samples and sticky local fencing.
 - [ADR: JWT emergency key revocation](../DECISIONS/2026-11-25-jwt-emergency-revocation.md) — irreversible identity bans and bounded lease enforcement.
 - [ADR: JWT rolling replica admission](../DECISIONS/2026-11-25-jwt-rolling-admission.md) — registered grants and compatible staged signer promotion.
 - [ADR: JWT cluster lease barrier](../DECISIONS/2026-11-25-jwt-cluster-lease.md) — bounded crypto leases and database-serialized generation drain.

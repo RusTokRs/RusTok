@@ -339,6 +339,9 @@ pub struct ProductAttributeDefinition {
 pub struct AttributeBinding {
     pub attribute_id: Uuid,
     pub group_code: Option<String>,
+    /// Definition-owned scope, hydrated from product_attributes for effective forms.
+    #[serde(default)]
+    pub scope: String,
     pub is_required: bool,
     pub is_disabled: bool,
     pub position: i32,
@@ -535,6 +538,7 @@ fn apply_local_category_bindings(
                     bindings.push(AttributeBinding {
                         attribute_id: local.attribute_id,
                         group_code: local.group_code.clone(),
+                        scope: String::new(),
                         is_required: local.is_required.unwrap_or(false),
                         is_disabled: local.is_disabled,
                         position: local.position.unwrap_or(0),
@@ -624,6 +628,7 @@ mod tests {
         AttributeBinding {
             attribute_id,
             group_code: Some("main".to_string()),
+            scope: "product".to_string(),
             is_required: false,
             is_disabled: false,
             position,

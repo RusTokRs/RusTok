@@ -1,5 +1,7 @@
 #![cfg(feature = "mod-fulfillment")]
 
+mod support;
+
 use std::{error::Error, io, sync::Arc, time::Duration};
 
 use rustok_api::{PortActor, PortContext, PortErrorKind, TenantLocale};
@@ -95,7 +97,8 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         )
         .await?;
 
-    let seed_provider = registered_provider(seed_connection.clone())?;
+    let auth_config = support::test_auth_config();
+    let seed_provider = registered_provider(seed_connection.clone(), auth_config.clone())?;
     let listed = seed_provider
         .list_resources(
             read_context(tenant_id, "seed-list"),
@@ -188,8 +191,8 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
 
     let first_connection = connect_postgres(database_url).await?;
     let second_connection = connect_postgres(database_url).await?;
-    let first_provider = registered_provider(first_connection.clone())?;
-    let second_provider = registered_provider(second_connection.clone())?;
+    let first_provider = registered_provider(first_connection.clone(), auth_config.clone())?;
+    let second_provider = registered_provider(second_connection.clone(), auth_config.clone())?;
 
     let initial_patch = patch_from_snapshot(&initial_snapshot, "Express FR", "initial");
     let initial_receipt = first_provider
@@ -439,7 +442,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     Ok(())
 }
 
-fn registered_provider(db: DatabaseConnection) -> TestResult<Arc<dyn TranslationTargetProvider>> {
+fn registered_provider(db: DatabaseConnection, auth_config: AuthConfig) -> TestResult<Arc<dyn TranslationTargetProvider>> {
     let registry = ModuleRegistry::new().register(FulfillmentModule);
     let settings = RustokSettings::default();
     let runtime_ctx = ServerRuntimeContext::new(db, settings.clone());
@@ -447,7 +450,7 @@ fn registered_provider(db: DatabaseConnection) -> TestResult<Arc<dyn Translation
         &registry,
         &settings,
         runtime_ctx,
-        AuthConfig::new("test-secret-key-for-fulfillment-translation-32bytes!".to_string()),
+        auth_config,
     )?;
     let targets = translation_target_registry(&extensions)
         .ok_or_else(|| test_error("host composition did not publish TranslationTargetRegistry"))?;

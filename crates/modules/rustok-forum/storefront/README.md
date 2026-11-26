@@ -48,7 +48,7 @@ No search/ranking predicate runs in this package. See the
 - Degrades to the public feed only when authentication or the required Forum topic permission is absent; network, HTTP, persistence and domain failures remain explicit.
 - Hides deleted-route tombstones until Forum owns a visibility-authorized disclosure snapshot; the Rust host therefore returns the same public `404` for missing, hidden, deleted and `GONE` routes.
 - Does not expose category-subtree or tenant-wide mark-read commands because those owner scopes are not yet narrowed to the storefront channel-visible topic set.
-- A composer quote is sent as an owner relation only when it carries an exact positive source revision (`forum_storefront_quote_revision`). The Leptos Reply card quotes the reply text and leaves the relation unpinned: the storefront reply read model carries no revision, and `verify-forum-reply-reactions-storefront-composition.mjs` forbids the module UI from fanning out `fetch_storefront_reply_current_revision` per visible reply (that lookup stays host-owned and selected-reply only). No revision number is invented, so an edited source can never be mis-pinned.
+- A composer quote is sent as an owner relation only when it carries an exact positive source revision (`forum_storefront_quote_revision`). The Leptos Reply card pins that relation by fetching `forumStorefrontReplyQuoteRevision` for the one reply the author chose to quote. `verify-forum-reply-reactions-storefront-composition.mjs` still forbids fanning out `fetch_storefront_reply_current_revision` per visible reply (that lookup stays host-owned and selected-reply only). No revision number is invented: a missing quote revision stays quoted text in the body.
 
 ## Composer draft and submission contract
 
@@ -65,7 +65,7 @@ No search/ranking predicate runs in this package. See the
 
 ## Known Limitations / Pending Implementation
 
-- The composer posts plain text only. Tags, explicit slug, attachments, edit-in-place, subscribe, vote, and report actions have no storefront transport here, so they stay unreachable in this surface while the owner already exposes some of them through GraphQL. Quoting a reply from the Leptos thread posts quoted text without a pinned owner relation (see Interactions).
+- The composer posts plain text only. Tags, explicit slug, attachments, edit-in-place, subscribe, and vote actions have no storefront transport here, so they stay unreachable in this surface while the owner already exposes some of them through GraphQL. Topic and reply report actions file `reportForumTopic` / `reportForumReply`. Quoting a reply from the Leptos thread pins the owner relation when the selected-reply quote revision is available (see Interactions).
 - Topic cards show the owner status token through a localized badge
   (`forum.topic.statusOpen|statusClosed|statusArchived|statusPending`), and an unrecognized token
   is rendered unchanged rather than relabeled.
@@ -77,7 +77,7 @@ No search/ranking predicate runs in this package. See the
   retry instead of looking like the end of the thread, and the header count stays server-authored.
   Categories stay at 12 because the owner exposes no category page-size setting, category filtering
   runs client-side over the fetched page, and a filtered feed does not offer a next page.
-- Vote, subscribe, and report mutations stay unreachable in this surface, so `is_subscribed` and
+- Vote and subscribe mutations stay unreachable in this surface, so `is_subscribed` and
   `current_user_vote` are not part of the read model this package renders.
 
 ## Documentation

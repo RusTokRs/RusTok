@@ -220,6 +220,12 @@ impl RbacCacheInvalidationListener {
     }
 
     async fn recover_generation_and_clear(&self) -> Result<u64> {
+        let _reconciliation = self.durable_state.lock_reconciliation().await;
+        self.recover_generation_and_clear_locked().await
+    }
+
+    // Caller holds the shared reconciliation lock; do not reacquire it here.
+    async fn recover_generation_and_clear_locked(&self) -> Result<u64> {
         let recovered_through = self.read_generation().await?;
         invalidate_all_user_permissions_cache().await;
         acknowledge_rbac_recovery(&self.tracker, recovered_through)?;
@@ -229,6 +235,7 @@ impl RbacCacheInvalidationListener {
     }
 
     async fn reconcile_generation_if_advanced(&self) -> Result<Option<u64>> {
+        let _reconciliation = self.durable_state.lock_reconciliation().await;
         let recovered_through = self.read_generation().await?;
         let tracker_current = self
             .tracker
@@ -271,6 +278,21 @@ impl RbacCacheInvalidationListener {
             )));
         }
 
+        let _reconciliation = self.durable_state.lock_reconciliation().await;
+        // The durable watchdog can recover to a lower generation after a
+        // database restore. A pre-restore tracker offset cannot prove that
+        // intervening invalidations in the restored database were applied.
+        // Until the durable checkpoint catches up, use full recovery rather
+        // than applying or ignoring events based on the old high-water mark.
+        if let (Some(tracked), Some(applied)) = (
+            self.tracker.last_generation(RBAC_PERMISSION_INVALIDATION_CHANNEL),
+            self.durable_state.current(),
+        ) && tracked > applied && event.generation > applied
+        {
+            self.recover_generation_and_clear_locked().await?;
+            return Ok(());
+        }
+
         match self.tracker.observe(&event) {
             CacheInvalidationObservation::InOrder { generation } => {
                 match parse_rbac_invalidation_target(&event.key)? {
@@ -298,7 +320,7 @@ impl RbacCacheInvalidationListener {
                 {
                     acknowledge_rbac_recovery(&self.tracker, current)?;
                 } else {
-                    let recovered = self.recover_generation_and_clear().await?;
+                    let recovered = self.recover_generation_and_clear_locked().await?;
                     if recovered < event.generation {
                         return Err(Error::Cache(format!(
                             "durable RBAC invalidation generation {recovered} trails received {}",
@@ -869,7 +891,17 @@ mod tests {
 
     #[tokio::test]
     async fn duplicate_and_stale_offsets_do_not_restore_a_pre_restore_checkpoint() {
-        let db = Database::connect("sqlite::memory:").await.unwrap();
+        use crate::services::rbac_invalidation_generation::reserve_rbac_invalidation_generation;
+        use rustok_migrations::SqliteTestMigrator as Migrator;
+        use rustok_test_utils::db::setup_test_db_with_migrations;
+        use sea_orm::TransactionTrait;
+
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tx = db.begin().await.unwrap();
+        for generation in 1..=2 {
+            assert_eq!(reserve_rbac_invalidation_generation(&tx).await.unwrap(), generation);
+        }
+        tx.commit().await.unwrap();
         let durable_state = RbacInvalidationGenerationState::default();
         durable_state.observe_applied(5);
         let listener = RbacCacheInvalidationListener::new(db, durable_state.clone());
@@ -879,7 +911,9 @@ mod tests {
             .unwrap();
 
         durable_state.record_full_cache_recovery(2);
-        for generation in [5, 4] {
+        // Even the apparently contiguous next event (6) cannot advance the
+        // checkpoint based on a tracker from the previous database epoch.
+        for generation in [5, 4, 6] {
             let message = VersionedCacheInvalidation::new(
                 RBAC_PERMISSION_INVALIDATION_CHANNEL,
                 RBAC_PERMISSION_INVALIDATE_ALL_KEY,
@@ -897,6 +931,32 @@ mod tests {
             Some(2),
             "old tracker offsets must not move a post-restore cache checkpoint forward"
         );
+    }
+
+    #[tokio::test]
+    async fn listener_waits_for_shared_reconciliation_before_acknowledging() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let state = RbacInvalidationGenerationState::default();
+        state.observe_applied(5);
+        let listener = RbacCacheInvalidationListener::new(db, state.clone());
+        listener.tracker.seed(RBAC_PERMISSION_INVALIDATION_CHANNEL, 5).unwrap();
+        let message = VersionedCacheInvalidation::new(
+            RBAC_PERMISSION_INVALIDATION_CHANNEL,
+            RBAC_PERMISSION_INVALIDATE_ALL_KEY,
+            6,
+            1,
+        ).unwrap().to_message().unwrap();
+
+        let held = state.lock_reconciliation().await;
+        let mut applying = Box::pin(listener.handle_message(message));
+        assert!(
+            tokio::time::timeout(Duration::from_millis(10), applying.as_mut()).await.is_err(),
+            "event application must wait for another recovery to finish"
+        );
+        assert_eq!(state.current(), Some(5));
+        drop(held);
+        applying.await.unwrap();
+        assert_eq!(state.current(), Some(6));
     }
 
     #[tokio::test]

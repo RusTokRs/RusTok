@@ -442,8 +442,13 @@ impl CustomFieldsSchema {
                 continue;
             }
             if let Some(default) = &def.default_value {
-                obj.entry(def.field_key.clone())
-                    .or_insert_with(|| default.clone());
+                let should_fill = matches!(
+                    obj.get(&def.field_key),
+                    None | Some(serde_json::Value::Null)
+                );
+                if should_fill {
+                    obj.insert(def.field_key.clone(), default.clone());
+                }
             }
         }
     }
@@ -524,16 +529,32 @@ fn validate_field_value(
                     });
                 }
 
-                if let Some(pattern) = &r.pattern
-                    && let Ok(re) = Regex::new(pattern)
-                    && !re.is_match(s)
-                {
-                    errors.push(FieldValidationError {
-                        field_key: key.clone(),
-                        message: format!("Field '{}' does not match the required pattern", key),
-                        error_code: FieldErrorCode::PatternMismatch,
-                    });
-                } // Invalid pattern in definition — skip silently
+                if let Some(pattern) = &r.pattern {
+                    match Regex::new(pattern) {
+                        Ok(re) => {
+                            if !re.is_match(s) {
+                                errors.push(FieldValidationError {
+                                    field_key: key.clone(),
+                                    message: format!(
+                                        "Field '{}' does not match the required pattern",
+                                        key
+                                    ),
+                                    error_code: FieldErrorCode::PatternMismatch,
+                                });
+                            }
+                        }
+                        Err(_) => {
+                            errors.push(FieldValidationError {
+                                field_key: key.clone(),
+                                message: format!(
+                                    "Field '{}' has an invalid validation pattern",
+                                    key
+                                ),
+                                error_code: FieldErrorCode::InvalidFormat,
+                            });
+                        }
+                    }
+                }
             }
         }
 
@@ -556,7 +577,7 @@ fn validate_field_value(
             }
 
             if let Some(r) = rule {
-                let len = s.len() as f64;
+                let len = s.chars().count() as f64;
                 if let Some(min) = r.min
                     && len < min
                 {
@@ -597,7 +618,7 @@ fn validate_field_value(
             }
 
             if let Some(r) = rule {
-                let len = s.len() as f64;
+                let len = s.chars().count() as f64;
                 if let Some(min) = r.min
                     && len < min
                 {
@@ -621,6 +642,8 @@ fn validate_field_value(
 
         // ── Integer ───────────────────────────────────────────────────────────
         FieldType::Integer => {
+            const I64_MAX_PLUS_ONE_F64: f64 = (1_u64 << 63) as f64;
+
             // Accept i64 directly, or f64 with no fractional part
             let n: i64 = match value.as_i64() {
                 Some(n) => n,
@@ -628,7 +651,7 @@ fn validate_field_value(
                     Some(f)
                         if f.fract() == 0.0
                             && f >= (i64::MIN as f64)
-                            && f < 9223372036854775808.0 =>
+                            && f < I64_MAX_PLUS_ONE_F64 =>
                     {
                         f as i64
                     }
@@ -643,7 +666,7 @@ fn validate_field_value(
                 if let Some(min) = r.min {
                     let below_min = if min.is_nan() {
                         false
-                    } else if min >= 9223372036854775808.0 {
+                    } else if min >= I64_MAX_PLUS_ONE_F64 {
                         true
                     } else if min <= (i64::MIN as f64) {
                         false
@@ -663,7 +686,7 @@ fn validate_field_value(
                         false
                     } else if max < (i64::MIN as f64) {
                         true
-                    } else if max >= 9223372036854775808.0 {
+                    } else if max >= I64_MAX_PLUS_ONE_F64 {
                         false
                     } else {
                         n > max.floor() as i64
@@ -1816,6 +1839,40 @@ mod tests {
         let mut meta = json!({"tier": "pro"});
         schema.apply_defaults(&mut meta);
         assert_eq!(meta["tier"], "pro");
+    }
+
+    #[test]
+    fn apply_defaults_fills_null_value() {
+        let def = FieldDefinition {
+            field_key: "tier".to_string(),
+            field_type: FieldType::Text,
+            label: [("en".to_string(), "Tier".to_string())]
+                .into_iter()
+                .collect(),
+            description: None,
+            is_localized: false,
+            is_required: false,
+            default_value: Some(json!("free")),
+            validation: None,
+            position: 0,
+            is_active: true,
+        };
+        let schema = CustomFieldsSchema::new(vec![def]);
+        let mut meta = json!({"tier": null});
+        schema.apply_defaults(&mut meta);
+        assert_eq!(meta["tier"], "free");
+    }
+
+    #[test]
+    fn invalid_regex_pattern_fails_closed() {
+        let rule = ValidationRule {
+            pattern: Some("[".to_string()),
+            ..Default::default()
+        };
+        let schema = CustomFieldsSchema::new(vec![text_def("code", false, Some(rule))]);
+        let errors = schema.validate(&json!({"code": "anything"}));
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].error_code, FieldErrorCode::InvalidFormat);
     }
 
     // ── strip_unknown ─────────────────────────────────────────────────────────

@@ -177,13 +177,16 @@ pub use registry::{
 pub use render::{
     AlternateLocaleLink, PageHead, PageSelection, RenderPolicy, RenderedPage,
     compose_document_html, document_html_stylesheet, document_html_with_style_nonce,
-    css_property_allowed, escape_css_attribute, render_page, render_page_with_embed_registry,
+    css_property_may_load_resource, css_resource_string_ranges, css_var_references,
+    css_property_allowed, escape_css_attribute, strip_css_resource_references,
+    render_page,
+    render_page_with_embed_registry,
     render_page_with_rich_text, render_page_with_rich_text_and_embed_registry, resolve_page,
 };
 pub use rich_text::{
     FLY_RICH_TEXT_FIELD, MAXIMUM_RICH_TEXT_BYTES, MAXIMUM_RICH_TEXT_DEPTH, MAXIMUM_RICH_TEXT_NODES,
     RICH_TEXT_CAPABILITY, RichTextHtmlRenderer, decode_rich_text_payload, rich_text_fallback_html,
-    rich_text_plain_text, validate_rich_text_payload,
+    rich_text_plain_text, validate_rich_text_payload, validated_rich_text_link_hrefs,
 };
 pub use runtime_locale::{
     LOCALIZED_FALLBACK_FIELD, LOCALIZED_VALUES_FIELD, RUNTIME_FALLBACK_LOCALES_FIELD,

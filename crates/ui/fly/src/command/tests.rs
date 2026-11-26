@@ -86,6 +86,32 @@ fn style_patch_merges_and_can_remove_individual_properties() {
 }
 
 #[test]
+fn composed_style_replacement_is_atomic_and_reversible() {
+    let mut editor = editor();
+    let before = editor.document().clone();
+    let initial_sequence = editor.revision().command_sequence;
+    editor
+        .apply(EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: ComponentPatch::default()
+                .merge_style(json!("color: blue"))
+                .merge_style(json!({"width": "320px"})),
+        })
+        .expect("composed style replacement");
+    let after = editor.document().clone();
+    assert_eq!(
+        after.component("hero").unwrap().style,
+        Some(json!({"width": "320px"}))
+    );
+    assert_eq!(editor.history().undo_len(), 1);
+    assert_eq!(editor.revision().command_sequence, initial_sequence + 1);
+    editor.undo().expect("undo style replacement");
+    assert_eq!(editor.document(), &before);
+    editor.redo().expect("redo style replacement");
+    assert_eq!(editor.document(), &after);
+}
+
+#[test]
 fn dynamic_commands_participate_in_history() {
     let mut editor = editor();
     editor
@@ -112,7 +138,7 @@ fn dynamic_commands_participate_in_history() {
     assert!(
         editor
             .document()
-            .project
+            .project()
             .extensions
             .contains_key(FLY_RUNTIME_CONDITIONS_FIELD)
     );
@@ -275,9 +301,9 @@ fn batch_is_atomic_and_creates_one_history_entry() {
         ]))
         .expect("batch");
     assert_eq!(editor.history().undo_len(), 1);
-    assert_eq!(editor.document().project.assets.len(), 1);
+    assert_eq!(editor.document().project().assets.len(), 1);
     editor.undo().expect("undo batch");
-    assert!(editor.document().project.assets.is_empty());
+    assert!(editor.document().project().assets.is_empty());
     assert!(
         editor
             .document()
@@ -331,6 +357,59 @@ fn style_inverse_restores_absent_and_replaced_style_slots() {
         editor.apply(inverse).expect("restore original style");
         assert_eq!(editor.document(), &before);
     }
+}
+
+#[test]
+fn asset_removal_only_has_local_inverse_when_it_preserves_order() {
+    let mut document = editor().document().clone();
+    document.project_mut().assets = vec![
+        json!({ "id": "first", "src": "/first.png" }),
+        json!({ "id": "last", "src": "/last.png" }),
+    ];
+    let mut editor = FlyEditor::new(document, RegistrySet::with_builtins());
+    let before = editor.document().clone();
+    let remove = |id: &str| EditorCommand::Asset {
+        command: AssetCommand::Remove { asset_id: id.to_string() },
+    };
+    assert!(invert_command(&before, &remove("first")).is_none());
+    editor.apply(remove("first")).expect("remove first");
+    assert!(editor.history().undo_entries().last().unwrap().inverse().is_none());
+    editor.undo().expect("restore exact order");
+    assert_eq!(editor.document(), &before);
+    let inverse = invert_command(&before, &remove("last")).expect("tail inverse");
+    editor.apply(remove("last")).expect("remove last");
+    editor.apply(inverse).expect("append last");
+    assert_eq!(editor.document(), &before);
+}
+
+#[test]
+fn theme_inverse_does_not_claim_to_restore_normalized_or_rewritten_data() {
+    let mut document = editor().document().clone();
+    document.project_mut().extensions.insert(
+        crate::FLY_THEME_FIELD.to_string(),
+        json!({ "tokens": { "brand": " red " }, "future": true }),
+    );
+    let update = EditorCommand::Theme {
+        command: crate::ThemeCommand::Upsert {
+            token: crate::DesignToken { name: "brand".into(), value: "blue".into() },
+        },
+    };
+    assert!(invert_command(&document, &update).is_none());
+
+    document.project_mut().extensions.insert(
+        crate::FLY_THEME_FIELD.to_string(),
+        json!({ "tokens": { "brand": "red" } }),
+    );
+    let rename = EditorCommand::Theme {
+        command: crate::ThemeCommand::Rename { old_name: "brand".into(), new_name: "primary".into() },
+    };
+    assert!(invert_command(&document, &rename).is_none());
+    assert!(invert_command(&document, &update).is_some());
+    let mut editor = FlyEditor::new(document, RegistrySet::with_builtins());
+    let before = editor.document().clone();
+    editor.apply(rename).expect("rename");
+    editor.undo().expect("snapshot undo");
+    assert_eq!(editor.document(), &before);
 }
 
 #[test]
@@ -479,6 +558,32 @@ fn history_evicts_oldest_entries_once_the_entry_limit_is_reached() {
 }
 
 #[test]
+fn changing_history_limit_preserves_budget_and_nearest_transitions() {
+    let mut editor = editor().with_history_memory_budget(1_000_000);
+    for step in 1..=3 {
+        editor.apply(EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: ComponentPatch::default().set_attribute("data-step", json!(step)),
+        }).expect("edit");
+    }
+    editor.undo().expect("undo third edit");
+    let before = editor.document().clone();
+    let revision = editor.revision().clone();
+    let mut editor = editor.with_history_limit(2);
+    assert_eq!(editor.history().memory_budget_bytes(), 1_000_000);
+    assert_eq!(editor.history().undo_len(), 1);
+    assert_eq!(editor.history().redo_len(), 1);
+    assert_eq!(editor.document(), &before);
+    assert_eq!(editor.revision(), &revision);
+    editor.undo().expect("nearest undo");
+    assert_eq!(editor.document().component("hero").unwrap().attributes["data-step"], 1);
+    editor.redo().expect("nearest redo");
+    assert_eq!(editor.document(), &before);
+    editor.redo().expect("third edit remains");
+    assert_eq!(editor.document().component("hero").unwrap().attributes["data-step"], 3);
+}
+
+#[test]
 fn history_respects_its_memory_budget_but_always_keeps_one_entry() {
     let mut editor = editor().with_history_memory_budget(1);
 
@@ -529,7 +634,7 @@ fn retained_bytes_include_redo_after_undoing_everything() {
 fn history_budget_counts_snapshots_even_for_a_small_invertible_patch() {
     let mut document = editor().document().clone();
     document
-        .project
+        .project_mut()
         .extensions
         .insert("large".to_string(), json!("x".repeat(50_000)));
     let serialized_size = serde_json::to_vec(&document).expect("document json").len();
@@ -879,8 +984,11 @@ fn invert_insert_and_remove_are_reciprocal() {
 }
 
 #[test]
-fn incremental_patch_validation_produces_identical_diagnostics_to_full_validation() {
+fn cached_patch_validation_produces_identical_diagnostics_to_full_validation() {
     let mut editor = editor();
+    editor
+        .apply(EditorCommand::Select { component_id: Some("hero".to_string()) })
+        .expect("warm validation cache");
     let incremental_report = editor
         .apply(EditorCommand::Patch {
             component_id: "hero".to_string(),
@@ -961,6 +1069,24 @@ fn an_identical_retry_has_a_new_attempt_identity() {
         .acknowledge_submitted_attempt(same_hash, second, "rev-new")
         .expect("current attempt");
     assert_eq!(editor.revision().last_acknowledged_revision.as_deref(), Some("rev-new"));
+}
+
+#[test]
+fn empty_revision_cannot_acknowledge_an_active_save() {
+    let mut editor = editor();
+    let hash = editor.revision().project_hash;
+    let attempt = editor.revision_mut().begin_save_with_id().expect("start");
+    let before = editor.revision().clone();
+    for revision in ["", " \t"] {
+        assert!(editor.revision_mut()
+            .acknowledge_submitted_attempt(hash, attempt, revision)
+            .is_err());
+        assert_eq!(editor.revision(), &before);
+    }
+    editor.revision_mut()
+        .acknowledge_submitted_attempt(hash, attempt, "rev-2")
+        .expect("valid acknowledgement");
+    assert_eq!(editor.revision().last_acknowledged_revision.as_deref(), Some("rev-2"));
 }
 
 #[test]
@@ -1335,4 +1461,122 @@ fn duplicate_form_identity_is_refused_without_redirecting_provider_submission() 
         .expect_err("duplicate form");
     assert!(error.to_string().contains("form id `contact`"), "{error}");
     assert_eq!(editor, before);
+}
+
+#[test]
+fn cached_validation_cannot_admit_invalid_action_or_corrupt_redo() {
+    let mut editor = editor();
+    editor.apply(EditorCommand::Patch {
+        component_id: "hero".to_string(),
+        patch: ComponentPatch::default().merge_style(json!({"color": "blue"})),
+    }).expect("valid edit");
+    editor.undo().expect("undo");
+    editor.apply(EditorCommand::Select { component_id: Some("hero".to_string()) })
+        .expect("warm validation cache");
+    let before = editor.clone();
+    let error = editor.apply(EditorCommand::Patch {
+        component_id: "hero".to_string(),
+        patch: ComponentPatch::default().set_field(
+            crate::FLY_ACTION_FIELD,
+            json!({"kind": "not_a_supported_action"}),
+        ),
+    }).expect_err("invalid action must be rejected even after cache hit");
+    assert!(matches!(error, FlyError::Validation(_)));
+    assert_eq!(editor.document(), before.document());
+    assert_eq!(editor.history(), before.history());
+    assert_eq!(editor.revision(), before.revision());
+    assert_eq!(editor.selection(), before.selection());
+    editor.redo().expect("failed patch leaves redo available");
+}
+
+#[test]
+fn cached_validation_cannot_admit_registered_but_illegal_child_type() {
+    let document = GrapesJsCodec::decode_value(json!({
+        "pages": [{
+            "id": "home",
+            "component": {
+                "id": "root", "type": "wrapper",
+                "components": [{
+                    "id": "list", "type": "list",
+                    "components": [{ "id": "item", "type": "list_item" }]
+                }]
+            }
+        }]
+    })).expect("document");
+    let mut editor = FlyEditor::new(document, RegistrySet::with_builtins());
+    assert!(editor.apply(EditorCommand::Select {
+        component_id: Some("item".to_string()),
+    }).expect("warm validation cache").is_valid());
+    let before = editor.clone();
+    let error = editor.apply(EditorCommand::Patch {
+        component_id: "item".to_string(),
+        patch: ComponentPatch::default().set_component_type("text"),
+    }).expect_err("registered type is not necessarily a legal child");
+    assert!(matches!(error, FlyError::Validation(ref diagnostics)
+        if diagnostics.iter().any(|d| d.code == "invalid_component_child")));
+    assert_eq!(editor.document(), before.document());
+    assert_eq!(editor.history(), before.history());
+    assert_eq!(editor.revision(), before.revision());
+}
+
+#[test]
+fn undo_and_redo_reject_disconnected_deserialized_history_without_mutation() {
+    let mut original = editor();
+    original.apply(EditorCommand::Patch {
+        component_id: "hero".to_string(),
+        patch: ComponentPatch::default().merge_style(json!({"color": "blue"})),
+    }).expect("edit");
+    for redo in [false, true] {
+        let mut source = original.clone();
+        if redo {
+            source.undo().expect("undo");
+        }
+        let mut stored = serde_json::to_value(&source).expect("serialize");
+        let (stack, endpoint) = if redo { ("redo", "before") } else { ("undo", "after") };
+        // Replace the expected endpoint with a valid but unrelated document.
+        stored["history"][stack][0][endpoint] =
+            serde_json::to_value(editor().document()).expect("endpoint");
+        if redo {
+            stored["history"][stack][0][endpoint] =
+                serde_json::to_value(original.document()).expect("different endpoint");
+        }
+        let mut restored: FlyEditor = serde_json::from_value(stored).expect("restore");
+        let before = restored.clone();
+        let error = if redo { restored.redo() } else { restored.undo() }
+            .expect_err("disconnected history");
+        assert!(matches!(error, FlyError::Validation(ref diagnostics)
+            if diagnostics.iter().any(|d| d.code == "history_base_mismatch")));
+        assert_eq!(restored, before);
+    }
+}
+
+#[test]
+fn history_transitions_respect_current_validation_limits() {
+    let mut source = editor();
+    source.apply(EditorCommand::Insert {
+        parent_id: Some("root".to_string()),
+        index: 1,
+        component: ComponentNode::Object(Box::new(crate::ComponentObject {
+            id: Some("extra".to_string()),
+            component_type: Some("section".to_string()),
+            ..Default::default()
+        })),
+    }).expect("insert");
+    let mut redo = source.clone();
+    redo.undo().expect("undo while policy allows");
+    let limits = crate::ValidationLimits {
+        maximum_nodes: 2,
+        ..Default::default()
+    };
+    let mut redo = redo.with_validation_limits(limits);
+    let before = redo.clone();
+    assert!(matches!(redo.redo(), Err(FlyError::Validation(_))));
+    assert_eq!(redo, before);
+
+    source.apply(EditorCommand::Remove { component_id: "extra".to_string() })
+        .expect("remove");
+    let mut undo = source.with_validation_limits(limits);
+    let before = undo.clone();
+    assert!(matches!(undo.undo(), Err(FlyError::Validation(_))));
+    assert_eq!(undo, before);
 }

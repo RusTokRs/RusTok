@@ -428,7 +428,7 @@ mod tests {
         .expect("create OAuth app");
         let inner = Arc::new(ServerAuthAdminMutationProvider::new(
             db.clone(),
-            crate::auth::AuthConfig::new("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
+            crate::auth::test_auth_config("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
         ));
         let guarded = GuardedOAuthAdminProvider::new(db.clone(), inner);
 
@@ -499,7 +499,7 @@ mod tests {
         let app_id = created.app.id;
         let inner = Arc::new(ServerAuthAdminMutationProvider::new(
             db.clone(),
-            crate::auth::AuthConfig::new("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
+            crate::auth::test_auth_config("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
         ));
         let guarded = GuardedOAuthAdminProvider::new(db.clone(), inner);
 
@@ -657,7 +657,7 @@ mod tests {
             db.clone(),
             Arc::new(ServerAuthAdminMutationProvider::new(
                 db.clone(),
-                crate::auth::AuthConfig::new("test-secret".to_string()),
+                crate::auth::test_auth_config("test-secret-key-for-oauth-rotation-race-at-least-32-bytes".to_string()),
             )),
         );
         let authority = vec![Permission::SETTINGS_MANAGE, Permission::MODULES_MANAGE];

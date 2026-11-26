@@ -68,7 +68,7 @@ impl BindingCatalog {
     pub fn from_document(document: &ProjectDocument) -> Self {
         let mut catalog = Self::default();
         let Some(Value::Array(entries)) =
-            document.project.extensions.get(FLY_RUNTIME_BINDINGS_FIELD)
+            document.project().extensions.get(FLY_RUNTIME_BINDINGS_FIELD)
         else {
             return catalog;
         };
@@ -503,7 +503,7 @@ fn write_catalog(document: &mut ProjectDocument, catalog: BindingCatalog) -> Fly
         })
         .collect::<FlyResult<Vec<_>>>()?;
     entries.extend(catalog.unknown_entries);
-    document.project.extensions.insert(
+    document.project_mut().extensions.insert(
         FLY_RUNTIME_BINDINGS_FIELD.to_string(),
         Value::Array(entries),
     );

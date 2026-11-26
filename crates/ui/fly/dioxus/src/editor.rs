@@ -1038,7 +1038,7 @@ pub fn FlyEditorWorkspace(
                     }
                 }
             }
-            span { hidden: true, "data-fly-components": "{current_document.project.pages.len()}" }
+            span { hidden: true, "data-fly-components": "{current_document.project().pages.len()}" }
         }
     }
 }

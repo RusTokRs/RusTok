@@ -23,7 +23,6 @@ use crate::{
 
 const DEFAULT_JWT_ISSUER: &str = "rustok";
 const DEFAULT_JWT_AUDIENCE: &str = "rustok-admin";
-const MIN_PRODUCTION_HS256_SECRET_BYTES: usize = 64;
 const JWT_KEYRING_FILE_ENV: &str = "RUSTOK_JWT_KEYRING_FILE";
 const JWT_RELOAD_INTERVAL: Duration = Duration::from_secs(2);
 
@@ -60,23 +59,43 @@ struct DatabaseConfig {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct AuthConfig {
     jwt: JwtConfig,
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct JwtConfig {
-    secret: String,
+    #[serde(rename = "secret")]
+    mac_root: String,
     expiration: u64,
 }
 
 impl std::fmt::Debug for JwtConfig {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.debug_struct("JwtConfig")
-            .field("secret", &"<redacted>")
+            .field("mac_root", &"<redacted>")
             .field("expiration", &self.expiration)
             .finish()
     }
+}
+
+/// Validates the same complete JWT bootstrap used by the executable host.
+///
+/// This command is intentionally database-free so development migrations can
+/// fail closed before changing application schema.
+pub async fn validate_jwt_keyring_bootstrap() -> Result<()> {
+    let config = load_config().await?;
+    let production = crate::common::is_production_security_mode();
+    let rustok_settings = RustokSettings::from_settings(&Some(config.settings.clone()))
+        .map_err(|error| Error::BadRequest(format!("Invalid rustok settings: {error}")))?;
+    let prepared = prepare_jwt_bootstrap(&config, production).await?;
+    validate_oauth_metadata_issuer(
+        &prepared.auth_config,
+        crate::routes::oauth_surface_enabled(rustok_settings.runtime.host_mode, &rustok_settings),
+    )?;
+    Ok(())
 }
 
 /// Starts the HTTP-only Axum host.
@@ -104,30 +123,26 @@ pub async fn run() -> Result<()> {
     // applying migrations, so a bad issuer/secret cannot mutate persistent state.
     let rustok_settings = RustokSettings::from_settings(&Some(config.settings.clone()))
         .map_err(|error| Error::BadRequest(format!("Invalid rustok settings: {error}")))?;
-    let keyring_path = jwt_keyring_file_path()?;
-    if keyring_path.is_some() {
-        validate_keyring_file_source(&config.settings)?;
-    }
-    let base_auth_config = crate::auth::auth_config_from_host_settings(
-        config.auth.jwt.secret.clone(),
-        config.auth.jwt.expiration,
-        Some(&config.settings),
-    )?;
-    let (auth_config, reload_source) = if let Some(path) = keyring_path {
-        let bytes = read_jwt_keyring_file(&path).await?;
-        let digest: [u8; 32] = sha256_digest(&[&bytes]);
-        let (generation, candidate) = base_auth_config.prepare_jwt_document(&bytes)
-            .map_err(crate::auth::auth_err)?;
-        validate_auth_deployment(&candidate, production)?;
-        (candidate, Some((path, generation, digest)))
-    } else {
-        validate_auth_deployment(&base_auth_config, production)?;
-        (base_auth_config, None)
-    };
+    let prepared = prepare_jwt_bootstrap(&config, production).await?;
+    let PreparedJwtBootstrap { generation, auth_config, keyring_path, digest } = prepared;
     validate_oauth_metadata_issuer(
         &auth_config,
         crate::routes::oauth_surface_enabled(rustok_settings.runtime.host_mode, &rustok_settings),
     )?;
+
+    // Refuse invalid independent authority before app DB migrations and
+    // honor early shutdown while opening the authority.
+    let authority = rustok_auth::JwtAuthorityConfig::from_env()
+        .map_err(crate::auth::auth_err)?;
+    let independent_fence = match authority {
+        Some(authority) => Some(tokio::select! {
+            biased;
+            _ = &mut shutdown_signal => return Ok(()),
+            result = authority.open_for(&auth_config) => result.map_err(crate::auth::auth_err)?,
+        }),
+        None if !production => None,
+        None => return Err(Error::Message("Independent JWT authority and rollback witness are required in production".into())),
+    };
 
     let db = tokio::select! {
         biased;
@@ -160,33 +175,27 @@ pub async fn run() -> Result<()> {
         return Ok(());
     }
 
-    // The database is the durable admission authority. Do not expose a
-    // listener or compose request consumers before the startup fence succeeds.
-    let fence = rustok_auth::JwtGenerationFence::new(db.clone());
-    let generation = if let Some((_, generation, _)) = &reload_source {
-        loop {
-            let admission = tokio::select! {
-                biased;
-                _ = &mut shutdown_signal => return Ok(()),
-                result = fence.admit(*generation, &auth_config) => result.map_err(crate::auth::auth_err)?,
-            };
-            if admission == rustok_auth::JwtAdmission::Admitted {
-                break *generation;
-            }
-            tokio::select! {
-                biased;
-                _ = &mut shutdown_signal => return Ok(()),
-                _ = tokio::time::sleep(JWT_RELOAD_INTERVAL) => {}
-            }
+    // Production never takes JWT authority from the restorable application DB.
+    let fence = independent_fence.unwrap_or_else(|| rustok_auth::JwtGenerationFence::new(db.clone()));
+    loop {
+        let admission = tokio::select! {
+            biased;
+            _ = &mut shutdown_signal => return Ok(()),
+            result = fence.admit(generation, &auth_config) => result.map_err(crate::auth::auth_err)?,
+        };
+        if admission == rustok_auth::JwtAdmission::Admitted {
+            break;
         }
-    } else {
-        fence.ensure_static_allowed().await.map_err(crate::auth::auth_err)?;
-        0
-    };
+        tokio::select! {
+            biased;
+            _ = &mut shutdown_signal => return Ok(()),
+            _ = tokio::time::sleep(JWT_RELOAD_INTERVAL) => {}
+        }
+    }
     let (auth_config, publisher) = auth_config.into_cluster_jwt(generation)
         .map_err(crate::auth::auth_err)?;
     let supervisor = JwtRuntimeSupervisor {
-        source: reload_source.map(|(path, _, digest)| JwtFileSource { path, digest }),
+        source: JwtFileSource { path: keyring_path, digest },
         publisher, fence,
     };
     if !supervisor.fence.renew(&supervisor.publisher).await.map_err(crate::auth::auth_err)? {
@@ -198,11 +207,15 @@ pub async fn run() -> Result<()> {
     runtime_ctx.shared_insert(
         supervisor.publisher.lease_readiness().map_err(crate::auth::auth_err)?,
     );
+    runtime_ctx.shared_insert(
+        supervisor.fence.operational_metrics(&supervisor.publisher)
+            .map_err(crate::auth::auth_err)?,
+    );
 
     let result = with_runtime_shutdown(&runtime_ctx, async {
         let mut supervisor = Box::pin(supervisor.run(production));
         let startup = async {
-            initialize_server_context(&runtime_ctx, &config.auth.jwt.secret, &database_uri)
+            initialize_server_context(&runtime_ctx, &config.auth.jwt.mac_root, &database_uri)
                 .await?;
 
             let router =
@@ -350,32 +363,8 @@ fn validate_oauth_metadata_issuer(
         return Ok(());
     }
 
-    let issuer = url::Url::parse(&config.issuer).map_err(|_| {
-        Error::BadRequest(
-            "OAuth discovery requires an explicit absolute issuer URL that matches JWT issuer claims"
-                .to_string(),
-        )
-    })?;
-    let is_local_http = issuer.scheme() == "http"
-        && matches!(issuer.host_str(), Some("localhost") | Some("127.0.0.1"));
-    let supported_scheme = issuer.scheme() == "https" || is_local_http;
-    let root_path = issuer.path().is_empty() || issuer.path() == "/";
-
-    if !supported_scheme
-        || issuer.host_str().is_none()
-        || config.issuer.contains('@')
-        || !issuer.username().is_empty()
-        || issuer.password().is_some()
-        || !root_path
-        || issuer.query().is_some()
-        || issuer.fragment().is_some()
-        || config.issuer.chars().any(char::is_whitespace)
-    {
-        return Err(Error::BadRequest(
-            "OAuth discovery issuer must be an absolute HTTPS URL (or http://localhost/127.0.0.1 for development), with no userinfo, path, query, or fragment, so the discovery issuer exactly matches JWT issuer claims"
-                .to_string(),
-        ));
-    }
+    crate::controllers::oauth_metadata::parse_metadata_issuer(&config.issuer)
+        .map_err(|error| Error::BadRequest(error.to_string()))?;
 
     Ok(())
 }
@@ -431,26 +420,7 @@ fn validate_auth_deployment(config: &crate::auth::AuthConfig, production: bool) 
         ));
     }
 
-    // The root protects host MACs and derived JWT keys even for RS256 access.
-    // Explicit HS256 keys from every purpose (including history) must meet the
-    // same production policy.
-    // Inspect the actual candidate, including every purpose and history key.
-    config.inspect_hs256_secrets(|secret| {
-        if secret.bytes().filter(|b| !b.is_ascii_whitespace()).count()
-            < MIN_PRODUCTION_HS256_SECRET_BYTES
-        {
-            return Err(rustok_auth::AuthError::Validation(format!(
-                "Production HS256/root secret must contain at least {MIN_PRODUCTION_HS256_SECRET_BYTES} bytes"
-            )));
-        }
-        if jwt_secret_looks_like_placeholder(secret) {
-            return Err(rustok_auth::AuthError::Validation(
-                "Production HS256/root secret looks like a placeholder or low-diversity value"
-                    .to_string(),
-            ));
-        }
-        Ok(())
-    }).map_err(crate::auth::auth_err)?;
+    config.validate_production_mac_root().map_err(crate::auth::auth_err)?;
     rustok_auth::validate_auth_config(config).map_err(crate::auth::auth_err)?;
 
     Ok(())
@@ -488,29 +458,6 @@ fn validate_database_deployment(database_uri: &str, production: bool) -> Result<
     }
 
     Ok(())
-}
-
-fn jwt_secret_looks_like_placeholder(secret: &str) -> bool {
-    let normalized = secret.trim().to_ascii_lowercase();
-    const PLACEHOLDER_MARKERS: &[&str] = &[
-        "change_me",
-        "changeme",
-        "replace_me",
-        "replace-this",
-        "do-not-use",
-        "development",
-        "example-secret",
-        "test-secret",
-    ];
-
-    PLACEHOLDER_MARKERS
-        .iter()
-        .any(|marker| normalized.contains(marker))
-        || normalized
-            .chars()
-            .collect::<std::collections::HashSet<_>>()
-            .len()
-            < 16
 }
 
 fn application_router(
@@ -594,29 +541,37 @@ async fn connect_database(
     Database::connect(options).await.map_err(Error::Database)
 }
 
-fn jwt_keyring_file_path() -> Result<Option<PathBuf>> {
-    match std::env::var(JWT_KEYRING_FILE_ENV) {
-        Ok(value) if !value.trim().is_empty() => Ok(Some(PathBuf::from(value))),
-        Err(std::env::VarError::NotPresent) => Ok(None),
-        _ => Err(Error::BadRequest("Invalid JWT keyring file path".to_string())),
-    }
+fn required_jwt_keyring_file_path_from(value: Option<&str>) -> Result<PathBuf> {
+    let value = value
+        .filter(|value| !value.trim().is_empty() && value.trim() == *value)
+        .ok_or_else(|| Error::BadRequest(format!(
+            "{JWT_KEYRING_FILE_ENV} is required and must be a non-empty path"
+        )))?;
+    Ok(PathBuf::from(value))
 }
 
-fn validate_keyring_file_source(settings: &serde_json::Value) -> Result<()> {
-    if let Some(auth) = settings.get("auth").and_then(serde_json::Value::as_object) {
-        for field in [
-            "algorithm", "jwt_keyring_env", "jwt_special_keyrings_env",
-            "rsa_private_key_pem", "rsa_public_key_pem",
-            "rsa_private_key_env", "rsa_public_key_env",
-        ] {
-            if auth.get(field).is_some_and(|value| !value.is_null()) {
-                return Err(Error::BadRequest(
-                    "JWT keyring file cannot be combined with startup key overrides".to_string(),
-                ));
-            }
-        }
-    }
-    Ok(())
+fn jwt_keyring_file_path() -> Result<PathBuf> {
+    let value = std::env::var(JWT_KEYRING_FILE_ENV).ok();
+    required_jwt_keyring_file_path_from(value.as_deref())
+}
+
+struct PreparedJwtBootstrap {
+    generation: u64,
+    auth_config: crate::auth::AuthConfig,
+    keyring_path: PathBuf,
+    digest: [u8; 32],
+}
+
+async fn prepare_jwt_bootstrap(config: &HostConfig, production: bool) -> Result<PreparedJwtBootstrap> {
+    let keyring_path = jwt_keyring_file_path()?;
+    let bytes = read_jwt_keyring_file(&keyring_path).await?;
+    let digest = sha256_digest(&[&bytes]);
+    let (generation, auth_config) = crate::auth::auth_config_from_host_document(
+        config.auth.jwt.mac_root.clone(), config.auth.jwt.expiration,
+        Some(&config.settings), &bytes,
+    )?;
+    validate_auth_deployment(&auth_config, production)?;
+    Ok(PreparedJwtBootstrap { generation, auth_config, keyring_path, digest })
 }
 
 async fn read_jwt_keyring_file(path: &Path) -> Result<Vec<u8>> {
@@ -643,7 +598,7 @@ struct JwtFileSource {
 }
 
 struct JwtRuntimeSupervisor {
-    source: Option<JwtFileSource>,
+    source: JwtFileSource,
     publisher: rustok_auth::JwtKeyringPublisher,
     fence: rustok_auth::JwtGenerationFence,
 }
@@ -662,13 +617,8 @@ impl JwtRuntimeSupervisor {
             interval.tick().await;
             // Check the durable revocation/lease authority even when the
             // file has not changed, before potentially slow file processing.
-            let granted = self.fence.renew(&self.publisher).await.map_err(crate::auth::auth_err)?;
-            if !granted && self.source.is_none() {
-                return Err(Error::Message("Static JWT cluster lease denied".into()));
-            }
-            if let Some(source) = self.source.as_mut() {
-                Self::poll_source(source, &self.publisher, &self.fence, production).await?;
-            }
+            let _granted = self.fence.renew(&self.publisher).await.map_err(crate::auth::auth_err)?;
+            Self::poll_source(&mut self.source, &self.publisher, &self.fence, production).await?;
             // A draining or stale file-backed host keeps polling to converge;
             // its JWT operations fail closed when its previous lease expires.
         }
@@ -683,18 +633,21 @@ impl JwtRuntimeSupervisor {
         let bytes = match read_jwt_keyring_file(&source.path).await {
             Ok(bytes) => bytes,
             Err(_) => {
+                fence.record_reload(rustok_auth::JwtReloadOutcome::SourceUnavailable);
                 tracing::warn!("JWT keyring reload source unavailable");
                 return Ok(());
             }
         };
         let digest = sha256_digest(&[&bytes]);
         if digest == source.digest {
+            fence.record_reload(rustok_auth::JwtReloadOutcome::Unchanged);
             return Ok(());
         }
         let (generation, candidate) = match publisher.prepare_document(&bytes) {
             Ok(candidate) => candidate,
             Err(_) => {
                 source.digest = digest;
+                fence.record_reload(rustok_auth::JwtReloadOutcome::Rejected);
                 tracing::warn!("JWT keyring reload rejected");
                 return Ok(());
             }
@@ -703,6 +656,7 @@ impl JwtRuntimeSupervisor {
             || validate_auth_deployment(&candidate, production).is_err()
         {
             source.digest = digest;
+            fence.record_reload(rustok_auth::JwtReloadOutcome::Rejected);
             tracing::warn!("JWT keyring reload rejected");
             return Ok(());
         }
@@ -710,9 +664,17 @@ impl JwtRuntimeSupervisor {
             Ok(rustok_auth::JwtAdmission::Admitted) => {}
             // Do not mark the file processed: the same candidate must retry
             // after the old database lease horizon has drained.
-            Ok(rustok_auth::JwtAdmission::Draining | rustok_auth::JwtAdmission::AwaitingReplicas) => return Ok(()),
+            Ok(rustok_auth::JwtAdmission::Draining) => {
+                fence.record_reload(rustok_auth::JwtReloadOutcome::WaitingDrain(generation));
+                return Ok(());
+            }
+            Ok(rustok_auth::JwtAdmission::AwaitingReplicas) => {
+                fence.record_reload(rustok_auth::JwtReloadOutcome::WaitingReplicas(generation));
+                return Ok(());
+            }
             Err(rustok_auth::AuthError::Validation(_)) => {
                 source.digest = digest;
+                fence.record_reload(rustok_auth::JwtReloadOutcome::Rejected);
                 tracing::warn!("JWT keyring generation rejected by durable fence");
                 return Ok(());
             }
@@ -721,9 +683,11 @@ impl JwtRuntimeSupervisor {
         if !fence.activate(publisher, generation, candidate).await.map_err(crate::auth::auth_err)? {
             // The current local lease remains intact. Retry this exact file
             // until a matching grant is obtained or a newer file arrives.
+            fence.record_reload(rustok_auth::JwtReloadOutcome::WaitingGrant(generation));
             return Ok(());
         }
         source.digest = digest;
+        fence.record_reload(rustok_auth::JwtReloadOutcome::Published);
         tracing::info!(generation, "JWT keyring generation published");
         Ok(())
     }
@@ -842,25 +806,27 @@ async fn wait_for_shutdown_signal() {
 #[cfg(test)]
 mod tests {
     use super::{
-        HostConfig, application_router, resolve_database_uri, validate_auth_deployment,
-        validate_https_deployment,
+        HostConfig, application_router, required_jwt_keyring_file_path_from,
+        resolve_database_uri, validate_auth_deployment, validate_https_deployment,
     };
     use crate::common::settings::RuntimeHostMode;
+    use crate::auth::test_auth_config;
 
     #[test]
-    fn jwt_file_source_cannot_be_combined_with_startup_crypto_overrides() {
-        assert!(super::validate_keyring_file_source(&serde_json::json!({
-            "auth": {"issuer": "https://api.example.com", "min_password_length": 15}
-        })).is_ok());
-        for field in ["algorithm", "jwt_keyring_env", "jwt_special_keyrings_env",
-            "rsa_private_key_pem", "rsa_public_key_pem", "rsa_private_key_env",
-            "rsa_public_key_env"] {
-            let mut value = serde_json::json!({"auth": {}});
-            value["auth"][field] = serde_json::json!("configured");
-            assert!(super::validate_keyring_file_source(&value).is_err());
+    fn jwt_keyring_file_path_is_mandatory_and_canonical() {
+        for invalid in [None, Some(""), Some("   "), Some(" /run/rustok-jwt/jwt.json"), Some("/run/rustok-jwt/jwt.json ")] {
+            assert!(required_jwt_keyring_file_path_from(invalid).is_err());
         }
+        assert_eq!(
+            required_jwt_keyring_file_path_from(Some("/run/rustok-jwt/jwt.json")).unwrap(),
+            std::path::PathBuf::from("/run/rustok-jwt/jwt.json"),
+        );
+    }
+
+    #[test]
+    fn jwt_config_debug_redacts_root() {
         let rendered = format!("{:?}", super::JwtConfig {
-            secret: "sensitive-root-value".to_string(), expiration: 900,
+            mac_root: "sensitive-root-value".to_string(), expiration: 900,
         });
         assert!(!rendered.contains("sensitive-root-value"));
     }
@@ -1026,6 +992,21 @@ mod tests {
     }
 
     #[test]
+    fn host_auth_config_rejects_legacy_algorithm_and_key_source_fields() {
+        let algorithm_error = serde_yaml::from_str::<super::AuthConfig>(
+            "jwt:\n  secret: test-mac-root\n  expiration: 3600\n  algorithm: HS256\n",
+        )
+        .expect_err("legacy JWT algorithm selectors must be rejected");
+        assert!(algorithm_error.to_string().contains("unknown field"));
+
+        let key_source_error = serde_yaml::from_str::<super::AuthConfig>(
+            "jwt:\n  secret: test-mac-root\n  expiration: 3600\nkeyring_file: /tmp/keys.json\n",
+        )
+        .expect_err("alternate auth key sources must be rejected");
+        assert!(key_source_error.to_string().contains("unknown field"));
+    }
+
+    #[test]
     fn development_config_enables_canonical_startup_migrations() {
         let config: HostConfig = serde_yaml::from_str(include_str!("../config/development.yaml"))
             .expect("development host configuration must deserialize");
@@ -1069,7 +1050,7 @@ mod tests {
 
     #[test]
     fn non_production_allows_default_jwt_claims() {
-        let config = crate::auth::AuthConfig::new(
+        let config = test_auth_config(
             "development-secret-value-with-more-than-thirty-two-bytes".to_string(),
         );
         validate_auth_deployment(&config, false)
@@ -1078,7 +1059,7 @@ mod tests {
 
     #[test]
     fn oauth_metadata_requires_an_explicit_issuer_when_enabled() {
-        let config = crate::auth::AuthConfig::new(
+        let config = test_auth_config(
             "development-secret-value-with-more-than-thirty-two-bytes".to_string(),
         );
 
@@ -1095,7 +1076,7 @@ mod tests {
             "http://localhost:3000",
             "http://127.0.0.1:3000",
         ] {
-            let config = crate::auth::AuthConfig::new(
+            let config = test_auth_config(
                 "development-secret-value-with-more-than-thirty-two-bytes".to_string(),
             )
             .with_issuer(issuer);
@@ -1115,8 +1096,14 @@ mod tests {
             "https://user:password@api.example.com",
             "https://@api.example.com",
             "https://api.example.com ",
+            "https:api.example.com",
+            "https:///api.example.com",
+            "https://api.example.com/issuer/..",
+            "https://api.example.com/%2e",
+            "https://api.example.com\\",
+            "https://api.example.com\u{0001}",
         ] {
-            let config = crate::auth::AuthConfig::new(
+            let config = test_auth_config(
                 "development-secret-value-with-more-than-thirty-two-bytes".to_string(),
             )
             .with_issuer(issuer);
@@ -1129,7 +1116,7 @@ mod tests {
 
     #[test]
     fn oauth_metadata_issuer_validation_is_skipped_when_oauth_is_disabled() {
-        let config = crate::auth::AuthConfig::new(
+        let config = test_auth_config(
             "development-secret-value-with-more-than-thirty-two-bytes".to_string(),
         )
         .with_issuer("https://api.example.com/issuer");
@@ -1140,52 +1127,29 @@ mod tests {
 
     #[test]
     fn production_rejects_default_jwt_claims() {
-        let config = crate::auth::AuthConfig::new("aB3!".repeat(20));
+        let config = test_auth_config("aB3!".repeat(20));
         let error = validate_auth_deployment(&config, true)
             .expect_err("production must not share the framework claim namespace");
         assert!(error.to_string().contains("issuer"));
     }
 
     #[test]
-    fn production_rejects_short_hs256_secret() {
-        let config = crate::auth::AuthConfig::new("aB3!".repeat(10))
+    fn production_rejects_short_mac_root() {
+        let config = test_auth_config("aB3!".repeat(10))
             .with_issuer("https://api.example.com")
             .with_audience("rustok-production-admin");
         let error = validate_auth_deployment(&config, true)
-            .expect_err("production HS256 needs a stronger secret floor");
+            .expect_err("production MAC root needs a stronger secret floor");
         assert!(error.to_string().contains("at least 64 bytes"));
     }
 
     #[test]
-    fn production_accepts_explicit_strong_hs256_policy() {
-        let config = crate::auth::AuthConfig::new("aB3!zY7@qW8#eR2$".repeat(5))
+    fn production_accepts_explicit_rsa_and_strong_mac_policy() {
+        let config = test_auth_config("aB3!zY7@qW8#eR2$".repeat(5))
             .with_issuer("https://api.example.com")
             .with_audience("rustok-production-admin");
         validate_auth_deployment(&config, true)
             .expect("explicit claims and a high-entropy secret satisfy production policy");
-    }
-
-    #[test]
-    fn production_rejects_short_special_jwt_key_material() {
-        let config = rustok_auth::build_auth_config_with_env(
-            "aB3!zY7@qW8#eR2$".repeat(5),
-            900,
-            crate::auth::AuthSettingsOverrides {
-                issuer: Some("https://api.example.com".into()),
-                audience: Some("rustok-production-admin".into()),
-                jwt_special_keyrings_env: Some("SPECIAL_KEYS".into()),
-                ..Default::default()
-            },
-            |_| Ok(serde_json::json!({
-                "invite": {"keyring": {
-                    "active_kid": "invite-next",
-                    "active_hs256_secret": "distinct-special-signing-key-with-32-bytes"
-                }}
-            }).to_string()),
-        ).expect("owner accepts the development key-strength floor");
-        let error = validate_auth_deployment(&config, true)
-            .expect_err("production must validate all purpose keys");
-        assert!(error.to_string().contains("at least 64 bytes"));
     }
 
     #[test]
@@ -1306,14 +1270,14 @@ mod tests {
 
     #[test]
     fn validate_auth_deployment_rejects_empty_or_whitespace_issuer() {
-        let config = crate::auth::AuthConfig::new("aB3!zY7@qW8#eR2$".repeat(5))
+        let config = test_auth_config("aB3!zY7@qW8#eR2$".repeat(5))
             .with_issuer("https://")
             .with_audience("rustok-production-admin");
         let error =
             validate_auth_deployment(&config, true).expect_err("issuer without host must fail");
         assert!(error.to_string().contains("issuer"));
 
-        let config_ws = crate::auth::AuthConfig::new("aB3!zY7@qW8#eR2$".repeat(5))
+        let config_ws = test_auth_config("aB3!zY7@qW8#eR2$".repeat(5))
             .with_issuer("https://api .example.com")
             .with_audience("rustok-production-admin");
         let error_ws = validate_auth_deployment(&config_ws, true)
@@ -1323,7 +1287,7 @@ mod tests {
 
     #[test]
     fn validate_auth_deployment_rejects_zero_expiration_and_short_password() {
-        let mut config = crate::auth::AuthConfig::new("aB3!zY7@qW8#eR2$".repeat(5))
+        let mut config = test_auth_config("aB3!zY7@qW8#eR2$".repeat(5))
             .with_issuer("https://api.example.com")
             .with_audience("rustok-production-admin");
         config.access_expiration = 0;
@@ -1358,7 +1322,7 @@ mod tests {
 
     #[test]
     fn validate_auth_deployment_rejects_https_issuer_without_a_host() {
-        let config = crate::auth::AuthConfig::new("aB3!zY7@qW8#eR2$".repeat(5))
+        let config = test_auth_config("aB3!zY7@qW8#eR2$".repeat(5))
             .with_issuer("https://?")
             .with_audience("rustok-production-admin");
         let error = validate_auth_deployment(&config, true)

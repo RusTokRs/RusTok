@@ -126,6 +126,41 @@ pub async fn fetch_storefront_reply_current_revision(
     }
 }
 
+pub async fn fetch_storefront_reply_quote_revision(
+    reply_id: String,
+    locale: Option<String>,
+) -> Result<Option<String>, TransportError> {
+    if use_native_transport() {
+        native_server_adapter::fetch_storefront_reply_quote_revision_server(reply_id, locale).await
+    } else {
+        graphql_adapter::fetch_storefront_reply_quote_revision_graphql(reply_id, locale).await
+    }
+}
+
+pub async fn report_storefront_topic(
+    topic_id: String,
+    reason_code: String,
+    locale: Option<String>,
+) -> Result<String, TransportError> {
+    if use_native_transport() {
+        native_server_adapter::report_storefront_topic_server(topic_id, reason_code, locale).await
+    } else {
+        graphql_adapter::report_storefront_topic_graphql(topic_id, reason_code, locale).await
+    }
+}
+
+pub async fn report_storefront_reply(
+    reply_id: String,
+    reason_code: String,
+    locale: Option<String>,
+) -> Result<String, TransportError> {
+    if use_native_transport() {
+        native_server_adapter::report_storefront_reply_server(reply_id, reason_code, locale).await
+    } else {
+        graphql_adapter::report_storefront_reply_graphql(reply_id, reason_code, locale).await
+    }
+}
+
 pub async fn resolve_storefront_category_route(
     locale: String,
     slug: String,

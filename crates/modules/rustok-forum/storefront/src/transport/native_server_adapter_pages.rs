@@ -128,6 +128,7 @@ async fn storefront_forum_topic_page_native(
             after: Some(after),
             per_page,
         };
+        let unread_only = selection.unread_only;
         let filter = super::native_server_adapter::selected_topic_filter(filter, selection);
 
         if read_state_available {
@@ -165,7 +166,7 @@ async fn storefront_forum_topic_page_native(
                     audience_context,
                     filter,
                     Some(tenant.default_locale.as_str()),
-                    false, // The native feed shows read and unread topics with read-state badges.
+                    unread_only,
                 )
                 .await
                 .map_err(server_error)?;

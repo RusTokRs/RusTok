@@ -675,3 +675,43 @@ async fn suppressed_anonymous_row_insert_rolls_back_reserved_counter_without_fak
         0
     );
 }
+
+#[tokio::test]
+async fn anonymous_reserve_refuses_underreported_or_unrepresentable_live_claims() {
+    for overflow in [false, true] {
+        let stock = stock().await;
+        let saved = keyed(&stock).await;
+        let anonymous = anonymous(&stock, stock.default_location, 3, 1).await;
+        if overflow {
+            let mut active: entities::reservation_item::ActiveModel = saved.clone().into();
+            active.quantity = Set(i32::MAX);
+            active.update(&stock.db).await.unwrap();
+        }
+        let mut active: entities::inventory_level::ActiveModel =
+            level(&stock, stock.default_location).await.into();
+        active.reserved_quantity = Set(5);
+        let before = active.update(&stock.db).await.unwrap();
+        let saved_before = allocation(&stock, saved.id).await;
+        let error = stock.service.reserve(
+            &inventory_port_context(stock.tenant, "native-quantity-reserve", true),
+            stock.variant, 1,
+        ).await.expect_err("existing claims must be covered before a new allocation");
+        let CommerceError::Validation(message) = error else {
+            panic!("expected validation refusal");
+        };
+        assert!(message.contains(if overflow {
+            "supported counter range"
+        } else {
+            "exceed the saved reserved counter"
+        }), "{message}");
+        assert_eq!(level(&stock, stock.default_location).await, before);
+        assert_eq!(allocation(&stock, saved.id).await, saved_before);
+        assert_eq!(allocation(&stock, anonymous.id).await, anonymous);
+        assert_eq!(
+            entities::reservation_item::Entity::find()
+                .filter(entities::reservation_item::Column::InventoryItemId.eq(stock.item))
+                .count(&stock.db).await.unwrap(),
+            2
+        );
+    }
+}

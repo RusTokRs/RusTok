@@ -729,7 +729,7 @@ pub struct ArtifactAdmissionReverificationCommand {
 
 /// One durable admission whose stored verification evidence does not
 /// reflect the current trust/capability policy revision, as surfaced by
-/// [`ArtifactAdmissionReverificationService::list_stale_candidates`].
+/// [`ArtifactAdmissionReverificationService::list_stale_candidates_after`].
 /// `expected_revision` is the compare-and-swap input
 /// [`ArtifactAdmissionReverificationCommand`] requires; a concurrent
 /// admission write simply makes the follow-up command conflict and the
@@ -739,6 +739,16 @@ pub struct ArtifactAdmissionReverificationCandidate {
     pub installation_id: Uuid,
     pub scope: ModuleInstallationScope,
     pub expected_revision: u64,
+}
+
+/// One bounded scan page of stale admissions. `next_cursor` is the last
+/// installation ID examined (not merely the last stale candidate), so a
+/// worker can continue beyond a fresh prefix or a per-pass scan budget.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactAdmissionReverificationPage {
+    pub candidates: Vec<ArtifactAdmissionReverificationCandidate>,
+    pub next_cursor: Option<Uuid>,
+    pub has_more: bool,
 }
 
 /// Immutable command envelope for a rollback selection. The caller supplies
@@ -4518,36 +4528,54 @@ impl SeaOrmArtifactInstallationStore {
         Ok(resulting_revision)
     }
 
-    /// Finds admissions whose durable verification evidence does not reflect
-    /// the current trust/capability policy revisions, for the maintenance
-    /// worker that re-verifies them under current policy. Only statuses the
-    /// reverification write accepts are considered. Evidence that no longer
-    /// decodes is treated as stale on purpose: the write replaces evidence
-    /// wholesale, so routing the row through reverification is its only
-    /// healing path, and corrupt evidence must never exempt an admission
-    /// from current-policy checks.
-    ///
-    /// The scan keyset-paginates by installation id inside one
-    /// platform-scoped transaction and stops after `limit` candidates or
-    /// `MAX_ADMISSION_REVERIFICATION_SCAN_ROWS` examined rows, whichever
-    /// comes first, so a pass stays bounded while still looking past any
-    /// fresh prefix. Corrupt scope or revision values fail the pass loudly
-    /// instead of being skipped silently.
+    /// Finds the first bounded page of stale admissions. Maintenance workers
+    /// should use `list_stale_admission_reverification_candidates_after` to
+    /// retain the exclusive cursor across passes.
     pub async fn list_stale_admission_reverification_candidates(
         &self,
         trust_policy: &AdmissionReverificationPolicyRevision,
         limit: u32,
     ) -> Result<Vec<ArtifactAdmissionReverificationCandidate>, ModuleInstallationError> {
+        Ok(self
+            .list_stale_admission_reverification_candidates_after(trust_policy, None, limit)
+            .await?
+            .candidates)
+    }
+
+    /// Scans for stale admissions after an exclusive installation-ID cursor.
+    ///
+    /// The scan is platform-scoped and keyset-paginates by installation ID.
+    /// It returns the last row examined even when that row's evidence is fresh,
+    /// allowing the caller to continue beyond a fresh prefix and the bounded
+    /// `MAX_ADMISSION_REVERIFICATION_SCAN_ROWS` budget. `has_more` is
+    /// conservative: when a candidate or scan budget stops a full page, the
+    /// caller should continue from `next_cursor`; an empty or exhausted page
+    /// signals that the caller can wrap to `None`. Invalid persisted scope or
+    /// revision values fail the page loudly instead of being skipped.
+    pub async fn list_stale_admission_reverification_candidates_after(
+        &self,
+        trust_policy: &AdmissionReverificationPolicyRevision,
+        after: Option<Uuid>,
+        limit: u32,
+    ) -> Result<ArtifactAdmissionReverificationPage, ModuleInstallationError> {
         if limit == 0 || limit > MAX_ADMISSION_REVERIFICATION_CANDIDATES {
             return Err(ModuleInstallationError::AdmissionRevisionConflict(
                 "admission reverification candidate limit is outside the supported range".into(),
             ));
         }
+        if after.is_some_and(|cursor| cursor.is_nil()) {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "admission reverification cursor must be non-nil".into(),
+            ));
+        }
         let (transaction, backend) = self.begin_platform_blob_gc_transaction().await?;
+        let candidate_limit = usize::try_from(limit).unwrap_or(usize::MAX);
         let mut candidates = Vec::new();
         let mut scanned: u32 = 0;
-        let mut cursor: Option<Uuid> = None;
-        while candidates.len() < usize::try_from(limit).unwrap_or(usize::MAX)
+        let mut cursor = after;
+        let mut has_more = false;
+        let mut exhausted = false;
+        while candidates.len() < candidate_limit
             && scanned < MAX_ADMISSION_REVERIFICATION_SCAN_ROWS
         {
             let remaining_scan = (MAX_ADMISSION_REVERIFICATION_SCAN_ROWS - scanned).min(512);
@@ -4601,10 +4629,13 @@ impl SeaOrmArtifactInstallationStore {
                 .await
                 .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
             if rows.is_empty() {
+                exhausted = true;
                 break;
             }
-            let page_len = u32::try_from(rows.len()).unwrap_or(u32::MAX);
-            for row in rows {
+            let page_len = rows.len();
+            let page_limit = usize::try_from(remaining_scan).unwrap_or(usize::MAX);
+            let mut reached_candidate_limit = false;
+            for (row_index, row) in rows.into_iter().enumerate() {
                 scanned = scanned.saturating_add(1);
                 let installation_id = required_uuid_from_row(&row, "installation_id", backend)?;
                 cursor = Some(installation_id);
@@ -4645,20 +4676,35 @@ impl SeaOrmArtifactInstallationStore {
                         scope,
                         expected_revision,
                     });
-                    if candidates.len() >= usize::try_from(limit).unwrap_or(usize::MAX) {
+                    if candidates.len() >= candidate_limit {
+                        reached_candidate_limit = true;
+                        has_more =
+                            row_index + 1 < page_len || page_len == page_limit;
                         break;
                     }
                 }
             }
-            if page_len < remaining_scan {
+            if reached_candidate_limit {
+                exhausted = !has_more;
                 break;
             }
+            if page_len < page_limit {
+                exhausted = true;
+                break;
+            }
+        }
+        if !exhausted && scanned >= MAX_ADMISSION_REVERIFICATION_SCAN_ROWS {
+            has_more = true;
         }
         transaction
             .commit()
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
-        Ok(candidates)
+        Ok(ArtifactAdmissionReverificationPage {
+            candidates,
+            next_cursor: cursor,
+            has_more,
+        })
     }
 }
 
@@ -7577,17 +7623,30 @@ impl ArtifactAdmissionReverificationService {
         }
     }
 
-    /// Lists admissions whose durable evidence predates this service's
-    /// trust/capability policy revisions, so a maintenance worker can
-    /// drive [`Self::reverify_admission`] for each with its own
-    /// authenticated command context. `limit` must be in
-    /// `1..=MAX_ADMISSION_REVERIFICATION_CANDIDATES`.
+    /// Lists the first bounded page of admissions whose evidence predates
+    /// this service's trust/capability policy revisions. The maintenance worker
+    /// should use `list_stale_candidates_after` to retain scan progress.
     pub async fn list_stale_candidates(
         &self,
         limit: u32,
     ) -> Result<Vec<ArtifactAdmissionReverificationCandidate>, ModuleInstallationError> {
+        Ok(self.list_stale_candidates_after(None, limit).await?.candidates)
+    }
+
+    /// Returns stale candidates plus an exclusive cursor after the last row
+    /// examined. A page can contain no stale candidates and still have more
+    /// rows to scan when the per-pass examination budget is exhausted.
+    pub async fn list_stale_candidates_after(
+        &self,
+        after: Option<Uuid>,
+        limit: u32,
+    ) -> Result<ArtifactAdmissionReverificationPage, ModuleInstallationError> {
         self.store
-            .list_stale_admission_reverification_candidates(&self.trust_policy, limit)
+            .list_stale_admission_reverification_candidates_after(
+                &self.trust_policy,
+                after,
+                limit,
+            )
             .await
     }
 

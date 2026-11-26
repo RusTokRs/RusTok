@@ -314,7 +314,7 @@ mod tests {
             .expect("locale policy intent");
         controller.dispatch(intent).expect("locale policy command");
         assert_eq!(
-            controller.editor().document().project.extensions[FLY_LOCALES_FIELD]["default_locale"],
+            controller.editor().document().project().extensions[FLY_LOCALES_FIELD]["default_locale"],
             "ru"
         );
         controller
@@ -324,7 +324,7 @@ mod tests {
             !controller
                 .editor()
                 .document()
-                .project
+                .project()
                 .extensions
                 .contains_key(FLY_LOCALES_FIELD)
         );
@@ -359,7 +359,7 @@ mod tests {
             !controller
                 .editor()
                 .document()
-                .project
+                .project()
                 .extensions
                 .contains_key(FLY_LOCALES_FIELD)
         );

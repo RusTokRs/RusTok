@@ -38,6 +38,15 @@ mod commands;
 const TARGET_TYPE_BLOG_POST: &str = "blog_post";
 const PUBLIC_COMMENTS_PORT_ACTOR: &str = "rustok-blog.public-comments";
 
+/// Default budget for a single Comments-port call when no tenant override is
+/// configured. The public read path degrades to a cached snapshot on this
+/// budget, so it must be generous enough for ordinary provider latency.
+const DEFAULT_COMMENTS_PORT_TIMEOUT_MS: u64 = 2000;
+/// Bounded upper limit for a tenant-configured Comments-port timeout.
+const MAX_COMMENTS_PORT_TIMEOUT_MS: u64 = 60_000;
+/// Tenant-owned Blog setting that overrides the Comments-port timeout, in ms.
+const BLOG_COMMENTS_PORT_TIMEOUT_SETTING: &str = "comments_port_timeout_ms";
+
 /// Which target boundary a comment write has to satisfy.
 ///
 /// The public boundary is a *publication* rule: the owning Blog post must be
@@ -86,6 +95,29 @@ impl CommentService {
         self.comments_thread_port
             .as_deref()
             .ok_or(BlogError::CommentsUnavailable)
+    }
+
+    /// Resolves the Comments-port call budget from the tenant's Blog settings.
+    ///
+    /// The public read path degrades to a cached snapshot when this budget is
+    /// exceeded, so it is configurable per tenant. A missing or invalid value
+    /// falls back to the module default rather than failing the operation: the
+    /// timeout is a performance knob, not a correctness gate.
+    async fn comments_port_timeout(&self, tenant_id: Uuid) -> std::time::Duration {
+        let Some(reader) = self.settings_reader.as_ref() else {
+            return std::time::Duration::from_millis(DEFAULT_COMMENTS_PORT_TIMEOUT_MS);
+        };
+        let Some(snapshot) = reader.settings(tenant_id, "blog").await.ok().flatten() else {
+            return std::time::Duration::from_millis(DEFAULT_COMMENTS_PORT_TIMEOUT_MS);
+        };
+        let Some(ms) = snapshot
+            .settings
+            .get(BLOG_COMMENTS_PORT_TIMEOUT_SETTING)
+            .and_then(|value| value.as_u64())
+        else {
+            return std::time::Duration::from_millis(DEFAULT_COMMENTS_PORT_TIMEOUT_MS);
+        };
+        std::time::Duration::from_millis(ms.clamp(1, MAX_COMMENTS_PORT_TIMEOUT_MS))
     }
 
     pub(crate) async fn public_comments_mode(
@@ -188,6 +220,7 @@ impl CommentService {
                     &SecurityContext::system(),
                     locale,
                     comment_id,
+                    self.comments_port_timeout(tenant_id).await,
                 )?,
                 comment_id,
                 fallback_locale.map(str::to_owned),
@@ -281,7 +314,12 @@ impl CommentService {
         let result = if !owner_read {
             self.require_comments_thread_port()?
                 .list_public_comments_for_target(
-                    comments_public_read_port_context(tenant_id, locale.as_str(), post_id),
+                    comments_public_read_port_context(
+                        tenant_id,
+                        locale.as_str(),
+                        post_id,
+                        self.comments_port_timeout(tenant_id).await,
+                    ),
                     TARGET_TYPE_BLOG_POST.to_string(),
                     post_id,
                     domain_filter,
@@ -291,7 +329,13 @@ impl CommentService {
         } else {
             self.require_comments_thread_port()?
                 .list_comments_for_target(
-                    comments_read_port_context(tenant_id, &security, locale.as_str(), post_id)?,
+                    comments_read_port_context(
+                        tenant_id,
+                        &security,
+                        locale.as_str(),
+                        post_id,
+                        self.comments_port_timeout(tenant_id).await,
+                    )?,
                     TARGET_TYPE_BLOG_POST.to_string(),
                     post_id,
                     domain_filter,
@@ -532,6 +576,7 @@ fn comments_write_port_context(
     operation: &str,
     resource_id: Uuid,
     command_id: Uuid,
+    timeout: std::time::Duration,
 ) -> BlogResult<PortContext> {
     if command_id.is_nil() {
         return Err(BlogError::validation(
@@ -545,6 +590,7 @@ fn comments_write_port_context(
         operation,
         resource_id,
         Some(command_id),
+        timeout,
     )
 }
 
@@ -553,18 +599,24 @@ fn comments_read_port_context(
     security: &SecurityContext,
     locale: &str,
     resource_id: Uuid,
+    timeout: std::time::Duration,
 ) -> BlogResult<PortContext> {
-    comments_port_context(tenant_id, security, locale, "read", resource_id, None)
+    comments_port_context(tenant_id, security, locale, "read", resource_id, None, timeout)
 }
 
-fn comments_public_read_port_context(tenant_id: Uuid, locale: &str, post_id: Uuid) -> PortContext {
+fn comments_public_read_port_context(
+    tenant_id: Uuid,
+    locale: &str,
+    post_id: Uuid,
+    timeout: std::time::Duration,
+) -> PortContext {
     PortContext::new(
         tenant_id.to_string(),
         PortActor::service(PUBLIC_COMMENTS_PORT_ACTOR),
         locale,
         format!("blog-comment:public-list:{post_id}"),
     )
-    .with_deadline(std::time::Duration::from_secs(2))
+    .with_deadline(timeout)
 }
 
 fn comments_port_context(
@@ -574,6 +626,7 @@ fn comments_port_context(
     operation: &str,
     resource_id: Uuid,
     command_id: Option<Uuid>,
+    timeout: std::time::Duration,
 ) -> BlogResult<PortContext> {
     if tenant_id.is_nil() {
         return Err(BlogError::validation("Tenant ID must not be nil"));
@@ -605,7 +658,7 @@ fn comments_port_context(
     let correlation_id = format!("blog-comment:{operation}:{resource_id}");
     let mut context =
         PortContext::new(tenant_id.to_string(), actor, locale, correlation_id.clone())
-            .with_deadline(std::time::Duration::from_secs(2));
+            .with_deadline(timeout);
     if let Some(command_id) = command_id {
         context = context.with_idempotency_key(format!("{correlation_id}:command:{command_id}"));
     }

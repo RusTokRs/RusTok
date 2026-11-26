@@ -20,7 +20,7 @@ use super::inventory::inventory_item_write_query;
 use super::policy::inventory_policy_allows_backorder;
 use crate::entities::{inventory_item, inventory_level, stock_location};
 
-const MAX_QUANTITY_LEVELS: usize = 4096;
+pub(super) const MAX_QUANTITY_LEVELS: usize = 4096;
 
 /// Finite owner refusals; no submitted quantity, saved payload or dependency text is public copy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -215,6 +215,7 @@ struct QuantityPlan {
     before: i32,
     after: i32,
     target: Option<(Level, i32)>,
+    expected_levels: Vec<Level>,
 }
 
 pub(super) async fn write_quantity(
@@ -273,21 +274,26 @@ pub(super) async fn sync_variant_sku(
     validate_request(tenant_id, actor_id, variant_id)?;
     require_current_snapshot(txn).await?;
 
-    let (saved_variant_id, product_id) = current_read(
+    let (saved_variant_id, product_id, product_sku) = current_read(
         txn,
         product_variant::Entity::find_by_id(variant_id)
             .select_only()
             .column(product_variant::Column::Id)
             .column(product_variant::Column::ProductId)
+            .column(product_variant::Column::Sku)
             .filter(product_variant::Column::TenantId.eq(tenant_id)),
     )
-    .into_tuple::<(Uuid, Uuid)>()
+    .into_tuple::<(Uuid, Uuid, Option<String>)>()
     .one(txn)
     .await?
     .ok_or(QuantityWriteError::VariantNotFound(variant_id))?;
     if saved_variant_id.is_nil() || product_id.is_nil() {
         return Err(QuantityWriteBlocker::IdentityUnavailable.into());
     }
+    let sku = match crate::product_port::verify_variant_sku_snapshot(sku, product_sku) {
+        Ok(sku) => sku,
+        Err(()) => return Err(QuantityWriteBlocker::IdentityUnavailable.into()),
+    };
 
     // INVARIANT: prove the parent tenant before touching tenant-less inventory_items.
     let parent_id = product::Entity::find_by_id(product_id)
@@ -309,9 +315,6 @@ pub(super) async fn sync_variant_sku(
         return Err(QuantityWriteBlocker::IdentityUnavailable.into());
     }
 
-    let sku = sku
-        .map(|value| value.trim().to_owned())
-        .filter(|value| !value.is_empty());
     let item = items
         .into_iter()
         .next()
@@ -500,6 +503,7 @@ impl QuantityPlan {
             before,
             after,
             target: None,
+            expected_levels: Vec::new(),
         };
         if before == after {
             return Ok(plan);
@@ -514,8 +518,9 @@ impl QuantityPlan {
             return Err(QuantityWriteBlocker::LocationUnavailable.into());
         }
         let target = levels
-            .into_iter()
+            .iter()
             .find(|level| level.location_id == candidate.id)
+            .cloned()
             .ok_or(QuantityWriteBlocker::LocationUnavailable)?;
         let stocked = stocked_target(
             before,
@@ -525,6 +530,13 @@ impl QuantityPlan {
             inventory_policy_allows_backorder(&plan.inventory_policy),
         )?;
         validate_event_quantities(before, after)?;
+        // Preserve the complete locked predecessor, including other warehouses.
+        // Only the selected physical stock counter may change in this command.
+        plan.expected_levels = levels;
+        let expected_target = plan.expected_levels.iter_mut()
+            .find(|level| level.id == target.id)
+            .ok_or(QuantityWriteBlocker::StateUnverified)?;
+        expected_target.stocked_quantity = stocked;
         plan.target = Some((target, stocked));
         Ok(plan)
     }
@@ -573,6 +585,15 @@ impl QuantityPlan {
                 .exec(txn)
                 .await?;
             if updated.rows_affected != 1 {
+                return Err(QuantityWriteBlocker::ConcurrentChange.into());
+            }
+            // Exact-one affected row alone does not prove the effect (for example,
+            // a trigger may rewrite counters or change another original level).
+            let saved = current_read(txn, level_query(level.inventory_item_id))
+                .into_model::<Level>()
+                .all(txn)
+                .await?;
+            if saved != self.expected_levels {
                 return Err(QuantityWriteBlocker::ConcurrentChange.into());
             }
             crate::source_history::record_changed(
@@ -659,17 +680,107 @@ fn available_quantity(
     i32::try_from(total).map_err(|_| QuantityWriteBlocker::QuantityUnrepresentable.into())
 }
 
+/// Bound each query without truncating a projection or selecting an arbitrary
+/// item. A missing item remains absent, but duplicate identities are refusals.
+pub(super) async fn load_projection_item_bindings<C: ConnectionTrait>(
+    conn: &C,
+    variant_ids: &[Uuid],
+) -> Result<std::collections::HashMap<Uuid, Uuid>, DbErr> {
+    let requested: Vec<_> = variant_ids.iter().copied().collect::<BTreeSet<_>>().into_iter().collect();
+    if requested.iter().any(Uuid::is_nil) {
+        return Err(DbErr::Custom("Inventory availability variant identity is invalid".into()));
+    }
+    let mut bindings = std::collections::HashMap::new();
+    let mut seen_variants = BTreeSet::new();
+    for chunk in requested.chunks(256) {
+        let items = inventory_item::Entity::find()
+            .filter(inventory_item::Column::VariantId.is_in(chunk.iter().copied()))
+            .limit((chunk.len() + 1) as u64)
+            .all(conn)
+            .await?;
+        if items.len() > chunk.len() {
+            return Err(DbErr::Custom("Inventory availability item identity is ambiguous".into()));
+        }
+        for item in items {
+            if item.id.is_nil() || !chunk.contains(&item.variant_id)
+                || !seen_variants.insert(item.variant_id)
+                || bindings.insert(item.id, item.variant_id).is_some()
+            {
+                return Err(DbErr::Custom("Inventory availability item identity is unverified".into()));
+            }
+        }
+    }
+    Ok(bindings)
+}
+
+/// Bound row materialization per query and reject excessive original levels
+/// before applying public-channel visibility, rather than hiding excess rows.
+pub(super) async fn load_projection_levels<C: ConnectionTrait>(
+    conn: &C,
+    bindings: &std::collections::HashMap<Uuid, Uuid>,
+) -> Result<Vec<inventory_level::Model>, DbErr> {
+    let mut items: Vec<_> = bindings.keys().copied().collect();
+    items.sort_unstable();
+    let mut levels = Vec::new();
+    for chunk in items.chunks(16) {
+        let bound = chunk.len() * MAX_QUANTITY_LEVELS;
+        let rows = inventory_level::Entity::find()
+            .filter(inventory_level::Column::InventoryItemId.is_in(chunk.iter().copied()))
+            .limit((bound + 1) as u64)
+            .all(conn)
+            .await?;
+        if rows.len() > bound {
+            return Err(DbErr::Custom("Inventory availability exceeds the level read bound".into()));
+        }
+        let mut counts = std::collections::HashMap::<Uuid, usize>::new();
+        for row in &rows {
+            let count = counts.entry(row.inventory_item_id).or_default();
+            *count += 1;
+            if *count > MAX_QUANTITY_LEVELS {
+                return Err(DbErr::Custom("Inventory availability exceeds the level read bound".into()));
+            }
+        }
+        levels.extend(rows);
+    }
+    Ok(levels)
+}
+
 /// Shared projection arithmetic, including the Product response after this writer commits.
-/// Visibility/tenant selection belongs to the calling owner projection; absence is not inferred.
+/// Visibility/tenant selection belongs to the caller. Every supplied Inventory item receives
+/// an explicit quantity (zero when it has no levels); missing item identities are not synthesized.
 pub(super) fn available_by_variant<'a>(
     item_to_variant: &std::collections::HashMap<Uuid, Uuid>,
     levels: impl IntoIterator<Item = &'a inventory_level::Model>,
 ) -> Result<std::collections::HashMap<Uuid, i32>, DbErr> {
-    let mut quantities = std::collections::HashMap::<Uuid, i64>::new();
+    let mut variants = BTreeSet::new();
+    if item_to_variant.iter().any(|(item, variant)| {
+        item.is_nil() || variant.is_nil() || !variants.insert(*variant)
+    }) {
+        return Err(DbErr::Custom("Inventory availability item identity is unverified".into()));
+    }
+    let mut level_ids = BTreeSet::new();
+    let mut level_bindings = BTreeSet::new();
+    let mut level_counts = std::collections::HashMap::<Uuid, usize>::new();
+    let mut quantities = item_to_variant
+        .values()
+        .copied()
+        .map(|variant_id| (variant_id, 0_i64))
+        .collect::<std::collections::HashMap<Uuid, i64>>();
     for level in levels {
         let variant_id = item_to_variant
             .get(&level.inventory_item_id)
             .ok_or_else(|| DbErr::Custom("Inventory availability binding is unverified".into()))?;
+        if level.id.is_nil() || level.location_id.is_nil()
+            || !level_ids.insert(level.id)
+            || !level_bindings.insert((level.inventory_item_id, level.location_id))
+        {
+            return Err(DbErr::Custom("Inventory availability level identity is unverified".into()));
+        }
+        let count = level_counts.entry(level.inventory_item_id).or_default();
+        *count += 1;
+        if *count > MAX_QUANTITY_LEVELS {
+            return Err(DbErr::Custom("Inventory availability exceeds the level read bound".into()));
+        }
         if level.stocked_quantity < 0 || level.reserved_quantity < 0 || level.incoming_quantity < 0
         {
             return Err(DbErr::Custom(

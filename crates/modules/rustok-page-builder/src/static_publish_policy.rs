@@ -1,13 +1,14 @@
 use fly::{
     AssetDescriptor, AssetKind, ComponentChildren, ComponentNode, ComponentObject,
-    FLY_PAGE_METADATA_FIELD, ProjectDocument, StyleRuleDescriptor, StyleRuleScope,
+    FLY_EMBED_FIELD, FLY_PAGE_METADATA_FIELD, FLY_RICH_TEXT_FIELD, FLY_SYMBOLS_FIELD,
+    FLY_THEME_FIELD, ProjectDocument, StyleRuleDescriptor, StyleRuleScope,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
-pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT: &str = "page_builder_static_publish_policy_v2";
+pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT: &str = "page_builder_static_publish_policy_v14";
 
 const ALLOWED_TAGS: &[&str] = &[
     "a",
@@ -107,9 +108,10 @@ const ALLOWED_DATA_IMAGE_PREFIXES: &[&str] = &[
 /// stricter policy, it is an incoherent one — and it surfaced as a late, confusing publish
 /// failure after the author had already seen the background render in the editor.
 ///
-/// References are instead validated per URL, with exactly the rule this policy applies to image
-/// resources, by [`strip_validated_css_urls`]. Everything listed below has no legitimate use in a
-/// declaration and stays banned outright.
+/// References are validated per URL: url() resources use
+/// [`strip_validated_css_urls`], while quoted image(), src(), and image-set() candidates use
+/// Fly's shared CSS scanner. Both paths apply this policy's image-resource URL rule. Everything
+/// listed below has no legitimate use in a declaration and stays banned outright.
 ///
 /// The validators still honour a `forbidden_css_tokens` list that names `"url("` (covered by
 /// tests), but no runtime path supplies one: see [`PageBuilderStaticPublishPolicy`].
@@ -294,7 +296,23 @@ pub fn validate_static_publish_document(
     policy.verify_integrity()?;
 
     let mut diagnostics = Vec::new();
-    for (page_index, page) in document.project.pages.iter().enumerate() {
+    let materialized = match fly::resolve_symbol_instances(document) {
+        Ok(materialized) => materialized,
+        Err(error) => {
+            reject(
+                &mut diagnostics,
+                "landing_symbol_resolution_failed",
+                FLY_SYMBOLS_FIELD,
+                format!("symbol catalog cannot be materialized safely: {error}"),
+            );
+            return Err(PageBuilderStaticPublishPolicyError::Rejected { diagnostics });
+        }
+    };
+
+    let theme_tokens = validate_theme(&materialized, &mut diagnostics);
+    validate_css_var_references(&materialized, &theme_tokens, &mut diagnostics);
+
+    for (page_index, page) in materialized.project().pages.iter().enumerate() {
         if let Some(root) = page.component.as_ref() {
             validate_component_node(
                 root,
@@ -304,9 +322,9 @@ pub fn validate_static_publish_document(
             );
         }
     }
-    validate_style_rules(document, &policy, &mut diagnostics);
-    validate_assets(document, &policy, &mut diagnostics);
-    validate_page_metadata(document, &policy, &mut diagnostics);
+    validate_style_rules(&materialized, &policy, &mut diagnostics);
+    validate_assets(&materialized, &policy, &mut diagnostics);
+    validate_page_metadata(&materialized, &policy, &mut diagnostics);
 
     if !diagnostics.is_empty() {
         return Err(PageBuilderStaticPublishPolicyError::Rejected { diagnostics });
@@ -316,6 +334,134 @@ pub fn validate_static_publish_document(
         format: policy.format.clone(),
         policy_hash: policy.policy_hash()?,
     })
+}
+
+fn validate_theme(
+    document: &ProjectDocument,
+    diagnostics: &mut Vec<PageBuilderStaticPublishPolicyDiagnostic>,
+) -> BTreeSet<String> {
+    match fly::decode_theme_tokens(document) {
+        Ok(tokens) => tokens
+            .into_iter()
+            .map(|token| format!("--{}", token.name))
+            .collect(),
+        Err(error) => {
+            reject(
+                diagnostics,
+                "landing_theme_invalid",
+                FLY_THEME_FIELD,
+                error,
+            );
+            BTreeSet::new()
+        }
+    }
+}
+
+fn validate_css_var_references(
+    document: &ProjectDocument,
+    allowed_tokens: &BTreeSet<String>,
+    diagnostics: &mut Vec<PageBuilderStaticPublishPolicyDiagnostic>,
+) {
+    for (page_index, page) in document.project().pages.iter().enumerate() {
+        if let Some(root) = page.component.as_ref() {
+            validate_component_css_var_references(
+                root,
+                &format!("pages[{page_index}].component"),
+                allowed_tokens,
+                diagnostics,
+            );
+        }
+    }
+
+    for (style_index, style_rule) in document.project().styles.iter().enumerate() {
+        if let Some(declarations) = style_rule.get("style").and_then(Value::as_object) {
+            for (name, value) in declarations {
+                if let Some(value) = value.as_str() {
+                    validate_css_var_reference_value(
+                        name,
+                        value,
+                        &format!("styles[{style_index}].style.{name}"),
+                        allowed_tokens,
+                        diagnostics,
+                    );
+                }
+            }
+        }
+    }
+}
+
+fn validate_component_css_var_references(
+    node: &ComponentNode,
+    path: &str,
+    allowed_tokens: &BTreeSet<String>,
+    diagnostics: &mut Vec<PageBuilderStaticPublishPolicyDiagnostic>,
+) {
+    let ComponentNode::Object(component) = node else {
+        return;
+    };
+
+    if let Some(declarations) = component.style.as_ref().and_then(Value::as_object) {
+        for (name, value) in declarations {
+            if let Some(value) = value.as_str() {
+                validate_css_var_reference_value(
+                    name,
+                    value,
+                    &format!("{path}.style.{name}"),
+                    allowed_tokens,
+                    diagnostics,
+                );
+            }
+        }
+    }
+
+    if let ComponentChildren::Nodes(children) = &component.components {
+        for (index, child) in children.iter().enumerate() {
+            validate_component_css_var_references(
+                child,
+                &format!("{path}.components[{index}]"),
+                allowed_tokens,
+                diagnostics,
+            );
+        }
+    }
+}
+
+fn validate_css_var_reference_value(
+    property: &str,
+    value: &str,
+    path: &str,
+    allowed_tokens: &BTreeSet<String>,
+    diagnostics: &mut Vec<PageBuilderStaticPublishPolicyDiagnostic>,
+) {
+    let Some(references) = fly::css_var_references(value) else {
+        reject(
+            diagnostics,
+            "landing_css_var_reference_invalid",
+            path,
+            "CSS var() reference is malformed or escaped",
+        );
+        return;
+    };
+
+    if !references.is_empty() && fly::css_property_may_load_resource(property) {
+        reject(
+            diagnostics,
+            "landing_css_var_reference_resource_property",
+            path,
+            format!("CSS var() is not allowed in resource-bearing property {property}"),
+        );
+    }
+
+    for reference in references {
+        if !allowed_tokens.contains(&reference) {
+            reject(
+                diagnostics,
+                "landing_css_var_reference_rejected",
+                path,
+                format!("CSS variable {reference} is not declared in flyTheme"),
+            );
+        }
+    }
 }
 
 fn validate_component_node(
@@ -403,6 +549,38 @@ fn validate_component(
             format!("{path}.type"),
             format!("component type `{component_type}` is forbidden in a static public artifact"),
         );
+    }
+
+    if component.extensions.contains_key(FLY_EMBED_FIELD) {
+        reject(
+            diagnostics,
+            "landing_embed_forbidden",
+            format!("{path}.{FLY_EMBED_FIELD}"),
+            "Fly embed extensions render sandboxed iframes and are not allowed in static public artifacts",
+        );
+    }
+
+    if let Some(raw_rich_text) = component.extensions.get(FLY_RICH_TEXT_FIELD) {
+        match fly::validated_rich_text_link_hrefs(raw_rich_text) {
+            Ok(hrefs) => {
+                for (index, href) in hrefs.iter().enumerate() {
+                    if validate_url(href, UrlKind::Navigation, policy).is_err() {
+                        reject(
+                            diagnostics,
+                            "landing_rich_text_link_url_rejected",
+                            format!("{path}.{FLY_RICH_TEXT_FIELD}.links[{index}]"),
+                            "rich-text link URL is not allowed by static publish policy",
+                        );
+                    }
+                }
+            }
+            Err(error) => reject(
+                diagnostics,
+                "landing_rich_text_payload_invalid",
+                format!("{path}.{FLY_RICH_TEXT_FIELD}"),
+                error,
+            ),
+        }
     }
 
     if let Some(content) = component.extensions.get("content") {
@@ -646,7 +824,7 @@ fn validate_style_rules(
     policy: &PageBuilderStaticPublishPolicy,
     diagnostics: &mut Vec<PageBuilderStaticPublishPolicyDiagnostic>,
 ) {
-    for (index, raw) in document.project.styles.iter().enumerate() {
+    for (index, raw) in document.project().styles.iter().enumerate() {
         let path = format!("styles[{index}]");
         let Some(rule) = StyleRuleDescriptor::from_value(raw.clone()) else {
             reject(
@@ -823,7 +1001,7 @@ fn validate_assets(
     diagnostics: &mut Vec<PageBuilderStaticPublishPolicyDiagnostic>,
 ) {
     let mut ids = BTreeSet::new();
-    for (index, raw) in document.project.assets.iter().enumerate() {
+    for (index, raw) in document.project().assets.iter().enumerate() {
         let path = format!("assets[{index}]");
         let Some(asset) = AssetDescriptor::from_value(raw.clone()) else {
             reject(
@@ -863,7 +1041,7 @@ fn validate_page_metadata(
     policy: &PageBuilderStaticPublishPolicy,
     diagnostics: &mut Vec<PageBuilderStaticPublishPolicyDiagnostic>,
 ) {
-    for (page_index, page) in document.project.pages.iter().enumerate() {
+    for (page_index, page) in document.project().pages.iter().enumerate() {
         let Some(metadata) = page.extensions.get(FLY_PAGE_METADATA_FIELD) else {
             continue;
         };
@@ -1177,26 +1355,18 @@ fn validate_sizes_condition_value(value: &str) -> Result<(), StaticPublishValida
 }
 
 fn safe_css_value(value: &str, policy: &PageBuilderStaticPublishPolicy) -> bool {
-    if value.chars().any(char::is_control) {
+    if fly::css_var_references(value).is_none() || value.chars().any(char::is_control) {
         return false;
     }
 
-    // A policy value that lists `url(` keeps the blanket ban; the default (the only policy
-    // a publication runs) does not list it.
     let bans_all_references = policy
         .forbidden_css_tokens
         .iter()
         .any(|token| token == "url(");
-    let scanned = if bans_all_references {
-        value.to_string()
-    } else {
-        // Validate and blank out references *before* the delimiter checks. A permitted
-        // `data:image/png;base64,...` legally contains `;`, which the check below would
-        // otherwise reject — the same ordering trap `fly::render::safe_style` had to fix.
-        match strip_validated_css_urls(value, policy) {
-            Some(stripped) => stripped,
-            None => return false,
-        }
+    let Some(scanned) = fly::strip_css_resource_references(value, |url| {
+        !bans_all_references && validate_url(url, UrlKind::ResourceImage, policy).is_ok()
+    }) else {
+        return false;
     };
 
     let compact = scanned
@@ -1225,64 +1395,6 @@ fn safe_css_value(value: &str, policy: &PageBuilderStaticPublishPolicy) -> bool 
         && !scanned.contains("*/")
 }
 
-/// Replace each well-formed `url(...)` with a placeholder, rejecting the declaration when any
-/// referenced URL fails the image-resource rule this policy already applies to `src`.
-fn strip_validated_css_urls(
-    value: &str,
-    policy: &PageBuilderStaticPublishPolicy,
-) -> Option<String> {
-    let lowered = value.to_ascii_lowercase();
-    let mut output = String::with_capacity(value.len());
-    let mut cursor = 0usize;
-
-    while let Some(offset) = lowered[cursor..].find("url(") {
-        let start = cursor + offset;
-        // `blurl(` is not a reference; leave it in place so the caller's scan rejects it.
-        let preceded_by_identifier = value[..start]
-            .chars()
-            .next_back()
-            .is_some_and(|character| character.is_ascii_alphanumeric() || character == '-');
-        if preceded_by_identifier {
-            output.push_str(&value[cursor..start + 4]);
-            cursor = start + 4;
-            continue;
-        }
-
-        let open = start + 4;
-        // An unterminated reference is refused rather than guessed at.
-        let close = value[open..].find(')')? + open;
-        let raw = value[open..close].trim();
-        let unquoted = raw
-            .strip_prefix('"')
-            .and_then(|rest| rest.strip_suffix('"'))
-            .or_else(|| {
-                raw.strip_prefix('\'')
-                    .and_then(|rest| rest.strip_suffix('\''))
-            })
-            .unwrap_or(raw);
-
-        // `;` is legal inside a data URL, but these would still let a reference escape the
-        // declaration or open a comment.
-        if unquoted.is_empty()
-            || unquoted.contains('{')
-            || unquoted.contains('}')
-            || unquoted.contains('<')
-            || unquoted.contains('>')
-            || unquoted.contains("/*")
-            || unquoted.contains("*/")
-            || validate_url(unquoted, UrlKind::ResourceImage, policy).is_err()
-        {
-            return None;
-        }
-
-        output.push_str(&value[cursor..start]);
-        output.push_str("url-ok");
-        cursor = close + 1;
-    }
-
-    output.push_str(&value[cursor..]);
-    Some(output)
-}
 
 fn safe_media_query(query: &str, policy: &PageBuilderStaticPublishPolicy) -> bool {
     let normalized = query.trim().to_ascii_lowercase();
@@ -1482,6 +1594,236 @@ mod tests {
     }
 
     #[test]
+    fn static_policy_rejects_theme_tokens_with_image_set_resource_strings() {
+        let mut document = document(json!({ "id": "root", "type": "wrapper" }));
+        document.project_mut().extensions.insert(
+            FLY_THEME_FIELD.to_string(),
+            json!({
+                "tokens": {
+                    "hero": "image-set(\"https://cdn.example/hero.png\" 1x)"
+                }
+            }),
+        );
+        let error = validate_static_publish_document(&document).expect_err("unsafe theme token");
+        assert!(error.diagnostics().iter().any(|diagnostic| {
+            diagnostic.code == "landing_theme_invalid"
+                && diagnostic.path == FLY_THEME_FIELD
+        }));
+    }
+
+    #[test]
+    fn static_policy_rejects_undeclared_css_variable_references() {
+        let document = document(json!({
+            "id": "root",
+            "type": "wrapper",
+            "style": {"background-image": "var(--host-url)"}
+        }));
+        let error = validate_static_publish_document(&document).expect_err("undeclared CSS variable");
+        assert!(error.diagnostics().iter().any(|diagnostic| {
+            diagnostic.code == "landing_css_var_reference_rejected"
+                && diagnostic.path.contains("background-image")
+        }));
+    }
+
+    #[test]
+    fn static_policy_rejects_variables_in_resource_bearing_properties() {
+        let mut document = document(json!({
+            "id": "root",
+            "type": "wrapper",
+            "style": {
+                "background-image": "var(--brand)",
+                "-webkit-box-reflect": "below 0 var(--brand)"
+            }
+        }));
+        document.project_mut().extensions.insert(
+            FLY_THEME_FIELD.to_string(),
+            json!({"tokens": {"brand": "#0b5fff"}}),
+        );
+        let error = validate_static_publish_document(&document).expect_err("resource property var()");
+        assert_eq!(error.diagnostics().iter().filter(|diagnostic| {
+            diagnostic.code == "landing_css_var_reference_resource_property"
+        }).count(), 2);
+    }
+
+    #[test]
+    fn static_policy_accepts_declared_css_variable_references() {
+        let mut document = document(json!({
+            "id": "root",
+            "type": "wrapper",
+            "style": {"color": "var(--brand)"}
+        }));
+        document.project_mut().extensions.insert(
+            FLY_THEME_FIELD.to_string(),
+            json!({"tokens": {"brand": "#0b5fff"}}),
+        );
+        assert!(validate_static_publish_document(&document).is_ok());
+    }
+
+    #[test]
+    fn static_policy_rejects_fly_embed_extension_on_generic_component() {
+        let document = document(json!({
+            "id": "root",
+            "type": "wrapper",
+            "components": [{
+                "id": "embedded",
+                "type": "wrapper",
+                "flyEmbed": {
+                    "provider": "youtube",
+                    "url": "https://www.youtube.com/embed/demo",
+                    "title": "Video"
+                }
+            }]
+        }));
+        let error = validate_static_publish_document(&document).expect_err("embed extension");
+        assert!(error.diagnostics().iter().any(|diagnostic| {
+            diagnostic.code == "landing_embed_forbidden"
+                && diagnostic.path.ends_with(".flyEmbed")
+        }));
+    }
+
+    #[test]
+    fn static_policy_rejects_http_rich_text_links() {
+        let document = document(json!({
+            "id": "root",
+            "type": "wrapper",
+            "components": [{
+                "id": "rich",
+                "type": "wrapper",
+                "flyRichText": {
+                    "capability": "richtext",
+                    "payload": {
+                        "type": "doc",
+                        "content": [{
+                            "type": "paragraph",
+                            "content": [{
+                                "type": "text",
+                                "text": "Insecure link",
+                                "marks": [{
+                                    "type": "link",
+                                    "attrs": {"href": "http://insecure.example/page"}
+                                }]
+                            }]
+                        }]
+                    }
+                }
+            }]
+        }));
+        let error = validate_static_publish_document(&document).expect_err("HTTP rich-text link");
+        assert!(error.diagnostics().iter().any(|diagnostic| {
+            diagnostic.code == "landing_rich_text_link_url_rejected"
+        }));
+    }
+
+    #[test]
+    fn static_policy_rejects_invalid_rich_text_payload() {
+        let document = document(json!({
+            "id": "root",
+            "type": "wrapper",
+            "components": [{
+                "id": "rich",
+                "type": "wrapper",
+                "flyRichText": {
+                    "capability": "richtext",
+                    "payload": {"type": "paragraph", "content": []}
+                }
+            }]
+        }));
+        let error = validate_static_publish_document(&document).expect_err("invalid rich-text");
+        assert!(error.diagnostics().iter().any(|diagnostic| {
+            diagnostic.code == "landing_rich_text_payload_invalid"
+        }));
+    }
+
+    #[test]
+    fn static_policy_checks_materialized_symbol_content() {
+        let mut document = document(json!({
+            "id": "root",
+            "type": "wrapper",
+            "components": [{
+                "id": "instance",
+                "type": "symbol",
+                "symbolId": "shared"
+            }]
+        }));
+        document.project_mut().extensions.insert(
+            FLY_SYMBOLS_FIELD.to_string(),
+            json!([{
+                "id": "shared",
+                "components": [
+                    {
+                        "id": "embedded",
+                        "type": "wrapper",
+                        "flyEmbed": {
+                            "provider": "youtube",
+                            "url": "https://www.youtube.com/embed/demo",
+                            "title": "Video"
+                        }
+                    },
+                    {
+                        "id": "rich",
+                        "type": "wrapper",
+                        "flyRichText": {
+                            "capability": "richtext",
+                            "payload": {
+                                "type": "doc",
+                                "content": [{
+                                    "type": "paragraph",
+                                    "content": [{
+                                        "type": "text",
+                                        "text": "Insecure link",
+                                        "marks": [{
+                                            "type": "link",
+                                            "attrs": {"href": "http://insecure.example/page"}
+                                        }]
+                                    }]
+                                }]
+                            }
+                        }
+                    }
+                ]
+            }]),
+        );
+
+        let error = validate_static_publish_document(&document).expect_err("unsafe symbol content");
+        assert!(error.diagnostics().iter().any(|diagnostic| {
+            diagnostic.code == "landing_embed_forbidden"
+        }));
+        assert!(error.diagnostics().iter().any(|diagnostic| {
+            diagnostic.code == "landing_rich_text_link_url_rejected"
+        }));
+    }
+
+    #[test]
+    fn static_policy_accepts_https_rich_text_links() {
+        let document = document(json!({
+            "id": "root",
+            "type": "wrapper",
+            "components": [{
+                "id": "rich",
+                "type": "wrapper",
+                "flyRichText": {
+                    "capability": "richtext",
+                    "payload": {
+                        "type": "doc",
+                        "content": [{
+                            "type": "paragraph",
+                            "content": [{
+                                "type": "text",
+                                "text": "Secure link",
+                                "marks": [{
+                                    "type": "link",
+                                    "attrs": {"href": "https://example.test/page"}
+                                }]
+                            }]
+                        }]
+                    }
+                }
+            }]
+        }));
+        assert!(validate_static_publish_document(&document).is_ok());
+    }
+
+    #[test]
     fn policy_rejects_opaque_markup_and_non_renderable_nodes() {
         let document = document(json!({
             "id": "root",
@@ -1505,7 +1847,7 @@ mod tests {
     #[test]
     fn policy_rejects_empty_localized_metadata_urls() {
         let mut document = document(json!({ "id": "root", "type": "wrapper" }));
-        document.project.pages[0]
+        document.project_mut().pages[0]
             .extensions
             .get_mut(FLY_PAGE_METADATA_FIELD)
             .and_then(Value::as_object_mut)
@@ -1572,13 +1914,21 @@ mod tests {
     }
 
     #[test]
-    fn v1_policy_evidence_is_not_current_after_v2_cutover() {
+    fn previous_policy_formats_cannot_authorize_current_evidence() {
         let policy = PageBuilderStaticPublishPolicy::default();
-        let evidence = PageBuilderStaticPublishPolicyEvidence {
-            format: "page_builder_static_publish_policy_v1".to_string(),
-            policy_hash: policy.policy_hash().expect("current hash"),
-        };
-        assert!(evidence.verify_integrity().is_err());
+        for format in [
+            "page_builder_static_publish_policy_v9",
+            "page_builder_static_publish_policy_v10",
+            "page_builder_static_publish_policy_v11",
+            "page_builder_static_publish_policy_v12",
+            "page_builder_static_publish_policy_v13",
+        ] {
+            let evidence = PageBuilderStaticPublishPolicyEvidence {
+                format: format.to_string(),
+                policy_hash: policy.policy_hash().expect("current hash"),
+            };
+            assert!(evidence.verify_integrity().is_err(), "{format}");
+        }
     }
 
     #[test]
@@ -1600,6 +1950,55 @@ mod tests {
                 "css rule rejected {url} that the attribute rule accepts"
             );
         }
+        assert!(safe_css_value(
+            "image-set('/hero.png' 1x, 'https://cdn.example/hero@2x.png' 2x)",
+            &policy
+        ));
+        assert!(safe_css_value(
+            "image-set('data:image/png;base64,iVBORw0KGgo=' 1x)",
+            &policy
+        ));
+        assert!(safe_css_value(
+            "image(\"https://cdn.example/hero.png\", red)",
+            &policy
+        ));
+        assert!(safe_css_value(
+            "src(\"https://cdn.example/hero.png\")",
+            &policy
+        ));
+        assert!(safe_css_value(
+            "cross-fade(image('/fade-start.png'), image('/fade-end.png'))",
+            &policy
+        ));
+    }
+
+    #[test]
+    fn css_references_validate_original_urls_and_token_boundaries() {
+        let policy = PageBuilderStaticPublishPolicy::default();
+        let oversized = format!("image-set('/{}' 1x)", "url(/long-segment)".repeat(130));
+        assert!(!safe_css_value(&oversized, &policy));
+        for value in [
+            "url(/a(b))", "url(/a'broken')", "url('/a.png' extra)",
+            "image-set('/a.png' 1x))", "cross-fade(image('/a.png')",
+        ] {
+            assert!(!safe_css_value(value, &policy), "{value}");
+        }
+        for value in ["url('/hero(1).png')", "image-set('/url(/hero.png)' 1x)"] {
+            assert!(safe_css_value(value, &policy), "{value}");
+        }
+    }
+
+    #[test]
+    fn nested_css_resource_strings_are_checked_without_offset_drift() {
+        let policy = PageBuilderStaticPublishPolicy::default();
+        assert!(safe_css_value(
+            "image-set(image('/é.png') 1x, '/second-long.png' 2x)",
+            &policy
+        ));
+        assert!(!safe_css_value(
+            "image-set(image('/é.png') 1x, 'http://insecure.example/second.png' 2x)",
+            &policy
+        ));
     }
 
     #[test]
@@ -1615,6 +2014,14 @@ mod tests {
             "url(/a.png);color:red",
             "u r l(https://cdn.example/a.png)",
             "blurl(https://cdn.example/a.png)",
+            "image-set('javascript:alert(1)' 1x)",
+            "image-set('http://insecure.example/a.png' 1x)",
+            "image-set('//protocol.relative/a.png' 1x)",
+            "image-set('data:image/svg+xml;base64,PHN2Zz4=' 1x)",
+            "-webkit-image-set('javascript:alert(1)' 1x)",
+            "image('javascript:alert(1)', red)",
+            "src('javascript:alert(1)')",
+            "src('//protocol.relative/a.png')",
         ] {
             assert!(!safe_css_value(value, &policy), "accepted hostile {value}");
         }
@@ -1627,6 +2034,18 @@ mod tests {
         policy.forbidden_css_tokens.push("url(".to_string());
         assert!(!safe_css_value(
             "url(https://cdn.example/hero.png)",
+            &policy
+        ));
+        assert!(!safe_css_value(
+            "image-set('https://cdn.example/hero.png' 1x)",
+            &policy
+        ));
+        assert!(!safe_css_value(
+            "image('https://cdn.example/hero.png', red)",
+            &policy
+        ));
+        assert!(!safe_css_value(
+            "src('https://cdn.example/hero.png')",
             &policy
         ));
         assert!(safe_css_value("#ffffff", &policy));
@@ -1657,6 +2076,8 @@ mod tests {
         )
         .is_ok());
         assert!(validate_srcset("hero.webp 1x, hero@2x.webp 2x", &policy).is_ok());
+        assert!(validate_srcset("/a.webp, /b.webp 2x", &policy).is_ok());
+        assert!(validate_srcset("/a.webp 1x,/b.webp 2x", &policy).is_ok());
         assert!(
             validate_srcset("/hero.webp", &policy).is_ok(),
             "bare candidate"
@@ -1709,6 +2130,7 @@ mod tests {
             "",
             ", https://cdn.example.com/hero.webp 1x",
             "//cdn.example.com/hero.webp 1x",
+            "/a.webp,/b.webp 2x",
         ] {
             assert!(
                 validate_srcset(value, &policy).is_err(),

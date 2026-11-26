@@ -1,4 +1,4 @@
-use sea_orm::{ActiveModelTrait, EntityTrait, Set};
+use sea_orm::{EntityTrait, Set, sea_query::OnConflict};
 use uuid::Uuid;
 
 use crate::common::settings::EventDeliveryProfile;
@@ -92,26 +92,24 @@ impl EventDeliverySettingsService {
         }
 
         let now: chrono::DateTime<chrono::FixedOffset> = chrono::Utc::now().into();
-        match Entity::find_by_id(SINGLETON_ID).one(ctx.db()).await? {
-            Some(row) => {
-                let mut active: event_delivery_settings::ActiveModel = row.into();
-                active.profile = Set(profile.as_str().to_string());
-                active.updated_by = Set(Some(actor_id));
-                active.updated_at = Set(now);
-                active.update(ctx.db()).await?;
-            }
-            None => {
-                event_delivery_settings::ActiveModel {
-                    id: Set(SINGLETON_ID),
-                    profile: Set(profile.as_str().to_string()),
-                    updated_by: Set(Some(actor_id)),
-                    created_at: Set(now),
-                    updated_at: Set(chrono::Utc::now().into()),
-                }
-                .insert(ctx.db())
-                .await?;
-            }
-        }
+        Entity::insert(event_delivery_settings::ActiveModel {
+            id: Set(SINGLETON_ID),
+            profile: Set(profile.as_str().to_string()),
+            updated_by: Set(Some(actor_id)),
+            created_at: Set(now),
+            updated_at: Set(now),
+        })
+        .on_conflict(
+            OnConflict::column(event_delivery_settings::Column::Id)
+                .update_columns([
+                    event_delivery_settings::Column::Profile,
+                    event_delivery_settings::Column::UpdatedBy,
+                    event_delivery_settings::Column::UpdatedAt,
+                ])
+                .to_owned(),
+        )
+        .exec_without_returning(ctx.db())
+        .await?;
         Ok(())
     }
 }
@@ -123,6 +121,54 @@ mod tests {
     use crate::services::event_transport_factory::EventRuntime;
     use rustok_core::events::MemoryTransport;
     use std::sync::Arc;
+
+    #[tokio::test]
+    async fn singleton_profile_saves_preserve_creation_and_replace_actor() {
+        let db = rustok_test_utils::db::setup_test_db_with_migrations::<
+            rustok_migrations::SqliteTestMigrator,
+        >()
+        .await;
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+        let first_actor = Uuid::new_v4();
+        let second_actor = Uuid::new_v4();
+        let final_actor = Uuid::new_v4();
+
+        let (first_save, second_save) = tokio::join!(
+            EventDeliverySettingsService::save_profile(
+                &ctx,
+                EventDeliveryProfile::Outbox,
+                first_actor,
+            ),
+            EventDeliverySettingsService::save_profile(
+                &ctx,
+                EventDeliveryProfile::Outbox,
+                second_actor,
+            ),
+        );
+        first_save.expect("first save");
+        second_save.expect("second save");
+        let first = Entity::find_by_id(SINGLETON_ID)
+            .one(ctx.db())
+            .await
+            .expect("read")
+            .expect("singleton");
+        assert!(
+            matches!(first.updated_by, Some(actor) if actor == first_actor || actor == second_actor)
+        );
+
+        EventDeliverySettingsService::save_profile(&ctx, EventDeliveryProfile::Outbox, final_actor)
+            .await
+            .expect("final save");
+        let current = Entity::find_by_id(SINGLETON_ID)
+            .one(ctx.db())
+            .await
+            .expect("read")
+            .expect("singleton");
+
+        assert_eq!(current.created_at, first.created_at);
+        assert_eq!(current.updated_by, Some(final_actor));
+        assert_eq!(current.profile, EventDeliveryProfile::Outbox.as_str());
+    }
 
     #[test]
     fn active_profile_comes_from_published_runtime_not_bootstrap_default() {

@@ -567,6 +567,14 @@ fn port_context(
     if let Ok(channel) = ctx.data::<ChannelContext>() {
         context = context.with_channel(channel.slug.clone());
     }
+    if idempotency_key
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err(<FieldError as GraphQLError>::bad_user_input(
+            "groups idempotency key is required",
+        ));
+    }
     if let Some(key) = idempotency_key {
         context = context.with_idempotency_key(key);
     }

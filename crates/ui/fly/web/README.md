@@ -9,7 +9,7 @@ For full public interface and web runtime definitions, see [CRATE_API.md](CRATE_
 - Define screen, viewport, and canvas coordinates (`BrowserPoint`, `BrowserRect`, `CoordinateTransform`).
 - Provide hit-testing, drop candidate normalization, and auto-scroll policies (`hit_test_drop_targets`, `auto_scroll_delta`). Invalid browser bounds and invalid transformed canvas rectangles are excluded before candidates reach the state machine. Auto-scroll is idle for malformed geometry and splits narrow viewports into non-overlapping edge zones.
 - Define the typed iframe bridge protocol (`IframeBridgeEnvelope`, `IframeBridgeMessage`) with monotonic sequence and instance validation.
-- Own the two origin rules: inbound acceptance compares `event.origin` against a canonical expected origin (`normalize_expected_origin`, which accepts HTTP(S) origins and `OPAQUE_ORIGIN`, and rejects paths, credentials, queries and fragments), while outbound delivery translates an opaque destination to `*` (`outbound_target_origin`), because the platform rejects `"null"` as a `postMessage` target.
+- Own the two origin rules: inbound acceptance compares `event.origin` against a canonical expected origin (`normalize_expected_origin`, which accepts HTTP(S) origins and `OPAQUE_ORIGIN`, and rejects raw non-origin syntax before URL canonicalization, including paths that normalize away, malformed authority delimiters, credentials, queries and fragments), while outbound delivery translates an opaque destination to `*` (`outbound_target_origin`), because the platform rejects `"null"` as a `postMessage` target.
 - Implement RAII browser event listener handles (`EventListenerHandle`, `CleanupRegistry`).
 - Implement keyboard shortcut translation and resize sessions (`BrowserResizeSession`).
 - Implement authenticated real-DOM inline edit grants and request validation, including the
@@ -36,6 +36,9 @@ For full public interface and web runtime definitions, see [CRATE_API.md](CRATE_
 - **Peer-write notifications are advisory, not collaboration or idempotency.** They fence a
   stale editor after another tab confirms a write, but do not merge operations, recover an
   unknown network outcome, or replace the server's revision compare-and-swap and save receipt.
+  Both adapters require a structured confirmed-write message with nonblank page, revision,
+  hash and sender fields (256 UTF-8 bytes each, 1024 bytes for the serialized message).
+  Malformed notifications do not fence or advance a session.
   If BroadcastChannel is unavailable, server revision checks remain the final protection.
 - **The wasm-only surface is type-checked, not executed, in CI.** `browser_interaction`,
   `browser_runtime`, and `real_dom_inline`'s editor mounting are gated by

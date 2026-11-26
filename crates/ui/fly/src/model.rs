@@ -4,9 +4,31 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
+/// A canonical GrapesJS document with private storage and cache-safe accessors.
+///
+/// The project is intentionally not a public field. Read it through
+/// `ProjectDocument::project` and mutate it through `ProjectDocument::project_mut`.
+///
+/// Direct field access is rejected outside this crate:
+///
+/// ```compile_fail
+/// use fly::ProjectDocument;
+/// fn bypass(document: &ProjectDocument) {
+///     let _ = &document.project;
+/// }
+/// ```
+///
+/// The read accessor is immutable:
+///
+/// ```compile_fail
+/// use fly::ProjectDocument;
+/// fn mutate(document: &ProjectDocument) {
+///     document.project().pages.clear();
+/// }
+/// ```
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ProjectDocument {
-    pub project: GrapesProject,
+    project: GrapesProject,
     #[serde(skip)]
     pub(crate) component_index: std::sync::OnceLock<ComponentIndex>,
     #[serde(skip)]
@@ -40,6 +62,11 @@ impl ProjectDocument {
         }
     }
 
+    /// Returns a read-only view of the GrapesJS project. Use `project_mut()` for writes.
+    pub fn project(&self) -> &GrapesProject {
+        &self.project
+    }
+
     pub fn component_index(&self) -> &ComponentIndex {
         self.component_index
             .get_or_init(|| ComponentIndex::build(self))
@@ -60,8 +87,8 @@ impl ProjectDocument {
         self.component_index.take();
     }
 
-    /// Borrow the raw project for mutation, invalidating derived state before
-    /// the borrow escapes. Prefer this to writing the public field directly.
+    /// Borrow the project for mutation. Both derived caches are invalidated before
+    /// the mutable borrow escapes; use this for all project writes.
     pub fn project_mut(&mut self) -> &mut GrapesProject {
         self.invalidate_caches();
         &mut self.project
@@ -1241,5 +1268,35 @@ mod tests {
             style_val.get("flyComponentId").and_then(Value::as_str),
             Some("orig-h1")
         );
+    }
+}
+
+
+#[cfg(test)]
+mod project_access_tests {
+    use super::*;
+    use crate::GrapesJsCodec;
+    use serde_json::json;
+
+    #[test]
+    fn project_mut_invalidates_cached_hash_and_component_index() {
+        let mut document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{"id": "child", "type": "text"}]
+                }
+            }]
+        })).expect("valid document");
+
+        let original_hash = document.hash();
+        assert!(document.contains_component("child"));
+
+        document.project_mut().pages[0].component = None;
+
+        assert!(!document.contains_component("child"));
+        assert_ne!(document.hash(), original_hash);
     }
 }

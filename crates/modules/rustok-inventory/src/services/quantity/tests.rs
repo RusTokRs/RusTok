@@ -266,8 +266,108 @@ fn quantity_product_response_and_visible_projection_sum_without_order_dependent_
 }
 
 #[test]
+fn availability_keeps_existing_items_at_zero_when_they_have_no_levels() {
+    let item = Uuid::new_v4();
+    let variant = Uuid::new_v4();
+    let binding = std::collections::HashMap::from([(item, variant)]);
+
+    let existing_item_without_levels = available_by_variant(&binding, std::iter::empty())
+        .expect("an existing item with no levels has an authoritative zero");
+    assert_eq!(existing_item_without_levels.get(&variant), Some(&0));
+
+    let missing_item = available_by_variant(
+        &std::collections::HashMap::new(),
+        std::iter::empty(),
+    )
+    .expect("a missing item has no Inventory-owned quantity");
+    assert!(missing_item.is_empty());
+}
+
+#[test]
 fn expected_quantity_snapshot_rejects_stale_values() {
     assert!(ensure_expected_quantity_matches(8, Some(8)).is_ok());
     assert!(ensure_expected_quantity_matches(9, Some(8)).is_err());
     assert!(ensure_expected_quantity_matches(8, None).is_ok());
+}
+
+#[test]
+fn projection_refuses_duplicate_item_and_level_identities() {
+    let item = Uuid::new_v4();
+    let variant = Uuid::new_v4();
+    let binding = std::collections::HashMap::from([(item, variant)]);
+    let row = inventory_level::Model {
+        id: Uuid::new_v4(),
+        inventory_item_id: item,
+        location_id: Uuid::new_v4(),
+        stocked_quantity: 5,
+        reserved_quantity: 8,
+        incoming_quantity: 0,
+        low_stock_threshold: None,
+        updated_at: Utc::now().into(),
+    };
+    assert_eq!(available_by_variant(&binding, [&row]).unwrap()[&variant], -3);
+    assert!(available_by_variant(&binding, [&row, &row]).is_err());
+    let mut duplicate_location = row.clone();
+    duplicate_location.id = Uuid::new_v4();
+    assert!(available_by_variant(&binding, [&row, &duplicate_location]).is_err());
+    let duplicate_items = std::collections::HashMap::from([(item, variant), (Uuid::new_v4(), variant)]);
+    assert!(available_by_variant(&duplicate_items, std::iter::empty()).is_err());
+    let nil_binding = std::collections::HashMap::from([(Uuid::nil(), variant)]);
+    assert!(available_by_variant(&nil_binding, std::iter::empty()).is_err());
+    let excessive: Vec<_> = (0..=MAX_QUANTITY_LEVELS).map(|_| {
+        let mut level = row.clone();
+        level.id = Uuid::new_v4();
+        level.location_id = Uuid::new_v4();
+        level
+    }).collect();
+    assert!(available_by_variant(&binding, &excessive).is_err());
+}
+
+#[tokio::test]
+async fn projection_loader_rejects_ambiguous_items_and_excess_original_levels() {
+    let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+    for sql in [
+        "CREATE TABLE inventory_items (id TEXT PRIMARY KEY NOT NULL, variant_id TEXT NOT NULL, sku TEXT, requires_shipping BOOLEAN NOT NULL, metadata TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
+        "CREATE TABLE inventory_levels (id TEXT PRIMARY KEY NOT NULL, inventory_item_id TEXT NOT NULL, location_id TEXT NOT NULL, stocked_quantity INTEGER NOT NULL, reserved_quantity INTEGER NOT NULL, incoming_quantity INTEGER NOT NULL, low_stock_threshold INTEGER, updated_at TEXT NOT NULL)",
+    ] {
+        db.execute_raw(Statement::from_string(DbBackend::Sqlite, sql)).await.unwrap();
+    }
+    let variant = Uuid::new_v4();
+    let item = Uuid::new_v4();
+    let duplicate = Uuid::new_v4();
+    for id in [item, duplicate] {
+        inventory_item::ActiveModel {
+            id: Set(id),
+            variant_id: Set(variant),
+            sku: Set(None),
+            requires_shipping: Set(true),
+            metadata: Set(serde_json::json!({})),
+            created_at: Set(Utc::now().into()),
+            updated_at: Set(Utc::now().into()),
+        }.insert(&db).await.unwrap();
+    }
+    assert!(load_projection_item_bindings(&db, &[variant]).await.is_err());
+    inventory_item::Entity::delete_by_id(duplicate).exec(&db).await.unwrap();
+    let bindings = load_projection_item_bindings(&db, &[variant, variant]).await.unwrap();
+    assert_eq!(bindings.get(&item), Some(&variant));
+    assert_eq!(bindings.len(), 1);
+    assert!(load_projection_levels(&db, &bindings).await.unwrap().is_empty());
+
+    // Use bounded inserts to avoid SQLite bind-parameter limits.
+    let rows: Vec<_> = (0..=MAX_QUANTITY_LEVELS).map(|_| inventory_level::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        inventory_item_id: Set(item),
+        location_id: Set(Uuid::new_v4()),
+        stocked_quantity: Set(1),
+        reserved_quantity: Set(0),
+        incoming_quantity: Set(0),
+        low_stock_threshold: Set(None),
+        updated_at: Set(Utc::now().into()),
+    }).collect();
+    for chunk in rows[..MAX_QUANTITY_LEVELS].chunks(64) {
+        inventory_level::Entity::insert_many(chunk.iter().cloned()).exec(&db).await.unwrap();
+    }
+    assert_eq!(load_projection_levels(&db, &bindings).await.unwrap().len(), MAX_QUANTITY_LEVELS);
+    rows[MAX_QUANTITY_LEVELS].clone().insert(&db).await.unwrap();
+    assert!(load_projection_levels(&db, &bindings).await.is_err());
 }

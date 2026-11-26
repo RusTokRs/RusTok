@@ -1,4 +1,6 @@
-use crate::browser_problem::{BROWSER_REVISION_CONFLICT_CODE, PagesBrowserIntentProblem};
+use crate::browser_problem::{
+    BROWSER_REVISION_CONFLICT_CODE, BROWSER_SAVE_OUTCOME_UNKNOWN_CODE, PagesBrowserIntentProblem,
+};
 use crate::builder::{self, PagesBuilderFacade, PagesBuilderSaveSnapshot};
 use crate::core;
 use crate::transport;
@@ -14,8 +16,8 @@ use rustok_page_builder::runtime_context::{
 };
 use rustok_page_builder_admin::{
     AdminCanvasController, BrowserIntentDispatchError, BrowserIntentDispatchResult,
-    BrowserIntentEffect, DurableSsrDraftSessionStore, PageBuilderAdminFacade,
-    PageBuilderAdminFacadeError, SsrDraftOperationCommit, SsrDraftSessionError,
+    BrowserIntentEffect, DraftSessionOwner, DurableSsrDraftSessionStore, PageBuilderAdminFacade,
+    PageBuilderAdminFacadeError, SaveAttempt, SsrDraftOperationCommit, SsrDraftSessionError,
     SsrDraftSessionSnapshot, SsrDraftSessionStore, dispatch_browser_intent,
     validate_browser_capability_access,
 };
@@ -206,9 +208,13 @@ pub async fn dispatch_pages_browser_intent_with_store(
         let receipt = draft_store.lookup_operation_receipt(
             token, &snapshot.page_id, snapshot.owner.as_ref(), operation_id, None,
         )?;
-        return operation_response_from_receipt(
-            &session, operation_id, receipt.as_ref(), receipt.is_some(),
-        );
+        return match receipt {
+            Some(receipt) => replay_committed_operation(
+                draft_store, token, &snapshot.page_id, snapshot.owner.as_ref(),
+                operation_id, &receipt,
+            ),
+            None => operation_response_from_receipt(&session, operation_id, None, false),
+        };
     }
 
     let operation_hash = envelope.operation_id.as_deref()
@@ -237,18 +243,38 @@ pub async fn dispatch_pages_browser_intent_with_store(
         operation_hash.as_deref(),
         loaded_session.as_ref(),
     ) {
-        let receipt = draft_store.lookup_operation_receipt(
+        if !draft_store.supports_operation_receipts() {
+            return Err(SsrDraftSessionError::OperationReceiptsUnsupported.into());
+        }
+        let expected_generation = envelope.draft_generation
+            .ok_or(SsrDraftSessionError::OperationReceiptRequiresSession)?;
+        let receipt = draft_store.admit_operation_receipt(
             &session.token,
             &snapshot.page_id,
             snapshot.owner.as_ref(),
+            expected_generation,
             operation_id,
-            Some(request_hash),
+            request_hash,
         )?;
         if let Some(receipt) = receipt {
-            return operation_response_from_receipt(
-                session, operation_id, Some(&receipt), true,
+            if receipt_is_prepared(&receipt) {
+                let prepared = draft_store.load(
+                    &session.token, &snapshot.page_id, snapshot.owner.as_ref(),
+                )?.ok_or(PagesBrowserIntentError::DraftUnavailable)?;
+                return finish_prepared_save(
+                    &snapshot, draft_store, prepared, operation_id, request_hash, capabilities,
+                ).await.map_err(prepared_save_error);
+            }
+            return replay_committed_operation(
+                draft_store, &session.token, &snapshot.page_id, snapshot.owner.as_ref(),
+                operation_id, &receipt,
             );
         }
+    }
+    // New receipt-bearing operations require an editable session. Replays
+    // above remain read-only; do not dispatch or persist an uncommittable edit.
+    if envelope.operation_id.is_some() && !capabilities.edit {
+        return Err(SsrDraftSessionError::OperationReceiptRequiresSession.into());
     }
     if let (Some(expected), Some(session)) = (envelope.draft_generation, loaded_session.as_ref())
         && expected != session.generation
@@ -408,17 +434,52 @@ pub async fn dispatch_pages_browser_intent_with_store(
 
     let mut persistence = None;
     if let Some(request) = single_request(requests)? {
-        let is_save = matches!(request, PageBuilderCapabilityRequest::Publish(_));
+        if matches!(&request.request, PageBuilderCapabilityRequest::Publish(_))
+            && let (Some(operation_id), Some(request_hash), Some(token), Some(generation)) = (
+                envelope.operation_id.as_deref(), operation_hash.as_deref(),
+                session_token.as_deref(), session_generation,
+            )
+        {
+            // Persist the post-command working copy before Pages can commit.
+            // Do not serialize an in-flight SaveAttempt: recovery creates a
+            // fresh local attempt against the same durable project and CAS base.
+            let mut checked = controller.clone();
+            begin_consumer_save(&mut checked, &request)?;
+            match draft_store.commit_with_operation_receipt(
+                token, generation, controller, runtime_context, snapshot.owner.as_ref(),
+                operation_id, request_hash, json!({ "prepared_save": true }),
+            ).map_err(|error| prepared_save_error(error.into()))? {
+                SsrDraftOperationCommit::Committed(prepared) => {
+                    return finish_prepared_save(
+                        &snapshot, draft_store, prepared, operation_id, request_hash, capabilities,
+                    ).await.map_err(prepared_save_error);
+                }
+                SsrDraftOperationCommit::Replayed(receipt) => {
+                    return replay_committed_operation(
+                        draft_store, token, &snapshot.page_id, snapshot.owner.as_ref(),
+                        operation_id, &receipt,
+                    );
+                }
+            }
+        }
+        let save = if matches!(&request.request, PageBuilderCapabilityRequest::Publish(_)) {
+            Some(begin_consumer_save(&mut controller, &request)?)
+        } else {
+            None
+        };
         let facade_snapshot = snapshot.clone();
         let facade = PagesBuilderFacade::new(move || facade_snapshot.clone(), |_page, _project| {});
-        match facade.execute(request).await {
+        match facade.execute(request.request).await {
             Ok(response) => {
                 if let PageBuilderCapabilityResponse::Publish(PublishPageBuilderResult {
                     revision_id,
                     ..
                 }) = &response
                 {
-                    controller.acknowledge_save(revision_id.clone())?;
+                    let (hash, attempt) = save.as_ref().ok_or_else(|| {
+                        fly::FlyError::InvalidSaveState("unexpected save response".to_string())
+                    })?;
+                    controller.acknowledge_save_for_attempt(*hash, attempt, revision_id.clone())?;
                     // The publish advanced the persisted revision; record it so the
                     // following intents keep hitting the fetch-free fast path
                     // instead of re-fetching the page they just wrote.
@@ -432,6 +493,11 @@ pub async fn dispatch_pages_browser_intent_with_store(
                     // in this dispatch (the persisted revision may have changed again).
                     save_failure = None;
                 }
+                if save.is_some() && !matches!(&response, PageBuilderCapabilityResponse::Publish(_)) {
+                    return Err(fly::FlyError::InvalidSaveState(
+                        "save returned a different capability response".to_string(),
+                    ).into());
+                }
                 persistence = Some(response);
             }
             // A rejected save is not a failed dispatch (audit §6.4): the
@@ -440,8 +506,11 @@ pub async fn dispatch_pages_browser_intent_with_store(
             // drop the change from the draft session while the canvas keeps
             // showing it. Instead the change stays in the draft, marked as
             // unsaved, and the client is told to re-render from the server.
-            Err(error) if is_save => {
-                record_save_failure(&mut controller, &error)?;
+            Err(error) if save.is_some() => {
+                let (_, attempt) = save.as_ref().ok_or_else(|| {
+                    fly::FlyError::InvalidSaveState("missing save attempt".to_string())
+                })?;
+                record_save_failure(&mut controller, attempt, &error)?;
                 // Whatever revision was cached is no longer trustworthy —
                 // for a conflict it is known to be stale. The next intent
                 // re-fetches the page but preserves the original session.
@@ -484,9 +553,6 @@ pub async fn dispatch_pages_browser_intent_with_store(
         envelope.operation_id.as_deref(),
         operation_hash.as_deref(),
     ) {
-        if !capabilities.edit {
-            return Err(SsrDraftSessionError::OperationReceiptRequiresSession.into());
-        }
         let token = session_token.as_deref()
             .ok_or(SsrDraftSessionError::OperationReceiptRequiresSession)?;
         let generation = session_generation
@@ -508,10 +574,10 @@ pub async fn dispatch_pages_browser_intent_with_store(
                 Ok(response)
             }
             SsrDraftOperationCommit::Replayed(receipt) => {
-                let session = draft_store
-                    .load(token, &snapshot.page_id, snapshot.owner.as_ref())?
-                    .ok_or(PagesBrowserIntentError::DraftUnavailable)?;
-                operation_response_from_receipt(&session, operation_id, Some(&receipt), true)
+                replay_committed_operation(
+                    draft_store, token, &snapshot.page_id, snapshot.owner.as_ref(),
+                    operation_id, &receipt,
+                )
             }
         }
     } else if capabilities.edit {
@@ -718,6 +784,142 @@ fn compact_operation_receipt(
     Ok(json!({ "save_failure": save_failure }))
 }
 
+/// After a prepare CAS was attempted, an error is not proof that the
+/// original operation never ran. Keep the browser's exact pending envelope.
+fn prepared_save_error(error: PagesBrowserIntentError) -> PagesBrowserIntentError {
+    if matches!(&error, PagesBrowserIntentError::Facade(facade)
+        if facade.stable_code.as_deref() == Some(BROWSER_SAVE_OUTCOME_UNKNOWN_CODE))
+    {
+        return error;
+    }
+    PageBuilderAdminFacadeError::with_stable_code(
+        format!("Prepared save could not be confirmed: {error}"),
+        BROWSER_SAVE_OUTCOME_UNKNOWN_CODE,
+    ).into()
+}
+
+fn receipt_is_prepared(receipt: &Value) -> bool {
+    receipt.get("prepared_save").and_then(Value::as_bool) == Some(true)
+}
+
+/// Resume the persisted working copy, never the original editor command.
+/// Pages owns the idempotent save key (page, actor, revision and canonical
+/// project). Unknown transport outcomes leave the prepared ledger entry intact.
+async fn finish_prepared_save(
+    snapshot: &PagesBuilderSaveSnapshot,
+    draft_store: &dyn SsrDraftSessionStore,
+    prepared: SsrDraftSessionSnapshot,
+    operation_id: &str,
+    request_hash: &str,
+    capabilities: CapabilityState,
+) -> Result<PagesBrowserIntentResponse, PagesBrowserIntentError> {
+    let receipt = draft_store.lookup_operation_receipt(
+        &prepared.token, &snapshot.page_id, snapshot.owner.as_ref(),
+        operation_id, Some(request_hash),
+    )?.ok_or(PagesBrowserIntentError::DraftUnavailable)?;
+    if !receipt_is_prepared(&receipt) {
+        return replay_committed_operation(
+            draft_store, &prepared.token, &snapshot.page_id, snapshot.owner.as_ref(),
+            operation_id, &receipt,
+        );
+    }
+    let mut controller = prepared.controller;
+    controller.dispatch(UiIntent::SetEditableCapabilities(capabilities))?;
+    let save_envelope = BrowserIntentEnvelope {
+        protocol: FLY_BROWSER_PROTOCOL.to_string(),
+        instance_id: "prepared-save".to_string(),
+        intent: "save".to_string(),
+        payload: json!({}),
+        sequence: None,
+        page_id: Some(snapshot.page_id.clone()),
+        revision: Some(controller.revision_id().to_string()),
+        project_hash: Some(controller.editor().revision().project_hash.hex()),
+        draft_token: Some(prepared.token.clone()),
+        draft_generation: Some(prepared.generation),
+        operation_id: None,
+    };
+    validate_browser_capability_access(&save_envelope, capabilities)
+        .map_err(|error| PageBuilderAdminFacadeError::with_stable_code(
+            error.to_string(), BROWSER_SAVE_OUTCOME_UNKNOWN_CODE,
+        ))?;
+    let result = dispatch_browser_intent(&mut controller, save_envelope)?;
+    let request = single_request(request_effects(&result))?
+        .ok_or_else(|| fly::FlyError::InvalidSaveState("prepared save has no persistence effect".to_string()))?;
+    let (hash, attempt) = begin_consumer_save(&mut controller, &request)?;
+    let facade_snapshot = snapshot.clone();
+    let facade = PagesBuilderFacade::new(move || facade_snapshot.clone(), |_page, _project| {});
+    let revision_key = persisted_revision_key(snapshot);
+    let (persistence, save_failure) = match facade.execute(request.request).await {
+        Ok(response @ PageBuilderCapabilityResponse::Publish(_)) => {
+            let PageBuilderCapabilityResponse::Publish(saved) = &response else { unreachable!() };
+            controller.acknowledge_save_for_attempt(hash, &attempt, saved.revision_id.clone())?;
+            persisted_revision_cache().put(revision_key, saved.revision_id.clone(), Instant::now());
+            (Some(response), None)
+        }
+        Ok(_) => {
+            persisted_revision_cache().invalidate(revision_key);
+            return Err(PageBuilderAdminFacadeError::with_stable_code(
+                "Prepared save returned an unexpected response; preserve the operation",
+                BROWSER_SAVE_OUTCOME_UNKNOWN_CODE,
+            ).into());
+        }
+        Err(error) if error.stable_code.as_deref() == Some(BROWSER_SAVE_OUTCOME_UNKNOWN_CODE) => {
+            persisted_revision_cache().invalidate(revision_key);
+            return Err(error.into());
+        }
+        Err(error) => {
+            record_save_failure(&mut controller, &attempt, &error)?;
+            persisted_revision_cache().invalidate(revision_key);
+            (None, Some(PagesBrowserIntentProblem::from_save_failure(&error)))
+        }
+    };
+    let mut response = PagesBrowserIntentResponse {
+        reload: true,
+        result: controller_snapshot(&controller)?,
+        persistence,
+        save_failure,
+        draft_token: prepared.token.clone(),
+        draft_generation: prepared.generation,
+        runtime_context: prepared.runtime_context.clone(),
+        operation_id: Some(operation_id.to_string()),
+        operation_status: Some("committed".to_string()),
+        operation_replayed: false,
+    };
+    let receipt = compact_operation_receipt(&response)?;
+    match draft_store.commit_with_operation_receipt(
+        &prepared.token, prepared.generation, controller, prepared.runtime_context,
+        snapshot.owner.as_ref(), operation_id, request_hash, receipt,
+    )? {
+        SsrDraftOperationCommit::Committed(committed) => {
+            response.draft_generation = committed.generation;
+            Ok(response)
+        }
+        SsrDraftOperationCommit::Replayed(receipt) => replay_committed_operation(
+            draft_store, &prepared.token, &snapshot.page_id, snapshot.owner.as_ref(),
+            operation_id, &receipt,
+        ),
+    }
+}
+
+/// Observe the committed receipt before loading its response snapshot. A
+/// snapshot read before the receipt lookup may predate a concurrent commit.
+fn replay_committed_operation(
+    draft_store: &dyn SsrDraftSessionStore,
+    token: &str,
+    page_id: &str,
+    owner: Option<&DraftSessionOwner>,
+    operation_id: &str,
+    receipt: &Value,
+) -> Result<PagesBrowserIntentResponse, PagesBrowserIntentError> {
+    let session = draft_store
+        .load(token, page_id, owner)?
+        .ok_or(PagesBrowserIntentError::DraftUnavailable)?;
+    if receipt_is_prepared(receipt) {
+        return operation_response_from_receipt(&session, operation_id, None, false);
+    }
+    operation_response_from_receipt(&session, operation_id, Some(receipt), true)
+}
+
 fn operation_response_from_receipt(
     session: &SsrDraftSessionSnapshot,
     operation_id: &str,
@@ -806,9 +1008,16 @@ fn reloads_render(
 /// for one `persistence` outcome. A second request is a contract change that
 /// must be handled deliberately; failing the dispatch — before anything is
 /// executed — beats silently dropping every request after the first.
+#[derive(Debug, Clone, PartialEq)]
+struct ConsumerRequest {
+    request: PageBuilderCapabilityRequest,
+    expected_hash: Option<String>,
+    command_sequence: u64,
+}
+
 fn single_request(
-    mut requests: Vec<PageBuilderCapabilityRequest>,
-) -> Result<Option<PageBuilderCapabilityRequest>, PagesBrowserIntentError> {
+    mut requests: Vec<ConsumerRequest>,
+) -> Result<Option<ConsumerRequest>, PagesBrowserIntentError> {
     if requests.len() > 1 {
         return Err(PagesBrowserIntentError::UnsupportedRequestBatch {
             count: requests.len(),
@@ -836,28 +1045,54 @@ pub(crate) fn mark_stale_draft_conflict(
     Ok(!was_conflicted)
 }
 
+/// Validate the exact persistence effect before starting transport.
+fn begin_consumer_save(
+    controller: &mut AdminCanvasController,
+    request: &ConsumerRequest,
+) -> Result<(fly::ProjectHash, SaveAttempt), PagesBrowserIntentError> {
+    let revision = controller.editor().revision();
+    let hash = revision.project_hash;
+    let expected_hash = request.expected_hash.as_deref()
+        .filter(|expected| *expected == hash.hex().as_str())
+        .map(|_| hash);
+    let attempt = controller.begin_save_request(
+        &request.request, expected_hash, request.command_sequence,
+    )?;
+    Ok((hash, attempt))
+}
+
 /// Marks the working copy as "changes not on the server" after a rejected
 /// save: a lost update is recorded as a conflict (retrying against the same
 /// revision would conflict again), anything else as a failed save.
 fn record_save_failure(
     controller: &mut AdminCanvasController,
+    attempt: &SaveAttempt,
     error: &PageBuilderAdminFacadeError,
 ) -> Result<(), PagesBrowserIntentError> {
-    if error.stable_code.as_deref() == Some(BROWSER_REVISION_CONFLICT_CODE) {
+    let applied = if error.stable_code.as_deref() == Some(BROWSER_REVISION_CONFLICT_CODE) {
         let expected = controller.revision_id().to_string();
-        controller.mark_save_conflict(expected, "a newer revision".to_string())?;
+        controller.mark_save_conflict_for_attempt(attempt, expected, "a newer revision".to_string())?
     } else {
-        controller.mark_save_failed()?;
+        controller.mark_save_failed_for_attempt(attempt)?
+    };
+    if !applied {
+        return Err(fly::FlyError::InvalidSaveState(
+            "save failure does not match the active attempt".to_string(),
+        ).into());
     }
     Ok(())
 }
 
-fn request_effects(result: &BrowserIntentDispatchResult) -> Vec<PageBuilderCapabilityRequest> {
+fn request_effects(result: &BrowserIntentDispatchResult) -> Vec<ConsumerRequest> {
     result
         .effects
         .iter()
         .filter_map(|effect| match effect {
-            BrowserIntentEffect::Request { request, .. } => Some(request.clone()),
+            BrowserIntentEffect::Request { request, expected_hash, command_sequence } => Some(ConsumerRequest {
+                request: request.clone(),
+                expected_hash: expected_hash.clone(),
+                command_sequence: *command_sequence,
+            }),
             BrowserIntentEffect::Announce { .. } => None,
         })
         .collect()
@@ -931,15 +1166,23 @@ mod tests {
                 },
             ],
         };
-        assert_eq!(request_effects(&result), vec![request]);
+        assert_eq!(request_effects(&result), vec![ConsumerRequest {
+            request,
+            expected_hash: None,
+            command_sequence: 1,
+        }]);
     }
 
-    fn save_request(revision_id: &str) -> PageBuilderCapabilityRequest {
-        PageBuilderCapabilityRequest::Publish(rustok_page_builder::dto::PublishPageBuilderInput {
-            page_id: "home".to_string(),
-            revision_id: revision_id.to_string(),
-            project_data: json!({ "pages": [] }),
-        })
+    fn save_request(revision_id: &str) -> ConsumerRequest {
+        ConsumerRequest {
+            request: PageBuilderCapabilityRequest::Publish(rustok_page_builder::dto::PublishPageBuilderInput {
+                page_id: "home".to_string(),
+                revision_id: revision_id.to_string(),
+                project_data: json!({ "pages": [] }),
+            }),
+            expected_hash: None,
+            command_sequence: 0,
+        }
     }
 
     #[test]
@@ -1170,11 +1413,37 @@ mod tests {
     }
 
     #[test]
+    fn consumer_save_preserves_effect_identity_and_rejects_stale_effects() {
+        let mut controller = dirty_controller();
+        let mut envelope = form_envelope("save", json!({}));
+        envelope.project_hash = Some(controller.editor().revision().project_hash.hex());
+        let result = dispatch_browser_intent(&mut controller, envelope).expect("save intent");
+        let request = single_request(request_effects(&result)).expect("one effect").expect("save effect");
+        let mut stale = request.clone();
+        stale.command_sequence = stale.command_sequence.saturating_add(1);
+        assert!(begin_consumer_save(&mut controller, &stale).is_err());
+        assert!(controller.active_save_attempt().is_none());
+
+        let (hash, attempt) = begin_consumer_save(&mut controller, &request).expect("begin save");
+        assert_eq!(controller.active_save_attempt().as_ref(), Some(&attempt));
+        controller.acknowledge_save_for_attempt(hash, &attempt, "rev-2").expect("acknowledge");
+        assert_eq!(controller.revision_id(), "rev-2");
+        assert!(!controller.editor().revision().dirty);
+        assert!(controller.active_save_attempt().is_none());
+        assert!(record_save_failure(
+            &mut controller, &attempt, &PageBuilderAdminFacadeError::new("late failure"),
+        ).is_err());
+        assert!(!controller.editor().revision().save_failed);
+    }
+
+    #[test]
     fn failed_save_keeps_the_edit_and_marks_the_draft_unsaved() {
         let mut controller = dirty_controller();
         let edited_hash = controller.editor().revision().project_hash;
+        let attempt = controller.mark_save_started_with_id().expect("start save");
         record_save_failure(
             &mut controller,
+            &attempt,
             &PageBuilderAdminFacadeError::new("Pages rejected the document"),
         )
         .expect("record failure");
@@ -1201,8 +1470,10 @@ mod tests {
         // Dirty but never rejected: the autosave has not been tried yet.
         assert_eq!(failed_save_hash(&controller), None);
 
+        let attempt = controller.mark_save_started_with_id().expect("start save");
         record_save_failure(
             &mut controller,
+            &attempt,
             &PageBuilderAdminFacadeError::new("Pages rejected the document"),
         )
         .expect("record failure");
@@ -1230,8 +1501,10 @@ mod tests {
     #[test]
     fn revision_conflict_on_save_is_recorded_as_a_lost_update() {
         let mut controller = dirty_controller();
+        let attempt = controller.mark_save_started_with_id().expect("start save");
         record_save_failure(
             &mut controller,
+            &attempt,
             &PageBuilderAdminFacadeError::with_stable_code(
                 "REVISION_CONFLICT: expected `rev-1`, current `rev-2`",
                 BROWSER_REVISION_CONFLICT_CODE,
@@ -1262,6 +1535,9 @@ mod tests {
         let generation_check = source
             .find("if let (Some(expected), Some(session))")
             .expect("draft generation check");
+        let admission = source.find("draft_store.admit_operation_receipt(")
+            .expect("preflight receipt before consumer effects");
+        assert!(admission < dispatch, "receipt admission must precede external effects");
         assert!(
             receipt_lookup < generation_check,
             "a committed request must replay even when its original generation is now stale"
@@ -1322,7 +1598,7 @@ mod tests {
         let session = SsrDraftSessionSnapshot {
             token: "draft-token".to_string(),
             generation: 9,
-            controller: controller("home"),
+            controller: two_page_controller(),
             runtime_context: json!({ "latest": true }),
             owner: None,
         };
@@ -1343,6 +1619,65 @@ mod tests {
         assert!(replay.operation_replayed);
         assert!(replay.reload);
         assert_eq!(replay.draft_generation, 9);
+    }
+
+    #[test]
+    fn errors_after_prepare_do_not_claim_a_precommit_rejection() {
+        let error = prepared_save_error(SsrDraftSessionError::RecordTooLarge {
+            bytes: 21, maximum: 20,
+        }.into());
+        assert!(matches!(error, PagesBrowserIntentError::Facade(error)
+            if error.stable_code.as_deref() == Some(BROWSER_SAVE_OUTCOME_UNKNOWN_CODE)));
+    }
+
+    #[test]
+    fn prepared_receipt_is_not_a_final_browser_acknowledgement() {
+        let store = rustok_page_builder_admin::InMemorySsrDraftSessionStore::default();
+        let first = store.commit(None, None, dirty_controller(), None).expect("draft");
+        let marker = json!({"prepared_save": true});
+        let hash = "a".repeat(64);
+        let prepared = store.commit_with_operation_receipt(
+            &first.token, first.generation, first.controller.clone(), json!({}),
+            None, "save-op", &hash, marker.clone(),
+        ).expect("prepare");
+        let SsrDraftOperationCommit::Committed(prepared) = prepared else { panic!("prepare"); };
+        let result = replay_committed_operation(
+            &store, &first.token, "home", None, "save-op", &marker,
+        ).expect("lookup");
+        assert_eq!(result.operation_status.as_deref(), Some("unknown"));
+        assert!(!result.reload);
+        assert_eq!(result.draft_generation, prepared.generation);
+        assert!(result.result.dirty);
+    }
+
+    #[test]
+    fn committed_receipt_replay_reloads_a_snapshot_read_before_the_commit() {
+        let store = rustok_page_builder_admin::InMemorySsrDraftSessionStore::default();
+        let first = store.commit(None, None, two_page_controller(), None)
+            .expect("create draft");
+        let old = store.load(&first.token, "home", None)
+            .expect("load").expect("draft before commit");
+        let context = json!({ "latest": true });
+        let hash = "a".repeat(64);
+        let receipt = json!({ "save_failure": null });
+        let committed = store.commit_with_operation_receipt(
+            &first.token, first.generation, first.controller.clone(),
+            context.clone(), None, "operation-123", &hash, receipt,
+        ).expect("commit operation");
+        let SsrDraftOperationCommit::Committed(committed) = committed else {
+            panic!("first operation must commit");
+        };
+        let receipt = store.lookup_operation_receipt(
+            &first.token, "home", None, "operation-123", Some(&hash),
+        ).expect("lookup").expect("committed receipt");
+        let response = replay_committed_operation(
+            &store, &old.token, "home", None, "operation-123", &receipt,
+        ).expect("replay");
+        assert!(response.draft_generation > old.generation);
+        assert_eq!(response.draft_generation, committed.generation);
+        assert_eq!(response.runtime_context, context);
+        assert_eq!(response.operation_status.as_deref(), Some("committed"));
+        assert!(response.operation_replayed && response.reload);
     }
 
     #[test]

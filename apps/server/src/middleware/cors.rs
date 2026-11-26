@@ -98,15 +98,23 @@ fn validated_cors_origin(configured: &str) -> Option<HeaderValue> {
 
 /// Resolves allowed origins from the environment:
 /// 1. `RUSTOK_CORS_ALLOWED_ORIGINS` (comma-separated explicit origins)
-/// 2. In development ONLY, `RUSTOK_HOST` or `APP_HOST` (local server host).
+/// 2. Explicit settings origins, if supplied.
+/// 3. In development ONLY, `RUSTOK_HOST` or `APP_HOST` (local server host).
 /// Production bind addresses are not proof of a browser origin's authorization.
 pub fn resolve_cors_allowed_origins_from_env() -> Option<Vec<String>> {
+    resolve_cors_allowed_origins(None)
+}
+
+pub(crate) fn resolve_cors_allowed_origins(
+    settings_origins: Option<Vec<String>>,
+) -> Option<Vec<String>> {
     let explicit = std::env::var("RUSTOK_CORS_ALLOWED_ORIGINS").ok();
     let host = std::env::var("RUSTOK_HOST")
         .or_else(|_| std::env::var("APP_HOST"))
         .ok();
     cors_origins_from_configuration(
         explicit.as_deref(),
+        settings_origins,
         host.as_deref(),
         crate::common::is_production_security_mode(),
     )
@@ -114,6 +122,7 @@ pub fn resolve_cors_allowed_origins_from_env() -> Option<Vec<String>> {
 
 fn cors_origins_from_configuration(
     explicit: Option<&str>,
+    settings_origins: Option<Vec<String>>,
     host: Option<&str>,
     is_production: bool,
 ) -> Option<Vec<String>> {
@@ -126,9 +135,10 @@ fn cors_origins_from_configuration(
             // Bind-host normalization is only for the development fallback.
             .map(ToOwned::to_owned)
             .collect();
-        if !origins.is_empty() {
-            return Some(origins);
-        }
+        return Some(origins);
+    }
+    if settings_origins.is_some() {
+        return settings_origins;
     }
 
     // A production listener commonly binds to 0.0.0.0. Treating that bind
@@ -151,7 +161,8 @@ fn cors_origins_from_configuration(
 ///
 /// In non-production (development/test):
 /// - Allows standard local frontend/admin origins (`localhost:3000`, `localhost:5173`, etc.)
-///   or explicitly configured origins.
+///   only when no explicit list or development bind-host fallback is supplied.
+/// - An explicit empty or entirely invalid list grants no cross-origin access.
 pub fn build_cors_layer(is_production: bool, allowed_origins: Option<&[String]>) -> CorsLayer {
     let mut origins: Vec<HeaderValue> = if let Some(configured) = allowed_origins {
         configured
@@ -186,6 +197,12 @@ pub fn build_cors_layer(is_production: bool, allowed_origins: Option<&[String]>)
                 configured = allowed_origins.map(<[String]>::len).unwrap_or(0),
                 error_code = "cors_no_valid_production_origins",
                 "No valid CORS origins configured in production; all cross-origin requests are denied"
+            );
+        } else if allowed_origins.is_some() {
+            tracing::error!(
+                configured = allowed_origins.map(<[String]>::len).unwrap_or(0),
+                error_code = "cors_no_valid_explicit_origins",
+                "No valid explicitly configured CORS origins; all cross-origin requests are denied"
             );
         } else {
             origins.extend(
@@ -424,6 +441,7 @@ mod tests {
     async fn explicit_environment_origins_do_not_promote_bind_addresses_to_loopback() {
         let origins = cors_origins_from_configuration(
             Some("0.0.0.0, 0.0.0.0:5150, http://[::]:5150, https://admin.example.com"),
+            None,
             Some("0.0.0.0:5150"),
             true,
         )
@@ -440,11 +458,43 @@ mod tests {
             Some("https://admin.example.com".to_string())
         );
 
-        let dev_origins = cors_origins_from_configuration(None, Some("0.0.0.0:5150"), false)
+        let dev_origins = cors_origins_from_configuration(None, None, Some("0.0.0.0:5150"), false)
             .expect("development bind-host fallback");
         assert_eq!(
             preflight_allowed_origin(false, Some(&dev_origins), "http://127.0.0.1:5150").await,
             Some("http://127.0.0.1:5150".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn explicit_cors_policy_takes_precedence_over_development_fallbacks() {
+        let configured = vec!["https://admin.example.com".to_string()];
+        let host = Some("0.0.0.0:5150");
+        let resolved = cors_origins_from_configuration(None, Some(configured.clone()), host, false);
+        assert_eq!(resolved, Some(configured.clone()));
+        assert_eq!(
+            preflight_allowed_origin(false, resolved.as_deref(), "https://admin.example.com").await,
+            Some("https://admin.example.com".to_string())
+        );
+        assert_eq!(
+            preflight_allowed_origin(false, resolved.as_deref(), "http://127.0.0.1:5150").await,
+            None
+        );
+
+        for explicit in ["", " , ", "https://admin.example.com/not-an-origin"] {
+            let resolved = cors_origins_from_configuration(
+                Some(explicit), Some(configured.clone()), host, false,
+            );
+            assert!(resolved.is_some());
+            for origin in ["http://localhost:3000", "https://admin.example.com"] {
+                assert_eq!(preflight_allowed_origin(false, resolved.as_deref(), origin).await, None);
+            }
+        }
+
+        let resolved = cors_origins_from_configuration(None, Some(Vec::new()), host, false);
+        assert_eq!(
+            preflight_allowed_origin(false, resolved.as_deref(), "http://localhost:3000").await,
+            None
         );
     }
 
@@ -489,24 +539,25 @@ mod tests {
     #[test]
     fn production_does_not_promote_bind_host_to_cors_authorization() {
         assert_eq!(
-            cors_origins_from_configuration(None, Some("0.0.0.0:5150"), true),
+            cors_origins_from_configuration(None, None, Some("0.0.0.0:5150"), true),
             None,
             "a production bind address is not an authorized browser origin"
         );
         assert_eq!(
-            cors_origins_from_configuration(Some("  "), Some("localhost:5150"), true),
-            None
+            cors_origins_from_configuration(Some("  "), None, Some("localhost:5150"), true),
+            Some(Vec::new())
         );
         assert_eq!(
             cors_origins_from_configuration(
                 Some("https://admin.example.com"),
+                None,
                 Some("0.0.0.0:5150"),
                 true
             ),
             Some(vec!["https://admin.example.com".to_string()])
         );
         assert_eq!(
-            cors_origins_from_configuration(None, Some("0.0.0.0:5150"), false),
+            cors_origins_from_configuration(None, None, Some("0.0.0.0:5150"), false),
             Some(vec!["http://127.0.0.1:5150".to_string()]),
             "developer bind-host fallback retains its existing behavior"
         );

@@ -51,7 +51,13 @@ pub async fn render_rss_feed(
         }
     }
 
-    let origin = std::env::var("NEXT_PUBLIC_STOREFRONT_URL")
+    // Server-side configuration: prefer an explicit server env name and keep
+    // the historical NEXT_PUBLIC_* names as fallbacks. NEXT_PUBLIC_* names are
+    // inlined into Next.js client bundles, so relying on them server-side is
+    // misleading; the RUSTOK_* names are unambiguous.
+    let origin = std::env::var("RUSTOK_STOREFRONT_URL")
+        .or_else(|_| std::env::var("RUSTOK_SITE_URL"))
+        .or_else(|_| std::env::var("NEXT_PUBLIC_STOREFRONT_URL"))
         .or_else(|_| std::env::var("NEXT_PUBLIC_SITE_URL"))
         .map_err(|_| "Public storefront URL is not configured")?;
     let origin = url::Url::parse(&origin).map_err(|_| "Invalid public storefront URL")?;
@@ -66,7 +72,17 @@ pub async fn render_rss_feed(
     }
     let root = origin.origin().ascii_serialization();
     let root = url::Url::parse(&root).map_err(|_| "Invalid public storefront origin")?;
+    // The locale is interpolated into the URL path; only a BCP-47-style tag
+    // (ASCII alphanumerics and hyphens) may be used so an untrusted value can
+    // never escape the blog route segment.
     let locale = locale.trim();
+    if locale.is_empty()
+        || locale
+            .chars()
+            .any(|c| !(c.is_ascii_alphanumeric() || c == '-'))
+    {
+        return Err("Invalid Blog feed locale");
+    }
     let posts_url = root
         .join(&format!("/{locale}/modules/blog"))
         .map_err(|_| "Invalid Blog post route")?;

@@ -17,9 +17,63 @@ Product initial/base price writes and direct Pricing single/batch authoring
 validate exact currency minor-unit precision for both amount and compare-at
 amount before row mutation. This uses the same platform money contract as
 resolution, rather than accepting prices that subsequent quote reads reject.
-New PriceUpdated amounts are encoded without rounding. Calculated discount
-rounding and the retained two-decimal legacy mirror are unchanged.
+PriceUpdated predecessor and successor amounts are encoded without rounding.
+A missing predecessor is represented by None only for an insert; a stored
+amount that cannot be represented exactly aborts ordinary authoring, rather
+than emitting a fabricated amount or claiming absence. Both writers validate
+the persisted successor currency, amount and compare-at against the authored
+values before publishing and use the saved row's scope for the catalog revision.
+Earlier writes in a failed batch roll back with its events. Historical invalid
+amounts need explicit reconciliation; ordinary authoring does not repair them
+by falsifying event history. Calculated discount rounding and the retained
+two-decimal legacy mirror are unchanged.
+The canonical decimal columns retain NUMERIC(16,6), whose maximum is
+9999999999.999999. The Pricing owner validates both currency minor-unit
+exactness and this narrower storage range for amount and compare-at amount.
+Product lifecycle adapters return invalid authored money as a typed validation
+refusal before bootstrap price persistence; bootstrap also independently checks
+the owner rule. Direct Pricing authoring and stored-price resolution use the
+same validation. No historical migration or price row is rewritten.
 Focused regressions are authored but not executed.
+
+Batch base-price authoring admits every input before row or event mutation,
+rejects repeated normalized currency / resolved Channel identities (including
+ID and slug aliases), and uses the same bounded stored-row ambiguity check as
+single-price authoring. Duplicate inputs are validation errors; multiple exact
+stored matches return the existing `PRICING_PRICE_AMBIGUOUS` conflict and
+abort the entire transaction. The batch still advances the catalog Variant
+predecessor once for successful unscoped changes. Direct single/batch base-price writes and base discount preview now match a
+tenant-resolved channel by its UUID or its current slug-only representation,
+including historical ID-only rows. Multiple matching representations are
+conflicts; an update preserves the existing row identity and scope rather
+than inserting a duplicate or reassigning the channel. Unscoped rows and
+other channels remain distinct. Price-list overrides retain their exact
+inherited scope. Historical duplicates are not automatically merged.
+Focused regression sources are authored, not executed.
+
+Direct embedded Pricing base-price authoring advances the Product-owned Variant
+predecessor using its co-located transaction seam; the exact PriceUpdated envelope
+causes the corresponding Variant Index refresh. Batch writes advance once after
+all rows succeed. Contextual price writes do not invalidate the catalog edit
+snapshot. No new event family or external write capability is introduced.
+
+Percentage-discount apply computes from the canonical row only after locking
+the Variant and selected price list, then writes the calculated price, event
+and (for catalog base prices) Product predecessor in the same transaction.
+Preview and apply share the calculation and reject invalid historical reference
+money or ambiguous canonical rows. A missing row cannot become a new discount
+row. Legacy unscoped `get_price` reads only unscoped base rows; it never falls
+back to channel prices. Focused regression sources are unrun; PostgreSQL
+concurrent execution remains unverified.
+
+Persisted percentage rules require exact NUMERIC(16,6) scale (up to six
+fractional digits after removing trailing zeros), in addition to the existing
+(0, 100] domain. One-off discount calculation retains its separate contract.
+Rule authoring validates the saved row before commit and the projection
+mutation captures that row and its localized name within the same transaction.
+It no longer re-lists unscoped active price lists after commit, which could
+hide a successfully updated channel-scoped list or return a concurrent edit.
+Source regressions are authored, not executed; this is not a durable receipt.
 
 Admin SKU price upserts return the exact persisted row captured in the owner
 transaction, after successful commit, rather than searching the variant's

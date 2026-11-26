@@ -9,6 +9,31 @@ versioned with the host workspace, so until it is extracted (see the `rustok-ui-
 
 ## [Unreleased]
 
+### Fixed
+
+- **Resize handle event safety.** Pointerdown is consumed only for an active primary left-button
+  resize after pointer capture succeeds, preserving context menus and canvas interactions when
+  resize setup is unavailable.
+- **Resize preview/commit parity.** The browser resize policy and SSR patch validator now
+  share the same 24px/20px minimums and 100,000px dimension cap, preventing a preview from
+  exceeding a limit that the server would later reject.
+- **Leptos SSR history controls.** Undo and Redo are now exposed through the existing
+  browser-intent transport before WASM hydration; controls that still require Leptos handlers
+  remain hidden until hydration.
+- **Resize constraint enforcement.** Invalid explicit minimum/maximum pairs now leave the
+  affected gesture unchanged instead of silently discarding the maximum. Patch generation
+  rechecks changed dimensions and aspect-ratio constraints at the persistence boundary.
+- **Safe absolute URLs.** HTTP(S) URLs containing userinfo credentials are rejected by the
+  shared URL admission helper, including links, assets, and page-head URLs.
+- **Theme-token rename precision.** Renaming updates exact custom-property arguments in CSS
+  `var()` functions (including nested fallbacks), without changing quoted literals, comments,
+  or unrelated custom-property text.
+- **Inline-only rendering parity.** When style hooks are disabled, validated theme tokens are
+  attached to the rendered root as inheritable custom properties, and embed component styles
+  are preserved in the inline style path.
+- **Computed format validation.** Every format placeholder is validated, including empty
+  placeholders and an unclosed placeholder that follows an earlier valid one.
+
 ### Added
 
 - **Slider / Carousel interactive primitive (`slider` and `switch_slide`).**

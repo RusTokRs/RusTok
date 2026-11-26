@@ -24,17 +24,24 @@ struct ActionValidation<'a> {
 
 pub fn validate_component_actions(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
     let routes = InteractionRouteCatalog::from_document(document);
+    validate_component_actions_with_routes(document, &routes)
+}
+
+pub(crate) fn validate_component_actions_with_routes(
+    document: &ProjectDocument,
+    routes: &InteractionRouteCatalog,
+) -> Vec<ValidationDiagnostic> {
     let form_ids = collect_form_ids(document);
     let host_submitted_form_ids = collect_host_submitted_form_ids(document);
     let validation = ActionValidation {
-        routes: &routes,
+        routes,
         form_ids: &form_ids,
         host_submitted_form_ids: &host_submitted_form_ids,
     };
     let mut diagnostics = Vec::new();
     let mut seen_form_ids = BTreeSet::new();
 
-    visit_project_components(&document.project, |component, visit| {
+    visit_project_components(&document.project(), |component, visit| {
         validate_component(
             component,
             visit.path(),
@@ -43,7 +50,7 @@ pub fn validate_component_actions(document: &ProjectDocument) -> Vec<ValidationD
             &mut diagnostics,
         );
     });
-    for (page_index, page) in document.project.pages.iter().enumerate() {
+    for (page_index, page) in document.project().pages.iter().enumerate() {
         if let Some(root) = page.component.as_ref()
             && let Some(id) = crate::id_reference::conflicting_form_dom_id(std::iter::once(root))
         {
@@ -61,7 +68,7 @@ pub fn validate_component_actions(document: &ProjectDocument) -> Vec<ValidationD
 
 pub(super) fn collect_form_ids(document: &ProjectDocument) -> FormIndex {
     let mut forms = FormIndex::new();
-    visit_project_components(&document.project, |component, _| {
+    visit_project_components(&document.project(), |component, _| {
         let Some(raw) = component.extensions.get(FLY_FORM_FIELD).cloned() else {
             return;
         };
@@ -261,10 +268,10 @@ pub(super) fn validate_action_contract(
                 Ok(())
             })
             .and_then(|_| match routes.page_index(page_id) {
-                Some(page_index) if routes.has_route(page_index) => Ok(()),
-                Some(_) if fallback_href.is_some() => Ok(()),
-                Some(_) => Err(format!("target page `{page_id}` has no explicit slug")),
-                None => Err(format!("target page `{page_id}` does not exist")),
+                Ok(page_index) if routes.has_route(page_index) => Ok(()),
+                Ok(_) if fallback_href.is_some() => Ok(()),
+                Ok(_) => Err(format!("target page `{page_id}` has no explicit slug")),
+                Err(error) => Err(error.to_string()),
             }),
         ComponentAction::NavigateUrl { href, .. } => validate_safe_url(href, "navigation href"),
         ComponentAction::SubmitForm { form_id } => validate_identifier(form_id, "form id")
@@ -323,7 +330,7 @@ pub(super) fn validate_action_contract(
 
 fn collect_host_submitted_form_ids(document: &ProjectDocument) -> BTreeSet<String> {
     let mut ids = BTreeSet::new();
-    visit_project_components(&document.project, |component, _| {
+    visit_project_components(&document.project(), |component, _| {
         let Some(raw) = component.extensions.get(FLY_ACTION_FIELD).cloned() else {
             return;
         };

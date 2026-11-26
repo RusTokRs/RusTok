@@ -148,6 +148,7 @@ fn status_for_error(error: &PagesBrowserIntentAccessError) -> u16 {
             SsrDraftSessionError::GenerationConflict { .. }
             | SsrDraftSessionError::PageMismatch { .. }
             | SsrDraftSessionError::OperationReceiptConflict
+            | SsrDraftSessionError::OperationReceiptPending
             | SsrDraftSessionError::OperationReceiptRequiresSession
             | SsrDraftSessionError::DraftUnavailable,
         )) => HTTP_CONFLICT,
@@ -228,6 +229,7 @@ fn stable_code_for_error(error: &PagesBrowserIntentAccessError) -> Option<&str> 
         }
         PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Draft(error)) => match error {
             SsrDraftSessionError::OperationReceiptConflict => Some(BROWSER_OPERATION_ID_CONFLICT_CODE),
+            SsrDraftSessionError::OperationReceiptPending => Some("OPERATION_RECEIPT_PENDING"),
             SsrDraftSessionError::OperationReceiptCapacity { .. } => Some(BROWSER_OPERATION_RECEIPT_CAPACITY_CODE),
             SsrDraftSessionError::OperationReceiptsUnsupported => Some(BROWSER_OPERATION_RECEIPTS_UNSUPPORTED_CODE),
             SsrDraftSessionError::OperationReceiptRequiresSession => Some(BROWSER_OPERATION_RECEIPT_SESSION_REQUIRED_CODE),

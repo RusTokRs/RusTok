@@ -8,6 +8,7 @@ use axum::{
 use rustok_api::{AuthContextExtension, Permission, has_effective_permission};
 
 use crate::services::marketplace_catalog::RegistryPublishRequest;
+use crate::services::registry_principal::is_registry_session;
 
 const PUBLISH_PATH: &str = "/v2/catalog/publish";
 const MAX_PUBLISH_BODY_BYTES: usize = 256 * 1024;
@@ -76,7 +77,7 @@ pub async fn enforce(mut request: Request<Body>, next: Next) -> Response {
             Some(extension) => &extension.0,
             None => return unauthorized("Live registry publication requires authentication"),
         };
-        if auth.client_id.is_some() && auth.session_id.is_nil() {
+        if !is_registry_session(auth) {
             return forbidden("Live registry publication requires a user session");
         }
         if !has_effective_permission(&auth.permissions, &Permission::MODULES_MANAGE) {

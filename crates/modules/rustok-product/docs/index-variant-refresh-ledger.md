@@ -54,6 +54,19 @@ For `ProductCreated`, `ProductUpdated`, `ProductPublished`, and `ProductDeleted`
 Variant collection is set-based and scoped to one Product. It does not impose a new maximum variant count on existing catalog commands. Any query or ledger-write failure rolls back the Product mutation,
 root event, locale ledger and variant ledger together.
 
+## Pricing base-price writes
+
+Direct Pricing base-price single/batch commands already lock the Product Variant.
+Because the catalog edit response contains these prices, a successful Pricing
+write must also advance the Product-owned Variant predecessor in that same
+transaction. Product exposes a co-located owner operation for this purpose.
+The existing PriceUpdated envelope causes exactly one live Variant refresh
+row, not a locale, sibling, or retained tombstone refresh. For a batch the last
+base-price event is the cause after all mutations succeed. Contextual price
+writes are excluded because they are not part of the catalog edit snapshot.
+The relay verifies the exact Product and Variant identity for this cause.
+Source regression authored; PostgreSQL transaction/relay verification remains open.
+
 ## Live and delete versions
 
 Live variants use the final positive `product_variants.index_revision`. Removed variants use the

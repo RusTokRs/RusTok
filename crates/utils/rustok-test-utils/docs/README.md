@@ -11,3 +11,16 @@ common fixture setup. The active migration and contract work is recorded in the
 `db` also owns bounded PostgreSQL connections plus validated isolated-database
 name, URL, create, force-drop, and information-schema assertion helpers for
 module migration tests.
+
+The opt-in `jwt` feature provides `jwt::JwtKeyringFixture::generate()` for
+four independent in-memory RSA-2048 key pairs and
+`jwt::RsaKeyPairFixture::generate()` for additional rotation keys. Serialize
+a complete generation-bearing document with `fixture.document(generation)`
+and pass it to the Auth-owned document builder. Use
+`fixture.document_with_access(generation, kid, pair, history)` to rotate the
+access ring while keeping the other three purpose identities fixed. Generate a new fixture per
+isolated security store; retain the fixture only when testing restart,
+replication, or rotation within the same store. The helper does not provision
+the MAC root, call OpenSSL as an external process, or write private keys.
+It uses the same locked AWS-LC backend and PEM codec already present in the
+workspace. Source regressions are authored; execution remains pending.

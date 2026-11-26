@@ -88,7 +88,7 @@ pub fn prepare_submit_group_membership_application(
         if question.required && answer.trim().is_empty() {
             return Err(GroupsStorefrontApplicationInputError::MissingRequiredAnswer);
         }
-        if answer.chars().count() > question.max_answer_chars as usize {
+        if answer.trim().chars().count() > question.max_answer_chars as usize {
             return Err(GroupsStorefrontApplicationInputError::AnswerTooLong);
         }
     }

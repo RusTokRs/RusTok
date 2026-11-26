@@ -67,7 +67,10 @@ emits `fly:browser-peer-write` and a visible `FLY_PEER_WRITE_CONFLICT` problem, 
 subsequent mutations before DOM intent emission or POST and discards unsent queued writes with the existing
 `fly:browser-intents-discarded` notice. The warning survives read-only responses
 until remount/reload; the adapter never reloads automatically or silently merges
-unsaved changes. The channel carries only page ID, confirmed revision and hash.
+unsaved changes. The structured channel message carries only page ID, confirmed revision,
+hash and editor-scoped sender ID. Both adapters require nonblank metadata, at most 256 UTF-8
+bytes per field and 1024 UTF-8 bytes for the serialized message; malformed notifications are
+ignored without advancing the baseline or fencing the editor.
 Browsers without cross-tab messaging still rely on server-side CAS. This is a
 conservative page-level guard (including editors on different locales), not
 cross-tab ordering, server-recognized idempotency or recovery for an aborted
@@ -77,10 +80,19 @@ The serialized writer queue fails closed on HTTP errors, timeouts/aborts, redire
 responses, application-level save failures, navigation responses, or HTTP successes without a
 confirmed nonempty revision and project hash. Pending mutations are resolved as unsent instead
 of being replayed with an unverified base. An abort signal that expired while queued skips that
-intent without posting. This is intentionally a safety gate, not automatic retry or reconciliation.
+intent without posting. If a dequeued request fails admission before taking the in-flight guard,
+the remaining queue is explicitly discarded and its promises settled; no request is left waiting
+for a nonexistent transport completion. Synchronous response or network-status listeners may
+unmount the adapter; the stopped continuation cannot rebase the root or initiate navigation.
+This is intentionally a safety gate, not automatic retry or reconciliation.
 
 Timeout notifications use the same authoritative/read-only request ordering rule as response
 and error notifications. A newer selection request cannot hide the timeout of a pending write.
+
+Expected iframe origins use the same explicit HTTP(S) origin grammar as Fly Web:
+canonical host and default port normalization are supported, while paths (including
+dot segments), credentials, malformed authority delimiters, queries and fragments
+are rejected before URL parsing. The literal sandboxed origin `"null"` remains valid.
 
 Same-origin navigation/intent-endpoint admission rejects raw backslashes and ASCII control
 or whitespace characters before URL resolution, including the `about:blank`/srcdoc fallback
@@ -99,7 +111,22 @@ mutating envelope and its operation ID in tab-scoped `sessionStorage` before
 sending it. A reload or ambiguous response triggers a read-only receipt lookup.
 The adapter blocks new mutations while the outcome is unknown and exposes
 explicit status-check and same-request retry controls; it never automatically
-retries the mutation. The host must render an owner-bound draft token before
+retries the mutation. A restored pending envelope immediately shows its recovery
+notice and starts a receipt lookup. Lookups and retries of the same operation are
+mutually exclusive. A tab/page pending slot cannot be overwritten by a second mounted root, and clearing it requires the exact original envelope. A committed receipt must match the operation ID and draft token, advance the original generation, and include a usable editor snapshot. Unconfirmed success is not returned as a usable result.
+Selection and hover cannot supersede recovery. The editable Pages server also commits
+draft generation for view-state intents, so strict transport serializes and receipts
+all such requests, not only document commands. A receipt lookup is the only pure
+lookup and cannot advance the draft base until a matching committed receipt arrives.
+Both DOM dispatch and POST apply this strict classification, so a pending operation
+or peer conflict blocks view-state intents as well as document edits. A successful
+HTTP response without a matching committed receipt is non-current: it cannot clear
+a parked save warning, update revision/hash/draft metadata, or navigate the editor.
+Recovery refuses a different draft token, and the parked conflict retains the expected
+revision across reloads. Confirmed clean writes notify peers
+even when the SSR response requires reload; dirty draft-only changes do not.
+HTTP revision-conflict responses fence the editor, and late responses cannot replace
+a peer-write warning. The host must render an owner-bound draft token before
 enabling edits and bind that token into the route. This protocol is currently
 implemented by the Pages SSR host; other hosts must not opt into the strict
 contract without matching server-side atomic receipts.

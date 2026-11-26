@@ -683,13 +683,13 @@ pub fn record_index_reindex_runtime_config(
 ) {
     INDEX_REINDEX_RUNTIME_CONFIG
         .with_label_values(&[indexer, "parallelism"])
-        .set(parallelism as i64);
+        .set(i64::try_from(parallelism).unwrap_or(i64::MAX));
     INDEX_REINDEX_RUNTIME_CONFIG
         .with_label_values(&[indexer, "entity_budget"])
-        .set(entity_budget as i64);
+        .set(i64::try_from(entity_budget).unwrap_or(i64::MAX));
     INDEX_REINDEX_RUNTIME_CONFIG
         .with_label_values(&[indexer, "yield_every"])
-        .set(yield_every as i64);
+        .set(i64::try_from(yield_every).unwrap_or(i64::MAX));
 }
 
 /// Record a lifecycle transition for a reindex run.
@@ -791,10 +791,10 @@ pub fn update_rate_limit_runtime(
         .set(if healthy { 1 } else { 0 });
     RATE_LIMIT_ACTIVE_CLIENTS
         .with_label_values(&[namespace])
-        .set(active_clients as i64);
+        .set(i64::try_from(active_clients).unwrap_or(i64::MAX));
     RATE_LIMIT_TOTAL_ENTRIES
         .with_label_values(&[namespace])
-        .set(total_entries as i64);
+        .set(i64::try_from(total_entries).unwrap_or(i64::MAX));
     RATE_LIMIT_DISTRIBUTED_MODE
         .with_label_values(&[namespace])
         .set(if distributed { 1 } else { 0 });

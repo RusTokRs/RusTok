@@ -11,15 +11,6 @@ pub(crate) fn storefront_shipping_option_read_port(
         .shipping_option_read_port()
 }
 
-/// Compatibility fallback for directly embedded schemas that do not install the
-/// mounted runtime extension: the canonical fulfillment root factory admits the
-/// same owner-scoped in-process read port outside the query facade.
-pub(crate) fn storefront_shipping_option_read_port_fallback(
-    db: sea_orm::DatabaseConnection,
-) -> Arc<dyn ShippingOptionReadPort> {
-    rustok_fulfillment::in_process_shipping_option_read_port(db)
-}
-
 pub(crate) fn storefront_shipping_option_read_context(
     tenant_id: Uuid,
     cart_id: Uuid,

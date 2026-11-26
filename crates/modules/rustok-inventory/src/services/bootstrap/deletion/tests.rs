@@ -186,6 +186,48 @@ fn whole_batch_level_bound_is_inclusive_and_never_truncates() {
     );
 }
 
+#[tokio::test]
+async fn deletion_rejects_variant_with_cross_tenant_parent_before_inventory_lookup() {
+    use sea_orm::{ConnectionTrait, Database, DatabaseBackend, Statement, TransactionTrait};
+
+    let db = Database::connect("sqlite::memory:")
+        .await
+        .expect("connect Product deletion identity fixture");
+    for sql in [
+        "CREATE TABLE products (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL)",
+        "CREATE TABLE product_variants (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL, product_id TEXT NOT NULL)",
+    ] {
+        db.execute_raw(Statement::from_string(DatabaseBackend::Sqlite, sql))
+            .await
+            .expect("create Product identity table");
+    }
+    let tenant_id = Uuid::new_v4();
+    let foreign_tenant_id = Uuid::new_v4();
+    let foreign_product_id = Uuid::new_v4();
+    let variant_id = Uuid::new_v4();
+    db.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Sqlite,
+        "INSERT INTO products (id, tenant_id) VALUES (?, ?)",
+        [foreign_product_id.into(), foreign_tenant_id.into()],
+    ))
+    .await
+    .expect("insert foreign Product");
+    db.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Sqlite,
+        "INSERT INTO product_variants (id, tenant_id, product_id) VALUES (?, ?, ?)",
+        [variant_id.into(), tenant_id.into(), foreign_product_id.into()],
+    ))
+    .await
+    .expect("insert Variant with foreign parent");
+
+    let txn = db.begin().await.expect("begin Product deletion identity transaction");
+    assert_rejected(
+        DeletionPlan::load(&txn, tenant_id, &[variant_id]).await,
+        CatalogDeletionBlocker::IdentityUnavailable,
+    );
+    txn.rollback().await.expect("rollback Product deletion identity transaction");
+}
+
 #[test]
 fn empty_child_set_only_validates_levels_not_missing_inventory_identity() {
     // DeletionPlan::load separately requires every positive tenant-proved item identity.

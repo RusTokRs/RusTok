@@ -63,7 +63,12 @@ operation and must not be blocked by a release-readiness policy when the actor h
    so its delayed response cannot acknowledge an older revision or clear the conflict. The JS
    adapter also fences an explicit server revision-conflict response if a BroadcastChannel
    notification was missed, and clears that parked fence only after a reload observes a
-   different server revision.
+   different server revision. A direct HTTP revision-conflict response also fences
+   the adapter. The classic adapter separates confirmed clean writes from
+   queue-replay eligibility: a required SSR reload must not suppress peer notification.
+   Dirty draft-only changes are not confirmed writes. Pending-operation receipt lookup
+   and same-request retry are mutually exclusive and receipt identity must match the
+   pending operation.
 6. **No automatic merge or replay is introduced.** A peer notification asks the user to preserve
    local work and reload. The server's revision compare-and-swap remains authoritative if
    BroadcastChannel is unavailable or a notification is missed.
@@ -77,7 +82,10 @@ operation and must not be blocked by a release-readiness policy when the actor h
 - A deserialized controller has no active request identity.
 - The local `request_id` is correlation metadata only. It must not replace the stable server
   idempotency key bound to tenant, actor, page, expected revision and canonical project digest.
-- Peer-write messages contain page/revision/hash metadata, not document content or credentials.
+- Peer-write messages are structured objects containing page/revision/hash and editor-scoped
+  sender metadata, not document content or credentials. Require all four nonblank fields,
+  bounded to 256 UTF-8 bytes each, and a serialized size of at most 1024 UTF-8 bytes.
+  Malformed notifications cannot advance the baseline or fence an editor.
 - Peer-write fencing does not provide presence, locking, OT/CRDT, operation merging or durable
   cross-session reconciliation.
 

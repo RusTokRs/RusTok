@@ -324,6 +324,7 @@ pub trait ContentImporter<Source: Send + 'static, Target: Send + 'static>: Send 
         context: ImportContext,
     ) -> Result<BatchImportResult<Target>, PortabilityError> {
         let start = std::time::Instant::now();
+        let total = sources.len();
         let mut result = BatchImportResult::new();
 
         for (index, source) in sources.into_iter().enumerate() {
@@ -348,7 +349,7 @@ pub trait ContentImporter<Source: Send + 'static, Target: Send + 'static>: Send 
             }
 
             if let Some(ref callback) = context.progress_callback {
-                callback(index + 1, result.total);
+                callback(index + 1, total);
             }
         }
 
@@ -454,5 +455,46 @@ mod tests {
 
         let valid_export = ExportContext::new(Uuid::new_v4(), Uuid::new_v4(), Format::Json);
         assert!(valid_export.validate().is_ok());
+    }
+
+    struct StubImporter;
+
+    #[async_trait]
+    impl ContentImporter<String, String> for StubImporter {
+        async fn import(
+            &self,
+            source: String,
+            _context: ImportContext,
+        ) -> Result<ImportResult<String>, PortabilityError> {
+            Ok(ImportResult::success(source.clone(), source))
+        }
+
+        async fn validate(
+            &self,
+            _source: String,
+            _context: ImportContext,
+        ) -> Result<Vec<String>, PortabilityError> {
+            Ok(Vec::new())
+        }
+    }
+
+    #[tokio::test]
+    async fn import_batch_reports_total_source_count_to_progress_callback() {
+        use std::sync::{Arc, Mutex};
+
+        let updates = Arc::new(Mutex::new(Vec::new()));
+        let updates_clone = Arc::clone(&updates);
+        let context = ImportContext::new(Uuid::new_v4(), Uuid::new_v4(), Format::Json)
+            .with_progress_callback(Arc::new(move |current, total| {
+                updates_clone.lock().unwrap().push((current, total));
+            }));
+
+        let result = StubImporter
+            .import_batch(vec!["a".to_string(), "b".to_string()], context)
+            .await
+            .unwrap();
+
+        assert_eq!(result.total, 2);
+        assert_eq!(*updates.lock().unwrap(), vec![(1, 2), (2, 2)]);
     }
 }

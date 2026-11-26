@@ -199,8 +199,7 @@ pub fn spawn_module_event_dispatcher(
                 // A previous pass may have found some optional recovery
                 // dependencies unavailable. Retry their independent startup
                 // claims even when the required dispatcher is already live.
-                start_optional_module_recovery_workers(ctx);
-                return Ok(());
+                return start_optional_module_recovery_workers(ctx);
             }
         }
     } else {
@@ -240,22 +239,21 @@ pub fn spawn_module_event_dispatcher(
 
     // Required dispatcher startup has succeeded. Optional recovery workers may
     // now begin their own loops; a failed dispatcher start leaves none behind.
-    start_optional_module_recovery_workers(ctx);
-    Ok(())
+    start_optional_module_recovery_workers(ctx)
 }
 
 /// Optional recovery dependencies can become available after the dispatcher
 /// itself was registered. Each child starter has an independent reservation
 /// and shutdown publication fence, so retrying these starts is idempotent.
-fn start_optional_module_recovery_workers(ctx: &ServerRuntimeContext) {
+fn start_optional_module_recovery_workers(ctx: &ServerRuntimeContext) -> Result<()> {
     #[cfg(feature = "mod-product")]
-    spawn_product_media_release_worker_if_enabled(ctx);
+    spawn_product_media_release_worker_if_enabled(ctx)?;
     #[cfg(feature = "mod-commerce")]
-    spawn_paid_order_label_worker_if_enabled(ctx);
+    spawn_paid_order_label_worker_if_enabled(ctx)?;
     #[cfg(feature = "commerce-marketplace-financial")]
-    spawn_marketplace_financial_worker_if_enabled(ctx);
+    spawn_marketplace_financial_worker_if_enabled(ctx)?;
     #[cfg(feature = "mod-payment")]
-    spawn_payment_provider_event_worker_if_enabled(ctx);
+    spawn_payment_provider_event_worker_if_enabled(ctx)?;
     #[cfg(not(any(
         feature = "mod-product",
         feature = "mod-commerce",
@@ -263,6 +261,7 @@ fn start_optional_module_recovery_workers(ctx: &ServerRuntimeContext) {
         feature = "mod-payment",
     )))]
     let _ = ctx;
+    Ok(())
 }
 
 fn start_module_event_dispatcher(
@@ -340,115 +339,97 @@ fn enrich_runtime_extensions_after_event_start(
     enriched
 }
 
-#[cfg(feature = "mod-commerce")]
-fn spawn_paid_order_label_worker_if_enabled(ctx: &ServerRuntimeContext) {
-    let stop = crate::services::app_lifecycle::StopHandle::ensure(ctx);
-    if !ctx.settings().runtime.runs_background_workers()
-        || stop.is_stopping()
-        || ctx.shared_contains::<
-            crate::services::paid_order_label_worker::PaidOrderCreateLabelWorkerHandle,
-        >()
-    {
-        return;
+/// All dispatcher-owned recovery constructors are synchronous. Serialize the
+/// liveness check, reservation and publication with shutdown's handle take.
+#[cfg(any(
+    feature = "mod-product",
+    feature = "mod-commerce",
+    feature = "commerce-marketplace-financial",
+    feature = "mod-payment",
+))]
+fn start_recovery_worker<T, R>(
+    ctx: &ServerRuntimeContext,
+    worker_name: &'static str,
+    marker: R,
+    is_finished: impl FnOnce(&T) -> bool,
+    spawn: impl FnOnce(tokio::sync::watch::Receiver<bool>) -> Option<T>,
+) -> Result<()>
+where
+    T: 'static + Send + Sync,
+    R: 'static + Send + Sync,
+{
+    if !ctx.settings().runtime.runs_background_workers() {
+        return Ok(());
     }
-    let Some(reservation) =
-        ServerRuntimeStartReservation::try_claim(ctx, PaidOrderLabelWorkerReservation)
-    else {
-        return;
-    };
+    let stop = crate::services::app_lifecycle::StopHandle::ensure(ctx);
     let registration = dispatcher_registration_lock(ctx);
     let _registration_guard = registration
         .0
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    // This lock also guards shutdown's take of this worker handle.
-    if stop.is_stopping() {
-        return;
+    if crate::services::server_runtime_context::published_worker_running::<T>(
+        ctx, worker_name, is_finished,
+    )? {
+        return Ok(());
     }
-
-    if let Some(handle) =
-        crate::services::paid_order_label_worker::spawn_paid_order_create_label_worker(
-            ctx.clone(),
-            stop.subscribe(),
-        )
-    {
+    let Some(reservation) = ServerRuntimeStartReservation::try_claim(ctx, marker) else {
+        return Err(Error::Message(format!(
+            "{worker_name} startup reservation exists without a live handle"
+        )));
+    };
+    if stop.is_stopping() {
+        return Err(Error::Message(format!(
+            "{worker_name} startup interrupted by server shutdown"
+        )));
+    }
+    if let Some(handle) = spawn(stop.subscribe()) {
         ctx.shared_insert(handle);
         reservation.commit();
     }
-    // A missing registry or an unwinding/cancelled start releases the claim
-    // through Drop; a later composition may retry.
+    // Absent optional dependencies release the reservation for a later retry.
+    Ok(())
+}
+
+#[cfg(feature = "mod-commerce")]
+fn spawn_paid_order_label_worker_if_enabled(ctx: &ServerRuntimeContext) -> Result<()> {
+    use crate::services::paid_order_label_worker::{
+        PaidOrderCreateLabelWorkerHandle, spawn_paid_order_create_label_worker,
+    };
+    start_recovery_worker(
+        ctx,
+        "Paid-order label recovery worker",
+        PaidOrderLabelWorkerReservation,
+        PaidOrderCreateLabelWorkerHandle::is_finished,
+        |stop_rx| spawn_paid_order_create_label_worker(ctx.clone(), stop_rx),
+    )
 }
 
 #[cfg(feature = "commerce-marketplace-financial")]
-fn spawn_marketplace_financial_worker_if_enabled(ctx: &ServerRuntimeContext) {
-    let stop = crate::services::app_lifecycle::StopHandle::ensure(ctx);
-    if !ctx.settings().runtime.runs_background_workers()
-        || stop.is_stopping()
-        || ctx.shared_contains::<
-            crate::services::marketplace_financial_worker::MarketplaceFinancialWorkerHandle,
-        >()
-    {
-        return;
-    }
-    let Some(reservation) =
-        ServerRuntimeStartReservation::try_claim(ctx, MarketplaceFinancialWorkerReservation)
-    else {
-        return;
+fn spawn_marketplace_financial_worker_if_enabled(ctx: &ServerRuntimeContext) -> Result<()> {
+    use crate::services::marketplace_financial_worker::{
+        MarketplaceFinancialWorkerHandle, spawn_marketplace_financial_worker,
     };
-    let registration = dispatcher_registration_lock(ctx);
-    let _registration_guard = registration
-        .0
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    // This lock also guards shutdown's take of this worker handle.
-    if stop.is_stopping() {
-        return;
-    }
-
-    if let Some(handle) =
-        crate::services::marketplace_financial_worker::spawn_marketplace_financial_worker(
-            ctx.clone(),
-            stop.subscribe(),
-        )
-    {
-        ctx.shared_insert(handle);
-        reservation.commit();
-    }
+    start_recovery_worker(
+        ctx,
+        "Marketplace financial recovery worker",
+        MarketplaceFinancialWorkerReservation,
+        MarketplaceFinancialWorkerHandle::is_finished,
+        |stop_rx| spawn_marketplace_financial_worker(ctx.clone(), stop_rx),
+    )
 }
 
 #[cfg(feature = "mod-payment")]
-fn spawn_payment_provider_event_worker_if_enabled(ctx: &ServerRuntimeContext) {
-    let stop = crate::services::app_lifecycle::StopHandle::ensure(ctx);
-    if !ctx.settings().runtime.runs_background_workers()
-        || stop.is_stopping()
-        || ctx.shared_contains::<
-            crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle,
-        >()
-    {
-        return;
-    }
-    let Some(reservation) =
-        ServerRuntimeStartReservation::try_claim(ctx, PaymentProviderEventWorkerReservation)
-    else {
-        return;
+fn spawn_payment_provider_event_worker_if_enabled(ctx: &ServerRuntimeContext) -> Result<()> {
+    use crate::services::payment_provider_event_worker::{
+        PaymentProviderEventWorkerHandle, spawn_payment_provider_event_worker,
     };
-    let registration = dispatcher_registration_lock(ctx);
-    let _registration_guard = registration
-        .0
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    // This lock also guards shutdown's take of this worker handle.
-    if stop.is_stopping() {
-        return;
-    }
-
-    ctx.shared_insert(
-        crate::services::payment_provider_event_worker::spawn_payment_provider_event_worker(
-            ctx.clone(),
-            stop.subscribe(),
-        ),
-    );
-    reservation.commit();
+    start_recovery_worker(
+        ctx,
+        "Payment provider event recovery worker",
+        PaymentProviderEventWorkerReservation,
+        PaymentProviderEventWorkerHandle::is_finished,
+        |stop_rx| Some(spawn_payment_provider_event_worker(ctx.clone(), stop_rx)),
+    )
 }
 
 pub fn build_shared_runtime_extensions(
@@ -975,37 +956,18 @@ pub fn build_module_event_dispatcher(
 }
 
 #[cfg(feature = "mod-product")]
-fn spawn_product_media_release_worker_if_enabled(ctx: &ServerRuntimeContext) {
-    use crate::services::product_media_release_worker::spawn_product_media_release_worker;
-    // Reserve before spawning: concurrent composition must not create two workers.
-    struct ProductMediaReleaseWorkerReservation;
-    let stop = crate::services::app_lifecycle::StopHandle::ensure(ctx);
-    if !ctx.settings().runtime.runs_background_workers()
-        || stop.is_stopping()
-        || ctx.shared_contains::<
-            crate::services::product_media_release_worker::ProductMediaReleaseWorkerHandle,
-        >()
-    {
-        return;
-    }
-    let Some(reservation) =
-        ServerRuntimeStartReservation::try_claim(ctx, ProductMediaReleaseWorkerReservation)
-    else {
-        return;
+fn spawn_product_media_release_worker_if_enabled(ctx: &ServerRuntimeContext) -> Result<()> {
+    use crate::services::product_media_release_worker::{
+        ProductMediaReleaseWorkerHandle, spawn_product_media_release_worker,
     };
-    let registration = dispatcher_registration_lock(ctx);
-    let _registration_guard = registration
-        .0
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if stop.is_stopping() {
-        return;
-    }
-    ctx.shared_insert(spawn_product_media_release_worker(
-        ctx.clone(),
-        stop.subscribe(),
-    ));
-    reservation.commit();
+    struct ProductMediaReleaseWorkerReservation;
+    start_recovery_worker(
+        ctx,
+        "Product Media release worker",
+        ProductMediaReleaseWorkerReservation,
+        ProductMediaReleaseWorkerHandle::is_finished,
+        |stop_rx| Some(spawn_product_media_release_worker(ctx.clone(), stop_rx)),
+    )
 }
 
 #[cfg(test)]
@@ -1015,7 +977,6 @@ mod tests {
         build_shared_runtime_extensions_with_host_providers,
     };
     use crate::common::settings::RustokSettings;
-    use rustok_auth::AuthConfig;
     use rustok_core::{EventBus, ModuleRegistry};
     use rustok_index::IndexModule;
     use rustok_search::SearchModule;
@@ -1075,7 +1036,7 @@ mod tests {
             &registry,
             &settings,
             runtime_ctx.clone(),
-            AuthConfig::new("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
+            crate::auth::test_auth_config("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
         )
         .expect("host runtime extensions should initialize");
 
@@ -1346,7 +1307,7 @@ mod lifecycle_tests {
         let startup_ctx = ctx.clone();
         let startup = tokio::task::spawn_blocking(move || {
             let _ = ready_tx.send(());
-            spawn_payment_provider_event_worker_if_enabled(&startup_ctx);
+            spawn_payment_provider_event_worker_if_enabled(&startup_ctx)
         });
         ready_rx.await.expect("worker starter scheduled");
         tokio::task::yield_now().await;
@@ -1356,7 +1317,10 @@ mod lifecycle_tests {
             .stop()
             .await;
         drop(registration_guard);
-        startup.await.expect("worker starter joins");
+        assert!(
+            startup.await.expect("worker starter joins").is_err(),
+            "shutdown must not be reported as successful startup"
+        );
 
         assert!(
             !ctx.shared_contains::<
@@ -1383,11 +1347,13 @@ mod lifecycle_tests {
             let arrivals = Arc::clone(&arrivals);
             calls.push(tokio::spawn(async move {
                 arrivals.wait().await;
-                spawn_payment_provider_event_worker_if_enabled(&ctx);
+                spawn_payment_provider_event_worker_if_enabled(&ctx)
             }));
         }
         for call in calls {
-            call.await.expect("worker composition should not panic");
+            call.await
+                .expect("worker composition should not panic")
+                .expect("serialized concurrent startup succeeds");
         }
         let first_instance = ctx
             .shared_map::<
@@ -1396,7 +1362,8 @@ mod lifecycle_tests {
             >(|worker| worker.instance_id())
             .expect("one payment recovery worker must be registered");
         assert!(ctx.shared_contains::<PaymentProviderEventWorkerReservation>());
-        spawn_payment_provider_event_worker_if_enabled(&ctx);
+        spawn_payment_provider_event_worker_if_enabled(&ctx)
+            .expect("live worker permits idempotent startup");
         assert_eq!(
             ctx.shared_map::<
                 crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle,
@@ -1425,7 +1392,8 @@ mod lifecycle_tests {
         let mut settings = RustokSettings::default();
         settings.runtime.host_mode = RuntimeHostMode::Worker;
         let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
-        spawn_paid_order_label_worker_if_enabled(&ctx);
+        spawn_paid_order_label_worker_if_enabled(&ctx)
+            .expect("absent optional fulfillment registry permits retry");
         assert!(!ctx.shared_contains::<PaidOrderLabelWorkerReservation>());
         assert!(!ctx.shared_contains::<
             crate::services::paid_order_label_worker::PaidOrderCreateLabelWorkerHandle,
@@ -1438,7 +1406,8 @@ mod lifecycle_tests {
         let mut settings = RustokSettings::default();
         settings.runtime.host_mode = RuntimeHostMode::Worker;
         let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
-        spawn_marketplace_financial_worker_if_enabled(&ctx);
+        spawn_marketplace_financial_worker_if_enabled(&ctx)
+            .expect("absent optional financial runtime permits retry");
         assert!(!ctx.shared_contains::<MarketplaceFinancialWorkerReservation>());
         assert!(!ctx.shared_contains::<
             crate::services::marketplace_financial_worker::MarketplaceFinancialWorkerHandle,
@@ -1454,11 +1423,46 @@ mod lifecycle_tests {
         crate::services::app_lifecycle::StopHandle::ensure(&ctx)
             .stop()
             .await;
-        spawn_payment_provider_event_worker_if_enabled(&ctx);
+        assert!(spawn_payment_provider_event_worker_if_enabled(&ctx).is_err());
         assert!(!ctx.shared_contains::<PaymentProviderEventWorkerReservation>());
         assert!(!ctx.shared_contains::<
             crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle,
         >());
+    }
+
+    #[cfg(feature = "mod-payment")]
+    #[tokio::test]
+    async fn terminated_payment_recovery_handle_is_not_successful_startup() {
+        use crate::services::payment_provider_event_worker::{
+            PaymentProviderEventWorkerHandle, spawn_payment_provider_event_worker,
+        };
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::Worker;
+        let ctx = ServerRuntimeContext::new(sea_orm::DatabaseConnection::default(), settings);
+        // Stop only this task; the host is still accepting startup requests.
+        let (_task_stop, stop_rx) = tokio::sync::watch::channel(true);
+        let worker = spawn_payment_provider_event_worker(ctx.clone(), stop_rx);
+        tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            while !worker.is_finished() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("worker has exited");
+        let instance_id = worker.instance_id();
+        ctx.shared_insert(worker);
+
+        let result = spawn_payment_provider_event_worker_if_enabled(&ctx);
+        assert!(
+            matches!(result, Err(Error::Message(message)) if message.contains("has terminated")),
+            "a retained finished handle must fail repeated startup"
+        );
+        let retained = take_dispatcher_started_worker_for_shutdown::<PaymentProviderEventWorkerHandle>(
+            &ctx,
+        )
+        .expect("shutdown retains ownership of the terminated task");
+        assert_eq!(retained.instance_id(), instance_id);
+        retained.join().await.expect("terminated task joins");
     }
 
     #[test]

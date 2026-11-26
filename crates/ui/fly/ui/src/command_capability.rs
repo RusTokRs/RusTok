@@ -28,6 +28,7 @@ impl CommandCapabilityRequirement {
     }
 
     pub fn missing(&self, state: CapabilityState) -> Vec<EditorCapability> {
+        let state = state.normalized();
         self.capabilities
             .iter()
             .copied()
@@ -36,6 +37,7 @@ impl CommandCapabilityRequirement {
     }
 
     pub fn first_missing(&self, state: CapabilityState) -> Option<EditorCapability> {
+        let state = state.normalized();
         self.capabilities
             .iter()
             .copied()
@@ -254,5 +256,21 @@ mod tests {
         assert!(capabilities.contains(&EditorCapability::Styles));
         assert!(capabilities.contains(&EditorCapability::Assets));
         assert!(!capabilities.contains(&EditorCapability::Edit));
+    }
+}
+
+#[cfg(test)]
+mod normalization_tests {
+    use super::*;
+
+    #[test]
+    fn command_requirement_cannot_authorize_a_sub_capability_without_edit() {
+        let requirement = CommandCapabilityRequirement::for_command(&EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: ComponentPatch::default().merge_style(serde_json::json!({"color": "red"})),
+        });
+        let inconsistent = CapabilityState { edit: false, ..CapabilityState::full() };
+        assert_eq!(requirement.first_missing(inconsistent), Some(EditorCapability::Styles));
+        assert!(!requirement.is_satisfied_by(inconsistent));
     }
 }

@@ -1,5 +1,8 @@
 #![cfg(all(feature = "mod-seo", feature = "mod-translation"))]
 
+mod support;
+use support::test_auth_config;
+
 use std::{error::Error, sync::Arc, time::Duration};
 
 use rustok_api::{PortActor, PortContext, PortErrorKind, TenantLocale};
@@ -56,6 +59,7 @@ async fn seo_registered_translation_provider_multi_replica_evidence_postgres() -
 }
 
 async fn run_contract(database_url: &str) -> TestResult<()> {
+    let auth_config = test_auth_config();
     let seed_connection = connect_postgres(database_url).await?;
     Migrator::up(&seed_connection, None).await?;
 
@@ -76,7 +80,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     )
     .await?;
 
-    let provider = registered_provider(seed_connection.clone());
+    let provider = registered_provider(seed_connection.clone(), auth_config.clone());
     let descriptor = provider.descriptor();
     assert_eq!(descriptor.owner_slug.as_str(), OWNER_SLUG);
     assert_eq!(descriptor.resource_kind.as_str(), RESOURCE_KIND);
@@ -189,8 +193,8 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     let actor_id = Uuid::new_v4();
     let first_connection = connect_postgres(database_url).await?;
     let second_connection = connect_postgres(database_url).await?;
-    let first_provider = registered_provider(first_connection.clone());
-    let second_provider = registered_provider(second_connection.clone());
+    let first_provider = registered_provider(first_connection.clone(), auth_config.clone());
+    let second_provider = registered_provider(second_connection.clone(), auth_config.clone());
 
     let first_patch = patch(&initial, "Premier", "first");
     let first_receipt = first_provider
@@ -505,7 +509,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     Ok(())
 }
 
-fn registered_provider(db: DatabaseConnection) -> Arc<dyn TranslationTargetProvider> {
+fn registered_provider(db: DatabaseConnection, auth_config: AuthConfig) -> Arc<dyn TranslationTargetProvider> {
     let registry = ModuleRegistry::new()
         .register(ContentModule)
         .register(SeoModule);
@@ -515,7 +519,7 @@ fn registered_provider(db: DatabaseConnection) -> Arc<dyn TranslationTargetProvi
         &registry,
         &settings,
         runtime,
-        AuthConfig::new("test-secret-key-for-seo-translation-32bytes!!".to_string()),
+        auth_config,
     )
     .expect("host composition must succeed");
     let targets = translation_target_registry(&extensions).expect("Translation registry");

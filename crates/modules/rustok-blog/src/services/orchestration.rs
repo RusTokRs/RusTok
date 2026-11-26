@@ -7,6 +7,8 @@
 use chrono::{DateTime, Utc};
 use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
+use rustok_events::DomainEvent;
+use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, EntityTrait,
     PaginatorTrait, QueryFilter, QueryOrder,
@@ -19,7 +21,7 @@ use super::{
         CATEGORY_DESCRIPTION_MAX_CHARS, CATEGORY_NAME_MAX_CHARS, CATEGORY_SLUG_MAX_CHARS,
         record_category_copy_change_in_tx,
     },
-    post::{MAX_TAG_NAME_CHARS, validate_tags},
+    post::{MAX_TAG_NAME_CHARS, storage_to_status, status_to_storage, validate_tags},
     rbac::enforce_scope,
     tag::{
         TAG_SLUG_MAX_CHARS, publish_blog_reindex_in_tx, remove_post_tag_links_with_port_in_tx,
@@ -140,6 +142,8 @@ pub struct CreatePromotedPostInput {
     pub post_id: Uuid,
     pub tenant_id: Uuid,
     pub author_id: Uuid,
+    /// Actor that performed the conversion; carried on the emitted Blog events.
+    pub actor_id: Option<Uuid>,
     pub category_id: Option<Uuid>,
     pub status: String,
     pub slug: String,
@@ -166,6 +170,10 @@ pub async fn create_promoted_post_in_tx(
     if input.author_id.is_nil() {
         return Err(BlogError::validation("author_id must not be nil"));
     }
+    // Reject an unknown status instead of persisting an arbitrary string that
+    // would later break every read that maps the stored value back to the typed
+    // state machine.
+    let status = storage_to_status(&input.status)?;
     if input.slug.trim().is_empty() {
         return Err(BlogError::validation("slug must not be empty"));
     }
@@ -195,7 +203,7 @@ pub async fn create_promoted_post_in_tx(
         tenant_id: Set(input.tenant_id),
         author_id: Set(input.author_id),
         category_id: Set(input.category_id),
-        status: Set(input.status),
+        status: Set(status_to_storage(status)),
         slug: Set(input.slug),
         metadata: Set(input.metadata),
         featured_image_url: Set(None),
@@ -213,6 +221,10 @@ pub async fn create_promoted_post_in_tx(
     .await
     .map_err(BlogError::from)?;
 
+    let actor_id = input.actor_id;
+    // The creation fact carries one representative locale; the reindex request
+    // covers the whole post and every translation.
+    let primary_locale = input.translations[0].locale.clone();
     for translation in input.translations {
         blog_post_translation::ActiveModel {
             id: Set(Uuid::new_v4()),
@@ -230,7 +242,58 @@ pub async fn create_promoted_post_in_tx(
         .await
         .map_err(BlogError::from)?;
     }
+
+    // Emit the same Blog-owned facts a normal creation would, or the bridge's
+    // raw insert stays invisible to search/feed/comment consumers that listen to
+    // Blog events. These run in the caller's transaction.
+    publish_blog_event_in_tx(
+        txn,
+        input.tenant_id,
+        actor_id,
+        DomainEvent::BlogPostCreated {
+            post_id: input.post_id,
+            author_id: Some(input.author_id),
+            locale: primary_locale,
+        },
+    )
+    .await?;
+    if status == crate::state_machine::BlogPostStatus::Published {
+        publish_blog_event_in_tx(
+            txn,
+            input.tenant_id,
+            actor_id,
+            DomainEvent::BlogPostPublished {
+                post_id: input.post_id,
+                author_id: Some(input.author_id),
+            },
+        )
+        .await?;
+    }
+    publish_blog_event_in_tx(
+        txn,
+        input.tenant_id,
+        actor_id,
+        DomainEvent::ReindexRequested {
+            target_type: "blog".to_string(),
+            target_id: Some(input.post_id),
+        },
+    )
+    .await?;
     Ok(())
+}
+
+/// Publishes a Blog root event inside the caller's transaction via the owner
+/// outbox. Centralised so the orchestration bridge emits Blog events through the
+/// same validation/registration path as the rest of the module.
+async fn publish_blog_event_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    actor_id: Option<Uuid>,
+    event: DomainEvent,
+) -> BlogResult<()> {
+    TransactionalEventBus::publish_root_in_tx(txn, tenant_id, actor_id, event)
+        .await
+        .map_err(BlogError::from)
 }
 
 /// Loads tag taxonomy term IDs linked to a post in chronological link order.
@@ -376,12 +439,15 @@ pub async fn load_post_for_demotion_in_tx(
 }
 
 /// Deletes a demoted blog post, its translations, and cleans up its tag usage within the transaction.
+/// Emits the Blog-owned deletion fact and a targeted reindex so search/feed
+/// consumers drop the demoted post instead of serving a stale document.
 #[instrument(skip(txn, taxonomy), fields(tenant_id = %tenant_id, post_id = %post_id))]
 pub async fn delete_demoted_post_in_tx(
     taxonomy: &dyn BlogTaxonomyPort,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     post_id: Uuid,
+    actor_id: Option<Uuid>,
 ) -> BlogResult<()> {
     if tenant_id.is_nil() {
         return Err(BlogError::validation("tenant_id must not be nil"));
@@ -439,6 +505,25 @@ pub async fn delete_demoted_post_in_tx(
             "Blog post changed concurrently before demotion deletion",
         ));
     }
+
+    // Publish after the row is gone so the reindex reflects the removal.
+    publish_blog_event_in_tx(
+        txn,
+        tenant_id,
+        actor_id,
+        DomainEvent::BlogPostDeleted { post_id },
+    )
+    .await?;
+    publish_blog_event_in_tx(
+        txn,
+        tenant_id,
+        actor_id,
+        DomainEvent::ReindexRequested {
+            target_type: "blog".to_string(),
+            target_id: Some(post_id),
+        },
+    )
+    .await?;
 
     Ok(())
 }

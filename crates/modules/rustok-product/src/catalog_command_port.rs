@@ -963,6 +963,39 @@ mod tests {
     }
 
     #[test]
+    fn variant_revision_conflict_requires_canonical_distinct_revisions() {
+        let context = test_context();
+        for (message, kind, code) in [
+            (
+                "product variant revision conflict: expected revision 4, current revision 5",
+                PortErrorKind::Conflict,
+                "product.revision_conflict",
+            ),
+            (
+                "product variant revision conflict: expected revision 5, current revision 5",
+                PortErrorKind::Validation,
+                "product.validation",
+            ),
+            (
+                "product variant revision conflict: expected revision 04, current revision 5",
+                PortErrorKind::Validation,
+                "product.validation",
+            ),
+            (
+                "product variant revision conflict: expected revision 4, current revision +5",
+                PortErrorKind::Validation,
+                "product.validation",
+            ),
+        ] {
+            let error = CommerceError::Validation(message.to_owned());
+            assert_eq!(product_error_code(&error), code);
+            let mapped = product_command_error(&context, "update_variant", error);
+            assert_eq!(mapped.kind, kind);
+            assert_eq!(mapped.code, code);
+        }
+    }
+
+    #[test]
     fn variant_command_errors_map_to_typed_port_errors() {
         let context = test_context();
         let variant_not_found = product_command_error(

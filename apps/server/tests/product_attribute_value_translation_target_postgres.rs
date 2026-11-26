@@ -1,5 +1,8 @@
 #![cfg(feature = "mod-product")]
 
+mod support;
+use support::test_auth_config;
+
 use std::{error::Error, sync::Arc, time::Duration};
 
 use rustok_api::{PortActor, PortContext, PortErrorKind, TenantLocale};
@@ -66,6 +69,7 @@ async fn product_attribute_value_registered_translation_provider_multi_replica_e
 }
 
 async fn run_contract(database_url: &str) -> TestResult<()> {
+    let auth_config = test_auth_config();
     let seed_connection = connect_postgres(database_url).await?;
     Migrator::up(&seed_connection, None).await?;
     let tenant_id = Uuid::new_v4();
@@ -124,7 +128,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         )
         .await?;
 
-    let provider = registered_provider(seed_connection.clone());
+    let provider = registered_provider(seed_connection.clone(), auth_config.clone());
     let list_request = ListTranslationResourcesRequest {
         source_locale: TenantLocale::new("en")?,
         target_locale: TenantLocale::new("fr")?,
@@ -217,8 +221,8 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
 
     let first_connection = connect_postgres(database_url).await?;
     let second_connection = connect_postgres(database_url).await?;
-    let first_provider = registered_provider(first_connection.clone());
-    let second_provider = registered_provider(second_connection.clone());
+    let first_provider = registered_provider(first_connection.clone(), auth_config.clone());
+    let second_provider = registered_provider(second_connection.clone(), auth_config.clone());
     let first_replica_snapshot = first_provider
         .read_resource(read_context(tenant_id, "replica-one"), read_request.clone())
         .await?;
@@ -461,7 +465,7 @@ fn catalog_owner(db: DatabaseConnection) -> CatalogService {
     CatalogService::new(db, event_bus)
 }
 
-fn registered_provider(db: DatabaseConnection) -> Arc<dyn TranslationTargetProvider> {
+fn registered_provider(db: DatabaseConnection, auth_config: AuthConfig) -> Arc<dyn TranslationTargetProvider> {
     let registry = ModuleRegistry::new().register(ProductModule);
     let settings = RustokSettings::default();
     let runtime = ServerRuntimeContext::new(db, settings.clone());
@@ -469,7 +473,7 @@ fn registered_provider(db: DatabaseConnection) -> Arc<dyn TranslationTargetProvi
         &registry,
         &settings,
         runtime,
-        AuthConfig::new("test-secret-key-for-attribute-value-32bytes!".to_string()),
+        auth_config,
     )
     .expect("host composition must succeed");
     let targets = translation_target_registry(&extensions).expect("Translation registry");

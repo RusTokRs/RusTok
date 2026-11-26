@@ -43,16 +43,18 @@ impl ProjectDocument {
 
     pub fn component_child_count(&self, component_id: &str) -> Option<usize> {
         self.component(component_id)
-            .map(|component| component.children().len())
+            .and_then(|component| component.components.as_nodes())
+            .map(|children| children.len())
     }
 
     pub fn root_child_count(&self) -> Option<usize> {
-        self.project
+        self.project()
             .pages
             .iter()
             .find_map(|page| page.component.as_ref())
             .and_then(ComponentNode::as_object)
-            .map(|root| root.children().len())
+            .and_then(|root| root.components.as_nodes())
+            .map(|children| children.len())
     }
 
     pub fn child_count_for_parent(&self, parent_component_id: Option<&str>) -> Option<usize> {
@@ -77,7 +79,7 @@ impl ProjectDocument {
                 parent_page == page && target_path.as_slice() == parent_path
             }),
             None => parent_path.is_empty()
-                && self.project.pages.iter().position(|page| page.component.is_some()) == Some(*page),
+                && self.project().pages.iter().position(|page| page.component.is_some()) == Some(*page),
         }
     }
 
@@ -125,6 +127,12 @@ impl RegistrySet {
         }
 
         if let Some(moving_component_id) = moving_component_id {
+            let Some(location) = document.component_location(moving_component_id) else {
+                return PlacementDecision::rejected("moving component does not exist");
+            };
+            if location.depth == 0 {
+                return PlacementDecision::rejected("moving a page root is not supported");
+            }
             if parent_component_id == Some(moving_component_id) {
                 return PlacementDecision::rejected("a component cannot contain itself");
             }
@@ -137,8 +145,18 @@ impl RegistrySet {
             }
         }
 
-        let parent_type =
-            parent_component_id.and_then(|parent_id| document.component_type_for_id(parent_id));
+        // An omitted parent is the first page root, not an unrestricted virtual
+        // container. Resolve the same node as insert_component and root_child_count.
+        let parent_type = match parent_component_id {
+            Some(parent_id) => document.component_type_for_id(parent_id),
+            None => document
+                .project()
+                .pages
+                .iter()
+                .find_map(|page| page.component.as_ref())
+                .and_then(ComponentNode::as_object)
+                .map(|root| root.component_type()),
+        };
         if !self.accepts_child_type(parent_type, child_type) {
             let parent_name = parent_type.unwrap_or("project root");
             return PlacementDecision::rejected(format!(
@@ -281,6 +299,71 @@ mod tests {
                 .reason
                 .unwrap_or_default()
                 .contains("does not accept")
+        );
+    }
+
+    #[test]
+    fn implicit_root_obeys_the_same_child_policy_as_explicit_root() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "list-root",
+                    "type": "list"
+                }
+            }]
+        }))
+        .expect("document");
+        let registries = RegistrySet::with_builtins();
+        for (child_type, legal) in [("text", false), ("list_item", true)] {
+            let implicit = registries.evaluate_placement(&document, None, child_type, None, 0);
+            let explicit =
+                registries.evaluate_placement(&document, None, child_type, Some("list-root"), 0);
+            assert_eq!(implicit, explicit);
+            assert_eq!(implicit.legal, legal);
+        }
+    }
+
+    #[test]
+    fn placement_rejects_opaque_children_instead_of_treating_them_as_empty() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": "opaque provider content"
+                }
+            }]
+        }))
+        .expect("document");
+        let registries = RegistrySet::with_builtins();
+        assert_eq!(document.root_child_count(), None);
+        assert_eq!(document.component_child_count("root"), None);
+        for parent in [None, Some("root")] {
+            assert!(
+                !registries
+                    .evaluate_placement(&document, None, "text", parent, 0)
+                    .legal
+            );
+        }
+    }
+
+    #[test]
+    fn placement_rejects_missing_and_immovable_sources() {
+        let document = document();
+        let registries = RegistrySet::with_builtins();
+        for source in ["missing", "root"] {
+            for parent in [None, Some("section-b")] {
+                assert!(
+                    !registries
+                        .evaluate_placement(&document, Some(source), "section", parent, 0)
+                        .legal
+                );
+            }
+        }
+        assert!(
+            registries
+                .evaluate_placement(&document, Some("section-a"), "section", None, 2)
+                .legal
         );
     }
 

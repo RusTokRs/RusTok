@@ -39,7 +39,7 @@ impl RegistryGovernanceService {
                 request_id: request.request.id.clone(),
                 expected_revision: request.request.revision,
                 context,
-                actor_principal: authority.principal.to_json_value(),
+                actor_principal: authority.principal().to_json_value(),
                 allow_rejected_retry: was_requeued,
             })
             .await
@@ -81,7 +81,7 @@ impl RegistryGovernanceService {
                 context,
                 stage_key: stage_key.to_string(),
                 status: status.to_string(),
-                actor_principal: authority.principal.to_json_value(),
+                actor_principal: authority.principal().to_json_value(),
                 reason_code: reason_code.map(ToString::to_string),
                 requeue,
             })

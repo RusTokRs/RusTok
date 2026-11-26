@@ -111,13 +111,7 @@ impl WebSocketAuthLease {
         }
         let lookup_timeout = remaining.min(std::time::Duration::from_secs(5));
         let user = tokio::time::timeout(lookup_timeout, async {
-            let tenant = crate::models::tenants::Entity::find_by_id(self.tenant_id)
-                .one(auth_runtime.runtime_ctx().db())
-                .await
-                .map_err(|_| ())?
-                .filter(|tenant| tenant.is_active)
-                .ok_or(())?;
-            resolve_current_user_from_access_token(auth_runtime, tenant.id, &self.access_token)
+            resolve_current_user_from_access_token(auth_runtime, self.tenant_id, &self.access_token)
                 .await
                 .map_err(|_| ())
         })
@@ -423,6 +417,19 @@ pub async fn resolve_current_user_from_access_token(
     }
 
     let principal_kind = classify_access_token_claims(&claims)?;
+    let mut delegated_credential_issued_at = None;
+
+    // Tenant middleware is intentionally bypassed on global operator routes,
+    // and a cached tenant context may predate deactivation. Resolve the live
+    // tenant at the common credential boundary for every principal kind.
+    let tenant = crate::models::tenants::Entity::find_by_id(tenant_id)
+        .one(db)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
+        .ok_or((StatusCode::FORBIDDEN, "Tenant is unavailable"))?;
+    if !tenant.is_active {
+        return Err((StatusCode::FORBIDDEN, "Tenant is unavailable"));
+    }
 
     if principal_kind == AuthPrincipalKind::DirectUser {
         let session = Sessions::find_by_id(claims.session_id)
@@ -463,6 +470,11 @@ pub async fn resolve_current_user_from_access_token(
             Some(claims.sub),
         )
         .await?;
+        // The durable registration row retains subsecond issuance time;
+        // JWT NumericDate is whole seconds and can misorder a same-second
+        // password change and token issuance.
+        delegated_credential_issued_at =
+            Some(access_row.created_at.with_timezone(&chrono::Utc));
         validate_active_user_consent(
             db,
             &app,
@@ -502,9 +514,10 @@ pub async fn resolve_current_user_from_access_token(
             }
 
             if principal_kind == AuthPrincipalKind::DelegatedUser {
-                let issued_at =
-                    chrono::DateTime::<chrono::Utc>::from_timestamp(claims.iat as i64, 0)
-                        .ok_or((StatusCode::UNAUTHORIZED, "Invalid token issued-at"))?;
+                let issued_at = delegated_credential_issued_at.ok_or((
+                    StatusCode::UNAUTHORIZED,
+                    "OAuth access token is not registered",
+                ))?;
                 if user.rejects_delegated_token_issued_at(issued_at) {
                     return Err((
                         StatusCode::UNAUTHORIZED,

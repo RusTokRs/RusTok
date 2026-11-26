@@ -483,7 +483,8 @@ impl CatalogService {
                 position: Set(variant_position),
                 created_at: Set(now.into()),
                 updated_at: Set(now.into()),
-                index_revision: sea_orm::ActiveValue::NotSet,
+                revision: Set(1),
+                index_revision: Set(1),
             };
             variant.insert(&txn).await.map_err(|error| {
                 tracing::error!(%error, "variant.insert failed in create_product");
@@ -1470,7 +1471,10 @@ impl CatalogService {
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         lock_schema_for_product_write(&txn, tenant_id).await?;
 
-        let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
+        let product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
+        // Membership triggers advance the parent Product revision with the Index watermark.
+        // Refuse exhaustion before any variant or collaborator writes begin.
+        next_revision(product.revision)?;
         let configured_axes =
             load_variant_axis_configuration_in(&txn, tenant_id, product_id).await?;
         validate_variant_axis_values_against_configuration(
@@ -1537,7 +1541,8 @@ impl CatalogService {
             position: Set(next_position),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
-            index_revision: sea_orm::ActiveValue::NotSet,
+            revision: Set(1),
+            index_revision: Set(1),
         };
 
         variant
@@ -1547,6 +1552,14 @@ impl CatalogService {
 
         if !input.axis_values.is_empty() {
             assign_variant_axis_values_in_tx(&txn, tenant_id, variant_id, &input.axis_values)
+                .await?;
+        }
+
+        if product.status == entities::product::ProductStatus::Active {
+            // A newly-created SKU is part of the live Product immediately. Do not commit it
+            // unless every required Variant EAV value/localization is present on every SKU.
+            ProductCatalogSchemaService::new(self.db.clone(), self.event_bus.clone())
+                .validate_product_publish_requirements_in(&txn, tenant_id, product_id)
                 .await?;
         }
 
@@ -1913,7 +1926,7 @@ impl CatalogService {
             .await?
             .ok_or(CommerceError::VariantNotFound(variant_id))?;
         let product_id = observed_variant.product_id;
-        let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
+        let product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
         let variant = find_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
         ensure_expected_variant_revision(&variant, Some(&expected_revision))?;
 
@@ -1925,6 +1938,8 @@ impl CatalogService {
         if count <= 1 {
             return Err(CommerceError::CannotDeleteOnlyVariant);
         }
+        // The membership trigger advances this Product's business revision on DELETE.
+        next_revision(product.revision)?;
 
         self.inventory()
             .delete_records_for_variants_in_tx(&txn, tenant_id, actor_id, &[variant_id])

@@ -401,17 +401,17 @@ fn count_opaque_component_children(
 /// Fail closed before recursive render helpers inspect an untrusted/programmatically-built tree.
 pub(crate) fn ensure_render_component_limits(document: &ProjectDocument) -> FlyResult<()> {
     let limits = crate::ValidationLimits::default();
-    if document.project.pages.len() > crate::DEFAULT_MAXIMUM_PAGES {
+    if document.project().pages.len() > crate::DEFAULT_MAXIMUM_PAGES {
         return Err(FlyError::MaximumPagesExceeded {
             maximum: crate::DEFAULT_MAXIMUM_PAGES,
         });
     }
-    if document.project.assets.len() > crate::DEFAULT_MAXIMUM_ASSETS {
+    if document.project().assets.len() > crate::DEFAULT_MAXIMUM_ASSETS {
         return Err(FlyError::MaximumAssetsExceeded {
             maximum: crate::DEFAULT_MAXIMUM_ASSETS,
         });
     }
-    if document.project.styles.len() > crate::DEFAULT_MAXIMUM_STYLE_RULES {
+    if document.project().styles.len() > crate::DEFAULT_MAXIMUM_STYLE_RULES {
         return Err(FlyError::MaximumStyleRulesExceeded {
             maximum: crate::DEFAULT_MAXIMUM_STYLE_RULES,
         });
@@ -419,16 +419,16 @@ pub(crate) fn ensure_render_component_limits(document: &ProjectDocument) -> FlyR
     let mut pending = Vec::new();
 
     for value in document
-        .project
+        .project()
         .extensions
         .values()
-        .chain(document.project.styles.iter())
-        .chain(document.project.assets.iter())
+        .chain(document.project().styles.iter())
+        .chain(document.project().assets.iter())
     {
         crate::codec::ensure_depth_within_limit(value, crate::MAXIMUM_DECODE_DEPTH)?;
     }
 
-    for page in &document.project.pages {
+    for page in &document.project().pages {
         if let Some(frames) = page.frames.as_ref() {
             crate::codec::ensure_depth_within_limit(frames, crate::MAXIMUM_DECODE_DEPTH)?;
         }
@@ -544,12 +544,40 @@ pub fn render_page_with_rich_text_and_embed_registry(
     // Action targets get an unforgeable hook. A plain HTML id is added only when it would not
     // collide with an authored id or the HTML id a form will receive at materialization.
     let identities = RenderIdentities::new(root, action_target_ids(document));
+    let decoded_theme_tokens = crate::decode_theme_tokens(document).unwrap_or_default();
+    let theme_tokens = decoded_theme_tokens
+        .iter()
+        .map(|token| token.css_variable())
+        .collect::<BTreeSet<_>>();
+    // Inline-only rendering has no :root stylesheet, so place validated custom properties
+    // on the rendered root element where they inherit into every descendant.
+    let inline_theme_style = if policy.emit_style_hooks {
+        String::new()
+    } else {
+        decoded_theme_tokens
+            .iter()
+            .map(|token| format!("{}:{}", token.css_variable(), token.value.trim()))
+            .collect::<Vec<_>>()
+            .join(";")
+    };
     let mut html = String::new();
-    render_node(root, None, 0, policy, rich_text, embeds, &identities, &mut html);
+    render_node(
+        root,
+        None,
+        0,
+        policy,
+        &theme_tokens,
+        &inline_theme_style,
+        true,
+        rich_text,
+        embeds,
+        &identities,
+        &mut html,
+    );
     let metadata = PageMetadata::from_page(page);
     let head = PageHead::from_metadata(&metadata);
     let css = if policy.emit_style_hooks {
-        render_project_styles(document, page, policy)
+        render_project_styles(document, page, policy, &theme_tokens)
     } else {
         String::new()
     };
@@ -571,20 +599,20 @@ pub fn resolve_page<'a>(
         PageSelection::First => 0,
         PageSelection::Index(index) => *index,
         PageSelection::Id(id) => document
-            .project
+            .project()
             .pages
             .iter()
             .position(|page| page.id.as_deref() == Some(id.as_str()))
             .ok_or_else(|| FlyError::PageNotFound(id.clone()))?,
         PageSelection::Slug(slug) => document
-            .project
+            .project()
             .pages
             .iter()
             .position(|page| PageMetadata::from_page(page).slug.as_deref() == Some(slug.as_str()))
             .ok_or_else(|| FlyError::PageNotFound(slug.clone()))?,
     };
     document
-        .project
+        .project()
         .pages
         .get(index)
         .map(|page| (index, page))
@@ -596,7 +624,7 @@ pub fn resolve_page<'a>(
 /// addressability works before and after publish materialization.
 fn action_target_ids(document: &ProjectDocument) -> std::collections::BTreeSet<String> {
     let mut targets = std::collections::BTreeSet::new();
-    for page in &document.project.pages {
+    for page in &document.project().pages {
         if let Some(root) = page.component.as_ref() {
             collect_action_targets(root, &mut targets);
         }
@@ -690,6 +718,9 @@ fn render_node(
     parent_id: Option<&str>,
     index: usize,
     policy: &RenderPolicy,
+    theme_tokens: &BTreeSet<String>,
+    inline_theme_style: &str,
+    is_root: bool,
     rich_text: Option<&dyn crate::RichTextHtmlRenderer>,
     embeds: &crate::EmbedProviderRegistry,
     identities: &RenderIdentities,
@@ -697,7 +728,17 @@ fn render_node(
 ) {
     match node {
         ComponentNode::Object(component) => render_component(
-            component, parent_id, index, policy, rich_text, embeds, identities, output,
+            component,
+            parent_id,
+            index,
+            policy,
+            theme_tokens,
+            inline_theme_style,
+            is_root,
+            rich_text,
+            embeds,
+            identities,
+            output,
         ),
         ComponentNode::Opaque(value) if policy.include_opaque_text_nodes => {
             render_opaque(value, output)
@@ -711,6 +752,9 @@ fn render_component(
     parent_id: Option<&str>,
     index: usize,
     policy: &RenderPolicy,
+    theme_tokens: &BTreeSet<String>,
+    inline_theme_style: &str,
+    is_root: bool,
     rich_text: Option<&dyn crate::RichTextHtmlRenderer>,
     embeds: &crate::EmbedProviderRegistry,
     identities: &RenderIdentities,
@@ -719,7 +763,17 @@ fn render_component(
     let component_id = component.id.as_deref();
     if let Some(raw_embed) = component.extensions.get(crate::FLY_EMBED_FIELD) {
         render_embed(
-            component, raw_embed, parent_id, index, policy, embeds, identities, output,
+            component,
+            raw_embed,
+            parent_id,
+            index,
+            policy,
+            theme_tokens,
+            inline_theme_style,
+            is_root,
+            embeds,
+            identities,
+            output,
         );
         return;
     }
@@ -797,17 +851,14 @@ fn render_component(
         write_attribute(output, &name, &value);
     }
 
-    if !policy.emit_style_hooks
-        && let Some(style) = component.style.as_ref().and_then(Value::as_object)
-    {
-        let declarations = style
-            .iter()
-            .filter_map(|(name, value)| safe_style(name, value, policy))
-            .collect::<Vec<_>>()
-            .join(";");
-        if !declarations.is_empty() {
-            write_attribute(output, "style", &declarations);
-        }
+    if let Some(declarations) = inline_style_declarations(
+        component,
+        policy,
+        theme_tokens,
+        is_root.then_some(inline_theme_style),
+        None,
+    ) {
+        write_attribute(output, "style", &declarations);
     }
 
     output.push('>');
@@ -819,10 +870,17 @@ fn render_component(
         // A rich-text component is a leaf: the payload replaces both the plain `content`
         // string and any children, which are preserved in the document but not rendered.
         match crate::decode_rich_text_payload(raw_payload) {
-            Ok(payload) => {
+            Ok(mut payload) => {
+                let url_policy = policy.url_policy();
+                crate::rich_text::filter_rich_text_links_for_policy(&mut payload, &url_policy);
                 let rendered = rich_text
                     .and_then(|renderer| renderer.render_rich_text(&payload))
-                    .unwrap_or_else(|| crate::rich_text_fallback_html(&payload));
+                    .unwrap_or_else(|| {
+                        crate::rich_text::rich_text_fallback_html_with_policy(
+                            &payload,
+                            &url_policy,
+                        )
+                    });
                 output.push_str(&rendered);
             }
             Err(_) => {
@@ -840,6 +898,9 @@ fn render_component(
                 component_id,
                 child_index,
                 policy,
+                theme_tokens,
+                inline_theme_style,
+                false,
                 rich_text,
                 embeds,
                 identities,
@@ -855,12 +916,39 @@ fn render_component(
 /// Render an embed component: sandboxed iframe for a validated spec, a plain link or escaped
 /// title otherwise. Embeds never contribute arbitrary attributes to the iframe; the provider
 /// gate in `embed.rs` is the only way a URL reaches `src`.
+fn inline_style_declarations(
+    component: &ComponentObject,
+    policy: &RenderPolicy,
+    theme_tokens: &BTreeSet<String>,
+    root_theme_style: Option<&str>,
+    additional_declaration: Option<&str>,
+) -> Option<String> {
+    let mut declarations = Vec::new();
+    if !policy.emit_style_hooks {
+        if let Some(root_style) = root_theme_style.filter(|style| !style.is_empty()) {
+            declarations.push(root_style.to_string());
+        }
+        if let Some(style) = component.style.as_ref().and_then(Value::as_object) {
+            declarations.extend(style.iter().filter_map(|(name, value)| {
+                safe_style_with_tokens(name, value, policy, theme_tokens)
+            }));
+        }
+    }
+    if let Some(additional) = additional_declaration.filter(|value| !value.is_empty()) {
+        declarations.push(additional.to_string());
+    }
+    (!declarations.is_empty()).then(|| declarations.join(";"))
+}
+
 fn render_embed(
     component: &ComponentObject,
     raw_spec: &Value,
     parent_id: Option<&str>,
     index: usize,
     policy: &RenderPolicy,
+    theme_tokens: &BTreeSet<String>,
+    inline_theme_style: &str,
+    is_root: bool,
     embeds: &crate::EmbedProviderRegistry,
     identities: &RenderIdentities,
     output: &mut String,
@@ -890,10 +978,19 @@ fn render_embed(
     }
     write_attribute(output, "class", "fly-embed");
     match crate::decode_embed_spec_with_registry(raw_spec, embeds) {
-        Ok(spec) => {
-            if let Some(ratio) = spec.aspect_ratio.as_deref() {
-                let ratio = ratio.replace('/', " / ");
-                write_attribute(output, "style", &format!("aspect-ratio:{ratio}"));
+        Ok(spec) if url_allowed(&spec.url, UrlAttributeKind::Resource, policy) => {
+            let aspect_ratio = spec
+                .aspect_ratio
+                .as_deref()
+                .map(|ratio| format!("aspect-ratio:{}", ratio.replace('/', " / ")));
+            if let Some(style) = inline_style_declarations(
+                component,
+                policy,
+                theme_tokens,
+                is_root.then_some(inline_theme_style),
+                aspect_ratio.as_deref(),
+            ) {
+                write_attribute(output, "style", &style);
             }
             output.push_str("><iframe");
             write_attribute(output, "src", &spec.url);
@@ -903,7 +1000,16 @@ fn render_embed(
             write_attribute(output, "referrerpolicy", "strict-origin-when-cross-origin");
             output.push_str(" allowfullscreen></iframe></div>");
         }
-        Err(_) => {
+        _ => {
+            if let Some(style) = inline_style_declarations(
+                component,
+                policy,
+                theme_tokens,
+                is_root.then_some(inline_theme_style),
+                None,
+            ) {
+                write_attribute(output, "style", &style);
+            }
             output.push('>');
             let raw_title = raw_spec
                 .get("title")
@@ -913,11 +1019,7 @@ fn render_embed(
                 .get("url")
                 .and_then(Value::as_str)
                 .unwrap_or_default();
-            if crate::safe_url::url_allowed(
-                raw_url,
-                crate::safe_url::UrlAttributeKind::Resource,
-                &crate::safe_url::UrlPolicy::permissive(),
-            ) && raw_url
+            if url_allowed(raw_url, UrlAttributeKind::Navigation, policy) && raw_url
                 .trim_start()
                 .to_ascii_lowercase()
                 .starts_with("https://")
@@ -940,6 +1042,7 @@ fn render_project_styles(
     document: &ProjectDocument,
     page: &ProjectPage,
     policy: &RenderPolicy,
+    theme_tokens: &BTreeSet<String>,
 ) -> String {
     let mut component_ids = Vec::new();
     if let Some(root) = page.component.as_ref() {
@@ -959,7 +1062,9 @@ fn render_project_styles(
         let declarations = rule
             .declarations
             .iter()
-            .filter_map(|(name, value)| safe_style(name, value, policy))
+            .filter_map(|(name, value)| {
+                safe_style_with_tokens(name, value, policy, theme_tokens)
+            })
             .collect::<Vec<_>>()
             .join(";");
         if declarations.is_empty() {
@@ -1013,12 +1118,17 @@ fn render_project_styles(
         }
     }
     if let Some(root) = page.component.as_ref() {
-        append_component_style_rules(root, policy, &mut css);
+        append_component_style_rules(root, policy, theme_tokens, &mut css);
     }
     css
 }
 
-fn append_component_style_rules(node: &ComponentNode, policy: &RenderPolicy, css: &mut String) {
+fn append_component_style_rules(
+    node: &ComponentNode,
+    policy: &RenderPolicy,
+    theme_tokens: &BTreeSet<String>,
+    css: &mut String,
+) {
     let ComponentNode::Object(component) = node else {
         return;
     };
@@ -1028,7 +1138,9 @@ fn append_component_style_rules(node: &ComponentNode, policy: &RenderPolicy, css
     ) {
         let declarations = style
             .iter()
-            .filter_map(|(name, value)| safe_style(name, value, policy))
+            .filter_map(|(name, value)| {
+                safe_style_with_tokens(name, value, policy, theme_tokens)
+            })
             .collect::<Vec<_>>()
             .join(";");
         if !declarations.is_empty() {
@@ -1040,7 +1152,7 @@ fn append_component_style_rules(node: &ComponentNode, policy: &RenderPolicy, css
         }
     }
     for child in component.children() {
-        append_component_style_rules(child, policy, css);
+        append_component_style_rules(child, policy, theme_tokens, css);
     }
 }
 
@@ -1247,12 +1359,308 @@ pub fn css_property_allowed(name: &str) -> bool {
         && !DENIED_STYLE_PROPERTIES.contains(&name.to_ascii_lowercase().as_str())
 }
 
+/// Return byte ranges of quoted resource strings inside CSS image functions.
+///
+/// image-set(), image(), and src() can carry resource URLs as strings. The scanner also
+/// finds these functions when nested inside other functions such as cross-fade(). Callers
+/// validate each returned string with their own resource URL policy. Strings outside these
+/// functions are ignored. Escaped strings and malformed function/string boundaries fail closed.
+/// Return all custom-property references in CSS var() functions.
+///
+/// Strings are ignored, nested fallbacks are scanned, and malformed or escaped var()
+/// expressions fail closed. The caller decides which custom properties are in scope.
+fn css_var_reference_ranges(value: &str) -> Option<Vec<std::ops::Range<usize>>> {
+    if value.contains('\\') {
+        return None;
+    }
+    let lowered = value.to_ascii_lowercase();
+    let mut ranges = Vec::new();
+    let mut cursor = 0usize;
+    while cursor < value.len() {
+        match value.as_bytes()[cursor] {
+            b'\'' | b'"' => {
+                cursor = skip_css_string(value, cursor)?;
+                continue;
+            }
+            _ => {}
+        }
+        if value.as_bytes().get(cursor..cursor + 2) == Some(&b"/*"[..]) {
+            cursor = skip_css_comment(value, cursor)?;
+            continue;
+        }
+
+        if lowered[cursor..].starts_with("var(") {
+            let preceded_by_identifier = value[..cursor]
+                .chars()
+                .next_back()
+                .is_some_and(css_identifier_character);
+            if !preceded_by_identifier {
+                let open = cursor + 3;
+                let close = css_function_close(value, open)?;
+                let arguments = &value[open + 1..close];
+                let first_argument_end = arguments.find(',').unwrap_or(arguments.len());
+                let first_argument = &arguments[..first_argument_end];
+                let name = first_argument.trim();
+                if !valid_css_custom_property_name(name) {
+                    return None;
+                }
+                let leading_whitespace = first_argument.len() - first_argument.trim_start().len();
+                let name_start = open + 1 + leading_whitespace;
+                ranges.push(name_start..name_start + name.len());
+                // Continue through fallbacks to find nested var() references.
+                cursor = open + 1;
+                continue;
+            }
+        }
+
+        cursor += value[cursor..].chars().next()?.len_utf8();
+    }
+    Some(ranges)
+}
+
+/// Return all custom-property references in CSS var() functions.
+///
+/// Strings and comments are ignored, nested fallbacks are scanned, and malformed or escaped
+/// var() expressions fail closed. The caller decides which custom properties are in scope.
+pub fn css_var_references(value: &str) -> Option<Vec<String>> {
+    let ranges = css_var_reference_ranges(value)?;
+    Some(
+        ranges
+            .into_iter()
+            .map(|range| value[range].to_string())
+            .collect(),
+    )
+}
+
+/// Rewrite only the first custom-property argument of actual CSS var() functions.
+pub(crate) fn rewrite_css_var_references(
+    value: &str,
+    old_name: &str,
+    new_name: &str,
+) -> (String, usize) {
+    let Some(ranges) = css_var_reference_ranges(value) else {
+        return (value.to_string(), 0);
+    };
+    let target = format!("--{old_name}");
+    let replacement = format!("--{new_name}");
+    let matches = ranges
+        .into_iter()
+        .filter(|range| &value[range.start..range.end] == target.as_str())
+        .collect::<Vec<_>>();
+    if matches.is_empty() {
+        return (value.to_string(), 0);
+    }
+    let mut rewritten = value.to_string();
+    for range in matches.iter().rev() {
+        rewritten.replace_range(range.start..range.end, &replacement);
+    }
+    (rewritten, matches.len())
+}
+
+/// Whether a CSS declaration can load or reference an external resource.
+///
+/// Custom-property substitution is deliberately disabled for these properties: the
+/// variable can be overridden by the embedding document's cascade after Fly validates it.
+pub fn css_property_may_load_resource(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "background"
+            | "background-image"
+            | "border-image"
+            | "border-image-source"
+            | "clip-path"
+            | "content"
+            | "cursor"
+            | "filter"
+            | "fill"
+            | "list-style"
+            | "list-style-image"
+            | "mask"
+            | "mask-image"
+            | "mask-border"
+            | "mask-border-source"
+            | "marker"
+            | "marker-end"
+            | "marker-mid"
+            | "marker-start"
+            | "offset-path"
+            | "shape-outside"
+            | "src"
+            | "stroke"
+            | "-webkit-box-reflect"
+            | "-webkit-background-image"
+            | "-webkit-clip-path"
+            | "-webkit-filter"
+            | "-webkit-border-image"
+            | "-webkit-border-image-source"
+            | "-webkit-mask"
+            | "-webkit-mask-image"
+            | "-webkit-mask-box-image"
+            | "-webkit-mask-box-image-source"
+    )
+}
+
+fn valid_css_custom_property_name(name: &str) -> bool {
+    let Some(suffix) = name.strip_prefix("--") else {
+        return false;
+    };
+    !suffix.is_empty()
+        && suffix.chars().all(|character| {
+            character.is_ascii_alphanumeric()
+                || matches!(character, '-' | '_')
+                || !character.is_ascii()
+        })
+}
+
+/// Return the original byte ranges of quoted resource strings in CSS image functions.
+pub fn css_resource_string_ranges(value: &str) -> Option<Vec<std::ops::Range<usize>>> {
+    Some(
+        scan_css_resource_references(value)?
+            .into_iter()
+            .filter(|reference| reference.quoted_image)
+            .map(|reference| reference.url)
+            .collect(),
+    )
+}
+
+struct CssResourceReference {
+    url: std::ops::Range<usize>,
+    mask: std::ops::Range<usize>,
+    quoted_image: bool,
+}
+
+/// Scan the original text once, recording disjoint ranges in source order.
+/// Each stack entry describes whether direct strings inside that group are
+/// image resources. URL tokens are consumed atomically, never rescanned as CSS.
+fn scan_css_resource_references(value: &str) -> Option<Vec<CssResourceReference>> {
+    if value.contains('\\') || value.chars().any(char::is_control) {
+        return None;
+    }
+    let mut references = Vec::new();
+    let mut groups = Vec::new();
+    let mut cursor = 0;
+    while cursor < value.len() {
+        if value.as_bytes().get(cursor..cursor + 2) == Some(&b"/*"[..]) {
+            cursor = skip_css_comment(value, cursor)?;
+            continue;
+        }
+        match value.as_bytes()[cursor] {
+            b'\'' | b'"' => {
+                let after = skip_css_string(value, cursor)?;
+                if groups.last() == Some(&true) {
+                    let range = cursor + 1..after - 1;
+                    references.push(CssResourceReference {
+                        url: range.clone(),
+                        mask: range,
+                        quoted_image: true,
+                    });
+                }
+                cursor = after;
+            }
+            b'(' => {
+                let start = value[..cursor]
+                    .char_indices()
+                    .rev()
+                    .find(|(_, character)| !css_identifier_character(*character))
+                    .map_or(0, |(index, character)| index + character.len_utf8());
+                let name = &value[start..cursor];
+                if name.eq_ignore_ascii_case("url") {
+                    let close = css_function_close(value, cursor)?;
+                    let argument = &value[cursor + 1..close];
+                    let raw = argument.trim();
+                    let raw_start = cursor + 1 + argument.len() - argument.trim_start().len();
+                    let url = if matches!(raw.as_bytes().first(), Some(b'\'' | b'"')) {
+                        let after = skip_css_string(raw, 0)?;
+                        if after != raw.len() {
+                            return None;
+                        }
+                        raw_start + 1..raw_start + after - 1
+                    } else {
+                        if raw.contains(['\'', '"', '(', ')']) {
+                            return None;
+                        }
+                        raw_start..raw_start + raw.len()
+                    };
+                    references.push(CssResourceReference {
+                        url,
+                        mask: start..close + 1,
+                        quoted_image: false,
+                    });
+                    cursor = close + 1;
+                    continue;
+                }
+                groups.push(
+                    ["image-set", "-webkit-image-set", "image", "src"]
+                        .iter()
+                        .any(|function| name.eq_ignore_ascii_case(function)),
+                );
+                cursor += 1;
+            }
+            b')' => {
+                groups.pop()?;
+                cursor += 1;
+            }
+            _ => cursor += value[cursor..].chars().next()?.len_utf8(),
+        }
+    }
+    groups.is_empty().then_some(references)
+}
+
+fn css_identifier_character(character: char) -> bool {
+    character.is_ascii_alphanumeric() || matches!(character, '-' | '_') || !character.is_ascii()
+}
+
+fn skip_css_string(value: &str, start: usize) -> Option<usize> {
+    let quote = *value.as_bytes().get(start)?;
+    if !matches!(quote, b'\'' | b'"') { return None; }
+    let mut cursor = start + 1;
+    while cursor < value.len() {
+        match value.as_bytes()[cursor] {
+            b'\\' => return None,
+            character if character == quote => return Some(cursor + 1),
+            _ => cursor += 1,
+        }
+    }
+    None
+}
+
+fn skip_css_comment(value: &str, start: usize) -> Option<usize> {
+    if value.as_bytes().get(start..start + 2) != Some(&b"/*"[..]) {
+        return None;
+    }
+    let end = value.get(start + 2..)?.find("*/")?;
+    Some(start + 2 + end + 2)
+}
+
+fn css_function_close(value: &str, open: usize) -> Option<usize> {
+    if value.as_bytes().get(open) != Some(&b'(') { return None; }
+    let mut depth = 1usize;
+    let mut cursor = open + 1;
+    while cursor < value.len() {
+        if value.as_bytes().get(cursor..cursor + 2) == Some(&b"/*"[..]) {
+            cursor = skip_css_comment(value, cursor)?;
+            continue;
+        }
+        match value.as_bytes()[cursor] {
+            b'\'' | b'"' => cursor = skip_css_string(value, cursor)?,
+            b'\\' => return None,
+            b'(' => { depth = depth.checked_add(1)?; cursor += 1; }
+            b')' => {
+                depth -= 1;
+                if depth == 0 { return Some(cursor); }
+                cursor += 1;
+            }
+            _ => cursor += 1,
+        }
+    }
+    None
+}
+
 /// Decide whether a single CSS declaration may be emitted.
 ///
-/// `url(...)` used to be rejected outright, which is safe but wrong for a page builder: it made
-/// `background-image` unusable. References are now allowed when the URL inside them satisfies the
-/// same resource policy the renderer applies to `src`, so `url(/hero.png)` works while
-/// `url(javascript:...)` and `url(data:text/html,...)` remain blocked.
+/// CSS resource URLs may be expressed through url() or through quoted strings in image(),
+/// src(), image-set(), and -webkit-image-set(). Every form is checked against the same
+/// RenderPolicy resource rules, including when these functions are nested inside image functions.
 ///
 /// # The invariant this upholds
 ///
@@ -1263,21 +1671,38 @@ pub fn css_property_allowed(name: &str) -> bool {
 /// Layers may still differ from each other, and do: static publishing refuses plain `http://`
 /// where this renderer allows it. That is a coherent difference, because publishing applies the
 /// same stricter rule to attributes *and* references — see `FORBIDDEN_CSS_TOKENS` and
-/// `strip_validated_css_urls` in `rustok-page-builder`'s `static_publish_policy`.
+/// the shared `strip_css_resource_references` used by the static publish policy.
 fn safe_style(name: &str, value: &Value, policy: &RenderPolicy) -> Option<String> {
+    safe_style_with_tokens(name, value, policy, &BTreeSet::new())
+}
+
+fn safe_style_with_tokens(
+    name: &str,
+    value: &Value,
+    policy: &RenderPolicy,
+    theme_tokens: &BTreeSet<String>,
+) -> Option<String> {
     if !css_property_allowed(name) {
         return None;
     }
     let value = scalar_string(value)?;
+    let references = css_var_references(&value)?;
+    if (css_property_may_load_resource(name) && !references.is_empty())
+        || references
+            .iter()
+            .any(|reference| !theme_tokens.contains(reference))
+    {
+        return None;
+    }
     if value.chars().any(char::is_control) {
         return None;
     }
 
-    // Validate and blank out every `url(...)` token *before* the structural check, because a
-    // legitimate data-image reference legally contains `;` (`data:image/png;base64,...`) and the
-    // structural check must not see it. Characters that are dangerous *inside* a reference are
-    // rejected by `url_allowed` and by the stricter check in the stripping pass.
-    let without_urls = validate_and_strip_url_tokens(&value, policy)?;
+    // Check every original resource before masking it for structural checks.
+    let url_policy = policy.url_policy();
+    let without_urls = strip_css_resource_references(&value, |url| {
+        safe_url::url_allowed(url, UrlAttributeKind::Resource, &url_policy)
+    })?;
 
     // Structural characters in what remains are what would let a declaration escape into a new
     // rule or a comment.
@@ -1312,62 +1737,38 @@ fn safe_style(name: &str, value: &Value, policy: &RenderPolicy) -> Option<String
     Some(format!("{name}:{value}"))
 }
 
-/// Replace each well-formed `url(...)` token with a placeholder, rejecting the declaration if any
-/// of them fails the resource URL policy.
-fn validate_and_strip_url_tokens(value: &str, policy: &RenderPolicy) -> Option<String> {
-    let lowered = value.to_ascii_lowercase();
-    // Built once rather than per token: a declaration may carry several references.
-    let url_policy = policy.url_policy();
+/// Validate CSS resource references using the caller's URL policy, then mask only
+/// the checked tokens for subsequent structural checks. Quoted image sources are
+/// checked in the original input without rescanning any masked text. A string
+/// containing the literal characters "url(" is not itself a CSS url() function.
+/// This deliberately conservative grammar refuses escapes and malformed tokens.
+pub fn strip_css_resource_references(
+    value: &str,
+    mut allow_url: impl FnMut(&str) -> bool,
+) -> Option<String> {
+    let references = scan_css_resource_references(value)?;
     let mut output = String::with_capacity(value.len());
-    let mut cursor = 0usize;
-
-    while let Some(offset) = lowered[cursor..].find("url(") {
-        let start = cursor + offset;
-        // Something like `blurl(` is not a reference; require a non-identifier character before.
-        let preceded_by_identifier = value[..start]
-            .chars()
-            .next_back()
-            .is_some_and(|character| character.is_ascii_alphanumeric() || character == '-');
-        if preceded_by_identifier {
-            output.push_str(&value[cursor..start + 4]);
-            cursor = start + 4;
-            continue;
-        }
-
-        let open = start + 4;
-        // An unterminated reference is rejected outright rather than guessed at.
-        let close = value[open..].find(')')? + open;
-        let raw = value[open..close].trim();
-        let unquoted = raw
-            .strip_prefix('"')
-            .and_then(|rest| rest.strip_suffix('"'))
-            .or_else(|| {
-                raw.strip_prefix('\'')
-                    .and_then(|rest| rest.strip_suffix('\''))
-            })
-            .unwrap_or(raw);
-
-        // `;` is legal inside a data URL, but these would still let the reference break out of
-        // the declaration or open a comment.
-        if unquoted.is_empty()
-            || unquoted.contains('{')
-            || unquoted.contains('}')
-            || unquoted.contains('<')
-            || unquoted.contains('>')
-            || unquoted.contains("/*")
-            || unquoted.contains("*/")
-            || !safe_url::url_allowed(unquoted, UrlAttributeKind::Resource, &url_policy)
+    let mut copied = 0;
+    for reference in references {
+        if reference.mask.start < copied
+            || !css_resource_url_allowed(&value[reference.url], &mut allow_url)
         {
             return None;
         }
-
-        output.push_str(&value[cursor..start]);
+        output.push_str(&value[copied..reference.mask.start]);
         output.push_str("url-ok");
-        cursor = close + 1;
+        copied = reference.mask.end;
     }
-
-    output.push_str(&value[cursor..]);
+    output.push_str(&value[copied..]);
     Some(output)
+}
+
+fn css_resource_url_allowed(url: &str, allow_url: &mut impl FnMut(&str) -> bool) -> bool {
+    !url.is_empty()
+        && !url.contains(['{', '}', '<', '>'])
+        && !url.contains("/*")
+        && !url.contains("*/")
+        && allow_url(url)
 }
 
 fn safe_media_query(query: &str) -> bool {
@@ -1683,6 +2084,36 @@ mod tests {
             page.css
         );
         assert!(page.css.contains("color:var(--brand)"), "css: {}", page.css);
+    }
+
+    #[test]
+    fn renderer_drops_undeclared_css_variable_references_and_nested_fallbacks() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "flyTheme": { "tokens": { "brand": "#0b5fff" } },
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "style": {
+                        "color": "var(--brand)",
+                        "background-image": "var(--host-url)",
+                        "mask-image": "var(--brand, var(--external-url))",
+                        "border-image-source": "var(--brand)",
+                        "-webkit-box-reflect": "below 0 var(--brand)"
+                    },
+                    "components": []
+                }
+            }]
+        })).expect("document");
+        let page = render_page(&document, &PageSelection::First, &RenderPolicy::default())
+            .expect("rendered");
+
+        assert!(page.css.contains("color:var(--brand)"), "css: {}", page.css);
+        assert!(!page.css.contains("var(--host-url)"), "css: {}", page.css);
+        assert!(!page.css.contains("var(--external-url)"), "css: {}", page.css);
+        assert!(!page.css.contains("border-image-source:var(--brand)"), "css: {}", page.css);
+        assert!(!page.css.contains("-webkit-box-reflect:"), "css: {}", page.css);
     }
 
     #[test]
@@ -2042,6 +2473,189 @@ mod tests {
     }
 
     #[test]
+    fn css_string_resource_sources_follow_the_render_resource_policy() {
+        let policy = RenderPolicy::default();
+        for value in [
+            "image-set(\"/hero.png\" 1x, \"https://cdn.example/hero@2x.png\" 2x)",
+            "-webkit-image-set('/hero.png' 1x)",
+            "image-set(\"data:image/png;base64,iVBORw0KGgo=\" 1x)",
+            "image(\"https://cdn.example/hero.png\", red)",
+            "src(\"https://cdn.example/hero.png\")",
+            "cross-fade(image('/fade-start.png'), image('/fade-end.png'))",
+            "image(\"data:image/png;base64,iVBORw0KGgo=\", red)",
+        ] {
+            assert!(
+                safe_style("background-image", &Value::String(value.to_string()), &policy).is_some(),
+                "rejected safe image-set {value}"
+            );
+        }
+        for value in [
+            "image-set('javascript:alert(1)' 1x)",
+            "image-set('//attacker.example/hero.png' 1x)",
+            "image-set('data:image/svg+xml;base64,PHN2Zz4=' 1x)",
+            "image('javascript:alert(1)', red)",
+            "src('//attacker.example/hero.png')",
+        ] {
+            assert!(
+                safe_style("background-image", &Value::String(value.to_string()), &policy).is_none(),
+                "accepted unsafe image-set {value}"
+            );
+        }
+        let no_https = RenderPolicy {
+            allow_https: false,
+            ..RenderPolicy::default()
+        };
+        for value in [
+            "image-set('https://cdn.example/hero.png' 1x)",
+            "image('https://cdn.example/hero.png', red)",
+            "src('https://cdn.example/hero.png')",
+        ] {
+            assert!(safe_style(
+                "background-image",
+                &Value::String(value.to_string()),
+                &no_https
+            ).is_none(), "accepted HTTPS with allow_https=false: {value}");
+        }
+        let no_data = RenderPolicy {
+            allow_data_images: false,
+            ..RenderPolicy::default()
+        };
+        assert!(safe_style(
+            "background-image",
+            &Value::String("image('data:image/png;base64,iVBORw0KGgo=', red)".to_string()),
+            &no_data
+        ).is_none());
+    }
+
+    #[test]
+    fn css_resource_scanner_validates_original_urls_and_token_boundaries() {
+        let policy = RenderPolicy::default();
+        let oversized = format!("image-set('/{}' 1x)", "url(/long-segment)".repeat(130));
+        assert!(safe_style("background-image", &Value::String(oversized), &policy).is_none());
+        for value in ["url(/a(b))", "url(/a'broken')", "url('/a.png' extra)"] {
+            assert!(
+                safe_style("background-image", &Value::String(value.to_string()), &policy).is_none(),
+                "{value}"
+            );
+        }
+        for value in ["url('/hero(1).png')", "image-set('/url(/hero.png)' 1x)"] {
+            assert!(
+                safe_style("background-image", &Value::String(value.to_string()), &policy).is_some(),
+                "{value}"
+            );
+        }
+        let mut seen = Vec::new();
+        let scanned = strip_css_resource_references(
+            "image-set('/url(/hero.png)' 1x, url('/hero(2).png') 2x)",
+            |url| { seen.push(url.to_string()); true },
+        ).expect("valid CSS");
+        assert_eq!(seen, ["/url(/hero.png)", "/hero(2).png"]);
+        assert_eq!(scanned, "image-set('url-ok' 1x, url-ok 2x)");
+    }
+
+    #[test]
+    fn nested_css_resource_ranges_remain_in_source_order() {
+        let css = "image-set(image('/é.png') 1x, '/second-long.png' 2x)";
+        let ranges = css_resource_string_ranges(css).expect("resource ranges");
+        assert_eq!(
+            ranges.iter().map(|range| &css[range.clone()]).collect::<Vec<_>>(),
+            ["/é.png", "/second-long.png"]
+        );
+        let mut checked = Vec::new();
+        let masked = strip_css_resource_references(css, |url| {
+            checked.push(url.to_string());
+            true
+        }).expect("nested resources");
+        assert_eq!(checked, ["/é.png", "/second-long.png"]);
+        assert_eq!(masked, "image-set(image('url-ok') 1x, 'url-ok' 2x)");
+        assert!(safe_style(
+            "background-image",
+            &Value::String(css.to_string()),
+            &RenderPolicy::default(),
+        ).is_some());
+    }
+
+    #[test]
+    fn resource_scanner_uses_original_tokens_and_ignores_comments() {
+        let value = "image-set(/* image('/ignored.png') */ image('/first.png') 1x, url('/second.png') 2x, '/third.png' 3x)";
+        let mut checked = Vec::new();
+        let masked = strip_css_resource_references(value, |url| {
+            checked.push(url.to_string());
+            true
+        }).expect("resource tokens");
+        assert_eq!(checked, ["/first.png", "/second.png", "/third.png"]);
+        assert_eq!(
+            masked,
+            "image-set(/* image('/ignored.png') */ image('url-ok') 1x, url-ok 2x, 'url-ok' 3x)"
+        );
+        assert!(safe_style(
+            "background-image",
+            &Value::String(value.to_string()),
+            &RenderPolicy::default(),
+        ).is_none());
+        for malformed in ["image-set('/a.png' 1x))", "cross-fade(image('/a.png')", "url(/a(b))"] {
+            assert!(strip_css_resource_references(malformed, |_| true).is_none(), "{malformed}");
+        }
+    }
+
+    #[test]
+    fn css_resource_string_scanner_ignores_literals_and_finds_nested_functions() {
+        let css = r#"content: "image-set('not-a-resource')"; background-image: IMAGE-SET("/hero.png" 1x, url("/hero@2x.png") 2x, type("image/avif")); -webkit-image-set('/webkit.png' 1x); background: image("https://cdn.example/hero.png", red); background: cross-fade(image("/fade.png"), src("/source.png")); font: src("/font.woff2" format("woff2"))"#;
+        let ranges = css_resource_string_ranges(css).expect("valid CSS string boundaries");
+        let values = ranges.iter().map(|range| &css[range.clone()]).collect::<Vec<_>>();
+        assert_eq!(
+            values,
+            [
+                "/hero.png",
+                "/webkit.png",
+                "https://cdn.example/hero.png",
+                "/fade.png",
+                "/source.png",
+                "/font.woff2"
+            ]
+        );
+        assert!(css_resource_string_ranges(r#"content: "image-set('/literal.png')""#)
+            .expect("literal CSS string").is_empty());
+        assert!(css_resource_string_ranges(r#"image-set("/unterminated.png" 1x"#).is_none());
+        assert!(css_resource_string_ranges(r#"image("/escaped\".png", red)"#).is_none());
+    }
+
+    #[test]
+    fn css_var_reference_scanner_finds_nested_fallbacks_and_ignores_strings() {
+        let css = r#"content: "var(--not-a-token)"; color: VAR(--brand); width: calc(var(--space) * 2); background: var(--image, var(--fallback))"#;
+        assert_eq!(
+            css_var_references(css).expect("valid var() expressions"),
+            vec![
+                "--brand".to_string(),
+                "--space".to_string(),
+                "--image".to_string(),
+                "--fallback".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn css_var_reference_scanner_rejects_malformed_or_escaped_references() {
+        for value in [
+            "var()",
+            "var(--bad name)",
+            "var(--unclosed",
+            r#"var(--token, "escaped\value")"#,
+        ] {
+            assert!(css_var_references(value).is_none(), "accepted {value}");
+        }
+    }
+
+    #[test]
+    fn css_var_reference_scanner_ignores_strings_and_comments_and_scans_nested_fallbacks() {
+        let value = r#"content: "var(--literal)"; color: var(--brand, VAR( --fallback )); /* var(--comment) */"#;
+        assert_eq!(
+            css_var_references(value),
+            Some(vec!["--brand".to_string(), "--fallback".to_string()])
+        );
+    }
+
+    #[test]
     fn style_hooks_can_be_disabled_with_project_css() {
         let rendered = render_page(
             &document(),
@@ -2054,6 +2668,53 @@ mod tests {
         .expect("render page");
         assert!(!rendered.html.contains("data-fly-style-id"));
         assert!(rendered.css.is_empty());
+    }
+
+    #[test]
+    fn inline_style_mode_preserves_theme_tokens_and_embed_component_styles() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "flyTheme": { "tokens": { "brand": "#0b5fff" } },
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "style": { "color": "var(--brand)" },
+                    "components": [{
+                        "id": "embed",
+                        "type": "wrapper",
+                        "style": { "border-color": "var(--brand)" },
+                        "flyEmbed": {
+                            "provider": "youtube",
+                            "url": "https://www.youtube.com/embed/demo",
+                            "title": "Video"
+                        }
+                    }]
+                }
+            }]
+        }))
+        .expect("document");
+        let rendered = render_page(
+            &document,
+            &PageSelection::First,
+            &RenderPolicy {
+                emit_style_hooks: false,
+                ..RenderPolicy::default()
+            },
+        )
+        .expect("render page");
+
+        assert!(rendered.css.is_empty());
+        assert!(
+            rendered.html.contains(r#"style="--brand:#0b5fff;color:var(--brand)""#),
+            "{}",
+            rendered.html
+        );
+        assert!(
+            rendered.html.contains(r#"style="border-color:var(--brand)""#),
+            "{}",
+            rendered.html
+        );
+        assert!(rendered.html.contains("<iframe"), "{}", rendered.html);
     }
 
     #[test]
@@ -2617,6 +3278,155 @@ mod tests {
         .expect("custom render");
         assert!(custom_render.html.contains("<iframe"));
         assert!(custom_render.html.contains("https://player.example.test/frame/123"));
+    }
+
+    #[test]
+    fn render_policy_filters_embeds_and_fallback_links() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [
+                        {
+                            "id": "registered",
+                            "type": "wrapper",
+                            "flyEmbed": {
+                                "provider": "youtube",
+                                "url": "https://www.youtube.com/embed/demo",
+                                "title": "Registered video"
+                            }
+                        },
+                        {
+                            "id": "unknown",
+                            "type": "wrapper",
+                            "flyEmbed": {
+                                "provider": "unknown",
+                                "url": "https://example.test/video",
+                                "title": "Unknown video"
+                            }
+                        },
+                        {
+                            "id": "rich",
+                            "type": "wrapper",
+                            "flyRichText": {
+                                "capability": "richtext",
+                                "payload": {
+                                    "type": "doc",
+                                    "content": [{
+                                        "type": "paragraph",
+                                        "content": [
+                                            {
+                                                "type": "text",
+                                                "text": "External link",
+                                                "marks": [{
+                                                    "type": "link",
+                                                    "attrs": {"href": "https://example.test/link"}
+                                                }]
+                                            },
+                                            {
+                                                "type": "text",
+                                                "text": "Local link",
+                                                "marks": [{
+                                                    "type": "link",
+                                                    "attrs": {"href": "/local"}
+                                                }]
+                                            }
+                                        ]
+                                    }]
+                                }
+                            }
+                        }
+                    ]
+                }
+            }]
+        })).expect("document");
+
+        let default = render_page(&document, &PageSelection::First, &RenderPolicy::default())
+            .expect("default render");
+        assert!(default.html.contains("<iframe"));
+        assert!(default.html.contains("href=\"https://example.test/video\""));
+        assert!(default.html.contains("href=\"https://example.test/link\""));
+        assert!(default.html.contains("href=\"/local\""));
+
+        let restricted = render_page(
+            &document,
+            &PageSelection::First,
+            &RenderPolicy {
+                allow_https: false,
+                ..RenderPolicy::default()
+            },
+        ).expect("restricted render");
+        assert!(!restricted.html.contains("<iframe"));
+        assert!(!restricted.html.contains("https://"));
+        assert!(restricted.html.contains("Registered video"));
+        assert!(restricted.html.contains("Unknown video"));
+        assert!(restricted.html.contains("External link"));
+        assert!(restricted.html.contains("href=\"/local\""));
+    }
+
+    #[test]
+    fn render_policy_filters_links_before_trusted_rich_text_renderer() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "rich",
+                        "type": "wrapper",
+                        "flyRichText": {
+                            "capability": "richtext",
+                            "payload": {
+                                "type": "doc",
+                                "content": [{
+                                    "type": "paragraph",
+                                    "content": [
+                                        {
+                                            "type": "text",
+                                            "text": "External link",
+                                            "marks": [{
+                                                "type": "link",
+                                                "attrs": {"href": "https://example.test/link"}
+                                            }]
+                                        },
+                                        {
+                                            "type": "text",
+                                            "text": "Local link",
+                                            "marks": [{
+                                                "type": "link",
+                                                "attrs": {"href": "/local"}
+                                            }]
+                                        }
+                                    ]
+                                }]
+                            }
+                        }
+                    }]
+                }
+            }]
+        })).expect("document");
+        let trusted_renderer = |payload: &crate::RichTextPayload| {
+            Some(crate::rich_text_fallback_html(payload))
+        };
+        let policy = RenderPolicy {
+            allow_https: false,
+            ..RenderPolicy::default()
+        };
+        let rendered = render_page_with_rich_text(
+            &document,
+            &PageSelection::First,
+            &policy,
+            Some(&trusted_renderer),
+        ).expect("render");
+
+        assert!(!rendered.html.contains("https://"));
+        assert!(rendered.html.contains("External link"));
+        assert!(rendered.html.contains("Local link"));
+        assert!(!rendered.html.contains("href=\"https://"));
+        assert!(rendered.html.contains("href=\"/local\""));
     }
 
     #[test]

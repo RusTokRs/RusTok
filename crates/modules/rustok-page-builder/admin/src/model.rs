@@ -3,7 +3,9 @@ use fly::{
     ProjectFragment, ProjectHash, ProjectSnapshot, RegistrySet, ValidationReport,
 };
 use fly_ui::{FlyUiStateMachine, Presentation, UiEffect, UiIntent};
-use rustok_page_builder::dto::{PageBuilderCapabilityRequest, PublishPageBuilderInput};
+use rustok_page_builder::dto::{
+    PageBuilderCapabilityRequest, PreviewPageBuilderInput, PublishPageBuilderInput,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
@@ -117,16 +119,34 @@ impl AdminCanvasController {
         let mut document = self.editor.document().clone();
         let page =
             document
-                .project
+                .project()
                 .pages
                 .get(index)
                 .cloned()
                 .ok_or(fly::FlyError::InvalidPageIndex {
                     index,
-                    len: document.project.pages.len(),
+                    len: document.project().pages.len(),
                 })?;
-        document.project.pages = vec![page];
+        document.project_mut().pages = vec![page];
         GrapesJsCodec::encode_value(&document)
+    }
+
+    /// Page navigation does not advance the document revision or hash. A delayed
+    /// preview effect must therefore also match the actual active-page projection.
+    pub(crate) fn validate_preview_request(
+        &self,
+        input: &PreviewPageBuilderInput,
+        command_sequence: u64,
+    ) -> Result<(), AdminCanvasError> {
+        if input.page_id != self.page_id
+            || command_sequence != self.editor.revision().command_sequence
+            || input.project_data != self.active_page_project()?
+        {
+            return Err(AdminCanvasError::Authoring(
+                "preview request no longer matches the active page snapshot".to_string(),
+            ));
+        }
+        Ok(())
     }
 
     pub fn active_page_summary(&self) -> Option<PageSummary> {
@@ -136,7 +156,7 @@ impl AdminCanvasController {
     pub fn active_root_id(&self) -> Option<String> {
         self.editor
             .document()
-            .project
+            .project()
             .pages
             .get(self.active_page_index())
             .and_then(|page| page.component.as_ref())
@@ -150,6 +170,11 @@ impl AdminCanvasController {
         &mut self,
         project_data: Value,
     ) -> Result<(), AdminCanvasError> {
+        if self.editor.revision().save_conflict {
+            return Err(AdminCanvasError::Authoring(
+                "reload the conflicting draft before applying a recovered merge".to_string(),
+            ));
+        }
         let document = GrapesJsCodec::decode_value(project_data.clone())?;
         let snapshot = ProjectSnapshot {
             id: format!("local-recovery-{}", Uuid::new_v4()),
@@ -159,9 +184,11 @@ impl AdminCanvasController {
             project_data,
             metadata: Default::default(),
         };
+        let sequence_before = self.editor.revision().command_sequence;
         let report = self.editor.restore_snapshot(&snapshot)?;
         self.clipboard = None;
         self.synchronize(report);
+        self.invalidate_geometry_after_document_change(sequence_before);
         Ok(())
     }
 
@@ -169,9 +196,34 @@ impl AdminCanvasController {
         &mut self,
         intent: UiIntent,
     ) -> Result<Vec<AdminCanvasEffect>, AdminCanvasError> {
+        // Lifecycle transitions have to update the revision owner and UI
+        // together. They are not general authoring intents.
+        if matches!(
+            &intent,
+            UiIntent::SaveStarted { .. }
+                | UiIntent::SaveSucceeded { .. }
+                | UiIntent::SaveFailed { .. }
+                | UiIntent::SaveConflict { .. }
+        ) {
+            return Err(AdminCanvasError::Authoring(
+                "save lifecycle events require the correlated controller API".to_string(),
+            ));
+        }
         self.validate_navigation_intent(&intent)?;
+        // A late hover from a removed component or a different page is not
+        // a valid interaction target in the current canvas.
+        let intent = match intent {
+            UiIntent::Hover(Some(id)) if !self.component_on_active_page(&id) => UiIntent::Hover(None),
+            intent => intent,
+        };
         let snapshot = self.clone();
-        let effects = self.ui.dispatch(intent)?;
+        let effects = match self.ui.dispatch(intent) {
+            Ok(effects) => effects,
+            Err(error) => {
+                *self = snapshot;
+                return Err(error.into());
+            }
+        };
         let mut outgoing = Vec::new();
 
         for effect in effects {
@@ -180,7 +232,45 @@ impl AdminCanvasController {
                 return Err(error);
             }
         }
+        self.invalidate_geometry_after_document_change(snapshot.editor.revision().command_sequence);
         Ok(outgoing)
+    }
+
+    /// All canvas geometry refers to the previous document, even when IDs survive.
+    fn invalidate_geometry_after_document_change(&mut self, sequence_before: u64) {
+        if self.editor.revision().command_sequence != sequence_before {
+            self.ui.state.invalidate_document_geometry();
+        }
+    }
+
+    fn component_on_active_page(&self, component_id: &str) -> bool {
+        self.editor.document().component_location(component_id)
+            .is_some_and(|location| location.page_index == self.active_page_index())
+    }
+
+    /// Bind a transport attempt to the exact emitted persistence effect.
+    /// Reject stale or mismatched payloads before invoking the consumer.
+    pub fn begin_save_request(
+        &mut self,
+        request: &PageBuilderCapabilityRequest,
+        expected_hash: Option<ProjectHash>,
+        command_sequence: u64,
+    ) -> Result<SaveAttempt, AdminCanvasError> {
+        let PageBuilderCapabilityRequest::Publish(input) = request else {
+            return Err(AdminCanvasError::Authoring("expected a save request".to_string()));
+        };
+        let revision = self.editor.revision();
+        if input.page_id != self.page_id
+            || input.revision_id != self.revision_id
+            || expected_hash != Some(revision.project_hash)
+            || command_sequence != revision.command_sequence
+            || input.project_data != GrapesJsCodec::encode_value(self.editor.document())?
+        {
+            return Err(AdminCanvasError::Authoring(
+                "save request no longer matches the active document snapshot".to_string(),
+            ));
+        }
+        self.mark_save_started_with_id()
     }
 
     pub fn mark_save_started(&mut self) -> Result<(), AdminCanvasError> {
@@ -376,7 +466,7 @@ impl AdminCanvasController {
         let page = self
             .editor
             .document()
-            .project
+            .project()
             .pages
             .get(*page_index)
             .ok_or_else(|| {
@@ -622,7 +712,12 @@ impl AdminCanvasController {
                 tracing::warn!(error = ?err, "Failed to deselect out-of-scope component");
             }
         }
-        self.ui.state.selection.component_id = selection;
+        self.ui.state.set_selected_component(selection);
+        if self.ui.state.selection.hovered_component_id.as_deref()
+            .is_some_and(|id| !self.component_on_active_page(id))
+        {
+            self.ui.state.set_hovered_component(None);
+        }
         self.ui.state.set_diagnostics(report.diagnostics);
         self.synchronize_revision();
     }
@@ -696,7 +791,9 @@ impl AdminCanvasController {
         &mut self,
         installer: impl FnOnce(&mut RegistrySet) -> Result<(), String>,
     ) -> Result<(), AdminCanvasError> {
-        installer(self.editor.registries_mut()).map_err(AdminCanvasError::Authoring)?;
+        let mut candidate = self.editor.registries().clone();
+        installer(&mut candidate).map_err(AdminCanvasError::Authoring)?;
+        *self.editor.registries_mut() = candidate;
         let report = self.editor.validate();
         self.synchronize(report);
         Ok(())
@@ -733,6 +830,116 @@ mod tests {
             }),
         )
         .expect("controller")
+    }
+
+    #[test]
+    fn geometry_is_invalidated_on_document_changes_but_not_rejected_commands() {
+        let mut controller = controller();
+        let rect = fly_ui::CanvasRect { x: 0.0, y: 0.0, width: 100.0, height: 40.0 };
+        controller.dispatch(UiIntent::Select(Some("hero".into()))).unwrap();
+        controller.dispatch(UiIntent::Hover(Some("copy-me".into()))).unwrap();
+        controller.dispatch(UiIntent::SetSelectedOverlay(Some(rect))).unwrap();
+        controller.dispatch(UiIntent::SetHoveredOverlay(Some(rect))).unwrap();
+        let before = controller.clone();
+        assert!(controller.dispatch(UiIntent::execute(EditorCommand::Remove {
+            component_id: "missing".into(),
+        })).is_err());
+        assert_eq!(controller, before);
+
+        controller.dispatch(UiIntent::execute(EditorCommand::Remove {
+            component_id: "copy-me".into(),
+        })).unwrap();
+        assert!(controller.ui().state.selection.hovered_component_id.is_none());
+        assert_eq!(controller.ui().state.overlays, fly_ui::OverlayState::default());
+        controller.dispatch(UiIntent::Hover(Some("copy-me".into()))).unwrap();
+        assert!(controller.ui().state.selection.hovered_component_id.is_none());
+
+        controller.dispatch(UiIntent::Select(Some("hero".into()))).unwrap();
+        controller.dispatch(UiIntent::SetSelectedOverlay(Some(rect))).unwrap();
+        controller.dispatch(UiIntent::Undo).unwrap();
+        assert_eq!(controller.ui().state.overlays, fly_ui::OverlayState::default());
+    }
+
+    #[test]
+    fn failed_contribution_installation_preserves_controller_state() {
+        let mut controller = controller();
+        let before = controller.clone();
+        let result = controller.install_contribution_registries(|registries| {
+            *registries = RegistrySet::default();
+            Err("installer failed after mutation".to_string())
+        });
+        assert!(matches!(result, Err(AdminCanvasError::Authoring(_))));
+        assert_eq!(controller.editor(), before.editor());
+        assert_eq!(controller.ui(), before.ui());
+        assert_eq!(controller.revision_id(), before.revision_id());
+    }
+
+    #[test]
+    fn save_request_admission_binds_payload_revision_and_sequence() {
+        let mut controller = controller();
+        let effects = controller.dispatch(UiIntent::RequestSave).expect("save effect");
+        let AdminCanvasEffect::Request { request, expected_hash, command_sequence } = &effects[0] else {
+            panic!("expected persistence effect");
+        };
+        for field in ["page", "revision", "payload", "hash", "sequence"] {
+            let mut candidate = request.clone();
+            let PageBuilderCapabilityRequest::Publish(input) = &mut candidate else {
+                panic!("expected publish");
+            };
+            let mut hash = *expected_hash;
+            let mut sequence = *command_sequence;
+            match field {
+                "page" => input.page_id = "other".to_string(),
+                "revision" => input.revision_id = "old".to_string(),
+                "payload" => input.project_data = json!({"pages": []}),
+                "hash" => hash = None,
+                "sequence" => sequence += 1,
+                _ => unreachable!(),
+            }
+            let before = controller.clone();
+            assert!(controller.begin_save_request(&candidate, hash, sequence).is_err(), "{field}");
+            assert_eq!(controller, before);
+        }
+        let attempt = controller.begin_save_request(request, *expected_hash, *command_sequence)
+            .expect("current effect");
+        assert_eq!(controller.active_save_attempt().as_ref(), Some(&attempt));
+        assert!(controller.mark_save_failed_for_attempt(&attempt).expect("retire"));
+    }
+
+    #[test]
+    fn generic_dispatch_cannot_mutate_save_lifecycle() {
+        let mut controller = controller();
+        let before = controller.clone();
+        assert!(controller.dispatch(UiIntent::SaveStarted {
+            request_id: "unbound".into(),
+        }).is_err());
+        assert_eq!(controller, before);
+
+        let attempt = controller.mark_save_started_with_id().expect("start");
+        let hash = controller.editor().revision().project_hash;
+        let before = controller.clone();
+        for intent in [
+            UiIntent::SaveSucceeded {
+                request_id: attempt.request_id.clone(),
+                revision: "rev-2".into(),
+                project_hash: hash,
+            },
+            UiIntent::SaveFailed { request_id: Some(attempt.request_id.clone()) },
+            UiIntent::SaveConflict {
+                request_id: Some(attempt.request_id.clone()),
+                expected: "rev-1".into(),
+                actual: "rev-2".into(),
+            },
+        ] {
+            assert!(controller.dispatch(intent).is_err());
+            assert_eq!(controller, before);
+        }
+        assert!(controller.acknowledge_save_for_attempt(hash, &attempt, "").is_err());
+        assert_eq!(controller, before);
+        controller.acknowledge_save_for_attempt(hash, &attempt, "rev-2")
+            .expect("correlated acknowledgement");
+        assert_eq!(controller.revision_id(), "rev-2");
+        assert!(!controller.ui().state.dirty.save_in_progress);
     }
 
     #[test]
@@ -790,6 +997,25 @@ mod tests {
         assert!(controller.ui().state.dirty.save_conflict);
         assert!(controller.ui().state.dirty.dirty);
         assert_eq!(controller.revision_id(), "rev-1");
+    }
+
+    #[test]
+    fn conflict_fence_survives_host_capability_refresh_without_changing_document() {
+        let mut controller = controller();
+        controller
+            .mark_peer_write_conflict("rev-1".into(), "rev-2".into())
+            .expect("peer conflict");
+        controller.dispatch(UiIntent::SetEditableCapabilities(fly_ui::CapabilityState::full()))
+            .expect("refresh host permissions");
+        assert!(!controller.ui().state.capabilities.edit);
+        let before = controller.clone();
+        assert!(controller.dispatch(UiIntent::execute(EditorCommand::Remove {
+            component_id: "hero".into(),
+        })).is_err());
+        let recovered = GrapesJsCodec::encode_value(controller.editor().document())
+            .expect("recovery document");
+        assert!(controller.apply_recovered_merge(recovered).is_err());
+        assert_eq!(controller, before);
     }
 
     #[test]
@@ -912,6 +1138,44 @@ mod tests {
     }
 
     #[test]
+    fn history_transitions_discard_old_drop_candidates_but_failed_edits_do_not() {
+        use fly_ui::{CanvasRect, DragSource, DropPosition, HitTestCandidate};
+
+        let mut controller = controller();
+        controller.dispatch(UiIntent::execute(EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: ComponentPatch::default().merge_style(json!({"margin": "12px"})),
+        })).expect("edit");
+        for history_intent in [UiIntent::Undo, UiIntent::Redo] {
+            controller.dispatch(UiIntent::BeginDrag(DragSource::ExistingComponent {
+                component_id: "copy-me".to_string(),
+            })).expect("begin drag");
+            controller.dispatch(UiIntent::UpdateHitTest(vec![HitTestCandidate {
+                target_component_id: "hero".to_string(),
+                parent_component_id: Some("root".to_string()),
+                index: 0,
+                position: DropPosition::Inside,
+                rect: CanvasRect { x: 0.0, y: 0.0, width: 10.0, height: 10.0 },
+                score: 1.0,
+                legal: true,
+                reason: None,
+            }])).expect("hit test");
+            let before = controller.clone();
+            assert!(controller.dispatch(UiIntent::execute(EditorCommand::Remove {
+                component_id: "missing".to_string(),
+            })).is_err());
+            assert_eq!(controller, before);
+
+            controller.dispatch(history_intent).expect("history transition");
+            assert!(controller.ui().state.drag.is_none());
+            assert!(controller.ui().state.overlays.insertion.is_none());
+            let after = controller.clone();
+            assert!(controller.dispatch(UiIntent::Drop).is_err());
+            assert_eq!(controller, after);
+        }
+    }
+
+    #[test]
     fn failed_command_restores_ui_editor_and_clipboard() {
         let mut controller = controller();
         controller
@@ -954,6 +1218,42 @@ mod tests {
             .dispatch(UiIntent::CutSelection)
             .expect("cut pasted component");
         assert!(!controller.editor().document().contains_component(&selected));
+    }
+
+    #[test]
+    fn preview_request_admission_rejects_stale_page_even_without_revision_change() {
+        let mut controller = controller();
+        controller
+            .dispatch(UiIntent::execute(EditorCommand::Page {
+                command: PageCommand::Add {
+                    index: 1,
+                    page: Box::new(blank_page("about", "About")),
+                },
+            }))
+            .expect("add page");
+        let sequence = controller.editor().revision().command_sequence;
+        let hash = controller.editor().revision().project_hash;
+        let home = PreviewPageBuilderInput::new(
+            controller.page_id(),
+            controller.active_page_project().expect("home projection"),
+        );
+        controller.validate_preview_request(&home, sequence).expect("current home");
+        controller.dispatch(UiIntent::ActivatePage {
+            page_id: Some("about".into()),
+            page_index: 1,
+        }).expect("navigate");
+        assert_eq!(controller.editor().revision().command_sequence, sequence);
+        assert_eq!(controller.editor().revision().project_hash, hash);
+        assert!(controller.validate_preview_request(&home, sequence).is_err());
+
+        let about = PreviewPageBuilderInput::new(
+            controller.page_id(),
+            controller.active_page_project().expect("about projection"),
+        );
+        controller.validate_preview_request(&about, sequence).expect("current about");
+        assert!(controller.validate_preview_request(&about, sequence + 1).is_err());
+        let foreign = PreviewPageBuilderInput::new("foreign", about.project_data.clone());
+        assert!(controller.validate_preview_request(&foreign, sequence).is_err());
     }
 
     #[test]

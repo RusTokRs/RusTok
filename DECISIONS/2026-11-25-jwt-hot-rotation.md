@@ -17,8 +17,9 @@ would leave those providers on obsolete signing and verification material.
 ## Decision
 
 Auth owns a shared process-local runtime for all four prepared purpose rings.
-The host optionally supplies one bounded versioned secret file instead of the
-startup cryptographic overrides. Fixed configuration remains supported for
+The host optionally supplies one bounded generation-bearing secret file instead of the
+startup cryptographic overrides. The canonical unversioned document and its
+generation bounds are specified by [Canonical JWT keyring document](2026-11-25-jwt-canonical-keyring-document.md). Fixed configuration remains supported for
 embedders and deployments without the file. Before any host clone is composed,
 the file is fully parsed and all purpose rings and host production policy are
 validated. The host owns the sole publication capability; transports retain
@@ -29,7 +30,7 @@ The host polls the complete document every five seconds for its HTTP lifetime.
 Preparation and production validation happen before publication. A shared
 read/write fence serializes generation and key replacement with synchronous
 JWT operations. Each operation observes one complete snapshot. Stale or equal
-generations, algorithm changes, adjacent ID/material remapping, cross-purpose
+generations, unmanaged active algorithm changes, adjacent ID/material remapping, cross-purpose
 reuse and reactivation of expired retained history fail closed. Malformed or
 unavailable candidates retain the last-known-good snapshot. No stale raw
 initial signer is retained by the live configuration after replacement.
@@ -75,3 +76,7 @@ Source regressions cover existing clones observing a new generation, invalid
 candidate rollback, stale generations, ID remapping and concurrent publishers.
 Run scoped Auth and host checks and exercise file replacement in a live host.
 No runtime verification is claimed.
+
+The later [JWT algorithm migration](2026-11-25-jwt-algorithm-migration.md) permits
+active algorithm changes only through managed durable admission; unmanaged
+publication retains its previous prohibition.

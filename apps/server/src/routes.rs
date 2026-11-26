@@ -142,14 +142,14 @@ mod tests {
         let ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(db, settings);
         let app = router.with_state(ServerAuthRuntime::without_auth(ctx));
 
-        for path in [
-            "/api/oauth/token",
-            "/api/oauth/revoke",
-            "/.well-known/oauth-authorization-server",
-            "/.well-known/openid-configuration",
+        for (method, path) in [
+            ("POST", "/api/oauth/token"),
+            ("POST", "/api/oauth/revoke"),
+            ("GET", "/.well-known/oauth-authorization-server"),
+            ("GET", "/.well-known/openid-configuration"),
         ] {
             let req = Request::builder()
-                .method("POST")
+                .method(method)
                 .uri(path)
                 .body(axum::body::Body::empty())
                 .unwrap();
@@ -167,13 +167,21 @@ mod tests {
         let ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(db, settings);
         let app = router.with_state(ServerAuthRuntime::without_auth(ctx));
 
-        let req = Request::builder()
-            .method("POST")
-            .uri("/api/oauth/token")
-            .body(axum::body::Body::empty())
-            .unwrap();
-        let response = app.oneshot(req).await.unwrap();
-        assert_ne!(response.status(), StatusCode::NOT_FOUND);
+        for (method, path) in [
+            ("POST", "/api/oauth/token"),
+            ("POST", "/api/oauth/revoke"),
+            ("GET", "/.well-known/oauth-authorization-server"),
+            ("GET", "/.well-known/openid-configuration"),
+        ] {
+            let req = Request::builder()
+                .method(method)
+                .uri(path)
+                .body(axum::body::Body::empty())
+                .unwrap();
+            let response = app.clone().oneshot(req).await.unwrap();
+            assert_ne!(response.status(), StatusCode::NOT_FOUND, "{path}");
+            assert_ne!(response.status(), StatusCode::METHOD_NOT_ALLOWED, "{path}");
+        }
     }
 
     #[tokio::test]

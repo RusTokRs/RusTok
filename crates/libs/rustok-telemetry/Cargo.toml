@@ -26,3 +26,6 @@ opentelemetry.workspace = true
 opentelemetry-otlp = { workspace = true, features = ["trace", "grpc-tonic"] }
 tracing-opentelemetry.workspace = true
 opentelemetry_sdk.workspace = true
+
+[lints]
+workspace = true

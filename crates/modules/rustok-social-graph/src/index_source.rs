@@ -16,9 +16,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::entities::relation;
-use crate::index::{
-    SocialGraphIndexError, social_graph_relation_index_mutation, social_graph_relation_index_schema,
-};
+use crate::index::{SocialGraphIndexError, social_graph_relation_index_mutation};
 
 pub const SOCIAL_GRAPH_RELATION_INDEX_SOURCE: &str = "social_graph.relation.state_changed.v1";
 pub const SOCIAL_GRAPH_RELATION_INDEX_EVENT_DOMAIN: &str = "social_graph.relation.state_changed.v1";

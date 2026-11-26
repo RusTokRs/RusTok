@@ -139,16 +139,65 @@ where
             EditorSessionEffect::ExecuteRequest {
                 request,
                 expected_hash,
+                command_sequence,
+                preview_attempt_id,
             } => {
+                let preview_attempt_id = if let PageBuilderCapabilityRequest::Preview(input) = &request {
+                    let mut state = session.write();
+                    if let Some(id) = preview_attempt_id {
+                        if !state.preview_attempt_active(id) {
+                            continue;
+                        }
+                    } else if state.preview_in_progress {
+                        state.fail("Preview already in progress");
+                        continue;
+                    }
+                    if let Err(error) = state.controller.validate_preview_request(input, command_sequence) {
+                        if let Some(id) = preview_attempt_id {
+                            state.handle_preview_failure(id, error.to_string());
+                        } else {
+                            state.fail(error.to_string());
+                        }
+                        continue;
+                    }
+                    if let Some(id) = preview_attempt_id {
+                        Some(id)
+                    } else {
+                        let context = input.runtime.context.clone();
+                        let scenario = input.runtime.scenario_id.clone();
+                        if !state.runtime_context_configured
+                            || state.runtime_context != context
+                            || state.active_runtime_scenario != scenario
+                        {
+                            state.runtime_publish_gate_evaluation = None;
+                            state.server_preview_html = None;
+                        }
+                        state.runtime_context = context.clone();
+                        state.runtime_context_configured = true;
+                        state.active_runtime_scenario = scenario.clone();
+                        let attempt = crate::core::session::PreviewAttempt::new(
+                            state.controller.editor().revision().project_hash,
+                            state.controller.active_page_index(),
+                            context,
+                            scenario,
+                        );
+                        let id = attempt.id;
+                        state.preview_request = Some(attempt);
+                        state.preview_in_progress = true;
+                        Some(id)
+                    }
+                } else {
+                    None
+                };
                 let Some(facade) = facade.clone() else {
                     // No request is sent and therefore no completion will ever
                     // arrive to retire an already prepared preview operation.
                     let mut state = session.write();
-                    if matches!(request, PageBuilderCapabilityRequest::Preview(_)) {
-                        state.preview_in_progress = false;
-                        state.preview_request = None;
+                    if let Some(id) = preview_attempt_id {
+                        state.handle_preview_failure(id, "Page Builder facade is missing".to_string());
+                    } else {
+                        state.fail("Page Builder facade is missing");
                     }
-                    state.fail("Page Builder facade is missing");
                     continue;
                 };
                 let capability = request.capability();
@@ -163,9 +212,12 @@ where
                         .is_some_and(|status| !status.preview_enabled())
                 {
                     let mut state = session.write();
-                    state.preview_in_progress = false;
-                    state.preview_request = None;
-                    state.fail("Server preview is disabled by the consumer provider or health policy");
+                    if let Some(id) = preview_attempt_id {
+                        state.handle_preview_failure(
+                            id,
+                            "Server preview is disabled by the consumer provider or health policy".to_string(),
+                        );
+                    }
                     continue;
                 }
                 let save_attempt = if capability == BuilderCapabilityKind::Publish {
@@ -173,48 +225,30 @@ where
                         session.write().fail("Save request has no submitted project hash");
                         continue;
                     }
-                    let start = { session.write().mark_save_started_with_id() };
+                    let start = {
+                        session.write().controller.begin_save_request(
+                            &request, expected_hash, command_sequence,
+                        )
+                    };
                     match start {
                         Ok(attempt) => Some(attempt),
                         Err(error) => {
-                            session.write().fail(error);
+                            session.write().fail(error.to_string());
                             continue;
                         }
                     }
                 } else {
                     None
                 };
-                if let PageBuilderCapabilityRequest::Preview(input) = &request {
-                    let mut state = session.write();
-                    if state.preview_in_progress {
-                        // An already prepared preview still has an in-flight
-                        // response. Do not allow a second request to steal its
-                        // correlation snapshot or clear its status on completion.
-                        state.fail("Preview already in progress");
-                        continue;
-                    }
-                    // Browser-origin previews supply runtime context in the
-                    // request instead of calling prepare_server_preview_request.
-                    let context = input.runtime.context.clone();
-                    let scenario = input.runtime.scenario_id.clone();
-                    state.runtime_context = context.clone();
-                    state.runtime_context_configured = true;
-                    state.active_runtime_scenario = scenario.clone();
-                    state.runtime_publish_gate_evaluation = None;
-                    state.preview_request = Some((
-                        state.controller.editor().revision().project_hash,
-                        state.controller.active_page_index(),
-                        context,
-                        scenario,
-                    ));
-                    state.preview_in_progress = true;
-                }
                 let on_publish_confirmed = on_publish_confirmed.clone();
                 let submitted_hash = expected_hash.as_ref().map(|hash| hash.hex());
                 let _task = spawn(async move {
                     let outcome = facade.execute(request).await;
                     let mut confirmed_write: Option<(String, String, Value)> = None;
                     let mut state = session.write();
+                    if preview_attempt_id.is_some_and(|id| !state.preview_attempt_active(id)) {
+                        return;
+                    }
                     match outcome {
                         Ok(PageBuilderCapabilityResponse::Publish(response))
                             if capability == BuilderCapabilityKind::Publish =>
@@ -251,7 +285,9 @@ where
                         Ok(PageBuilderCapabilityResponse::Preview(response))
                             if capability == BuilderCapabilityKind::Preview =>
                         {
-                            if let Err(error) = state.handle_preview_response(&response) {
+                            if let Some(id) = preview_attempt_id
+                                && let Err(error) = state.handle_preview_response(id, &response)
+                            {
                                 state.fail(error);
                             }
                         }
@@ -264,9 +300,9 @@ where
                                 if state.handle_publish_error_for_attempt(&id, error) {
                                     save_outcome_unknown.set(false);
                                 }
+                            } else if let Some(id) = preview_attempt_id {
+                                state.handle_preview_failure(id, error);
                             } else {
-                                state.preview_in_progress = false;
-                                state.preview_request = None;
                                 state.fail(error);
                             }
                         }
@@ -295,9 +331,9 @@ where
                                         }
                                     }
                                 }
+                            } else if let Some(id) = preview_attempt_id {
+                                state.handle_preview_failure(id, error.to_string());
                             } else {
-                                state.preview_in_progress = false;
-                                state.preview_request = None;
                                 state.fail(error.to_string());
                             }
                         }
@@ -977,6 +1013,7 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
         let effects = {
             let mut state = session.write();
             let previous_hash = state.controller.editor().revision().project_hash;
+            let previous_active_page_index = state.controller.active_page_index();
             // The callback must carry the snapshot that rendered its workspace. Reading the
             // live controller here would silently upgrade a stale event to the latest revision.
             let envelope = bind_workspace_intent_snapshot(
@@ -990,6 +1027,7 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                     // A command from a stale workspace must never dispatch its
                     // asynchronous persistence effect against a newer document.
                     let current_hash = state.controller.editor().revision().project_hash;
+                    let current_active_page_index = state.controller.active_page_index();
                     let current_sequence = state.controller.editor().revision().command_sequence;
                     if result.page_id != state.controller.page_id()
                         || result.revision_id != state.controller.revision_id()
@@ -999,7 +1037,9 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                         state.fail("Browser workspace response no longer matches the active document");
                         return;
                     }
-                    if current_hash != previous_hash {
+                    if current_hash != previous_hash
+                        || current_active_page_index != previous_active_page_index
+                    {
                         state.runtime_publish_gate_evaluation = None;
                         state.server_preview_html = None;
                         state.preview_request = None;
@@ -1031,6 +1071,8 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
                                 effects.push(EditorSessionEffect::ExecuteRequest {
                                     request,
                                     expected_hash,
+                                    command_sequence,
+                                    preview_attempt_id: None,
                                 });
                             }
                         }
@@ -1148,13 +1190,13 @@ fn PageBuilderAdminWithControllerSession(props: PageBuilderAdminWithControllerPr
     let (workspace_canvas, workspace_canvas_interactive): (Option<Element>, bool) = {
         let mut canvas_document = workspace_document.clone();
         let active_page = canvas_document
-            .project
+            .project()
             .pages
             .get(workspace_initial_page)
             .cloned();
         match active_page {
             Some(active_page) => {
-                canvas_document.project.pages = vec![active_page];
+                canvas_document.project_mut().pages = vec![active_page];
                 let canvas_nonce = workspace_csp_nonce
                     .as_deref()
                     .and_then(UiCspNonce::new);

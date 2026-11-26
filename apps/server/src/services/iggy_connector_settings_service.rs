@@ -5,7 +5,7 @@ use rustok_iggy_connector::{IggyConnectorConfigurationSnapshot, IggyConnectorSet
 use rustok_secrets::{
     EnvResolver, MountedFileResolver, SecretAccessPolicy, SecretRef, SecretResolverRegistry,
 };
-use sea_orm::{ActiveModelTrait, EntityTrait, Set};
+use sea_orm::{EntityTrait, Set, sea_query::OnConflict};
 use url::Url;
 use uuid::Uuid;
 
@@ -93,46 +93,52 @@ impl IggyConnectorSettingsService {
                 input.tls_enabled,
                 tls_domain.as_deref(),
             )?;
-            resolve_password(ctx, actor_tenant_id, &resolver, &key).await?;
+            let password = resolve_password(ctx, actor_tenant_id, &resolver, &key).await?;
+            let mut config = ctx.settings().events.iggy.clone();
+            config.external.addresses = normalized_addresses.clone();
+            config.external.protocol = "tcp".to_string();
+            config.external.username = username.clone();
+            config.external.password = password;
+            config.external.tls_enabled = input.tls_enabled;
+            config.external.tls_domain = tls_domain.clone();
+            validate_external_connection(&config)?;
         }
 
         let now: chrono::DateTime<chrono::FixedOffset> = chrono::Utc::now().into();
         let addresses_json = serde_json::to_value(&normalized_addresses)
             .map_err(|error| IggyConnectorSettingsError::InvalidConfiguration(error.to_string()))?;
-        match Entity::find_by_id(SINGLETON_ID).one(ctx.db()).await? {
-            Some(row) => {
-                let mut active: iggy_connector_settings::ActiveModel = row.into();
-                active.mode = Set(mode.to_string());
-                active.external_addresses = Set(addresses_json);
-                active.external_username = Set(username);
-                active.password_resolver = Set(nonempty(resolver));
-                active.password_key = Set(nonempty(key));
-                active.secret_tenant_id = Set(Some(actor_tenant_id));
-                active.tls_enabled = Set(input.tls_enabled);
-                active.tls_domain = Set(tls_domain);
-                active.updated_by = Set(Some(actor_id));
-                active.updated_at = Set(now);
-                active.update(ctx.db()).await?;
-            }
-            None => {
-                iggy_connector_settings::ActiveModel {
-                    id: Set(SINGLETON_ID),
-                    mode: Set(mode.to_string()),
-                    external_addresses: Set(addresses_json),
-                    external_username: Set(username),
-                    password_resolver: Set(nonempty(resolver)),
-                    password_key: Set(nonempty(key)),
-                    secret_tenant_id: Set(Some(actor_tenant_id)),
-                    tls_enabled: Set(input.tls_enabled),
-                    tls_domain: Set(tls_domain),
-                    updated_by: Set(Some(actor_id)),
-                    created_at: Set(now),
-                    updated_at: Set(chrono::Utc::now().into()),
-                }
-                .insert(ctx.db())
-                .await?;
-            }
-        }
+        Entity::insert(iggy_connector_settings::ActiveModel {
+            id: Set(SINGLETON_ID),
+            mode: Set(mode.to_string()),
+            external_addresses: Set(addresses_json),
+            external_username: Set(username),
+            password_resolver: Set(nonempty(resolver)),
+            password_key: Set(nonempty(key)),
+            secret_tenant_id: Set(Some(actor_tenant_id)),
+            tls_enabled: Set(input.tls_enabled),
+            tls_domain: Set(tls_domain),
+            updated_by: Set(Some(actor_id)),
+            created_at: Set(now),
+            updated_at: Set(now),
+        })
+        .on_conflict(
+            OnConflict::column(iggy_connector_settings::Column::Id)
+                .update_columns([
+                    iggy_connector_settings::Column::Mode,
+                    iggy_connector_settings::Column::ExternalAddresses,
+                    iggy_connector_settings::Column::ExternalUsername,
+                    iggy_connector_settings::Column::PasswordResolver,
+                    iggy_connector_settings::Column::PasswordKey,
+                    iggy_connector_settings::Column::SecretTenantId,
+                    iggy_connector_settings::Column::TlsEnabled,
+                    iggy_connector_settings::Column::TlsDomain,
+                    iggy_connector_settings::Column::UpdatedBy,
+                    iggy_connector_settings::Column::UpdatedAt,
+                ])
+                .to_owned(),
+        )
+        .exec_without_returning(ctx.db())
+        .await?;
         Ok(())
     }
 
@@ -141,41 +147,10 @@ impl IggyConnectorSettingsService {
     ) -> Result<IggyConfig, IggyConnectorSettingsError> {
         let stored = Entity::find_by_id(SINGLETON_ID).one(ctx.db()).await?;
         let Some(stored) = stored else {
-            validate_deployment_config(&ctx.settings().events.iggy)?;
-            return Ok(ctx.settings().events.iggy.clone());
+            return resolved_deployment_config(&ctx.settings().events.iggy);
         };
 
-        let mut config = ctx.settings().events.iggy.clone();
-        config.mode = parse_mode(&stored.mode)?;
-        match config.mode {
-            IggyMode::Bundled => validate_bundled(&config)?,
-            IggyMode::External => {
-                let addresses = addresses_from_model(&stored)?;
-                let resolver = stored.password_resolver.as_deref().unwrap_or_default();
-                let key = stored.password_key.as_deref().unwrap_or_default();
-                let tenant_id = stored.secret_tenant_id.ok_or_else(|| {
-                    IggyConnectorSettingsError::InvalidConfiguration(
-                        "external password secret owner is missing".to_string(),
-                    )
-                })?;
-                validate_external_fields(
-                    &addresses,
-                    &stored.external_username,
-                    resolver,
-                    key,
-                    stored.tls_enabled,
-                    stored.tls_domain.as_deref(),
-                )?;
-                let password = resolve_password(ctx, tenant_id, resolver, key).await?;
-                config.external.addresses = addresses;
-                config.external.protocol = "tcp".to_string();
-                config.external.username = stored.external_username;
-                config.external.password = password;
-                config.external.tls_enabled = stored.tls_enabled;
-                config.external.tls_domain = stored.tls_domain;
-            }
-        }
-        Ok(config)
+        resolved_stored_config(ctx, &stored).await
     }
 
     pub async fn readiness_error(ctx: &ServerRuntimeContext) -> Option<String> {
@@ -191,23 +166,30 @@ impl IggyConnectorSettingsService {
         stored: Option<&Model>,
     ) -> Option<String> {
         let result = match stored {
-            Some(settings) => validate_stored(ctx, settings).await,
-            None => validate_deployment_config(&ctx.settings().events.iggy),
+            Some(settings) => resolved_stored_config(ctx, settings).await.map(|_| ()),
+            None => resolved_deployment_config(&ctx.settings().events.iggy).map(|_| ()),
         };
         result.err().map(|error| error.to_string())
     }
 }
 
-async fn validate_stored(
+async fn resolved_stored_config(
     ctx: &ServerRuntimeContext,
     stored: &Model,
-) -> Result<(), IggyConnectorSettingsError> {
-    match parse_mode(&stored.mode)? {
-        IggyMode::Bundled => validate_bundled(&ctx.settings().events.iggy),
+) -> Result<IggyConfig, IggyConnectorSettingsError> {
+    let mut config = ctx.settings().events.iggy.clone();
+    config.mode = parse_mode(&stored.mode)?;
+    match config.mode {
+        IggyMode::Bundled => validate_bundled(&config)?,
         IggyMode::External => {
             let addresses = addresses_from_model(stored)?;
             let resolver = stored.password_resolver.as_deref().unwrap_or_default();
             let key = stored.password_key.as_deref().unwrap_or_default();
+            let tenant_id = stored.secret_tenant_id.ok_or_else(|| {
+                IggyConnectorSettingsError::InvalidConfiguration(
+                    "external password secret owner is missing".to_string(),
+                )
+            })?;
             validate_external_fields(
                 &addresses,
                 &stored.external_username,
@@ -216,37 +198,51 @@ async fn validate_stored(
                 stored.tls_enabled,
                 stored.tls_domain.as_deref(),
             )?;
-            let tenant_id = stored.secret_tenant_id.ok_or_else(|| {
-                IggyConnectorSettingsError::InvalidConfiguration(
-                    "external password secret owner is missing".to_string(),
-                )
-            })?;
-            resolve_password(ctx, tenant_id, resolver, key).await?;
-            Ok(())
+            let password = resolve_password(ctx, tenant_id, resolver, key).await?;
+            config.external.addresses = addresses;
+            config.external.protocol = "tcp".to_string();
+            config.external.username = stored.external_username.clone();
+            config.external.password = password;
+            config.external.tls_enabled = stored.tls_enabled;
+            config.external.tls_domain = stored.tls_domain.clone();
+            validate_external_connection(&config)?;
         }
     }
+    Ok(config)
 }
 
-fn validate_deployment_config(config: &IggyConfig) -> Result<(), IggyConnectorSettingsError> {
+fn resolved_deployment_config(
+    config: &IggyConfig,
+) -> Result<IggyConfig, IggyConnectorSettingsError> {
+    let mut config = config.clone();
     match config.mode {
-        IggyMode::Bundled => validate_bundled(config),
+        IggyMode::Bundled => validate_bundled(&config)?,
         IggyMode::External => {
-            let addresses = normalize_addresses(config.external.addresses.clone())?;
-            if config.external.password.is_empty() {
-                return Err(IggyConnectorSettingsError::InvalidConfiguration(
-                    "external password is not configured".to_string(),
-                ));
-            }
+            config.external.addresses = normalize_addresses(config.external.addresses)?;
             validate_external_fields(
-                &addresses,
+                &config.external.addresses,
                 &config.external.username,
                 "deployment",
                 "configured",
                 config.external.tls_enabled,
                 config.external.tls_domain.as_deref(),
-            )
+            )?;
+            validate_external_connection(&config)?;
         }
     }
+    Ok(config)
+}
+
+fn validate_external_connection(config: &IggyConfig) -> Result<(), IggyConnectorSettingsError> {
+    if config.external.password.is_empty() {
+        return Err(IggyConnectorSettingsError::InvalidConfiguration(
+            "external password is not configured".to_string(),
+        ));
+    }
+    rustok_iggy_connector::ConnectorConfig::from(config)
+        .external
+        .validate_connection_settings()
+        .map_err(|error| IggyConnectorSettingsError::InvalidConfiguration(error.to_string()))
 }
 
 fn validate_bundled(config: &IggyConfig) -> Result<(), IggyConnectorSettingsError> {
@@ -346,20 +342,31 @@ fn validate_external_fields(
 }
 
 fn validate_address(address: &str) -> Result<(), IggyConnectorSettingsError> {
-    let url = Url::parse(&format!("tcp://{}", address.trim())).map_err(|_| {
-        IggyConnectorSettingsError::InvalidConfiguration(format!(
-            "invalid external Iggy address `{address}`; expected host:port"
-        ))
-    })?;
-    if url.host_str().is_none()
-        || url.port().is_none()
-        || url.username() != ""
+    let invalid = || {
+        // Do not echo the submitted value: a mistakenly supplied URL may
+        // contain credentials or other sensitive information.
+        IggyConnectorSettingsError::InvalidConfiguration(
+            "invalid external Iggy address; expected host:port with a nonzero port".to_string(),
+        )
+    };
+    let address = address.trim();
+    if address.chars().any(|character| {
+        character.is_whitespace()
+            || character.is_control()
+            || matches!(character, '@' | '/' | '?' | '#' | '\\')
+    }) {
+        return Err(invalid());
+    }
+    let url = Url::parse(&format!("tcp://{address}")).map_err(|_| invalid())?;
+    if url.host_str().is_none_or(str::is_empty)
+        || matches!(url.port(), None | Some(0))
+        || !url.username().is_empty()
         || url.password().is_some()
-        || url.path() != ""
+        || !url.path().is_empty()
+        || url.query().is_some()
+        || url.fragment().is_some()
     {
-        return Err(IggyConnectorSettingsError::InvalidConfiguration(format!(
-            "invalid external Iggy address `{address}`; expected host:port"
-        )));
+        return Err(invalid());
     }
     Ok(())
 }
@@ -370,8 +377,10 @@ fn normalize_addresses(addresses: Vec<String>) -> Result<Vec<String>, IggyConnec
         .map(|address| address.trim().to_string())
         .filter(|address| !address.is_empty())
         .collect::<Vec<_>>();
-    normalized.sort();
-    normalized.dedup();
+    // The connector attempts endpoints in order; keep the operator's
+    // preferred broker first while eliminating repeated addresses.
+    let mut seen = std::collections::HashSet::new();
+    normalized.retain(|address| seen.insert(address.clone()));
     for address in &normalized {
         validate_address(address)?;
     }
@@ -379,11 +388,11 @@ fn normalize_addresses(addresses: Vec<String>) -> Result<Vec<String>, IggyConnec
 }
 
 fn addresses_from_model(model: &Model) -> Result<Vec<String>, IggyConnectorSettingsError> {
-    serde_json::from_value::<Vec<String>>(model.external_addresses.clone()).map_err(|error| {
-        IggyConnectorSettingsError::InvalidConfiguration(format!(
-            "stored external Iggy addresses are invalid: {error}"
-        ))
-    })
+    let addresses = serde_json::from_value::<Vec<String>>(model.external_addresses.clone())
+        .map_err(|_| IggyConnectorSettingsError::InvalidConfiguration(
+            "stored external Iggy addresses are invalid".to_string(),
+        ))?;
+    normalize_addresses(addresses)
 }
 
 fn external_snapshot(
@@ -486,4 +495,72 @@ fn nonempty(value: String) -> Option<String> {
 
 fn normalize_optional(value: Option<String>) -> Option<String> {
     value.and_then(|value| nonempty(value.trim().to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn external_addresses_require_bare_host_and_nonzero_port() {
+        for address in ["broker.example:8090", "127.0.0.1:8090", "[::1]:8090"] {
+            assert!(validate_address(address).is_ok(), "{address}");
+        }
+        for address in [
+            "broker.example",
+            "broker.example:0",
+            "broker.example:65536",
+            "broker.example:8090?option=value",
+            "broker.example:8090#fragment",
+            "broker.example:8090/path",
+            "tcp://broker.example:8090",
+            "@broker.example:8090",
+            "bro ker.example:8090",
+            "broker.example:80\n90",
+        ] {
+            assert!(validate_address(address).is_err(), "{address}");
+        }
+    }
+
+    #[test]
+    fn deployment_validation_returns_the_same_normalized_addresses_used_at_startup() {
+        let mut config = IggyConfig::default();
+        config.mode = IggyMode::External;
+        config.external.addresses = vec![
+            " z.example:8090 ".to_string(),
+            "a.example:8090".to_string(),
+            "z.example:8090".to_string(),
+            " ".to_string(),
+        ];
+        let resolved = resolved_deployment_config(&config).expect("valid deployment");
+        assert_eq!(resolved.external.addresses, vec!["z.example:8090", "a.example:8090"]);
+        assert_eq!(config.external.addresses.len(), 4);
+    }
+
+    #[test]
+    fn deployment_validation_rejects_connector_incompatible_settings() {
+        let mut config = IggyConfig::default();
+        config.mode = IggyMode::External;
+        config.external.protocol = "http".to_string();
+        assert!(resolved_deployment_config(&config).is_err());
+
+        config.external.protocol = "tcp".to_string();
+        config.external.password = "secret@delimiter".to_string();
+        let error = resolved_deployment_config(&config).expect_err("invalid password");
+        assert!(!error.to_string().contains("secret@delimiter"));
+
+        config.external.password.clear();
+        assert!(resolved_deployment_config(&config).is_err());
+
+        config.external.password = "valid".to_string();
+        config.external.tls_domain = Some("invalid&domain".to_string());
+        assert!(resolved_deployment_config(&config).is_err());
+    }
+
+    #[test]
+    fn invalid_address_diagnostics_do_not_echo_credentials() {
+        let error = validate_address("user:secret@broker.example:8090")
+            .expect_err("credentials must be rejected");
+        assert!(!error.to_string().contains("secret"));
+    }
 }

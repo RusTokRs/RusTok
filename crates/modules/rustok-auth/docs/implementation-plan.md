@@ -44,6 +44,75 @@ obsolete fake session; its stale generated standalone lockfile was removed and i
 screenshot is historical, not verification of this migration. Preserve the release
 gates in the [Page Builder backlog](../../../../docs/modules/page-builder-backlog.md).
 
+JWT follow-up source hardening is implemented: every authority read and CAS
+is bound to the pinned authority identity; the caller MAC root is authenticated
+even for an empty ledger; generation-zero/static HTTP admission is absent;
+malformed replica-grant identifiers are rejected; observed lease expiry is
+sticky; and production opens the external authority before application
+migrations. Focused source regressions are authored but unrun; scoped checks
+and real PostgreSQL contention/restore evidence remain pending.
+
+RS256-only JWT target: [accepted ADR](../../../../DECISIONS/2026-11-25-rs256-only-jwt.md).
+All repository-owned JWT signing and verification now use RS256 exclusively.
+The mandatory generation-bearing file is the only key source; the document
+contains no algorithm marker or alternate key source. JOSE verification pins
+RS256 before exact kid lookup. The shared test fixture and POSIX dev/test
+provisioner produce four independent RSA purpose pairs; no HS256 signer,
+verifier, derivation, secret inventory, algorithm enum or default key
+constructor remains. Durable fence and witness metadata retain a fixed RS256
+assertion for authenticated-state continuity; any HS256 metadata is rejected.
+Removing that marker requires a separately authorized offline conversion
+preserving tombstones, revoked identities, generation and witness revision.
+Scoped compilation, regression execution and independent-replica rollout
+evidence remain pending. Do not reset non-disposable authority or witness
+state; retained-state deployment remains blocked until the converter is
+available.
+
+JWT migration consolidation is blocked by the repository-wide
+[admission guide](../../../../docs/guides/safe-database-migrations-and-squashing.md).
+The candidate range is the three Auth-owned 2026-11-25 fence migrations:
+`m20261125_000002_create_auth_jwt_generation_fence` creates the singleton,
+`m20261125_000003_add_auth_jwt_cluster_lease` adds the nonnegative lease/drain
+columns, and `m20261125_000004_add_auth_jwt_replica_grants` adds the grant
+registry and untracked horizon, including the existing lease-to-untracked
+backfill. A fresh baseline could create the final table and empty singleton
+directly, but a previously exercised authority must retain its ledger,
+leases, grants, identity tombstones and witness state. The witness revision
+DDL and offline import are separately controlled activation/recovery
+boundaries, not ordinary schema aliases. Keep all three migration identities
+unchanged until release/module/container seals, original/candidate PostgreSQL
+schema and data comparisons, installer/independent-store paths, rollback
+guards, retained-state disposition and trusted replacement admission are
+verified. The repository bootstrap record reports generation zero; empty
+GitHub Releases alone do not establish the complete stable boundary.
+The SQLite fixture now uses the same owner migration inventory as independent
+authority import. Fresh up/down/up and exercised-state rollback-refusal
+regressions are authored, unrun; they do not certify consolidation.
+
+JWT rollback witness: source-implemented exact authenticated checkpoint,
+monotonic mutation revision, witness-first commit, offline recovery, verified
+TLS and sticky local mismatch fencing. Production requires a third independent
+store. Scoped compilation, regression execution, real PostgreSQL commit-fault,
+restore/failover and TLS evidence remain pending.
+
+Independent JWT authority: production requires a pinned external PostgreSQL store;
+Auth CLI imports the offline ledger once and revokes against that same store.
+Application DB rollback cannot erase its key history. Independent authority
+restore and session/OAuth rollback protection remain separate. Scoped compilation,
+CLI and real PostgreSQL cutover/restore evidence remain pending.
+
+JWT clock discontinuity detection: dual local deadlines, sticky runtime and
+shared authority fault latches, bounded DB time samples and conservative key
+retirement/promotion margins are source-implemented. No schema change.
+Scoped compilation, regressions, promtool and independent PostgreSQL/VM
+clock fault-injection and suspend tests remain pending.
+
+JWT operational observability: authenticated cluster gauges, local lease state,
+bounded operation counters, ACK-attempt timing, pending generation age and
+initial alerts are source-implemented. Compilation, tests, promtool and
+independent-replica scrape/failure evidence remain pending.
+See [owner contract](README.md#operational-observability).
+
 ## FFA/FBA boundary
 
 - FFA status: `phase_b_ready`
@@ -179,19 +248,29 @@ gates in the [Page Builder backlog](../../../../docs/modules/page-builder-backlo
 ## Purpose-separated host MACs (source only)
 
 Auth owns HKDF-SHA256 derivation and HMAC-SHA256 for password-reset credential
-binding and OAuth browser confirmation. The new formats reject earlier forms
-and reset links intentionally; access JWT signatures and refresh/session storage
+binding and OAuth browser confirmation. Canonical proof labels and wire
+encodings are unversioned, with strict lowercase full-length tags and canonical
+OAuth expiry encoding. Previous forms and reset links intentionally fail.
+Access JWT signatures, durable fence MAC domains and refresh/session storage
 are unchanged. Stop old host writers before deploying new instances. Source
-regressions and locked Cargo dependency updates authored, unrun.
+regressions authored, unrun. See [canonical Auth MAC proofs](../../../../DECISIONS/2026-11-25-canonical-auth-mac-proofs.md).
 
-JWT purpose keyrings, key IDs, verification retirement and access-only initial
-missing-ID migration are source-implemented. A two-key RS256 staging/promotion/
-retirement regression is authored. Scoped compilation, regression execution
-and multi-replica rollout evidence are pending; algorithm migration remains separate work. Reissue pre-cutover shared-key special links.
-Follow-up source review adds canonical RSA modulus identity, private/public
-pair enforcement at signing, strict JOSE header admission and post-signature
-retirement fencing. Zero-duration issuance and timestamp truncation are rejected;
-regressions authored but not executed.
+JWT purpose keyrings, mandatory key IDs and verification retirement are
+source-implemented. All repository-owned JWT signing and verification are
+RS256-only; the mandatory complete keyring file supplies four independent
+purpose pairs and server bootstrap performs durable admission before
+application migrations and listener startup. The keyring document has no
+algorithm selector; JOSE verification pins RS256 before exact kid lookup.
+No HS256 signer, verifier, derivation or fallback remains. Durable metadata
+retains a fixed RS256 assertion for continuity; persisted HS256 fails closed,
+and incompatible retained stores remain blocked pending the authenticated
+offline converter. Scoped compilation, regression execution and
+independent-replica rollout evidence remain pending. Reissue obsolete
+development tokens and shared-key special links.
+Canonical RSA modulus identity, private/public pair enforcement at signing,
+strict JOSE header admission, post-signature retirement fencing and checked
+signed-time conversion are source-implemented. Focused regressions are
+authored but not executed.
 Immutable prepared JWT snapshots are source-implemented: all-purpose admission,
 shared once-only initialization, private key configuration and candidate detachment.
 Process-local hot reload now shares a publication fence across all AuthConfig clones;
@@ -210,7 +289,7 @@ Scoped checks are pending. See the
 
 ## JWT and CSRF hardening (source only)
 
-Browser confirmation MAC v4 binds the direct session and bounds expiry;
+Browser confirmation MAC binds the direct session and bounds expiry;
 previous forms require restart. RS256 host config now also validates the
 symmetric secret. JWT time claims and chrono duration construction fail closed.
 Source regressions authored, unrun. Deployment must provision the symmetric
@@ -314,10 +393,10 @@ gate are pending maintainer verification.
 - Last verified at (UTC): `2026-07-30`
 - Scope inspected: `auth ownership; JWT and credential lifecycle; OAuth app, authorization-code and refresh-token paths; tenant-qualified admin mutations; translation-table migration and runtime localization; auth-owned CLI bootstrap adapter; explicit operational tenant selection; implicit grant expansion`
 - Findings: `P0=0, P1=7, P2=0, P3=2`
-- Fixed in this pass: `preserved the four previously repaired P1 defects; fixed the post-migration rustok-auth-cli OAuth bootstrap failure by deleting raw writes to removed oauth_apps.name/description columns and persisting the base row plus en translation in one transaction; added a SQLite regression against the current translation-table schema; removed first-active-tenant inference from oauth create-app and required an explicit tenant UUID before credential persistence, with missing, invalid and valid UUID regressions`
-- Remaining risks or blockers: `P1 implicit refresh_token authority remains for auto-created applications whose persisted grant_types omit it; same-SHA auth CLI execution is pending in GitHub Actions; PostgreSQL forward/down migration smoke and browser/runtime mutation parity evidence remain required; lightweight owner-owned OAuth code/refresh regression target remains P3 verification debt`
+- Fixed in this pass: `preserved the four previously repaired P1 defects; fixed the post-migration rustok-auth-cli OAuth bootstrap failure by deleting raw writes to removed oauth_apps.name/description columns and persisting the base row plus en translation in one transaction; added a SQLite regression against the current translation-table schema; removed first-active-tenant inference from oauth create-app and required an explicit tenant UUID before credential persistence, with missing, invalid and valid UUID regressions; closed implicit refresh_token authority by enforcing exact persisted grant membership and explicitly declaring refresh_token in first-party manifest producers`
+- Remaining risks or blockers: `same-SHA auth CLI execution is pending in GitHub Actions; PostgreSQL forward/down migration smoke and browser/runtime mutation parity evidence remain required; lightweight owner-owned OAuth code/refresh regression target remains P3 verification debt`
 - Evidence: `source inspection confirms tenant-qualified OAuth client, consent and admin lookups; authorization-code and refresh-token replacements use transactional compare-and-set; oauth_app_translations uses VARCHAR(32), tenant-composite FK and unique tenant/app/locale identity; auth CLI no longer imports rustok-tenant or rustok-api, requires --tenant-id before OAuth credential writes and contains explicit missing/invalid/valid UUID unit cases; tenant FBA guard forbids read_default_active_tenant in the credential path; connector-only local execution remains unavailable because github.com DNS resolution fails and is classified as an environment limitation`
-- Next action: `run the targeted rustok-auth-cli regressions and canonical auth module checks; remove implicit refresh grant expansion with explicit producer updates; rerun PostgreSQL migration smoke; then revisit this blocked item during closing gates`
+- Next action: `run the targeted rustok-auth-cli regressions and canonical auth module checks; rerun PostgreSQL migration smoke; then revisit this blocked item during closing gates`
 - Resume command: `cargo test -p rustok-auth-cli oauth_create_app -- --nocapture && cargo test -p rustok-auth-cli development_app_uses_current_translation_schema && cargo xtask module validate auth && cargo xtask module test auth`
 
 

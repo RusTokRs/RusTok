@@ -91,6 +91,11 @@ impl ComponentPatch {
         let touched = style
             .as_object()
             .map(|properties| properties.keys().cloned().collect::<Vec<_>>());
+        // A non-object merge replaces the entire style slot. Preserve that
+        // replacement boundary even if a later merge supplies an object:
+        // otherwise applying the composed patch resurrects original properties.
+        self.replace_style |= !style.is_object()
+            || self.style.as_ref().is_some_and(|pending| !pending.is_object());
         match (&mut self.style, style) {
             (Some(Value::Object(current)), Value::Object(patch)) => current.extend(patch),
             (slot, patch) => *slot = Some(patch),
@@ -323,6 +328,38 @@ mod tests {
             .apply(&mut component)
             .expect("clear must survive redundant removal");
         assert_eq!(component.style, None);
+    }
+
+    #[test]
+    fn composed_style_merges_do_not_resurrect_properties_after_scalar_replacement() {
+        let original = json!({"color": "red", "padding": "1px"});
+        for replacement in [json!("color: blue"), json!(null), json!([])] {
+            let mut sequential = component();
+            sequential.style = Some(original.clone());
+            let mut composed = sequential.clone();
+
+            ComponentPatch::default()
+                .merge_style(replacement.clone())
+                .apply(&mut sequential)
+                .expect("replace with non-object");
+            ComponentPatch::default()
+                .merge_style(json!({"width": "100px"}))
+                .apply(&mut sequential)
+                .expect("merge object after replacement");
+
+            let patch = ComponentPatch::default()
+                .merge_style(json!({"height": "20px"}))
+                .remove_style_property("padding")
+                .merge_style(replacement)
+                .merge_style(json!({"width": "100px"}));
+            let patch: ComponentPatch =
+                serde_json::from_value(serde_json::to_value(patch).expect("serialize patch"))
+                    .expect("deserialize patch");
+            patch.apply(&mut composed).expect("apply composed patch");
+
+            assert_eq!(composed.style, sequential.style);
+            assert_eq!(composed.style, Some(json!({"width": "100px"})));
+        }
     }
 
     #[test]

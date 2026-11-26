@@ -5,9 +5,34 @@ use crate::{
 use chrono::Utc;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
-    TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, Set,
+    SqlErr, TransactionTrait,
 };
+use uuid::Uuid;
+
+pub(crate) async fn map_profile_handle_write_db_err(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    handle: String,
+    err: DbErr,
+) -> ProfileError {
+    if matches!(err.sql_err(), Some(SqlErr::UniqueConstraintViolation(_))) {
+        match entities::profile::Entity::find()
+            .filter(entities::profile::Column::TenantId.eq(tenant_id))
+            .filter(entities::profile::Column::Handle.eq(handle.as_str()))
+            .one(db)
+            .await
+        {
+            Ok(Some(owner)) if owner.user_id != user_id => {
+                return ProfileError::DuplicateHandle(handle);
+            }
+            Ok(Some(_)) | Ok(None) => {}
+            Err(lookup_err) => return ProfileError::Database(lookup_err),
+        }
+    }
+    ProfileError::Database(err)
+}
 
 pub(crate) async fn update_profile_handle_with_event(
     db: &DatabaseConnection,
@@ -40,9 +65,17 @@ pub(crate) async fn update_profile_handle_with_event(
     }
 
     let mut active: entities::profile::ActiveModel = profile.into();
-    active.handle = Set(handle);
+    active.handle = Set(handle.clone());
     active.updated_at = Set(Utc::now().into());
-    let profile = active.update(&txn).await?;
+    let profile = match active.update(&txn).await {
+        Ok(profile) => profile,
+        Err(err) => {
+            txn.rollback().await?;
+            return Err(
+                map_profile_handle_write_db_err(db, tenant_id, user_id, handle, err).await,
+            );
+        }
+    };
 
     if let Err(error) =
         publish_profile_updated_in_tx(event_bus, &txn, tenant_id, actor_id, &profile).await

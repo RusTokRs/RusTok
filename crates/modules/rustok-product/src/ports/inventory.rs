@@ -223,14 +223,18 @@ impl AsInventoryConnection for crate::services::write_transaction::ProductWriteT
 /// Transactional and projection port for variant inventory.
 #[async_trait]
 pub trait ProductInventoryPort: Send + Sync {
-    /// Loads available stock quantities for a batch of variants.
+    /// Loads available stock quantities for a tenant-owned batch of variants.
+    /// Inventory must prove each Variant/parent and every saved location binding before summing.
     async fn load_available_quantities(
         &self,
         conn: InventoryConnection<'_>,
+        tenant_id: Uuid,
         variant_ids: &[Uuid],
     ) -> Result<HashMap<Uuid, i32>, CommerceError>;
 
     /// Loads available stock quantities for variants scoped to a public sales channel.
+    /// A missing identity in a successful response means no proven channel stock.
+    /// Consumers must not substitute unscoped catalog quantities; provider errors propagate.
     async fn load_available_inventory_by_variant_for_public_channel(
         &self,
         conn: InventoryConnection<'_>,
@@ -294,6 +298,7 @@ impl ProductInventoryPort for NoopProductInventoryPort {
     async fn load_available_quantities(
         &self,
         _conn: InventoryConnection<'_>,
+        _tenant_id: Uuid,
         _variant_ids: &[Uuid],
     ) -> Result<HashMap<Uuid, i32>, CommerceError> {
         Ok(HashMap::new())

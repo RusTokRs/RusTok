@@ -10,6 +10,7 @@ use uuid::Uuid;
 use crate::{
     ProfileBackfillRequest, ProfileBackfillResult, ProfileError, ProfileMutationContext,
     ProfileRecord, ProfileResult, ProfileService, ProfileStatus, UpsertProfileInput, entities,
+    handle_write::map_profile_handle_write_db_err,
     profile_updated_event::{
         publish_profile_updated_in_tx, publish_profile_updated_with_actor_in_tx,
     },
@@ -181,28 +182,29 @@ async fn write_profile_with_event(
     if let Some(handle_owner) = handle_owner
         && handle_owner.user_id != user_id
     {
+        txn.rollback().await?;
         return Err(ProfileError::DuplicateHandle(handle));
     }
 
     let created = existing.is_none();
     let now = Utc::now();
-    let profile = match existing {
+    let write_result = match existing {
         Some(profile) => {
             let mut active: entities::profile::ActiveModel = profile.into();
-            active.handle = Set(handle);
+            active.handle = Set(handle.clone());
             active.avatar_media_id = Set(avatar_media_id);
             active.banner_media_id = Set(banner_media_id);
             active.preferred_locale = Set(preferred_locale);
             active.visibility = Set(visibility);
             active.status = Set(ProfileStatus::Active);
             active.updated_at = Set(now.into());
-            active.update(&txn).await?
+            active.update(&txn).await
         }
         None => {
             entities::profile::ActiveModel {
                 user_id: Set(user_id),
                 tenant_id: Set(tenant_id),
-                handle: Set(handle),
+                handle: Set(handle.clone()),
                 avatar_media_id: Set(avatar_media_id),
                 banner_media_id: Set(banner_media_id),
                 preferred_locale: Set(preferred_locale),
@@ -212,7 +214,16 @@ async fn write_profile_with_event(
                 updated_at: Set(now.into()),
             }
             .insert(&txn)
-            .await?
+            .await
+        }
+    };
+    let profile = match write_result {
+        Ok(profile) => profile,
+        Err(err) => {
+            txn.rollback().await?;
+            return Err(
+                map_profile_handle_write_db_err(db, tenant_id, user_id, handle, err).await,
+            );
         }
     };
 

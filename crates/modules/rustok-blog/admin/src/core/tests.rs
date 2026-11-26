@@ -494,6 +494,40 @@ fn preview_link_action_is_draft_only() {
 }
 
 #[test]
+fn busy_key_is_scoped_to_its_own_row() {
+    fn labels() -> BlogPostAdminTableRowLabels<'static> {
+        BlogPostAdminTableRowLabels {
+            draft_slug: "draft",
+            no_excerpt: "No excerpt",
+            editing: "Editing",
+            edit: "Edit",
+            unpublish: "Unpublish",
+            publish: "Publish",
+            archive: "Archive",
+            restore: "Restore",
+            delete: "Delete",
+            preview_link: "Preview link",
+        }
+    }
+
+    // An in-flight action on one post must not freeze the action buttons of
+    // every other row: only the row whose id matches the busy key is marked
+    // busy. This guards the per-row scoping used by the list table.
+    let other_busy =
+        blog_post_admin_table_row_view(sample_list_item("post-9"), None, Some("save:post-1"), labels());
+    assert!(!other_busy.is_busy);
+
+    let own_busy =
+        blog_post_admin_table_row_view(sample_list_item("post-9"), None, Some("save:post-9"), labels());
+    assert!(own_busy.is_busy);
+
+    // A create-scoped key (no post id) never marks a concrete row busy.
+    let create_busy =
+        blog_post_admin_table_row_view(sample_list_item("post-9"), None, Some("create"), labels());
+    assert!(!create_busy.is_busy);
+}
+
+#[test]
 fn title_input_does_not_invent_slug_policy() {
     let english = blog_post_admin_title_input_view("Hello RusTok".to_string());
     assert_eq!(english.title, "Hello RusTok");
@@ -1099,6 +1133,27 @@ fn category_snapshot() -> crate::model::BlogCategoryDetail {
 }
 
 mod editor;
+
+#[test]
+fn stale_busy_key_release_never_drops_a_newer_in_flight_key() {
+    // The obsolete request's own key is released so the editor does not stay
+    // locked after a stale completion.
+    assert!(should_release_busy_key(Some("edit:post-1"), "edit:post-1"));
+    // A newer request has taken over the shared key: the stale completion must
+    // not release it.
+    assert!(!should_release_busy_key(Some("save:post-2"), "edit:post-1"));
+    // No busy key is active: nothing to release, and nothing is dropped.
+    assert!(!should_release_busy_key(None, "edit:post-1"));
+}
+
+#[test]
+fn parse_tags_deduplicates_while_preserving_order() {
+    assert_eq!(parse_tags("rust, search"), ["rust", "search"]);
+    assert_eq!(parse_tags("rust, rust, search"), ["rust", "search"]);
+    assert_eq!(parse_tags("rust, search, rust"), ["rust", "search"]);
+    assert_eq!(parse_tags("rust, , ,search"), ["rust", "search"]);
+    assert_eq!(parse_tags(""), [] as [String; 0]);
+}
 
 #[test]
 fn moderation_pagination_bounds_empty_zero_and_extreme_owner_values() {

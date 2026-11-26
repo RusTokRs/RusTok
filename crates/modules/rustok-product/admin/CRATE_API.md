@@ -65,8 +65,9 @@ document fieldset; the shared Variant panel edits existing rows only.
 The 128-SKU initial draft bound is a client bound, not a replacement owner import limit.
 Category/value changes retain invalid drafts for correction. Axis writes are guarded during
 unsaved category edits. An independent Variant/axis acknowledgement refreshes only its confirmed
-projection and does not hydrate/rebase document controls. The newly mounted panel does not
-expose destructive Variant retirement.
+projection and does not hydrate/rebase document controls. The mounted panel exposes explicit
+Variant retirement only when another SKU remains; the owner transaction refuses non-empty stock,
+reservations and historical Inventory references and coordinates Pricing cleanup.
 
 Compilation/mounted execution, remaining copy localization and durable browser pending-request
 recovery for lifecycle commands other than axes and standalone creation remain outstanding; see [Known Limitations / Pending Implementation](README.md#known-limitations-pending-implementation).

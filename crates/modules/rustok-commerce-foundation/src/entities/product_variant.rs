@@ -46,19 +46,20 @@ impl Model {
     /// Returns true if variant has positive inventory or allows backorders.
     #[inline]
     pub fn is_in_stock(&self) -> bool {
-        self.inventory_quantity > 0 || self.inventory_policy == "continue"
+        self.inventory_quantity > 0 || self.allows_backorders()
     }
 
     /// Returns true if variant allows backorders when out of stock.
     #[inline]
     pub fn allows_backorders(&self) -> bool {
-        self.inventory_policy == "continue"
+        self.inventory_policy.trim().eq_ignore_ascii_case("continue")
     }
 
     /// Returns true if inventory is tracked by the platform.
     #[inline]
     pub fn is_inventory_tracked(&self) -> bool {
-        self.inventory_management != "none" && !self.inventory_management.trim().is_empty()
+        let management = self.inventory_management.trim();
+        !management.is_empty() && !management.eq_ignore_ascii_case("none")
     }
 }
 
@@ -97,14 +98,14 @@ mod tests {
 
         let out_of_stock_backorder = Model {
             inventory_quantity: 0,
-            inventory_policy: "continue".into(),
+            inventory_policy: " CONTINUE ".into(),
             ..in_stock_variant.clone()
         };
         assert!(out_of_stock_backorder.is_in_stock());
         assert!(out_of_stock_backorder.allows_backorders());
 
         let untracked_variant = Model {
-            inventory_management: "none".into(),
+            inventory_management: " NONE ".into(),
             ..in_stock_variant
         };
         assert!(!untracked_variant.is_inventory_tracked());

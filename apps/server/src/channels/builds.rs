@@ -289,7 +289,7 @@ mod tests {
     #[tokio::test]
     async fn build_socket_closes_before_forwarding_after_session_revocation() {
         use super::*;
-        use crate::auth::{AuthSettingsOverrides, encode_access_token};
+        use crate::auth::encode_access_token;
         use crate::common::settings::RustokSettings;
         use crate::context::{TenantContext, TenantContextExtension};
         use crate::models::{sessions, tenants, users};
@@ -348,12 +348,9 @@ mod tests {
         let session_id = Uuid::new_v4();
         session.id = Set(session_id);
         session.insert(&db).await.expect("session");
-        let config = rustok_auth::build_auth_config(
+        let config = crate::auth::test_auth_config(
             "test-secret-key-for-auth-extractor-32b".to_string(),
-            900,
-            AuthSettingsOverrides::default(),
-        )
-        .expect("auth configuration");
+        );
         let token = encode_access_token(
             &config,
             user.id,

@@ -117,18 +117,9 @@ impl StopHandle {
         *self.stop_tx.borrow()
     }
 
-    /// Safely retrieves or initializes the shared `StopHandle` from the context without panic.
+    /// Atomically retrieves or initializes the runtime-owned shutdown signal.
     pub fn ensure(ctx: &ServerRuntimeContext) -> Self {
-        if let Some(existing) = ctx.shared_get::<Self>() {
-            existing
-        } else {
-            let (handle, _rx) = Self::new();
-            if ctx.shared_insert_if_absent(handle.clone()) {
-                handle
-            } else {
-                ctx.shared_get::<Self>().unwrap_or(handle)
-            }
-        }
+        ctx.shared_get_or_insert_with(|| Self::new().0)
     }
 }
 
@@ -138,6 +129,31 @@ mod tests {
         StopHandle, await_worker_startup_or_stop, may_admit_next_worker_operation,
         run_admitted_worker_operation, run_until_stopped,
     };
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_stop_handle_resolution_shares_one_terminal_signal() {
+        let ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            crate::common::settings::RustokSettings::default(),
+        );
+        let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(16));
+        let mut tasks = Vec::new();
+        for _ in 0..16 {
+            let ctx = ctx.clone();
+            let barrier = barrier.clone();
+            tasks.push(tokio::spawn(async move {
+                barrier.wait().await;
+                StopHandle::ensure(&ctx)
+            }));
+        }
+        let mut handles = Vec::new();
+        for task in tasks {
+            handles.push(task.await.expect("concurrent stop handle"));
+        }
+        handles[0].stop().await;
+        assert!(handles.iter().all(StopHandle::is_stopping));
+        assert!(StopHandle::ensure(&ctx).is_stopping());
+    }
 
     #[tokio::test]
     async fn stop_interrupts_a_stalled_unpublished_bootstrap() {

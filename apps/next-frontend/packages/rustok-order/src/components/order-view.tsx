@@ -66,6 +66,7 @@ export function OrderView({
       case "PENDING":
         return 1;
       case "CONFIRMED":
+      case "PAID":
         return 2;
       case "PROCESSING":
         return 3;

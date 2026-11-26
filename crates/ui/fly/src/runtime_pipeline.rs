@@ -3,12 +3,12 @@ use crate::{
     FormProviderEndpointResolver, InternalLinkMaterialization, LocalePolicyMaterialization,
     LocalizedPageMetadataMaterialization, ProjectDocument, RuntimeMaterialization,
     TranslationMaterialization, ValidationDiagnostic, extract_runtime_context_contract,
-    materialize_component_actions,
-    materialize_component_actions_with_providers, materialize_context,
-    materialize_internal_page_links, materialize_localized_page_metadata,
+    action::{materialize_component_actions_with_routes, validate_component_actions_with_routes},
+    interaction_route::InteractionRouteCatalog,
+    internal_link::{materialize_internal_page_links_with_routes, validate_internal_page_links_with_routes},
+    materialize_context, materialize_localized_page_metadata,
     materialize_project_locale_context, materialize_project_translations,
-    materialize_runtime_locale_context, validate_component_actions, validate_component_public_urls,
-    validate_internal_page_links,
+    materialize_runtime_locale_context, validate_component_public_urls,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -150,8 +150,11 @@ fn materialize_project_with_runtime_context_and_providers(
 
     // Bindings and repeaters may introduce or duplicate runtime navigation, action, and form
     // contracts. Validate the effective document before lowering those contracts to native HTML.
-    diagnostics.extend(validate_internal_page_links(&dynamic_document));
-    diagnostics.extend(validate_component_actions(&dynamic_document));
+    // Keep authored locale identities: localized metadata is a render projection,
+    // not the authority for resolving a public route.
+    let routes = InteractionRouteCatalog::from_document(document);
+    diagnostics.extend(validate_internal_page_links_with_routes(&dynamic_document, &routes));
+    diagnostics.extend(validate_component_actions_with_routes(&dynamic_document, &routes));
 
     // Resolve navigation and action contracts only after conditions/repeaters. This guarantees
     // that generated nodes receive native href/form/button attributes and hidden nodes do not
@@ -162,7 +165,9 @@ fn materialize_project_with_runtime_context_and_providers(
         resolved_links: resolved_internal_links,
         fallback_links: fallback_internal_links,
         unresolved_links: unresolved_internal_links,
-    } = materialize_internal_page_links(&dynamic_document, &effective_context);
+    } = materialize_internal_page_links_with_routes(
+        &dynamic_document, &localized_input_context, &routes,
+    );
     diagnostics.extend(link_diagnostics);
 
     let ActionMaterialization {
@@ -173,14 +178,9 @@ fn materialize_project_with_runtime_context_and_providers(
         custom_actions,
         fallback_actions,
         unresolved_actions,
-    } = match providers {
-        Some(providers) => materialize_component_actions_with_providers(
-            &linked_document,
-            &effective_context,
-            Some(providers),
-        ),
-        None => materialize_component_actions(&linked_document, &effective_context),
-    };
+    } = materialize_component_actions_with_routes(
+        &linked_document, &localized_input_context, providers, &routes,
+    );
     diagnostics.extend(action_diagnostics);
     diagnostics.extend(validate_component_public_urls(&document));
 
@@ -680,7 +680,7 @@ mod tests {
         .expect("document");
         let materialized =
             materialize_project_with_runtime_context(&document, &json!({ "$locale": "ru-RU" }));
-        let metadata = PageMetadata::from_page(&materialized.document.project.pages[0]);
+        let metadata = PageMetadata::from_page(&materialized.document.project().pages[0]);
         assert_eq!(metadata.title.as_deref(), Some("Главная"));
         assert_eq!(metadata.description.as_deref(), Some("Русское описание"));
     }

@@ -2,9 +2,11 @@
 //!
 //! A project may carry a `flyTheme` extension: `{ "tokens": { "brand": "#0b5fff", ... } }`.
 //! Fly decodes and validates it here — token names become `--{name}` custom properties and
-//! token values must stay inside the safe CSS value subset — and the renderer emits one
-//! `:root { ... }` rule ahead of the project styles. Style declarations reference tokens
-//! with the standard `var(--brand)` syntax, which the declaration sanitizer already admits.
+//! token values stay inside the safe CSS value subset; resource-bearing url(), image(), src(),
+//! and image-set() forms are refused. var() references must target declared Fly tokens, and
+//! are forbidden in resource-bearing CSS properties because the embedding page can override
+//! custom properties through the cascade. The renderer emits one `:root { ... }` rule ahead
+//! of project styles; safe declarations reference tokens with standard var(--brand) syntax.
 //!
 //! Before this module, projects had per-component declarations and class rules only: no
 //! variables, no site-wide theme (audit P0-3). Tokens are project data, not style rules,
@@ -36,7 +38,7 @@ impl DesignToken {
 /// Decode and validate the project's design tokens, sorted by name. A project without a
 /// `flyTheme` extension has no tokens; a malformed one is an error, never a partial theme.
 pub fn decode_theme_tokens(document: &ProjectDocument) -> Result<Vec<DesignToken>, String> {
-    let Some(theme) = document.project.extensions.get(FLY_THEME_FIELD) else {
+    let Some(theme) = document.project().extensions.get(FLY_THEME_FIELD) else {
         return Ok(Vec::new());
     };
     let tokens = theme
@@ -62,7 +64,58 @@ pub fn decode_theme_tokens(document: &ProjectDocument) -> Result<Vec<DesignToken
         });
     }
     decoded.sort_by(|left, right| left.name.cmp(&right.name));
+
+    let allowed_references = decoded
+        .iter()
+        .map(|token| format!("--{}", token.name))
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut reference_graph = std::collections::BTreeMap::new();
+    for token in &decoded {
+        let references = crate::css_var_references(&token.value).ok_or_else(|| {
+            format!("design token {} contains a malformed var() reference", token.name)
+        })?;
+        for reference in &references {
+            if !allowed_references.contains(reference) {
+                return Err(format!(
+                    "design token {} references undeclared token {reference}",
+                    token.name
+                ));
+            }
+        }
+        reference_graph.insert(format!("--{}", token.name), references);
+    }
+
+    let mut visiting = std::collections::BTreeSet::new();
+    let mut visited = std::collections::BTreeSet::new();
+    for name in reference_graph.keys() {
+        validate_token_reference_cycles(name, &reference_graph, &mut visiting, &mut visited)?;
+    }
+
     Ok(decoded)
+}
+
+fn validate_token_reference_cycles(
+    name: &str,
+    graph: &std::collections::BTreeMap<String, Vec<String>>,
+    visiting: &mut std::collections::BTreeSet<String>,
+    visited: &mut std::collections::BTreeSet<String>,
+) -> Result<(), String> {
+    if visited.contains(name) {
+        return Ok(());
+    }
+    if !visiting.insert(name.to_string()) {
+        return Err(format!("design token reference cycle includes {name}"));
+    }
+
+    if let Some(references) = graph.get(name) {
+        for reference in references {
+            validate_token_reference_cycles(reference, graph, visiting, visited)?;
+        }
+    }
+
+    visiting.remove(name);
+    visited.insert(name.to_string());
+    Ok(())
 }
 
 /// Token names become CSS custom property names verbatim after the `--` prefix, so the
@@ -128,6 +181,12 @@ pub fn validate_token_value(name: &str, value: &str) -> Result<(), String> {
         .chars()
         .filter(|character| !character.is_ascii_whitespace())
         .collect::<String>();
+    let resource_strings = crate::css_resource_string_ranges(value);
+    if !matches!(resource_strings, Some(ref ranges) if ranges.is_empty()) {
+        return Err(format!(
+            "design token {name} uses a quoted CSS resource that is not allowed in theme tokens"
+        ));
+    }
     if compact.contains("expression(")
         || compact.contains("javascript:")
         || compact.contains("@import")
@@ -210,6 +269,18 @@ mod tests {
                 "url value",
             ),
             (
+                json!({ "brand": "image-set(\"https://evil.example/x.png\" 1x)" }),
+                "image-set string URL",
+            ),
+            (
+                json!({ "brand": "image(\"https://evil.example/x.png\", red)" }),
+                "image() string URL",
+            ),
+            (
+                json!({ "brand": "src(\"https://evil.example/font.woff2\")" }),
+                "src() string URL",
+            ),
+            (
                 json!({ "brand": "expression(alert(1))" }),
                 "expression value",
             ),
@@ -220,6 +291,27 @@ mod tests {
                 "case must fail: {case}"
             );
         }
+    }
+
+    #[test]
+    fn rejects_references_to_undeclared_tokens() {
+        let document = document_with_theme(json!({
+            "tokens": { "accent": "var(--missing)" }
+        }));
+        let error = decode_theme_tokens(&document).expect_err("undeclared token reference");
+        assert!(error.contains("undeclared token"));
+    }
+
+    #[test]
+    fn rejects_cyclic_token_references() {
+        let document = document_with_theme(json!({
+            "tokens": {
+                "primary": "var(--secondary)",
+                "secondary": "var(--primary)"
+            }
+        }));
+        let error = decode_theme_tokens(&document).expect_err("cyclic token references");
+        assert!(error.contains("cycle"));
     }
 
     #[test]
@@ -254,75 +346,13 @@ pub struct TokenUsage {
     pub snippet: String,
 }
 
-/// Replaces exact occurrences of `--{old_name}` with `--{new_name}` in CSS values (e.g. `var(--old_name)`),
-/// respecting identifier boundary characters so `--old-name-dark` is not touched.
+/// Replaces references to `--{old_name}` in actual CSS `var()` functions.
+/// Quoted strings, comments, unrelated custom-property text and longer identifiers are untouched.
 pub fn replace_token_in_css_value(value: &str, old_name: &str, new_name: &str) -> (String, usize) {
-    let target = format!("--{old_name}");
-    let replacement = format!("--{new_name}");
-    let mut result = String::with_capacity(value.len());
-    let mut count = 0;
-    let mut last_copied = 0;
-
-    let is_ident_char = |ch: char| -> bool {
-        ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' || ch >= '\u{0080}'
-    };
-
-    for (idx, _) in value.match_indices(&target) {
-        if idx < last_copied {
-            continue;
-        }
-        let before_is_ident = value[..idx].chars().next_back().is_some_and(is_ident_char);
-        let after_idx = idx + target.len();
-        let after_is_ident = value[after_idx..].chars().next().is_some_and(is_ident_char);
-
-        if !before_is_ident && !after_is_ident {
-            result.push_str(&value[last_copied..idx]);
-            result.push_str(&replacement);
-            count += 1;
-            last_copied = after_idx;
-        }
+    if validate_token_name(old_name).is_err() || validate_token_name(new_name).is_err() {
+        return (value.to_string(), 0);
     }
-    result.push_str(&value[last_copied..]);
-    (result, count)
-}
-
-fn find_usages_in_opaque_value(
-    value: &Value,
-    token_name: &str,
-    usages: &mut Vec<TokenUsage>,
-    fallback_id: &str,
-) {
-    match value {
-        Value::Object(map) => {
-            let comp_id = map.get("id").and_then(Value::as_str).unwrap_or(fallback_id);
-            if let Some(Value::Object(style_map)) = map.get("style") {
-                for (prop, val) in style_map {
-                    if let Some(css_val) = val.as_str() {
-                        let (_, count) =
-                            replace_token_in_css_value(css_val, token_name, token_name);
-                        if count > 0 {
-                            usages.push(TokenUsage {
-                                location: TokenUsageLocation::ComponentStyle {
-                                    component_id: comp_id.to_string(),
-                                    property: prop.clone(),
-                                },
-                                snippet: format!("{prop}: {css_val}"),
-                            });
-                        }
-                    }
-                }
-            }
-            if let Some(components) = map.get("components") {
-                find_usages_in_opaque_value(components, token_name, usages, comp_id);
-            }
-        }
-        Value::Array(items) => {
-            for item in items {
-                find_usages_in_opaque_value(item, token_name, usages, fallback_id);
-            }
-        }
-        _ => {}
-    }
+    crate::render::rewrite_css_var_references(value, old_name, new_name)
 }
 
 /// Inspect all component styles, style catalog rules, and sibling theme tokens to find usages of `--{token_name}`.
@@ -330,7 +360,7 @@ pub fn find_token_usages(document: &ProjectDocument, token_name: &str) -> Vec<To
     let mut usages = Vec::new();
 
     // 1. Component inline styles
-    document.project.visit_components(|component, _, _| {
+    document.project().visit_components(|component, _, _| {
         let comp_id = component
             .id
             .clone()
@@ -356,14 +386,14 @@ pub fn find_token_usages(document: &ProjectDocument, token_name: &str) -> Vec<To
         }
     });
 
-    for page in &document.project.pages {
+    for page in &document.project().pages {
         if let Some(ComponentNode::Opaque(val)) = &page.component {
             find_usages_in_opaque_value(val, token_name, &mut usages, "opaque-page-root");
         }
     }
 
     // 2. Project styles catalog
-    for (idx, rule_val) in document.project.styles.iter().enumerate() {
+    for (idx, rule_val) in document.project().styles.iter().enumerate() {
         if let Some(style_obj) = rule_val.get("style").and_then(Value::as_object) {
             for (prop, val) in style_obj {
                 if let Some(css_val) = val.as_str() {
@@ -409,20 +439,23 @@ pub fn rename_token_references(
     old_name: &str,
     new_name: &str,
 ) -> usize {
-    if old_name == new_name {
+    if old_name == new_name
+        || validate_token_name(old_name).is_err()
+        || validate_token_name(new_name).is_err()
+    {
         return 0;
     }
     let mut total_replacements = 0;
 
     // 1. Mutate component styles across all pages
-    for page in &mut document.project.pages {
+    for page in &mut document.project_mut().pages {
         if let Some(root) = page.component.as_mut() {
             total_replacements += rename_in_component_tree(root, old_name, new_name);
         }
     }
 
     // 2. Mutate project style catalog rules
-    for rule_val in &mut document.project.styles {
+    for rule_val in &mut document.project_mut().styles {
         if let Some(style_obj) = rule_val.get_mut("style").and_then(Value::as_object_mut) {
             for val in style_obj.values_mut() {
                 if let Some(css_val) = val.as_str() {
@@ -437,7 +470,7 @@ pub fn rename_token_references(
     }
 
     // 3. Mutate sibling theme tokens
-    if let Some(theme) = document.project.extensions.get_mut(FLY_THEME_FIELD)
+    if let Some(theme) = document.project_mut().extensions.get_mut(FLY_THEME_FIELD)
         && let Some(tokens_obj) = theme.get_mut("tokens").and_then(Value::as_object_mut)
     {
         for val in tokens_obj.values_mut() {
@@ -624,13 +657,13 @@ fn apply_theme_command_inner(
         )));
     }
     if tokens.is_empty() {
-        document.project.extensions.remove(FLY_THEME_FIELD);
+        document.project_mut().extensions.remove(FLY_THEME_FIELD);
     } else {
         let mut map = serde_json::Map::new();
         for token in &tokens {
             map.insert(token.name.clone(), Value::String(token.value.clone()));
         }
-        document.project.extensions.insert(
+        document.project_mut().extensions.insert(
             FLY_THEME_FIELD.to_string(),
             serde_json::json!({ "tokens": Value::Object(map) }),
         );
@@ -801,7 +834,7 @@ mod command_tests {
         }
 
         // Verify project style catalog updated
-        let catalog_style = &editor.document().project.styles[0];
+        let catalog_style = &editor.document().project().styles[0];
         let style_obj = catalog_style
             .get("style")
             .and_then(Value::as_object)
@@ -861,6 +894,17 @@ mod command_tests {
                 Some("var(--primary)")
             );
         }
+    }
+
+    #[test]
+    fn token_rewrite_only_changes_actual_var_references() {
+        let value = r#"content: "--brand"; font-family: "--brand"; color: VAR( --brand ); border-color: var(--other, var(--brand)); /* var(--brand) */"#;
+        let (rewritten, count) = replace_token_in_css_value(value, "brand", "primary");
+        assert_eq!(count, 2);
+        assert_eq!(
+            rewritten,
+            r#"content: "--brand"; font-family: "--brand"; color: VAR( --primary ); border-color: var(--other, var(--primary)); /* var(--brand) */"#
+        );
     }
 
     #[test]

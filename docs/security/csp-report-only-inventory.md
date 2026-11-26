@@ -23,7 +23,7 @@ No violation in this document is an automatic allowlist request. The preferred r
 - The outer security middleware handles the endpoint before tenant and authentication routing.
 - The configured public `/api/` rate limiter runs before the unauthenticated collector, so report traffic cannot bypass the normal API abuse budget.
 - Responses contain no report body and return `204` for accepted reports.
-- Invalid content types, JSON and report shapes are rejected with bounded status codes.
+- Invalid content types, JSON and report shapes are rejected with bounded status codes. A violation body must be an object with a nonblank effective or legacy violated directive; missing and blank directives and positional arrays are rejected. Unknown nonblank directives remain accepted as `other`; only exact script/style directive names and their `-elem`/`-attr` variants enter the corresponding buckets. Legacy directive source lists are ignored for classification.
 - The standalone admin process does not advertise a report endpoint it cannot receive; it emits enforced CSP only.
 
 The collector never records `script-sample`, full document paths, URL queries or URL fragments. Structured logs retain only normalized origins, bounded opaque-URL schemes or fixed values such as `inline`, `eval`, `data` and `blob`. The 512-byte location limit also applies to opaque URL schemes.

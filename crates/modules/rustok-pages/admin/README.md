@@ -59,6 +59,20 @@ verified against a running server.
 
 - `PagesAdmin`
 
+## SSR save attempt correlation
+
+The Pages browser dispatcher retains the hash and command sequence emitted by
+Fly's persistence effect, checks them before transport, starts a correlated save
+attempt and uses that attempt for both success and failure. A stale effect cannot
+start a save, and a late failure cannot retire a different attempt.
+
+## SSR operation receipt recovery
+
+Committed receipt replay loads the owner-scoped draft again after observing the
+receipt. This prevents a concurrent commit between the initial draft read and
+receipt lookup from pairing a committed acknowledgement with pre-commit draft
+metadata. Unknown receipts remain read-only and do not resubmit operations.
+
 ## Known Limitations / Pending Implementation
 
 - **A failed draft save is not retried on its own.** When the save that follows an applied edit is
@@ -103,3 +117,10 @@ verified against a running server.
   (`load_route_draft(..., draft_owner.as_ref())`), so a session that belongs to another caller is
   not restored. Do not thread the facade's snapshot owner into the store: it would add a second,
   unverified attribution without changing which sessions can be read or committed.
+
+Strict SSR persistence checkpoints the post-command controller before Pages I/O.
+An explicit retry uses the prepared controller and the Pages idempotency key
+rather than reapplying the original command. Unknown outcomes keep preparation.
+
+If the final revision observation or checkpoint completion fails, the transport
+returns an unknown outcome instead of treating the original write as rejected.

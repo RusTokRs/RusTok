@@ -26,18 +26,18 @@ pub(crate) fn compose_layout_document(
     let source = replace_symbol_block(content, symbols.to_vec())?;
     let mut document = GrapesJsCodec::decode_str(&source)
         .map_err(|error| PagesError::validation(format!("Invalid layout document: {error}")))?;
-    if document.project.pages.len() != 1 {
+    if document.project().pages.len() != 1 {
         return Err(PagesError::validation(
             "A template layout requires exactly one Fly page",
         ));
     }
     let mut used = BTreeSet::new();
-    document.project.visit_components(|component, _, _| {
+    document.project().visit_components(|component, _, _| {
         if let Some(id) = &component.id {
             used.insert(id.clone());
         }
     });
-    let root = document.project.pages[0]
+    let root = document.project_mut().pages[0]
         .component
         .as_mut()
         .and_then(ComponentNode::as_object_mut)
@@ -106,7 +106,7 @@ pub(crate) fn strip_layout_nodes(content: &str) -> PagesResult<String> {
     }
     let mut document = GrapesJsCodec::decode_str(content)
         .map_err(|error| PagesError::validation(format!("Invalid document: {error}")))?;
-    for page in &mut document.project.pages {
+    for page in &mut document.project_mut().pages {
         if let Some(children) = page
             .component
             .as_mut()

@@ -94,14 +94,17 @@ nodes and repeated parent IDs no longer break the recursion guard. Regressions a
 but not executed.
 
 Fly cache and move follow-up (2026-11-25, source-only): indexed mutable component access
-and the new raw-project mutable accessor invalidate both document caches before returning
+and the raw-project mutable accessor invalidate both document caches before returning
 a borrow; page access and structural editor commands use that accessor. Move commands
 resolve the implicit first-page root and explicit root ID as the same insertion parent;
 same-parent inverses account for pre-removal slot semantics. Four regressions are authored.
-**OPEN:** migrate all direct raw-project writes to the invalidating accessor and make
-`ProjectDocument.project` private (including consumer reads and source guards); the public
-field remains an invalidation bypass. Full workspace reference discovery was unavailable;
-scoped compilation, remediation gate, tests and lint were not run in this pass.
+**CLOSED (2026-11-25):** `ProjectDocument.project` is private; `project()` is read-only and
+`project_mut()` invalidates both caches before exposing a mutable borrow. Internal Fly
+consumers now use the accessors, and direct downstream reads/writes were migrated across
+Fly UI, Page Builder and Pages. Cargo.lock reverse dependencies were audited; Blog and
+Forum admin consumers had no direct field access. Two compile-fail doctests guard the
+privacy and read-only boundary. Rust compilation, tests, lint, remediation gate and mounted
+browser verification remain with the maintainer and were not run in this pass.
 
 Fly history and snapshot follow-up (2026-11-25, source-only): batch transactions no longer
 publish local inverses computed from the wrong intermediate state; content patches with
@@ -1483,3 +1486,53 @@ integration tests; MySQL support is out of scope.
 - `switch_slide` validation now requires exactly one target selector. SSR form parsing rejects malformed direction/index values; the SSR action form now round-trips the exclusive-accordion flag.
 - Locale normalization now validates extension/private-use syntax and rejects duplicate extension singletons/variant subtags; punctuation-only page slugs normalize to no slug. Theme replacement rejects duplicate token names.
 - Added focused regression tests for invalid page identity, direct mutation cache invalidation, theme/symbol atomicity, malformed slide selectors, exclusive accordion form round-tripping, locale extension syntax and empty normalized slugs. **No Cargo build, Rust test, formatter, linter or browser test was run; maintainer verification remains pending.**
+
+2026-11-25 Fly strict SSR receipt admission follow-up (source only; not executed):
+- The browser adapter now shares one authoritative-intent classification between DOM emission and transport admission. Strict view-state intents cannot leak through DOM listeners while recovery or a peer conflict fences the draft.
+- A successful HTTP response without the matching committed operation receipt is non-current and cannot adopt revision/hash/draft metadata, clear a parked save warning, or navigate. The pending envelope remains available for read-only receipt recovery.
+- Added mounted-browser regressions for mismatched receipts and strict peer fencing; updated affected source contract assertions. Build, tests, lint, formatting and mounted verification remain pending with the maintainer.
+
+2026-11-25 Fly iframe origin parity follow-up (source only; not executed):
+- Rust and the classic browser adapter now reject malformed authority delimiters, credentials, paths (even when the URL parser normalizes them away), queries and fragments before canonicalizing explicit HTTP(S) origins. Host case, default ports, IPv6 and the sandboxed opaque origin remain supported.
+- Added matched Rust and mounted-browser regressions. Scoped checks, formatting, lint and browser execution remain pending.
+
+2026-11-25 Pages SSR receipt replay ordering follow-up (source only; not executed):
+- Both explicit receipt resolution and duplicate-operation replay now reload the owner-scoped draft after observing a committed receipt, through the same helper as commit-time replay. A pre-commit snapshot cannot be returned as the committed result when receipt lookup races a writer.
+- Added a regression for the pre-commit read / post-commit receipt interleaving. Tests, compilation and formatting remain pending.
+
+2026-11-25 Pages SSR save attempt correlation follow-up (source only; not executed):
+- Finished the SSR consumer migration to the correlated AdminCanvasController save API. Preserve the effect hash/sequence, validate before I/O, begin the attempt, and correlate success, failure and conflict with that exact attempt.
+- Fixed missing receipt regression fixture references and added a save-effect identity regression. Compilation and tests remain pending.
+
+2026-11-25 Save effect admission parity follow-up (source only; not executed):
+- SSR Pages, Leptos and Dioxus share controller admission of the exact persistence effect (consumer page, CAS revision, hash, sequence and serialized payload) before starting transport; both framework adapters retain the emitted command sequence.
+- Session reducer ignores inactive save acknowledgements before touching error feedback. Added focused controller and reducer regressions; compilation, formatting and tests remain pending.
+
+2026-11-25 Drag candidate history fence (source only; not executed):
+- Clear drag candidates and insertion geometry when a successful controller mutation changes the document sequence, including undo/redo and recovered merges. Keep interaction state intact on a rejected or idempotent command. Added undo/redo and rollback regression.
+
+2026-11-25 Browser pending operation ownership follow-up (source only; not executed):
+- Keep the tab/page recovery slot non-overwriting across mounted roots, and clear or retry only the exact stored envelope. Verify receipt namespace, advancing generation and usable editor state; do not return unconfirmed success to promise consumers. Added mounted regressions for cross-root ownership and malformed committed receipts.
+
+2026-11-25 SSR receipt admission follow-up (source only; not executed):
+- Preflight exact receipt replay, owner/page scope, generation exhaustion and receipt capacity in the in-memory, file and durable stores before Pages dispatch or consumer I/O. Reject non-editable new operations early. Existing receipt replay still works at capacity. This is not a cross-store reservation; final CAS races and external-save/draft-commit gaps remain open.
+
+2026-11-25 Prepared SSR save checkpoint (source only; not executed):
+- Reserve the draft generation and persist the post-command controller before external Pages save; complete the same receipt with a second CAS. Fence other operations and ordinary commits while preparation exists. Retry resumes the prepared controller and Pages' stable save key; lookup remains read-only. Unknown outcomes retain preparation; browser retry rejections preserve the original identity. Added store lifecycle and pending lookup regressions. Format 2 requires upgraded readers; mounted and restart execution pending.
+
+2026-11-25 Prepared save observation follow-up (source only; not executed):
+- Preserve prepared operation identity when a post-commit revision observation or prepare/finalization CAS fails; classify these outcomes as unknown rather than deterministic rejection. Explicit superseded receipt remains a revision conflict. Added focused regressions.
+
+2026-11-25 Durable draft cache publication and prepared restart (source only; not executed):
+- Stage ordinary commits outside the cache, read authoritative backend state and avoid evicting unrelated cache entries on replacement. Added regressions for divergent cached generations and cold restart with two competing finalizations of a prepared receipt. No runtime execution claimed.
+
+2026-11-25 Prepared checkpoint retention (source only; not executed):
+- Protect live prepared receipts from memory/file/KV capacity eviction, select ordinary candidates first, recheck file protection under the token lock, and reject bounded admission when only prepared slots remain. Keep normal TTL expiry and explicit removal. Added memory admission and persistent capacity-prune regressions.
+
+Static publication follow-up (2026-11-26, source-only): reject ambiguous srcset comma
+boundaries in the shared Fly parser, so validation and browser URL tokenization cannot
+disagree on descriptor-less candidates. Policy v11 invalidates stale sanitization evidence;
+the registry and runtime-review projections match the Rust constants, and the existing
+runtime-review gate checks all three projections against the owning source. Previously
+published artifacts keep serving under the existing compatibility contract; review and
+re-publish affected documents before exact rebuild. Source regressions authored, unrun.

@@ -58,14 +58,5 @@ pub(crate) fn map_product_service_error(
     error: rustok_product::CommerceError,
     operation: &'static str,
 ) -> ::async_graphql::Error {
-    use ::async_graphql::ErrorExtensions;
-
-    let public =
-        rustok_product::map_product_public_error(&error, operation, "commerce_graphql_product");
-
-    ::async_graphql::Error::new(public.message).extend_with(|_, extensions| {
-        extensions.set("code", public.code);
-        extensions.set("retryable", public.retryable);
-        extensions.set("correlation_id", public.correlation_id.to_string());
-    })
+    super::map_product_service_error(error, operation)
 }

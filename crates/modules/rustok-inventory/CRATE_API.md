@@ -43,7 +43,9 @@
   optional line_item_id and metadata. Location is selected by the owner, not supplied by a client.
 - `InventoryReservationReleaseRequest`: variant_id, quantity, optional order_id and line_item_id.
 - `InventoryIdentityReservationReleaseRequest`: reservation_id, external_id.
-- `InitialInventory`: variant_id, quantity, optional location_id.
+- `InitialInventory`: variant_id, optional SKU snapshot, and nonnegative available_quantity.
+  Inventory resolves an active tenant-owned location; callers cannot select a replacement location.
+  The SKU snapshot must match the current Product-owned Variant SKU.
 - `ReturnRestockLine`: return_item_id, return_id, order_line_item_id, explicit saved
   variant_id (optional only for a proved SKU-less Order line), positive quantity. Location
   is resolved from Inventory's saved allocation/receipt, never supplied as a replacement.
@@ -404,6 +406,17 @@ No stock/reservation event is emitted for removing proven empty bookkeeping; Pro
 its existing lifecycle event transaction. This is not Inventory → generic Index convergence,
 and adds no revision/tombstone or authorization/replay receipt. Regression, migration, SQL,
 locking and compiler evidence remain unrun; see the [owner plan](docs/implementation-plan.md#catalog-deletion-safety-2026-11-01-source-only).
+
+## Tenant-scoped Product quantity projections (2026-11-25; source continuation)
+
+The unscoped Product/admin quantity projection carries the current tenant. Before reading
+tenant-less Inventory item/level rows, Inventory proves the complete Variant and parent Product
+identity set. It then resolves every distinct saved level location and requires exact same-tenant
+ownership; a missing or foreign location is an unverified binding, never silently omitted or
+counted. Archived same-tenant locations remain in administrative totals for reconciliation.
+Public-channel projections use the same location proof first, then apply active-location and
+channel-visibility filters. The read does not mutate stock, history, source revisions or events.
+The existing Product legacy-quantity fallback when an Inventory item itself is absent is unchanged.
 
 ## Canonical quantity writes (2026-11-01; source continuation)
 

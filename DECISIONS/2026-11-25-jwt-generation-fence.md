@@ -8,6 +8,9 @@
 - Supersedes: None
 - Superseded by: None
 
+
+The missing-ID and raw-root compatibility provisions (where present) are superseded by [Mandatory JWT key identity](2026-11-25-jwt-mandatory-key-identity.md). The remaining security invariants are retained.
+
 ## Context
 
 A monotonic generation in process memory is lost on restart. An adjacent-key
@@ -50,7 +53,7 @@ history present at initial enrollment is conservatively verification-only
 because its previous signing history is unknown. Retained verification
 deadlines may shorten, never extend. Access missing-ID migration may only
 be retained with the same mapping and a non-increasing deadline, or removed
-permanently. Algorithms cannot change through this mechanism. The ledger
+permanently. The later [JWT algorithm migration](2026-11-25-jwt-algorithm-migration.md) extends this mechanism with staged per-key algorithm promotion. The ledger
 bounds total enrolled identities to 8192; exhaustion fails closed rather
 than deleting tombstones.
 
@@ -81,7 +84,7 @@ This decision alone is durable publication admission, not a replica readiness
 barrier or a per-request check of the shared generation. The subsequent
 [cluster lease barrier](2026-11-25-jwt-cluster-lease.md) extends it with bounded
 local crypto authority and a conservative generation drain. Distributed emergency
-revocation, root rotation, algorithm migration, trusted-clock rollback
+revocation, root rotation, algorithm migration (extended by the later ADR), trusted-clock rollback
 protection and cancellation of already-authorized business IO remain separate.
 
 ## Alternatives considered

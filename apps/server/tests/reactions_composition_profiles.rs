@@ -1,6 +1,8 @@
+mod support;
+use support::test_auth_config;
+
 use std::sync::Arc;
 
-use rustok_auth::AuthConfig;
 use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions};
 use rustok_index::IndexModule;
 use rustok_server::common::settings::RustokSettings;
@@ -8,8 +10,6 @@ use rustok_server::error::Result;
 use rustok_server::services::module_event_dispatcher::build_shared_runtime_extensions_with_host_providers;
 use rustok_server::services::server_runtime_context::ServerRuntimeContext;
 use sea_orm::Database;
-
-const TEST_AUTH_SECRET: &str = "test-secret-key-for-unit-tests-only-32bytes!";
 
 async fn compose(registry: &ModuleRegistry) -> Result<Arc<ModuleRuntimeExtensions>> {
     let settings = RustokSettings::default();
@@ -20,7 +20,7 @@ async fn compose(registry: &ModuleRegistry) -> Result<Arc<ModuleRuntimeExtension
         registry,
         &settings,
         runtime,
-        AuthConfig::new(TEST_AUTH_SECRET.to_string()),
+        test_auth_config(),
     )
 }
 

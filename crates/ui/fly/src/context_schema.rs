@@ -161,12 +161,12 @@ impl ContextSchemaCatalog {
     pub fn from_document(document: &ProjectDocument) -> Self {
         let (fields, unknown_field_entries) = decode_entries(
             document
-                .project
+                .project()
                 .extensions
                 .get(FLY_RUNTIME_CONTEXT_SCHEMA_FIELD),
         );
         let (computed, unknown_computed_entries) =
-            decode_entries(document.project.extensions.get(FLY_RUNTIME_COMPUTED_FIELD));
+            decode_entries(document.project().extensions.get(FLY_RUNTIME_COMPUTED_FIELD));
         Self {
             fields,
             computed,
@@ -1275,16 +1275,27 @@ fn validate_expression_shape(
             ));
         }
         ContextExpression::Format { template } => {
-            if template.contains("{{") && !template.contains("}}") {
-                diagnostics.push(context_diagnostic(
-                    ValidationSeverity::Error,
-                    "runtime_computed_format_unclosed",
-                    path,
-                    format!("computed value `{id}` has an unclosed format placeholder"),
-                ));
-            }
-            for dependency in format_dependencies(template) {
-                if parse_context_path(&dependency).is_none() {
+            let mut remaining = template.as_str();
+            while let Some(start) = remaining.find("{{") {
+                let after = &remaining[start + 2..];
+                let Some(end) = after.find("}}") else {
+                    diagnostics.push(context_diagnostic(
+                        ValidationSeverity::Error,
+                        "runtime_computed_format_unclosed",
+                        path,
+                        format!("computed value `{id}` has an unclosed format placeholder"),
+                    ));
+                    break;
+                };
+                let dependency = after[..end].trim();
+                if dependency.is_empty() {
+                    diagnostics.push(context_diagnostic(
+                        ValidationSeverity::Error,
+                        "runtime_computed_format_empty",
+                        path,
+                        format!("computed value `{id}` has an empty format placeholder"),
+                    ));
+                } else if parse_context_path(dependency).is_none() {
                     diagnostics.push(context_diagnostic(
                         ValidationSeverity::Error,
                         "runtime_computed_dependency_path_invalid",
@@ -1292,6 +1303,7 @@ fn validate_expression_shape(
                         format!("computed value `{id}` dependency `{dependency}` is invalid"),
                     ));
                 }
+                remaining = &after[end + 2..];
             }
         }
         _ => {}
@@ -1538,10 +1550,10 @@ where
         .collect::<FlyResult<Vec<_>>>()?;
     entries.extend(unknown);
     if entries.is_empty() {
-        document.project.extensions.remove(field);
+        document.project_mut().extensions.remove(field);
     } else {
         document
-            .project
+            .project_mut()
             .extensions
             .insert(field.to_string(), Value::Array(entries));
     }
@@ -1772,9 +1784,34 @@ mod tests {
     }
 
     #[test]
+    fn format_validation_rejects_later_unclosed_and_empty_placeholders() {
+        let document_with_template = |template: &str| {
+            GrapesJsCodec::decode_value(json!({
+                "pages": [{"component": {"id": "root", "type": "wrapper"}}],
+                "flyRuntimeComputed": [{
+                    "id": "label",
+                    "path": "label",
+                    "expression": { "op": "format", "template": template }
+                }]
+            }))
+            .expect("document")
+        };
+
+        let unclosed = document_with_template("{{name}} {{broken");
+        assert!(validate_context_definitions(&unclosed)
+            .iter()
+            .any(|diagnostic| diagnostic.code == "runtime_computed_format_unclosed"));
+
+        let empty = document_with_template("{{name}} {{}}");
+        assert!(validate_context_definitions(&empty)
+            .iter()
+            .any(|diagnostic| diagnostic.code == "runtime_computed_format_empty"));
+    }
+
+    #[test]
     fn commands_preserve_opaque_entries() {
         let mut document = document();
-        document.project.extensions.insert(
+        document.project_mut().extensions.insert(
             FLY_RUNTIME_CONTEXT_SCHEMA_FIELD.to_string(),
             serde_json::json!([{ "providerSchema": true }]),
         );
@@ -1795,7 +1832,7 @@ mod tests {
         )
         .expect("upsert field");
         assert_ne!(document.hash(), before_hash);
-        let entries = document.project.extensions[FLY_RUNTIME_CONTEXT_SCHEMA_FIELD]
+        let entries = document.project().extensions[FLY_RUNTIME_CONTEXT_SCHEMA_FIELD]
             .as_array()
             .expect("schema entries");
         assert_eq!(entries.len(), 2);

@@ -1,11 +1,13 @@
 //! Predecessor-revision control for the Product catalog aggregate.
 //!
-//! Every write to the `products` row bumps `revision`. A document update may carry
-//! `expected_revision`: when it does not match the stored revision, the owner refuses the write
-//! instead of overwriting another operator's change. The refusal travels as a reserved
-//! `CommerceError::Validation` message class, because the closed `CommerceError` vocabulary is
-//! published (see `public_error.rs` and its diagnostic-safety evidence); the port and GraphQL
-//! mappers translate the class into the public `PRODUCT_REVISION_CONFLICT` code.
+//! Product document commands and ProductVariant membership changes advance `revision`.
+//! The independent `index_revision` watermark may advance on index-source touches and is never
+//! used as an editor predecessor. A document update may carry `expected_revision`: when it does
+//! not match the stored revision, the owner refuses the write instead of overwriting another
+//! operator's change. The refusal travels as a reserved `CommerceError::Validation` message class,
+//! because the closed `CommerceError` vocabulary is published (see `public_error.rs` and its
+//! diagnostic-safety evidence); the port and GraphQL mappers translate the class into the public
+//! `PRODUCT_REVISION_CONFLICT` code.
 
 use crate::CommerceError;
 use crate::CommerceResult;
@@ -56,9 +58,9 @@ pub(crate) fn revision_conflict_of(message: &str) -> Option<RevisionConflictFact
 
 /// Returns the next aggregate revision, refusing an exhausted counter.
 pub(crate) fn next_revision(current_revision: i32) -> CommerceResult<i32> {
-    current_revision
-        .checked_add(1)
-        .filter(|next| *next > 0)
+    (current_revision > 0)
+        .then(|| current_revision.checked_add(1))
+        .flatten()
         .ok_or_else(|| {
             CommerceError::Validation(
                 "Product revision is exhausted; the product can no longer be edited".to_owned(),
@@ -131,10 +133,10 @@ pub(crate) fn ensure_expected_variant_revision(
     expected_revision: Option<&str>,
 ) -> CommerceResult<()> {
     let expected = expected_variant_revision(expected_revision)?;
-    if variant.index_revision != expected {
+    if variant.revision != expected {
         return Err(CommerceError::Validation(format!(
             "{VARIANT_REVISION_CONFLICT_PREFIX}: expected revision {expected}, current revision {}",
-            variant.index_revision
+            variant.revision
         )));
     }
     Ok(())
@@ -154,8 +156,13 @@ pub(crate) fn variant_revision_conflict_of(message: &str) -> bool {
         return false;
     };
 
-    expected.parse::<i64>().is_ok_and(|revision| revision > 0)
-        && current.parse::<i64>().is_ok_and(|revision| revision > 0)
+    match (
+        expected_variant_revision(Some(expected)),
+        expected_variant_revision(Some(current)),
+    ) {
+        (Ok(expected), Ok(current)) => expected != current,
+        _ => false,
+    }
 }
 
 #[cfg(test)]
@@ -252,7 +259,7 @@ mod tests {
         assert!(expected_variant_revision(Some("not-a-revision")).is_err());
     }
 
-    fn variant(index_revision: i64) -> entities::product_variant::Model {
+    fn variant(revision: i64) -> entities::product_variant::Model {
         let now = chrono::Utc::now().into();
         entities::product_variant::Model {
             id: uuid::Uuid::from_u128(1),
@@ -272,13 +279,18 @@ mod tests {
             shipping_profile_slug: None,
             created_at: now,
             updated_at: now,
-            index_revision,
+            revision,
+            index_revision: 99,
         }
     }
 
     #[test]
     fn stale_variant_revision_is_refused_and_current_revision_is_accepted() {
         assert!(ensure_expected_variant_revision(&variant(5), Some("5")).is_ok());
+        assert!(
+            ensure_expected_variant_revision(&variant(5), Some("99")).is_err(),
+            "Index watermark must never be accepted as the editor predecessor"
+        );
 
         let error = ensure_expected_variant_revision(&variant(5), Some("4"))
             .expect_err("stale variant predecessor");
@@ -305,6 +317,27 @@ mod tests {
         assert!(!variant_revision_conflict_of(
             "product variant revision conflict: expected revision 4, current revision 5 trailing"
         ));
+        for message in [
+            "product variant revision conflict: expected revision 5, current revision 5",
+            "product variant revision conflict: expected revision 04, current revision 5",
+            "product variant revision conflict: expected revision 4, current revision 05",
+            "product variant revision conflict: expected revision +4, current revision 5",
+            "product variant revision conflict: expected revision 4, current revision +5",
+            "product variant revision conflict: expected revision 0, current revision 5",
+            "product variant revision conflict: expected revision 4, current revision 0",
+            "product variant revision conflict: expected revision 9223372036854775808, current revision 5",
+        ] {
+            assert!(!variant_revision_conflict_of(message), "{message}");
+            let public = crate::map_product_public_error(
+                &CommerceError::Validation(message.to_owned()),
+                "test",
+                "test",
+            );
+            assert_eq!(public.code, "PRODUCT_VALIDATION", "{message}");
+        }
+        assert!(variant_revision_conflict_of(
+            "product variant revision conflict: expected revision 9223372036854775807, current revision 5"
+        ));
     }
 
     #[test]
@@ -312,6 +345,7 @@ mod tests {
         assert_eq!(next_revision(1).expect("next"), 2);
         assert!(next_revision(i32::MAX).is_err());
         assert!(next_revision(-1).is_err());
+        assert!(next_revision(0).is_err());
     }
 
     #[test]

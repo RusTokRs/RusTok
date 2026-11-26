@@ -85,7 +85,9 @@ Inventory owns:
 
 - stock locations, inventory items, inventory levels, retained reservation/shipment/return history, and history-preserving empty-bookkeeping deletion;
 - `rustok_inventory::BootstrapService`;
-- `InitialInventory` and the transaction-aware create/read/delete operations.
+- `InitialInventory` and the transaction-aware create/read/delete operations. Bootstrap and
+  SKU-sync writes verify the caller's normalized SKU snapshot against the current locked Product
+  Variant; Inventory never treats a supplied SKU string as identity authority.
 
 Pricing owns:
 
@@ -95,9 +97,12 @@ Pricing owns:
 - tenant-scoped validation of both ProductVariant identity and any initial Channel ID/slug;
 - canonical duplicate detection for initial `(variant, channel, currency)` price identities.
 
-Product passes the current tenant through the Pricing port. The Pricing adapter resolves Channel identity
-inside the caller transaction, verifies that the Variant belongs to the same tenant, and refuses
-duplicate initial price scopes before inserting any rows.
+Product passes the current tenant through Pricing write collaboration and the Inventory projection
+port. The Pricing adapter resolves Channel identity inside the caller transaction, verifies that the
+Variant belongs to the same tenant, and refuses duplicate initial price scopes before inserting any
+rows. Inventory proves every Variant and parent Product before reading tenant-less stock rows, then
+proves every saved location belongs to that tenant. Administrative totals retain archived same-tenant
+locations for reconciliation; public-channel reads apply active/visibility filtering only after ownership proof.
 
 Product source imports only those owner bootstrap contracts. It does not import foreign Inventory/Pricing ORM entities and does not issue direct SQL against their tables.
 
@@ -108,10 +113,28 @@ that cannot be represented exactly in its currency's minor units, before the
 owner write transaction. Pricing bootstrap independently enforces the same
 platform money primitive before insert or base-price replacement, and direct
 Pricing single/batch authoring uses the existing resolver precision validator.
-Computed discounts retain currency-aware rounding; authored money is never
+Direct percentage-discount application calculates from the canonical price
+under the same Variant and selected price-list locks that protect its write,
+event and catalog predecessor advancement. Preview is advisory and not a
+write prerequisite. Computed discounts retain currency-aware rounding; authored money is never
 silently rounded to make an otherwise unquotable row acceptable.
 Existing legacy two-decimal mirrors are unchanged. Source regressions are
 authored but not executed; historical invalid price rows are not rewritten.
+
+Direct Pricing batch edits of a SKU now reject repeated normalized currency /
+resolved Channel identities before price writes and reject ambiguous exact
+stored matches, matching single-price authoring. All prices, events and the
+single catalog predecessor advance remain inside the Pricing transaction.
+This does not introduce a new Product write protocol or certify historical
+channel alias reconciliation. Regression sources remain unexecuted.
+
+Pricing also validates the actual NUMERIC(16,6) price-column range, not just
+the platform minor-unit i64 range. The Product adapter applies the owner
+validation to both initial creation and base-price replacement before Pricing
+row mutation; overflow is a Product validation refusal and aborts the enclosing
+transaction, rather than a database overflow. The bootstrap repeats the same
+owner check. Product does not duplicate the Pricing storage limit. Historical
+migrations and data are unchanged; source regressions are unexecuted.
 
 ## Atomicity
 
@@ -244,6 +267,15 @@ outcome. Exact replay returns the original response/refusal without a new Invent
 The Product response and public-channel quantity projection now use checked wide aggregation
 rather than order-dependent saturation; visibility and retained/absent stock remain different
 concepts. This does not make those existing read paths an authoritative Index source.
+
+The published Product detail and storefront SKU projection consume only the
+Inventory channel result. Missing entries (including an empty result when no
+Inventory provider is attached) project zero available units, never the
+previous unscoped Product quantity. Explicit zero and signed quantities are
+preserved; the existing continue/backorder policy still determines availability
+when stock is nonpositive. Inventory read errors propagate. Administrative
+unscoped projections retain their existing legacy quantity behavior. Focused
+source regressions are authored, not executed.
 
 [33 Rust/10 Node source definitions](../../rustok-inventory/contracts/evidence/quantity-writes-source.json)
 remain unrun/uncompiled; real SQL/isolation/locking/concurrency/client recovery remain maintainer

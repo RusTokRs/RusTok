@@ -80,3 +80,53 @@ pub(super) async fn lock_sqlite_product_in_tx(
     );
     Ok(txn.execute_raw(statement).await?.rows_affected() == 1)
 }
+
+/// Advances the ProductVariant business predecessor and records the exact Index refresh cause
+/// for a committed catalog base-price mutation, with the Pricing root envelope as that cause.
+/// The co-located Pricing writer must hold the Variant write lock and use the same
+/// transaction for its price rows, PriceUpdated event and this owner operation.
+/// Contextual prices are not part of the catalog edit snapshot.
+pub async fn record_catalog_base_price_change_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    product_id: Uuid,
+    variant_id: Uuid,
+    price_event_id: Uuid,
+) -> crate::CommerceResult<()> {
+    use crate::CommerceError;
+    if [tenant_id, product_id, variant_id, price_event_id]
+        .iter()
+        .any(Uuid::is_nil)
+    {
+        return Err(CommerceError::Validation(
+            "Catalog base-price revision requires complete owner and event identities".into(),
+        ));
+    }
+    let backend = txn.get_database_backend();
+    let sql = match backend {
+        // PostgreSQL's BEFORE UPDATE triggers independently advance both owner counters.
+        DatabaseBackend::Postgres => "UPDATE product_variants SET index_revision = index_revision WHERE tenant_id = $1 AND product_id = $2 AND id = $3 AND index_revision > 0 AND index_revision < 9223372036854775807 AND revision > 0 AND revision < 9223372036854775807",
+        // SQLite has no ProductVariant revision triggers in the co-located test profile.
+        DatabaseBackend::Sqlite => "UPDATE product_variants SET index_revision = index_revision + 1, revision = revision + 1 WHERE tenant_id = ?1 AND product_id = ?2 AND id = ?3 AND index_revision > 0 AND index_revision < 9223372036854775807 AND revision > 0 AND revision < 9223372036854775807",
+        _ => return Err(CommerceError::Core(rustok_core::error::Error::Internal(
+            "Catalog base-price revision requires PostgreSQL or SQLite".into(),
+        ))),
+    };
+    let updated = txn
+        .execute_raw(Statement::from_sql_and_values(
+            backend,
+            sql,
+            [tenant_id.into(), product_id.into(), variant_id.into()],
+        ))
+        .await?;
+    if updated.rows_affected() != 1 {
+        return Err(CommerceError::Core(rustok_core::error::Error::Internal(
+            "Catalog base-price revision target is missing or exhausted".into(),
+        )));
+    }
+
+    super::index_refresh::record_exact_product_variant_refresh_in_tx(
+        txn, tenant_id, product_id, variant_id, price_event_id,
+    )
+    .await
+}

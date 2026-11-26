@@ -1,9 +1,9 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::sync::Arc;
 
 use async_graphql::extensions::{
     Extension, ExtensionContext, ExtensionFactory, NextExecute, NextPrepareRequest,
 };
-use async_graphql::parser::types::{ExecutableDocument, Selection, SelectionSet};
+use async_graphql::parser::types::{ExecutableDocument, SelectionSet};
 use async_graphql::{FieldError, Pos, Request, Response, ServerResult};
 use rustok_api::{AuthContext, graphql::GraphQLError};
 
@@ -17,33 +17,15 @@ fn is_storefront_field(name: &str) -> bool {
 fn selection_contains_storefront(
     selection_set: &SelectionSet,
     document: &ExecutableDocument,
-    visited_fragments: &mut BTreeSet<String>,
 ) -> bool {
-    selection_set
-        .items
-        .iter()
-        .any(|selection| match &selection.node {
-            Selection::Field(field) => is_storefront_field(field.node.name.node.as_str()),
-            Selection::FragmentSpread(fragment) => {
-                let name = fragment.node.fragment_name.node.as_str();
-                let Some(definition) = document.fragments.get(name) else {
-                    return false;
-                };
-                if !visited_fragments.insert(name.to_owned()) {
-                    return false;
-                }
-                selection_contains_storefront(
-                    &definition.node.selection_set.node,
-                    document,
-                    visited_fragments,
-                )
-            }
-            Selection::InlineFragment(fragment) => selection_contains_storefront(
-                &fragment.node.selection_set.node,
-                document,
-                visited_fragments,
-            ),
-        })
+    super::visit_selection_fields(document, selection_set, (), |field, ()| {
+        if is_storefront_field(field.name.node.as_str()) {
+            std::ops::ControlFlow::Break(())
+        } else {
+            std::ops::ControlFlow::Continue(None)
+        }
+    })
+    .is_break()
 }
 
 fn document_contains_storefront(
@@ -56,7 +38,6 @@ fn document_contains_storefront(
             selection_contains_storefront(
                 &operation.node.selection_set.node,
                 document,
-                &mut BTreeSet::new(),
             )
         })
 }
@@ -100,7 +81,7 @@ impl Extension for StorefrontPrincipalPolicyExtension {
             .is_some_and(AuthContext::is_service_principal);
         if service_principal && ctx.data_opt::<StorefrontOperationRequested>().is_some() {
             tracing::warn!(
-                operation_name = ?operation_name,
+                operation_name_present = operation_name.is_some(),
                 "Rejected GraphQL storefront operation authenticated as a service principal"
             );
             return Response::from_errors(vec![

@@ -313,7 +313,7 @@ rustok-modules = { workspace = true, features = ["test-support"] }
 jsonwebtoken.workspace = true
 tower = { workspace = true, features = ["util"] }
 serial_test = "4.0"
-rustok-test-utils.workspace = true
+rustok-test-utils = { workspace = true, features = ["jwt"] }
 rustok-translation-admin = { path = "../../crates/modules/rustok-translation/admin", default-features = false, features = ["ssr"] }
 rustok-pages-storefront = { path = "../../crates/modules/rustok-pages/storefront", default-features = false, features = ["ssr"] }
 tempfile = "3.27"

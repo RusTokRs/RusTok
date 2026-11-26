@@ -236,6 +236,7 @@ impl SelectedQuantityRelease {
             if level.id.is_nil()
                 || level.inventory_item_id != self.inventory_item_id
                 || !seen.insert(level.location_id)
+                || level.stocked_quantity < 0
                 || level.reserved_quantity < 0
                 || level.incoming_quantity < 0
                 || current_claims < selected_pool_claims

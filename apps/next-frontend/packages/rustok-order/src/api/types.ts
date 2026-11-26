@@ -33,6 +33,7 @@ export interface OrderAdjustment {
 export type OrderStatus =
   | "PENDING"
   | "CONFIRMED"
+  | "PAID"
   | "PROCESSING"
   | "SHIPPED"
   | "DELIVERED"

@@ -186,6 +186,16 @@ impl AuthLifecycleService {
         let token_hash = invite_token_hash(token);
         let consumption_id = uuid::Uuid::new_v4();
 
+        // The host module-policy reader owns a pooled DatabaseConnection,
+        // not this transaction. Resolve its request snapshot before checking
+        // out a transaction connection, or a single-connection pool (and a
+        // saturated larger pool) can wait on itself. Persisted issuer grants
+        // and target-role checks below still execute under the transaction.
+        let availability =
+            crate::services::rbac_module_availability::permission_availability_for(ctx, tenant_id)
+                .await
+                .map_err(InviteAcceptanceError::Internal)?;
+
         let tx = ctx
             .db()
             .begin()
@@ -240,10 +250,6 @@ impl AuthLifecycleService {
         // not current request authority. Apply the same effective-permission
         // boundary used at invite issuance and regular authentication before
         // checking whether the issuer may delegate this role.
-        let availability =
-            crate::services::rbac_module_availability::permission_availability_for(ctx, tenant_id)
-                .await
-                .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
         if let Some(availability) = availability {
             issuer_permissions = availability.active_permissions(&issuer_permissions);
         }
@@ -297,7 +303,7 @@ impl AuthLifecycleService {
                 role_slug = %ledger_role,
                 "invite role no longer satisfies issuer authority"
             );
-            return Err(InviteAcceptanceError::InvalidToken);
+            return Err(map_invite_role_authority_error(error));
         }
 
         // Recheck at the actual consumption boundary after issuer/RBAC reads.
@@ -455,6 +461,20 @@ fn issuer_may_issue_invite(
     }
 }
 
+fn map_invite_role_authority_error(
+    error: rustok_rbac::RbacRolePersistenceError,
+) -> InviteAcceptanceError {
+    use rustok_rbac::RbacRolePersistenceError;
+
+    match error {
+        RbacRolePersistenceError::Policy(_)
+        | RbacRolePersistenceError::RoleNotFound(_)
+        | RbacRolePersistenceError::TargetNotFound => InviteAcceptanceError::InvalidToken,
+        RbacRolePersistenceError::Database(error) => InviteAcceptanceError::Internal(error.into()),
+        _ => InviteAcceptanceError::Internal(Error::InternalServerError),
+    }
+}
+
 fn map_lifecycle_error(error: AuthLifecycleError) -> InviteAcceptanceError {
     match error {
         AuthLifecycleError::EmailAlreadyExists => InviteAcceptanceError::EmailAlreadyExists,
@@ -468,6 +488,28 @@ mod tests {
     use super::*;
     use crate::common::RustokSettings;
     use sha2::{Digest, Sha256};
+
+    #[test]
+    fn invite_authority_storage_failures_are_not_invalid_tokens() {
+        use rustok_rbac::{RbacRoleMutationPolicyError, RbacRolePersistenceError};
+
+        assert!(matches!(
+            map_invite_role_authority_error(RbacRolePersistenceError::Database(
+                sea_orm::DbErr::Custom("storage unavailable".to_string())
+            )),
+            InviteAcceptanceError::Internal(_)
+        ));
+        assert!(matches!(
+            map_invite_role_authority_error(RbacRolePersistenceError::RoleNotFound(
+                "deleted-role".to_string()
+            )),
+            InviteAcceptanceError::InvalidToken
+        ));
+        assert!(matches!(
+            map_invite_role_authority_error(RbacRoleMutationPolicyError::CannotAssignPeerOrHigherRole.into()),
+            InviteAcceptanceError::InvalidToken
+        ));
+    }
 
     #[test]
     fn pending_invites_require_the_issuer_to_retain_invitation_authority() {
@@ -586,7 +628,7 @@ mod tests {
         let mut settings = RustokSettings::default();
         settings.features.invites_enabled = false;
         let ctx = ServerRuntimeContext::new(db, settings);
-        let config = AuthConfig::new("invite-feature-gate-secret-for-tests".to_string());
+        let config = crate::auth::test_auth_config("invite-feature-gate-secret-for-tests".to_string());
 
         let error = AuthLifecycleService::accept_invite_once_runtime(
             &ctx,

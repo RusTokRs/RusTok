@@ -418,3 +418,66 @@ groups:
         annotations:
           summary: "Outbox retention prune is failing"
           description: "The outbox retention worker failed more than three times in thirty minutes. Delivered events and terminal receipts are not being pruned."
+
+  - name: rustok_auth_jwt_alerts
+    interval: 15s
+    rules:
+      - alert: JwtAuthorityMetricsUnavailable
+        expr: rustok_auth_jwt_collection_status == 0
+        for: 1m
+        labels:
+          severity: warning
+          component: auth
+        annotations:
+          summary: "JWT authority observation unavailable"
+
+      - alert: JwtWitnessFenced
+        expr: rustok_auth_jwt_witness_fenced == 1
+        labels:
+          severity: critical
+          component: auth
+        annotations:
+          summary: "JWT rollback witness fault; stop writers and recover the authenticated checkpoint"
+
+      - alert: JwtClockFault
+        expr: rustok_auth_jwt_local_clock_fenced == 1 or rustok_auth_jwt_authority_clock_fenced == 1
+        labels:
+          severity: critical
+          component: auth
+        annotations:
+          summary: "JWT clock fault latched; correct clocks before restart"
+
+      - alert: JwtLocalCryptoGateClosed
+        expr: rustok_auth_jwt_local_ready == 0
+        for: 30s
+        labels:
+          severity: critical
+          component: auth
+        annotations:
+          summary: "JWT crypto gate closed on a serving target"
+
+      - alert: JwtGenerationLag
+        expr: rustok_auth_jwt_generation_lag != 0 and rustok_auth_jwt_collection_status == 1
+        for: 1m
+        labels:
+          severity: warning
+          component: auth
+        annotations:
+          summary: "JWT local and durable generations differ"
+
+      - alert: JwtCurrentMaterialRevoked
+        expr: rustok_auth_jwt_current_revoked == 1
+        labels:
+          severity: critical
+          component: auth
+        annotations:
+          summary: "Current JWT authority contains revoked material"
+
+      - alert: JwtRotationWaiting
+        expr: rustok_auth_jwt_pending_seconds > 60
+        for: 30s
+        labels:
+          severity: warning
+          component: auth
+        annotations:
+          summary: "JWT rotation remains pending on a target"

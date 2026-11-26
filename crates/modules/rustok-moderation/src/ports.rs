@@ -167,15 +167,10 @@ impl ModerationReadPort for ModerationService {
         report_id: Uuid,
     ) -> Result<Option<ModerationReportRecord>, PortError> {
         context.require_policy(PortCallPolicy::read())?;
-        if report_id.is_nil() {
-            return Ok(None);
-        }
-        self.get_report(
-            parse_tenant_id(&context).map_err(map_owner_error)?,
-            report_id,
-        )
-        .await
-        .map_err(map_owner_error)
+        let tenant_id = parse_tenant_id(&context).map_err(map_owner_error)?;
+        self.get_report(tenant_id, report_id)
+            .await
+            .map_err(map_owner_error)
     }
 
     async fn read_case(
@@ -184,10 +179,8 @@ impl ModerationReadPort for ModerationService {
         case_id: Uuid,
     ) -> Result<Option<ModerationCaseRecord>, PortError> {
         context.require_policy(PortCallPolicy::read())?;
-        if case_id.is_nil() {
-            return Ok(None);
-        }
-        self.get_case(parse_tenant_id(&context).map_err(map_owner_error)?, case_id)
+        let tenant_id = parse_tenant_id(&context).map_err(map_owner_error)?;
+        self.get_case(tenant_id, case_id)
             .await
             .map_err(map_owner_error)
     }
@@ -198,15 +191,10 @@ impl ModerationReadPort for ModerationService {
         decision_id: Uuid,
     ) -> Result<Option<ModerationDecisionRecord>, PortError> {
         context.require_policy(PortCallPolicy::read())?;
-        if decision_id.is_nil() {
-            return Ok(None);
-        }
-        self.get_decision(
-            parse_tenant_id(&context).map_err(map_owner_error)?,
-            decision_id,
-        )
-        .await
-        .map_err(map_owner_error)
+        let tenant_id = parse_tenant_id(&context).map_err(map_owner_error)?;
+        self.get_decision(tenant_id, decision_id)
+            .await
+            .map_err(map_owner_error)
     }
 
     async fn list_queue(
@@ -215,7 +203,8 @@ impl ModerationReadPort for ModerationService {
         filter: ModerationQueueFilter,
     ) -> Result<Vec<ModerationCaseRecord>, PortError> {
         context.require_policy(PortCallPolicy::read())?;
-        self.list_queue_records(parse_tenant_id(&context).map_err(map_owner_error)?, filter)
+        let tenant_id = parse_tenant_id(&context).map_err(map_owner_error)?;
+        self.list_queue_records(tenant_id, filter)
             .await
             .map_err(map_owner_error)
     }
@@ -350,5 +339,22 @@ mod tests {
         )
         .with_claim(Permission::MODERATION_CASES_MANAGE.to_string());
         assert!(require_recovery_override(&context).is_ok());
+    }
+
+    #[tokio::test]
+    async fn read_ports_reject_invalid_tenant_even_for_nil_ids() {
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let service = ModerationService::new(db);
+        for bad_tenant in [Uuid::nil().to_string(), "not-a-uuid".to_string()] {
+            let context = PortContext::new(
+                bad_tenant,
+                PortActor::user(Uuid::new_v4().to_string()),
+                "en",
+                "moderation-read-tenant-check",
+            );
+            assert!(service.read_report(context.clone(), Uuid::nil()).await.is_err());
+            assert!(service.read_case(context.clone(), Uuid::nil()).await.is_err());
+            assert!(service.read_decision(context, Uuid::nil()).await.is_err());
+        }
     }
 }

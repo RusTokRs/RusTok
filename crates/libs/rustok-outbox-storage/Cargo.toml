@@ -31,3 +31,6 @@ uuid.workspace = true
 sea-orm = { workspace = true, features = ["sqlx-sqlite"] }
 sea-orm-migration = { workspace = true, features = ["sqlx-sqlite"] }
 tokio.workspace = true
+
+[lints]
+workspace = true

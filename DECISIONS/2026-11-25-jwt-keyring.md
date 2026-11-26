@@ -3,6 +3,9 @@
 - Status: Accepted
 - Implementation status: In progress (source implementation; compilation and deployment evidence pending)
 
+
+The missing-ID and raw-root compatibility provisions (where present) are superseded by [Mandatory JWT key identity](2026-11-25-jwt-mandatory-key-identity.md). The remaining security invariants are retained.
+
 ## Context and decision
 
 Auth owns the deployment JWT keyring for direct and OAuth access, invite, reset and email verification JWTs. The host supplies a startup configuration snapshot. One active key signs and all newly issued JWTs carry its bounded ASCII `kid`. Verification selects exactly one configured key by ID and configured algorithm; unknown, empty, ambiguous and retired identifiers are rejected. There is no trial verification. Historical keys carry an exclusive Unix-second verification cutoff and never enter the signing path. RSA history stores public PEMs only; HS256 history necessarily retains symmetric verification material. Rotation within one algorithm is supported; algorithm migration and separate purpose keyrings remain pending.

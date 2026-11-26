@@ -148,7 +148,7 @@ mod tests {
         .expect("document");
 
         let mut immutable = Vec::new();
-        visit_project_components(&document.project, |component, visit| {
+        visit_project_components(&document.project(), |component, visit| {
             immutable.push((
                 component.id.clone().unwrap_or_default(),
                 visit.page_index(),
@@ -159,7 +159,7 @@ mod tests {
         });
 
         let mut mutable = Vec::new();
-        visit_project_components_mut(&mut document.project, |component, visit| {
+        visit_project_components_mut(document.project_mut(), |component, visit| {
             mutable.push((
                 component.id.clone().unwrap_or_default(),
                 visit.page_index(),

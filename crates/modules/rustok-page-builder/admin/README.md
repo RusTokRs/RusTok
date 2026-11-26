@@ -218,6 +218,13 @@ For the formal Rust API contract and guarantees, see [`CRATE_API.md`](CRATE_API.
 
 ## Snapshot-bound save acknowledgements
 
+Before invoking any persistence transport, SSR Pages, Leptos and Dioxus use
+`AdminCanvasController::begin_save_request` to bind the emitted save effect to
+the live page, CAS revision, command sequence, project hash and exact encoded
+project data. Stale or mismatched effects are rejected before I/O and cannot
+start an attempt. Session reducer acknowledgements for inactive attempts do not
+replace current error feedback.
+
 A successful Page Builder publish response acknowledges exactly the hash captured when the
 request began. Newer local edits remain dirty, while the persisted revision becomes the base for
 the next save. A local edit during an in-flight request is **not** a remote revision conflict.
@@ -253,6 +260,8 @@ is **not** a server idempotency key. A restored controller cannot accept a respo
 attempt that existed before serialization. Known `REVISION_CONFLICT` and
 `PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN` codes survive the Leptos server-function error boundary;
 a stale-revision response retires only its matching attempt and fences the editor read-only.
+Fly UI owns the effective capability fence, so host permission refreshes cannot unlock it.
+Recovered merges are applied to a fresh/reloaded controller, not a conflicted revision.
 
 The Leptos facade runtime and callback transport now carry the same `SaveAttempt`. The public
 `PageBuilderCapabilityExecution` callback receives the request and its optional attempt together,
@@ -263,11 +272,19 @@ The framework-neutral `EditorSessionState` carries `SaveAttempt` through save st
 acknowledgement and failure actions. There is no hash-only acknowledgement fallback: Dioxus and
 external session adapters must return the exact attempt token.
 
+Toolbar and browser previews use the controller's canonical active-page projection. A missing
+page fails before an attempt is started. Before dispatching a browser preview (or a prepared
+Dioxus effect), the controller checks the page identity, command sequence and exact active-page
+payload, since navigating between pages does not change the project hash. Adopting a different
+browser runtime context or scenario clears the previous preview and runtime publish-gate result.
+
 The Dioxus admin Save toolbar and FlyEditorWorkspace consume reducer request effects and execute
 the supplied consumer facade. Save completion is attempt-aware; browser previews retain their
 scenario/context and lifecycle flags in the same session. The Page Builder Dioxus host now mounts
 the isolated iframe canvas, forwards geometry/hover/focus/keyboard events, completes palette and
 selected-layer drag/drop, commits bounded resize patches and participates in peer-write fencing.
+Both framework adapters use the same Page Builder resize policy for pointer and keyboard
+input: a 4px grid, 24px/20px minimum width/height and a 100,000px maximum on either axis.
 The Leptos Rust runtime and JS adapter share a document nonce plus editor-root scope so their
 own confirmed writes advance one baseline; other tabs or editor roots fence stale editors.
 These BroadcastChannel notices are advisory and do not replace server revision CAS or receipts.
@@ -281,7 +298,14 @@ unchanged props and suppress a needed rerender. Regression coverage authored, no
 The Leptos FlyEditorWorkspace's typed `on_intent` callback forwards Save/Preview and
 announcement effects to `AdminEditorRuntime`. The runtime compares the command sequence and
 submitted project hash before dispatch, captures the exact `SaveAttempt`, and retains the
-browser-provided preview context for response correlation.
+browser-provided preview context for response correlation. Server preview attempts also have
+a local UUID independent of their project hash, page index and runtime context. A superseded
+success, failure or duplicate callback cannot consume a newer preview's state, even when its
+inputs are identical. The Dioxus effect dispatcher distinguishes a prepared preview from a
+browser-origin request and retires only the matching attempt on transport/provider failure.
+Removing a host-supplied trait registry restores the builtin registry rather than retaining
+the previous host's schemas. Missing Leptos facades retire only the matching preview attempt,
+so the preview indicator cannot remain busy and stale dispatch failures cannot clear a newer one.
 
 Browser intent admission also rejects a supplied document page ID that disagrees with the
 controller's own page ID, including read-only intents. Leptos validates the completed workspace
@@ -360,3 +384,36 @@ assets and history buttons without a full remount. Back-end authorization remain
 Dioxus PageBuilderAdmin also forwards FlyEditorWorkspace's own validation/runtime errors through
 its `on_error` callback into the session's accessible Page Builder error alert. Previously
 invalid token input and editor-local errors could be silently lost because `on_error` was unset.
+
+Contribution registry installation is atomic at both the host and controller boundaries:
+all installers must succeed on a candidate registry before it replaces the active registry.
+Undo and redo also reject disconnected or currently invalid history snapshots without
+changing the controller's document, revision, or history.
+
+A successful document mutation, including undo, redo and recovered merges,
+invalidates active drag/drop candidates and all measured selection, hover and insertion
+geometry. Surviving component identities are preserved, but hover IDs outside the active page
+are cleared. Failed and idempotent commands preserve the existing interaction so it can be retried.
+
+Receipt-bearing SSR operations preflight the owner-scoped receipt ledger,
+expected generation and receipt capacity before consumer I/O. This read-only
+admission is not a reservation; the final commit still checks the same fences
+atomically. It does not make external Pages persistence and draft storage one
+transaction.
+
+Strict Pages saves prepare the edited draft and reserve its generation in the
+existing operation ledger before external I/O. Only the same operation can
+complete the reservation; other writes are fenced. Receipt lookup stays read-only.
+Record format 2 protects prepared operations from older readers; deploy upgraded
+readers before using the new protocol.
+
+Durable draft commits stage candidates outside the memory cache and publish
+only after persistent CAS. Loads return the owner-scoped backend snapshot,
+never a speculative or divergent cached generation. Replacing an existing
+cache entry does not evict an unrelated draft.
+
+Live prepared saves are protected from capacity eviction in memory, file and
+KV stores. The memory and file owner-admission paths reject new sessions when
+only protected slots remain; periodic pruning may temporarily exceed the cap
+rather than discard recovery state. Normal TTL expiry and explicit removal
+still apply; no indefinite retention is implied.

@@ -84,12 +84,12 @@ impl DynamicCatalog {
     pub fn from_document(document: &ProjectDocument) -> Self {
         let (conditions, unknown_condition_entries) = decode_entries(
             document
-                .project
+                .project()
                 .extensions
                 .get(FLY_RUNTIME_CONDITIONS_FIELD),
         );
         let (repeaters, unknown_repeater_entries) =
-            decode_entries(document.project.extensions.get(FLY_RUNTIME_REPEATERS_FIELD));
+            decode_entries(document.project().extensions.get(FLY_RUNTIME_REPEATERS_FIELD));
         Self {
             conditions,
             repeaters,
@@ -193,7 +193,7 @@ pub(crate) fn materialize_runtime_with_scoped_bindings(
     let mut materialized = document.clone();
     let mut diagnostics = Vec::new();
     let mut hidden_components = 0usize;
-    let original_styles = materialized.project.styles.clone();
+    let original_styles = materialized.project().styles.clone();
 
     // Components that live *inside* a repeater template. Their conditions must be evaluated once
     // per generated item, against that item's local context — evaluating them here, against the
@@ -317,14 +317,14 @@ pub(crate) fn materialize_runtime_with_scoped_bindings(
 
     // One traversal of each page expands every repeater at every depth, instead of re-walking the
     // whole document once per repeater definition.
-    let mut pages = std::mem::take(&mut materialized.project.pages);
+    let mut pages = std::mem::take(&mut materialized.project_mut().pages);
     for page in &mut pages {
         if let Some(root) = page.component.as_mut() {
             let origin = BTreeMap::new();
             expander.expand_node(root, context, 0, "", &origin);
         }
     }
-    materialized.project.pages = pages;
+    materialized.project_mut().pages = pages;
 
     let RuntimeExpander {
         generated_styles,
@@ -338,7 +338,7 @@ pub(crate) fn materialize_runtime_with_scoped_bindings(
     diagnostics.extend(expansion_diagnostics);
     hidden_components = hidden_components.saturating_add(hidden_in_repeaters);
     remove_style_rules_for_component_ids(&mut materialized, &retired_style_ids);
-    materialized.project.styles.extend(generated_styles);
+    materialized.project_mut().styles.extend(generated_styles);
     // The preflight lookups populate the document's index before expansion. Its locations (and
     // any cached hash) must describe the returned tree, not the original repeater templates.
     materialized.invalidate_caches();
@@ -1259,10 +1259,10 @@ where
         .collect::<FlyResult<Vec<_>>>()?;
     entries.extend(unknown);
     if entries.is_empty() {
-        document.project.extensions.remove(field);
+        document.project_mut().extensions.remove(field);
     } else {
         document
-            .project
+            .project_mut()
             .extensions
             .insert(field.to_string(), Value::Array(entries));
     }
@@ -1392,13 +1392,13 @@ fn hide_runtime_component(document: &mut ProjectDocument, component_id: &str) ->
     let style_targets = component_subtree_ids(document, component_id);
     if location.parent_component_id.is_some() {
         remove_style_rules_for_component_ids(document, &style_targets);
-        document.project.remove_component(component_id)?;
+        document.project_mut().remove_component(component_id)?;
         document.invalidate_caches();
         return Ok(());
     }
     remove_style_rules_for_component_ids(document, &style_targets);
     let page = document
-        .project
+        .project_mut()
         .pages
         .get_mut(location.page_index)
         .ok_or_else(|| FlyError::PageNotFound(location.page_index.to_string()))?;
@@ -1431,7 +1431,7 @@ fn remove_style_rules_for_component_ids(
     if component_ids.is_empty() {
         return;
     }
-    document.project.styles.retain(|raw| {
+    document.project_mut().styles.retain(|raw| {
         StyleRuleIdentity::from_value(raw).is_none_or(|rule| {
             rule.component_id
                 .as_ref()
@@ -2336,11 +2336,11 @@ mod tests {
     fn nested_repeater_styles_are_unique_bounded_and_only_target_survivors() {
         let mut source = nested_document();
         let long_rule = "r".repeat(crate::MAXIMUM_IDENTIFIER_LENGTH);
-        source.project.styles = vec![
+        source.project_mut().styles = vec![
             json!({"flyComponentId": "tag", "flyRuleId": long_rule, "style": {"color": "red"}}),
             json!({"flyComponentId": "card-title", "flyRuleId": "title-rule", "style": {"color": "blue"}}),
         ];
-        source.project.extensions.insert(FLY_RUNTIME_CONDITIONS_FIELD.to_string(), json!([{
+        source.project_mut().extensions.insert(FLY_RUNTIME_CONDITIONS_FIELD.to_string(), json!([{
             "id": "show-title", "component_id": "card-title", "path": "item.featured", "operator": "truthy"
         }]));
         let result = materialize_runtime(
@@ -2550,7 +2550,7 @@ mod tests {
     #[test]
     fn commands_preserve_unknown_entries() {
         let mut document = document();
-        document.project.extensions.insert(
+        document.project_mut().extensions.insert(
             FLY_RUNTIME_CONDITIONS_FIELD.to_string(),
             json!([{ "providerCondition": true }]),
         );
@@ -2571,7 +2571,7 @@ mod tests {
         )
         .expect("upsert condition");
         assert_ne!(document.hash(), before_hash);
-        let entries = document.project.extensions[FLY_RUNTIME_CONDITIONS_FIELD]
+        let entries = document.project().extensions[FLY_RUNTIME_CONDITIONS_FIELD]
             .as_array()
             .expect("condition array");
         assert_eq!(entries.len(), 2);
@@ -2646,7 +2646,7 @@ mod tests {
     #[test]
     fn materialization_skips_repeaters_with_empty_aliases() {
         let mut source = document();
-        source.project.extensions.insert(
+        source.project_mut().extensions.insert(
             FLY_RUNTIME_REPEATERS_FIELD.to_string(),
             json!([{ "id": "bad", "component_id": "card", "path": "items", "item_alias": "" }]),
         );
@@ -2746,7 +2746,7 @@ mod tests {
         // not resolve there, so the old global pre-pass judged it falsy and deleted the template
         // for every item.
         let mut source = nested_document();
-        source.project.extensions.insert(
+        source.project_mut().extensions.insert(
             FLY_RUNTIME_CONDITIONS_FIELD.to_string(),
             json!([{
                 "id": "show-title",

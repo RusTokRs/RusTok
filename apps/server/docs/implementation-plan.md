@@ -1,5 +1,102 @@
 # Server App — Implementation Plan
 
+## Bounded post-abort worker joins (2026-11-25)
+
+Runtime and module worker shutdown helpers now use a separate one-second
+post-abort join grace. Worker groups still broadcast abort to every remaining
+member before joining any of them, then share one deadline across cleanup.
+If a task remains unresponsive, its join handle is released after the grace so
+shutdown does not await it indefinitely; Tokio cancellation remains cooperative
+and cleanup is not guaranteed. Added a regression using an already-started
+`spawn_blocking` task to prove the join helper returns when abort cannot stop
+the task. Tests and compilation remain with the maintainer.
+
+## Registry direct-session admission (2026-11-25)
+
+Aligned registry controller and middleware admission with the canonical
+`AuthPrincipalKind` classifier and non-nil identity requirements. Added
+regressions for inconsistent grants, required/optional controller authority,
+and rejection before artifact authorization database access. The follow-up
+also seals unchecked authority constructors, validates persisted principal
+invariants without legacy runtime fallback, and rejects nil owner-transfer
+targets. Regression sources cover canonical principal round-trips, malformed
+principal rejection, and nil owner targets. Maintainer verification remains pending: `cargo check -p rustok-server`,
+`cargo test -p rustok-server --lib registry` and remediation gate.
+
+## Default SuperAdmin bootstrap identity and conflict recovery (2026-11-25)
+
+Source changes align lookup with the canonical normalized account identity and
+handle the typed duplicate-email conflict after the creation transaction
+ends. Regressions cover normalized existing accounts, exact-identity conflict
+recovery and invalid email before tenant provisioning. The conflict regression
+models a committed winner; it does not establish PostgreSQL multi-replica
+contention behavior. Maintainer verification remains pending:
+`cargo check -p rustok-server`, `cargo test -p rustok-server --lib superadmin`,
+concurrent PostgreSQL startup verification and the remediation gate.
+
+## External Iggy configuration validation parity (2026-11-25)
+
+Source changes reuse the connector's structural validation before accepting
+external settings, and share stored configuration resolution between readiness
+and startup. The deployment fallback returns the normalized address list
+rather than the unchecked original. Added deployment normalization and
+connector-incompatible configuration regressions. Maintainer verification:
+`cargo check -p rustok-server`, `cargo test -p rustok-server --lib iggy_connector_settings_service`,
+`cargo test -p rustok-iggy-connector --lib`, real broker tests and remediation gate.
+No compilation or live broker result is claimed.
+
+## Worker group cancellation ordering follow-up (2026-11-25)
+
+Source changes cancel all remaining group members before joining their
+cleanup and resolve the stop signal through one atomic singleton operation.
+Added regressions for dependent task cleanup and concurrent stop-handle
+resolution. Maintainer verification remains pending:
+`cargo check -p rustok-server`, `cargo test -p rustok-server --lib app_lifecycle`,
+`cargo test -p rustok-server --lib stop_handle`, and the remediation gate.
+No compile or runtime result is claimed.
+
+## Forwarded authority parsing follow-up (2026-11-25)
+
+Source changes reject duplicate RFC Forwarded parameters, preserve quoted
+delimiters and avoid direct-host fallback after malformed forwarding. Added
+regressions for duplicate/malformed authority, quoted extension delimiters
+and duplicate Host fields. Maintainer verification remains pending:
+`cargo check -p rustok-server`, `cargo test -p rustok-server --lib request_trust`,
+tenant/channel/OAuth boundary checks and the remediation gate. No compilation
+or live proxy evidence is claimed.
+
+## Redis rate-limit recovery and acquisition deadlines (2026-11-25)
+
+Source changes bound shared connection-slot contention and repair persistent
+counter TTLs before operations that may fail. Added a stalled-initializer
+regression and extended the existing isolated Redis regression to cover
+integer overflow and wrong-type keys. Maintainer verification remains pending:
+`cargo check -p rustok-server`, `cargo test -p rustok-server --lib rate_limit`,
+the ignored real-Redis test using `RUSTOK_CACHE_REAL_REDIS_URL`, and the
+remediation gate. No compilation or runtime evidence is claimed.
+
+## HTTP observability response integrity follow-up (2026-11-25)
+
+Source changes enforce fail-closed readiness response normalization, preserve
+router method status and prohibit caching health/metrics responses. Regressions
+cover inconsistent and malformed readiness responses, aggregate metadata
+redaction, HEAD/POST behavior and edge cache policy. Maintainer verification:
+`cargo check -p rustok-server`, targeted `cargo test -p rustok-server --lib`
+for metrics_auth and security_headers, remediation gate and deployed probe/
+proxy verification remain pending. No runtime or compile result is claimed.
+
+## Global event configuration persistence follow-up (2026-11-25)
+
+Source changes remove the read-before-insert race in both global settings
+tables and reject malformed external Iggy addresses without echoing input.
+Regression sources cover concurrent and repeated profile persistence and
+endpoint admission. Maintainer verification remains pending:
+`cargo check -p rustok-server`, targeted `cargo test -p rustok-server --lib`
+for event-delivery and Iggy settings, and the remediation gate. PostgreSQL
+concurrent first-save behavior and real broker connectivity remain unverified;
+this change does not make Iggy readiness and profile persistence one
+cross-table transaction.
+
 ### Workflow durable cron admission / outcome review refinement (2026-11-23)
 
 Cron now atomically checks the current firing attempt and locked workflow

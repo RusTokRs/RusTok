@@ -176,6 +176,13 @@ impl ProductCatalogSchemaService {
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         lock_schema_for_policy_write(&txn, tenant_id).await?;
         ensure_attribute(&txn, tenant_id, input.attribute_id).await?;
+        super::attribute_validation::validate_required_locales_compatibility_in(
+            &txn,
+            tenant_id,
+            input.attribute_id,
+            &input.validation_overrides,
+        )
+        .await?;
         super::attribute_validation::validate_rule_option_references_in(
             &txn,
             tenant_id,
