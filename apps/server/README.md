@@ -335,3 +335,14 @@ persist corroborated host/primary time floors; in-domain checks only read
 them. A lower DB observation latches the local guard; a lower host sample
 refuses admission. Never reset the floors in a clock incident. This is not
 complete cross-restart expiry protection or an independent JWT clock fence.
+
+## Witnessed JWT authority clock extension
+
+The independent witness checkpoint now records the last checked authority
+DB time. Before deploying, stop all older writers and drain outstanding
+leases using reliable external time; an authenticated legacy checkpoint
+starts its floor at the first corroborated post-cutover observation.
+Do not downgrade, reset or strip the checkpoint. The new checked read
+requires a durable witness write when time advances; measure supervisor
+and metrics-path contention. The application late-observation boundary
+remains incomplete.

@@ -117,6 +117,9 @@ pub async fn admit_now(db: &DatabaseConnection) -> Result<DateTime<Utc>, DbErr> 
 
 pub(crate) async fn admit_with_clock(db: &DatabaseConnection, clock: &ClockGuard) -> Result<DateTime<Utc>, DbErr> {
     let tx = db.begin().await?;
+    if tx.get_database_backend() == DbBackend::Postgres {
+        tx.execute_unprepared("SET LOCAL synchronous_commit = 'on'").await?;
+    }
     // Acquire the serialization fence before sampling to avoid stale writes.
     let floor = read_floor(&tx, true).await?;
     let sample = observe(&tx, clock).await?;

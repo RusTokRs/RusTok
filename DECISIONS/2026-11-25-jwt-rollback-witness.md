@@ -29,8 +29,9 @@ The authority owns the runtime ledger. The witness holds its latest exact
 metadata snapshot, authenticated with a purpose-separated HKDF/HMAC key
 bound to the authority UUID. It includes a nonnegative monotonic revision,
 generation, envelope/tag, all lease/drain/untracked horizons and the complete
-replica registry. It holds no signing material. DB time is sampled, not
-checkpointed. Every conditional mutation, including grant, ACK, drain,
+replica registry. It holds no signing material. Checked authority DB time
+is now also authenticated as a witness-owned monotonic clock floor. Clock-only
+updates keep the ledger revision; every conditional ledger mutation, including grant, ACK, drain,
 admission and revocation, advances the revision even when the generation
 does not change. All reads compare both revision and exact metadata.
 
@@ -52,6 +53,24 @@ Other disconnected holders retain at most the existing bounded lease.
 Connection failures before a checkpoint comparison may close the host
 through existing supervisor/lease behavior. No cross-process instantaneous
 revocation or network calls on the JWT request path are promised.
+
+## Clock-floor extension
+
+Checked reads take both existing locks, resample authority DB time under
+those locks, corroborate it against host samples, reject a timestamp below
+the authenticated floor, and commit any advance to the witness before
+returning. Time-sensitive ledger mutations repeat the check and carry the
+floor forward; emergency revocation does not interpret or advance time.
+The same cancellation guard fences uncertain clock-only writes. Ledger
+comparison/recovery excludes the witness-only field from the authority-row
+projection but authenticates and retains it in the witness itself.
+
+Stop old writers and drain leases before cutover. An authenticated legacy
+checkpoint lacking the field is enrolled at the first checked observation
+of a trusted clock; no earlier history can be reconstructed. Old binaries
+reject the new payload; never downgrade or remove the field. A rollback
+of the witness itself remains outside the trust model. See the
+[clock ADR](2026-11-25-jwt-clock-discontinuity.md).
 
 ## Offline initialization and recovery
 
