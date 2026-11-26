@@ -678,9 +678,12 @@ HTTP edge settings are bounded before reaching Tokio and Tower:
 600; `RUSTOK_HTTP_UPLOAD_TIMEOUT_SECONDS` defaults to 300 seconds and is capped
 at 3,600; `RUSTOK_HTTP_CONCURRENCY_LIMIT` defaults to 512 and is capped at
 16,384. Zero or malformed values use the defaults, while oversized values are
-clamped with a warning. Only exact `multipart/form-data` requests to
-`/api/media` and PUT requests to the registry artifact route receive the
-upload timeout budget. Active rate-limit windows are normalized to 1 second
+clamped with a warning. The concurrency quota uses a single semaphore shared
+by all route services in one composed HTTP router, not a quota per endpoint.
+Only POST `multipart/form-data` requests to `/api/media` or `/api/media/`
+and PUT requests matching the exact registry artifact route grammar receive
+the extended upload timeout budget; repeated separators and unregistered
+registry trailing slashes do not qualify. Active rate-limit windows are normalized to 1 second
 through 365 days for both memory and Redis backends, with fractional durations
 rounded up to millisecond precision; disabled limiters remain disabled.
 Redis rate-limit counters without an expiry are repaired in the atomic script.
