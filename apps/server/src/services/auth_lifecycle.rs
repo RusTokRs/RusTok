@@ -599,10 +599,22 @@ impl AuthLifecycleService {
             return Err(AuthLifecycleError::InvalidCredentials);
         }
 
-        if !verify_password_async(password.to_string(), user.password_hash.clone())
-            .await
-            .map_err(AuthLifecycleError::from)?
-        {
+        let password_matches =
+            verify_password_async(password.to_string(), user.password_hash.clone())
+                .await
+                .map_err(AuthLifecycleError::from)?;
+        if !password_matches {
+            // Older or malformed stored hashes can fail much faster than the
+            // current dummy hash. Pad those failures so corrupt/legacy rows do
+            // not become an account-enumeration timing oracle.
+            if password_hash_needs_rehash(&user.password_hash) {
+                let dummy_hash = crate::auth::dummy_password_hash_async()
+                    .await
+                    .map_err(AuthLifecycleError::from)?;
+                verify_password_async(password.to_string(), dummy_hash)
+                    .await
+                    .map_err(AuthLifecycleError::from)?;
+            }
             Self::register_failed_login_attempt(db, tenant_id, &user).await?;
             return Err(AuthLifecycleError::InvalidCredentials);
         }
@@ -683,8 +695,13 @@ impl AuthLifecycleService {
     }
 
     fn is_login_locked(user: &users::Model) -> bool {
+        Self::is_login_locked_at(user, Utc::now())
+    }
+
+    fn is_login_locked_at(user: &users::Model, now: chrono::DateTime<Utc>) -> bool {
         user.locked_until
-            .is_some_and(|locked_until| locked_until.timestamp() > Utc::now().timestamp())
+            .as_ref()
+            .is_some_and(|locked_until| locked_until.with_timezone(&Utc) > now)
     }
 
     /// Serialize failed attempts with successful login and credential changes.
@@ -1605,7 +1622,7 @@ mod tests {
     use crate::models::{sessions, tenants, users};
     use crate::services::rbac_service::RbacService;
     use crate::services::server_runtime_context::ServerRuntimeContext;
-    use chrono::{Duration, Utc};
+    use chrono::{Duration, TimeZone, Utc};
     use rustok_core::UserStatus;
     use rustok_migrations::SqliteTestMigrator as Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
@@ -1746,6 +1763,19 @@ mod tests {
         .expect("refresh");
         assert!(rotated.refresh_expires_in > 0);
         assert!(rotated.refresh_expires_in <= 24 * 3600);
+    }
+
+    #[test]
+    fn login_lockout_deadline_uses_subsecond_precision() {
+        let now = Utc
+            .timestamp_opt(1_800_000_000, 500_000_000)
+            .single()
+            .expect("fixed timestamp");
+        let mut user = users::Model::default_service_user(Uuid::new_v4(), Uuid::new_v4());
+        user.locked_until = Some((now.clone() + Duration::nanoseconds(1)).into());
+        assert!(AuthLifecycleService::is_login_locked_at(&user, now.clone()));
+        user.locked_until = Some(now.clone().into());
+        assert!(!AuthLifecycleService::is_login_locked_at(&user, now));
     }
 
     #[tokio::test]

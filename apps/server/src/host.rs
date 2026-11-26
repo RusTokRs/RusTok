@@ -59,11 +59,13 @@ struct DatabaseConfig {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct AuthConfig {
     jwt: JwtConfig,
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct JwtConfig {
     #[serde(rename = "secret")]
     mac_root: String,
@@ -987,6 +989,21 @@ mod tests {
             RuntimeHostMode::Worker,
             &crate::common::settings::RustokSettings::default(),
         );
+    }
+
+    #[test]
+    fn host_auth_config_rejects_legacy_algorithm_and_key_source_fields() {
+        let algorithm_error = serde_yaml::from_str::<super::AuthConfig>(
+            "jwt:\n  secret: test-mac-root\n  expiration: 3600\n  algorithm: HS256\n",
+        )
+        .expect_err("legacy JWT algorithm selectors must be rejected");
+        assert!(algorithm_error.to_string().contains("unknown field"));
+
+        let key_source_error = serde_yaml::from_str::<super::AuthConfig>(
+            "jwt:\n  secret: test-mac-root\n  expiration: 3600\nkeyring_file: /tmp/keys.json\n",
+        )
+        .expect_err("alternate auth key sources must be rejected");
+        assert!(key_source_error.to_string().contains("unknown field"));
     }
 
     #[test]
