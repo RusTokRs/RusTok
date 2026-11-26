@@ -109,9 +109,10 @@ Fresh admission prepares one complete input: nullable SKU/barcode/shipping profi
 axis assignments, every supplied price/compare-at, and explicit inventory quantity/policy.
 Prices use exact nonnegative decimal strings; blank price means absent, not a zero-priced row.
 The client bounds are 100 characters per optional text field, 32 distinct axis assignments,
-64 prices and canonical decimal strings up to 64 characters. The Product owner independently
-rejects negative `i32` stock and accepts only the normalized `deny`/`continue` inventory
-policies. It enforces one shared maximum of 256 SKUs for initial and standalone creation,
+64 prices per variant and canonical decimal strings up to 64 characters. The Product owner enforces
+the same per-variant price-row cap at DTO and command boundaries, including every initial variant
+in Product creation. It independently rejects negative `i32` stock and accepts only the normalized
+`deny`/`continue` inventory policies. It enforces one shared maximum of 256 SKUs for initial and standalone creation,
 consistent with complete reads, axis reconfiguration and deletion. A no-axis Product still has
 exactly one default SKU. The owner remains responsible for current schema/tuple/uniqueness
 admission.
@@ -147,8 +148,10 @@ The root write fence verifies both persisted journals at fresh admission. Pendin
 requests fence other Product writes but are not reported as corrupt storage merely for being
 unresolved. Missing/changed storage does refuse IO. Explicit terminal correction retains the
 complete saved draft, including unavailable assignments/currencies. A confirmed attempt needs
-an explicit fresh document: its Variant UUID does not supply a new Product revision or authorize
-rebasing dirty document fields. Other lifecycle writers were not cut over by this work.
+an explicit fresh document: its Variant UUID acknowledgement does not include the Product revision or authorize
+rebasing dirty document fields. Standalone SKU membership create/delete advances the live Product revision once;
+existing-row edits use the Variant business revision and do not advance Product revision. Other lifecycle writers
+were not cut over by this work.
 
 ### Next
 

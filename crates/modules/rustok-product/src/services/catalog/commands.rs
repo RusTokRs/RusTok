@@ -83,12 +83,19 @@ fn normalize_variant_inventory_policy(value: &str) -> CommerceResult<String> {
 }
 
 fn validate_variant_prices(prices: &[PriceInput]) -> CommerceResult<()> {
+    if prices.len() > crate::dto::MAX_VARIANT_PRICE_ROWS {
+        return Err(CommerceError::Validation(format!(
+            "A variant can have at most {} price rows",
+            crate::dto::MAX_VARIANT_PRICE_ROWS
+        )));
+    }
+
     let mut seen = HashSet::new();
     for price in prices {
         let currency = price.currency_code.trim().to_ascii_uppercase();
         if currency.len() != 3 || !currency.bytes().all(|byte| byte.is_ascii_uppercase()) {
             return Err(CommerceError::Validation(format!(
-                "Currency code `{}` must contain exactly 3 ASCII letters (ISO 4217)",
+                "Currency code `{}` must contain exactly 3 ASCII letters",
                 price.currency_code
             )));
         }
@@ -3384,6 +3391,29 @@ mod tests {
                 Err(CommerceError::Validation(_))
             ));
         }
+    }
+
+    #[test]
+    fn validate_variant_prices_enforces_the_per_variant_owner_limit() {
+        let prices = |count: usize| {
+            (0..count)
+                .map(|index| PriceInput {
+                    currency_code: "USD".to_owned(),
+                    channel_id: Some(Uuid::from_u128(index as u128 + 1)),
+                    channel_slug: None,
+                    amount: Decimal::new(100, 2),
+                    compare_at_amount: None,
+                })
+                .collect::<Vec<_>>()
+        };
+
+        assert!(
+            validate_variant_prices(&prices(crate::dto::MAX_VARIANT_PRICE_ROWS)).is_ok()
+        );
+        assert!(matches!(
+            validate_variant_prices(&prices(crate::dto::MAX_VARIANT_PRICE_ROWS + 1)),
+            Err(CommerceError::Validation(_))
+        ));
     }
 
     #[test]

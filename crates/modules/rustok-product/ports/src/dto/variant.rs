@@ -21,6 +21,8 @@ pub struct CreateVariantInput {
     #[serde(default)]
     #[validate(nested)]
     pub axis_values: Vec<VariantAxisValueInput>,
+    // Keep this literal aligned with MAX_VARIANT_PRICE_ROWS in dto/mod.rs.
+    #[validate(length(max = 64, message = "A variant can have at most 64 price rows"))]
     #[validate(nested)]
     pub prices: Vec<PriceInput>,
     #[serde(default)]
@@ -45,8 +47,8 @@ fn default_inventory_policy() -> String {
 pub struct PriceInput {
     #[validate(length(
         min = 3,
-        max = 3,
-        message = "Currency code must be exactly 3 characters (ISO 4217)"
+        max = 5,
+        message = "Currency code must be 3 letters with optional surrounding whitespace"
     ))]
     pub currency_code: String,
     pub channel_id: Option<Uuid>,
@@ -72,6 +74,8 @@ pub struct UpdateVariantInput {
     #[serde(default, skip_serializing_if = "Patch::is_keep")]
     #[schema(value_type = Option<String>)]
     pub shipping_profile_slug: Patch<String>,
+    // Keep this literal aligned with MAX_VARIANT_PRICE_ROWS in dto/mod.rs.
+    #[validate(length(max = 64, message = "A variant can have at most 64 price rows"))]
     #[validate(nested)]
     pub prices: Option<Vec<PriceInput>>,
     pub inventory_quantity: Option<i32>,
@@ -150,6 +154,71 @@ pub struct AdjustInventoryInput {
 #[cfg(test)]
 mod patch_tests {
     use super::*;
+    use super::super::MAX_VARIANT_PRICE_ROWS;
+
+    fn valid_variant_prices(count: usize) -> Vec<PriceInput> {
+        (0..count)
+            .map(|index| PriceInput {
+                currency_code: "USD".to_owned(),
+                channel_id: None,
+                channel_slug: Some(format!("channel-{index}")),
+                amount: Decimal::new(100, 2),
+                compare_at_amount: None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn variant_price_row_count_is_bounded_for_create_and_update() {
+        let create_input = |prices| CreateVariantInput {
+            sku: None,
+            barcode: None,
+            shipping_profile_slug: None,
+            axis_values: Vec::new(),
+            prices,
+            inventory_quantity: 0,
+            inventory_policy: "deny".to_owned(),
+            weight: None,
+            weight_unit: None,
+        };
+        assert!(
+            create_input(valid_variant_prices(MAX_VARIANT_PRICE_ROWS))
+                .validate()
+                .is_ok()
+        );
+        assert!(
+            create_input(valid_variant_prices(MAX_VARIANT_PRICE_ROWS + 1))
+                .validate()
+                .is_err()
+        );
+
+        let update_input = |prices| UpdateVariantInput {
+            prices: Some(prices),
+            ..Default::default()
+        };
+        assert!(
+            update_input(valid_variant_prices(MAX_VARIANT_PRICE_ROWS))
+                .validate()
+                .is_ok()
+        );
+        assert!(
+            update_input(valid_variant_prices(MAX_VARIANT_PRICE_ROWS + 1))
+                .validate()
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn price_currency_validation_allows_the_owner_to_normalize_surrounding_whitespace() {
+        let price = PriceInput {
+            currency_code: " usd ".to_owned(),
+            channel_id: None,
+            channel_slug: None,
+            amount: Decimal::new(100, 2),
+            compare_at_amount: None,
+        };
+        assert!(price.validate().is_ok());
+    }
 
     #[test]
     fn missing_nullable_variant_fields_keep_their_values() {
