@@ -257,6 +257,11 @@ matching BFFs and revoke pre-cutover sessions; bare cookies are rejected.
   pre-migration generations cannot be reconstructed. Built-in client proof
   persistence/forwarding, API reference updates and runtime evidence remain
   open; see the [Auth plan](../../crates/modules/rustok-auth/docs/implementation-plan.md).
+- WebSocket authentication leases use the earlier of signed JWT expiry and
+  the persisted direct-session (including the absolute cap) or OAuth access
+  registration deadline. Revalidation rejects a shortened deadline and never
+  extends an existing connection lease. Source regression added; compilation
+  and mounted verification remain pending.
 - OAuth refresh-token reuse now propagates failed revocation persistence as
   `server_error`, allowing the caller to retry after a storage outage instead of
   falsely reporting only an invalid grant. Its 30-second grace window suppresses

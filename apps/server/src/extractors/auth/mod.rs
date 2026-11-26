@@ -40,6 +40,7 @@ pub struct CurrentUser {
     pub client_id: Option<uuid::Uuid>,
     pub scopes: Vec<String>,
     pub grant_type: String,
+    /// Effective access deadline: the earlier of the signed JWT and durable credential.
     pub access_token_expires_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -124,9 +125,15 @@ impl WebSocketAuthLease {
             }
         })?
         .map_err(|_| WebSocketAuthLeaseError::ResolutionFailed)?;
-        // A slow authority lookup must not extend the signed token lifetime.
+        // A slow authority lookup must not extend the original credential lifetime.
         if chrono::Utc::now() >= self.expires_at {
             return Err(WebSocketAuthLeaseError::Expired);
+        }
+        // A shortened durable deadline invalidates the original lease, even
+        // if the effective permissions have not changed. A later deadline
+        // never extends an already admitted connection.
+        if user.access_token_expires_at < self.expires_at {
+            return Err(WebSocketAuthLeaseError::AuthorityChanged);
         }
         let scope = crate::services::rbac_request_scope::RbacRequestScope::new(
             user.user.tenant_id,
@@ -668,7 +675,7 @@ pub async fn resolve_current_user_from_access_token(
         client_id: claims.client_id,
         scopes: claims.scopes,
         grant_type: claims.grant_type,
-        access_token_expires_at,
+        access_token_expires_at: access_token_expires_at.min(durable_credential_expires_at),
     })
 }
 
