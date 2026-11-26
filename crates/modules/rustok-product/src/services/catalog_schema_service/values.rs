@@ -8,6 +8,132 @@ use crate::services::write_transaction::record_product_operation_result;
 use rustok_api::TenantLocale;
 use sea_orm::{ColumnTrait, ConnectionTrait};
 
+const MAX_ATTRIBUTE_VALUE_PATCHES_PER_BATCH: usize = 1_000;
+const MAX_ATTRIBUTE_VALUE_OPTION_IDS_PER_BATCH: usize = 10_000;
+const MAX_ATTRIBUTE_VALUE_BATCHES_PER_COMMAND: usize = 128;
+const MAX_ATTRIBUTE_VALUE_PATCHES_PER_COMMAND: usize = 100_000;
+const MAX_ATTRIBUTE_VALUE_OPTION_IDS_PER_COMMAND: usize = 100_000;
+
+/// Validates patch shape and bounds before any ID-based SQL query is constructed.
+fn validate_attribute_value_patch_batch(
+    patches: &[ProductAttributeValuePatch],
+) -> CommerceResult<usize> {
+    if patches.len() > MAX_ATTRIBUTE_VALUE_PATCHES_PER_BATCH {
+        return Err(CommerceError::Validation(format!(
+            "attribute value batch exceeds the maximum of {MAX_ATTRIBUTE_VALUE_PATCHES_PER_BATCH} patches"
+        )));
+    }
+
+    let mut option_count = 0usize;
+    for patch in patches {
+        let count = match &patch.value {
+            ProductAttributeValuePatchValue::Select(_) => 1,
+            ProductAttributeValuePatchValue::Multiselect(option_ids) => option_ids.len(),
+            _ => 0,
+        };
+        option_count = option_count.checked_add(count).ok_or_else(|| {
+            CommerceError::Validation("attribute option selection count overflow".to_owned())
+        })?;
+        if option_count > MAX_ATTRIBUTE_VALUE_OPTION_IDS_PER_BATCH {
+            return Err(CommerceError::Validation(format!(
+                "attribute value batch exceeds the maximum of {MAX_ATTRIBUTE_VALUE_OPTION_IDS_PER_BATCH} selected option IDs"
+            )));
+        }
+    }
+
+    let mut seen_attributes = HashSet::with_capacity(patches.len());
+    let mut seen_options = HashSet::with_capacity(option_count);
+    for patch in patches {
+        validate_uuid("attribute_id", patch.attribute_id)?;
+        if !seen_attributes.insert(patch.attribute_id) {
+            return Err(CommerceError::Validation(format!(
+                "attribute {} occurs more than once in one patch request",
+                patch.attribute_id
+            )));
+        }
+
+        match &patch.value {
+            ProductAttributeValuePatchValue::Select(option_id) => {
+                validate_uuid("option_id", *option_id)?;
+                if !seen_options.insert(*option_id) {
+                    return Err(CommerceError::Validation(format!(
+                        "option {} occurs more than once in one patch request",
+                        option_id
+                    )));
+                }
+            }
+            ProductAttributeValuePatchValue::Multiselect(option_ids) => {
+                for option_id in option_ids {
+                    validate_uuid("option_id", *option_id)?;
+                    if !seen_options.insert(*option_id) {
+                        return Err(CommerceError::Validation(format!(
+                            "option {} occurs more than once in one patch request",
+                            option_id
+                        )));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(option_count)
+}
+
+fn validate_attribute_value_attribute_ids(attribute_ids: &[Uuid]) -> CommerceResult<()> {
+    if attribute_ids.len() > MAX_ATTRIBUTE_VALUE_PATCHES_PER_BATCH {
+        return Err(CommerceError::Validation(format!(
+            "detached attribute cleanup exceeds the maximum of {MAX_ATTRIBUTE_VALUE_PATCHES_PER_BATCH} attribute IDs"
+        )));
+    }
+
+    let mut seen = HashSet::with_capacity(attribute_ids.len());
+    for attribute_id in attribute_ids {
+        validate_uuid("attribute_id", *attribute_id)?;
+        if !seen.insert(*attribute_id) {
+            return Err(CommerceError::Validation(format!(
+                "attribute {} occurs more than once",
+                attribute_id
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_attribute_value_batches(
+    batches: &[crate::dto::ProductAttributeValueBatch],
+) -> CommerceResult<()> {
+    if batches.len() > MAX_ATTRIBUTE_VALUE_BATCHES_PER_COMMAND {
+        return Err(CommerceError::Validation(format!(
+            "attribute value command exceeds the maximum of {MAX_ATTRIBUTE_VALUE_BATCHES_PER_COMMAND} locale batches"
+        )));
+    }
+
+    let mut total_patches = 0usize;
+    let mut total_option_ids = 0usize;
+    for batch in batches {
+        let option_count = validate_attribute_value_patch_batch(&batch.patches)?;
+        total_patches = total_patches
+            .checked_add(batch.patches.len())
+            .ok_or_else(|| CommerceError::Validation("attribute patch count overflow".to_owned()))?;
+        total_option_ids = total_option_ids
+            .checked_add(option_count)
+            .ok_or_else(|| CommerceError::Validation("attribute option count overflow".to_owned()))?;
+
+        if total_patches > MAX_ATTRIBUTE_VALUE_PATCHES_PER_COMMAND {
+            return Err(CommerceError::Validation(format!(
+                "attribute value command exceeds the maximum of {MAX_ATTRIBUTE_VALUE_PATCHES_PER_COMMAND} patches"
+            )));
+        }
+        if total_option_ids > MAX_ATTRIBUTE_VALUE_OPTION_IDS_PER_COMMAND {
+            return Err(CommerceError::Validation(format!(
+                "attribute value command exceeds the maximum of {MAX_ATTRIBUTE_VALUE_OPTION_IDS_PER_COMMAND} selected option IDs"
+            )));
+        }
+    }
+    Ok(())
+}
+
 async fn lock_product_for_update_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -500,6 +626,7 @@ impl ProductCatalogSchemaService {
         patches: &[ProductAttributeValuePatch],
         seen_nonlocalized: &mut HashSet<Uuid>,
     ) -> CommerceResult<()> {
+        validate_attribute_value_patch_batch(patches)?;
         let locale = canonical_value_locale(locale)?;
         let product = lock_product_for_update_in_tx(txn, tenant_id, product_id).await?;
         let Some(primary_category_id) = product.primary_category_id else {
@@ -630,6 +757,7 @@ impl ProductCatalogSchemaService {
         product_id: Uuid,
         batches: &[crate::dto::ProductAttributeValueBatch],
     ) -> CommerceResult<bool> {
+        validate_attribute_value_batches(batches)?;
         let mut seen_locales = HashSet::new();
         let mut seen_nonlocalized = HashSet::new();
         let mut changed = false;
@@ -664,6 +792,7 @@ impl ProductCatalogSchemaService {
     ) -> CommerceResult<Vec<ProductAttributeValueRecord>> {
         let locale = canonical_value_locale(locale)?;
         validate_uuid("product_id", product_id)?;
+        validate_attribute_value_patch_batch(&patches)?;
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         let product = lock_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
@@ -707,6 +836,7 @@ impl ProductCatalogSchemaService {
     ) -> CommerceResult<Vec<ProductAttributeValueRecord>> {
         let locale = canonical_value_locale(locale)?;
         validate_uuid("product_id", product_id)?;
+        validate_attribute_value_attribute_ids(&attribute_ids)?;
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         let product = lock_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
         let detached_attribute_ids = match Self::load_effective_form_for_product_in(
@@ -750,6 +880,11 @@ impl ProductCatalogSchemaService {
             }
             attribute_ids
         };
+        if target_attribute_ids.len() > MAX_ATTRIBUTE_VALUE_PATCHES_PER_BATCH {
+            return Err(CommerceError::Validation(format!(
+                "detached Product attribute cleanup exceeds the maximum of {MAX_ATTRIBUTE_VALUE_PATCHES_PER_BATCH} attribute IDs"
+            )));
+        }
 
         if !target_attribute_ids.is_empty() {
             let (placeholders, mut values) = uuid_filter_values(tenant_id, &target_attribute_ids);
@@ -1228,6 +1363,37 @@ mod localized_clear_tests {
         .unwrap()
         .try_get("", "total")
         .unwrap()
+    }
+
+    #[test]
+    fn attribute_value_patch_batches_are_bounded_before_sql_queries() {
+        let too_many_patches = (0..=MAX_ATTRIBUTE_VALUE_PATCHES_PER_BATCH)
+            .map(|index| ProductAttributeValuePatch {
+                attribute_id: Uuid::from_u128(index as u128 + 1),
+                value: ProductAttributeValuePatchValue::Clear,
+            })
+            .collect::<Vec<_>>();
+        assert!(validate_attribute_value_patch_batch(&too_many_patches).is_err());
+
+        let too_many_options = (0..=MAX_ATTRIBUTE_VALUE_OPTION_IDS_PER_BATCH)
+            .map(|index| Uuid::from_u128(index as u128 + 1))
+            .collect::<Vec<_>>();
+        let multiselect = vec![ProductAttributeValuePatch {
+            attribute_id: Uuid::from_u128(1),
+            value: ProductAttributeValuePatchValue::Multiselect(too_many_options),
+        }];
+        assert!(validate_attribute_value_patch_batch(&multiselect).is_err());
+    }
+
+    #[test]
+    fn detached_attribute_cleanup_rejects_duplicate_and_oversized_ids() {
+        let attribute_id = Uuid::from_u128(1);
+        assert!(validate_attribute_value_attribute_ids(&[attribute_id, attribute_id]).is_err());
+
+        let too_many_ids = (0..=MAX_ATTRIBUTE_VALUE_PATCHES_PER_BATCH)
+            .map(|index| Uuid::from_u128(index as u128 + 1))
+            .collect::<Vec<_>>();
+        assert!(validate_attribute_value_attribute_ids(&too_many_ids).is_err());
     }
 
     fn localized_definition(attribute_id: Uuid) -> ProductAttributeWriteDefinitionRow {

@@ -141,6 +141,7 @@ impl ProductCatalogSchemaService {
     ) -> CommerceResult<Vec<ProductAttributeValueRecord>> {
         let locale = canonical_variant_value_locale(locale)?;
         validate_uuid("variant_id", variant_id)?;
+        super::validate_attribute_value_patch_batch(&patches)?;
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         let owner = load_variant_owner_for_update(&txn, tenant_id, variant_id).await?;
         let product =
@@ -273,6 +274,7 @@ impl ProductCatalogSchemaService {
     ) -> CommerceResult<Vec<ProductAttributeValueRecord>> {
         let locale = canonical_variant_value_locale(locale)?;
         validate_uuid("variant_id", variant_id)?;
+        super::validate_attribute_value_attribute_ids(&attribute_ids)?;
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         let owner = load_variant_owner_for_update(&txn, tenant_id, variant_id).await?;
         let current = self
@@ -304,6 +306,12 @@ impl ProductCatalogSchemaService {
             }
             attribute_ids
         };
+        if target_attribute_ids.len() > super::MAX_ATTRIBUTE_VALUE_PATCHES_PER_BATCH {
+            return Err(CommerceError::Validation(format!(
+                "detached Variant attribute cleanup exceeds the maximum of {} attribute IDs",
+                super::MAX_ATTRIBUTE_VALUE_PATCHES_PER_BATCH
+            )));
+        }
 
         if !target_attribute_ids.is_empty() {
             reject_configured_variant_axis_attribute_changes(
