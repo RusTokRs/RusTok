@@ -556,6 +556,13 @@ remain separate unfinished control-plane work.
 
 ## REST transport correctness
 
+The main-server CSP classifier matches reserved API and operator route families
+on path-segment boundaries. Registry mutations under `/v2/catalog`, protocol
+discovery under `/.well-known` and the build WebSocket use the strict API policy
+without UI nonce or report-only headers. Similarly named UI routes retain their
+nonce-backed policy. Focused classifier and HTTP middleware regressions are
+authored but unrun.
+
 The CSP report collector accepts legacy browser reports containing both
 `effective-directive` and `violated-directive`, preferring the nonblank
 effective value for bounded telemetry. The 512-byte location limit applies

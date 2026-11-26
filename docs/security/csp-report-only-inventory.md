@@ -65,6 +65,7 @@ The Prometheus family `rustok_module_errors_total` records the same bounded dire
 
 - `rustok-web::CspNonce` creates one UUIDv4-derived nonce per UI response.
 - The outer main-server security middleware inserts the nonce into request extensions and uses the same value in enforced and report-only headers.
+- Reserved API and operator route families are matched on path-segment boundaries, including registry mutations under `/v2/catalog`, protocol discovery under `/.well-known` and the build WebSocket at `/ws/builds`. These use the strict API CSP without UI nonce or report-only headers; similarly named UI routes are not classified as API surfaces.
 - Embedded admin processing applies the nonce only to script and style elements in the immutable bundled `index.html`; it is never applied to tenant or user-authored HTML.
 - Storefront processing applies the nonce only to the exact JSON-LD opening tag emitted by the typed SEO renderer.
 - The standalone admin middleware inserts the same nonce type into Axum request extensions and copies it into the Leptos render context through the UI nonce contract. Its SSR shell intentionally contains no transitional auth bootstrap or hydration script; module-owned server-preview and inline elements consume the context nonce, and browser hydrate/CSR reads the nonce from the trusted script that booted it.

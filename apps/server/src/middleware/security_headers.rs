@@ -184,14 +184,27 @@ fn plaintext_websocket_allowed() -> bool {
 }
 
 fn is_api_surface(path: &str) -> bool {
-    path.starts_with("/api/")
-        || path == "/metrics"
-        || path.starts_with("/metrics/")
-        || path.starts_with("/health")
-        || path.starts_with("/swagger")
-        || path.starts_with("/openapi")
-        || path.starts_with("/api/openapi")
-        || path.starts_with("/catalog")
+    // Match reserved route families on segment boundaries. The registry's
+    // mutation API and protocol discovery are not UI documents, while paths
+    // such as /healthcare must retain the normal UI nonce policy.
+    [
+        "/api",
+        "/metrics",
+        "/health",
+        "/swagger",
+        "/openapi",
+        "/catalog",
+        "/v2/catalog",
+        "/.well-known",
+        "/ws/builds",
+    ]
+    .iter()
+    .any(|&root| {
+        path == root
+            || path
+                .strip_prefix(root)
+                .is_some_and(|suffix| suffix.starts_with('/'))
+    })
 }
 
 fn is_richtext_frame_surface(path: &str) -> bool {
@@ -285,15 +298,51 @@ mod tests {
 
     #[test]
     fn api_and_operator_paths_use_strict_csp() {
-        assert_eq!(select_csp("/api/graphql", None, false), API_CSP);
-        assert_eq!(select_csp("/metrics", None, false), API_CSP);
-        assert_eq!(select_csp("/metrics/", None, false), API_CSP);
-        assert_eq!(select_csp("/health/ready", None, false), API_CSP);
-        assert_eq!(select_csp("/swagger/index.html", None, false), API_CSP);
-        assert_eq!(select_csp("/openapi/v3.json", None, false), API_CSP);
-        assert_eq!(select_csp("/catalog/modules", None, false), API_CSP);
-        assert_eq!(select_report_only_csp("/api/graphql", None), None);
-        assert_eq!(select_report_only_csp("/metrics/", None), None);
+        let nonce = CspNonce::generate();
+        // Passing a nonce makes classification observable rather than merely
+        // exercising the missing-nonce fail-closed fallback.
+        for path in [
+            "/api",
+            "/api/graphql",
+            "/metrics",
+            "/metrics/",
+            "/health/ready",
+            "/swagger/index.html",
+            "/openapi/v3.json",
+            "/catalog/modules",
+            "/v2/catalog/publish",
+            "/v2/catalog/publish/request/platform-build-stage",
+            "/v2/catalog/runner/claim",
+            "/.well-known/openid-configuration",
+            "/.well-known/oauth-authorization-server",
+            "/ws/builds",
+        ] {
+            assert_eq!(select_csp(path, Some(&nonce), false), API_CSP, "{path}");
+            assert_eq!(select_report_only_csp(path, Some(&nonce)), None, "{path}");
+        }
+    }
+
+    #[test]
+    fn similarly_named_ui_paths_are_not_api_surfaces() {
+        let nonce = CspNonce::generate();
+        for path in [
+            "/healthcare",
+            "/catalogue",
+            "/swagger-guide",
+            "/openapi-guide",
+            "/apiculture",
+            "/metrics-dashboard",
+            "/v2/catalogue",
+            "/.well-known-other",
+            "/ws/builds-guide",
+        ] {
+            assert!(
+                select_csp(path, Some(&nonce), false)
+                    .contains(nonce.source_expression().as_str()),
+                "{path}"
+            );
+            assert!(select_report_only_csp(path, Some(&nonce)).is_some(), "{path}");
+        }
     }
 
     #[test]
@@ -481,6 +530,42 @@ mod tests {
         .expect("UTF-8 nonce");
 
         assert!(policy.contains(format!("'nonce-{nonce}'").as_str()));
+    }
+
+    #[tokio::test]
+    async fn protocol_routes_do_not_receive_ui_nonce_or_reporting_headers() {
+        let app = Router::new()
+            .fallback(|request: axum::extract::Request| async move {
+                if request.extensions().get::<CspNonce>().is_some() {
+                    StatusCode::BAD_REQUEST
+                } else {
+                    StatusCode::OK
+                }
+            })
+            .layer(middleware::from_fn(security_headers));
+
+        for path in [
+            "/v2/catalog/publish",
+            "/.well-known/openid-configuration",
+            "/ws/builds",
+        ] {
+            let response = app
+                .clone()
+                .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+                .await
+                .expect("protocol response");
+            assert_eq!(response.status(), StatusCode::OK, "{path}");
+            assert_eq!(
+                response
+                    .headers()
+                    .get("content-security-policy")
+                    .and_then(|value| value.to_str().ok()),
+                Some(API_CSP),
+                "{path}"
+            );
+            assert!(!response.headers().contains_key("content-security-policy-report-only"));
+            assert!(!response.headers().contains_key("reporting-endpoints"));
+        }
     }
 
     #[tokio::test]
