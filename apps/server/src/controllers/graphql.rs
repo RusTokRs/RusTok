@@ -1,5 +1,5 @@
 use std::{
-    net::{IpAddr, SocketAddr},
+    net::IpAddr,
     sync::{Arc, OnceLock},
     time::Duration,
 };
@@ -9,11 +9,11 @@ use async_graphql::http::{GraphQLPlaygroundConfig, WebSocketProtocols, WsMessage
 use axum::{
     Extension, Json,
     extract::{
-        ConnectInfo, State,
+        State,
         rejection::JsonRejection,
         ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade},
     },
-    http::{HeaderMap, StatusCode, Uri, header},
+    http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
     routing::get,
 };
@@ -243,9 +243,7 @@ async fn graphql_ws_handler(
     State(auth_runtime): State<ServerAuthRuntime>,
     Extension(registry): Extension<ModuleRegistry>,
     Extension(schema): Extension<Arc<AppSchema>>,
-    headers: HeaderMap,
-    uri: Uri,
-    connect_info: Option<ConnectInfo<SocketAddr>>,
+    request: axum::http::Request<axum::body::Body>,
 ) -> impl IntoResponse {
     let ws = ws
         .protocols(async_graphql::http::ALL_WEBSOCKET_PROTOCOLS)
@@ -267,8 +265,9 @@ async fn graphql_ws_handler(
             .into_response();
     };
 
-    let query = uri.query().map(str::to_owned);
-    let peer_ip = connect_info.map(|ConnectInfo(address)| address.ip());
+    let headers = request.headers().clone();
+    let query = request.uri().query().map(str::to_owned);
+    let peer_ip = crate::common::peer_ip_from_extensions(request.extensions());
 
     ws.on_upgrade(move |socket| {
         handle_graphql_ws(
