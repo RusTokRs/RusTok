@@ -293,7 +293,7 @@ mod tests {
                         name: "Test channel".to_string(),
                         is_active: true,
                         is_default: false,
-                        status: "active".to_string(),
+                        status: rustok_channel::ChannelStatus::Active,
                         settings: serde_json::json!({}),
                         created_at: now,
                         updated_at: Utc::now(),

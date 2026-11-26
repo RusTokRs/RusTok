@@ -462,8 +462,19 @@ pub fn FlyCanvasPreview(
 ) -> impl IntoView {
     let is_interactive = interactive.unwrap_or(on_select.is_some());
     let style_nonce = csp_nonce.filter(|nonce| !nonce.trim().is_empty());
-    let canvas_style =
-        viewport_width.map(|width| format!("max-width: {width}px; margin-inline: auto"));
+    // The preview width used to be an inline `style` attribute. A host that serves the editor
+    // under `style-src-attr 'none'` drops that attribute, so a narrow preview silently spanned
+    // the whole pane while every other surface looked right. The width is data now
+    // (`data-fly-viewport`) and the single rule that consumes it rides in the canvas
+    // stylesheet, next to the rest of the canvas CSS the host already has to allow.
+    let canvas_viewport = viewport_width.map(|width| width.to_string());
+    let viewport_css = viewport_width
+        .map(|width| {
+            format!(
+                ".fly-canvas[data-fly-viewport=\"{width}\"] {{ max-width: {width}px; margin-inline: auto; }}"
+            )
+        })
+        .unwrap_or_default();
     let preview_failed_label = messages.unwrap_or_default().preview_failed;
     let selection = match page_index {
         Some(index) => PageSelection::Index(index),
@@ -655,13 +666,16 @@ pub fn FlyCanvasPreview(
                 data-fly-canvas="true"
                 data-fly-interactive=is_interactive.to_string()
                 data-fly-selected=selected.unwrap_or_default()
-                style=canvas_style
+                data-fly-viewport=canvas_viewport.unwrap_or_default()
                 on:click=on_canvas_click
                 on:dblclick=on_canvas_dblclick
                 on:focusout=on_canvas_focusout
                 on:keydown=on_canvas_keydown
             >
-                <style nonce=style_nonce.clone()>{format!("{}\n{}", page.css, interactive_css)}</style>
+                <style nonce=style_nonce.clone()>{format!(
+                    "{}\n{}\n{}",
+                    page.css, interactive_css, viewport_css
+                )}</style>
                 <div inner_html=page.html></div>
             </div>
         }
@@ -3579,6 +3593,38 @@ mod tests {
         }
         .to_html();
         assert!(!blank_nonce.contains("nonce="));
+    }
+
+    #[test]
+    fn canvas_preview_width_is_data_not_an_inline_style() {
+        let document: ProjectDocument = serde_json::from_value(serde_json::json!({
+            "project": { "pages": [{ "id": "home", "name": "Home",
+                "component": { "type": "wrapper", "id": "root" } }] }
+        }))
+        .expect("document");
+
+        let html = view! {
+            <FlyCanvasPreview
+                document=document
+                page_index=Some(0)
+                interactive=Some(false)
+                viewport_width=Some(1024)
+            />
+        }
+        .to_html();
+
+        // A host that serves the editor with `style-src-attr 'none'` drops every attribute
+        // style, which used to take the preview width with it and leave the narrow preview
+        // spanning the whole pane. The width is data now; the rule lives in the stylesheet.
+        assert!(
+            !html.contains(" style=\""),
+            "the canvas must not carry an inline style attribute: {html}"
+        );
+        assert!(html.contains("data-fly-viewport=\"1024\""));
+        assert!(
+            html.contains(".fly-canvas[data-fly-viewport=\"1024\"] { max-width: 1024px; margin-inline: auto; }"),
+            "the preview width must be enforced by a real stylesheet rule: {html}"
+        );
     }
 
     #[test]

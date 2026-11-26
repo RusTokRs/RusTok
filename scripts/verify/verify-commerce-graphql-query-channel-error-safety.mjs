@@ -69,12 +69,12 @@ const typedConversion = blockBetween(
 
 for (const marker of [
   'rustok_channel::ChannelService::new(db.clone())',
-  '.list_channels(tenant_id, 1, 250)',
+  '.list_channel_options(tenant_id, false)',
   'async_graphql::Error::new(err.to_string())',
   'Ok(channels.into_iter().map(Into::into).collect())',
 ]) requireText(channelResolver, marker, `${paths.query}: unchanged resolver contract`);
 
-const ownerCallCount = channelResolver.split('.list_channels(').length - 1;
+const ownerCallCount = channelResolver.split('.list_channel_options(').length - 1;
 if (ownerCallCount !== 1) {
   failures.push(`${paths.query}: expected one mounted Channel owner call, found ${ownerCallCount}`);
 }
@@ -90,10 +90,28 @@ for (const marker of [
   'use ::rustok_channel::{ChannelError, ChannelResponse};',
   'inner: ::rustok_channel::ChannelService',
   'inner: ::rustok_channel::ChannelService::new(db)',
-  'pub(crate) async fn list_channels(',
-  '.list_channels(tenant_id, page, per_page)',
+  'pub(crate) async fn list_channel_options(',
+  '.list_channel_options(tenant_id, include_inactive)',
   '.map_err(Into::into)',
 ]) requireText(channelShim, marker, `${paths.channelShim}: canonical owner delegation`);
+
+// `query.rs` is compiled twice: directly against the owner crate and again inside
+// this boundary, where `rustok_channel` is this shim. A method the resolver calls
+// on the owner service but the shim forgets only breaks the boundary build, so the
+// mirror is checked structurally instead of by remembering to update both.
+const ownerCalls = [
+  ...channelResolver.matchAll(/channel_service\s*\.\s*([A-Za-z0-9_]+)\(/g),
+].map((match) => match[1]);
+if (ownerCalls.length === 0) {
+  failures.push(`${paths.query}: resolver must call the Channel owner service`);
+}
+for (const method of new Set(ownerCalls)) {
+  requireText(
+    channelShim,
+    `pub(crate) async fn ${method}(`,
+    `${paths.channelShim}: shim must mirror the owner method ${method} called by the boundary build`,
+  );
+}
 
 for (const marker of [
   'pub(crate) fn to_string(self) -> ChannelGraphqlMessage',
@@ -110,6 +128,7 @@ for (const [variant, message, code] of [
   ['ChannelError::NotFound(_)', 'Channel data was not found', 'CHANNEL_RESOURCE_NOT_FOUND'],
   ['ChannelError::InactiveChannel(_)', 'Channel state conflicts with this query', 'CHANNEL_STATE_CONFLICT'],
   ['ChannelError::Database(_)', 'Channel data is temporarily unavailable', 'CHANNEL_TEMPORARILY_UNAVAILABLE'],
+  ['ChannelError::Conflict(_)', 'Channel query conflicted with a concurrent channel update', 'CHANNEL_CONCURRENT_CONFLICT'],
   ['ChannelError::Serialization(_)', 'Channel query could not be completed safely', 'CHANNEL_OPERATION_FAILED'],
 ]) {
   for (const marker of [variant, `"${message}"`, `"${code}"`]) {
@@ -236,7 +255,7 @@ for (const marker of [
   '# Commerce GraphQL channel error safety',
   'Status: `source_closed_unvalidated`',
   'The compatibility resolver source in `crates/modules/rustok-commerce/src/graphql/query.rs` remains unchanged.',
-  'call `list_channels(tenant_id, 1, 250)` exactly once',
+  'call `list_channel_options(tenant_id, false)` exactly once',
   'It does not format the Channel owner error into a public string.',
   '`CHANNEL_TEMPORARILY_UNAVAILABLE`',
   'Commerce and Channel FFA/FBA status is unchanged.',

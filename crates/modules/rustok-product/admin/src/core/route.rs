@@ -11,6 +11,12 @@ pub(crate) enum ProductAdminRoute {
 
 impl ProductAdminRoute {
     pub(crate) fn resolve(context: &UiRouteContext) -> Self {
+        // `products` is the declared landing child page; naming it keeps the
+        // manifest and the dispatch in the same vocabulary instead of relying on
+        // the fallthrough.
+        if context.subpath_matches("products") {
+            return Self::Catalog;
+        }
         if context.subpath_matches("categories") {
             return Self::Categories;
         }

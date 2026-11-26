@@ -318,9 +318,8 @@ impl From<rustok_channel::ChannelError> for BlogError {
             }
             rustok_channel::ChannelError::SlugAlreadyExists(message)
             | rustok_channel::ChannelError::TargetAlreadyExists(_, message)
-            | rustok_channel::ChannelError::PolicySetSlugAlreadyExists(message) => {
-                Self::Conflict(message)
-            }
+            | rustok_channel::ChannelError::PolicySetSlugAlreadyExists(message)
+            | rustok_channel::ChannelError::Conflict(message) => Self::Conflict(message),
             rustok_channel::ChannelError::NotFound(channel_id)
             | rustok_channel::ChannelError::InactiveChannel(channel_id) => Self::Invariant(
                 format!("Channel dependency referenced unavailable channel {channel_id}"),

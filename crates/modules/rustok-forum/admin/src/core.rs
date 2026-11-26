@@ -78,6 +78,32 @@ pub fn forum_admin_sidebar_copy_labels(
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Which module-owned workspace the Forum admin root renders for a subpath.
+///
+/// The module declares `topics`, `categories` and the topic action routes
+/// (`rename-slug`, `merge`, `move`); the actions are dialogs over a selected
+/// topic, so the workspace split is topics vs categories.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ForumAdminSection {
+    Topics,
+    Categories,
+}
+
+/// Map a route subpath onto the workspace it names.
+///
+/// Unknown and nested subpaths fall back to the topics workspace, which is the
+/// module landing surface.
+pub fn forum_admin_section_for_subpath(subpath: Option<&str>) -> ForumAdminSection {
+    let Some(subpath) = subpath else {
+        return ForumAdminSection::Topics;
+    };
+    match subpath.trim_matches('/').split('/').next().unwrap_or("") {
+        "categories" => ForumAdminSection::Categories,
+        "topics" => ForumAdminSection::Topics,
+        _ => ForumAdminSection::Topics,
+    }
+}
+
 pub enum ForumAdminMetricSurface {
     Categories,
     Topics,
@@ -1065,6 +1091,36 @@ pub fn reply_count_label(replies: Option<Result<Vec<ReplyListItem>, String>>) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn declared_child_pages_select_their_own_workspace() {
+        assert_eq!(
+            forum_admin_section_for_subpath(Some("topics")),
+            ForumAdminSection::Topics
+        );
+        assert_eq!(
+            forum_admin_section_for_subpath(Some("categories")),
+            ForumAdminSection::Categories
+        );
+        assert_eq!(
+            forum_admin_section_for_subpath(Some("categories/42")),
+            ForumAdminSection::Categories
+        );
+        assert_eq!(
+            forum_admin_section_for_subpath(Some("topics/42")),
+            ForumAdminSection::Topics
+        );
+        // Topic action routes are dialogs over the topics workspace.
+        assert_eq!(
+            forum_admin_section_for_subpath(Some("rename-slug")),
+            ForumAdminSection::Topics
+        );
+        assert_eq!(
+            forum_admin_section_for_subpath(Some("unknown")),
+            ForumAdminSection::Topics
+        );
+        assert_eq!(forum_admin_section_for_subpath(None), ForumAdminSection::Topics);
+    }
 
     fn category_item(id: &str, name: &str) -> CategoryListItem {
         CategoryListItem {

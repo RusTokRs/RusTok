@@ -2,10 +2,11 @@ use leptos::prelude::*;
 
 use crate::{
     header::GridHeader, pagination::GridPaginationBar, row::GridRow, toolbar::GridToolbar,
+    use_grid_locale,
 };
 use rustok_grid::{
-    ColumnFilters, ColumnWidths, FilterValue, GridColumnDef, GridPagination, PaginationMode,
-    RowSelection, SortState, visible_column_count,
+    CellValue, ColumnFilters, ColumnWidths, FilterValue, GridColumnDef, GridMessages, GridPagination,
+    PaginationMode, RowSelection, SortState, visible_column_count,
 };
 
 /// SSR-first data grid.
@@ -23,6 +24,24 @@ use rustok_grid::{
 /// * **server-side** (`on_page_change` provided): the caller owns `data` and
 ///   must keep `pagination.total` up to date; the grid never slices and
 ///   reports the *clamped, effective* page number back.
+///
+/// # Sorting
+///
+/// Header sorting is only advertised when it can change the rows, so a column
+/// never grows a click affordance that does nothing:
+///
+/// * `sort_cell` provided — the grid orders the client-side rows by the active
+///   [`SortState`] before slicing, using the caller's
+///   [`CellValue`] vocabulary and the core comparator;
+/// * `on_sort_change` or a server-side `on_page_change` — the caller re-queries,
+///   and the grid only reports the state;
+/// * neither — headers render as plain labels.
+///
+/// # Locale
+///
+/// Grid chrome comes from [`GridMessages`]. An explicit catalog wins; otherwise
+/// the ambient [`GridLocale`] provided by the host is used, so a table cannot
+/// stay English-only because a call site forgot `messages`.
 #[component]
 pub fn DataGrid<T, K, KF>(
     /// Column definitions. Visibility is then owned by the grid (toolbar).
@@ -48,6 +67,13 @@ pub fn DataGrid<T, K, KF>(
     #[prop(optional)] on_filter_change: Option<Callback<ColumnFilters>>,
     #[prop(optional)] sort_state: Option<RwSignal<SortState>>,
     #[prop(optional)] on_sort_change: Option<Callback<SortState>>,
+    /// Client-side ordering key: `(row, column id) -> CellValue`.
+    ///
+    /// When present the grid sorts its own rows (client-side mode) with the
+    /// core comparator, so ties keep their input order. Without it the grid
+    /// cannot know how to compare two rows and stops advertising sorting until
+    /// the caller sorts itself through `on_sort_change`.
+    #[prop(optional)] sort_cell: Option<Callback<(T, String), CellValue>>,
     #[prop(optional)] selection: Option<RwSignal<RowSelection>>,
     #[prop(optional)] on_selection_change: Option<Callback<RowSelection>>,
     #[prop(optional)] column_widths: Option<RwSignal<ColumnWidths>>,
@@ -65,6 +91,13 @@ where
     K: std::fmt::Display + 'static,
     KF: Fn(&T) -> K + Send + Sync + Copy + 'static,
 {
+    // An explicit catalog wins; otherwise the host's ambient locale applies, so
+    // `messages` stays an override instead of a mandatory per-call-site ritual.
+    let messages = if messages.locale().is_some() {
+        messages
+    } else {
+        GridMessages::for_locale(use_grid_locale().as_deref())
+    };
     provide_context(messages.clone());
     let grid_loading = messages.text("grid.loading");
     let local_columns = RwSignal::new(columns);
@@ -103,16 +136,46 @@ where
         });
     }
 
+    // Client-side ordering. Keys are resolved once per row, so the comparator
+    // itself stays allocation-free and the sort is a plain `sort_by` over the
+    // core's `CellValue` semantics (stable: equal rows keep their input order).
+    let sorted_items = move || {
+        let items = data.get();
+        if !client_side {
+            return items;
+        }
+        let Some(cell_of) = sort_cell else {
+            return items;
+        };
+        let sort = local_sort.get();
+        let Some((column_id, _direction)) = sort.active() else {
+            return items;
+        };
+        let column_id = column_id.to_string();
+        let mut keyed: Vec<(CellValue, T)> = items
+            .into_iter()
+            .map(|item| (cell_of.run((item.clone(), column_id.clone())), item))
+            .collect();
+        sort.sort_items(&mut keyed, |entry, _column_id| entry.0.clone());
+        keyed.into_iter().map(|(_, item)| item).collect()
+    };
+
     // Rows to render: the current page (client-side) or whatever the caller
     // provided (server-side).
     let display_items = move || {
-        let items = data.get();
+        let items = sorted_items();
         if !client_side {
             return items;
         }
         let (start, end) = effective_pagination.get().slice_bounds(items.len());
         items[start..end].to_vec()
     };
+
+    // Sorting is advertised only when it can actually reorder rows: the grid
+    // sorts client-side, or the caller answered with `on_sort_change`, or a
+    // server-side caller owns the query anyway.
+    let sort_enabled =
+        Signal::derive(move || sort_cell.is_some() || on_sort_change.is_some() || !client_side);
 
     let visible_colspan = move || visible_column_count(&local_columns.get()).max(1);
 
@@ -282,11 +345,36 @@ where
             />
 
             <div class="w-full overflow-x-auto relative">
-                <table class="w-full border-collapse text-left" aria-label=table_label>
+                // `table-fixed` makes the <colgroup> hints authoritative instead of
+                // merely advisory: with auto layout a wide cell wins over the hint and
+                // resizing a column appears to do nothing.
+                <table class="w-full table-fixed border-collapse text-left" aria-label=table_label>
+                    // Column geometry is a presentational hint on <col>: the
+                    // `style` attribute it replaces is blocked by the host's
+                    // `style-src-attr 'none'` CSP, which silently disabled
+                    // widths and resizing in production.
+                    <colgroup>
+                        {move || {
+                            local_columns
+                                .get()
+                                .into_iter()
+                                .filter(|col| col.visible)
+                                .map(|col| {
+                                    let id = col.id.as_str().to_string();
+                                    let width = col.width;
+                                    let current = local_widths
+                                        .get()
+                                        .get_clamped(&id, width.current, width.min, width.max);
+                                    view! { <col width=current.to_string() /> }
+                                })
+                                .collect_view()
+                        }}
+                    </colgroup>
                     <GridHeader
                         columns=local_columns.into()
                         column_widths=local_widths.into()
                         sort_state=local_sort.into()
+                        sort_enabled=sort_enabled
                         filters=local_filters.into()
                         all_selected=all_selected
                         some_selected=some_selected
@@ -312,7 +400,6 @@ where
                                         item=item
                                         row_id=row_id
                                         columns=local_columns.into()
-                                        column_widths=local_widths.into()
                                         is_selected=is_selected
                                         on_toggle_select=handle_toggle_row_select
                                         on_row_click=on_row_click

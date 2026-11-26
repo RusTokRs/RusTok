@@ -11,7 +11,8 @@ use crate::model::{
     ChannelModuleBindingRecord, ChannelOauthAppRecord, ChannelRecord,
     ChannelResolutionPolicySetRecord, ChannelResolutionRuleRecord, ChannelTargetRecord,
     CreateChannelPayload, CreateChannelTargetPayload, CreateResolutionPolicySetPayload,
-    CreateResolutionRulePayload, ReorderResolutionRulesPayload, UpdateResolutionRulePayload,
+    CreateResolutionRulePayload, ReorderResolutionRulesPayload, UpdateChannelPayload,
+    UpdateResolutionRulePayload,
 };
 
 #[cfg(feature = "ssr")]
@@ -98,7 +99,6 @@ fn map_current_channel(value: rustok_api::ChannelContext) -> ResolvedChannelCont
         slug: value.slug,
         name: value.name,
         is_active: value.is_active,
-        status: value.status,
         target_type: value.target_type,
         target_value: value.target_value,
         settings: value.settings,
@@ -148,7 +148,6 @@ fn map_channel_record(value: rustok_channel::ChannelResponse) -> ChannelRecord {
         name: value.name,
         is_active: value.is_active,
         is_default: value.is_default,
-        status: value.status,
         settings: value.settings,
         created_at: value.created_at.to_rfc3339(),
         updated_at: value.updated_at.to_rfc3339(),
@@ -529,6 +528,138 @@ pub(super) async fn channel_set_default_native(
         let _ = channel_id;
         Err(ServerFnError::new(
             "channel/set-default requires the `ssr` feature",
+        ))
+    }
+}
+
+/// Renames a channel or replaces its settings through the in-process owner.
+#[server(prefix = "/api/fn", endpoint = "channel/update-channel")]
+pub(super) async fn channel_update_native(
+    channel_id: String,
+    payload: UpdateChannelPayload,
+) -> Result<ChannelRecord, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use leptos::prelude::expect_context;
+        use rustok_api::HostRuntimeContext;
+        use rustok_api::{AuthContext, TenantContext};
+        use rustok_channel::{ChannelService, UpdateChannelInput};
+
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
+        let auth = leptos_axum::extract::<AuthContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+
+        ensure_manage_permission(&auth, tenant.id)?;
+
+        let service = ChannelService::new(db.clone());
+        let channel_uuid = parse_uuid(&channel_id, "channel_id")?;
+        let updated = service
+            .update_channel(
+                tenant.id,
+                channel_uuid,
+                UpdateChannelInput {
+                    name: payload.name,
+                    settings: payload.settings,
+                },
+            )
+            .await
+            .map_err(ServerFnError::new)?;
+
+        Ok(map_channel_record(updated))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (channel_id, payload);
+        Err(ServerFnError::new(
+            "channel/update-channel requires the `ssr` feature",
+        ))
+    }
+}
+
+/// Activates or deactivates a channel through the in-process owner.
+#[server(prefix = "/api/fn", endpoint = "channel/set-active")]
+pub(super) async fn channel_set_active_native(
+    channel_id: String,
+    is_active: bool,
+) -> Result<ChannelRecord, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use leptos::prelude::expect_context;
+        use rustok_api::HostRuntimeContext;
+        use rustok_api::{AuthContext, TenantContext};
+        use rustok_channel::ChannelService;
+
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
+        let auth = leptos_axum::extract::<AuthContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+
+        ensure_manage_permission(&auth, tenant.id)?;
+
+        let service = ChannelService::new(db.clone());
+        let channel_uuid = parse_uuid(&channel_id, "channel_id")?;
+        let updated = service
+            .set_channel_active(tenant.id, channel_uuid, is_active)
+            .await
+            .map_err(ServerFnError::new)?;
+
+        Ok(map_channel_record(updated))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (channel_id, is_active);
+        Err(ServerFnError::new(
+            "channel/set-active requires the `ssr` feature",
+        ))
+    }
+}
+
+/// Deletes a channel and everything that referenced it.
+#[server(prefix = "/api/fn", endpoint = "channel/delete-channel")]
+pub(super) async fn channel_delete_native(
+    channel_id: String,
+) -> Result<ChannelRecord, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use leptos::prelude::expect_context;
+        use rustok_api::HostRuntimeContext;
+        use rustok_api::{AuthContext, TenantContext};
+        use rustok_channel::ChannelService;
+
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let db = runtime_ctx.db_clone();
+        let auth = leptos_axum::extract::<AuthContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+
+        ensure_manage_permission(&auth, tenant.id)?;
+
+        let service = ChannelService::new(db.clone());
+        let channel_uuid = parse_uuid(&channel_id, "channel_id")?;
+        let deleted = service
+            .delete_channel(tenant.id, channel_uuid)
+            .await
+            .map_err(ServerFnError::new)?;
+
+        Ok(map_channel_record(deleted))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = channel_id;
+        Err(ServerFnError::new(
+            "channel/delete-channel requires the `ssr` feature",
         ))
     }
 }

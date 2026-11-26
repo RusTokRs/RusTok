@@ -21,6 +21,37 @@ Pagination has two modes, selected implicitly:
 | slicing | done by the grid (`GridPagination::slice_bounds`) | done by the caller |
 | callbacks | — | receive the *clamped, effective* page, never an out-of-range number |
 
+## Sorting
+
+Header sorting is only *offered* when it can change the rows, so a column never grows an affordance
+that does nothing:
+
+| call site | header | who orders the rows |
+| --- | --- | --- |
+| `sort_cell` provided | sort button + `aria-sort` | the grid: `(row, column) -> CellValue`, ordered by the core comparator through `SortState::sort_items` |
+| `on_sort_change` provided, or server-side pagination | sort button + `aria-sort` | the caller (it re-queries) |
+| neither | plain column label | nobody — and the header says so |
+
+`sort_cell` keys are resolved once per row before the sort, so the comparison itself does not
+allocate; equal keys keep their input order.
+
+## Locale
+
+Grid chrome (pager, page-size picker, empty state, table name, filter labels) comes from
+`GridMessages`. An explicit `messages` prop wins. Otherwise the grid resolves its catalog against the
+ambient `GridLocale` the host provides once through `provide_grid_locale`, which is what keeps a
+table that never passes `messages` from rendering English copy inside a Russian admin.
+
+## Column widths and CSP
+
+Column geometry is emitted as a presentational `<colgroup><col width="…">` hint, not as a `style`
+attribute: hosts serve UI documents with `style-src-attr 'none'`, which silently drops inline widths
+and turns resizing into a no-op that only shows up in production. The table is `table-fixed`, so the
+hints are authoritative — with auto layout a single wide cell would win over the hint and dragging a
+column edge would look broken. Browsers distribute the remainder of the container width
+proportionally, so a stored width is a weight, not a guarantee to the pixel. Keep the grid free of
+inline styles for the same reason.
+
 ## SSR
 
 Nothing that affects the first paint happens in an `Effect` (effects never run on the server): totals and page slices are derived signals, so the server-rendered markup matches the hydrated one. `web-sys` pointer/keyboard code only runs from event handlers, which never fire during SSR.

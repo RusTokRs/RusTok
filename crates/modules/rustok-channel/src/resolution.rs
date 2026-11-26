@@ -121,8 +121,12 @@ impl ChannelResolver {
                     detail: "X-Channel-ID header is a nil UUID".to_string(),
                 });
             } else {
-                match self.service.get_channel_detail(channel_id).await? {
-                    detail if detail.channel.tenant_id != facts.tenant_id => {
+                // An unknown selector is a client mistake in the *selector*, not a
+                // server failure: it must fall through to the remaining stages (and
+                // ultimately to the tenant default) exactly like an unknown slug,
+                // instead of failing the whole request with a `500`.
+                match self.service.get_channel_detail(channel_id).await {
+                    Ok(detail) if detail.channel.tenant_id != facts.tenant_id => {
                         trace.push(ResolutionTraceStep {
                             stage: ResolutionStage::HeaderId,
                             outcome: ResolutionOutcome::Rejected,
@@ -132,14 +136,14 @@ impl ChannelResolver {
                             ),
                         });
                     }
-                    detail if !detail.channel.is_active => {
+                    Ok(detail) if !detail.channel.is_active => {
                         trace.push(ResolutionTraceStep {
                             stage: ResolutionStage::HeaderId,
                             outcome: ResolutionOutcome::Rejected,
                             detail: format!("Channel '{channel_id}' is inactive"),
                         });
                     }
-                    detail => {
+                    Ok(detail) => {
                         trace.push(ResolutionTraceStep {
                             stage: ResolutionStage::HeaderId,
                             outcome: ResolutionOutcome::Matched,
@@ -151,6 +155,12 @@ impl ChannelResolver {
                             trace,
                         ));
                     }
+                    Err(crate::ChannelError::NotFound(_)) => trace.push(ResolutionTraceStep {
+                        stage: ResolutionStage::HeaderId,
+                        outcome: ResolutionOutcome::Miss,
+                        detail: format!("No channel found for id '{channel_id}'"),
+                    }),
+                    Err(error) => return Err(error),
                 }
             }
         } else {

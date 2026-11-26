@@ -25,6 +25,16 @@ impl GridMessages {
         }
     }
 
+    /// The locale this catalog resolves against, when the host chose one.
+    ///
+    /// `None` means "no explicit choice was made": the Leptos adapter then
+    /// falls back to the ambient grid locale it provides, so a table cannot end
+    /// up English-only by omission.
+    pub fn locale(&self) -> Option<&str> {
+        self.locale.as_deref()
+    }
+
+    /// Catalog copy for `key`, resolved against this locale.
     pub fn text(&self, key: &str) -> String {
         MESSAGES.t_for_locale(self.locale.as_deref(), key, key)
     }
@@ -96,5 +106,15 @@ mod tests {
             "Выбрано 5 строк"
         );
         assert!(MESSAGES.validate().is_ok());
+    }
+
+    #[test]
+    fn unset_catalog_reports_no_locale_so_the_host_can_supply_one() {
+        // `DataGrid`'s prop default is the empty catalog; the adapter reads
+        // `locale()` to decide whether the ambient context locale should win.
+        assert_eq!(GridMessages::default().locale(), None);
+        assert_eq!(GridMessages::for_locale(None).locale(), None);
+        assert_eq!(GridMessages::for_locale(Some("ru")).locale(), Some("ru"));
+        assert_eq!(GridMessages::default().text("grid.next"), "Next");
     }
 }

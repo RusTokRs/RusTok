@@ -330,3 +330,5 @@ product-attributeLifecycle-loading = Чтение каталога. Восста
 product-category-rule-label = Правило виртуальной категории
 product-category-rule-hint = Введите JSON-объект V1 хотя бы с одним условием. Пример:
 product-category-rule-required = Введите правило виртуальной категории.
+product-attributes-schemasTable = Схемы атрибутов
+product-attributes-valuesTable = Атрибуты товаров

@@ -6,10 +6,13 @@ use rustok_api::context::{
     ChannelResolutionOutcome, ChannelResolutionSource, ChannelResolutionStage,
 };
 use rustok_ui_core::{AdminQueryKey, UiRouteContext, normalize_ui_text};
+use rustok_ui_leptos::{Alert, AlertVariant, Button, Input};
 
 use crate::core::{
-    ChannelPolicySelectionCleanup, PolicyRuleFormState, channel_policy_selection_cleanup,
-    channel_selection_exists, policy_rule_active_update_payload, policy_rule_create_form_state,
+    CHANNEL_DELETE_FEEDBACK, ChannelAdminSection, ChannelPolicySelectionCleanup,
+    PolicyRuleFormState, channel_admin_section_for_subpath, channel_lifecycle_toggle,
+    channel_policy_selection_cleanup, channel_rename_command, channel_selection_exists,
+    channel_status_badge, policy_rule_active_update_payload, policy_rule_create_form_state,
     policy_rule_edit_form_state, reorder_policy_rule_ids,
 };
 use crate::i18n::t;
@@ -50,6 +53,10 @@ where
 #[component]
 pub fn ChannelAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    // The module declares `targets` and `apps` as child pages and the host serves
+    // all of them through this one component, so the module owns the dispatch.
+    let section = channel_admin_section_for_subpath(route_context.subpath.as_deref());
+    let is_landing_workspace = matches!(section, ChannelAdminSection::Channels);
     let ui_locale = route_context.locale.clone();
     let selected_channel_query = use_route_query_value(AdminQueryKey::ChannelId.as_str());
     let query_writer = use_route_query_writer();
@@ -89,6 +96,8 @@ pub fn ChannelAdmin() -> impl IntoView {
         "Creating...",
     );
     let create_label = t(ui_locale.as_deref(), "channel.create.submit", "Create");
+    let slug_label = t(ui_locale.as_deref(), "channel.create.slugLabel", "Channel slug");
+    let name_label = t(ui_locale.as_deref(), "channel.create.nameLabel", "Channel name");
     let empty_channels_label = t(
         ui_locale.as_deref(),
         "channel.empty.channels",
@@ -185,12 +194,14 @@ pub fn ChannelAdmin() -> impl IntoView {
         .clone()
         .unwrap_or_else(|| "channels".to_string());
 
+    let section_name = section.as_str();
+
     view! {
-        <div class="space-y-6">
+        <div class="space-y-6" data-channel-section=section_name>
             <header class="rounded-2xl border border-border bg-card p-6 shadow-sm">
                 <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div class="space-y-2">
-                        <span class="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-700">
+                        <span class="inline-flex items-center rounded-full border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
                             {badge_label.clone()}
                         </span>
                         <h1 class="text-2xl font-semibold text-card-foreground">{title_label.clone()}</h1>
@@ -209,47 +220,51 @@ pub fn ChannelAdmin() -> impl IntoView {
                 </div>
             </header>
 
-            <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
-                <div class="space-y-1">
-                    <h2 class="text-lg font-semibold text-card-foreground">{create_title.clone()}</h2>
-                    <p class="text-sm text-muted-foreground">
-                        {create_subtitle.clone()}
-                    </p>
-                </div>
-                <form class="mt-5 grid gap-4 lg:grid-cols-[1fr_1fr_auto]" on:submit=on_create>
-                    <input
-                        type="text"
-                        class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                        placeholder=slug_placeholder.clone()
-                        prop:value=create_slug
-                        on:input=move |ev| create_slug.set(event_target_value(&ev))
-                    />
-                    <input
-                        type="text"
-                        class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                        placeholder=name_placeholder.clone()
-                        prop:value=create_name
-                        on:input=move |ev| create_name.set(event_target_value(&ev))
-                    />
-                    <button
-                        type="submit"
-                        class="inline-flex h-10 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
-                        disabled=move || create_busy.get()
-                    >
-                        {move || if create_busy.get() { creating_label.clone() } else { create_label.clone() }}
-                    </button>
-                </form>
-                <Show when=move || feedback.get().is_some()>
-                    <div class="mt-4 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                        {move || feedback.get().unwrap_or_default()}
-                    </div>
-                </Show>
-                <Show when=move || error.get().is_some()>
-                    <div class="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                        {move || error.get().unwrap_or_default()}
-                    </div>
-                </Show>
-            </section>
+            {if is_landing_workspace {
+                view! {
+                    <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
+                        <div class="space-y-1">
+                            <h2 class="text-lg font-semibold text-card-foreground">{create_title.clone()}</h2>
+                            <p class="text-sm text-muted-foreground">
+                                {create_subtitle.clone()}
+                            </p>
+                        </div>
+                        <form class="mt-5 grid gap-4 lg:grid-cols-[1fr_1fr_auto]" on:submit=on_create>
+                            <Input
+                                placeholder=slug_placeholder.clone()
+                                aria_label=slug_label.clone()
+                                value=create_slug.read_only()
+                                set_value=create_slug.write_only()
+                            />
+                            <Input
+                                placeholder=name_placeholder.clone()
+                                aria_label=name_label.clone()
+                                value=create_name.read_only()
+                                set_value=create_name.write_only()
+                            />
+                            <Button
+                                r#type="submit"
+                                loading=move || create_busy.get()
+                                disabled=move || create_busy.get()
+                            >
+                                {move || if create_busy.get() { creating_label.clone() } else { create_label.clone() }}
+                            </Button>
+                        </form>
+                        <Show when=move || feedback.get().is_some()>
+                            <Alert variant=AlertVariant::Success class="mt-4">
+                                {move || feedback.get().unwrap_or_default()}
+                            </Alert>
+                        </Show>
+                        <Show when=move || error.get().is_some()>
+                            <Alert variant=AlertVariant::Destructive class="mt-4">
+                                {move || error.get().unwrap_or_default()}
+                            </Alert>
+                        </Show>
+                    </section>
+                }.into_any()
+            } else {
+                ().into_any()
+            }}
 
             <Suspense fallback=move || view! { <div class="h-48 animate-pulse rounded-2xl bg-muted"></div> }>
                 {move || {
@@ -257,16 +272,22 @@ pub fn ChannelAdmin() -> impl IntoView {
                         Ok(bootstrap) => view! {
                             <div class="space-y-6">
                                 <RuntimeContext bootstrap=bootstrap.clone() />
-                                <PolicyWorkbench
-                                    policy_sets=bootstrap.policy_sets.clone()
-                                    channels=bootstrap.channels.clone()
-                                    oauth_apps=bootstrap.oauth_apps.clone()
-                                    token=token.get()
-                                    tenant=tenant.get()
-                                    set_feedback=set_feedback
-                                    set_error=set_error
-                                    set_refresh_nonce=set_refresh_nonce
-                                />
+                                {if is_landing_workspace {
+                                    view! {
+                                        <PolicyWorkbench
+                                            policy_sets=bootstrap.policy_sets.clone()
+                                            channels=bootstrap.channels.clone()
+                                            oauth_apps=bootstrap.oauth_apps.clone()
+                                            token=token.get()
+                                            tenant=tenant.get()
+                                            set_feedback=set_feedback
+                                            set_error=set_error
+                                            set_refresh_nonce=set_refresh_nonce
+                                        />
+                                    }.into_any()
+                                } else {
+                                    ().into_any()
+                                }}
                                 {if bootstrap.channels.is_empty() {
                                     view! {
                                         <div class="rounded-2xl border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
@@ -279,6 +300,7 @@ pub fn ChannelAdmin() -> impl IntoView {
                                             {bootstrap.channels.into_iter().map(|channel| view! {
                                                 <ChannelCard
                                                     channel=channel
+                                                    section=section
                                                     available_modules=bootstrap.available_modules.clone()
                                                     oauth_apps=bootstrap.oauth_apps.clone()
                                                     token=token.get()
@@ -468,13 +490,13 @@ fn resolution_outcome_label(outcome: &ChannelResolutionOutcome, locale: Option<&
 fn resolution_outcome_badge_class(outcome: &ChannelResolutionOutcome) -> &'static str {
     match outcome {
         ChannelResolutionOutcome::Matched => {
-            "inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 font-medium text-emerald-700"
+            "inline-flex items-center rounded-full border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950 px-2 py-1 font-medium text-emerald-700 dark:text-emerald-300"
         }
         ChannelResolutionOutcome::Miss => {
-            "inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-1 font-medium text-amber-700"
+            "inline-flex items-center rounded-full border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 px-2 py-1 font-medium text-amber-700 dark:text-amber-300"
         }
         ChannelResolutionOutcome::Rejected => {
-            "inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-1 font-medium text-rose-700"
+            "inline-flex items-center rounded-full border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950 px-2 py-1 font-medium text-rose-700 dark:text-rose-300"
         }
     }
 }

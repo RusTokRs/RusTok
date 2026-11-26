@@ -31,7 +31,7 @@ const assertAll = (path, markers) => {
 
 const pagesStorefront = assertAll('crates/modules/rustok-pages/storefront/src/transport/native_server_adapter.rs', [
   'ChannelService::new',
-  '.is_module_enabled(channel_id, MODULE_SLUG)',
+  '.is_module_enabled_for_tenant(tenant_id, channel_id, MODULE_SLUG)',
   'normalize_channel_slug',
   'is_visible_for_public_channel',
   'ctx.channel_slug.as_deref()',
@@ -40,7 +40,7 @@ assertContains(pagesStorefront, "Module '{MODULE_SLUG}' is not enabled for chann
 
 assertAll('crates/modules/rustok-pages/src/graphql/query.rs', [
   'ChannelService::new',
-  '.is_module_enabled(channel_id, MODULE_SLUG)',
+  '.is_module_enabled_for_tenant(request_context.tenant_id, channel_id, MODULE_SLUG)',
   'public_channel_slug(ctx)',
   'is_page_visible_for_channel',
   'public_request_rejects_disabled_pages_channel_binding',
@@ -153,6 +153,9 @@ assertAll('crates/modules/rustok-forum/src/services/topic_visibility.rs', [
   'matching_topic_channel_access_subquery',
   'forum_topic_channel_access::Entity',
 ]);
+// The list-side filter lives in `services/topic.rs` (`topic_visibility_list.rs`
+// was folded into it); the pin follows the code instead of a path that no longer
+// exists, otherwise the script aborted here and never checked the tail.
 assertAll('crates/modules/rustok-forum/src/services/topic.rs', [
   'apply_tenant_scoped_storefront_channel_filter',
   'matching_tenant_topic_channel_access_subquery',

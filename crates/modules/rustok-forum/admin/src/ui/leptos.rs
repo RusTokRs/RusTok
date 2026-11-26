@@ -10,25 +10,24 @@ use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
     CategoryFormSnapshot, ForumAdminActionButtonKind, ForumAdminBusyAction, ForumAdminBusySurface,
-    ForumAdminCategoryRenderLabels, ForumAdminCollectionState,
-    ForumAdminFormErrorLabels, ForumAdminHeaderLabels, ForumAdminMetricSurface,
-    ForumAdminQuerySurface, ForumAdminSeoSurface, ForumAdminTitleEnvelopeLabels,
-    ForumAdminTopicRenderLabels, ReplyFormSnapshot, TopicFormSnapshot, category_card_view_model,
-    category_select_options, category_sidebar_total_count, category_sidebar_view_model,
-    format_count, forum_admin_action_button_class, forum_admin_busy_key,
-    forum_admin_category_form_labels, forum_admin_category_matrix_labels,
-    forum_admin_collection_state, forum_admin_delete_outcome, forum_admin_editing_thread_label,
-    forum_admin_form_error_message, forum_admin_header_view_model, forum_admin_metric_accent_class,
-    forum_admin_moderator_notes_copy_labels, forum_admin_open_query_intent,
-    forum_admin_placeholder_policy, forum_admin_position_value, forum_admin_reply_preview_labels,
-    forum_admin_reply_preview_shown_label, forum_admin_reset_query_intent,
-    forum_admin_saved_query_intent, forum_admin_seo_copy_labels,
-    forum_admin_sidebar_category_class, forum_admin_sidebar_copy_labels,
-    forum_admin_status_badge_class, forum_admin_tag_chips, forum_admin_title_envelope_view_model,
-    forum_admin_topic_form_labels, forum_admin_topic_stream_labels,
-    forum_admin_topic_tag_count_label, forum_admin_transport_error_message, item_busy,
-    reply_card_view_model, result_item_count, selected_category_filter_label, selected_query_id,
-    topic_card_view_model, topic_category_filter,
+    ForumAdminCategoryRenderLabels, ForumAdminCollectionState, ForumAdminFormErrorLabels,
+    ForumAdminHeaderLabels, ForumAdminMetricSurface, ForumAdminQuerySurface, ForumAdminSection,
+    ForumAdminSeoSurface, ForumAdminTitleEnvelopeLabels, ForumAdminTopicRenderLabels,
+    ReplyFormSnapshot, TopicFormSnapshot, category_card_view_model, category_select_options,
+    category_sidebar_total_count, category_sidebar_view_model, format_count,
+    forum_admin_action_button_class, forum_admin_busy_key, forum_admin_category_form_labels,
+    forum_admin_category_matrix_labels, forum_admin_collection_state, forum_admin_delete_outcome,
+    forum_admin_editing_thread_label, forum_admin_form_error_message, forum_admin_header_view_model,
+    forum_admin_metric_accent_class, forum_admin_moderator_notes_copy_labels,
+    forum_admin_open_query_intent, forum_admin_placeholder_policy, forum_admin_position_value,
+    forum_admin_reply_preview_labels, forum_admin_reply_preview_shown_label,
+    forum_admin_reset_query_intent, forum_admin_saved_query_intent, forum_admin_section_for_subpath,
+    forum_admin_seo_copy_labels, forum_admin_sidebar_category_class,
+    forum_admin_sidebar_copy_labels, forum_admin_status_badge_class, forum_admin_tag_chips,
+    forum_admin_title_envelope_view_model, forum_admin_topic_form_labels,
+    forum_admin_topic_stream_labels, forum_admin_topic_tag_count_label,
+    forum_admin_transport_error_message, item_busy, reply_card_view_model, result_item_count,
+    selected_category_filter_label, selected_query_id, topic_card_view_model, topic_category_filter,
 };
 use crate::i18n::t;
 use crate::locale_switch::{
@@ -117,7 +116,11 @@ pub fn ForumAdmin() -> impl IntoView {
         .as_deref()
         .and_then(normalize_locale_tag)
         .unwrap_or_default();
-    let is_categories_page = route_context.subpath_matches("categories");
+    // The module declares `topics` and `categories`, so the workspace split is a
+    // module decision with one owner (`forum_admin_section_for_subpath`), not an
+    // ad-hoc string test in the view.
+    let is_categories_page = forum_admin_section_for_subpath(route_context.subpath.as_deref())
+        == ForumAdminSection::Categories;
     let header_labels = ForumAdminHeaderLabels {
         badge: t(ui_locale.as_deref(), "forum.badge", "forum control room"),
         categories_title: t(

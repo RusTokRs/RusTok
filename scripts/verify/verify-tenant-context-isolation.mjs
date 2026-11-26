@@ -70,7 +70,8 @@ const channelResolution = read('crates/modules/rustok-channel/src/resolution.rs'
 requireText(channelResolution, 'pub struct RequestFacts {', 'rustok-channel RequestFacts');
 requireText(channelResolution, 'pub tenant_id: Uuid,', 'RequestFacts mandatory tenant_id');
 requireText(channelResolution, 'if facts.tenant_id.is_nil() {', 'channel resolution rejects nil tenant');
-requireText(channelResolution, 'detail if detail.channel.tenant_id != facts.tenant_id => {', 'channel header ID cross-tenant rejection');
+requirePattern(channelResolution, /Ok\(detail\) if detail\.channel\.tenant_id != facts\.tenant_id => \{/, 'channel header ID cross-tenant rejection');
+requireText(channelResolution, 'does not belong to tenant', 'channel header ID cross-tenant rejection trace');
 requirePattern(channelResolution, /\.get_channel_detail_by_slug\(facts\.tenant_id,\s*slug\)/, 'channel slug lookup tenant scoped');
 
 requireText(commentsService, 'if let Some(parent_comment_id) = input.parent_comment_id {', 'parent comment check');

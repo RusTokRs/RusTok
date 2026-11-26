@@ -298,8 +298,10 @@ impl CommerceQuery {
         }
         let tenant_id = tenant.id;
         let channel_service = rustok_channel::ChannelService::new(db.clone());
-        let (channels, _) = channel_service
-            .list_channels(tenant_id, 1, 250)
+        // Storefront selectors must offer only channels that can actually
+        // resolve, and must never silently drop options past a page size.
+        let channels = channel_service
+            .list_channel_options(tenant_id, false)
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
 

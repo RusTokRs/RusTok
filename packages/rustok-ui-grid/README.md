@@ -33,6 +33,7 @@ Re-adding a second renderer here would reintroduce the divergence that removal f
 | `facet.ts` | `rustok-grid::facet` | `FacetDomain` (dictionary/boolean/open), `FacetValue`, `facetFromBuckets` (cuts at `MAX_GRID_FACET_VALUES` and reports `isTruncated`), `facetFilterOptions`, and the `code=value` selection vocabulary: `selectionEntry`/`splitSelection`/`parseSelection`/`serializeSelection`, `isSelectionSelected` (keys ASCII-case-insensitive, values exact), `hasSelectionForKey`, `selectionForKey`, `selectionExcept`, `selectionAfterToggle` (order-preserving), `selectionAfterClearKey`, `selectionAfterClear`. |
 | `panel.ts` | `rustok-grid::facet_panel` | `FacetPanelLabels` + `ENGLISH_FACET_PANEL_LABELS`, `countLabel`, `buildFacetPanel` (normalizes untrusted facet snapshots, caps at `MAX_GRID_FACETS`, adds hints/markers), panel selection transitions, and the per-facet views the owner needs for counting (`facetEntriesForCode`, `otherFacetSelectionForCode`). |
 | `state.ts` | `rustok-grid::state` | Composite `GridState`, runtime normalization, filter/sort transitions that reset pagination, width clamping, selection pruning, and `applyGridRows` (filter → sort → page) for grids that own their full row set client-side. |
+| `order.ts` | nothing — `Ord` on `str` | `compareCodePoints`, the code-point comparator every `Object.keys(...).sort(...)` in this package uses. Rust compares `str` by UTF-8 bytes, which *is* code-point order, so the twin is the `Ord` impl rather than a function; TypeScript's `<` compares UTF-16 code units and diverges outside the Basic Multilingual Plane. |
 | `url.ts` | `rustok_ui_core::apply_ui_query_pairs` | `applyQueryPairs` (stable key positions, duplicate-key replacement/removal, blank-value removal, fragment preservation, browser form encoding) and `queryParam`. |
 
 ## Contract notes
@@ -85,6 +86,11 @@ workspace package.
   phase and is recorded in `docs/standards/continuous-review-ledger.md`.
 - **Module admin screens are not yet on a shared renderer.** The same six crates hand-roll their
   `<table>` markup per adapter instead of using one shared grid view.
+- **`order.ts` has no Rust module.** It exists because TypeScript's `<` orders by UTF-16 code unit
+  while Rust's `str` orders by code point; the Rust twin is `Ord` on `str`, not a function. The file and
+  its exact export list are registered in `TS_ONLY_FILES` inside
+  `scripts/verify/verify-ui-grid-parity.mjs`, so a new export there needs a decision instead of
+  inheriting this one.
 - **`queryParam` has no Rust twin.** Reading one query key out of a route string is a
   client/router-boundary concern in TypeScript; the Rust surfaces receive typed server-function
   parameters and never parse a URL themselves. It is listed as an accepted, justified exception in

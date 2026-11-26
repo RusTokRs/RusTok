@@ -22,6 +22,7 @@ use rustok_api::{MarketplaceRegistryFreshness, MarketplaceRegistryStatus};
 use rustok_api::{ModuleRetentionHoldView, ModuleTransitionCheckpointView};
 use rustok_auth_ui::ui::leptos::hooks::{use_auth, use_tenant, use_token};
 use rustok_ui_forms::FormState;
+use rustok_ui_leptos::{Icon, IconName};
 use std::collections::{HashMap, HashSet};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::{JsCast, closure::Closure};
@@ -2325,7 +2326,7 @@ pub fn ModulesList(
                             </div>
                         </div>
                         <div class="space-y-3">
-                            <div class="flex items-center gap-2"><svg class="h-5 w-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg><h3 class="text-lg font-semibold text-foreground">{i18n.translate("modules.section.core")}</h3><span class="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground">{i18n.translate("modules.always_active")}</span></div>
+                            <div class="flex items-center gap-2"><Icon name=IconName::Shield class="h-5 w-5 text-muted-foreground" /><h3 class="text-lg font-semibold text-foreground">{i18n.translate("modules.section.core")}</h3><span class="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground">{i18n.translate("modules.always_active")}</span></div>
                             <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                                 {move || core_modules().into_iter().map(|module| {
                                     let slug = module.module_slug.clone();
@@ -2343,7 +2344,7 @@ pub fn ModulesList(
                             </div>
                         </div>
                         <div class="space-y-3">
-                            <div class="flex items-center gap-2"><svg class="h-5 w-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg><h3 class="text-lg font-semibold text-foreground">{i18n.translate("modules.section.optional")}</h3><span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{move || format!("{} installed", installed_optional_modules().len())}</span></div>
+                            <div class="flex items-center gap-2"><Icon name=IconName::Package class="h-5 w-5 text-muted-foreground" /><h3 class="text-lg font-semibold text-foreground">{i18n.translate("modules.section.optional")}</h3><span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{move || format!("{} installed", installed_optional_modules().len())}</span></div>
                             <Show when=move || !installed_optional_modules().is_empty() fallback=move || view! { <div class="rounded-xl border border-border bg-card p-6 shadow-sm"><p class="text-sm text-muted-foreground">"No optional modules are installed yet. Use the Marketplace tab to queue the first install."</p></div> }>
                                 <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                                     {move || installed_optional_modules().into_iter().map(|module| {

@@ -7,6 +7,10 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub channel_id: Uuid,
+    /// Denormalized owning tenant, kept so the database can enforce
+    /// "one web host per tenant" and "target channel belongs to the tenant"
+    /// as structural invariants instead of race-prone application checks.
+    pub tenant_id: Uuid,
     pub target_type: String,
     pub value: String,
     pub is_primary: bool,

@@ -44,6 +44,7 @@ fn owner_detail(error: &ChannelError) -> (&'static str, usize) {
         ChannelError::InvalidPolicyOperation(value) => {
             ("invalid_policy_operation", value.chars().count())
         }
+        ChannelError::Conflict(value) => ("concurrent_conflict", value.chars().count()),
         ChannelError::Database(_) => ("database_redacted", 0),
         ChannelError::Serialization(_) => ("serialization_redacted", 0),
     }
@@ -85,6 +86,15 @@ impl QueryGraphqlMessage for ChannelGraphqlMessage {
                 "CHANNEL_OPERATION_FAILED",
                 false,
                 true,
+            ),
+            // A concurrent write won the owner's invariant race. It is not a bad
+            // request: the same query is expected to succeed on retry, so the
+            // public envelope must say so instead of reporting the query invalid.
+            ChannelError::Conflict(_) => (
+                "Channel query conflicted with a concurrent channel update",
+                "CHANNEL_CONCURRENT_CONFLICT",
+                true,
+                false,
             ),
             ChannelError::Validation(_)
             | ChannelError::SlugAlreadyExists(_)
@@ -160,14 +170,19 @@ impl ChannelService {
         }
     }
 
-    pub(crate) async fn list_channels(
+    /// Mirrors exactly the owner calls `query.rs` makes through this facade.
+    ///
+    /// `query.rs` is compiled twice: directly against `::rustok_channel`, and again
+    /// inside this boundary where `rustok_channel` resolves to this shim. Every
+    /// owner method the resolver calls therefore has to exist here with the same
+    /// arguments, or the boundary build breaks while the direct build still passes.
+    pub(crate) async fn list_channel_options(
         &self,
         tenant_id: Uuid,
-        page: u64,
-        per_page: u64,
-    ) -> Result<(Vec<ChannelResponse>, u64), ChannelQueryError> {
+        include_inactive: bool,
+    ) -> Result<Vec<ChannelResponse>, ChannelQueryError> {
         self.inner
-            .list_channels(tenant_id, page, per_page)
+            .list_channel_options(tenant_id, include_inactive)
             .await
             .map_err(Into::into)
     }

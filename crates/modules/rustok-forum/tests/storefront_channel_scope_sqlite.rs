@@ -30,7 +30,7 @@ async fn disabled_or_foreign_channel_cannot_disclose_storefront_pages_to_any_vie
         "CREATE TABLE tenant_modules (tenant_id TEXT, module_slug TEXT, enabled INTEGER)",
         "CREATE TABLE channels (\
             id TEXT PRIMARY KEY, tenant_id TEXT, slug TEXT, name TEXT, \
-            is_active INTEGER, is_default INTEGER, status TEXT, settings TEXT, \
+            is_active INTEGER, is_default INTEGER, settings TEXT, \
             created_at TEXT, updated_at TEXT)",
         "CREATE TABLE channel_module_bindings (\
             id TEXT PRIMARY KEY, channel_id TEXT, module_slug TEXT, is_enabled INTEGER, \
@@ -44,12 +44,12 @@ async fn disabled_or_foreign_channel_cannot_disclose_storefront_pages_to_any_vie
         format!("INSERT INTO tenant_modules VALUES ('{tenant}', 'forum', 1)"),
         format!(
             "INSERT INTO channels VALUES (\
-            '{channel}', '{tenant}', 'web', 'Web', 1, 1, 'active', '{{}}', \
+            '{channel}', '{tenant}', 'web', 'Web', 1, 1, '{{}}', \
             '2026-10-15T00:00:00+00:00', '2026-10-15T00:00:00+00:00')"
         ),
         format!(
             "INSERT INTO channels VALUES (\
-            '{foreign_channel}', '{foreign}', 'foreign', 'Other', 1, 1, 'active', '{{}}', \
+            '{foreign_channel}', '{foreign}', 'foreign', 'Other', 1, 1, '{{}}', \
             '2026-10-15T00:00:00+00:00', '2026-10-15T00:00:00+00:00')"
         ),
         format!(

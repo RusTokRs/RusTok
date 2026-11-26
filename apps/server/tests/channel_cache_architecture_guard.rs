@@ -32,7 +32,8 @@ fn channel_cache_generations_are_bounded_and_fail_safe() {
         "self.default_version = next_version;",
         "self.cache.invalidate_all();",
         "self.cache.run_pending_tasks().await;",
-        "if let Some(version) = cache.tenant_version(facts.tenant_id)",
+        "let cache_usable = channel_resolution_cache_usable(&ctx);",
+        "match (cache_usable, cache.tenant_version(facts.tenant_id))",
         "version_exhaustion_disables_cache_instead_of_reusing_a_token",
         "tenant_version_registry_rotates_without_reusing_stale_tokens",
         "namespace_invalidation_rotates_default_and_tracked_tokens",
@@ -56,6 +57,39 @@ fn channel_cache_generations_are_bounded_and_fail_safe() {
 }
 
 #[test]
+fn a_broken_invalidation_runtime_bypasses_the_resolution_cache() {
+    // P2.4: a replica whose durable invalidation listener is not ready must not
+    // serve a possibly-stale cached decision, and must not be reported as dead
+    // either: it resolves against the owner on every request instead.
+    let channel = source("apps/server/src/middleware/channel.rs");
+    assert!(
+        channel.contains(
+            "fn channel_resolution_cache_usable(ctx: &ServerRuntimeContext) -> bool"
+        )
+    );
+    assert!(channel.contains("Some(handle) => {"));
+    assert!(channel.contains("let ready = handle.is_ready();"));
+    assert!(channel.contains("channel_resolution_cache_bypassed"));
+    assert!(
+        channel.contains("None => true,"),
+        "a host without a durable invalidation runtime keeps the local fence as its full contract"
+    );
+
+    let guardrails = source("apps/server/src/services/runtime_guardrails.rs");
+    let block = guardrails
+        .find("channel resolution durable invalidation runtime")
+        .expect("channel invalidation guardrail must stay registered");
+    let severity = guardrails[block..]
+        .find("RuntimeGuardrailStatus::")
+        .expect("channel invalidation guardrail must declare a severity");
+    assert_eq!(
+        &guardrails[block + severity..block + severity + "RuntimeGuardrailStatus::Degraded".len()],
+        "RuntimeGuardrailStatus::Degraded",
+        "a stale routing cache degrades the replica, it does not take it out of rotation"
+    );
+}
+
+#[test]
 fn host_resolution_context_preserves_the_matched_target() {
     let channel = source("apps/server/src/middleware/channel.rs");
     assert!(
@@ -73,9 +107,16 @@ fn host_resolution_context_preserves_the_matched_target() {
 fn channel_cache_is_registered_atomically() {
     let channel = source("apps/server/src/middleware/channel.rs");
     assert!(channel.contains("ctx.shared_insert_if_absent(candidate.clone())"));
-    assert!(channel.contains(
-        "ctx.shared_get::<Arc<ChannelResolutionCache>>()\n        .unwrap_or(candidate)"
-    ));
+    // Whitespace-normalized: the guarantee is the *sequence* "read the shared
+    // cache, otherwise use the candidate", not the indentation rustfmt happens to
+    // give it. The previous pin hard-coded eight leading spaces, so a re-indent
+    // could have gutted the assertion without anyone noticing.
+    let normalized = channel.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        normalized.contains(
+            "ctx.shared_get::<Arc<ChannelResolutionCache>>() .unwrap_or(candidate)"
+        )
+    );
     assert!(!channel.contains("ctx.shared_insert(cache.clone());"));
 }
 

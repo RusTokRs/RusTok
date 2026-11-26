@@ -340,7 +340,7 @@ fn channel_context(channel: &ChannelResponse) -> ChannelContext {
         slug: channel.slug.clone(),
         name: channel.name.clone(),
         is_active: channel.is_active,
-        status: channel.status.clone(),
+        status: channel.status.as_str().to_string(),
         target_type: None,
         target_value: None,
         settings: channel.settings.clone(),

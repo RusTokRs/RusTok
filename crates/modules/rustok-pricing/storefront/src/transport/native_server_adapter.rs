@@ -275,7 +275,7 @@ fn map_channel_option(value: rustok_channel::ChannelResponse) -> PricingChannelO
         name: value.name,
         is_active: value.is_active,
         is_default: value.is_default,
-        status: value.status,
+        status: value.status.as_str().to_string(),
     }
 }
 
@@ -384,8 +384,8 @@ async fn storefront_pricing_native(
                 }),
         );
         let channel_service = ChannelService::new(db);
-        let (available_channels, _) = channel_service
-            .list_channels(tenant.id, 1, 250)
+        let available_channels = channel_service
+            .list_channel_options(tenant.id, false)
             .await
             .map_err(|error| {
                 map_owner_runtime_error("list_channels", tenant.id, request_context.as_ref(), error)

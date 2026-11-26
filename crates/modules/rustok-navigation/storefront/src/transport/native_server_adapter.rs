@@ -40,13 +40,6 @@ async fn active_menu_native(
         if channel_id.is_nil() {
             return Ok(None);
         }
-        if !ChannelService::new(runtime.db_clone())
-            .is_module_enabled(channel_id, "navigation")
-            .await
-            .map_err(ServerFnError::new)?
-        {
-            return Ok(None);
-        }
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
             .ok();
@@ -79,6 +72,16 @@ async fn active_menu_native(
                 .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
             (tenant.id, fallback)
         };
+        // The channel gate is tenant-scoped: a channel id alone must not decide
+        // module availability, because a channel id can arrive from the request
+        // even when the host does not resolve one.
+        if !ChannelService::new(runtime.db_clone())
+            .is_module_enabled_for_tenant(tenant_id, channel_id, "navigation")
+            .await
+            .map_err(ServerFnError::new)?
+        {
+            return Ok(None);
+        }
         let locale = locale
             .as_deref()
             .map(str::trim)

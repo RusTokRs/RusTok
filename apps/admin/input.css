@@ -3,8 +3,11 @@
 @source "./index.html";
 @source "./src/**/*.rs";
 @source "../../crates/**/admin/src/**/*.rs";
+@source "../../crates/ui/fly/leptos/src/**/*.rs";
+@source "../../crates/ui/rustok-grid/leptos/src/**/*.rs";
 @source "../../crates/ui/rustok-ui/src/**/*.rs";
 @source "../../crates/ui/rustok-ui/leptos/src/**/*.rs";
+@source "../../crates/ui/rustok-ui-forms/leptos/src/**/*.rs";
 
 @import "../../UI/tokens/base.css";
 
@@ -30,7 +33,6 @@
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
     --ring: 222.2 84% 4.9%;
-    --radius: 0.5rem;
     --sidebar: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
     --sidebar-primary: 240 5.9% 10%;

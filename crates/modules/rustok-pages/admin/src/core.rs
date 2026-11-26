@@ -219,9 +219,109 @@ fn project_to_pretty_json(value: &Value) -> String {
     serde_json::to_string_pretty(value).unwrap_or_else(|_| "{}".to_string())
 }
 
+/// Which surface of the Pages admin the route subpath names.
+///
+/// The module declares `all` and `new` as child pages, and the host renders one
+/// module component for every one of them. The workspace is a single surface, so
+/// the subpath decides which of its parts the operator asked for instead of
+/// being ignored.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PagesAdminSection {
+    /// Landing workspace: create card, document list and the selected page.
+    Workspace,
+    /// `all`: the document list and the selected page, without the create card.
+    All,
+    /// `new`: only the create card — the page does not exist yet.
+    New,
+}
+
+impl PagesAdminSection {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Workspace => "workspace",
+            Self::All => "all",
+            Self::New => "new",
+        }
+    }
+
+    /// The create card belongs to the landing workspace and to `new`.
+    pub fn shows_create_card(self) -> bool {
+        matches!(self, Self::Workspace | Self::New)
+    }
+
+    /// The document list (and its starter catalog) belongs to the workspaces
+    /// that browse existing pages.
+    pub fn shows_documents(self) -> bool {
+        matches!(self, Self::Workspace | Self::All)
+    }
+
+    /// The selected-page workspace needs a selected page, which does not exist
+    /// on the `new` route.
+    pub fn shows_workspace(self) -> bool {
+        matches!(self, Self::Workspace | Self::All)
+    }
+}
+
+/// Map a route subpath onto the surface it names.
+///
+/// Unknown subpaths fall back to the landing workspace: a stale bookmark
+/// renders the module instead of an empty page.
+pub fn pages_admin_section_for_subpath(subpath: Option<&str>) -> PagesAdminSection {
+    let Some(subpath) = subpath else {
+        return PagesAdminSection::Workspace;
+    };
+    match subpath.trim_matches('/').split('/').next().unwrap_or("") {
+        "all" => PagesAdminSection::All,
+        "new" => PagesAdminSection::New,
+        _ => PagesAdminSection::Workspace,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn declared_child_pages_select_their_own_surface() {
+        assert_eq!(
+            pages_admin_section_for_subpath(Some("all")),
+            PagesAdminSection::All
+        );
+        assert_eq!(
+            pages_admin_section_for_subpath(Some("new")),
+            PagesAdminSection::New
+        );
+        assert_eq!(
+            pages_admin_section_for_subpath(Some("all/42")),
+            PagesAdminSection::All
+        );
+        assert_eq!(
+            pages_admin_section_for_subpath(Some("")),
+            PagesAdminSection::Workspace
+        );
+        assert_eq!(
+            pages_admin_section_for_subpath(Some("unknown")),
+            PagesAdminSection::Workspace
+        );
+        assert_eq!(pages_admin_section_for_subpath(None), PagesAdminSection::Workspace);
+    }
+
+    #[test]
+    fn each_surface_renders_only_the_parts_it_owns() {
+        assert!(PagesAdminSection::Workspace.shows_create_card());
+        assert!(PagesAdminSection::Workspace.shows_documents());
+        assert!(PagesAdminSection::Workspace.shows_workspace());
+
+        // `all` browses what exists: no create card.
+        assert!(!PagesAdminSection::All.shows_create_card());
+        assert!(PagesAdminSection::All.shows_documents());
+        assert!(PagesAdminSection::All.shows_workspace());
+
+        // `new` creates: no list, no selected-page workspace.
+        assert!(PagesAdminSection::New.shows_create_card());
+        assert!(!PagesAdminSection::New.shows_documents());
+        assert!(!PagesAdminSection::New.shows_workspace());
+    }
 
     #[test]
     fn starter_project_uses_only_the_current_component_contract() {

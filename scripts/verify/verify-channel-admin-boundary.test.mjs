@@ -44,15 +44,30 @@ pub(crate) fn policy_rule_create_form_state() -> PolicyRuleFormState { PolicyRul
 pub(crate) fn policy_rule_edit_form_state() -> PolicyRuleFormState { PolicyRuleFormState }
 pub(crate) fn reorder_policy_rule_ids() -> Option<Vec<String>> { None }
 pub(crate) fn policy_rule_active_update_payload() {}
+pub(crate) struct ChannelLifecycleToggle { pub(crate) next_is_active: bool }
+pub(crate) fn channel_lifecycle_toggle(is_active: bool) -> ChannelLifecycleToggle {
+    ChannelLifecycleToggle { next_is_active: !is_active }
+}
+pub(crate) struct ChannelRenameCommand { pub(crate) feedback_key: &'static str }
+pub(crate) fn channel_rename_command(raw_name: &str) -> Result<ChannelRenameCommand, ()> {
+    let name = raw_name.trim();
+    if name.is_empty() { return Err(()); }
+    Ok(ChannelRenameCommand { feedback_key: "channel.feedback.renamed" })
+}
+pub(crate) const CHANNEL_DELETE_FEEDBACK: &str = "channel.feedback.deleted";
+pub(crate) struct ChannelStatusBadge { pub(crate) label_key: &'static str }
+pub(crate) fn channel_status_badge(is_active: bool) -> ChannelStatusBadge {
+    ChannelStatusBadge { label_key: if is_active { "channel.card.statusActive" } else { "channel.card.statusInactive" } }
+}
 struct ChannelAdminBootstrap { channels: Vec<ChannelDetail> }
 struct ChannelDetail { channel: ChannelRecord }
 struct ChannelRecord { id: String }
 `;
 }
 
-function uiSource({ rawTransport = false, includeApiCall = false, inlinePolicySelection = false, inlineRuleFormMapping = false, inlineReorderPolicy = false, inlineRulePayload = false } = {}) {
+function uiSource({ rawTransport = false, includeApiCall = false, inlinePolicySelection = false, inlineRuleFormMapping = false, inlineReorderPolicy = false, inlineRulePayload = false, inlineChannelPayload = false, inlineLifecycleCopy = false } = {}) {
   return `
-use crate::core::{channel_policy_selection_cleanup, channel_selection_exists, policy_rule_active_update_payload, policy_rule_edit_form_state, reorder_policy_rule_ids, PolicyRuleFormState};
+use crate::core::{CHANNEL_DELETE_FEEDBACK, channel_lifecycle_toggle, channel_policy_selection_cleanup, channel_rename_command, channel_selection_exists, channel_status_badge, policy_rule_active_update_payload, policy_rule_edit_form_state, reorder_policy_rule_ids, PolicyRuleFormState};
 use crate::transport;
 
 pub fn ChannelAdmin() {
@@ -61,6 +76,10 @@ pub fn ChannelAdmin() {
     let _rule_form = policy_rule_edit_form_state;
     let _reorder = reorder_policy_rule_ids;
     let _active_payload = policy_rule_active_update_payload;
+    let _toggle = channel_lifecycle_toggle(true);
+    let _rename = channel_rename_command("web");
+    let _delete_copy = CHANNEL_DELETE_FEEDBACK;
+    let _badge = channel_status_badge(true);
     let state = PolicyRuleFormState;
     state.create_payload();
     state.update_payload();
@@ -71,6 +90,8 @@ pub fn ChannelAdmin() {
     ${inlineRuleFormMapping ? "fn policy_rule_edit_form_state() {}" : ""}
     ${inlineReorderPolicy ? "fn reorder_rule_ids() {}" : ""}
     ${inlineRulePayload ? "let _payload = CreateResolutionRulePayload { priority: 1 };" : ""}
+    ${inlineChannelPayload ? "let _payload = UpdateChannelPayload { name: None, settings: None };" : ""}
+    ${inlineLifecycleCopy ? `let _copy = "channel.feedback.renamed";` : ""}
 }
 `;
 }
@@ -80,9 +101,30 @@ function transportModSource({ includeServerEndpoint = false, includeRawRest = fa
 mod native_server_adapter;
 mod rest_adapter;
 
+enum TransportPath { NativeServer, Rest }
+
+impl TransportPath {
+    fn as_str(self) -> &'static str { "native_server" }
+}
+
+fn selected_transport_path() -> TransportPath { TransportPath::NativeServer }
+
+async fn dispatch<T, N, NFut, R, RFut>(surface: &'static str, native: N, rest: R) -> Result<T, ApiError> {
+    let path = selected_transport_path();
+    let result = match path {
+        TransportPath::NativeServer => native().await,
+        TransportPath::Rest => rest().await,
+    };
+    let _ = (surface, format!("transport = {}", path.as_str()));
+    result
+}
+
 pub async fn fetch_bootstrap() {
-    native_server_adapter::channel_bootstrap_native().await;
-    rest_adapter::get_json("/api/channels/bootstrap", None, None).await;
+    dispatch(
+        "channel.admin.bootstrap",
+        || native_server_adapter::channel_bootstrap_native(),
+        || rest_adapter::get_json("/api/channels/bootstrap", None, None),
+    ).await;
 }
 ${includeServerEndpoint ? '#[server(prefix = "/api/fn", endpoint = "bad")] async fn bad() {}' : ""}
 ${includeRawRest ? "fn bad_rest() { reqwest::Client::new(); }" : ""}
@@ -105,9 +147,12 @@ pub(super) async fn channel_bootstrap_native() -> Result<(), ServerFnError> {
 
 function restAdapterSource({ includeServerEndpoint = false } = {}) {
   return `
-fn api_url(path: &str) -> String {
-    let base = std::env::var("RUSTOK_API_URL").unwrap_or_else(|_| "http://localhost:5150".to_string());
-    format!("{base}{path}")
+fn api_url(path: &str) -> Result<String, ApiError> {
+    let origin = web_sys::window()
+        .and_then(|window| window.location().origin().ok())
+        .ok_or_else(|| ApiError::Rest("cannot resolve origin".to_string()))?;
+    let _ = path;
+    Err(ApiError::Rest("the channel REST transport is browser-only".to_string()))
 }
 pub(super) async fn get_json<T>(path: &str, token: Option<String>, tenant_slug: Option<String>) -> Result<T, ApiError> {
     let client = reqwest::Client::new();
@@ -283,6 +328,28 @@ test("channel admin boundary verifier rejects inline policy-rule payload constru
   }
 });
 
+
+test("channel admin boundary verifier rejects inline channel update payload construction", () => {
+  const root = withFixture({ inlineChannelPayload: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, "Expected inline channel payload fixture to fail");
+    assert.match(result.stderr, /UI must not construct channel update payloads inline/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("channel admin boundary verifier rejects lifecycle feedback copy in UI", () => {
+  const root = withFixture({ inlineLifecycleCopy: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, "Expected inline lifecycle copy fixture to fail");
+    assert.match(result.stderr, /UI must not own channel rename feedback copy/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test("channel admin boundary verifier rejects server functions in transport facade", () => {
   const root = withFixture({ includeServerEndpoint: true });

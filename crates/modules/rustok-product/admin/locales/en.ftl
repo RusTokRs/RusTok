@@ -330,3 +330,5 @@ product-attributeLifecycle-loading = Loading catalog reads. Saved-request recove
 product-category-rule-label = Virtual category rule
 product-category-rule-hint = Enter a V1 JSON object with at least one condition. Example:
 product-category-rule-required = Enter a rule for the virtual category.
+product-attributes-schemasTable = Attribute schemas
+product-attributes-valuesTable = Product attributes

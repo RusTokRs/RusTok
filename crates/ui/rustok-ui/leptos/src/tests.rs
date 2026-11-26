@@ -18,6 +18,7 @@ use crate::button::*;
 use crate::card::*;
 use crate::checkbox::*;
 use crate::dialog::*;
+use crate::icon::*;
 use crate::input::*;
 use crate::language_toggle::*;
 use crate::progress::*;
@@ -448,4 +449,66 @@ fn test_render_language_toggle_ssr() {
     assert!(html.contains("aria-pressed=\"false\""));
     assert!(html.contains("English"));
     assert!(html.contains("Русский"));
+}
+
+#[test]
+fn test_render_icon_is_decorative_by_default() {
+    let view = view! { <Icon name=IconName::Sun /> };
+    let html = view.to_html();
+    assert!(html.contains("data-slot=\"icon\""));
+    assert!(html.contains("viewBox=\"0 0 24 24\""));
+    assert!(html.contains("aria-hidden=\"true\""));
+    assert!(!html.contains("role=\"img\""));
+    assert!(!html.contains("aria-label"));
+    assert!(html.contains("<path"));
+    // Colour comes from the surrounding text class, not from the icon itself.
+    assert!(html.contains("stroke=\"currentColor\""));
+    assert!(html.contains("fill=\"none\""));
+}
+
+#[test]
+fn test_render_icon_with_a_label_becomes_an_image() {
+    let view = view! { <Icon name=IconName::Users size=20 aria_label="Members" /> };
+    let html = view.to_html();
+    assert!(html.contains("role=\"img\""));
+    assert!(html.contains("aria-label=\"Members\""));
+    assert!(!html.contains("aria-hidden"));
+    assert!(html.contains("width=\"20\""));
+    assert!(html.contains("height=\"20\""));
+}
+
+#[test]
+fn test_icon_set_is_unique_and_non_empty() {
+    // Two icons sharing path data would mean one of them was copied by mistake; an empty path list
+    // renders a blank square that no test would otherwise notice.
+    let names = [
+        IconName::Package,
+        IconName::Shield,
+        IconName::Check,
+        IconName::ChevronDown,
+        IconName::ChevronLeft,
+        IconName::ChevronRight,
+        IconName::ChevronUp,
+        IconName::Eye,
+        IconName::EyeOff,
+        IconName::Key,
+        IconName::Lock,
+        IconName::Moon,
+        IconName::PanelLeft,
+        IconName::Plus,
+        IconName::Search,
+        IconName::ShieldCheck,
+        IconName::Sun,
+        IconName::Terminal,
+        IconName::User,
+        IconName::Users,
+        IconName::X,
+    ];
+    let mut seen: Vec<&'static [&'static str]> = Vec::new();
+    for name in names {
+        let paths = name.paths();
+        assert!(!paths.is_empty(), "{name:?} has no path data");
+        assert!(!seen.contains(&paths), "{name:?} duplicates another icon");
+        seen.push(paths);
+    }
 }
