@@ -318,6 +318,15 @@ impl AuthLifecycleService {
             .ok_or(AuthLifecycleError::SessionExpired)?;
         }
 
+        // Expiry is checked again at the final identity-transition
+        // boundary, after all row-lock waits and session validation.
+        let transition_at = Utc::now();
+        if request.expires_at.with_timezone(&Utc) <= transition_at {
+            delete_email_change_request(&tx, request.id, token_hash).await?;
+            tx.commit().await.map_err(AuthLifecycleError::from)?;
+            return Err(AuthLifecycleError::InvalidEmailChangeToken);
+        }
+
         let existing_user = Users::find()
             .filter(users::Column::TenantId.eq(tenant_id))
             .filter(users::Column::Email.eq(&request.new_email))
@@ -334,7 +343,7 @@ impl AuthLifecycleService {
         let new_email = request.new_email.clone();
         let mut active: users::ActiveModel = user.clone().into();
         active.email = Set(new_email.clone());
-        let updated_at: chrono::DateTime<chrono::FixedOffset> = confirmation_now.into();
+        let updated_at: chrono::DateTime<chrono::FixedOffset> = transition_at.into();
         active.email_verified_at = Set(Some(updated_at.clone()));
         active.updated_at = Set(updated_at);
         active.update(&tx).await.map_err(|error| {
@@ -360,7 +369,7 @@ impl AuthLifecycleService {
         .await?;
         let _revoked_oauth_tokens =
             crate::services::oauth_token_service::revoke_user_delegated_tokens_in_tx(
-                &tx, tenant_id, user.id, confirmation_now,
+                &tx, tenant_id, user.id, transition_at,
             )
             .await
             .map_err(AuthLifecycleError::from)?;
