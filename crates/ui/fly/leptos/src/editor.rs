@@ -1838,25 +1838,6 @@ pub fn FlyAssets(
     }
 }
 
-/// Full editor workspace: palette, page tabs (switch, create, remove), page properties (rename, SEO, move), layer tree, canvas preview, design-token editor, and undo/redo, wired to a
-/// `FlyEditor` + `FlyUiStateMachine` held in local signals.
-///
-/// The host passes the initial document and an `on_change` callback that fires with the
-/// new document after every accepted command; persistence, permissions, and transport
-/// remain the host's business (AGENTS/FFA boundary). Registries default to the builtins;
-/// hosts with provider blocks pass their own through `registries`. When the host also
-/// passes a `contribution_assembly`, the palette is restricted by contribution access —
-/// namespaced provider blocks appear (and insert) only when an active contribution
-/// declares them, the same policy the page-builder admin enforces.
-///
-/// Panel labels come from `messages`: the host resolves an
-/// [`EditorMessages`](fly_ui::EditorMessages) from its own message catalog for the
-/// current locale (English by default), keeping the adapters platform-neutral.
-///
-/// When the host passes `on_intent`, hydrated wasm-client builds use typed callbacks
-/// against the authoritative controller. Before hydration, the default SSR workspace keeps
-/// controls with a browser transport: palette/layer selection, undo/redo, and named theme/style
-/// intent forms. Mode toggles and page, component-property, asset and inline-preview panels that
 /// Immutable identity of the controlled Page Builder snapshot that produced a workspace intent.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceIntentContext {
@@ -1876,6 +1857,25 @@ fn bind_workspace_intent_context(
     )
 }
 
+/// Full editor workspace: palette, page tabs (switch, create, remove), page properties (rename, SEO, move), layer tree, canvas preview, design-token editor, and undo/redo, wired to a
+/// `FlyEditor` + `FlyUiStateMachine` held in local signals.
+///
+/// The host passes the initial document and an `on_change` callback that fires with the
+/// new document after every accepted command; persistence, permissions, and transport
+/// remain the host's business (AGENTS/FFA boundary). Registries default to the builtins;
+/// hosts with provider blocks pass their own through `registries`. When the host also
+/// passes a `contribution_assembly`, the palette is restricted by contribution access —
+/// namespaced provider blocks appear (and insert) only when an active contribution
+/// declares them, the same policy the page-builder admin enforces.
+///
+/// Panel labels come from `messages`: the host resolves an
+/// [`EditorMessages`](fly_ui::EditorMessages) from its own message catalog for the
+/// current locale (English by default), keeping the adapters platform-neutral.
+///
+/// When the host passes `on_intent`, hydrated wasm-client builds use typed callbacks
+/// against the authoritative controller. Before hydration, the default SSR workspace keeps
+/// controls with a browser transport: palette/layer selection, undo/redo, and named theme/style
+/// intent forms. Mode toggles and page, component-property, asset and inline-preview panels that
 /// require Leptos event handlers stay hidden until hydration; the Page Builder host supplies
 /// their SSR equivalents outside this workspace. The browser adapter yields mutation ownership
 /// to Leptos after hydration, preventing the same action from being submitted twice.

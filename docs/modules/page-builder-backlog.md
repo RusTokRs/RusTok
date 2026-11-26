@@ -85,7 +85,7 @@ open.
 Fly boundary correction (2026-11-26, source-only): mutating Page Builder intents now require
 the captured page ID, revision and project hash; the Leptos workspace attaches an explicit
 `WorkspaceIntentContext` from its controlled projection instead of upgrading events from the
-live controller. JSON page/drop indices use checked platform-width conversion, localized slug
+live controller. JSON page indices use checked platform-width conversion, localized slug
 inference rejects one-page/multi-locale ambiguity, and iframe identity/sequence plus geometry
 and drop-index arithmetic fail closed. Focused regressions are authored but not executed.
 No `cargo check`, `cargo test`, lint, Node or browser run is claimed; maintainer verification
