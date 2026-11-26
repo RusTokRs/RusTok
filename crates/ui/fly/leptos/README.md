@@ -31,7 +31,10 @@ remain open in the central implementation plan.
 ## Controlled Page Builder workspace updates
 
 An intent-mode consumer may supply `controlled_document`, `controlled_selection`,
-`controlled_page`, `controlled_can_undo`, and `controlled_can_redo` as Leptos `Signal`s.
+`controlled_page`, `controlled_can_undo`, `controlled_can_redo`, and `intent_context` as
+Leptos `Signal`s. `intent_context` carries a `WorkspaceIntentContext` containing the page ID,
+revision and project hash for the controlled projection; the workspace attaches it to each typed
+intent, and the host must not fill missing values by re-reading the live controller.
 The workspace synchronizes the canonical controller document and selection into its internal
 FlyEditor projection, and the active page into its navigation signal. Standalone mode retains
 its own mutable FlyEditor/history; no external synchronization occurs without `on_intent`.

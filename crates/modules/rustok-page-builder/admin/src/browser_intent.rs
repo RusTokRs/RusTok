@@ -264,7 +264,7 @@ fn dispatch_named_intent(
             dispatch_ssr_form(controller, intent, payload)?
         }
         "activate_page" => {
-            let page_index = integer_field(payload, "page_index")? as usize;
+            let page_index = index_field(payload, "page_index")?;
             let page_id = payload
                 .get("page_id")
                 .and_then(Value::as_str)
@@ -298,7 +298,7 @@ fn dispatch_named_intent(
             open_created_page(controller, effects)?
         }
         "remove_page" => {
-            let page_index = integer_field(payload, "page_index")? as usize;
+            let page_index = index_field(payload, "page_index")?;
             let page_id = payload
                 .get("page_id")
                 .and_then(Value::as_str)
@@ -366,7 +366,7 @@ fn dispatch_named_intent(
         }
         "move_page" => {
             let locator = page_locator_from_payload(payload)?;
-            let target_index = integer_field(payload, "target_index")? as usize;
+            let target_index = index_field(payload, "target_index")?;
             let source_index = locator
                 .resolve(controller.editor().document())
                 .map_err(|error| BrowserIntentDispatchError::Payload(error.to_string()))?;
@@ -555,9 +555,18 @@ fn validate_revision(
     if !is_mutating_intent(envelope) {
         return Ok(());
     }
-    // Revision is mandatory for every mutation. A missing revision used to
-    // skip the entire concurrency guard, so an unversioned browser request
-    // could mutate whichever server snapshot happened to be current.
+    // Every mutation is bound to the exact workspace document snapshot. Missing page scope,
+    // revision or project hash must never turn an old event into a write against the live state.
+    let page_id = envelope
+        .page_id
+        .as_deref()
+        .ok_or_else(|| BrowserIntentDispatchError::MissingField("page_id".to_string()))?;
+    if page_id != controller.page_id() {
+        return Err(BrowserIntentDispatchError::PageScopeConflict {
+            expected: controller.page_id().to_string(),
+            actual: page_id.to_string(),
+        });
+    }
     let revision = envelope
         .revision
         .as_deref()
@@ -568,14 +577,16 @@ fn validate_revision(
             actual: revision.to_string(),
         });
     }
-    if let Some(project_hash) = envelope.project_hash.as_deref() {
-        let expected = controller.editor().revision().project_hash.hex();
-        if project_hash != expected {
-            return Err(BrowserIntentDispatchError::ProjectHashConflict {
-                expected,
-                actual: project_hash.to_string(),
-            });
-        }
+    let project_hash = envelope
+        .project_hash
+        .as_deref()
+        .ok_or_else(|| BrowserIntentDispatchError::MissingField("project_hash".to_string()))?;
+    let expected = controller.editor().revision().project_hash.hex();
+    if project_hash != expected {
+        return Err(BrowserIntentDispatchError::ProjectHashConflict {
+            expected,
+            actual: project_hash.to_string(),
+        });
     }
     Ok(())
 }
@@ -724,15 +735,20 @@ fn optional_trimmed_string(payload: &Value, field: &str) -> Option<String> {
         .map(ToString::to_string)
 }
 
-fn integer_field(payload: &Value, field: &str) -> Result<u64, BrowserIntentDispatchError> {
-    payload
+fn index_field(payload: &Value, field: &str) -> Result<usize, BrowserIntentDispatchError> {
+    let value = payload
         .get(field)
         .and_then(|value| {
             value
                 .as_u64()
                 .or_else(|| value.as_str().and_then(|value| value.parse().ok()))
         })
-        .ok_or_else(|| BrowserIntentDispatchError::MissingField(field.to_string()))
+        .ok_or_else(|| BrowserIntentDispatchError::MissingField(field.to_string()))?;
+    usize::try_from(value).map_err(|_| {
+        BrowserIntentDispatchError::Payload(format!(
+            "index field `{field}` exceeds the platform index range"
+        ))
+    })
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -803,7 +819,7 @@ fn style_rule_scope_from_payload(
 }
 
 fn page_locator_from_payload(payload: &Value) -> Result<PageLocator, BrowserIntentDispatchError> {
-    let page_index = integer_field(payload, "page_index")? as usize;
+    let page_index = index_field(payload, "page_index")?;
     let page_id = payload
         .get("page_id")
         .and_then(Value::as_str)
@@ -846,18 +862,26 @@ mod tests {
     }
 
     fn intent(intent: &str, payload: Value) -> BrowserIntentEnvelope {
+        let controller = controller();
+        intent_for(&controller, intent, payload)
+    }
+
+    fn intent_for(
+        controller: &AdminCanvasController,
+        intent: &str,
+        payload: Value,
+    ) -> BrowserIntentEnvelope {
         BrowserIntentEnvelope {
             protocol: FLY_BROWSER_PROTOCOL.to_string(),
             instance_id: "canvas-a".to_string(),
             intent: intent.to_string(),
             payload,
             sequence: Some(1),
-            page_id: Some("home".to_string()),
-            revision: Some("rev-1".to_string()),
-            project_hash: None,
+            page_id: Some(controller.page_id().to_string()),
+            revision: Some(controller.revision_id().to_string()),
+            project_hash: Some(controller.editor().revision().project_hash.hex()),
             draft_token: None,
             draft_generation: None,
-
             operation_id: None,
         }
     }
@@ -1033,14 +1057,39 @@ mod tests {
     }
 
     #[test]
-    fn mutating_browser_requests_require_a_revision_even_if_the_intent_is_valid() {
+    fn mutating_browser_requests_require_page_revision_and_project_hash() {
         let mut controller = controller();
+        let before = controller.clone();
+
         let mut unversioned = intent("insert_block", json!({"block_id": "text"}));
         unversioned.revision = None;
-        let before = controller.clone();
         assert!(matches!(
             dispatch_browser_intent(&mut controller, unversioned),
             Err(BrowserIntentDispatchError::MissingField(name)) if name == "revision"
+        ));
+        assert_eq!(controller, before);
+
+        let mut missing_page = intent("insert_block", json!({"block_id": "text"}));
+        missing_page.page_id = None;
+        assert!(matches!(
+            dispatch_browser_intent(&mut controller, missing_page),
+            Err(BrowserIntentDispatchError::MissingField(name)) if name == "page_id"
+        ));
+        assert_eq!(controller, before);
+
+        let mut missing_hash = intent("insert_block", json!({"block_id": "text"}));
+        missing_hash.project_hash = None;
+        assert!(matches!(
+            dispatch_browser_intent(&mut controller, missing_hash),
+            Err(BrowserIntentDispatchError::MissingField(name)) if name == "project_hash"
+        ));
+        assert_eq!(controller, before);
+
+        let mut stale_hash = intent("insert_block", json!({"block_id": "text"}));
+        stale_hash.project_hash = Some("stale-hash".to_string());
+        assert!(matches!(
+            dispatch_browser_intent(&mut controller, stale_hash),
+            Err(BrowserIntentDispatchError::ProjectHashConflict { .. })
         ));
         assert_eq!(controller, before);
 
@@ -1051,10 +1100,21 @@ mod tests {
             Err(BrowserIntentDispatchError::MissingField(name)) if name == "revision"
         ));
 
-        // Read-only preview and navigation state do not require mutation fencing.
+        // Read-only selection remains usable without a mutation snapshot.
         let mut select = intent("select", json!({"component_id": "hero"}));
+        select.page_id = None;
         select.revision = None;
+        select.project_hash = None;
         dispatch_browser_intent(&mut controller, select).expect("unversioned selection");
+    }
+
+    #[cfg(target_pointer_width = "32")]
+    #[test]
+    fn index_field_rejects_values_that_do_not_fit_the_platform_index_range() {
+        assert!(matches!(
+            index_field(&json!({"index": u64::MAX}), "index"),
+            Err(BrowserIntentDispatchError::Payload(_))
+        ));
     }
 
     #[test]
@@ -1154,11 +1214,13 @@ mod tests {
         assert_eq!(tokens[0].name, "brand");
         assert_eq!(tokens[0].value, "#0b5fff");
 
-        let removed = dispatch_browser_intent(
-            &mut controller,
-            intent("remove_theme_token", json!({ "name": "brand" })),
-        )
-        .expect("remove theme token");
+        let remove_intent = intent_for(
+            &controller,
+            "remove_theme_token",
+            json!({ "name": "brand" }),
+        );
+        let removed =
+            dispatch_browser_intent(&mut controller, remove_intent).expect("remove theme token");
         assert!(removed.dirty);
         assert!(
             fly::decode_theme_tokens(controller.editor().document())

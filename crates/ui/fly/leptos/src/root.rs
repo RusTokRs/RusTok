@@ -25,7 +25,7 @@ mod foundation;
 pub use editor::{
     FlyAssets, FlyCanvasPreview, FlyComponentProperties, FlyContributionSummary,
     FlyEditorWorkspace, FlyLayerTree, FlyPageProperties, FlyPageTabs, FlyPalette, FlyStyleRules,
-    FlyThemeTokenEditor, FlyThemeTokens,
+    FlyThemeTokenEditor, FlyThemeTokens, WorkspaceIntentContext,
 };
 pub use foundation::{
     AuthenticatedInlineEditGrant, AuthenticatedInlineEditRequest, AutoScrollDelta,

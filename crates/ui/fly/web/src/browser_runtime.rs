@@ -1,6 +1,7 @@
 use crate::{
     BrowserRect, IframeBridgeEnvelope, IframeBridgeMessage, MAX_IFRAME_MESSAGE_BYTES,
 };
+use crate::foundation::{normalize_iframe_instance_id, next_iframe_sequence};
 use js_sys::{Array, Object};
 use std::cell::Cell;
 use std::rc::Rc;
@@ -166,6 +167,9 @@ impl WindowMessageSubscription {
         .ok_or(BrowserRuntimeError::InvalidTargetOrigin)?;
         let expected_source = expected_source.map(|window| JsValue::from(window.clone()));
         let expected_instance_id = expected_instance_id.into();
+        let expected_instance_id = normalize_iframe_instance_id(&expected_instance_id).ok_or_else(
+            || BrowserRuntimeError::Browser("iframe instance id must not be empty".to_string()),
+        )?;
         let last_sequence = Rc::new(Cell::new(None));
         let callback_sequence = Rc::clone(&last_sequence);
         let target: EventTarget = window.clone().unchecked_into();
@@ -296,9 +300,13 @@ impl IframeMessagePort {
         instance_id: impl Into<String>,
         target_origin: impl Into<String>,
     ) -> Result<Self, BrowserRuntimeError> {
+        let instance_id = instance_id.into();
+        let instance_id = normalize_iframe_instance_id(&instance_id).ok_or_else(|| {
+            BrowserRuntimeError::Browser("iframe instance id must not be empty".to_string())
+        })?;
         let target_origin = validate_origin(target_origin)?;
         Ok(Self {
-            instance_id: instance_id.into(),
+            instance_id,
             target_origin,
             next_sequence: 1,
         })
@@ -329,6 +337,9 @@ impl IframeMessagePort {
         message: IframeBridgeMessage,
     ) -> Result<u64, BrowserRuntimeError> {
         let sequence = self.next_sequence;
+        let next_sequence = next_iframe_sequence(sequence).ok_or_else(|| {
+            BrowserRuntimeError::Browser("iframe message sequence exhausted".to_string())
+        })?;
         let envelope = IframeBridgeEnvelope::new(&self.instance_id, sequence, message);
         let payload = serde_json::to_string(&envelope)
             .map_err(|error| BrowserRuntimeError::Serialization(error.to_string()))?;
@@ -347,7 +358,7 @@ impl IframeMessagePort {
             .ok_or(BrowserRuntimeError::MissingContentWindow)?
             .post_message(&JsValue::from_str(&payload), deliver_to)
             .map_err(browser_error)?;
-        self.next_sequence = self.next_sequence.saturating_add(1);
+        self.next_sequence = next_sequence;
         Ok(sequence)
     }
 

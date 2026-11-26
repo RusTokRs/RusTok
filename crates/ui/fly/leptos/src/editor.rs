@@ -1857,6 +1857,25 @@ pub fn FlyAssets(
 /// against the authoritative controller. Before hydration, the default SSR workspace keeps
 /// controls with a browser transport: palette/layer selection, undo/redo, and named theme/style
 /// intent forms. Mode toggles and page, component-property, asset and inline-preview panels that
+/// Immutable identity of the controlled Page Builder snapshot that produced a workspace intent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceIntentContext {
+    pub page_id: String,
+    pub revision: String,
+    pub project_hash: String,
+}
+
+fn bind_workspace_intent_context(
+    envelope: BrowserIntentEnvelope,
+    context: WorkspaceIntentContext,
+) -> BrowserIntentEnvelope {
+    envelope.with_page_context(
+        Some(context.page_id),
+        Some(context.revision),
+        Some(context.project_hash),
+    )
+}
+
 /// require Leptos event handlers stay hidden until hydration; the Page Builder host supplies
 /// their SSR equivalents outside this workspace. The browser adapter yields mutation ownership
 /// to Leptos after hydration, preventing the same action from being submitted twice.
@@ -1887,10 +1906,24 @@ pub fn FlyEditorWorkspace(
     controlled_can_redo: Option<Signal<bool>>,
     #[prop(optional_no_strip)]
     controlled_capabilities: Option<Signal<CapabilityState>>,
+    /// Page/revision/hash identity attached to every typed intent from this controlled projection.
+    #[prop(optional_no_strip)]
+    intent_context: Option<Signal<WorkspaceIntentContext>>,
     /// CSP nonce for the inline styles the workspace renders; see [`FlyCanvasPreview`].
     #[prop(optional_no_strip)]
     csp_nonce: Option<String>,
 ) -> impl IntoView {
+    let on_intent = on_intent.map(|callback| {
+        let intent_context = intent_context;
+        Callback::new(move |envelope: BrowserIntentEnvelope| {
+            let envelope = if let Some(context) = intent_context.as_ref() {
+                bind_workspace_intent_context(envelope, context.get_untracked())
+            } else {
+                envelope
+            };
+            callback.run(envelope);
+        })
+    });
     let messages = messages.unwrap_or_default();
     let workspace_title = messages.workspace_title.clone();
     let workspace_csp_nonce = csp_nonce.filter(|nonce| !nonce.trim().is_empty());
@@ -3173,6 +3206,23 @@ pub fn FlyEditorWorkspace(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn workspace_intent_context_binds_page_revision_and_project_hash() {
+        let envelope = BrowserIntentEnvelope::undo("canvas");
+        let bound = bind_workspace_intent_context(
+            envelope,
+            WorkspaceIntentContext {
+                page_id: "page-a".to_string(),
+                revision: "revision-2".to_string(),
+                project_hash: "hash-2".to_string(),
+            },
+        );
+
+        assert_eq!(bound.page_id.as_deref(), Some("page-a"));
+        assert_eq!(bound.revision.as_deref(), Some("revision-2"));
+        assert_eq!(bound.project_hash.as_deref(), Some("hash-2"));
+    }
 
     #[test]
     fn layer_indent_uses_a_bounded_class_scale() {

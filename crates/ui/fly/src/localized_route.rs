@@ -320,11 +320,11 @@ fn unique_match<'a>(
     slug: &str,
     locale: Option<&str>,
 ) -> FlyResult<Option<&'a LocalizedPageRouteEntry>> {
-    let pages = matches
+    let identities = matches
         .iter()
-        .map(|entry| entry.page_index)
+        .map(|entry| (entry.page_index, entry.locale.as_deref()))
         .collect::<BTreeSet<_>>();
-    if pages.len() > 1 {
+    if identities.len() > 1 {
         return Err(FlyError::Decode(format!(
             "localized slug `{slug}` is ambiguous for locale `{}`",
             locale.unwrap_or("<unspecified>")
@@ -462,6 +462,23 @@ mod tests {
             .expect("inferred route");
         assert!(resolution.inferred_locale);
         assert_eq!(resolution.context[RUNTIME_LOCALE_FIELD], "ru");
+    }
+
+    #[test]
+    fn a_slug_shared_by_locales_on_one_page_does_not_infer_an_arbitrary_locale() {
+        let document = document(json!({
+            "pages": [{
+                "id": "home",
+                "flyPageMeta": {
+                    "slug": { "$localized": { "en": "shared", "ru": "shared" } }
+                },
+                "component": { "id": "root", "type": "wrapper" }
+            }]
+        }));
+        assert!(matches!(
+            resolve_localized_page_route(&document, "shared", &json!({})),
+            Err(FlyError::Decode(_))
+        ));
     }
 
     #[test]

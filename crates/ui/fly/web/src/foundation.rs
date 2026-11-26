@@ -22,6 +22,17 @@ pub(crate) fn iframe_message_payload_within_limit(payload: &str) -> bool {
     payload.len() <= MAX_IFRAME_MESSAGE_BYTES
 }
 
+/// Normalize an iframe instance identity and reject missing/blank identities.
+pub(crate) fn normalize_iframe_instance_id(value: &str) -> Option<String> {
+    let value = value.trim();
+    (!value.is_empty()).then(|| value.to_string())
+}
+
+/// Return the next sender sequence, failing closed rather than reusing u64::MAX.
+pub(crate) fn next_iframe_sequence(sequence: u64) -> Option<u64> {
+    sequence.checked_add(1)
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub struct BrowserPoint {
     pub x: f64,
@@ -70,8 +81,14 @@ impl BrowserRect {
             && (self.top + self.height).is_finite()
     }
 
+    /// Whether a finite point lies within finite, non-negative rectangle bounds.
+    ///
+    /// Keep this public primitive fail-closed on its own; callers must not need to remember a
+    /// separate validation step before using it.
     pub fn contains(self, point: BrowserPoint) -> bool {
-        point.x >= self.left
+        self.has_valid_bounds()
+            && point.is_finite()
+            && point.x >= self.left
             && point.y >= self.top
             && point.x <= self.left + self.width
             && point.y <= self.top + self.height
@@ -349,7 +366,7 @@ pub fn hit_test_drop_targets(
             let distance = pointer.distance_squared(target.rect.center()).sqrt();
             let proximity = (1.0 / (1.0 + distance)) as f32;
             let index = if position == DropPosition::After {
-                target.index.saturating_add(1)
+                target.index.checked_add(1)?
             } else {
                 target.index
             };
@@ -491,6 +508,8 @@ impl IframeBridgeEnvelope {
     /// them into editor intents.
     pub fn is_accepted(&self, expected_instance_id: &str, last_sequence: Option<u64>) -> bool {
         self.protocol == FLY_IFRAME_PROTOCOL
+            && !self.instance_id.trim().is_empty()
+            && !expected_instance_id.trim().is_empty()
             && self.instance_id == expected_instance_id
             && last_sequence.is_none_or(|sequence| self.sequence > sequence)
     }
@@ -677,6 +696,19 @@ mod tests {
     }
 
     #[test]
+    fn drop_after_index_overflow_is_rejected() {
+        let mut target = drop_target(1.0, rect(0.0, 0.0, 100.0, 100.0));
+        target.index = usize::MAX;
+
+        let candidates = hit_test_drop_targets(
+            BrowserPoint { x: 50.0, y: 95.0 },
+            [target],
+            CoordinateTransform::default(),
+        );
+        assert!(candidates.is_empty());
+    }
+
+    #[test]
     fn auto_scroll_scales_near_viewport_edges() {
         let viewport = BrowserRect {
             left: 0.0,
@@ -742,11 +774,27 @@ mod tests {
     }
 
     #[test]
-    fn iframe_envelope_rejects_replay_and_wrong_instance() {
+    fn iframe_envelope_rejects_replay_wrong_instance_and_blank_identity() {
         let envelope = IframeBridgeEnvelope::new("canvas-a", 4, IframeBridgeMessage::Ready);
         assert!(envelope.is_accepted("canvas-a", Some(3)));
         assert!(!envelope.is_accepted("canvas-a", Some(4)));
         assert!(!envelope.is_accepted("canvas-b", None));
+        assert!(!envelope.is_accepted("", None));
+
+        let blank = IframeBridgeEnvelope::new("  ", 5, IframeBridgeMessage::Ready);
+        assert!(!blank.is_accepted("  ", None));
+        assert_eq!(
+            normalize_iframe_instance_id(" canvas-a "),
+            Some("canvas-a".to_string())
+        );
+        assert_eq!(normalize_iframe_instance_id("  "), None);
+    }
+
+    #[test]
+    fn iframe_sender_sequence_exhaustion_is_explicit() {
+        assert_eq!(next_iframe_sequence(1), Some(2));
+        assert_eq!(next_iframe_sequence(u64::MAX - 1), Some(u64::MAX));
+        assert_eq!(next_iframe_sequence(u64::MAX), None);
     }
 
     #[test]
@@ -792,9 +840,8 @@ mod tests {
 
     #[test]
     fn an_unreal_rectangle_produces_no_drop_position() {
-        // An infinite rect contains every point and passes the size guard, after which the
-        // position ratio is NaN, every comparison is false, and the old code answered `After`
-        // for a rectangle that does not exist.
+        // Invalid bounds must be rejected before the position ratio is calculated; a
+        // non-existent rectangle must never produce a drop position.
         let pointer = BrowserPoint { x: 10.0, y: 10.0 };
         for bad in [
             rect(0.0, f64::NEG_INFINITY, 100.0, f64::INFINITY),
@@ -808,6 +855,19 @@ mod tests {
                 "accepted {bad:?}"
             );
         }
+    }
+
+    #[test]
+    fn contains_rejects_invalid_rectangles_and_points() {
+        let pointer = BrowserPoint { x: 10.0, y: 10.0 };
+        let valid = rect(0.0, 0.0, 100.0, 100.0);
+        assert!(valid.contains(pointer));
+        assert!(!rect(0.0, 0.0, f64::INFINITY, 100.0).contains(pointer));
+        assert!(!rect(0.0, 0.0, -1.0, 100.0).contains(pointer));
+        assert!(!valid.contains(BrowserPoint {
+            x: f64::INFINITY,
+            y: 10.0,
+        }));
     }
 
     #[test]

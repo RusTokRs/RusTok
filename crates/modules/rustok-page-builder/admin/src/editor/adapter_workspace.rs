@@ -13,7 +13,7 @@
 use crate::editor::AdminEditorRuntime;
 use crate::i18n::t;
 use fly_browser::BrowserIntentEnvelope;
-use fly_leptos::FlyEditorWorkspace;
+use fly_leptos::{FlyEditorWorkspace, WorkspaceIntentContext};
 use fly_ui::{ContributionAssemblyResult, EditorMessages};
 use leptos::prelude::*;
 use rustok_ui_core::{UiCspNonce, UiRouteContext};
@@ -94,6 +94,16 @@ pub fn AdapterWorkspacePanel(
             runtime.controller.with(|controller| controller.ui().state.capabilities)
         })
     };
+    let controlled_intent_context = {
+        let runtime = runtime.clone();
+        Signal::derive(move || {
+            runtime.controller.with(|controller| WorkspaceIntentContext {
+                page_id: controller.page_id().to_string(),
+                revision: controller.revision_id().to_string(),
+                project_hash: controller.editor().revision().project_hash.hex(),
+            })
+        })
+    };
 
     let intent_runtime = runtime.clone();
     let error_runtime = runtime.clone();
@@ -106,13 +116,10 @@ pub fn AdapterWorkspacePanel(
         if envelope.is_mutating() && intent_runtime.reject_peer_write_conflict() {
             return;
         }
-        // These are trusted in-process Leptos callbacks, not HTTP payloads. The
-        // shared Fly constructors deliberately have no host revision; attach it
-        // here before the same server-side mutation gate used by SSR requests.
+        // FlyEditorWorkspace binds the page/revision/hash from its controlled projection.
+        // Do not re-read the live controller here: that would upgrade a stale event to a
+        // newer document snapshot before the shared mutation admission check.
         let result = intent_runtime.controller.try_update(|controller| {
-            let mut envelope = envelope;
-            envelope.revision = Some(controller.revision_id().to_string());
-            envelope.project_hash = Some(controller.editor().revision().project_hash.hex());
             crate::dispatch_browser_intent(controller, envelope)
         });
         match result {
@@ -131,6 +138,7 @@ pub fn AdapterWorkspacePanel(
             contribution_assembly=assembly
             instance_id=instance_id
             on_intent=on_intent
+            intent_context=Some(controlled_intent_context)
             on_error=on_error
             messages=messages
             initial_page=initial_page

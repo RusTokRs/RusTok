@@ -9,7 +9,8 @@ SSR-first Leptos 0.8 adapter foundation, editor component shells, and browser ru
 - `FlyInlineEditor`: Container shell for contextual inline page-editing sessions.
 - `FlyPreview`: Responsive live canvas preview container.
 - `FlyReadOnly`: Non-editable presentation container.
-- `FlyEditorWorkspace`: Composite workspace component binding palette, layer tree, canvas preview, design-token editor, and undo/redo history.
+- `FlyEditorWorkspace`: Composite workspace component binding palette, layer tree, canvas preview, design-token editor, and undo/redo history; controlled intent mode accepts an `intent_context` signal.
+- `WorkspaceIntentContext`: Immutable page ID, revision and project hash attached to every typed intent emitted by a controlled workspace.
 - Modular panels: `FlyPalette`, `FlyLayerTree`, `FlyCanvasPreview`, `FlyPageTabs`, `FlyStyleRules`, `FlyPageProperties`, `FlyComponentProperties`, `FlyAssets`, `FlyThemeTokens`, `FlyThemeTokenEditor`, `FlyContributionSummary`.
 
 ### Re-exported Web Runtime & Geometry
@@ -19,6 +20,7 @@ SSR-first Leptos 0.8 adapter foundation, editor component shells, and browser ru
 ## 2. Invariants & Business Rules
 - **Safe Code Boundary**: The crate denies unsafe code (`#![deny(unsafe_code)]`).
 - **SSR-First Parity**: Layout shells and workspace components render static HTML and ARIA landmarks identically in SSR and client hydration.
+- **Versioned Intent Context**: Controlled intent-mode workspaces bind page ID, revision and project hash from their supplied `WorkspaceIntentContext`; hosts must not upgrade an old event by reading the live controller.
 - **SSR Control Contract (producer side)**: `FlyPalette` renders each block as an item with `data-fly-block-id`, `data-fly-can-insert` and `data-fly-can-drag`, an insert control with `data-fly-action="insert-block"`, and — only when the host passes `on_begin_drag`, which `FlyEditorWorkspace` does in intent mode — a drag control with `data-fly-action="begin-block-drag"`. `FlyLayerTree` renders `data-fly-component-id` and `data-fly-action="select-component"` on selectable rows only. `fly-browser.js` binds exactly these on a server-rendered page; `scripts/verify/verify-fly-ssr-control-contract.mjs` fails when the two sides differ.
 - **WASM Client Feature Gating**: Browser-specific DOM manipulation and listener subscriptions require explicit `wasm-client` feature opt-in.
 - **Root Entrypoint**: Canonical entrypoint at `src/root.rs` cleanly separating host SSR shells from optional WASM browser interactions.

@@ -13,7 +13,7 @@ SSR-first JavaScript browser adapter assets, event bridging, CSRF security token
 
 ### Types & Protocol Contracts
 - `BrowserIntentKind`: Typed browser action kind enum (`Select`, `Hover`, `ActivatePage`, `Drop`, `InsertBlock`, `RemoveSelected`, `MoveSelected`, `PatchSelected`, `Undo`, `Redo`, `Save`, `Publish`, etc.).
-- `BrowserIntent`: Strongly typed intent envelope carrying tenant context, project revision, target component ID, and payload.
+- `BrowserIntent`: Strongly typed intent envelope carrying optional page/revision/project-hash context, target component ID, and payload. Mutating Page Builder intents require all three snapshot fields.
 - `BrowserConfig`: Client-side adapter configuration (timeouts, resource bounds, CSRF tokens, protocol settings).
 - `BrowserEnvelope`: Framed transport wrapper ensuring typed deserialization and forward compatibility.
 
@@ -22,7 +22,7 @@ SSR-first JavaScript browser adapter assets, event bridging, CSRF security token
 - **Zero Framework Coupling**: No DOM, WebSys, Leptos, or WASM bindings inside Rust; SSR-first architecture with embedded JS distribution.
 - **Save Failure Reporting**: A successful intent response may carry `save_failure` (`status`, `code`, `error`, `intent`) with `reload: true`. The adapter reports it as a browser problem (fallback code `SAVE_FAILED`) and keeps it in `sessionStorage` across the reload. It stands until a response reports a saved working copy: a response without `save_failure` whose state is still `dirty: true` keeps the message (root attribute `data-fly-save-failed="true"`), only an explicit `dirty: false` clears it.
 - **Queue and disposal**: Authoritative requests are serialized. A failed dequeued admission settles the unsent tail, and synchronous unmount during response delivery prevents the old continuation from updating metadata or navigating.
-- **CSRF & Revision Protection**: Mutating intents require valid CSRF headers and expected revision tracking to guard against stale updates and lost-update races.
+- **CSRF & Revision Protection**: Mutating intents require valid CSRF headers plus nonblank page ID, revision and project hash captured by the workspace snapshot. The server compares all three before applying selection hints or commands; read-only selection/preview intents may remain unversioned.
 - **Protocol Parity**: Cross-protocol requests and invalid envelopes are rejected fail-closed.
 - **SSR Control Contract**: `bindSsrControls` in `assets/fly-browser.js` binds the `data-fly-*` attributes that the default admin views render (`data-fly-block-id`, `data-fly-can-drag`, `data-fly-component-id`, `data-fly-route-query`, and the `data-fly-action` values `insert-block`, `begin-block-drag`, `select-component`, `set-viewport`, `intent:<name>`). The set is derived from both sides by `scripts/verify/verify-fly-ssr-control-contract.mjs`; a binding without a producer, or a rendered action without a handler, fails it. See `DECISIONS/2026-11-11-fly-ssr-control-contract-and-route-view-state.md`.
 - **Route View State**: A `<select data-fly-action data-fly-route-query="<key>">` changes no project state. On `change` the adapter sets `<key>` in the current URL, keeps the other parameters, and navigates; it posts no intent.
