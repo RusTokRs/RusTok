@@ -57,12 +57,50 @@ impl ChannelResolutionRuleDefinition {
             _ => {}
         }
 
+        let predicates = self
+            .predicates
+            .into_iter()
+            .map(ResolutionPredicate::validated)
+            .collect::<ChannelResult<Vec<_>>>()?;
+
+        // A rule must be an explicit, unambiguous conjunction: a duplicated
+        // predicate is dead configuration, and `host_equals` together with
+        // `host_suffix` can never both hold for the values the predicate admits.
+        let mut seen_host_equals = false;
+        let mut seen_host_suffix = false;
+        let mut seen_oauth_app = false;
+        let mut seen_surface = false;
+        let mut seen_locale = false;
+        for predicate in &predicates {
+            let already_seen = match predicate {
+                ResolutionPredicate::HostEquals(_) => {
+                    std::mem::replace(&mut seen_host_equals, true)
+                }
+                ResolutionPredicate::HostSuffix(_) => {
+                    std::mem::replace(&mut seen_host_suffix, true)
+                }
+                ResolutionPredicate::OAuthAppEquals(_) => {
+                    std::mem::replace(&mut seen_oauth_app, true)
+                }
+                ResolutionPredicate::SurfaceIs(_) => std::mem::replace(&mut seen_surface, true),
+                ResolutionPredicate::LocaleEquals(_) => std::mem::replace(&mut seen_locale, true),
+            };
+            if already_seen {
+                return Err(ChannelError::InvalidPolicyDefinition(format!(
+                    "resolution rule repeats the `{}` predicate; combine it into a single predicate instead",
+                    predicate.kind()
+                )));
+            }
+        }
+        if seen_host_equals && seen_host_suffix {
+            return Err(ChannelError::InvalidPolicyDefinition(
+                "resolution rule cannot combine `host_equals` with `host_suffix`: the exact host and the suffix can never both match"
+                    .to_string(),
+            ));
+        }
+
         Ok(Self {
-            predicates: self
-                .predicates
-                .into_iter()
-                .map(ResolutionPredicate::validated)
-                .collect::<ChannelResult<Vec<_>>>()?,
+            predicates,
             action: self.action,
         })
     }
@@ -81,6 +119,17 @@ impl ChannelResolutionRuleDefinition {
 }
 
 impl ResolutionPredicate {
+    /// Stable predicate discriminator used in validation diagnostics.
+    pub const fn kind(&self) -> &'static str {
+        match self {
+            Self::HostEquals(_) => "host_equals",
+            Self::HostSuffix(_) => "host_suffix",
+            Self::OAuthAppEquals(_) => "oauth_app_equals",
+            Self::SurfaceIs(_) => "surface_is",
+            Self::LocaleEquals(_) => "locale_equals",
+        }
+    }
+
     fn validated(self) -> ChannelResult<Self> {
         match self {
             Self::HostEquals(value) => Ok(Self::HostEquals(normalize_host_predicate(
@@ -112,8 +161,14 @@ impl ResolutionPredicate {
             Self::HostSuffix(expected_suffix) => normalized_request_host(facts)
                 .as_deref()
                 .is_some_and(|host| {
+                    // `host == suffix` or a strict subdomain: stripping the suffix
+                    // must leave a label separator, so `badexample.test` never
+                    // matches `example.test`. This runs per rule per request, so it
+                    // avoids the per-comparison `format!` allocation.
                     host == expected_suffix
-                        || host.ends_with(format!(".{expected_suffix}").as_str())
+                        || host
+                            .strip_suffix(expected_suffix)
+                            .is_some_and(|prefix| prefix.ends_with('.'))
                 }),
             Self::OAuthAppEquals(app_id) => facts.oauth_app_id == Some(*app_id),
             Self::SurfaceIs(surface) => &facts.surface == surface,
@@ -143,12 +198,24 @@ fn normalized_request_host(facts: &RequestFacts) -> Option<String> {
         .and_then(|value| ChannelTargetType::WebDomain.normalize_value(value))
 }
 
+/// Normalizes a locale predicate to the `ll`/`ll-rr` form facts are matched with.
+///
+/// The predicate used to accept any non-empty string, so a rule could be stored
+/// (and indexed) that no request locale could ever equal.
 fn normalize_locale(raw: &str) -> ChannelResult<String> {
     let normalized = raw.trim().replace('_', "-").to_ascii_lowercase();
-    if normalized.is_empty() {
-        return Err(ChannelError::InvalidPolicyDefinition(
-            "locale_equals requires a non-empty locale".to_string(),
-        ));
+    let mut parts = normalized.splitn(2, '-');
+    let language = parts.next().unwrap_or_default();
+    let region = parts.next();
+    let language_is_valid = (2..=3).contains(&language.len())
+        && language.chars().all(|ch| ch.is_ascii_alphabetic());
+    let region_is_valid = region.is_none_or(|region| {
+        (2..=8).contains(&region.len()) && region.chars().all(|ch| ch.is_ascii_alphanumeric())
+    });
+    if !language_is_valid || !region_is_valid {
+        return Err(ChannelError::InvalidPolicyDefinition(format!(
+            "locale_equals requires a BCP-47-like locale such as `en` or `en-us`, got `{raw}`"
+        )));
     }
     Ok(normalized)
 }

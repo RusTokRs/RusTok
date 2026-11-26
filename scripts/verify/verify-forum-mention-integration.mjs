@@ -94,7 +94,7 @@ const mentionSource = read("crates/modules/rustok-forum/src/mentions.rs");
 const profilesReader = read("crates/modules/rustok-profiles/src/reader.rs");
 const profileServices = read("crates/modules/rustok-profiles/src/services.rs");
 const mentionService = read("crates/modules/rustok-forum/src/services/mention_relation.rs");
-const b2Record = read("crates/modules/rustok-forum/docs/forum-12b2-owner-write-integration.md");
+const api = read("crates/modules/rustok-forum/CRATE_API.md");
 
 requireText(profilesReader, "find_profile_records_by_handles", "ProfilesReader must expose bounded batch handle lookup");
 requireText(profileServices, "pub const MAX_PROFILE_HANDLE_BATCH: usize = 64", "Profiles owner must expose a hard batch bound");
@@ -221,13 +221,10 @@ for (const root of contract.transport_roots ?? []) {
 }
 
 for (const marker of [
-  "FORUM-12B2",
-  "prepare the projection",
-  "persist_in_tx",
-  "Quote command DTOs are intentionally unchanged",
-  "Maintainer verification was not executed",
+  "MentionRelationService", "prepare", "persist_in_tx", "same transaction",
+  "immediately after the canonical body write", "same event UUID",
 ]) {
-  requireText(b2Record, marker, `FORUM-12B2 implementation record is missing ${marker}`);
+  requireText(api, marker, `canonical relation write contract is missing ${marker}`);
 }
 
 if (failures.length > 0) {

@@ -95,7 +95,8 @@ impl ForumSearchProjectionSource {
         Self {
             discovery: Arc::new(
                 ForumPublicDiscoveryService::new(db.clone(), event_bus)
-                    .with_settings_providers(settings),
+                    .with_settings_providers(settings)
+                    .with_taxonomy_port(taxonomy_port.clone()),
             ),
             db,
             taxonomy_port,
@@ -304,7 +305,14 @@ impl ForumSearchProjectionSource {
         if category.effective_locale != locale {
             return Ok(None);
         }
-        let route = exact_category_route(&self.db, tenant_id, category.id, locale).await?;
+        let route = exact_category_route(
+            &self.db,
+            self.taxonomy_port.clone(),
+            tenant_id,
+            category.id,
+            locale,
+        )
+        .await?;
         let owner = forum_category::Entity::find_by_id(category.id)
             .filter(forum_category::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -769,11 +777,13 @@ impl ProjectionCursor {
 
 async fn exact_category_route(
     db: &DatabaseConnection,
+    taxonomy_port: Arc<dyn ForumTaxonomyPort>,
     tenant_id: Uuid,
     category_id: Uuid,
     locale: &str,
 ) -> Result<String> {
     let descriptor = ForumCategoryRouteService::new(db.clone())
+        .with_port(taxonomy_port)
         .canonical_descriptor(tenant_id, category_id, locale, None)
         .await
         .map_err(map_forum_error)?;

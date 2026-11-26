@@ -1,5 +1,12 @@
 # Documentation: `apps/server`
 
+## GraphQL resolver telemetry
+
+Resolver debug events use the validated schema field name (`ResolveInfo::name`),
+not the response path or client-defined alias. This keeps field identity stable
+across aliased and indexed results without changing GraphQL response keys.
+The focused source regression covers both path forms; it has not been executed.
+
 ## Registry direct-session admission (2026-11-25)
 
 Registry V2 controller and publication/artifact/owner-transfer middleware now
@@ -811,7 +818,13 @@ history is deleted by the session foreign-key cascade. Migration and regressions
 are authored, unrun.
 
 Cookie-session login, registration and refresh use the remaining persisted
-refresh-session lifetime for cookie Max-Age. The absolute 90-day lineage cap
+refresh-session lifetime for cookie Max-Age. Login and registration finalize
+the lifetime after policy resolution and transactional event publication;
+rotation uses the persisted replacement row, and recovery retains its original
+deadline. All three reject less than one whole second remaining before commit.
+This is a pre-commit lifetime snapshot, not a guarantee against later commit
+or network latency. Source regressions authored, unrun.
+The absolute 90-day lineage cap
 is not extended when a session is rotated, and unrepresentable persisted
 timestamps fail closed rather than panicking.
 
@@ -827,7 +840,13 @@ verified; after verification, a still-live registration session can be used.
 Cookie-session logout treats a missing, expired, or already-revoked refresh
 token idempotently, but returns a failure when revocation persistence or
 transactional event publication fails. The server must not claim logout
-success while a refresh token could remain valid. Session-id logout now locks
+success while a refresh token could remain valid. Expected-lineage logout locks
+the retained tenant/session row even after revocation and proves the presented
+current, previous or historical digest before reporting an inactive session.
+The cookie transport can therefore confirm a retry without another revocation
+or event; a wrong credential or tenant still conflicts. Other session-id
+lookups retain the unrevoked-row predicate. Regression extended, unrun.
+Session-id logout now locks
 the active row before building its revocation update (PostgreSQL/MySQL row lock;
 SQLite write fence before read), so a concurrent refresh cannot be overwritten
 by a stale ActiveModel snapshot. A cookie containing the
@@ -872,6 +891,16 @@ request a non-empty subset of the currently authorized scopes. Authorization
 and client-credentials requests also preserve scope presence: omission selects
 the configured default, while an explicitly empty or whitespace-only value
 fails with `invalid_scope`. Consent grants must contain at least one scope.
+Token issuance and rotation also reject empty stored scope grants: omitted
+scope never bypasses validation of the selected default, and authorization
+code exchange cannot consume a code with an empty decoded scope list.
+Existing access-token admission and its empty-permission semantics are unchanged
+for well-formed grants.
+Stored authorization-code and consent scopes are decoded as complete JSON string
+arrays. A malformed element rejects the entire grant, including during locked
+token issuance and access-token consent admission. Consent lookups report an
+error rather than treating corrupt persisted consent as missing or valid.
+Focused regressions are authored but not executed.
 The `refresh_token` grant is valid only when the app also declares
 `authorization_code`. The server persists narrowed scopes on rotated
 credentials. Reuse detection revokes the scoped OAuth token family; on a
@@ -1266,11 +1295,11 @@ before the event forwarder. The Outbox relay supervisor owns and gracefully drai
 - Channel and standalone Flex REST handlers receive `ServerRuntimeContext`; channel JSON response
   formatting goes through `rustok_web::json_response`, and Flex controller tests assemble the same
   neutral runtime fixture.
-- Auth lifecycle root-event writes for self-service operations and invite acceptance resolve the registered runtime transactional transport instead of constructing private OutboxTransport instances. Event append failures propagate through the owner transaction and prevent commit; a source regression covers profile rollback with a registered failing transport. Administrative mutation provider composition is separate. Source regression unrun.
+- Auth lifecycle root-event writes for self-service operations and invite acceptance resolve the registered runtime transactional transport instead of constructing private OutboxTransport instances. Event append failures propagate through the owner transaction and prevent commit; a source regression covers profile rollback with a registered failing transport. The administrative provider likewise receives its cache and transactional event bus from the same runtime at composition, so invite issuance/revocation, user updates/deactivation and RBAC contract writes cannot bypass the registered writer. Source regressions cover rollback of profile changes and invite revocation; unrun.
 - Auth REST handlers extract a narrow `ServerAuthRuntime`; password reset and verification endpoints
   additionally receive `ServerEmailRuntime`. The controller receives explicit config, DB, and mailer
   dependencies, and JSON response formatting goes through `rustok_web::json_response`.
-- Password recovery requests share one lifecycle service for REST and GraphQL/native. Account-dependent token, mailer and URL preparation failures keep the generic public response; inactive accounts do not receive unusable reset links. Confirmation atomically compares the observed mailbox, tenant, active status and password hash before updating credentials and revoking sessions. Source regression authored; checks pending.
+- Password recovery requests share one lifecycle service for REST and GraphQL/native. Account-dependent token, mailer and URL preparation failures keep the generic public response; inactive accounts do not receive unusable reset links. REST email-verification requests also mask account-dependent signing failures (including an unavailable JWT lease), while lookup and timing-mask failures still propagate. Source regression authored, unrun. Confirmation atomically compares the observed mailbox, tenant, active status and password hash before updating credentials and revoking sessions. Source regression authored; checks pending.
 - Module guard and server channel contract are typed through `ServerRuntimeContext`; no
   framework-global application context is a request/channel contract for server-owned runtime paths.
 - OAuth discovery metadata also uses `ServerAuthRuntime` as the single source of auth config.
@@ -1295,7 +1324,13 @@ before the event forwarder. The Outbox relay supervisor owns and gracefully drai
   is absent. Focused source regressions are authored, unrun.
 - OAuth access JWTs are registered credentials: issuance writes a `token_kind = access`
   row whose id is the JWT `jti`, and the extractor requires that row to be active,
-  hash-bound, client/tenant/grant-scoped, and subject-bound. RFC 7009, app/consent
+  hash-bound, client/tenant/grant-scoped, subject-bound, and equal to the exact
+  issued scope array in the JWT. Both issuance paths persist the same ordered
+  array that is signed; malformed or mismatched registration scopes fail closed.
+  A malformed application scope policy is rejected even for an empty-scope
+  access JWT. Service permission resolution and token issuance distinguish
+  invalid persisted permission JSON from a valid empty policy. Regressions
+  authored, unrun. RFC 7009, app/consent
   revocation, credential change, code replay, and refresh reuse revoke the whole
   family, so an already-issued access JWT is fenced before its signed TTL. Delegated
   rows also capture the consent epoch (`consent_granted_at`); a consent revoke/re-grant
@@ -2100,3 +2135,13 @@ ownership under a tenant session lock and does not clear a missing or mismatched
 credential. The ID is not a bearer credential; absence remains credential-only
 startup or explicit raw-token operation. CORS admits the header. Mounted HTTP
 and database contention evidence is pending.
+
+
+## Forum service-boundary path canonicalization (2026-11-26)
+
+Service-principal restrictions for forum authorship, quote relations and
+content updates now classify percent-encoded resource IDs using the same
+percent-decoding semantics as Axum's Path extractor. Encoded UUID hyphens
+can no longer bypass human-only or moderation-only route checks. Focused
+source regressions were added; compilation, formatting and tests were not run
+at the user's request.

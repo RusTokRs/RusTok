@@ -35,6 +35,7 @@ function fixture(reducedMotion) {
     ownerDocument: document,
     closest() { return root; },
     getAttribute(attribute) { return attribute === 'id' ? 'destination' : null; },
+    contains(element) { return element === target; },
     scrollIntoView(options) { calls.push(['scroll', { ...options }]); },
     focus(options) { calls.push(['focus', { ...options }]); },
     animate(keyframes, options) { calls.push(['animate', keyframes, options]); },
@@ -78,6 +79,25 @@ for (const [label, preference, behavior] of [
   });
 }
 
+test('visibility toggle refuses to hide its own trigger', () => {
+  const { actions, target } = fixture();
+  actions.handleAction(
+    { kind: 'toggle_visibility', target_id: 'destination', mode: 'hide' },
+    target,
+  );
+  assert.equal(target.hidden, undefined);
+});
+
+test('visibility toggle refuses to hide an ancestor containing its trigger', () => {
+  const { actions, target, trigger } = fixture();
+  target.contains = (element) => element === trigger;
+  actions.handleAction(
+    { kind: 'toggle_visibility', target_id: 'destination', mode: 'hide' },
+    trigger,
+  );
+  assert.equal(target.hidden, undefined);
+});
+
 test('animation uses the target document motion preference', () => {
   const reduced = fixture(true);
   reduced.actions.handleAction({ kind: 'animate', target_id: 'destination', animation: 'fade_in' }, reduced.trigger);
@@ -87,6 +107,29 @@ test('animation uses the target document motion preference', () => {
   const normal = fixture(false);
   normal.actions.handleAction({ kind: 'animate', target_id: 'destination', animation: 'fade_in' }, normal.trigger);
   assert.equal(normal.calls[0][0], 'animate');
+});
+
+for (const [animation, transform] of [
+  ['slide_up', 'translateY(0)'],
+  ['slide_down', 'translateY(0)'],
+  ['zoom_in', 'scale(1)'],
+  ['pulse', 'scale(1)'],
+]) {
+  test('reduced motion applies the final transform for ' + animation, () => {
+    const { actions, calls, target, trigger } = fixture(true);
+    actions.handleAction({ kind: 'animate', target_id: 'destination', animation }, trigger);
+    assert.equal(target.style.transform, transform);
+    assert.equal(calls.length, 0);
+  });
+}
+
+test('animation fallback applies final transform when Web Animations is unavailable', () => {
+  const { actions, calls, target, trigger } = fixture(false);
+  delete target.animate;
+  actions.handleAction({ kind: 'animate', target_id: 'destination', animation: 'slide_up' }, trigger);
+  assert.equal(target.style.opacity, '1');
+  assert.equal(target.style.transform, 'translateY(0)');
+  assert.equal(calls.length, 0);
 });
 
 
@@ -141,3 +184,43 @@ for (const animation of ['constructor', 'toString', '__proto__', 'unknown']) {
     }
   });
 }
+
+test('stale stop handles cannot unregister a replacement document adapter', () => {
+  const { actions } = fixture();
+  function mockDocument() {
+    const listeners = new Map();
+    return {
+      listeners,
+      addEventListener(type, listener) {
+        if (!listeners.has(type)) listeners.set(type, new Set());
+        listeners.get(type).add(listener);
+      },
+      removeEventListener(type, listener) {
+        listeners.get(type)?.delete(listener);
+      },
+    };
+  }
+
+  const doc = mockDocument();
+  const otherDoc = mockDocument();
+  const first = actions.start(doc);
+  const other = actions.start(otherDoc);
+  assert.strictEqual(actions.start(doc), first);
+  first.stop();
+  for (const listeners of doc.listeners.values()) assert.equal(listeners.size, 0);
+
+  const replacement = actions.start(doc);
+  assert.notStrictEqual(replacement, first);
+  first.stop();
+  assert.strictEqual(actions.start(doc), replacement);
+  assert.strictEqual(actions.start(otherDoc), other);
+  assert.equal(doc.listeners.size, 4);
+  for (const listeners of doc.listeners.values()) assert.equal(listeners.size, 1);
+  for (const listeners of otherDoc.listeners.values()) assert.equal(listeners.size, 1);
+
+  replacement.stop();
+  replacement.stop();
+  for (const listeners of doc.listeners.values()) assert.equal(listeners.size, 0);
+  other.stop();
+  for (const listeners of otherDoc.listeners.values()) assert.equal(listeners.size, 0);
+});

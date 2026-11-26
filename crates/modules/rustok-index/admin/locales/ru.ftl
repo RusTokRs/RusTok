@@ -93,3 +93,6 @@ index-tab-overview = Обзор
 index-tab-schemas = Каталог схем
 index-tab-storage = Архитектура хранения
 index-title = Индексный движок (Index Engine)
+index-schemas-table = Схемы индекса
+index-storage-table = Хранилище индекса
+index-operations-table = Операции индекса

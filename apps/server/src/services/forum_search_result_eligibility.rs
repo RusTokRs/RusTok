@@ -17,6 +17,7 @@ pub(crate) struct ServerForumSearchResultEligibilityPort {
     db: DatabaseConnection,
     audience_facts: Option<SharedForumAudienceFactsPort>,
     settings_reader: Option<SharedStaticModuleSettingsReader>,
+    taxonomy_port: Option<std::sync::Arc<dyn rustok_forum::ForumTaxonomyPort>>,
 }
 
 impl ServerForumSearchResultEligibilityPort {
@@ -24,11 +25,13 @@ impl ServerForumSearchResultEligibilityPort {
         db: DatabaseConnection,
         audience_facts: Option<SharedForumAudienceFactsPort>,
         settings_reader: Option<SharedStaticModuleSettingsReader>,
+        taxonomy_port: Option<std::sync::Arc<dyn rustok_forum::ForumTaxonomyPort>>,
     ) -> Self {
         Self {
             db,
             audience_facts,
             settings_reader,
+            taxonomy_port,
         }
     }
 
@@ -38,6 +41,10 @@ impl ServerForumSearchResultEligibilityPort {
                 ForumSearchResultEligibilityService::with_audience_facts(self.db.clone(), facts)
             }
             None => ForumSearchResultEligibilityService::new(self.db.clone()),
+        };
+        let service = match self.taxonomy_port.clone() {
+            Some(port) => service.with_taxonomy_port(port),
+            None => service,
         };
         match self.settings_reader.clone() {
             Some(reader) => service.with_settings_providers(

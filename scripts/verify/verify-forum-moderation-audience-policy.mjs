@@ -2,6 +2,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { containsMarker } from "./lib/forum-source-verification.mjs";
 import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -20,7 +21,7 @@ function read(relativePath) {
 }
 
 function requireText(source, marker, message) {
-  if (!source.includes(marker)) failures.push(message);
+  if (!containsMarker(source, marker)) failures.push(message);
 }
 
 function rejectText(source, marker, message) {
@@ -70,7 +71,8 @@ for (const key of [
   "reply_moderation_commands_gated",
   "moderator_solution_commands_gated",
   "topic_author_solution_owner_scope_preserved",
-  "authorization_before_owner_write_transaction",
+  "authorization_inside_locked_owner_write_transaction",
+  "selected_taxonomy_provider_preserved",
   "exact_optional_owner_facts",
   "missing_context_fail_closed",
   "missing_provider_fail_closed",
@@ -130,7 +132,7 @@ for (const marker of [
   "lock_category_tree_in_tx(&txn, tenant_id)",
   "lock_category_moderation_audience_in_tx(&txn, tenant_id, category_id)",
   "forum_category_moderation_audience_policy::Entity::delete_many()",
-  "load_category_ancestor_ids",
+  "load_category_ancestor_ids_with_port( self.taxonomy_port.as_ref(), &txn, (&txn).into(), tenant_id, category_id, )",
   "effective_layers",
   "configured_constraints",
   "{tenant_id}:{category_id}:moderation",
@@ -157,7 +159,7 @@ for (const marker of [
   "enforce_scope(security, Resource::ForumReplies, Action::Moderate)?",
   "forum_reply::Entity::find_by_id(reply_id)",
   "Reply belongs to another topic",
-  "load_category_moderation_audience_policy(db, tenant_id, category_id)",
+  "load_category_moderation_audience_policy( self.taxonomy_port.as_ref(), db, tenant_id, category_id, )",
   "for layer in policy.effective_layers",
   "ForumAudienceEvaluator::decide(",
   "context.ok_or_else(||",

@@ -11,7 +11,7 @@ The compatibility resolver source in `crates/modules/rustok-commerce/src/graphql
 - require the Commerce module and storefront channel gate;
 - enforce the current-tenant boundary;
 - construct the canonical `rustok_channel::ChannelService` from the mounted database connection;
-- call `list_channels(tenant_id, 1, 250)` exactly once;
+- call `list_channel_options(tenant_id, false)` exactly once;
 - project the same successful `ChannelResponse` values into `GqlPricingChannelOption`.
 
 ## Typed facade
@@ -29,6 +29,7 @@ Transport responses are classified structurally by `ChannelError` variant.
 | Invalid target/policy input | `CHANNEL_REQUEST_INVALID` | `Channel query is invalid` | false |
 | Not found | `CHANNEL_RESOURCE_NOT_FOUND` | `Channel data was not found` | false |
 | Inactive/duplicate state | `CHANNEL_STATE_CONFLICT` | `Channel state conflicts with this query` | false |
+| Concurrent write race (`ChannelError::Conflict`) | `CHANNEL_CONCURRENT_CONFLICT` | `Channel query conflicted with a concurrent channel update` | true |
 | Database | `CHANNEL_TEMPORARILY_UNAVAILABLE` | `Channel data is temporarily unavailable` | true |
 | Serialization | `CHANNEL_OPERATION_FAILED` | `Channel query could not be completed safely` | false |
 

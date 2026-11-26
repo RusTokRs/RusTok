@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::core::{
     SeoAdminBusyKey, SeoAdminTab, SeoBulkActionForm, SeoBulkFilterForm, SeoIndexReplayForm,
     SeoRedirectForm, SeoSettingsForm, format_index_repair_replay_result,
-    validate_sitemap_generation_enabled,
+    seo_admin_tab_for_subpath, validate_sitemap_generation_enabled,
 };
 use crate::sections::{
     SeoAdminHeader, SeoAdminTabs, SeoBulkPane, SeoBusyFooter, SeoDefaultsPane, SeoDiagnosticsPane,
@@ -89,11 +89,18 @@ pub fn SeoAdmin() -> impl IntoView {
         move || bulk_jobs_nonce.get(),
         move |_| async move { transport::fetch_bulk_jobs(Some(20), None).await },
     );
+    // Precedence: an explicit `?tab=` wins (it is the operator's current choice),
+    // then the child page the host routed to (`overview` is the summary pane),
+    // then the module landing tab. Without the middle step `/modules/seo/overview`
+    // and `/modules/seo` rendered the identical page and the declared child page
+    // was a label without a destination.
+    let subpath_tab = seo_admin_tab_for_subpath(route_context.subpath.as_deref());
     let active_tab = Signal::derive(move || {
         tab_query
             .get()
             .as_deref()
             .and_then(SeoAdminTab::from_str)
+            .or(subpath_tab)
             .unwrap_or(SeoAdminTab::Index)
     });
 

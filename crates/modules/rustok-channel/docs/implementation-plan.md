@@ -1,5 +1,114 @@
 # Implementation plan for `rustok-channel`
 
+## Channel lifecycle and invariant hardening (2026-11-26)
+
+Landed in code, **not compiled or executed** in the authoring sandbox (no Rust
+toolchain), so every item below still needs `cargo`/PostgreSQL/SQLite/Redis
+evidence before it can be called verified:
+
+- **Lifecycle commands exist.** `ChannelService::{update_channel,
+  set_channel_active, delete_channel, set_default_channel_for_tenant,
+  ensure_channel_for_tenant}`; REST `PATCH /api/channels/{id}`,
+  `POST /api/channels/{id}/active`, `DELETE /api/channels/{id}`; matching SSR
+  server functions and admin card actions. Deactivating or deleting the tenant
+  default promotes the oldest remaining active channel in the same transaction,
+  and the PostgreSQL tombstone/index-revision triggers now fire from a real
+  deletion instead of being unreachable code.
+- **`channels.status` is gone.** `ChannelStatus` is the typed projection of
+  `is_active`, and the index projection derives the `status` field in SQL, so the
+  Sales Channel Index can no longer index a value that contradicts `is_active`.
+- **Invariants are structural.** Migration `m20261126_000013` adds partial unique
+  indexes for one default channel, one active policy set, one primary target and
+  one web-host claim per tenant, plus a composite `(tenant_id, channel_id)` FK for
+  targets and a denormalized `channel_targets.tenant_id`; conflicting legacy rows
+  are repaired before the indexes are created. Writes use single-transaction
+  promotion, `ON CONFLICT` upserts and unique-violation mapping to `409`.
+- **Selector errors are client errors.** An unknown `X-Channel-ID` records a
+  `Miss` and falls through like an unknown slug instead of returning `500`.
+- **Admin transport has no fallback.** One selected transport per build, no
+  `native -> REST` replay, no server-side API base URL and no loopback default.
+- **A broken invalidation runtime degrades, it does not fail the replica.** The
+  `channel resolution durable invalidation runtime` guardrail is `Degraded`, and
+  the channel middleware stops serving resolution from the process cache while
+  the durable listener is not ready (`channel_resolution_cache_bypassed`), so
+  stale routing decisions are impossible without taking the replica out of
+  rotation. See `rustok-cache/docs/operations.md`.
+- **Detail reads are set-based.** `build_channel_details` assembles targets,
+  module bindings and OAuth apps with three `IN (...)` queries per page instead
+  of three per channel. `list_channel_options(tenant_id, include_inactive)`
+  replaces the `list_channels(tenant, 1, 250)` idiom at every consumer
+  (commerce storefront, pricing storefront and admin), which used to truncate
+  silently and offered unusable channels.
+- **Module gates are tenant-scoped.** Every request-path module check uses
+  `is_module_enabled_for_tenant`; the unscoped `is_module_enabled` is
+  owner-internal only. Manual SQL fixtures no longer seed `channels.status`.
+- **The admin renders derived copy, never wire values.** `is_active` is the only
+  fact: `core::channel_status_badge`, `core::channel_lifecycle_toggle`,
+  `core::channel_rename_command` and `core::CHANNEL_DELETE_FEEDBACK` derive the
+  badge label, the lifecycle command and its feedback, so the Leptos adapter binds
+  values and keeps only view state. The admin DTOs carry no `status` field.
+- **Concurrency outcomes are typed, not `500`.** Every write that can lose a race
+  against the 000013 partial unique indexes (default promotion, policy-set
+  activation, create-as-default) maps the unique violation to
+  `ChannelError::Conflict`; the REST controller answers `409` and the Commerce
+  GraphQL shim answers `CHANNEL_CONCURRENT_CONFLICT` with `retryable: true`.
+- **Owner reads are set-based, including policy sets.** `build_channel_details`
+  and `list_resolution_policy_sets` each issue one `IN (...)` query per child
+  collection instead of one per parent row.
+- **Lifecycle invariants are pinned, not just written.** Migration 000013 and
+  the write ordering it depends on are asserted by
+  `scripts/verify/verify-channel-lifecycle-invariants.mjs` (part of
+  `verify:channel:fba`): the four partial unique indexes with their predicates on
+  both backends, the composite `(tenant_id, channel_id)` FK, the
+  repair-before-index order, the clear-before-set order of the default and
+  policy-set pointers, the conflict mapping of every racy write, and the absence
+  of any reader of the retired `channels.status`.
+- **Lost races answer `404`, never `500`.** `remove_resolution_rule` deletes with
+  one `policy_set_id`-scoped `delete_many()` and reports a zero row count as
+  `NotFound`; `ActiveModel::delete()` (whose `DbErr::RecordNotDeleted` surfaced
+  as a `500`) is no longer used anywhere in the owner.
+- **A target conflict is classified from state, not from the driver message.**
+  `classify_target_conflict` decides between a real duplicate
+  (`uq_channel_targets_tenant_host` → `TargetAlreadyExists`) and a lost primary
+  slot (`uq_channel_targets_channel_primary` → retryable `Conflict`) by querying
+  the tenant-scoped state after the rollback, because SQLite names columns while
+  PostgreSQL names the index in its unique-violation message.
+- **Bind upserts and their read-back are one transaction.** `bind_module` and
+  `bind_oauth_app` read the row they just upserted through the same transaction,
+  so a concurrent unbind cannot turn a successful bind into a `500`.
+- **A foreign identifier answers `404` everywhere.** The controller's OAuth-app
+  guard now matches the channel and policy-set guards: a `400` for "belongs to
+  another tenant" told the caller that the app exists elsewhere.
+- **Channel `settings` has a closed shape.** `create_channel` and `update_channel`
+  reject anything that is not a JSON object, or that exceeds 64 KiB, with
+  `ChannelError::Validation`. The content stays module-owned; only the shape the
+  readers rely on is enforced at the write boundary.
+
+- **The PostgreSQL-only half of 000013 has its own opt-in suite.**
+  `tests/lifecycle_invariants_postgres.rs` (ignored unless
+  `RUSTOK_MIGRATION_SMOKE_ADMIN_URL` points at a disposable server) proves the
+  `NOT NULL` tenant column, the composite `(tenant_id, channel_id)` FK, the
+  host/primary/default indexes and the symmetric `down()`.
+- **A storefront channel conflict is a retry.** The commerce storefront mapper
+  answers `ChannelError::Conflict` with `503 commerce_store_channel_conflict`
+  and `retryable: true` instead of the `500` catch-all; a `GET` never answers
+  `409`.
+- **The invariants have a runtime test, not only a text gate.**
+  `tests/lifecycle_invariants_sqlite.rs` exercises the default/policy-set
+  pointers, web-host claims, the single primary target, the closed `settings`
+  shape and the `404` for an already-removed rule against in-memory SQLite with
+  the real migrations, so `cargo test` is the first thing that must pass after
+  this change. Its PostgreSQL-only parts (the composite `(tenant_id,
+  channel_id)` FK and `SET NOT NULL`) are covered by the opt-in
+  `tests/lifecycle_invariants_postgres.rs` suite described above, which has not
+  been executed in this sandbox either.
+
+Residual work is tracked in the audit report
+(`channel-audit-report-2026-11-26.md`, section 10.6): UI-kit migration of the
+admin cards, per-tenant invalidation generation, the `oauth_apps` Auth port,
+`und` locale handling, Next.js parity, `channel_translations`, and the stale
+forum route-transport contract test.
+
 ## Channel identity snapshots for Product (2026-11-17)
 
 The [Channel identity port](../ports/README.md) has an embedded reader and a
@@ -166,7 +275,10 @@ contracts documented and source-locked.
    requested -> tenant default -> first available selection without returning
    storage-only `und` as a request fallback.
 
-2. **Merge and verify the tenant/concurrency invariant fix.** PR #2469 adds
+2. **Merge and verify the tenant/concurrency invariant fix.** The invariant work
+   described above now lives in `main`'s branch history (lifecycle commands,
+   partial unique indexes, upserts, single-transaction promotion); it still needs
+   the compile/migration/concurrency evidence listed below. PR #2469 added
    database-owned default/active/primary promotion, host-claim serialization,
    tenant relation guards, historical-data preflights and an SQLite transaction
    seal. Reconcile the old branch with current `main`, fix every channel-specific

@@ -3,23 +3,23 @@
   "slice": "FORUM-12D2",
   "owner_entrypoints": {
     "topic_create": {
-      "owner": "crates/modules/rustok-forum/src/services/topic_owner_inline.rs",
-      "implementation": "crates/modules/rustok-forum/src/services/topic_inline.rs",
+      "owner": "crates/modules/rustok-forum/src/services/topic_owner.rs",
+      "implementation": "crates/modules/rustok-forum/src/services/topic.rs",
       "delegate": "create_with_inline_relations"
     },
     "topic_update": {
-      "owner": "crates/modules/rustok-forum/src/services/topic_owner_inline.rs",
-      "implementation": "crates/modules/rustok-forum/src/services/topic_inline.rs",
+      "owner": "crates/modules/rustok-forum/src/services/topic_owner.rs",
+      "implementation": "crates/modules/rustok-forum/src/services/topic.rs",
       "delegate": "update_with_inline_relations"
     },
     "reply_create": {
-      "owner": "crates/modules/rustok-forum/src/services/reply_owner_inline.rs",
-      "implementation": "crates/modules/rustok-forum/src/services/reply_owner_inline.rs",
+      "owner": "crates/modules/rustok-forum/src/services/reply_owner.rs",
+      "implementation": "crates/modules/rustok-forum/src/services/reply_owner.rs",
       "delegate": "persist_in_tx"
     },
     "reply_update": {
-      "owner": "crates/modules/rustok-forum/src/services/reply_owner_inline.rs",
-      "implementation": "crates/modules/rustok-forum/src/services/reply_inline.rs",
+      "owner": "crates/modules/rustok-forum/src/services/reply_owner.rs",
+      "implementation": "crates/modules/rustok-forum/src/services/reply.rs",
       "delegate": "update_with_inline_relations"
     }
   },
@@ -71,6 +71,9 @@
     "max_raw_quotes": 32,
     "max_unique_quotes": 32,
     "reject_deleted_source": true,
+    "reject_archived_parent": true,
+    "reject_locked_reply_parent": true,
+    "recheck_author_window_in_tx": true,
     "same_owner_transaction": true,
     "response_before_commit": true,
     "rest": [
@@ -87,6 +90,7 @@
     "reply_dto": "crates/modules/rustok-forum/src/dto/reply.rs",
     "resolver": "crates/modules/rustok-forum/src/services/relation_quote_input.rs",
     "module_composition": "crates/modules/rustok-forum/src/services/mod.rs",
+    "runtime_tests": "crates/modules/rustok-forum/src/services/mention_relation_tests.rs",
     "create_omitted_quotes": "empty_initial_set",
     "update_omitted_quotes": "preserve_latest_exact_locale_set",
     "update_explicit_empty_quotes": "clear",
@@ -114,8 +118,8 @@
     ]
   },
   "source_entrypoints": {
-    "topic": "crates/modules/rustok-forum/src/services/topic_inline.rs",
-    "reply": "crates/modules/rustok-forum/src/services/reply_inline.rs"
+    "topic": "crates/modules/rustok-forum/src/services/topic.rs",
+    "reply": "crates/modules/rustok-forum/src/services/reply.rs"
   },
   "transport_roots": [
     "crates/modules/rustok-forum/src/controllers",

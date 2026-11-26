@@ -125,7 +125,8 @@ and surface read errors. Runtime and browser verification remain required.
   headers, binds tenant scope to the authenticated identity, refreshes expiring
   access credentials server-side, and forwards only the server-held access
   token. Cross-origin requests are rejected.
-- Logout revokes the backend refresh session and clears host cookies.
+- Confirmed logout revokes the expected backend refresh lineage before clearing
+  Auth.js and Rustok host cookies. Generic Auth.js signout is not forwarded.
   The Auth backend derives a generation-specific HMAC-SHA256 operation proof
   from the retained seed, resolved tenant UUID and presented refresh token.
   The BFF forwards the envelope unchanged and checks returned seed continuity.
@@ -271,8 +272,24 @@ are rejected; sign in again. Refresh/logout forward the expected ID, and both
 existing and refreshed access projections must match tenant, subject and session
 before GraphQL dispatch. Backend JWT validation remains authoritative. A refresh
 409 is non-retryable without re-observation; failed refresh and missing Auth.js
-identity never clear Rustok cookies on the GraphQL path. The sign-out event clears
-Rustok cookies only after confirmed backend revocation; Auth.js can still clear
-its own cookie independently, so explicit confirmed sign-out UX and route
-handling remain open. Arbitrary stale domain intent and late cookie delivery
-are not solved by the lineage ID.
+identity never clear Rustok cookies on the GraphQL path.
+
+### Confirmed logout
+
+`POST /api/auth/signout` is the only explicit host logout path. The credentials-only
+catch-all forwards only its allowed Auth.js actions, rejects GET signout,
+and handles POST signout itself. Exact same-origin Origin and the frozen
+expected session ID are required. The authenticated identity, tenant UUID
+and refresh envelope must be present and match the owner precondition.
+An ambiguous or rejected revocation leaves both cookie sets untouched.
+After owner confirmation, the private Auth.js server helper clears its
+session and the host clears the Rustok cookies. The browser requires HTTP 200
+with `status: ok`, rejects redirects, and navigates to sign-in only on
+confirmation. Header/sidebar and credential-change flows use the shared
+hook; localized failures do not imply a committed password/email change
+failed. Rejected sign-in does not clear another existing session.
+
+This does not make cookie delivery transactional. Cleanup errors after
+revocation, expired Auth.js identity with a remaining Rustok cookie,
+concurrent login/logout and stale domain intent remain recovery gates.
+Mounted verification with the locked Auth.js dependency is pending.

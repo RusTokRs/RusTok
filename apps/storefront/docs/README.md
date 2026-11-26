@@ -202,3 +202,23 @@ changes; client policy is not server authorization. Build the client with
 remain disabled with an explicit notice. The navigation guard and late-landing handshake have
 bounded browser tests, but the actual build, cookie/Set-Cookie propagation, Owner inheritance,
 mounted WASM and real-service behavior are **not runtime-proven** by those tests.
+
+## SSR Auth composition (source only)
+
+The document router (home, localized home, modules, Forum and messages)
+uses Auth UI's shared SSR exchange only for actual document navigation.
+The middleware requires a trusted `TenantContextExtension`, matches the
+cookie's slug, forwards the independently resolved tenant UUID, and checks
+the owner response's direct JWT tenant/subject projection. It does not turn
+a cookie into a tenant selector or manufacture a native server principal.
+Both shell and module render Owners mount `AuthProvider` with the request
+snapshot; public asset/feed routes do not consume refresh credentials.
+Credential-bearing or non-navigation documents are private/no-store, cannot
+revalidate via conditional headers, and vary by Cookie/Authorization.
+A successful exchange relays its rotated sensitive cookie unless an explicit
+handler owns that cookie. Rejection does not clear it.
+
+The standalone binary still lacks the complete owner runtime/tenant resolver
+and effective module-policy composition supplied by the server host. Missing
+trusted scope cannot perform the exchange. Standalone startup, island
+coordination, SSR/hydrate and late response ordering require verification.

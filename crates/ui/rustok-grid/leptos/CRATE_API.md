@@ -13,20 +13,26 @@
 ## Public Surface
 ### Primary Components
 - `DataGrid`: Root Leptos DataGrid view component managing reactive signals, header, filter row, data rows, and pagination bar.
-- `GridHeader`: Table header rendering column cells, sort toggles, resize handles, and pinned columns.
+- `GridHeader`: Table header rendering column cells, sort toggles, and resize handles.
 - `GridFilterCell`: Input component for column-level filter values (Text, Select, Range, Boolean).
-- `GridRow`: Table row component rendering cell values, selections, and pinned columns.
+- `GridRow`: Table row component rendering cell values and selections.
 - `GridPaginationBar`: Bottom pagination bar rendering page numbers, navigation buttons, and page-size selector.
 - `GridToolbar`: Grid action bar for global search, bulk selection actions, and facet toggles.
 - `ColumnResizeHandle`: Pointer and keyboard accessible resize gripper.
 
 ### Re-exported Core Types
 - `GridState`: Unified state composite.
-- `GridColumnDef`: Column definition builder.
+- `GridColumnDef`: Column definition builder. `pinned` marks a **structural** column (row selection, row actions): it stays out of the toolbar's column menu and is never hidden. Sticky positioning is not implemented — a pinned column scrolls away with the rest of the table.
 - `ColumnWidth` / `ColumnWidths`: Width specifications.
-- `CellValue`: Variant row data model.
+- `CellValue`: Variant row data model and the vocabulary a call site maps
+  `(row, column)` onto for filtering and client-side sorting.
 - `ColumnFilters`: Filter state map.
-- `SortState`: Sort specification.
+- `SortState`: Sort specification (single column, `None`/`Asc`/`Desc`).
+
+### Locale Context
+- `GridLocale`: Ambient locale handle (`Signal<Option<String>>`) for every grid below the providing owner.
+- `provide_grid_locale`: Provides `GridLocale` once; `DataGrid` falls back to it when no explicit `messages` catalog is passed.
+- `use_grid_locale`: Reads the ambient locale.
 - `GridPagination`: Pagination state.
 - `RowSelection`: Selection tracker.
 

@@ -25,3 +25,5 @@ rbac-permissions-roles = Granted to Roles
 rbac-subtitle = Module-owned overview for the live permission snapshot and module-declared access vocabulary.
 rbac-surfaces-title = Host Surfaces
 rbac-title = RBAC Runtime
+rbac-roles-table = Roles
+rbac-permissions-table = Permissions

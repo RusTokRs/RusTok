@@ -672,6 +672,7 @@ where
 
             // Modern DataGrid
             <DataGrid
+                aria_label=t(locale.as_deref(), "index.schemas.table", "Index schemas")
                 columns=columns
                 data=Signal::derive(move || paged_schemas.get())
                 key_fn=IndexSchemaRowViewModel::key
@@ -779,6 +780,7 @@ fn view_storage(locale: Option<&str>, vm: &IndexAdminOverviewViewModel) -> AnyVi
             </Show>
 
             <DataGrid
+                aria_label=t(locale, "index.storage.table", "Index storage")
                 columns=columns
                 data=Signal::derive(move || paged_tables.get())
                 key_fn=|table: &IndexTableRowViewModel| table.name.clone()
@@ -1148,6 +1150,7 @@ where
                 </Show>
 
                 <DataGrid
+                    aria_label=t(locale.as_deref(), "index.operations.table", "Index operations")
                     columns=source_columns
                     data=Signal::derive(move || paged_sources.get())
                     key_fn=IndexSourceRowViewModel::key

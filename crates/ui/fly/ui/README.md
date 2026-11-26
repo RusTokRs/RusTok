@@ -18,6 +18,14 @@ The crate defines:
 - a framework-neutral contribution adapter contract;
 - a deterministic state machine suitable for mock-adapter tests.
 
+## Style input admission
+
+Typed style patches reject duplicate normalized property names, non-finite numeric values,
+and whitespace between a length's number and its unit. Writes must satisfy the core renderer's
+property-name policy; removing syntactically valid imported properties remains possible even
+when the renderer no longer admits them. This keeps ordinary and scoped patch consumers from
+interpreting conflicting set/remove operations differently.
+
 ## Keyboard shortcut parity
 
 `fixtures/keyboard-shortcuts.json` is shared by the Rust shortcut resolver tests and the Page

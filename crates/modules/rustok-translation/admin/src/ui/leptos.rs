@@ -487,6 +487,7 @@ fn TargetsCard(targets: Vec<TranslationTarget>, locale: Option<String>) -> impl 
                     </div>
 
                     <DataGrid
+                        aria_label=t(locale.as_deref(), "translation.targets.table", "Translation targets")
                         columns=columns
                         data=Signal::derive(move || paged_rows.get())
                         key_fn=|target: &TranslationTarget| format!("{}:{}", target.owner_slug, target.resource_kind)
@@ -587,6 +588,7 @@ fn ReviewerQueueGrid(
             </div>
 
             <DataGrid
+                aria_label=t(locale.as_deref(), "translation.reviewerQueue.table", "Reviewer queue")
                 columns=columns
                 data=Signal::derive(move || paged_rows.get())
                 key_fn=|entry: &ReviewerQueueItem| entry.item.id.clone()
@@ -701,6 +703,7 @@ fn ReviewerWorkloadGrid(
             </div>
 
             <DataGrid
+                aria_label=t(locale.as_deref(), "translation.reviewerWorkload.table", "Reviewer workload")
                 columns=columns
                 data=Signal::derive(move || paged_rows.get())
                 key_fn=|workload: &ReviewerWorkload| {
@@ -808,6 +811,7 @@ fn InterchangeArtifactsGrid(
             </div>
 
             <DataGrid
+                aria_label=t(locale.as_deref(), "translation.artifacts.table", "Interchange artifacts")
                 columns=columns
                 data=Signal::derive(move || paged_rows.get())
                 key_fn=|artifact: &InterchangeArtifact| artifact.id.clone()

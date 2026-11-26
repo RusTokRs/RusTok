@@ -351,6 +351,7 @@ fn visibility_scoped_read_service(
         }
         None => ForumVisibilityScopedReadStateService::new(runtime.db_clone()),
     }
+    .with_taxonomy_port(runtime.taxonomy_port.clone())
 }
 
 fn ensure_forum_permission(

@@ -103,17 +103,10 @@ async fn storefront_forum_topic_page_native(
         let category_id = parse_optional_uuid(category_id.as_deref(), "category_id")?;
         let db = runtime_ctx.db_clone();
         let audience_facts = runtime_ctx.shared_get::<SharedForumAudienceFactsPort>();
-        let settings_providers = match (
+        let settings_providers = ForumSettingsProviders::from_optional_readers(
             runtime_ctx.shared_get::<SharedStaticModuleSettingsReader>(),
             runtime_ctx.shared_get::<SharedStaticModuleSettingsTransactionReader>(),
-        ) {
-            (Some(static_reader), Some(transactional_reader)) => ForumSettingsProviders::default()
-                .with_static_readers(static_reader, transactional_reader),
-            (Some(static_reader), None) => {
-                ForumSettingsProviders::default().with_static_reader(static_reader)
-            }
-            (None, _) => ForumSettingsProviders::default(),
-        };
+        );
         let per_page = settings_providers
             .default_topics_per_page(tenant.id)
             .await
@@ -128,8 +121,7 @@ async fn storefront_forum_topic_page_native(
             after: Some(after),
             per_page,
         };
-        let unread_only = selection.unread_only;
-        let filter = super::native_server_adapter::selected_topic_filter(filter, selection);
+        let filter = super::native_server_adapter::selected_topic_filter(filter, selection.clone());
 
         if read_state_available {
             let Some(auth) = auth.as_ref().filter(|auth| {
@@ -166,7 +158,7 @@ async fn storefront_forum_topic_page_native(
                     audience_context,
                     filter,
                     Some(tenant.default_locale.as_str()),
-                    unread_only,
+                    selection.unread_only,
                 )
                 .await
                 .map_err(server_error)?;
@@ -176,7 +168,7 @@ async fn storefront_forum_topic_page_native(
             });
         }
 
-        if auth.is_some() {
+        if auth.is_some() || selection.unread_only {
             // The plain continuation is for guests only; authenticated callers
             // cannot drop their viewer context by forging `read_state_available`.
             return Err(ServerFnError::new(
@@ -273,17 +265,10 @@ async fn storefront_forum_reply_page_native(
             .map_err(|_| ServerFnError::new("topic_id must be a valid UUID"))?;
         let db = runtime_ctx.db_clone();
         let audience_facts = runtime_ctx.shared_get::<SharedForumAudienceFactsPort>();
-        let settings_providers = match (
+        let settings_providers = ForumSettingsProviders::from_optional_readers(
             runtime_ctx.shared_get::<SharedStaticModuleSettingsReader>(),
             runtime_ctx.shared_get::<SharedStaticModuleSettingsTransactionReader>(),
-        ) {
-            (Some(static_reader), Some(transactional_reader)) => ForumSettingsProviders::default()
-                .with_static_readers(static_reader, transactional_reader),
-            (Some(static_reader), None) => {
-                ForumSettingsProviders::default().with_static_reader(static_reader)
-            }
-            (None, _) => ForumSettingsProviders::default(),
-        };
+        );
         let per_page = settings_providers
             .default_replies_per_page(tenant.id)
             .await

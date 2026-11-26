@@ -33,11 +33,6 @@ title = "Search Playground"
 nav_label = "Playground"
 
 [[provides.admin_ui.child_pages]]
-subpath = "engines"
-title = "Search Engines"
-nav_label = "Engines"
-
-[[provides.admin_ui.child_pages]]
 subpath = "dictionaries"
 title = "Search Dictionaries"
 nav_label = "Dictionaries"

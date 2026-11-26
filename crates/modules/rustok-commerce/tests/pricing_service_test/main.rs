@@ -56,7 +56,6 @@ pub(crate) async fn seed_pricing_channel(
         name: Set(slug.into()),
         is_active: Set(true),
         is_default: Set(false),
-        status: Set("active".into()),
         settings: Set(serde_json::json!({})),
         created_at: Set(now.into()),
         updated_at: Set(now.into()),

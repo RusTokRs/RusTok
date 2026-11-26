@@ -39,6 +39,8 @@ Component-local documents live in `apps/*/docs/`, `crates/{libs,modules,ui,utils
 - [ADR: OAuth browser authorization CSRF boundary](../DECISIONS/2026-11-25-oauth-browser-authorization-csrf.md) — cookie-authenticated authorization GETs are side-effect-free and require a CSRF-bound POST before code issuance.
 - [ADR: Installer HTTP job crash quarantine](../DECISIONS/2026-11-24-installer-http-job-crash-quarantine.md) — heartbeat-based interruption detection, fail-closed recovery status, and no automatic lease takeover or target replay.
 - [ADR: Fly save-attempt correlation and peer-write fencing](../DECISIONS/2026-11-24-fly-save-attempt-correlation-and-peer-write-fencing.md) — UUID-backed save response correlation, editor-scoped cross-tab fencing, and the boundary between draft save and release gating.
+- [ADR: Pages document save receipts and owner-bound draft provenance](../DECISIONS/2026-11-23-page-document-save-receipts.md) — durable document receipts, exact tenant/user draft ownership, and fail-closed treatment of unattributed legacy sessions.
+- [ADR: Page Builder server preview delivery](../DECISIONS/2026-11-12-page-builder-server-preview-delivery.md) — standalone preview rechecks current page-source authorization before loading a draft session.
 - [Platform Overview](./architecture/overview.md)
 - [Architecture Principles](./architecture/principles.md)
 - [API and Surface Contracts](./architecture/api.md)

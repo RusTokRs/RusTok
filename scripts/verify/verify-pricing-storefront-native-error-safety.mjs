@@ -32,7 +32,7 @@ for (const marker of [
   'endpoint = "pricing/storefront-data"', 'expect_context::<HostRuntimeContext>()',
   'shared_get::<TransactionalEventBus>()', 'in_process_pricing_read_port(',
   'normalize_pricing_context(', 'parse_optional_uuid_string(query.channel_id, "channel_id")',
-  '.list_channels(tenant.id, 1, 250)',
+  '.list_channel_options(tenant.id, false)',
   '.list_active_price_list_projections(', '.list_storefront_product_pricing(',
   '.read_storefront_product_pricing_projection(', '.resolve_product_prices(',
   'StorefrontProductPricingListRequest {', 'StorefrontProductPricingProjectionRequest {',

@@ -155,7 +155,6 @@ impl AuthLifecycleService {
         new_email: &str,
         token_hash: &str,
     ) -> Result<(), AuthLifecycleError> {
-        let now = Utc::now();
         let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
         let locked_user = Self::lock_user_for_mutation(&tx, tenant_id, user_id)
             .await
@@ -172,7 +171,7 @@ impl AuthLifecycleService {
             return Err(AuthLifecycleError::InvalidCredentials);
         }
 
-        Self::find_current_session_for_password_change_in_tx(
+        let session = Self::find_current_session_for_password_change_in_tx(
             &tx,
             tenant_id,
             user_id,
@@ -202,7 +201,7 @@ impl AuthLifecycleService {
         // unique tenant/email index serializes competing pending claims.
         AuthEmailChangeRequests::delete_many()
             .filter(auth_email_change_requests::Column::TenantId.eq(tenant_id))
-            .filter(auth_email_change_requests::Column::ExpiresAt.lte(now.clone()))
+            .filter(auth_email_change_requests::Column::ExpiresAt.lte(Utc::now()))
             .exec(&tx)
             .await
             .map_err(AuthLifecycleError::from)?;
@@ -214,6 +213,14 @@ impl AuthLifecycleService {
             .await
             .map_err(AuthLifecycleError::from)?;
 
+        // Cleanup and uniqueness checks can wait on other transactions. Start
+        // the challenge lifetime only after those waits, and recheck the
+        // locked session before issuing a new credential.
+        if !session.is_active() {
+            return Err(AuthLifecycleError::SessionExpired);
+        }
+        let now = Utc::now();
+        let expires_at = now + Duration::seconds(EMAIL_CHANGE_TOKEN_TTL_SECS as i64);
         let request = auth_email_change_requests::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant_id),
@@ -222,9 +229,7 @@ impl AuthLifecycleService {
             new_email: Set(new_email.to_string()),
             password_changed_at: Set(locked_user.password_changed_at),
             token_hash: Set(token_hash.to_string()),
-            expires_at: Set(
-                (now.clone() + Duration::seconds(EMAIL_CHANGE_TOKEN_TTL_SECS as i64)).into(),
-            ),
+            expires_at: Set(expires_at.into()),
             created_at: Set(now.into()),
         };
 
@@ -239,6 +244,16 @@ impl AuthLifecycleService {
             }
         })?;
 
+        // A competing mailbox claim may also delay the insert itself. Do
+        // not commit a challenge that is already unusable or was issued by
+        // a session that expired during the wait. Rollback preserves any
+        // earlier pending request deleted in this transaction.
+        if !session.is_active() {
+            return Err(AuthLifecycleError::SessionExpired);
+        }
+        if Utc::now() >= expires_at {
+            return Err(AuthLifecycleError::InvalidEmailChangeToken);
+        }
         tx.commit().await.map_err(AuthLifecycleError::from)?;
         Ok(())
     }
@@ -532,6 +547,59 @@ mod tests {
         .insert(db)
         .await
         .expect("insert pending email change");
+    }
+
+    #[tokio::test]
+    async fn request_replaces_pending_challenge_with_full_lifetime() {
+        let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
+        ensure_email_change_table(&db).await;
+        let tenant = tenants::ActiveModel::new("Tenant", "email-change-issuance")
+            .insert(&db)
+            .await
+            .expect("tenant");
+        let user = users::ActiveModel::new(tenant.id, "old@example.com", "password-hash")
+            .insert(&db)
+            .await
+            .expect("user");
+        let session = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            "issuance-session-hash".to_string(),
+            Utc::now() + Duration::hours(1),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("session");
+        let old_hash = "a".repeat(64);
+        let new_hash = "b".repeat(64);
+        insert_pending_request(&db, tenant.id, &user, "previous@example.com", &old_hash).await;
+
+        let before = Utc::now();
+        AuthLifecycleService::create_email_change_request_db(
+            &db, tenant.id, user.id, session.id, &user, "new@example.com", &new_hash,
+        )
+        .await
+        .expect("issue replacement challenge");
+        let after = Utc::now();
+
+        let requests = AuthEmailChangeRequests::find()
+            .filter(auth_email_change_requests::Column::TenantId.eq(tenant.id))
+            .filter(auth_email_change_requests::Column::UserId.eq(user.id))
+            .all(&db)
+            .await
+            .expect("pending requests");
+        assert_eq!(requests.len(), 1);
+        let request = &requests[0];
+        assert_eq!(request.token_hash, new_hash);
+        assert_eq!(request.new_email, "new@example.com");
+        assert!(request.created_at.with_timezone(&Utc) >= before - Duration::milliseconds(1));
+        assert!(request.created_at.with_timezone(&Utc) <= after);
+        assert_eq!(
+            request.expires_at.signed_duration_since(request.created_at),
+            Duration::seconds(EMAIL_CHANGE_TOKEN_TTL_SECS as i64),
+        );
     }
 
     #[tokio::test]

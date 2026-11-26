@@ -245,6 +245,10 @@ for (const [index, entry] of entries.entries()) {
 const rustFiles = [
   ...collectRustFiles("apps/admin/src"),
   ...collectRustFiles("apps/storefront/src"),
+  // `crates/ui` is a first-class UI host, and it is where the grid styled itself
+  // through an inline attribute: a scan that skipped the UI crates could not have
+  // seen the very site this register exists for.
+  ...collectRustFiles("crates/ui"),
   ...collectRustFiles("crates").filter(isRustHostedUiPath),
 ];
 const uniqueRustFiles = [...new Set(rustFiles)].sort();
@@ -374,7 +378,9 @@ forbidMarkers("apps/admin/src/features/modules/components/modules_list.rs", [
 // Starter/default documents describe text through Fly components. Raw HTML in
 // `content` is escaped by the renderer, and an inline `style=` attribute there
 // would become visible text that a strict CSP cannot style.
-requireMarkers("crates/modules/rustok-pages/admin/src/starters.rs", [
+// The starter documents moved out of the admin crate into the shared service
+// (`rustok-pages/src/services/starter_presets.rs`); the invariants follow the code.
+requireMarkers("crates/modules/rustok-pages/src/services/starter_presets.rs", [
   "fn price_node(",
   "\"tagName\": \"strong\"",
   "\"tagName\": \"span\"",
@@ -382,7 +388,7 @@ requireMarkers("crates/modules/rustok-pages/admin/src/starters.rs", [
   "\"content\": \" / month\"",
   "fn assert_no_raw_html_content",
 ]);
-forbidMarkers("crates/modules/rustok-pages/admin/src/starters.rs", [
+forbidMarkers("crates/modules/rustok-pages/src/services/starter_presets.rs", [
   "<span style=",
   "<strong>{}</strong>",
   "<h1>{}</h1>",

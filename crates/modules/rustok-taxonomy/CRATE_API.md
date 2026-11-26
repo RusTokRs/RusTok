@@ -72,3 +72,21 @@
 - `TaxonomyError::HierarchyDepthExceeded`: Category depth exceeds platform limit.
 - `TaxonomyError::Validation`: Input validation or route key format failure.
 - `TaxonomyError::Database`: Storage failure.
+
+### Transactional module route and strict hierarchy readers
+
+- `TaxonomyService::resolve_term_route_for_module_in<C: ConnectionTrait>` resolves
+  the route registry and alias identity on the same supplied connection/transaction.
+  The existing pool-based method delegates to it; locale/module/global precedence
+  and alias provenance are unchanged. Consumers still authorize their own binding.
+- `TaxonomyOwnerCategoryReader::load_module_category_parents_in_strict` verifies
+  every selected ID is a tenant-local Category in the exact module scope and has
+  an explicit hierarchy placement. Duplicate IDs return Validation; missing or
+  wrong-scope membership/placement returns Conflict, never synthetic roots. Empty
+  selection remains empty. It does not require a translation or alter the generic
+  legacy root-default placement reader. Full-graph cycle/depth validation belongs
+  to the consumer taking the whole-tenant snapshot or the hierarchy write owner.
+- The server's Forum adapter consumes these APIs without importing Taxonomy
+  persistence entities or creating a Taxonomy -> Forum dependency. Its real-owner
+  transaction/rollback tests and the strict-reader missing-placement regression
+  are authored but unexecuted until a Rust-enabled environment runs them.

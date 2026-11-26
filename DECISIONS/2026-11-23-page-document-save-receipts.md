@@ -111,8 +111,12 @@ acknowledgement identity and no-reexecution tombstones.
     exposing the editor and bind its token into the route before the first
     mutation. This closes the first-write window in which a successful draft
     commit could be followed by a lost response before the browser learned its
-    session token. Custom draft stores must explicitly advertise atomic receipt
-    support; otherwise the editable UI fails closed.
+    session token. Attributed operations require an exact tenant/user owner
+    match. An unattributed legacy record can be accessed only by an
+    unattributed internal caller; an authenticated caller cannot claim it or
+    become its owner because its original provenance is unknowable. Custom
+    draft stores must explicitly advertise atomic receipt support; otherwise
+    the editable UI fails closed.
 13. The browser persists the exact original mutating envelope in
     `sessionStorage` before sending it. After reload or an ambiguous network/
     HTTP result it performs only a read-only `resolve_operation` lookup. A

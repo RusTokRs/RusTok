@@ -68,6 +68,15 @@ impl ForumTopicAudienceListService {
     /// Applies tenant settings (for example `show_locked_topics_in_lists`) to the
     /// base topic read path, so the audience-aware list honours the same flags as
     /// the plain list.
+    pub fn with_taxonomy_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
+    ) -> Self {
+        self.topic_service = self.topic_service.with_taxonomy_port(port.clone());
+        self.visibility = self.visibility.with_taxonomy_port(port);
+        self
+    }
+
     pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
         self.topic_service = self.topic_service.with_settings_providers(settings.clone());
         self.visibility = self.visibility.with_settings_providers(settings);

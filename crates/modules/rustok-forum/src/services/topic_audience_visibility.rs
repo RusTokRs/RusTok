@@ -10,7 +10,9 @@ use crate::audience::{
 use crate::error::{ForumError, ForumResult};
 use crate::services::engagement_mode::ForumSettingsProviders;
 use crate::services::pending_visibility::can_see_pending;
-use crate::services::topic_audience::{ForumTopicModel, find_topic, load_policy_for_topic};
+use crate::services::topic_audience::{
+    ForumTopicModel, find_topic, load_policy_for_topic_with_port,
+};
 use crate::services::topic_visibility::{ForumTopicVisibilityScope, ForumTopicVisibilityService};
 use crate::state_machine::TopicStatus;
 
@@ -86,6 +88,7 @@ pub struct ForumTopicAudienceVisibilityService {
     db: DatabaseConnection,
     facts_resolver: ForumAudienceFactsResolver,
     settings: ForumSettingsProviders,
+    taxonomy_port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
 }
 
 impl ForumTopicAudienceVisibilityService {
@@ -94,7 +97,16 @@ impl ForumTopicAudienceVisibilityService {
             db,
             facts_resolver: ForumAudienceFactsResolver::new(facts_port),
             settings: ForumSettingsProviders::default(),
+            taxonomy_port: std::sync::Arc::new(crate::NoopForumTaxonomyPort),
         }
+    }
+
+    pub fn with_taxonomy_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
+    ) -> Self {
+        self.taxonomy_port = port;
+        self
     }
 
     pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
@@ -131,6 +143,7 @@ impl ForumTopicAudienceVisibilityService {
             viewer.is_authenticated(),
         )?;
         if !ForumTopicVisibilityService::new(self.db.clone())
+            .with_taxonomy_port(self.taxonomy_port.clone())
             .is_topic_visible(tenant_id, topic_id, &scope)
             .await?
         {
@@ -154,6 +167,7 @@ impl ForumTopicAudienceVisibilityService {
     ) -> ForumResult<bool> {
         self.validate_viewer_context(tenant_id, viewer)?;
         if !ForumTopicVisibilityService::new(self.db.clone())
+            .with_taxonomy_port(self.taxonomy_port.clone())
             .is_topic_category_visible_to_viewer(tenant_id, topic_id, viewer.is_authenticated())
             .await?
         {
@@ -187,6 +201,18 @@ impl ForumTopicAudienceVisibilityService {
             Err(ForumError::TopicNotFound(_)) => return Ok(false),
             Err(error) => return Err(error),
         };
+        if !viewer.is_authenticated()
+            && !super::category_visibility::is_category_public_to_anonymous_with_port(
+                self.taxonomy_port.as_ref(),
+                txn,
+                txn.into(),
+                tenant_id,
+                topic.category_id,
+            )
+            .await?
+        {
+            return Ok(false);
+        }
         if topic.status == TopicStatus::Pending
             && !can_see_pending(viewer.security(), Resource::ForumTopics, topic.author_id)
         {
@@ -227,14 +253,21 @@ impl ForumTopicAudienceVisibilityService {
             .await
     }
 
-    async fn policy_allows_for_topic<C: ConnectionTrait>(
+    async fn policy_allows_for_topic<C: ConnectionTrait + crate::AsForumTaxonomyConnection>(
         &self,
         connection: &C,
         tenant_id: Uuid,
         topic: &ForumTopicModel,
         viewer: &ForumTopicAudienceViewer,
     ) -> ForumResult<bool> {
-        let policy = load_policy_for_topic(connection, tenant_id, topic).await?;
+        let policy = load_policy_for_topic_with_port(
+            self.taxonomy_port.as_ref(),
+            connection,
+            connection.as_forum_taxonomy_connection(),
+            tenant_id,
+            topic,
+        )
+        .await?;
 
         for layer in &policy.inherited_category_layers {
             if !self
@@ -320,3 +353,7 @@ impl ForumTopicAudienceVisibilityService {
         )
     }
 }
+
+#[cfg(test)]
+#[path = "topic_audience_visibility_tests.rs"]
+mod tests;

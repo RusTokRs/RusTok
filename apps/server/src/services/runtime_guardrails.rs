@@ -54,12 +54,18 @@ pub async fn collect_runtime_guardrail_snapshot(
             .map(|handle| handle.is_ready()),
         RuntimeGuardrailStatus::Critical,
     );
+    // A stalled channel invalidation runtime would leave this replica serving a
+    // stale resolution cache, but the replica itself is still correct: the channel
+    // middleware bypasses the resolution cache while this handle is not ready, so
+    // requests are resolved against the owner directly. Taking the whole replica
+    // out of rotation (Critical) would break cart/checkout for a routing cache
+    // problem, so the failure is reported as degraded and logged with its cause.
     observe_worker(
         &mut snapshot,
         "channel resolution durable invalidation runtime",
         ctx.shared_get::<ChannelCacheInvalidationListenerHandle>()
             .map(|handle| handle.is_ready()),
-        RuntimeGuardrailStatus::Critical,
+        RuntimeGuardrailStatus::Degraded,
     );
     #[cfg(feature = "mod-product")]
     observe_product_index_refresh_worker(ctx, &mut snapshot);

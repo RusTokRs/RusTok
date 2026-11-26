@@ -1,4 +1,5 @@
 use super::*;
+use rustok_ui_leptos::{Button, ButtonVariant, Checkbox, Input, Select, SelectOption, Size};
 
 #[component]
 pub(super) fn PolicySetCard(
@@ -133,6 +134,50 @@ pub(super) fn PolicySetCard(
         "channel.policies.surfaceAny",
         "any surface",
     );
+    let priority_label = t(
+        ui_locale.as_deref(),
+        "channel.policies.priority",
+        "Rule priority",
+    );
+    let action_channel_label = t(
+        ui_locale.as_deref(),
+        "channel.policies.actionChannel",
+        "Action channel",
+    );
+    let surface_label = t(ui_locale.as_deref(), "channel.policies.surface", "Surface");
+    let oauth_app_label = t(
+        ui_locale.as_deref(),
+        "channel.policies.oauthApp",
+        "OAuth app filter",
+    );
+    // The rule form feeds three `Select`s, and a `Select` takes `SelectOption` rows: the lists are
+    // mapped once here instead of being rebuilt inside the view on every render.
+    let channel_options = channels
+        .iter()
+        .map(|channel| {
+            SelectOption::new(
+                channel.channel.id.clone(),
+                format!("{} ({})", channel.channel.name, channel.channel.slug),
+            )
+        })
+        .collect::<Vec<_>>();
+    let surface_options = vec![
+        SelectOption::new("", any_surface_label.clone()),
+        SelectOption::new("http", "http"),
+    ];
+    let oauth_app_options = {
+        let any_app_label = t(
+            ui_locale.as_deref(),
+            "channel.policies.oauthAny",
+            "any OAuth app",
+        );
+        let mut options = vec![SelectOption::new("", any_app_label)];
+        for app in &oauth_apps {
+            let label = format!("{} ({})", app.name, app.slug);
+            options.push(SelectOption::new(app.id.clone(), label));
+        }
+        options
+    };
     let rules_ui_locale = ui_locale.clone();
 
     Effect::new(move |_| {
@@ -290,7 +335,7 @@ pub(super) fn PolicySetCard(
                             {policy_set.policy_set.slug.clone()}
                         </span>
                         <Show when=move || policy_set.policy_set.is_active>
-                            <span class="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                            <span class="rounded-full border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
                                 {active_badge_label.clone()}
                             </span>
                         </Show>
@@ -300,11 +345,10 @@ pub(super) fn PolicySetCard(
                     </p>
                 </div>
                 <Show when=move || !policy_set.policy_set.is_active>
-                    <button
-                        type="button"
-                        class="rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted disabled:opacity-50"
+                    <Button
+                        variant=ButtonVariant::Outline
                         disabled=move || busy.get()
-                        on:click=move |_| {
+                        on_click=Box::new(move || {
                             busy.set(true);
                             set_feedback.set(None);
                             set_error.set(None);
@@ -334,10 +378,10 @@ pub(super) fn PolicySetCard(
                                 }
                                 busy.set(false);
                             });
-                        }
+                        })
                     >
                         {activate_label.clone()}
-                    </button>
+                    </Button>
                 </Show>
             </div>
 
@@ -396,7 +440,7 @@ pub(super) fn PolicySetCard(
                                             <div class="flex items-center gap-2 font-medium text-card-foreground">
                                                 <span>{format!("#{} · {}", rule.priority, short_id(rule.id.as_str()))}</span>
                                                 <Show when=move || !rule_is_active>
-                                                    <span class="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+                                                    <span class="rounded-full border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
                                                         {inactive_rule_badge.clone()}
                                                     </span>
                                                 </Show>
@@ -404,15 +448,15 @@ pub(super) fn PolicySetCard(
                                             <div class="text-muted-foreground">{summary}</div>
                                         </div>
                                         <div class="flex flex-wrap items-center gap-2">
-                                            <button
-                                                type="button"
-                                                class="rounded-lg border border-border px-2 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted disabled:opacity-50"
+                                            <Button
+                                                variant=ButtonVariant::Outline
+                                                size=Size::Xs
                                                 disabled=move || busy.get()
-                                                on:click={
+                                                on_click=Box::new({
                                                     let policy_set_id = policy_set.policy_set.id.clone();
                                                     let rule_id = rule.id.clone();
                                                     let query_writer = query_writer_for_edit.clone();
-                                                    move |_| {
+                                                    move || {
                                                         query_writer.update(
                                                             vec![
                                                                 (
@@ -427,15 +471,15 @@ pub(super) fn PolicySetCard(
                                                             false,
                                                         );
                                                     }
-                                                }
+                                                })
                                             >
                                                 {edit_rule_label.clone()}
-                                            </button>
-                                            <button
-                                                type="button"
-                                                class="rounded-lg border border-border px-2 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted disabled:opacity-50"
+                                            </Button>
+                                            <Button
+                                                variant=ButtonVariant::Outline
+                                                size=Size::Xs
                                                 disabled=move || busy.get() || !can_move_up
-                                                on:click=move |_| {
+                                                on_click=Box::new(move || {
                                                     busy.set(true);
                                                     set_feedback.set(None);
                                                     set_error.set(None);
@@ -475,15 +519,15 @@ pub(super) fn PolicySetCard(
                                                             busy.set(false);
                                                         }
                                                     });
-                                                }
+                                                })
                                             >
                                                 {move_up_label.clone()}
-                                            </button>
-                                            <button
-                                                type="button"
-                                                class="rounded-lg border border-border px-2 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted disabled:opacity-50"
+                                            </Button>
+                                            <Button
+                                                variant=ButtonVariant::Outline
+                                                size=Size::Xs
                                                 disabled=move || busy.get() || !can_move_down
-                                                on:click=move |_| {
+                                                on_click=Box::new(move || {
                                                     busy.set(true);
                                                     set_feedback.set(None);
                                                     set_error.set(None);
@@ -523,15 +567,15 @@ pub(super) fn PolicySetCard(
                                                             busy.set(false);
                                                         }
                                                     });
-                                                }
+                                                })
                                             >
                                                 {move_down_label.clone()}
-                                            </button>
-                                            <button
-                                                type="button"
-                                                class="rounded-lg border border-border px-2 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted disabled:opacity-50"
+                                            </Button>
+                                            <Button
+                                                variant=ButtonVariant::Outline
+                                                size=Size::Xs
                                                 disabled=move || busy.get()
-                                                on:click=move |_| {
+                                                on_click=Box::new(move || {
                                                     busy.set(true);
                                                     set_feedback.set(None);
                                                     set_error.set(None);
@@ -581,19 +625,20 @@ pub(super) fn PolicySetCard(
                                                             busy.set(false);
                                                         }
                                                     });
-                                                }
+                                                })
                                             >
                                                 {if rule_is_active {
                                                     disable_rule_label.clone()
                                                 } else {
                                                     enable_rule_label.clone()
                                                 }}
-                                            </button>
-                                            <button
-                                                type="button"
-                                                class="rounded-lg border border-rose-200 px-3 py-1 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-50"
+                                            </Button>
+                                            <Button
+                                                variant=ButtonVariant::Outline
+                                                size=Size::Xs
+                                                class="text-destructive"
                                                 disabled=move || busy.get()
-                                                on:click=move |_| {
+                                                on_click=Box::new(move || {
                                                     busy.set(true);
                                                     set_feedback.set(None);
                                                     set_error.set(None);
@@ -636,10 +681,10 @@ pub(super) fn PolicySetCard(
                                                             busy.set(false);
                                                         }
                                                     });
-                                                }
+                                                })
                                             >
                                                 {delete_rule_label.clone()}
-                                            </button>
+                                            </Button>
                                         </div>
                                     </div>
                                 </div>
@@ -659,96 +704,77 @@ pub(super) fn PolicySetCard(
                         }}
                     </h4>
                     <Show when=move || editing_rule_id.get().is_some()>
-                        <button
-                            type="button"
-                            class="rounded-lg border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted"
-                            on:click={
+                        <Button
+                            variant=ButtonVariant::Outline
+                            size=Size::Xs
+                            on_click=Box::new({
                                 let query_writer = query_writer.clone();
                                 let create_form_state = create_form_state.clone();
-                                move |_| {
+                                move || {
                                     query_writer.clear_key(AdminQueryKey::PolicyRuleId.as_str());
                                     editing_rule_id.set(None);
                                     form_signals.apply(&create_form_state);
                                 }
-                            }
+                            })
                         >
                             {cancel_label.clone()}
-                        </button>
+                        </Button>
                     </Show>
                 </div>
-                <input
-                    type="number"
-                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                    prop:value=move || priority.get().to_string()
-                    on:input=move |ev| {
-                        if let Ok(value) = event_target_value(&ev).parse::<i32>() {
+                <Input
+                    r#type="number"
+                    aria_label=priority_label.clone()
+                    derived_value=Signal::derive(move || priority.get().to_string())
+                    on_change=Callback::new(move |raw: String| {
+                        if let Ok(value) = raw.parse::<i32>() {
                             priority.set(value);
                         }
-                    }
+                    })
                 />
-                <select
-                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                    prop:value=action_channel_id
-                    on:change=move |ev| action_channel_id.set(event_target_value(&ev))
-                >
-                    {channels.iter().map(|channel| {
-                        let channel_id = channel.channel.id.clone();
-                        let label = format!("{} ({})", channel.channel.name, channel.channel.slug);
-                        view! { <option value=channel_id.clone()>{label}</option> }
-                    }).collect_view()}
-                </select>
-                <input
-                    type="text"
-                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                <Select
+                    aria_label=action_channel_label.clone()
+                    value=action_channel_id.read_only()
+                    set_value=action_channel_id.write_only()
+                    options=Signal::derive(move || channel_options.clone())
+                />
+                <Input
+                    aria_label=t(ui_locale.as_deref(), "channel.policies.hostEquals", "host equals")
                     placeholder=t(ui_locale.as_deref(), "channel.policies.hostEquals", "host equals")
-                    prop:value=host_equals
-                    on:input=move |ev| host_equals.set(event_target_value(&ev))
+                    value=host_equals.read_only()
+                    set_value=host_equals.write_only()
                 />
-                <input
-                    type="text"
-                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                <Input
+                    aria_label=t(ui_locale.as_deref(), "channel.policies.hostSuffix", "host suffix")
                     placeholder=t(ui_locale.as_deref(), "channel.policies.hostSuffix", "host suffix")
-                    prop:value=host_suffix
-                    on:input=move |ev| host_suffix.set(event_target_value(&ev))
+                    value=host_suffix.read_only()
+                    set_value=host_suffix.write_only()
                 />
-                <input
-                    type="text"
-                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                <Input
+                    aria_label=t(ui_locale.as_deref(), "channel.policies.locale", "locale")
                     placeholder=t(ui_locale.as_deref(), "channel.policies.locale", "locale")
-                    prop:value=locale
-                    on:input=move |ev| locale.set(event_target_value(&ev))
+                    value=locale.read_only()
+                    set_value=locale.write_only()
                 />
-                <select
-                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                    prop:value=surface
-                    on:change=move |ev| surface.set(event_target_value(&ev))
-                >
-                    <option value="">{any_surface_label.clone()}</option>
-                    <option value="http">"http"</option>
-                </select>
-                <select
-                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm lg:col-span-2"
-                    prop:value=oauth_app_id
-                    on:change=move |ev| oauth_app_id.set(event_target_value(&ev))
-                >
-                    <option value="">{t(ui_locale.as_deref(), "channel.policies.oauthAny", "any OAuth app")}</option>
-                    {oauth_apps.iter().map(|app| {
-                        let app_id = app.id.clone();
-                        let label = format!("{} ({})", app.name, app.slug);
-                        view! { <option value=app_id.clone()>{label}</option> }
-                    }).collect_view()}
-                </select>
+                <Select
+                    aria_label=surface_label.clone()
+                    value=surface.read_only()
+                    set_value=surface.write_only()
+                    options=Signal::derive(move || surface_options.clone())
+                />
+                <Select
+                    aria_label=oauth_app_label.clone()
+                    class="lg:col-span-2"
+                    value=oauth_app_id.read_only()
+                    set_value=oauth_app_id.write_only()
+                    options=Signal::derive(move || oauth_app_options.clone())
+                />
                 <label class="flex items-center gap-2 text-sm text-muted-foreground lg:col-span-2">
-                    <input
-                        type="checkbox"
-                        prop:checked=is_active
-                        on:change=move |ev| is_active.set(event_target_checked(&ev))
-                    />
+                    <Checkbox checked=is_active.read_only() set_checked=is_active.write_only() />
                     {t(ui_locale.as_deref(), "channel.policies.ruleActive", "Rule is active")}
                 </label>
-                <button
-                    type="submit"
-                    class="inline-flex h-10 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50 lg:col-span-2"
+                <Button
+                    r#type="submit"
+                    class="lg:col-span-2"
                     disabled=move || busy.get() || !has_channels
                 >
                     {move || if editing_rule_id.get().is_some() {
@@ -756,7 +782,7 @@ pub(super) fn PolicySetCard(
                     } else {
                         add_rule_label.clone()
                     }}
-                </button>
+                </Button>
             </form>
         </section>
     }

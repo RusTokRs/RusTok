@@ -11,19 +11,32 @@ struct ApiErrorPayload {
     message: Option<String>,
 }
 
-fn api_url(path: &str) -> String {
+/// Resolves the REST path against the origin that served the admin bundle.
+///
+/// Module admin packages never invent an API base URL: the host that served the
+/// bundle proxies `/api/*` to the server. There is therefore no configurable base
+/// (and no built-in loopback default that silently pointed every
+/// server-rendered admin at the developer's machine), and outside the browser the
+/// REST transport does not exist at all — `selected_transport_path` picks the
+/// in-process server function instead.
+fn api_url(path: &str) -> Result<String, ApiError> {
     #[cfg(target_arch = "wasm32")]
     {
         let origin = web_sys::window()
             .and_then(|window| window.location().origin().ok())
-            .unwrap_or_else(|| "http://localhost:5150".to_string());
-        format!("{origin}{path}")
+            .filter(|origin| !origin.is_empty())
+            .ok_or_else(|| {
+                ApiError::Rest(
+                    "cannot determine the admin origin for the channel REST transport".to_string(),
+                )
+            })?;
+        Ok(format!("{origin}{path}"))
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let base =
-            std::env::var("RUSTOK_API_URL").unwrap_or_else(|_| "http://localhost:5150".to_string());
-        format!("{base}{path}")
+        Err(ApiError::Rest(format!(
+            "the channel REST transport is browser-only; `{path}` must go through the channel admin server functions"
+        )))
     }
 }
 
@@ -40,7 +53,7 @@ pub(super) async fn get_json<T>(
 where
     T: DeserializeOwned,
 {
-    let mut request = http_client().get(api_url(path));
+    let mut request = http_client().get(api_url(path)?);
     if let Some(token) = token {
         request = request.header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"));
     }
@@ -73,7 +86,7 @@ where
     T: DeserializeOwned,
 {
     let mut request = http_client()
-        .post(api_url(path))
+        .post(api_url(path)?)
         .header(reqwest::header::CONTENT_TYPE, "application/json")
         .json(body);
     if let Some(token) = token {
@@ -108,7 +121,7 @@ where
     T: DeserializeOwned,
 {
     let mut request = http_client()
-        .patch(api_url(path))
+        .patch(api_url(path)?)
         .header(reqwest::header::CONTENT_TYPE, "application/json")
         .json(body);
     if let Some(token) = token {
@@ -140,7 +153,7 @@ pub(super) async fn delete_json<T>(
 where
     T: DeserializeOwned,
 {
-    let mut request = http_client().delete(api_url(path));
+    let mut request = http_client().delete(api_url(path)?);
     if let Some(token) = token {
         request = request.header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"));
     }

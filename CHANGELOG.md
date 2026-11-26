@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Share typed PostgreSQL query and secondary-index definitions, preserve precise cursor and relation identities, and reject oversized query results.
 - Read real tenant-scoped Index diagnostics and route SSR/hydrate and CSR operator actions through the authenticated runtime. See the [Index operations guide](crates/modules/rustok-index/docs/operations.md) before applying the pending storage changes.
 
+### Fixed
+
+- Pages/Fly draft isolation now rejects authenticated reads, writes and removals of unattributed legacy sessions because their original owner cannot be established. The standalone server preview re-fetches the requested page and checks its current `document_readable` authorization before loading any supplied draft token, so a token cannot bypass page-access revocation or an ownership change. The preview response also sets `Referrer-Policy: no-referrer` so its query-bound draft token and runtime context are not forwarded to subresources.
+
 ### Added
 
 #### Newsletter Module (M-9)

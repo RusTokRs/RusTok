@@ -20,15 +20,18 @@ pub(crate) use crate::transport::graphql_fallback_mutations::{
     create_product_attribute_schema_group, set_category_schema_mode,
 };
 
-use rustok_graphql::GraphqlHttpError;
+use rustok_graphql::{GraphqlHttpError, GraphqlOperationError};
 
 use crate::catalog_controls::ProductAdminListInput;
 use crate::model::{
     CatalogCategoryList, ProductAdminBootstrap, ProductAttributeList, ProductAttributeSchemaList,
     ProductAttributeValueItem, ProductCatalogSearchOptions, ProductDetail, ProductDraft,
-    ProductEffectiveForm, ProductList, ProductPricingDetail, ShippingProfileList,
+    ProductEffectiveForm, ProductList, ProductPricingDetail, ProductVariant, ShippingProfileList,
+    VariantUpdateDraft,
 };
 use crate::transport as legacy;
+use crate::core::variant_mutation::{normalized_refusal, valid_revision};
+use crate::core::write_journal::ProductWriteScope;
 
 use graphql_error_safety::{
     GraphqlMutationContext, GraphqlReadContext, SELECTED_PRODUCT_ADMIN_TRANSPORT,
@@ -453,10 +456,90 @@ pub(crate) async fn delete_product(
         .map_err(|mutation_error| context.map_error(mutation_error))
 }
 
-/// Remaining image and variant update/delete writes use the private lifecycle gateway.
-pub(crate) use legacy::{
-    add_product_image, delete_product_image, delete_product_variant, update_product_variant,
-};
+/// Image writes retain their lifecycle retry identity. Existing Variant mutations use the
+/// immutable per-Product session journal below, not the process-local retry registry.
+pub(crate) use legacy::{add_product_image, delete_product_image};
+
+#[derive(Debug)]
+pub(crate) enum VariantMutationOutcome {
+    Updated(ProductVariant),
+    Deleted,
+    Rejected { code: String },
+    Unknown,
+}
+
+fn definitive_variant_refusal(error: &GraphqlOperationError) -> Option<&'static str> {
+    if !matches!(&error.error, GraphqlHttpError::Graphql(_)) {
+        return None;
+    }
+    let metadata = error.extensions.as_ref()?;
+    if metadata.retryable != Some(false) || metadata.outcome.as_deref() != Some("rejected") {
+        return None;
+    }
+    normalized_refusal(metadata.code.as_deref()?)
+}
+
+pub(crate) async fn update_product_variant_with_key(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    scope: ProductWriteScope,
+    variant_id: String,
+    idempotency_key: String,
+    draft: VariantUpdateDraft,
+) -> VariantMutationOutcome {
+    let expected_variant_id = variant_id.clone();
+    match legacy::product_lifecycle_graphql::update_product_variant(
+        token,
+        tenant_slug,
+        scope.tenant_id,
+        scope.actor_id,
+        variant_id,
+        idempotency_key,
+        draft,
+    )
+    .await
+    {
+        Ok(saved) if saved.id == expected_variant_id && valid_revision(&saved.revision) => {
+            VariantMutationOutcome::Updated(saved)
+        }
+        Ok(_) => VariantMutationOutcome::Unknown,
+        Err(error) => definitive_variant_refusal(&error)
+            .map(|code| VariantMutationOutcome::Rejected {
+                code: code.to_owned(),
+            })
+            .unwrap_or(VariantMutationOutcome::Unknown),
+    }
+}
+
+pub(crate) async fn delete_product_variant_with_key(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    scope: ProductWriteScope,
+    variant_id: String,
+    expected_revision: String,
+    idempotency_key: String,
+) -> VariantMutationOutcome {
+    match legacy::product_lifecycle_graphql::delete_product_variant(
+        token,
+        tenant_slug,
+        scope.tenant_id,
+        scope.actor_id,
+        variant_id,
+        expected_revision,
+        idempotency_key,
+    )
+    .await
+    {
+        Ok(true) => VariantMutationOutcome::Deleted,
+        // A false acknowledgement is not proof that the owner finalized a no-effect receipt.
+        Ok(false) => VariantMutationOutcome::Unknown,
+        Err(error) => definitive_variant_refusal(&error)
+            .map(|code| VariantMutationOutcome::Rejected {
+                code: code.to_owned(),
+            })
+            .unwrap_or(VariantMutationOutcome::Unknown),
+    }
+}
 
 pub(crate) use crate::transport::variant_axes::{preview_variant_axes, set_variant_axes};
 

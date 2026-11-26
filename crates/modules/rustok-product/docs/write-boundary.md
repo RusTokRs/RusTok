@@ -77,8 +77,9 @@ This is source hardening, **not runtime certification**. The registered catalog-
 and mutation tests are not substitutes for the added Rust service tests, actual database failure
 injection, PostgreSQL concurrency/lease-reclaim tests, or mounted client retry evidence. Next
 save/status/delete and existing-axis callers now retain browser-journal attempts across
-reload/navigation. Leptos axes have a separate immutable session journal in source; other child
-mutations still need durable snapshot identity. Catalog create/update now compose typed
+reload/navigation. Leptos axes, standalone SKU creation and existing-row Variant update/delete
+have separate immutable session journals in source; other child mutations still need durable
+snapshot identity. Catalog create/update now compose typed
 value batches in one transaction; database and mounted-client execution remain unverified.
 ## Product image Media retention
 

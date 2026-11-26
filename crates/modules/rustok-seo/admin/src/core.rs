@@ -95,6 +95,24 @@ impl SeoAdminTab {
     }
 }
 
+/// The tab a route subpath names, if any.
+///
+/// The module declares the `overview` child page, and its own tab bar is the
+/// only other navigation. `overview` therefore selects the pane that summarises
+/// the control plane's health (diagnostics: readiness score, tracked targets,
+/// issue counts); the tab names themselves resolve too, so a subpath is a usable
+/// deep link. An explicit `?tab=` query still wins at the call site.
+pub fn seo_admin_tab_for_subpath(subpath: Option<&str>) -> Option<SeoAdminTab> {
+    let segment = subpath?.trim_matches('/').split('/').next().unwrap_or("");
+    if segment.is_empty() {
+        return None;
+    }
+    if segment == "overview" {
+        return Some(SeoAdminTab::Diagnostics);
+    }
+    SeoAdminTab::from_str(segment)
+}
+
 #[derive(Clone, Debug)]
 pub struct SeoIndexReplayForm {
     pub target_type: String,
@@ -752,7 +770,8 @@ fn trim_to_option(value: &str) -> Option<String> {
 mod tests {
     use super::{
         SeoAdminBusyKey, SeoAdminTab, SeoBulkActionForm, SeoBulkFilterForm, SeoIndexReplayForm,
-        SeoSettingsForm, build_seo_settings_snapshot_items, validate_sitemap_generation_enabled,
+        SeoSettingsForm, build_seo_settings_snapshot_items, seo_admin_tab_for_subpath,
+        validate_sitemap_generation_enabled,
     };
     use rustok_seo::{
         SeoBulkApplyMode, SeoBulkFieldPatchMode, SeoModuleSettings, SeoSitemapStatusRecord,
@@ -987,5 +1006,25 @@ mod tests {
         assert_eq!(form.structured_data.mode, SeoBulkFieldPatchMode::Set);
         assert_eq!(form.title.mode, SeoBulkFieldPatchMode::Keep);
         assert_eq!(form.nofollow.mode, SeoBulkFieldPatchMode::Keep);
+    }
+
+    #[test]
+    fn the_overview_child_page_selects_the_summary_pane() {
+        assert_eq!(
+            seo_admin_tab_for_subpath(Some("overview")),
+            Some(SeoAdminTab::Diagnostics)
+        );
+        assert_eq!(
+            seo_admin_tab_for_subpath(Some("overview/warnings")),
+            Some(SeoAdminTab::Diagnostics)
+        );
+        // Tab names are deep links too, so the subpath is not a second vocabulary.
+        assert_eq!(
+            seo_admin_tab_for_subpath(Some("redirects")),
+            Some(SeoAdminTab::Redirects)
+        );
+        assert_eq!(seo_admin_tab_for_subpath(Some("")), None);
+        assert_eq!(seo_admin_tab_for_subpath(Some("unknown")), None);
+        assert_eq!(seo_admin_tab_for_subpath(None), None);
     }
 }

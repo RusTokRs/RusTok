@@ -5,6 +5,7 @@
 import { readFileSync } from 'node:fs';
 
 import { containsMarker } from './lib/forum-source-verification.mjs';
+import { inspectSettingsComposition } from './verify-forum-edit-policy.mjs';
 
 function source(path) {
   return readFileSync(path, 'utf8');
@@ -42,8 +43,9 @@ if (gql.indexOf('.list_authenticated_storefront_visible_with_audience_context(')
     gql.indexOf('.list_public_storefront_visible_with_locale_fallback(')) {
   throw new Error('GraphQL topic list must choose the authenticated owner first');
 }
-includes(`${forum}/graphql/runtime_data.rs`,
-  '(Some(reader), None) => ForumSettingsProviders::default().with_static_reader(reader)');
+const settingsCompositionErrors = inspectSettingsComposition(
+  source(`${forum}/graphql/runtime_data.rs`), 'GraphQL anonymous discovery', 1);
+if (settingsCompositionErrors.length) throw new Error(settingsCompositionErrors.join('\n'));
 includes(`${forum}/graphql/mod.rs`, '.is_module_enabled_for_tenant(tenant.id, channel_id, "forum")');
 includes(`${forum}/graphql/storefront_read_state.rs`,
   'super::require_public_forum_channel_enabled(ctx).await?');
@@ -122,7 +124,7 @@ includes(`${forum}/search_projection.rs`,
 includes('crates/modules/rustok-seo/src/services/targets.rs',
   'static_settings_reader: self.static_settings_reader.clone()');
 const seoTargets = includes(`${forum}/seo_audience_targets.rs`,
-  'if !discovery.anonymous_reading_allowed(tenant_id).await?',
+  'if !discovery.anonymous_reading_allowed(tenant_id).await.map_err(SeoTargetError::provider)?',
   'async fn public_sitemap_requires_refresh(',
   'ForumTopicAudienceListService::new(runtime.db.clone(), runtime.event_bus.clone())',
   'last_visible_cursor = item.sort_key.map(|key| key.encode())',

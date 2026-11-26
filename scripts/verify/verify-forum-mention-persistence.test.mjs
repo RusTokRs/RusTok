@@ -126,7 +126,7 @@ ${options.publicService ? "pub struct MentionRelationService;" : ""}
   writeFixture(
     root,
     "crates/modules/rustok-forum/src/services/mod.rs",
-    "mod mention_relation {",
+    options.missingRegistration ? "" : "mod mention_relation;",
   );
   writeFixture(
     root,
@@ -140,36 +140,14 @@ ${options.publicService ? "pub struct MentionRelationService;" : ""}
   );
   writeFixture(
     root,
-    "crates/modules/rustok-forum/docs/implementation-plan.md",
-    "Delivered in `FORUM-12B1`\nFORUM-12B2\n",
-  );
-  writeFixture(
-    root,
-    "crates/modules/rustok-forum/docs/forum-12b2-owner-write-integration.md",
-    [
-      "FORUM-12B2",
-      "persist_in_tx",
-      "same transaction",
-      "",
-    ].join("\n"),
-  );
-  writeFixture(
-    root,
-    "crates/modules/rustok-forum/docs/forum-12c-mention-events.md",
-    [
-      "FORUM-12C",
-      "forum.mention.user_added",
-      "ForumRelationReadService",
-      "one shared identity",
-      "",
-    ].join("\n"),
-  );
-  writeFixture(
-    root,
     "crates/modules/rustok-forum/CRATE_API.md",
     [
       "forum_relation_revisions",
       "MentionRelationService",
+      "persist_in_tx",
+      "same transaction",
+      options.missingSharedIdentity ? "" : "same event UUID",
+      "globally unique immutable identity",
       "FORUM_QUOTE_TARGET_UNAVAILABLE",
       "source INSERT seed triggers",
       "forum.mention.user_added",
@@ -242,5 +220,19 @@ test("mention persistence verifier requires rollout seed triggers", () => {
   withFixture({ missingSeed: true }, (result) => {
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /missing rollout seed marker/);
+  });
+});
+
+test("mention persistence verifier requires the canonical module registration", () => {
+  withFixture({ missingRegistration: true }, (result) => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /owner persistence service is not registered/);
+  });
+});
+
+test("mention persistence verifier requires shared event identity in the live contract", () => {
+  withFixture({ missingSharedIdentity: true }, (result) => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /same event UUID/);
   });
 });

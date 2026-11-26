@@ -132,8 +132,8 @@ A stolen bearer token alone cannot recover the committed successor; theft of
 both bearer and proof is still credential compromise. This is not
 sender-constrained authentication. TLS, client storage discipline, avoiding
 header logging and normal credential revocation remain required. Client
-integration across standalone Storefront SSR host composition, Next
-Storefront and mobile/other native paths, mounted browser/BFF/cross-replica
+integration across standalone Storefront runtime/tenant-policy composition,
+Next Storefront and mobile/other native paths, mounted browser/BFF/cross-replica
 verification, generated API header
 documentation, and failure-injection verification remain pending. Without a proof-bearing
 client, a lost response is not recoverable.
@@ -179,6 +179,52 @@ The precondition does not authenticate decoded JWT claims; the Auth server
 still validates signatures, live state and authorization. It does not bind
 startup discovery to an identity not yet observed, order browser Set-Cookie
 delivery, or carry arbitrary queued domain intents through a change of Auth.js
-identity. Auth.js sign-out events preserve Rustok cookies on failed revocation,
-but Auth.js itself can still clear its own session; explicit confirmed logout
-and mounted verification remain pending.
+identity. Next Admin owns explicit sign-out admission rather than relying
+on an Auth.js event, as described below.
+
+## Confirmed Next Admin logout
+
+The credentials-only Next Admin catch-all admits a closed set of Auth.js
+actions. The generic signout action is never forwarded: GET is rejected;
+POST must present an exact same-origin Origin and the canonical
+`x-rustok-expected-session-id` captured from the displayed Auth.js identity.
+The host compares the ID against its authenticated identity, requires the
+canonical refresh envelope and resolved tenant UUID, and forwards the
+precondition to the Auth owner. A missing, malformed, conflicting or
+unconfirmed credential does not confirm logout or clear cookies.
+
+Only after the owner confirms revocation does the host invoke its private
+Auth.js server sign-out helper, then clear the Rustok cookies in the same
+response. Success requires explicit confirmation, not an arbitrary redirect
+or empty 2xx. No sign-out event owns revocation; no second client-side
+Auth.js signout request is made. Header/sidebar and post-credential-change
+UI use the shared confirmed logout transport, report failures separately
+from already committed credential changes, and navigate only on confirmation.
+Rejected login never clears an unrelated existing session; compensation
+targets only the newly issued lineage.
+
+This ordering permits a same-lineage retry after an ambiguous upstream
+revocation while both credentials remain present. It does not provide an
+atomic transaction spanning backend revocation, framework cookies and
+browser delivery. Cleanup failures after revocation, complete/partial
+response loss, simultaneous login/logout, expired Auth.js identity with a
+remaining Rustok cookie, and noncooperating delayed Set-Cookie responses
+remain mounted verification or recovery gates. Explicit sign-out does not
+prevent normal Auth.js expiry or guarantee cross-tab projection convergence.
+
+## Shared SSR snapshot admission
+
+Admin and Storefront use one Auth UI host-side exchange/response contract.
+Admin cookie scope remains intentional. Storefront requires an independently
+resolved tenant slug and UUID before exchanging a cookie, uses that UUID at
+the owner endpoint and compares the direct access projection to tenant and
+subject. Missing or foreign scope, malformed or duplicate cookies and
+explicit Authorization never fall back to ambient credentials. Both Storefront
+SSR render branches mount the provider under the request Owner; no cookie
+seed is serialized. Only document routes consume the cookie; static resources,
+feeds, HEAD and speculative fetches do not. Admin retains explicit cookie
+consumers for native functions and Page Builder. Credential-bearing Storefront
+documents reject conditional revalidation and are private/no-store; document
+responses vary by Cookie/Authorization. The shared helper gives explicit
+handler cookie transitions precedence. Standalone runtime composition and
+late response ordering remain open; no backend principal is fabricated.

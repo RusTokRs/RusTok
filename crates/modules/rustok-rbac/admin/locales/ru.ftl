@@ -27,3 +27,5 @@ rbac-permissions-roles = Назначено ролям
 rbac-subtitle = Модульный обзор live-снимка прав и словаря доступа, объявленного модулями.
 rbac-surfaces-title = Host-поверхности
 rbac-title = RBAC runtime
+rbac-roles-table = Роли
+rbac-permissions-table = Разрешения

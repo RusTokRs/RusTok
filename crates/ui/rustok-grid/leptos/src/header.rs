@@ -8,12 +8,23 @@ use rustok_grid::{
 
 /// Table header: one row of column titles (sort + resize) and, when at least
 /// one visible column declares a filter, a Magento-style filter row.
+///
+/// The header carries the same `sticky top-0 z-10` classes as the Dioxus adapter, so the two
+/// adapters finally agree on the markup. That is a parity fix, not a working sticky header: the
+/// grid's nearest scroll container is the `overflow-x-auto` wrapper, which never scrolls
+/// vertically because nothing bounds its height, and `position: sticky` on a `<thead>` inside a
+/// `border-collapse: collapse` table is unreliable in Chromium. Making it stick is a layout
+/// decision (bounded height plus `overflow-y-auto`, or sticky `<th>` cells with
+/// `border-collapse: separate`) and has to be checked in a browser — tracked in P3-3.
 #[component]
 pub fn GridHeader(
     /// Reactive column set — visibility is toggled from the toolbar.
     columns: Signal<Vec<GridColumnDef>>,
     column_widths: Signal<ColumnWidths>,
     sort_state: Signal<SortState>,
+    /// Whether this grid can actually reorder rows; when it cannot, headers
+    /// render as plain labels instead of buttons that do nothing.
+    sort_enabled: Signal<bool>,
     filters: Signal<ColumnFilters>,
     all_selected: Signal<bool>,
     /// Some — but not all — rows of the current page are selected.
@@ -26,7 +37,9 @@ pub fn GridHeader(
 ) -> impl IntoView {
     let messages = StoredValue::new(use_context::<rustok_grid::GridMessages>().unwrap_or_default());
     view! {
-        <thead class="bg-muted/50 text-muted-foreground text-xs font-medium border-b border-border select-none">
+        // Same classes as the Dioxus twin. `sticky` cannot engage yet — see the doc comment
+        // above — so this is class parity, not a behaviour change.
+        <thead class="sticky top-0 z-10 bg-muted/50 text-muted-foreground text-xs font-medium border-b border-border select-none">
             // Row 1: column titles + sort + resize handles
             <tr>
                 {move || {
@@ -37,7 +50,7 @@ pub fn GridHeader(
                         .map(|col| {
                             let id = col.id.as_str().to_string();
                             let is_checkbox = col.is_checkbox();
-                            let sortable = col.sortable && !is_checkbox;
+                            let sortable = col.sortable && !is_checkbox && sort_enabled.get();
                             let title = col.title.clone();
                             let width = col.width;
                             let resizable = col.resizable && width.is_flexible();
@@ -73,14 +86,6 @@ pub fn GridHeader(
                                 <th
                                     scope="col"
                                     class="relative px-3 py-2.5 font-semibold text-foreground/80 tracking-wide border-r border-border/40 last:border-r-0 group/th"
-                                    style=move || {
-                                        format!(
-                                            "width: {}px; min-width: {}px; max-width: {}px;",
-                                            current_width.get(),
-                                            width.min,
-                                            width.max,
-                                        )
-                                    }
                                     aria-sort=aria_sort
                                 >
                                     <div class=format!("flex items-center gap-1.5 {align_class}")>

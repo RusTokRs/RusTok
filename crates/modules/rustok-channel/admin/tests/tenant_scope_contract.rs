@@ -13,7 +13,7 @@ fn every_channel_admin_permission_check_is_bound_to_the_resolved_tenant() {
         .count();
 
     assert_eq!(
-        scoped_calls, 16,
+        scoped_calls, 19,
         "all native channel admin endpoints must use the scoped guard"
     );
     assert_eq!(

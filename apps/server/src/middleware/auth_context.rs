@@ -370,6 +370,20 @@ fn is_pages_inline_authoring_server_fn(path: &str) -> bool {
     )
 }
 
+/// Axum's Path extractor percent-decodes captured segments, while middleware
+/// still sees the encoded URI path. Normalize the resource ID before applying
+/// service-principal restrictions so percent-encoded UUIDs cannot skip them.
+fn forum_path_segment_is_uuid(segment: &str) -> bool {
+    if uuid::Uuid::parse_str(segment).is_ok() {
+        return true;
+    }
+
+    let encoded_pair = format!("id={segment}");
+    url::form_urlencoded::parse(encoded_pair.as_bytes())
+        .next()
+        .is_some_and(|(_, value)| uuid::Uuid::parse_str(value.as_ref()).is_ok())
+}
+
 fn service_forum_boundary_violation(
     method: &Method,
     path: &str,
@@ -388,7 +402,7 @@ fn service_forum_boundary_violation(
             && segments[0] == "api"
             && segments[1] == "forum"
             && segments[2] == "topics"
-            && uuid::Uuid::parse_str(segments[3]).is_ok()
+            && forum_path_segment_is_uuid(segments[3])
             && segments[4] == "replies");
     if personal_interaction {
         return Some(
@@ -410,7 +424,7 @@ fn service_forum_boundary_violation(
         && segments.len() == 5
         && segments[0] == "api"
         && segments[1] == "forum"
-        && uuid::Uuid::parse_str(segments[3]).is_ok()
+        && forum_path_segment_is_uuid(segments[3])
         && segments[4] == "quotes"
     {
         let required = match segments[2] {
@@ -428,7 +442,7 @@ fn service_forum_boundary_violation(
     if segments.len() == 4
         && segments[0] == "api"
         && segments[1] == "forum"
-        && uuid::Uuid::parse_str(segments[3]).is_ok()
+        && forum_path_segment_is_uuid(segments[3])
         && (method == Method::PUT || method == Method::DELETE)
     {
         let required = match segments[2] {
@@ -879,6 +893,71 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn forum_service_boundary_decodes_percent_encoded_resource_ids() {
+        let id = Uuid::new_v4();
+        let encoded_id = id.to_string().replace('-', "%2d");
+
+        assert!(
+            service_forum_boundary_violation(
+                &Method::POST,
+                &format!("/api/forum/topics/{encoded_id}/replies"),
+                &[Permission::FORUM_REPLIES_CREATE],
+            )
+            .is_some()
+        );
+
+        let topic_quotes = format!("/api/forum/topics/{encoded_id}/quotes");
+        assert!(
+            service_forum_boundary_violation(
+                &Method::PUT,
+                &topic_quotes,
+                &[Permission::FORUM_TOPICS_UPDATE],
+            )
+            .is_some()
+        );
+        assert!(
+            service_forum_boundary_violation(
+                &Method::PUT,
+                &topic_quotes,
+                &[Permission::FORUM_TOPICS_MODERATE],
+            )
+            .is_none()
+        );
+
+        let reply_quotes = format!("/api/forum/replies/{encoded_id}/quotes");
+        assert!(
+            service_forum_boundary_violation(
+                &Method::PUT,
+                &reply_quotes,
+                &[Permission::FORUM_REPLIES_UPDATE],
+            )
+            .is_some()
+        );
+
+        let topic = format!("/api/forum/topics/{encoded_id}");
+        assert!(
+            service_forum_boundary_violation(
+                &Method::PUT,
+                &topic,
+                &[Permission::FORUM_TOPICS_UPDATE],
+            )
+            .is_some()
+        );
+
+        let reply = format!("/api/forum/replies/{encoded_id}");
+        assert!(
+            service_forum_boundary_violation(
+                &Method::DELETE,
+                &reply,
+                &[Permission::FORUM_REPLIES_UPDATE],
+            )
+            .is_some()
+        );
+
+        assert!(!forum_path_segment_is_uuid("not%2duuid"));
     }
 
     #[test]

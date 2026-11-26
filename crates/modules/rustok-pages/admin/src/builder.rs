@@ -1,4 +1,3 @@
-#[cfg(feature = "ssr")]
 use crate::browser_problem::BROWSER_SAVE_OUTCOME_UNKNOWN_CODE;
 use crate::model::{PageDetail, PageMutationResult};
 use crate::transport;
@@ -266,12 +265,12 @@ async fn execute_publish(
             Ok(PageBuilderCapabilityResponse::Publish(result))
         }
         PageBuilderCapabilityResponse::Publish(result) => {
-            Err(PageBuilderAdminFacadeError::new(format!(
+            Err(post_commit_facade_error(format!(
                 "Page Builder publish returned page `{}`, but Pages requested `{requested_page_id}`",
                 result.page_id
             )))
         }
-        response => Err(PageBuilderAdminFacadeError::new(format!(
+        response => Err(post_commit_facade_error(format!(
             "Page Builder capability transport returned `{}` for a publish request",
             response.capability()
         ))),
@@ -417,28 +416,37 @@ async fn dispatch_pages_page_builder_capability(
         request,
     )
     .await
-    .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?;
+    .map_err(|error| facade_server_function_error(error, published_project.is_some()))?;
     if response.capability() != expected_capability {
-        return Err(PageBuilderAdminFacadeError::new(format!(
+        let message = format!(
             "Page Builder capability endpoint returned `{}` for a `{expected_capability}` request",
             response.capability()
-        )));
+        );
+        return Err(if published_project.is_some() {
+            post_commit_facade_error(message)
+        } else {
+            PageBuilderAdminFacadeError::new(message)
+        });
     }
     if let Some(project_data) = published_project {
-        let saved_page = transport::fetch_page(token, tenant_slug, requested_page_id)
-            .await
-            .map_err(facade_transport_error)?
-            .ok_or_else(|| {
-                PageBuilderAdminFacadeError::new(
-                    "Pages document was not found after Page Builder publish",
-                )
-            })?;
         let PageBuilderCapabilityResponse::Publish(result) = &response else {
-            return Err(PageBuilderAdminFacadeError::new(
+            return Err(post_commit_facade_error(
                 "Pages save endpoint returned a non-publish response for a publish request",
             ));
         };
-        let current_revision = persisted_revision(&saved_page)?;
+        if result.page_id != requested_page_id || result.revision_id.trim().is_empty() {
+            return Err(post_commit_facade_error(
+                "Pages save response has an invalid page or revision identity",
+            ));
+        }
+        let saved_page = transport::fetch_page(token, tenant_slug, requested_page_id.clone())
+            .await
+            .map_err(post_commit_facade_error)?
+            .ok_or_else(|| post_commit_facade_error(
+                "Pages document was not found after Page Builder publish",
+            ))?;
+        let current_revision = persisted_revision(&saved_page, &requested_page_id)
+            .map_err(post_commit_facade_error)?;
         ensure_publish_receipt_is_current(&result.revision_id, &current_revision)?;
         on_saved(PageMutationResult::from(&saved_page), project_data);
     }
@@ -474,7 +482,15 @@ fn ensure_publish_receipt_is_current(
     ))
 }
 
-fn persisted_revision(page: &PageDetail) -> Result<String, PageBuilderAdminFacadeError> {
+fn persisted_revision(
+    page: &PageDetail,
+    expected_page_id: &str,
+) -> Result<String, PageBuilderAdminFacadeError> {
+    if page.id != expected_page_id || !page.document_readable {
+        return Err(PageBuilderAdminFacadeError::new(
+            "Pages save observation has an invalid or unreadable page identity",
+        ));
+    }
     let revision = page_revision(page);
     if revision.starts_with("page:") {
         Err(PageBuilderAdminFacadeError::new(
@@ -485,9 +501,26 @@ fn persisted_revision(page: &PageDetail) -> Result<String, PageBuilderAdminFacad
     }
 }
 
-#[cfg(not(feature = "ssr"))]
-fn facade_transport_error(error: transport::TransportError) -> PageBuilderAdminFacadeError {
-    PageBuilderAdminFacadeError::new(error.to_string())
+fn post_commit_facade_error(error: impl std::fmt::Display) -> PageBuilderAdminFacadeError {
+    PageBuilderAdminFacadeError::with_stable_code(
+        format!("Unable to confirm the Pages save: {error}"),
+        BROWSER_SAVE_OUTCOME_UNKNOWN_CODE,
+    )
+}
+
+#[cfg(any(not(feature = "ssr"), test))]
+fn facade_server_function_error(
+    error: ServerFnError,
+    is_save: bool,
+) -> PageBuilderAdminFacadeError {
+    // Only a server-returned application rejection is known to have
+    // been classified by the server. A transport or decoding failure
+    // may occur after the mutation and its receipt have committed.
+    if is_save && !matches!(&error, ServerFnError::ServerError(_)) {
+        post_commit_facade_error(error)
+    } else {
+        PageBuilderAdminFacadeError::new(error.to_string())
+    }
 }
 
 #[cfg(feature = "ssr")]
@@ -702,7 +735,7 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
                 return Err(PageBuilderServiceError::Runtime(error.to_string()));
             }
         };
-        let saved_revision = persisted_revision(&saved_page)
+        let saved_revision = persisted_revision(&saved_page, page_id)
             .map_err(post_commit_observation_error)?;
 
         // The initial read above is needed for locale and permission checks, but it cannot
@@ -718,6 +751,11 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
         .map_err(post_commit_observation_error)?
         .ok_or_else(|| post_commit_observation_error("Pages document no longer exists"))?;
         ensure_document_readable(&current_page).map_err(post_commit_observation_error)?;
+        if current_page.id != page_id {
+            return Err(post_commit_observation_error(
+                "Pages observation returned a different page",
+            ));
+        }
         ensure_receipt_not_superseded(
             revision_id,
             &page_revision(&current_page),
@@ -846,6 +884,28 @@ mod ssr_save_receipt_revision_tests {
 #[cfg(test)]
 mod save_receipt_revision_tests {
     use super::*;
+
+    #[test]
+    fn post_commit_failure_does_not_become_a_definite_rejection() {
+        let error = post_commit_facade_error("PAGE_DOCUMENT_REVISION_CONFLICT: observation failed");
+        assert_eq!(error.stable_code.as_deref(), Some(BROWSER_SAVE_OUTCOME_UNKNOWN_CODE));
+        let roundtrip = PageBuilderAdminFacadeError::new(error.to_string());
+        assert_eq!(roundtrip.stable_code.as_deref(), Some(BROWSER_SAVE_OUTCOME_UNKNOWN_CODE));
+    }
+
+    #[test]
+    fn server_function_application_rejections_keep_their_classification() {
+        let conflict = facade_server_function_error(
+            ServerFnError::ServerError("stale revision (REVISION_CONFLICT)".to_string()),
+            true,
+        );
+        assert_eq!(conflict.stable_code.as_deref(), Some(REVISION_CONFLICT));
+        let rejected = facade_server_function_error(
+            ServerFnError::ServerError("document validation failed".to_string()),
+            true,
+        );
+        assert!(rejected.stable_code.is_none());
+    }
 
     #[test]
     fn replayed_receipt_is_not_acknowledged_as_a_newer_page_revision() {
@@ -1022,6 +1082,15 @@ mod document_gate_tests {
             body: None,
             document_readable,
         }
+    }
+
+    #[test]
+    fn save_observation_requires_the_requested_readable_page_and_body_revision() {
+        let page = page_without_body(true);
+        assert!(persisted_revision(&page, "another-page").is_err());
+        assert!(persisted_revision(&page, "page-1").is_err());
+        let withheld = page_without_body(false);
+        assert!(persisted_revision(&withheld, "page-1").is_err());
     }
 
     #[test]

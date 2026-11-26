@@ -184,6 +184,15 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         with:
           shared-key: cache-hardening
+      - name: Channel lifecycle invariants (gate)
+        # Runs before the cargo steps on purpose: the workspace-wide check in this
+        # job is red on `main` for unrelated reasons, and a step that only runs after
+        # it succeeds would be a gate nobody executes. The gate itself is plain Node
+        # and pins the `m20261126_000013` invariants (migration SQL on both backends,
+        # the owner's clear-then-set ordering, its typed conflict mapping).
+        run: |
+          node scripts/verify/verify-channel-lifecycle-invariants.mjs
+          node --test scripts/verify/verify-channel-lifecycle-invariants.test.mjs
       - name: Format
         run: cargo fmt --all --check
       - name: Compile workspace with redis-cache
@@ -259,6 +268,16 @@ jobs:
           shared-key: cache-hardening
       - name: PostgreSQL channel generation recovery
         run: cargo test -p rustok-channel --test postgres_invalidation_generation -- --ignored --nocapture --test-threads=1
+      - name: SQLite channel lifecycle invariants
+        # `m20261126_000013` makes the lifecycle invariants structural. The suites that
+        # prove them existed but no job executed them: `--lib` covers the in-crate unit
+        # tests only, and the PostgreSQL one is `#[ignore]`d, so it needs an explicit
+        # run against a disposable admin database.
+        run: cargo test -p rustok-channel --test lifecycle_invariants_sqlite
+      - name: PostgreSQL channel lifecycle invariants
+        env:
+          RUSTOK_MIGRATION_SMOKE_ADMIN_URL: postgres://postgres:postgres@127.0.0.1:5432/rustok_channel
+        run: cargo test -p rustok-channel --test lifecycle_invariants_postgres -- --ignored --nocapture --test-threads=1
       - name: PostgreSQL Flex generation recovery
         run: cargo test -p flex --test postgres_cache_generation -- --ignored --nocapture --test-threads=1
 

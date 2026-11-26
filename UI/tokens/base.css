@@ -35,7 +35,10 @@
   --iu-danger-fg: 210 40% 98%;
 }
 
-[data-theme="dark"] {
+/* The web sets the `dark` class on <html> (apps/admin/index.html); attribute-based
+   hosts keep working through the attribute selector, so both are listed. */
+[data-theme="dark"],
+.dark {
   --iu-bg: 222 47% 11%;
   --iu-fg: 210 40% 98%;
   --iu-muted: 217 33% 17%;

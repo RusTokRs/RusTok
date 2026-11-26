@@ -52,8 +52,11 @@ pub(crate) async fn pricing_admin_bootstrap_native() -> Result<PricingAdminBoots
         )?;
 
         let channel_service = ChannelService::new(app_ctx.db_clone());
-        let (available_channels, _) = channel_service
-            .list_channels(tenant.id, 1, 250)
+        // The admin filter lists every channel, including deactivated ones: a
+        // deactivated channel can still own price lists that need editing, and a
+        // silent 250-row cap used to hide the rest.
+        let available_channels = channel_service
+            .list_channel_options(tenant.id, true)
             .await
             .map_err(ServerFnError::new)?;
         let active_price_lists = list_active_price_lists_native_with_context(

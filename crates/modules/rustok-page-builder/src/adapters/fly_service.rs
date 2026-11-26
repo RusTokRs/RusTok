@@ -221,7 +221,7 @@ where
 
         let evidence = PageBuilderRuntimeCallEvidence::load_project(context, &input.page_id);
         self.telemetry.record_runtime_call(&evidence);
-        if let Some(project_data) = match self.store.load_project(context, &input.page_id).await {
+        let project_data = match self.store.load_project(context, &input.page_id).await {
             Ok(project_data) => {
                 self.telemetry.record_runtime_call(&evidence.succeeded());
                 project_data
@@ -230,10 +230,15 @@ where
                 self.telemetry.record_runtime_call(&evidence.failed(&error));
                 return Err(error);
             }
-        } {
-            self.inspect_loaded(project_data)?
-                .component_properties(&input.node_id)?;
         }
+        .ok_or_else(|| {
+            PageBuilderServiceError::Validation(format!(
+                "page `{}` was not found",
+                input.page_id
+            ))
+        })?;
+        self.inspect_loaded(project_data)?
+            .component_properties(&input.node_id)?;
 
         Ok(crate::dto::BuilderNodePropertiesResult {
             page_id: input.page_id,

@@ -4,6 +4,7 @@ pub(crate) mod initial_catalog;
 pub(crate) mod route;
 pub(crate) mod variant_axes;
 pub(crate) mod variant_create;
+pub(crate) mod variant_mutation;
 pub(crate) mod write_journal;
 
 use rustok_api::locale_tags_match;

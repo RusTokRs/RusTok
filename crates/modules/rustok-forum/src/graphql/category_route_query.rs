@@ -8,8 +8,8 @@ use uuid::Uuid;
 
 use crate::{
     ForumCategoryReadOperation, ForumCategoryReadTransport, ForumCategoryRouteDescriptor,
-    ForumCategoryRouteDisposition, ForumCategoryRouteResolution, ForumCategoryRouteService,
-    ForumError, category_read_audience_port_context,
+    ForumCategoryRouteDisposition, ForumCategoryRouteResolution, ForumError,
+    category_read_audience_port_context,
 };
 
 use super::ForumGraphqlRuntimeData;
@@ -94,7 +94,12 @@ async fn resolve_authorized_public_category_route(
         return Ok(None);
     }
 
-    let resolution = match ForumCategoryRouteService::new(db.clone())
+    let runtime = ctx
+        .data_opt::<ForumGraphqlRuntimeData>()
+        .cloned()
+        .unwrap_or_default();
+    let resolution = match runtime
+        .category_route_service(db.clone())
         .resolve(
             tenant_id,
             &locale,
@@ -107,13 +112,9 @@ async fn resolve_authorized_public_category_route(
         Err(ForumError::CategoryNotFound(_)) | Err(ForumError::CategoryRouteNotFound) => {
             return Ok(None);
         }
-        Err(error) => return Err(internal_error(error.to_string())),
+        Err(error) => return Err(error.into()),
     };
 
-    let runtime = ctx
-        .data_opt::<ForumGraphqlRuntimeData>()
-        .cloned()
-        .unwrap_or_default();
     let service = runtime.category_audience_read_service(db.clone());
     let visible = if let Some(auth) = ctx.data_opt::<AuthContext>() {
         let security =
@@ -125,8 +126,7 @@ async fn resolve_authorized_public_category_route(
             auth,
             ctx.data_opt::<RequestContext>(),
             resolution.canonical.locale.as_str(),
-        )
-        .map_err(|error| internal_error(error.to_string()))?;
+        )?;
         service
             .get_authenticated_storefront_list_visible_with_audience_context(
                 tenant_id,
@@ -150,7 +150,7 @@ async fn resolve_authorized_public_category_route(
     match visible {
         Ok(_) => Ok(Some(resolution)),
         Err(ForumError::CategoryNotFound(_)) | Err(ForumError::CategoryRouteNotFound) => Ok(None),
-        Err(error) => Err(internal_error(error.to_string())),
+        Err(error) => Err(error.into()),
     }
 }
 

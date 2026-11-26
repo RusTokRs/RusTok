@@ -246,10 +246,23 @@ impl CategoryTaxonomyTreeReadService {
         }
 
         let mut result = HashMap::with_capacity(projected.len());
+        let mut parents = HashMap::with_capacity(projected.len());
         for category in projected {
             let parent_id = category.parent_id;
+            if !unique_forum_ids.contains(&category.id)
+                || parents.insert(category.id, parent_id).is_some()
+            {
+                return Err(ForumError::Validation(
+                    "Forum category tree projection contains duplicate or foreign identities"
+                        .into(),
+                ));
+            }
             result.insert(category.id, bind_owner_projection(&category, parent_id));
         }
+        crate::services::category_hierarchy::validate_category_parent_projection(
+            &unique_forum_vec,
+            &parents,
+        )?;
         Ok(result)
     }
 }

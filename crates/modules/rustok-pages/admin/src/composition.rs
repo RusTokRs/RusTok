@@ -5,6 +5,7 @@ use crate::contributions::{
     build_pages_admin_contribution_registry, pages_admin_contribution_policy,
 };
 use crate::core;
+use crate::core::pages_admin_section_for_subpath;
 use crate::i18n::t;
 use crate::model::{PageBuilderScenarioReleaseStatus, PageDetail, PageList};
 use crate::starter_admin::StarterCatalogManager;
@@ -163,8 +164,17 @@ pub fn PagesAdmin() -> impl IntoView {
 
     let main_tab = RwSignal::new("pages");
 
+    // The module declares `all` and `new` as child pages and the host renders
+    // this one component for each of them, so the subpath decides which parts
+    // of the workspace are on screen.
+    let section = pages_admin_section_for_subpath(route_context.subpath.as_deref());
+    let shows_create_card = section.shows_create_card();
+    let shows_documents = section.shows_documents();
+    let shows_workspace = section.shows_workspace();
+    let section_name = section.as_str();
+
     view! {
-        <div class="space-y-6">
+        <div class="space-y-6" data-pages-section=section_name>
             <header class="rounded-2xl border border-border bg-card p-6 shadow-sm">
                 <div class="flex flex-wrap items-start justify-between gap-4">
                     <div>
@@ -216,82 +226,110 @@ pub fn PagesAdmin() -> impl IntoView {
                 </div>
             </header>
 
-            <div class=move || if main_tab.get() == "pages" { "grid gap-6 xl:grid-cols-[20rem_minmax(0,1fr)]" } else { "hidden" }>
+            <div class=move || {
+                if main_tab.get() != "pages" {
+                    "hidden"
+                } else if shows_workspace {
+                    "grid gap-6 xl:grid-cols-[20rem_minmax(0,1fr)]"
+                } else {
+                    // `new` renders only the create card: a two-column grid would
+                    // leave an empty pane next to it.
+                    "grid gap-6"
+                }
+            }>
                 <aside class="space-y-4">
-                    <CreatePageCard refresh_generation starter_generation default_locale=default_locale.clone() />
-                    <StarterCatalogManager starter_generation default_locale=default_locale.clone() />
-                    <section class="rounded-2xl border border-border bg-card p-4 shadow-sm">
-                        <div class="mb-3 flex items-center justify-between gap-3">
-                            <h2 class="font-semibold text-card-foreground">"Documents"</h2>
-                            <span class="text-xs text-muted-foreground">"current contract"</span>
-                        </div>
-                        <Suspense fallback=|| view! {
-                            <div class="space-y-2" aria-label="Loading pages">
-                                <div class="h-16 animate-pulse rounded-xl bg-muted"></div>
-                                <div class="h-16 animate-pulse rounded-xl bg-muted"></div>
-                            </div>
-                        }>
-                            {move || {
-                                let writer = select_writer.clone();
-                                pages_resource.get().map(|result| match result {
-                                    Ok(pages) => view! {
-                                        <PagesNavigator
-                                            pages
-                                            selected_page_id=selected_page_query.get()
-                                            on_select=Callback::new(move |page_id: String| {
-                                                if selected_page_query.get_untracked().as_deref() != Some(page_id.as_str()) {
-                                                    writer.update(core::page_selection_query_update(Some(page_id)), true);
-                                                }
-                                            })
-                                        />
-                                    }.into_any(),
-                                    Err(error) => view! {
-                                        <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-3 text-sm text-destructive" role="alert">
-                                            {format!("{list_error}: {error}")}
-                                        </div>
-                                    }.into_any(),
-                                })
-                            }}
-                        </Suspense>
-                    </section>
+                    {if shows_create_card {
+                        view! {
+                            <CreatePageCard refresh_generation starter_generation default_locale=default_locale.clone() />
+                        }.into_any()
+                    } else {
+                        ().into_any()
+                    }}
+                    {if shows_documents {
+                        view! {
+                            <StarterCatalogManager starter_generation default_locale=default_locale.clone() />
+                            <section class="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                                <div class="mb-3 flex items-center justify-between gap-3">
+                                    <h2 class="font-semibold text-card-foreground">"Documents"</h2>
+                                    <span class="text-xs text-muted-foreground">"current contract"</span>
+                                </div>
+                                <Suspense fallback=|| view! {
+                                    <div class="space-y-2" aria-label="Loading pages">
+                                        <div class="h-16 animate-pulse rounded-xl bg-muted"></div>
+                                        <div class="h-16 animate-pulse rounded-xl bg-muted"></div>
+                                    </div>
+                                }>
+                                    {move || {
+                                        let writer = select_writer.clone();
+                                        pages_resource.get().map(|result| match result {
+                                            Ok(pages) => view! {
+                                                <PagesNavigator
+                                                    pages
+                                                    selected_page_id=selected_page_query.get()
+                                                    on_select=Callback::new(move |page_id: String| {
+                                                        if selected_page_query.get_untracked().as_deref() != Some(page_id.as_str()) {
+                                                            writer.update(core::page_selection_query_update(Some(page_id)), true);
+                                                        }
+                                                    })
+                                                />
+                                            }.into_any(),
+                                            Err(error) => view! {
+                                                <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-3 text-sm text-destructive" role="alert">
+                                                    {format!("{list_error}: {error}")}
+                                                </div>
+                                            }.into_any(),
+                                        })
+                                    }}
+                                </Suspense>
+                            </section>
+                        }.into_any()
+                    } else {
+                        ().into_any()
+                    }}
                 </aside>
 
-                <main class="min-w-0">
-                    <Suspense fallback=|| view! {
-                        <div class="h-[36rem] animate-pulse rounded-2xl border border-border bg-muted" aria-label="Loading page workspace"></div>
-                    }>
-                        {move || {
-                            workspace_resource.get().map(|result| match result {
-                                Ok(Some(data)) => {
-                                    // The status is derived before the fields move into the view:
-                                    // it reads them, and a partially moved value cannot be read.
-                                    let provider_status = data.provider_status();
-                                    view! {
-                                    <PageWorkspace
-                                        page=data.page
-                                        baseline=data.baseline
-                                        release_status=data.release_status
-                                        provider_status=provider_status
-                                        token
-                                        tenant
-                                        default_locale=default_locale.clone()
-                                        draft_token=draft_query.get()
-                                        starter_generation
-                                        refresh_generation
-                                    />
-                                    }
-                                    .into_any()
-                                }
-                                Ok(None) => view! { <WorkspaceEmptyState /> }.into_any(),
-                                Err(error) => view! {
-                                    <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-5 py-5 text-sm text-destructive" role="alert">
-                                        {format!("{workspace_error}: {error}")}
-                                    </div>
-                                }.into_any(),
-                            })
-                        }}
-                    </Suspense>
-                </main>
+                {if shows_workspace {
+                    view! {
+                        <main class="min-w-0">
+                            <Suspense fallback=|| view! {
+                                <div class="h-[36rem] animate-pulse rounded-2xl border border-border bg-muted" aria-label="Loading page workspace"></div>
+                            }>
+                                {move || {
+                                    workspace_resource.get().map(|result| match result {
+                                        Ok(Some(data)) => {
+                                            // The status is derived before the fields move into the view:
+                                            // it reads them, and a partially moved value cannot be read.
+                                            let provider_status = data.provider_status();
+                                            view! {
+                                            <PageWorkspace
+                                                page=data.page
+                                                baseline=data.baseline
+                                                release_status=data.release_status
+                                                provider_status=provider_status
+                                                token
+                                                tenant
+                                                default_locale=default_locale.clone()
+                                                draft_token=draft_query.get()
+                                                starter_generation
+                                                refresh_generation
+                                            />
+                                            }
+                                            .into_any()
+                                        }
+                                        Ok(None) => view! { <WorkspaceEmptyState /> }.into_any(),
+                                        Err(error) => view! {
+                                            <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-5 py-5 text-sm text-destructive" role="alert">
+                                                {format!("{workspace_error}: {error}")}
+                                            </div>
+                                        }.into_any(),
+                                    })
+                                }}
+                            </Suspense>
+                        </main>
+                    }.into_any()
+                } else {
+                    ().into_any()
+                }}
             </div>
 
             <div class=move || if main_tab.get() == "templates" { "block" } else { "hidden" }>
@@ -1859,7 +1897,10 @@ fn load_route_draft(
     owner: Option<&DraftSessionOwner>,
 ) -> Result<Option<SsrDraftSessionSnapshot>, SsrDraftSessionError> {
     match draft_token {
-        Some(token) => store.load(token, page_id, owner),
+        Some(token) => {
+            let owner = owner.ok_or(SsrDraftSessionError::OwnerMismatch)?;
+            store.load(token, page_id, Some(owner))
+        }
         None => Ok(None),
     }
 }
@@ -2053,11 +2094,15 @@ mod tests {
     #[test]
     fn route_without_a_live_draft_is_not_an_error() {
         let store = InMemorySsrDraftSessionStore::editor_default();
+        let reader = owner("reader");
 
         let without_token = load_route_draft(&store, None, "home", None).expect("no token");
         assert!(without_token.is_none());
-        let unknown = load_route_draft(&store, Some("non-existent-token"), "home", None)
+        let unknown = load_route_draft(&store, Some("non-existent-token"), "home", Some(&reader))
             .expect("a token the store does not hold");
         assert!(unknown.is_none());
+        let missing_owner = load_route_draft(&store, Some("non-existent-token"), "home", None)
+            .expect_err("a draft token must never be read without a verified owner");
+        assert!(matches!(missing_owner, SsrDraftSessionError::OwnerMismatch));
     }
 }

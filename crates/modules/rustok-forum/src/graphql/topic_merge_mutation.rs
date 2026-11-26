@@ -32,7 +32,16 @@ impl ForumTopicMergeMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
 
-        execute_merge_forum_topic(db, event_bus, tenant_id, auth, target_topic_id, input).await
+        execute_merge_forum_topic(
+            super::forum_graphql_runtime(ctx).taxonomy_port(),
+            db,
+            event_bus,
+            tenant_id,
+            auth,
+            target_topic_id,
+            input,
+        )
+        .await
     }
 
     async fn merge_forum_topic_resolving_solution(
@@ -54,6 +63,7 @@ impl ForumTopicMergeMutation {
         let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
 
         execute_merge_forum_topic_resolving_solution(
+            super::forum_graphql_runtime(ctx).taxonomy_port(),
             db,
             event_bus,
             tenant_id,
@@ -66,6 +76,7 @@ impl ForumTopicMergeMutation {
 }
 
 async fn execute_merge_forum_topic(
+    taxonomy: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
     db: &DatabaseConnection,
     event_bus: &TransactionalEventBus,
     tenant_id: Uuid,
@@ -74,6 +85,7 @@ async fn execute_merge_forum_topic(
     input: MergeForumTopicGraphqlInput,
 ) -> Result<GqlForumTopicMerge> {
     let result = ForumTopicMergeService::new(db.clone(), event_bus.clone())
+        .with_taxonomy_port(taxonomy)
         .merge_topic(
             tenant_id,
             target_topic_id,
@@ -93,6 +105,7 @@ async fn execute_merge_forum_topic(
 }
 
 async fn execute_merge_forum_topic_resolving_solution(
+    taxonomy: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
     db: &DatabaseConnection,
     event_bus: &TransactionalEventBus,
     tenant_id: Uuid,
@@ -103,6 +116,7 @@ async fn execute_merge_forum_topic_resolving_solution(
     let selected_solution_reply_id = input.selected_solution_reply_id;
 
     let result = ForumTopicMergeService::new(db.clone(), event_bus.clone())
+        .with_taxonomy_port(taxonomy)
         .merge_topic_resolving_solution(
             tenant_id,
             target_topic_id,
@@ -372,6 +386,7 @@ mod tests {
         assert_eq!(error_code(&mismatch).as_deref(), Some("FORBIDDEN"));
 
         let first = execute_merge_forum_topic(
+            std::sync::Arc::new(crate::NoopForumTaxonomyPort),
             &db,
             &event_bus,
             tenant_id,
@@ -382,6 +397,7 @@ mod tests {
         .await
         .map_err(test_graphql_error)?;
         let replay = execute_merge_forum_topic(
+            std::sync::Arc::new(crate::NoopForumTaxonomyPort),
             &db,
             &event_bus,
             tenant_id,

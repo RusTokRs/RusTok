@@ -115,6 +115,7 @@ impl SubscriptionService {
         if !topic_write_audience_allows(
             &self.db,
             self.audience_facts.clone(),
+            self.taxonomy_port.clone(),
             tenant_id,
             topic_id,
             &security,
@@ -192,6 +193,7 @@ impl SubscriptionService {
                 &self.db,
                 &txn,
                 self.audience_facts.clone(),
+                self.taxonomy_port.clone(),
                 tenant_id,
                 topic_id,
                 &security,

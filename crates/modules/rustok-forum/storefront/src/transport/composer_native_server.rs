@@ -64,7 +64,7 @@ async fn storefront_topic_create_native(
 ) -> Result<StorefrontForumCreatedTopic, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use super::native_server_adapter::{normalize_locale, server_error};
+        use super::native_server_adapter::{forum_taxonomy_port, normalize_locale, server_error};
         use rustok_api::{
             HostRuntimeContext, OptionalAuthContext, Permission, RequestContext, RichTextDocument,
             SharedStaticModuleSettingsReader, SharedStaticModuleSettingsTransactionReader,
@@ -122,19 +122,17 @@ async fn storefront_topic_create_native(
         // The owner settings (pre-moderation, content limits, and create
         // cooldowns) resolve through the same host-published static readers the
         // GraphQL and REST runtime data use, so no transport can skip a
-        // configured policy. Absent readers yield owner defaults, not a bypass.
-        let settings_providers = match (
+        // configured policy. Preserve a static-only provider so the owner rejects
+        // missing transactional capability instead of erasing saved settings.
+        let settings_providers = ForumSettingsProviders::from_optional_readers(
             runtime_ctx.shared_get::<SharedStaticModuleSettingsReader>(),
             runtime_ctx.shared_get::<SharedStaticModuleSettingsTransactionReader>(),
-        ) {
-            (Some(static_reader), Some(transactional_reader)) => ForumSettingsProviders::default()
-                .with_static_readers(static_reader, transactional_reader),
-            _ => ForumSettingsProviders::default(),
-        };
+        );
         let service = match runtime_ctx.shared_get::<SharedForumAudienceFactsPort>() {
             Some(facts) => TopicService::with_audience_facts(db, event_bus, facts),
             None => TopicService::new(db, event_bus),
         }
+        .with_taxonomy_port(forum_taxonomy_port(&runtime_ctx))
         .with_settings_providers(settings_providers);
         let topic = service
             .create_command_with_audience_context(
@@ -176,7 +174,7 @@ async fn storefront_reply_create_native(
 ) -> Result<StorefrontForumCreatedReply, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use super::native_server_adapter::{normalize_locale, server_error};
+        use super::native_server_adapter::{forum_taxonomy_port, normalize_locale, server_error};
         use rustok_api::{
             HostRuntimeContext, OptionalAuthContext, Permission, RequestContext, RichTextDocument,
             SharedStaticModuleSettingsReader, SharedStaticModuleSettingsTransactionReader,
@@ -242,19 +240,17 @@ async fn storefront_reply_create_native(
         // The owner settings (pre-moderation, content limits, and create
         // cooldowns) resolve through the same host-published static readers the
         // GraphQL and REST runtime data use, so no transport can skip a
-        // configured policy. Absent readers yield owner defaults, not a bypass.
-        let settings_providers = match (
+        // configured policy. Preserve a static-only provider so the owner rejects
+        // missing transactional capability instead of erasing saved settings.
+        let settings_providers = ForumSettingsProviders::from_optional_readers(
             runtime_ctx.shared_get::<SharedStaticModuleSettingsReader>(),
             runtime_ctx.shared_get::<SharedStaticModuleSettingsTransactionReader>(),
-        ) {
-            (Some(static_reader), Some(transactional_reader)) => ForumSettingsProviders::default()
-                .with_static_readers(static_reader, transactional_reader),
-            _ => ForumSettingsProviders::default(),
-        };
+        );
         let service = match runtime_ctx.shared_get::<SharedForumAudienceFactsPort>() {
             Some(facts) => ReplyService::with_audience_facts(db, event_bus, facts),
             None => ReplyService::new(db, event_bus),
         }
+        .with_taxonomy_port(forum_taxonomy_port(&runtime_ctx))
         .with_settings_providers(settings_providers);
         let reply = service
             .create_command_with_audience_context(

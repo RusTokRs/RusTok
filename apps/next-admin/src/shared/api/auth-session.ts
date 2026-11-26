@@ -188,3 +188,112 @@ export function isSameOriginRequest(
     return false;
   }
 }
+
+/** The credentials-only host exposes a closed set of Auth.js actions.
+ * Sign-out is host-owned, never forwarded to the generic Auth.js handler.
+ */
+export function authRouteAction(
+  method: 'GET' | 'POST', segments: readonly string[]
+): 'authjs' | 'logout' | 'reject' {
+  const action = segments.join('/');
+  // Compare segment counts too: an encoded slash is not a route alias.
+  if (segments.length === 1 && action === 'signout') return 'logout';
+  if (method === 'GET' && segments.length === 1 &&
+      ['session', 'csrf', 'providers', 'signin', 'error'].includes(action)) return 'authjs';
+  if (method === 'POST' && segments.length === 1 && action === 'session') return 'authjs';
+  if (method === 'POST' && segments.length === 2 &&
+      segments[0] === 'callback' && segments[1] === 'credentials') return 'authjs';
+  return 'reject';
+}
+
+interface LogoutIdentity {
+  sessionId: string | null;
+  tenantId: string | null;
+  tenantSlug: string | null;
+}
+
+interface ConfirmedLogoutDependencies {
+  readIdentity(): Promise<LogoutIdentity | null>;
+  readCookies(): Promise<RustokHostCookies>;
+  revoke(credential: RustokRefreshCredential, tenantSlug: string, sessionId: string, tenantId: string): Promise<void>;
+  clearApplicationSession(): Promise<void>;
+  clearRustokCookies(): Promise<void>;
+}
+
+function logoutResponse(status: number, code: string): Response {
+  return Response.json(
+    status === 200 ? { status: 'ok' } : { status: 'rejected', code },
+    { status, headers: { 'cache-control': 'no-store' } }
+  );
+}
+
+/** CSRF admission is exact same-origin POST plus a canonical explicit
+ * expected lineage header, not the generic Auth.js signout event.
+ * Never clear cookies before a matching backend revocation is confirmed.
+ */
+export async function handleConfirmedLogout(
+  request: Request, dependencies: ConfirmedLogoutDependencies
+): Promise<Response> {
+  if (request.method !== 'POST') return logoutResponse(405, 'METHOD_NOT_ALLOWED');
+  if (request.headers.get('origin') !== new URL(request.url).origin) {
+    return logoutResponse(403, 'FORBIDDEN');
+  }
+  const expected = request.headers.get(RUSTOK_EXPECTED_SESSION_ID_HEADER);
+  if (!isCanonicalSessionId(expected)) return logoutResponse(409, 'SESSION_LINEAGE_MISMATCH');
+
+  try {
+    const identity = await dependencies.readIdentity();
+    if (!identity || identity.sessionId !== expected ||
+        !identity.tenantSlug || !isCanonicalSessionId(identity.tenantId)) {
+      return logoutResponse(409, 'SESSION_LINEAGE_MISMATCH');
+    }
+    const stored = await dependencies.readCookies();
+    if (stored.invalid || !stored.refreshCredential) {
+      return logoutResponse(409, 'SESSION_CREDENTIAL_UNAVAILABLE');
+    }
+    try {
+      await dependencies.revoke(stored.refreshCredential, identity.tenantSlug, expected, identity.tenantId);
+    } catch (error) {
+      const status = error && typeof error === 'object' && 'status' in error ? error.status : null;
+      if (status === 409 || status === 401 || status === 429) {
+        return logoutResponse(status, 'SESSION_REVOCATION_REJECTED');
+      }
+      return logoutResponse(503, 'SESSION_REVOCATION_UNCONFIRMED');
+    }
+    // Both writes belong to this response. An ambiguous revocation leaves
+    // both credentials intact, allowing a repeat against the same lineage.
+    await dependencies.clearApplicationSession();
+    await dependencies.clearRustokCookies();
+    return logoutResponse(200, 'OK');
+  } catch {
+    return logoutResponse(503, 'SESSION_LOGOUT_UNCONFIRMED');
+  }
+}
+
+/** Browser transport: success requires the host's explicit confirmation,
+ * not a redirect, an empty 2xx or Auth.js's client-side session projection.
+ */
+export async function requestConfirmedLogout(
+  expectedSessionId: string | null | undefined,
+  send: typeof fetch = fetch
+): Promise<void> {
+  if (!isCanonicalSessionId(expectedSessionId)) {
+    throw new Error('Expected session identity is unavailable');
+  }
+  const response = await send('/api/auth/signout', {
+    method: 'POST',
+    credentials: 'same-origin',
+    mode: 'same-origin',
+    cache: 'no-store',
+    redirect: 'error',
+    headers: { [RUSTOK_EXPECTED_SESSION_ID_HEADER]: expectedSessionId },
+    signal: AbortSignal.timeout(15_000)
+  });
+  if (response.status !== 200 || response.redirected) {
+    throw new Error('Sign-out could not be confirmed');
+  }
+  const body: unknown = await response.json();
+  if (!body || typeof body !== 'object' || !('status' in body) || body.status !== 'ok') {
+    throw new Error('Sign-out could not be confirmed');
+  }
+}

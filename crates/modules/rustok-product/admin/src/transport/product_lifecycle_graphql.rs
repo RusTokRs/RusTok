@@ -108,7 +108,6 @@ struct UpdateVariantVariables {
 }
 
 #[derive(Debug, Serialize)]
-#[allow(dead_code)]
 struct DeleteVariantVariables {
     #[serde(rename = "idempotencyKey")]
     idempotency_key: String,

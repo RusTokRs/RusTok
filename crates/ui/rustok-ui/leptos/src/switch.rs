@@ -125,8 +125,11 @@ pub fn Switch(
                     required=required
                     prop:checked=move || is_checked()
                     checked=move || is_checked()
+                    // `sr-only` is the whole hiding contract: position, clip and
+                    // size come from the utility, so no inline style (which the
+                    // host CSP blocks through `style-src-attr 'none'`) is needed.
                     class="sr-only"
-                    style="transform: translateX(-100%); position: absolute; pointer-events: none; opacity: 0; margin: 0px;"
+                    data-slot="switch-proxy"
                 />
             }
         })}

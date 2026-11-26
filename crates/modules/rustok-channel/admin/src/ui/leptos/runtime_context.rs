@@ -26,7 +26,7 @@ pub(super) fn RuntimeContext(bootstrap: ChannelAdminBootstrap) -> impl IntoView 
                         <InfoPill label=t(ui_locale.as_deref(), "channel.runtime.target", "Target") value=current.target_value.unwrap_or_else(|| t(ui_locale.as_deref(), "channel.runtime.na", "n/a")) />
                         <InfoPill label=t(ui_locale.as_deref(), "channel.runtime.type", "Type") value=current.target_type.unwrap_or_else(|| t(ui_locale.as_deref(), "channel.runtime.na", "n/a")) />
                     </div>
-                    <div class="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+                    <div class="mt-4 rounded-xl border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-950 px-4 py-3 text-sm text-sky-800 dark:text-sky-200">
                         {resolution_source_description(&current.resolution_source, ui_locale.as_deref())}
                     </div>
                     <div class="mt-4 space-y-2">

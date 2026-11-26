@@ -50,8 +50,7 @@ impl ForumMemberCardQuery {
         let tenant = ctx.data::<TenantContext>()?;
         let requested_locale = resolve_graphql_locale(ctx, locale.as_deref());
         let service = ForumMemberCardService::new(db.clone());
-        let requested_user_ids = ForumMemberCardService::normalize_user_ids(&user_ids)
-            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+        let requested_user_ids = ForumMemberCardService::normalize_user_ids(&user_ids)?;
         if requested_user_ids.is_empty() {
             return Ok(Vec::new());
         }
@@ -74,8 +73,7 @@ impl ForumMemberCardQuery {
                 .collect::<HashMap<_, _>>();
             service
                 .compose_admitted_profiles(tenant.id, &requested_user_ids, profiles)
-                .await
-                .map_err(|error| async_graphql::Error::new(error.to_string()))?
+                .await?
         } else {
             service
                 .read_for_audience(
@@ -85,8 +83,7 @@ impl ForumMemberCardQuery {
                     Some(requested_locale.as_str()),
                     Some(tenant.default_locale.as_str()),
                 )
-                .await
-                .map_err(|error| async_graphql::Error::new(error.to_string()))?
+                .await?
         };
 
         Ok(cards.into_iter().map(map_member_card).collect())

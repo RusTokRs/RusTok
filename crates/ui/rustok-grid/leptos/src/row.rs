@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 
-use rustok_grid::{ColumnAlign, ColumnWidths, GridColumnDef};
+use rustok_grid::{ColumnAlign, GridColumnDef};
 
 /// A single data row. Cells are rendered reactively from the column signal so
 /// toggling column visibility or resizing does not rebuild the whole table.
@@ -9,7 +9,6 @@ pub fn GridRow<T: Send + Sync + Clone + 'static>(
     item: T,
     row_id: String,
     columns: Signal<Vec<GridColumnDef>>,
-    column_widths: Signal<ColumnWidths>,
     is_selected: Signal<bool>,
     on_toggle_select: Callback<String>,
     on_row_click: Option<Callback<T>>,
@@ -43,16 +42,6 @@ pub fn GridRow<T: Send + Sync + Clone + 'static>(
                             ColumnAlign::Center => "text-center",
                             ColumnAlign::Right => "text-right",
                         };
-                        let width = col.width;
-                        let current_width = {
-                            let col_id = col_id.clone();
-                            move || {
-                                column_widths
-                                    .get()
-                                    .get_clamped(&col_id, width.current, width.min, width.max)
-                            }
-                        };
-
                         let cell = if is_checkbox {
                             view! {
                                 <input
@@ -77,14 +66,6 @@ pub fn GridRow<T: Send + Sync + Clone + 'static>(
                                     "px-3 py-2.5 border-r border-border/30 last:border-r-0 align-middle {align_class}{}",
                                     if interactive { " cursor-pointer" } else { "" },
                                 )
-                                style=move || {
-                                    format!(
-                                        "width: {}px; min-width: {}px; max-width: {}px;",
-                                        current_width(),
-                                        width.min,
-                                        width.max,
-                                    )
-                                }
                                 on:click=move |_| {
                                     if interactive
                                         && let Some(on_click) = on_row_click

@@ -22,6 +22,10 @@ pub(super) async fn create_reply_native(
             .await
             .map_err(ServerFnError::new)?;
 
+        let request = leptos_axum::extract::<rustok_api::RequestContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+
         require_tenant_scope(&auth, &tenant)?;
         let (host, event_bus) = runtime()?;
         require_forum_module_enabled(&host, tenant.id).await?;
@@ -38,15 +42,35 @@ pub(super) async fn create_reply_native(
             .map(|value| parse_uuid(value, "parent_reply_id"))
             .transpose()?;
         let settings = forum_settings_providers(&host)?;
-        let reply = rustok_forum::ReplyService::new(host.db_clone(), event_bus)
+        let audience_context = rustok_forum::reply_create_audience_port_context(
+            rustok_forum::ForumReplyCreateTransport::NativeServer,
+            tenant.id,
+            &auth,
+            Some(&request),
+            tenant.default_locale.as_str(),
+        )
+        .map_err(|error| ServerFnError::new(error.to_string()))?;
+        let service = match host.shared_get::<rustok_forum::SharedForumAudienceFactsPort>() {
+            Some(facts) => {
+                rustok_forum::ReplyService::with_audience_facts(host.db_clone(), event_bus, facts)
+            }
+            None => rustok_forum::ReplyService::new(host.db_clone(), event_bus),
+        };
+        let service = match host.shared_get::<std::sync::Arc<dyn rustok_forum::ForumTaxonomyPort>>()
+        {
+            Some(port) => service.with_taxonomy_port(port),
+            None => service,
+        };
+        let reply = service
             .with_settings_providers(settings)
-            .create(
+            .create_with_audience_context(
                 tenant.id,
                 rustok_core::SecurityContext::from_permission_snapshot(
                     Some(auth.user_id),
                     &auth.permissions,
                 ),
                 topic_id,
+                audience_context,
                 rustok_forum::CreateReplyInput {
                     locale: draft.locale,
                     content: draft.content,

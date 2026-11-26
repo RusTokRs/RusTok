@@ -11,7 +11,8 @@ import {
 import { Input } from '@/shared/ui/shadcn/input';
 import { Label } from '@/shared/ui/shadcn/label';
 import { graphqlRequest } from '@/shared/api/graphql';
-import { signOut, useSession } from 'next-auth/react';
+import { useSession } from 'next-auth/react';
+import { useConfirmedSignOut } from '@/shared/hooks/use-confirmed-sign-out';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { SessionsCard } from './sessions-card';
@@ -49,6 +50,7 @@ export default function ProfileViewPage() {
   const { data: session, update } = useSession();
   const user = session?.user;
   const tenantSlug = user?.tenantSlug;
+  const { signOut, isSigningOut } = useConfirmedSignOut(user?.rustokSessionId);
 
   const [name, setName] = useState(user?.name ?? '');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
@@ -143,7 +145,9 @@ export default function ProfileViewPage() {
         'Email changed to ' + result.confirmEmailChange.email +
         '. Sign in again with the new address.'
       );
-      await signOut({ callbackUrl: '/auth/sign-in' });
+      // The credential mutation already committed. A logout failure is
+      // surfaced separately; never suggest repeating the credential mutation.
+      await signOut();
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : 'Failed to confirm email change'
@@ -171,7 +175,9 @@ export default function ProfileViewPage() {
       setCurrentPassword('');
       setNewPassword('');
       toast.success('Password changed. Signing out of this session.');
-      await signOut({ callbackUrl: '/auth/sign-in' });
+      // The credential mutation already committed. A logout failure is
+      // surfaced separately; never suggest repeating the credential mutation.
+      await signOut();
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : 'Failed to change password'
@@ -252,7 +258,7 @@ export default function ProfileViewPage() {
                     value={newEmail}
                     onChange={(e) => setNewEmail(e.target.value)}
                     placeholder='name@example.com'
-                    disabled={isRequestingEmailChange || isConfirmingEmailChange}
+                    disabled={isRequestingEmailChange || isConfirmingEmailChange || isSigningOut}
                   />
                 </div>
                 <div>
@@ -264,10 +270,10 @@ export default function ProfileViewPage() {
                     value={emailChangePassword}
                     onChange={(e) => setEmailChangePassword(e.target.value)}
                     placeholder='********'
-                    disabled={isRequestingEmailChange || isConfirmingEmailChange}
+                    disabled={isRequestingEmailChange || isConfirmingEmailChange || isSigningOut}
                   />
                 </div>
-                <Button type='submit' disabled={isRequestingEmailChange || isConfirmingEmailChange}>
+                <Button type='submit' disabled={isRequestingEmailChange || isConfirmingEmailChange || isSigningOut}>
                   {isRequestingEmailChange ? 'Sending...' : 'Send confirmation token'}
                 </Button>
               </form>
@@ -280,10 +286,10 @@ export default function ProfileViewPage() {
                     onChange={(e) => setEmailChangeToken(e.target.value)}
                     placeholder='Paste the token from your email'
                     autoComplete='one-time-code'
-                    disabled={isRequestingEmailChange || isConfirmingEmailChange}
+                    disabled={isRequestingEmailChange || isConfirmingEmailChange || isSigningOut}
                   />
                 </div>
-                <Button type='submit' disabled={isRequestingEmailChange || isConfirmingEmailChange}>
+                <Button type='submit' disabled={isRequestingEmailChange || isConfirmingEmailChange || isSigningOut}>
                   {isConfirmingEmailChange ? 'Confirming...' : 'Confirm new email'}
                 </Button>
               </form>
@@ -307,7 +313,7 @@ export default function ProfileViewPage() {
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
                     placeholder='********'
-                    disabled={isChangingPassword}
+                    disabled={isChangingPassword || isSigningOut}
                   />
                 </div>
                 <div>
@@ -318,10 +324,10 @@ export default function ProfileViewPage() {
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     placeholder='********'
-                    disabled={isChangingPassword}
+                    disabled={isChangingPassword || isSigningOut}
                   />
                 </div>
-                <Button type='submit' disabled={isChangingPassword}>
+                <Button type='submit' disabled={isChangingPassword || isSigningOut}>
                   {isChangingPassword ? 'Updating...' : 'Update password'}
                 </Button>
               </form>

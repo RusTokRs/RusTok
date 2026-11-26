@@ -774,6 +774,32 @@ async fn confirm_reset(
     Ok(json_response(GenericStatusResponse { status: "ok" }))
 }
 
+// Like password recovery, account-dependent token preparation must not
+// change the public response. Keep diagnostics fixed and never log the
+// recipient, token, or signing error payload.
+fn prepare_verification_token(
+    config: &crate::auth::AuthConfig,
+    tenant_id: uuid::Uuid,
+    user: Option<users::Model>,
+) -> Option<(String, String)> {
+    let user = user.filter(|record| record.email_verified_at.is_none())?;
+    match encode_email_verification_token(
+        config,
+        tenant_id,
+        user.id,
+        &user.email,
+        EMAIL_VERIFICATION_TOKEN_TTL_SECS,
+    ) {
+        Ok(token) => Some((user.email, token)),
+        Err(_) => {
+            tracing::warn!(
+                "Email verification token could not be prepared; keeping the public response generic"
+            );
+            None
+        }
+    }
+}
+
 #[utoipa::path(post, path = "/api/auth/verify/request", tag = "auth", request_body = RequestVerificationParams,
     responses((status = 200, description = "Verification request accepted", body = VerificationRequestResponse)))]
 async fn request_verification(
@@ -794,26 +820,11 @@ async fn request_verification(
         .cloned()
         .ok_or(Error::InternalServerError)?;
     let user = Users::find_by_email(ctx.runtime_ctx().db(), tenant.id, email).await?;
-    if settings.features.email_verification {
-        crate::auth::mask_auth_lookup_timing().await?;
-    }
+    crate::auth::mask_auth_lookup_timing().await?;
 
-    let verification = user
-        .filter(|record| record.email_verified_at.is_none())
-        .map(|record| {
-            let recipient = record.email;
-            let token = encode_email_verification_token(
-                &config,
-                tenant.id,
-                record.id,
-                &recipient,
-                EMAIL_VERIFICATION_TOKEN_TTL_SECS,
-            )?;
-            Ok::<_, Error>((recipient, token))
-        })
-        .transpose()?;
-
-    if let Some((recipient, verification_token_value)) = verification {
+    if let Some((recipient, verification_token_value)) =
+        prepare_verification_token(&config, tenant.id, user)
+    {
         let runtime_ctx = ctx.runtime_ctx();
         let email_service = match email_service_from_ctx(
             runtime_ctx,
@@ -1170,6 +1181,42 @@ mod tests {
                 .expect("invalid invite body");
             assert_eq!(error.into_response().status(), StatusCode::BAD_REQUEST);
         }
+    }
+
+    #[tokio::test]
+    async fn verification_request_masks_account_dependent_signing_failure() {
+        use crate::models::{tenants, users};
+        use rustok_migrations::SqliteTestMigrator;
+        use rustok_test_utils::db::setup_test_db_with_migrations;
+        use sea_orm::ActiveModelTrait;
+
+        let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
+        let tenant = tenants::ActiveModel::new("Verification tenant", "verify-signing")
+            .insert(&db)
+            .await
+            .unwrap();
+        let user = users::ActiveModel::new(tenant.id, "verify@example.com", "hash")
+            .insert(&db)
+            .await
+            .unwrap();
+        let config = crate::auth::test_auth_config(
+            "verification-request-signing-failure-test-secret".to_string(),
+        );
+        let (recipient, token) =
+            super::prepare_verification_token(&config, tenant.id, Some(user.clone()))
+                .expect("healthy signer prepares a verification token");
+        assert_eq!(recipient, user.email);
+        assert!(!token.is_empty());
+
+        let (unleased, _publisher) = config
+            .into_cluster_jwt(1)
+            .expect("prepare runtime without granting a signing lease");
+        assert!(crate::auth::encode_email_verification_token(
+            &unleased, tenant.id, user.id, &user.email,
+            super::EMAIL_VERIFICATION_TOKEN_TTL_SECS,
+        ).is_err());
+        assert!(super::prepare_verification_token(&unleased, tenant.id, Some(user)).is_none());
+        assert!(super::prepare_verification_token(&unleased, tenant.id, None).is_none());
     }
 
     #[test]

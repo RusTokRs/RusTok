@@ -1,5 +1,5 @@
-use tracing::instrument;
 use std::sync::Arc;
+use tracing::instrument;
 
 use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use uuid::Uuid;
@@ -24,6 +24,23 @@ use super::{category, category_command, category_lifecycle, category_policy};
 #[path = "category_taxonomy_tree_read.rs"]
 mod taxonomy_tree_read;
 use taxonomy_tree_read::CategoryTaxonomyTreeReadService;
+
+/// Only the storefront selected-category path may use list admission. Ordinary
+/// selected owner reads must retain their read boundary at every layer.
+#[derive(Clone, Copy)]
+pub(super) enum CategorySelectedReadAccess {
+    OwnerRead,
+    StorefrontList,
+}
+
+impl CategorySelectedReadAccess {
+    pub(super) fn action(self) -> Action {
+        match self {
+            Self::OwnerRead => Action::Read,
+            Self::StorefrontList => Action::List,
+        }
+    }
+}
 
 /// Public owner facade for forum categories.
 ///
@@ -69,6 +86,7 @@ impl CategoryService {
         self.commands = self.commands.with_port(port.clone());
         self.lifecycle = self.lifecycle.with_port(port.clone());
         self.tree_read = self.tree_read.with_port(port.clone());
+        self.visibility = self.visibility.with_taxonomy_port(port.clone());
         self.taxonomy_port = port;
         self
     }
@@ -107,7 +125,27 @@ impl CategoryService {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> ForumResult<CategoryResponse> {
-        enforce_scope(&security, Resource::ForumCategories, Action::Read)?;
+        self.get_selected_with_access(
+            tenant_id,
+            security,
+            category_id,
+            locale,
+            fallback_locale,
+            CategorySelectedReadAccess::OwnerRead,
+        )
+        .await
+    }
+
+    pub(super) async fn get_selected_with_access(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        category_id: Uuid,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        access: CategorySelectedReadAccess,
+    ) -> ForumResult<CategoryResponse> {
+        enforce_scope(&security, Resource::ForumCategories, access.action())?;
         if !self
             .visibility
             .is_category_visible_to_viewer(tenant_id, category_id, !security.is_public_read())
@@ -116,7 +154,14 @@ impl CategoryService {
             return Err(ForumError::CategoryNotFound(category_id));
         }
         self.read
-            .get_with_locale_fallback(tenant_id, security, category_id, locale, fallback_locale)
+            .get_selected_with_access(
+                tenant_id,
+                security,
+                category_id,
+                locale,
+                fallback_locale,
+                access,
+            )
             .await
     }
 

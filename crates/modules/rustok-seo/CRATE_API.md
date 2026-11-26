@@ -31,6 +31,7 @@ Deliberate public modules and exports:
 - **Content**: Subscribes to content lifecycle events to create canonical redirects and update sitemap entries.
 - **Media**: Validates and attaches OpenGraph and Twitter card image assets.
 - **Tenant**: Multi-tenant host domain resolution for sitemaps, robots.txt, and canonical origins.
+- **Owner capabilities**: `SeoApplicationServices::from_runtime_extensions` preserves a cloned `ModuleRuntimeExtensions` snapshot in the internal SEO service and forwards it as `SeoTargetRuntimeContext.runtime_extensions`. Providers compose their own typed owner ports; SEO does not import Forum/Taxonomy to assemble a target. Standalone `SeoService::new` starts with an explicit empty snapshot. The `target_context_keeps_the_same_injected_provider_capability` unit regression is authored but requires Cargo execution.
 - **Translation Targets**: Integrates with translation target providers for localized meta title and description variations.
 - **Outbox**: Publishes SEO update and sitemap generation events into transactional outbox.
 - **GraphQL & HTTP**: Exposes `SeoQuery`, `SeoMutation`, and axum HTTP controllers for `robots.txt` and `sitemap.xml`.

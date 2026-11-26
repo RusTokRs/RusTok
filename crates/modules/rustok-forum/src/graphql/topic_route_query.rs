@@ -125,7 +125,7 @@ async fn resolve_authorized_public_route(
         Err(ForumError::TopicNotFound(_))
         | Err(ForumError::TopicDeleted)
         | Err(ForumError::TopicRouteNotFound) => return Ok(None),
-        Err(error) => return Err(async_graphql::Error::new(error.to_string())),
+        Err(error) => return Err(error.into()),
     };
 
     if resolution.disposition == ForumTopicRouteDisposition::Gone {
@@ -139,8 +139,7 @@ async fn resolve_authorized_public_route(
         })?;
         let disclose = ForumTopicRouteTombstoneVisibilityService::new(db.clone())
             .can_disclose_public_gone(tenant_id, topic_id, public_channel_slug(ctx).as_deref())
-            .await
-            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+            .await?;
         return Ok(disclose.then_some(resolution));
     }
 
@@ -190,7 +189,7 @@ async fn resolve_authorized_public_route(
         | Err(ForumError::TopicNotFound(_))
         | Err(ForumError::TopicDeleted)
         | Err(ForumError::TopicRouteNotFound) => Ok(None),
-        Err(error) => Err(async_graphql::Error::new(error.to_string())),
+        Err(error) => Err(error.into()),
     }
 }
 

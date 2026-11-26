@@ -95,8 +95,12 @@ During an incident:
 
 1. Read the `resolution` row from `channel_resolution_invalidation_state` and confirm generation is
    non-negative and advancing when channel, target, binding or policy rows change.
-2. Check the runtime guardrail reason for `channel resolution durable invalidation runtime`; a
-   missing or terminal handle is critical because periodic convergence has stopped.
+2. Check the runtime guardrail reason for `channel resolution durable invalidation runtime`. The
+   guardrail reports `degraded`, not `critical`: while the handle is not ready the channel
+   middleware stops serving resolution from its process cache
+   (`channel_resolution_cache_bypassed`) and resolves against the owner on every request, so a
+   stale routing decision is impossible but latency and owner load rise. Periodic convergence of
+   the generation still needs repair; the replica is not taken out of readiness.
 3. If Redis publication fails, do not replay channel mutations. Confirm the committed database
    generation advanced and wait for database reconciliation to clear process-local channel tokens.
 4. If the local listener lags, a replica starts without a trusted baseline, or database generation

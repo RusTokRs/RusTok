@@ -11,15 +11,9 @@ impl Model {
         self.used_at.is_none() && expires_at_utc > now_utc
     }
 
-    pub fn scopes_list(&self) -> Vec<String> {
-        self.scopes
-            .as_array()
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            })
-            .unwrap_or_default()
+    /// Decode the complete stored grant; never silently discard invalid entries.
+    pub fn scopes_list(&self) -> Result<Vec<String>, serde_json::Error> {
+        serde_json::from_value(self.scopes.clone())
     }
 }
 

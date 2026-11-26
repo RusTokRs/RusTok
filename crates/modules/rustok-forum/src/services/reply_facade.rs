@@ -1,5 +1,5 @@
-use tracing::instrument;
 use sea_orm::{DatabaseConnection, DatabaseTransaction};
+use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_api::{Action, PortContext, Resource};
@@ -27,6 +27,7 @@ use super::topic_visibility::ForumTopicVisibilityService;
 /// crate-private and the public type never dereferences into the raw service.
 pub struct ReplyService {
     db: DatabaseConnection,
+    taxonomy_port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
     inner: reply_owner::ReplyService,
     create_audience: ForumReplyCreateAudienceAuthorizationService,
 }
@@ -52,6 +53,16 @@ impl ReplyService {
         self
     }
 
+    pub fn with_taxonomy_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
+    ) -> Self {
+        self.inner = self.inner.with_taxonomy_port(port.clone());
+        self.create_audience = self.create_audience.with_taxonomy_port(port.clone());
+        self.taxonomy_port = port;
+        self
+    }
+
     fn with_optional_audience_facts(
         db: DatabaseConnection,
         event_bus: TransactionalEventBus,
@@ -64,6 +75,7 @@ impl ReplyService {
                 facts_port,
             ),
             db,
+            taxonomy_port: std::sync::Arc::new(crate::NoopForumTaxonomyPort),
         }
     }
 
@@ -162,25 +174,17 @@ impl ReplyService {
         context: Option<PortContext>,
         input: CreateReplyCommandInput,
     ) -> ForumResult<ReplyResponse> {
-        let response = match context {
-            Some(context) => {
-                self.inner
-                    .create_command_with_audience_authorization(
-                        tenant_id,
-                        security,
-                        topic_id,
-                        Some(context),
-                        input,
-                        &self.create_audience,
-                    )
-                    .await?
-            }
-            None => {
-                self.inner
-                    .create_command(tenant_id, security, topic_id, input)
-                    .await?
-            }
-        };
+        let response = self
+            .inner
+            .create_command_with_audience_authorization(
+                tenant_id,
+                security,
+                topic_id,
+                context,
+                input,
+                &self.create_audience,
+            )
+            .await?;
         require_localized_reply_response(response)
     }
 
@@ -362,6 +366,7 @@ impl ReplyService {
             return Ok(true);
         }
         ForumTopicVisibilityService::new(self.db.clone())
+            .with_taxonomy_port(self.taxonomy_port.clone())
             .is_topic_category_visible_to_viewer(tenant_id, topic_id, false)
             .await
     }

@@ -29,16 +29,12 @@ module tests remain to be completed. Exercise
 real native/direct-cookie login, refresh, rejection and logout; tenant mismatch,
 multiple providers, tabs and dropped requests; SSR snapshot/hydration; and mounted
 admin/storefront/Notifications consumers. Source guards and standalone scope tests
-do not prove cookie/network behavior. A same-document lease cannot serialize tabs
-or cancel sent requests, and client scope is not authorization. The provider itself
-has no external-invalidation listener; Cart's bridge invalidates its own state, but
-other Auth projections can stay stale across roots/tabs. Route guards and some
-storage-backed transports also bypass ready-scope getters. The standalone
-storefront CSR entry now supplies the provider to both route branches, but its SSR
-shell still has the pre-existing separate owner without an Auth provider or a validated snapshot.
-Auth-dependent SSR children can therefore fail; implement request-validated, tenant-
-and cache-safe SSR composition and prove it rather than treating an empty snapshot
-as verified anonymity. The tracked historical Translation browser output fixture
+do not prove cookie/network behavior. The shared provider now coordinates cooperating browser operations and invalidates
+foreign projections; this does not authorize requests or cancel sent operations.
+Both Storefront SSR render branches mount the Auth provider and inherit a verified
+request-scoped snapshot when one is available. An empty snapshot is not proof of
+absent credentials. Standalone runtime/tenant-policy composition and mounted
+verification remain open. The tracked historical Translation browser output fixture
 now uses the real provider instead of constructing an
 obsolete fake session; its stale generated standalone lockfile was removed and its old
 screenshot is historical, not verification of this migration. Preserve the release
@@ -387,20 +383,37 @@ digest belongs to the locked tenant lineage (including retained history);
 missing/mismatched credentials do not clear cookies. Leptos projects the
 expected ID through CSR/hydrate and Next Admin pins Auth.js to the direct
 session, compares tenant/subject/lineage before dispatch, and avoids clearing
-cookies on rejected refresh. Next Auth.js sign-out events preserve Rustok
-cookies on revocation failure but cannot prevent Auth.js's own session clearing.
+cookies on rejected refresh. Next Admin explicit logout is now source-wired:
+the closed credentials-only Auth.js route admits same-origin POST with a
+frozen expected lineage, revokes through Auth before any cookie cleanup,
+then invokes the private Auth.js sign-out helper and clears Rustok cookies.
+UI header/sidebar and credential-change flows share the transport; failures
+are localized and do not repeat a committed credential change. Failed login
+does not clear unrelated cookies. Generic Auth.js signout bypass is removed.
 Regressions cover current/historical mismatch, matching proof recovery,
-historical logout retry, header parsing and adapter forwarding.
+historical logout retry, header parsing, adapter forwarding, route admission,
+cleanup ordering and explicit response confirmation.
 Out-of-order noncooperating responses, SSR navigation, discovery without
-expected identity, explicit confirmed Next logout and mounted verification
-remain open.
+expected identity, expired Auth.js identity recovery, post-revocation cleanup
+failure and mounted verification remain open.
 
-Remaining implementation: standalone Storefront SSR validated composition,
+Storefront SSR document routes now use the shared Auth SSR adapter and an
+already-resolved tenant slug/UUID, mount the provider in both render branches,
+and prevent credential-bearing documents from conditional revalidation.
+Admin and Storefront share cookie admission/response handling; assets, RSS,
+health, HEAD and speculative document fetches do not rotate. Native Admin
+cookie-consuming calls and Page Builder preview/intents retain their explicit
+paths. Source regressions cover tenant mismatch, navigation admission,
+cookie precedence and scoped SSR render identity. A snapshot is not a
+validated backend principal and does not supply missing standalone runtime
+services.
+
+Remaining implementation: standalone Storefront runtime/tenant-policy composition,
 Next Storefront (currently observation-only, without its own refresh flow),
 mobile/native consumers, generated API header reference updates, and
 header secrecy in proxies/telemetry. Next Admin browser/runtime and
-cross-replica evidence, late cookie delivery and Auth.js logout failure
-handling remain pending. OAuth refresh-family recovery is separate.
+cross-replica evidence, late cookie delivery and post-revocation cookie
+cleanup recovery remain pending. OAuth refresh-family recovery is separate.
 Run scoped Auth and server compilation, retry-proof and lifecycle tests,
 mounted REST/GraphQL/CORS contracts, PostgreSQL contention and cross-replica
 lost-response injection, plus the remediation gate. None has been executed.

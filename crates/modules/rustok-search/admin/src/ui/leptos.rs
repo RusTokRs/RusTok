@@ -1298,6 +1298,7 @@ fn analytics_rows_table(
             </div>
 
             <DataGrid
+                aria_label=t(locale, "search.analytics.queriesTable", "Query analytics")
                 columns=columns
                 data=Signal::derive(move || paged_rows.get())
                 key_fn=|row: &core::SearchAnalyticsQueryRowViewModel| row.query.clone()
@@ -1396,6 +1397,7 @@ fn intelligence_table(
             </div>
 
             <DataGrid
+                aria_label=t(locale, "search.analytics.insightsTable", "Search insights")
                 columns=columns
                 data=Signal::derive(move || paged_rows.get())
                 key_fn=|row: &core::SearchAnalyticsInsightRowViewModel| row.query.clone()
@@ -1555,6 +1557,7 @@ fn lagging_table(
             </div>
 
             <DataGrid
+                aria_label=t(locale, "search.analytics.laggingTable", "Lagging documents")
                 columns=columns
                 data=Signal::derive(move || paged_rows.get())
                 key_fn=|row: &core::LaggingSearchDocumentRowViewModel| row.document_key.clone()
@@ -1667,6 +1670,7 @@ fn consistency_table(
             </div>
 
             <DataGrid
+                aria_label=t(locale, "search.analytics.consistencyTable", "Consistency issues")
                 columns=columns
                 data=Signal::derive(move || paged_rows.get())
                 key_fn=|row: &core::SearchConsistencyIssueRowViewModel| row.document_key.clone()
@@ -2278,6 +2282,7 @@ fn synonyms_table(
             </Show>
 
             <DataGrid
+                aria_label=t(locale, "search.synonyms.table", "Synonyms")
                 columns=columns
                 data=Signal::derive(move || paged_rows.get())
                 key_fn=|row: &core::SearchSynonymRowViewModel| row.id.clone()
@@ -2433,6 +2438,7 @@ fn stop_words_table(
             </Show>
 
             <DataGrid
+                aria_label=t(locale, "search.stopWords.table", "Stop words")
                 columns=columns
                 data=Signal::derive(move || paged_rows.get())
                 key_fn=|row: &core::SearchStopWordRowViewModel| row.id.clone()
@@ -2602,6 +2608,7 @@ fn query_rules_table(
             </Show>
 
             <DataGrid
+                aria_label=t(locale, "search.queryRules.table", "Query rules")
                 columns=columns
                 data=Signal::derive(move || paged_rows.get())
                 key_fn=|row: &core::SearchQueryRuleRowViewModel| row.id.clone()

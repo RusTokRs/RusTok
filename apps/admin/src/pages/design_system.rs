@@ -10,11 +10,28 @@
 
 use leptos::prelude::*;
 use rustok_api::RichTextDocument;
+use rustok_grid::{CellValue, ColumnAlign, GridColumnDef};
+use rustok_grid_leptos::prelude::DataGrid;
 use rustok_ui_leptos::{
-    Alert, AlertVariant, Badge, BadgeVariant, Button, ButtonVariant, Card, CardContent,
-    CardDescription, CardFooter, CardHeader, CardTitle, Checkbox, Input, Orientation,
-    RichTextEditorFrame, Separator, Size, Switch, Textarea, localized_richtext_frame_copy,
+    Alert, AlertVariant, Avatar, AvatarSize, Badge, BadgeVariant, Button, ButtonVariant, Card,
+    CardContent, CardDescription, CardFooter, CardHeader, CardTitle, Checkbox, Dialog, DialogClose,
+    DialogContent, DialogDescription, DialogTitle, DialogTrigger, Input, Orientation, Progress,
+    RichTextEditorFrame, Select, SelectOption, Separator, Size, Skeleton, SkeletonVariant, Spinner,
+    Switch, TableOfContents, Tabs, TabsContent, TabsList, TabsTrigger, Textarea, TocItem,
+    localized_richtext_frame_copy,
 };
+
+/// One demo row of the workbench data grid.
+///
+/// Declared outside the component so the cell renderer and the sort key can share
+/// it, and so the grid shows a real (`Clone`) row type instead of strings.
+#[derive(Clone, Debug)]
+struct ShowcaseGridRow {
+    id: String,
+    name: String,
+    seats: i32,
+    status: String,
+}
 
 #[component]
 pub fn DesignSystemPage() -> impl IntoView {
@@ -31,6 +48,33 @@ pub fn DesignSystemPage() -> impl IntoView {
     let (disabled, set_disabled) = signal(false);
     let (loading, set_loading) = signal(false);
     let (button_text, set_button_text) = signal("Save Changes".to_string());
+
+    // Sections that were missing from this page: selection, overlays, status,
+    // identity, navigation and the data grid.
+    let showcase_choice = RwSignal::new("starter".to_string());
+    let showcase_choice_with_placeholder = RwSignal::new("".to_string());
+    let showcase_tab = RwSignal::new("overview".to_string());
+    let showcase_dialog_open = RwSignal::new(false);
+    let showcase_rows = RwSignal::new(vec![
+        ShowcaseGridRow {
+            id: "core".to_string(),
+            name: "Core workspace".to_string(),
+            seats: 24,
+            status: "active".to_string(),
+        },
+        ShowcaseGridRow {
+            id: "commerce".to_string(),
+            name: "Commerce".to_string(),
+            seats: 12,
+            status: "active".to_string(),
+        },
+        ShowcaseGridRow {
+            id: "archive".to_string(),
+            name: "Archive".to_string(),
+            seats: 3,
+            status: "read-only".to_string(),
+        },
+    ]);
 
     // Form controls interactive signals
     let (form_input, set_form_input) = signal("admin@rustok.dev".to_string());
@@ -742,6 +786,312 @@ pub fn DesignSystemPage() -> impl IntoView {
                             <pre class="text-[10px] font-mono overflow-auto max-h-36 p-2 bg-background rounded border border-border text-foreground">
                                 {move || serde_json::to_string_pretty(&rt_doc.get()).unwrap_or_default()}
                             </pre>
+                        </div>
+                    </CardContent>
+                </Card>
+            </section>
+
+            // Selection, overlays and controlled state
+            <section class="space-y-4">
+                <div class="flex items-center gap-2">
+                    <h2 class="text-xl font-semibold tracking-tight text-foreground">
+                        "Selection & Overlays"
+                    </h2>
+                    <Badge variant=BadgeVariant::Outline class="ml-2 font-mono text-xs">
+                        "Select · Tabs · Dialog"
+                    </Badge>
+                </div>
+                <div class="grid gap-4 lg:grid-cols-3">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle class="text-base">"Select"</CardTitle>
+                            <CardDescription>
+                                "Controlled listbox: the selected value lives in the host signal."
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent class="space-y-3">
+                            <Select
+                                aria_label="Showcase workspace"
+                                options=vec![
+                                    SelectOption::new("starter", "Starter"),
+                                    SelectOption::new("growth", "Growth"),
+                                    SelectOption::new("enterprise", "Enterprise"),
+                                ]
+                                value=showcase_choice.read_only()
+                                set_value=showcase_choice.write_only()
+                            />
+                            <Select
+                                aria_label="Showcase plan with placeholder"
+                                placeholder="Choose a plan"
+                                options=vec![
+                                    SelectOption::new("monthly", "Monthly"),
+                                    SelectOption::new("yearly", "Yearly"),
+                                ]
+                                value=showcase_choice_with_placeholder.read_only()
+                                set_value=showcase_choice_with_placeholder.write_only()
+                            />
+                            <p class="text-xs text-muted-foreground">
+                                "Selected: "
+                                <span class="font-mono">{move || showcase_choice.get()}</span>
+                            </p>
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardHeader>
+                            <CardTitle class="text-base">"Tabs"</CardTitle>
+                            <CardDescription>
+                                "Roving tablist; each panel is a real tabpanel for assistive tech."
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            {move || {
+                                let active = showcase_tab.get();
+                                let is_overview = active == "overview";
+                                let is_activity = active == "activity";
+                                view! {
+                                    <Tabs default_value=active.clone()>
+                                        <TabsList aria_label="Showcase tabs">
+                                            <TabsTrigger
+                                                value="overview".to_string()
+                                                active=is_overview
+                                                on_select=Callback::new(move |()| showcase_tab.set("overview".to_string()))
+                                            >
+                                                "Overview"
+                                            </TabsTrigger>
+                                            <TabsTrigger
+                                                value="activity".to_string()
+                                                active=is_activity
+                                                on_select=Callback::new(move |()| showcase_tab.set("activity".to_string()))
+                                            >
+                                                "Activity"
+                                            </TabsTrigger>
+                                        </TabsList>
+                                        <TabsContent value="overview".to_string() active=is_overview class="pt-3 text-sm text-muted-foreground">
+                                            "Workspace summary, plan limits and the current billing period."
+                                        </TabsContent>
+                                        <TabsContent value="activity".to_string() active=is_activity class="pt-3 text-sm text-muted-foreground">
+                                            "Audit trail of the last 30 days, newest first."
+                                        </TabsContent>
+                                    </Tabs>
+                                }
+                            }}
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardHeader>
+                            <CardTitle class="text-base">"Dialog"</CardTitle>
+                            <CardDescription>
+                                "Modal dialog with focus trap, overlay and an explicit close action."
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent class="space-y-3">
+                            <Dialog
+                                open=Signal::derive(move || showcase_dialog_open.get())
+                                on_open_change=Callback::new(move |open: bool| showcase_dialog_open.set(open))
+                            >
+                                <DialogTrigger
+                                    aria_controls="ds-showcase-dialog"
+                                    class="inline-flex h-10 items-center justify-center rounded-lg border border-border bg-background px-4 text-sm font-medium text-foreground transition hover:bg-muted"
+                                >
+                                    "Open dialog"
+                                </DialogTrigger>
+                                <DialogContent id="ds-showcase-dialog" aria_labelledby="ds-showcase-dialog-title">
+                                    <DialogTitle id="ds-showcase-dialog-title">
+                                        "Delete the archive workspace?"
+                                    </DialogTitle>
+                                    <DialogDescription>
+                                        "Every page, target and binding in this workspace goes away. The action cannot be undone."
+                                    </DialogDescription>
+                                    <div class="mt-4 flex justify-end gap-2">
+                                        <DialogClose class="inline-flex h-10 items-center justify-center rounded-lg border border-border px-4 text-sm font-medium text-foreground transition hover:bg-muted">
+                                            "Cancel"
+                                        </DialogClose>
+                                        <Button
+                                            variant=ButtonVariant::Destructive
+                                            on_click=Box::new(move || showcase_dialog_open.set(false))
+                                        >
+                                            "Delete workspace"
+                                        </Button>
+                                    </div>
+                                </DialogContent>
+                            </Dialog>
+                            <p class="text-xs text-muted-foreground">
+                                "State: "
+                                <span class="font-mono">
+                                    {move || if showcase_dialog_open.get() { "open" } else { "closed" }}
+                                </span>
+                            </p>
+                        </CardContent>
+                    </Card>
+                </div>
+            </section>
+
+            // Status, identity and navigation
+            <section class="space-y-4">
+                <div class="flex items-center gap-2">
+                    <h2 class="text-xl font-semibold tracking-tight text-foreground">
+                        "Status, Identity & Navigation"
+                    </h2>
+                    <Badge variant=BadgeVariant::Outline class="ml-2 font-mono text-xs">
+                        "Spinner · Progress · Skeleton · Avatar · Toc"
+                    </Badge>
+                </div>
+                <div class="grid gap-4 lg:grid-cols-3">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle class="text-base">"Loading"</CardTitle>
+                            <CardDescription>
+                                "Spinner sizes, determinate and indeterminate progress."
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent class="space-y-4">
+                            <div class="flex items-end gap-4">
+                                <Spinner size=Size::Sm aria_label="Small spinner" />
+                                <Spinner size=Size::Md aria_label="Medium spinner" />
+                                <Spinner size=Size::Lg aria_label="Large spinner" />
+                            </div>
+                            <Progress aria_label="Upload progress" value=Some(62.0) max=Some(100.0) />
+                            <Progress aria_label="Indeterminate progress" />
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardHeader>
+                            <CardTitle class="text-base">"Skeleton & Avatar"</CardTitle>
+                            <CardDescription>
+                                "Placeholders keep the layout from jumping while data loads."
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent class="space-y-4">
+                            <Skeleton />
+                            <Skeleton variant=SkeletonVariant::Rectangular class="h-16 w-full" />
+                            <div class="flex items-center gap-3">
+                                <Skeleton variant=SkeletonVariant::Circular class="h-10 w-10" />
+                                <Skeleton class="h-4 w-32" />
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <Avatar fallback="RT".to_string() alt="RusToK" size=AvatarSize::Xs />
+                                <Avatar fallback="RT".to_string() alt="RusToK" size=AvatarSize::Sm />
+                                <Avatar fallback="RT".to_string() alt="RusToK" size=AvatarSize::Md />
+                                <Avatar fallback="RT".to_string() alt="RusToK" size=AvatarSize::Lg />
+                            </div>
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardHeader>
+                            <CardTitle class="text-base">"Table of contents"</CardTitle>
+                            <CardDescription>
+                                "Generated from headings, with the depth the caller asks for."
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <TableOfContents
+                                title=Some("On this page".to_string())
+                                sticky=false
+                                items=vec![
+                                    TocItem::new("showcase-usage", "Usage", 2),
+                                    TocItem::new("showcase-api", "API", 2),
+                                    TocItem::new("showcase-props", "Props", 3),
+                                ]
+                            />
+                        </CardContent>
+                    </Card>
+                </div>
+            </section>
+
+            // Data grid: the surface that every module page reuses
+            <section class="space-y-4">
+                <div class="flex items-center gap-2">
+                    <h2 class="text-xl font-semibold tracking-tight text-foreground">
+                        "Data Grid"
+                    </h2>
+                    <Badge variant=BadgeVariant::Outline class="ml-2 font-mono text-xs">
+                        "DataGrid · sort · empty state"
+                    </Badge>
+                </div>
+                <Card>
+                    <CardHeader>
+                        <CardTitle class="text-base">"Sortable grid with a typed cell renderer"</CardTitle>
+                        <CardDescription>
+                            "Client-side ordering comes from `sort_cell`, so a header click sorts the rows the host already loaded."
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent class="space-y-4">
+                        {
+                            let columns = vec![
+                                GridColumnDef::new("name", "Workspace").align(ColumnAlign::Left),
+                                GridColumnDef::new("seats", "Seats").align(ColumnAlign::Right),
+                                GridColumnDef::new("status", "Status").align(ColumnAlign::Left),
+                            ];
+                            let cell_renderer = Callback::new(
+                                move |(row, column): (ShowcaseGridRow, String)| match column.as_str() {
+                                    "seats" => view! { <span class="tabular-nums">{row.seats}</span> }.into_any(),
+                                    "status" => view! {
+                                        <Badge variant=BadgeVariant::Outline class="font-mono text-xs">
+                                            {row.status}
+                                        </Badge>
+                                    }
+                                    .into_any(),
+                                    _ => view! { <span class="font-medium">{row.name}</span> }.into_any(),
+                                },
+                            );
+                            let sort_cell = Callback::new(
+                                move |(row, column): (ShowcaseGridRow, String)| match column.as_str() {
+                                    "seats" => CellValue::number(f64::from(row.seats)),
+                                    "status" => CellValue::text(row.status),
+                                    _ => CellValue::text(row.name),
+                                },
+                            );
+                            view! {
+                                <DataGrid
+                                    aria_label="Showcase workspace grid"
+                                    columns=columns
+                                    data=Signal::derive(move || showcase_rows.get())
+                                    key_fn=|row: &ShowcaseGridRow| row.id.clone()
+                                    cell_renderer=cell_renderer
+                                    sort_cell=sort_cell
+                                />
+                            }
+                        }
+                        <div class="grid gap-2">
+                            <div class="flex items-center gap-2">
+                                <Button
+                                    variant=ButtonVariant::Outline
+                                    size=Size::Sm
+                                    on_click=Box::new(move || showcase_rows.update(|rows| rows.clear()))
+                                >
+                                    "Show the empty state"
+                                </Button>
+                                <Button
+                                    variant=ButtonVariant::Ghost
+                                    size=Size::Sm
+                                    on_click=Box::new(move || {
+                                        showcase_rows.set(vec![ShowcaseGridRow {
+                                            id: "restored".to_string(),
+                                            name: "Restored workspace".to_string(),
+                                            seats: 1,
+                                            status: "active".to_string(),
+                                        }])
+                                    })
+                                >
+                                    "Restore a row"
+                                </Button>
+                            </div>
+                            <DataGrid
+                                aria_label="Showcase empty grid"
+                                columns=vec![
+                                    GridColumnDef::new("name", "Workspace"),
+                                    GridColumnDef::new("seats", "Seats"),
+                                ]
+                                data=Signal::derive(Vec::<ShowcaseGridRow>::new)
+                                key_fn=|row: &ShowcaseGridRow| row.id.clone()
+                                cell_renderer=Callback::new(move |(row, column): (ShowcaseGridRow, String)| {
+                                    match column.as_str() {
+                                        "seats" => view! { <span class="tabular-nums">{row.seats}</span> }.into_any(),
+                                        _ => view! { <span class="font-medium">{row.name}</span> }.into_any(),
+                                    }
+                                })
+                                empty_message="No workspaces yet".to_string()
+                            />
                         </div>
                     </CardContent>
                 </Card>

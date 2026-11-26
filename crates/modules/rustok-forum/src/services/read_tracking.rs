@@ -406,6 +406,10 @@ async fn category_subtree_ids_with_port_in_tx(
     let parents = port
         .load_category_parents(txn.into(), tenant_id, &category_ids)
         .await?;
+    crate::services::category_hierarchy::validate_category_parent_projection(
+        &category_ids,
+        &parents,
+    )?;
     let mut children = HashMap::<Uuid, Vec<Uuid>>::new();
     for (term_id, parent_id) in parents {
         if let Some(parent_id) = parent_id {
@@ -680,6 +684,7 @@ struct VisibilityBulkReadCursor {
 pub struct ForumVisibilityScopedReadStateService {
     db: DatabaseConnection,
     audience_facts: Option<crate::audience::SharedForumAudienceFactsPort>,
+    taxonomy_port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
 }
 
 impl ForumVisibilityScopedReadStateService {
@@ -698,7 +703,19 @@ impl ForumVisibilityScopedReadStateService {
         db: DatabaseConnection,
         audience_facts: Option<crate::audience::SharedForumAudienceFactsPort>,
     ) -> Self {
-        Self { db, audience_facts }
+        Self {
+            db,
+            audience_facts,
+            taxonomy_port: std::sync::Arc::new(crate::NoopForumTaxonomyPort),
+        }
+    }
+
+    pub fn with_taxonomy_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
+    ) -> Self {
+        self.taxonomy_port = port;
+        self
     }
 
     /// Marks the exact currently visible topics in one category subtree read.
@@ -804,6 +821,7 @@ impl ForumVisibilityScopedReadStateService {
             self.db.clone(),
             self.audience_facts.clone(),
         )
+        .with_taxonomy_port(self.taxonomy_port.clone())
         .is_topic_owner_visible(tenant_id, topic_id, &viewer)
         .await?;
         if !visible {
@@ -869,6 +887,7 @@ impl ForumVisibilityScopedReadStateService {
                 self.db.clone(),
                 self.audience_facts.clone(),
             )
+            .with_taxonomy_port(self.taxonomy_port.clone())
             .is_category_visible(tenant_id, category_id, &category_viewer)
             .await?
             {
@@ -879,9 +898,15 @@ impl ForumVisibilityScopedReadStateService {
         let candidate_txn = self.db.begin().await?;
         let category_ids = match scope {
             BulkReadScope::Tenant => None,
-            BulkReadScope::Category(category_id) => {
-                Some(category_subtree_ids_in_tx(&candidate_txn, tenant_id, category_id).await?)
-            }
+            BulkReadScope::Category(category_id) => Some(
+                category_subtree_ids_with_port_in_tx(
+                    self.taxonomy_port.as_ref(),
+                    &candidate_txn,
+                    tenant_id,
+                    category_id,
+                )
+                .await?,
+            ),
         };
 
         let mut select = forum_topic::Entity::find()
@@ -914,10 +939,12 @@ impl ForumVisibilityScopedReadStateService {
         let has_more = candidates.len() > limit as usize;
         candidates.truncate(limit as usize);
 
-        let visibility = super::topic_audience_visibility::ForumTopicAudienceVisibilityService::new(
-            self.db.clone(),
-            self.audience_facts.clone(),
-        );
+        let visibility =
+            super::topic_audience_visibility::ForumTopicAudienceVisibilityService::new(
+                self.db.clone(),
+                self.audience_facts.clone(),
+            )
+            .with_taxonomy_port(self.taxonomy_port.clone());
         let mut visible_topic_ids = Vec::with_capacity(candidates.len());
         for topic in &candidates {
             if visibility

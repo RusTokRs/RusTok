@@ -1,9 +1,10 @@
 #!/usr/bin/env node
+import { containsMarker, spaced } from "./lib/forum-source-verification.mjs";
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertCanonicalLedger, requireValidationDisclosure } from "./lib/forum-source-verification.mjs";
+import { assertCanonicalLedger } from "./lib/forum-source-verification.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -21,7 +22,7 @@ function read(relativePath) {
 }
 
 function requireText(source, marker, message) {
-  if (!source.includes(marker)) failures.push(message);
+  if (!containsMarker(source, marker)) failures.push(message);
 }
 
 function rejectText(source, marker, message) {
@@ -44,6 +45,7 @@ const contract = JSON.parse(read(contractPath) || "{}");
 const authorization = read(contract.authorization_service_file ?? "");
 const policy = read(contract.policy_service_file ?? "");
 const facade = read(contract.topic_facade_file ?? "");
+const rawOwner = read(contract.raw_topic_owner ?? "");
 const services = read(contract.services_module ?? "");
 const crateRoot = read(contract.crate_root ?? "");
 const test = read(contract.runtime_test_file ?? "");
@@ -140,23 +142,19 @@ for (const marker of [
 const createBlock = between(
   facade,
   "async fn create_command_with_optional_audience_context(",
-  "pub async fn get(",
+  "pub async fn resolve_canonical_topic(",
   "topic-create facade helper",
 );
-for (const marker of [
-  ".require(tenant_id, input.category_id, &security, context)",
-  ".create_command(tenant_id, security, input)",
-]) {
-  requireText(createBlock, marker, `TopicService create helper is missing ${marker}`);
-}
-const requireIndex = createBlock.indexOf(
-  ".require(tenant_id, input.category_id, &security, context)",
-);
-const createIndex = createBlock.indexOf(
-  ".create_command(tenant_id, security, input)",
-);
-if (requireIndex < 0 || createIndex < 0 || requireIndex > createIndex) {
-  failures.push("TopicService must authorize before delegating to the topic write owner");
+requireText(createBlock, ".create_with_audience_authorization(", "topic facade must delegate into transactional admission");
+requireText(createBlock, "&self.create_audience", "topic facade must retain its configured audience owner");
+rejectText(createBlock, ".create_command(", "topic facade must not bypass configured admission without context");
+const ownerStart = rawOwner.indexOf("pub(crate) async fn create_with_audience_authorization(");
+const ownerCreate = spaced(rawOwner.slice(ownerStart));
+const requireIndex = ownerCreate.indexOf(".require_in_tx(&txn, tenant_id, input.category_id, &security, context)");
+const lockIndex = ownerCreate.indexOf("lock_category_tree_in_tx(&txn, tenant_id)");
+const firstWriteIndex = ownerCreate.indexOf("forum_topic::ActiveModel");
+if (ownerStart < 0 || lockIndex < 0 || requireIndex < lockIndex || firstWriteIndex < requireIndex) {
+  failures.push("topic owner must authorize after the hierarchy lock and before topic writes");
 }
 
 for (const marker of [
@@ -192,15 +190,9 @@ for (const marker of [
   requireText(test, marker, `topic-create enforcement SQLite proof is missing ${marker}`);
 }
 
-for (const marker of [
-  "# FORUM-20AR topic-create audience enforcement",
-  "source-ready / unvalidated",
-  "before topic, translation, relation, counter, user-stat, or domain-event writes",
-  "does **not** compose GraphQL or REST caller contexts",
-]) {
-  requireText(note, marker, `topic-create enforcement owner note is missing ${marker}`);
+for (const marker of ["### Selected hierarchy for create admission", "Rust tests remain uncompiled/unexecuted", "configured audience owner even when `PortContext` is absent"]) {
+  requireText(note, marker, `create admission documentation is missing ${marker}`);
 }
-requireValidationDisclosure(failures, note, "topic-create enforcement owner note is missing");
 for (const marker of [
   "ForumTopicCreateAudienceAuthorizationService",
   "create_with_audience_context",

@@ -7,10 +7,7 @@ use super::product_lifecycle_graphql;
 use crate::lifecycle_retry_identity::{
     ProductAdminLifecycleOperation, ProductAdminLifecycleRetryIdentity,
 };
-use crate::model::{
-    ProductDetail, ProductDraft, ProductImage, ProductImageDraft, ProductVariant,
-    UpdateProductImageDraft, VariantUpdateDraft,
-};
+use crate::model::{ProductDetail, ProductDraft, ProductImage, ProductImageDraft, UpdateProductImageDraft};
 
 type RetryIdentity = ProductAdminLifecycleRetryIdentity<String>;
 
@@ -25,8 +22,6 @@ fn lifecycle_operation_segment(operation: ProductAdminLifecycleOperation) -> &'s
         ProductAdminLifecycleOperation::UpdateProduct => "update-product",
         ProductAdminLifecycleOperation::ChangeStatus => "change-status",
         ProductAdminLifecycleOperation::DeleteProduct => "delete-product",
-        ProductAdminLifecycleOperation::UpdateVariant => "update-variant",
-        ProductAdminLifecycleOperation::DeleteVariant => "delete-variant",
         ProductAdminLifecycleOperation::AddImage => "add-image",
         ProductAdminLifecycleOperation::UpdateImage => "update-image",
         ProductAdminLifecycleOperation::DeleteImage => "delete-image",
@@ -219,113 +214,6 @@ pub(crate) async fn delete_product(
     finish_lifecycle_result(&slot, &idempotency_key, result)
 }
 
-fn effective_optional_text(value: Option<&str>) -> Option<&str> {
-    value.map(str::trim).filter(|value| !value.is_empty())
-}
-
-fn variant_update_intent(
-    tenant_id: &str,
-    user_id: &str,
-    variant_id: &str,
-    draft: &VariantUpdateDraft,
-) -> String {
-    // Match the exact effective GraphQL input. An untouched price editor buffer is not
-    // sent unless prices_changed is true, and an empty axis buffer is omitted.
-    let axis_values = (!draft.axis_values.is_empty()).then_some(&draft.axis_values);
-    let prices = draft.prices_changed.then(|| {
-        draft
-            .prices
-            .iter()
-            .map(|price| {
-                (
-                    price.currency_code.as_str(),
-                    price.amount.as_str(),
-                    effective_optional_text(price.compare_at_amount.as_deref()),
-                )
-            })
-            .collect::<Vec<_>>()
-    });
-    let inventory_policy = effective_optional_text(draft.inventory_policy.as_deref());
-
-    format!(
-        "operation=update-variant;tenant={tenant_id:?};actor={user_id:?};variant={variant_id:?};sku={:?};barcode={:?};shipping_profile_slug={:?};weight={:?};weight_unit={:?};axis_values={axis_values:?};prices={prices:?};inventory_quantity={:?};expected_inventory_quantity={:?};expected_revision={:?};inventory_policy={inventory_policy:?}",
-        draft.sku,
-        draft.barcode,
-        draft.shipping_profile_slug,
-        draft.weight,
-        draft.weight_unit,
-        draft.inventory_quantity,
-        draft.expected_inventory_quantity,
-        draft.expected_revision
-    )
-}
-
-fn variant_delete_intent(
-    tenant_id: &str,
-    user_id: &str,
-    variant_id: &str,
-    expected_revision: &str,
-) -> String {
-    format!(
-        "operation=delete-variant;tenant={tenant_id:?};actor={user_id:?};variant={variant_id:?};expected_revision={expected_revision:?}"
-    )
-}
-
-pub(crate) async fn update_product_variant(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    variant_id: String,
-    draft: VariantUpdateDraft,
-) -> Result<ProductVariant, GraphqlHttpError> {
-    let operation = ProductAdminLifecycleOperation::UpdateVariant;
-    let slot = lifecycle_slot(operation, &tenant_id, &user_id, Some(&variant_id));
-    let intent = variant_update_intent(&tenant_id, &user_id, &variant_id, &draft);
-    let idempotency_key = retained_caller_key(&slot, operation, intent);
-    let result = product_lifecycle_graphql::update_product_variant(
-        token,
-        tenant_slug,
-        tenant_id,
-        user_id,
-        variant_id,
-        idempotency_key.clone(),
-        draft,
-    )
-    .await;
-    finish_lifecycle_result(&slot, &idempotency_key, result)
-}
-
-pub(crate) async fn delete_product_variant(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    user_id: String,
-    variant_id: String,
-    expected_revision: String,
-) -> Result<bool, GraphqlHttpError> {
-    let operation = ProductAdminLifecycleOperation::DeleteVariant;
-    let slot = lifecycle_slot(operation, &tenant_id, &user_id, Some(&variant_id));
-    let intent = variant_delete_intent(
-        &tenant_id,
-        &user_id,
-        &variant_id,
-        &expected_revision,
-    );
-    let idempotency_key = retained_caller_key(&slot, operation, intent);
-    let result = product_lifecycle_graphql::delete_product_variant(
-        token,
-        tenant_slug,
-        tenant_id,
-        user_id,
-        variant_id,
-        expected_revision,
-        idempotency_key.clone(),
-    )
-    .await;
-    finish_lifecycle_result(&slot, &idempotency_key, result)
-}
-
 pub(crate) async fn add_product_image(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -436,108 +324,22 @@ pub(crate) async fn reorder_product_images(
 }
 
 #[cfg(test)]
-mod variant_retry_tests {
+mod lifecycle_retry_tests {
     use super::*;
-    use rustok_api::Patch;
-
-    #[test]
-    fn retries_reuse_identical_intent_but_rotate_for_non_sku_edits_and_clears() {
-        let operation = ProductAdminLifecycleOperation::UpdateVariant;
-        let mut identity = RetryIdentity::default();
-        let mut draft = VariantUpdateDraft::default();
-        let original = variant_update_intent("tenant", "actor", "variant", &draft);
-        let key = identity.idempotency_key_for(operation, &original);
-        assert_eq!(key, identity.idempotency_key_for(operation, &original));
-        draft.barcode = Patch::Clear;
-        let clear = variant_update_intent("tenant", "actor", "variant", &draft);
-        assert_ne!(key, identity.idempotency_key_for(operation, &clear));
-        let previous = clear;
-        draft.shipping_profile_slug = Patch::Set("parcel".into());
-        assert_ne!(
-            previous,
-            variant_update_intent("tenant", "actor", "variant", &draft)
-        );
-        let previous = variant_update_intent("tenant", "actor", "variant", &draft);
-        draft.weight = Patch::Clear;
-        assert_ne!(
-            previous,
-            variant_update_intent("tenant", "actor", "variant", &draft)
-        );
-        let previous = variant_update_intent("tenant", "actor", "variant", &draft);
-        draft.weight_unit = Patch::Set("kg".into());
-        assert_ne!(
-            previous,
-            variant_update_intent("tenant", "actor", "variant", &draft)
-        );
-        let previous = variant_update_intent("tenant", "actor", "variant", &draft);
-        draft.inventory_quantity = Some(3);
-        assert_ne!(
-            previous,
-            variant_update_intent("tenant", "actor", "variant", &draft)
-        );
-        let previous = variant_update_intent("tenant", "actor", "variant", &draft);
-        draft.prices.push(crate::model::VariantPriceDraft {
-            amount: "1".into(),
-            currency_code: "USD".into(),
-            compare_at_amount: None,
-        });
-        assert_eq!(
-            previous,
-            variant_update_intent("tenant", "actor", "variant", &draft),
-            "unmarked prices are only an editor buffer and are not part of the owner request"
-        );
-        draft.prices_changed = true;
-        assert_ne!(
-            previous,
-            variant_update_intent("tenant", "actor", "variant", &draft),
-            "an explicit price replacement must produce a different retry identity"
-        );
-    }
-
-    #[test]
-    fn variant_update_intent_omits_empty_price_replacements_and_blank_inventory_policy() {
-        let draft = VariantUpdateDraft::default();
-        let original = variant_update_intent("tenant", "actor", "variant", &draft);
-
-        let mut blank_policy = draft.clone();
-        blank_policy.inventory_policy = Some("  ".to_owned());
-        assert_eq!(
-            original,
-            variant_update_intent("tenant", "actor", "variant", &blank_policy)
-        );
-
-        let mut clear_prices = draft;
-        clear_prices.prices_changed = true;
-        assert_ne!(
-            original,
-            variant_update_intent("tenant", "actor", "variant", &clear_prices),
-            "an explicit empty replacement clears prices and is not equivalent to Keep"
-        );
-    }
-
-    #[test]
-    fn variant_delete_attempt_identity_includes_the_expected_revision() {
-        let first = variant_delete_intent("tenant", "actor", "variant", "7");
-        let retry = variant_delete_intent("tenant", "actor", "variant", "7");
-        let refreshed = variant_delete_intent("tenant", "actor", "variant", "8");
-
-        assert_eq!(first, retry);
-        assert_ne!(first, refreshed);
-    }
 
     #[test]
     fn terminal_graphql_rejection_rotates_retry_key() {
         let slot = "product-terminal-rejection-retry-test";
-        let intent = "same-variant-delete-intent".to_owned();
+        let intent = "same-product-delete-intent".to_owned();
         let first = retained_caller_key(
             slot,
-            ProductAdminLifecycleOperation::DeleteVariant,
+            ProductAdminLifecycleOperation::DeleteProduct,
             intent.clone(),
         );
         let error = GraphqlOperationError {
             error: GraphqlHttpError::Graphql("request rejected".to_owned()),
             extensions: Some(rustok_graphql::GraphqlErrorExtensions {
-                code: Some("PRODUCT_VARIANT_INVENTORY_BLOCKED".to_owned()),
+                code: Some("PRODUCT_CONFLICT".to_owned()),
                 retryable: Some(false),
                 outcome: Some("rejected".to_owned()),
             }),
@@ -546,7 +348,7 @@ mod variant_retry_tests {
         assert!(finish_lifecycle_result::<()>(slot, &first, Err(error)).is_err());
         let retry = retained_caller_key(
             slot,
-            ProductAdminLifecycleOperation::DeleteVariant,
+            ProductAdminLifecycleOperation::DeleteProduct,
             intent,
         );
 
@@ -557,18 +359,14 @@ mod variant_retry_tests {
     #[test]
     fn late_success_from_an_old_request_cannot_clear_a_newer_pending_identity() {
         let slot = "product-late-success-retry-test";
-        let operation = ProductAdminLifecycleOperation::DeleteVariant;
-        let intent = "same-variant-delete-intent".to_owned();
+        let operation = ProductAdminLifecycleOperation::DeleteProduct;
+        let intent = "same-product-delete-intent".to_owned();
         let first = retained_caller_key(slot, operation, intent.clone());
 
-        // Two in-flight requests may share the first key. The first response completes
-        // and a later identical user action starts a fresh logical invocation.
         assert!(finish_lifecycle_result::<()>(slot, &first, Ok(())).is_ok());
         let second = retained_caller_key(slot, operation, intent.clone());
         assert_ne!(first, second);
 
-        // The delayed response from the second copy of the old request must not erase
-        // the key belonging to the new invocation.
         assert!(finish_lifecycle_result::<()>(slot, &first, Ok(())).is_ok());
         assert_eq!(second, retained_caller_key(slot, operation, intent));
         clear_lifecycle_identity_if_current(slot, &second);
@@ -577,9 +375,9 @@ mod variant_retry_tests {
     #[test]
     fn late_terminal_rejection_from_an_old_intent_cannot_clear_a_newer_pending_identity() {
         let slot = "product-late-rejection-retry-test";
-        let operation = ProductAdminLifecycleOperation::UpdateVariant;
-        let old_intent = "old-variant-edit".to_owned();
-        let new_intent = "new-variant-edit".to_owned();
+        let operation = ProductAdminLifecycleOperation::UpdateProduct;
+        let old_intent = "old-product-edit".to_owned();
+        let new_intent = "new-product-edit".to_owned();
         let first = retained_caller_key(slot, operation, old_intent);
         let second = retained_caller_key(slot, operation, new_intent.clone());
         assert_ne!(first, second);
@@ -587,7 +385,7 @@ mod variant_retry_tests {
         let error = GraphqlOperationError {
             error: GraphqlHttpError::Graphql("old request rejected".to_owned()),
             extensions: Some(rustok_graphql::GraphqlErrorExtensions {
-                code: Some("PRODUCT_VARIANT_CONFLICT".to_owned()),
+                code: Some("PRODUCT_CONFLICT".to_owned()),
                 retryable: Some(false),
                 outcome: Some("rejected".to_owned()),
             }),
@@ -622,5 +420,4 @@ mod variant_retry_tests {
         assert_eq!(first, retry);
         clear_lifecycle_identity_if_current(slot, &retry);
     }
-
 }

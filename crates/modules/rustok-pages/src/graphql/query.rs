@@ -595,7 +595,7 @@ async fn ensure_public_pages_channel_enabled(
     };
 
     let enabled = ChannelService::new(db.clone())
-        .is_module_enabled(channel_id, MODULE_SLUG)
+        .is_module_enabled_for_tenant(request_context.tenant_id, channel_id, MODULE_SLUG)
         .await
         .map_err(|error| {
             async_graphql::Error::new(format!("Channel module check failed: {error}"))

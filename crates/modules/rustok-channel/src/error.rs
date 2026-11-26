@@ -27,6 +27,10 @@ pub enum ChannelError {
     PolicySetSlugAlreadyExists(String),
     #[error("channel resolution policy operation is invalid: {0}")]
     InvalidPolicyOperation(String),
+    /// A concurrent writer won a race the owner could not resolve by itself.
+    /// Transports map this to `409 Conflict`; the operation is safe to retry.
+    #[error("channel write conflict: {0}")]
+    Conflict(String),
     #[error(transparent)]
     Database(#[from] DbErr),
     #[error(transparent)]

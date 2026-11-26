@@ -1,6 +1,9 @@
+use std::collections::HashMap;
+
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbErr,
+    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Set, TransactionTrait,
+    sea_query::{Expr, OnConflict},
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -13,8 +16,8 @@ use crate::dto::{
     ChannelResolutionPolicySetDetailResponse, ChannelResolutionPolicySetResponse,
     ChannelResolutionRuleResponse, ChannelResponse, ChannelTargetResponse, CreateChannelInput,
     CreateChannelResolutionPolicySetInput, CreateChannelResolutionRuleInput,
-    CreateChannelTargetInput, ReorderChannelResolutionRulesInput, UpdateChannelResolutionRuleInput,
-    UpdateChannelTargetInput,
+    CreateChannelTargetInput, ReorderChannelResolutionRulesInput, UpdateChannelInput,
+    UpdateChannelResolutionRuleInput, UpdateChannelTargetInput,
 };
 use crate::entities::channel::{self, ActiveModel as ChannelActiveModel};
 use crate::entities::channel_module_binding::{
@@ -49,6 +52,7 @@ const CHANNEL_NAME_MAX_CHARS: usize = 255;
 const CHANNEL_MODULE_SLUG_MAX_CHARS: usize = 100;
 const CHANNEL_POLICY_SET_SLUG_MAX_CHARS: usize = 100;
 const CHANNEL_TARGET_VALUE_MAX_CHARS: usize = 500;
+const CHANNEL_SETTINGS_MAX_BYTES: usize = 64 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct ChannelService {
@@ -70,58 +74,194 @@ impl ChannelService {
                 "channel tenant_id must not be nil".to_string(),
             ));
         }
-        let slug = input.slug.trim().to_ascii_lowercase();
-        if slug.is_empty() {
-            return Err(ChannelError::Validation(
-                "channel slug must not be empty".to_string(),
-            ));
-        }
-        if slug.chars().count() > CHANNEL_SLUG_MAX_CHARS {
-            return Err(ChannelError::Validation(format!(
-                "channel slug must not exceed {CHANNEL_SLUG_MAX_CHARS} characters"
-            )));
-        }
-        let name = input.name.trim().to_string();
-        if name.is_empty() {
-            return Err(ChannelError::Validation(
-                "channel name must not be empty".to_string(),
-            ));
-        }
-        if name.chars().count() > CHANNEL_NAME_MAX_CHARS {
-            return Err(ChannelError::Validation(format!(
-                "channel name must not exceed {CHANNEL_NAME_MAX_CHARS} characters"
-            )));
-        }
+        let slug = normalize_channel_slug(&input.slug)?;
+        let name = normalize_channel_name(&input.name)?;
 
-        if let Some(_existing) = channel::Entity::find()
-            .filter(channel::Column::TenantId.eq(input.tenant_id))
-            .filter(channel::Column::Slug.eq(&slug))
-            .one(&self.db)
-            .await?
-        {
-            return Err(ChannelError::SlugAlreadyExists(slug));
-        }
-
-        let is_default = !self
-            .default_channel_exists_for_tenant(input.tenant_id)
-            .await?;
+        // The default flag and the slug are both unique per tenant, so the insert
+        // is the conflict test: a pre-flight `SELECT` would still race, and the
+        // database is the only authority that can decide the winner.
         let now = chrono::Utc::now().into();
-        let model = ChannelActiveModel {
-            id: Set(generate_id()),
-            tenant_id: Set(input.tenant_id),
-            slug: Set(slug),
-            name: Set(name),
-            is_active: Set(true),
-            is_default: Set(is_default),
-            status: Set("experimental".to_string()),
-            settings: Set(input.settings.unwrap_or_else(|| serde_json::json!({}))),
-            created_at: Set(now),
-            updated_at: Set(now),
-        }
-        .insert(&self.db)
-        .await?;
+        let settings = normalize_channel_settings(
+            input.settings.unwrap_or_else(|| serde_json::json!({})),
+        )?;
 
-        Ok(to_channel_response(model))
+        for attempt in 0..2 {
+            let is_default = attempt == 0
+                && !self
+                    .default_channel_exists_for_tenant(input.tenant_id)
+                    .await?;
+            let model = ChannelActiveModel {
+                id: Set(generate_id()),
+                tenant_id: Set(input.tenant_id),
+                slug: Set(slug.clone()),
+                name: Set(name.clone()),
+                is_active: Set(true),
+                is_default: Set(is_default),
+                settings: Set(settings.clone()),
+                created_at: Set(now),
+                updated_at: Set(now),
+            };
+
+            match model.insert(&self.db).await {
+                Ok(model) => return Ok(to_channel_response(model)),
+                Err(error) if is_unique_violation(&error) => {
+                    if is_channel_slug_conflict(&error) {
+                        return Err(ChannelError::SlugAlreadyExists(slug));
+                    }
+                    // A concurrent create claimed the tenant default between the
+                    // check and the insert: retry once as a non-default channel.
+                    if is_default {
+                        continue;
+                    }
+                    return Err(ChannelError::Database(error));
+                }
+                Err(error) => return Err(ChannelError::Database(error)),
+            }
+        }
+
+        Err(ChannelError::Conflict(
+            "a concurrent channel create claimed the tenant default channel; retry the operation"
+                .to_string(),
+        ))
+    }
+
+    /// Applies a name/settings patch to an existing channel of the caller's tenant.
+    ///
+    /// The slug is immutable: it is the stable channel identity used by consumers
+    /// and by persisted visibility relations, so renaming it would silently break
+    /// stored references.
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, channel_id = %channel_id))]
+    pub async fn update_channel(
+        &self,
+        tenant_id: Uuid,
+        channel_id: Uuid,
+        input: UpdateChannelInput,
+    ) -> ChannelResult<ChannelResponse> {
+        let channel = self.ensure_channel_for_tenant(tenant_id, channel_id).await?;
+        let name = match input.name {
+            Some(name) => Some(normalize_channel_name(&name)?),
+            None => None,
+        };
+        if name.is_none() && input.settings.is_none() {
+            return Err(ChannelError::Validation(
+                "channel update requires at least one of name or settings".to_string(),
+            ));
+        }
+
+        let now = chrono::Utc::now().into();
+        let mut active: channel::ActiveModel = channel.into();
+        if let Some(name) = name {
+            active.name = Set(name);
+        }
+        if let Some(settings) = input.settings {
+            active.settings = Set(normalize_channel_settings(settings)?);
+        }
+        active.updated_at = Set(now);
+        Ok(to_channel_response(active.update(&self.db).await?))
+    }
+
+    /// Activates or deactivates a channel.
+    ///
+    /// Deactivating the tenant default promotes the oldest remaining active
+    /// channel instead of leaving a default that can never be resolved, and
+    /// clears the default flag when the tenant has no active channel left. Both
+    /// writes happen in one transaction so `is_default` never points at an
+    /// inactive channel.
+    #[instrument(skip(self), fields(tenant_id = %tenant_id, channel_id = %channel_id))]
+    pub async fn set_channel_active(
+        &self,
+        tenant_id: Uuid,
+        channel_id: Uuid,
+        is_active: bool,
+    ) -> ChannelResult<ChannelResponse> {
+        let channel = self.ensure_channel_for_tenant(tenant_id, channel_id).await?;
+        if channel.is_active == is_active {
+            return Ok(to_channel_response(channel));
+        }
+
+        let now = chrono::Utc::now().into();
+        let txn = self.db.begin().await?;
+        let mut active: channel::ActiveModel = channel.clone().into();
+        active.is_active = Set(is_active);
+        if !is_active && channel.is_default {
+            active.is_default = Set(false);
+        }
+        active.updated_at = Set(now);
+        active.update(&txn).await?;
+
+        if !is_active && channel.is_default {
+            let promoted = channel::Entity::find()
+                .filter(channel::Column::TenantId.eq(tenant_id))
+                .filter(channel::Column::Id.ne(channel_id))
+                .filter(channel::Column::IsActive.eq(true))
+                .order_by_asc(channel::Column::CreatedAt)
+                .order_by_asc(channel::Column::Id)
+                .one(&txn)
+                .await?;
+            if let Some(promoted) = promoted {
+                let mut promoted_active: channel::ActiveModel = promoted.into();
+                promoted_active.is_default = Set(true);
+                promoted_active.updated_at = Set(now);
+                if let Err(error) = promoted_active.update(&txn).await {
+                    txn.rollback().await?;
+                    return Err(map_unique_violation(error, "promote the tenant default channel"));
+                }
+            }
+        }
+
+        txn.commit().await?;
+        self.get_channel_for_tenant(tenant_id, channel_id).await
+    }
+
+    /// Deletes a channel of the caller's tenant.
+    ///
+    /// Targets, module bindings, OAuth app bindings and resolution rules that
+    /// point at the channel are removed by the schema's cascading foreign keys, and
+    /// the PostgreSQL tombstone trigger records the deletion for the Sales Channel
+    /// Index bridge. Deleting the tenant default promotes the oldest remaining
+    /// active channel in the same transaction.
+    #[instrument(skip(self), fields(tenant_id = %tenant_id, channel_id = %channel_id))]
+    pub async fn delete_channel(
+        &self,
+        tenant_id: Uuid,
+        channel_id: Uuid,
+    ) -> ChannelResult<ChannelResponse> {
+        let channel = self.ensure_channel_for_tenant(tenant_id, channel_id).await?;
+        let response = to_channel_response(channel.clone());
+        let now = chrono::Utc::now().into();
+
+        let txn = self.db.begin().await?;
+        let deleted = channel::Entity::delete_many()
+            .filter(channel::Column::Id.eq(channel_id))
+            .filter(channel::Column::TenantId.eq(tenant_id))
+            .exec(&txn)
+            .await?;
+        if deleted.rows_affected == 0 {
+            txn.rollback().await?;
+            return Err(ChannelError::NotFound(channel_id));
+        }
+
+        if channel.is_default {
+            let promoted = channel::Entity::find()
+                .filter(channel::Column::TenantId.eq(tenant_id))
+                .filter(channel::Column::IsActive.eq(true))
+                .order_by_asc(channel::Column::CreatedAt)
+                .order_by_asc(channel::Column::Id)
+                .one(&txn)
+                .await?;
+            if let Some(promoted) = promoted {
+                let mut promoted_active: channel::ActiveModel = promoted.into();
+                promoted_active.is_default = Set(true);
+                promoted_active.updated_at = Set(now);
+                if let Err(error) = promoted_active.update(&txn).await {
+                    txn.rollback().await?;
+                    return Err(map_unique_violation(error, "promote the tenant default channel"));
+                }
+            }
+        }
+
+        txn.commit().await?;
+        Ok(response)
     }
 
     #[instrument(skip(self), fields(tenant_id = %tenant_id, channel_id = %channel_id))]
@@ -139,6 +279,26 @@ impl ChannelService {
             .await?
             .ok_or(ChannelError::NotFound(channel_id))?;
         Ok(to_channel_response(model))
+    }
+
+    /// Proves that a channel belongs to the caller's tenant and returns its model.
+    ///
+    /// Owner mutators are addressed by globally unique channel ids; every transport
+    /// boundary must call this (or the equivalent read) before mutating so a
+    /// leaked identifier cannot cross the tenant boundary.
+    pub async fn ensure_channel_for_tenant(
+        &self,
+        tenant_id: Uuid,
+        channel_id: Uuid,
+    ) -> ChannelResult<channel::Model> {
+        if tenant_id.is_nil() || channel_id.is_nil() {
+            return Err(ChannelError::NotFound(channel_id));
+        }
+        channel::Entity::find_by_id(channel_id)
+            .filter(channel::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or(ChannelError::NotFound(channel_id))
     }
 
     #[instrument(skip(self), fields(channel_id = %channel_id))]
@@ -296,6 +456,38 @@ impl ChannelService {
         Ok((items, total))
     }
 
+    /// Returns the tenant's channel option list for selectors and filters.
+    ///
+    /// Consumers used to call `list_channels(tenant, 1, 250)` and silently lost
+    /// every channel past the 250th entry, while storefront selectors also offered
+    /// inactive channels that can never resolve. This read is explicit instead:
+    /// `include_inactive` states the intent, the order matches `list_channels`, and
+    /// the result is never truncated — a channel row is a small administrative
+    /// entity, so an option list is bounded by tenant configuration, not by a
+    /// magic page size.
+    pub async fn list_channel_options(
+        &self,
+        tenant_id: Uuid,
+        include_inactive: bool,
+    ) -> ChannelResult<Vec<ChannelResponse>> {
+        if tenant_id.is_nil() {
+            return Err(ChannelError::Validation(
+                "channel tenant_id must not be nil".to_string(),
+            ));
+        }
+        let query = channel::Entity::find()
+            .filter(channel::Column::TenantId.eq(tenant_id))
+            .order_by_desc(channel::Column::IsDefault)
+            .order_by_asc(channel::Column::CreatedAt);
+        let query = if include_inactive {
+            query
+        } else {
+            query.filter(channel::Column::IsActive.eq(true))
+        };
+        let models = query.all(&self.db).await?;
+        Ok(models.into_iter().map(to_channel_response).collect())
+    }
+
     pub async fn list_channel_details_page(
         &self,
         tenant_id: Uuid,
@@ -326,10 +518,7 @@ impl ChannelService {
         let total = paginator.num_items().await?;
         let models = paginator.fetch_page(page - 1).await?;
 
-        let mut items = Vec::with_capacity(models.len());
-        for model in models {
-            items.push(self.build_channel_detail(model).await?);
-        }
+        let items = self.build_channel_details(models).await?;
         Ok((items, total))
     }
 
@@ -349,11 +538,7 @@ impl ChannelService {
             .all(&self.db)
             .await?;
 
-        let mut items = Vec::with_capacity(models.len());
-        for model in models {
-            items.push(self.build_channel_detail(model).await?);
-        }
-        Ok(items)
+        self.build_channel_details(models).await
     }
 
     #[instrument(skip(self), fields(channel_id = %channel_id))]
@@ -374,6 +559,28 @@ impl ChannelService {
         self.get_channel(channel_id).await
     }
 
+    /// Sets the explicit default channel for a tenant, proving the channel scope
+    /// first. Admin transports use this form so a leaked channel id cannot move
+    /// another tenant's default pointer.
+    #[instrument(skip(self), fields(tenant_id = %tenant_id, channel_id = %channel_id))]
+    pub async fn set_default_channel_for_tenant(
+        &self,
+        tenant_id: Uuid,
+        channel_id: Uuid,
+    ) -> ChannelResult<ChannelResponse> {
+        let channel = self.ensure_channel_for_tenant(tenant_id, channel_id).await?;
+        if !channel.is_active {
+            return Err(ChannelError::InactiveChannel(channel_id));
+        }
+        self.replace_default_channel(tenant_id, channel_id).await?;
+        self.get_channel_for_tenant(tenant_id, channel_id).await
+    }
+
+    /// Module gate that trusts its channel id.
+    ///
+    /// Owner-internal only: it proves nothing about the caller's tenant. Every path
+    /// where the channel id came from a request (HTTP, GraphQL, storefront, server
+    /// function) must use [`Self::is_module_enabled_for_tenant`] instead.
     pub async fn is_module_enabled(
         &self,
         channel_id: Uuid,
@@ -396,9 +603,6 @@ impl ChannelService {
         Ok(binding.map(|item| item.is_enabled).unwrap_or(true))
     }
 
-    /// Checks module availability while proving that the channel belongs to the
-    /// caller-selected tenant. Consumers must use this form whenever both
-    /// tenant and channel identifiers cross a transport boundary.
     /// Verifies a set of channel slugs belongs to the selected tenant inside the
     /// caller's transaction. This is intended for consumer modules that persist
     /// slug-based visibility relations and cannot rely on a foreign key.
@@ -442,6 +646,9 @@ impl ChannelService {
         Ok(())
     }
 
+    /// Checks module availability while proving that the channel belongs to the
+    /// caller-selected tenant. Consumers must use this form whenever both tenant
+    /// and channel identifiers cross a transport boundary.
     pub async fn is_module_enabled_for_tenant(
         &self,
         tenant_id: Uuid,
@@ -469,6 +676,13 @@ impl ChannelService {
         Ok(binding.map(|item| item.is_enabled).unwrap_or(true))
     }
 
+    /// Adds a target to a channel.
+    ///
+    /// The database enforces both exclusive claims (`uq_channel_targets_tenant_host`
+    /// for web hosts and `uq_channel_targets_channel_primary` for the primary
+    /// target), so a concurrent writer cannot slip a duplicate past a
+    /// check-then-insert window: the insert is the claim, and a violated index is
+    /// reported as the domain conflict instead of a `500`.
     #[instrument(skip(self, input), fields(channel_id = %channel_id, target_type = %input.target_type))]
     pub async fn add_target(
         &self,
@@ -483,67 +697,50 @@ impl ChannelService {
         };
         let target_value = normalize_target_value(target_type, &input.value)
             .ok_or_else(|| ChannelError::InvalidTargetValue(input.value.clone()))?;
-
-        let channel = channel::Entity::find_by_id(channel_id)
-            .one(&self.db)
-            .await?
-            .ok_or(ChannelError::NotFound(channel_id))?;
-
-        if target_type.supports_host_resolution()
-            && self
-                .host_target_exists_for_tenant(channel.tenant_id, target_value.as_str())
-                .await?
-        {
-            return Err(ChannelError::TargetAlreadyExists(
-                target_type.as_str().to_string(),
-                target_value,
-            ));
-        }
-
-        if input.is_primary {
-            let txn = self.db.begin().await?;
-            let existing_targets = channel_target::Entity::find()
-                .filter(channel_target::Column::ChannelId.eq(channel_id))
-                .all(&txn)
-                .await?;
-            for existing in existing_targets {
-                if existing.is_primary {
-                    let mut active: channel_target::ActiveModel = existing.into();
-                    active.is_primary = Set(false);
-                    active.update(&txn).await?;
-                }
-            }
-            let now = chrono::Utc::now().into();
-            let model = ChannelTargetActiveModel {
-                id: Set(generate_id()),
-                channel_id: Set(channel_id),
-                target_type: Set(target_type.as_str().to_string()),
-                value: Set(target_value),
-                is_primary: Set(true),
-                settings: Set(input.settings.unwrap_or_else(|| serde_json::json!({}))),
-                created_at: Set(now),
-                updated_at: Set(now),
-            }
-            .insert(&txn)
-            .await?;
-            txn.commit().await?;
-            return Ok(to_channel_target_response(model));
-        }
+        let channel = self.ensure_channel_exists(channel_id).await?;
 
         let now = chrono::Utc::now().into();
-        let model = ChannelTargetActiveModel {
+        let txn = self.db.begin().await?;
+        if input.is_primary {
+            clear_primary_target(&txn, channel_id, None, now).await?;
+        }
+
+        let inserted = ChannelTargetActiveModel {
             id: Set(generate_id()),
             channel_id: Set(channel_id),
+            tenant_id: Set(channel.tenant_id),
             target_type: Set(target_type.as_str().to_string()),
-            value: Set(target_value),
-            is_primary: Set(false),
+            value: Set(target_value.clone()),
+            is_primary: Set(input.is_primary),
             settings: Set(input.settings.unwrap_or_else(|| serde_json::json!({}))),
             created_at: Set(now),
             updated_at: Set(now),
         }
-        .insert(&self.db)
-        .await?;
+        .insert(&txn)
+        .await;
 
+        let model = match inserted {
+            Ok(model) => model,
+            Err(error) if is_unique_violation(&error) => {
+                txn.rollback().await?;
+                return Err(
+                    classify_target_conflict(
+                        &self.db,
+                        channel.tenant_id,
+                        target_type,
+                        target_value.as_str(),
+                        input.is_primary,
+                    )
+                    .await,
+                );
+            }
+            Err(error) => {
+                txn.rollback().await?;
+                return Err(ChannelError::Database(error));
+            }
+        };
+
+        txn.commit().await?;
         Ok(to_channel_target_response(model))
     }
 
@@ -566,69 +763,49 @@ impl ChannelService {
         let target_value = normalize_target_value(target_type, &input.value)
             .ok_or_else(|| ChannelError::InvalidTargetValue(input.value.clone()))?;
 
-        let channel = channel::Entity::find_by_id(channel_id)
-            .one(&self.db)
-            .await?
-            .ok_or(ChannelError::NotFound(channel_id))?;
-
+        let channel = self.ensure_channel_exists(channel_id).await?;
         let existing_target = channel_target::Entity::find_by_id(target_id)
+            .filter(channel_target::Column::ChannelId.eq(channel_id))
             .one(&self.db)
             .await?
             .ok_or(ChannelError::NotFound(target_id))?;
-        if existing_target.channel_id != channel_id {
-            return Err(ChannelError::NotFound(target_id));
-        }
-
-        if target_type.supports_host_resolution()
-            && self
-                .host_target_exists_for_tenant_except(
-                    channel.tenant_id,
-                    target_id,
-                    target_value.as_str(),
-                )
-                .await?
-        {
-            return Err(ChannelError::TargetAlreadyExists(
-                target_type.as_str().to_string(),
-                target_value,
-            ));
-        }
-
-        if input.is_primary {
-            let txn = self.db.begin().await?;
-            let existing_targets = channel_target::Entity::find()
-                .filter(channel_target::Column::ChannelId.eq(channel_id))
-                .all(&txn)
-                .await?;
-            for existing in existing_targets {
-                if existing.id != target_id && existing.is_primary {
-                    let mut active: channel_target::ActiveModel = existing.into();
-                    active.is_primary = Set(false);
-                    active.update(&txn).await?;
-                }
-            }
-
-            let now = chrono::Utc::now().into();
-            let mut active: channel_target::ActiveModel = existing_target.into();
-            active.target_type = Set(target_type.as_str().to_string());
-            active.value = Set(target_value);
-            active.is_primary = Set(true);
-            active.settings = Set(input.settings.unwrap_or_else(|| serde_json::json!({})));
-            active.updated_at = Set(now);
-            let updated = active.update(&txn).await?;
-            txn.commit().await?;
-            return Ok(to_channel_target_response(updated));
-        }
 
         let now = chrono::Utc::now().into();
+        let txn = self.db.begin().await?;
+        if input.is_primary {
+            clear_primary_target(&txn, channel_id, Some(target_id), now).await?;
+        }
+
         let mut active: channel_target::ActiveModel = existing_target.into();
         active.target_type = Set(target_type.as_str().to_string());
-        active.value = Set(target_value);
-        active.is_primary = Set(false);
+        active.value = Set(target_value.clone());
+        active.is_primary = Set(input.is_primary);
         active.settings = Set(input.settings.unwrap_or_else(|| serde_json::json!({})));
         active.updated_at = Set(now);
 
-        Ok(to_channel_target_response(active.update(&self.db).await?))
+        let updated = match active.update(&txn).await {
+            Ok(model) => model,
+            Err(error) if is_unique_violation(&error) => {
+                txn.rollback().await?;
+                return Err(
+                    classify_target_conflict(
+                        &self.db,
+                        channel.tenant_id,
+                        target_type,
+                        target_value.as_str(),
+                        input.is_primary,
+                    )
+                    .await,
+                );
+            }
+            Err(error) => {
+                txn.rollback().await?;
+                return Err(ChannelError::Database(error));
+            }
+        };
+
+        txn.commit().await?;
+        Ok(to_channel_target_response(updated))
     }
 
     #[instrument(skip(self), fields(channel_id = %channel_id, target_id = %target_id))]
@@ -644,16 +821,20 @@ impl ChannelService {
             return Err(ChannelError::NotFound(target_id));
         }
         let target = channel_target::Entity::find_by_id(target_id)
+            .filter(channel_target::Column::ChannelId.eq(channel_id))
             .one(&self.db)
             .await?
             .ok_or(ChannelError::NotFound(target_id))?;
-        if target.channel_id != channel_id {
+
+        let response = to_channel_target_response(target);
+        let deleted = channel_target::Entity::delete_many()
+            .filter(channel_target::Column::Id.eq(target_id))
+            .filter(channel_target::Column::ChannelId.eq(channel_id))
+            .exec(&self.db)
+            .await?;
+        if deleted.rows_affected == 0 {
             return Err(ChannelError::NotFound(target_id));
         }
-
-        let response = to_channel_target_response(target.clone());
-        let active: channel_target::ActiveModel = target.into();
-        active.delete(&self.db).await?;
         Ok(response)
     }
 
@@ -680,35 +861,49 @@ impl ChannelService {
             )));
         }
 
+        // The binding is upserted in one statement: `idx_channel_module_bindings_unique`
+        // makes the database the arbiter, so two concurrent bind requests cannot
+        // both take the "row does not exist" branch and collide on insert. The
+        // read-back runs in the same transaction, so a concurrent unbind cannot
+        // delete the row between the upsert and the read and turn a successful
+        // bind into a spurious storage error.
         let now = chrono::Utc::now().into();
-        let existing = channel_module_binding::Entity::find()
+        let settings = input.settings.unwrap_or_else(|| serde_json::json!({}));
+        let txn = self.db.begin().await?;
+        channel_module_binding::Entity::insert(ChannelModuleBindingActiveModel {
+            id: Set(generate_id()),
+            channel_id: Set(channel_id),
+            module_slug: Set(module_slug.clone()),
+            is_enabled: Set(input.is_enabled),
+            settings: Set(settings),
+            created_at: Set(now),
+            updated_at: Set(now),
+        })
+        .on_conflict(
+            OnConflict::columns([
+                channel_module_binding::Column::ChannelId,
+                channel_module_binding::Column::ModuleSlug,
+            ])
+            .update_columns([
+                channel_module_binding::Column::IsEnabled,
+                channel_module_binding::Column::Settings,
+                channel_module_binding::Column::UpdatedAt,
+            ])
+            .to_owned(),
+        )
+        .exec_without_returning(&txn)
+        .await?;
+
+        // The upsert above either inserted or updated the row, so a missing row here
+        // is an owner defect rather than a missing channel: report it as such
+        // instead of answering `404` for a channel that does exist.
+        let model = channel_module_binding::Entity::find()
             .filter(channel_module_binding::Column::ChannelId.eq(channel_id))
             .filter(channel_module_binding::Column::ModuleSlug.eq(&module_slug))
-            .one(&self.db)
-            .await?;
-
-        let model = match existing {
-            Some(model) => {
-                let mut active: channel_module_binding::ActiveModel = model.into();
-                active.is_enabled = Set(input.is_enabled);
-                active.settings = Set(input.settings.unwrap_or_else(|| serde_json::json!({})));
-                active.updated_at = Set(now);
-                active.update(&self.db).await?
-            }
-            None => {
-                ChannelModuleBindingActiveModel {
-                    id: Set(generate_id()),
-                    channel_id: Set(channel_id),
-                    module_slug: Set(module_slug),
-                    is_enabled: Set(input.is_enabled),
-                    settings: Set(input.settings.unwrap_or_else(|| serde_json::json!({}))),
-                    created_at: Set(now),
-                    updated_at: Set(now),
-                }
-                .insert(&self.db)
-                .await?
-            }
-        };
+            .one(&txn)
+            .await?
+            .ok_or(ChannelError::Database(DbErr::RecordNotInserted))?;
+        txn.commit().await?;
 
         Ok(to_channel_module_binding_response(model))
     }
@@ -725,17 +920,22 @@ impl ChannelService {
         if binding_id.is_nil() {
             return Err(ChannelError::NotFound(binding_id));
         }
+        // One scoped statement decides both the lookup and the delete, so the
+        // response can only be built for a row this channel actually owned.
         let binding = channel_module_binding::Entity::find_by_id(binding_id)
+            .filter(channel_module_binding::Column::ChannelId.eq(channel_id))
             .one(&self.db)
             .await?
             .ok_or(ChannelError::NotFound(binding_id))?;
-        if binding.channel_id != channel_id {
+        let response = to_channel_module_binding_response(binding);
+        let deleted = channel_module_binding::Entity::delete_many()
+            .filter(channel_module_binding::Column::Id.eq(binding_id))
+            .filter(channel_module_binding::Column::ChannelId.eq(channel_id))
+            .exec(&self.db)
+            .await?;
+        if deleted.rows_affected == 0 {
             return Err(ChannelError::NotFound(binding_id));
         }
-
-        let response = to_channel_module_binding_response(binding.clone());
-        let active: channel_module_binding::ActiveModel = binding.into();
-        active.delete(&self.db).await?;
         Ok(response)
     }
 
@@ -756,31 +956,36 @@ impl ChannelService {
             ));
         }
 
+        // Same upsert reasoning as `bind_module`: `idx_channel_oauth_apps_unique`
+        // decides the winner, so a retried bind cannot create a duplicate row and
+        // the stored role is always the last writer's value.
         let now = chrono::Utc::now().into();
-        let existing = channel_oauth_app::Entity::find()
+        let txn = self.db.begin().await?;
+        channel_oauth_app::Entity::insert(ChannelOauthAppActiveModel {
+            id: Set(generate_id()),
+            channel_id: Set(channel_id),
+            oauth_app_id: Set(input.oauth_app_id),
+            role: Set(input.role),
+            created_at: Set(now),
+        })
+        .on_conflict(
+            OnConflict::columns([
+                channel_oauth_app::Column::ChannelId,
+                channel_oauth_app::Column::OauthAppId,
+            ])
+            .update_columns([channel_oauth_app::Column::Role])
+            .to_owned(),
+        )
+        .exec_without_returning(&txn)
+        .await?;
+
+        let model = channel_oauth_app::Entity::find()
             .filter(channel_oauth_app::Column::ChannelId.eq(channel_id))
             .filter(channel_oauth_app::Column::OauthAppId.eq(input.oauth_app_id))
-            .one(&self.db)
-            .await?;
-
-        let model = match existing {
-            Some(model) => {
-                let mut active: channel_oauth_app::ActiveModel = model.into();
-                active.role = Set(input.role);
-                active.update(&self.db).await?
-            }
-            None => {
-                ChannelOauthAppActiveModel {
-                    id: Set(generate_id()),
-                    channel_id: Set(channel_id),
-                    oauth_app_id: Set(input.oauth_app_id),
-                    role: Set(input.role),
-                    created_at: Set(now),
-                }
-                .insert(&self.db)
-                .await?
-            }
-        };
+            .one(&txn)
+            .await?
+            .ok_or(ChannelError::Database(DbErr::RecordNotInserted))?;
+        txn.commit().await?;
 
         Ok(to_channel_oauth_app_response(model))
     }
@@ -798,16 +1003,19 @@ impl ChannelService {
             return Err(ChannelError::NotFound(binding_id));
         }
         let binding = channel_oauth_app::Entity::find_by_id(binding_id)
+            .filter(channel_oauth_app::Column::ChannelId.eq(channel_id))
             .one(&self.db)
             .await?
             .ok_or(ChannelError::NotFound(binding_id))?;
-        if binding.channel_id != channel_id {
+        let response = to_channel_oauth_app_response(binding);
+        let deleted = channel_oauth_app::Entity::delete_many()
+            .filter(channel_oauth_app::Column::Id.eq(binding_id))
+            .filter(channel_oauth_app::Column::ChannelId.eq(channel_id))
+            .exec(&self.db)
+            .await?;
+        if deleted.rows_affected == 0 {
             return Err(ChannelError::NotFound(binding_id));
         }
-
-        let response = to_channel_oauth_app_response(binding.clone());
-        let active: channel_oauth_app::ActiveModel = binding.into();
-        active.delete(&self.db).await?;
         Ok(response)
     }
 
@@ -844,36 +1052,48 @@ impl ChannelService {
             )));
         }
 
-        if let Some(_existing) = channel_resolution_policy_set::Entity::find()
-            .filter(channel_resolution_policy_set::Column::TenantId.eq(input.tenant_id))
-            .filter(channel_resolution_policy_set::Column::Slug.eq(&slug))
-            .one(&self.db)
-            .await?
-        {
-            return Err(ChannelError::PolicySetSlugAlreadyExists(slug));
-        }
-
+        // Creating an already-active set and activating it must be one atomic
+        // step: with two transactions a concurrent activation could leave the
+        // tenant with no active set (or with the wrong one) in between.
         let now = chrono::Utc::now().into();
-        let model = ChannelResolutionPolicySetActiveModel {
+        let txn = self.db.begin().await?;
+        let inserted = ChannelResolutionPolicySetActiveModel {
             id: Set(generate_id()),
             tenant_id: Set(input.tenant_id),
-            slug: Set(slug),
+            slug: Set(slug.clone()),
             name: Set(name),
             schema_version: Set(CHANNEL_RESOLUTION_POLICY_SCHEMA_VERSION),
-            is_active: Set(input.is_active),
+            is_active: Set(false),
             created_at: Set(now),
             updated_at: Set(now),
         }
-        .insert(&self.db)
-        .await?;
+        .insert(&txn)
+        .await;
 
-        if model.is_active {
-            self.replace_active_policy_set(model.tenant_id, model.id)
-                .await?;
-            return self.get_resolution_policy_set(model.id).await;
+        let inserted = match inserted {
+            Ok(model) => model,
+            Err(error) if is_unique_violation(&error) => {
+                txn.rollback().await?;
+                return Err(ChannelError::PolicySetSlugAlreadyExists(slug));
+            }
+            Err(error) => {
+                txn.rollback().await?;
+                return Err(ChannelError::Database(error));
+            }
+        };
+
+        if input.is_active {
+            if let Err(error) = self
+                .replace_active_policy_set_in_tx(&txn, inserted.tenant_id, inserted.id)
+                .await
+            {
+                txn.rollback().await?;
+                return Err(error);
+            }
         }
 
-        Ok(to_channel_resolution_policy_set_response(model))
+        txn.commit().await?;
+        self.get_resolution_policy_set(inserted.id).await
     }
 
     #[instrument(skip(self, input), fields(policy_set_id = %policy_set_id, priority = input.priority))]
@@ -1253,23 +1473,35 @@ impl ChannelService {
             .all(&self.db)
             .await?;
 
-        let mut items = Vec::with_capacity(policy_sets.len());
-        for policy_set in policy_sets {
+        // One set-based rule query for the whole tenant instead of one per policy
+        // set: the bootstrap read used to issue 1 + N queries.
+        let policy_set_ids: Vec<Uuid> =
+            policy_sets.iter().map(|policy_set| policy_set.id).collect();
+        let mut rules_by_set: HashMap<Uuid, Vec<ChannelResolutionRuleResponse>> = HashMap::new();
+        if !policy_set_ids.is_empty() {
             let rules = channel_resolution_policy_rule::Entity::find()
-                .filter(channel_resolution_policy_rule::Column::PolicySetId.eq(policy_set.id))
+                .filter(channel_resolution_policy_rule::Column::PolicySetId.is_in(policy_set_ids))
                 .order_by_asc(channel_resolution_policy_rule::Column::Priority)
                 .order_by_asc(channel_resolution_policy_rule::Column::CreatedAt)
                 .all(&self.db)
-                .await?
-                .into_iter()
-                .map(to_channel_resolution_rule_response)
-                .collect::<ChannelResult<Vec<_>>>()?;
-
-            items.push(ChannelResolutionPolicySetDetailResponse {
-                policy_set: to_channel_resolution_policy_set_response(policy_set),
-                rules,
-            });
+                .await?;
+            for rule in rules {
+                let policy_set_id = rule.policy_set_id;
+                let response = to_channel_resolution_rule_response(rule)?;
+                rules_by_set.entry(policy_set_id).or_default().push(response);
+            }
         }
+
+        let items = policy_sets
+            .into_iter()
+            .map(|policy_set| {
+                let policy_set_id = policy_set.id;
+                ChannelResolutionPolicySetDetailResponse {
+                    policy_set: to_channel_resolution_policy_set_response(policy_set),
+                    rules: rules_by_set.remove(&policy_set_id).unwrap_or_default(),
+                }
+            })
+            .collect();
 
         Ok(items)
     }
@@ -1294,9 +1526,22 @@ impl ChannelService {
             return Err(ChannelError::NotFound(rule_id));
         }
 
-        let response = to_channel_resolution_rule_response(rule.clone())?;
-        let active: channel_resolution_policy_rule::ActiveModel = rule.into();
-        active.delete(&self.db).await?;
+        let response = to_channel_resolution_rule_response(rule)?;
+
+        // The delete is scoped by the policy set as well as the rule id, and a
+        // zero row count means a concurrent writer removed the rule between the
+        // read and this statement. `ActiveModel::delete()` reported that race as
+        // `DbErr::RecordNotDeleted`, which surfaced as a `500`; a lost race is a
+        // `404`, the same answer as a rule that never existed.
+        let deleted = channel_resolution_policy_rule::Entity::delete_many()
+            .filter(channel_resolution_policy_rule::Column::Id.eq(rule_id))
+            .filter(channel_resolution_policy_rule::Column::PolicySetId.eq(policy_set_id))
+            .exec(&self.db)
+            .await?;
+        if deleted.rows_affected == 0 {
+            return Err(ChannelError::NotFound(rule_id));
+        }
+
         Ok(response)
     }
 
@@ -1361,6 +1606,12 @@ impl ChannelService {
         Ok(existing.is_some())
     }
 
+    /// Moves the tenant default pointer in one transaction.
+    ///
+    /// The clear step runs before the set step because the partial unique index
+    /// `uq_channels_tenant_default` rejects a second default row immediately, and
+    /// a single `UPDATE ... SET is_default = (id = $1)` can visit rows in an order
+    /// that trips it.
     async fn replace_default_channel(
         &self,
         tenant_id: Uuid,
@@ -1368,87 +1619,166 @@ impl ChannelService {
     ) -> ChannelResult<()> {
         let now = chrono::Utc::now().into();
         let txn = self.db.begin().await?;
-        let channels = channel::Entity::find()
+
+        channel::Entity::update_many()
+            .col_expr(channel::Column::IsDefault, Expr::value(false))
+            .col_expr(channel::Column::UpdatedAt, Expr::value(now))
             .filter(channel::Column::TenantId.eq(tenant_id))
-            .all(&txn)
+            .filter(channel::Column::Id.ne(channel_id))
+            .filter(channel::Column::IsDefault.eq(true))
+            .exec(&txn)
             .await?;
 
-        for existing in channels {
-            let should_be_default = existing.id == channel_id;
-            if existing.is_default == should_be_default {
-                continue;
-            }
-
-            let mut active: channel::ActiveModel = existing.into();
-            active.is_default = Set(should_be_default);
-            active.updated_at = Set(now);
-            active.update(&txn).await?;
+        let updated = channel::Entity::update_many()
+            .col_expr(channel::Column::IsDefault, Expr::value(true))
+            .col_expr(channel::Column::UpdatedAt, Expr::value(now))
+            .filter(channel::Column::TenantId.eq(tenant_id))
+            .filter(channel::Column::Id.eq(channel_id))
+            .exec(&txn)
+            .await
+            // `uq_channels_tenant_default` decides the winner when two promotions
+            // race; the loser must retry, not receive a `500`.
+            .map_err(|error| map_unique_violation(error, "promote the tenant default channel"))?;
+        if updated.rows_affected == 0 {
+            txn.rollback().await?;
+            return Err(ChannelError::NotFound(channel_id));
         }
 
         txn.commit().await?;
         Ok(())
     }
 
+    /// Moves the tenant's active policy-set pointer in one transaction.
+    ///
+    /// `uq_channel_resolution_policy_sets_tenant_active` allows exactly one active
+    /// set per tenant, so the clear step must complete before the set step.
     async fn replace_active_policy_set(
         &self,
         tenant_id: Uuid,
         policy_set_id: Uuid,
     ) -> ChannelResult<()> {
-        let now = chrono::Utc::now().into();
         let txn = self.db.begin().await?;
-        let policy_sets = channel_resolution_policy_set::Entity::find()
-            .filter(channel_resolution_policy_set::Column::TenantId.eq(tenant_id))
-            .all(&txn)
+        self.replace_active_policy_set_in_tx(&txn, tenant_id, policy_set_id)
             .await?;
-
-        for existing in policy_sets {
-            let should_be_active = existing.id == policy_set_id;
-            if existing.is_active == should_be_active {
-                continue;
-            }
-
-            let mut active: channel_resolution_policy_set::ActiveModel = existing.into();
-            active.is_active = Set(should_be_active);
-            active.updated_at = Set(now);
-            active.update(&txn).await?;
-        }
-
         txn.commit().await?;
         Ok(())
     }
 
-    async fn host_target_exists_for_tenant(
+    async fn replace_active_policy_set_in_tx(
         &self,
+        txn: &DatabaseTransaction,
         tenant_id: Uuid,
-        target_value: &str,
-    ) -> ChannelResult<bool> {
-        let existing = channel_target::Entity::find()
-            .filter(channel_target::Column::TargetType.eq(ChannelTargetType::WebDomain.as_str()))
-            .filter(channel_target::Column::Value.eq(target_value))
-            .find_also_related(channel::Entity)
-            .filter(channel::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
+        policy_set_id: Uuid,
+    ) -> ChannelResult<()> {
+        let now = chrono::Utc::now().into();
+
+        channel_resolution_policy_set::Entity::update_many()
+            .col_expr(
+                channel_resolution_policy_set::Column::IsActive,
+                Expr::value(false),
+            )
+            .col_expr(
+                channel_resolution_policy_set::Column::UpdatedAt,
+                Expr::value(now),
+            )
+            .filter(channel_resolution_policy_set::Column::TenantId.eq(tenant_id))
+            .filter(channel_resolution_policy_set::Column::Id.ne(policy_set_id))
+            .filter(channel_resolution_policy_set::Column::IsActive.eq(true))
+            .exec(txn)
             .await?;
 
-        Ok(existing.is_some())
+        let updated = channel_resolution_policy_set::Entity::update_many()
+            .col_expr(
+                channel_resolution_policy_set::Column::IsActive,
+                Expr::value(true),
+            )
+            .col_expr(
+                channel_resolution_policy_set::Column::UpdatedAt,
+                Expr::value(now),
+            )
+            .filter(channel_resolution_policy_set::Column::TenantId.eq(tenant_id))
+            .filter(channel_resolution_policy_set::Column::Id.eq(policy_set_id))
+            .exec(txn)
+            .await
+            // `uq_channel_resolution_policy_sets_tenant_active` decides the winner
+            // when two activations race: the loser is retryable, not a server fault.
+            .map_err(|error| {
+                map_unique_violation(error, "activate the tenant resolution policy set")
+            })?;
+        if updated.rows_affected == 0 {
+            return Err(ChannelError::NotFound(policy_set_id));
+        }
+
+        Ok(())
     }
 
-    async fn host_target_exists_for_tenant_except(
+    /// Loads complete channel details for a set of channels.
+    ///
+    /// Details are assembled with three set-based queries (targets, module
+    /// bindings, OAuth app bindings) instead of three queries per channel, so the
+    /// admin bootstrap and the tenant channel list stay O(1) in round trips
+    /// instead of 3N+1.
+    async fn build_channel_details(
         &self,
-        tenant_id: Uuid,
-        target_id: Uuid,
-        target_value: &str,
-    ) -> ChannelResult<bool> {
-        let existing = channel_target::Entity::find()
-            .filter(channel_target::Column::TargetType.eq(ChannelTargetType::WebDomain.as_str()))
-            .filter(channel_target::Column::Value.eq(target_value))
-            .filter(channel_target::Column::Id.ne(target_id))
-            .find_also_related(channel::Entity)
-            .filter(channel::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
+        channels: Vec<channel::Model>,
+    ) -> ChannelResult<Vec<ChannelDetailResponse>> {
+        if channels.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let channel_ids: Vec<Uuid> = channels.iter().map(|channel| channel.id).collect();
+        let targets = channel_target::Entity::find()
+            .filter(channel_target::Column::ChannelId.is_in(channel_ids.clone()))
+            .order_by_desc(channel_target::Column::IsPrimary)
+            .order_by_asc(channel_target::Column::CreatedAt)
+            .all(&self.db)
+            .await?;
+        let module_bindings = channel_module_binding::Entity::find()
+            .filter(channel_module_binding::Column::ChannelId.is_in(channel_ids.clone()))
+            .order_by_asc(channel_module_binding::Column::ModuleSlug)
+            .all(&self.db)
+            .await?;
+        let oauth_apps = channel_oauth_app::Entity::find()
+            .filter(channel_oauth_app::Column::ChannelId.is_in(channel_ids))
+            .order_by_asc(channel_oauth_app::Column::CreatedAt)
+            .all(&self.db)
             .await?;
 
-        Ok(existing.is_some())
+        let mut targets_by_channel: HashMap<Uuid, Vec<ChannelTargetResponse>> = HashMap::new();
+        for target in targets {
+            targets_by_channel
+                .entry(target.channel_id)
+                .or_default()
+                .push(to_channel_target_response(target));
+        }
+        let mut modules_by_channel: HashMap<Uuid, Vec<ChannelModuleBindingResponse>> =
+            HashMap::new();
+        for binding in module_bindings {
+            modules_by_channel
+                .entry(binding.channel_id)
+                .or_default()
+                .push(to_channel_module_binding_response(binding));
+        }
+        let mut oauth_apps_by_channel: HashMap<Uuid, Vec<ChannelOauthAppResponse>> = HashMap::new();
+        for binding in oauth_apps {
+            oauth_apps_by_channel
+                .entry(binding.channel_id)
+                .or_default()
+                .push(to_channel_oauth_app_response(binding));
+        }
+
+        Ok(channels
+            .into_iter()
+            .map(|model| {
+                let id = model.id;
+                ChannelDetailResponse {
+                    channel: to_channel_response(model),
+                    targets: targets_by_channel.remove(&id).unwrap_or_default(),
+                    module_bindings: modules_by_channel.remove(&id).unwrap_or_default(),
+                    oauth_apps: oauth_apps_by_channel.remove(&id).unwrap_or_default(),
+                }
+            })
+            .collect())
     }
 
     async fn build_channel_detail(
@@ -1456,38 +1786,10 @@ impl ChannelService {
         channel_model: channel::Model,
     ) -> ChannelResult<ChannelDetailResponse> {
         let channel_id = channel_model.id;
-        let targets = channel_target::Entity::find()
-            .filter(channel_target::Column::ChannelId.eq(channel_id))
-            .order_by_desc(channel_target::Column::IsPrimary)
-            .order_by_asc(channel_target::Column::CreatedAt)
-            .all(&self.db)
+        self.build_channel_details(vec![channel_model])
             .await?
-            .into_iter()
-            .map(to_channel_target_response)
-            .collect();
-        let module_bindings = channel_module_binding::Entity::find()
-            .filter(channel_module_binding::Column::ChannelId.eq(channel_id))
-            .order_by_asc(channel_module_binding::Column::ModuleSlug)
-            .all(&self.db)
-            .await?
-            .into_iter()
-            .map(to_channel_module_binding_response)
-            .collect();
-        let oauth_apps = channel_oauth_app::Entity::find()
-            .filter(channel_oauth_app::Column::ChannelId.eq(channel_id))
-            .order_by_asc(channel_oauth_app::Column::CreatedAt)
-            .all(&self.db)
-            .await?
-            .into_iter()
-            .map(to_channel_oauth_app_response)
-            .collect();
-
-        Ok(ChannelDetailResponse {
-            channel: to_channel_response(channel_model),
-            targets,
-            module_bindings,
-            oauth_apps,
-        })
+            .pop()
+            .ok_or(ChannelError::NotFound(channel_id))
     }
 }
 
@@ -1499,7 +1801,7 @@ fn to_channel_response(model: channel::Model) -> ChannelResponse {
         name: model.name,
         is_active: model.is_active,
         is_default: model.is_default,
-        status: model.status,
+        status: crate::ChannelStatus::from_is_active(model.is_active),
         settings: model.settings,
         created_at: model.created_at.into(),
         updated_at: model.updated_at.into(),
@@ -1572,6 +1874,160 @@ fn to_channel_resolution_rule_response(
         created_at: model.created_at.into(),
         updated_at: model.updated_at.into(),
     })
+}
+
+/// Clears the per-channel primary target flag inside the caller's transaction.
+///
+/// `uq_channel_targets_channel_primary` allows only one primary target per
+/// channel, so the previous primary must be demoted in the same transaction that
+/// promotes the new one.
+async fn clear_primary_target(
+    txn: &DatabaseTransaction,
+    channel_id: Uuid,
+    keep_target_id: Option<Uuid>,
+    now: sea_orm::prelude::DateTimeWithTimeZone,
+) -> ChannelResult<()> {
+    let mut update = channel_target::Entity::update_many()
+        .col_expr(channel_target::Column::IsPrimary, Expr::value(false))
+        .col_expr(channel_target::Column::UpdatedAt, Expr::value(now))
+        .filter(channel_target::Column::ChannelId.eq(channel_id))
+        .filter(channel_target::Column::IsPrimary.eq(true));
+    if let Some(keep_target_id) = keep_target_id {
+        update = update.filter(channel_target::Column::Id.ne(keep_target_id));
+    }
+    update.exec(txn).await?;
+    Ok(())
+}
+
+/// Normalize and validate a channel slug.
+///
+/// The channel slug is immutable and is the identity consumers persist, so the
+/// owner validates it in exactly one place.
+fn normalize_channel_slug(raw: &str) -> ChannelResult<String> {
+    let slug = raw.trim().to_ascii_lowercase();
+    if slug.is_empty() {
+        return Err(ChannelError::Validation(
+            "channel slug must not be empty".to_string(),
+        ));
+    }
+    if slug.chars().count() > CHANNEL_SLUG_MAX_CHARS {
+        return Err(ChannelError::Validation(format!(
+            "channel slug must not exceed {CHANNEL_SLUG_MAX_CHARS} characters"
+        )));
+    }
+    Ok(slug)
+}
+
+/// Validates the shape of the open-ended channel `settings` bag.
+///
+/// Channel settings carry module-owned values, so the owner does not validate
+/// their content, but every consumer reads the field as a JSON object: an array
+/// or a bare scalar would only fail later, at read time, in whichever module
+/// happened to fetch the channel first. The size bound keeps a single JSONB
+/// document from becoming an unbounded write.
+fn normalize_channel_settings(settings: serde_json::Value) -> ChannelResult<serde_json::Value> {
+    if !settings.is_object() {
+        return Err(ChannelError::Validation(
+            "channel settings must be a JSON object".to_string(),
+        ));
+    }
+    let size = serde_json::to_vec(&settings)?.len();
+    if size > CHANNEL_SETTINGS_MAX_BYTES {
+        return Err(ChannelError::Validation(format!(
+            "channel settings must not exceed {CHANNEL_SETTINGS_MAX_BYTES} bytes"
+        )));
+    }
+    Ok(settings)
+}
+
+fn normalize_channel_name(raw: &str) -> ChannelResult<String> {
+    let name = raw.trim().to_string();
+    if name.is_empty() {
+        return Err(ChannelError::Validation(
+            "channel name must not be empty".to_string(),
+        ));
+    }
+    if name.chars().count() > CHANNEL_NAME_MAX_CHARS {
+        return Err(ChannelError::Validation(format!(
+            "channel name must not exceed {CHANNEL_NAME_MAX_CHARS} characters"
+        )));
+    }
+    Ok(name)
+}
+
+/// Detects a database unique-constraint violation.
+///
+/// PostgreSQL reports SQLSTATE `23505`, SQLite reports
+/// `UNIQUE constraint failed`, and sea-orm surfaces both as an opaque
+/// `DbErr::Exec`/`DbErr::Query`, so the classification has to inspect the message.
+fn is_unique_violation(error: &DbErr) -> bool {
+    let message = error.to_string().to_ascii_lowercase();
+    message.contains("23505")
+        || message.contains("unique constraint")
+        || message.contains("duplicate key value")
+        || message.contains("unique_violation")
+}
+
+fn is_channel_slug_conflict(error: &DbErr) -> bool {
+    let message = error.to_string().to_ascii_lowercase();
+    message.contains("idx_channels_tenant_slug")
+        || (message.contains("slug") && message.contains("channels"))
+}
+
+/// Classifies a unique violation on a target write by inspecting the state the
+/// write collided with instead of matching index names in the driver message.
+///
+/// Two partial unique indexes can reject the same statement:
+/// `uq_channel_targets_tenant_host` (another channel of the tenant already claims
+/// the web host — a genuine duplicate) and `uq_channel_targets_channel_primary`
+/// (another target of this channel became primary concurrently — a lost race the
+/// caller may retry). PostgreSQL names the index for both, SQLite names only
+/// columns, so the collision is decided by querying the tenant-scoped state.
+async fn classify_target_conflict(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    target_type: ChannelTargetType,
+    target_value: &str,
+    requested_primary: bool,
+) -> ChannelError {
+    match channel_target::Entity::find()
+        .filter(channel_target::Column::TenantId.eq(tenant_id))
+        .filter(channel_target::Column::TargetType.eq(target_type.as_str()))
+        .filter(channel_target::Column::Value.eq(target_value))
+        .one(db)
+        .await
+    {
+        // Only `uq_channel_targets_tenant_host` enforces value uniqueness, and only
+        // for web hosts: every other target type may legitimately repeat a value on
+        // another channel of the tenant, so a collision there can only be the
+        // primary slot and must not be reported as a duplicate.
+        Ok(Some(_)) if target_type == ChannelTargetType::WebDomain => {
+            ChannelError::TargetAlreadyExists(
+                target_type.as_str().to_string(),
+                target_value.to_string(),
+            )
+        }
+        Ok(_) if requested_primary => ChannelError::Conflict(
+            "promote target to primary: a concurrent write won the primary slot; retry the operation"
+                .to_string(),
+        ),
+        Ok(_) => ChannelError::Conflict(
+            "write channel target: a concurrent write won the race; retry the operation".to_string(),
+        ),
+        Err(error) => ChannelError::Database(error),
+    }
+}
+
+/// Maps an unexpected unique violation on an invariant write to a retryable
+/// conflict instead of leaking a `500` for a race the caller can repeat.
+fn map_unique_violation(error: DbErr, operation: &str) -> ChannelError {
+    if is_unique_violation(&error) {
+        ChannelError::Conflict(format!(
+            "could not {operation}: a concurrent write won the race; retry the operation"
+        ))
+    } else {
+        ChannelError::Database(error)
+    }
 }
 
 /// Normalize a target value, rejecting anything the `channel_targets.value`

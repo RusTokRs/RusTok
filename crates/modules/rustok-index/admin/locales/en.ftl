@@ -93,3 +93,6 @@ index-tab-overview = Overview
 index-tab-schemas = Schemas Catalog
 index-tab-storage = Storage Foundation
 index-title = Index Engine
+index-schemas-table = Index schemas
+index-storage-table = Index storage
+index-operations-table = Index operations

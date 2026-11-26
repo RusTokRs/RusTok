@@ -268,9 +268,86 @@ fn normalize_optional_text(value: Option<String>) -> Option<String> {
     })
 }
 
+/// Which module-owned workspace the Groups admin root renders for a subpath.
+///
+/// The host serves every declared `child_pages` entry through the same module
+/// route and the module owns the dispatch (same shape as the Blog and Forum
+/// admin roots). Before this split every workspace was stacked on one page, so
+/// the declared child pages all pointed at the same markup.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GroupsAdminSection {
+    Memberships,
+    Applications,
+    Invitations,
+    Features,
+}
+
+/// Map a route subpath onto the workspace it names.
+///
+/// Unknown, empty and nested subpaths fall back to the memberships workspace,
+/// which is the module landing surface: a stale bookmark renders the module
+/// instead of an empty page.
+pub fn groups_admin_section_for_subpath(subpath: Option<&str>) -> GroupsAdminSection {
+    let Some(subpath) = subpath else {
+        return GroupsAdminSection::Memberships;
+    };
+    let segment = subpath.trim_matches('/').split('/').next().unwrap_or("");
+    match segment {
+        "memberships" => GroupsAdminSection::Memberships,
+        "applications" => GroupsAdminSection::Applications,
+        "invitations" => GroupsAdminSection::Invitations,
+        "features" => GroupsAdminSection::Features,
+        _ => GroupsAdminSection::Memberships,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn declared_child_pages_select_their_own_workspace() {
+        assert_eq!(
+            groups_admin_section_for_subpath(Some("memberships")),
+            GroupsAdminSection::Memberships
+        );
+        assert_eq!(
+            groups_admin_section_for_subpath(Some("applications")),
+            GroupsAdminSection::Applications
+        );
+        assert_eq!(
+            groups_admin_section_for_subpath(Some("invitations")),
+            GroupsAdminSection::Invitations
+        );
+        assert_eq!(
+            groups_admin_section_for_subpath(Some("features")),
+            GroupsAdminSection::Features
+        );
+    }
+
+    #[test]
+    fn nested_subpaths_keep_their_workspace_and_unknown_ones_fall_back() {
+        assert_eq!(
+            groups_admin_section_for_subpath(Some("applications/42")),
+            GroupsAdminSection::Applications
+        );
+        assert_eq!(
+            groups_admin_section_for_subpath(Some("memberships/42")),
+            GroupsAdminSection::Memberships
+        );
+        assert_eq!(
+            groups_admin_section_for_subpath(Some("does-not-exist")),
+            GroupsAdminSection::Memberships
+        );
+        assert_eq!(
+            groups_admin_section_for_subpath(Some("")),
+            GroupsAdminSection::Memberships
+        );
+        assert_eq!(
+            groups_admin_section_for_subpath(None),
+            GroupsAdminSection::Memberships
+        );
+    }
 
     #[test]
     fn default_directory_request_is_bounded() {

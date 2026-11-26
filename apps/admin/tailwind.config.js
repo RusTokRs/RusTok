@@ -5,8 +5,11 @@ module.exports = {
     "./src/**/*.rs",
     "./index.html",
     "../../crates/**/admin/src/**/*.rs",
+    "../../crates/ui/fly/leptos/src/**/*.rs",
+    "../../crates/ui/rustok-grid/leptos/src/**/*.rs",
     "../../crates/ui/rustok-ui/src/**/*.rs",
     "../../crates/ui/rustok-ui/leptos/src/**/*.rs",
+    "../../crates/ui/rustok-ui-forms/leptos/src/**/*.rs",
   ],
   theme: {
     extend: {
@@ -56,9 +59,11 @@ module.exports = {
         },
       },
       borderRadius: {
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+        // One scale, from `UI/tokens/base.css` (imported by `input.css`), so the
+        // web radius cannot drift from the Flutter/TS tokens again.
+        lg: "var(--iu-radius-lg)",
+        md: "var(--iu-radius-md)",
+        sm: "var(--iu-radius-sm)",
       },
       keyframes: {
         spin: {

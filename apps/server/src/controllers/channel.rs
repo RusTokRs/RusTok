@@ -10,9 +10,9 @@ use rustok_channel::{
     AvailableChannelModuleItem, AvailableChannelOauthAppItem, BindChannelModuleInput,
     BindChannelOauthAppInput, ChannelBootstrapResponse, ChannelResponse, ChannelService,
     ChannelTargetResponse, CreateChannelRequest, CreateChannelTargetInput,
-    ReorderChannelResolutionRulesInput, ReorderResolutionRulesRequest, UpdateChannelTargetInput,
-    create_channel_input, create_resolution_policy_set_input, create_resolution_rule_input,
-    update_resolution_rule_input,
+    ReorderChannelResolutionRulesInput, ReorderResolutionRulesRequest, SetChannelActiveRequest,
+    UpdateChannelRequest, UpdateChannelTargetInput, create_channel_input,
+    create_resolution_policy_set_input, create_resolution_rule_input, update_resolution_rule_input,
 };
 use rustok_core::ModuleRegistry;
 use rustok_web::json_response;
@@ -118,6 +118,100 @@ async fn create_channel(
     let service = ChannelService::new(ctx.db_clone());
     let channel = service
         .create_channel(create_channel_input(tenant.id, input))
+        .await
+        .map_err(map_channel_error)?;
+    invalidate_channel_resolution_cache(&ctx, tenant.id).await;
+
+    Ok(json_response(channel))
+}
+
+/// Renames a channel or replaces its settings.
+///
+/// The slug is immutable: consumers and persisted visibility relations use it as
+/// the channel identity, so a rename would silently break stored references.
+async fn update_channel(
+    State(ctx): State<ServerRuntimeContext>,
+    CurrentTenant(tenant): CurrentTenant,
+    current: CurrentUser,
+    Path(channel_id): Path<Uuid>,
+    Json(input): Json<UpdateChannelRequest>,
+) -> Result<Response> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %current.user.id,
+        channel_id = %channel_id,
+        "Handling update channel request"
+    );
+
+    ensure_channel_manage_access(tenant.id, &current)?;
+    ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
+
+    let service = ChannelService::new(ctx.db_clone());
+    let channel = service
+        .update_channel(tenant.id, channel_id, input.into())
+        .await
+        .map_err(map_channel_error)?;
+    invalidate_channel_resolution_cache(&ctx, tenant.id).await;
+
+    Ok(json_response(channel))
+}
+
+/// Activates or deactivates a channel.
+///
+/// Deactivating the tenant default promotes the oldest remaining active channel,
+/// so the tenant keeps a resolvable default without a manual repair step.
+async fn set_channel_active(
+    State(ctx): State<ServerRuntimeContext>,
+    CurrentTenant(tenant): CurrentTenant,
+    current: CurrentUser,
+    Path(channel_id): Path<Uuid>,
+    Json(input): Json<SetChannelActiveRequest>,
+) -> Result<Response> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %current.user.id,
+        channel_id = %channel_id,
+        is_active = input.is_active,
+        "Handling channel activation request"
+    );
+
+    ensure_channel_manage_access(tenant.id, &current)?;
+    ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
+
+    let service = ChannelService::new(ctx.db_clone());
+    let channel = service
+        .set_channel_active(tenant.id, channel_id, input.is_active)
+        .await
+        .map_err(map_channel_error)?;
+    invalidate_channel_resolution_cache(&ctx, tenant.id).await;
+
+    Ok(json_response(channel))
+}
+
+/// Deletes a channel and everything that pointed at it.
+///
+/// Targets, module bindings, OAuth app bindings and resolution rules are removed
+/// by cascading foreign keys; the index tombstones the channel so replicas and the
+/// Sales Channel Index bridge converge on the deletion.
+async fn delete_channel(
+    State(ctx): State<ServerRuntimeContext>,
+    CurrentTenant(tenant): CurrentTenant,
+    current: CurrentUser,
+    Path(channel_id): Path<Uuid>,
+) -> Result<Response> {
+    tracing::debug!(
+        tenant_id = %tenant.id,
+        user_id = %current.user.id,
+        channel_id = %channel_id,
+        "Handling delete channel request"
+    );
+
+    ensure_channel_manage_access(tenant.id, &current)?;
+    ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
+
+    let service = ChannelService::new(ctx.db_clone());
+    let channel = service
+        .delete_channel(tenant.id, channel_id)
         .await
         .map_err(map_channel_error)?;
     invalidate_channel_resolution_cache(&ctx, tenant.id).await;
@@ -610,6 +704,12 @@ async fn ensure_policy_set_belongs_to_tenant(
     Ok(())
 }
 
+/// Proves the OAuth app is an active app of the caller's tenant.
+///
+/// A foreign or unknown identifier answers `404`, exactly like
+/// `ensure_channel_belongs_to_tenant` and `ensure_policy_set_belongs_to_tenant`:
+/// answering `400` here made the response code itself disclose that the app
+/// exists in another tenant.
 async fn ensure_oauth_app_belongs_to_tenant(
     ctx: &ServerRuntimeContext,
     tenant_id: Uuid,
@@ -619,9 +719,7 @@ async fn ensure_oauth_app_belongs_to_tenant(
         .await
         .map_err(Error::from)?;
     if !oauth_apps.iter().any(|app| app.id == oauth_app_id) {
-        return Err(Error::BadRequest(
-            "OAuth app does not belong to the current tenant".to_string(),
-        ));
+        return Err(Error::NotFound);
     }
     Ok(())
 }
@@ -643,7 +741,8 @@ fn map_channel_error(error: rustok_channel::ChannelError) -> Error {
         )),
         ChannelError::SlugAlreadyExists(_)
         | ChannelError::TargetAlreadyExists(_, _)
-        | ChannelError::PolicySetSlugAlreadyExists(_) => http_error(rustok_web::HttpError::new(
+        | ChannelError::PolicySetSlugAlreadyExists(_)
+        | ChannelError::Conflict(_) => http_error(rustok_web::HttpError::new(
             StatusCode::CONFLICT,
             "channel_conflict",
             "The requested channel resource conflicts with an existing resource",
@@ -682,6 +781,14 @@ pub fn router() -> crate::routes::ServerRouter {
         .route("/api/channels/bootstrap", get(bootstrap))
         .route("/api/channels", post(create_channel))
         .route("/api/channels/", post(create_channel))
+        .route(
+            "/api/channels/{channel_id}",
+            patch(update_channel).delete(delete_channel),
+        )
+        .route(
+            "/api/channels/{channel_id}/active",
+            post(set_channel_active),
+        )
         .route(
             "/api/channels/{channel_id}/default",
             post(set_default_channel),

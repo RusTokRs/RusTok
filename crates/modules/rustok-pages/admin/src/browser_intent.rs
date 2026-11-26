@@ -251,6 +251,12 @@ pub async fn dispatch_pages_browser_intent_with_store(
         .normalized()
         .map_err(BrowserIntentDispatchError::from)?;
     validate_browser_page_binding(envelope.page_id.as_deref(), &snapshot.page_id)?;
+    // A draft token is never sufficient identity for a Pages session. The
+    // authenticated host must supply the verified tenant/user owner even for
+    // read-only receipt resolution.
+    if envelope.draft_token.is_some() && snapshot.owner.is_none() {
+        return Err(SsrDraftSessionError::OwnerMismatch.into());
+    }
     validate_editable_operation_identity(
         &envelope.intent,
         capabilities,
@@ -1448,6 +1454,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn draft_token_requires_verified_owner_even_for_read_only_resolution() {
+        use rustok_page_builder_admin::InMemorySsrDraftSessionStore;
+        let store = InMemorySsrDraftSessionStore::editor_default();
+        let mut envelope = form_envelope("resolve_operation", json!({}));
+        envelope.draft_token = Some("legacy-token".to_string());
+        envelope.operation_id = Some("legacy-operation".to_string());
+        let snapshot = PagesBuilderSaveSnapshot {
+            token: None,
+            tenant_slug: None,
+            page_id: "home".to_string(),
+            default_locale: "en".to_string(),
+            owner: None,
+        };
+        let mut capabilities = CapabilityState::full();
+        capabilities.edit = false;
+        let result = dispatch_pages_browser_intent_with_store(
+            snapshot,
+            envelope,
+            &store,
+            capabilities,
+        )
+        .await;
+        assert!(matches!(
+            result,
+            Err(PagesBrowserIntentError::Draft(
+                SsrDraftSessionError::OwnerMismatch
+            ))
+        ));
+    }
+
+    #[tokio::test]
     async fn missing_session_token_never_seeds_a_new_page() {
         use rustok_page_builder_admin::InMemorySsrDraftSessionStore;
         let store = InMemorySsrDraftSessionStore::editor_default();
@@ -1460,7 +1497,10 @@ mod tests {
             tenant_slug: None,
             page_id: "home".to_string(),
             default_locale: "en".to_string(),
-            owner: None,
+            owner: Some(DraftSessionOwner {
+                tenant_id: "tenant".to_string(),
+                user_id: "user".to_string(),
+            }),
         };
         let result = dispatch_pages_browser_intent_with_store(
             snapshot,

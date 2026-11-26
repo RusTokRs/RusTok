@@ -1,5 +1,5 @@
-use tracing::instrument;
 use sea_orm::{DatabaseConnection, DatabaseTransaction};
+use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_api::{Action, PortContext, Resource};
@@ -32,6 +32,7 @@ use super::topic_visibility::{ForumTopicVisibilityScope, ForumTopicVisibilitySer
 /// crate-private and the public type never dereferences into the raw service.
 pub struct TopicService {
     db: DatabaseConnection,
+    taxonomy_port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
     inner: topic_owner::TopicService,
     create_audience: ForumTopicCreateAudienceAuthorizationService,
 }
@@ -58,7 +59,9 @@ impl TopicService {
         mut self,
         port: std::sync::Arc<dyn crate::ports::taxonomy::ForumTaxonomyPort>,
     ) -> Self {
-        self.inner = self.inner.with_taxonomy_port(port);
+        self.inner = self.inner.with_taxonomy_port(port.clone());
+        self.create_audience = self.create_audience.with_taxonomy_port(port.clone());
+        self.taxonomy_port = port;
         self
     }
 
@@ -74,6 +77,7 @@ impl TopicService {
                 facts_port,
             ),
             db,
+            taxonomy_port: std::sync::Arc::new(crate::NoopForumTaxonomyPort),
         }
     }
 
@@ -140,24 +144,16 @@ impl TopicService {
         context: Option<PortContext>,
         input: CreateTopicCommandInput,
     ) -> ForumResult<TopicResponse> {
-        let response = match context {
-            Some(context) => {
-                self.inner
-                    .create_with_audience_authorization(
-                        tenant_id,
-                        security,
-                        Some(context),
-                        input,
-                        &self.create_audience,
-                    )
-                    .await?
-            }
-            None => {
-                self.inner
-                    .create_command(tenant_id, security, input)
-                    .await?
-            }
-        };
+        let response = self
+            .inner
+            .create_with_audience_authorization(
+                tenant_id,
+                security,
+                context,
+                input,
+                &self.create_audience,
+            )
+            .await?;
         require_localized_topic_response(response)
     }
 
@@ -182,6 +178,7 @@ impl TopicService {
             .resolve_unchecked(tenant_id, topic_id)
             .await?;
         let visible = ForumTopicVisibilityService::new(self.db.clone())
+            .with_taxonomy_port(self.taxonomy_port.clone())
             .is_topic_category_visible_to_viewer(
                 tenant_id,
                 resolution.canonical_topic_id,
@@ -314,6 +311,7 @@ impl TopicService {
             Err(error) => return Err(error),
         };
         if !ForumTopicVisibilityService::new(self.db.clone())
+            .with_taxonomy_port(self.taxonomy_port.clone())
             .is_topic_visible(tenant_id, resolution.canonical_topic_id, &scope)
             .await?
         {
@@ -398,7 +396,8 @@ impl TopicService {
         fallback_locale: Option<&str>,
     ) -> ForumResult<TopicPage<TopicListItem>> {
         enforce_scope(&security, Resource::ForumTopics, Action::List)?;
-        let visibility = ForumTopicVisibilityService::new(self.db.clone());
+        let visibility = ForumTopicVisibilityService::new(self.db.clone())
+            .with_taxonomy_port(self.taxonomy_port.clone());
         let hidden_category_ids = visibility
             .hidden_category_ids_for_viewer(tenant_id, !security.is_public_read())
             .await?;
@@ -427,7 +426,8 @@ impl TopicService {
             channel_slug,
             !security.is_public_read(),
         )?;
-        let visibility = ForumTopicVisibilityService::new(self.db.clone());
+        let visibility = ForumTopicVisibilityService::new(self.db.clone())
+            .with_taxonomy_port(self.taxonomy_port.clone());
         let hidden_category_ids = visibility
             .hidden_category_ids_for_scope(tenant_id, &scope)
             .await?;

@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { inspectEffects } from "./verify-forum-moderation-effect-postgres-contract.mjs";
 
 const forumCargo = fs.readFileSync("crates/modules/rustok-forum/Cargo.toml", "utf8");
 const forumModule = fs.readFileSync("crates/modules/rustok-forum/src/module.rs", "utf8");
@@ -97,9 +98,8 @@ for (const marker of [
   "ReplyStatus::Rejected",
   "ReplyService::remove_in_tx",
   "ReplyService::set_status_in_tx",
-  "TopicService::adjust_reply_count_in_tx",
-  "CategoryService::adjust_counters_in_tx",
-  "UserStatsService::adjust_reply_count_in_tx",
+  "apply_publication_change_in_tx",
+  "lock_subject_parent_scopes_in_tx",
   "DomainEvent::ForumReplyStatusChanged",
   "publish_forum_category_projection_direct_in_tx",
   "forum.moderation_subject_revision_not_advanced",
@@ -230,4 +230,8 @@ for (const staleClaim of [
   }
 }
 
+
+const publication = fs.readFileSync("crates/modules/rustok-forum/src/services/reply_publication.rs", "utf8");
+const effectsFailures = inspectEffects(adapter, publication);
+if (effectsFailures.length) throw new Error(effectsFailures.join("\n"));
 console.log("Forum Moderation subject adapter ownership guard passed");

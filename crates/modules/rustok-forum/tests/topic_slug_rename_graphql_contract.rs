@@ -46,7 +46,8 @@ fn graphql_rename_adapter_uses_routed_tenant_update_scope_and_owner_service() {
         "Permission::FORUM_TOPICS_UPDATE",
         "Permission denied: forum_topics:update required",
         "resolve_tenant_scope",
-        "TopicService::new(db.clone(), event_bus.clone())",
+        "super::forum_graphql_runtime(ctx)",
+        ".topic_service(",
         ".rename_slug(",
         "SecurityContext::from_permission_snapshot",
         "locale: input.locale",
@@ -59,6 +60,7 @@ fn graphql_rename_adapter_uses_routed_tenant_update_scope_and_owner_service() {
     }
 
     for forbidden in [
+        "TopicService::new(",
         "ForumTopicRouteService::new",
         "rename_topic_slug_in_tx",
         "forum_topic_route_aliases",

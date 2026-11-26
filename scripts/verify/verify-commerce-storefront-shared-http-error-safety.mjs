@@ -11,6 +11,7 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
 const controller = read('crates/modules/rustok-commerce/src/controllers/store/mod.rs');
+const storefrontOrders = read('crates/modules/rustok-commerce/src/controllers/store/orders.rs');
 const contextOwner = read('crates/modules/rustok-commerce/src/services/context.rs');
 const channelOwner = read('crates/modules/rustok-channel/src/error.rs');
 const channelBoundary = read('crates/modules/rustok-commerce/src/storefront_channel.rs');
@@ -170,8 +171,10 @@ for (const value of [
 ]) forbidText(channelMapper, value, 'raw storefront channel diagnostic');
 
 for (const [value, label] of [
-  ['StoreContextService::new(', 'context service construction'],
-  ['rustok_region::RegionService::new(db.clone())', 'region owner construction'],
+  // The store context owner is now composed from per-owner read ports instead of
+  // being handed a raw `DatabaseConnection`.
+  ['StoreContextService::with_ports(', 'context service construction'],
+  ['rustok_region::in_process_region_read_port(db.clone())', 'region owner read port construction'],
   ['ResolveStoreContextInput {', 'typed context input'],
   ['region_id,', 'context region input'],
   ['country_code,', 'context country input'],
@@ -214,7 +217,9 @@ for (const [value, label] of [
   ['map_storefront_channel_error(error, request_context)', 'typed channel mapper use'],
   ['if !enabled {', 'disabled module policy'],
   ['"commerce_store_denied"', 'disabled module public code'],
-  ['request_context.channel_slug.as_deref().unwrap_or("current")', 'disabled module channel context'],
+  // The denial answers a static message: the caller's channel slug is never echoed
+  // back and no channel value is interpolated into the public response.
+  ['"The commerce module is not available for the current channel"', 'disabled module bounded message'],
 ]) {
   requireText(channelHandler, value, label);
 }
@@ -247,7 +252,7 @@ for (const [content, value, label] of [
   [channelOwner, 'Database(#[from] DbErr)', 'channel owner database variant'],
   [channelOwner, 'Serialization(#[from] SerdeJsonError)', 'channel owner serialization variant'],
   [channelBoundary, '-> Result<bool, ChannelError>', 'typed channel boundary result'],
-  [channelBoundary, '.is_module_enabled(channel_id, module_slug)', 'channel service operation'],
+  [channelBoundary, '.is_module_enabled_for_tenant(request_context.tenant_id, channel_id, module_slug)', 'tenant-scoped channel service operation'],
   [apiPorts, 'pub struct PortError {', 'owner port error type'],
   [apiPorts, 'pub kind: PortErrorKind', 'owner port kind'],
   [apiPorts, 'pub retryable: bool', 'owner port retryability'],
@@ -271,14 +276,24 @@ for (const [value, expected, label] of [
 }
 
 for (const [value, label] of [
+  ['async fn ensure_customer_owns_order(', 'order ownership helper'],
+  ['order.customer_id != Some(customer_id)', 'order ownership assertion'],
+  ['"commerce_store_order_access_denied"', 'order ownership denial code'],
+]) {
+  requireText(storefrontOrders, value, label);
+}
+
+for (const [value, label] of [
   ['pub fn axum_router()', 'storefront router'],
   ['pub(crate) async fn resolve_context_from_cart_for_db(', 'cart context wrapper'],
-  ['pub(crate) async fn ensure_customer_owns_order_for_db(', 'order ownership helper'],
+
   ['pub(crate) fn storefront_customer_port_context(', 'customer port context helper'],
   ['pub(crate) fn storefront_cart_port_context(', 'cart port context helper'],
   ['pub(crate) fn ensure_store_cart_access(', 'cart access helper'],
-  ['pub(crate) async fn apply_cart_context_patch_for_db(', 'cart patch helper'],
-  ['pub(crate) async fn enrich_storefront_cart_for_db(', 'cart enrichment helper'],
+  // The patch merge lives in `requested_cart_context`; the enrichment pass is the
+  // pricing-owner repricing step. Both keep the typed port/error boundary.
+  ['pub(crate) fn requested_cart_context(', 'cart patch helper'],
+  ['pub(crate) async fn reprice_storefront_cart_line_items_for_db(', 'cart enrichment helper'],
   ['pub struct StoreListProductsParams', 'product params DTO'],
   ['pub struct StoreCreateCartInput', 'create cart DTO'],
   ['pub struct StoreCompleteCartInput', 'checkout DTO'],

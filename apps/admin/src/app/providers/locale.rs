@@ -59,8 +59,14 @@ pub fn use_admin_locale() -> AdminLocaleContext {
 pub fn AdminLocaleProvider(children: Children) -> impl IntoView {
     let initial_locale =
         Locale::from_effective_locale(crate::shared::api::get_stored_locale().as_deref());
-    provide_context(AdminLocaleContext {
-        locale: RwSignal::new(initial_locale),
-    });
+    let locale = RwSignal::new(initial_locale);
+    provide_context(AdminLocaleContext { locale });
+    // Data-grid chrome (pager, "rows per page", empty state, table name) lives in
+    // the grid's own catalog. Providing the effective locale once is what keeps a
+    // table that never passes `messages` from rendering English copy in a Russian
+    // admin: `DataGrid` resolves its catalog against this signal.
+    rustok_grid_leptos::provide_grid_locale(Signal::derive(move || {
+        Some(locale.get().as_str().to_string())
+    }));
     children()
 }

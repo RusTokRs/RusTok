@@ -21,8 +21,8 @@ pub struct Model {
 pub enum Relation {
     #[sea_orm(
         belongs_to = "super::forum_topic_audience_policy::Entity",
-        from = "Column::TopicId",
-        to = "super::forum_topic_audience_policy::Column::TopicId",
+        from = "(Column::TenantId, Column::TopicId)",
+        to = "(super::forum_topic_audience_policy::Column::TenantId, super::forum_topic_audience_policy::Column::TopicId)",
         on_update = "Cascade",
         on_delete = "Cascade"
     )]

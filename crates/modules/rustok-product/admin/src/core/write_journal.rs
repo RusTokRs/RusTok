@@ -93,6 +93,7 @@ pub(crate) enum RecoveryQueryKey {
     Axes,
     #[allow(dead_code)]
     VariantCreate,
+    VariantMutation,
     AttributeDefinition,
 }
 
@@ -101,6 +102,7 @@ impl RecoveryQueryKey {
         match self {
             Self::Axes => "axis_recovery",
             Self::VariantCreate => "variant_recovery",
+            Self::VariantMutation => "variant_mutation_recovery",
             Self::AttributeDefinition => "attribute_recovery",
         }
     }

@@ -3,8 +3,10 @@ module.exports = {
   content: [
     "./src/**/*.rs",
     "./assets/**/*.css",
+    "../../crates/ui/fly/leptos/src/**/*.rs",
     "../../crates/ui/rustok-ui/src/**/*.rs",
     "../../crates/ui/rustok-ui/leptos/src/**/*.rs",
+    "../../crates/ui/rustok-ui-forms/leptos/src/**/*.rs",
     "../../crates/modules/*/storefront/src/**/*.rs",
   ],
   theme: {
@@ -48,9 +50,9 @@ module.exports = {
         ring: "hsl(var(--ring))",
       },
       borderRadius: {
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+        lg: "var(--iu-radius-lg)",
+        md: "var(--iu-radius-md)",
+        sm: "var(--iu-radius-sm)",
       },
     },
   },

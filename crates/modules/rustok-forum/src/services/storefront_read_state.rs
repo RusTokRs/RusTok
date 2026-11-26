@@ -51,6 +51,7 @@ pub struct ForumStorefrontReadStateService {
     event_bus: TransactionalEventBus,
     audience_facts: Option<SharedForumAudienceFactsPort>,
     settings: ForumSettingsProviders,
+    taxonomy_port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
 }
 
 impl ForumStorefrontReadStateService {
@@ -76,7 +77,16 @@ impl ForumStorefrontReadStateService {
             event_bus,
             audience_facts,
             settings: ForumSettingsProviders::default(),
+            taxonomy_port: std::sync::Arc::new(crate::NoopForumTaxonomyPort),
         }
+    }
+
+    pub fn with_taxonomy_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ForumTaxonomyPort>,
+    ) -> Self {
+        self.taxonomy_port = port;
+        self
     }
 
     /// Applies tenant settings to every topic read this composition performs, so
@@ -112,6 +122,7 @@ impl ForumStorefrontReadStateService {
             ),
             None => ForumTopicAudienceListService::new(self.db.clone(), self.event_bus.clone()),
         }
+        .with_taxonomy_port(self.taxonomy_port.clone())
         .with_settings_providers(self.settings.clone());
         if unread_only {
             return self
@@ -222,6 +233,7 @@ impl ForumStorefrontReadStateService {
             )));
         }
         let page = TopicService::new(self.db.clone(), self.event_bus.clone())
+            .with_taxonomy_port(self.taxonomy_port.clone())
             .with_settings_providers(self.settings.clone())
             .list_storefront_visible_with_locale_fallback(
                 tenant_id,
@@ -243,6 +255,7 @@ impl ForumStorefrontReadStateService {
         next_cursor: Option<String>,
     ) -> ForumResult<ForumStorefrontUnreadTopicPage> {
         let summaries = ForumReadModelService::new(self.db.clone())
+            .with_taxonomy_port(self.taxonomy_port.clone())
             .summarize_topic_ids(
                 tenant_id,
                 security,
@@ -292,7 +305,9 @@ impl ForumStorefrontReadStateService {
                 facts,
             ),
             None => ForumTopicAudienceReadService::new(self.db.clone(), self.event_bus.clone()),
-        };
+        }
+        .with_taxonomy_port(self.taxonomy_port.clone())
+        .with_settings_providers(self.settings.clone());
         let visible = service
             .get_authenticated_storefront_visible_with_audience_context(
                 tenant_id,
@@ -322,6 +337,7 @@ impl ForumStorefrontReadStateService {
         channel_slug: Option<&str>,
     ) -> ForumResult<ForumTopicReadState> {
         let visible = TopicService::new(self.db.clone(), self.event_bus.clone())
+            .with_taxonomy_port(self.taxonomy_port.clone())
             .with_settings_providers(self.settings.clone())
             .get_storefront_visible_with_locale_fallback(
                 tenant_id,
@@ -409,7 +425,7 @@ impl ForumStorefrontReadStateService {
             None => crate::services::read_tracking::ForumVisibilityScopedReadStateService::new(
                 self.db.clone(),
             ),
-        };
+        }.with_taxonomy_port(self.taxonomy_port.clone());
         service
             .mark_category_read_with_audience_context(
                 tenant_id,
@@ -439,7 +455,7 @@ impl ForumStorefrontReadStateService {
             None => crate::services::read_tracking::ForumVisibilityScopedReadStateService::new(
                 self.db.clone(),
             ),
-        };
+        }.with_taxonomy_port(self.taxonomy_port.clone());
         service
             .mark_all_read_with_audience_context(tenant_id, security, context, input)
             .await

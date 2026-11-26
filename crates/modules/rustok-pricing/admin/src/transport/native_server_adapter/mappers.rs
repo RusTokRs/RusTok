@@ -1,5 +1,4 @@
 #![allow(unused_imports, clippy::empty_line_after_outer_attr)]
-use uuid::Uuid;
 
 use crate::model::{
     CurrentTenant, PricingAdjustmentPreview, PricingChannelOption, PricingEffectivePrice,
@@ -70,7 +69,7 @@ pub(crate) fn map_channel_option(value: rustok_channel::ChannelResponse) -> Pric
         name: value.name,
         is_active: value.is_active,
         is_default: value.is_default,
-        status: value.status,
+        status: value.status.as_str().to_string(),
     }
 }
 

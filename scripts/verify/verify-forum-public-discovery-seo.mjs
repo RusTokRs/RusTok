@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { containsMarker } from './lib/forum-source-verification.mjs';
 
-const root = process.cwd();
+const root = path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT || '.');
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
 const requireText = (source, needle, label) => {
-  if (!source.includes(needle)) {
+  if (!containsMarker(source, needle)) {
     throw new Error(`missing ${label}: ${needle}`);
   }
 };
@@ -17,6 +18,7 @@ const rejectText = (source, needle, label) => {
 const owner = read('crates/modules/rustok-forum/src/services/public_discovery.rs');
 const services = read('crates/modules/rustok-forum/src/services/mod.rs');
 const lib = read('crates/modules/rustok-forum/src/lib.rs');
+const module = read('crates/modules/rustok-forum/src/module.rs');
 const seo = read('crates/modules/rustok-forum/src/seo_audience_targets.rs');
 const legacySeo = read('crates/modules/rustok-forum/src/seo_targets.rs');
 const searchProjection = read('crates/modules/rustok-forum/src/search_projection.rs');
@@ -52,14 +54,15 @@ requireText(
 requireText(lib, 'ForumPublicDiscoveryService', 'crate public discovery export');
 requireText(lib, 'mod seo_audience_targets;', 'exact SEO wrapper module');
 requireText(lib, 'mod seo_targets;', 'legacy SEO mapper module preservation');
+requireText(module, 'fn register_runtime_extensions(', 'module runtime registration');
 requireText(
-  lib,
-  'seo_audience_targets::ForumCategorySeoTargetProvider',
+  module,
+  /register_seo_target_provider\(\s*extensions,\s*seo_audience_targets::ForumCategorySeoTargetProvider,?\s*\)/,
   'exact category SEO registration',
 );
 requireText(
-  lib,
-  'seo_audience_targets::ForumTopicSeoTargetProvider',
+  module,
+  /register_seo_target_provider\(\s*extensions,\s*seo_audience_targets::ForumTopicSeoTargetProvider,?\s*\)/,
   'exact topic SEO registration',
 );
 
@@ -72,7 +75,7 @@ for (const marker of [
   'async fn sitemap_candidates(',
   'category_provider().load_target',
   'topic_provider().load_target',
-  'ForumCategoryRouteService',
+  'crate::seo_targets::seo_category_route_service(runtime)',
   'ForumTopicRouteService',
   'parse_canonical_forum_route',
 ]) {
@@ -81,6 +84,9 @@ for (const marker of [
 for (const forbidden of ['CategoryService', 'TopicService', 'SecurityContext::system()']) {
   rejectText(seo, forbidden, 'SEO wrapper policy duplication');
 }
+requireText(legacySeo, 'crate::ForumCategoryRouteService::new(runtime.db.clone()).with_port(seo_taxonomy_port(runtime))', 'SEO category route capability composition');
+requireText(legacySeo, 'runtime.runtime_extensions.get::<std::sync::Arc<dyn crate::ForumTaxonomyPort>>()', 'SEO host taxonomy capability');
+
 for (const marker of [
   'pub struct ForumCategorySeoTargetProvider',
   'pub struct ForumTopicSeoTargetProvider',

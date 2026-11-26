@@ -114,7 +114,7 @@ async fn setup_db(tenant_id: Uuid) -> TestResult<(DatabaseConnection, Uuid)> {
     let channel_id = Uuid::new_v4();
     db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
-        "INSERT INTO channels (id, tenant_id, slug, name, is_active, is_default, status, settings, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO channels (id, tenant_id, slug, name, is_active, is_default, settings, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             channel_id.into(),
             tenant_id.into(),
@@ -122,7 +122,6 @@ async fn setup_db(tenant_id: Uuid) -> TestResult<(DatabaseConnection, Uuid)> {
             "Default Web Channel".into(),
             1i32.into(),
             1i32.into(),
-            "active".into(),
             "{}".into(),
             now.to_rfc3339().into(),
             now.to_rfc3339().into(),

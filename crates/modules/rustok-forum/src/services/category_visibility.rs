@@ -1,5 +1,7 @@
-use tracing::instrument;
+use crate::ports::taxonomy::{ForumTaxonomyConnection, ForumTaxonomyPort, NoopForumTaxonomyPort};
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+use tracing::instrument;
 
 use chrono::Utc;
 use sea_orm::{
@@ -43,11 +45,20 @@ pub struct SetForumCategoryVisibilityPolicyInput {
 /// broaden an authenticated ancestor.
 pub struct ForumCategoryVisibilityPolicyService {
     db: DatabaseConnection,
+    taxonomy_port: Arc<dyn ForumTaxonomyPort>,
 }
 
 impl ForumCategoryVisibilityPolicyService {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self {
+            db,
+            taxonomy_port: Arc::new(NoopForumTaxonomyPort),
+        }
+    }
+
+    pub fn with_taxonomy_port(mut self, port: Arc<dyn ForumTaxonomyPort>) -> Self {
+        self.taxonomy_port = port;
+        self
     }
 
     pub async fn get(
@@ -57,9 +68,14 @@ impl ForumCategoryVisibilityPolicyService {
         security: SecurityContext,
     ) -> ForumResult<ForumCategoryVisibilityPolicy> {
         enforce_scope(&security, Resource::ForumCategories, Action::Read)?;
-        CategoryVisibilitySnapshot::load(&self.db, tenant_id)
-            .await?
-            .policy(category_id)
+        CategoryVisibilitySnapshot::load_with_port(
+            self.taxonomy_port.as_ref(),
+            &self.db,
+            (&self.db).into(),
+            tenant_id,
+        )
+        .await?
+        .policy(category_id)
     }
 
     #[instrument(skip_all)]
@@ -74,7 +90,13 @@ impl ForumCategoryVisibilityPolicyService {
 
         let txn = self.db.begin().await?;
         super::category_audience::lock_category_tree_in_tx(&txn, tenant_id).await?;
-        let snapshot = CategoryVisibilitySnapshot::load(&txn, tenant_id).await?;
+        let snapshot = CategoryVisibilitySnapshot::load_with_port(
+            self.taxonomy_port.as_ref(),
+            &txn,
+            (&txn).into(),
+            tenant_id,
+        )
+        .await?;
         snapshot.policy(category_id)?;
 
         let requested_override = match input.visibility {
@@ -121,9 +143,14 @@ impl ForumCategoryVisibilityPolicyService {
             .await?;
         }
 
-        let result = CategoryVisibilitySnapshot::load(&txn, tenant_id)
-            .await?
-            .policy(category_id)?;
+        let result = CategoryVisibilitySnapshot::load_with_port(
+            self.taxonomy_port.as_ref(),
+            &txn,
+            (&txn).into(),
+            tenant_id,
+        )
+        .await?
+        .policy(category_id)?;
         publish_forum_projection_scope_direct_in_tx(&txn, tenant_id, security.user_id).await?;
         txn.commit().await?;
         Ok(result)
@@ -138,7 +165,13 @@ impl ForumCategoryVisibilityPolicyService {
             return Ok(Vec::new());
         }
 
-        let snapshot = CategoryVisibilitySnapshot::load(&self.db, tenant_id).await?;
+        let snapshot = CategoryVisibilitySnapshot::load_with_port(
+            self.taxonomy_port.as_ref(),
+            &self.db,
+            (&self.db).into(),
+            tenant_id,
+        )
+        .await?;
         let mut hidden = Vec::new();
         for category_id in snapshot.parents.keys().copied() {
             if snapshot.resolve(category_id)?.effective_visibility
@@ -166,19 +199,32 @@ impl ForumCategoryVisibilityPolicyService {
                 .is_some());
         }
 
-        is_category_public_to_anonymous(&self.db, tenant_id, category_id).await
+        let snapshot = CategoryVisibilitySnapshot::load_with_port(
+            self.taxonomy_port.as_ref(),
+            &self.db,
+            (&self.db).into(),
+            tenant_id,
+        )
+        .await?;
+        match snapshot.resolve(category_id) {
+            Ok(resolved) => Ok(resolved.effective_visibility == ForumCategoryVisibility::Public),
+            Err(ForumError::CategoryNotFound(_)) => Ok(false),
+            Err(error) => Err(error),
+        }
     }
 }
 
-pub(crate) async fn is_category_public_to_anonymous<C>(
+/// Transaction-compatible base floor for provider-aware topic audience checks.
+pub(crate) async fn is_category_public_to_anonymous_with_port<C: ConnectionTrait>(
+    port: &dyn ForumTaxonomyPort,
     db: &C,
+    taxonomy_connection: ForumTaxonomyConnection<'_>,
     tenant_id: Uuid,
     category_id: Uuid,
-) -> ForumResult<bool>
-where
-    C: ConnectionTrait,
-{
-    let snapshot = CategoryVisibilitySnapshot::load(db, tenant_id).await?;
+) -> ForumResult<bool> {
+    let snapshot =
+        CategoryVisibilitySnapshot::load_with_port(port, db, taxonomy_connection, tenant_id)
+            .await?;
     match snapshot.resolve(category_id) {
         Ok(resolved) => Ok(resolved.effective_visibility == ForumCategoryVisibility::Public),
         Err(ForumError::CategoryNotFound(_)) => Ok(false),
@@ -192,21 +238,10 @@ struct CategoryVisibilitySnapshot {
 }
 
 impl CategoryVisibilitySnapshot {
-    async fn load<C>(db: &C, tenant_id: Uuid) -> ForumResult<Self>
-    where
-        C: ConnectionTrait,
-    {
-        Self::load_with_port(
-            &crate::ports::taxonomy::NoopForumTaxonomyPort,
-            db,
-            tenant_id,
-        )
-        .await
-    }
-
     async fn load_with_port<C>(
         port: &dyn crate::ports::taxonomy::ForumTaxonomyPort,
         db: &C,
+        taxonomy_connection: ForumTaxonomyConnection<'_>,
         tenant_id: Uuid,
     ) -> ForumResult<Self>
     where
@@ -226,12 +261,12 @@ impl CategoryVisibilitySnapshot {
 
         let category_ids = categories.iter().map(|c| c.id).collect::<Vec<_>>();
         let parents = port
-            .load_category_parents(
-                crate::ports::taxonomy::ForumTaxonomyConnection::None,
-                tenant_id,
-                &category_ids,
-            )
+            .load_category_parents(taxonomy_connection, tenant_id, &category_ids)
             .await?;
+        crate::services::category_hierarchy::validate_category_parent_projection(
+            &category_ids,
+            &parents,
+        )?;
         let mut overrides = HashMap::new();
         for policy in forum_category_policy::Entity::find()
             .filter(forum_category_policy::Column::TenantId.eq(tenant_id))

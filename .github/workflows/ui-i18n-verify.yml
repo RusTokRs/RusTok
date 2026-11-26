@@ -18,6 +18,24 @@ on:
       - "crates/modules/rustok-page-builder/src/locale.rs"
       - "crates/modules/rustok-notifications/storefront/**"
       - "crates/ui/fly/src/runtime_locale.rs"
+      # The design-system gates this workflow runs police `crates/ui/**`, the admin and
+      # storefront hosts, the token pipeline and the gates themselves. Without these
+      # entries a pull request that edits, say, `rustok-ui/leptos/src/button.rs` —
+      # exactly the change `verify-ui-parity` and `verify-ui-ds-adoption` exist to
+      # catch — triggered no run at all, because only the i18n files were listed.
+      - "crates/ui/rustok-ui/**"
+      - "crates/ui/rustok-grid/**"
+      - "crates/ui/fly/**"
+      - "UI/tokens/**"
+      - "apps/admin/src/**"
+      - "apps/admin/input.css"
+      - "apps/admin/tailwind.config.js"
+      - "apps/storefront/src/**"
+      - "apps/storefront/assets/**"
+      - "apps/storefront/tailwind.config.cjs"
+      - "scripts/verify/verify-ui-*.mjs"
+      - "scripts/verify/verify-csp-inline-style-exceptions.mjs"
+      - "scripts/verify/ui-ds-adoption-baseline.json"
       - "apps/admin/locales/**"
       - "apps/admin/src/i18n.rs"
       - "apps/admin/src/main.rs"
@@ -55,6 +73,24 @@ on:
       - "crates/modules/rustok-page-builder/src/locale.rs"
       - "crates/modules/rustok-notifications/storefront/**"
       - "crates/ui/fly/src/runtime_locale.rs"
+      # The design-system gates this workflow runs police `crates/ui/**`, the admin and
+      # storefront hosts, the token pipeline and the gates themselves. Without these
+      # entries a pull request that edits, say, `rustok-ui/leptos/src/button.rs` —
+      # exactly the change `verify-ui-parity` and `verify-ui-ds-adoption` exist to
+      # catch — triggered no run at all, because only the i18n files were listed.
+      - "crates/ui/rustok-ui/**"
+      - "crates/ui/rustok-grid/**"
+      - "crates/ui/fly/**"
+      - "UI/tokens/**"
+      - "apps/admin/src/**"
+      - "apps/admin/input.css"
+      - "apps/admin/tailwind.config.js"
+      - "apps/storefront/src/**"
+      - "apps/storefront/assets/**"
+      - "apps/storefront/tailwind.config.cjs"
+      - "scripts/verify/verify-ui-*.mjs"
+      - "scripts/verify/verify-csp-inline-style-exceptions.mjs"
+      - "scripts/verify/ui-ds-adoption-baseline.json"
       - "apps/admin/locales/**"
       - "apps/admin/src/i18n.rs"
       - "apps/admin/src/main.rs"
@@ -147,6 +183,50 @@ jobs:
         run: node scripts/verify/verify-ui-i18n-parity.mjs
       - name: UI key inventory
         run: node scripts/verify/verify-ui-i18n-keys.mjs --strict
+      - name: Admin child pages
+        # A module that declares `child_pages` and ignores the routed subpath
+        # renders the same markup for every secondary-navigation link.
+        run: node scripts/verify/verify-ui-child-pages.mjs
+      - name: Grid chrome localization
+        # 45 tables share one chrome catalog. The locale is provided once by the
+        # host and resolved by the adapter, so a call site cannot silently ship
+        # English pagination in a Russian admin.
+        run: node scripts/verify/verify-ui-grid-messages.mjs
+      - name: Grid adapter parity
+        # Both `rustok-grid` adapters promise "identical component APIs" in their
+        # CRATE_API.md. Nothing checked it, and the audit already found a header
+        # that differed in styling plus five prop-level divergences. Every one-sided
+        # prop now needs a reason, and an exception that stopped being true fails.
+        run: node scripts/verify/verify-ui-grid-adapter-parity.mjs
+      - name: Design-token parity
+        # tokens.json → base.css → both Tailwind configs → generated Rust/Dart. Three
+        # radius scales shipped at once because nothing compared them; a private
+        # `--radius` in a host now fails instead of silently forking the scale.
+        run: node scripts/verify/verify-ui-token-parity.mjs
+      - name: Design-system adoption ratchet
+        # 1 322 raw `<button|input|select|textarea>` controls, 21 hand-drawn `<svg>`
+        # and 43 DS import sites across 47 crates. The backlog cannot be closed in
+        # one commit, so the rule is a ratchet: `raw` and `svg` may only go down,
+        # `ds` may only go up.
+        run: node scripts/verify/verify-ui-ds-adoption.mjs
+      - name: Dark-theme pairing
+        # A palette class without a `dark:` pair assumes the light shell. The first
+        # sweep over the channel admin missed the class strings that functions
+        # return, so this reads every Rust source token instead of `class="…"`.
+        run: node scripts/verify/verify-ui-dark-variants.mjs
+      - name: CSP inline-style register
+        # `style-src-attr 'none'` drops attribute styles silently. This gate keeps
+        # the register honest (and it now also scans `crates/ui`, where the grid
+        # used to style itself through a `style` attribute).
+        run: node scripts/verify/verify-csp-inline-style-exceptions.mjs
+      - name: UI Tailwind source coverage
+        # A class that no `@source`/`content` entry can see is silently missing
+        # from the built stylesheet: the component renders, it just renders
+        # unstyled, and only in the admin. This locks both hosts to the roots
+        # that actually emit classes, and treats a drift as a build failure.
+        run: |
+          node scripts/verify/verify-ui-tailwind-sources.mjs
+          node --test scripts/verify/verify-ui-tailwind-sources.test.mjs
       - name: Test
         run: cargo test -p rustok-ui-i18n --all-features
       - name: Consumer integration

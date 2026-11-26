@@ -103,6 +103,11 @@ function assertChannelAdminBoundary() {
   assertContains(core, "fn create_payload(&self)", `${corePath}: core form state must build create payloads`);
   assertContains(core, "fn update_payload(&self)", `${corePath}: core form state must build update payloads`);
   assertContains(core, "policy_rule_active_update_payload", `${corePath}: core must build active toggle payloads`);
+  assertContains(core, "ChannelLifecycleToggle", `${corePath}: core must own the channel lifecycle transition`);
+  assertContains(core, "channel_lifecycle_toggle", `${corePath}: core must derive the channel lifecycle command`);
+  assertContains(core, "channel_rename_command", `${corePath}: core must validate and build the channel rename command`);
+  assertContains(core, "CHANNEL_DELETE_FEEDBACK", `${corePath}: core must own the channel delete feedback copy`);
+  assertContains(core, "channel_status_badge", `${corePath}: core must own the channel status badge copy`);
 
   assertContains(uiMod, "mod channel_card;", `${uiModPath}: adapter directory must wire ChannelCard`);
   assertContains(uiMod, "mod policy_set_card;", `${uiModPath}: adapter directory must wire PolicySetCard`);
@@ -116,11 +121,20 @@ function assertChannelAdminBoundary() {
   assertContains(ui, ".create_payload()", `${uiModPath}: Leptos adapter must consume core-owned create payload preparation`);
   assertContains(ui, ".update_payload()", `${uiModPath}: Leptos adapter must consume core-owned update payload preparation`);
   assertContains(ui, "policy_rule_active_update_payload", `${uiModPath}: Leptos adapter must consume core-owned active payload preparation`);
+  assertContains(ui, "channel_lifecycle_toggle", `${uiModPath}: Leptos adapter must consume core-owned lifecycle transition`);
+  assertContains(ui, "channel_rename_command", `${uiModPath}: Leptos adapter must consume core-owned rename command`);
+  assertContains(ui, "CHANNEL_DELETE_FEEDBACK", `${uiModPath}: Leptos adapter must consume core-owned delete feedback`);
+  assertContains(ui, "channel_status_badge", `${uiModPath}: Leptos adapter must consume core-owned status badge`);
   assertNotContains(ui, ".find(|policy_set| policy_set.policy_set.id", `${uiModPath}: UI must not own policy-set selection lookup`);
   assertNotContains(ui, "fn policy_rule_edit_form_state(", `${uiModPath}: UI must not define policy-rule edit mapping`);
   assertNotContains(ui, "fn reorder_rule_ids(", `${uiModPath}: UI must not define policy-rule reorder bounds policy`);
   assertNotContains(ui, "CreateResolutionRulePayload {", `${uiModPath}: UI must not construct policy-rule create payloads inline`);
   assertNotContains(ui, "&UpdateResolutionRulePayload {", `${uiModPath}: UI must not construct policy-rule update payloads inline`);
+  assertNotContains(ui, "UpdateChannelPayload {", `${uiModPath}: UI must not construct channel update payloads inline`);
+  assertNotContains(ui, "channel.feedback.renamed", `${uiModPath}: UI must not own channel rename feedback copy`);
+  assertNotContains(ui, "channel.feedback.deleted", `${uiModPath}: UI must not own channel delete feedback copy`);
+  assertNotContains(ui, "channel.error.nameRequired", `${uiModPath}: UI must not own channel rename validation copy`);
+  assertNotContains(ui, "channel.channel.status", `${uiModPath}: UI must not render the raw channel status wire value`);
   for (const marker of [
     "mod api;",
     "crate::api",
@@ -134,9 +148,17 @@ function assertChannelAdminBoundary() {
   }
 
   assertContains(transportMod, "mod native_server_adapter;", `${transportModPath}: transport facade must wire native server adapter`);
-  assertContains(transportMod, "mod rest_adapter;", `${transportModPath}: transport facade must wire REST fallback adapter`);
+  assertContains(transportMod, "mod rest_adapter;", `${transportModPath}: transport facade must wire the browser REST adapter`);
   assertContains(transportMod, "native_server_adapter::channel_bootstrap_native", `${transportModPath}: facade must prefer native bootstrap path`);
-  assertContains(transportMod, "rest_adapter::get_json", `${transportModPath}: facade must keep REST fallback path`);
+  assertContains(transportMod, "rest_adapter::get_json", `${transportModPath}: facade must keep the browser REST path`);
+  assertContains(transportMod, "fn selected_transport_path()", `${transportModPath}: facade must select exactly one transport per build`);
+  assertContains(transportMod, "async fn dispatch", `${transportModPath}: facade must route every call through one transport policy`);
+  assertContains(transportMod, "transport = ", `${transportModPath}: transport failures must record the transport that produced them`);
+  assertContains(transportMod, "path.as_str()", `${transportModPath}: recorded transport must be the selected path`);
+  // A blind `native -> REST` fallback re-executes non-idempotent mutations and
+  // masks 4xx domain rejections. The facade must never retry across transports.
+  assertNotContains(transportMod, "Err(_) =>", `${transportModPath}: transport facade must not swallow the first transport error`);
+  assertNotContains(transportMod, "execute_with_fallback", `${transportModPath}: channel admin mutations must not fall back to another transport`);
   assertNotContains(transportMod, "#[server", `${transportModPath}: server-function endpoints belong in native_server_adapter.rs`);
   assertNotContains(transportMod, "reqwest::", `${transportModPath}: raw REST client belongs in rest_adapter.rs`);
 
@@ -147,7 +169,13 @@ function assertChannelAdminBoundary() {
   assertNotContains(nativeAdapter, "reqwest::", `${nativeAdapterPath}: native adapter must not own REST fallback HTTP calls`);
 
   assertContains(restAdapter, "reqwest::Client::new", `${restAdapterPath}: REST adapter must own raw HTTP fallback calls`);
-  assertContains(restAdapter, "RUSTOK_API_URL", `${restAdapterPath}: REST adapter must own external API base URL fallback`);
+  // The REST transport is browser-only and resolves against the origin that
+  // served the bundle; a server-side base URL (`RUSTOK_API_URL`, defaulting to
+  // localhost) pointed every SSR admin at the developer machine.
+  assertNotContains(restAdapter, "RUSTOK_API_URL", `${restAdapterPath}: REST adapter must not invent a server-side API base URL`);
+  assertNotContains(restAdapter, "localhost", `${restAdapterPath}: REST adapter must not default to a local API origin`);
+  assertContains(restAdapter, "location().origin()", `${restAdapterPath}: REST adapter must resolve the served origin`);
+  assertContains(restAdapter, "browser-only", `${restAdapterPath}: REST adapter must reject non-browser callers`);
   assertNotContains(restAdapter, "#[server", `${restAdapterPath}: REST adapter must not contain server-function endpoints`);
 }
 

@@ -14,7 +14,7 @@ Leptos authentication context, protected route wrappers, BFF cookie management, 
 - `RefreshCredential::parse(value) -> Result<RefreshCredential, RefreshCookieError>`: Strict, redacted BFF envelope `tenant.token.seed`; both secret components are canonical nonzero 256-bit hex. Bare cookies are rejected.
 - `inspect_refresh_cookie_headers(headers) -> Result<Option<RefreshCredential>, RefreshCookieError>`: Inspects all Cookie headers; `Ok(None)` means absent, while malformed and duplicate credentials are errors.
 - `refresh_cookie_header(&RefreshCredential, secure: bool) -> String`: Constructs the HttpOnly envelope Set-Cookie header.
-- SSR-only `transport::exchange_refresh_token_ssr(RefreshCredential)`: Returns user, access session and rotated BFF credential; proof and seed never enter the serialized user/session payload.
+- SSR-only `transport::exchange_refresh_token_ssr(RefreshCredential, Option<&str>)`: Returns user, access session and rotated BFF credential; proof and seed never enter the serialized user/session payload.
 - `clear_refresh_cookie_header(secure: bool) -> String`: Constructs expired `Set-Cookie` header to invalidate session.
 - `session_id_from_access_token(token: &str) -> Option<String>`: Unverified payload parser extracting a session identifier; it is not authentication or a CSRF secret.
 
@@ -101,3 +101,11 @@ Client operations return typed `AuthError`; a failed transition is not a verifie
   projected sessions use startup discovery; malformed projected IDs fail
   closed. The native server function wire signatures change together with
   hydration assets; deploy matching builds.
+
+- SSR host helpers: `ui::leptos::ssr::verified_snapshot_from_headers` accepts
+  explicit `SnapshotTenant::CookieScoped` (Admin) or `RequestScoped { slug, id }`
+  (Storefront); the latter requires an independently resolved tenant. It relays
+  a successful exchange as a sensitive header, refuses ambient credentials
+  when Authorization is present, and preserves credentials on rejection.
+  `is_document_navigation`, `mark_private` and `apply_snapshot_cookie` share
+  navigation admission, cache policy and explicit handler cookie precedence.

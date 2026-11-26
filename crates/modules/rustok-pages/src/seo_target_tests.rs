@@ -226,6 +226,7 @@ async fn the_sitemap_lists_a_page_with_its_landing_image_and_omits_a_page_withou
 
 async fn sitemap(fixture: &Fixture) -> TestResult<Vec<SeoSitemapCandidateRecord>> {
     let runtime = SeoTargetRuntimeContext {
+        runtime_extensions: Default::default(),
         db: fixture.db.clone(),
         event_bus: fixture.event_bus.clone(),
         static_settings_reader: None,
@@ -249,6 +250,7 @@ async fn load(
     channel_slug: Option<&str>,
 ) -> TestResult<Option<SeoLoadedTargetRecord>> {
     let runtime = SeoTargetRuntimeContext {
+        runtime_extensions: Default::default(),
         db: fixture.db.clone(),
         event_bus: fixture.event_bus.clone(),
         static_settings_reader: None,

@@ -234,6 +234,7 @@ fn RbacRolesGridSection(roles: Vec<RbacRoleInfo>, locale: Option<String>) -> imp
             </div>
 
             <DataGrid
+                aria_label=t(loc_str, "rbac.roles.table", "Roles")
                 columns=columns
                 data=filtered_roles.into()
                 key_fn=|item: &RbacRoleInfo| item.slug.clone()
@@ -358,6 +359,7 @@ fn RbacPermissionsGridSection(
             </div>
 
             <DataGrid
+                aria_label=t(loc_str, "rbac.permissions.table", "Permissions")
                 columns=columns
                 data=filtered_rows.into()
                 key_fn=|item: &RbacPermissionRowViewModel| item.permission.clone()

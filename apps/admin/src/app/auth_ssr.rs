@@ -4,18 +4,22 @@ use axum::{
     middleware::Next,
     response::Response,
 };
-use rustok_auth_ui::ui::leptos::ServerAuthSnapshot;
+use rustok_auth_ui::ui::leptos::{
+    ServerAuthSnapshot,
+    ssr::{SnapshotTenant, apply_snapshot_cookie, is_document_navigation, mark_private, verified_snapshot_from_headers},
+};
 
-fn cookie_request_is_secure(headers: &HeaderMap) -> bool {
-    let forwarded_https = headers
-        .get("x-forwarded-proto")
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| value.eq_ignore_ascii_case("https"));
-    let origin_https = headers
-        .get(header::ORIGIN)
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| value.starts_with("https://"));
-    forwarded_https || origin_https
+/// Parse a single explicit Bearer authorization header. HTTP auth scheme names are
+/// case-insensitive; malformed and duplicate headers fail closed.
+/// Read one unambiguous header value. Duplicate values fail closed rather than
+/// letting different HTTP layers choose different CSRF or locale values.
+pub fn single_header_value(headers: &HeaderMap, name: &str) -> Option<String> {
+    let mut values = headers.get_all(name).iter();
+    let value = values.next()?.to_str().ok()?.trim();
+    if values.next().is_some() || value.is_empty() {
+        return None;
+    }
+    Some(value.to_string())
 }
 
 /// Parse a single explicit Bearer authorization header. HTTP auth scheme names are
@@ -48,58 +52,30 @@ pub fn bearer_tenant_slug_from_headers(headers: &HeaderMap) -> Option<String> {
     Some(value.to_string())
 }
 
-/// Exchange the HttpOnly BFF refresh cookie (set by the native auth
-/// server functions at sign-in) for a verified auth snapshot.
-///
-/// The refresh token is never readable by page JavaScript and never
-/// rendered into HTML: this host validates it server-to-server and
-/// exposes only the resulting short-lived access token and user
-/// profile to SSR rendering. The returned `Set-Cookie` value carries
-/// the rotated refresh envelope and must be attached to the response. A lost
-/// response can recover using the unchanged envelope inside backend grace.
-pub async fn verified_snapshot_from_headers(
-    headers: &HeaderMap,
-) -> (ServerAuthSnapshot, Option<String>) {
-    let cookie_headers = headers
-        .get_all(header::COOKIE)
-        .iter()
-        .map(|value| value.to_str())
-        .collect::<Result<Vec<_>, _>>();
-    let Ok(cookie_headers) = cookie_headers else {
-        return (ServerAuthSnapshot::default(), None);
-    };
-    let Ok(Some(credential)) =
-        rustok_auth_ui::core::inspect_refresh_cookie_headers(cookie_headers)
-    else {
-        // Invalid or duplicate credentials do not produce a verified SSR identity.
-        return (ServerAuthSnapshot::default(), None);
-    };
-
-    let secure = cookie_request_is_secure(headers);
-    match rustok_auth_ui::transport::exchange_refresh_token_ssr(credential).await
-    {
-        Ok((user, session, rotated)) => (
-            ServerAuthSnapshot {
-                session: Some(session),
-                user: Some(user),
-            },
-            Some(rustok_auth_ui::core::refresh_cookie_header(
-                &rotated, secure,
-            )),
-        ),
-        // An outage and a rejected credential are not distinguishable here. Preserve the
-        // cookie rather than silently destroying a potentially live session on failure.
-        Err(_) => (ServerAuthSnapshot::default(), None),
-    }
-}
-
 /// Auth-owned server functions consume and update the browser cookie themselves.
 fn auth_function_owns_cookie(path: &str) -> bool {
-    matches!(path,
-        "/api/fn/auth/sign-in" | "/api/fn/auth/sign-up" |
-        "/api/fn/auth/sign-out" | "/api/fn/auth/refresh-token" |
-        "/api/fn/auth/accept-invite" | "/api/fn/auth/forgot-password" |
-        "/api/fn/auth/current-user")
+    path.starts_with("/api/fn/auth/")
+}
+
+fn request_needs_snapshot(method: &Method, path: &str, headers: &HeaderMap) -> bool {
+    if auth_function_owns_cookie(path) || headers.contains_key(header::AUTHORIZATION) {
+        return false;
+    }
+    if matches!(path, "/health" | "/install" | "/favicon.ico")
+        || ["/assets/", "/pkg/", "/richtext/"].iter().any(|prefix| path.starts_with(prefix))
+    { return false; }
+    // Explicit page-builder consumers and existing cookie-based native calls.
+    if let Some(rest) = path.strip_prefix("/api/admin/pages/") {
+        let mut segments = rest.splitn(2, '/');
+        let page = segments.next().unwrap_or_default();
+        return !page.is_empty() && match segments.next() {
+            Some("preview") => method == Method::GET,
+            Some("builder/intents") => method == Method::POST,
+            _ => false,
+        };
+    }
+    if path.starts_with("/api/fn/") { return method == Method::POST; }
+    !path.starts_with("/api/") && is_document_navigation(method, headers)
 }
 
 /// Authenticate the request before SSR and update the BFF cookie.
@@ -126,38 +102,18 @@ pub async fn verify_auth_snapshot(mut request: Request<Body>, next: Next) -> Res
         response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
         return response;
     }
-    // An explicit Authorization header is the sole authority for API requests. Do not
-    // refresh or attach an ambient browser session as a second credential, and insert an
-    // anonymous snapshot because some API handlers still require the Extension extractor.
-    if request.headers().contains_key(header::AUTHORIZATION) {
-        request
-            .extensions_mut()
-            .insert(ServerAuthSnapshot::default());
-        return next.run(request).await;
-    }
-
-    let had_cookie = request.headers().contains_key(header::COOKIE);
-    let (snapshot, set_cookie) = verified_snapshot_from_headers(request.headers()).await;
+    let needs_snapshot = request_needs_snapshot(request.method(), request.uri().path(), request.headers());
+    let credential_request = request.headers().contains_key(header::COOKIE)
+        || request.headers().contains_key(header::AUTHORIZATION);
+    let (snapshot, set_cookie) = if needs_snapshot {
+        verified_snapshot_from_headers(request.headers(), SnapshotTenant::CookieScoped).await
+    } else { (ServerAuthSnapshot::default(), None) };
     request.extensions_mut().insert(snapshot);
-
     let mut response = next.run(request).await;
-    if had_cookie {
-        response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("private, no-store"));
-    }
-    if let Some(cookie) = set_cookie
-        && let Ok(mut value) = HeaderValue::from_str(&cookie)
-    {
-        value.set_sensitive(true);
-        // A handler's explicit session mutation wins over this snapshot.
-        let owns_cookie = response.headers().get_all(header::SET_COOKIE).iter().any(|header| {
-            header.to_str().ok().is_some_and(|value| {
-                value.split_once('=').is_some_and(|(name, _)| name.trim() == rustok_auth_ui::core::ADMIN_REFRESH_COOKIE)
-            })
-        });
-        if !owns_cookie {
-            response.headers_mut().append(header::SET_COOKIE, value);
-        }
-    }
+    if needs_snapshot || (credential_request && response.headers().get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok()).is_some_and(|value| value.starts_with("text/html")))
+    { mark_private(&mut response); }
+    apply_snapshot_cookie(&mut response, set_cookie);
     response
 }
 
@@ -200,6 +156,18 @@ mod tests {
         let snapshot = request_auth_snapshot(&parts);
         assert_eq!(snapshot.user.unwrap().id, "user-1");
         assert_eq!(snapshot.session.unwrap().tenant, "demo");
+    }
+
+    #[test]
+    fn single_header_value_rejects_duplicate_values() {
+        let mut headers = HeaderMap::new();
+        headers.append("x-csrf-token", HeaderValue::from_static("valid-token"));
+        assert_eq!(
+            single_header_value(&headers, "x-csrf-token").as_deref(),
+            Some("valid-token")
+        );
+        headers.append("x-csrf-token", HeaderValue::from_static("second-token"));
+        assert_eq!(single_header_value(&headers, "x-csrf-token"), None);
     }
 
     #[test]
@@ -259,10 +227,28 @@ mod tests {
         assert!(!auth_function_owns_cookie("/dashboard"));
     }
 
+    #[test]
+    fn assets_health_head_and_prefetch_do_not_rotate() {
+        let mut headers = HeaderMap::new();
+        headers.insert(header::ACCEPT, HeaderValue::from_static("text/html"));
+        assert!(request_needs_snapshot(&Method::GET, "/dashboard", &headers));
+        for path in ["/health", "/pkg/app.wasm", "/assets/app.css", "/richtext/frame", "/favicon.ico", "/install", "/api/other", "/api/fn/auth/refresh-token"] {
+            assert!(!request_needs_snapshot(&Method::GET, path, &headers), "{path}");
+        }
+        assert!(!request_needs_snapshot(&Method::HEAD, "/dashboard", &headers));
+        headers.insert("sec-purpose", HeaderValue::from_static("prefetch"));
+        assert!(!request_needs_snapshot(&Method::GET, "/dashboard", &headers));
+        headers.remove("sec-purpose");
+        assert!(request_needs_snapshot(&Method::POST, "/api/admin/pages/123/builder/intents", &headers));
+        assert!(request_needs_snapshot(&Method::GET, "/api/admin/pages/123/preview", &headers));
+        headers.insert(header::AUTHORIZATION, HeaderValue::from_static("Bearer explicit"));
+        assert!(!request_needs_snapshot(&Method::POST, "/api/admin/pages/123/builder/intents", &headers));
+    }
+
     #[tokio::test]
     async fn missing_refresh_cookie_yields_anonymous_snapshot() {
         let headers = HeaderMap::new();
-        let (snapshot, set_cookie) = verified_snapshot_from_headers(&headers).await;
+        let (snapshot, set_cookie) = verified_snapshot_from_headers(&headers, SnapshotTenant::CookieScoped).await;
         assert_eq!(snapshot, ServerAuthSnapshot::default());
         assert!(set_cookie.is_none());
     }
@@ -273,7 +259,7 @@ mod tests {
         let wire = format!("rustok-admin-refresh-v1=shop.{}.{}", "a1".repeat(32), "b2".repeat(32));
         headers.append(header::COOKIE, HeaderValue::from_str(&wire).unwrap());
         headers.append(header::COOKIE, HeaderValue::from_str(&wire).unwrap());
-        let (snapshot, set_cookie) = verified_snapshot_from_headers(&headers).await;
+        let (snapshot, set_cookie) = verified_snapshot_from_headers(&headers, SnapshotTenant::CookieScoped).await;
         assert_eq!(snapshot, ServerAuthSnapshot::default());
         assert!(set_cookie.is_none());
 
@@ -282,7 +268,7 @@ mod tests {
             header::COOKIE,
             HeaderValue::from_static("rustok-admin-refresh-v1=invalid"),
         );
-        let (snapshot, set_cookie) = verified_snapshot_from_headers(&headers).await;
+        let (snapshot, set_cookie) = verified_snapshot_from_headers(&headers, SnapshotTenant::CookieScoped).await;
         assert_eq!(snapshot, ServerAuthSnapshot::default());
         assert!(set_cookie.is_none());
     }

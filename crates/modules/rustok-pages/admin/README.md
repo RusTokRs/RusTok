@@ -118,8 +118,13 @@ metadata. Unknown receipts remain read-only and do not resubmit operations.
   serves the capability and preview calls, which read no session. The editor's route draft is
   loaded separately with an owner built from the current user and the tenant
   (`load_route_draft(..., draft_owner.as_ref())`), so a session that belongs to another caller is
-  not restored. Do not thread the facade's snapshot owner into the store: it would add a second,
-  unverified attribution without changing which sessions can be read or committed.
+  not restored. Unattributed legacy records are not claimable by authenticated callers: the store
+  cannot prove their original owner and fails closed rather than silently adopting the first
+  current user. The server-preview route also re-fetches the page and checks its current
+  document_readable authorization before loading any supplied draft token, so revocation or an
+  ownership change cannot leave a stale preview read path. Do not thread the facade's snapshot
+  owner into the store: it would add a second, unverified attribution without changing which
+  sessions can be read or committed.
 
 Strict SSR persistence checkpoints the post-command controller before Pages I/O.
 An explicit retry uses the prepared controller and the Pages idempotency key
@@ -127,3 +132,8 @@ rather than reapplying the original command. Unknown outcomes keep preparation.
 
 If the final revision observation or checkpoint completion fails, the transport
 returns an unknown outcome instead of treating the original write as rejected.
+The hydrated facade also preserves unknown outcomes for server-function
+transport/decoding failures and for failed post-save observations. A save
+acknowledgement must identify the requested readable page and its persisted
+revision before the surrounding page state is updated. An explicit outer
+save classification takes precedence over nested transport error text.

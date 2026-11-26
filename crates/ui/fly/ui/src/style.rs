@@ -1,6 +1,7 @@
 use fly::ComponentPatch;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
@@ -283,6 +284,7 @@ pub fn style_patch(
     let mut style = Map::new();
     let mut remove_style_properties = Vec::new();
     let mut errors = Vec::new();
+    let mut seen = BTreeSet::new();
 
     for entry in entries {
         let property = entry.property.trim().to_ascii_lowercase();
@@ -297,8 +299,23 @@ pub fn style_patch(
             });
             continue;
         }
+        if !seen.insert(property.clone()) {
+            errors.push(StyleInputError {
+                property,
+                message: "duplicate CSS property in style patch".to_string(),
+            });
+            continue;
+        }
+        // Keep removal available for imported properties that the renderer no longer admits.
         if value.is_empty() {
             remove_style_properties.push(property);
+            continue;
+        }
+        if !fly::css_property_allowed(&property) {
+            errors.push(StyleInputError {
+                property,
+                message: "CSS property is not supported by the renderer".to_string(),
+            });
             continue;
         }
         if !safe_style_value(value) {
@@ -365,10 +382,8 @@ fn property(
 fn validate_value(descriptor: &StylePropertyDescriptor, value: &str) -> Result<(), String> {
     match descriptor.value_kind {
         StyleValueKind::Length => validate_length(value),
-        StyleValueKind::Number => value
-            .parse::<f64>()
-            .map(|_| ())
-            .map_err(|_| "expected a numeric value".to_string()),
+        StyleValueKind::Number if value.parse::<f64>().is_ok_and(f64::is_finite) => Ok(()),
+        StyleValueKind::Number => Err("expected a finite numeric value".to_string()),
         StyleValueKind::Color => validate_color(value),
         StyleValueKind::Keyword if !descriptor.keywords.is_empty() => {
             if descriptor.keywords.iter().any(|keyword| keyword == value) {
@@ -396,7 +411,7 @@ fn validate_length(value: &str) -> Result<(), String> {
     ];
     let unit = units.iter().find(|unit| value.ends_with(**unit)).copied();
     let numeric = unit.map_or(value, |unit| &value[..value.len() - unit.len()]);
-    if numeric.trim().parse::<f64>().is_ok() && (unit.is_some() || numeric.trim() == "0") {
+    if numeric.parse::<f64>().is_ok_and(f64::is_finite) && (unit.is_some() || numeric == "0") {
         Ok(())
     } else {
         Err("expected a CSS length such as 24px, 2rem, 50%, auto, or 0".to_string())
@@ -521,6 +536,85 @@ mod tests {
         .expect("patch");
         assert_eq!(patch.style.expect("style")["width"], "320px");
         assert_eq!(patch.remove_style_properties, vec!["color"]);
+    }
+
+    #[test]
+    fn typed_style_patch_requires_finite_numbers_and_adjacent_units() {
+        for (property, invalid_values) in [
+            ("opacity", ["NaN", "Infinity", "-inf", "1e999"]),
+            ("width", ["NaNpx", "Infinitypx", "1e999px", "24 px"]),
+        ] {
+            for value in invalid_values {
+                assert!(
+                    style_patch([StyleEntry {
+                        property: property.to_string(),
+                        value: value.to_string(),
+                    }])
+                    .is_err(),
+                    "{property}: {value}"
+                );
+            }
+        }
+        let patch = style_patch([
+            StyleEntry {
+                property: "opacity".into(),
+                value: "0.5".into(),
+            },
+            StyleEntry {
+                property: "top".into(),
+                value: "-12.5px".into(),
+            },
+            StyleEntry {
+                property: "width".into(),
+                value: "24px".into(),
+            },
+        ])
+        .expect("finite styles");
+        let style = patch.style.expect("style");
+        assert_eq!(style["opacity"], "0.5");
+        assert_eq!(style["top"], "-12.5px");
+        assert_eq!(style["width"], "24px");
+    }
+
+    #[test]
+    fn typed_style_patch_rejects_renderer_denied_writes_but_allows_removal() {
+        for property in ["behavior", "-moz-binding", "-ms-behavior", "expression", "--custom"] {
+            assert!(
+                style_patch([StyleEntry {
+                    property: property.into(),
+                    value: "none".into(),
+                }])
+                .is_err(),
+                "{property}"
+            );
+            let patch = style_patch([StyleEntry {
+                property: property.into(),
+                value: String::new(),
+            }])
+            .expect("remove imported property");
+            assert_eq!(patch.remove_style_properties, vec![property.to_string()]);
+            assert!(patch.style.is_none());
+        }
+    }
+
+    #[test]
+    fn typed_style_patch_rejects_duplicate_normalized_properties() {
+        for (first, second) in [("20px", ""), ("", "20px"), ("20px", "30px"), ("", "")] {
+            let errors = style_patch([
+                StyleEntry {
+                    property: " Width ".into(),
+                    value: first.into(),
+                },
+                StyleEntry {
+                    property: "width".into(),
+                    value: second.into(),
+                },
+            ])
+            .err()
+            .expect("duplicate operation");
+            assert_eq!(errors.len(), 1);
+            assert_eq!(errors[0].property, "width");
+        }
     }
 
     #[test]

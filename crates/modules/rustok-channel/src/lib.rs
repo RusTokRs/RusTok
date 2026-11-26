@@ -19,6 +19,7 @@ pub mod policy;
 pub mod ports;
 pub mod resolution;
 pub mod services;
+pub mod status;
 pub mod target_type;
 
 #[cfg(test)]
@@ -33,6 +34,7 @@ pub use dto::{
     CreateChannelRequest, CreateChannelResolutionPolicySetInput, CreateChannelResolutionRuleInput,
     CreateChannelTargetInput, CreateResolutionPolicySetRequest, CreateResolutionRuleRequest,
     ReorderChannelResolutionRulesInput, ReorderResolutionRulesRequest,
+    SetChannelActiveRequest, UpdateChannelInput, UpdateChannelRequest,
     UpdateChannelResolutionRuleInput, UpdateChannelTargetInput, UpdateResolutionRuleRequest,
     create_channel_input, create_resolution_policy_set_input, create_resolution_rule_input,
     update_resolution_rule_input,
@@ -56,6 +58,7 @@ pub use resolution::{
     ChannelResolutionOrigin, ChannelResolver, RequestFacts, ResolutionDecision, ResolutionOutcome,
     ResolutionStage, ResolutionTraceStep, TargetSurface,
 };
+pub use status::ChannelStatus;
 pub use rustok_channel_ports::{
     CHANNEL_INDEX_IDENTITY_READ_CLAIM, ChannelIndexIdentityReadPort, ChannelIndexIdentitySelector,
     ChannelIndexIdentitySnapshot,

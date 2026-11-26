@@ -12,9 +12,15 @@ Detailed architecture, FFA boundary guarantees, and parity rules are documented 
 ## Workspace Structure
 
 - `tokens/`: Design tokens specification:
-  - `tokens.json`: Canonical machine-readable tokens (radii, spacing, palette, shadows).
-  - `base.css`: CSS custom properties for web runtimes.
+  - `tokens.json`: Canonical machine-readable tokens (radii, spacing, palette, shadows). This is the only
+    radius scale in the system.
+  - `base.css`: CSS custom properties for web runtimes. Both hosts import it (`apps/admin/input.css`,
+    `apps/storefront/assets/input.css`) and both Tailwind configs derive `borderRadius` from
+    `var(--iu-radius-*)`, so the radius a browser renders is the radius Flutter gets. The dark block
+    targets `.dark` (what the host sets) and `[data-theme="dark"]` (attribute-based hosts).
   - `rustok_tokens.g.dart`: Generated Dart tokens for Flutter (`npm run generate:tokens:flutter`).
+  - `npm run verify:ui:token-parity` pins the chain tokens.json → base.css → Tailwind → generated
+    artifacts; a host that invents its own `--radius` fails it.
 - `next/`: Next.js (React) component primitives.
 - `docs/`: Component API contracts and design specs.
 

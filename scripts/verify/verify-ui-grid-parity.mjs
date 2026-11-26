@@ -34,7 +34,7 @@
  * so a closed gap cannot leave a stale row behind.
  */
 
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -289,6 +289,41 @@ const TS_ONLY = new Map([
   // server-function parameters and never parse a URL, so a Rust twin would be a stub nobody calls.
 ]);
 
+/**
+ * TypeScript modules that no Rust module answers, and what each one exports.
+ *
+ * The comparison above only sees the files listed in `MODULES`, so a new `.ts` file used to enter the
+ * package with no decision taken at all — that is exactly how `order.ts` shipped without anyone
+ * writing down why Rust has no twin. Every file now has to be compared, be the barrel, or say here
+ * why it is boundary-only; and the export list is pinned symbol for symbol, so a new function in
+ * one of these files fails the gate until somebody decides what it is.
+ */
+const TS_ONLY_FILES = new Map([
+  [
+    "order.ts",
+    {
+      reason:
+        "Rust compares `str` by UTF-8 bytes, which is code-point order, so `Ord` on `str` is the whole " +
+        "implementation there. TypeScript's `<` compares UTF-16 code units and diverges outside the " +
+        "Basic Multilingual Plane, so the twin is a comparator, not a symbol anybody mirrors in Rust.",
+      exports: ["compareCodePoints"],
+    },
+  ],
+  [
+    "url.ts",
+    {
+      reason:
+        "The twin of `applyQueryPairs` is `apply_ui_query_pairs` in `rustok-ui-core`, asserted by name " +
+        "below; `queryParam` reads one key out of a route string, which only a browser host does, and " +
+        "Rust surfaces receive typed server-function parameters instead of parsing URLs.",
+      exports: ["QueryPair", "applyQueryPairs", "queryParam"],
+    },
+  ],
+]);
+
+/** The package barrel: it may re-export, never define. */
+const BARREL_FILE = "index.ts";
+
 // `url.ts` mirrors the shared UI-core helper rather than the grid crate, so it is asserted directly.
 const URL_PAIR = {
   rustPath: "crates/ui/rustok-ui-core/src/ui.rs",
@@ -350,6 +385,57 @@ for (const [key, symbol] of tsSurface) {
   lines.push(
     `${symbol.file}: exported TypeScript symbol \`${name}\` has no Rust twin; add a reviewed PAIRS or TS_ONLY row`,
   );
+}
+
+// Every TypeScript module needs a decision, and every TS-only module keeps an exact export list.
+{
+  const tsFiles = readdirSync(tsRoot)
+    .filter((file) => file.endsWith(".ts"))
+    .sort();
+  const comparedTsFiles = new Set(MODULES.map(([, , tsFile]) => tsFile));
+
+  for (const file of tsFiles) {
+    if (file === BARREL_FILE || comparedTsFiles.has(file) || TS_ONLY_FILES.has(file)) continue;
+    lines.push(
+      `${file}: TypeScript module is neither compared against Rust nor listed in TS_ONLY_FILES; say why it has no twin`,
+    );
+  }
+
+  for (const [file, entry] of TS_ONLY_FILES) {
+    if (comparedTsFiles.has(file)) {
+      lines.push(`TS_ONLY_FILES row \`${file}\` names a module that MODULES already compares`);
+    }
+    if (typeof entry.reason !== "string" || entry.reason.trim().length < 30) {
+      lines.push(`TS_ONLY_FILES row \`${file}\` needs a reason that says why it has no Rust twin`);
+    }
+    if (!tsFiles.includes(file)) {
+      lines.push(`TS_ONLY_FILES row \`${file}\` names a module that no longer exists`);
+      continue;
+    }
+    const declared = new Set(entry.exports);
+    const actual = tsPublicSymbols(read(tsRoot, file)).map((symbol) => symbol.name);
+    for (const name of actual) {
+      if (!declared.has(name)) {
+        lines.push(
+          `${file}: \`${name}\` is exported but not listed in TS_ONLY_FILES; a new boundary symbol needs a decision`,
+        );
+      }
+    }
+    for (const name of declared) {
+      if (!actual.includes(name)) {
+        lines.push(`${file}: TS_ONLY_FILES lists \`${name}\`, which the module no longer exports`);
+      }
+    }
+  }
+
+  const barrel = read(tsRoot, BARREL_FILE);
+  const definesLocally =
+    /^export\s+(?:default\s+)?(?:declare\s+)?(?:async\s+)?(?:function|class|const|let|var|interface|type|enum)\b/m.test(
+      barrel,
+    );
+  if (definesLocally) {
+    lines.push(`${BARREL_FILE}: the package barrel defines a symbol instead of re-exporting one`);
+  }
 }
 
 // The URL pair is asserted by name because its Rust side lives in another crate.

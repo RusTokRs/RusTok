@@ -8,6 +8,7 @@
 
 - resolve SEO page context for `page`, `product`, `blog_post`, `forum_category`, and `forum_topic`
 - consume registry-backed SEO target providers through `rustok-seo-targets` and the shared runtime extensions store
+- forward the host capability snapshot as `SeoTargetRuntimeContext.runtime_extensions` so owner providers retain their configured typed dependencies (for example Forum's Taxonomy port); SEO does not construct domain-specific providers itself. The snapshot regression is authored, not executed without Cargo
 - keep public forum topic SEO resolution channel-aware when a topic is restricted by forum channel access
 - resolve effective metadata through explicit SEO > template-generated SEO > domain/entity fallback
 - run bulk remediation with safe apply modes for preview, missing-only materialization, generated-only overwrite, and explicit-force overwrite; bulk apply gates **per field** — safe modes never overwrite operator-authored values, materialization never freezes canonical/structured data without an explicit patch, and rows with nothing left to change finish as `skipped` (reported via `skipped_count`), never `failed`

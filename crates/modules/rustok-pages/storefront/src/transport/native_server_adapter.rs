@@ -85,7 +85,7 @@ async fn storefront_pages_native(
             .or_else(|| channel_context.as_ref().map(|ctx| ctx.id));
         if let Some(channel_id) = channel_id {
             let enabled = ChannelService::new(runtime_ctx.db_clone())
-                .is_module_enabled(channel_id, MODULE_SLUG)
+                .is_module_enabled_for_tenant(tenant_id, channel_id, MODULE_SLUG)
                 .await
                 .map_err(ServerFnError::new)?;
             if !enabled {

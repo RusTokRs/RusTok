@@ -9,6 +9,7 @@ use rustok_auth::{
 };
 use rustok_core::UserRole;
 use rustok_cache::CacheService;
+use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
     QueryOrder, QuerySelect,
@@ -17,8 +18,11 @@ use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::models::{oauth_apps, oauth_consents, oauth_tokens, tenants, users};
+use crate::services::cache_runtime::ensure_cache_service;
+use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::oauth_app::{self, OAuthAppService};
 use crate::services::rbac_request_scope::permissions_for;
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 mod super_admin_guard;
 mod user_admin;
@@ -130,18 +134,19 @@ pub struct ServerAuthAdminMutationProvider {
     db: DatabaseConnection,
     auth_config: crate::auth::AuthConfig,
     cache_service: CacheService,
+    event_bus: TransactionalEventBus,
 }
 
 impl ServerAuthAdminMutationProvider {
     pub fn new(
-        db: DatabaseConnection,
+        runtime_ctx: &ServerRuntimeContext,
         auth_config: crate::auth::AuthConfig,
-        cache_service: CacheService,
     ) -> Self {
         Self {
-            db,
+            db: runtime_ctx.db_clone(),
             auth_config,
-            cache_service,
+            cache_service: ensure_cache_service(runtime_ctx),
+            event_bus: transactional_event_bus_from_context(runtime_ctx),
         }
     }
 

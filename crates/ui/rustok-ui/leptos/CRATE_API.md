@@ -18,7 +18,7 @@
 - **Feedback & Status**: `Alert`, `Badge`, `Progress`, `Spinner`, `Skeleton`.
 - **Layout & Structure**: `Card` (`CardHeader`, `CardTitle`, `CardDescription`, `CardAction`, `CardContent`, `CardFooter`), `Label`, `Separator`, `Tabs` (`TabsList`, `TabsTrigger`, `TabsContent`).
 - **Overlays**: `Dialog` (`DialogTrigger`, `DialogContent`, `DialogHeader`, `DialogTitle`, `DialogDescription`, `DialogFooter`, `DialogClose`, `DialogOverlay`, `DialogPortal`).
-- **Data Display & Navigation**: `Avatar`, `TableOfContents`.
+- **Data Display & Navigation**: `Avatar`, `TableOfContents`, `Icon` (`IconName` — Lucide path data inlined, `currentColor` stroke, decorative unless `aria_label` is given).
 
 ### Re-exported Core Types & Contracts
 - All core types and tokens from `rustok-ui`:

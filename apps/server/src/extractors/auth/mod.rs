@@ -159,7 +159,9 @@ fn validate_oauth_token_scopes(
     app: &oauth_apps::Model,
     token_scopes: &[String],
 ) -> Result<(), (StatusCode, &'static str)> {
-    let allowed_scopes = app.scopes_list();
+    let allowed_scopes = app.decoded_scopes().map_err(|_| {
+        (StatusCode::UNAUTHORIZED, "Stored OAuth app scopes are invalid")
+    })?;
     if token_scopes
         .iter()
         .all(|scope| scope_matches(&allowed_scopes, scope))
@@ -195,7 +197,9 @@ async fn validate_active_user_consent(
             "OAuth token predates the current consent epoch",
         ));
     }
-    let consent_scopes = consent.scopes_list();
+    let consent_scopes = consent.scopes_list().map_err(|_| {
+        (StatusCode::UNAUTHORIZED, "Stored OAuth consent scopes are invalid")
+    })?;
     if token_scopes
         .iter()
         .all(|scope| scope_matches(&consent_scopes, scope))
@@ -211,8 +215,9 @@ async fn validate_active_user_consent(
 
 /// Fail-closed registration fence for already-issued OAuth access JWTs.
 /// The signed `jti` must name a live access row whose hash, client,
-/// tenant, grant, and subject bind the presented credential. Revoking
-/// that row (or its family) therefore invalidates the JWT before TTL.
+/// tenant, grant, subject, and exact issued scopes bind the credential.
+/// Revoking that row (or its family) invalidates the JWT before TTL.
+#[allow(clippy::too_many_arguments)]
 async fn validate_oauth_access_token_registration(
     db: &DatabaseConnection,
     app_id: uuid::Uuid,
@@ -221,6 +226,7 @@ async fn validate_oauth_access_token_registration(
     jti: Option<uuid::Uuid>,
     access_token: &str,
     expected_user_id: Option<uuid::Uuid>,
+    expected_scopes: &[String],
 ) -> Result<oauth_tokens::Model, (StatusCode, &'static str)> {
     let jti = jti.ok_or((
         StatusCode::UNAUTHORIZED,
@@ -246,6 +252,15 @@ async fn validate_oauth_access_token_registration(
         return Err((
             StatusCode::UNAUTHORIZED,
             "OAuth access token subject mismatch",
+        ));
+    }
+    let registered_scopes = row.decoded_scopes().map_err(|_| {
+        (StatusCode::UNAUTHORIZED, "Stored OAuth access token scopes are invalid")
+    })?;
+    if registered_scopes.as_slice() != expected_scopes {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            "OAuth access token scopes mismatch",
         ));
     }
     Ok(row)
@@ -344,6 +359,7 @@ async fn resolve_service_token_permissions(
         jti,
         access_token,
         None,
+        token_scopes,
     )
     .await?;
 
@@ -493,6 +509,7 @@ pub async fn resolve_current_user_from_access_token(
             claims.jti,
             access_token,
             Some(claims.sub),
+            &claims.scopes,
         )
         .await?;
         // The durable registration row retains subsecond issuance time;

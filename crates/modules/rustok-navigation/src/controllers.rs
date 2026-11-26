@@ -267,7 +267,7 @@ async fn ensure_enabled(
         return Ok(());
     }
     let enabled = ChannelService::new(runtime.db.clone())
-        .is_module_enabled(channel_id, "navigation")
+        .is_module_enabled_for_tenant(request.tenant_id, channel_id, "navigation")
         .await
         .map_err(|error| {
             tracing::error!(%channel_id, %error, "navigation channel gate failed");

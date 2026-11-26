@@ -6,6 +6,7 @@ use uuid::Uuid;
 use crate::error::{ChannelError, ChannelResult};
 use crate::policy::{ChannelResolutionRuleDefinition, ResolutionAction, ResolutionPredicate};
 use crate::resolution::TargetSurface;
+use crate::status::ChannelStatus;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CreateChannelInput {
@@ -40,6 +41,40 @@ impl From<CreateChannelInput> for CreateChannelRequest {
             settings: input.settings,
         }
     }
+}
+
+/// Patch payload for an existing channel.
+///
+/// Every field is optional: omitted fields keep their stored value, and an
+/// explicitly empty `name` is rejected by the owner rather than silently ignored.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct UpdateChannelRequest {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub settings: Option<Value>,
+}
+
+/// Owner-validated patch for an existing channel.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct UpdateChannelInput {
+    pub name: Option<String>,
+    pub settings: Option<Value>,
+}
+
+impl From<UpdateChannelRequest> for UpdateChannelInput {
+    fn from(input: UpdateChannelRequest) -> Self {
+        Self {
+            name: input.name,
+            settings: input.settings,
+        }
+    }
+}
+
+/// Request to activate or deactivate a channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SetChannelActiveRequest {
+    pub is_active: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -211,12 +246,15 @@ pub fn create_resolution_rule_input(
     Ok(CreateChannelResolutionRuleInput {
         priority,
         is_active,
+        // Validation is part of building the payload: the definition the caller
+        // sees is exactly the normalized definition the owner stores.
         definition: ChannelResolutionRuleDefinition {
             predicates,
             action: ResolutionAction::ResolveToChannel {
                 channel_id: action_channel_id,
             },
-        },
+        }
+        .validated()?,
     })
 }
 
@@ -258,7 +296,8 @@ pub struct ChannelResponse {
     pub name: String,
     pub is_active: bool,
     pub is_default: bool,
-    pub status: String,
+    /// Publication state derived from `is_active`; it is never stored separately.
+    pub status: ChannelStatus,
     pub settings: Value,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -365,7 +404,7 @@ mod tests {
             vec![
                 ResolutionPredicate::HostEquals("shop.example.test".to_string()),
                 ResolutionPredicate::SurfaceIs(TargetSurface::Http),
-                ResolutionPredicate::LocaleEquals("ru_by".to_string()),
+                ResolutionPredicate::LocaleEquals("ru-by".to_string()),
             ]
         );
     }

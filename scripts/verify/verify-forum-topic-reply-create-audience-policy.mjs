@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { containsMarker } from "./lib/forum-source-verification.mjs";
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -20,7 +21,7 @@ function read(relativePath) {
 }
 
 function requireText(source, marker, message) {
-  if (!source.includes(marker)) failures.push(message);
+  if (!containsMarker(source, marker)) failures.push(message);
 }
 
 function rejectText(source, marker, message) {
@@ -122,7 +123,7 @@ for (const marker of [
   "lock_category_tree_in_tx(&txn, tenant_id)",
   "lock_topic_reply_create_audience_in_tx(&txn, tenant_id, topic_id)",
   "format!(\"{tenant_id}:{topic_id}:reply-create\")",
-  "load_category_reply_create_audience_policy(&txn, tenant_id, topic.category_id)",
+  "load_category_reply_create_audience_policy( self.taxonomy_port.as_ref(), &txn, tenant_id, topic.category_id, )",
   "forum_topic_reply_create_audience_policy::Entity::delete_many()",
   "if !constraints_are_empty(&constraints)",
   "load_topic_reply_create_audience_policy_for_topic",
@@ -144,7 +145,7 @@ for (const forbidden of [
 }
 
 for (const marker of [
-  "load_topic_reply_create_audience_policy_for_topic(&self.db, tenant_id, &topic)",
+  "load_topic_reply_create_audience_policy_for_topic( self.taxonomy_port.as_ref(), &self.db, tenant_id, &topic, )",
   "for layer in policy.inherited_category_layers",
   "if let Some(constraints) = policy.configured_constraints",
   "denied_by_category_id: Some(layer.category_id)",
@@ -159,11 +160,8 @@ const topicIndex = authorization.indexOf("if let Some(constraints) = policy.conf
 if (categoryIndex < 0 || topicIndex < 0 || categoryIndex > topicIndex) {
   failures.push("reply-create authorization must evaluate category layers before the topic layer");
 }
-const requireIndex = facade.indexOf(".require(tenant_id, topic_id, &security, context)");
-const rawOwnerIndex = facade.indexOf(".create_command(tenant_id, security, topic_id, input)");
-if (requireIndex < 0 || rawOwnerIndex < 0 || requireIndex > rawOwnerIndex) {
-  failures.push("topic reply-create narrowing must remain before the raw owner command");
-}
+requireText(facade, ".create_command_with_audience_authorization(", "reply facade must delegate transactional audience authorization");
+requireText(facade, "&self.create_audience", "reply facade must retain its configured audience owner");
 
 for (const marker of [
   "pub mod forum_topic_reply_create_audience_policy;",
@@ -198,15 +196,8 @@ for (const marker of [
   requireText(test, marker, `topic reply-create SQLite proof is missing ${marker}`);
 }
 
-for (const marker of [
-  "# FORUM-20AX topic-local reply-create audience narrowing",
-  "source-ready / unvalidated",
-  "topic can narrow but never broaden",
-  "does not read or mutate `forum_topic_audience_*` visibility rows",
-  "canonical `crates/modules/rustok-forum/docs/implementation-plan.md` is intentionally not rewritten",
-  "were not run by the implementation agent",
-]) {
-  requireText(note, marker, `FORUM-20AX owner note is missing ${marker}`);
+for (const marker of ["### Selected hierarchy for create admission", "Rust tests remain uncompiled/unexecuted", "topic can narrow but never broaden"]) {
+  requireText(note, marker, `create admission documentation is missing ${marker}`);
 }
 for (const marker of [
   "ForumTopicReplyCreateAudiencePolicyService",
