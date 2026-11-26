@@ -209,7 +209,8 @@ Invite acceptance uses an unlocked ledger lookup only to locate the issuer,
 then locks the issuer before the exact invitation and revalidates the digest,
 account epoch and revocation under those fences. This avoids the inverse
 issuer-delete/FK SET NULL lock order; committed consumption is rejected before
-module/RBAC locks, with the unique receipt insert retained as final authority.
+password hashing and again under the ledger fence before module/RBAC locks,
+with the unique receipt insert retained as final authority.
 SQLite starts with the user write fence. PostgreSQL contention is unverified.
 
 Before invoking the email sender, the host re-reads the active account and
@@ -231,7 +232,13 @@ Email-change challenges bind the database-owned account recovery revision,
 like reset and verification JWTs. Legacy pending email changes are removed
 at migration; no revision backfill or compatibility reader is provided.
 Recovery mutations recheck credential expiry before requesting commit and
-roll back late transitions; this does not establish durable clock safety.
+roll back late transitions. Reset, verification and invite also repeat live JWT
+validation after blocking work and at the final observation; invite issuance
+revalidates its signed token before commit. Email-change confirmation and
+background dispatch reject future-dated challenges; invite acceptance rejects
+future-dated ledger rows. These are observed boundaries, not a guarantee of
+validity at the database commit instant or durable clock safety. Source
+regressions for future-dated credentials and early invite replay are unrun.
 Verification records the corroborated post-lock timestamp. Email-change
 confirmation uses the unique mailbox index as the conflict authority and a
 savepoint to consume a conflicting challenge without changing the account.

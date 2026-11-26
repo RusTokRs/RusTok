@@ -613,7 +613,7 @@ async fn recovery_email_admitted(
     if rustok_auth::application_clock::check_local().is_err() {
         return false;
     }
-    let expires_at = match &credential {
+    let window = match &credential {
         RecoveryEmailCredential::PasswordReset { config, token, recipient } => {
             let Ok(claims) = crate::auth::decode_password_reset_token(config, token) else {
                 return false;
@@ -628,7 +628,7 @@ async fn recovery_email_admitted(
             {
                 return false;
             }
-            Some(claims.expires_at)
+            Some((None, claims.expires_at))
         }
         RecoveryEmailCredential::Verification { config, token, recipient } => {
             let Ok(claims) = crate::auth::decode_email_verification_token(config, token) else {
@@ -643,24 +643,24 @@ async fn recovery_email_admitted(
             {
                 return false;
             }
-            Some(claims.expires_at)
+            Some((None, claims.expires_at))
         }
         RecoveryEmailCredential::EmailChange { tenant_id, user_id, recipient, token_hash, expires_at } => {
-            match super::auth_email_change::pending_email_change_deadline(
+            match super::auth_email_change::pending_email_change_window(
                 db, *tenant_id, *user_id, recipient, token_hash,
             ).await {
-                Ok(Some(stored)) => Some((*expires_at).min(stored)),
+                Ok(Some((created_at, stored))) => Some((Some(created_at), (*expires_at).min(stored))),
                 _ => None,
             }
         }
     };
-    let Some(expires_at) = expires_at else { return false; };
+    let Some((not_before, expires_at)) = window else { return false; };
     // Independently persist the final database-corroborated observation.
     // No domain transaction or business row lock is held during this wait.
     let Ok(verified_at) = rustok_auth::application_clock::admit_now(db).await else {
         return false;
     };
-    if verified_at >= expires_at {
+    if verified_at >= expires_at || not_before.is_some_and(|created_at| verified_at < created_at) {
         return false;
     }
     // The clock admission itself can wait. Revalidate the live JWT key
@@ -1182,6 +1182,15 @@ mod tests {
         };
         dispatch(opaque(now + chrono::Duration::minutes(10)), true).await;
         dispatch(opaque(now - chrono::Duration::seconds(1)), false).await;
+        auth_email_change_requests::ActiveModel {
+            id: Set(challenge.id), created_at: Set((now + chrono::Duration::minutes(1)).into()),
+            ..Default::default()
+        }.update(&db).await.unwrap();
+        dispatch(opaque(now + chrono::Duration::minutes(10)), false).await;
+        auth_email_change_requests::ActiveModel {
+            id: Set(challenge.id), created_at: Set(now.into()),
+            ..Default::default()
+        }.update(&db).await.unwrap();
         auth_email_change_requests::ActiveModel {
             id: Set(challenge.id), expires_at: Set((now - chrono::Duration::seconds(1)).into()),
             ..Default::default()

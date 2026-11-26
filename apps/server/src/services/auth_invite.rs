@@ -142,7 +142,23 @@ fn invite_ledger_matches_claims(
     };
     let ledger_expires_at = issued.expires_at.with_timezone(&Utc);
 
-    issued_email == email && ledger_expires_at > now && ledger_expires_at <= token_expires_at
+    issued_email == email
+        && issued.created_at.with_timezone(&Utc) <= now
+        && ledger_expires_at > now
+        && ledger_expires_at <= token_expires_at
+}
+
+async fn invite_already_consumed(
+    db: &impl ConnectionTrait,
+    tenant_id: uuid::Uuid,
+    token_hash: &str,
+) -> Result<bool, sea_orm::DbErr> {
+    Ok(auth_invite_consumptions::Entity::find()
+        .filter(auth_invite_consumptions::Column::TenantId.eq(tenant_id))
+        .filter(auth_invite_consumptions::Column::TokenHash.eq(token_hash))
+        .one(db)
+        .await?
+        .is_some())
 }
 
 impl AuthLifecycleService {
@@ -181,7 +197,8 @@ impl AuthLifecycleService {
             return Err(InviteAcceptanceError::InvalidToken);
         }
 
-        let expires_at = DateTime::<Utc>::from_timestamp(claims.exp as i64, 0)
+        let expires_at = i64::try_from(claims.exp).ok()
+            .and_then(|seconds| DateTime::<Utc>::from_timestamp(seconds, 0))
             .ok_or(InviteAcceptanceError::InvalidToken)?;
         if expires_at <= admitted_at {
             return Err(InviteAcceptanceError::InvalidToken);
@@ -211,6 +228,15 @@ impl AuthLifecycleService {
                 && invite.role == ledger_role
                 && invite_ledger_matches_claims(invite, &email, expires_at, admitted_at))
             .ok_or(InviteAcceptanceError::InvalidToken)?;
+
+        // A committed receipt is terminal even when the account was deleted.
+        // Reject ordinary replays before expensive password preparation. The
+        // transaction still repeats the lookup under the invitation fence.
+        if invite_already_consumed(ctx.db(), tenant_id, &token_hash).await
+            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?
+        {
+            return Err(InviteAcceptanceError::InvalidToken);
+        }
 
         let prepared = AuthLifecycleService::prepare_new_user(
             &email,
@@ -255,13 +281,8 @@ impl AuthLifecycleService {
         // Under the ledger fence a committed receipt is terminal. Avoid
         // taking module/RBAC locks for a replay. Keep the unique insert as
         // the final authority even if another writer bypasses this fence.
-        if auth_invite_consumptions::Entity::find()
-            .filter(auth_invite_consumptions::Column::TenantId.eq(tenant_id))
-            .filter(auth_invite_consumptions::Column::TokenHash.eq(&token_hash))
-            .one(&tx)
-            .await
+        if invite_already_consumed(&tx, tenant_id, &token_hash).await
             .map_err(|error| InviteAcceptanceError::Internal(error.into()))?
-            .is_some()
         {
             return Err(InviteAcceptanceError::InvalidToken);
         }
@@ -346,6 +367,7 @@ impl AuthLifecycleService {
         let consumed_at = rustok_auth::application_clock::verified_now(&tx).await
             .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
         if expires_at <= consumed_at
+            || decode_invite_token(config, token).is_err()
             || !invite_ledger_matches_claims(
                 &issued,
                 &email,
@@ -374,13 +396,8 @@ impl AuthLifecycleService {
                 .await
                 .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
 
-            let already_consumed = auth_invite_consumptions::Entity::find()
-                .filter(auth_invite_consumptions::Column::TenantId.eq(tenant_id))
-                .filter(auth_invite_consumptions::Column::TokenHash.eq(&token_hash))
-                .one(ctx.db())
-                .await
-                .map_err(|error| InviteAcceptanceError::Internal(error.into()))?
-                .is_some();
+            let already_consumed = invite_already_consumed(ctx.db(), tenant_id, &token_hash).await
+                .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
             return if already_consumed {
                 Err(InviteAcceptanceError::InvalidToken)
             } else {
@@ -467,6 +484,7 @@ impl AuthLifecycleService {
         let final_now = rustok_auth::application_clock::verified_now(&tx).await
             .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
         if expires_at <= final_now
+            || decode_invite_token(config, token).is_err()
             || !invite_ledger_matches_claims(&issued, &email, expires_at, final_now)
         {
             tx.rollback().await.map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
@@ -856,12 +874,19 @@ mod tests {
         let now = Utc::now();
         let token_expiry = now + Duration::hours(1);
 
-        let matching = invite_ledger("INVITEE@example.test", token_expiry.clone());
+        let mut matching = invite_ledger("INVITEE@example.test", token_expiry.clone());
+        matching.created_at = now.into();
         assert!(invite_ledger_matches_claims(
             &matching,
             "invitee@example.test",
             token_expiry.clone(),
             now.clone(),
+        ));
+
+        let mut future = matching.clone();
+        future.created_at = (now + Duration::seconds(1)).into();
+        assert!(!invite_ledger_matches_claims(
+            &future, "invitee@example.test", token_expiry, now,
         ));
 
         let wrong_email = invite_ledger("other@example.test", token_expiry.clone());
@@ -904,6 +929,50 @@ mod tests {
             token_expiry,
             Utc::now(),
         ));
+    }
+
+    #[tokio::test]
+    async fn consumed_invite_rejects_before_password_policy() {
+        use crate::models::tenants;
+        use rustok_migrations::SqliteTestMigrator;
+        use rustok_test_utils::db::setup_test_db_with_migrations;
+
+        let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
+        let tenant = tenants::ActiveModel::new("Tenant", "invite-consumed-preflight")
+            .insert(&db).await.unwrap();
+        let issuer = users::ActiveModel::new(tenant.id, "issuer@example.test", "hash")
+            .insert(&db).await.unwrap();
+        let config = crate::auth::test_auth_config("invite-preflight-test-secret-key-32b".to_string());
+        let email = "invitee@example.test";
+        let token = crate::auth::encode_invite_token(
+            &config, tenant.id, email, rustok_core::UserRole::Customer, None, 3600,
+        ).unwrap();
+        let claims = decode_invite_token(&config, &token).unwrap();
+        let expiry = DateTime::<Utc>::from_timestamp(i64::try_from(claims.exp).unwrap(), 0).unwrap();
+        let now = Utc::now();
+        let token_hash = invite_token_hash(&token);
+        auth_invites::ActiveModel {
+            id: Set(uuid::Uuid::new_v4()), tenant_id: Set(tenant.id),
+            token_hash: Set(token_hash.clone()), email: Set(email.to_string()),
+            role: Set("customer".to_string()), issued_by: Set(Some(issuer.id)),
+            issuer_recovery_revision: Set(Some(issuer.recovery_revision)),
+            issuer_membership_revision: Set(None), role_grant_binding: Set(None),
+            module_policy_binding: Set(None), expires_at: Set(expiry.into()),
+            revoked_at: Set(None), created_at: Set(now.into()),
+        }.insert(&db).await.unwrap();
+        auth_invite_consumptions::ActiveModel {
+            id: Set(uuid::Uuid::new_v4()), tenant_id: Set(tenant.id),
+            token_hash: Set(token_hash.clone()), email: Set(email.to_string()),
+            role: Set("customer".to_string()), user_id: Set(None),
+            expires_at: Set(expiry.into()), consumed_at: Set(now.into()),
+        }.insert(&db).await.unwrap();
+        let mut settings = RustokSettings::default();
+        settings.features.invites_enabled = true;
+        let ctx = ServerRuntimeContext::new(db.clone(), settings);
+        assert!(matches!(AuthLifecycleService::accept_invite_once_runtime(
+            &ctx, &config, tenant.id, &token, "", None,
+        ).await, Err(InviteAcceptanceError::InvalidToken)));
+        assert!(invite_already_consumed(&db, tenant.id, &token_hash).await.unwrap());
     }
 
     #[test]

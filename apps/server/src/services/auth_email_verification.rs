@@ -57,7 +57,8 @@ impl AuthLifecycleService {
         .await
         .map_err(AuthLifecycleError::from)?
         .ok_or(AuthLifecycleError::InvalidVerificationToken)?;
-        if !current.is_active() || !current.matches_recovery_identity(
+        if decode_email_verification_token(config, token).is_err()
+            || !current.is_active() || !current.matches_recovery_identity(
             tenant_id, claims.user_id, &claims.sub, claims.recovery_revision,
         ) {
             return Err(AuthLifecycleError::InvalidVerificationToken);
@@ -98,7 +99,10 @@ impl AuthLifecycleService {
             }
         }
 
-        if rustok_auth::application_clock::verified_now(&tx).await? >= claims.expires_at {
+        // Idempotent success also requires a currently admissible JWT.
+        if rustok_auth::application_clock::verified_now(&tx).await? >= claims.expires_at
+            || decode_email_verification_token(config, token).is_err()
+        {
             tx.rollback().await.map_err(AuthLifecycleError::from)?;
             return Err(AuthLifecycleError::InvalidVerificationToken);
         }

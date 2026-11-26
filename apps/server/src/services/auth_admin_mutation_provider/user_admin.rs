@@ -1173,6 +1173,9 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             tx.rollback().await.map_err(super::internal_admin_error)?;
             return Err(AuthAdminMutationError::Validation("Invite expired before issuance".to_string()));
         }
+        // Do not publish an invitation signed by a key that became unusable
+        // while the ledger and outbox writes were waiting.
+        invite_expiration_from_token(&self.auth_config, &token)?;
         tx.commit().await.map_err(super::internal_admin_error)?;
 
         Ok(IssuedUserInviteResult {

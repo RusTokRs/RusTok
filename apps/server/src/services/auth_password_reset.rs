@@ -123,6 +123,7 @@ impl AuthLifecycleService {
                 tenant_id, claims.user_id, &claims.sub, claims.recovery_revision,
             )
             || current.password_hash != user.password_hash
+            || decode_password_reset_token(config, token).is_err()
             || !update_password_if_active(&tx, &current, &new_hash, now).await?
         {
             tx.rollback().await.map_err(AuthLifecycleError::from)?;
@@ -167,7 +168,12 @@ impl AuthLifecycleService {
         )
         .await?;
 
-        if rustok_auth::application_clock::verified_now(&tx).await? >= claims.expires_at {
+        // Recheck the live signing authority after the final async observation.
+        // A key retired or a local JWT gate fenced during this transaction
+        // must not authorize a password replacement.
+        if rustok_auth::application_clock::verified_now(&tx).await? >= claims.expires_at
+            || decode_password_reset_token(config, token).is_err()
+        {
             tx.rollback().await.map_err(AuthLifecycleError::from)?;
             return Err(AuthLifecycleError::InvalidResetToken);
         }

@@ -839,7 +839,7 @@ timestamps and does not rewrite previously revoked rows.
 Before dispatching a recovery email, the tracked host task independently
 admits application time after account/challenge reads, then revalidates
 reset/verification JWTs using the live keyring or checks the committed
-email-change deadline. The earlier local latch check does not substitute
+email-change validity window (inclusive creation, exclusive expiry). The earlier local latch check does not substitute
 for the final durable admission. Expired credentials,
 clock failures and invalid JWTs skip the sender and count as skipped sends.
 Old-mailbox security notifications are not credential-gated. This is a
@@ -857,7 +857,12 @@ All JWT issuers, including reset, verification and invite, sample the live
 credential clock before preparing claims and recheck it after RSA signing.
 Reject backward time or an elapsed exclusive signed whole-second expiry;
 this does not extend the deadline or replace application-clock admission.
-No claim or key format changes; regression authored, unrun.
+Reset, verification and invitation acceptance revalidate the JWT against the
+live keyring after blocking work and before commit; issuance also revalidates
+its invite JWT before commit. This is not atomic with key revocation or commit.
+Future-dated invite ledger rows and opaque email-change challenges fail closed.
+Already consumed invitations are rejected before password hashing and again
+under the ledger fence. No claim or key format changes; regressions authored, unrun.
 
 Password-reset and email-verification JWT subjects bind the exact account ID,
 mailbox and database-owned monotonic `recovery_revision`. Password reset also
