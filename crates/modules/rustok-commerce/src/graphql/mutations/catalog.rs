@@ -1133,57 +1133,6 @@ impl CommerceCatalogMutation {
         Ok(true)
     }
 
-    async fn assign_product_brand(
-        &self,
-        ctx: &Context<'_>,
-        product_id: Uuid,
-        brand_id: Uuid,
-        is_primary: Option<bool>,
-    ) -> Result<bool> {
-        require_module_enabled(ctx, "brand").await?;
-        require_commerce_permission(
-            ctx,
-            &[Permission::PRODUCTS_UPDATE],
-            "Permission denied: products:update required",
-        )?;
-        let (tenant_id, _) = product_mutation_actor(ctx)?;
-        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let service = rustok_brand::BrandService::new(db.clone());
-        #[allow(deprecated)]
-        use rustok_brand::BrandPort;
-        #[allow(deprecated)]
-        service
-            .assign_product_brand(tenant_id, brand_id, product_id, is_primary.unwrap_or(true))
-            .await
-            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
-        Ok(true)
-    }
-
-    async fn unassign_product_brand(
-        &self,
-        ctx: &Context<'_>,
-        product_id: Uuid,
-        brand_id: Uuid,
-    ) -> Result<bool> {
-        require_module_enabled(ctx, "brand").await?;
-        require_commerce_permission(
-            ctx,
-            &[Permission::PRODUCTS_UPDATE],
-            "Permission denied: products:update required",
-        )?;
-        let (tenant_id, _) = product_mutation_actor(ctx)?;
-        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let service = rustok_brand::BrandService::new(db.clone());
-        #[allow(deprecated)]
-        use rustok_brand::BrandPort;
-        #[allow(deprecated)]
-        service
-            .unassign_product_brand(tenant_id, brand_id, product_id)
-            .await
-            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
-        Ok(true)
-    }
-
     async fn create_bundle(
         &self,
         ctx: &Context<'_>,

@@ -6,7 +6,6 @@ use crate::{
     entities::{
         brand::{Column as BrandColumn, Entity as Brand},
         brand_category::{Column as BrandCategoryColumn, Entity as BrandCategory},
-        brand_product::{Column as BrandProductColumn, Entity as BrandProduct},
     },
     error::{BrandError, BrandResult},
 };
@@ -146,38 +145,6 @@ impl BrandService {
             page,
             per_page,
         })
-    }
-
-    pub(super) async fn get_brand_for_product(
-        &self,
-        tenant_id: Uuid,
-        product_id: Uuid,
-        locale: Option<&str>,
-    ) -> BrandResult<Option<BrandDto>> {
-        if tenant_id.is_nil() {
-            return Err(BrandError::InvalidInput(
-                "Tenant ID cannot be nil".to_string(),
-            ));
-        }
-        if product_id.is_nil() {
-            return Err(BrandError::InvalidInput(
-                "Product ID cannot be nil".to_string(),
-            ));
-        }
-
-        let link = BrandProduct::find()
-            .filter(BrandProductColumn::TenantId.eq(tenant_id))
-            .filter(BrandProductColumn::ProductId.eq(product_id))
-            .order_by(BrandProductColumn::IsPrimary, Order::Desc)
-            .one(&self.db)
-            .await?;
-
-        let Some(link) = link else {
-            return Ok(None);
-        };
-
-        let brand = self.get_brand(tenant_id, link.brand_id, locale).await?;
-        Ok(Some(brand))
     }
 
     pub(super) async fn list_categories_for_brand(

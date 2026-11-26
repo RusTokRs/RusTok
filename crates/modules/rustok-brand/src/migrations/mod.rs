@@ -3,6 +3,7 @@ use sea_orm_migration::prelude::*;
 
 mod m20260915_000001_create_brands;
 mod m20261104_000002_create_brand_categories;
+mod m20261126_000003_drop_brand_products;
 
 pub struct Migrator;
 
@@ -17,6 +18,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![
         Box::new(m20260915_000001_create_brands::Migration),
         Box::new(m20261104_000002_create_brand_categories::Migration),
+        Box::new(m20261126_000003_drop_brand_products::Migration),
     ]
 }
 
@@ -29,6 +31,13 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20261104_000002_create_brand_categories",
             vec!["m20260915_000001_create_brands"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20261126_000003_drop_brand_products",
+            vec![
+                "m20261104_000002_create_brand_categories",
+                "m20261104_000039_create_product_brands",
+            ],
         ),
     ]
 }

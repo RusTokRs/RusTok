@@ -849,23 +849,13 @@ impl ProductCatalogQuery {
                 .into_iter()
                 .find(|link| link.is_primary);
 
-        if let Some(link) = primary_brand_link {
-            let service = rustok_brand::BrandService::new(db.clone());
-            use rustok_brand::BrandReadPort;
-            let brand =
-                BrandReadPort::get_brand(&service, tenant.id, link.brand_id, locale.as_deref())
-                    .await
-                    .map_err(|e| async_graphql::Error::new(e.to_string()))?;
-            return Ok(brand.map(Into::into));
-        }
+        let Some(link) = primary_brand_link else {
+            return Ok(None);
+        };
 
-        // Backward compatibility fallback to legacy brand_products
         let service = rustok_brand::BrandService::new(db.clone());
-        #[allow(deprecated)]
-        use rustok_brand::BrandPort;
-        #[allow(deprecated)]
-        let brand = service
-            .get_brand_for_product(tenant.id, product_id, locale.as_deref())
+        use rustok_brand::BrandReadPort;
+        let brand = BrandReadPort::get_brand(&service, tenant.id, link.brand_id, locale.as_deref())
             .await
             .map_err(|e| async_graphql::Error::new(e.to_string()))?;
         Ok(brand.map(Into::into))
@@ -883,53 +873,34 @@ impl ProductCatalogQuery {
 
         let links = read_product_brand_links(ctx, tenant, product_id, locale.as_deref()).await?;
 
-        if !links.is_empty() {
-            let brand_ids: Vec<Uuid> = links.iter().map(|l| l.brand_id).collect();
-            let service = rustok_brand::BrandService::new(db.clone());
-            use rustok_brand::BrandReadPort;
-            let brands_list = service
-                .get_brands_batch(tenant.id, &brand_ids, locale.as_deref())
-                .await
-                .map_err(|e| async_graphql::Error::new(e.to_string()))?;
-            let brands_map: std::collections::HashMap<Uuid, rustok_brand::dto::BrandDto> =
-                brands_list.into_iter().map(|b| (b.id, b)).collect();
-
-            let result = links
-                .into_iter()
-                .map(|link| {
-                    let brand_dto = brands_map.get(&link.brand_id).cloned();
-                    super::GqlProductBrand {
-                        brand_id: link.brand_id,
-                        is_primary: link.is_primary,
-                        role: link.role,
-                        position: link.position,
-                        brand: brand_dto.map(Into::into),
-                    }
-                })
-                .collect();
-            return Ok(result);
+        if links.is_empty() {
+            return Ok(Vec::new());
         }
 
-        // Backward compatibility fallback to legacy brand_products
+        let brand_ids: Vec<Uuid> = links.iter().map(|l| l.brand_id).collect();
         let service = rustok_brand::BrandService::new(db.clone());
-        #[allow(deprecated)]
-        use rustok_brand::BrandPort;
-        #[allow(deprecated)]
-        if let Ok(Some(legacy_brand)) = service
-            .get_brand_for_product(tenant.id, product_id, locale.as_deref())
+        use rustok_brand::BrandReadPort;
+        let brands_list = service
+            .get_brands_batch(tenant.id, &brand_ids, locale.as_deref())
             .await
-        {
-            let brand_id = legacy_brand.id;
-            return Ok(vec![super::GqlProductBrand {
-                brand_id,
-                is_primary: true,
-                role: "manufacturer".to_string(),
-                position: 0,
-                brand: Some(legacy_brand.into()),
-            }]);
-        }
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        let brands_map: std::collections::HashMap<Uuid, rustok_brand::dto::BrandDto> =
+            brands_list.into_iter().map(|b| (b.id, b)).collect();
 
-        Ok(vec![])
+        let result = links
+            .into_iter()
+            .map(|link| {
+                let brand_dto = brands_map.get(&link.brand_id).cloned();
+                super::GqlProductBrand {
+                    brand_id: link.brand_id,
+                    is_primary: link.is_primary,
+                    role: link.role,
+                    position: link.position,
+                    brand: brand_dto.map(Into::into),
+                }
+            })
+            .collect();
+        Ok(result)
     }
 
     async fn category_brands(

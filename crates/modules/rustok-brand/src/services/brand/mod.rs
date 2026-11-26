@@ -104,34 +104,6 @@ impl BrandPort for BrandService {
     ) -> BrandResult<Vec<BrandCategoryDto>> {
         Self::list_categories_for_brand(self, tenant_id, brand_id).await
     }
-
-    async fn get_brand_for_product(
-        &self,
-        tenant_id: Uuid,
-        product_id: Uuid,
-        locale: Option<&str>,
-    ) -> BrandResult<Option<BrandDto>> {
-        Self::get_brand_for_product(self, tenant_id, product_id, locale).await
-    }
-
-    async fn assign_product_brand(
-        &self,
-        tenant_id: Uuid,
-        brand_id: Uuid,
-        product_id: Uuid,
-        is_primary: bool,
-    ) -> BrandResult<()> {
-        Self::assign_product_brand(self, tenant_id, brand_id, product_id, is_primary).await
-    }
-
-    async fn unassign_product_brand(
-        &self,
-        tenant_id: Uuid,
-        brand_id: Uuid,
-        product_id: Uuid,
-    ) -> BrandResult<()> {
-        Self::unassign_product_brand(self, tenant_id, brand_id, product_id).await
-    }
 }
 
 #[async_trait]

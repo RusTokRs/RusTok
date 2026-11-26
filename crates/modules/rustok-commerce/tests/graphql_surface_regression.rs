@@ -193,8 +193,6 @@ fn commerce_graphql_module_keeps_expected_root_fields() {
         "async fn create_brand(",
         "async fn update_brand(",
         "async fn delete_brand(",
-        "async fn assign_product_brand(",
-        "async fn unassign_product_brand(",
         "async fn create_bundle(",
         "async fn update_bundle(",
         "async fn delete_bundle(",
@@ -204,6 +202,16 @@ fn commerce_graphql_module_keeps_expected_root_fields() {
         assert!(
             mutation_source.contains(required),
             "commerce GraphQL mutation module must keep root field `{required}`"
+        );
+    }
+
+    for forbidden in [
+        "async fn assign_product_brand(",
+        "async fn unassign_product_brand(",
+    ] {
+        assert!(
+            !mutation_source.contains(forbidden),
+            "commerce GraphQL mutation module must not retain retired field `{forbidden}`"
         );
     }
 }

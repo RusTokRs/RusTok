@@ -24,7 +24,8 @@ Canonical public contract and domain architecture specification for `rustok-bran
 - **Migration Source:**
   - `m20260915_000001_create_brands`
   - `m20261104_000002_create_brand_categories`
-  - Upstream dependency: `m20250130_000012_create_commerce_products`
+  - `m20261126_000003_drop_brand_products`
+  - Upstream dependencies: `m20250130_000012_create_commerce_products`, `m20261104_000039_create_product_brands`
 
 ---
 
@@ -37,7 +38,7 @@ Canonical public contract and domain architecture specification for `rustok-bran
   - `rustok-product`: Consumes `BrandReadPort` to validate and batch-load brand metadata.
   - `rustok-commerce`: Exposes brand queries and mutations via GraphQL.
 - **Persistence Layer:**
-  - SeaORM entities: `brand`, `brand_translation`, `brand_category`, `brand_product`.
+  - SeaORM entities: `brand`, `brand_translation`, `brand_category`.
   - Multi-tenant tenant scoping across all tables.
 
 ---
@@ -59,11 +60,6 @@ Canonical public contract and domain architecture specification for `rustok-bran
       async fn assign_brand_category(&self, tenant_id: Uuid, brand_id: Uuid, category_id: Uuid, is_featured: bool) -> BrandResult<()>;
       async fn unassign_brand_category(&self, tenant_id: Uuid, brand_id: Uuid, category_id: Uuid) -> BrandResult<()>;
       async fn list_categories_for_brand(&self, tenant_id: Uuid, brand_id: Uuid) -> BrandResult<Vec<BrandCategoryDto>>;
-
-      // Product associations (transitional during hybrid cutover)
-      async fn get_brand_for_product(&self, tenant_id: Uuid, product_id: Uuid, locale: Option<&str>) -> BrandResult<Option<BrandDto>>;
-      async fn assign_product_brand(&self, tenant_id: Uuid, brand_id: Uuid, product_id: Uuid, is_primary: bool) -> BrandResult<()>;
-      async fn unassign_product_brand(&self, tenant_id: Uuid, brand_id: Uuid, product_id: Uuid) -> BrandResult<()>;
   }
   ```
 
@@ -88,7 +84,6 @@ Canonical public contract and domain architecture specification for `rustok-bran
 - `BrandDto`: Brand projection including localized name, description, media IDs, website URL, and translation records.
 - `BrandCategoryDto`: Relational mapping between brand and category with `is_featured` flag.
 - `BrandTranslationInput` / `BrandTranslationDto`: Localized content (locale, name, description).
-- `BrandProductDto`: Relational mapping between brand and product with `is_primary` flag.
 
 ---
 

@@ -2,7 +2,7 @@
 slug = "brand"
 name = "Brand"
 version = "0.1.0"
-description = "Brand catalog, manufacturers, media presentation, and product associations"
+description = "Brand catalog, manufacturers, media presentation, and category scoping"
 ownership = "first_party"
 trust_level = "verified"
 ui_classification = "admin_only"

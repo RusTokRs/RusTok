@@ -41,7 +41,7 @@ Brand catalog, manufacturers, media presentation, and product associations.
 - Runtime kind: Optional
 - Rollback unit: Component
 - Data boundary owner: `brands`
-- Native migrations: `m20260915_000001_create_brands`
+- Native migrations: `m20260915_000001_create_brands`, `m20261104_000002_create_brand_categories`, `m20261126_000003_drop_brand_products`
 - Supported migration policy: ExpandContract
 - Predecessor standby strategy: Hot-Standby Slot
 - Rollback eligibility: AutomaticSingleAttempt
@@ -56,25 +56,10 @@ Brand catalog, manufacturers, media presentation, and product associations.
 
 ## Product ownership review
 
-Brand is outside the scaffold reference set. Its file layout and database
-tests remain useful evidence for the implemented Brand tables. They do not
-establish the ownership or integrity of the Product association.
-
-- Brand owns `brand_products` today. Its assignment command checks the tenant
-  and brand, but only requires a non-nil `product_id`. The Commerce GraphQL
-  caller checks module availability and product update permission, then calls
-  Brand without resolving the Product. The shipped table has a Brand foreign
-  key and no Product foreign key. The owner test assigns a generated Product ID
-  without creating a Product row.
-- Confirm whether brands have an independently managed lifecycle or consumers
-  outside the Product catalog. If brands are catalog-owned, evaluate moving the
-  capability into Product. If Brand remains independent, evaluate a
-  Product-owned assignment with an explicit Brand contract. Either design must
-  reject missing and cross-tenant references and specify who handles deletion.
-- Record the chosen owner and cutover in an ADR before moving data or changing
-  runtime ownership. Inventory existing links, permissions, public GraphQL and
-  admin consumers, migration identity, and the supported database profiles.
-  Verify valid assignment, rejection and deletion through the chosen owner.
+Resolved by [ADR 2026-11-04: Hybrid Brand Catalog and Product Binding](../../../../DECISIONS/2026-11-04-hybrid-brand-catalog-and-product-binding.md) (Phase 4 Contract completed):
+- `rustok-product::product_brands` is the sole canonical owner of product-to-brand bindings (`create_product` / `update_product` with `brands`, FK cascade on product deletion).
+- `rustok-brand` owns `brands`, `brand_translations`, and `brand_categories`, and exposes `BrandReadPort` for cross-module validation and batch metadata reads.
+- Contract migration `m20261126_000003_drop_brand_products` safely backfills any remaining valid `brand_products` rows into `product_brands` (when host tables are present) and drops `brand_products`. Legacy product-binding methods (`get_brand_for_product`, `assign_product_brand`, `unassign_product_brand`) and Commerce GraphQL fallbacks/mutations have been removed.
 
 ## Verification
 

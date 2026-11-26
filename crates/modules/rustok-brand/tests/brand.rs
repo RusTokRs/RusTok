@@ -1,5 +1,3 @@
-#![allow(deprecated)]
-
 use rustok_brand::dto::{BrandFilter, BrandTranslationInput, CreateBrandInput, UpdateBrandInput};
 use rustok_brand::error::BrandError;
 use rustok_brand::migrations::Migrator;
@@ -119,12 +117,16 @@ async fn assert_migrated_owner_behavior(db: &DatabaseConnection) {
 }
 
 async fn assert_migration_cycle(db: &DatabaseConnection) {
+    let schema = SchemaManager::new(db);
+    assert!(
+        !schema.has_table("brand_products").await.unwrap(),
+        "brand_products should be dropped by contract migration"
+    );
     assert_migrated_owner_behavior(db).await;
     // This destructive rollback is exercised only in an isolated test store.
     Migrator::down(db, None)
         .await
         .expect("roll back test migration");
-    let schema = SchemaManager::new(db);
     for table in [
         "brands",
         "brand_translations",
@@ -139,6 +141,10 @@ async fn assert_migration_cycle(db: &DatabaseConnection) {
     Migrator::up(db, None)
         .await
         .expect("reapply test migration");
+    assert!(
+        !schema.has_table("brand_products").await.unwrap(),
+        "brand_products should remain absent after reapplying migrations"
+    );
     assert_migrated_owner_behavior(db).await;
 }
 
@@ -402,68 +408,6 @@ async fn updates_brand_and_upserts_translations() {
 }
 
 #[tokio::test]
-async fn assigns_and_retrieves_product_brand() {
-    let db = setup_test_db().await;
-    let service = BrandService::new(db);
-    let tenant_id = Uuid::new_v4();
-    let product_id = Uuid::new_v4();
-
-    let brand = service
-        .create_brand(
-            tenant_id,
-            CreateBrandInput {
-                slug: "sony".to_string(),
-                logo_media_id: None,
-                banner_media_id: None,
-                website_url: None,
-                is_active: Some(true),
-                metadata: None,
-                translations: vec![BrandTranslationInput {
-                    locale: "en".to_string(),
-                    name: "Sony".to_string(),
-                    description: None,
-                }],
-            },
-        )
-        .await
-        .unwrap();
-
-    // No brand assigned yet
-    let initial = service
-        .get_brand_for_product(tenant_id, product_id, None)
-        .await
-        .unwrap();
-    assert!(initial.is_none());
-
-    // Assign brand to product
-    service
-        .assign_product_brand(tenant_id, brand.id, product_id, true)
-        .await
-        .unwrap();
-
-    let assigned = service
-        .get_brand_for_product(tenant_id, product_id, Some("en"))
-        .await
-        .unwrap()
-        .expect("Product should now have a brand");
-
-    assert_eq!(assigned.id, brand.id);
-    assert_eq!(assigned.name, "Sony");
-
-    // Unassign brand
-    service
-        .unassign_product_brand(tenant_id, brand.id, product_id)
-        .await
-        .unwrap();
-
-    let unassigned = service
-        .get_brand_for_product(tenant_id, product_id, None)
-        .await
-        .unwrap();
-    assert!(unassigned.is_none());
-}
-
-#[tokio::test]
 async fn lists_brands_with_filter() {
     let db = setup_test_db().await;
     let service = BrandService::new(db);
@@ -560,11 +504,13 @@ async fn lists_brands_with_filter() {
 }
 
 #[tokio::test]
-async fn deletes_brand_with_cascading_associations() {
+async fn deletes_brand_with_cascading_category_associations() {
+    use rustok_brand::ports::BrandReadPort;
+
     let db = setup_test_db().await;
     let service = BrandService::new(db);
     let tenant_id = Uuid::new_v4();
-    let product_id = Uuid::new_v4();
+    let category_id = Uuid::new_v4();
 
     let brand = service
         .create_brand(
@@ -586,20 +532,25 @@ async fn deletes_brand_with_cascading_associations() {
         .await
         .unwrap();
 
-    // Assign to product
+    // Assign to category
     service
-        .assign_product_brand(tenant_id, brand.id, product_id, true)
+        .assign_brand_category(tenant_id, brand.id, category_id, true)
         .await
         .unwrap();
 
     // Verify brand exists and is linked
-    assert!(service.get_brand(tenant_id, brand.id, None).await.is_ok());
     assert!(
+        BrandPort::get_brand(&service, tenant_id, brand.id, None)
+            .await
+            .is_ok()
+    );
+    assert_eq!(
         service
-            .get_brand_for_product(tenant_id, product_id, None)
+            .list_brands_for_category(tenant_id, category_id, None)
             .await
             .unwrap()
-            .is_some()
+            .len(),
+        1
     );
 
     // Delete brand
@@ -609,18 +560,17 @@ async fn deletes_brand_with_cascading_associations() {
         .expect("Deletion should succeed");
 
     // Brand should not exist
-    let get_err = service
-        .get_brand(tenant_id, brand.id, None)
+    let get_err = BrandPort::get_brand(&service, tenant_id, brand.id, None)
         .await
         .expect_err("Brand should be deleted");
     assert!(matches!(get_err, BrandError::NotFound(_)));
 
-    // Product should no longer have brand
-    let product_brand = service
-        .get_brand_for_product(tenant_id, product_id, None)
+    // Category should no longer list the deleted brand
+    let category_brands = service
+        .list_brands_for_category(tenant_id, category_id, None)
         .await
         .unwrap();
-    assert!(product_brand.is_none());
+    assert!(category_brands.is_empty());
 }
 
 #[tokio::test]
@@ -661,9 +611,9 @@ async fn rejects_nil_uuids() {
         .unwrap_err();
     assert!(matches!(err, BrandError::InvalidInput(_)));
 
-    // Nil tenant_id in assign_product_brand
+    // Nil tenant_id in assign_brand_category
     let err = service
-        .assign_product_brand(Uuid::nil(), valid_id, valid_id, true)
+        .assign_brand_category(Uuid::nil(), valid_id, valid_id, true)
         .await
         .unwrap_err();
     assert!(matches!(err, BrandError::InvalidInput(_)));
@@ -936,4 +886,262 @@ async fn assigns_and_filters_brand_categories() {
         .unwrap();
     assert_eq!(updated_clothing_brands.len(), 1);
     assert_eq!(updated_clothing_brands[0].id, nike.id);
+}
+
+#[tokio::test]
+async fn drop_brand_products_migration_backfills_into_product_brands_safely() {
+    let db = Database::connect("sqlite::memory:")
+        .await
+        .expect("connect to isolated in-memory SQLite");
+
+    db.execute_unprepared(
+        r#"
+CREATE TABLE products (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL
+);
+
+CREATE TABLE product_brands (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    brand_id TEXT NOT NULL,
+    is_primary INTEGER NOT NULL DEFAULT 0,
+    role TEXT NOT NULL DEFAULT 'manufacturer',
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX uq_product_brands ON product_brands (tenant_id, product_id, brand_id);
+CREATE UNIQUE INDEX uq_product_brands_primary ON product_brands (tenant_id, product_id) WHERE is_primary = 1;
+"#,
+    )
+    .await
+    .expect("create product_brands host schema");
+
+    // Apply only the first two Brand migrations so brand_products still exists.
+    Migrator::up(&db, Some(2))
+        .await
+        .expect("apply initial Brand migrations");
+
+    let tenant_id = Uuid::new_v4();
+    let service = BrandService::new(db.clone());
+    let brand_a = service
+        .create_brand(
+            tenant_id,
+            CreateBrandInput {
+                slug: "brand-a".to_string(),
+                logo_media_id: None,
+                banner_media_id: None,
+                website_url: None,
+                is_active: Some(true),
+                metadata: None,
+                translations: vec![BrandTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Brand A".to_string(),
+                    description: None,
+                }],
+            },
+        )
+        .await
+        .unwrap();
+    let brand_b = service
+        .create_brand(
+            tenant_id,
+            CreateBrandInput {
+                slug: "brand-b".to_string(),
+                logo_media_id: None,
+                banner_media_id: None,
+                website_url: None,
+                is_active: Some(true),
+                metadata: None,
+                translations: vec![BrandTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Brand B".to_string(),
+                    description: None,
+                }],
+            },
+        )
+        .await
+        .unwrap();
+
+    let product_with_dups = Uuid::new_v4();
+    let product_with_existing_primary = Uuid::new_v4();
+    let product_with_non_primary = Uuid::new_v4();
+    let orphan_product = Uuid::new_v4();
+    let other_tenant = Uuid::new_v4();
+    let other_brand = service
+        .create_brand(
+            other_tenant,
+            CreateBrandInput {
+                slug: "other-brand".to_string(),
+                logo_media_id: None,
+                banner_media_id: None,
+                website_url: None,
+                is_active: Some(true),
+                metadata: None,
+                translations: vec![BrandTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Other Brand".to_string(),
+                    description: None,
+                }],
+            },
+        )
+        .await
+        .unwrap();
+
+    db.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "INSERT INTO products (id, tenant_id) VALUES (?1, ?2), (?3, ?4), (?5, ?6)",
+        vec![
+            product_with_dups.into(),
+            tenant_id.into(),
+            product_with_existing_primary.into(),
+            tenant_id.into(),
+            product_with_non_primary.into(),
+            tenant_id.into(),
+        ],
+    ))
+    .await
+    .unwrap();
+
+    // Product already has brand_a as primary in product_brands.
+    db.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "INSERT INTO product_brands (id, tenant_id, product_id, brand_id, is_primary, role, position, created_at) VALUES (?1, ?2, ?3, ?4, 1, 'manufacturer', 0, '2026-11-04T00:00:00Z')",
+        vec![
+            Uuid::new_v4().into(),
+            tenant_id.into(),
+            product_with_existing_primary.into(),
+            brand_a.id.into(),
+        ],
+    ))
+    .await
+    .unwrap();
+
+    // Legacy brand_products rows:
+    // 1) Two primary rows for product_with_dups (second must downgrade to non-primary)
+    // 2) Already-migrated (product_with_existing_primary, brand_a) + new primary-flagged brand_b
+    // 3) Single non-primary row for product_with_non_primary (must promote to primary)
+    // 4) Cross-tenant brand_id mismatch (must be ignored safely)
+    // 5) Orphan product row with no matching products row (must be ignored safely)
+    for (brand_id, product_id, is_primary, created_at) in [
+        (brand_a.id, product_with_dups, 1, "2026-10-01T00:00:00Z"),
+        (brand_b.id, product_with_dups, 1, "2026-10-02T00:00:00Z"),
+        (
+            brand_a.id,
+            product_with_existing_primary,
+            1,
+            "2026-10-01T00:00:00Z",
+        ),
+        (
+            brand_b.id,
+            product_with_existing_primary,
+            1,
+            "2026-10-02T00:00:00Z",
+        ),
+        (
+            brand_a.id,
+            product_with_non_primary,
+            0,
+            "2026-10-01T00:00:00Z",
+        ),
+        (
+            other_brand.id,
+            product_with_non_primary,
+            0,
+            "2026-10-02T00:00:00Z",
+        ),
+        (brand_a.id, orphan_product, 1, "2026-10-03T00:00:00Z"),
+    ] {
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO brand_products (id, tenant_id, brand_id, product_id, is_primary, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            vec![
+                Uuid::new_v4().into(),
+                tenant_id.into(),
+                brand_id.into(),
+                product_id.into(),
+                is_primary.into(),
+                created_at.into(),
+            ],
+        ))
+        .await
+        .unwrap();
+    }
+
+    // Apply the Phase 4 contract migration.
+    Migrator::up(&db, None)
+        .await
+        .expect("contract migration should backfill and drop brand_products");
+
+    assert!(
+        !SchemaManager::new(&db)
+            .has_table("brand_products")
+            .await
+            .unwrap()
+    );
+
+    let rows = db
+        .query_all_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            "SELECT product_id, brand_id, is_primary, role FROM product_brands ORDER BY product_id, is_primary DESC, brand_id",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(rows.len(), 5);
+
+    let dups_rows: Vec<(Uuid, i64, String)> = rows
+        .iter()
+        .filter(|r| r.try_get::<Uuid>("", "product_id").unwrap() == product_with_dups)
+        .map(|r| {
+            (
+                r.try_get("", "brand_id").unwrap(),
+                r.try_get("", "is_primary").unwrap(),
+                r.try_get("", "role").unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        dups_rows,
+        vec![
+            (brand_a.id, 1, "manufacturer".to_string()),
+            (brand_b.id, 0, "collaboration".to_string()),
+        ]
+    );
+
+    let existing_rows: Vec<(Uuid, i64, String)> = rows
+        .iter()
+        .filter(|r| r.try_get::<Uuid>("", "product_id").unwrap() == product_with_existing_primary)
+        .map(|r| {
+            (
+                r.try_get("", "brand_id").unwrap(),
+                r.try_get("", "is_primary").unwrap(),
+                r.try_get("", "role").unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        existing_rows,
+        vec![
+            (brand_a.id, 1, "manufacturer".to_string()),
+            (brand_b.id, 0, "collaboration".to_string()),
+        ]
+    );
+
+    let non_primary_rows: Vec<(Uuid, i64, String)> = rows
+        .iter()
+        .filter(|r| r.try_get::<Uuid>("", "product_id").unwrap() == product_with_non_primary)
+        .map(|r| {
+            (
+                r.try_get("", "brand_id").unwrap(),
+                r.try_get("", "is_primary").unwrap(),
+                r.try_get("", "role").unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        non_primary_rows,
+        vec![(brand_a.id, 1, "manufacturer".to_string())]
+    );
 }

@@ -10,10 +10,6 @@ use crate::{
             ActiveModel as BrandCategoryActiveModel, Column as BrandCategoryColumn,
             Entity as BrandCategory,
         },
-        brand_product::{
-            ActiveModel as BrandProductActiveModel, Column as BrandProductColumn,
-            Entity as BrandProduct,
-        },
         brand_translation::{
             ActiveModel as BrandTranslationActiveModel, Column as BrandTranslationColumn,
             Entity as BrandTranslation,
@@ -327,12 +323,6 @@ impl BrandService {
             .exec(&txn)
             .await?;
 
-        BrandProduct::delete_many()
-            .filter(BrandProductColumn::TenantId.eq(tenant_id))
-            .filter(BrandProductColumn::BrandId.eq(brand.id))
-            .exec(&txn)
-            .await?;
-
         BrandTranslation::delete_many()
             .filter(BrandTranslationColumn::BrandId.eq(brand.id))
             .exec(&txn)
@@ -345,95 +335,6 @@ impl BrandService {
             .await?;
 
         txn.commit().await?;
-        Ok(())
-    }
-
-    pub(super) async fn assign_product_brand(
-        &self,
-        tenant_id: Uuid,
-        brand_id: Uuid,
-        product_id: Uuid,
-        is_primary: bool,
-    ) -> BrandResult<()> {
-        if tenant_id.is_nil() {
-            return Err(BrandError::InvalidInput(
-                "Tenant ID cannot be nil".to_string(),
-            ));
-        }
-        if brand_id.is_nil() {
-            return Err(BrandError::InvalidInput(
-                "Brand ID cannot be nil".to_string(),
-            ));
-        }
-        if product_id.is_nil() {
-            return Err(BrandError::InvalidInput(
-                "Product ID cannot be nil".to_string(),
-            ));
-        }
-
-        // Ensure brand exists for tenant
-        let _ = self.get_brand(tenant_id, brand_id, None).await?;
-
-        let existing = BrandProduct::find()
-            .filter(BrandProductColumn::TenantId.eq(tenant_id))
-            .filter(BrandProductColumn::BrandId.eq(brand_id))
-            .filter(BrandProductColumn::ProductId.eq(product_id))
-            .one(&self.db)
-            .await?;
-
-        if let Some(existing) = existing {
-            let mut active: BrandProductActiveModel = existing.into();
-            active.is_primary = Set(is_primary);
-            active.update(&self.db).await?;
-        } else {
-            BrandProductActiveModel {
-                id: Set(Uuid::new_v4()),
-                tenant_id: Set(tenant_id),
-                brand_id: Set(brand_id),
-                product_id: Set(product_id),
-                is_primary: Set(is_primary),
-                created_at: Set(Utc::now().into()),
-            }
-            .insert(&self.db)
-            .await?;
-        }
-
-        Ok(())
-    }
-
-    pub(super) async fn unassign_product_brand(
-        &self,
-        tenant_id: Uuid,
-        brand_id: Uuid,
-        product_id: Uuid,
-    ) -> BrandResult<()> {
-        if tenant_id.is_nil() {
-            return Err(BrandError::InvalidInput(
-                "Tenant ID cannot be nil".to_string(),
-            ));
-        }
-        if brand_id.is_nil() {
-            return Err(BrandError::InvalidInput(
-                "Brand ID cannot be nil".to_string(),
-            ));
-        }
-        if product_id.is_nil() {
-            return Err(BrandError::InvalidInput(
-                "Product ID cannot be nil".to_string(),
-            ));
-        }
-
-        let link = BrandProduct::find()
-            .filter(BrandProductColumn::TenantId.eq(tenant_id))
-            .filter(BrandProductColumn::BrandId.eq(brand_id))
-            .filter(BrandProductColumn::ProductId.eq(product_id))
-            .one(&self.db)
-            .await?;
-
-        if let Some(link) = link {
-            BrandProduct::delete_by_id(link.id).exec(&self.db).await?;
-        }
-
         Ok(())
     }
 

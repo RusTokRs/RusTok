@@ -27,7 +27,7 @@ impl RusToKModule for BrandModule {
     }
 
     fn description(&self) -> &'static str {
-        "Brand catalog, manufacturers, media presentation, and product associations"
+        "Brand catalog, manufacturers, media presentation, and category scoping"
     }
 
     fn version(&self) -> &'static str {
@@ -89,9 +89,9 @@ mod tests {
     #[test]
     fn brand_module_migrations_configured() {
         let module = BrandModule;
-        assert_eq!(module.migrations().len(), 2);
+        assert_eq!(module.migrations().len(), 3);
         let deps = module.migration_dependencies();
-        assert_eq!(deps.len(), 2);
+        assert_eq!(deps.len(), 3);
         assert_eq!(deps[0].migration, "m20260915_000001_create_brands");
         assert_eq!(
             deps[0].after,
@@ -102,5 +102,13 @@ mod tests {
             "m20261104_000002_create_brand_categories"
         );
         assert_eq!(deps[1].after, vec!["m20260915_000001_create_brands"]);
+        assert_eq!(deps[2].migration, "m20261126_000003_drop_brand_products");
+        assert_eq!(
+            deps[2].after,
+            vec![
+                "m20261104_000002_create_brand_categories",
+                "m20261104_000039_create_product_brands",
+            ]
+        );
     }
 }
