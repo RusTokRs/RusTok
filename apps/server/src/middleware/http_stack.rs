@@ -69,7 +69,7 @@ fn parse_timeout_setting(
     let Some(raw) = raw else {
         return default;
     };
-    match raw.parse::<u64>() {
+    match raw.trim().parse::<u64>() {
         Ok(value) => bounded_timeout_seconds(value, default, maximum, setting),
         Err(_error) => {
             tracing::warn!(
@@ -86,7 +86,7 @@ fn parse_http_concurrency_limit(raw: Option<&str>) -> usize {
     let Some(raw) = raw else {
         return DEFAULT_HTTP_CONCURRENCY_LIMIT;
     };
-    match raw.parse::<usize>() {
+    match raw.trim().parse::<usize>() {
         Ok(0) => {
             tracing::warn!(
                 setting = "RUSTOK_HTTP_CONCURRENCY_LIMIT",
@@ -1153,11 +1153,21 @@ mod tests {
             ),
             DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS
         );
+        assert_eq!(
+            parse_timeout_setting(
+                Some(" 45 "),
+                "request",
+                DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS,
+                MAX_HTTP_REQUEST_TIMEOUT_SECONDS,
+            ),
+            45
+        );
     }
 
     #[test]
     fn http_concurrency_limit_is_bounded_before_constructing_tower_semaphore() {
         assert_eq!(parse_http_concurrency_limit(Some("1")), 1);
+        assert_eq!(parse_http_concurrency_limit(Some(" 16 ")), 16);
         assert_eq!(
             parse_http_concurrency_limit(Some("16385")),
             MAX_HTTP_CONCURRENCY_LIMIT
