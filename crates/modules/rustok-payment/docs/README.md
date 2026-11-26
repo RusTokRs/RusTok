@@ -25,6 +25,13 @@
 - transport, GraphQL and UI surfaces are published through `rustok-commerce` until a separate module-owned surface is established for the domain;
 - cross-module contract changes must be synchronized with `rustok-commerce` and neighboring split modules.
 
+Provider-event recovery exposes a bounded admission-aware sweep for host
+workers. Admission is checked before querying and before every event claim.
+An admitted operation completes its journal transition before the next check;
+a partial report counts only admitted attempts in `scanned`. Unadmitted
+rows remain untouched. The existing unconditional `run` contract used by
+operator HTTP recovery is unchanged. Source regression authored, unrun.
+
 ## Verification
 
 - cargo xtask module validate payment
