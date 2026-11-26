@@ -403,15 +403,27 @@ impl ProductCatalogSchemaService {
     where
         C: ConnectionTrait,
     {
-        validate_uuid("product_id", product_id)?;
         let Some(form) =
             Self::load_effective_form_for_product_in(conn, tenant_id, product_id).await?
         else {
             return Ok(());
         };
+        Self::validate_product_publish_requirements_for_form_in(conn, tenant_id, product_id, &form)
+            .await
+    }
 
-        let attribute_scopes =
-            load_active_attribute_scopes_in(conn, tenant_id, &form.attributes).await?;
+    /// Reuses a precomputed effective form during schema-impact scans, avoiding a category/schema
+    /// resolution query for every active Product in the affected category.
+    pub(crate) async fn validate_product_publish_requirements_for_form_in<C>(
+        conn: &C,
+        tenant_id: Uuid,
+        product_id: Uuid,
+        form: &EffectiveProductForm,
+    ) -> CommerceResult<()>
+    where
+        C: ConnectionTrait,
+    {
+        validate_uuid("product_id", product_id)?;
 
         let mut required_product_attribute_ids = Vec::new();
         let mut required_variant_attribute_ids = Vec::new();
@@ -423,10 +435,7 @@ impl ProductCatalogSchemaService {
             .iter()
             .filter(|binding| !binding.is_disabled)
         {
-            let Some(scope) = attribute_scopes.get(&binding.attribute_id).map(String::as_str)
-            else {
-                continue;
-            };
+            let scope = binding.scope.as_str();
             let rules =
                 attribute_validation::parse_product_attribute_validation(&binding.validation)?;
             let is_required =
