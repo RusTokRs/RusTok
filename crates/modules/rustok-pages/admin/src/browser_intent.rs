@@ -1453,6 +1453,8 @@ mod tests {
         let store = InMemorySsrDraftSessionStore::editor_default();
         let mut envelope = form_envelope("select", json!({"component_id": "hero"}));
         envelope.draft_token = Some("gone-token".to_string());
+        envelope.draft_generation = Some(1);
+        envelope.operation_id = Some("gone-operation".to_string());
         let snapshot = PagesBuilderSaveSnapshot {
             token: None,
             tenant_slug: None,
