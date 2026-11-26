@@ -319,6 +319,12 @@ before persisting prepared credentials. OAuth replay grace no longer accepts
 future timestamps or truncates elapsed time to whole seconds. Focused source
 regressions authored; compilation and runtime verification remain pending.
 
+OAuth issuance additionally rechecks the locked authorization session after
+consent writes and after code insertion; future-dated and exactly expired codes
+cannot be consumed, and prepared token expiry is rechecked before committing
+a code exchange. Service access responses report remaining durable lifetime.
+Boundary regressions are authored; compilation and transaction tests remain open.
+
 ## OAuth family lifetime and replay evidence (source only)
 
 New access registrations and refresh rows cannot exceed the original family

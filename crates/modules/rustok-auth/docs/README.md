@@ -649,7 +649,14 @@ Source regressions unrun.
 Browser approval and authorization-code issuance share one transaction. The host
 locks app, user and direct session in order, rechecks ownership, session liveness,
 email policy and access credential expiry, then grants missing consent only for
-explicit approval. Code insertion failure rolls back the consent change.
+explicit approval. The same locked session and access deadlines are rechecked
+before code insertion and before commit; expiry or code insertion failure rolls
+back the consent change. Code exchange admits only the interval
+`created_at <= now < expires_at`, using one timestamp for the conditional
+consumption and its recorded use time. Prepared access/refresh deadlines are
+rechecked after insertion before commit. Service-token responses likewise
+compute remaining durable access lifetime after commit instead of advertising
+the original TTL. Source regressions are authored, not executed.
 
 Re-granting consent durably revokes existing access and refresh credentials
 and invalidates pending authorization codes for the same app, subject and

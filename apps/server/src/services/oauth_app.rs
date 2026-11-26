@@ -226,6 +226,26 @@ pub(crate) struct AuthorizationSession {
     pub require_email_verification: bool,
 }
 
+impl AuthorizationSession {
+    fn ensure_live(
+        &self,
+        session: &crate::models::sessions::Model,
+        now: chrono::DateTime<Utc>,
+    ) -> Result<()> {
+        if session.revoked_at.is_some()
+            || session.created_at.with_timezone(&Utc) > now
+            || session.expires_at.with_timezone(&Utc) <= now
+            || session.absolute_deadline() <= now
+            || self.access_expires_at <= now
+        {
+            return Err(Error::Unauthorized(
+                "OAuth authorization credential expired or inactive".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
 pub struct OAuthAppService;
 
 impl OAuthAppService {
@@ -679,16 +699,14 @@ impl OAuthAppService {
         if subject.require_email_verification && !user.is_email_verified() {
             return Err(Error::Unauthorized("Email verification required".to_string()));
         }
-        crate::services::auth_lifecycle::AuthLifecycleService::find_session_by_id_for_update_in_tx(
+        let session = crate::services::auth_lifecycle::AuthLifecycleService::find_session_by_id_for_update_in_tx(
             &tx, tenant_id, subject.session_id,
         )
         .await
         .map_err(|_| Error::InternalServerError)?
-        .filter(|session| session.user_id == user.id && session.is_active())
+        .filter(|session| session.user_id == user.id)
         .ok_or_else(|| Error::Unauthorized("OAuth authorization session is no longer active".to_string()))?;
-        if subject.access_expires_at <= Utc::now() {
-            return Err(Error::Unauthorized("OAuth authorization credential expired".to_string()));
-        }
+        subject.ensure_live(&session, Utc::now())?;
 
         if app.requires_user_consent() {
             let consent = OAuthConsents::find_active_consent(&tx, app_id, user.id, tenant_id)
@@ -731,6 +749,8 @@ impl OAuthAppService {
         let code_hash = hex::encode(Sha256::digest(code.as_bytes()));
 
         let now = Utc::now();
+        // Consent persistence may have consumed the remaining session lifetime.
+        subject.ensure_live(&session, now)?;
         OAuthCodeActiveModel {
             id: Set(Uuid::new_v4()),
             app_id: Set(app_id),
@@ -748,6 +768,9 @@ impl OAuthAppService {
         .insert(&tx)
         .await
         .map_err(|_| Error::InternalServerError)?;
+        // Recheck immediately before attempting commit; a slow code write
+        // must not pass a stale authorization decision. The session stays locked.
+        subject.ensure_live(&session, Utc::now())?;
         tx.commit().await.map_err(|_| Error::InternalServerError)?;
         Ok(code)
     }
@@ -3223,6 +3246,31 @@ mod tests {
             2,
             "app revocation cannot be followed by newly inserted auth codes"
         );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn authorization_session_deadlines_are_exclusive() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let user = users::ActiveModel::new(tenant.id, "deadline-auth@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("user");
+        let subject = authorization_subject(&db, &user).await;
+        let mut session = crate::models::sessions::Entity::find_by_id(subject.session_id)
+            .one(&db)
+            .await
+            .expect("load session")
+            .expect("session exists");
+        let now = Utc::now();
+        assert!(subject.ensure_live(&session, now).is_ok());
+        let expired = AuthorizationSession { access_expires_at: now, ..subject };
+        assert!(expired.ensure_live(&session, now).is_err());
+        session.expires_at = now.into();
+        assert!(subject.ensure_live(&session, now).is_err());
+        session.expires_at = subject.access_expires_at.into();
+        session.absolute_expires_at = Some(now.into());
+        assert!(subject.ensure_live(&session, now).is_err());
     }
 
     #[tokio::test]

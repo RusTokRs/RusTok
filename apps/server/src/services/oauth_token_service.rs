@@ -130,6 +130,8 @@ impl OAuthTokenService {
                 require_grant(&current_app, CLIENT_CREDENTIALS_GRANT)?;
                 let scopes = validate_requested_scopes(&current_app, request.scope.as_deref())?;
                 let prepared = prepare_service_access_token(&current_app, auth_config, &scopes)?;
+                let expires_at = prepared_token_expiry(&prepared.access_model)?;
+                remaining_access_lifetime(expires_at, Utc::now(), prepared.expires_in)?;
                 prepared
                     .access_model
                     .clone()
@@ -138,6 +140,7 @@ impl OAuthTokenService {
                     .map_err(|_| {
                         OAuthTokenProtocolError::server_error("Failed to persist access token")
                     })?;
+                remaining_access_lifetime(expires_at, Utc::now(), prepared.expires_in)?;
                 tx.commit().await.map_err(|_| {
                     OAuthTokenProtocolError::server_error(
                         "Failed to commit client-credentials exchange",
@@ -147,7 +150,7 @@ impl OAuthTokenService {
                 TokenResponse {
                     access_token: prepared.access_token,
                     token_type: "Bearer".to_string(),
-                    expires_in: prepared.expires_in,
+                    expires_in: remaining_access_lifetime(expires_at, Utc::now(), prepared.expires_in)?,
                     refresh_token: None,
                     scope: scopes.join(" "),
                 }
@@ -469,7 +472,7 @@ async fn validate_authorization_code(
             "Authorization code is invalid, expired, or already used",
         ));
     }
-    if code.expires_at.with_timezone(&Utc) <= Utc::now() {
+    if !code.is_active_at(Utc::now()) {
         return Err(OAuthTokenProtocolError::invalid_grant(
             "Authorization code is invalid, expired, or already used",
         ));
@@ -1379,8 +1382,9 @@ async fn commit_authorization_code_exchange(
     )
     .await?;
 
-    validate_prepared_deadlines(prepared, Utc::now(), None)?;
-    if !consume_authorization_code(&tx, code).await? {
+    let now = Utc::now();
+    validate_prepared_deadlines(prepared, now, None)?;
+    if !consume_authorization_code(&tx, code, now).await? {
         // A concurrent exchange won the CAS. If the code is now marked used,
         // revoke its issued lineage and commit that security effect before
         // reporting invalid_grant. An expired-but-unused code grants nothing.
@@ -1413,6 +1417,7 @@ async fn commit_authorization_code_exchange(
         ));
     }
     persist_prepared_tokens(&tx, prepared).await?;
+    validate_prepared_deadlines(prepared, Utc::now(), None)?;
 
     tx.commit().await.map_err(|_| {
         OAuthTokenProtocolError::server_error("Failed to commit authorization-code exchange")
@@ -1616,17 +1621,19 @@ async fn commit_refresh_rotation(
 async fn consume_authorization_code<C>(
     db: &C,
     code: &oauth_codes::Model,
+    now: chrono::DateTime<Utc>,
 ) -> Result<bool, OAuthTokenProtocolError>
 where
     C: ConnectionTrait,
 {
     let consumed = oauth_codes::Entity::update_many()
-        .col_expr(oauth_codes::Column::UsedAt, Expr::value(Utc::now()))
+        .col_expr(oauth_codes::Column::UsedAt, Expr::value(now))
         .filter(oauth_codes::Column::Id.eq(code.id))
         .filter(oauth_codes::Column::AppId.eq(code.app_id))
         .filter(oauth_codes::Column::TenantId.eq(code.tenant_id))
         .filter(oauth_codes::Column::UsedAt.is_null())
-        .filter(oauth_codes::Column::ExpiresAt.gt(Utc::now()))
+        .filter(oauth_codes::Column::CreatedAt.lte(now))
+        .filter(oauth_codes::Column::ExpiresAt.gt(now))
         .exec(db)
         .await
         .map_err(|_| {
@@ -1879,6 +1886,61 @@ mod tests {
         let mut changed = original.clone();
         changed.is_active = false;
         assert!(super::ensure_authenticated_client_unchanged(&original, &changed).is_err());
+    }
+
+    #[tokio::test]
+    async fn authorization_code_consumption_requires_current_validity_interval() {
+        let db = Database::connect("sqlite::memory:").await.expect("SQLite database");
+        // Isolate the consumption CAS from unrelated user/app fixtures.
+        db.execute_unprepared(
+            r#"CREATE TABLE oauth_authorization_codes (
+                id TEXT PRIMARY KEY NOT NULL,
+                app_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                tenant_id TEXT NOT NULL,
+                code_hash TEXT NOT NULL,
+                redirect_uri TEXT NOT NULL,
+                scopes TEXT NOT NULL,
+                code_challenge TEXT NOT NULL,
+                code_challenge_method TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                used_at TEXT NULL,
+                created_at TEXT NOT NULL
+            )"#,
+        )
+        .await
+        .expect("authorization codes table");
+        // Use exact seconds so database timestamp precision cannot affect boundaries.
+        let now = chrono::DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
+        for (created, expires, admissible) in [
+            (now + chrono::Duration::seconds(1), now + chrono::Duration::minutes(1), false),
+            (now - chrono::Duration::minutes(1), now, false),
+            (now, now + chrono::Duration::minutes(1), true),
+        ] {
+            let code = oauth_codes::ActiveModel {
+                id: Set(Uuid::new_v4()),
+                app_id: Set(Uuid::new_v4()),
+                user_id: Set(Uuid::new_v4()),
+                tenant_id: Set(Uuid::new_v4()),
+                code_hash: Set(Uuid::new_v4().to_string()),
+                redirect_uri: Set("https://example.com/callback".to_string()),
+                scopes: Set(serde_json::json!(["openid"])),
+                code_challenge: Set("challenge".to_string()),
+                code_challenge_method: Set("S256".to_string()),
+                expires_at: Set(expires.into()),
+                used_at: Set(None),
+                created_at: Set(created.into()),
+            }
+            .insert(&db)
+            .await
+            .expect("insert authorization code");
+            assert_eq!(code.is_active_at(now), admissible);
+            assert_eq!(super::consume_authorization_code(&db, &code, now).await.unwrap(), admissible);
+            let stored = oauth_codes::Entity::find_by_id(code.id)
+                .one(&db).await.unwrap().unwrap();
+            assert_eq!(stored.used_at.map(|at| at.with_timezone(&Utc)), admissible.then_some(now));
+            assert!(!super::consume_authorization_code(&db, &code, now).await.unwrap());
+        }
     }
 
     #[test]
