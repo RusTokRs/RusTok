@@ -42,10 +42,10 @@ impl AuthLifecycleService {
             .filter(|record| record.email.eq_ignore_ascii_case(&claims.sub))
             .ok_or(AuthLifecycleError::InvalidVerificationToken)?;
 
-        if user.email_verified_at.is_some() {
-            return Ok(());
-        }
-
+        // Do not short-circuit an already-verified preflight read. An email
+        // change may commit between this read and the transaction; the CAS
+        // and in-transaction check below must decide whether this token is
+        // still valid for the current address.
         let tx = ctx.db().begin().await.map_err(AuthLifecycleError::from)?;
         let updated = verify_unchanged_email(&tx, tenant_id, user.id, &user.email).await?;
 
@@ -117,6 +117,14 @@ mod tests {
             .insert(&db)
             .await
             .expect("user");
+        users::ActiveModel {
+            id: Set(user.id),
+            email_verified_at: Set(Some(Utc::now().into())),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("verify old address");
         users::ActiveModel {
             id: Set(user.id),
             email: Set("new@example.com".to_string()),
