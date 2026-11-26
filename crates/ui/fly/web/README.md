@@ -33,6 +33,9 @@ For full public interface and web runtime definitions, see [CRATE_API.md](CRATE_
   `srcdoc` frame, while `IframeJsonSubscription` validates the canvas-specific envelope,
   source window, origin, instance ID and monotonic sequence. `WindowMessageSubscription`
   remains a lower-level generic utility rather than the Page Builder's typed message contract.
+  An opaque inbound origin (`null`) requires an exact source window even in that generic
+  utility; unrelated sandboxed documents share the same serialized origin. Concrete HTTP(S)
+  origins retain origin-scoped subscription support.
   `IframeMessagePort::post` translates an opaque destination through `outbound_target_origin`;
   passing `"null"` as a `postMessage` target is rejected by the platform.
 - **Peer-write notifications are advisory, not collaboration or idempotency.** They fence a
