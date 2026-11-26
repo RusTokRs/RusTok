@@ -56,55 +56,16 @@ pub fn effective_permissions_grant(effective: &[String], required: &str) -> bool
     })
 }
 
-/// Maps the effective permission snapshot onto editor capabilities:
-/// `pages:manage` grants everything; `pages:update` grants authoring
-/// (edit/properties/assets/…); `pages:publish` grants publishing only.
-/// Users without Pages grants stay read-only. This matches the port
-/// authorization model, where the Properties capability requires
-/// `pages:update` and Publish requires `pages:publish`.
+/// Maps effective Pages permissions onto the Page Builder editor:
+/// pages:manage and pages:update grant authoring and saving. The editor's
+/// Publish port is wired to PageService::save_document, which persists the
+/// working copy and requires pages:update; actual publication is a separate
+/// Pages workflow and pages:publish alone must not expose this save action.
 pub fn pages_editor_permissions_from_effective(permissions: &[String]) -> CapabilityState {
-    let can_update = effective_permissions_grant(permissions, "pages:update");
-    let can_publish = effective_permissions_grant(permissions, "pages:publish");
-    match (can_update, can_publish) {
-        (true, true) => CapabilityState::full(),
-        (true, false) => CapabilityState {
-            publish: false,
-            ..CapabilityState::full()
-        },
-        (false, true) => CapabilityState {
-            publish: true,
-            ..CapabilityState::read_only()
-        },
-        (false, false) => CapabilityState::read_only(),
-    }
-}
-
-/// Whether the principal may restore a journaled body revision.
-///
-/// Restoring a revision is a save, so it needs `pages:update`. The journal
-/// itself is readable with `pages:publish` as well, and a principal that
-/// reads it that way is not offered an action the server would refuse. The
-/// server stays the authority: it also applies the ownership scope of the
-/// grant.
-pub fn pages_can_restore_body_revision(permissions: &[String]) -> bool {
-    effective_permissions_grant(permissions, "pages:update")
-}
-
-pub fn pages_editor_provider_state(assembly: &ContributionAssemblyResult) -> EditorProviderState {
-    if assembly
-        .diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.severity == ContributionAssemblySeverity::Error)
-    {
-        EditorProviderState::Unavailable
-    } else if assembly
-        .diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.severity == ContributionAssemblySeverity::Warning)
-    {
-        EditorProviderState::Degraded
+    if effective_permissions_grant(permissions, "pages:update") {
+        CapabilityState::full()
     } else {
-        EditorProviderState::Healthy
+        CapabilityState::read_only()
     }
 }
 
@@ -151,18 +112,20 @@ mod tests {
     }
 
     #[test]
-    fn update_grant_authors_but_cannot_publish() {
+    fn update_grant_can_save_the_page_builder_working_copy() {
         let permissions = pages_editor_permissions_from_effective(&["pages:update".to_string()]);
         assert!(permissions.edit);
         assert!(permissions.properties);
         assert!(permissions.assets);
-        assert!(!permissions.publish);
+        // The host's Publish port persists the working copy and is authorized by pages:update.
+        assert!(permissions.publish);
     }
 
     #[test]
-    fn publish_grant_without_update_only_publishes() {
+    fn publish_grant_without_update_keeps_the_page_builder_read_only() {
         let permissions = pages_editor_permissions_from_effective(&["pages:publish".to_string()]);
         assert!(!permissions.edit);
+        assert!(!permissions.publish);
         assert!(!permissions.properties);
         assert!(!permissions.assets);
         assert!(permissions.publish);
