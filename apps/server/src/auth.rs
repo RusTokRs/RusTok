@@ -114,6 +114,14 @@ pub fn encode_oauth_access_token(
     .map_err(auth_err)
 }
 
+pub(crate) fn issue_oauth_access_token(
+    config: &AuthConfig,
+    input: rustok_auth::OauthAccessTokenInput<'_>,
+    deadline: Option<chrono::DateTime<chrono::Utc>>,
+) -> Result<rustok_auth::IssuedOauthAccessToken> {
+    rustok_auth::issue_oauth_access_token(config, input, deadline).map_err(auth_err)
+}
+
 pub fn decode_access_token(config: &AuthConfig, token: &str) -> Result<Claims> {
     rustok_auth::decode_access_token(config, token).map_err(auth_err)
 }

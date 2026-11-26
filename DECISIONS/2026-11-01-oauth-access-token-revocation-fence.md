@@ -56,6 +56,11 @@ consent-presence check alone could not distinguish an old epoch from a new grant
    access registrations and refresh tokens. Issuance rejects expired prepared
    credentials and rechecks their deadlines under the mutation fence; delegated
    token responses report only remaining whole access-lifetime seconds.
+   Newly issued service and delegated access rows store the exact signed
+   whole-second JWT expiry. The Auth signer applies the absolute family cap
+   before signing and returns the signed expiry with the precise issuance
+   sample. The response TTL is calculated after asynchronous usage telemetry.
+   Existing rows keep their earlier-of-signed-and-durable validation fence.
 10. The duplicate-rotation grace applies only to a consumed refresh row whose
     last-use and revocation timestamps match, with a valid creation/expiry
     interval and nonnegative elapsed time strictly below 30 seconds. An

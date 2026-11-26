@@ -103,7 +103,9 @@ it never provisions a service or adds grants. Human transport authentication is 
 OAuth authorization rechecks the locked direct-session/access deadline after
 consent and code writes, and code consumption rejects future-dated and expired
 codes using one admission timestamp. Service and delegated token exchanges
-recheck prepared expiry before commit. OAuth policy changes and consent re-grants now durably revoke previous
+recheck prepared expiry before commit. Newly issued OAuth access rows use
+the exact signed whole-second JWT expiry, and response TTL is computed after
+usage telemetry. OAuth policy changes and consent re-grants now durably revoke previous
 credentials at the source level. Compilation, focused regressions and
 PostgreSQL contention/rollback evidence remain pending. OAuth refresh-family
 proof-bound recovery is source-wired for the token endpoint; client adoption,

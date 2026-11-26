@@ -1,7 +1,7 @@
 use axum::http::StatusCode;
 use chrono::Utc;
 use rustok_api::context::scope_matches;
-use rustok_auth::{AuthRefreshRetryKey, TokenRequest, TokenResponse};
+use rustok_auth::{AuthRefreshRetryKey, OauthAccessTokenInput, TokenRequest, TokenResponse};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend,
     EntityTrait, QueryFilter, QuerySelect, Set, TransactionTrait, sea_query::Expr,
@@ -116,7 +116,7 @@ impl OAuthTokenService {
         let require_email_verification = runtime.runtime_ctx().settings().features.email_verification;
         let app = resolve_client(db, tenant_id, request).await?;
 
-        let response = match request.grant_type.as_str() {
+        let (prepared, scopes) = match request.grant_type.as_str() {
             CLIENT_CREDENTIALS_GRANT => {
                 require_grant(&app, CLIENT_CREDENTIALS_GRANT)?;
                 authenticate_client(&app, request, true).await?;
@@ -130,30 +130,16 @@ impl OAuthTokenService {
                 require_grant(&current_app, CLIENT_CREDENTIALS_GRANT)?;
                 let scopes = validate_requested_scopes(&current_app, request.scope.as_deref())?;
                 let prepared = prepare_service_access_token(&current_app, auth_config, &scopes)?;
-                let expires_at = prepared_token_expiry(&prepared.access_model)?;
-                remaining_access_lifetime(expires_at, Utc::now(), prepared.expires_in)?;
-                prepared
-                    .access_model
-                    .clone()
-                    .insert(&tx)
-                    .await
-                    .map_err(|_| {
-                        OAuthTokenProtocolError::server_error("Failed to persist access token")
-                    })?;
-                remaining_access_lifetime(expires_at, Utc::now(), prepared.expires_in)?;
+                validate_prepared_deadlines(&prepared, Utc::now(), None)?;
+                persist_prepared_tokens(&tx, &prepared).await?;
+                validate_prepared_deadlines(&prepared, Utc::now(), None)?;
                 tx.commit().await.map_err(|_| {
                     OAuthTokenProtocolError::server_error(
                         "Failed to commit client-credentials exchange",
                     )
                 })?;
 
-                TokenResponse {
-                    access_token: prepared.access_token,
-                    token_type: "Bearer".to_string(),
-                    expires_in: remaining_access_lifetime(expires_at, Utc::now(), prepared.expires_in)?,
-                    refresh_token: None,
-                    scope: scopes.join(" "),
-                }
+                (prepared, scopes)
             }
             AUTHORIZATION_CODE_GRANT => {
                 require_grant(&app, AUTHORIZATION_CODE_GRANT)?;
@@ -192,7 +178,7 @@ impl OAuthTokenService {
                     require_email_verification,
                 )
                 .await?;
-                prepared.into_response(&scopes)?
+                (prepared, scopes)
             }
             REFRESH_TOKEN_GRANT => {
                 require_grant(&app, REFRESH_TOKEN_GRANT)?;
@@ -246,7 +232,7 @@ impl OAuthTokenService {
                     // Recovery is not another rotation; do not extend deadlines.
                     return Ok(response);
                 }
-                prepared.into_response(&scopes)?
+                (prepared, scopes)
             }
             other => {
                 return Err(OAuthTokenProtocolError::unsupported_grant(format!(
@@ -260,11 +246,13 @@ impl OAuthTokenService {
             tracing::warn!(app_id = %app.id, tenant_id = %app.tenant_id, error = %error, "Failed to update OAuth app usage timestamp");
         }
 
-        Ok(response)
+        // Usage telemetry is asynchronous: calculate the lifetime only
+        // after it finishes, not from the pre-telemetry response.
+        prepared.into_response(&scopes)
     }
 }
 
-struct PreparedUserTokens {
+struct PreparedOAuthTokens {
     access_token: String,
     access_model: oauth_tokens::ActiveModel,
     refresh_token: Option<String>,
@@ -273,10 +261,9 @@ struct PreparedUserTokens {
     expires_in: u64,
 }
 
-impl PreparedUserTokens {
+impl PreparedOAuthTokens {
     fn into_response(self, scopes: &[String]) -> Result<TokenResponse, OAuthTokenProtocolError> {
-        let expires_at = prepared_token_expiry(&self.access_model)?;
-        let expires_in = remaining_access_lifetime(expires_at, Utc::now(), self.expires_in)?;
+        let expires_in = prepared_access_lifetime(&self.access_model, Utc::now(), self.expires_in)?;
         Ok(TokenResponse {
             access_token: self.access_token,
             token_type: "Bearer".to_string(),
@@ -620,16 +607,38 @@ fn prepared_token_expiry(
     }
 }
 
+fn prepared_token_creation(
+    model: &oauth_tokens::ActiveModel,
+) -> Result<chrono::DateTime<Utc>, OAuthTokenProtocolError> {
+    match &model.created_at {
+        sea_orm::ActiveValue::Set(value) => Ok(value.with_timezone(&Utc)),
+        _ => Err(OAuthTokenProtocolError::server_error("Missing prepared OAuth token creation time")),
+    }
+}
+
+fn prepared_access_lifetime(
+    model: &oauth_tokens::ActiveModel,
+    now: chrono::DateTime<Utc>,
+    maximum: u64,
+) -> Result<u64, OAuthTokenProtocolError> {
+    if now < prepared_token_creation(model)? {
+        return Err(OAuthTokenProtocolError::invalid_grant("OAuth credential creation time is in the future"));
+    }
+    remaining_access_lifetime(prepared_token_expiry(model)?, now, maximum)
+}
+
 fn validate_prepared_deadlines(
-    prepared: &PreparedUserTokens,
+    prepared: &PreparedOAuthTokens,
     now: chrono::DateTime<Utc>,
     family_deadline: Option<chrono::DateTime<Utc>>,
 ) -> Result<(), OAuthTokenProtocolError> {
-    let access_expiry = prepared_token_expiry(&prepared.access_model)?;
-    remaining_access_lifetime(access_expiry, now, prepared.expires_in)?;
+    prepared_access_lifetime(&prepared.access_model, now, prepared.expires_in)?;
     for model in std::iter::once(&prepared.access_model).chain(prepared.refresh_model.iter()) {
         let expiry = prepared_token_expiry(model)?;
-        if expiry <= now || family_deadline.is_some_and(|deadline| expiry > deadline) {
+        if prepared_token_creation(model)? > now
+            || expiry <= now
+            || family_deadline.is_some_and(|deadline| expiry > deadline)
+        {
             return Err(OAuthTokenProtocolError::invalid_grant(
                 "Prepared OAuth credential exceeds its current lifetime boundary",
             ));
@@ -1152,33 +1161,29 @@ fn ensure_authenticated_client_unchanged(
     Ok(())
 }
 
-struct PreparedServiceToken {
-    access_token: String,
-    access_model: oauth_tokens::ActiveModel,
-    expires_in: u64,
-}
-
 fn prepare_service_access_token(
     app: &oauth_apps::Model,
     config: &AuthConfig,
     scopes: &[String],
-) -> Result<PreparedServiceToken, OAuthTokenProtocolError> {
+) -> Result<PreparedOAuthTokens, OAuthTokenProtocolError> {
     let granted_permissions = app.parsed_granted_permissions().map_err(|_| {
         OAuthTokenProtocolError::server_error("OAuth app permission policy is invalid")
     })?;
     let role = infer_user_role_from_permissions(&granted_permissions);
-    let now = Utc::now();
     let token_id = Uuid::new_v4();
-    let token = auth::encode_oauth_access_token(
+    let issued = auth::issue_oauth_access_token(
         config,
-        app.id,
-        app.tenant_id,
-        role,
-        app.client_id,
-        scopes,
-        CLIENT_CREDENTIALS_GRANT,
-        SERVICE_ACCESS_TOKEN_TTL_SECS,
-        token_id,
+        OauthAccessTokenInput {
+            app_id: app.id,
+            tenant_id: app.tenant_id,
+            role,
+            client_id: app.client_id,
+            scopes,
+            grant_type: CLIENT_CREDENTIALS_GRANT,
+            expires_in_secs: SERVICE_ACCESS_TOKEN_TTL_SECS,
+            token_id,
+        },
+        None,
     )
     .map_err(|_| OAuthTokenProtocolError::server_error("Failed to encode access token"))?;
     let access_model = oauth_tokens::ActiveModel {
@@ -1186,7 +1191,7 @@ fn prepare_service_access_token(
         app_id: Set(app.id),
         user_id: Set(None),
         tenant_id: Set(app.tenant_id),
-        token_hash: Set(auth::hash_refresh_token(&token)),
+        token_hash: Set(auth::hash_refresh_token(&issued.token)),
         family_id: Set(token_id),
         authorization_code_id: Set(None),
         grant_type: Set(CLIENT_CREDENTIALS_GRANT.to_string()),
@@ -1195,17 +1200,18 @@ fn prepare_service_access_token(
         scopes: Set(serde_json::to_value(scopes).map_err(|_| {
             OAuthTokenProtocolError::server_error("Failed to serialize token scopes")
         })?),
-        expires_at: Set(
-            (now + chrono::Duration::seconds(SERVICE_ACCESS_TOKEN_TTL_SECS as i64)).into(),
-        ),
+        expires_at: Set(issued.expires_at.into()),
         revoked_at: Set(None),
         last_used_at: Set(None),
-        created_at: Set(now.into()),
-        updated_at: Set(now.into()),
+        created_at: Set(issued.issued_at.into()),
+        updated_at: Set(issued.issued_at.into()),
     };
-    Ok(PreparedServiceToken {
-        access_token: token,
+    Ok(PreparedOAuthTokens {
+        access_token: issued.token,
         access_model,
+        refresh_token: None,
+        refresh_model: None,
+        consent_granted_at: None,
         expires_in: SERVICE_ACCESS_TOKEN_TTL_SECS,
     })
 }
@@ -1220,7 +1226,7 @@ async fn prepare_user_tokens(
     family: Option<&RefreshTokenFamily>,
     authorization_code_id: Option<Uuid>,
     derived_refresh: Option<String>,
-) -> Result<PreparedUserTokens, OAuthTokenProtocolError> {
+) -> Result<PreparedOAuthTokens, OAuthTokenProtocolError> {
     let (_user, consent_granted_at) =
         validate_active_subject_and_consent(db, app, app.tenant_id, user_id, scopes).await?;
     let permissions = RbacService::get_user_permissions_authoritative(db, &app.tenant_id, &user_id)
@@ -1239,22 +1245,26 @@ async fn prepare_user_tokens(
         None => (token_id, now),
     };
     let family_deadline = refresh_family_deadline(family_created_at)?;
-    let access_deadline = (now + chrono::Duration::seconds(USER_ACCESS_TOKEN_TTL_SECS as i64))
-        .min(family_deadline);
-    let access_ttl = remaining_access_lifetime(access_deadline, now, USER_ACCESS_TOKEN_TTL_SECS)?;
+    remaining_access_lifetime(family_deadline, now, USER_ACCESS_TOKEN_TTL_SECS)?;
     let access_token_id = Uuid::new_v4();
-    let access_token = auth::encode_oauth_access_token(
+    let issued = auth::issue_oauth_access_token(
         config,
-        user_id,
-        app.tenant_id,
-        role,
-        app.client_id,
-        scopes,
-        AUTHORIZATION_CODE_GRANT,
-        access_ttl,
-        access_token_id,
+        OauthAccessTokenInput {
+            app_id: user_id,
+            tenant_id: app.tenant_id,
+            role,
+            client_id: app.client_id,
+            scopes,
+            grant_type: AUTHORIZATION_CODE_GRANT,
+            expires_in_secs: USER_ACCESS_TOKEN_TTL_SECS,
+            token_id: access_token_id,
+        },
+        Some(family_deadline),
     )
     .map_err(|_| OAuthTokenProtocolError::server_error("Failed to encode access token"))?;
+    if issued.issued_at < now {
+        return Err(OAuthTokenProtocolError::invalid_grant("OAuth issuance clock moved backwards"));
+    }
     let scopes_json = serde_json::to_value(scopes)
         .map_err(|_| OAuthTokenProtocolError::server_error("Failed to serialize token scopes"))?;
 
@@ -1282,18 +1292,18 @@ async fn prepare_user_tokens(
         app_id: Set(app.id),
         user_id: Set(Some(user_id)),
         tenant_id: Set(app.tenant_id),
-        token_hash: Set(auth::hash_refresh_token(&access_token)),
+        token_hash: Set(auth::hash_refresh_token(&issued.token)),
         family_id: Set(access_family_id),
         authorization_code_id: Set(authorization_code_id),
         grant_type: Set(AUTHORIZATION_CODE_GRANT.to_string()),
         token_kind: Set(oauth_tokens::TOKEN_KIND_ACCESS.to_string()),
         consent_granted_at: Set(consent_granted_at),
         scopes: Set(scopes_json.clone()),
-        expires_at: Set(access_deadline.into()),
+        expires_at: Set(issued.expires_at.into()),
         revoked_at: Set(None),
         last_used_at: Set(None),
-        created_at: Set(now.into()),
-        updated_at: Set(now.into()),
+        created_at: Set(issued.issued_at.into()),
+        updated_at: Set(issued.issued_at.into()),
     };
 
     let sliding_deadline = now
@@ -1323,13 +1333,13 @@ async fn prepare_user_tokens(
         }
     });
 
-    Ok(PreparedUserTokens {
-        access_token,
+    Ok(PreparedOAuthTokens {
+        access_token: issued.token,
         access_model,
         refresh_token,
         refresh_model,
         consent_granted_at,
-        expires_in: access_ttl,
+        expires_in: USER_ACCESS_TOKEN_TTL_SECS,
     })
 }
 
@@ -1337,7 +1347,7 @@ async fn commit_authorization_code_exchange(
     db: &DatabaseConnection,
     authenticated_app: &oauth_apps::Model,
     code: &oauth_codes::Model,
-    prepared: &PreparedUserTokens,
+    prepared: &PreparedOAuthTokens,
     require_email_verification: bool,
 ) -> Result<(), OAuthTokenProtocolError> {
     let tx = db.begin().await.map_err(|_| {
@@ -1445,7 +1455,7 @@ async fn recover_refresh_in_tx<C: ConnectionTrait>(
     db: &C,
     stale: &oauth_tokens::Model,
     family: &RefreshTokenFamily,
-    prepared: &PreparedUserTokens,
+    prepared: &PreparedOAuthTokens,
 ) -> Result<OAuthRecoveryWindow, OAuthTokenProtocolError> {
     let invalid = || OAuthTokenProtocolError::invalid_grant("OAuth refresh recovery unavailable");
     let rotated_at = committed_refresh_rotation_at(stale).ok_or_else(invalid)?;
@@ -1511,7 +1521,7 @@ async fn commit_refresh_rotation(
     db: &DatabaseConnection,
     authenticated_app: &oauth_apps::Model,
     current: &oauth_tokens::Model,
-    prepared: &PreparedUserTokens,
+    prepared: &PreparedOAuthTokens,
     require_email_verification: bool,
     allow_recovery: bool,
 ) -> Result<Option<OAuthRecoveryWindow>, OAuthTokenProtocolError> {
@@ -1645,7 +1655,7 @@ where
 
 async fn persist_prepared_tokens<C>(
     db: &C,
-    prepared: &PreparedUserTokens,
+    prepared: &PreparedOAuthTokens,
 ) -> Result<(), OAuthTokenProtocolError>
 where
     C: ConnectionTrait,
@@ -1678,7 +1688,7 @@ fn required<'a>(
 #[cfg(test)]
 mod tests {
     use super::{
-        PreparedUserTokens, REFRESH_TOKEN_GRANT, USER_REFRESH_FAMILY_ABSOLUTE_LIFETIME_DAYS,
+        PreparedOAuthTokens, REFRESH_TOKEN_GRANT, USER_REFRESH_FAMILY_ABSOLUTE_LIFETIME_DAYS,
         authenticate_client, commit_refresh_rotation,
         lock_active_oauth_subject, refresh_family_deadline, require_grant, resolve_client,
         scopes_for_refresh, validate_requested_scopes,
@@ -2063,7 +2073,7 @@ mod tests {
         .insert(&db)
         .await
         .expect("current refresh token");
-        let prepared = PreparedUserTokens {
+        let prepared = PreparedOAuthTokens {
             access_token: "access-after-consent-change".to_string(),
             access_model: oauth_tokens::ActiveModel {
                 id: Set(Uuid::new_v4()),
@@ -2578,6 +2588,29 @@ mod tests {
     }
 
     #[test]
+    fn service_registration_uses_exact_signed_expiry_and_rejects_future_creation() {
+        let config = crate::auth::test_auth_config("test-secret-key-for-unit-tests-only-32bytes!".to_string());
+        let mut client = app(
+            serde_json::json!(["openid"]),
+            serde_json::json!(["client_credentials"]),
+        );
+        client.app_type = "service".to_string();
+        let scopes = vec!["openid".to_string()];
+        let prepared = super::prepare_service_access_token(&client, &config, &scopes).unwrap();
+        let claims = crate::auth::decode_access_token(&config, &prepared.access_token).unwrap();
+        let expiry = super::prepared_token_expiry(&prepared.access_model).unwrap();
+        let created = super::prepared_token_creation(&prepared.access_model).unwrap();
+        assert_eq!(expiry.timestamp() as usize, claims.exp);
+        assert_eq!(expiry.timestamp_subsec_nanos(), 0);
+        assert_eq!(created.timestamp() as usize, claims.iat);
+        assert!(super::validate_prepared_deadlines(&prepared, created - chrono::Duration::nanoseconds(1), None).is_err());
+        assert_eq!(super::prepared_access_lifetime(
+            &prepared.access_model, expiry - chrono::Duration::milliseconds(1999), prepared.expires_in,
+        ).unwrap(), 1);
+        assert!(super::validate_prepared_deadlines(&prepared, expiry, None).is_err());
+    }
+
+    #[test]
     fn remaining_access_lifetime_is_bounded_and_never_advertises_zero() {
         let now = Utc::now();
         assert_eq!(super::remaining_access_lifetime(
@@ -2732,7 +2765,7 @@ mod tests {
         .await
         .expect("current refresh token");
 
-        let replacement = |hash: &str| PreparedUserTokens {
+        let replacement = |hash: &str| PreparedOAuthTokens {
             access_token: "access".to_string(),
             access_model: oauth_tokens::ActiveModel {
                 id: Set(Uuid::new_v4()),

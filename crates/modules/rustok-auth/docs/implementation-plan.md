@@ -323,7 +323,13 @@ OAuth issuance additionally rechecks the locked authorization session after
 consent writes and after code insertion; future-dated and exactly expired codes
 cannot be consumed, and prepared token expiry is rechecked before committing
 a code exchange. Service access responses report remaining durable lifetime.
+The Auth signer now returns exact signed expiry metadata and accepts the
+absolute family cap before signing. Service and delegated access registrations
+use that exact deadline; response lifetime is calculated after usage telemetry.
+Future-dated prepared credentials fail closed. Old registrations retain their
+stored expiry and the extractor continues taking the earlier deadline.
 Boundary regressions are authored; compilation and transaction tests remain open.
+Durable OAuth clock rollback across requests/replicas remains open.
 
 ## OAuth family lifetime and replay evidence (source only)
 

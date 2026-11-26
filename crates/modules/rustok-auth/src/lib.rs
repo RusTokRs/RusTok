@@ -71,10 +71,12 @@ pub use jwt_fence::{
     JwtReloadOutcome, JwtRevocationReceipt,
 };
 pub use jwt::{
-    Claims, EmailVerificationClaims, InviteClaims, OauthAccessTokenInput, PasswordResetClaims,
+    Claims, EmailVerificationClaims, InviteClaims, IssuedOauthAccessToken, OauthAccessTokenInput,
+    PasswordResetClaims,
     decode_access_token, decode_email_verification_token, decode_invite_token,
     decode_password_reset_token, encode_access_token, encode_email_verification_token,
     encode_invite_token, encode_oauth_access_token, encode_password_reset_token,
+    issue_oauth_access_token,
 };
 pub use lifecycle::{
     AcceptInviteRecord, AuthLifecycleContext, AuthLifecycleMutationError, AuthLifecyclePort,

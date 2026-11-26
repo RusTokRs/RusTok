@@ -656,7 +656,14 @@ back the consent change. Code exchange admits only the interval
 consumption and its recorded use time. Prepared access/refresh deadlines are
 rechecked after insertion before commit. Service-token responses likewise
 compute remaining durable access lifetime after commit instead of advertising
-the original TTL. Source regressions are authored, not executed.
+the original TTL. The Auth signer returns the precise issuance sample and
+exact signed whole-second expiry; both service and delegated access rows store
+that expiry, with the original refresh-family deadline applied before signing.
+Responses derive remaining whole seconds after usage telemetry, and prepared
+credentials dated after the current clock fail closed. Existing access rows
+retain their stored expiry; validation still takes the earlier signed/durable
+deadline. This is not durable OAuth clock-rollback protection across requests
+or replicas. Source regressions are authored, not executed.
 
 Re-granting consent durably revokes existing access and refresh credentials
 and invalidates pending authorization codes for the same app, subject and
