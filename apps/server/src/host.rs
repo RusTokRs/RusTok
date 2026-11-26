@@ -431,35 +431,120 @@ fn validate_database_deployment(database_uri: &str, production: bool) -> Result<
         return Ok(());
     }
 
-    let normalized = database_uri.trim().to_ascii_lowercase();
-    if normalized.is_empty() {
+    let database_uri = database_uri.trim();
+    if database_uri.is_empty() {
         return Err(Error::BadRequest(
             "Production database URI must not be empty".to_string(),
         ));
     }
 
-    const FORBIDDEN_PROD_DATABASE_PATTERNS: &[&str] = &[
-        "rustok:rustok",
-        "postgres:postgres",
-        "admin:admin",
-        "root:root",
-        "user:password",
-        "sqlite:",
-        "localhost:5432/rustok_dev",
-        "127.0.0.1:5432/rustok_dev",
-    ];
+    if database_uri
+        .split_once(':')
+        .is_some_and(|(scheme, _)| scheme.eq_ignore_ascii_case("sqlite"))
+    {
+        return Err(Error::BadRequest(
+            "Production database configuration must not use development credentials or local placeholders"
+                .to_string(),
+        ));
+    }
 
-    for pattern in FORBIDDEN_PROD_DATABASE_PATTERNS {
-        if normalized.contains(pattern) {
-            return Err(Error::BadRequest(format!(
-                "Production database configuration must not use development credentials or local placeholders (`{pattern}`)"
-            )));
-        }
+    let parsed = url::Url::parse(database_uri).map_err(|_| {
+        Error::BadRequest("Production database URI must be a valid absolute URL".to_string())
+    })?;
+    if parsed.fragment().is_some() {
+        return Err(Error::BadRequest(
+            "Production database URI must not contain a URL fragment; percent-encode reserved credential characters"
+                .to_string(),
+        ));
+    }
+
+    let username = decode_percent_encoded_component(parsed.username()).ok_or_else(|| {
+        Error::BadRequest("Production database URI contains invalid percent-encoding".to_string())
+    })?;
+    let password = match parsed.password() {
+        Some(password) => decode_percent_encoded_component(password).ok_or_else(|| {
+            Error::BadRequest("Production database URI contains invalid percent-encoding".to_string())
+        })?,
+        None => String::new(),
+    };
+
+    let username = username.to_ascii_lowercase();
+    let password = password.to_ascii_lowercase();
+    let uses_development_credentials = match username.as_str() {
+        "rustok" => password.starts_with("rustok"),
+        "postgres" => password.starts_with("postgres"),
+        "admin" => password.starts_with("admin"),
+        "root" => password.starts_with("root"),
+        "user" => password.starts_with("password"),
+        _ => false,
+    };
+
+    let host = parsed
+        .host_str()
+        .unwrap_or_default()
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
+    let host_is_local = host == "localhost"
+        || host == "localhost.localdomain"
+        || host.ends_with(".localhost")
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|address| address.is_loopback());
+    let default_port = match parsed.scheme() {
+        "postgres" | "postgresql" => Some(5432),
+        "mysql" => Some(3306),
+        _ => None,
+    };
+    let port = parsed.port().or(default_port);
+    let database_name = decode_percent_encoded_component(parsed.path().trim_matches('/'))
+        .ok_or_else(|| {
+            Error::BadRequest("Production database URI contains invalid percent-encoding".to_string())
+        })?;
+    let uses_local_development_database = host_is_local
+        && port == Some(5432)
+        && database_name.eq_ignore_ascii_case("rustok_dev");
+
+    if uses_development_credentials
+        || uses_local_development_database
+        || parsed.scheme().eq_ignore_ascii_case("sqlite")
+    {
+        return Err(Error::BadRequest(
+            "Production database configuration must not use development credentials or local placeholders"
+                .to_string(),
+        ));
     }
 
     Ok(())
 }
 
+fn decode_percent_encoded_component(value: &str) -> Option<String> {
+    let bytes = value.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            let high = decode_hex_digit(*bytes.get(index + 1)?)?;
+            let low = decode_hex_digit(*bytes.get(index + 2)?)?;
+            decoded.push((high << 4) | low);
+            index += 3;
+        } else {
+            decoded.push(bytes[index]);
+            index += 1;
+        }
+    }
+
+    String::from_utf8(decoded).ok()
+}
+
+fn decode_hex_digit(value: u8) -> Option<u8> {
+    match value {
+        b'0'..=b'9' => Some(value - b'0'),
+        b'a'..=b'f' => Some(value - b'a' + 10),
+        b'A'..=b'F' => Some(value - b'A' + 10),
+        _ => None,
+    }
+}
 fn application_router(
     host_mode: crate::common::settings::RuntimeHostMode,
     settings: &crate::common::settings::RustokSettings,
@@ -1172,10 +1257,56 @@ mod tests {
     #[test]
     fn production_accepts_secure_database_uri() {
         super::validate_database_deployment(
-            "postgres://app_user:K8x#mP9$vL2@prod-db.internal:5432/rustok_prod",
+            "postgres://app_user:K8x%23mP9%24vL2@prod-db.internal:5432/rustok_prod",
             true,
         )
         .expect("strong production credentials should pass");
+    }
+
+    #[test]
+    fn production_rejects_percent_encoded_default_database_credentials() {
+        let error = super::validate_database_deployment(
+            "postgres://r%75stok:r%75stok@prod-db.internal:5432/rustok_prod",
+            true,
+        )
+        .expect_err("URL-encoded development credentials must still be rejected");
+        assert!(error.to_string().contains("development credentials"));
+    }
+
+    #[test]
+    fn production_rejects_percent_encoded_local_development_database_name() {
+        let error = super::validate_database_deployment(
+            "postgres://app_user:strong-secret@localhost:5432/rustok%5Fdev",
+            true,
+        )
+        .expect_err("URL-encoded local development database names must be rejected");
+        assert!(error.to_string().contains("development credentials"));
+    }
+
+    #[test]
+    fn production_does_not_reject_safe_credentials_containing_placeholder_text() {
+        super::validate_database_deployment(
+            "postgres://app_user:secret-rustok:rustok-prod@prod-db.internal:5432/rustok_prod",
+            true,
+        )
+        .expect("placeholder-like text in a different credential must not cause a false positive");
+    }
+
+    #[test]
+    fn production_rejects_database_uri_fragments() {
+        let error = super::validate_database_deployment(
+            "postgres://app_user:strong-secret@prod-db.internal:5432/rustok_prod#fragment",
+            true,
+        )
+        .expect_err("database URI fragments are ambiguous and must be rejected");
+        assert!(error.to_string().contains("fragment"));
+    }
+
+    #[test]
+    fn production_rejects_malformed_database_uri() {
+        let error = super::validate_database_deployment("not-a-database-url", true)
+            .expect_err("production database URI must be absolute");
+        assert!(error.to_string().contains("valid absolute URL"));
     }
 
     #[test]
