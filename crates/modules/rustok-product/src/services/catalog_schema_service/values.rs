@@ -396,7 +396,6 @@ impl ProductCatalogSchemaService {
     }
 
     pub(crate) async fn validate_product_publish_requirements_in<C>(
-        &self,
         conn: &C,
         tenant_id: Uuid,
         product_id: Uuid,
@@ -806,7 +805,7 @@ impl ProductCatalogSchemaService {
         )
         .await?;
         if product.status == crate::entities::product::ProductStatus::Active {
-            self.validate_product_publish_requirements_in(&txn, tenant_id, product_id)
+            Self::validate_product_publish_requirements_in(&txn, tenant_id, product_id)
                 .await?;
         }
         if !patches.is_empty() {
