@@ -818,7 +818,13 @@ history is deleted by the session foreign-key cascade. Migration and regressions
 are authored, unrun.
 
 Cookie-session login, registration and refresh use the remaining persisted
-refresh-session lifetime for cookie Max-Age. The absolute 90-day lineage cap
+refresh-session lifetime for cookie Max-Age. Login and registration finalize
+the lifetime after policy resolution and transactional event publication;
+rotation uses the persisted replacement row, and recovery retains its original
+deadline. All three reject less than one whole second remaining before commit.
+This is a pre-commit lifetime snapshot, not a guarantee against later commit
+or network latency. Source regressions authored, unrun.
+The absolute 90-day lineage cap
 is not extended when a session is rotated, and unrepresentable persisted
 timestamps fail closed rather than panicking.
 
