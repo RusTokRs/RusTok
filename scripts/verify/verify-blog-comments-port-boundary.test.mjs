@@ -42,10 +42,10 @@ const files = {
   storefrontModel: 'crates/modules/rustok-blog/storefront/src/model.rs',
   storefrontGraphql: 'crates/modules/rustok-blog/storefront/src/transport/graphql_adapter.rs',
   storefrontNative: 'crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs',
-  storefrontUi: 'crates/modules/rustok-blog/storefront/src/ui/leptos.rs',
+  storefrontUi: 'crates/modules/rustok-blog/storefront/src/ui/leptos/mod.rs',
   storefrontCommentsList: 'crates/modules/rustok-blog/storefront/src/ui/comments_list.rs',
   storefrontPolicy: 'crates/modules/rustok-blog/storefront/src/core/discussion.rs',
-  storefrontCore: 'crates/modules/rustok-blog/storefront/src/core.rs',
+  storefrontCore: 'crates/modules/rustok-blog/storefront/src/core/mod.rs',
   storefrontDiscussion: 'crates/modules/rustok-blog/storefront/src/ui/comment.rs',
   storefrontEnglish: 'crates/modules/rustok-blog/storefront/locales/en.ftl',
   storefrontRussian: 'crates/modules/rustok-blog/storefront/locales/ru.ftl',
@@ -219,7 +219,7 @@ test('rejects removal of the disabled discussion section policy', () => {
 test('rejects detaching the pure discussion policy from the actual core module', () => {
   const result = rejects(removeMarker(files.storefrontCore, 'pub mod discussion;'));
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /core\.rs: missing pub mod discussion/);
+  assert.match(result.stderr, /core\/mod\.rs: missing pub mod discussion/);
 });
 
 test('rejects a comments renderer that exposes replies for cached read-only data', () => {

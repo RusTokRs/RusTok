@@ -1,0 +1,224 @@
+use leptos::prelude::*;
+use rustok_api::StaticTenantModuleView;
+use rustok_auth_ui::ui::leptos::hooks::{use_current_user, use_tenant, use_token};
+use rustok_forms_leptos::{
+    Form, FormDescription, FormError, FormField, FormLabel, FormMessage, FormNumberInput,
+    FormSwitch, SubmitButton,
+};
+use rustok_ui_forms::FormState;
+use rustok_ui_leptos::{Alert, Button, Spinner};
+use uuid::Uuid;
+
+use crate::core::settings::{
+    MAX_SIZE, PAGE_SIZE, PUBLIC_DISCOVERY, SaveSettings, Settings, SettingsFields, message,
+};
+use crate::i18n::t;
+use crate::model::{Rejection, RequestFailure};
+use crate::transport::AdminClient;
+
+use super::Principal;
+
+#[component]
+pub(super) fn SettingsPage(locale: Option<String>, show_records: bool) -> impl IntoView {
+    let locale = StoredValue::new(locale);
+    let token = use_token();
+    let tenant = use_tenant();
+    let user = use_current_user();
+    let principal = Memo::new(move |_| Principal {
+        actor: user.get().map(|user| user.id),
+        tenant: tenant.get(),
+    });
+    let settings = Resource::new(
+        move || principal.get(),
+        move |owner| {
+            let client = AdminClient::new(token.get_untracked(), owner.tenant.clone());
+            async move { (owner, client.settings().await) }
+        },
+    );
+    let reload = Callback::new(move |()| settings.refetch());
+    let heading = t(
+        locale.get_value().as_deref(),
+        "settings-heading",
+        "Settings",
+    );
+    let loading = t(
+        locale.get_value().as_deref(),
+        "settings-loading",
+        "Loading settings",
+    );
+
+    view! {
+        <section class="space-y-4">
+            <h1 class="text-xl font-semibold">{heading}</h1>
+            <Suspense fallback=move || view! { <Spinner aria_label=loading.clone() /> }>
+                {move || {
+                    let active = principal.get();
+                    let locale = locale.get_value();
+                    settings.get().filter(|(owner, _)| *owner == active).map(|(owner, result)| {
+                        match result {
+                            Ok(view) => match Settings::from_view(view) {
+                                Some(settings) if show_records => view! {
+                                    <SettingsForm initial=settings locale=locale reload=reload owner=owner principal=principal />
+                                }.into_any(),
+                                Some(_) => view! {
+                                    <a class="text-primary underline" href="/modules/__ROUTE__/settings/records">
+                                        {t(locale.as_deref(), "settings-records-nav", "Record settings")}
+                                    </a>
+                                }.into_any(),
+                                None => view! { <Alert>{t(locale.as_deref(), "settings-unavailable", "Module settings could not be loaded.")}</Alert> }.into_any(),
+                            },
+                            Err(error) => view! {
+                                <Alert>{message(&error, locale.as_deref(), false)}</Alert>
+                            }.into_any(),
+                        }
+                    })
+                }}
+            </Suspense>
+        </section>
+    }
+}
+
+#[component]
+fn SettingsForm(
+    initial: Settings,
+    locale: Option<String>,
+    reload: Callback<()>,
+    owner: Principal,
+    principal: Memo<Principal>,
+) -> impl IntoView {
+    let language = StoredValue::new(locale);
+    let copy =
+        move |key, fallback| language.with_value(|locale| t(locale.as_deref(), key, fallback));
+    let fields = RwSignal::new(initial.fields());
+    let saved = RwSignal::new(initial);
+    let form = RwSignal::new(FormState::idle());
+    let revision_stale = RwSignal::new(false);
+    let token = use_token();
+    let owner = StoredValue::new(owner);
+
+    let write = Action::new(move |command: &SaveSettings| {
+        let client = AdminClient::new(token.get_untracked(), owner.get_value().tenant);
+        let command = command.clone();
+        async move {
+            let result = client.save_settings(command.clone()).await;
+            (command, result)
+        }
+    });
+    let on_submit = Callback::new(move |()| {
+        if principal.get_untracked() != owner.get_value()
+            || form.with_untracked(|state| state.is_submitting)
+            || revision_stale.get_untracked()
+        {
+            return;
+        }
+        let command = saved.with_untracked(|saved| {
+            saved.save(
+                &fields.get_untracked(),
+                Uuid::new_v4(),
+                language.get_value().as_deref(),
+            )
+        });
+        match command {
+            Ok(command) => {
+                form.set(FormState::submitting());
+                write.dispatch(command);
+            }
+            Err(error) => form.set(FormState::with_field_errors(vec![error])),
+        }
+    });
+    Effect::new(move |_| {
+        if let Some((command, result)) = write.value().get() {
+            apply_write(
+                command,
+                result,
+                saved,
+                fields,
+                form,
+                revision_stale,
+                language,
+            );
+        }
+    });
+
+    let busy = Signal::derive(move || form.with(|state| state.is_submitting));
+    let disabled = Signal::derive(move || busy.get() || revision_stale.get());
+    view! {
+        <Form state=form auto_submitting=false on_submit=on_submit class="space-y-4">
+            <h2 class="text-lg font-semibold">{copy("settings-records", "Records")}</h2>
+            <FormError />
+            <FormField name=PAGE_SIZE>
+                <FormLabel>{copy("settings-page-size", "Default records per page")}</FormLabel>
+                <FormNumberInput
+                    value=Signal::derive(move || fields.with(|fields| fields.page_size.clone()))
+                    on_input=move |value| fields.update(|fields| fields.page_size = value)
+                    min=Some(1.0)
+                    max=Some(f64::from(MAX_SIZE))
+                    step=Some(1.0)
+                    disabled=busy
+                    required=true
+                />
+                <FormDescription>{copy("settings-page-size-help", "Applies when an operator has not selected a page size.")}</FormDescription>
+                <FormMessage />
+            </FormField>
+            <FormField name=PUBLIC_DISCOVERY>
+                <FormSwitch
+                    checked=Signal::derive(move || fields.with(|fields| fields.public_discovery))
+                    on_change=Callback::new(move |value| fields.update(|fields| fields.public_discovery = value))
+                    label=copy("settings-discovery", "Public discovery")
+                    description=copy("settings-discovery-help", "Allow public access to published records for this tenant.")
+                    disabled=busy
+                />
+            </FormField>
+            <div class="flex flex-wrap gap-2">
+                <SubmitButton disabled=disabled>{copy("settings-save", "Save settings")}</SubmitButton>
+                <Show when=move || revision_stale.get()>
+                    <Button disabled=busy on_click=Box::new(move || reload.run(()))>
+                        {copy("settings-reload", "Reload saved values")}
+                    </Button>
+                </Show>
+            </div>
+            <Show when=move || form.with(|state| state.is_success)>
+                <p role="status">{copy("settings-saved", "Settings saved.")}</p>
+            </Show>
+        </Form>
+    }
+}
+
+fn apply_write(
+    command: SaveSettings,
+    result: Result<StaticTenantModuleView, RequestFailure>,
+    saved: RwSignal<Settings>,
+    fields: RwSignal<SettingsFields>,
+    form: RwSignal<FormState>,
+    revision_stale: RwSignal<bool>,
+    language: StoredValue<Option<String>>,
+) {
+    match result {
+        Ok(view) => {
+            if let Some(next) = saved.with_untracked(|saved| saved.applied(&command, view)) {
+                fields.set(next.fields());
+                saved.set(next);
+                form.set(FormState::success());
+            } else {
+                revision_stale.set(true);
+                let locale = language.get_value();
+                form.set(FormState::with_form_error(t(
+                    locale.as_deref(),
+                    "settings-uncertain",
+                    "The save could not be confirmed. Reload the saved values before saving again.",
+                )));
+            }
+        }
+        Err(error) => {
+            revision_stale.set(matches!(
+                &error,
+                RequestFailure::Transport(_) | RequestFailure::Rejected(Rejection::Conflict)
+            ));
+            form.set(FormState::with_form_error(message(
+                &error,
+                language.get_value().as_deref(),
+                true,
+            )));
+        }
+    }
+}

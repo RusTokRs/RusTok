@@ -14,11 +14,11 @@ Leptos admin UI package for the `rustok-blog` module.
 - Participates in the manifest-driven UI composition path through `rustok-module.toml`.
 - Exposes Blog-owned Category selection, per-post channel visibility, featured image, localized SEO defaults, and RFC 3339 schedule authoring for drafts through both selected transports.
 - Owns blog CRUD through a module transport facade: SSR/hydrate selects native `#[server]` functions, while standalone CSR selects the parallel GraphQL contract.
-- Owns a separate comment-moderation slice through `admin/src/moderation.rs`; selecting a post loads its non-deleted owner queue and supports approve/spam/trash actions through the selected native or GraphQL transport.
+- Owns a comment-moderation workspace in `admin/src/ui/moderation.rs`. Selecting a post loads its non-deleted moderation queue and enables approve, spam and trash actions through the selected native or GraphQL transport.
 - Paginates the moderation queue with bounded `page`/`per_page` inputs, resets page state when the selected post changes, and prevents navigation outside the server-reported total.
 - Keeps moderation separate from the post detail query so editors without `blog_posts:manage` retain normal CRUD behavior and reduced GraphQL builds can degrade only the moderation panel.
 - Embeds owner-side post SEO editing through `rustok-seo-panel` instead of relying on a central SEO entity editor.
-- Keeps Leptos render/bind code under `admin/src/ui/`: the editor/moderation page composition resides in `ui/mod.rs`, while the editor controller remains in `ui/leptos.rs`. The crate `lib.rs` is now a pure facade. Native server functions, GraphQL adapters and moderation GraphQL queries stay under `admin/src/transport/`.
+- Keeps Leptos render/bind code under `admin/src/ui/`. The editor/moderation page is composed in `ui/mod.rs`, while the editor controller lives in `ui/leptos/mod.rs`. The crate `lib.rs` is a facade. Native server functions, GraphQL adapters and moderation GraphQL queries live under `admin/src/transport/`.
 - Mounts the shared sandboxed `@rustok/richtext` frame through the thin WASM lifecycle bridge only during browser hydration. SSR emits the iframe markup and never executes browser/WASM code.
 
 ## Entry Points

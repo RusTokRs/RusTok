@@ -16,7 +16,8 @@ const manifest = read('crates/modules/rustok-region/rustok-module.toml');
 const plan = read('crates/modules/rustok-region/docs/implementation-plan.md');
 const central = read('docs/modules/registry.md');
 const lib = read('crates/modules/rustok-region/src/lib.rs');
-const ports = read('crates/modules/rustok-region/src/ports.rs');
+const ports = read(registry.in_process_provider_impl.source);
+const contract = read('crates/modules/rustok-region/src/ports/read.rs');
 
 if (registry.schema_version !== 1) fail('registry schema_version must be 1');
 if (registry.module !== 'region' || registry.role !== 'provider' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('registry identity/status drift');
@@ -35,12 +36,14 @@ if (!manifest.includes('[fba.provider]') || !manifest.includes('registry = "cont
   const surface = requirePortSurface(lib, registry);
   if (!surface.ok) fail(surface.message);
 }
-for (const marker of ['trait RegionReadPort', 'impl RegionReadPort for crate::RegionService', 'require_region_read_policy(', '.require_policy(PortCallPolicy::read())', 'RegionReadRequest', 'RegionListRequest', 'RegionReadProjection', 'region.country_code_empty', 'region.tenant_id_invalid', 'PortContext', 'PortError']) {
-  if (!ports.includes(marker)) fail(`ports source missing ${marker}`);
+for (const marker of ['trait RegionReadPort', 'RegionReadRequest', 'RegionListRequest', 'RegionReadProjection', 'use rustok_api::{PortContext, PortError};', 'Serialize, Deserialize']) {
+  if (!contract.includes(marker)) fail(`port contract missing ${marker}`);
+}
+for (const marker of ['impl RegionReadPort for crate::RegionService', 'require_region_read_policy(', '.require_policy(PortCallPolicy::read())', 'region.country_code_empty', 'region.tenant_id_invalid']) {
+  if (!ports.includes(marker)) fail(`in-process port adapter missing ${marker}`);
 }
 if (!ports.includes('use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};')) fail('region port must import shared rustok-api primitives');
 if (ports.includes('require_write_semantics()?')) fail('region read port must not require write idempotency');
-if (!ports.includes('Serialize, Deserialize')) fail('region FBA DTOs must be serializable');
 if (!plan.includes('- FBA status: `boundary_ready`') || !plan.includes(registryPath) || !plan.includes('RegionReadPort') || !plan.includes('region-contract-test-static-matrix.json') || !plan.includes(registry.evidence.runtime_order_smoke)) fail('local plan FBA evidence drift');
 if (!central.includes('| `region` |') || !central.includes(registryPath) || !central.includes(registry.evidence.runtime_order_smoke) || !central.includes('| `region` | admin + storefront | `in_progress` | `boundary_ready`')) fail('central readiness board drift');
 if (evidence.schema_version !== 1 || evidence.module !== 'region' || evidence.status !== 'static_matrix_locked') fail('evidence identity drift');

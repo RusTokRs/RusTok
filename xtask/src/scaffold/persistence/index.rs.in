@@ -1,0 +1,177 @@
+use std::{collections::HashSet, num::NonZeroU64, sync::Arc};
+
+use async_trait::async_trait;
+use rustok_api::localized_index::{
+    LocalizedIndexKey, LocalizedIndexPage, LocalizedIndexReader, LocalizedIndexRow,
+    LocalizedIndexSource, LocalizedIndexSources, MAX_LOCALIZED_INDEX_LOAD,
+    MAX_LOCALIZED_INDEX_SCAN,
+};
+use rustok_api::{PortError, TenantLocale};
+use rustok_core::ModuleRuntimeExtensions;
+use sea_orm::{
+    ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    SelectTwo,
+};
+use uuid::Uuid;
+
+use crate::entities::{record, translation};
+
+pub(crate) fn register(extensions: &mut ModuleRuntimeExtensions) {
+    extensions
+        .get_or_insert_with::<LocalizedIndexSources, _>(Default::default)
+        .register(LocalizedIndexSource {
+            module_slug: "__SLUG__",
+            entity_type: "__ENTITY_SLUG__",
+            build: |db| Arc::new(RecordIndexReader { db }),
+        });
+}
+
+struct RecordIndexReader {
+    db: DatabaseConnection,
+}
+
+#[async_trait]
+impl LocalizedIndexReader for RecordIndexReader {
+    async fn scan(
+        &self,
+        tenant_id: Uuid,
+        locale: Option<String>,
+        after: Option<LocalizedIndexKey>,
+        limit: usize,
+    ) -> Result<LocalizedIndexPage, PortError> {
+        if tenant_id.is_nil() || !(1..=MAX_LOCALIZED_INDEX_SCAN).contains(&limit) {
+            return Err(invalid_scope());
+        }
+        if locale
+            .as_deref()
+            .is_some_and(|locale| !exact_locale(locale))
+        {
+            return Err(invalid_scope());
+        }
+        let mut query = scoped_copies(tenant_id);
+        if let Some(after) = after {
+            if !valid_key(&after)
+                || locale
+                    .as_ref()
+                    .is_some_and(|locale| locale != &after.locale)
+            {
+                return Err(invalid_scope());
+            }
+            query = query.filter(
+                Condition::any()
+                    .add(translation::Column::RecordId.gt(after.id))
+                    .add(
+                        Condition::all()
+                            .add(translation::Column::RecordId.eq(after.id))
+                            .add(translation::Column::Locale.gt(after.locale)),
+                    ),
+            );
+        }
+        if let Some(locale) = locale {
+            query = query.filter(translation::Column::Locale.eq(locale));
+        }
+        let mut copies = query
+            .order_by_asc(translation::Column::RecordId)
+            .order_by_asc(translation::Column::Locale)
+            .limit((limit + 1) as u64)
+            .all(&self.db)
+            .await
+            .map_err(|error| storage_unavailable(tenant_id, error))?;
+        let has_more = copies.len() > limit;
+        copies.truncate(limit);
+        let rows = map_rows(copies)?;
+        let next = rows.last().filter(|_| has_more).map(|row| row.key.clone());
+        Ok(LocalizedIndexPage { rows, next })
+    }
+
+    async fn load(
+        &self,
+        tenant_id: Uuid,
+        keys: Vec<LocalizedIndexKey>,
+    ) -> Result<Vec<LocalizedIndexRow>, PortError> {
+        if tenant_id.is_nil()
+            || !(1..=MAX_LOCALIZED_INDEX_LOAD).contains(&keys.len())
+            || keys.iter().collect::<HashSet<_>>().len() != keys.len()
+            || !keys.iter().all(valid_key)
+        {
+            return Err(invalid_scope());
+        }
+        let predicate = keys.into_iter().fold(Condition::any(), |predicate, key| {
+            predicate.add(
+                Condition::all()
+                    .add(translation::Column::RecordId.eq(key.id))
+                    .add(translation::Column::Locale.eq(key.locale)),
+            )
+        });
+        let copies = scoped_copies(tenant_id)
+            .filter(predicate)
+            .all(&self.db)
+            .await
+            .map_err(|error| storage_unavailable(tenant_id, error))?;
+        map_rows(copies)
+    }
+}
+
+fn scoped_copies(tenant_id: Uuid) -> SelectTwo<translation::Entity, record::Entity> {
+    translation::Entity::find()
+        .find_also_related(record::Entity)
+        .filter(translation::Column::TenantId.eq(tenant_id))
+}
+
+fn exact_locale(value: &str) -> bool {
+    TenantLocale::new(value).is_ok_and(|locale| locale.as_str() == value)
+}
+
+fn valid_key(key: &LocalizedIndexKey) -> bool {
+    !key.id.is_nil() && exact_locale(&key.locale)
+}
+
+fn map_rows(
+    copies: Vec<(translation::Model, Option<record::Model>)>,
+) -> Result<Vec<LocalizedIndexRow>, PortError> {
+    copies
+        .into_iter()
+        .map(|(copy, record)| {
+            let record = record.ok_or_else(invalid_record)?;
+            let revision = u64::try_from(record.revision)
+                .ok()
+                .and_then(NonZeroU64::new)
+                .ok_or_else(invalid_record)?;
+            let key = LocalizedIndexKey {
+                id: copy.record_id,
+                locale: copy.locale,
+            };
+            if record.tenant_id != copy.tenant_id || record.id != key.id || !valid_key(&key) {
+                return Err(invalid_record());
+            }
+            Ok(LocalizedIndexRow {
+                tenant_id: copy.tenant_id,
+                key,
+                revision,
+                published_title: record.published_at.map(|_| copy.title),
+            })
+        })
+        .collect()
+}
+
+fn invalid_scope() -> PortError {
+    PortError::validation(
+        "__SLUG__.index.invalid_scope",
+        "Invalid localized Index replay scope",
+    )
+}
+
+fn invalid_record() -> PortError {
+    PortError::invariant_violation(
+        "__SLUG__.index.invalid_record",
+        "Invalid localized Index owner state",
+    )
+}
+
+fn storage_unavailable(tenant_id: Uuid, error: sea_orm::DbErr) -> PortError {
+    tracing::error!(%tenant_id, %error, "Localized Index owner read failed");
+    PortError::unavailable(
+        "__SLUG__.index.storage_unavailable",
+        "Localized Index owner read unavailable",
+    )
+}

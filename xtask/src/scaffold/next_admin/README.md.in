@@ -1,0 +1,19 @@
+# @rustok/__ROUTE__-admin
+
+The Next Admin workspace for the __SLUG__ module. The package exports a
+server-paginated record workspace and a settings page for host composition.
+Record reads, writes and publication use the owner GraphQL documents.
+Settings use the shared static lifecycle contract. The host supplies
+authenticated request context and localized application messages.
+
+- src/model.ts narrows route state and models localized records.
+- src/operations.ts is generated from the same documents as the Leptos package.
+- src/transport.ts binds the host GraphQL client to those operations.
+- src/pages/ loads the package surfaces using host-provided credentials.
+- src/components/ uses the standard table, form controls and settings editor.
+
+For `--ui admin`, the generator installs the package routes at
+`/dashboard/__ROUTE__`, `/records`, `/settings`, and `/settings/records` under
+that module root. The host's module guard and navigation availability policy
+use the owner slug. For `--ui dual`, the package is a preview while the
+storefront surface is in development.

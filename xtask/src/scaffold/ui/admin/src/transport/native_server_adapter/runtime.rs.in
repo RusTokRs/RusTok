@@ -1,0 +1,145 @@
+use leptos::prelude::{ServerFnError, use_context};
+use rustok_api::{AuthContext, HostRuntimeContext, RequestContext, TenantContext};
+use rustok_core::SecurityContext;
+
+use crate::model::{Order, Publication, Record, RecordFilter, RecordPage, RecordTitle};
+use __OWNER__::{
+    __ENTITY__Page, __ENTITY__Service, __ENTITY__View, List__ENTITY__Records, RecordError,
+    RecordOrder, RecordPublication, Save__ENTITY__Title, admin_record_revision,
+    admin_record_security,
+};
+
+pub(super) struct AdminRequest {
+    pub tenant: TenantContext,
+    pub security: SecurityContext,
+    pub owner: __ENTITY__Service,
+    locale: String,
+}
+
+impl AdminRequest {
+    pub async fn extract() -> Result<Self, ServerFnError> {
+        let runtime = use_context::<HostRuntimeContext>().ok_or_else(internal_error)?;
+        let auth = leptos_axum::extract::<AuthContext>()
+            .await
+            .map_err(|_| failure("UNAUTHENTICATED", "Authentication required"))?;
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(|_| internal_error())?;
+        let security = admin_record_security(&tenant, &auth)
+            .ok_or_else(|| failure("PERMISSION_DENIED", "Invalid admin request authority"))?;
+        let request = leptos_axum::extract::<RequestContext>()
+            .await
+            .map_err(|_| internal_error())?;
+        let enabled = rustok_api::is_tenant_module_enabled(runtime.db(), tenant.id, "__SLUG__")
+            .await.map_err(|error| {
+                tracing::error!(module_slug = "__SLUG__", error = ?error, "Admin module admission failed");
+                internal_error()
+            })?;
+        if !enabled {
+            return Err(failure(
+                "MODULE_NOT_ENABLED",
+                "Module is disabled for this tenant",
+            ));
+        }
+
+        let settings = runtime.shared_get().ok_or_else(internal_error)?;
+        let owner = __ENTITY__Service::for_admin(runtime.db_clone(), settings);
+        Ok(Self {
+            tenant,
+            security,
+            owner,
+            locale: request.locale,
+        })
+    }
+
+    pub fn read_locale<'a>(&'a self, locale: Option<&'a str>) -> &'a str {
+        locale
+            .map(str::trim)
+            .filter(|locale| !locale.is_empty())
+            .unwrap_or(&self.locale)
+    }
+}
+
+fn failure(code: &str, message: &str) -> ServerFnError {
+    ServerFnError::new(format!("{code}: {message}"))
+}
+
+fn internal_error() -> ServerFnError {
+    failure("INTERNAL_SERVER_ERROR", "Record operation failed")
+}
+
+pub(super) fn revision(value: &str) -> Result<i64, ServerFnError> {
+    admin_record_revision(value)
+        .ok_or_else(|| failure("BAD_USER_INPUT", "Expected a positive decimal revision"))
+}
+
+pub(super) fn record_error(error: RecordError) -> ServerFnError {
+    match error {
+        RecordError::Forbidden => failure("PERMISSION_DENIED", "Record permission required"),
+        RecordError::NotFound => failure("NOT_FOUND", "Record not found"),
+        RecordError::Conflict => failure("CONFLICT", "Record revision conflict"),
+        RecordError::TooManyLocales
+        | RecordError::InvalidTenant
+        | RecordError::InvalidRecord
+        | RecordError::InvalidLocale
+        | RecordError::InvalidTitle
+        | RecordError::InvalidPage
+        | RecordError::InvalidSearch => failure("BAD_USER_INPUT", &error.to_string()),
+        internal => {
+            tracing::error!(module_slug = "__SLUG__", error = ?internal, "Admin record operation failed");
+            internal_error()
+        }
+    }
+}
+
+impl From<RecordFilter> for List__ENTITY__Records {
+    fn from(filter: RecordFilter) -> Self {
+        Self {
+            page: filter.page,
+            per_page: filter.per_page,
+            search: filter.search,
+            publication: filter.publication.map(|publication| match publication {
+                Publication::Draft => RecordPublication::Draft,
+                Publication::Published => RecordPublication::Published,
+            }),
+            order: match filter.order {
+                Order::NewestFirst => RecordOrder::NewestFirst,
+                Order::OldestFirst => RecordOrder::OldestFirst,
+            },
+        }
+    }
+}
+
+impl From<RecordTitle> for Save__ENTITY__Title {
+    fn from(copy: RecordTitle) -> Self {
+        Self {
+            locale: copy.locale,
+            title: copy.title,
+        }
+    }
+}
+
+impl From<__ENTITY__View> for Record {
+    fn from(record: __ENTITY__View) -> Self {
+        Self {
+            id: record.id,
+            revision: record.revision.to_string(),
+            published: record.published,
+            title: record.title,
+            requested_locale: record.requested_locale,
+            effective_locale: record.effective_locale,
+            available_locales: record.available_locales,
+        }
+    }
+}
+
+impl From<__ENTITY__Page> for RecordPage {
+    fn from(page: __ENTITY__Page) -> Self {
+        Self {
+            items: page.items.into_iter().map(Into::into).collect(),
+            total: page.total,
+            page: page.page,
+            per_page: page.per_page,
+        }
+    }
+}

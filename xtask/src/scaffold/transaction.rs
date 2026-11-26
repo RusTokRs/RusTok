@@ -40,6 +40,41 @@ struct JournalFile {
     content: String,
 }
 
+impl Journal {
+    fn next_admin_dir(&self) -> Option<PathBuf> {
+        let name = self
+            .module_dir
+            .file_name()?
+            .to_str()?
+            .strip_prefix("rustok-")?;
+        let path = Path::new("apps/next-admin/packages").join(name);
+        self.files
+            .iter()
+            .any(|entry| entry.original.is_none() && entry.path.starts_with(&path))
+            .then_some(path)
+    }
+
+    fn next_admin_route(&self) -> Option<PathBuf> {
+        let package = self.next_admin_dir()?;
+        let path = Path::new("apps/next-admin/src/app/dashboard").join(package.file_name()?);
+        self.files
+            .iter()
+            .any(|entry| entry.original.is_none() && entry.path.starts_with(&path))
+            .then_some(path)
+    }
+
+    fn claimed_roots(&self) -> Vec<(PathBuf, &'static str)> {
+        let mut roots = vec![(self.module_dir.clone(), "claimed")];
+        if let Some(path) = self.next_admin_dir() {
+            roots.push((path, "next-admin-claimed"));
+        }
+        if let Some(path) = self.next_admin_route() {
+            roots.push((path, "next-admin-route-claimed"));
+        }
+        roots
+    }
+}
+
 pub(super) struct ScaffoldTransaction {
     workspace: ScaffoldWorkspace,
     journal: Journal,
@@ -289,8 +324,16 @@ impl ScaffoldWorkspace {
             normal_relative(&journal.module_dir),
             "Invalid scaffold module path"
         );
-        let name = journal
-            .module_dir
+        let is_cli = journal.module_dir.ends_with("cli");
+        let owner_dir = if is_cli {
+            journal
+                .module_dir
+                .parent()
+                .context("Missing CLI owner path")?
+        } else {
+            journal.module_dir.as_path()
+        };
+        let name = owner_dir
             .file_name()
             .and_then(|name| name.to_str())
             .context("Invalid module name")?;
@@ -301,7 +344,7 @@ impl ScaffoldWorkspace {
         ensure!(
             super::is_valid_slug(&slug)
                 && name == format!("rustok-{}", slug.replace('_', "-"))
-                && journal.module_dir == Path::new("crates/modules").join(name),
+                && owner_dir == Path::new("crates/modules").join(name),
             "Invalid scaffold module identity"
         );
         ensure!(
@@ -309,6 +352,9 @@ impl ScaffoldWorkspace {
             "Invalid scaffold journal file count"
         );
         let mut seen = HashSet::new();
+        let next_admin_dir = journal.next_admin_dir();
+        let next_admin_route = journal.next_admin_route();
+        let roots = journal.claimed_roots();
         for entry in &journal.files {
             ensure!(
                 normal_relative(&entry.path)
@@ -324,12 +370,32 @@ impl ScaffoldWorkspace {
             );
             if entry.original.is_none() {
                 ensure!(
-                    entry.path.starts_with(&journal.module_dir) && entry.path != journal.module_dir,
+                    roots
+                        .iter()
+                        .any(|(directory, _)| entry.path.starts_with(directory)
+                            && entry.path != *directory),
                     "Create target escapes its module"
                 );
             } else {
+                let allowed = if is_cli {
+                    super::cli::is_registration_target(owner_dir, &entry.path)
+                } else {
+                    super::registration::is_registration_target(&entry.path)
+                        || (next_admin_dir.is_some()
+                            && super::next_admin::CATALOGS
+                                .iter()
+                                .any(|catalog| entry.path == Path::new(catalog)))
+                        || (next_admin_route.is_some()
+                            && [
+                                super::next_admin::HOST_CONFIG,
+                                super::next_admin::HOST_REGISTRY,
+                                super::registration_toml::ADMIN_HOST,
+                            ]
+                            .iter()
+                            .any(|target| entry.path == Path::new(target)))
+                };
                 ensure!(
-                    super::registration::is_registration_target(&entry.path),
+                    allowed,
                     "Recovery target is not an owner registration file: {}",
                     entry.path.display()
                 );
@@ -379,11 +445,13 @@ impl ScaffoldWorkspace {
                 .collect::<Result<_>>()?,
         };
         self.validate_journal(&journal)?;
-        ensure!(
-            !present(module_dir)?,
-            "Module directory already exists: {}",
-            module_dir.display()
-        );
+        for (directory, _) in journal.claimed_roots() {
+            ensure!(
+                !present(&self.root.join(&directory))?,
+                "Scaffold directory already exists: {}",
+                directory.display()
+            );
+        }
         for entry in plan {
             ensure!(
                 read_regular(&self.root, &entry.path)? == entry.original,
@@ -468,19 +536,24 @@ impl ScaffoldWorkspace {
     }
 
     fn restore(&self, journal: &Journal) -> Result<()> {
-        let module_dir = self.root.join(&journal.module_dir);
-        let claimed = read_regular(&self.root, &self.state.join("active/claimed"))?;
-        ensure!(
-            claimed.as_deref().is_none_or(|bytes| bytes == b"claimed"),
-            "Invalid scaffold claim marker; preserve the journal for reconciliation"
-        );
-        if present(&module_dir)? {
+        let roots = journal.claimed_roots();
+        let mut directories = HashSet::new();
+        for (directory, marker) in &roots {
+            let path = self.root.join(directory);
+            let claimed = read_regular(&self.root, &self.state.join("active").join(marker))?;
             ensure!(
-                claimed.as_deref() == Some(b"claimed"),
-                "Ambiguous module directory claim; preserve {} and reconcile before scaffold --recover",
-                module_dir.display()
+                claimed.as_deref().is_none_or(|bytes| bytes == b"claimed"),
+                "Invalid scaffold claim marker; preserve the journal for reconciliation"
             );
-            self.inspect_module(journal, &module_dir)?;
+            if present(&path)? {
+                ensure!(
+                    claimed.as_deref() == Some(b"claimed"),
+                    "Ambiguous module directory claim; preserve {} and reconcile before scaffold --recover",
+                    path.display()
+                );
+                self.inspect_module(journal, &path)?;
+                directories.insert(directory.to_path_buf());
+            }
         }
         for entry in &journal.files {
             let actual = read_regular(&self.root, &self.root.join(&entry.path))?;
@@ -526,20 +599,16 @@ impl ScaffoldWorkspace {
             #[cfg(test)]
             tests::checkpoint("restored");
         }
-        let mut directories = HashSet::new();
         for entry in &journal.files {
             if entry.original.is_none() {
                 let mut parent = entry.path.parent();
                 while let Some(directory) =
-                    parent.filter(|path| path.starts_with(&journal.module_dir))
+                    parent.filter(|path| roots.iter().any(|(root, _)| path.starts_with(root)))
                 {
                     directories.insert(directory.to_path_buf());
                     parent = directory.parent();
                 }
             }
-        }
-        if claimed.is_some() {
-            directories.insert(journal.module_dir.clone());
         }
         let mut directories: Vec<_> = directories.into_iter().collect();
         directories.sort_by_key(|path| std::cmp::Reverse(path.components().count()));
@@ -638,7 +707,15 @@ impl ScaffoldWorkspace {
                 fs::remove_dir(path)?;
             } else {
                 ensure!(
-                    ["plan.json", "claimed", "committed", "decision.pending"].contains(&leaf),
+                    [
+                        "plan.json",
+                        "claimed",
+                        "next-admin-claimed",
+                        "next-admin-route-claimed",
+                        "committed",
+                        "decision.pending"
+                    ]
+                    .contains(&leaf),
                     "Foreign recovery control entry: {}",
                     path.display()
                 );
@@ -653,14 +730,23 @@ impl ScaffoldWorkspace {
 impl ScaffoldTransaction {
     fn install(&self) -> Result<()> {
         let root = &self.workspace.root;
-        let module = root.join(&self.journal.module_dir);
-        ensure_no_symlink_ancestors(root, &module)?;
-        fs::create_dir(&module)?;
-        #[cfg(test)]
-        tests::checkpoint("unclaimed");
-        write_synced(&self.workspace.state.join("active/claimed"), b"claimed")?;
-        #[cfg(test)]
-        tests::checkpoint("claimed");
+        for (directory, marker) in self.journal.claimed_roots() {
+            let directory = root.join(directory);
+            ensure_no_symlink_ancestors(root, &directory)?;
+            fs::create_dir(&directory)?;
+            #[cfg(test)]
+            if marker == "claimed" {
+                tests::checkpoint("unclaimed");
+            }
+            write_synced(
+                &self.workspace.state.join("active").join(marker),
+                b"claimed",
+            )?;
+            #[cfg(test)]
+            if marker == "claimed" {
+                tests::checkpoint("claimed");
+            }
+        }
         for (index, entry) in self.journal.files.iter().enumerate() {
             let path = root.join(&entry.path);
             ensure!(

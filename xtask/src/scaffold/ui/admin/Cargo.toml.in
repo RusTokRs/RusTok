@@ -1,0 +1,60 @@
+[package]
+name = "__CRATE__-admin"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Leptos administration for __SLUG__ records"
+readme = "README.md"
+
+[lints]
+workspace = true
+
+[features]
+default = []
+csr = ["leptos/csr", "rustok-auth-ui/csr", "rustok-forms-leptos/csr", "rustok-grid-leptos/csr"]
+hydrate = ["leptos/hydrate", "rustok-auth-ui/hydrate", "rustok-forms-leptos/hydrate", "rustok-grid-leptos/hydrate"]
+ssr = [
+    "leptos/ssr",
+    "dep:leptos_axum",
+    "dep:__CRATE__",
+    "rustok-api/server",
+    "dep:rustok-core",
+    "dep:tracing",
+    "rustok-auth-ui/ssr",
+    "rustok-forms-leptos/ssr",
+    "rustok-grid-leptos/ssr",
+]
+
+[dependencies]
+leptos.workspace = true
+leptos_axum = { workspace = true, optional = true }
+__CRATE__ = { path = "..", default-features = false, features = ["admin"], optional = true }
+rustok-api.workspace = true
+rustok-auth-ui.workspace = true
+rustok-core = { workspace = true, optional = true }
+rustok-forms-leptos.workspace = true
+rustok-graphql.workspace = true
+rustok-grid.workspace = true
+rustok-grid-leptos = { workspace = true, default-features = false }
+rustok-ui-core.workspace = true
+rustok-ui-forms.workspace = true
+rustok-ui-i18n.workspace = true
+rustok-ui-leptos.workspace = true
+rustok-ui-transport.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing = { workspace = true, optional = true }
+uuid.workspace = true
+
+[dev-dependencies]
+async-trait.workspace = true
+axum.workspace = true
+rustok-migrations.workspace = true
+rustok-modules.workspace = true
+rustok-outbox-storage.workspace = true
+rustok-test-utils.workspace = true
+sea-orm.workspace = true
+sea-orm-migration.workspace = true
+tokio.workspace = true

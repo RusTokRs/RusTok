@@ -5,11 +5,11 @@ import path from 'node:path';
 import { ownerFbaModules, OwnerFbaRuntimeOrderError, verifyOwnerFbaRuntimeOrder } from './verify-owner-fba-runtime-order.mjs';
 
 const repoRoot = process.cwd();
-const files = ownerFbaModules.flatMap((module) => [
-  `crates/modules/rustok-${module}/contracts/${module}-fba-registry.json`,
-  `crates/modules/rustok-${module}/contracts/evidence/${module}-provider-runtime-order-smoke.json`,
-  `crates/modules/rustok-${module}/src/ports.rs`,
-]);
+const files = ownerFbaModules.flatMap((module) => {
+  const registryPath = `crates/modules/rustok-${module}/contracts/${module}-fba-registry.json`;
+  const registry = JSON.parse(fs.readFileSync(path.join(repoRoot, registryPath), 'utf8'));
+  return [registryPath, registry.evidence.runtime_order_smoke, registry.in_process_provider_impl.source];
+});
 
 function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'owner-fba-runtime-order-'));

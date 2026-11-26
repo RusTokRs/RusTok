@@ -8,7 +8,11 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 mod backend;
+pub(crate) mod cli;
+pub(crate) mod matrix;
+mod next_admin;
 mod options;
+mod persistence;
 mod preview;
 pub(crate) mod registration;
 mod registration_docs;
@@ -21,7 +25,10 @@ mod ui;
 use transaction::ScaffoldTransaction;
 use transaction::ScaffoldWorkspace;
 
-#[expect(unused_imports, reason = "scaffold options re-exported for cli and test consumers")]
+#[expect(
+    unused_imports,
+    reason = "scaffold options re-exported for cli and test consumers"
+)]
 pub use options::{
     default_title_from_slug, is_valid_slug, parse_options, print_scaffold_usage, ScaffoldOptions,
     ScaffoldProfile, ScaffoldUi,
@@ -135,6 +142,15 @@ fn build_scaffold_plan(
     options: &ScaffoldOptions,
     pascal_name: &str,
 ) -> Result<Vec<PlannedFile>> {
+    if let Some(resource) = &options.admin_resource {
+        let permissions = crate::permission_policy::load_core_permission_contract(
+            &root.join("crates/libs/rustok-core"),
+        )?;
+        anyhow::ensure!(
+            permissions.resources.contains(resource),
+            "Unknown platform Resource variant '{resource}'"
+        );
+    }
     match fs::symlink_metadata(module_dir) {
         Ok(_) => anyhow::bail!(
             "Module crate directory already exists at {}",
@@ -157,6 +173,16 @@ fn build_scaffold_plan(
             content,
             original: None,
         });
+    }
+
+    if options.has_record_admin() {
+        plan.extend(next_admin::render(
+            root,
+            module_dir,
+            options,
+            pascal_name,
+            &plan,
+        )?);
     }
 
     for change in registration::plan_module_registration(root, options, pascal_name)? {
@@ -242,18 +268,23 @@ fn scaffold_in_workspace(
     }
     // There is no safe generic owner schema or UI business contract. Fail
     // before writing anything instead of registering fake storage or routes.
-    if options.with_db {
+    if options.with_db && options.entity.is_none() {
         anyhow::bail!(
-            "--with-db requires an actual owner schema and migration contract; native scaffolding currently supports --no-db only"
+            "--with-db requires an actual owner schema and migration contract. Supply --entity for the localized record contract"
         );
     }
-    // Generating an editable Leptos FFA package is not publishing a working
-    // UI. Requested crates join Cargo workspace only; host mounting and
-    // manifest [provides.*_ui] metadata are deferred to module owners.
+    // Cargo package generation is independent of host registration.
     if options.ui != ScaffoldUi::None {
-        println!(
-            "  [DRAFT FFA] Creating Leptos package skeletons: future_ui / not_started; no host route or CRUD"
-        );
+        if options.has_record_admin() {
+            if options.mounts_record_admin() {
+                println!("  [FFA] Registering the record administration workspace in Leptos and Next Admin");
+            } else {
+                println!("  [FFA] Creating record administration packages for preview");
+            }
+        }
+        if options.ui.has_storefront() || options.admin_resource.is_none() {
+            println!("  [DRAFT FFA] Creating unmounted development skeletons for UI without an owner contract");
+        }
     }
 
     let preview_guard = if options.dry_run {
@@ -310,11 +341,22 @@ fn scaffold_in_workspace(
     match validation {
         ScaffoldValidation::Verified => {
             println!(
-                "\n  SCAFFOLDED: Module '{slug}' registered; architecture lint and publish metadata checks passed. Business/UI readiness remains not_started."
+                "\n  SCAFFOLDED: Module '{slug}' registered; architecture lint and publish metadata checks passed. Runtime behavior remains unverified."
             );
             println!("  Next steps:");
-            println!("    cargo check -p {crate_name}");
-            if options.ui.has_admin() {
+            if options.entity.is_some() {
+                let graphql = if options.admin_resource.is_some() {
+                    " --features graphql"
+                } else {
+                    ""
+                };
+                println!("    cargo test -p {crate_name}{graphql} --lib --test record");
+            } else {
+                println!("    cargo check -p {crate_name}");
+            }
+            if options.has_record_admin() {
+                println!("    cargo test -p {crate_name}-admin --features ssr --lib");
+            } else if options.ui.has_admin() {
                 println!("    cargo check -p {crate_name}-admin");
             }
             if options.ui.has_storefront() {
@@ -364,6 +406,8 @@ mod tests {
             description: "An example native runtime identity".into(),
             category: "collaboration".into(),
             with_db: false,
+            entity: None,
+            admin_resource: None,
             ui: ScaffoldUi::None,
             dry_run: true,
             skip_server_wire: false,
@@ -457,9 +501,19 @@ mod tests {
     }
 
     #[test]
-    fn complete_scaffold_plans_match_golden_file_trees_for_every_ui_mode() {
+    fn every_scaffold_mode_matches_its_golden_tree_and_native_lint() {
         let root = temp_root();
         copy_scaffold_inputs(&root);
+        let workspace = crate::manifest_io::workspace_root();
+        let verification = Path::new("scripts/verify");
+        fs::create_dir_all(root.join(verification)).unwrap();
+        for script in [
+            "verify-module-source-layout.mjs",
+            "native-module-layout.mjs",
+        ] {
+            let path = verification.join(script);
+            fs::copy(workspace.join(&path), root.join(&path)).unwrap();
+        }
 
         let scenarios = [
             (
@@ -502,6 +556,12 @@ mod tests {
                 actual, expected,
                 "generated file tree changed for scaffold mode {slug}"
             );
+            for file in &plan {
+                fs::create_dir_all(file.path.parent().unwrap()).unwrap();
+                fs::write(&file.path, &file.content).unwrap();
+            }
+            crate::module_commands::lint_module_source(&root, slug, "--module")
+                .unwrap_or_else(|error| panic!("generated {slug} failed source lint: {error}"));
         }
 
         fs::remove_dir_all(root).unwrap();
@@ -603,6 +663,114 @@ mod tests {
         transaction.rollback().unwrap();
         assert_eq!(fs::read_to_string(&manifest).unwrap(), "before\n");
         assert!(!module_dir.exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn persisted_admin_plan_binds_both_hosts_to_the_owner_route() {
+        let root = crate::manifest_io::workspace_root();
+        let mut opts = options();
+        opts.slug = "scaffold_mount_contract_fixture".into();
+        opts.title = "Knowledge \"Base\"".into();
+        opts.with_db = true;
+        opts.entity = Some("article".into());
+        opts.admin_resource = Some("Posts".into());
+        opts.ui = ScaffoldUi::Admin;
+        let package = opts.crate_name();
+        let route = opts.kebab_name();
+        let module_dir = root.join("crates/modules").join(&package);
+        let plan =
+            build_scaffold_plan(&root, &module_dir, &opts, "ScaffoldMountContractFixture").unwrap();
+        let planned = |path: &Path| {
+            plan.iter()
+                .find(|file| file.path == path)
+                .unwrap_or_else(|| panic!("Missing scaffold target {}", path.display()))
+                .content
+                .as_str()
+        };
+        let manifest: toml::Value =
+            toml::from_str(planned(&module_dir.join("rustok-module.toml"))).unwrap();
+        assert_eq!(
+            manifest["module"]["ui_classification"].as_str(),
+            Some("admin_only")
+        );
+        let ui = &manifest["provides"]["admin_ui"];
+        assert_eq!(ui["route_segment"].as_str(), Some(route.as_str()));
+        assert_eq!(
+            ui["child_pages"][2]["nav_label_key"].as_str(),
+            Some("settings-records-nav")
+        );
+
+        let host_registry = planned(&root.join(super::next_admin::HOST_REGISTRY));
+        assert!(host_registry.contains(&format!("import '@rustok/{route}-admin/register';")));
+        let next_root = root.join("apps/next-admin/src/app/dashboard").join(&route);
+        assert!(planned(&next_root.join("layout.tsx")).contains(&format!("slug='{}'", opts.slug)));
+        assert!(planned(&next_root.join("settings/page.tsx")).contains("showRecords={false}"));
+        assert!(
+            planned(&next_root.join("settings/records/page.tsx")).contains("showRecords={true}")
+        );
+        assert!(planned(&root.join(super::registration_toml::ADMIN_HOST))
+            .contains(&format!("{package}-admin/ssr")));
+        assert!(!module_dir.exists());
+    }
+
+    #[test]
+    fn scaffold_transaction_recovers_module_packages_route_and_host_registrations() {
+        let root = temp_root();
+        let module_dir = root.join("crates/modules/rustok-example");
+        let next_dir = root.join("apps/next-admin/packages/example");
+        let catalog = root.join("apps/next-admin/messages/en.ftl");
+        let route = root.join("apps/next-admin/src/app/dashboard/example");
+        let host_config = root.join(super::next_admin::HOST_CONFIG);
+        for parent in [
+            module_dir.parent(),
+            next_dir.parent(),
+            catalog.parent(),
+            route.parent(),
+        ] {
+            fs::create_dir_all(parent.unwrap()).unwrap();
+        }
+        fs::write(&catalog, "original = Original\n").unwrap();
+        fs::write(&host_config, "{}\n").unwrap();
+        let plan = vec![
+            PlannedFile {
+                path: module_dir.join("src/lib.rs"),
+                content: "pub struct Example;".into(),
+                original: None,
+            },
+            PlannedFile {
+                path: next_dir.join("src/index.ts"),
+                content: "export const slug = 'example';".into(),
+                original: None,
+            },
+            PlannedFile {
+                path: catalog.clone(),
+                content: "original = Original\nexample-title = Example\n".into(),
+                original: Some(b"original = Original\n".to_vec()),
+            },
+            PlannedFile {
+                path: route.join("settings/page.tsx"),
+                original: None,
+                content: "export default function Page() { return null; }\n".into(),
+            },
+            PlannedFile {
+                path: host_config.clone(),
+                content: "{\"compilerOptions\":{\"paths\":{}}}\n".into(),
+                original: Some(b"{}\n".to_vec()),
+            },
+        ];
+        let transaction = ScaffoldTransaction::apply(&root, &plan, &module_dir).unwrap();
+        assert!(next_dir.join("src/index.ts").is_file());
+        assert!(route.join("settings/page.tsx").is_file());
+        transaction.rollback().unwrap();
+        assert!(!next_dir.exists());
+        assert!(!module_dir.exists());
+        assert!(!route.exists());
+        assert_eq!(fs::read_to_string(host_config).unwrap(), "{}\n");
+        assert_eq!(
+            fs::read_to_string(catalog).unwrap(),
+            "original = Original\n"
+        );
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -1086,7 +1254,7 @@ mod tests {
             assert!(!planned.is_empty());
             assert!(planned
                 .iter()
-                .any(|(path, _)| path.ends_with("src/ui/leptos.rs")));
+                .any(|(path, _)| path.ends_with("src/ui/leptos/mod.rs")));
             assert!(
                 scaffold(&request, std::io::sink()).is_ok(),
                 "dry-run must preview every UI mode"

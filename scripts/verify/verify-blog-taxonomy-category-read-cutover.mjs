@@ -11,27 +11,31 @@ const rejectMarker = (source, marker, label = marker) => {
   if (source.includes(marker)) failures.push(`must not contain ${label}`);
 };
 
-const ownerPath = 'crates/modules/rustok-blog/src/services/category_owner.rs';
+const ownerPath = 'crates/modules/rustok-blog/src/services/category/owner.rs';
 const servicesPath = 'crates/modules/rustok-blog/src/services/mod.rs';
-const legacyPath = 'crates/modules/rustok-blog/src/services/category.rs';
+const commandsPath = 'crates/modules/rustok-blog/src/services/category/commands/copy.rs';
+const bridgePath = 'crates/modules/rustok-content-orchestration/src/blog_taxonomy.rs';
 const runtimePath = 'crates/modules/rustok-blog/tests/category_taxonomy_read_cutover.rs';
 
-for (const path of [ownerPath, servicesPath, legacyPath, runtimePath]) {
+for (const path of [ownerPath, servicesPath, commandsPath, bridgePath, runtimePath]) {
   if (!fs.existsSync(path)) failures.push(`${path}: file is required`);
 }
 
 if (failures.length === 0) {
   const owner = read(ownerPath);
   const services = read(servicesPath);
-  const legacy = read(legacyPath);
+  const commands = read(commandsPath);
+  const bridge = read(bridgePath);
   const runtime = read(runtimePath);
 
-  requireMarker(services, 'pub use category_owner::CategoryService;', 'public Category owner facade');
+  requireMarker(services, 'pub use category::{CategoryCommandService, CategoryService};', 'public Category owner facade');
   rejectMarker(services, 'pub use category::CategoryService;', 'legacy CategoryService public re-export');
 
   requireMarker(owner, 'TaxonomyOwnerCategoryReader', 'Taxonomy owner projection');
-  requireMarker(owner, 'load_scoped_categories_strict', 'canonical Taxonomy Category read');
-  requireMarker(owner, 'Some(BLOG_TAXONOMY_SCOPE)', 'module/blog scope');
+  requireMarker(owner, '.load_scoped_categories(', 'owner port for canonical Taxonomy reads');
+  requireMarker(bridge, 'TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(', 'canonical Taxonomy Category read');
+  requireMarker(bridge, 'const BLOG_SCOPE: &str = "blog";', 'Blog scope identity');
+  requireMarker(bridge, 'TaxonomyScopeType::Module,\n        Some(BLOG_SCOPE),', 'module/blog scope');
   requireMarker(owner, 'position: canonical.position', 'Taxonomy-owned sibling position');
   requireMarker(owner, 'parent_id,', 'Taxonomy-owned parent mapping');
   requireMarker(owner, 'settings: category.settings', 'Blog-owned settings composition');
@@ -40,7 +44,7 @@ if (failures.length === 0) {
   requireMarker(owner, 'delete_module_category_with_cleanup(', 'delete lifecycle remains delegated to Taxonomy');
   rejectMarker(owner, 'blog_category_translation', 'legacy localized copy read in public owner facade');
 
-  requireMarker(legacy, 'is not a command source or sink', 'retired donor storage boundary');
+  requireMarker(commands, 'is not a command source or sink', 'retired donor storage boundary');
 
   requireMarker(runtime, 'has_table("blog_category_translations")', 'physical donor translation retirement proof');
   requireMarker(runtime, 'child_item.parent_id, Some(root)', 'Taxonomy-owned list placement proof');

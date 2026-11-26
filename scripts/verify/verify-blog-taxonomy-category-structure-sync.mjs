@@ -11,14 +11,15 @@ const rejectMarker = (source, marker, label = marker) => {
   if (source.includes(marker)) failures.push(`must not contain ${label}`);
 };
 
-const commandPath = 'crates/modules/rustok-blog/src/services/category_command.rs';
-const createPath = 'crates/modules/rustok-blog/src/services/category.rs';
-const syncPath = 'crates/modules/rustok-blog/src/services/category_taxonomy_sync.rs';
+const commandPath = 'crates/modules/rustok-blog/src/services/category/commands/placement.rs';
+const createPath = 'crates/modules/rustok-blog/src/services/category/commands/copy.rs';
+const syncPath = 'crates/modules/rustok-blog/src/services/category/taxonomy_sync.rs';
+const adapterPath = 'crates/modules/rustok-content-orchestration/src/blog_taxonomy.rs';
 const libPath = 'crates/modules/rustok-blog/src/lib.rs';
 const evidencePath = 'crates/modules/rustok-blog/src/translation_evidence.rs';
 const runtimePath = 'crates/modules/rustok-blog/tests/category_taxonomy_structure_sync.rs';
 
-for (const path of [commandPath, createPath, syncPath, libPath, runtimePath]) {
+for (const path of [commandPath, createPath, syncPath, adapterPath, libPath, runtimePath]) {
   if (!fs.existsSync(path)) failures.push(`${path}: file is required`);
 }
 if (fs.existsSync(evidencePath)) {
@@ -29,16 +30,20 @@ if (failures.length === 0) {
   const command = read(commandPath);
   const create = read(createPath);
   const sync = read(syncPath);
+  const adapter = read(adapterPath);
   const lib = read(libPath);
   const runtime = read(runtimePath);
 
   requireMarker(command, 'touched.insert(category_id);', 'bounded touched placement set');
-  requireMarker(command, 'reorder_module_category_siblings_in_tx(', 'transactional move/reorder Taxonomy hook');
+  requireMarker(command, 'port.reorder_category_siblings_in_tx(', 'transactional Blog reorder port');
+  requireMarker(command, '.move_category_in_tx(', 'transactional Blog move port');
+  requireMarker(adapter, 'rustok_taxonomy::reorder_module_category_siblings_in_tx(', 'Taxonomy-owned reorder');
+  requireMarker(adapter, 'rustok_taxonomy::move_module_category_in_tx(', 'Taxonomy-owned move');
   requireMarker(command, '.limit(MAX_BLOG_CATEGORY_TREE_NODES + 1)', 'bounded sibling read');
   requireMarker(command, 'txn.commit().await?;', 'Blog move transaction commit');
 
-  requireMarker(sync, 'sync_module_category_with_owned_aliases_in_tx', 'Taxonomy-owned structure replay');
-  requireMarker(create, 'canonicalize_siblings_for_insert_in_tx(&txn, tenant_id, id, parent_id, requested_position)', 'create sibling compaction sync');
+  requireMarker(create, 'canonicalize_siblings_for_insert_in_tx(', 'create sibling compaction');
+  requireMarker(create, 'port.reorder_category_siblings_in_tx(', 'create sibling compaction sync');
   requireMarker(create, 'sync_category_copy_in_tx(', 'create placement donor sync');
   requireMarker(sync, 'parent_id,', 'Blog placement donor parent');
   requireMarker(sync, 'position,', 'Blog placement donor position');

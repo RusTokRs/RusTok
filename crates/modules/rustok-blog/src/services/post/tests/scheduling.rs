@@ -1,3 +1,5 @@
+use super::*;
+
 /// The wiring, not just the predicate: a caller that patches `scheduled_at` on a post it has
 /// already published is refused, and publishing a scheduled draft clears the field.
 #[tokio::test]

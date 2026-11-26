@@ -14,7 +14,8 @@
 - **Ingestion & Projection**:
   - `SearchIngestionHandler` for domain projection events
   - `SearchProjector` and `SearchProjectionSource` registry
-  - Cross-module projectors (`blog`, `forum`, `pages`, `docs`)
+  - Cross-module projectors (`blog`, `forum`, `pages`, `docs`) and registered
+    embedded owner sources that opt in to the `source:<module-slug>` reindex target
 - **Search Ports & Transports**:
   - `SearchQueryPort` (`execute_search`)
   - `SearchSuggestionPort` (`suggest`)

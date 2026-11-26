@@ -166,7 +166,7 @@ impl PostService {
                 .await?;
         }
         if let Patch::Set(category_id) = category_id.as_ref() {
-            CategoryService::ensure_exists_in_tx(
+            CategoryCommandCore::ensure_exists_in_tx(
                 &*self.taxonomy_port,
                 &txn,
                 tenant_id,

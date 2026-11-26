@@ -68,7 +68,7 @@ requireMarkers("crates/modules/rustok-blog/src/dto/category_command.rs", [
   "MAX_BLOG_CATEGORY_TREE_NODES",
 ]);
 
-const categoryService = requireMarkers("crates/modules/rustok-blog/src/services/category.rs", [
+const categoryService = requireMarkers("crates/modules/rustok-blog/src/services/category/commands/copy.rs", [
   ".lock_category_hierarchy_writer_in_tx(&txn, tenant_id)",
   "ensure_category_tree_capacity_in_tx(&txn, tenant_id).await?",
   "ensure_hierarchy_coverage_in_tx(&*self.taxonomy_port, &txn, tenant_id).await?",
@@ -81,15 +81,15 @@ const categoryService = requireMarkers("crates/modules/rustok-blog/src/services/
 ]);
 const updateBody = segment(categoryService, "pub async fn update(", "pub(crate) async fn ensure_exists_in_tx");
 if (updateBody.includes("input.position") || updateBody.includes("Category position is structural")) {
-  failures.push("crates/modules/rustok-blog/src/services/category.rs: localized update must not accept or reject structural position");
+  failures.push("crates/modules/rustok-blog/src/services/category/commands/copy.rs: localized update must not accept or reject structural position");
 }
-rejectMarkers("crates/modules/rustok-blog/src/services/category.rs", [
+rejectMarkers("crates/modules/rustok-blog/src/services/category/commands/copy.rs", [
   "lock_category_tree_in_tx",
   'format!("blog-category-tree:{tenant_id}")',
   "pub async fn delete(",
 ]);
 
-const commandService = requireMarkers("crates/modules/rustok-blog/src/services/category_command.rs", [
+const commandService = requireMarkers("crates/modules/rustok-blog/src/services/category/commands/placement.rs", [
   "pub struct CategoryCommandService",
   "pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self",
   "Resource::BlogCategories, Action::Manage",
@@ -119,12 +119,12 @@ if (!crossParentMove.includes(".move_category_in_tx(")) {
 if (crossParentMove.includes("source_siblings,") || crossParentMove.includes("target_siblings,")) {
   failures.push("category move must not reparent through sibling reorder snapshots");
 }
-rejectMarkers("crates/modules/rustok-blog/src/services/category_command.rs", [
+rejectMarkers("crates/modules/rustok-blog/src/services/category/commands/placement.rs", [
   "lock_category_tree_in_tx",
   "pg_advisory_xact_lock",
 ]);
 
-const deleteCleanup = requireMarkers("crates/modules/rustok-blog/src/services/category_delete.rs", [
+const deleteCleanup = requireMarkers("crates/modules/rustok-blog/src/services/category/commands/delete.rs", [
   "impl BlogCategoryDeleteCleanupPort for BlogCategoryDeleteCleanup",
   ".lock_category_hierarchy_writer_in_tx(txn, tenant_id)",
   ".delete_category_placement_and_compact_in_tx(",
@@ -134,13 +134,13 @@ const deleteCleanup = requireMarkers("crates/modules/rustok-blog/src/services/ca
   "publish_in_tx(",
   "self.capability_cleanup",
 ]);
-rejectMarkers("crates/modules/rustok-blog/src/services/category_delete.rs", [
+rejectMarkers("crates/modules/rustok-blog/src/services/category/commands/delete.rs", [
   "ensure_category_is_leaf_in_tx",
   "canonicalize_siblings_in_tx",
   "blog_category_translation::",
 ]);
 
-requireMarkers("crates/modules/rustok-blog/src/services/category_owner.rs", [
+requireMarkers("crates/modules/rustok-blog/src/services/category/owner.rs", [
   ".delete_module_category_with_cleanup(",
   "BlogCategoryDeleteCleanup::new(",
   "Blog Category delete requires host-composed Taxonomy capability cleanup",

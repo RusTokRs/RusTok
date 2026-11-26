@@ -1,0 +1,74 @@
+use async_graphql::{Context, Object, Result};
+use uuid::Uuid;
+
+use super::runtime::{AdminRequest, record_error, revision};
+use super::types::{AdminRecord, RecordTitleInput};
+
+#[derive(Default)]
+pub struct __MODULE_STEM__AdminMutation;
+
+#[Object]
+impl __MODULE_STEM__AdminMutation {
+    #[graphql(name = "__MODULE_FIELD__CreateAdminRecord")]
+    async fn create_record(
+        &self,
+        ctx: &Context<'_>,
+        input: RecordTitleInput,
+    ) -> Result<AdminRecord> {
+        let request = AdminRequest::from_context(ctx).await?;
+        request
+            .owner
+            .create(request.tenant.id, &request.security, input.into())
+            .await
+            .map(Into::into)
+            .map_err(record_error)
+    }
+
+    #[graphql(name = "__MODULE_FIELD__SaveAdminRecordTitle")]
+    async fn save_title(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        expected_revision: String,
+        input: RecordTitleInput,
+    ) -> Result<AdminRecord> {
+        let request = AdminRequest::from_context(ctx).await?;
+        request
+            .owner
+            .save_title(
+                request.tenant.id,
+                &request.security,
+                id,
+                revision(&expected_revision)?,
+                input.into(),
+            )
+            .await
+            .map(Into::into)
+            .map_err(record_error)
+    }
+
+    #[graphql(name = "__MODULE_FIELD__SetAdminRecordPublication")]
+    async fn set_publication(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        expected_revision: String,
+        published: bool,
+        locale: String,
+    ) -> Result<AdminRecord> {
+        let request = AdminRequest::from_context(ctx).await?;
+        request
+            .owner
+            .set_publication(
+                request.tenant.id,
+                &request.security,
+                id,
+                revision(&expected_revision)?,
+                published,
+                &locale,
+            )
+            .await
+            .map(Into::into)
+            .map_err(record_error)
+    }
+}

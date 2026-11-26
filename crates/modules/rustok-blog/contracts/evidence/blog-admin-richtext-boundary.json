@@ -5,8 +5,8 @@
   "status": "source_verified_no_compile",
   "compile_policy": "not_run_by_request",
   "sources": {
-    "core": "crates/modules/rustok-blog/admin/src/core.rs",
-    "ui": "crates/modules/rustok-blog/admin/src/ui/leptos.rs",
+    "core": "crates/modules/rustok-blog/admin/src/core/mod.rs",
+    "ui": "crates/modules/rustok-blog/admin/src/ui/leptos/mod.rs",
     "locales": {
       "en": "crates/modules/rustok-blog/admin/locales/en.ftl",
       "ru": "crates/modules/rustok-blog/admin/locales/ru.ftl"

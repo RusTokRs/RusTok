@@ -16,7 +16,10 @@ Leptos admin UI package for the `rustok-region` module.
 - Participates in manifest-driven admin composition through `rustok-module.toml`.
 - Uses native Leptos server functions through the module-owned `transport/` facade as the primary admin transport instead of routing region CRUD back through the commerce umbrella.
 - Consumes host-provided `rustok_api::HostRuntimeContext` for native DB access and must not depend on a host-wide `AppContext`.
-- Keeps Leptos render/bind code in `admin/src/ui/leptos.rs`; `admin/src/lib.rs` only wires modules and re-exports `RegionAdmin`.
+- Keeps Leptos render/bind code in `admin/src/ui/leptos/mod.rs`; `admin/src/lib.rs` only wires modules and re-exports `RegionAdmin`.
+- Keeps form state and commands, presentation, and route query policy in
+  `src/core/editor.rs`, `src/core/presentation.rs`, and `src/core/route.rs`.
+  Pure tests follow those responsibilities under `src/core/tests/`.
 - Ships package-owned `admin/locales/en.ftl` and `admin/locales/ru.ftl` bundles declared through `[provides.admin_ui.i18n]`.
 
 ## Entry Points

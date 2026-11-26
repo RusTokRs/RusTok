@@ -24,7 +24,7 @@ The tool provides one stable entry point for repository maintenance tasks that a
 Run commands from the repository root:
 
 ```powershell
-cargo xtask module new <slug> [--title <title>] [--description <desc>] [--category <cat>] [--with-db] [--ui <dual|admin|storefront|none>]
+cargo xtask module new <slug> [--title <title>] [--description <desc>] [--category <cat>] [--with-db --entity <name>] [--ui <dual|admin|storefront|none>]
 cargo xtask module lint <slug>
 cargo xtask validate-manifest
 cargo xtask module validate
@@ -69,11 +69,11 @@ review, remaining production blockers, owners and ordered acceptance gates.
 `cargo xtask scaffold <slug>` (or `cargo xtask module new <slug>`) **improves the existing native module scaffolding**. The default creates a draft native runtime identity, not a production-ready FBA/FFA implementation. The target contract is in [Backend Module Implementation Guide](../docs/backend/module-backend-implementation.md#scaffold-profiles-and-generation-contract).
 
 The command:
-- By default creates a **headless, no-DB native runtime identity**. `--with-db` fails before writing. `--ui admin|storefront|dual` **creates editable Leptos FFA crates** and registers them as Cargo workspace members. The module manifest is `future_ui`, with no live `[provides.*_ui]` or Leptos host mount. Use `--dry-run` to preview without writing.
+- By default creates a **headless, no-DB native runtime identity**. Select the localized record contract with `--with-db --entity <name>`. `--ui admin|storefront|dual` selects module-owned UI packages. `--ui admin` together with an explicit `--admin-resource` mounts the persisted record workspace in both admin hosts. Profiles with draft surfaces use `future_ui`. Use `--dry-run` to preview without writing.
 - Accepts `--profile native` (default); `--profile support` and `--profile wasi` fail explicitly because support crates and standalone Component Model guests have different owners and templates.
 - Rejects unknown or repeated CLI options, missing option values and conflicting `--title`/`--name` aliases before writing anything. Free-form title, description and category metadata must be single-line text without control characters or Markdown table `|` delimiters, since the generator publishes them in module documentation and the central registry.
-- Generates a minimal native backend crate with `src/lib.rs`, `src/module.rs`, and `src/tests/contract.rs`. No synthetic services, entities, domain state machine, migrations, or event producers are created.
-- Retains the existing `ui.rs` generator and `admin/`/`storefront/` architecture. It creates pure `core/mod.rs` / `model.rs`, a dual-path `transport/` facade with fail-closed adapters, `ui/leptos.rs` render adapter, thin `lib.rs`, i18n bundles, contract docs and tests. It does **not** simulate records or CRUD actions. The generated FFA source is **Leptos-only** and uses the shared `rustok-ui-transport` selector with explicit native/GraphQL adapter boundaries. Both adapters reject calls until real owner business operations exist. Next.js uses classic packages owned by its hosts and is not an FFA adapter. Existing Blog Leptos/native/GraphQL/Next.js adapters remain unchanged.
+- Generates the baseline backend facade, runtime registration, and contract tests. The localized record additionally ships tenant-scoped migrations, locale-aware reads and revision-checked writes, and a migrated integration fixture.
+- The `admin/` and `storefront/` templates contain `core/mod.rs`, `model.rs`, a dual-path `transport/` facade, the `ui/leptos/mod.rs` render adapter, a thin `lib.rs`, i18n bundles, contract docs and tests. Both transport adapters report an unavailable owner contract until they are bound to real operations. Next.js packages are owned by their hosts.
 - Includes docs.rs metadata (`[package.metadata.docs.rs]` with `all-features = true`) and crate doc headers.
 - Automatically registers the new module in:
   - `Cargo.toml` (`[workspace.dependencies]` and any members not already covered by workspace paths or globs);
@@ -121,8 +121,117 @@ Classic Next.js packages remain Next-host owned; live UI wiring is checked by
 the generic native-module lint, while functional cross-client parity needs
 separate evidence.
 
-Generation of module-local `cli/` packages is tracked in the
-[scaffolding plan](./docs/implementation-plan.md#module-local-cli-generation).
+### Generate a localized record owner
+
+```powershell
+cargo xtask scaffold knowledge_base --with-db --entity article --no-ui
+cargo test -p rustok-knowledge-base --lib --test record
+```
+
+This scaffold provides an embedded service that creates records, saves explicit
+locale copies using a required revision, and reads the effective locale with
+fallback. The service takes a typed permission resource at composition. It
+creates drafts and writes Search refresh requests to the platform Outbox in
+the same transaction as publication, edits to published copy, and withdrawal.
+The module registers the localized Search projection through the neutral owner
+source contract. Storefront corpus admission belongs to the host.
+Hosts can also attach the platform cache with `with_public_cache`. The
+published reader checks the live owner revision before cache lookup, so edits
+and withdrawal take effect even if previous cache entries remain until expiry.
+The admin list combines literal search across translations, publication filters
+and stable sorting before paging. An embedding host can attach the platform
+settings reader to apply the tenant's `admin_page_size`.
+
+The generated test applies the platform and owner migrations, checks permissions
+and transaction rollback, and on PostgreSQL replays the persisted events through
+the Search listener and queries the resulting index through explicit storefront
+audience admission.
+Set `RUSTOK_SCAFFOLD_TEST_POSTGRES_URL` to a dedicated PostgreSQL test instance
+and run `cargo test -p rustok-knowledge-base --test record
+postgres_localized_publication_reaches_search -- --ignored --exact`. The test
+creates and drops its private database.
+
+`cargo xtask module verify-scaffold --offline` builds from a disposable copy of
+the current Git-tracked and non-ignored source. It exercises the four UI modes,
+the localized record admin API, CLI attachment, and selected distribution registration.
+The browser profile checks require the `wasm32-unknown-unknown` Rust target.
+When the PostgreSQL test URL is set, it also exercises the generated Search lifecycle.
+
+To add the authenticated admin GraphQL contribution, select the platform
+permission resource that owns the records:
+
+```powershell
+cargo xtask scaffold knowledge_base --with-db --entity article --admin-resource Posts --no-ui
+cargo test -p rustok-knowledge-base --features graphql --test record
+```
+
+The resource is an explicit example input. The server feature for the generated
+module selects its GraphQL roots. This provides the namespaced list, detail,
+draft creation, localized edit and publication operations. Request tenant,
+principal and fallback locale come from the host. Revisions travel as decimal
+strings so clients can echo them without precision loss.
+
+Select `--ui admin` to register the Leptos and Next Admin record workspaces
+with the same owner contract. The Leptos table uses `rustok-grid`, keeps pagination on the server
+and uses the host's effective locale with English and Russian UI catalogs.
+SSR and hydrate select authenticated native server functions. CSR selects
+the generated GraphQL operations.
+
+```powershell
+cargo xtask scaffold knowledge_base --with-db --entity article --admin-resource Posts --ui admin
+cargo test -p rustok-knowledge-base-admin --features ssr --lib
+```
+
+The generated editor creates drafts, opens and saves a translation, and
+publishes or withdraws a record. It shows read fallback separately and
+requires a fresh record read after a revision conflict.
+
+The persisted administration profile also writes the independent Next Admin
+package in `apps/next-admin/packages/<module>` and appends its scoped English
+and Russian messages to the host catalogs. The package exports a record
+workspace, a settings index and a record settings form. The generator
+registers the sidebar entries and both hosts use their existing enabled-module
+gate. The settings form updates the default record page size and public
+discovery flag using the platform's revision-checked settings operation.
+The owner requires an explicitly enabled tenant and a true discovery flag
+before a public read, including a cache hit. Search installs a gated audience
+from the same owner contribution and checks that policy and current publication
+at query time. Both clients use the same
+generated GraphQL documents. The server distribution must compile the module's
+`mod-<slug>` feature and the tenant must enable the module.
+
+The persisted profile also contributes a localized-record schema and replay
+source to the relational Index. The owner supplies exact locale reads and
+revisioned publication state. Distribution binds those reads to Index on
+PostgreSQL. The replay path is available to Index operators. Incremental
+delivery and storefront Index admission are separate integration steps.
+
+### Attach a module-local CLI
+
+For a registered native module with an implemented operational command, supply
+its Rust adapter and contract tests:
+
+```powershell
+cargo xtask module scaffold-cli <slug> --name <command> --summary "<summary>" --adapter <adapter.rs> --tests <contract.rs> --dependency serde_json --dry-run
+```
+
+The adapter exports `pub(crate) async fn execute(&RuntimeComposition, CommandRequest)
+-> CliCoreResult<CommandOutcome>` and calls the module's owner API. The test file
+becomes `cli/src/tests/contract.rs`. Repeat `--dependency` for additional keys in
+`workspace.dependencies`. Use `--supports-dry-run` only when the adapter
+implements that command behavior and the supplied tests cover it.
+
+The preview includes the CLI package, workspace membership and dependencies, the
+module's `[provides.cli]` declaration, and the generated registry. Apply by
+omitting the scaffold's `--dry-run`. Live scaffold uses the same lock and
+`scaffold --recover` path as native module generation. Existing CLI packages
+remain under their owners' control.
+
+Run `cargo test -p <owner-package>-cli --lib` to compile the adapter, resolve its
+Cargo lock entries and exercise the supplied tests. Use
+`cargo run -p rustok-cli --bin rustok-cli -- list --namespace <slug> --json`
+to verify distribution discovery. See the
+[CLI adapter contract](../docs/backend/module-backend-implementation.md#cli-adapters).
 
 ### Recovering an interrupted scaffold
 
@@ -244,7 +353,7 @@ Use `--no-bootstrap` to only prepare env files, or `--dry-run` to inspect the ac
 - `cargo xtask validate-manifest` validates the central composition contract for every module declared in `modules.toml`.
 - `cargo xtask module validate` validates every local `source = "path"` module declared in `modules.toml`.
 - `cargo xtask module validate <slug>` validates one declared module.
-- `cargo xtask module lint <slug>` checks native source layout, FFA package structure, live Next.js package/route wiring and the nested FBA ports package when present. Add `--cli` to require and verify a module-local operational adapter. Blog includes this check by default. The scaffold command runs lint before publish-metadata validation unless `--skip-validate` is supplied.
+- `cargo xtask module lint <slug>` checks the native source tree, FFA packages, live Next.js package and route wiring, and any module-local CLI. Add `--cli` to require a CLI package. The scaffold command runs the same lint before publish-metadata validation unless `--skip-validate` is supplied.
 - `cargo xtask module lint <slug> --fba` requires and checks the [owner ports package](../docs/backend/module-backend-implementation.md#remote-fba-module-layout), declared runtime dependencies, and any present gRPC and standalone source. New and converted modules share the same layout. The native generator records it in the owner plan.
 - `cargo xtask module test <slug>` builds and runs the targeted smoke plan for one declared module.
 - Central docs drift is part of the contract: `validate-manifest` checks `docs/modules/registry.md`, and `module validate <slug>` checks that the module's row and dependency bucket stay aligned with `modules.toml`.

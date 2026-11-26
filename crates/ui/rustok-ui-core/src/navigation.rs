@@ -38,10 +38,10 @@ pub struct UiNavGroup {
 }
 
 /// Static descriptor of a child page registered by a module.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UiChildPageEntry {
     pub subpath: &'static str,
-    pub nav_label: &'static str,
+    pub nav_label: String,
 }
 
 /// Descriptor of a module's navigation contribution to the host shell.
@@ -84,10 +84,15 @@ pub fn build_ui_nav_groups(
 
         children.extend(entry.child_pages.iter().map(|child| UiNavChild {
             href: format!("/modules/{}/{}", entry.route_segment, child.subpath),
-            label: child.nav_label.to_string(),
+            label: child.nav_label.clone(),
         }));
 
-        if entry.has_settings {
+        if entry.has_settings
+            && !entry
+                .child_pages
+                .iter()
+                .any(|child| child.subpath == "settings")
+        {
             children.push(UiNavChild {
                 href: format!("/modules?module_slug={}", entry.module_slug),
                 label: format!("{} {}", entry.nav_label, settings_label),
@@ -257,7 +262,7 @@ mod tests {
 
     #[test]
     fn test_build_ui_nav_groups() {
-        let entries = vec![
+        let mut entries = vec![
             UiNavigationEntry {
                 module_slug: "pricing".to_string(),
                 route_segment: "pricing".to_string(),
@@ -276,7 +281,7 @@ mod tests {
                 has_settings: true,
                 child_pages: vec![UiChildPageEntry {
                     subpath: "posts",
-                    nav_label: "Posts",
+                    nav_label: "Posts".into(),
                 }],
             },
             UiNavigationEntry {
@@ -310,6 +315,16 @@ mod tests {
         );
         assert_eq!(groups[1].key, "Commerce");
         assert_eq!(ui_module_group_icon(groups[1].key), "commerce");
+
+        entries[1].child_pages.push(UiChildPageEntry {
+            subpath: "settings",
+            nav_label: "Настройки".into(),
+        });
+        let groups = build_ui_nav_groups(&entries, &enabled, "Overview", "Settings");
+        let children = &groups[0].items[0].children;
+        assert_eq!(children.len(), 3);
+        assert_eq!(children[2].href, "/modules/blog/settings");
+        assert_eq!(children[2].label, "Настройки");
     }
 
     #[test]

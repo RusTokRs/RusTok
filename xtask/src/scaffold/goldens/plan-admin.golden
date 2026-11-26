@@ -21,7 +21,7 @@ crates/modules/rustok-scaffold-golden-admin/admin/src/transport/mod.rs
 crates/modules/rustok-scaffold-golden-admin/admin/src/transport/native_server_adapter.rs
 crates/modules/rustok-scaffold-golden-admin/admin/src/transport/graphql_adapter.rs
 crates/modules/rustok-scaffold-golden-admin/admin/src/ui/mod.rs
-crates/modules/rustok-scaffold-golden-admin/admin/src/ui/leptos.rs
+crates/modules/rustok-scaffold-golden-admin/admin/src/ui/leptos/mod.rs
 crates/modules/rustok-scaffold-golden-admin/admin/src/tests/mod.rs
 crates/modules/rustok-scaffold-golden-admin/admin/src/tests/contract.rs
 Cargo.toml

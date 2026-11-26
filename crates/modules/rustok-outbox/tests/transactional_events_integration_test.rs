@@ -2,7 +2,7 @@
 
 mod support;
 
-use rustok_core::events::{DomainEvent, MemoryTransport};
+use rustok_core::events::DomainEvent;
 use rustok_outbox::entity::SysEventStatus;
 use rustok_outbox::{OutboxTransport, SysEvents, TransactionalEventBus};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, TransactionTrait};
@@ -229,8 +229,11 @@ async fn test_pending_status_after_publish() {
     assert_eq!(pending_count, 1);
 }
 
+#[cfg(not(feature = "test-transport-fallback"))]
 #[tokio::test]
-async fn test_transactional_publish_rejects_non_outbox_transport() {
+async fn test_transactional_publish_rejects_non_transactional_transport() {
+    use rustok_core::{Error, events::MemoryTransport};
+
     let db = setup_test_db().await;
     let event_bus = TransactionalEventBus::new(Arc::new(MemoryTransport::new()));
     let txn = db.begin().await.unwrap();
@@ -248,12 +251,10 @@ async fn test_transactional_publish_rejects_non_outbox_transport() {
         )
         .await;
 
-    assert!(result.is_err());
     assert!(
-        result
-            .unwrap_err()
-            .to_string()
-            .contains("requires OutboxTransport")
+        matches!(&result, Err(Error::Validation(message))
+            if message.starts_with("event transport does not support owner-transaction writes")),
+        "expected a transaction capability rejection, got {result:?}"
     );
     txn.rollback().await.unwrap();
 }

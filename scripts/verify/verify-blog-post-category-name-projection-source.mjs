@@ -12,7 +12,8 @@ const failures = [];
 const files = {
   evidence: 'crates/modules/rustok-blog/contracts/evidence/blog-post-category-name-projection-source.json',
   postService: 'crates/modules/rustok-blog/src/services/post/queries.rs',
-  categoryProjection: 'crates/modules/rustok-blog/src/services/category_name_projection.rs',
+  categoryProjection: 'crates/modules/rustok-blog/src/services/category/name_projection.rs',
+  taxonomyAdapter: 'crates/modules/rustok-content-orchestration/src/blog_taxonomy.rs',
   dto: 'crates/modules/rustok-blog/src/dto/post.rs',
   harness: 'crates/modules/rustok-blog/tests/post_category_name_projection.rs',
 };
@@ -46,6 +47,7 @@ function count(source, marker) {
 const evidence = json(files.evidence);
 const postService = read(files.postService);
 const categoryProjection = read(files.categoryProjection);
+const taxonomyAdapter = read(files.taxonomyAdapter);
 const dto = read(files.dto);
 const harness = read(files.harness);
 
@@ -115,7 +117,7 @@ if (count(dto, 'pub category_name: Option<String>') < 2) {
 
 for (const marker of [
   'async fn load_category_names_map(',
-  'crate::services::category_name_projection::load_category_names_map(',
+  'crate::services::category::name_projection::load_category_names_map(',
   'let category_names_map = self',
   '.and_then(|category_id| category_names_map.get(&category_id).cloned())',
   'let category_name = if let Some(category_id) = post.category_id',
@@ -129,10 +131,14 @@ forbid(postService, 'category_name: None', files.postService);
 forbid(postService, 'CategoryService::new(self.db.clone()', files.postService);
 
 for (const marker of [
-  'TaxonomyOwnerCategoryReader',
-  'load_scoped_categories_strict',
+  'TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(',
   'TaxonomyScopeType::Module',
-  'const BLOG_TAXONOMY_SCOPE: &str = "blog";',
+  'const BLOG_SCOPE: &str = "blog";',
+  'Some(BLOG_SCOPE)',
+]) need(taxonomyAdapter, marker, files.taxonomyAdapter);
+
+for (const marker of [
+  '.load_scoped_categories(',
   'Some(&category_ids)',
   // A damaged reference degrades the projection instead of failing the page, which is
   // the same policy the tag list and the SEO scan apply. The strict behaviours that

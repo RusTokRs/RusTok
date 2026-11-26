@@ -1,5 +1,6 @@
 mod commands;
 mod queries;
+pub(crate) mod read_port;
 mod repository;
 
 use sea_orm::DatabaseConnection;

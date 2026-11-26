@@ -1,0 +1,78 @@
+import type { MessageKey, MessageArgs } from '../messages';
+
+import { getLocale, getTranslations } from '@rustok/next-fluent/server';
+import { Alert, AlertDescription } from '@/shared/ui/shadcn/alert';
+import type { GqlOpts } from '@/shared/api/graphql';
+import { RecordEditor } from '../components/record-editor';
+import { RecordTable } from '../components/record-table';
+import {
+  parseFilters,
+  selection,
+  selectionHref,
+  type RouteQuery
+} from '../model';
+import { listRecords, getRecord, errorCode } from '../transport';
+
+export async function RecordsPage({
+  searchParams,
+  auth
+}: {
+  searchParams: RouteQuery;
+  auth: GqlOpts & { actor: string | null };
+}) {
+  const locale = await getLocale();
+  const t = await getTranslations<MessageKey, MessageArgs>('__ROUTE__');
+  const opts = { ...auth, locale };
+  const selected = selection(searchParams.record_id);
+  let page;
+  try {
+    page = await listRecords(parseFilters(searchParams), opts);
+  } catch (error) {
+    return (
+      <Alert>
+        <AlertDescription>
+          {errorCode(error) === 'PERMISSION_DENIED'
+            ? t('record-access')
+            : t('records-failed')}
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  let record = null;
+  let detailFailed = false;
+  if (selected && selected !== 'new') {
+    try {
+      record = await getRecord(selected, locale, opts);
+    } catch {
+      detailFailed = true;
+    }
+  }
+
+  const search = Object.fromEntries(
+    Object.entries(searchParams).filter(
+      ([, value]) => typeof value === 'string'
+    )
+  ) as Record<string, string>;
+
+  return (
+    <section className='space-y-4'>
+      <h1 className='text-xl font-semibold'>{t('records-heading')}</h1>
+      {detailFailed && (
+        <Alert>
+          <AlertDescription>{t('record-load-failed')}</AlertDescription>
+        </Alert>
+      )}
+      {(record || selected === 'new') && (
+        <RecordEditor
+          key={auth.actor + ':' + auth.tenantId + ':' + selected}
+          initial={record}
+          actor={auth.actor}
+          tenantId={auth.tenantId ?? null}
+          closeHref={selectionHref(searchParams)}
+        />
+      )}
+      <RecordTable page={page} search={search} />
+    </section>
+  );
+}

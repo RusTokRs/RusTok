@@ -11,7 +11,7 @@ use crate::audience_security::{
     resolve_audience_eligible_candidates_by_module, search_audience_error,
 };
 use crate::storefront_category_scope::StorefrontSearchTransport;
-use crate::storefront_product_channel_visibility::product_channel_visibility_sql;
+use crate::storefront_product_channel_visibility::storefront_channel_visibility_sql;
 
 /// Audience context required by every public storefront suggestion read.
 ///
@@ -342,7 +342,8 @@ async fn fetch_document_suggestions(
     let mut next_param = 7;
     let product_scope = storefront_channel
         .map(|channel| {
-            product_channel_visibility_sql(
+            storefront_channel_visibility_sql(
+                "source_module",
                 "entity_type",
                 "payload",
                 channel,

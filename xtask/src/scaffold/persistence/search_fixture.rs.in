@@ -1,0 +1,178 @@
+use rustok_api::{AuthContext, RequestContext};
+use rustok_core::events::EventHandler;
+use rustok_core::search_projection::SOURCE_REINDEX_TARGET_PREFIX;
+use rustok_core::{
+    MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry,
+    ModuleRuntimeExtensions, RusToKModule,
+};
+use rustok_events::{DomainEvent, EventEnvelope};
+use rustok_outbox_storage::SysEvents;
+use rustok_search::{
+    PgSearchEngine, SearchAudienceClass, SearchAudienceRegistry, SearchModule, SearchQuery,
+    SearchRankingProfile, SearchResult, StorefrontSearchAudienceContext, StorefrontSearchTransport,
+    execute_audience_eligible_search, resolve_trusted_storefront_channel,
+};
+use sea_orm::{DatabaseConnection, EntityTrait};
+use sea_orm_migration::SchemaManager;
+use uuid::Uuid;
+
+pub(super) struct SearchFixture {
+    db: DatabaseConnection,
+    handler: std::sync::Arc<dyn EventHandler>,
+    engine: PgSearchEngine,
+    audience: SearchAudienceRegistry,
+}
+
+impl SearchFixture {
+    pub(super) async fn new(db: &DatabaseConnection, extensions: &ModuleRuntimeExtensions) -> Self {
+        let manager = SchemaManager::new(db);
+        for migration in SearchModule.migrations() {
+            migration.up(&manager).await.unwrap();
+        }
+        Self::after_migrations(db, extensions)
+    }
+
+    pub(super) fn after_migrations(
+        db: &DatabaseConnection,
+        extensions: &ModuleRuntimeExtensions,
+    ) -> Self {
+        let mut listeners = ModuleEventListenerRegistry::new();
+        SearchModule.register_event_listeners(
+            &mut listeners,
+            &ModuleEventListenerContext {
+                db: db.clone(),
+                extensions,
+            },
+        );
+        let [handler] = listeners
+            .into_handlers()
+            .try_into()
+            .ok()
+            .expect("one Search listener");
+        let mut audience = SearchAudienceRegistry::new();
+        audience
+            .register_publication_sources(db, extensions)
+            .unwrap();
+        assert_eq!(
+            audience.audience_class("__SLUG__"),
+            Some(SearchAudienceClass::Gated)
+        );
+        Self {
+            db: db.clone(),
+            handler,
+            engine: PgSearchEngine::new(db.clone()),
+            audience,
+        }
+    }
+
+    pub(super) async fn refresh_and_find(
+        &self,
+        tenant: Uuid,
+        locale: &str,
+        term: &str,
+    ) -> SearchResult {
+        // Replay the record owner's publication effects. Lookup policy still
+        // has to change without replaying lifecycle events or rebuilding Search.
+        let source_target = format!("{SOURCE_REINDEX_TARGET_PREFIX}__SLUG__");
+        for row in SysEvents::find().all(&self.db).await.unwrap() {
+            let envelope: EventEnvelope = serde_json::from_value(row.payload).unwrap();
+            if matches!(&envelope.event, DomainEvent::ReindexRequested { target_type, .. } if target_type == &source_target) {
+                assert!(self.handler.handles(&envelope.event));
+                self.handler.handle(&envelope).await.unwrap();
+            }
+        }
+        self.find_visible(tenant, locale, term).await
+    }
+
+    pub(super) async fn find_visible(
+        &self,
+        tenant: Uuid,
+        locale: &str,
+        term: &str,
+    ) -> SearchResult {
+        self.find(tenant, locale, term, &self.audience, None).await
+    }
+
+    pub(super) async fn find_as(
+        &self,
+        auth: AuthContext,
+        locale: &str,
+        term: &str,
+    ) -> SearchResult {
+        self.find(auth.tenant_id, locale, term, &self.audience, Some(auth))
+            .await
+    }
+
+    pub(super) async fn rebuild_and_find(
+        &self,
+        tenant: Uuid,
+        locale: &str,
+        term: &str,
+    ) -> SearchResult {
+        let envelope = EventEnvelope::new(
+            tenant,
+            None,
+            DomainEvent::ReindexRequested {
+                target_type: format!("{SOURCE_REINDEX_TARGET_PREFIX}__SLUG__"),
+                target_id: None,
+            },
+        );
+        assert!(self.handler.handles(&envelope.event));
+        self.handler.handle(&envelope).await.unwrap();
+        self.find_visible(tenant, locale, term).await
+    }
+
+    pub(super) async fn find(
+        &self,
+        tenant: Uuid,
+        locale: &str,
+        term: &str,
+        audience: &SearchAudienceRegistry,
+        auth: Option<AuthContext>,
+    ) -> SearchResult {
+        let request_context = RequestContext {
+            tenant_id: tenant,
+            user_id: auth.as_ref().map(|auth| auth.user_id),
+            channel_id: None,
+            channel_slug: None,
+            channel_resolution_source: None,
+            locale: locale.into(),
+            correlation_id: Uuid::new_v4().to_string(),
+        };
+        let channel = resolve_trusted_storefront_channel(&request_context, tenant, None).unwrap();
+        execute_audience_eligible_search(
+            &self.db,
+            &self.engine,
+            SearchQuery {
+                tenant_id: Some(tenant),
+                locale: Some(locale.into()),
+                channel_id: None,
+                original_query: term.into(),
+                query: term.into(),
+                ranking_profile: SearchRankingProfile::Balanced,
+                preset_key: None,
+                limit: 10,
+                offset: 0,
+                published_only: true,
+                entity_types: vec!["__ENTITY_SLUG__".into()],
+                source_modules: vec!["__SLUG__".into()],
+                statuses: Vec::new(),
+                category_ids: Vec::new(),
+                tag: None,
+                attribute_filters: Vec::new(),
+                sort_attribute_code: None,
+                sort_desc: false,
+            },
+            &channel,
+            StorefrontSearchAudienceContext {
+                registry: audience,
+                category_scope: None,
+                auth,
+                request_context: Some(request_context),
+                transport: StorefrontSearchTransport::NativeServer,
+            },
+        )
+        .await
+        .unwrap()
+    }
+}

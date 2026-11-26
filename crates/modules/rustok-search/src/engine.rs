@@ -144,7 +144,9 @@ pub struct SearchResultItem {
 /// closed and require owner reindexing; Search never builds Forum result URLs.
 pub fn canonical_search_result_url(value: &SearchResultItem) -> Option<String> {
     match value.entity_type.as_str() {
-        "product" => Some(format!("/store/products/{}", value.id)),
+        "product" if value.source_module == "commerce" => {
+            Some(format!("/store/products/{}", value.id))
+        }
         "node" => Some(format!(
             "/modules/content?id={}{}",
             value.id,
@@ -721,6 +723,8 @@ mod tests {
             canonical_search_result_url(&product).as_deref(),
             Some("/store/products/00000000-0000-0000-0000-000000000001")
         );
+        let unrelated = item("product", "sample", json!({}));
+        assert_eq!(canonical_search_result_url(&unrelated), None);
 
         let content = item("node", "forum", json!({}));
         assert_eq!(

@@ -42,6 +42,9 @@ removing query-time SQL access to those projections is an isolation prerequisite
 - Re-delivery of events must not corrupt the read model: the projector performs a scoped delete + rebuild/upsert in a transaction, and materialized rows are written via stable `document_key`.
 - Blog tag projection resolves only canonical Taxonomy attachments from `blog_post_tags`, accepting `global` and `module:blog` term scopes; legacy `blog_posts.metadata.tags` is never a search source.
 - Shared global Taxonomy Tag mutations invalidate the tenant Search projection through the existing `index.reindex_requested` event; Search stays the consumer, without a direct runtime dependency on Taxonomy or Blog mutation services.
+- Embedded owners registered through `SearchProjectionSourceFactory` can opt in to `index.reindex_requested` with the target `source:<module-slug>`. An entity request replaces all its locale documents in the tenant/source scope. A source request rebuilds that scope. Embedded PostgreSQL reads use the locked transaction for the same scope as index replacement. Storefront visibility still follows the host's declared Search audience.
+- Sources whose availability can change by tenant or channel need host admission backed by the corresponding live policy. A delayed projection event cannot grant storefront visibility.
+- Text queries with no matching product documents compute their facets from Search-owned storage. The product attribute filter, sort, and facet cutover from the retired Index v1 projection remains a separate owner migration.
 - `search_documents.document_key` is the primary key; content/product materialization uses `ON CONFLICT (document_key) DO UPDATE`, so a repeated upsert updates the existing row rather than creating a duplicate.
 - Product catalog search reads normalized high-load projections built by `rustok-index`: `index_product_categories` for primary/additional/materialized virtual category assignments and `index_product_attribute_values` for effective attribute facet/search/sort rows.
 - GraphQL search input supports optional `channelId`, `categoryIds`, `attributeFilters`, `sortAttributeCode` and `sortDesc`. If `channelId` is not set, the PostgreSQL engine reads only global rows (`channel_id IS NULL`); if set, it reads only rows for that channel without a fallback chain.
@@ -67,6 +70,11 @@ removing query-time SQL access to those projections is an isolation prerequisite
 - The public Search corpus is declared, not inferred: `apps/server` declares public
   module classes and registers gated `SearchAudiencePolicyPort` implementations.
   A module with no declared class is never publicly discoverable.
+- Native owners with tenant-wide visibility may register a `TenantSearchPublicationSource`.
+  The host binds it as gated using the static settings reader. Candidate checks
+  require trusted request context and exact source/entity identity. The owner
+  checks current policy and publication in a bounded batch, including authenticated
+  storefront requests. Published copy may stay in the index while visibility is off.
 - Storefront GraphQL and native reads require the composed `SearchAudienceRegistry`;
   there is no empty-registry fallback.
 - Gated candidates are scanned in bounded pages and authorized in bounded batches; the

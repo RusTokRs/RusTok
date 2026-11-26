@@ -493,6 +493,12 @@ pub fn compose_application_router(
             )))
             .with_shared_value(effective_policy_reader)
             .with_shared_value(static_module_lifecycle_reader)
+            .with_shared_value(
+                crate::services::static_module_settings_admin::ServerStaticModuleSettingsAdminReader::shared(
+                    middleware_runtime_ctx.db_clone(),
+                    runtime.registry.clone(),
+                ),
+            )
             .with_shared_value(static_installed_module_reader)
             .with_shared_value(static_module_registry_reader)
             .with_shared_value(HostSettingsSnapshot::new(settings_snapshot))

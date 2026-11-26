@@ -109,7 +109,7 @@ Transactional publish and relay failure modes are covered by targeted regression
 - `cargo test -p rustok-outbox --test transactional_events_integration_test`:
   - `test_transactional_event_publishing_rollback` confirms that a transaction rollback does not leave `sys_events`;
   - `test_transactional_event_publishing_commit` confirms that a commit creates one durable envelope in `Pending`;
-  - `test_transactional_publish_rejects_non_outbox_transport` confirms fail-fast on incompatible transport.
+  - `test_transactional_publish_rejects_non_transactional_transport` confirms fail-fast on incompatible transport in the default profile.
 - `cargo test -p rustok-outbox --test integration`:
   - `relay_retries_then_succeeds` covers transient error and redelivery;
   - `relay_moves_to_dlq_on_max_retry` covers terminal state/DLQ;

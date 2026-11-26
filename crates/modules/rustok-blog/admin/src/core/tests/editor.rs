@@ -1,4 +1,6 @@
-use super::*;
+use super::fixtures::{category_snapshot, editor_draft, editor_post};
+use crate::core::*;
+use rustok_api::RichTextDocument;
 
 #[test]
 fn pending_creation_retains_original_command_until_a_durable_outcome() {

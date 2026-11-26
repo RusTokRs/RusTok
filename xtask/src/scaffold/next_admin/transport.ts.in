@@ -1,0 +1,126 @@
+import {
+  GraphqlError,
+  graphqlRequest,
+  type GqlOpts
+} from '@/shared/api/graphql';
+import type {
+  ModuleSettings,
+  RecordCopy,
+  RecordFilter,
+  RecordPage,
+  RecordView
+} from './model';
+import {
+  CREATE,
+  GET,
+  LIST,
+  PUBLISH,
+  SAVE,
+  SAVE_SETTINGS,
+  SETTINGS
+} from './operations';
+
+async function request<T>(
+  operation: string,
+  field: string,
+  variables: Record<string, unknown>,
+  opts: GqlOpts
+): Promise<T> {
+  const response = await (opts.graphql ?? graphqlRequest)<
+    typeof variables,
+    Record<string, T>
+  >(operation, variables, opts.token, opts.tenantSlug, {
+    tenantId: opts.tenantId,
+    locale: opts.locale,
+    graphqlUrl: opts.graphqlUrl
+  });
+  const result = response[field];
+  if (result === undefined || result === null)
+    throw new GraphqlError('Missing admin response');
+  return result;
+}
+
+export function listRecords(input: RecordFilter, opts: GqlOpts) {
+  return request<RecordPage>(
+    LIST,
+    '__MODULE_FIELD__AdminRecords',
+    { input, locale: opts.locale },
+    opts
+  );
+}
+
+export function getRecord(id: string, locale: string, opts: GqlOpts) {
+  return request<RecordView>(
+    GET,
+    '__MODULE_FIELD__AdminRecord',
+    { id, locale },
+    opts
+  );
+}
+
+export function createDraft(input: RecordCopy, opts: GqlOpts) {
+  return request<RecordView>(
+    CREATE,
+    '__MODULE_FIELD__CreateAdminRecord',
+    { input },
+    opts
+  );
+}
+
+export function saveTitle(
+  record: RecordView,
+  input: RecordCopy,
+  opts: GqlOpts
+) {
+  return request<RecordView>(
+    SAVE,
+    '__MODULE_FIELD__SaveAdminRecordTitle',
+    { id: record.id, expectedRevision: record.revision, input },
+    opts
+  );
+}
+
+export function setPublication(record: RecordView, opts: GqlOpts) {
+  return request<RecordView>(
+    PUBLISH,
+    '__MODULE_FIELD__SetAdminRecordPublication',
+    {
+      id: record.id,
+      expectedRevision: record.revision,
+      published: !record.published,
+      locale: record.requestedLocale
+    },
+    opts
+  );
+}
+
+export function readSettings(opts: GqlOpts) {
+  return request<ModuleSettings>(
+    SETTINGS,
+    'tenantModuleSettings',
+    { moduleSlug: '__SLUG__' },
+    opts
+  );
+}
+
+export function saveSettings(
+  snapshot: ModuleSettings,
+  settings: string,
+  opts: GqlOpts
+) {
+  return request<ModuleSettings>(
+    SAVE_SETTINGS,
+    'updateModuleSettings',
+    {
+      moduleSlug: '__SLUG__',
+      settings,
+      expectedRevision: snapshot.revision,
+      idempotencyKey: crypto.randomUUID()
+    },
+    opts
+  );
+}
+
+export function errorCode(error: unknown) {
+  return error instanceof GraphqlError ? error.code : undefined;
+}

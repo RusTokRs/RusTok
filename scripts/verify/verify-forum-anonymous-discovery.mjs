@@ -114,7 +114,7 @@ includes('crates/modules/rustok-search/src/suggestions.rs',
   'authorize_suggestion_documents(');
 includes('crates/modules/rustok-search/src/dictionaries.rs',
   'if !allow_extra_pins || has_catalog_filters(query)',
-  'storefront_payload_visible_for_channel(&payload, &entity_type, channel)');
+  'storefront_payload_visible_for_channel(&payload, &source_module, &entity_type, channel)');
 includes('apps/server/src/services/forum_search_result_eligibility.rs',
   'async fn public_forum_discovery_allowed(', '.public_discovery_allowed(tenant_id)');
 includes(`${forum}/search_projection.rs`,
@@ -122,7 +122,7 @@ includes(`${forum}/search_projection.rs`,
 includes('crates/modules/rustok-seo/src/services/targets.rs',
   'static_settings_reader: self.static_settings_reader.clone()');
 const seoTargets = includes(`${forum}/seo_audience_targets.rs`,
-  'if !discovery.anonymous_reading_allowed(tenant_id).await?',
+  'if !discovery.anonymous_reading_allowed(tenant_id).await.map_err(SeoTargetError::provider)?',
   'async fn public_sitemap_requires_refresh(',
   'ForumTopicAudienceListService::new(runtime.db.clone(), runtime.event_bus.clone())',
   'last_visible_cursor = item.sort_key.map(|key| key.encode())',

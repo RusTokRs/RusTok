@@ -119,7 +119,9 @@ async fn public_request_rejects_disabled_blog_channel_binding() {
         .expect("binding should be saved");
 
     let result = ensure_public_blog_channel_enabled(
-        &db,
+        &crate::BlogChannelAvailability::new(Some(
+            rustok_channel::in_process_public_module_read_port(db),
+        )),
         tenant_id,
         Some(&request_context(tenant_id, channel.id, "blog-web")),
         false,
@@ -160,7 +162,7 @@ async fn authenticated_request_bypasses_blog_channel_module_gate() {
         .expect("binding should be saved");
 
     let result = ensure_public_blog_channel_enabled(
-        &db,
+        &crate::BlogChannelAvailability::default(),
         tenant_id,
         Some(&request_context(tenant_id, channel.id, "blog-web")),
         true,
@@ -190,7 +192,9 @@ async fn public_request_allows_blog_channel_without_explicit_binding() {
         .expect("channel should be created");
 
     let result = ensure_public_blog_channel_enabled(
-        &db,
+        &crate::BlogChannelAvailability::new(Some(
+            rustok_channel::in_process_public_module_read_port(db),
+        )),
         tenant_id,
         Some(&request_context(tenant_id, channel.id, "blog-web")),
         false,
@@ -302,12 +306,59 @@ async fn disabled_binding_error_is_redacted() {
         correlation_id: "test-correlation-id".to_string(),
     };
 
-    let error = ensure_public_blog_channel_enabled(&db, tenant_id, Some(&request_context), false)
-        .await
-        .expect_err("disabled binding should be reported");
+    let availability = crate::BlogChannelAvailability::new(Some(
+        rustok_channel::in_process_public_module_read_port(db),
+    ));
+    let error =
+        ensure_public_blog_channel_enabled(&availability, tenant_id, Some(&request_context), false)
+            .await
+            .expect_err("disabled binding should be reported");
 
     assert_eq!(
         error.message,
         "Blog is not available for the current channel"
     );
+}
+
+#[tokio::test]
+async fn resolved_channel_requires_a_provider_instead_of_falling_back() {
+    let tenant_id = Uuid::new_v4();
+    let availability = crate::BlogChannelAvailability::default();
+    assert!(
+        ensure_public_blog_channel_enabled(&availability, tenant_id, None, false)
+            .await
+            .is_ok()
+    );
+    let request = request_context(tenant_id, Uuid::new_v4(), "web");
+    let error = ensure_public_blog_channel_enabled(&availability, tenant_id, Some(&request), false)
+        .await
+        .unwrap_err();
+    assert_eq!(error.message, "Unable to verify Blog channel availability");
+}
+
+#[tokio::test]
+async fn resolved_channel_id_cannot_borrow_another_tenants_binding() {
+    let db = setup_channel_db().await;
+    let owner = Uuid::new_v4();
+    let tenant = Uuid::new_v4();
+    seed_tenant(&db, owner, "channel-owner").await;
+    seed_tenant(&db, tenant, "channel-reader").await;
+    let channel = ChannelService::new(db.clone())
+        .create_channel(CreateChannelInput {
+            tenant_id: owner,
+            slug: "blog-web".into(),
+            name: "Blog Web".into(),
+            settings: None,
+        })
+        .await
+        .unwrap();
+    let availability = crate::BlogChannelAvailability::from_port(
+        rustok_channel::in_process_public_module_read_port(db),
+    );
+    let request = request_context(tenant, channel.id, "blog-web");
+    let error = availability
+        .for_request(tenant, Some(&request))
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, rustok_api::PortErrorKind::NotFound);
 }

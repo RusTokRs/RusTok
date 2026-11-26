@@ -10,6 +10,7 @@ import {
 } from './sort-select';
 import { createColumns } from './columns';
 import type { GqlOpts, PostSummary } from '../../api/posts';
+import type { BlogMessageArgs, BlogMessageKey } from '../../i18n';
 import { useMemo } from 'react';
 
 export interface PostTablePager {
@@ -24,7 +25,7 @@ interface PostTableParams {
 }
 
 export function PostTable({ data, pager, gqlOpts }: PostTableParams) {
-  const t = useTranslations('blog');
+  const t = useTranslations<BlogMessageKey, BlogMessageArgs>('blog');
   const { tenantId, tenantSlug, token } = gqlOpts;
   const columns = useMemo(
     () => createColumns({ tenantId, tenantSlug, token }, t),

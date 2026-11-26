@@ -1,7 +1,7 @@
 //! Public RSS 2.0 transport owned by Blog. The storefront host only mounts
 //! the HTTP route and maps failures to an HTTP status.
 use rustok_api::{AuthContext, HostRuntimeContext, RequestContext, TenantContext};
-use rustok_blog::{PostService, PublicPostsPageQuery};
+use rustok_blog::{BlogChannelAvailability, PostService, PublicPostsPageQuery};
 use rustok_outbox::TransactionalEventBus;
 use rustok_tenant::TenantService;
 
@@ -39,14 +39,12 @@ pub async fn render_rss_feed(
         Err(_) => return Err("Blog module state is unavailable"),
     }
 
-    if auth_context.is_none()
-        && let Some(channel_id) = request_context.and_then(|context| context.channel_id)
-    {
-        let enabled = rustok_channel::ChannelService::new(runtime.db_clone())
-            .is_module_enabled_for_tenant(tenant_id, channel_id, "blog")
+    if auth_context.is_none() {
+        let enabled = BlogChannelAvailability::from_runtime(runtime)
+            .for_request(tenant_id, request_context)
             .await
             .map_err(|_| "Blog channel state is unavailable")?;
-        if !enabled {
+        if enabled == Some(false) {
             return Err("Blog is not enabled for this channel");
         }
     }
@@ -96,6 +94,7 @@ pub async fn render_rss_feed(
     let channel_slug = request_context.and_then(|context| context.channel_slug.as_deref());
     let page = PostService::new(runtime.db_clone(), event_bus)
         .with_taxonomy_port(rustok_blog::blog_taxonomy_from_runtime(runtime))
+        .with_channel_availability(BlogChannelAvailability::from_runtime(runtime))
         .list_public_visible_keyset(
             tenant_id,
             PublicPostsPageQuery {

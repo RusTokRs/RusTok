@@ -8,6 +8,11 @@ import { CircleDot } from 'lucide-react';
 import { CellAction } from './cell-action';
 import type { GqlOpts, PostSummary } from '../../api/posts';
 import { postStatusPresentation } from '../../model/presentation';
+import type { BlogMessageArgs, BlogMessageKey } from '../../i18n';
+
+type BlogTranslations = ReturnType<
+  typeof useTranslations<BlogMessageKey, BlogMessageArgs>
+>;
 
 /**
  * ISO `YYYY-MM-DD` date cell: a deterministic slice of the owner's RFC 3339
@@ -37,9 +42,6 @@ function authorCell(post: PostSummary): string {
  * filtering is owned by the text-filter controls next to it, which reset the
  * cursor atomically when a filter changes.
  */
-/** The typed translator of the `blog` namespace, as `useTranslations('blog')` returns it. */
-type BlogTranslations = ReturnType<typeof useTranslations<'blog'>>;
-
 export function createColumns(
   gqlOpts: GqlOpts,
   t: BlogTranslations

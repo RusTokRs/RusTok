@@ -281,12 +281,89 @@ function checkImports(root, directory, patterns, diagnostics) {
   }
 }
 
-function checkSizes(root, directory, maximum, diagnostics) {
-  for (const file of rustFiles(directory)) {
-    const bytes = lstatSync(file).size;
-    if (bytes > maximum) {
-      diagnostics.push(relative(root, file) + ": " + bytes +
-        " bytes exceeds canonical source limit of " + maximum);
+function checkPackageRustFiles(root, packageRoot, maximum, diagnostics) {
+  const tests = join(packageRoot, "tests");
+  checkNoSymlinks(root, tests, diagnostics);
+  for (const target of [join(tests, "support.rs"), join(tests, "support", "main.rs")]) {
+    if (hasSource(target)) {
+      diagnostics.push(relative(root, target) +
+        ": reserved integration test entrypoint. Put fixtures in tests/support/mod.rs");
+    }
+  }
+  for (const directory of [join(packageRoot, "src"), tests]) {
+    for (const file of rustFiles(directory)) {
+      const sourcePath = relative(directory, file).slice(0, -3).split(sep);
+      if (sourcePath.some((name) => !/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/.test(name))) {
+        diagnostics.push(relative(root, file) + ": Rust source paths must use snake_case");
+      }
+      const bytes = lstatSync(file).size;
+      if (bytes > maximum) {
+        diagnostics.push(relative(root, file) + ": " + bytes +
+          " bytes exceeds canonical source limit of " + maximum);
+      }
+    }
+  }
+}
+
+/**
+ * Follow the repository's out-of-line Rust module convention. Each checked
+ * source file must be reachable from the package's library or service entrypoint.
+ */
+function checkRustModuleTree(root, src, diagnostics) {
+  const files = new Set(rustFiles(src));
+  const entrypoints = [join(src, "lib.rs"), join(src, "bin", "service.rs")];
+  const pending = entrypoints.filter((file) => files.has(file));
+  const visited = new Set();
+  const isSource = (target) => files.has(target) ||
+    (!target.startsWith(src + sep) && target.startsWith(root + sep) && hasSource(target));
+  while (pending.length) {
+    const file = pending.pop();
+    if (visited.has(file)) continue;
+    visited.add(file);
+    const source = readFileSync(file, "utf8");
+    const code = maskRustNonCode(source);
+    if (!code.trim()) {
+      diagnostics.push(relative(root, file) + ": empty Rust module; remove or implement it");
+    }
+    const parent = dirname(file);
+    const children = file.endsWith(sep + "mod.rs") || entrypoints.includes(file)
+      ? parent
+      : file.slice(0, -3);
+    const declarations = code.matchAll(
+      /^[ \t]*(?:#[ \t]*\[[^\]\r\n]*\][ \t]*(?:\r?\n[ \t]*)?)*(?:pub(?:\([^)]*\))?\s+)?mod\s+(?:r#)?([a-zA-Z_][a-zA-Z_0-9]*)\s*;/gm,
+    );
+    for (const declaration of declarations) {
+      const name = declaration[1];
+      const original = source.slice(declaration.index, declaration.index + declaration[0].length);
+      const path = /#\s*\[\s*path\s*=\s*"([^"\r\n]+)"\s*\]/.exec(original)?.[1];
+      const candidates = path === undefined
+        ? [join(children, name + ".rs"), join(children, name, "mod.rs")]
+        : [resolve(parent, path)];
+      const targets = candidates.filter(isSource);
+      if (targets.length !== 1) {
+        const issue = targets.length === 0 ? "has no source file" : "has two source entrypoints";
+        diagnostics.push(relative(root, file) + ": mod " + name + " " + issue);
+      } else if (files.has(targets[0])) {
+        pending.push(targets[0]);
+      }
+    }
+    // Contracted mounted facades use literal includes to bind an owner source.
+    // Generated OUT_DIR includes have no checked-in file to follow.
+    for (const include of code.matchAll(/\binclude\s*!\s*\(\s*\)/g)) {
+      const original = source.slice(include.index, include.index + include[0].length);
+      const path = /\(\s*"([^"\r\n]+\.rs)"\s*\)/.exec(original)?.[1];
+      if (path === undefined) continue;
+      const target = resolve(parent, path);
+      if (!isSource(target)) {
+        diagnostics.push(relative(root, file) + ": included Rust source is missing: " + path);
+      } else if (files.has(target)) {
+        pending.push(target);
+      }
+    }
+  }
+  for (const file of files) {
+    if (!visited.has(file)) {
+      diagnostics.push(relative(root, file) + ": Rust source is not reachable from a package entrypoint");
     }
   }
 }
@@ -399,12 +476,17 @@ function checkNextUiSurface(root, side, manifest, diagnostics) {
 
   const hostRegistryPath = join(root, "apps", host, "src", "modules", "index.ts");
   const hostRegistry = readRequired(root, hostRegistryPath, diagnostics);
+  const registerImport = hasStaticImport(hostRegistry, `${packageName}/register`);
   const relativePackageSource = relative(dirname(hostRegistryPath), join(packageRoot, "src"))
     .split(sep).join("/");
   if (!hasStaticImport(hostRegistry, packageName) &&
+      !registerImport &&
       !hasStaticImport(hostRegistry, relativePackageSource)) {
     diagnostics.push(relative(root, hostRegistryPath) +
       ": Next.js host module registry does not import declared package '" + packageName + "'");
+  }
+  if (registerImport && !hasSource(join(packageRoot, "src", "register.ts"))) {
+    diagnostics.push(relative(root, packageRoot) + ": Next.js /register source is missing");
   }
 
   const routePath = side === "admin"
@@ -627,7 +709,8 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
       }
     }
   }
-  checkSizes(root, src, UI_LIMIT, diagnostics);
+  checkPackageRustFiles(root, uiRoot, UI_LIMIT, diagnostics);
+  checkRustModuleTree(root, src, diagnostics);
   for (const file of rustFiles(join(src, "ui"))) {
     const source = maskRustNonCode(readFileSync(file, "utf8"));
     if (/\b(?:graphql_adapter|native_server_adapter)\s*::|\brustok_graphql\s*::|#\s*\[\s*server\b/.test(source)) {
@@ -678,7 +761,9 @@ function checkSupportPackage(root, moduleRoot, side, manifest, classification, d
   if (lib && !maskRustNonCode(lib).trim()) {
     diagnostics.push(relative(root, supportRoot) + ": support package facade has no implementation");
   }
-  checkSizes(root, join(supportRoot, "src"), UI_LIMIT, diagnostics);
+  const src = join(supportRoot, "src");
+  checkPackageRustFiles(root, supportRoot, UI_LIMIT, diagnostics);
+  checkRustModuleTree(root, src, diagnostics);
 }
 
 function checkCliLayout(root, moduleRoot, packageName, manifest, diagnostics) {
@@ -771,7 +856,8 @@ function checkCliLayout(root, moduleRoot, packageName, manifest, diagnostics) {
   if (!/#\s*\[\s*(?:tokio::)?test\s*\]/.test(maskRustNonCode(readRequired(root, contractPath, diagnostics)))) {
     diagnostics.push(relative(root, contractPath) + ": CLI contract test file has no tests");
   }
-  checkSizes(root, src, BACKEND_LIMIT, diagnostics);
+  checkPackageRustFiles(root, cliRoot, BACKEND_LIMIT, diagnostics);
+  checkRustModuleTree(root, src, diagnostics);
 }
 
 function nativeModuleRegistryEntry(root, slug) {
@@ -973,12 +1059,19 @@ export function lintNativeModule(root, modulePath, slug, { embedded = false, cli
   checkImports(repo, join(src, "ports"), FORBIDDEN_DOMAIN, diagnostics);
   checkImports(repo, join(src, "entities"), FORBIDDEN_ENTITY, diagnostics);
   checkImports(repo, join(src, "services"), FORBIDDEN_SERVICE, diagnostics);
-  checkSizes(repo, src, BACKEND_LIMIT, diagnostics);
+  checkPackageRustFiles(repo, moduleRoot, BACKEND_LIMIT, diagnostics);
+  checkRustModuleTree(repo, src, diagnostics);
   const portsSource = join(moduleRoot, "ports", "src");
-  checkImports(repo, portsSource, FORBIDDEN_DOMAIN, diagnostics);
-  checkSizes(repo, portsSource, BACKEND_LIMIT, diagnostics);
+  if (checkModulePathNoSymlinks(repo, portsSource, diagnostics)) {
+    checkNoSymlinks(repo, portsSource, diagnostics);
+    checkImports(repo, portsSource, FORBIDDEN_DOMAIN, diagnostics);
+    checkPackageRustFiles(repo, dirname(portsSource), BACKEND_LIMIT, diagnostics);
+    checkRustModuleTree(repo, portsSource, diagnostics);
+  }
 
-  if (cli) checkCliLayout(repo, moduleRoot, packageName, manifest, diagnostics);
+  if (cli || hasSection(manifest, "provides.cli") || existsSync(join(moduleRoot, "cli"))) {
+    checkCliLayout(repo, moduleRoot, packageName, manifest, diagnostics);
+  }
 
   const classification = keyInSection(manifest, "module", "ui_classification");
   const liveProfiles = {

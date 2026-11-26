@@ -68,6 +68,12 @@ static settings mutation also appends `TenantUpdated` to the canonical outbox
 inside the same owner transaction as the settings, revision, and replay receipt;
 outbox failure aborts the mutation.
 
+The lifecycle writer returns one browser-safe settings snapshot for a
+specific static module, as well as the bounded collection of explicit
+overrides. Both read the settings and revision in one database snapshot.
+The exact read exposes inherited state at revision zero when there is no
+override or lifecycle aggregate. Reading it does not materialize settings.
+
 For static normalized, exact-locale and source-locale settings writes, a database
 error while claiming the aggregate leaves the admitted receipt processing rather
 than recording a terminal failure. A failed rollback does not trigger claim

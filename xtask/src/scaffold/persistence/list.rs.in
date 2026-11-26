@@ -1,0 +1,58 @@
+use rustok_api::Action;
+use rustok_core::SecurityContext;
+use uuid::Uuid;
+
+use crate::{__ENTITY__Page, List__ENTITY__Records, RecordError, domain};
+
+use super::{__ENTITY__Service, repository::ListPageQuery, settings::MAX_PAGE_SIZE};
+
+impl __ENTITY__Service {
+    /// Searches literal text in the owner's stored titles in any locale.
+    /// Each result resolves its title using the requested locale and fallback.
+    pub async fn list(
+        &self,
+        tenant_id: Uuid,
+        security: &SecurityContext,
+        requested_locale: &str,
+        tenant_default_locale: Option<&str>,
+        input: List__ENTITY__Records,
+    ) -> Result<__ENTITY__Page, RecordError> {
+        self.authorize(security, Action::List)?;
+        if tenant_id.is_nil() {
+            return Err(RecordError::InvalidTenant);
+        }
+        let previous_pages = input.page.checked_sub(1).ok_or(RecordError::InvalidPage)?;
+        let requested = domain::locale(requested_locale)?;
+        let fallback = tenant_default_locale.map(domain::locale).transpose()?;
+        let search = input
+            .search
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        if search.is_some_and(|text| {
+            text.contains('\0') || text.chars().count() > domain::MAX_TITLE_CHARS as usize
+        }) {
+            return Err(RecordError::InvalidSearch);
+        }
+        let per_page = match input.per_page {
+            Some(size) if (1..=MAX_PAGE_SIZE).contains(&size) => size,
+            Some(_) => return Err(RecordError::InvalidPage),
+            None => self.default_page_size(tenant_id).await?,
+        };
+        let offset = u64::from(previous_pages) * u64::from(per_page);
+
+        ListPageQuery {
+            tenant_id,
+            requested_locale: requested.as_str(),
+            fallback_locale: fallback.as_ref().map(|locale| locale.as_str()),
+            search,
+            publication: input.publication,
+            order: input.order,
+            page: input.page,
+            per_page,
+            offset,
+        }
+        .load(&self.db)
+        .await
+    }
+}

@@ -190,8 +190,8 @@ const pagesStorefrontRootPath = "crates/modules/rustok-pages/storefront/src/lib.
 const pagesStorefrontLeptosUiPath = "crates/modules/rustok-pages/storefront/src/ui/leptos.rs";
 const pagesStorefrontReadmePath = "crates/modules/rustok-pages/storefront/README.md";
 
-const regionStorefrontCorePath = "crates/modules/rustok-region/storefront/src/core.rs";
-const regionStorefrontLeptosUiPath = "crates/modules/rustok-region/storefront/src/ui/leptos.rs";
+const regionStorefrontCorePath = "crates/modules/rustok-region/storefront/src/core/mod.rs";
+const regionStorefrontLeptosUiPath = "crates/modules/rustok-region/storefront/src/ui/leptos/mod.rs";
 const regionStorefrontReadmePath = "crates/modules/rustok-region/storefront/README.md";
 const regionStorefrontLocalePaths = [
   "crates/modules/rustok-region/storefront/locales/en.ftl",

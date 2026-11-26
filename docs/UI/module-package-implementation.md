@@ -23,8 +23,9 @@ and the planned Dioxus sibling `ui/dioxus.rs`. Both should call the same
 framework-neutral core, model and transport facade.
 
 Classic Next.js packages are separate React packages, owned by their
-respective Next hosts. They do not follow this FFA layout and are not generated
-by the Rust FFA scaffolding command. For a live module UI surface, the generic
+respective Next hosts and follow their package layout. The persisted record
+admin scaffold generates separate Leptos and Next packages from shared
+operation documents. For a live module UI surface, the generic
 native-module lint verifies the declared Next.js package, host registry import,
 and route-page import. Those checks prove structural wiring only; functional
 cross-client parity still requires separate evidence.
@@ -54,7 +55,8 @@ admin/                            (or storefront/)
     │  (└── native_server_adapter.rs)  ← #[server] path for SSR/hydrate profiles
     └── ui/
         ├── mod.rs
-        └── leptos.rs             ← #[component], view!, signals — nothing else
+        └── leptos/
+            └── mod.rs            ← #[component], view!, signals
 ```
 
 Rust also accepts `src/transport.rs` as the facade entry point. Its declared
@@ -99,7 +101,9 @@ Documented native-only operator/bootstrap exceptions do not need `rustok-graphql
 Use `core/` subdirectory instead of `core.rs` when the core layer grows to multiple
 subdomains (`view_model`, `policy`, `error`, `ports`, `identifiers`).
 
-Use `ui/leptos/` subdirectory instead of `ui/leptos.rs` when page components multiply.
+New scaffolds start with `core/mod.rs` and `ui/leptos/mod.rs`. Component and
+policy files can grow under those entrypoints. An existing single-file adapter
+can use `ui/leptos.rs`.
 
 For Page Builder / Fly, use `core/page_builder.rs` for pure owner presentation
 policy and `ui/page_builder.rs` for a Leptos render/binding component when those

@@ -31,7 +31,6 @@ ssr = [
   "leptos/ssr",
   "rustok-auth-ui/ssr",
   "dep:leptos_axum",
-  "dep:rustok-channel",
   "dep:rustok-blog",
   "dep:rustok-blog-ports",
   "dep:rustok-core",
@@ -62,7 +61,6 @@ rustok-blog = { workspace = true, optional = true }
 rustok-blog-ports = { workspace = true, optional = true }
 rustok-api = { workspace = true, default-features = false }
 rustok-ui-i18n.workspace = true
-rustok-channel = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
 rustok-tenant = { workspace = true, optional = true }
 rustok-profiles = { workspace = true, default-features = false, optional = true }

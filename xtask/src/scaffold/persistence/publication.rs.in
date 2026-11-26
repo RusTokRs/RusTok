@@ -1,0 +1,76 @@
+use rustok_api::Action;
+use rustok_core::SecurityContext;
+use rustok_core::search_projection::SOURCE_REINDEX_TARGET_PREFIX;
+use rustok_outbox_storage::TransactionalEventBus;
+use sea_orm::{ColumnTrait, DatabaseTransaction, QueryFilter, TransactionTrait, sea_query::Expr};
+use uuid::Uuid;
+
+use crate::{__ENTITY__View, RecordError, domain, entities::record};
+
+use super::{__ENTITY__Service, repository};
+
+impl __ENTITY__Service {
+    pub async fn set_publication(
+        &self,
+        tenant_id: Uuid,
+        security: &SecurityContext,
+        id: Uuid,
+        revision: i64,
+        published: bool,
+        requested_locale: &str,
+    ) -> Result<__ENTITY__View, RecordError> {
+        self.authorize(security, Action::Publish)?;
+        repository::validate_scope(tenant_id, id)?;
+        let locale = domain::locale(requested_locale)?;
+        let next = domain::next_revision(revision)?;
+        let now = chrono::Utc::now().fixed_offset();
+
+        let tx = self.db.begin().await?;
+        let required_state = if published {
+            record::Column::PublishedAt.is_null()
+        } else {
+            record::Column::PublishedAt.is_not_null()
+        };
+        let updated = repository::revision_update(tenant_id, id, revision, next, now)
+            .col_expr(
+                record::Column::PublishedAt,
+                Expr::value(published.then_some(now)),
+            )
+            .filter(required_state)
+            .exec(&tx)
+            .await?;
+
+        let view = repository::load(&tx, tenant_id, id, locale.as_str(), None, false).await?;
+        if updated.rows_affected == 0 {
+            if view.revision != revision || view.published != published {
+                return Err(RecordError::Conflict);
+            }
+        } else {
+            self.request_reindex(&tx, tenant_id, security.user_id, id)
+                .await?;
+        }
+        tx.commit().await?;
+        Ok(view)
+    }
+
+    pub(super) async fn request_reindex(
+        &self,
+        tx: &DatabaseTransaction,
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+        id: Uuid,
+    ) -> Result<(), RecordError> {
+        // Only the durable Outbox belongs inside the owner transaction.
+        TransactionalEventBus::publish_root_in_tx(
+            tx,
+            tenant_id,
+            actor_id,
+            rustok_events::DomainEvent::ReindexRequested {
+                target_type: format!("{SOURCE_REINDEX_TARGET_PREFIX}__SLUG__"),
+                target_id: Some(id),
+            },
+        )
+        .await
+        .map_err(RecordError::Outbox)
+    }
+}

@@ -1,0 +1,2 @@
+export { RecordsPage } from './pages/records';
+export { SettingsPage } from './pages/settings';

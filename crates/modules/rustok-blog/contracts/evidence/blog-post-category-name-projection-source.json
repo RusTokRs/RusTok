@@ -37,7 +37,7 @@
     "fba_promoted": false
   },
   "production_source": "crates/modules/rustok-blog/src/services/post/queries.rs",
-  "category_projection_source": "crates/modules/rustok-blog/src/services/category_name_projection.rs",
+  "category_projection_source": "crates/modules/rustok-blog/src/services/category/name_projection.rs",
   "dto_source": "crates/modules/rustok-blog/src/dto/post.rs",
   "source_harness": {
     "path": "crates/modules/rustok-blog/tests/post_category_name_projection.rs",

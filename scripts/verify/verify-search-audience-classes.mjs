@@ -138,7 +138,7 @@ forbid(paths.engine, [
 requireAll(paths.dictionaries, [
   "allow_extra_pins: bool",
   "if !allow_extra_pins || has_catalog_filters(query)",
-  "storefront_payload_visible_for_channel(&payload, &entity_type, channel)",
+  "storefront_payload_visible_for_channel(&payload, &source_module, &entity_type, channel)",
 ]);
 forbid(paths.dictionaries, ["exclude_forum"]);
 

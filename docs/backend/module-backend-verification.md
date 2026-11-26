@@ -27,8 +27,10 @@ cargo xtask module lint <slug>
 node scripts/verify/verify-module-source-layout.mjs --module <slug>
 ```
 
-The direct Node invocation is the same runner for local debugging. The default
-Blog reference gate runs the shared lint and Blog-specific layout checks.
+The direct Node invocation uses the same runner as `module lint`. The structural
+gate checks Blog's registered module, the embedded Tax provider, and the shared
+validator fixtures. Run `cargo xtask module lint <slug> --fba` to check the
+published ports package, declared runtime dependencies, and deployment layout.
 
 Embedded native providers such as Tax use the same source checks with an
 explicit selector. The CLI verifies the absence of a standalone composition
@@ -41,18 +43,23 @@ cargo xtask module lint tax --embedded
 
 For a module-local operational adapter, run `cargo xtask module lint <slug> --cli`.
 The shared check covers the provider's package identity and source layout.
-Blog includes it in the default reference profile. Use `npm run verify:cli-registry`
-for the generated registry and exercise the actual commands through `rustok-cli`
-for runtime evidence.
+The default lint applies it when a module declares or contains a CLI package.
+Use `npm run verify:cli-registry` for the generated registry and exercise the
+actual commands through `rustok-cli` for runtime evidence.
 
 ```bash
 npm run verify:module-source-layout
 ```
 
 Both Blog entrypoints include the strict Blog profile and its retired-path
-evidence. The shared lint checks canonical file responsibility and module wiring,
+evidence. The shared lint follows out-of-line Rust module declarations from each
+library or standalone service entrypoint and rejects missing, ambiguous, orphaned, and empty Rust
+modules. It resolves conventional module paths, literal `#[path]` declarations,
+and source files read by mounted facades.
+It also checks canonical file responsibility,
 thin crate facades, optional `runtime.rs` / `error.rs` wiring, private
-entities, source size, transport-neutral DTO/port contracts, persistence and
+entities, Rust path naming and file size under both `src/` and `tests/`,
+transport-neutral DTO/port contracts, persistence and
 service dependency direction, framework-independent FFA model/core, transport
 facade boundaries, support-sub-crate identity, declaration-to-package
 alignment, symlink safety, and suspicious scaffold placeholders. The crate facade
@@ -60,15 +67,17 @@ can export a public Leptos component composed in `ui/mod.rs` or an adapter
 component wired through `ui::leptos`. Test-only dependency exemptions apply only
 to test directories or Rust modules proven
 to be declared under `#[cfg(test)]`; a filename suffix alone is not enough.
+Shared integration fixtures belong under `tests/support/mod.rs`. The lint
+rejects `tests/support.rs` and `tests/support/main.rs`, both of which Cargo
+auto-discovers as a separate test target by default.
 It also checks structural Next.js package identity, host-module registration,
 and route-page imports for live UI surfaces. It cannot prove functional
 Next.js/Leptos parity for data, authorization, locale, or transport behavior,
 live FBA transport, or publish registration readiness.
 
-Existing unconverted native modules may fail the canonical lint; findings are
-migration tasks, not opt-in exceptions. The canonical `npm run verify:module-source-layout` command also runs the
-shared validator fixtures with `node --test scripts/verify/native-module-layout.test.mjs`.
-This keeps generic native lint behavior under the same CI gate as the Blog reference profile.
+Existing unconverted native modules may fail the canonical lint. These findings
+are migration tasks. The scaffold runs the same source contract against each
+generated native module before publish metadata validation.
 
 ## Post-scaffold verification
 
@@ -122,8 +131,13 @@ bash scripts/ci/verify-scaffold-matrix.sh
 
 The matrix covers generated structure and compilation only. It does not
 establish domain behavior, production runtime integration, or functional
-Next.js/Leptos parity. Database generation remains intentionally unsupported
-until a real owner schema and migration contract exist.
+Next.js/Leptos parity. The local matrix additionally generates a persisted
+module through `--with-db --entity <name>` and runs the generated service
+tests after applying platform identity and owner migrations.
+
+```bash
+cargo xtask module verify-scaffold --offline
+```
 
 ## Canonical reference-contract verification
 
@@ -336,6 +350,9 @@ business contract cases through both modes. Product's current transport packages
 are migration inputs, not evidence for the new package layout.
 
 Use module-local verifier scripts for source consistency and list their actual results.
+The shared `verify:owner:fba-runtime-order` source check reads the provider
+implementation from `in_process_provider_impl.source` in the owner registry.
+Update that entry with source moves so the check follows the implementation.
 For the existing Product read slice, the owner plan also lists conformance and process
 capture commands. Runtime capture requires migrated databases, authenticated fixtures and
 explicit operator configuration; do not manufacture a passing evidence packet.

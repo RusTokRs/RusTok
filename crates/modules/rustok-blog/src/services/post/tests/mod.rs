@@ -60,9 +60,9 @@ async fn seed_channel(db: &DatabaseConnection, tenant_id: Uuid, slug: &str) {
         .expect("channel should be created");
 }
 
-include!("unit.rs");
-include!("lifecycle.rs");
-include!("public_listing.rs");
-include!("scheduling.rs");
-include!("search.rs");
-include!("admin_list_filters.rs");
+mod admin_list_filters;
+mod lifecycle;
+mod public_listing;
+mod scheduling;
+mod search;
+mod unit;

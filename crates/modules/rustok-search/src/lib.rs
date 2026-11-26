@@ -29,6 +29,7 @@ mod projection_driver;
 pub mod projection_source;
 pub mod projector;
 mod projector_core;
+mod publication_audience;
 pub mod ranking;
 pub mod search_settings;
 pub mod storefront_category_scope;

@@ -37,9 +37,10 @@ See [CRATE_API.md](CRATE_API.md) for the verified public crate API specification
 
 The create/read and Cart tax-policy slices have scoped SQLite and PostgreSQL
 coverage. The complete module remains a scaffold reference candidate. Backend
-root-file placement, UI test slots, the oversized admin core, and Next.js
-manifest bindings still fail the architecture lint. Mounted client parity and
-the full `RegionReadPort` failure-envelope matrix remain unverified. The
+and Leptos package source files follow the canonical layout. The architecture
+lint requires Next.js packages and manifest bindings for both live surfaces.
+Mounted client parity and the full `RegionReadPort` failure-envelope matrix
+remain unverified. The
 [owner plan](docs/implementation-plan.md#scaffold-reference-candidate) tracks
 these gates.
 

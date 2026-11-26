@@ -1,0 +1,94 @@
+use rustok_ui_transport::UiTransportError;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Record {
+    pub id: Uuid,
+    pub revision: String,
+    pub published: bool,
+    pub title: String,
+    pub requested_locale: String,
+    pub effective_locale: String,
+    pub available_locales: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordPage {
+    pub items: Vec<Record>,
+    pub total: u64,
+    pub page: u32,
+    pub per_page: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordFilter {
+    pub page: u32,
+    pub per_page: Option<u16>,
+    pub search: Option<String>,
+    pub publication: Option<Publication>,
+    pub order: Order,
+}
+
+impl Default for RecordFilter {
+    fn default() -> Self {
+        Self {
+            page: 1,
+            per_page: None,
+            search: None,
+            publication: None,
+            order: Order::NewestFirst,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum Publication {
+    Draft,
+    Published,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum Order {
+    NewestFirst,
+    OldestFirst,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecordTitle {
+    pub locale: String,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RequestFailure {
+    Rejected(Rejection),
+    Transport(UiTransportError),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Rejection {
+    Access,
+    InvalidInput,
+    NotFound,
+    Conflict,
+}
+
+impl Rejection {
+    pub(crate) fn from_code(code: &str) -> Option<Self> {
+        match code {
+            "UNAUTHENTICATED" | "PERMISSION_DENIED" | "MODULE_NOT_ENABLED" => Some(Self::Access),
+            "BAD_USER_INPUT" => Some(Self::InvalidInput),
+            "NOT_FOUND" => Some(Self::NotFound),
+            "CONFLICT" | "REVISION_CONFLICT" | "MODULE_SETTINGS_SNAPSHOT_CONFLICT" => {
+                Some(Self::Conflict)
+            }
+            _ => None,
+        }
+    }
+}

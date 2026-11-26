@@ -432,6 +432,45 @@ pub fn find_token_usages(document: &ProjectDocument, token_name: &str) -> Vec<To
     usages
 }
 
+fn find_usages_in_opaque_value(
+    value: &Value,
+    token_name: &str,
+    usages: &mut Vec<TokenUsage>,
+    fallback_id: &str,
+) {
+    match value {
+        Value::Object(map) => {
+            let comp_id = map.get("id").and_then(Value::as_str).unwrap_or(fallback_id);
+            if let Some(Value::Object(style_map)) = map.get("style") {
+                for (prop, val) in style_map {
+                    if let Some(css_val) = val.as_str() {
+                        let (_, count) =
+                            replace_token_in_css_value(css_val, token_name, token_name);
+                        if count > 0 {
+                            usages.push(TokenUsage {
+                                location: TokenUsageLocation::ComponentStyle {
+                                    component_id: comp_id.to_string(),
+                                    property: prop.clone(),
+                                },
+                                snippet: format!("{prop}: {css_val}"),
+                            });
+                        }
+                    }
+                }
+            }
+            if let Some(components) = map.get("components") {
+                find_usages_in_opaque_value(components, token_name, usages, comp_id);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                find_usages_in_opaque_value(item, token_name, usages, fallback_id);
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Rewrites all `var(--{old_name})` occurrences to `var(--{new_name})` across component styles,
 /// catalog style rules, and sibling theme tokens in `document`.
 pub fn rename_token_references(

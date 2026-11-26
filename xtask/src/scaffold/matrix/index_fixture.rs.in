@@ -1,0 +1,207 @@
+use rustok_api::Resource;
+use rustok_core::{MigrationSource, SecurityContext};
+use rustok_index::{
+    EntityKey, EntityName, FieldName, IndexModule, IndexMutation, IndexSchemaSourceCatalog,
+    IndexSourceLoadRequest, IndexSourceScanRequest, IndexValue, LocaleKey, ModuleName,
+    MutationApplyOutcome, MutationDelivery, PostgresMutationStore, PostgresSchemaRegistrationStore,
+    SchemaRef, SchemaVersion, SharedIndexSchemaRegistry, SharedIndexSourceRegistry,
+    materialize_postgres_index_sources,
+};
+use rustok_scaffold_matrix_localized::{
+    ProductService, SaveProductTitle, ScaffoldMatrixLocalizedModule,
+};
+use rustok_test_utils::db::{
+    assert_postgres_url, connect_postgres, create_postgres_database,
+    drop_postgres_database_if_exists, postgres_database_url, unique_postgres_database_name,
+};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
+use sea_orm_migration::{MigrationTrait, SchemaManager};
+use uuid::Uuid;
+
+const INDEX_SOURCE: &str = "scaffold_matrix_localized-localized-records";
+
+fn localized_schema() -> SchemaRef {
+    SchemaRef {
+        module: ModuleName::new("rustok-scaffold-matrix-localized").unwrap(),
+        entity: EntityName::new("product").unwrap(),
+        version: SchemaVersion::INITIAL,
+    }
+}
+
+#[test]
+fn distribution_registers_the_localized_owner_index_schema() {
+    let registry = rustok_distribution::build_registry();
+    let extensions = rustok_distribution::build_runtime_extensions(&registry).unwrap();
+    let catalog = extensions.get::<IndexSchemaSourceCatalog>().unwrap();
+    assert!(catalog.get(&localized_schema()).is_some());
+}
+
+#[tokio::test]
+#[ignore = "requires the disposable PostgreSQL URL used by the scaffold matrix"]
+async fn postgres_localized_owner_replays_into_index() {
+    let admin_url = std::env::var("RUSTOK_SCAFFOLD_TEST_POSTGRES_URL").unwrap();
+    assert_postgres_url(&admin_url);
+    let admin = connect_postgres(&admin_url).await.unwrap();
+    let name = unique_postgres_database_name("scaffold_localized_index");
+    create_postgres_database(&admin, &name).await.unwrap();
+    let url = postgres_database_url(&admin_url, &name);
+    let result = tokio::spawn(async move {
+        let db = connect_postgres(&url).await.unwrap();
+        assert_index_replay(db).await;
+    })
+    .await;
+    drop_postgres_database_if_exists(&admin, &name)
+        .await
+        .unwrap();
+    result.expect("PostgreSQL Index replay contract");
+}
+
+async fn assert_index_replay(db: DatabaseConnection) {
+    let manager = SchemaManager::new(&db);
+    rustok_outbox::SysEventsMigration
+        .up(&manager)
+        .await
+        .unwrap();
+    for migration in rustok_migrations::identity::migrations()
+        .into_iter()
+        .chain(ScaffoldMatrixLocalizedModule.migrations())
+        .chain(IndexModule.migrations())
+    {
+        migration
+            .up(&manager)
+            .await
+            .unwrap_or_else(|error| panic!("{}: {error}", migration.name()));
+    }
+    let tenant = Uuid::new_v4();
+    let foreign = Uuid::new_v4();
+    for id in [tenant, foreign] {
+        db.execute_raw(Statement::from_sql_and_values(
+            db.get_database_backend(),
+            "INSERT INTO tenants (id, name, slug) VALUES ($1, $2, $3)",
+            [id.into(), "Scaffold Index".into(), id.to_string().into()],
+        ))
+        .await
+        .unwrap();
+    }
+
+    let registry = rustok_distribution::build_registry();
+    let mut extensions = rustok_distribution::build_runtime_extensions(&registry).unwrap();
+    materialize_postgres_index_sources(&mut extensions, db.clone()).unwrap();
+    let sources = extensions.get::<SharedIndexSourceRegistry>().unwrap();
+    let schemas = extensions
+        .get::<SharedIndexSchemaRegistry>()
+        .unwrap()
+        .shared();
+    let reference = localized_schema();
+    let catalog = extensions.get::<IndexSchemaSourceCatalog>().unwrap();
+    let binding = catalog.get(&reference).unwrap();
+    PostgresSchemaRegistrationStore::new(db.clone())
+        .register(tenant, &binding.schema)
+        .await
+        .unwrap();
+
+    let owner = ProductService::new(db.clone(), Resource::Posts);
+    let security = SecurityContext::system();
+    let title = |locale: &str, title: &str| SaveProductTitle {
+        locale: locale.into(),
+        title: title.into(),
+    };
+    let draft = owner
+        .create(tenant, &security, title("en", "English"))
+        .await
+        .unwrap();
+    let draft = owner
+        .save_title(
+            tenant,
+            &security,
+            draft.id,
+            draft.revision,
+            title("ru", "Русский"),
+        )
+        .await
+        .unwrap();
+    let published = owner
+        .set_publication(tenant, &security, draft.id, draft.revision, true, "en")
+        .await
+        .unwrap();
+
+    let first = sources
+        .scan(IndexSourceScanRequest::new(tenant, reference.clone(), None, 1).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(
+        first.mutations()[0].key().locale.as_ref().unwrap().as_str(),
+        "en"
+    );
+    let second = sources
+        .scan(
+            IndexSourceScanRequest::new(tenant, reference.clone(), first.next_cursor().cloned(), 1)
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(second.is_complete());
+    let [IndexMutation::Upsert { record, .. }] = second.mutations() else {
+        panic!("Russian copy must be present")
+    };
+    assert_eq!(record.source_version, published.revision as u64);
+    assert_eq!(record.key.locale.as_ref().unwrap().as_str(), "ru");
+    assert_eq!(
+        record.fields[&FieldName::new("title").unwrap()],
+        IndexValue::String("Русский".into())
+    );
+    let russian = record.key.clone();
+    let missing = EntityKey {
+        locale: Some(LocaleKey::new("de").unwrap()),
+        ..russian.clone()
+    };
+    let foreign_key = EntityKey {
+        tenant_id: foreign,
+        ..russian.clone()
+    };
+    for key in [missing, foreign_key] {
+        let result = sources
+            .load(IndexSourceLoadRequest::new(vec![key]).unwrap())
+            .await
+            .unwrap();
+        assert!(result.mutations().is_empty());
+    }
+    let store = PostgresMutationStore::new(db);
+    let update = MutationDelivery::from_event(INDEX_SOURCE, second.mutations()[0].clone()).unwrap();
+    assert!(matches!(
+        store.apply(&schemas, &update).await.unwrap(),
+        MutationApplyOutcome::Applied { .. }
+    ));
+
+    let withdrawn = owner
+        .set_publication(tenant, &security, draft.id, published.revision, false, "en")
+        .await
+        .unwrap();
+    let deleted = sources
+        .load(IndexSourceLoadRequest::new(vec![russian.clone()]).unwrap())
+        .await
+        .unwrap();
+    let [
+        mutation @ IndexMutation::Delete {
+            key,
+            source_version,
+            ..
+        },
+    ] = deleted.mutations()
+    else {
+        panic!("withdrawal must yield an exact-locale tombstone")
+    };
+    assert_eq!(key, &russian);
+    assert_eq!(*source_version, withdrawn.revision as u64);
+    let tombstone = MutationDelivery::from_event(INDEX_SOURCE, mutation.clone()).unwrap();
+    assert!(matches!(
+        store.apply(&schemas, &tombstone).await.unwrap(),
+        MutationApplyOutcome::Applied { .. }
+    ));
+    let old_replay =
+        MutationDelivery::new(INDEX_SOURCE, "late-old-copy", update.mutation().clone()).unwrap();
+    assert!(matches!(
+        store.apply(&schemas, &old_replay).await.unwrap(),
+        MutationApplyOutcome::StaleIgnored { .. }
+    ));
+}

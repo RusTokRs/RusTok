@@ -1,0 +1,55 @@
+# __CRATE__-admin / CRATE_API
+
+## Role
+
+Owner-specific operator workspace with a server-paginated record table, a
+localized editor and a dual-path record API.
+
+## Platform Capability Bindings
+
+The native path extracts trusted platform request context and binds the owner
+to the host's settings reader. The CSR path uses the platform GraphQL client.
+The settings view requires module management authority. Its exact native
+and GraphQL reads share the host's operator reader. Settings writes use the
+platform GraphQL mutation and preserve settings outside the edited section.
+The grid and UI catalog use the effective locale supplied by the Leptos host.
+
+## Domain Collaborations
+
+The record owner alone decides authorization, localization fallback, state
+transitions, revisions and durable effects.
+
+## Minimum Contract Set
+
+### Input DTOs/Commands
+
+The transport facade lists, reads, creates drafts, edits a title in an
+explicit locale, and sets publication state. Edits carry the applied revision
+as a decimal string.
+
+The editor opens an explicit language before editing its title. Save sends
+the revision and language loaded from the owner. Publication actions use
+the same revision contract and require the current title to be saved or
+discarded first.
+
+A settings submission carries the owner-issued settings revision and a
+client-generated idempotency key. After a conflict or an unconfirmed save,
+the form retains the draft and asks the operator to reload the saved values.
+
+### Domain Invariants
+
+Authenticated authority belongs to one active tenant. Read fallback does not
+choose a write locale. Clients get the requested, effective and available
+locales with each returned record.
+
+### Events / Outbox Side Effects
+
+Publication and edits to published titles trigger the owner's durable Search
+projection events.
+
+### Errors / Failure Codes
+
+The facade exposes known owner refusals and keeps transport failures as
+separate evidence for the selected path. Native endpoint errors mask internal
+database, settings and event details. Unconfirmed writes are never replayed
+automatically.

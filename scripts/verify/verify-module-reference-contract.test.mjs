@@ -218,17 +218,17 @@ const regressions = [
   },
   {
     name: "Blog Category reads import the foreign Taxonomy implementation",
-    path: `${blog}/src/services/category_name_projection.rs`,
+    path: `${blog}/src/services/category/name_projection.rs`,
     before: "use crate::ports::taxonomy::BlogTaxonomyPort;",
     after: "use crate::ports::taxonomy::BlogTaxonomyPort;\nuse rustok_taxonomy::TaxonomyOwnerCategoryReader;",
     diagnostic: /Blog must use its Taxonomy port instead of Taxonomy implementation or entities/,
   },
   {
     name: "Category update drops its writer lock while create retains it",
-    path: `${blog}/src/services/category.rs`,
+    path: `${blog}/src/services/category/commands/copy.rs`,
     before: "snapshot from this update transaction.\n        self.taxonomy_port\n            .lock_category_hierarchy_writer_in_tx(&txn, tenant_id)",
     after: "snapshot from this update transaction.\n        self.taxonomy_port\n            .skip_hierarchy_writer_in_tx(&txn, tenant_id)",
-    diagnostic: /category\.rs: missing ordered invariant marker \.lock_category_hierarchy_writer_in_tx/,
+    diagnostic: /category\/commands\/copy\.rs: missing ordered invariant marker \.lock_category_hierarchy_writer_in_tx/,
   },
   {
     name: "Tag sync replaces caller create permission with an unconditional grant",

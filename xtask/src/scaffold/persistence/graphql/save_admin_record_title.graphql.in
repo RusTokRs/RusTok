@@ -1,0 +1,3 @@
+mutation __MODULE_STEM__SaveAdminRecordTitle($id: UUID!, $expectedRevision: String!, $input: __MODULE_STEM__AdminRecordTitleInput!) {
+  __MODULE_FIELD__SaveAdminRecordTitle(id: $id, expectedRevision: $expectedRevision, input: $input) { ...__MODULE_STEM__AdminRecordFields }
+}

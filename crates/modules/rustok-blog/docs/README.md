@@ -65,9 +65,16 @@ is responsibility-oriented while public Rust paths remain deliberate owner API:
 - owner DTOs: `src/dto/`;
 - persistence: `src/entities/` and `src/migrations/`;
 - application services: `src/services/`;
+  category operations share `src/services/category/`, with public service wiring
+  in `owner.rs`, writes in `commands/` and projection reads in `name_projection.rs`;
 - platform capability adapters: `src/integrations/`;
 - GraphQL and HTTP adapters: `src/graphql/` and `src/controllers/`;
-- crate facade and stable re-exports: `src/lib.rs`.
+- crate facade and stable re-exports: `src/lib.rs`;
+- public integration suite: `tests/integration/main.rs` declares scenario
+  modules for posts, taxonomy, comments, and public contracts. Run the entire
+  suite with `cargo test -p rustok-blog --test integration`. An exact name filter
+  includes the scenario module, for example
+  `comments::test_blog_comment_surface_policy_preserves_comment_data`.
 
 Unused canonical slots are not created. Nested feature modules are preferred when
 a responsibility grows, and the enrolled reference profile is checked by
@@ -220,8 +227,8 @@ slice text.
 
 ## FFA UI split
 
-Leptos render adapters for admin and storefront live in `admin/src/ui/leptos.rs`
-and `storefront/src/ui/leptos.rs`. Crate roots connect module layers and
+Leptos render adapters for admin and storefront live in `admin/src/ui/leptos/mod.rs`
+and `storefront/src/ui/leptos/mod.rs`. Crate roots connect module layers and
 re-export `BlogAdmin` / `BlogView`. Both packages expose a transport facade:
 SSR/hydrate selects native `#[server]` functions and standalone CSR selects the
 parallel GraphQL contract. Selected-transport failures are returned directly;

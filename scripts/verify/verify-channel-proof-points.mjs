@@ -58,8 +58,8 @@ assertAll('crates/modules/rustok-pages/README.md', [
 ]);
 
 const blogStorefront = assertAll('crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs', [
-  'ChannelService::new',
-  '.is_module_enabled_for_tenant(tenant_id, channel_id, MODULE_SLUG)',
+  'BlogChannelAvailability::from_runtime',
+  '.for_request(tenant_id, request_context)',
   'normalize_channel_slug',
   'read_published_post',
   'ctx.channel_slug.as_deref()',
@@ -70,11 +70,20 @@ assertAll('crates/modules/rustok-blog/src/services/post/queries/single.rs', [
   'is_post_visible_for_channel(&channel_slugs, channel_slug)',
   '.channel_is_public_visible(tenant_id, channel_slug)',
 ]);
-assertAll('crates/modules/rustok-blog/src/graphql/query.rs', [
-  'ChannelService::new',
-  '.is_module_enabled_for_tenant(tenant_id, channel_id, MODULE_SLUG)',
+const blogGraphql = assertAll('crates/modules/rustok-blog/src/graphql/query.rs', [
+  'BlogGraphqlRuntimeData::attached(ctx).channel_availability()',
+  '.for_request(tenant_id, request_context)',
   'public_channel_slug(ctx)',
   'is_post_visible_for_channel',
+]);
+if (blogGraphql.includes('ChannelService::new') || blogStorefront.includes('ChannelService::new')) {
+  fail('Blog GraphQL and storefront must use the host-composed Channel availability port');
+}
+assertAll('crates/modules/rustok-blog/src/integrations/channel_availability.rs', [
+  'ChannelPublicModuleSelector::Id(id)',
+  'ChannelPublicModuleSelector::Slug(slug)',
+  'CHANNEL_PUBLIC_MODULE_READ_CLAIM',
+  '.is_public_module_available(',
 ]);
 // The channel-binding denial proof test lives in the query module's tests file
 // (query.rs declares `mod tests;`).

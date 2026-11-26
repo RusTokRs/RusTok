@@ -17,7 +17,8 @@ use uuid::Uuid;
 mod public_module;
 
 pub use public_module::{
-    CHANNEL_PUBLIC_MODULE_READ_CLAIM, ChannelPublicModuleReadPort, ReadChannelPublicModule,
+    CHANNEL_PUBLIC_MODULE_READ_CLAIM, ChannelPublicModuleReadPort, ChannelPublicModuleSelector,
+    ReadChannelPublicModule,
 };
 
 #[cfg(any(feature = "grpc-client", feature = "grpc-server"))]

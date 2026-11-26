@@ -1,0 +1,106 @@
+export type RouteQuery = Record<string, string | string[] | undefined>;
+
+export interface RecordView {
+  id: string;
+  revision: string;
+  published: boolean;
+  title: string;
+  requestedLocale: string;
+  effectiveLocale: string;
+  availableLocales: string[];
+}
+
+export interface RecordPage {
+  items: RecordView[];
+  total: number;
+  page: number;
+  perPage: number;
+}
+
+export interface RecordCopy {
+  locale: string;
+  title: string;
+}
+
+export interface RecordFilter {
+  page: number;
+  perPage?: number;
+  search?: string;
+  publication?: 'DRAFT' | 'PUBLISHED';
+  order: 'NEWEST_FIRST' | 'OLDEST_FIRST';
+}
+
+export interface ModuleSettings {
+  moduleSlug: string;
+  enabled: boolean;
+  settings: string;
+  revision: number;
+}
+
+export const PAGE_SIZE_KEY = '__PAGE_SIZE_KEY__';
+export const PUBLIC_DISCOVERY_KEY = '__PUBLIC_DISCOVERY_KEY__';
+export const DEFAULT_PAGE_SIZE = __DEFAULT_PAGE_SIZE__;
+export const MAX_PAGE_SIZE = __MAX_PAGE_SIZE__;
+
+function positiveInteger(raw: RouteQuery[string], max: number) {
+  if (typeof raw !== 'string' || !/^[1-9][0-9]*$/.test(raw)) return undefined;
+  const value = Number(raw);
+  return Number.isSafeInteger(value) && value <= max ? value : undefined;
+}
+
+export function recordSettingsFields(values: Record<string, unknown>) {
+  const discovery = values[PUBLIC_DISCOVERY_KEY];
+  if (discovery !== undefined && typeof discovery !== 'boolean') {
+    throw new Error('Invalid public discovery setting');
+  }
+  return {
+    pageSize: String(values[PAGE_SIZE_KEY] ?? DEFAULT_PAGE_SIZE),
+    discoverable: discovery === true
+  };
+}
+
+export function settingsPageSize(value: string) {
+  return positiveInteger(value.trim(), MAX_PAGE_SIZE);
+}
+
+export function selection(value: RouteQuery[string]) {
+  if (typeof value !== 'string') return undefined;
+  if (value === 'new') return value;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    value
+  )
+    ? value
+    : undefined;
+}
+
+export function parseFilters(query: RouteQuery): RecordFilter {
+  const search = typeof query.search === 'string' ? query.search.trim() : '';
+  return {
+    page: positiveInteger(query.page, 4_294_967_295) ?? 1,
+    perPage: positiveInteger(query.perPage, MAX_PAGE_SIZE),
+    search:
+      search && Array.from(search).length <= 200 && !search.includes('\0')
+        ? search
+        : undefined,
+    publication:
+      query.publication === 'DRAFT' || query.publication === 'PUBLISHED'
+        ? query.publication
+        : undefined,
+    order: query.order === 'OLDEST_FIRST' ? 'OLDEST_FIRST' : 'NEWEST_FIRST'
+  };
+}
+
+export function targetTitle(record: RecordView) {
+  return record.requestedLocale === record.effectiveLocale ? record.title : '';
+}
+
+export function selectionHref(query: RouteQuery, recordId?: string) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (typeof value === 'string') params.set(key, value);
+  }
+  params.delete('record_id');
+  if (recordId) params.set('record_id', recordId);
+  const search = params.toString();
+  return search ? '?' + search : '/dashboard/__ROUTE__';
+}

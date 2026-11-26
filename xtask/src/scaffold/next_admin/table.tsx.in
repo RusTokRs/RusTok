@@ -1,0 +1,117 @@
+'use client';
+
+import type { MessageKey, MessageArgs } from '../messages';
+
+import type { ColumnDef, StockFeatures } from '@tanstack/react-table';
+import { useTranslations } from '@rustok/next-fluent/client';
+import Link from 'next/link';
+import { parseAsInteger, parseAsStringLiteral, useQueryStates } from 'nuqs';
+import { useMemo } from 'react';
+
+import { buttonVariants } from '@/shared/ui/shadcn/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/shared/ui/shadcn/select';
+import { DataTableShell } from '@/widgets/data-table';
+import { selectionHref, type RecordPage, type RecordView } from '../model';
+
+export function RecordTable({
+  page,
+  search
+}: {
+  page: RecordPage;
+  search: Record<string, string>;
+}) {
+  const t = useTranslations<MessageKey, MessageArgs>('__ROUTE__');
+  const [{ order }, setOrder] = useQueryStates(
+    {
+      order: parseAsStringLiteral(['NEWEST_FIRST', 'OLDEST_FIRST']).withDefault(
+        'NEWEST_FIRST'
+      ),
+      page: parseAsInteger.withDefault(1)
+    },
+    { shallow: false }
+  );
+  const columns = useMemo<ColumnDef<StockFeatures, RecordView, unknown>[]>(
+    () => [
+      {
+        id: 'search',
+        accessorKey: 'title',
+        header: t('records-title'),
+        enableColumnFilter: true,
+        enableSorting: false,
+        meta: { label: t('records-title'), variant: 'text' }
+      },
+      {
+        id: 'publication',
+        accessorFn: (row) => (row.published ? 'PUBLISHED' : 'DRAFT'),
+        header: t('records-status'),
+        enableColumnFilter: true,
+        enableSorting: false,
+        meta: {
+          label: t('records-status'),
+          variant: 'multiSelect',
+          options: [
+            { label: t('records-published'), value: 'PUBLISHED' },
+            { label: t('records-draft'), value: 'DRAFT' }
+          ]
+        },
+        cell: ({ row }) =>
+          t(row.original.published ? 'records-published' : 'records-draft')
+      },
+      {
+        id: 'locale',
+        accessorKey: 'effectiveLocale',
+        header: t('records-locale'),
+        enableSorting: false
+      },
+      {
+        id: 'actions',
+        header: t('record-actions'),
+        enableSorting: false,
+        cell: ({ row }) => (
+          <Link
+            className={buttonVariants({ variant: 'ghost' })}
+            href={selectionHref(search, row.original.id)}
+          >
+            {t('record-edit-action')}
+          </Link>
+        )
+      }
+    ],
+    [t, search]
+  );
+  return (
+    <DataTableShell
+      data={page.items}
+      columns={columns}
+      totalItems={page.total}
+      defaultPageSize={page.perPage}
+      getRowId={(row) => row.id}
+      routeQuery={search}
+    >
+      <Select
+        value={order}
+        onValueChange={(value) => {
+          if (value === 'NEWEST_FIRST' || value === 'OLDEST_FIRST')
+            void setOrder({ order: value, page: 1 });
+        }}
+      >
+        <SelectTrigger aria-label={t('records-order')}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value='NEWEST_FIRST'>{t('records-newest')}</SelectItem>
+          <SelectItem value='OLDEST_FIRST'>{t('records-oldest')}</SelectItem>
+        </SelectContent>
+      </Select>
+      <Link href={selectionHref(search, 'new')} className={buttonVariants()}>
+        {t('record-create-heading')}
+      </Link>
+    </DataTableShell>
+  );
+}

@@ -29,7 +29,8 @@ function withFixture({
   mkdirSync(path.join(root, "crates", "modules", "rustok-cart", "storefront", "src", "core"), { recursive: true });
   mkdirSync(path.join(root, "crates", "modules", "rustok-cart", "storefront", "src", "transport"), { recursive: true });
   mkdirSync(path.join(root, "crates", "modules", "rustok-cart", "storefront", "src", "ui"), { recursive: true });
-  mkdirSync(path.join(root, "crates", "modules", "rustok-region", "storefront", "src", "ui"), { recursive: true });
+  mkdirSync(path.join(root, "crates", "modules", "rustok-region", "storefront", "src", "core"), { recursive: true });
+  mkdirSync(path.join(root, "crates", "modules", "rustok-region", "storefront", "src", "ui", "leptos"), { recursive: true });
   mkdirSync(path.join(root, "crates", "modules", "rustok-region", "storefront", "locales"), { recursive: true });
   mkdirSync(path.join(root, "crates", "modules", "rustok-pages", "storefront", "src", "ui"), { recursive: true });
   mkdirSync(path.join(root, "crates", "modules", "rustok-product", "storefront", "src", "ui"), { recursive: true });
@@ -278,7 +279,7 @@ function withFixture({
 
 
   writeFileSync(
-    path.join(root, "crates", "modules", "rustok-region", "storefront", "src", "core.rs"),
+    path.join(root, "crates", "modules", "rustok-region", "storefront", "src", "core", "mod.rs"),
     [
       "pub enum RegionErrorStatusCode { NativeUnavailable, GraphqlUnavailable }",
       "pub struct RegionErrorStatusDescriptor { pub stable_code: &'static str, pub locale_key: &'static str }",
@@ -294,7 +295,7 @@ function withFixture({
   );
 
   writeFileSync(
-    path.join(root, "crates", "modules", "rustok-region", "storefront", "src", "ui", "leptos.rs"),
+    path.join(root, "crates", "modules", "rustok-region", "storefront", "src", "ui", "leptos", "mod.rs"),
     "data-region-error-status data-region-error-locale-key data-region-route-query-key data-region-route-query-value",
   );
 

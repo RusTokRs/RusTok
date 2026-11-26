@@ -5,6 +5,7 @@ use std::path::{Component, Path, PathBuf};
 use toml_edit::{Document, InlineTable, Item, TableLike, Value};
 
 pub(super) const SERVER: &str = "apps/server/Cargo.toml";
+pub(super) const ADMIN_HOST: &str = "apps/admin/Cargo.toml";
 pub(super) const DISTRIBUTION: &str = "crates/modules/rustok-distribution/Cargo.toml";
 pub(super) const UDEPS_NORMAL: &[&str] =
     &["package", "metadata", "cargo-udeps", "ignore", "normal"];
@@ -85,6 +86,24 @@ pub(super) fn register(root: &Path, workspace_root: &Path, opts: &ScaffoldOption
         )
     })?;
 
+    if opts.mounts_record_admin() {
+        let ui_package = format!("{name}-admin");
+        edit(root, ADMIN_HOST, |editor| {
+            editor.insert(
+                &["dependencies"],
+                &ui_package,
+                &inline_table([
+                    ("path", Value::from(format!("../../{module_path}/admin"))),
+                    ("default-features", Value::from(false)),
+                ]),
+            )?;
+            for profile in ["csr", "hydrate", "ssr"] {
+                editor.append(&["features", profile], &[format!("{ui_package}/{profile}")])?;
+            }
+            Ok(())
+        })?;
+    }
+
     if !opts.skip_server_wire {
         let feature = format!("mod-{}", opts.slug);
         for relative in [SERVER, DISTRIBUTION] {
@@ -92,6 +111,9 @@ pub(super) fn register(root: &Path, workspace_root: &Path, opts: &ScaffoldOption
                 let mut edges = vec![format!("dep:{name}")];
                 if relative == SERVER {
                     edges.push(format!("rustok-distribution/{feature}"));
+                    if opts.admin_resource.is_some() {
+                        edges.push(format!("{name}/graphql"));
+                    }
                     if editor.get(UDEPS_NORMAL).is_some() {
                         let ignore = editor.strings(UDEPS_NORMAL)?;
                         let count = ignore.iter().filter(|dep| **dep == name).count();
@@ -117,7 +139,7 @@ pub(super) fn register(root: &Path, workspace_root: &Path, opts: &ScaffoldOption
     Ok(())
 }
 
-fn inline_table<const N: usize>(entries: [(&str, Value); N]) -> Value {
+pub(super) fn inline_table<const N: usize>(entries: [(&str, Value); N]) -> Value {
     let mut table: InlineTable = entries.into_iter().collect();
     table.fmt();
     Value::InlineTable(table)
@@ -212,7 +234,7 @@ fn normalized_path(path: &str) -> PathBuf {
     result
 }
 
-fn edit(
+pub(super) fn edit(
     root: &Path,
     relative: &str,
     update: impl FnOnce(&mut Editor<'_>) -> Result<()>,
@@ -235,20 +257,20 @@ fn edit(
 
 /// Locate insertions with the TOML parser, then splice only new bytes. Rendering
 /// the entire document would regroup interleaved dotted keys and normalize EOLs.
-struct Editor<'a> {
+pub(super) struct Editor<'a> {
     source: &'a str,
     document: Document<&'a str>,
     insertions: Vec<(usize, String)>,
 }
 
 impl Editor<'_> {
-    fn get(&self, path: &[&str]) -> Option<&Item> {
+    pub(super) fn get(&self, path: &[&str]) -> Option<&Item> {
         path.iter().try_fold(self.document.as_item(), |item, key| {
             item.as_table_like()?.get(key)
         })
     }
 
-    fn strings(&self, path: &[&str]) -> Result<Vec<&str>> {
+    pub(super) fn strings(&self, path: &[&str]) -> Result<Vec<&str>> {
         let array = self
             .get(path)
             .and_then(Item::as_array)
@@ -263,7 +285,7 @@ impl Editor<'_> {
             .collect()
     }
 
-    fn insert(&mut self, path: &[&str], key: &str, value: &Value) -> Result<()> {
+    pub(super) fn insert(&mut self, path: &[&str], key: &str, value: &Value) -> Result<()> {
         self.insert_at(path, key, value, None)
     }
 
@@ -332,7 +354,7 @@ impl Editor<'_> {
         Ok(())
     }
 
-    fn append(&mut self, path: &[&str], values: &[String]) -> Result<()> {
+    pub(super) fn append(&mut self, path: &[&str], values: &[String]) -> Result<()> {
         let array = self
             .get(path)
             .and_then(Item::as_array)

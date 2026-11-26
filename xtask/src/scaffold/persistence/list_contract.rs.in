@@ -1,0 +1,269 @@
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, AtomicU16, Ordering},
+};
+
+use __OWNER__::{
+    __ENTITY__Service, List__ENTITY__Records, RecordError, RecordOrder, RecordPublication,
+};
+use rustok_api::{
+    Action, Permission, PortError, Resource, SharedStaticModuleSettingsReader,
+    StaticModuleSettingsReader, StaticModuleSettingsSnapshot,
+};
+use rustok_core::{SecurityContext, UserRole};
+use sea_orm::DatabaseConnection;
+use uuid::Uuid;
+
+use super::{seed, title};
+
+struct TenantSettings {
+    tenant: Uuid,
+    page_size: AtomicU16,
+    unavailable: AtomicBool,
+}
+
+#[async_trait::async_trait]
+impl StaticModuleSettingsReader for TenantSettings {
+    async fn settings(
+        &self,
+        tenant: Uuid,
+        slug: &str,
+    ) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
+        assert_eq!(slug, "__SLUG__");
+        if self.unavailable.load(Ordering::Relaxed) {
+            return Err(PortError::unavailable(
+                "settings_unavailable",
+                "test reader unavailable",
+            ));
+        }
+        Ok((tenant == self.tenant).then(|| StaticModuleSettingsSnapshot {
+            enabled: Some(true),
+            settings: serde_json::json!({ "__PAGE_SIZE_KEY__": self.page_size.load(Ordering::Relaxed) }),
+        }))
+    }
+}
+
+#[tokio::test]
+async fn lists_filtered_owner_pages_in_sqlite() {
+    let db = rustok_test_utils::db::setup_test_db().await;
+    let (tenant, foreign) = seed(&db).await;
+    assert_list_contract(db, tenant, foreign).await;
+}
+
+pub(super) async fn assert_list_contract(db: DatabaseConnection, tenant: Uuid, foreign: Uuid) {
+    let settings = Arc::new(TenantSettings {
+        tenant,
+        page_size: AtomicU16::new(1),
+        unavailable: AtomicBool::new(false),
+    });
+    let owner = __ENTITY__Service::new(db, Resource::Posts)
+        .with_settings_reader(SharedStaticModuleSettingsReader(settings.clone()));
+    let system = SecurityContext::system();
+    let published = owner
+        .create(tenant, &system, title("en", "100% coverage"))
+        .await
+        .unwrap();
+    owner
+        .save_title(tenant, &system, published.id, 1, title("ru", "100% готово"))
+        .await
+        .unwrap();
+    owner
+        .set_publication(tenant, &system, published.id, 2, true, "en")
+        .await
+        .unwrap();
+    let draft = owner
+        .create(tenant, &system, title("en", "100% draft"))
+        .await
+        .unwrap();
+    owner
+        .create(tenant, &system, title("en", "Other"))
+        .await
+        .unwrap();
+    owner
+        .create(foreign, &system, title("ru", "100% чужая запись"))
+        .await
+        .unwrap();
+
+    let input = List__ENTITY__Records {
+        search: Some("%".into()),
+        ..Default::default()
+    };
+    let first = owner
+        .list(tenant, &system, "ru", Some("en"), input.clone())
+        .await
+        .unwrap();
+    assert_eq!((first.total, first.per_page, first.items.len()), (2, 1, 1));
+    let second = owner
+        .list(
+            tenant,
+            &system,
+            "ru",
+            Some("en"),
+            List__ENTITY__Records {
+                page: 2,
+                ..input.clone()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(second.total, 2);
+    assert_ne!(first.items[0].id, second.items[0].id);
+    let last = owner
+        .list(
+            tenant,
+            &system,
+            "ru",
+            Some("en"),
+            List__ENTITY__Records {
+                page: u32::MAX,
+                ..input.clone()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(last.total, 2);
+    assert!(last.items.is_empty());
+
+    let reverse = owner
+        .list(
+            tenant,
+            &system,
+            "ru",
+            Some("en"),
+            List__ENTITY__Records {
+                order: RecordOrder::OldestFirst,
+                ..input.clone()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(reverse.items[0].id, second.items[0].id);
+    let page = owner
+        .list(
+            tenant,
+            &system,
+            "fr",
+            Some("en"),
+            List__ENTITY__Records {
+                search: Some("готово".into()),
+                publication: Some(RecordPublication::Published),
+                ..input.clone()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(page.total, 1);
+    assert_eq!(page.items[0].id, published.id);
+    assert_eq!(page.items[0].title, "100% coverage");
+    assert_eq!(page.items[0].effective_locale, "en");
+    assert_eq!(page.items[0].available_locales, ["en", "ru"]);
+    let only_draft = owner
+        .list(
+            tenant,
+            &system,
+            "ru",
+            Some("en"),
+            List__ENTITY__Records {
+                publication: Some(RecordPublication::Draft),
+                ..input.clone()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(only_draft.total, 1);
+    assert_eq!(only_draft.items[0].id, draft.id);
+
+    settings.page_size.store(2, Ordering::Relaxed);
+    let resized = owner
+        .list(tenant, &system, "en", None, input.clone())
+        .await
+        .unwrap();
+    assert_eq!((resized.per_page, resized.items.len()), (2, 2));
+    let foreign_page = owner
+        .list(foreign, &system, "ru", None, input.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        (foreign_page.total, foreign_page.per_page),
+        (1, __DEFAULT_PAGE_SIZE__)
+    );
+    settings.page_size.store(0, Ordering::Relaxed);
+    assert!(matches!(
+        owner.list(tenant, &system, "en", None, input.clone()).await,
+        Err(RecordError::InvalidAdminPageSize)
+    ));
+    let explicit = owner
+        .list(
+            tenant,
+            &system,
+            "en",
+            None,
+            List__ENTITY__Records {
+                per_page: Some(1),
+                ..input.clone()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(explicit.per_page, 1);
+    settings.unavailable.store(true, Ordering::Relaxed);
+    assert!(matches!(
+        owner.list(tenant, &system, "en", None, input.clone()).await,
+        Err(RecordError::SettingsUnavailable(_))
+    ));
+
+    assert!(matches!(
+        owner
+            .list(
+                tenant,
+                &system,
+                "en",
+                None,
+                List__ENTITY__Records {
+                    page: 0,
+                    ..input.clone()
+                }
+            )
+            .await,
+        Err(RecordError::InvalidPage)
+    ));
+    assert!(matches!(
+        owner
+            .list(
+                tenant,
+                &system,
+                "en",
+                None,
+                List__ENTITY__Records {
+                    per_page: Some(__MAX_PAGE_SIZE__ + 1),
+                    ..input.clone()
+                }
+            )
+            .await,
+        Err(RecordError::InvalidPage)
+    ));
+    assert!(matches!(
+        owner
+            .list(
+                tenant,
+                &system,
+                "en",
+                None,
+                List__ENTITY__Records {
+                    search: Some("bad\0text".into()),
+                    ..input.clone()
+                }
+            )
+            .await,
+        Err(RecordError::InvalidSearch)
+    ));
+    let only_read = SecurityContext::from_permissions(
+        UserRole::Admin,
+        Some(Uuid::new_v4()),
+        [Permission::new(Resource::Posts, Action::Read)],
+    );
+    assert!(matches!(
+        owner.list(tenant, &only_read, "en", None, input).await,
+        Err(RecordError::Forbidden)
+    ));
+}

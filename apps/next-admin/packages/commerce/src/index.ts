@@ -46,7 +46,13 @@ export * from './components/CartPromotionsTemplate';
 export * from './components/OrderChangesTemplate';
 export * from './components/ReturnDecisionsTemplate';
 export * from './components/order-detail';
-export * from './components/orders-table';
-export * from './components/payments-table';
-export * from './components/refunds-table';
-export * from './components/fulfillments-table';
+export { OrdersTable, STATUS_OPTIONS } from './components/orders-table';
+export {
+  PaymentsTable,
+  PAYMENT_STATUS_OPTIONS
+} from './components/payments-table';
+export { RefundsTable, REFUND_STATUS_OPTIONS } from './components/refunds-table';
+export {
+  FulfillmentsTable,
+  FULFILLMENT_STATUS_OPTIONS
+} from './components/fulfillments-table';

@@ -1,0 +1,8 @@
+mutation UpdateModuleSettings($moduleSlug: String!, $settings: String!, $expectedRevision: Int!, $idempotencyKey: UUID!) {
+  updateModuleSettings(moduleSlug: $moduleSlug, settings: $settings, expectedRevision: $expectedRevision, idempotencyKey: $idempotencyKey) {
+    moduleSlug
+    enabled
+    settings
+    revision
+  }
+}

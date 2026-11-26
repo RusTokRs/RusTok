@@ -24,6 +24,13 @@
 - Provide GraphQL helper types and error helpers shared across modules.
 - Provide request-level locale and tenant resolution and shared selection of localized owner values.
 - Provide `HostRuntimeContext` for server-side Leptos/native adapters that need host-owned runtime handles without importing a host-wide application context.
+- Provide the tenant-wide Search publication binding under the `runtime` feature.
+  Native record owners contribute a visibility port and a factory that receives
+  the platform's static settings reader. Search composes the binding as a gated
+  audience policy.
+- Provide the `localized_index` owner replay port under the `runtime` feature.
+  The host supplies the tenant. The owner returns exact locale keys, positive
+  revisions and published titles or tombstones through bounded reads.
 - Provide neutral port context/error primitives, policy helpers (`PortCallPolicy`) and typed error constructors for module-owned ports; `rustok-region` and migrated tenant, channel, product, customer, media, workflow, RBAC, tax, fulfillment, payment, pricing, cart, inventory, comments, search, order, index, email delivery, outbox relay, and page-builder publish paths use these shared primitives for FBA read/write boundaries.
 - Own neutral permission contracts (`Permission`, `Action`, `Resource`) and host request-locale policy contracts. Framework-neutral `Accept-Language` field parsing is delegated to `rustok-ui-i18n`; the legacy `extract_locale_tag_from_header` name remains a compatibility re-export.
 - Carry typed channel-resolution diagnostics (`channel_id`, `channel_slug`, `channel_resolution_source`, `channel_resolution_trace`) from host middleware into module adapters.

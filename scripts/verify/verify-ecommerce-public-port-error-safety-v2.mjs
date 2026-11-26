@@ -49,7 +49,7 @@ const between = (source, start, end) => {
 };
 
 const channel = read('crates/modules/rustok-channel/src/ports.rs');
-const region = read('crates/modules/rustok-region/src/ports.rs');
+const region = read('crates/modules/rustok-region/src/services/region/read_port.rs');
 const cart = read('crates/modules/rustok-cart/src/checkout_snapshot.rs');
 const cartPromotion = read('crates/modules/rustok-cart/src/promotion_guard.rs');
 // The product port surface is split across the ports/ subtree and the sibling read/command

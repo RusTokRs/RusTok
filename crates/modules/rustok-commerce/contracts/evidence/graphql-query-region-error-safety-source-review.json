@@ -4,7 +4,7 @@
     "crates/modules/rustok-commerce/src/graphql/query.rs",
     "crates/modules/rustok-commerce/src/graphql/safe_query/source.rs",
     "crates/modules/rustok-commerce/src/graphql/safe_query/query_error_boundary.rs",
-    "crates/modules/rustok-region/src/ports.rs",
+    "crates/modules/rustok-region/src/services/region/read_port.rs",
     "scripts/verify/verify-commerce-graphql-query-region-error-safety.mjs",
     "scripts/verify/verify-region-owner-port-error-safety.mjs",
     "crates/modules/rustok-commerce/docs/graphql-query-region-error-safety.md",

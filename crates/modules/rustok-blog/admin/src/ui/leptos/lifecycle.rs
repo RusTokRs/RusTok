@@ -26,11 +26,15 @@ pub(super) struct LifecycleCallbacks {
 /// Releases the shared busy key for an obsolete request without ever dropping the
 /// key of a newer request that is still in flight. Every stale completion path
 /// must call this before returning; otherwise the editor stays locked forever.
-fn release_stale_busy_key(
-    set_busy_key: &WriteSignal<Option<String>>,
+pub(super) fn release_stale_busy_key(
+    busy_key: ReadSignal<Option<String>>,
+    set_busy_key: WriteSignal<Option<String>>,
     command_busy_key: &str,
 ) {
-    if core::should_release_busy_key(set_busy_key.get_untracked().as_deref(), command_busy_key) {
+    if core::should_release_busy_key(
+        busy_key.try_get_untracked().flatten().as_deref(),
+        command_busy_key,
+    ) {
         set_busy_key.set(None);
     }
 }
@@ -91,11 +95,11 @@ pub(super) fn bind(state: LifecycleBindings) -> LifecycleCallbacks {
                 match result {
                     Ok(()) if !request.is_current(editor_request.get_untracked().as_ref()) => {
                         set_refresh_nonce.update(|value| *value += 1);
-                        release_stale_busy_key(&set_busy_key, command.busy_key.as_str());
+                        release_stale_busy_key(busy_key, set_busy_key, command.busy_key.as_str());
                         return;
                     }
                     _ if !request.is_current(editor_request.get_untracked().as_ref()) => {
-                        release_stale_busy_key(&set_busy_key, command.busy_key.as_str());
+                        release_stale_busy_key(busy_key, set_busy_key, command.busy_key.as_str());
                         return;
                     }
                     Ok(()) => {
@@ -126,7 +130,11 @@ pub(super) fn bind(state: LifecycleBindings) -> LifecycleCallbacks {
                                 _ if !request
                                     .is_current(editor_request.get_untracked().as_ref()) =>
                                 {
-                                    release_stale_busy_key(&set_busy_key, command.busy_key.as_str());
+                                    release_stale_busy_key(
+                                        busy_key,
+                                        set_busy_key,
+                                        command.busy_key.as_str(),
+                                    );
                                     return;
                                 }
                                 Ok(Some(post))
@@ -197,11 +205,11 @@ pub(super) fn bind(state: LifecycleBindings) -> LifecycleCallbacks {
             match result {
                 Ok(()) if !request.is_current(editor_request.get_untracked().as_ref()) => {
                     set_refresh_nonce.update(|value| *value += 1);
-                    release_stale_busy_key(&set_busy_key, command.busy_key.as_str());
+                    release_stale_busy_key(busy_key, set_busy_key, command.busy_key.as_str());
                     return;
                 }
                 _ if !request.is_current(editor_request.get_untracked().as_ref()) => {
-                    release_stale_busy_key(&set_busy_key, command.busy_key.as_str());
+                    release_stale_busy_key(busy_key, set_busy_key, command.busy_key.as_str());
                     return;
                 }
                 Ok(()) => {
@@ -229,10 +237,12 @@ pub(super) fn bind(state: LifecycleBindings) -> LifecycleCallbacks {
                         )
                         .await
                         {
-                            _ if !request
-                                .is_current(editor_request.get_untracked().as_ref()) =>
-                            {
-                                release_stale_busy_key(&set_busy_key, command.busy_key.as_str());
+                            _ if !request.is_current(editor_request.get_untracked().as_ref()) => {
+                                release_stale_busy_key(
+                                    busy_key,
+                                    set_busy_key,
+                                    command.busy_key.as_str(),
+                                );
                                 return;
                             }
                             Ok(Some(post))
@@ -292,11 +302,11 @@ pub(super) fn bind(state: LifecycleBindings) -> LifecycleCallbacks {
             {
                 Ok(()) if !request.is_current(editor_request.get_untracked().as_ref()) => {
                     set_refresh_nonce.update(|value| *value += 1);
-                    release_stale_busy_key(&set_busy_key, command.busy_key.as_str());
+                    release_stale_busy_key(busy_key, set_busy_key, command.busy_key.as_str());
                     return;
                 }
                 _ if !request.is_current(editor_request.get_untracked().as_ref()) => {
-                    release_stale_busy_key(&set_busy_key, command.busy_key.as_str());
+                    release_stale_busy_key(busy_key, set_busy_key, command.busy_key.as_str());
                     return;
                 }
                 Ok(()) => {
@@ -324,10 +334,12 @@ pub(super) fn bind(state: LifecycleBindings) -> LifecycleCallbacks {
                         )
                         .await
                         {
-                            _ if !request
-                                .is_current(editor_request.get_untracked().as_ref()) =>
-                            {
-                                release_stale_busy_key(&set_busy_key, command.busy_key.as_str());
+                            _ if !request.is_current(editor_request.get_untracked().as_ref()) => {
+                                release_stale_busy_key(
+                                    busy_key,
+                                    set_busy_key,
+                                    command.busy_key.as_str(),
+                                );
                                 return;
                             }
                             Ok(Some(post))
@@ -387,11 +399,11 @@ pub(super) fn bind(state: LifecycleBindings) -> LifecycleCallbacks {
             {
                 Ok(()) if !request.is_current(editor_request.get_untracked().as_ref()) => {
                     set_refresh_nonce.update(|value| *value += 1);
-                    release_stale_busy_key(&set_busy_key, command.busy_key.as_str());
+                    release_stale_busy_key(busy_key, set_busy_key, command.busy_key.as_str());
                     return;
                 }
                 _ if !request.is_current(editor_request.get_untracked().as_ref()) => {
-                    release_stale_busy_key(&set_busy_key, command.busy_key.as_str());
+                    release_stale_busy_key(busy_key, set_busy_key, command.busy_key.as_str());
                     return;
                 }
                 Ok(()) => {
@@ -419,10 +431,12 @@ pub(super) fn bind(state: LifecycleBindings) -> LifecycleCallbacks {
                         )
                         .await
                         {
-                            _ if !request
-                                .is_current(editor_request.get_untracked().as_ref()) =>
-                            {
-                                release_stale_busy_key(&set_busy_key, command.busy_key.as_str());
+                            _ if !request.is_current(editor_request.get_untracked().as_ref()) => {
+                                release_stale_busy_key(
+                                    busy_key,
+                                    set_busy_key,
+                                    command.busy_key.as_str(),
+                                );
                                 return;
                             }
                             Ok(Some(post))

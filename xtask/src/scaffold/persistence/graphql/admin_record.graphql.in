@@ -1,0 +1,3 @@
+query __MODULE_STEM__AdminRecord($id: UUID!, $locale: String) {
+  __MODULE_FIELD__AdminRecord(id: $id, locale: $locale) { ...__MODULE_STEM__AdminRecordFields }
+}

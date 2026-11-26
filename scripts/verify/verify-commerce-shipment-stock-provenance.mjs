@@ -27,7 +27,7 @@ export const sourceFiles = {
     "crates/modules/rustok-fulfillment/src/migrations/m20261101_000121_enforce_provider_effect_admission.rs",
   fulfillmentRegistry:
     "crates/modules/rustok-fulfillment/src/migrations/mod.rs",
-  fulfillmentSupport: "crates/modules/rustok-fulfillment/tests/support.rs",
+  fulfillmentSupport: "crates/modules/rustok-fulfillment/tests/support/mod.rs",
   journalFixture:
     "crates/modules/rustok-fulfillment/tests/provider_operation_journal_test.rs",
   http: "crates/modules/rustok-commerce/src/controllers/admin/fulfillments_owner_commands.rs",

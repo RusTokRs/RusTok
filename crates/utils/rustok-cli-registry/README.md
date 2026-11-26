@@ -27,5 +27,7 @@ for the RusToK platform CLI.
 - Consumed by `rustok-cli`.
 - Generated distribution code updates `src/generated.rs` from `[provides.cli]`
   metadata and root `cli-registry.toml` when command providers are selected.
+- Module-local CLI scaffolding uses the same generator to prepare the
+  registry source from the candidate module and Cargo manifests.
 
 See [docs](docs/README.md).

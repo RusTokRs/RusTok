@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::app::modules::GeneratedModuleNavigationEntry;
+use crate::app::modules::{GeneratedModuleNavigationEntry, module_navigation_label};
 pub(super) use rustok_ui_core::navigation::{
     UiChildPageEntry, UiNavChild as NavChild, UiNavGroup as ModuleNavGroup, UiNavigationEntry,
     build_ui_nav_groups, ui_href_is_active, ui_module_group_icon,
@@ -9,6 +9,7 @@ pub(super) use rustok_ui_core::navigation::{
 pub(super) fn build_module_nav_groups(
     entries: &[GeneratedModuleNavigationEntry],
     enabled_modules: &HashSet<String>,
+    locale: &str,
     overview_label: &str,
     settings_label: &str,
 ) -> Vec<ModuleNavGroup> {
@@ -26,7 +27,12 @@ pub(super) fn build_module_nav_groups(
                 .iter()
                 .map(|child| UiChildPageEntry {
                     subpath: child.subpath,
-                    nav_label: child.nav_label,
+                    nav_label: module_navigation_label(
+                        entry.module_slug,
+                        child.subpath,
+                        locale,
+                        child.nav_label,
+                    ),
                 })
                 .collect(),
         })
@@ -114,7 +120,7 @@ mod tests {
         ];
 
         let enabled = HashSet::from(["pricing".to_string(), "blog".to_string()]);
-        let groups = build_module_nav_groups(ENTRIES, &enabled, "Overview", "Settings");
+        let groups = build_module_nav_groups(ENTRIES, &enabled, "en", "Overview", "Settings");
 
         assert_eq!(groups.len(), 2);
         assert_eq!(groups[0].key, "Content");

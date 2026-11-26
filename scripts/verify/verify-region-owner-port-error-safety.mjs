@@ -12,7 +12,8 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 const failures = [];
 
 const paths = {
-  ports: 'crates/modules/rustok-region/src/ports.rs',
+  ports: 'crates/modules/rustok-region/src/services/region/read_port.rs',
+  contract: 'crates/modules/rustok-region/src/ports/read.rs',
   error: 'crates/modules/rustok-region/src/error.rs',
   evidence:
     'crates/modules/rustok-region/contracts/evidence/region-owner-port-error-safety-source.json',
@@ -23,6 +24,7 @@ const paths = {
 };
 
 const ports = read(paths.ports);
+const contract = read(paths.contract);
 const errorSource = read(paths.error);
 const evidence = JSON.parse(read(paths.evidence));
 const review = JSON.parse(read(paths.review));
@@ -62,6 +64,9 @@ for (const marker of [
   'pub trait RegionReadPort: Send + Sync',
   'async fn read_region(',
   'async fn list_regions_for_tenant(',
+]) requireText(contract, marker, `${paths.contract}: preserved owner contract`);
+
+for (const marker of [
   'impl RegionReadPort for crate::RegionService',
   'require_region_read_policy(&context, owner_operation)?;',
   'parse_tenant_id(&context, owner_operation)?;',

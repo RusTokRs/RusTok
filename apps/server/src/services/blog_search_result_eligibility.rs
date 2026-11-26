@@ -12,11 +12,15 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub(crate) struct ServerBlogSearchResultEligibilityPort {
     db: DatabaseConnection,
+    channels: rustok_blog::BlogChannelAvailability,
 }
 
 impl ServerBlogSearchResultEligibilityPort {
-    pub(crate) fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+    pub(crate) fn new(
+        db: DatabaseConnection,
+        channels: rustok_blog::BlogChannelAvailability,
+    ) -> Self {
+        Self { db, channels }
     }
 
     async fn enabled(&self, tenant_id: Uuid) -> Result<bool, PortError> {
@@ -92,6 +96,7 @@ impl SearchAudiencePolicyPort for ServerBlogSearchResultEligibilityPort {
 
         rustok_blog::search_projection::filter_public_search_post_ids(
             &self.db,
+            &self.channels,
             request.tenant_id,
             context.channel_slug.as_deref(),
             &post_ids,

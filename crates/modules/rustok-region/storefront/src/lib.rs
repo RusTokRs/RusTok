@@ -14,4 +14,4 @@ mod ui;
 pub use ui::RegionView;
 
 #[cfg(test)]
-mod contract_tests;
+mod tests;

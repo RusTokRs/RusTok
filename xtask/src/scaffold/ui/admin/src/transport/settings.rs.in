@@ -1,0 +1,87 @@
+use leptos::prelude::*;
+use rustok_api::StaticTenantModuleView;
+use rustok_graphql::{GraphqlHttpError, GraphqlOperationError};
+use rustok_ui_transport::UiTransportError;
+use serde_json::json;
+
+use super::{AdminClient, graphql_adapter, graphql_rejection};
+use crate::{core::settings::SaveSettings, model::RequestFailure};
+
+const QUERY: &str = include_str!("../../contracts/graphql/tenant_module_settings.graphql");
+const UPDATE: &str = include_str!("../../contracts/graphql/update_module_settings.graphql");
+
+impl AdminClient {
+    pub async fn settings(&self) -> Result<StaticTenantModuleView, RequestFailure> {
+        self.run(
+            "__SLUG__/admin/settings",
+            QUERY,
+            "tenantModuleSettings",
+            json!({ "moduleSlug": "__SLUG__" }),
+            read_settings_native(),
+        )
+        .await
+    }
+
+    /// Static module settings writes share the platform GraphQL mutation with
+    /// the host's module-management console and the independent Next host.
+    pub(crate) async fn save_settings(
+        &self,
+        input: SaveSettings,
+    ) -> Result<StaticTenantModuleView, RequestFailure> {
+        self.write_settings(input).await.map_err(|error| {
+            graphql_rejection(&error).map_or_else(
+                || {
+                    RequestFailure::Transport(UiTransportError::graphql(
+                        "__SLUG__/admin/settings",
+                        error,
+                    ))
+                },
+                RequestFailure::Rejected,
+            )
+        })
+    }
+
+    async fn write_settings(
+        &self,
+        input: SaveSettings,
+    ) -> Result<StaticTenantModuleView, GraphqlOperationError> {
+        let value = graphql_adapter::request(
+            UPDATE,
+            "updateModuleSettings",
+            json!({
+                "moduleSlug": "__SLUG__",
+                "settings": input.settings,
+                "expectedRevision": input.expected_revision,
+                "idempotencyKey": input.idempotency_key,
+            }),
+            self.token.clone(),
+            self.tenant.clone(),
+        )
+        .await?;
+        serde_json::from_value(value).map_err(|_| {
+            GraphqlHttpError::Graphql("Invalid updateModuleSettings response".into()).into()
+        })
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "__SLUG__/admin/settings", input = leptos::server_fn::codec::Json, client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient)]
+async fn read_settings_native() -> Result<StaticTenantModuleView, ServerFnError> {
+    use rustok_api::{
+        AuthContext, HostRuntimeContext, SharedStaticModuleSettingsAdminReader, TenantContext,
+    };
+
+    let auth = leptos_axum::extract::<AuthContext>()
+        .await
+        .map_err(|_| ServerFnError::new("UNAUTHENTICATED: Authentication required"))?;
+    let tenant = leptos_axum::extract::<TenantContext>()
+        .await
+        .map_err(|_| ServerFnError::new("INTERNAL_ERROR: Module settings are unavailable"))?;
+    let reader = use_context::<HostRuntimeContext>()
+        .and_then(|runtime| runtime.shared_get::<SharedStaticModuleSettingsAdminReader>())
+        .ok_or_else(|| ServerFnError::new("INTERNAL_ERROR: Module settings are unavailable"))?;
+    reader
+        .0
+        .read(&tenant, &auth, "__SLUG__")
+        .await
+        .map_err(|error| ServerFnError::new(format!("{}: {}", error.code, error.message)))
+}

@@ -249,7 +249,7 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
     // an unobserved cache-generation channel.
     if let Err(error) = start_tenant_cache_generation_listener(ctx, cache.clone()).await {
         shutdown_unpublished_iggy(iggy_transport_handle.as_ref()).await;
-        return Err(error);
+        return Err(error.into());
     }
     if let Err(error) = start_rbac_cache_invalidation_listener(ctx, cache.clone()).await {
         let tasks =

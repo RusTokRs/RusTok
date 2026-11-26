@@ -1,0 +1,58 @@
+use async_graphql::{Context, Object, Result};
+use rustok_api::graphql::resolve_graphql_locale;
+use uuid::Uuid;
+
+use super::runtime::{AdminRequest, record_error};
+use super::types::{AdminPage, AdminRecord, ListRecordsInput};
+
+#[derive(Default)]
+pub struct __MODULE_STEM__AdminQuery;
+
+#[Object]
+impl __MODULE_STEM__AdminQuery {
+    #[graphql(name = "__MODULE_FIELD__AdminRecords")]
+    async fn records(
+        &self,
+        ctx: &Context<'_>,
+        input: Option<ListRecordsInput>,
+        locale: Option<String>,
+    ) -> Result<AdminPage> {
+        let request = AdminRequest::from_context(ctx).await?;
+        let locale = resolve_graphql_locale(ctx, locale.as_deref());
+        request
+            .owner
+            .list(
+                request.tenant.id,
+                &request.security,
+                &locale,
+                Some(&request.tenant.default_locale),
+                input.map(Into::into).unwrap_or_default(),
+            )
+            .await
+            .map(Into::into)
+            .map_err(record_error)
+    }
+
+    #[graphql(name = "__MODULE_FIELD__AdminRecord")]
+    async fn record(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        locale: Option<String>,
+    ) -> Result<AdminRecord> {
+        let request = AdminRequest::from_context(ctx).await?;
+        let locale = resolve_graphql_locale(ctx, locale.as_deref());
+        request
+            .owner
+            .get(
+                request.tenant.id,
+                &request.security,
+                id,
+                &locale,
+                Some(&request.tenant.default_locale),
+            )
+            .await
+            .map(Into::into)
+            .map_err(record_error)
+    }
+}

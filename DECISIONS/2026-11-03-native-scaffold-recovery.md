@@ -14,6 +14,10 @@ Native generation changes one module tree and shared workspace, host and
 documentation registrations. In-memory undo cannot survive process termination;
 different module slugs still compete for the same manifests. A partially
 registered Cargo workspace can prevent `cargo xtask` from starting recovery.
+Attaching a module-local CLI uses the same protocol. Its newly claimed tree is
+the owner's `cli/` directory. Its existing-file targets are the owner's
+`rustok-module.toml`, the workspace Cargo catalog, and the CLI registry manifest
+and generated source.
 
 ## Decision
 
@@ -50,8 +54,11 @@ Every live invocation builds and checks a fresh plan under the exclusive lock.
 3. Create `preparing/` containing an immutable `plan.json`, complete synced
    intended payloads and original backups. No workspace content changes yet.
 4. Publish that directory as `active/` before the first workspace mutation.
-5. Exclusively claim the module directory and persist its claim before creating
-   descendants. Publish new source files with no-clobber hard links to complete
+5. Exclusively claim each generated package directory and persist its own
+   claim before creating descendants. An executable admin profile can claim
+   the slug-matched package under `apps/next-admin/packages/` together with
+   its native owner. A mounted admin profile also claims the matching route
+   directory under `apps/next-admin/src/app/dashboard/`. Publish new source files with no-clobber hard links to complete
    staged payloads. Publish existing-file updates with same-filesystem rename
    after checking the expected original and preserving permission bits.
 6. Run existing lint/metadata validation while still holding the lock.
@@ -67,9 +74,13 @@ targets fail before mutation. The protocol does not promise ACL/xattr cloning.
 
 ## Context dimensions
 
-The canonical workspace path binds the journal to the checkout. The module slug
-binds generated paths to one module root. Tenant, locale and user context do not
-participate in filesystem recovery.
+The canonical workspace path binds the journal to the checkout. The module
+identity binds generated paths to the new module root, its matching Next
+Admin package and route, or its new CLI package. A Next Admin package can
+update the English and Russian catalog projections. When the journal includes
+the matching route, it can also update the Next Admin TypeScript alias file,
+the Next Admin registry entrypoint, and the Leptos Admin Cargo manifest.
+Tenant, locale and user context do not participate in filesystem recovery.
 
 ## Events and projections
 

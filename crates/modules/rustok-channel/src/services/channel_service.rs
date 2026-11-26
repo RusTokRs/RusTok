@@ -37,6 +37,7 @@ use crate::resolution::TargetSurface;
 use crate::target_type::ChannelTargetType;
 
 mod public_module;
+pub use public_module::in_process_public_module_read_port;
 
 /// Column widths the channel schema enforces.
 ///

@@ -1,0 +1,24 @@
+use rustok_api::TenantLocale;
+
+use crate::RecordError;
+
+pub(crate) const MAX_TITLE_CHARS: u32 = 200;
+
+pub(crate) fn next_revision(current: i64) -> Result<i64, RecordError> {
+    current
+        .checked_add(1)
+        .filter(|_| current > 0)
+        .ok_or(RecordError::Conflict)
+}
+
+pub(crate) fn locale(value: &str) -> Result<TenantLocale, RecordError> {
+    TenantLocale::new(value).map_err(|_| RecordError::InvalidLocale)
+}
+
+pub(crate) fn title(value: &str) -> Result<&str, RecordError> {
+    let value = value.trim();
+    if value.is_empty() || value.chars().count() > MAX_TITLE_CHARS as usize {
+        return Err(RecordError::InvalidTitle);
+    }
+    Ok(value)
+}

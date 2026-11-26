@@ -70,6 +70,7 @@ pub struct CommentService {
     db: DatabaseConnection,
     comments_thread_port: Option<Arc<dyn CommentsThreadPort>>,
     settings_reader: Option<SharedStaticModuleSettingsReader>,
+    channel_availability: crate::BlogChannelAvailability,
 }
 
 impl CommentService {
@@ -87,7 +88,16 @@ impl CommentService {
             db,
             comments_thread_port,
             settings_reader,
+            channel_availability: crate::BlogChannelAvailability::default(),
         }
+    }
+
+    pub fn with_channel_availability(
+        mut self,
+        availability: crate::BlogChannelAvailability,
+    ) -> Self {
+        self.channel_availability = availability;
+        self
     }
 
     /// Returns the active CommentsThreadPort or fails with COMMENTS_PROVIDER_UNAVAILABLE.
@@ -450,27 +460,13 @@ impl CommentService {
             return Err(BlogError::post_not_found(post_id));
         }
 
-        if let Some(channel_slug) = normalize_public_channel_slug(public_channel_slug) {
-            let channel_service = rustok_channel::ChannelService::new(self.db.clone());
-            let Some(channel) = channel_service
-                .get_channel_by_slug(tenant_id, channel_slug.as_str())
-                .await
-                .map_err(BlogError::from)?
-            else {
-                return Err(BlogError::post_not_found(post_id));
-            };
-
-            if !channel.is_active {
-                return Err(BlogError::post_not_found(post_id));
-            }
-
-            let enabled = channel_service
-                .is_module_enabled_for_tenant(tenant_id, channel.id, "blog")
-                .await
-                .map_err(BlogError::from)?;
-            if !enabled {
-                return Err(BlogError::post_not_found(post_id));
-            }
+        if let Some(channel_slug) = normalize_public_channel_slug(public_channel_slug)
+            && !self
+                .channel_availability
+                .by_slug(tenant_id, channel_slug)
+                .await?
+        {
+            return Err(BlogError::post_not_found(post_id));
         }
 
         Ok(())
@@ -601,7 +597,15 @@ fn comments_read_port_context(
     resource_id: Uuid,
     timeout: std::time::Duration,
 ) -> BlogResult<PortContext> {
-    comments_port_context(tenant_id, security, locale, "read", resource_id, None, timeout)
+    comments_port_context(
+        tenant_id,
+        security,
+        locale,
+        "read",
+        resource_id,
+        None,
+        timeout,
+    )
 }
 
 fn comments_public_read_port_context(

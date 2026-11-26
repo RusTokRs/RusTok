@@ -1,0 +1,197 @@
+'use client';
+
+import type { MessageKey, MessageArgs } from '../messages';
+
+import { useLocale, useTranslations } from '@rustok/next-fluent/client';
+import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
+import { useRef, useState } from 'react';
+
+import {
+  mergeSettingsJson,
+  parseSettingsObject
+} from '@/features/modules/components/module-settings-json';
+import { Alert, AlertDescription } from '@/shared/ui/shadcn/alert';
+import { Button } from '@/shared/ui/shadcn/button';
+import { Input } from '@/shared/ui/shadcn/input';
+import { Label } from '@/shared/ui/shadcn/label';
+import { Switch } from '@/shared/ui/shadcn/switch';
+import {
+  MAX_PAGE_SIZE,
+  PAGE_SIZE_KEY,
+  PUBLIC_DISCOVERY_KEY,
+  recordSettingsFields,
+  settingsPageSize,
+  type ModuleSettings
+} from '../model';
+import { errorCode, readSettings, saveSettings } from '../transport';
+
+function readFields(snapshot: ModuleSettings) {
+  return recordSettingsFields(parseSettingsObject(snapshot.settings));
+}
+
+export function SettingsForm({
+  initial,
+  actor,
+  tenantId
+}: {
+  initial: ModuleSettings;
+  actor: string | null;
+  tenantId: string | null;
+}) {
+  const t = useTranslations<MessageKey, MessageArgs>('__ROUTE__');
+  const locale = useLocale();
+  const router = useRouter();
+  const { data } = useSession();
+  const authorized = Boolean(
+    actor &&
+    tenantId &&
+    data?.user?.id === actor &&
+    data?.user?.tenantId === tenantId
+  );
+  const [snapshot, setSnapshot] = useState(initial);
+  const [fields, setFields] = useState(() => readFields(initial));
+  const [busy, setBusy] = useState(false);
+  const [needsReload, setNeedsReload] = useState(false);
+  const [issue, setIssue] = useState<MessageKey>();
+  const [saved, setSaved] = useState(false);
+  const pending = useRef(false);
+
+  async function operate(write: boolean) {
+    if (!authorized || pending.current || (write && needsReload)) return;
+    const value = settingsPageSize(fields.pageSize);
+    if (write && value === undefined) {
+      setIssue('settings-page-size-invalid');
+      return;
+    }
+    const opts = {
+      token: data?.user?.rustokToken,
+      tenantSlug: data?.user?.tenantSlug,
+      tenantId,
+      locale
+    };
+    pending.current = true;
+    setBusy(true);
+    setIssue(undefined);
+    setSaved(false);
+    try {
+      const next = write
+        ? await saveSettings(
+            snapshot,
+            mergeSettingsJson(snapshot.settings, {
+              [PAGE_SIZE_KEY]: value,
+              [PUBLIC_DISCOVERY_KEY]: fields.discoverable
+            }),
+            opts
+          )
+        : await readSettings(opts);
+      const applied = readFields(next);
+      if (
+        next.moduleSlug !== snapshot.moduleSlug ||
+        !Number.isSafeInteger(next.revision) ||
+        next.revision < snapshot.revision ||
+        (write &&
+          (next.revision !== snapshot.revision + 1 ||
+            applied.pageSize !== String(value) ||
+            applied.discoverable !== fields.discoverable))
+      ) {
+        throw new Error('Invalid module settings acknowledgement');
+      }
+      setFields(applied);
+      setSnapshot(next);
+      setNeedsReload(false);
+      if (write) {
+        setSaved(true);
+        router.refresh();
+      }
+    } catch (error) {
+      const code = errorCode(error);
+      if (
+        code === 'REVISION_CONFLICT' ||
+        code === 'MODULE_SETTINGS_SNAPSHOT_CONFLICT'
+      ) {
+        setIssue('settings-conflict');
+        setNeedsReload(true);
+      } else if (code === 'PERMISSION_DENIED' || code === 'UNAUTHENTICATED') {
+        setIssue('settings-denied');
+      } else if (code === 'BAD_USER_INPUT') {
+        setIssue('settings-invalid');
+      } else {
+        setIssue(write ? 'settings-uncertain' : 'settings-unavailable');
+        if (write) setNeedsReload(true);
+      }
+    } finally {
+      pending.current = false;
+      setBusy(false);
+    }
+  }
+
+  if (!authorized) return null;
+  return (
+    <form
+      className='space-y-4'
+      onSubmit={(event) => {
+        event.preventDefault();
+        void operate(true);
+      }}
+    >
+      <h2 className='font-semibold'>{t('settings-records')}</h2>
+      {issue && (
+        <Alert variant='destructive'>
+          <AlertDescription>{t(issue)}</AlertDescription>
+        </Alert>
+      )}
+      {saved && <p role='status'>{t('settings-saved')}</p>}
+      <Label htmlFor='admin-page-size'>{t('settings-page-size')}</Label>
+      <Input
+        value={fields.pageSize}
+        id='admin-page-size'
+        aria-describedby='page-size-help'
+        type='number'
+        min={1}
+        max={MAX_PAGE_SIZE}
+        step={1}
+        onChange={({ target: { value: pageSize } }) =>
+          setFields((current) => ({ ...current, pageSize }))
+        }
+        disabled={busy}
+        required
+      />
+      <p className='text-muted-foreground text-sm' id='page-size-help'>
+        {t('settings-page-size-help')}
+      </p>
+      <div className='space-y-1'>
+        <div className='flex items-center gap-2'>
+          <Switch
+            id='record-public-discovery'
+            checked={fields.discoverable}
+            onCheckedChange={(discoverable) =>
+              setFields((current) => ({ ...current, discoverable }))
+            }
+            aria-describedby='public-discovery-help'
+            disabled={busy}
+          />
+          <Label htmlFor='record-public-discovery'>{t('settings-discovery')}</Label>
+        </div>
+        <p className='text-muted-foreground text-sm' id='public-discovery-help'>
+          {t('settings-discovery-help')}
+        </p>
+      </div>
+      <div className='flex gap-2'>
+        <Button type='submit' disabled={busy || needsReload}>
+          {t('settings-save')}
+        </Button>
+        {needsReload && (
+          <Button
+            type='button'
+            variant='outline'
+            disabled={busy}
+            onClick={() => void operate(false)}
+          >
+            {t('settings-reload')}
+          </Button>
+        )}
+      </div>
+    </form>
+  );
+}

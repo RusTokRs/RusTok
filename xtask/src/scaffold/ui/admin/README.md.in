@@ -1,0 +1,49 @@
+# __CRATE__-admin
+
+Leptos operator package for __SLUG__ records. The workspace displays actual
+tenant records through the shared data grid with server pagination and
+localized titles. The editor creates drafts, opens and saves an explicit
+translation, and controls publication.
+
+With `--ui admin` the manifest registers this package at `/modules/__ROUTE__`.
+With `--ui dual`, the package remains a preview while the storefront is in
+development.
+
+The `settings` route lists the available settings sections. The
+`settings/records` section edits the tenant's default page size and public
+discovery policy for published records.
+Reads use the exact module settings snapshot. Saves use the platform
+`updateModuleSettings` GraphQL mutation with the snapshot revision and
+an idempotency key. This is the same mutation used by module management.
+
+## Data contract
+
+SSR and hydrate use same-origin server functions with the platform's trusted
+tenant, session and effective locale. CSR reads and mutates through the
+published [GraphQL documents](../contracts/graphql/) and the host's auth state.
+Both use the same owner authorization, module admission, tenant page-size
+setting, edit revision and durable publication path. Transport errors never
+retry through another protocol.
+
+The editor shows the requested and effective languages and the available
+translations. A fallback title is displayed separately from the empty field
+for a missing translation. A conflict or an unconfirmed write preserves the
+operator's input and requires a fresh owner read before another edit.
+
+## Structure
+
+- src/core/mod.rs owns grid presentation and page selection.
+- src/core/editor.rs owns translation selection, checked command construction
+  and application of owner responses.
+- src/core/settings.rs validates the page size and builds an edit of the
+  current revisioned settings document.
+- src/model.rs owns framework-neutral client DTOs.
+- src/transport/ owns native and GraphQL reads and commands.
+- src/ui/leptos/ renders the record workspace.
+- locales/en.ftl and locales/ru.ftl contain operator copy.
+
+## Verification
+
+- cargo test -p __CRATE__-admin --features ssr --lib
+- cargo check -p __CRATE__-admin --features csr --target wasm32-unknown-unknown
+- cargo check -p __CRATE__-admin --features hydrate --target wasm32-unknown-unknown

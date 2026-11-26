@@ -1,0 +1,86 @@
+use rustok_api::Action;
+use rustok_core::SecurityContext;
+use rustok_core::search_projection::MAX_SEARCH_PROJECTION_DOCUMENTS_PER_ENTITY;
+use sea_orm::{ActiveModelTrait, EntityTrait, Set, TransactionTrait};
+use uuid::Uuid;
+
+use crate::domain;
+use crate::entities::record;
+use crate::{__ENTITY__View, RecordError, Save__ENTITY__Title};
+
+use super::{__ENTITY__Service, repository};
+
+impl __ENTITY__Service {
+    pub async fn create(
+        &self,
+        tenant_id: Uuid,
+        security: &SecurityContext,
+        input: Save__ENTITY__Title,
+    ) -> Result<__ENTITY__View, RecordError> {
+        self.authorize(security, Action::Create)?;
+        let id = rustok_core::generate_id();
+        repository::validate_scope(tenant_id, id)?;
+        let locale = domain::locale(&input.locale)?;
+        let title = domain::title(&input.title)?;
+        let now = chrono::Utc::now().fixed_offset();
+
+        let tx = self.db.begin().await?;
+        record::ActiveModel {
+            tenant_id: Set(tenant_id),
+            id: Set(id),
+            revision: Set(1),
+            created_at: Set(now),
+            updated_at: Set(now),
+            published_at: Set(None),
+        }
+        .insert(&tx)
+        .await?;
+        repository::save_copy(&tx, tenant_id, id, locale.as_str(), title).await?;
+        let result = repository::load(&tx, tenant_id, id, locale.as_str(), None, false).await?;
+        tx.commit().await?;
+        Ok(result)
+    }
+
+    pub async fn save_title(
+        &self,
+        tenant_id: Uuid,
+        security: &SecurityContext,
+        id: Uuid,
+        revision: i64,
+        input: Save__ENTITY__Title,
+    ) -> Result<__ENTITY__View, RecordError> {
+        self.authorize(security, Action::Update)?;
+        repository::validate_scope(tenant_id, id)?;
+        let locale = domain::locale(&input.locale)?;
+        let title = domain::title(&input.title)?;
+        let next = domain::next_revision(revision)?;
+
+        let tx = self.db.begin().await?;
+        let updated = repository::revision_update(
+            tenant_id,
+            id,
+            revision,
+            next,
+            chrono::Utc::now().fixed_offset(),
+        )
+        .exec(&tx)
+        .await?;
+        if updated.rows_affected == 0 {
+            return match record::Entity::find_by_id((tenant_id, id)).one(&tx).await? {
+                None => Err(RecordError::NotFound),
+                Some(_) => Err(RecordError::Conflict),
+            };
+        }
+        repository::save_copy(&tx, tenant_id, id, locale.as_str(), title).await?;
+        let result = repository::load(&tx, tenant_id, id, locale.as_str(), None, false).await?;
+        if result.available_locales.len() > MAX_SEARCH_PROJECTION_DOCUMENTS_PER_ENTITY {
+            return Err(RecordError::TooManyLocales);
+        }
+        if result.published {
+            self.request_reindex(&tx, tenant_id, security.user_id, id)
+                .await?;
+        }
+        tx.commit().await?;
+        Ok(result)
+    }
+}

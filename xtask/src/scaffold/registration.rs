@@ -1,7 +1,7 @@
 use super::options::ScaffoldOptions;
 use super::registration_docs::{self, INDEX, PLANS, REGISTRY, UI_INDEX};
 use super::registration_rust::{self, DISTRIBUTION_SOURCE};
-use super::registration_toml::{self, DISTRIBUTION, SERVER, UDEPS_NORMAL};
+use super::registration_toml::{self, ADMIN_HOST, DISTRIBUTION, SERVER, UDEPS_NORMAL};
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -47,15 +47,18 @@ pub(crate) fn registration_target_paths(root: &Path, opts: &ScaffoldOptions) -> 
                 .map(|relative| root.join(relative)),
         );
     }
+    if opts.mounts_record_admin() {
+        paths.push(root.join(ADMIN_HOST));
+    }
     paths
 }
 
-struct TempWorkspace {
-    root: PathBuf,
+pub(super) struct TempWorkspace {
+    pub(super) root: PathBuf,
 }
 
 impl TempWorkspace {
-    fn new() -> Result<Self> {
+    pub(super) fn new() -> Result<Self> {
         static NEXT_ID: AtomicU64 = AtomicU64::new(0);
         for _ in 0..100 {
             let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
@@ -227,6 +230,41 @@ fn validate_registration(
             && entry.runtime == "module",
         "module identity",
     )?;
+    if opts.mounts_record_admin() {
+        let manifest = read_toml(root, ADMIN_HOST)?;
+        let package = format!("{name}-admin");
+        let dependency = manifest
+            .get("dependencies")
+            .and_then(|deps| deps.get(&package));
+        require(
+            dependency
+                .and_then(|entry| entry.get("path"))
+                .and_then(toml::Value::as_str)
+                == Some(format!("../../crates/modules/{name}/admin").as_str())
+                && dependency
+                    .and_then(|entry| entry.get("default-features"))
+                    .and_then(toml::Value::as_bool)
+                    == Some(false),
+            "Leptos admin dependency",
+        )?;
+        for profile in ["csr", "hydrate", "ssr"] {
+            let edge = format!("{package}/{profile}");
+            let profiles = manifest
+                .get("features")
+                .and_then(|value| value.get(profile))
+                .and_then(toml::Value::as_array);
+            require(
+                profiles.is_some_and(|edges| {
+                    edges
+                        .iter()
+                        .filter(|value| value.as_str() == Some(&edge))
+                        .count()
+                        == 1
+                }),
+                &format!("Leptos admin profile {profile}"),
+            )?;
+        }
+    }
     if !opts.skip_server_wire {
         let feature = format!("mod-{slug}");
         for relative in [SERVER, DISTRIBUTION] {
@@ -254,7 +292,10 @@ fn validate_registration(
                 })?;
             let direct = format!("dep:{name}");
             let distribution = format!("rustok-distribution/{feature}");
-            let expected = if relative == SERVER {
+            let graphql = format!("{name}/graphql");
+            let expected = if relative == SERVER && opts.admin_resource.is_some() {
+                &[direct.as_str(), distribution.as_str(), graphql.as_str()][..]
+            } else if relative == SERVER {
                 &[direct.as_str(), distribution.as_str()][..]
             } else {
                 &[direct.as_str()][..]
@@ -319,6 +360,8 @@ mod scaffold_registration_tests {
             description: "An example module".into(),
             category: "collaboration".into(),
             with_db: false,
+            entity: None,
+            admin_resource: None,
             ui: ScaffoldUi::None,
             dry_run: true,
             skip_server_wire: true,

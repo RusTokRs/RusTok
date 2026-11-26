@@ -58,6 +58,8 @@ pub struct ScaffoldOptions {
     pub description: String,
     pub category: String,
     pub with_db: bool,
+    pub entity: Option<String>,
+    pub admin_resource: Option<String>,
     pub ui: ScaffoldUi,
     pub dry_run: bool,
     pub skip_server_wire: bool,
@@ -74,7 +76,14 @@ fn validate_scaffold_arguments(args: &[String]) -> Result<()> {
         let flag = args[index].as_str();
         let takes_value = matches!(
             flag,
-            "--profile" | "--title" | "--name" | "--description" | "--category" | "--ui"
+            "--profile"
+                | "--title"
+                | "--name"
+                | "--description"
+                | "--category"
+                | "--ui"
+                | "--entity"
+                | "--admin-resource"
         );
         let is_switch = matches!(
             flag,
@@ -187,6 +196,35 @@ pub fn parse_options(args: &[String]) -> Result<Option<ScaffoldOptions>> {
     if no_db && with_db {
         bail!("--with-db and --no-db are conflicting persistence requests");
     }
+    let entity = cli_option_value(args, "--entity");
+    if let Some(entity) = &entity {
+        anyhow::ensure!(with_db, "--entity requires --with-db");
+        anyhow::ensure!(
+            entity.len() <= 32
+                && entity.split('_').all(|part| {
+                    part.as_bytes().first().is_some_and(u8::is_ascii_lowercase)
+                        && part.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+                })
+                && slug.len() <= 40,
+            "Persisted scaffolds require a snake_case entity of up to 32 bytes and a module slug of up to 40 bytes"
+        );
+    }
+    let admin_resource = cli_option_value(args, "--admin-resource");
+    if let Some(resource) = &admin_resource {
+        anyhow::ensure!(
+            entity.is_some(),
+            "--admin-resource requires --with-db --entity <name>"
+        );
+        anyhow::ensure!(!skip_server_wire, "--admin-resource requires server wiring");
+        anyhow::ensure!(
+            resource
+                .as_bytes()
+                .first()
+                .is_some_and(u8::is_ascii_uppercase)
+                && resource.bytes().all(|byte| byte.is_ascii_alphanumeric()),
+            "--admin-resource must name a platform Rust Resource variant such as Posts"
+        );
+    }
 
     let with_ui_alias = args.iter().any(|arg| arg == "--with-ui");
     if with_ui_alias
@@ -234,6 +272,8 @@ pub fn parse_options(args: &[String]) -> Result<Option<ScaffoldOptions>> {
         description,
         category,
         with_db,
+        entity,
+        admin_resource,
         ui,
         dry_run,
         skip_server_wire,
@@ -250,6 +290,14 @@ impl ScaffoldOptions {
     /// Full canonical crate name (e.g. `rustok-page-builder`).
     pub fn crate_name(&self) -> String {
         format!("rustok-{}", self.kebab_name())
+    }
+
+    pub(super) fn has_record_admin(&self) -> bool {
+        self.ui.has_admin() && self.admin_resource.is_some()
+    }
+
+    pub(super) fn mounts_record_admin(&self) -> bool {
+        self.ui == ScaffoldUi::Admin && self.has_record_admin()
     }
 }
 
@@ -269,9 +317,8 @@ pub fn print_scaffold_usage() {
     println!("  --description <desc>     Module description for documentation and manifests");
     println!("  --category <cat>         Marketplace category (default: 'collaboration')");
     println!("  --no-db                  No storage schema (default)");
-    println!(
-        "  --with-db                Requires a defined owner schema; unsupported until DB template cutover"
-    );
+    println!("  --with-db --entity <name>  Generate a tenant-owned record with localized titles");
+    println!("  --admin-resource <Variant>  Generate authenticated admin GraphQL operations for that platform permission resource");
     println!(
         "  --ui <mode>              none (default), admin, storefront, dual; creates unmounted Leptos FFA crates"
     );
@@ -381,6 +428,36 @@ mod tests {
     fn explicit_storage_request_is_never_implicit_or_conflicting() {
         assert!(parse(&["example", "--with-db"]).unwrap().with_db);
         assert!(parse(&["example", "--with-db", "--no-db"]).is_err());
+        assert!(parse(&["example", "--entity", "notice"]).is_err());
+        assert!(parse(&["example", "--with-db", "--entity", "../notice"]).is_err());
+        assert_eq!(
+            parse(&["example", "--with-db", "--entity", "knowledge_entry"])
+                .unwrap()
+                .entity
+                .as_deref(),
+            Some("knowledge_entry")
+        );
+    }
+
+    #[test]
+    fn admin_graphql_requires_storage_an_explicit_resource_and_server_wiring() {
+        assert!(parse(&["example", "--admin-resource", "Posts"]).is_err());
+        let args = [
+            "example",
+            "--with-db",
+            "--entity",
+            "article",
+            "--admin-resource",
+        ];
+        for invalid in ["posts", "Posts;drop", "Resource::Posts"] {
+            assert!(parse(&[args.as_slice(), &[invalid]].concat()).is_err());
+        }
+        let enabled = [args.as_slice(), &["Posts"]].concat();
+        assert_eq!(
+            parse(&enabled).unwrap().admin_resource.as_deref(),
+            Some("Posts")
+        );
+        assert!(parse(&[enabled.as_slice(), &["--skip-server-wire"]].concat()).is_err());
     }
 
     #[test]
@@ -515,4 +592,8 @@ mod tests {
             assert_eq!(request.ui, expected);
         }
     }
+}
+pub(super) fn graphql_field_prefix(module_stem: &str) -> String {
+    let (first, rest) = module_stem.split_at(1);
+    format!("{}{rest}", first.to_ascii_lowercase())
 }

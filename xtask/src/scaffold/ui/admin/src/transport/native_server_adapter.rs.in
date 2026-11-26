@@ -1,0 +1,101 @@
+use leptos::prelude::*;
+use uuid::Uuid;
+
+use crate::model::{Record, RecordFilter, RecordPage, RecordTitle};
+
+#[cfg(feature = "ssr")]
+mod runtime;
+#[cfg(feature = "ssr")]
+use runtime::{AdminRequest, record_error, revision};
+
+#[server(prefix = "/api/fn", endpoint = "__SLUG__/admin/records", input = leptos::server_fn::codec::Json, client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient)]
+pub(super) async fn list(
+    input: RecordFilter,
+    locale: Option<String>,
+) -> Result<RecordPage, ServerFnError> {
+    let request = AdminRequest::extract().await?;
+    request
+        .owner
+        .list(
+            request.tenant.id,
+            &request.security,
+            request.read_locale(locale.as_deref()),
+            Some(&request.tenant.default_locale),
+            input.into(),
+        )
+        .await
+        .map(Into::into)
+        .map_err(record_error)
+}
+
+#[server(prefix = "/api/fn", endpoint = "__SLUG__/admin/record", input = leptos::server_fn::codec::Json, client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient)]
+pub(super) async fn get(id: Uuid, locale: Option<String>) -> Result<Record, ServerFnError> {
+    let request = AdminRequest::extract().await?;
+    request
+        .owner
+        .get(
+            request.tenant.id,
+            &request.security,
+            id,
+            request.read_locale(locale.as_deref()),
+            Some(&request.tenant.default_locale),
+        )
+        .await
+        .map(Into::into)
+        .map_err(record_error)
+}
+
+#[server(prefix = "/api/fn", endpoint = "__SLUG__/admin/create-record", input = leptos::server_fn::codec::Json, client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient)]
+pub(super) async fn create(input: RecordTitle) -> Result<Record, ServerFnError> {
+    let request = AdminRequest::extract().await?;
+    request
+        .owner
+        .create(request.tenant.id, &request.security, input.into())
+        .await
+        .map(Into::into)
+        .map_err(record_error)
+}
+
+#[server(prefix = "/api/fn", endpoint = "__SLUG__/admin/save-record-title", input = leptos::server_fn::codec::Json, client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient)]
+pub(super) async fn save_title(
+    id: Uuid,
+    expected_revision: String,
+    input: RecordTitle,
+) -> Result<Record, ServerFnError> {
+    let request = AdminRequest::extract().await?;
+    request
+        .owner
+        .save_title(
+            request.tenant.id,
+            &request.security,
+            id,
+            revision(&expected_revision)?,
+            input.into(),
+        )
+        .await
+        .map(Into::into)
+        .map_err(record_error)
+}
+
+#[server(prefix = "/api/fn", endpoint = "__SLUG__/admin/set-record-publication", input = leptos::server_fn::codec::Json, client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient)]
+pub(super) async fn set_publication(
+    id: Uuid,
+    expected_revision: String,
+    published: bool,
+    locale: String,
+) -> Result<Record, ServerFnError> {
+    let request = AdminRequest::extract().await?;
+    request
+        .owner
+        .set_publication(
+            request.tenant.id,
+            &request.security,
+            id,
+            revision(&expected_revision)?,
+            published,
+            &locale,
+        )
+        .await
+        .map(Into::into)
+        .map_err(record_error)
+}

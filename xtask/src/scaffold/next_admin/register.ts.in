@@ -1,0 +1,34 @@
+import { registerAdminModule } from '@/modules/registry';
+
+const title = __TITLE__;
+
+registerAdminModule({
+  id: '__SLUG__',
+  name: title,
+  navItems: [
+    {
+      title,
+      url: '#',
+      group: 'modulePlugins',
+      items: [
+        {
+          title: 'Records',
+          i18nKey: '__ROUTE__-records-heading',
+          url: '/dashboard/__ROUTE__/records'
+        },
+        {
+          title: 'Settings',
+          i18nKey: '__ROUTE__-settings-heading',
+          url: '/dashboard/__ROUTE__/settings',
+          access: { role: 'admin' }
+        },
+        {
+          title: 'Record settings',
+          i18nKey: '__ROUTE__-settings-records-nav',
+          url: '/dashboard/__ROUTE__/settings/records',
+          access: { role: 'admin' }
+        }
+      ]
+    }
+  ]
+});

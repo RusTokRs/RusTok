@@ -21,7 +21,7 @@ crates/modules/rustok-scaffold-golden-dual/admin/src/transport/mod.rs
 crates/modules/rustok-scaffold-golden-dual/admin/src/transport/native_server_adapter.rs
 crates/modules/rustok-scaffold-golden-dual/admin/src/transport/graphql_adapter.rs
 crates/modules/rustok-scaffold-golden-dual/admin/src/ui/mod.rs
-crates/modules/rustok-scaffold-golden-dual/admin/src/ui/leptos.rs
+crates/modules/rustok-scaffold-golden-dual/admin/src/ui/leptos/mod.rs
 crates/modules/rustok-scaffold-golden-dual/admin/src/tests/mod.rs
 crates/modules/rustok-scaffold-golden-dual/admin/src/tests/contract.rs
 crates/modules/rustok-scaffold-golden-dual/storefront/Cargo.toml
@@ -37,7 +37,7 @@ crates/modules/rustok-scaffold-golden-dual/storefront/src/transport/mod.rs
 crates/modules/rustok-scaffold-golden-dual/storefront/src/transport/native_server_adapter.rs
 crates/modules/rustok-scaffold-golden-dual/storefront/src/transport/graphql_adapter.rs
 crates/modules/rustok-scaffold-golden-dual/storefront/src/ui/mod.rs
-crates/modules/rustok-scaffold-golden-dual/storefront/src/ui/leptos.rs
+crates/modules/rustok-scaffold-golden-dual/storefront/src/ui/leptos/mod.rs
 crates/modules/rustok-scaffold-golden-dual/storefront/src/tests/mod.rs
 crates/modules/rustok-scaffold-golden-dual/storefront/src/tests/contract.rs
 Cargo.toml

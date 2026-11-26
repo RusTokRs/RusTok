@@ -1,0 +1,205 @@
+mod visibility;
+
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use rustok_api::{TenantLocale, search_publication::TenantSearchPublicationSources};
+use rustok_core::search_projection::{
+    MAX_SEARCH_PROJECTION_PAGE_SIZE, SearchProjectionDocument, SearchProjectionPage,
+    SearchProjectionSource, SearchProjectionSourceFactory, register_search_projection_source,
+};
+use rustok_core::{Error, ModuleRuntimeExtensions, Result};
+use sea_orm::{
+    ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
+    QueryFilter, QueryOrder, QuerySelect, SelectTwo,
+};
+use uuid::Uuid;
+
+use crate::entities::{record, translation};
+
+pub(crate) fn register(extensions: &mut ModuleRuntimeExtensions) -> Result<()> {
+    register_search_projection_source(extensions, RecordSearchFactory)?;
+    extensions
+        .get_or_insert_with::<TenantSearchPublicationSources, _>(Default::default)
+        .register(visibility::source());
+    Ok(())
+}
+
+struct RecordSearchFactory;
+
+impl SearchProjectionSourceFactory for RecordSearchFactory {
+    fn source_module(&self) -> &'static str {
+        "__SLUG__"
+    }
+
+    fn build(&self, db: DatabaseConnection) -> Arc<dyn SearchProjectionSource> {
+        Arc::new(RecordSearchSource { db })
+    }
+}
+
+struct RecordSearchSource {
+    db: DatabaseConnection,
+}
+
+fn published_copies(tenant_id: Uuid) -> SelectTwo<translation::Entity, record::Entity> {
+    translation::Entity::find()
+        .find_also_related(record::Entity)
+        .filter(translation::Column::TenantId.eq(tenant_id))
+        .filter(record::Column::PublishedAt.is_not_null())
+}
+
+fn project(
+    copy: translation::Model,
+    row: Option<record::Model>,
+) -> Result<SearchProjectionDocument> {
+    let row = row.ok_or_else(|| Error::Internal("published copy has no base record".into()))?;
+    let published_at = row
+        .published_at
+        .ok_or_else(|| Error::Internal("Search source received an unpublished record".into()))?;
+    Ok(SearchProjectionDocument {
+        document_key: format!(
+            "__SLUG__:__ENTITY_SLUG__:{}:{}:{}",
+            row.tenant_id, row.id, copy.locale
+        ),
+        tenant_id: row.tenant_id,
+        document_id: row.id,
+        source_module: "__SLUG__".into(),
+        entity_type: "__ENTITY_SLUG__".into(),
+        locale: copy.locale,
+        status: "published".into(),
+        is_public: true,
+        title: copy.title,
+        subtitle: None,
+        slug: None,
+        handle: None,
+        body: String::new(),
+        keywords_text: String::new(),
+        facets: serde_json::json!({}),
+        payload: serde_json::json!({}),
+        published_at: Some(published_at.to_utc()),
+        created_at: row.created_at.to_utc(),
+        updated_at: row.updated_at.to_utc(),
+    })
+}
+
+async fn list_documents(
+    db: &impl ConnectionTrait,
+    tenant_id: Uuid,
+    after: Option<String>,
+    limit: usize,
+) -> Result<SearchProjectionPage> {
+    if tenant_id.is_nil() || !(1..=MAX_SEARCH_PROJECTION_PAGE_SIZE).contains(&limit) {
+        return Err(Error::Validation(
+            "invalid Search projection page scope".into(),
+        ));
+    }
+    let mut query = published_copies(tenant_id);
+    if let Some(after) = after {
+        let (id, locale) = after
+            .split_once(':')
+            .and_then(|(id, locale)| {
+                Some((Uuid::parse_str(id).ok()?, TenantLocale::new(locale).ok()?))
+            })
+            .ok_or_else(|| Error::Validation("invalid localized Search cursor".into()))?;
+        query = query.filter(
+            Condition::any()
+                .add(translation::Column::RecordId.gt(id))
+                .add(
+                    Condition::all()
+                        .add(translation::Column::RecordId.eq(id))
+                        .add(translation::Column::Locale.gt(locale.into_inner())),
+                ),
+        );
+    }
+    let copies = query
+        .order_by_asc(translation::Column::RecordId)
+        .order_by_asc(translation::Column::Locale)
+        .limit((limit + 1) as u64)
+        .all(db)
+        .await
+        .map_err(Error::Database)?;
+    let next_cursor = copies.get(limit).map(|_| {
+        let copy = &copies[limit - 1].0;
+        format!("{}:{}", copy.record_id, copy.locale)
+    });
+    let documents = copies
+        .into_iter()
+        .take(limit)
+        .map(|(copy, row)| project(copy, row))
+        .collect::<Result<Vec<_>>>()?;
+    Ok(SearchProjectionPage {
+        documents,
+        next_cursor,
+    })
+}
+
+async fn load_entity(
+    db: &impl ConnectionTrait,
+    tenant_id: Uuid,
+    entity_type: &str,
+    entity_id: Uuid,
+) -> Result<Vec<SearchProjectionDocument>> {
+    if tenant_id.is_nil() || entity_id.is_nil() || entity_type != "__ENTITY_SLUG__" {
+        return Err(Error::Validation(
+            "invalid localized Search entity scope".into(),
+        ));
+    }
+    published_copies(tenant_id)
+        .filter(translation::Column::RecordId.eq(entity_id))
+        .order_by_asc(translation::Column::Locale)
+        .all(db)
+        .await
+        .map_err(Error::Database)?
+        .into_iter()
+        .map(|(copy, row)| project(copy, row))
+        .collect()
+}
+
+#[async_trait]
+impl SearchProjectionSource for RecordSearchSource {
+    fn source_module(&self) -> &'static str {
+        "__SLUG__"
+    }
+
+    fn reindex_entity_type(&self) -> Option<&'static str> {
+        Some("__ENTITY_SLUG__")
+    }
+
+    async fn list_public_documents(
+        &self,
+        tenant_id: Uuid,
+        after: Option<String>,
+        limit: usize,
+    ) -> Result<SearchProjectionPage> {
+        list_documents(&self.db, tenant_id, after, limit).await
+    }
+
+    async fn load_public_entity(
+        &self,
+        tenant_id: Uuid,
+        entity_type: &str,
+        entity_id: Uuid,
+    ) -> Result<Vec<SearchProjectionDocument>> {
+        load_entity(&self.db, tenant_id, entity_type, entity_id).await
+    }
+
+    async fn list_public_documents_in_transaction(
+        &self,
+        tx: &DatabaseTransaction,
+        tenant_id: Uuid,
+        after: Option<String>,
+        limit: usize,
+    ) -> Result<SearchProjectionPage> {
+        list_documents(tx, tenant_id, after, limit).await
+    }
+
+    async fn load_public_entity_in_transaction(
+        &self,
+        tx: &DatabaseTransaction,
+        tenant_id: Uuid,
+        entity_type: &str,
+        entity_id: Uuid,
+    ) -> Result<Vec<SearchProjectionDocument>> {
+        load_entity(tx, tenant_id, entity_type, entity_id).await
+    }
+}

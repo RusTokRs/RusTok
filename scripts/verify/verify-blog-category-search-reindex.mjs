@@ -43,8 +43,8 @@ function requireBeforeWithin(source, startMarker, endMarker, before, after, labe
 const permissionPath = "crates/libs/rustok-api/src/permissions.rs";
 const platformRbacPath = "crates/libs/rustok-core/src/rbac.rs";
 const oauthPath = "crates/libs/rustok-api/src/context/auth.rs";
-const servicePath = "crates/modules/rustok-blog/src/services/category.rs";
-const categoryOwnerPath = "crates/modules/rustok-blog/src/services/category_owner.rs";
+const servicePath = "crates/modules/rustok-blog/src/services/category/commands/copy.rs";
+const categoryOwnerPath = "crates/modules/rustok-blog/src/services/category/owner.rs";
 const rbacPath = "crates/modules/rustok-blog/src/services/rbac.rs";
 const modulePath = "crates/modules/rustok-blog/src/module.rs";
 const controllerPath = "crates/modules/rustok-blog/src/controllers/categories.rs";

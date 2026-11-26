@@ -152,6 +152,10 @@ fn ModulePageSecondaryNav(
     let route_segment = page.route_segment;
     let root_href = format!("/modules/{route_segment}");
     let root_is_active = active_subpath.is_none();
+    let active_child = active_subpath
+        .as_deref()
+        .and_then(|subpath| page.child_page_for_subpath(subpath));
+    let i18n = use_admin_locale();
 
     view! {
         <nav class="rounded-xl border border-border bg-card p-2 shadow-sm">
@@ -167,21 +171,19 @@ fn ModulePageSecondaryNav(
                     .iter()
                     .map(|child| {
                         let href = format!("/modules/{route_segment}/{}", child.subpath);
-                        let child_subpath = child.subpath.to_string();
-                        let active_subpath = active_subpath.clone();
-                        let is_active = active_subpath
-                            .as_deref()
-                            .map(|active| {
-                                active == child_subpath
-                                    || active.starts_with(&format!("{child_subpath}/"))
-                            })
-                            .unwrap_or(false);
+                        let is_active = active_child.as_ref() == Some(child);
+                        let label = move || crate::app::modules::module_navigation_label(
+                            page.module_slug,
+                            child.subpath,
+                            i18n.current().as_str(),
+                            child.nav_label,
+                        );
                         view! {
                             <A
                                 href=href
                                 attr:class=move || secondary_nav_class(is_active)
                             >
-                                {child.nav_label}
+                                {label}
                             </A>
                         }
                     })

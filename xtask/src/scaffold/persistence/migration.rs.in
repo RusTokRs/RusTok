@@ -1,0 +1,113 @@
+use rustok_api::locale::MAX_LOCALE_TAG_LEN;
+use sea_orm_migration::prelude::*;
+
+use crate::domain::MAX_TITLE_CHARS;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(Alias::new("__TABLE__"))
+                    .col(ColumnDef::new(Alias::new("tenant_id")).uuid().not_null())
+                    .col(ColumnDef::new(Alias::new("id")).uuid().not_null())
+                    .col(
+                        ColumnDef::new(Alias::new("revision"))
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .primary_key(
+                        Index::create()
+                            .col(Alias::new("tenant_id"))
+                            .col(Alias::new("id")),
+                    )
+                    .col(
+                        ColumnDef::new(Alias::new("created_at"))
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(Alias::new("updated_at"))
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(Alias::new("published_at"))
+                            .timestamp_with_time_zone()
+                            .null(),
+                    )
+                    .check(Expr::cust("revision > 0"))
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(Alias::new("__TABLE__"), Alias::new("tenant_id"))
+                            .to(Alias::new("tenants"), Alias::new("id"))
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("__TABLE___updated")
+                    .table(Alias::new("__TABLE__"))
+                    .col(Alias::new("tenant_id"))
+                    .col(Alias::new("updated_at"))
+                    .col(Alias::new("id"))
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_table(
+                Table::create()
+                    .table(Alias::new("__TRANSLATIONS__"))
+                    .col(ColumnDef::new(Alias::new("tenant_id")).uuid().not_null())
+                    .col(ColumnDef::new(Alias::new("record_id")).uuid().not_null())
+                    .col(
+                        ColumnDef::new(Alias::new("locale"))
+                            .string_len(MAX_LOCALE_TAG_LEN as u32)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(Alias::new("title"))
+                            .string_len(MAX_TITLE_CHARS)
+                            .not_null(),
+                    )
+                    .primary_key(
+                        Index::create()
+                            .col(Alias::new("tenant_id"))
+                            .col(Alias::new("record_id"))
+                            .col(Alias::new("locale")),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from_tbl(Alias::new("__TRANSLATIONS__"))
+                            .from_col(Alias::new("tenant_id"))
+                            .from_col(Alias::new("record_id"))
+                            .to_tbl(Alias::new("__TABLE__"))
+                            .to_col(Alias::new("tenant_id"))
+                            .to_col(Alias::new("id"))
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(Alias::new("__TRANSLATIONS__"))
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(Table::drop().table(Alias::new("__TABLE__")).to_owned())
+            .await
+    }
+}

@@ -3,7 +3,7 @@
 on:
   pull_request:
     paths:
-      - "crates/modules/rustok-blog/src/services/category_owner.rs"
+      - "crates/modules/rustok-blog/src/services/category/**"
       - "crates/modules/rustok-blog/tests/category_taxonomy_mutation_response_cutover.rs"
       - "crates/modules/rustok-blog/tests/category_taxonomy_dual_write.rs"
       - ".github/workflows/blog-taxonomy-category-mutation-response.yml"
@@ -11,7 +11,7 @@ on:
     branches:
       - main
     paths:
-      - "crates/modules/rustok-blog/src/services/category_owner.rs"
+      - "crates/modules/rustok-blog/src/services/category/**"
       - "crates/modules/rustok-blog/tests/category_taxonomy_mutation_response_cutover.rs"
       - "crates/modules/rustok-blog/tests/category_taxonomy_dual_write.rs"
       - ".github/workflows/blog-taxonomy-category-mutation-response.yml"
@@ -52,7 +52,7 @@ jobs:
       - name: Check touched Rust leaf formatting
         run: |
           rustfmt +1.96.0 --edition 2024 --check \
-            crates/modules/rustok-blog/src/services/category_owner.rs \
+            crates/modules/rustok-blog/src/services/category/owner.rs \
             crates/modules/rustok-blog/tests/category_taxonomy_mutation_response_cutover.rs \
             crates/modules/rustok-blog/tests/category_taxonomy_dual_write.rs
       - name: Run canonical Category mutation response contract

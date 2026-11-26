@@ -84,19 +84,19 @@ pub(super) fn BlogShowcase(
                 {active_category.as_ref().map(|cat| view! {
                     <span class="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground">
                         {format!("Category: {cat}")}
-                        <a href=remove_category_href.clone() class="ml-1 font-bold text-muted-foreground hover:text-foreground">×</a>
+                        <a href=remove_category_href.clone() class="ml-1 font-bold text-muted-foreground hover:text-foreground">{"×"}</a>
                     </span>
                 })}
                 {active_tag.map(|tag| view! {
                     <span class="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
                         {format!("#{tag}")}
-                        <a href=remove_tag_href class="ml-1 font-bold text-muted-foreground hover:text-foreground">×</a>
+                        <a href=remove_tag_href class="ml-1 font-bold text-muted-foreground hover:text-foreground">{"×"}</a>
                     </span>
                 })}
                 {active_search.as_ref().map(|q| view! {
                     <span class="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
                         {format!("Search: \"{q}\"")}
-                        <a href=remove_search_href class="ml-1 font-bold text-muted-foreground hover:text-foreground">×</a>
+                        <a href=remove_search_href class="ml-1 font-bold text-muted-foreground hover:text-foreground">{"×"}</a>
                     </span>
                 })}
                 <a href=clear_filters_href class="ml-auto text-xs text-muted-foreground hover:text-foreground underline">

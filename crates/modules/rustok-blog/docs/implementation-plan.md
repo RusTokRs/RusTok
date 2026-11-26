@@ -2,8 +2,9 @@
 
 ## Reference readiness review (2026-11-05)
 
-Blog is enrolled as the physical/source reference. Complete reference acceptance
-and extraction into the scaffold remain pending. This review started on local
+Blog is enrolled as the physical source reference for the native scaffold.
+Transfer of verified domain capabilities and complete reference acceptance remain
+pending. This review started on local
 `main` at `730ecb6b3975ed363f6d2a56a1240d3b961d7f1d` and continued against
 `046ff1a50f3a23dba93b5201d889d18711b847d5` after concurrent commits captured
 the initial title-filter changes. It activates no repository-wide audit ledger.
@@ -287,14 +288,14 @@ also remains outside the package-scoped compilation evidence.
 
 ### Scaffold extraction sequence
 
-1. Close the owner correctness and database gates, then the effective-locale,
-   FFA/client parity and mounted Builder gates. Record exact scenario commands,
-   revision/profile and results here. Keep the current readiness state until
-   applicable evidence passes.
-2. Extract the existing canonical file responsibilities and naming from the
+1. Verify and extract the canonical file responsibilities and naming from the
    [backend guide](../../../../docs/backend/module-backend-implementation.md),
    using the same generic layout lint for generated and existing modules.
    Keep Blog's routes, permissions, schemas and Comments policy owner-local.
+2. Close the applicable behavior gates before transferring a capability into
+   the scaffold: owner correctness, database, effective locale, FFA/client
+   parity, and mounted Builder. Record scenario commands, revision/profile
+   and results here.
 3. Extend the current renderer only from an explicit real operation and schema.
    A persisted capability needs private entities/migrations and actual
    `services/<entity>/mod.rs`, `commands.rs`, `queries.rs`, `repository.rs`.
@@ -311,6 +312,16 @@ also remains outside the package-scoped compilation evidence.
    [scaffold plan](../../../../xtask/docs/implementation-plan.md).
    Assert that generated identities contain no Blog schema, permission, route
    or integration names before expanding the generator's supported modes.
+
+On 2026-11-26 the public Blog integration suite was split by capability under
+`tests/integration/`. Cargo retained the `integration` test target and all 22
+scenarios passed. The same naming and file-size lint covers source and
+integration tests in the owner, ports, UI and CLI packages. Blog and embedded
+Tax passed the shared layout check. The 65 layout fixtures passed, with two
+symlink fixtures skipped on Windows. The 76 scoped scaffold tests passed,
+including validation of the headless, admin, storefront, and dual file trees
+and module-local CLI planning. The subprocess harness case was ignored by the
+top-level Rust runner.
 
 ### Verification record
 
@@ -449,11 +460,23 @@ read authority, which also excludes damaged publication stamps.
 The [published package](../ports/README.md) follows the
 [canonical FBA layout](../../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout).
 Its embedded provider binds the same operation to the native storefront and
-the public GraphQL path. The full module FBA layout gate still rejects the
-owner's direct Channel runtime dependency. Migrate the existing cross-owner
-runtime dependencies and shared transaction seams before accepting an
-independent Blog owner process. Add the optional gRPC and `service` profiles
-for the same operation after the embedded path is verified.
+the public GraphQL path. The host injects the Channel-owned
+`ChannelPublicModuleReadPort` for GraphQL, HTTP, native storefront, RSS and
+Search. Blog checks the resolved ID for transport admission and the slug for
+post visibility, comment admission and Search. A missing provider fails closed
+when a channel is in scope. Channel reads its active state and module binding in
+the same database statement.
+
+The embedded checks passed for the Blog library, the public comment integration
+scenario, storefront SSR, and the server built with only `mod-blog` selected
+explicitly. The Blog tests cover missing provider and foreign Channel ID.
+
+The full FBA layout gate still rejects the Blog owner runtime's direct Channel
+dependency. Post visibility writes validate the assigned slugs inside the
+existing shared transaction. The embedded `PostService::new` still creates a
+local provider for callers outside the composed host. Complete those cutovers
+and the remaining foreign runtime dependencies before accepting an independent
+Blog process. The gRPC and `service` profiles are pending.
 
 Availability and disclosure must agree across providers for
 tenant and channel scope, missing or unpublished posts, and exact or fallback
@@ -1428,7 +1451,7 @@ existing first-class Comments port leaf rather than a parallel duplicate leaf.
 - `crates/modules/rustok-blog/storefront/src/model.rs`
 - `crates/modules/rustok-blog/storefront/src/transport/graphql_adapter.rs`
 - `crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs`
-- `crates/modules/rustok-blog/storefront/src/ui/leptos.rs`
+- `crates/modules/rustok-blog/storefront/src/ui/leptos/mod.rs`
 - `crates/modules/rustok-blog/admin/src/transport/native_server_adapter.rs`
 - `crates/modules/rustok-blog/src/services/comment_projection.rs`
 - `crates/modules/rustok-blog/tests/comment_projection_postgres_test.rs`

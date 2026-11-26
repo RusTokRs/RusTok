@@ -1,0 +1,87 @@
+use async_graphql::{Context, FieldError, Result};
+use rustok_api::{
+    AuthContext, RequestContext, SharedStaticModuleSettingsReader, TenantContext,
+    graphql::{
+        GraphQLError, GraphqlRuntimeInputs, extract_graphql_context, require_module_enabled,
+    },
+};
+use rustok_core::SecurityContext;
+
+use crate::{__ENTITY__Service, RecordError, admin_record_revision, admin_record_security};
+
+pub struct __MODULE_STEM__AdminGraphqlData {
+    settings: SharedStaticModuleSettingsReader,
+}
+
+pub fn attach_schema_data(
+    inputs: &GraphqlRuntimeInputs,
+) -> Result<__MODULE_STEM__AdminGraphqlData, String> {
+    let settings = inputs.shared_get().ok_or_else(|| {
+        "__SLUG__ admin GraphQL requires the host module settings reader".to_owned()
+    })?;
+    Ok(__MODULE_STEM__AdminGraphqlData { settings })
+}
+
+pub(super) struct AdminRequest<'a> {
+    pub tenant: &'a TenantContext,
+    pub security: SecurityContext,
+    pub owner: __ENTITY__Service,
+}
+
+impl<'a> AdminRequest<'a> {
+    pub async fn from_context(ctx: &'a Context<'_>) -> Result<Self> {
+        let auth = ctx
+            .data_opt::<AuthContext>()
+            .ok_or_else(FieldError::unauthenticated)?;
+        let (db, tenant) = extract_graphql_context(ctx)?;
+        if ctx
+            .data_opt::<RequestContext>()
+            .is_some_and(|request| request.tenant_id != tenant.id)
+        {
+            return Err(FieldError::permission_denied(
+                "Invalid admin request authority",
+            ));
+        }
+        let security = admin_record_security(tenant, auth)
+            .ok_or_else(|| FieldError::permission_denied("Invalid admin request authority"))?;
+        require_module_enabled(ctx, "__SLUG__").await?;
+        let runtime = ctx
+            .data_opt::<__MODULE_STEM__AdminGraphqlData>()
+            .ok_or_else(|| FieldError::internal_error("Record administration is unavailable"))?;
+        let owner = __ENTITY__Service::for_admin(db.clone(), runtime.settings.clone());
+        Ok(Self {
+            tenant,
+            security,
+            owner,
+        })
+    }
+}
+
+pub(super) fn record_error(error: RecordError) -> FieldError {
+    match error {
+        RecordError::Forbidden => FieldError::permission_denied("Record permission required"),
+        RecordError::NotFound => FieldError::not_found("Record not found"),
+        RecordError::Conflict => FieldError::conflict("Record revision conflict"),
+        RecordError::TooManyLocales
+        | RecordError::InvalidTenant
+        | RecordError::InvalidRecord
+        | RecordError::InvalidLocale
+        | RecordError::InvalidTitle
+        | RecordError::InvalidPage
+        | RecordError::InvalidSearch => FieldError::bad_user_input(&error.to_string()),
+        RecordError::InvalidAdminPageSize
+        | RecordError::InvalidPublicDiscovery
+        | RecordError::SettingsUnavailable(_)
+        | RecordError::MissingCopy
+        | RecordError::Database(_)
+        | RecordError::Outbox(_) => {
+            tracing::error!(module_slug = "__SLUG__", error = ?error, "Admin record operation failed");
+            FieldError::internal_error("Record operation failed")
+        }
+    }
+}
+
+pub(super) fn revision(value: &str) -> Result<i64> {
+    admin_record_revision(value)
+        .ok_or_else(|| FieldError::bad_user_input("Expected a positive decimal revision"))
+}

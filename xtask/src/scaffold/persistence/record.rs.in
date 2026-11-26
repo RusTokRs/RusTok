@@ -1,0 +1,25 @@
+use sea_orm::entity::prelude::*;
+
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "__TABLE__")]
+pub struct Model {
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub tenant_id: Uuid,
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub id: Uuid,
+    pub revision: i64,
+    pub created_at: DateTimeWithTimeZone,
+    pub updated_at: DateTimeWithTimeZone,
+    pub published_at: Option<DateTimeWithTimeZone>,
+}
+
+#[derive(Clone, Copy, Debug, EnumIter, DeriveRelation)]
+pub enum Relation {}
+
+impl ActiveModelBehavior for ActiveModel {}
+
+impl Related<super::translation::Entity> for Entity {
+    fn to() -> RelationDef {
+        super::translation::record_relation().rev()
+    }
+}

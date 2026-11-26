@@ -94,6 +94,13 @@ Reviewed through `main@5c283707cef13da9a99c665e3cf1b3c2ebddba78`.
 | Static rollout write | The owner rejects both settings write paths when an unresolved tenant or platform transition with a predecessor is detected; static distribution rollout state is not checked | N/N+1 safety is not established; exact schema evidence and an atomic owner-controlled fence covering static rollout transitions are required |
 | Uninstall/purge | Tenant disable is not deletion; accepted release policy retains native/static data/settings | Safe retention, but operator state needs clearer presentation |
 
+The exact operator read `tenantModuleSettings(moduleSlug: ...)` and the
+host's native settings reader require `modules:manage`. They return the
+settings document and lifecycle revision from one snapshot of the selected
+tenant and module. A first read can return inherited state at revision
+zero. The form submits the existing `updateModuleSettings` mutation with
+the revision and one idempotency key.
+
 ## Settings ownership matrix
 
 Use this table before adding a key or table.

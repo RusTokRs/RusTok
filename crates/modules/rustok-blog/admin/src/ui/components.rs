@@ -516,7 +516,7 @@ fn apply_form_state(setters: BlogPostFormSetters, state: core::BlogPostEditorFor
 
 /// The cursor-paged post list region: one table plus the load-more failure banner.
 ///
-/// Owned here rather than in `leptos.rs` so the page component keeps the request wiring
+/// Kept with the reusable components so the Leptos page owns the request wiring
 /// (resource, signals, callbacks) and the list keeps its rendering.
 #[component]
 pub(super) fn BlogPostsList(
