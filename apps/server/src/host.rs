@@ -175,6 +175,16 @@ pub async fn run() -> Result<()> {
         return Ok(());
     }
 
+    // Reserve a separate clock writer pool before serving any Auth traffic.
+    // It never borrows from the domain pool while a transaction holds locks.
+    tokio::select! {
+        biased;
+        _ = &mut shutdown_signal => return Ok(()),
+        result = rustok_auth::application_clock::configure_late_observation_store(&db, &database_uri) => {
+            result.map_err(Error::Database)?;
+        }
+    }
+
     // Production never takes JWT authority from the restorable application DB.
     let fence = independent_fence.unwrap_or_else(|| rustok_auth::JwtGenerationFence::new(db.clone()));
     loop {

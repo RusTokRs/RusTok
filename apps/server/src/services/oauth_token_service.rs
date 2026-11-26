@@ -92,10 +92,12 @@ impl OAuthTokenProtocolError {
 
 type OAuthClock<'a> = dyn Fn() -> Result<chrono::DateTime<Utc>, OAuthTokenProtocolError> + Send + Sync + 'a;
 
-async fn verify_application_clock(db: &impl ConnectionTrait) -> Result<(), OAuthTokenProtocolError> {
-    rustok_auth::application_clock::verified_now(db).await
-        .map(|_| ())
-        .map_err(|_| OAuthTokenProtocolError::server_error("OAuth application database clock unavailable"))
+async fn verify_application_clock(db: &impl ConnectionTrait, clock: &OAuthClock<'_>)
+    -> Result<chrono::DateTime<Utc>, OAuthTokenProtocolError>
+{
+    let unavailable = |_| OAuthTokenProtocolError::server_error("OAuth application database clock unavailable");
+    let verified = rustok_auth::application_clock::verified_now(db).await.map_err(unavailable)?;
+    rustok_auth::application_clock::decision_time(verified, clock()?).map_err(unavailable)
 }
 
 fn check_application_clock() -> Result<(), OAuthTokenProtocolError> {
@@ -149,12 +151,12 @@ impl OAuthTokenService {
                 ensure_authenticated_client_unchanged(&app, &current_app)?;
                 require_grant(&current_app, CLIENT_CREDENTIALS_GRANT)?;
                 let scopes = validate_requested_scopes(&current_app, request.scope.as_deref())?;
-                verify_application_clock(&tx).await?;
+                verify_application_clock(&tx, &clock).await?;
                 let prepared = prepare_service_access_token(&current_app, auth_config, &scopes)?;
                 validate_prepared_deadlines(&prepared, clock()?, None)?;
                 persist_prepared_tokens(&tx, &prepared).await?;
-                verify_application_clock(&tx).await?;
-                validate_prepared_deadlines(&prepared, clock()?, None)?;
+                let now = verify_application_clock(&tx, &clock).await?;
+                validate_prepared_deadlines(&prepared, now, None)?;
                 tx.commit().await.map_err(|_| {
                     OAuthTokenProtocolError::server_error(
                         "Failed to commit client-credentials exchange",
@@ -489,8 +491,8 @@ async fn validate_authorization_code(
             "Authorization code is invalid, expired, or already used",
         ));
     }
-    verify_application_clock(db).await?;
-    if !code.is_active_at(clock()?) {
+    let now = verify_application_clock(db, clock).await?;
+    if !code.is_active_at(now) {
         return Err(OAuthTokenProtocolError::invalid_grant(
             "Authorization code is invalid, expired, or already used",
         ));
@@ -543,8 +545,7 @@ async fn validate_refresh_token(
         .one(db)
         .await
         .map_err(|_| OAuthTokenProtocolError::server_error("Failed to validate refresh token"))?;
-    verify_application_clock(db).await?;
-    let now = clock()?;
+    let now = verify_application_clock(db, clock).await?;
     let token = match token {
         Some(token) if (token.revoked_at.is_none()
             && token.created_at.with_timezone(&Utc) <= now
@@ -724,7 +725,7 @@ async fn resolve_refresh_family<C>(
 where
     C: ConnectionTrait,
 {
-    let now = clock()?;
+    let now = verify_application_clock(db, clock).await?;
     let family_id = current.family_id;
     if family_id.is_nil() || current.id.is_nil()
         || current.user_id.is_none_or(|id| id.is_nil())
@@ -751,7 +752,7 @@ where
             .ok_or_else(|| {
                 OAuthTokenProtocolError::invalid_grant("Refresh token family root is unavailable")
             })?;
-        let now = clock()?;
+        let now = verify_application_clock(db, clock).await?;
         if root.family_id != root.id
             || root.authorization_code_id != current.authorization_code_id
             || root.consent_granted_at != current.consent_granted_at
@@ -873,8 +874,7 @@ async fn detect_oauth_refresh_reuse(
         })?;
         return Ok(());
     };
-    verify_application_clock(&tx).await?;
-    let now = clock()?;
+    let now = verify_application_clock(&tx, clock).await?;
     // A rotation recorded in the future is not elapsed-grace evidence.
     // Do not destroy a lineage because another replica's clock is ahead.
     if committed_refresh_rotation_at(&stale).is_some_and(|at| at > now) {
@@ -924,8 +924,7 @@ async fn detect_oauth_refresh_reuse(
             "Failed to revoke replayed refresh-token family",
         ));
     }
-    verify_application_clock(&tx).await?;
-    clock()?;
+    verify_application_clock(&tx, clock).await?;
     tx.commit().await.map_err(|error| {
         tracing::error!(%error, family_id = %family_id, "Failed to commit OAuth refresh replay revocation");
         OAuthTokenProtocolError::server_error("Failed to commit refresh-token reuse revocation")
@@ -1442,8 +1441,7 @@ async fn commit_authorization_code_exchange(
     )
     .await?;
 
-    verify_application_clock(&tx).await?;
-    let now = clock()?;
+    let now = verify_application_clock(&tx, clock).await?;
     validate_prepared_deadlines(prepared, now, None)?;
     if !consume_authorization_code(&tx, code, now).await? {
         // A concurrent exchange won the CAS. If the code is now marked used,
@@ -1478,8 +1476,8 @@ async fn commit_authorization_code_exchange(
         ));
     }
     persist_prepared_tokens(&tx, prepared).await?;
-    verify_application_clock(&tx).await?;
-    validate_prepared_deadlines(prepared, clock()?, None)?;
+    let now = verify_application_clock(&tx, clock).await?;
+    validate_prepared_deadlines(prepared, now, None)?;
 
     tx.commit().await.map_err(|_| {
         OAuthTokenProtocolError::server_error("Failed to commit authorization-code exchange")
@@ -1512,7 +1510,7 @@ async fn recover_refresh_in_tx<C: ConnectionTrait>(
 ) -> Result<OAuthRecoveryWindow, OAuthTokenProtocolError> {
     let invalid = || OAuthTokenProtocolError::invalid_grant("OAuth refresh recovery unavailable");
     let rotated_at = committed_refresh_rotation_at(stale).ok_or_else(invalid)?;
-    let now = clock()?;
+    let now = verify_application_clock(db, clock).await?;
     if !within_refresh_rotation_grace(stale, now) {
         return Err(invalid());
     }
@@ -1557,18 +1555,17 @@ async fn recover_refresh_in_tx<C: ConnectionTrait>(
             .min(successor.expires_at.with_timezone(&Utc))
             .min(absolute_deadline),
     };
-    window.ensure_live(clock()?)?;
-    ensure_single_live_refresh(db, &successor, family, clock()?).await?;
-    verify_application_clock(db).await?;
-    let now = clock()?;
+    let now = verify_application_clock(db, clock).await?;
+    window.ensure_live(now)?;
+    ensure_single_live_refresh(db, &successor, family, now).await?;
+    let now = verify_application_clock(db, clock).await?;
     window.ensure_live(now)?;
     validate_prepared_deadlines(prepared, now, Some(absolute_deadline))?;
     // Fresh access JWT, same refresh bearer. Never insert the prepared
     // refresh model or update the successor's lifetime during recovery.
     prepared.access_model.clone().insert(db).await
         .map_err(|_| OAuthTokenProtocolError::server_error("Failed to register recovered OAuth access token"))?;
-    verify_application_clock(db).await?;
-    let now = clock()?;
+    let now = verify_application_clock(db, clock).await?;
     window.ensure_live(now)?;
     validate_prepared_deadlines(prepared, now, Some(absolute_deadline))?;
     Ok(window)
@@ -1630,8 +1627,7 @@ async fn commit_refresh_rotation(
         return Err(OAuthTokenProtocolError::invalid_grant("OAuth refresh credential changed"));
     }
     let family = resolve_refresh_family(&tx, &stored, clock).await?;
-    verify_application_clock(&tx).await?;
-    let now = clock()?;
+    let now = verify_application_clock(&tx, clock).await?;
     ensure_refresh_family_live(&family, now)?;
     validate_prepared_deadlines(prepared, now, Some(refresh_family_deadline(family.created_at)?))?;
     ensure_single_live_refresh(&tx, &stored, &family, now).await?;
@@ -1646,8 +1642,7 @@ async fn commit_refresh_rotation(
         return Ok(Some(window));
     }
     // The lineage queries can consume the last portion of the lifetime.
-    verify_application_clock(&tx).await?;
-    let now = clock()?;
+    let now = verify_application_clock(&tx, clock).await?;
     ensure_refresh_family_live(&family, now)?;
     validate_prepared_deadlines(prepared, now, Some(refresh_family_deadline(family.created_at)?))?;
     let consumed = OAuthTokens::update_many()
@@ -1682,8 +1677,8 @@ async fn commit_refresh_rotation(
     }
 
     persist_prepared_tokens(&tx, prepared).await?;
-    verify_application_clock(&tx).await?;
-    validate_prepared_deadlines(prepared, clock()?, Some(refresh_family_deadline(family.created_at)?))?;
+    let now = verify_application_clock(&tx, clock).await?;
+    validate_prepared_deadlines(prepared, now, Some(refresh_family_deadline(family.created_at)?))?;
     tx.commit().await.map_err(|_| {
         OAuthTokenProtocolError::server_error("Failed to commit refresh-token rotation")
     })?;

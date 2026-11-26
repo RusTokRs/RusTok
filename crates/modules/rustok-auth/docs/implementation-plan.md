@@ -580,3 +580,10 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
 - PostgreSQL application admission forces synchronous commit. No new DDL for the witness format extension; offline old-writer/lease drain and trusted-clock legacy enrollment required.
 - Source regression covers restarted authority refusing a lower DB clock while emergency revocation retains the floor. Compilation, PostgreSQL multi-pool/failover/cancellation and WAL/latency evidence remain unrun.
 - Application late observations, request-path JWT host timestamps, unwitnessed development mode, witness/application-store rollback and cross-replica contention optimization remain open. No production readiness promotion.
+
+## Independently committed application late observations (2026-11-26)
+
+- Server host and session-cleanup CLI configure a separate clock writer pool. PostgreSQL samples the source and same primary writer under the singleton lock and commits the floor before returning the decision sample; a domain rollback cannot erase it. Uncertain clock commits trip the process latch.
+- SQLite can use an offline-bound persistent sidecar with FULL/EXTRA sync, exact copied floor and matching UUID. No same-file writer, automatic reseed, or bound-file fallback. Unbound SQLite and unmanaged embedders retain admission-only protection.
+- Late session, password/email recovery, access-registration, OAuth-family and retention observations use the durable path when configured. Access extraction checks deadline crossing during commit; exact domain commit/publication instant, in-memory JWT and WebSocket timers remain separate.
+- Source regressions authored for independent rollback survival, restart, binding and uncertain commit. Compilation, real-file SQLite, PostgreSQL multi-pool/failover, cancellation injection and throughput evidence remain unrun. No production readiness promotion. See the clock ADR for deployment and recovery constraints.

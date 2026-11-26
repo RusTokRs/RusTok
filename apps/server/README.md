@@ -346,3 +346,16 @@ Do not downgrade, reset or strip the checkpoint. The new checked read
 requires a durable witness write when time advances; measure supervisor
 and metrics-path contention. The application late-observation boundary
 remains incomplete.
+
+## Application late-observation durability
+
+The host opens one additional PostgreSQL clock writer connection to the
+application primary after migrations. Reserve pool capacity accordingly.
+Verified late observations commit separately from domain writes; a clock
+commit failure or cancellation fences the process. SQLite can optionally
+use an offline-bound distinct persistent clock file via
+`RUSTOK_AUTH_SQLITE_CLOCK_DATABASE_URL`; never point this at the application
+file or omit it on a bound database. See the
+[clock ADR](../../DECISIONS/2026-11-25-jwt-clock-discontinuity.md) for
+provisioning and recovery. No new automatic migration/sidecar creation;
+full expiry non-resurrection and runtime performance remain unverified.

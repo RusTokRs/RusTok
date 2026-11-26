@@ -180,8 +180,11 @@ impl AuthLifecycleService {
             session_id,
         )
         .await?
-        .filter(|session| session.is_active())
         .ok_or(AuthLifecycleError::SessionExpired)?;
+        let now = rustok_auth::application_clock::verified_now(&tx).await?;
+        if !session.is_active_at(now) {
+            return Err(AuthLifecycleError::SessionExpired);
+        }
 
         if locked_user.email == new_email {
             return Err(AuthLifecycleError::Validation(
@@ -201,9 +204,10 @@ impl AuthLifecycleService {
 
         // Expired requests must not reserve an address indefinitely. The
         // unique tenant/email index serializes competing pending claims.
+        let cleanup_now = rustok_auth::application_clock::verified_now(&tx).await?;
         AuthEmailChangeRequests::delete_many()
             .filter(auth_email_change_requests::Column::TenantId.eq(tenant_id))
-            .filter(auth_email_change_requests::Column::ExpiresAt.lte(Utc::now()))
+            .filter(auth_email_change_requests::Column::ExpiresAt.lte(cleanup_now))
             .exec(&tx)
             .await
             .map_err(AuthLifecycleError::from)?;
@@ -218,10 +222,10 @@ impl AuthLifecycleService {
         // Cleanup and uniqueness checks can wait on other transactions. Start
         // the challenge lifetime only after those waits, and recheck the
         // locked session before issuing a new credential.
-        if !session.is_active() {
+        let now = rustok_auth::application_clock::verified_now(&tx).await?;
+        if !session.is_active_at(now) {
             return Err(AuthLifecycleError::SessionExpired);
         }
-        let now = rustok_auth::application_clock::verified_now(&tx).await?;
         let expires_at = now + Duration::seconds(EMAIL_CHANGE_TOKEN_TTL_SECS as i64);
         let request = auth_email_change_requests::ActiveModel {
             id: Set(Uuid::new_v4()),
@@ -251,10 +255,11 @@ impl AuthLifecycleService {
         // not commit a challenge that is already unusable or was issued by
         // a session that expired during the wait. Rollback preserves any
         // earlier pending request deleted in this transaction.
-        if !session.is_active() {
+        let final_now = rustok_auth::application_clock::verified_now(&tx).await?;
+        if !session.is_active_at(final_now) {
             return Err(AuthLifecycleError::SessionExpired);
         }
-        if rustok_auth::application_clock::verified_now(&tx).await? >= expires_at {
+        if final_now >= expires_at {
             return Err(AuthLifecycleError::InvalidEmailChangeToken);
         }
         tx.commit().await.map_err(AuthLifecycleError::from)?;
@@ -334,7 +339,6 @@ impl AuthLifecycleService {
                 session_id,
             )
             .await?
-            .filter(|session| session.is_active())
             .ok_or(AuthLifecycleError::SessionExpired)?)
         } else {
             None

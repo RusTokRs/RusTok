@@ -712,8 +712,8 @@ impl OAuthAppService {
         .map_err(|_| Error::InternalServerError)?
         .filter(|session| session.user_id == user.id)
         .ok_or_else(|| Error::Unauthorized("OAuth authorization session is no longer active".to_string()))?;
-        rustok_auth::application_clock::verified_now(&tx).await?;
-        subject.ensure_live(&session, clock()?)?;
+        let verified = rustok_auth::application_clock::verified_now(&tx).await?;
+        subject.ensure_live(&session, rustok_auth::application_clock::decision_time(verified, clock()?)?)?;
 
         if app.requires_user_consent() {
             let consent = OAuthConsents::find_active_consent(&tx, app_id, user.id, tenant_id)
@@ -734,8 +734,8 @@ impl OAuthAppService {
                 }
                 let scopes_json = serde_json::to_value(&scopes)
                     .map_err(|_| Error::InternalServerError)?;
-                rustok_auth::application_clock::verified_now(&tx).await?;
-                let now = clock()?;
+                let verified = rustok_auth::application_clock::verified_now(&tx).await?;
+                let now = rustok_auth::application_clock::decision_time(verified, clock()?)?;
                 subject.ensure_live(&session, now)?;
                 Self::grant_consent_in_transaction(
                     &tx, app_id, user.id, tenant_id, &scopes_json, now,
@@ -759,8 +759,8 @@ impl OAuthAppService {
         let code = general_purpose::URL_SAFE_NO_PAD.encode(random_bytes);
         let code_hash = auth::hash_refresh_token(&code);
 
-        rustok_auth::application_clock::verified_now(&tx).await?;
-        let now = clock()?;
+        let verified = rustok_auth::application_clock::verified_now(&tx).await?;
+        let now = rustok_auth::application_clock::decision_time(verified, clock()?)?;
         subject.ensure_live(&session, now)?;
         let expires_at = now.checked_add_signed(chrono::Duration::minutes(10))
             .ok_or(Error::InternalServerError)?;
@@ -783,8 +783,8 @@ impl OAuthAppService {
         .map_err(|_| Error::InternalServerError)?;
         // Recheck immediately before attempting commit; a slow code write
         // must not pass a stale authorization decision. The session stays locked.
-        rustok_auth::application_clock::verified_now(&tx).await?;
-        let now = clock()?;
+        let verified = rustok_auth::application_clock::verified_now(&tx).await?;
+        let now = rustok_auth::application_clock::decision_time(verified, clock()?)?;
         subject.ensure_live(&session, now)?;
         if !stored.is_active_at(now) {
             return Err(Error::Unauthorized("OAuth authorization code expired before commit".to_string()));

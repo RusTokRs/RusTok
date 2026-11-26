@@ -142,6 +142,12 @@ impl AuthCommandProvider {
 
     async fn cleanup_sessions(&self) -> CliCoreResult<CommandOutcome> {
         let db = db_clone(self.runtime.require_host().map_err(command_failed)?);
+        let database_uri = std::env::var("RUSTOK_DATABASE_URL").ok()
+            .filter(|value| !value.trim().is_empty())
+            .or_else(|| std::env::var("DATABASE_URL").ok().filter(|value| !value.trim().is_empty()))
+            .unwrap_or_default();
+        rustok_auth::application_clock::configure_late_observation_store(&db, &database_uri)
+            .await.map_err(command_failed)?;
         let deleted = rustok_auth::retention::purge_expired_sessions(&db)
             .await
             .map_err(command_failed)?;

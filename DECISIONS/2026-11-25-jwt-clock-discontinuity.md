@@ -184,6 +184,82 @@ WAL, latency and contention; measure these costs before production.
 Application admission writes also force PostgreSQL synchronous_commit=on;
 this does not by itself establish synchronous standby failover durability.
 
+## Independently committed application observations (2026-11-26)
+
+The server host configures a dedicated single-connection clock writer pool
+after application migrations and before accepting traffic; the session
+cleanup CLI configures the same mechanism. PostgreSQL uses the existing
+application primary URI and the existing `auth_application_clock` singleton.
+The domain connection is sampled first, before taking the clock writer lock.
+The writer samples again under the singleton lock, requires the same primary
+database/schema/server/relation identity and no recovery replica, rejects
+backward database evidence or a lower floor, and commits using
+`synchronous_commit = 'on'`. No domain connection is acquired while holding
+the clock writer lock. This avoids exhausting the domain pool and permits
+late observations during a domain transaction without rolling them back with
+that transaction. The writer's fresh millisecond host timestamp is the
+decision timestamp, not the prior domain sample or a later unpersisted wall
+reading. A bounded commit interval and the live credential gate are still
+required. A failed or cancelled clock commit trips the process-local sticky
+clock guard; no unknown commit outcome authorizes a domain decision.
+
+The PostgreSQL primary identity comparison is a routing sanity check, not a
+cryptographic identity or independent backup witness. All hosts must connect
+to the same trusted primary, use the same schema, and reserve one additional
+database connection per host/CLI process. Restart only after clock remediation;
+do not lower the floor or replace the primary with stale state.
+
+SQLite has a single writer per file. A second pool on the application file
+would deadlock when a domain write transaction is held. For durable late
+observations use a separately provisioned persistent SQLite file and
+`RUSTOK_AUTH_SQLITE_CLOCK_DATABASE_URL=sqlite:///absolute/path/clock.db?mode=rw`.
+This is optional development/embedded deployment configuration; ordinary
+SQLite without a sidecar and unmanaged embedders retain admission-only
+durability. Never silently fall back after a sidecar has been bound.
+Provision offline with all old binaries and writers stopped, after applying
+the application clock migration. Back up both files, read the current
+`host_ms` and `database_ms` from the application singleton, and create an
+empty separate clock file with the same singleton schema and exact copied
+values. Create the following table in both files and insert the same newly
+generated canonical, non-nil UUID into each:
+
+```sql
+CREATE TABLE auth_application_clock_sidecar_binding (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    binding_id TEXT NOT NULL
+);
+-- Insert id=1 and the same operator-generated UUID in both files.
+```
+
+Use FULL or EXTRA synchronous SQLite commits. The host refuses the same
+canonical file, Unix hard-link aliases, absent/incorrect bindings, missing
+clock rows, sidecar floors below the original application floors, or a
+sidecar containing application user/session tables. Provisioning is manual,
+not a runtime repair or a migration that creates another file. Keep the
+sidecar authoritative after cutover; never copy an older application floor
+over it, and never restore it from stale backup. Missing configuration on
+a bound application file fails closed. A restored pre-binding application
+or rolled-back sidecar is not an independently witnessed state and cannot be
+detected reliably by this scheme.
+
+Existing verified-clock paths in session and recovery mutations, OAuth and
+retention now use the independently committed writer when configured.
+Selected previously unchecked session/registration expiry predicates,
+password and email change checks, and OAuth family/recovery decisions also
+use it. Access extraction explicitly persists a new sample if the deadline
+crosses between its final durable sample and live credential check. The
+persisted sample is a bounded decision point, not the exact domain commit
+or response instant. In-memory JWT validation, all post-commit publication
+observations, WebSocket timers, unsupported/unmanaged callers, rollback of
+the application clock store itself, and total power-loss/failover evidence
+remain outside the complete expiry non-resurrection claim. Global singleton
+contention and the cost of synchronous clock writes still require benchmarks.
+
+Source regressions cover rollback after a sidecar write, restart against a
+future floor, binding mismatch, forbidden legacy fallback, and uncertain
+commit fencing. Rust compilation, tests, PostgreSQL pool/failover and
+SQLite real-file deployment evidence are pending.
+
 ## Recovery and limits
 
 The existing host supervisor terminates on authority read errors; local

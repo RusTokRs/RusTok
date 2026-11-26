@@ -3017,3 +3017,19 @@ match connection {
   selection. Rust tests remain unexecuted without Cargo; Node guards are source
   evidence only. Topic-policy provider propagation remains an explicit subsequent
   phase, not a guarantee supplied by this adapter.
+
+### P-AUTH-LATE-CLOCK-ROLLBACK — Commit expiry evidence outside the domain transaction
+
+- **Failure:** a late clock observation inside a failed domain transaction can
+  classify a credential as expired without persisting that evidence across
+  restart. A nested writer on the domain pool can deadlock on pool exhaustion;
+  a second SQLite writer to the same file cannot make progress.
+- **Remediation:** use a dedicated same-primary PostgreSQL writer pool or an
+  offline-bound separate SQLite file, acquire no domain locks from the clock
+  writer, sample again under the clock singleton lock, and commit the monotonic
+  observation before using it. Fence uncertain commit outcomes. Refuse missing
+  bound-store configuration or mismatched bindings rather than reseeding.
+- **Evidence:** [application clock](../../crates/modules/rustok-auth/src/application_clock.rs),
+  [clock ADR](../../DECISIONS/2026-11-25-jwt-clock-discontinuity.md).
+  Source regressions authored; actual pool saturation, crash/failover,
+  real-file SQLite and exact domain commit-time deadlines remain unverified.

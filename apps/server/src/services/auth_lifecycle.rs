@@ -250,8 +250,9 @@ impl AuthLifecycleService {
     async fn credential_now(db: &impl ConnectionTrait, config: &AuthConfig)
         -> Result<chrono::DateTime<Utc>, AuthLifecycleError>
     {
-        rustok_auth::application_clock::verified_now(db).await?;
-        Ok(config.credential_now()?)
+        let verified = rustok_auth::application_clock::verified_now(db).await?;
+        let live = config.credential_now()?;
+        Ok(rustok_auth::application_clock::decision_time(verified, live)?)
     }
 
     fn response_now(config: &AuthConfig) -> Result<chrono::DateTime<Utc>, AuthLifecycleError> {
@@ -1336,7 +1337,7 @@ impl AuthLifecycleService {
         user_id: uuid::Uuid,
         session_id: uuid::Uuid,
     ) -> std::result::Result<Option<sessions::Model>, AuthLifecycleError> {
-        let now = Utc::now();
+        let now = rustok_auth::application_clock::verified_now(txn).await?;
         let query = sessions::Entity::find()
             .filter(sessions::Column::TenantId.eq(tenant_id))
             .filter(sessions::Column::UserId.eq(user_id))
@@ -1417,17 +1418,19 @@ impl AuthLifecycleService {
             return Err(AuthLifecycleError::UserInactive);
         }
 
-        Self::find_current_session_for_password_change_in_tx(
+        let session = Self::find_current_session_for_password_change_in_tx(
             &txn,
             tenant_id,
             user_id,
             current_session_id,
         )
         .await?
-        .filter(|session| session.is_active())
         .ok_or(AuthLifecycleError::SessionExpired)?;
 
-        let now = Utc::now();
+        let now = rustok_auth::application_clock::verified_now(&txn).await?;
+        if !session.is_active_at(now) {
+            return Err(AuthLifecycleError::SessionExpired);
+        }
         let mut user_active: users::ActiveModel = user.into();
         user_active.set_replacement_password(new_password_hash, now);
         user_active
@@ -1462,6 +1465,10 @@ impl AuthLifecycleService {
             DomainEvent::UserPasswordChanged { user_id },
         )
         .await?;
+        let final_now = rustok_auth::application_clock::verified_now(&txn).await?;
+        if !session.is_active_at(final_now) {
+            return Err(AuthLifecycleError::SessionExpired);
+        }
         txn.commit().await.map_err(AuthLifecycleError::from)?;
         AUTH_CHANGE_PASSWORD_SESSIONS_REVOKED_TOTAL.fetch_add(revoked_sessions, Ordering::Relaxed);
 

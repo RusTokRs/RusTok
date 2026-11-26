@@ -992,3 +992,15 @@ first use of the extended checkpoint format. See the clock and witness
 ADRs for legacy enrollment, recovery and remaining limits. This does
 not persist every application or request-path observation. Source-only
 regression evidence; WAL and contention costs remain unmeasured.
+
+## Independently committed application observations
+
+The host and session cleanup CLI configure a dedicated clock writer pool on
+the same PostgreSQL primary; late verified observations commit separately
+from domain transactions. SQLite optionally uses an offline-bound distinct
+persistent file, never another writer to the application file. Unbound
+SQLite and unmanaged embedders retain admission-only durability. See the
+[clock ADR](../../../../DECISIONS/2026-11-25-jwt-clock-discontinuity.md) for
+sidecar provisioning, fail-closed behavior and limits. Exact commit-time
+expiry, full request-path JWT and WebSocket observation coverage, clock-store
+rollback, throughput and runtime evidence remain open.

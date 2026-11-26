@@ -240,7 +240,8 @@ async fn validate_oauth_access_token_registration(
         "OAuth access token is not registered",
     ))?;
     let token_hash = crate::auth::hash_refresh_token(access_token);
-    let now = chrono::Utc::now();
+    let now = rustok_auth::application_clock::admit_now(db).await
+        .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Application database clock unavailable"))?;
     let row = OAuthTokens::find_by_id(jti)
         .filter(oauth_tokens::Column::TokenHash.eq(token_hash))
         .filter(oauth_tokens::Column::AppId.eq(app_id))
@@ -494,7 +495,9 @@ pub async fn resolve_current_user_from_access_token(
         }
 
         // INVARIANT: In-memory check validating session activity and confirming database-scoped tenant identity.
-        if session.tenant_id != tenant_id || !session.is_active() {
+        let now = rustok_auth::application_clock::admit_now(db).await
+            .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Application database clock unavailable"))?;
+        if session.tenant_id != tenant_id || !session.is_active_at(now) {
             return Err((StatusCode::UNAUTHORIZED, "Session expired"));
         }
         durable_credential_expires_at = session
@@ -665,14 +668,29 @@ pub async fn resolve_current_user_from_access_token(
     // Storage and policy resolution may outlast either credential fence.
     // The signed JWT cannot extend the observed session (including its
     // absolute cap) or durable OAuth registration deadline.
-    rustok_auth::application_clock::admit_now(db).await
+    let verified = rustok_auth::application_clock::admit_now(db).await
+        .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Application database clock unavailable"))?;
+    let live = auth_config.credential_now()
+        .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Credential authority unavailable"))?;
+    let decision = rustok_auth::application_clock::decision_time(verified, live)
         .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Application database clock unavailable"))?;
     ensure_access_token_not_expired(
         access_token_expires_at,
         durable_credential_expires_at,
-        auth_config.credential_now()
-            .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Credential authority unavailable"))?,
+        decision,
     )?;
+    // If the deadline was crossed during the clock commit, do not grant
+    // access on the older sample. Persist the crossing before classifying
+    // it as expiry; an inconclusive observation still denies admission.
+    let deadline = access_token_expires_at.min(durable_credential_expires_at);
+    if live >= deadline {
+        let crossing = rustok_auth::application_clock::admit_now(db).await
+            .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Application database clock unavailable"))?;
+        if crossing < deadline {
+            return Err((StatusCode::SERVICE_UNAVAILABLE, "Application database clock unavailable"));
+        }
+        ensure_access_token_not_expired(access_token_expires_at, durable_credential_expires_at, crossing)?;
+    }
 
     Ok(CurrentUser {
         user,
