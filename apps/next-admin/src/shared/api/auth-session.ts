@@ -3,6 +3,7 @@ export const RUSTOK_ACCESS_COOKIE_NAME = 'rustok-access';
 export const RUSTOK_SESSION_COOKIE_PATH = '/api';
 export const RUSTOK_ACCESS_COOKIE_PATH = '/api/rustok';
 export const RUSTOK_SESSION_REQUEST_HEADER = 'x-rustok-session-request';
+export const RUSTOK_EXPECTED_SESSION_ID_HEADER = 'x-rustok-expected-session-id';
 export const RUSTOK_ACCESS_REFRESH_SKEW_MS = 60_000;
 
 const MAX_SESSION_COOKIE_AGE_SECONDS = 90 * 24 * 60 * 60;
@@ -113,6 +114,38 @@ export function parseRustokSessionCookie(
   }
 
   return { credential, maxAge };
+}
+
+export function isCanonicalSessionId(value: unknown): value is string {
+  return typeof value === 'string' && value.length === 36
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value)
+    && value !== '00000000-0000-0000-0000-000000000000';
+}
+
+/** Compare trusted response projections, not authenticate a JWT. The backend
+ * remains the only authority for its signature, expiry and live session.
+ */
+export function rustokDirectSessionClaims(accessToken: string): {
+  sessionId: string; userId: string; tenantId: string;
+} | null {
+  try {
+    const parts = accessToken.split('.');
+    if (parts.length !== 3 || parts.some(part => !/^[A-Za-z0-9_-]+$/.test(part))) return null;
+    const claims = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+    if (claims?.grant_type !== 'direct' || !isCanonicalSessionId(claims.session_id)
+      || !isCanonicalSessionId(claims.sub) || !isCanonicalSessionId(claims.tenant_id)) return null;
+    return { sessionId: claims.session_id, userId: claims.sub, tenantId: claims.tenant_id };
+  } catch {
+    return null;
+  }
+}
+
+export function matchesRustokDirectSession(
+  token: string, sessionId: string, userId: string, tenantId: string | null | undefined
+): boolean {
+  const claims = rustokDirectSessionClaims(token);
+  return claims !== null && claims.sessionId === sessionId && claims.userId === userId
+    && claims.tenantId === tenantId;
 }
 
 /**

@@ -380,8 +380,20 @@ epoch. Native authenticated calls refuse stale/absent credentials and recheck
 before dispatch. Refresh rejects tenant/subject/lineage replacement. Source
 regressions cover changed, missing or unavailable epochs and identity
 substitution. Routine refresh conservatively invalidates foreign projections.
-Out-of-order noncooperating responses, SSR navigation, server-side expected
-lineage admission and mounted verification remain open.
+Expected-lineage admission is source-wired for raw/cookie REST refresh/logout
+and GraphQL HTTP refresh. The strict optional non-nil canonical UUID header is
+checked before rotation/recovery/reuse revocation. Expected logout proves the
+digest belongs to the locked tenant lineage (including retained history);
+missing/mismatched credentials do not clear cookies. Leptos projects the
+expected ID through CSR/hydrate and Next Admin pins Auth.js to the direct
+session, compares tenant/subject/lineage before dispatch, and avoids clearing
+cookies on rejected refresh. Next Auth.js sign-out events preserve Rustok
+cookies on revocation failure but cannot prevent Auth.js's own session clearing.
+Regressions cover current/historical mismatch, matching proof recovery,
+historical logout retry, header parsing and adapter forwarding.
+Out-of-order noncooperating responses, SSR navigation, discovery without
+expected identity, explicit confirmed Next logout and mounted verification
+remain open.
 
 Remaining implementation: standalone Storefront SSR validated composition,
 Next Storefront (currently observation-only, without its own refresh flow),

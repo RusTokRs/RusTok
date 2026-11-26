@@ -67,8 +67,7 @@ lineage. Failed logout retains provider signals only for explicit retry, not
 verified memory. The document lease still poisons an abandoned transition.
 No token, identity or proof enters localStorage. A routine refresh invalidates
 other projections conservatively; seamless cross-tab restoration, late
-noncooperating cookie delivery and server-side expected-lineage admission
-remain open. Backend authentication and authorization remain authoritative.
+noncooperating cookie delivery and mounted expected-lineage verification remain open. Backend authentication and authorization remain authoritative.
 
 Full host checks and mounted-provider verification remain open. Standalone state-machine tests do
 not prove the browser protocol. The Blog reference plan records earlier bounded package/WASM
@@ -116,6 +115,13 @@ response parsing and bounded retry complete. The browser must support Web
 Locks and AbortSignal.timeout in a secure context. Fetch uses same-origin
 mode/credentials, redirect:error, no-store, and a 10-second timeout.
 Standalone Storefront SSR still needs validated host composition. Late
-noncooperating response ordering, server-side expected-lineage admission,
+noncooperating response ordering, mounted expected-lineage verification,
 mounted browser verification and real backend/replica failure injection
 remain open.
+
+Retained-session refresh/logout forwards the canonical non-nil expected
+session UUID through the direct cookie or native BFF transport. A malformed
+projected ID is rejected before I/O; a mismatch is rejected by the Auth
+server before mutation. The native refresh adapter also checks the returned
+lineage before persisting cookies. Discovery without a prior projection
+remains credential-only; arbitrary late cookie delivery is not solved.

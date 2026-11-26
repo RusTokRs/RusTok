@@ -54,14 +54,28 @@ pub fn clear_refresh_cookie_header(secure: bool) -> String {
 /// still authenticate the token itself through the API — this is a
 /// parsing helper, not validation.
 pub fn session_id_from_access_token(token: &str) -> Option<String> {
-    let payload = token.split('.').nth(1)?;
+    let mut parts = token.split('.');
+    let header = parts.next()?;
+    let payload = parts.next()?;
+    let signature = parts.next()?;
+    if header.is_empty() || signature.is_empty() || parts.next().is_some() {
+        return None;
+    }
     let decoded = base64url_decode(payload)?;
-    let json = String::from_utf8(decoded).ok()?;
-    let marker = "\"session_id\":\"";
-    let start = json.find(marker)? + marker.len();
-    let end = start + json[start..].find('"')?;
-    let value = &json[start..end];
-    (!value.is_empty()).then(|| value.to_string())
+    #[derive(serde::Deserialize)]
+    struct SessionClaim { session_id: String }
+    let claims: SessionClaim = serde_json::from_slice(&decoded).ok()?;
+    (!claims.session_id.is_empty()).then_some(claims.session_id)
+}
+
+pub(crate) const EXPECTED_SESSION_ID_HEADER: &str = "x-rustok-expected-session-id";
+
+/// Canonical non-nil UUID comparison metadata, not authenticated claims.
+pub(crate) fn canonical_session_id(value: &str) -> bool {
+    value.len() == 36 && value.bytes().enumerate().all(|(index, byte)| {
+        if matches!(index, 8 | 13 | 18 | 23) { byte == b'-' }
+        else { byte.is_ascii_digit() || matches!(byte, b'a'..=b'f') }
+    }) && value.bytes().any(|byte| byte != b'0' && byte != b'-')
 }
 
 fn base64url_decode(input: &str) -> Option<Vec<u8>> {

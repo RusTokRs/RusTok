@@ -158,5 +158,6 @@ recovery/cutover gates. No public transport/UI or new operator capability is exp
 
 The shared Leptos CSR/hydrate provider now source-wires origin-wide transition
 admission, foreign epoch invalidation and atomic verified memory publication.
-See [Auth UI](ui/README.md); browser execution and server-side expected-lineage
-admission remain pending.
+See [Auth UI](ui/README.md); server-side expected-lineage admission is
+source-wired for raw/cookie REST and GraphQL HTTP refresh, with mounted browser
+and cross-replica verification pending.

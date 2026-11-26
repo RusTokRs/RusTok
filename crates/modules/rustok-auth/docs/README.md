@@ -801,3 +801,14 @@ native credential fallback. This is a client consistency fence, not backend
 authorization or an expected-lineage server precondition. See [Auth UI](../ui/README.md)
 and the [implementation plan](./implementation-plan.md). Mounted browser
 verification, noncooperating response ordering and seamless peer refresh remain open.
+
+### Expected session lineage (source only)
+
+The optional singleton `x-rustok-expected-session-id` canonical non-nil UUID
+is checked by raw/cookie REST refresh/logout and GraphQL HTTP refresh.
+Mismatch is a conflict before mutation, including historical reuse revocation.
+Expected logout requires possession of a digest of the exact tenant lineage
+(current, previous or retained history), not merely knowledge of the ID.
+Leptos retained-session transitions and Next Admin's Auth.js-bound session
+forward the precondition. Startup discovery and delayed response ordering
+remain separate concerns. See the [recovery ADR](../../../../DECISIONS/2026-11-26-session-refresh-retry-proof.md).

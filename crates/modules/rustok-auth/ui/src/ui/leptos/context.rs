@@ -427,7 +427,8 @@ impl AuthContext {
     pub async fn sign_out(&self) -> Result<(), AuthError> {
         let auth = self.clone();
         self.with_provider_lock(true, async move {
-            auth.sign_out_with(transport::sign_out_unlocked).await
+            let expected = auth.expected_session_id()?;
+            auth.sign_out_with(move |tenant| transport::sign_out_unlocked(tenant, expected)).await
         }).await
     }
 
@@ -539,7 +540,16 @@ impl AuthContext {
         self.with_provider_lock(true, async move { auth.refresh_session_locked().await }).await
     }
 
+    fn expected_session_id(&self) -> Result<Option<String>, AuthError> {
+        self.session.try_get_untracked().ok_or(AuthError::Network)?
+            .map(|session| crate::core::session_id_from_access_token(&session.token)
+                .filter(|id| crate::core::canonical_session_id(id))
+                .ok_or(AuthError::Http(409)))
+            .transpose()
+    }
+
     async fn refresh_session_locked(&self) -> Result<(), AuthError> {
+        let expected = self.expected_session_id()?;
         let transition = self.begin_scope_transition(false)?;
         if !transition.is_current() {
             return Err(AuthError::Network);
@@ -553,7 +563,7 @@ impl AuthContext {
             transition.complete(false);
             return Err(AuthError::Unauthorized);
         };
-        let result = transport::refresh_session_unlocked(tenant).await;
+        let result = transport::refresh_session_unlocked(tenant, expected).await;
         if !transition.is_current() {
             return Err(AuthError::Network);
         }

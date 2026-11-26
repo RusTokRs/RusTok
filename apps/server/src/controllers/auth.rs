@@ -206,6 +206,12 @@ fn parse_refresh_retry_key(headers: &axum::http::HeaderMap) -> Result<Option<rus
     .map_err(Error::from)
 }
 
+fn parse_expected_session_id(headers: &axum::http::HeaderMap) -> Result<Option<uuid::Uuid>> {
+    rustok_auth::parse_expected_session_id(
+        headers.get_all(rustok_auth::EXPECTED_SESSION_ID_HEADER).iter().map(|value| value.as_bytes()),
+    ).map_err(AuthLifecycleError::from).map_err(Error::from)
+}
+
 #[utoipa::path(post, path = "/api/auth/refresh", tag = "auth", request_body = RefreshRequest,
     responses((status = 200, description = "Token refreshed", body = AuthResponse),(status = 401, description = "Invalid or expired refresh token"),(status = 409, description = "Refresh token was already rotated by another concurrent request")))]
 async fn refresh(
@@ -216,6 +222,7 @@ async fn refresh(
 ) -> Result<Response> {
     tracing::debug!("auth::refresh entry");
     let retry_key = parse_refresh_retry_key(&headers)?;
+    let expected_session_id = parse_expected_session_id(&headers)?;
     let runtime_ctx = ctx.runtime_ctx();
     let config = ctx
         .auth_config()
@@ -228,6 +235,7 @@ async fn refresh(
         &params.refresh_token,
         runtime_ctx.settings().features.email_verification,
         retry_key.as_ref(),
+        expected_session_id,
     )
     .await
     .map_err(|e: AuthLifecycleError| Error::from(e))?;
@@ -247,13 +255,16 @@ async fn refresh(
 async fn logout(
     State(ctx): State<ServerAuthRuntime>,
     CurrentTenant(tenant): CurrentTenant,
+    headers: axum::http::HeaderMap,
     Json(params): Json<RefreshRequest>,
 ) -> Result<Response> {
     tracing::debug!("auth::logout entry");
+    let expected_session_id = parse_expected_session_id(&headers)?;
     AuthLifecycleService::logout_by_refresh_token_runtime(
         ctx.runtime_ctx(),
         tenant.id,
         &params.refresh_token,
+        expected_session_id,
     )
     .await
     .map_err(|error: AuthLifecycleError| Error::from(error))?;
@@ -504,6 +515,7 @@ async fn session_refresh(
     tracing::debug!("auth::session_refresh entry");
     require_session_request_header(&headers)?;
     reject_explicit_cookie_retry_key(&headers)?;
+    let expected_session_id = parse_expected_session_id(&headers)?;
     let credential = parse_session_cookie(&headers)?
         .ok_or_else(|| Error::Unauthorized("Invalid refresh token".into()))?;
     let retry_key = credential.retry_key(tenant.id).map_err(AuthLifecycleError::from)?;
@@ -520,6 +532,7 @@ async fn session_refresh(
         credential.token(),
         runtime_ctx.settings().features.email_verification,
         Some(&retry_key),
+        expected_session_id,
     )
     .await
     .map_err(|e: AuthLifecycleError| Error::from(e))?;
@@ -560,14 +573,19 @@ async fn session_logout(
     // An absent or already-revoked cookie is an idempotent logout.
     // A persistence or event-publication failure is not: the refresh token
     // might still be live, so never report a successful server-side logout.
+    let expected_session_id = parse_expected_session_id(&headers)?;
     if let Some(credential) = parse_session_cookie(&headers)? {
         let revocation = AuthLifecycleService::logout_by_refresh_token_runtime(
             ctx.runtime_ctx(),
             tenant.id,
             credential.token(),
+            expected_session_id,
         )
         .await;
         cookie_logout_revocation_result(revocation)?;
+    } else if expected_session_id.is_some() {
+        // Absence cannot confirm revocation of an explicitly expected lineage.
+        return Err(Error::from(AuthLifecycleError::SessionLineageMismatch));
     }
 
     let cookie = build_session_cookie(
@@ -1387,6 +1405,14 @@ mod tests {
         assert!(super::reject_explicit_cookie_retry_key(&headers).is_ok());
         headers.insert(rustok_auth::REFRESH_RETRY_KEY_HEADER, HeaderValue::from_str(&"a1".repeat(32)).unwrap());
         assert!(super::reject_explicit_cookie_retry_key(&headers).is_err());
+    }
+
+    #[test]
+    fn cookie_logout_never_confirms_a_lineage_mismatch() {
+        assert!(matches!(
+            super::cookie_logout_revocation_result(Err(super::AuthLifecycleError::SessionLineageMismatch)),
+            Err(super::Error::Conflict(_))
+        ));
     }
 
     #[test]

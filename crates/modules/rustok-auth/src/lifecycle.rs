@@ -89,6 +89,7 @@ pub enum AuthLifecycleMutationError {
     EmailNotVerified,
     InvalidRefreshToken,
     RefreshAlreadyRotated,
+    SessionLineageMismatch,
     SessionExpired,
     UserNotFound,
     InvalidResetToken,
@@ -110,6 +111,7 @@ impl std::fmt::Display for AuthLifecycleMutationError {
             Self::EmailNotVerified => f.write_str("email address is not verified"),
             Self::InvalidRefreshToken => f.write_str("invalid refresh token"),
             Self::RefreshAlreadyRotated => f.write_str("refresh attempt already rotated"),
+            Self::SessionLineageMismatch => f.write_str("session lineage mismatch"),
             Self::SessionExpired => f.write_str("session expired"),
             Self::UserNotFound => f.write_str("user not found"),
             Self::InvalidResetToken => f.write_str("invalid reset token"),
@@ -180,6 +182,7 @@ pub trait AuthLifecyclePort: Send + Sync {
         context: &AuthLifecycleContext,
         refresh_token: String,
         retry_key: Option<crate::AuthRefreshRetryKey>,
+        expected_session_id: Option<Uuid>,
     ) -> Result<AuthTokenRecord, AuthLifecycleMutationError>;
 
     async fn forgot_password(

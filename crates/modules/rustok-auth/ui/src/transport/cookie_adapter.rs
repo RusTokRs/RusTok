@@ -113,9 +113,10 @@ async fn post_session(
     body: Option<serde_json::Value>,
     session_request: bool,
     is_login: bool,
+    expected_session_id: Option<&str>,
 ) -> Result<CookieSessionResponse, AuthError> {
     let endpoint = cookie_session_endpoint(&get_api_url(), path)?;
-    request_session(endpoint, tenant, body, session_request, is_login).await
+    request_session(endpoint, tenant, body, session_request, is_login, expected_session_id).await
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -125,12 +126,16 @@ async fn request_session<T: serde::de::DeserializeOwned>(
     body: Option<serde_json::Value>,
     session_request: bool,
     is_login: bool,
+    expected_session_id: Option<&str>,
 ) -> Result<T, AuthError> {
     let mut request = HTTP_CLIENT.post(endpoint.clone())
         .timeout(std::time::Duration::from_secs(10))
         .header("X-Tenant-ID", tenant);
     if session_request {
         request = request.header("x-rustok-session-request", "1");
+    }
+    if let Some(expected) = expected_session_id {
+        request = request.header(crate::core::EXPECTED_SESSION_ID_HEADER, expected);
     }
     if let Some(body) = body {
         request = request.json(&body);
@@ -152,6 +157,7 @@ async fn request_session<T: serde::de::DeserializeOwned>(
     body: Option<serde_json::Value>,
     session_request: bool,
     is_login: bool,
+    expected_session_id: Option<&str>,
 ) -> Result<T, AuthError> {
     use leptos::wasm_bindgen::{JsCast, JsValue};
     use wasm_bindgen_futures::JsFuture;
@@ -160,6 +166,9 @@ async fn request_session<T: serde::de::DeserializeOwned>(
     headers.set("X-Tenant-ID", tenant).map_err(|_| AuthError::Network)?;
     if session_request {
         headers.set("x-rustok-session-request", "1").map_err(|_| AuthError::Network)?;
+    }
+    if let Some(expected) = expected_session_id {
+        headers.set(crate::core::EXPECTED_SESSION_ID_HEADER, expected).map_err(|_| AuthError::Network)?;
     }
     let init = web_sys::RequestInit::new();
     init.set_method("POST");
@@ -201,6 +210,7 @@ pub(super) async fn sign_in_cookie(
         Some(json!({ "email": email, "password": password })),
         false,
         true,
+        None,
     )
     .await?;
     Ok(to_user_session(payload, tenant))
@@ -218,6 +228,7 @@ pub(super) async fn sign_up_cookie(
         Some(json!({ "email": email, "password": password, "name": name })),
         false,
         false,
+        None,
     )
     .await?;
     Ok(to_user_session(payload, tenant))
@@ -225,14 +236,15 @@ pub(super) async fn sign_up_cookie(
 
 pub(super) async fn refresh_session_cookie(
     tenant: String,
+    expected_session_id: Option<String>,
 ) -> Result<(AuthSession, AuthUser), AuthError> {
     // The API owns the proof in the HttpOnly envelope. If the old cookie
     // is still present, an ambiguous response can recover the same successor.
     // If Set-Cookie was already applied, the retry starts from the new generation.
-    let first = post_session("/api/auth/session/refresh", &tenant, None, true, false).await;
+    let first = post_session("/api/auth/session/refresh", &tenant, None, true, false, expected_session_id.as_deref()).await;
     let payload = match first {
         Err(AuthError::Network | AuthError::Http(500..=599)) =>
-            post_session("/api/auth/session/refresh", &tenant, None, true, false).await?,
+            post_session("/api/auth/session/refresh", &tenant, None, true, false, expected_session_id.as_deref()).await?,
         other => other?,
     };
     let (user, session) = to_user_session(payload, tenant);
@@ -278,13 +290,13 @@ pub(super) async fn accept_invite_direct(
     Ok(payload.email)
 }
 
-pub(super) async fn sign_out_cookie(tenant: String) -> Result<(), AuthError> {
-    sign_out_cookie_at(&get_api_url(), tenant).await
+pub(super) async fn sign_out_cookie(tenant: String, expected_session_id: Option<String>) -> Result<(), AuthError> {
+    sign_out_cookie_at(&get_api_url(), tenant, expected_session_id.as_deref()).await
 }
 
-async fn sign_out_cookie_at(api_url: &str, tenant: String) -> Result<(), AuthError> {
+async fn sign_out_cookie_at(api_url: &str, tenant: String, expected_session_id: Option<&str>) -> Result<(), AuthError> {
     let endpoint = cookie_session_endpoint(api_url, "/api/auth/session/logout")?;
-    let payload: StatusResponse = request_session(endpoint, &tenant, None, true, false).await?;
+    let payload: StatusResponse = request_session(endpoint, &tenant, None, true, false, expected_session_id).await?;
     confirmed_logout(payload)
 }
 
@@ -322,9 +334,18 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn direct_cookie_logout_forwards_expected_lineage_without_following_conflict() {
+        let expected = "a1111111-1111-4111-8111-111111111111";
+        let (url, received) = mock_api("409 Conflict", "conflict", "").await;
+        assert_eq!(sign_out_cookie_at(&url, "shop".into(), Some(expected)).await, Err(AuthError::Http(409)));
+        let request = received.await.unwrap().to_ascii_lowercase();
+        assert!(request.contains(&format!("\r\nx-rustok-expected-session-id: {expected}\r\n")));
+    }
+
+    #[tokio::test]
     async fn direct_cookie_logout_requires_an_explicit_ok_response() {
         let (url, request) = mock_api("200 OK", r#"{"status":"ok"}"#, "").await;
-        assert_eq!(sign_out_cookie_at(&url, "shop".into()).await, Ok(()));
+        assert_eq!(sign_out_cookie_at(&url, "shop".into(), None).await, Ok(()));
         let request = request.await.unwrap().to_ascii_lowercase();
         assert!(request.starts_with("post /api/auth/session/logout http/1.1\r\n"));
         assert!(request.contains("\r\nx-tenant-id: shop\r\n"));
@@ -337,7 +358,7 @@ mod tests {
         ] {
             let (url, request) = mock_api(status, body, "").await;
             assert!(matches!(
-                sign_out_cookie_at(&url, "shop".into()).await,
+                sign_out_cookie_at(&url, "shop".into(), None).await,
                 Err(AuthError::Network | AuthError::Http(_))
             ));
             request.await.unwrap();
@@ -392,7 +413,7 @@ mod tests {
             "https://shop.example/#fragment",
         ] {
             assert_eq!(
-                sign_out_cookie_at(api_url, "shop".into()).await,
+                sign_out_cookie_at(api_url, "shop".into(), None).await,
                 Err(AuthError::Network),
                 "invalid API base should fail before the request"
             );
@@ -405,7 +426,7 @@ mod tests {
         let headers = format!("location: {target}/another-endpoint\r\n");
         let (url, request) = mock_api("302 Found", "", &headers).await;
         assert_eq!(
-            sign_out_cookie_at(&url, "shop".into()).await,
+            sign_out_cookie_at(&url, "shop".into(), None).await,
             Err(AuthError::Network)
         );
         assert!(request.await.unwrap().starts_with("POST "));

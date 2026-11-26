@@ -2088,3 +2088,15 @@ backoff. Generation zero remains a valid initial seed. The watermark lives
 in the server runtime, not across process restarts; intentional database
 restoration to an older generation requires an operator-controlled recovery.
 Regression cases authored, not executed.
+
+### Expected session lineage precondition
+
+Raw and cookie REST refresh/logout and GraphQL HTTP refresh accept the optional
+singleton `x-rustok-expected-session-id` canonical lowercase non-nil UUID.
+The server checks the resolved tenant credential against that ID before
+rotation or historical replay side effects. A mismatch returns 409 (GraphQL
+CONFLICT). Expected cookie logout verifies current/previous/history digest
+ownership under a tenant session lock and does not clear a missing or mismatched
+credential. The ID is not a bearer credential; absence remains credential-only
+startup or explicit raw-token operation. CORS admits the header. Mounted HTTP
+and database contention evidence is pending.

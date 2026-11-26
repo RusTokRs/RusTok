@@ -40,6 +40,7 @@ fn map_lifecycle_error(error: AuthLifecycleError) -> AuthLifecycleMutationError 
         AuthLifecycleError::EmailNotVerified => AuthLifecycleMutationError::EmailNotVerified,
         AuthLifecycleError::InvalidRefreshToken => AuthLifecycleMutationError::InvalidRefreshToken,
         AuthLifecycleError::RefreshAlreadyRotated => AuthLifecycleMutationError::RefreshAlreadyRotated,
+        AuthLifecycleError::SessionLineageMismatch => AuthLifecycleMutationError::SessionLineageMismatch,
         AuthLifecycleError::SessionExpired => AuthLifecycleMutationError::SessionExpired,
         AuthLifecycleError::UserNotFound => AuthLifecycleMutationError::UserNotFound,
         AuthLifecycleError::InvalidResetToken => AuthLifecycleMutationError::InvalidResetToken,
@@ -279,6 +280,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         context: &AuthLifecycleContext,
         refresh_token: String,
         retry_key: Option<AuthRefreshRetryKey>,
+        expected_session_id: Option<uuid::Uuid>,
     ) -> Result<AuthTokenRecord, AuthLifecycleMutationError> {
         let (user, tokens) = AuthLifecycleService::refresh_runtime(
             &self.runtime_ctx,
@@ -287,6 +289,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
             &refresh_token,
             self.runtime_ctx.settings().features.email_verification,
             retry_key.as_ref(),
+            expected_session_id,
         )
         .await
         .map_err(map_lifecycle_error)?;

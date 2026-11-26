@@ -136,7 +136,7 @@ and surface read errors. Runtime and browser verification remain required.
   a fresh generation-specific proof. Only refresh is retried automatically,
   never the GraphQL operation. An unrecoverable conflict preserves cookies;
   failures before upstream GraphQL dispatch report the operation as unforwarded.
-  Only a definitive backend 401 clears cookies in this path. Refresh responses
+  Rejected refreshes never emit a clearing cookie; a later response could otherwise erase a new session. Refresh responses
   must match the Auth.js subject before being persisted. Backend redirects are
   refused to avoid forwarding credentials to another destination.
   Cutover requires stopping old backend and BFF writers and revoking/re-signing-in
@@ -262,3 +262,17 @@ claims. Existing request bodies, auth/tenant headers, write identities and owner
 unchanged. This does not change GraphQL extensions, Product write-outcome classification or
 native server-function envelopes. Eleven reader regression functions are **unrun**; see the
 [canonical HTTP contract](../../../docs/architecture/api.md#http-error-retry-advice).
+
+### Auth.js lineage binding
+
+Auth.js identity carries the non-secret direct Rustok session ID and tenant UUID
+from the Auth-issued response. Existing Auth.js identities without this ID
+are rejected; sign in again. Refresh/logout forward the expected ID, and both
+existing and refreshed access projections must match tenant, subject and session
+before GraphQL dispatch. Backend JWT validation remains authoritative. A refresh
+409 is non-retryable without re-observation; failed refresh and missing Auth.js
+identity never clear Rustok cookies on the GraphQL path. The sign-out event clears
+Rustok cookies only after confirmed backend revocation; Auth.js can still clear
+its own cookie independently, so explicit confirmed sign-out UX and route
+handling remain open. Arbitrary stale domain intent and late cookie delivery
+are not solved by the lineage ID.

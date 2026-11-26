@@ -49,6 +49,7 @@ pub enum AuthLifecycleError {
     EmailNotVerified,
     InvalidRefreshToken,
     RefreshAlreadyRotated,
+    SessionLineageMismatch,
     SessionExpired,
     UserNotFound,
     InvalidResetToken,
@@ -75,6 +76,7 @@ impl std::fmt::Display for AuthLifecycleError {
             AuthLifecycleError::RefreshAlreadyRotated => {
                 formatter.write_str("refresh token was already rotated by another request")
             },
+            AuthLifecycleError::SessionLineageMismatch => formatter.write_str("session lineage mismatch"),
             AuthLifecycleError::SessionExpired => formatter.write_str("session expired"),
             AuthLifecycleError::UserNotFound => formatter.write_str("user not found"),
             AuthLifecycleError::InvalidResetToken => formatter.write_str("invalid reset token"),
@@ -136,6 +138,7 @@ impl From<AuthLifecycleError> for Error {
             AuthLifecycleError::RefreshAlreadyRotated => Error::Conflict(
                 "Refresh token was already rotated by another request".into(),
             ),
+            AuthLifecycleError::SessionLineageMismatch => Error::Conflict("Session lineage mismatch".into()),
             AuthLifecycleError::SessionExpired => Error::Unauthorized("Session expired".into()),
             AuthLifecycleError::UserNotFound => Error::Unauthorized("User not found".into()),
             AuthLifecycleError::InvalidResetToken => {
@@ -774,6 +777,7 @@ impl AuthLifecycleService {
         refresh_token: &str,
         require_email_verification: bool,
         retry_key: Option<&AuthRefreshRetryKey>,
+        expected_session_id: Option<uuid::Uuid>,
     ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
         Self::refresh_with_config_db(
             ctx.db(),
@@ -782,6 +786,7 @@ impl AuthLifecycleService {
             refresh_token,
             require_email_verification,
             retry_key,
+            expected_session_id,
         )
         .await
     }
@@ -949,6 +954,7 @@ impl AuthLifecycleService {
         refresh_token: &str,
         require_email_verification: bool,
         retry_key: Option<&AuthRefreshRetryKey>,
+        expected_session_id: Option<uuid::Uuid>,
     ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
         let token_hash = hash_refresh_token(refresh_token);
         // Current and historical digests are only routing hints until the
@@ -977,6 +983,11 @@ impl AuthLifecycleService {
                     .ok_or(AuthLifecycleError::InvalidRefreshToken)?
             }
         };
+        // The expected ID is only a consistency precondition, never authority.
+        // Reject before any reuse-detection path can revoke a different lineage.
+        if expected_session_id.is_some_and(|id| id != observed.id) {
+            return Err(AuthLifecycleError::SessionLineageMismatch);
+        }
         let txn = db.begin().await.map_err(AuthLifecycleError::from)?;
         // All paths, including history-only recovery, use user -> session
         // ordering and SQLite acquires its writer before transactional reads.
@@ -1007,6 +1018,9 @@ impl AuthLifecycleService {
             }
         };
 
+        if expected_session_id.is_some_and(|id| id != session.id) {
+            return Err(AuthLifecycleError::SessionLineageMismatch);
+        }
         if !session.is_active() {
             return Err(AuthLifecycleError::SessionExpired);
         }
@@ -1354,24 +1368,36 @@ impl AuthLifecycleService {
         ctx: &ServerRuntimeContext,
         tenant_id: uuid::Uuid,
         refresh_token: &str,
+        expected_session_id: Option<uuid::Uuid>,
     ) -> std::result::Result<(), AuthLifecycleError> {
         let txn = ctx.db().begin().await.map_err(AuthLifecycleError::from)?;
         let token_hash = hash_refresh_token(refresh_token);
 
-        let session = match Self::find_refresh_session_for_update_in_tx(
-            &txn,
-            tenant_id,
-            &token_hash,
-        )
-        .await?
-        {
-            Some(session) => Some(session),
-            None => {
-                Self::find_previous_refresh_session_for_update_in_tx(&txn, tenant_id, &token_hash)
-                    .await?
+        let session = if let Some(expected) = expected_session_id {
+            // Lock the expected row, then independently prove possession of
+            // a credential of that exact tenant and lineage. History permits
+            // a confirmed retry of logout after multiple lost rotations.
+            let session = Self::find_session_by_id_for_update_in_tx(&txn, tenant_id, expected)
+                .await?.ok_or(AuthLifecycleError::SessionLineageMismatch)?;
+            let known = session.token_hash == token_hash
+                || session.previous_token_hash.as_deref() == Some(token_hash.as_str())
+                || session_refresh_history::Entity::find_by_id(token_hash.clone())
+                    .filter(session_refresh_history::Column::SessionId.eq(expected))
+                    .one(&txn).await.map_err(AuthLifecycleError::from)?.is_some();
+            if !known {
+                return Err(AuthLifecycleError::SessionLineageMismatch);
             }
-        }
-        .ok_or(AuthLifecycleError::InvalidRefreshToken)?;
+            if !session.is_active() {
+                return Err(AuthLifecycleError::SessionExpired);
+            }
+            session
+        } else {
+            match Self::find_refresh_session_for_update_in_tx(&txn, tenant_id, &token_hash).await? {
+                Some(session) => Some(session),
+                None => Self::find_previous_refresh_session_for_update_in_tx(&txn, tenant_id, &token_hash).await?,
+            }
+            .ok_or(AuthLifecycleError::InvalidRefreshToken)?
+        };
 
         if !session.is_active() {
             return Err(AuthLifecycleError::InvalidRefreshToken);
@@ -1843,7 +1869,7 @@ mod tests {
             &config,
             tenant.id,
             &login_tokens.refresh_token,
-            false, None,
+            false, None, None,
         )
         .await
         .expect("refresh");
@@ -2819,7 +2845,7 @@ mod tests {
             &config,
             tenant.id,
             expired_token,
-            false, None,
+            false, None, None,
         )
         .await;
 
@@ -2850,19 +2876,65 @@ mod tests {
         let config = test_auth_config("cookie-recovery-secret", 600, 3600);
         let proof = cookie.retry_key(tenant.id).unwrap();
         let (_, first) = AuthLifecycleService::refresh_with_config_db(
-            &db, &config, tenant.id, cookie.token(), false, Some(&proof),
+            &db, &config, tenant.id, cookie.token(), false, Some(&proof), Some(session.id),
         ).await.unwrap();
         let persisted = sessions::Entity::find_by_id(session.id).one(&db).await.unwrap().unwrap();
         let replay = rustok_auth::AuthRefreshCookie::parse(&cookie.cookie_value()).unwrap();
         let proof = replay.retry_key(tenant.id).unwrap();
         let (_, recovered) = AuthLifecycleService::refresh_with_config_db(
-            &db, &config, tenant.id, replay.token(), false, Some(&proof),
+            &db, &config, tenant.id, replay.token(), false, Some(&proof), Some(session.id),
         ).await.unwrap();
         assert_eq!(first.refresh_token, recovered.refresh_token);
         let after = sessions::Entity::find_by_id(session.id).one(&db).await.unwrap().unwrap();
         assert_eq!(persisted.token_hash, after.token_hash);
         assert_eq!(persisted.expires_at, after.expires_at);
         assert_eq!(persisted.previous_token_revoked_at, after.previous_token_revoked_at);
+    }
+
+    #[tokio::test]
+    async fn expected_lineage_refuses_foreign_current_and_historical_credentials_before_mutation() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Lineage tenant", "lineage-tenant")
+            .insert(&db).await.unwrap();
+        let user = users::ActiveModel::new(tenant.id, "lineage@example.com", "hash")
+            .insert(&db).await.unwrap();
+        let current = "a1".repeat(32);
+        let previous = "b2".repeat(32);
+        let expected = sessions::ActiveModel::new(tenant.id, user.id,
+            hash_refresh_token(&"c3".repeat(32)), Utc::now() + Duration::hours(1),
+            None, None).insert(&db).await.unwrap();
+        let actual = sessions::ActiveModel::new(tenant.id, user.id,
+            hash_refresh_token(&current), Utc::now() + Duration::hours(1),
+            None, None).insert(&db).await.unwrap();
+        session_refresh_history::ActiveModel {
+            token_hash: Set(hash_refresh_token(&previous)),
+            session_id: Set(actual.id),
+            rotated_at: Set(Some((Utc::now() - Duration::seconds(60)).into())),
+        }.insert(&db).await.unwrap();
+        let config = test_auth_config("lineage-secret", 600, 3600);
+        let runtime = ServerRuntimeContext::new(db.clone(), crate::common::RustokSettings::default());
+        for token in [&current, &previous] {
+            let result = AuthLifecycleService::refresh_with_config_db(
+                &db, &config, tenant.id, token, false, None, Some(expected.id),
+            ).await;
+            assert!(matches!(result, Err(AuthLifecycleError::SessionLineageMismatch)));
+            let result = AuthLifecycleService::logout_by_refresh_token_runtime(
+                &runtime, tenant.id, token, Some(expected.id),
+            ).await;
+            assert!(matches!(result, Err(AuthLifecycleError::SessionLineageMismatch)));
+        }
+        for row in [&actual, &expected] {
+            let after = sessions::Entity::find_by_id(row.id).one(&db).await.unwrap().unwrap();
+            assert!(after.is_active());
+            assert_eq!(after.token_hash, row.token_hash);
+            assert_eq!(after.expires_at, row.expires_at);
+        }
+        AuthLifecycleService::logout_by_refresh_token_runtime(
+            &runtime, tenant.id, &previous, Some(actual.id),
+        ).await.unwrap();
+        assert!(matches!(AuthLifecycleService::logout_by_refresh_token_runtime(
+            &runtime, tenant.id, &previous, Some(actual.id),
+        ).await, Err(AuthLifecycleError::SessionExpired)));
     }
 
     #[tokio::test]
@@ -2905,7 +2977,7 @@ mod tests {
             &config,
             tenant.id,
             previous_token,
-            false, None,
+            false, None, None,
         )
         .await;
 
@@ -2966,7 +3038,7 @@ mod tests {
             &config,
             tenant.id,
             previous_token,
-            false, None,
+            false, None, None,
         )
         .await;
 
@@ -3043,7 +3115,7 @@ mod tests {
             &config,
             tenant.id,
             previous_token,
-            false, None,
+            false, None, None,
         )
         .await;
 
@@ -3093,12 +3165,12 @@ mod tests {
         .await
         .expect("login");
         let (_, second) = AuthLifecycleService::refresh_with_config_db(
-            &db, &config, tenant.id, &first.refresh_token, false, None,
+            &db, &config, tenant.id, &first.refresh_token, false, None, None,
         )
         .await
         .expect("first rotation");
         let (_, third) = AuthLifecycleService::refresh_with_config_db(
-            &db, &config, tenant.id, &second.refresh_token, false, None,
+            &db, &config, tenant.id, &second.refresh_token, false, None, None,
         )
         .await
         .expect("second rotation");
@@ -3115,7 +3187,7 @@ mod tests {
         aged.update(&db).await.expect("age history fixture");
 
         let wrong_tenant = AuthLifecycleService::refresh_with_config_db(
-            &db, &config, other.id, &first.refresh_token, false, None,
+            &db, &config, other.id, &first.refresh_token, false, None, None,
         )
         .await;
         assert!(matches!(wrong_tenant, Err(AuthLifecycleError::InvalidRefreshToken)));
@@ -3125,7 +3197,7 @@ mod tests {
         assert_eq!(session.previous_token_hash, Some(hash_refresh_token(&second.refresh_token)));
 
         let replay = AuthLifecycleService::refresh_with_config_db(
-            &db, &config, tenant.id, &first.refresh_token, false, None,
+            &db, &config, tenant.id, &first.refresh_token, false, None, None,
         )
         .await;
         assert!(matches!(replay, Err(AuthLifecycleError::InvalidRefreshToken)));
@@ -3163,7 +3235,7 @@ mod tests {
             [wrong_raw.as_bytes()].into_iter(),
         ).unwrap().unwrap();
         let (_, rotated) = AuthLifecycleService::refresh_with_config_db(
-            &db, &config, tenant.id, &first.refresh_token, false, Some(&proof),
+            &db, &config, tenant.id, &first.refresh_token, false, Some(&proof), None,
         ).await.expect("rotate");
         let first_hash = hash_refresh_token(&first.refresh_token);
         let history = session_refresh_history::Entity::find_by_id(first_hash.clone())
@@ -3172,13 +3244,13 @@ mod tests {
         let before = sessions::Entity::find_by_id(session_id).one(&db).await.unwrap().unwrap();
         for wrong_proof in [None, Some(&wrong)] {
             let result = AuthLifecycleService::refresh_with_config_db(
-                &db, &config, tenant.id, &first.refresh_token, false, wrong_proof,
+                &db, &config, tenant.id, &first.refresh_token, false, wrong_proof, None,
             ).await;
             assert!(matches!(result, Err(AuthLifecycleError::RefreshAlreadyRotated)));
         }
         for presented in [&first.refresh_token, &rotated.refresh_token] {
             let (_, recovered) = AuthLifecycleService::refresh_with_config_db(
-                &db, &config, tenant.id, presented, false, Some(&proof),
+                &db, &config, tenant.id, presented, false, Some(&proof), None,
             ).await.expect("recover committed rotation");
             assert_eq!(recovered.refresh_token, rotated.refresh_token);
             assert!(recovered.refresh_expires_in <= rotated.refresh_expires_in);
@@ -3192,14 +3264,14 @@ mod tests {
             .count(&db).await.unwrap(), 1);
 
         let (_, next) = AuthLifecycleService::refresh_with_config_db(
-            &db, &config, tenant.id, &rotated.refresh_token, false, Some(&wrong),
+            &db, &config, tenant.id, &rotated.refresh_token, false, Some(&wrong), None,
         ).await.expect("new operation");
         for (presented, key) in [
             (&next.refresh_token, &proof),
             (&first.refresh_token, &wrong),
         ] {
             let result = AuthLifecycleService::refresh_with_config_db(
-                &db, &config, tenant.id, presented, false, Some(key),
+                &db, &config, tenant.id, presented, false, Some(key), None,
             ).await;
             assert!(matches!(result, Err(AuthLifecycleError::RefreshAlreadyRotated)));
         }
@@ -3207,7 +3279,7 @@ mod tests {
         aged.rotated_at = Set(Some((Utc::now() - Duration::seconds(60)).into()));
         aged.update(&db).await.unwrap();
         let result = AuthLifecycleService::refresh_with_config_db(
-            &db, &config, tenant.id, &first.refresh_token, false, Some(&proof),
+            &db, &config, tenant.id, &first.refresh_token, false, Some(&proof), None,
         ).await;
         assert!(matches!(result, Err(AuthLifecycleError::InvalidRefreshToken)));
         let after = sessions::Entity::find_by_id(session_id).one(&db).await.unwrap().unwrap();
@@ -3229,7 +3301,7 @@ mod tests {
             &config,
             tenant.id,
             "unknown-refresh-token",
-            false, None,
+            false, None, None,
         )
         .await;
 
@@ -3274,7 +3346,7 @@ mod tests {
             &config,
             tenant_a.id,
             refresh_token,
-            false, None,
+            false, None, None,
         )
         .await;
 
@@ -3322,7 +3394,7 @@ mod tests {
             &config,
             tenant.id,
             refresh_token,
-            false, None,
+            false, None, None,
         )
         .await;
 
@@ -3368,7 +3440,7 @@ mod tests {
         .await.expect("require user fence");
         let config = test_auth_config("refresh-user-fence", 600, 3600);
         let (_, tokens) = AuthLifecycleService::refresh_with_config_db(
-            &db, &config, tenant.id, raw_token, false, None,
+            &db, &config, tenant.id, raw_token, false, None, None,
         )
         .await.expect("user fence precedes session lock");
         let persisted = sessions::Entity::find_by_id(session.id)
@@ -3782,7 +3854,7 @@ mod tests {
 
         let runtime =
             ServerRuntimeContext::new(db.clone(), crate::common::RustokSettings::default());
-        AuthLifecycleService::logout_by_refresh_token_runtime(&runtime, tenant.id, old_cookie)
+        AuthLifecycleService::logout_by_refresh_token_runtime(&runtime, tenant.id, old_cookie, None)
             .await
             .expect("previous cookie still revokes the current session");
 
@@ -3794,7 +3866,7 @@ mod tests {
         assert!(stored.revoked_at.is_some());
 
         assert!(matches!(
-            AuthLifecycleService::logout_by_refresh_token_runtime(&runtime, tenant.id, old_cookie)
+            AuthLifecycleService::logout_by_refresh_token_runtime(&runtime, tenant.id, old_cookie, None)
                 .await,
             Err(AuthLifecycleError::InvalidRefreshToken)
         ));
@@ -3852,7 +3924,7 @@ mod tests {
         let runtime =
             ServerRuntimeContext::new(db.clone(), crate::common::RustokSettings::default());
 
-        AuthLifecycleService::logout_by_refresh_token_runtime(&runtime, tenant_a.id, refresh_token)
+        AuthLifecycleService::logout_by_refresh_token_runtime(&runtime, tenant_a.id, refresh_token, None)
             .await
             .expect("tenant A logout should succeed");
 
@@ -3875,6 +3947,7 @@ mod tests {
                 &runtime,
                 tenant_a.id,
                 refresh_token,
+                None,
             )
             .await,
             Err(AuthLifecycleError::InvalidRefreshToken)

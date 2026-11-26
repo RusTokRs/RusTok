@@ -102,8 +102,7 @@ Malformed, foreign, duplicate, rejected or uncertain credentials fail closed;
 logout/refresh uncertainty remains retryable and is not silently confirmed.
 The direct-cookie endpoint's absence/rejection ambiguity remains explicit.
 Direct browser Fetch refuses redirects; hydrate server-function redirect behavior,
-late noncooperating cookie delivery, server-side expected-lineage admission,
-mounted multi-root/tab and native request verification remain open. Ordinary
+late noncooperating cookie delivery, server-side expected-lineage admission is source-wired; mounted multi-root/tab and native request verification remain open. Ordinary
 refresh invalidates foreign projections conservatively; seamless same-identity
 cross-tab restoration is not claimed.
 
@@ -139,3 +138,9 @@ Auth owns a reusable cross-surface capability without a parallel runtime. The
 migration is a source/API cutover, so repository consumers must update together;
 external source consumers require a coordinated update. Static guards and pure
 state tests alone do not establish runtime parity or production readiness.
+
+The provider now forwards the expected session ID for cookie mutations when
+a session is projected. This is checked against the credential under Auth
+lifecycle fences; it is not authorization. Startup discovery and unrelated
+low-level callers without an expected identity remain credential-only. See
+[refresh recovery ADR](./2026-11-26-session-refresh-retry-proof.md).

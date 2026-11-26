@@ -328,15 +328,15 @@ pub(crate) async fn sign_up_unlocked(
 }
 
 pub async fn sign_out(tenant: String) -> Result<(), AuthError> {
-    cookie_operation(sign_out_unlocked(tenant)).await
+    cookie_operation(sign_out_unlocked(tenant, None)).await
 }
 
-pub(crate) async fn sign_out_unlocked(tenant: String) -> Result<(), AuthError> {
+pub(crate) async fn sign_out_unlocked(tenant: String, expected_session_id: Option<String>) -> Result<(), AuthError> {
     match selected_transport_path() {
-        UiTransportPath::NativeServer => native_server_adapter::sign_out_native(tenant)
+        UiTransportPath::NativeServer => native_server_adapter::sign_out_native(tenant, expected_session_id)
             .await
             .map_err(|error| map_server_auth_error(error, false)),
-        UiTransportPath::Graphql => cookie_adapter::sign_out_cookie(tenant).await,
+        UiTransportPath::Graphql => cookie_adapter::sign_out_cookie(tenant, expected_session_id).await,
     }
 }
 
@@ -344,18 +344,18 @@ pub(crate) async fn sign_out_unlocked(tenant: String) -> Result<(), AuthError> {
 /// `None` is an explicit native-host observation that the refresh cookie was absent;
 /// an invalid/expired credential or an ambiguous direct-cookie 401 remains an error.
 pub async fn refresh_session(tenant: String) -> Result<Option<(AuthSession, AuthUser)>, AuthError> {
-    cookie_operation(refresh_session_unlocked(tenant)).await
+    cookie_operation(refresh_session_unlocked(tenant, None)).await
 }
 
-pub(crate) async fn refresh_session_unlocked(tenant: String) -> Result<Option<(AuthSession, AuthUser)>, AuthError> {
+pub(crate) async fn refresh_session_unlocked(tenant: String, expected_session_id: Option<String>) -> Result<Option<(AuthSession, AuthUser)>, AuthError> {
     match selected_transport_path() {
         UiTransportPath::NativeServer => {
-            let payload = native_server_adapter::refresh_token_native(tenant)
+            let payload = native_server_adapter::refresh_token_native(tenant, expected_session_id)
                 .await
                 .map_err(|error| map_server_auth_error(error, false))?;
             Ok(payload.map(|payload| (payload.session, payload.user)))
         }
-        UiTransportPath::Graphql => cookie_adapter::refresh_session_cookie(tenant)
+        UiTransportPath::Graphql => cookie_adapter::refresh_session_cookie(tenant, expected_session_id)
             .await
             .map(Some),
     }

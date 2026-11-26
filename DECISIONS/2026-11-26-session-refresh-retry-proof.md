@@ -116,7 +116,7 @@ clear the provider; stale refresh/logout/current-user intents are refused
 instead of adopting the new identity. Low-level transport calls share the
 network fence but do not carry a provider's intent. See the [client
 boundary ADR](./2026-11-13-auth-owned-client-ffa-boundary.md). Server-side
-expected-lineage admission and late noncooperating delivery remain open.
+expected-lineage admission is implemented below; late noncooperating delivery remains open.
 
 The Leptos native/SSR BFF uses the same strategy with its own purpose
 `rustok/leptos-bff/refresh-retry` followed by NUL, the tenant bytes, NUL,
@@ -147,3 +147,38 @@ Run scoped Auth and server checks, mounted REST and GraphQL request/error
 mapping, PostgreSQL concurrency and history retention, cross-replica
 lost-response injection, client storage/header redaction and API reference
 verification. Compilation and runtime checks are not yet executed.
+
+## Expected session lineage admission
+
+Raw REST refresh/logout, cookie REST refresh/logout and GraphQL HTTP refresh
+accept the optional singleton `x-rustok-expected-session-id` header, exactly
+one canonical lowercase hyphenated non-nil UUID. The ID is a consistency
+precondition, not a credential or a source of authority. Omission represents
+explicit credential-only operation or startup discovery without a projected
+session. Malformed/duplicate values are rejected, not treated as omission.
+The tenant-scoped credential must resolve the expected lineage before
+rotation, recovery or historical-reuse revocation. Logout locks the expected
+tenant row and requires a matching current, previous or retained historical
+digest; an already expired/revoked matching lineage is idempotent in the cookie
+transport. A mismatched or missing credential with an expected logout ID is
+a conflict and cannot produce a clearing cookie. Existing token-only logout
+retains its current/previous digest contract.
+
+Leptos provider renewal/logout with a retained session sends the ID from the
+access projection through CSR and hydrate; a malformed projected ID fails
+before I/O. The hydrate BFF forwards the same precondition to Auth and checks
+the refresh response before persisting its cookie. Next Admin binds Auth.js
+identity to the direct session ID from the Auth-issued response and requires
+it for backend refresh/logout. Its fast GraphQL path and refreshed access
+projection compare tenant, subject and session ID, and 409 is not automatically
+retryable. GraphQL sign-out with an explicit authenticated session remains
+bound to the validated server principal. Old Auth.js identities missing the ID
+must sign in again. No new persisted credential or cryptographic scheme.
+
+The precondition does not authenticate decoded JWT claims; the Auth server
+still validates signatures, live state and authorization. It does not bind
+startup discovery to an identity not yet observed, order browser Set-Cookie
+delivery, or carry arbitrary queued domain intents through a change of Auth.js
+identity. Auth.js sign-out events preserve Rustok cookies on failed revocation,
+but Auth.js itself can still clear its own session; explicit confirmed logout
+and mounted verification remain pending.

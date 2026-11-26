@@ -92,3 +92,12 @@ Client operations return typed `AuthError`; a failed transition is not a verifie
 - `src/contract_tests.rs`: package metadata, cookie serialization/deserialization and session ID extraction.
 - `tests/shared_client_contract.rs`: public value identity and cookie wire contract; the new SSR case renders host-supplied test snapshots in separate owners and still needs a locked run.
 - The current browser-provider, cross-provider and network/cookie behavior still requires mounted verification.
+
+- Expected-lineage admission: retained-session provider refresh/logout sends
+  `x-rustok-expected-session-id` through CSR/native server functions. The
+  unverified ID parser is only for comparison; the backend checks the
+  credential against the tenant lineage before mutation. Native refresh
+  refuses a mismatched response before writing the BFF cookie. Missing
+  projected sessions use startup discovery; malformed projected IDs fail
+  closed. The native server function wire signatures change together with
+  hydration assets; deploy matching builds.

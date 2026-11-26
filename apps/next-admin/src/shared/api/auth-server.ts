@@ -8,6 +8,9 @@ import {
   RUSTOK_SESSION_COOKIE_NAME,
   RUSTOK_SESSION_COOKIE_PATH,
   RUSTOK_SESSION_REQUEST_HEADER,
+  RUSTOK_EXPECTED_SESSION_ID_HEADER,
+  isCanonicalSessionId,
+  rustokDirectSessionClaims,
   encodeRustokRefreshCredential,
   parseRustokHostCookies,
   parseRustokSessionCookie,
@@ -35,6 +38,8 @@ export interface RustokSessionUser {
 
 export interface RustokSessionCredentials {
   accessToken: string;
+  sessionId: string;
+  tenantId: string;
   expiresIn: number;
   refreshCredential: RustokRefreshCredential;
   refreshMaxAge: number;
@@ -118,8 +123,14 @@ function toCredentials(
   response: SessionResponse,
   cookie: { credential: RustokRefreshCredential; maxAge: number }
 ): RustokSessionCredentials {
+  const claims = rustokDirectSessionClaims(response.access_token);
+  if (!claims || claims.userId !== response.user.id) {
+    throw new RustokSessionError(502, 'unknown', 'Invalid direct session identity');
+  }
   return {
     accessToken: response.access_token,
+    sessionId: claims.sessionId,
+    tenantId: claims.tenantId,
     expiresIn: response.expires_in,
     refreshCredential: cookie.credential,
     refreshMaxAge: cookie.maxAge,
@@ -218,6 +229,7 @@ export async function createRustokSession(input: {
 async function refreshOnce(
   credential: RustokRefreshCredential,
   tenantSlug: string,
+  expectedSessionId: string,
   tenantId?: string | null,
   source?: Headers
 ): Promise<RustokSessionCredentials> {
@@ -227,6 +239,10 @@ async function refreshOnce(
     'x-tenant-slug': tenantSlug
   });
   if (tenantId) headers.set('x-tenant-id', tenantId);
+  if (!isCanonicalSessionId(expectedSessionId)) {
+    throw new RustokSessionError(409, 'rejected', 'Expected session identity is unavailable');
+  }
+  headers.set(RUSTOK_EXPECTED_SESSION_ID_HEADER, expectedSessionId);
   if (source) copyLocaleHeaders(source, headers);
 
   const { response, data } = await requestSession(
@@ -245,7 +261,11 @@ async function refreshOnce(
     );
   }
 
-  return toCredentials(data, cookie);
+  const refreshed = toCredentials(data, cookie);
+  if (refreshed.sessionId !== expectedSessionId || refreshed.tenantId !== tenantId) {
+    throw new RustokSessionError(409, 'rejected', 'Session lineage mismatch');
+  }
+  return refreshed;
 }
 
 /** Repeat at most once after an ambiguous upstream result. The original
@@ -255,11 +275,12 @@ async function refreshOnce(
 export async function refreshRustokSession(
   credential: RustokRefreshCredential,
   tenantSlug: string,
+  expectedSessionId: string,
   tenantId?: string | null,
   source?: Headers
 ): Promise<RustokSessionCredentials> {
   return retryAmbiguousRefresh(
-    () => refreshOnce(credential, tenantSlug, tenantId, source),
+    () => refreshOnce(credential, tenantSlug, expectedSessionId, tenantId, source),
     (error) => error instanceof RustokSessionError && error.outcome === 'unknown'
   );
 }
@@ -267,14 +288,19 @@ export async function refreshRustokSession(
 export async function revokeRustokSession(
   credential: RustokRefreshCredential,
   tenantSlug: string,
+  expectedSessionId: string,
   tenantId?: string | null
 ): Promise<void> {
+  if (!isCanonicalSessionId(expectedSessionId)) {
+    throw new RustokSessionError(409, 'rejected', 'Expected session identity is unavailable');
+  }
   const headers = new Headers({
     cookie: RUSTOK_SESSION_COOKIE_NAME + '=' + encodeRustokRefreshCredential(credential),
     [RUSTOK_SESSION_REQUEST_HEADER]: '1',
     'x-tenant-slug': tenantSlug
   });
   if (tenantId) headers.set('x-tenant-id', tenantId);
+  headers.set(RUSTOK_EXPECTED_SESSION_ID_HEADER, expectedSessionId);
 
   let response: Response;
   try {

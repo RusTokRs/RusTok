@@ -169,6 +169,16 @@ fn refresh_retry_key(ctx: &Context<'_>) -> Result<Option<crate::AuthRefreshRetry
     .map_err(|_| <FieldError as GraphQLError>::bad_user_input("Invalid refresh retry key"))
 }
 
+fn expected_session_id(ctx: &Context<'_>) -> Result<Option<uuid::Uuid>> {
+    let Some(headers) = ctx.data_opt::<http::HeaderMap>() else {
+        return Ok(None);
+    };
+    crate::parse_expected_session_id(
+        headers.get_all(crate::EXPECTED_SESSION_ID_HEADER).iter().map(|value| value.as_bytes()),
+    )
+    .map_err(|_| <FieldError as GraphQLError>::bad_user_input("Invalid expected session identity"))
+}
+
 fn map_auth_lifecycle_error(ctx: &Context<'_>, error: AuthLifecycleMutationError) -> FieldError {
     let locale = ctx.data::<Locale>().copied().unwrap_or_default();
     let t = |key: &str| translate(locale, key);
@@ -193,6 +203,9 @@ fn map_auth_lifecycle_error(ctx: &Context<'_>, error: AuthLifecycleMutationError
         }
         AuthLifecycleMutationError::RefreshAlreadyRotated => {
             <FieldError as GraphQLError>::conflict("Refresh attempt already rotated")
+        }
+        AuthLifecycleMutationError::SessionLineageMismatch => {
+            <FieldError as GraphQLError>::conflict("Session lineage mismatch")
         }
         AuthLifecycleMutationError::SessionExpired => {
             unauthenticated_auth_error(&t("auth.session_expired"))

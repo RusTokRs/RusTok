@@ -48,12 +48,14 @@ impl AuthMutation {
         input: RefreshTokenInput,
     ) -> Result<AuthPayload> {
         let retry_key = super::refresh_retry_key(ctx)?;
+        let expected_session_id = super::expected_session_id(ctx)?;
         auth_runtime(ctx)?
             .port()
             .refresh_token(
                 &auth_lifecycle_context(ctx, optional_auth_context(ctx))?,
                 input.refresh_token,
                 retry_key,
+                expected_session_id,
             )
             .await
             .map(AuthPayload::from)

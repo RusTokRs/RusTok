@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { isRustokAccessTokenExpiring, isSameOriginRequest, parseRustokSessionCookie, encodeRustokRefreshCredential, parseRustokRefreshCredential, parseRustokHostCookies, retryAmbiguousRefresh } from './auth-session.ts';
+import { isRustokAccessTokenExpiring, isSameOriginRequest, parseRustokSessionCookie, encodeRustokRefreshCredential, parseRustokRefreshCredential, parseRustokHostCookies, retryAmbiguousRefresh, isCanonicalSessionId, rustokDirectSessionClaims, matchesRustokDirectSession } from './auth-session.ts';
 
 const refreshToken = '0123456789abcdef'.repeat(4);
 const retrySeed = 'b1'.repeat(32);
@@ -99,4 +99,23 @@ test('ambiguous refresh repeats once, never after confirmed rejection', async ()
     calls++; throw ambiguous;
   }, (error) => error === ambiguous), (error) => error === ambiguous);
   assert.equal(calls, 2);
+});
+
+
+test('direct access projection must match session, subject and tenant', () => {
+  const sessionId = 'a1111111-1111-4111-8111-111111111111';
+  const userId = 'b2222222-2222-4222-8222-222222222222';
+  const tenantId = 'c3333333-3333-4333-8333-333333333333';
+  const claims = {session_id:sessionId, sub:userId, tenant_id:tenantId, grant_type:'direct'};
+  const wire = (value) => ['header',Buffer.from(JSON.stringify(value)).toString('base64url'),'signature'].join('.');
+  assert.deepEqual(rustokDirectSessionClaims(wire(claims)), {sessionId,userId,tenantId});
+  assert.equal(matchesRustokDirectSession(wire(claims),sessionId,userId,tenantId),true);
+  assert.equal(matchesRustokDirectSession(wire(claims),tenantId,userId,tenantId),false);
+  assert.equal(matchesRustokDirectSession(wire(claims),sessionId,tenantId,tenantId),false);
+  assert.equal(matchesRustokDirectSession(wire(claims),sessionId,userId,userId),false);
+  for (const value of ['00000000-0000-0000-0000-000000000000',sessionId.toUpperCase(),sessionId+'\n',null]) {
+    assert.equal(isCanonicalSessionId(value),false);
+    assert.equal(rustokDirectSessionClaims(wire({...claims,session_id:value})),null);
+  }
+  assert.equal(rustokDirectSessionClaims(wire({...claims,grant_type:'client_credentials'})),null);
 });

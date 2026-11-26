@@ -71,6 +71,24 @@ pub fn auth_purpose_mac(
 /// Never log its value. Clients retain the same key only for an ambiguous
 /// outcome of the same refresh attempt.
 pub const REFRESH_RETRY_KEY_HEADER: &str = "x-rustok-refresh-retry-key";
+pub const EXPECTED_SESSION_ID_HEADER: &str = "x-rustok-expected-session-id";
+
+/// An optional consistency precondition, never a credential. Reject duplicates
+/// and noncanonical UUID spellings instead of silently dropping the fence.
+pub fn parse_expected_session_id<'a>(values: impl IntoIterator<Item = &'a [u8]>) -> Result<Option<uuid::Uuid>> {
+    let invalid = || AuthError::Validation("Invalid expected session identity".into());
+    let mut values = values.into_iter();
+    let Some(value) = values.next() else { return Ok(None); };
+    if values.next().is_some() {
+        return Err(invalid());
+    }
+    let value = std::str::from_utf8(value).map_err(|_| invalid())?;
+    let id = uuid::Uuid::parse_str(value).map_err(|_| invalid())?;
+    if id.is_nil() || id.hyphenated().to_string() != value {
+        return Err(invalid());
+    }
+    Ok(Some(id))
+}
 
 #[derive(Clone)]
 pub struct AuthRefreshRetryKey([u8; 32]);
@@ -245,6 +263,19 @@ mod tests {
         assert_ne!(tag, auth_purpose_mac(&config, reset, payload).unwrap());
         assert_ne!(tag, auth_purpose_mac(&config, csrf, b"other payload").unwrap());
         assert_ne!(tag, hmac_sha256(config.secret().as_bytes(), payload).unwrap());
+    }
+
+    #[test]
+    fn expected_session_header_is_singleton_non_nil_and_canonical() {
+        let id = uuid::Uuid::new_v4();
+        let wire = id.to_string();
+        assert_eq!(parse_expected_session_id(std::iter::empty()).unwrap(), None);
+        assert_eq!(parse_expected_session_id([wire.as_bytes()]).unwrap(), Some(id));
+        assert!(parse_expected_session_id([wire.as_bytes(), wire.as_bytes()]).is_err());
+        for invalid in [String::new(), uuid::Uuid::nil().to_string(), id.simple().to_string(),
+            format!(" {wire}"), "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA".into()] {
+            assert!(parse_expected_session_id([invalid.as_bytes()]).is_err());
+        }
     }
 
     #[test]
