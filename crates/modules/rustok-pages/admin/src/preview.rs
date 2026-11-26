@@ -18,6 +18,7 @@
 
 use crate::browser_intent::PagesBrowserIntentError;
 use crate::builder::{self, PagesBuilderSaveSnapshot};
+use crate::model::PageDetail;
 use rustok_page_builder::dto::{
     PageBuilderCapabilityResponse, PageBuilderPreviewRuntime, PreviewPageBuilderInput,
 };
@@ -61,6 +62,24 @@ pub async fn render_server_preview(
     runtime_scenario_id: Option<String>,
 ) -> Result<PagesServerPreview, PagesBrowserIntentError> {
     let page_id = snapshot.page_id.clone();
+    // A preview route must carry the identity verified by its host. Do not
+    // expose the unattributed legacy-session path through a public preview API.
+    if snapshot.owner.is_none() {
+        return Err(rustok_page_builder_admin::SsrDraftSessionError::OwnerMismatch.into());
+    }
+
+    // A draft token is not an authorization grant. Re-read the page on every
+    // preview, even when a session is supplied, so permission revocation,
+    // ownership changes, or page deletion take effect immediately.
+    let page = crate::transport::fetch_page(
+        snapshot.token.clone(),
+        snapshot.tenant_slug.clone(),
+        page_id.clone(),
+    )
+    .await?
+    .ok_or(PagesBrowserIntentError::PageNotFound)?;
+    ensure_preview_page_access(&page, &page_id)?;
+
     let loaded_session = match draft_token {
         Some(token) => Some(
             draft_store
@@ -73,17 +92,6 @@ pub async fn render_server_preview(
     let (controller, runtime_context) = match loaded_session {
         Some(session) => (session.controller, session.runtime_context),
         None => {
-            let page = crate::transport::fetch_page(
-                snapshot.token.clone(),
-                snapshot.tenant_slug.clone(),
-                page_id.clone(),
-            )
-            .await?
-            .ok_or(PagesBrowserIntentError::PageNotFound)?;
-            // The starter document must not stand in for a document this principal is not shown.
-            if !page.document_readable {
-                return Err(PagesBrowserIntentError::DocumentUnavailable);
-            }
             let revision_id = builder::page_revision(&page);
             (
                 crate::browser_intent::controller_from_page(
@@ -116,6 +124,25 @@ pub async fn render_server_preview(
         project_hash,
         runtime_scenario_id: result.runtime_scenario_id,
     })
+}
+
+/// A preview must be scoped to the requested page and to a document the current
+/// principal may read. Pages computes document_readable from current RBAC and
+/// page-owner scope, not from possession of a draft token.
+fn ensure_preview_page_access(
+    page: &PageDetail,
+    expected_page_id: &str,
+) -> Result<(), PagesBrowserIntentError> {
+    if page.id != expected_page_id {
+        return Err(PagesBrowserIntentError::PageMismatch {
+            expected: expected_page_id.to_string(),
+            actual: page.id.clone(),
+        });
+    }
+    if !page.document_readable {
+        return Err(PagesBrowserIntentError::DocumentUnavailable);
+    }
+    Ok(())
 }
 
 /// The response that serves a preview document, with the policy its own bytes require.
@@ -189,6 +216,37 @@ pub fn pages_server_preview_policy(stylesheet: &str) -> String {
 
 #[cfg(all(test, feature = "ssr"))]
 mod tests {
+    use crate::model::PageDetail;
+
+    fn page(document_readable: bool) -> PageDetail {
+        PageDetail {
+            id: "home".to_string(),
+            version: 1,
+            status: "published".to_string(),
+            template: "default".to_string(),
+            updated_at: "2026-11-26T00:00:00Z".to_string(),
+            available_locales: vec!["en".to_string()],
+            channel_slugs: Vec::new(),
+            translation: None,
+            body: None,
+            document_readable,
+        }
+    }
+
+    #[test]
+    fn preview_requires_current_page_source_access_and_exact_page_identity() {
+        assert!(super::ensure_preview_page_access(&page(true), "home").is_ok());
+        assert!(matches!(
+            super::ensure_preview_page_access(&page(false), "home"),
+            Err(crate::browser_intent::PagesBrowserIntentError::DocumentUnavailable)
+        ));
+        assert!(matches!(
+            super::ensure_preview_page_access(&page(true), "other"),
+            Err(crate::browser_intent::PagesBrowserIntentError::PageMismatch { expected, actual })
+                if expected == "other" && actual == "home"
+        ));
+    }
+
     #[tokio::test]
     async fn preview_refuses_missing_draft_instead_of_showing_saved_document() {
         use rustok_page_builder_admin::InMemorySsrDraftSessionStore;
@@ -197,7 +255,10 @@ mod tests {
             tenant_slug: None,
             page_id: "home".to_string(),
             default_locale: "en".to_string(),
-            owner: None,
+            owner: Some(rustok_page_builder_admin::DraftSessionOwner {
+                tenant_id: "tenant".to_string(),
+                user_id: "user".to_string(),
+            }),
         };
         let result = super::render_server_preview(
             snapshot,

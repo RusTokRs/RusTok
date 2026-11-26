@@ -15,9 +15,10 @@ use uuid::Uuid;
 /// Records carry the owner that created them; `load`, `commit`, and `remove`
 /// verify the caller against it, so a leaked draft token cannot be used by
 /// another editor to read, overwrite, or delete someone else's unsaved work.
-/// `None` means "unattributed": records written before the field existed and
-/// hosts without a user identity. Unattributed records stay loadable, and the
-/// next attributed commit adopts that caller as the owner.
+/// `None` means "unattributed": records written before owner binding or by
+/// internal hosts without a user identity. They may only be accessed by an
+/// unattributed caller. An authenticated caller cannot safely claim a legacy
+/// record because its original owner is unknowable; it fails closed instead.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DraftSessionOwner {
     pub tenant_id: String,
@@ -740,8 +741,9 @@ impl InMemorySsrDraftSessionStore {
                 if let Some(runtime_context) = runtime_context {
                     entry.runtime_context = runtime_context;
                 }
-                // An attributed commit adopts the caller as the owner
-                // (records written before owner binding had none).
+                // Keep the verified owner binding on every attributed update.
+                // ensure_session_owner has already rejected unowned legacy
+                // records and every mismatched caller.
                 if owner.is_some() {
                     entry.owner = owner.cloned();
                 }
@@ -1331,11 +1333,11 @@ impl FileSsrDraftSessionStore {
 
     /// Finds the record file for `token` as seen by `owner`.
     ///
-    /// Looks in the caller's own tenant partition, then — for attributed
-    /// callers — in the unattributed partition (such records stay loadable
-    /// and are adopted by the next attributed commit). A token that exists
-    /// only under another tenant yields `OwnerMismatch`, matching the other
-    /// stores, and that tenant's file is never opened.
+    /// Looks in the caller's own partition only. An attributed caller that
+    /// presents a token from the unattributed partition gets `OwnerMismatch`;
+    /// the legacy record is never opened or silently claimed. A token that
+    /// exists only under another tenant also yields `OwnerMismatch`, and
+    /// that tenant's file is never opened.
     fn locate(
         &self,
         token: &str,
@@ -1348,11 +1350,14 @@ impl FileSsrDraftSessionStore {
         if own.is_file() {
             return Ok(Some(own));
         }
-        if owner.is_some() {
-            let unattributed = self.dir.join(UNATTRIBUTED_PARTITION).join(&file_name);
-            if unattributed.is_file() {
-                return Ok(Some(unattributed));
-            }
+        if owner.is_some()
+            && self
+                .dir
+                .join(UNATTRIBUTED_PARTITION)
+                .join(&file_name)
+                .is_file()
+        {
+            return Err(SsrDraftSessionError::OwnerMismatch);
         }
         let partitions = match fs::read_dir(&self.dir) {
             Ok(partitions) => partitions,
@@ -1583,8 +1588,7 @@ impl FileSsrDraftSessionStore {
             atomic_write_file(&target_path, &json_bytes)
                 .map_err(|error| SsrDraftSessionError::Io(error.to_string()))?;
             if record.owner.is_some() {
-                // An attributed commit adopts an unattributed session: it now
-                // lives in the tenant partition only.
+                // Attributed records live only in the tenant partition.
                 remove_file_if_present(&self.dir.join(UNATTRIBUTED_PARTITION).join(&file_name))
                     .map_err(|error| SsrDraftSessionError::Io(error.to_string()))?;
             }
@@ -3194,16 +3198,17 @@ fn current_unix_secs() -> u64 {
 
 /// Owner check shared by every store implementation (audit §2.5).
 ///
-/// `None` on the record side is "unattributed" (predates owner binding) and
-/// always passes; an attributed record requires the exact same caller.
+/// Attributed records require an exact caller match. An unattributed record
+/// may only be used by an unattributed internal caller; an authenticated
+/// caller cannot safely infer or claim the legacy record's original owner.
 fn ensure_session_owner(
     record_owner: Option<&DraftSessionOwner>,
     caller: Option<&DraftSessionOwner>,
 ) -> Result<(), SsrDraftSessionError> {
     match (record_owner, caller) {
         (Some(record), Some(caller)) if record == caller => Ok(()),
-        (Some(_), _) => Err(SsrDraftSessionError::OwnerMismatch),
-        (None, _) => Ok(()),
+        (None, None) => Ok(()),
+        _ => Err(SsrDraftSessionError::OwnerMismatch),
     }
 }
 
@@ -4722,35 +4727,43 @@ mod tests {
     }
 
     #[test]
-    fn owner_binding_allows_legacy_records_and_adopts_owner() {
+    fn owner_binding_rejects_authenticated_claims_on_legacy_records() {
         let store = InMemorySsrDraftSessionStore::default();
-        // A record written before owner binding (no owner) stays loadable
-        // by attributed callers.
         let legacy = store
             .commit(None, None, controller("home"), None)
             .expect("legacy create");
         let alice = owner("acme", "user-alice");
+
+        // Unattributed internal callers may still inspect their own legacy record.
         let loaded = store
-            .load(&legacy.token, "home", Some(&alice))
-            .expect("legacy load")
-            .expect("session");
+            .load(&legacy.token, "home", None)
+            .expect("unattributed load")
+            .expect("legacy session");
         assert!(loaded.owner.is_none());
 
-        // An attributed commit adopts the owner; anonymous callers are then
-        // locked out.
-        let adopted = store
-            .commit(
-                Some(&legacy.token),
-                Some(loaded.generation),
-                loaded.controller,
-                Some(&alice),
-            )
-            .expect("adopt");
-        assert_eq!(adopted.owner.as_ref(), Some(&alice));
+        // An authenticated caller cannot claim an ownerless record by presenting
+        // its token, and cannot update or delete it through an attributed API.
         assert!(matches!(
-            store.load(&legacy.token, "home", None),
+            store.load(&legacy.token, "home", Some(&alice)),
             Err(SsrDraftSessionError::OwnerMismatch)
         ));
+        assert!(matches!(
+            store.commit(
+                Some(&legacy.token),
+                Some(loaded.generation),
+                controller("home"),
+                Some(&alice),
+            ),
+            Err(SsrDraftSessionError::OwnerMismatch)
+        ));
+        assert!(matches!(
+            store.remove(&legacy.token, Some(&alice)),
+            Err(SsrDraftSessionError::OwnerMismatch)
+        ));
+        assert!(
+            store.load(&legacy.token, "home", None).unwrap().is_some(),
+            "a rejected claim must leave the legacy record intact"
+        );
     }
 
     #[test]
@@ -6099,7 +6112,7 @@ mod tests {
     }
 
     #[test]
-    fn file_store_adoption_moves_the_record_into_the_tenant_partition() {
+    fn file_store_rejects_authenticated_claims_on_unattributed_records() {
         let dir = temp_store_dir();
         let store = file_store(&dir);
         let legacy = store
@@ -6114,35 +6127,32 @@ mod tests {
         let file_name = format!("{}.json", legacy.token);
         let alice = owner("acme", "user-alice");
 
-        // Loadable by an attributed caller while still unattributed.
-        let loaded = store
-            .load(&legacy.token, "home", Some(&alice))
-            .expect("load")
-            .expect("session");
-        assert!(loaded.owner.is_none());
-
-        let adopted = store
-            .commit(
+        assert!(matches!(
+            store.load(&legacy.token, "home", Some(&alice)),
+            Err(SsrDraftSessionError::OwnerMismatch)
+        ));
+        assert!(matches!(
+            store.commit(
                 Some(&legacy.token),
                 Some(1),
                 controller("home"),
                 Some(&alice),
-            )
-            .expect("adopt");
-        assert_eq!(adopted.owner.as_ref(), Some(&alice));
-        assert_eq!(adopted.runtime_context["kept"], true);
-        assert!(dir.join("t-acme").join(&file_name).is_file());
-        assert!(!dir.join(UNATTRIBUTED_PARTITION).join(&file_name).exists());
+            ),
+            Err(SsrDraftSessionError::OwnerMismatch)
+        ));
+        assert!(matches!(
+            store.remove(&legacy.token, Some(&alice)),
+            Err(SsrDraftSessionError::OwnerMismatch)
+        ));
 
-        // Anonymous and foreign callers are locked out from now on.
-        assert!(matches!(
-            store.load(&legacy.token, "home", None),
-            Err(SsrDraftSessionError::OwnerMismatch)
-        ));
-        assert!(matches!(
-            store.load(&legacy.token, "home", Some(&owner("evil", "user-alice"))),
-            Err(SsrDraftSessionError::OwnerMismatch)
-        ));
+        // A rejected claim neither moves nor changes the original record.
+        assert!(dir.join(UNATTRIBUTED_PARTITION).join(&file_name).is_file());
+        assert!(!dir.join("t-acme").join(&file_name).exists());
+        let retained = store
+            .load(&legacy.token, "home", None)
+            .expect("unattributed load")
+            .expect("legacy session");
+        assert_eq!(retained.runtime_context["kept"], true);
         let _ = fs::remove_dir_all(&dir);
     }
 
