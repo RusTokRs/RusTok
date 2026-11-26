@@ -139,14 +139,11 @@ pub fn validate_embed_url(provider: &EmbedProvider, raw_url: &str) -> Result<(),
         return Err("embed URL must use HTTPS".to_string());
     }
 
-    let authority = raw_url
+    let (_, rest) = raw_url
         .split_once("://")
-        .map(|(_, rest)| {
-            rest.split(|character| matches!(character, '/' | '?' | '#'))
-                .next()
-                .unwrap_or_default()
-        })
-        .unwrap_or_default();
+        .ok_or_else(|| "embed URL must be a valid absolute HTTPS URL".to_string())?;
+    let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let authority = &rest[..authority_end];
     if authority.contains('@')
         || !parsed.username().is_empty()
         || parsed.password().is_some()
@@ -172,13 +169,16 @@ pub fn validate_embed_url(provider: &EmbedProvider, raw_url: &str) -> Result<(),
         ));
     }
 
-    let path = parsed.path();
-    let lower_path = path.to_ascii_lowercase();
+    // The WHATWG parser removes literal and percent-encoded dot segments.
+    // Inspect the authored path before normalization, excluding query/fragment.
+    let raw_path = rest[authority_end..].split(['?', '#']).next().unwrap_or_default();
+    let lower_path = raw_path.to_ascii_lowercase();
     if ["%2e", "%2f", "%5c"].iter().any(|encoded| lower_path.contains(encoded))
-        || path.split('/').any(|segment| segment == "." || segment == "..")
+        || raw_path.split('/').any(|segment| segment == "." || segment == "..")
     {
         return Err("embed URL path must not contain encoded separators or dot segments".to_string());
     }
+    let path = parsed.path();
     if !provider
         .path_prefixes
         .iter()
@@ -312,6 +312,26 @@ mod tests {
         };
         assert!(validate_embed_url(&custom, "https://player.example.test/frame/123").is_ok());
         assert!(validate_embed_url(&custom, "https://player.example.test/frame.evil/123").is_err());
+    }
+
+    #[test]
+    fn embed_path_policy_checks_authored_segments_before_url_normalization() {
+        let registry = EmbedProviderRegistry::with_builtins();
+        let youtube = registry.provider("youtube").expect("youtube provider");
+        for url in [
+            "https://www.youtube.com/embed/./abc123",
+            "https://www.youtube.com/embed/temporary/../abc123",
+            "https://www.youtube.com/embed/%2E/abc123",
+            "https://www.youtube.com/embed/temporary/.%2e/abc123",
+        ] {
+            assert!(validate_embed_url(youtube, url).is_err(), "{url}");
+        }
+        for url in [
+            "https://www.youtube.com/embed/abc123",
+            "https://www.youtube.com/embed/abc123?next=%2e%2e%2f#part",
+        ] {
+            assert!(validate_embed_url(youtube, url).is_ok(), "{url}");
+        }
     }
 
     #[test]

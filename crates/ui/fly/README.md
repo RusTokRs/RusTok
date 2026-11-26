@@ -416,7 +416,9 @@ the owner of the missing half.
   configure the same registry on `FlyEditor::with_embed_registry`, and pass it to
   `render_page_with_embed_registry` or `render_page_with_runtime_context_with_embed_registry`.
   URLs are parsed as HTTPS, credentials and non-default ports are rejected, and normalized paths
-  must remain within an exact provider path boundary. The iframe sandbox permits scripts and
+  must remain within an exact provider path boundary. Literal dot segments and encoded
+  separators/dots are rejected in the authored path before URL parser normalization;
+  query and fragment parameters are not treated as path segments. The iframe sandbox permits scripts and
   same-origin access for player compatibility, so custom registrations must use dedicated
   cross-origin provider hosts and must never include the storefront/admin origin. Static publishing
   refuses `fly_embed` explicitly — embeds go through dynamic routes. Arbitrary unregistered embeds
