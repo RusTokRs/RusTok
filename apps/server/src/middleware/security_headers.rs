@@ -55,6 +55,7 @@ pub async fn handle_csp_report(request: Request, next: Next) -> Response {
 
 pub async fn security_headers(mut request: Request, next: Next) -> Response {
     let path = request.uri().path().to_string();
+    let credential_response = is_credential_response_path(&path, request.method());
     tracing::debug!(
         path_group = super::http_stack::trace_path_family(&path),
         "security_headers entry"
@@ -128,7 +129,12 @@ pub async fn security_headers(mut request: Request, next: Next) -> Response {
     );
     // Operational responses are time-sensitive and may vary by credentials.
     // Set this at the outer edge, including rate-limit/auth/timeout failures.
-    if super::metrics_auth::is_observability_auth_path(&path)
+    if credential_response {
+        // Enforce the policy even when tenant/auth/rate-limit/timeout or
+        // invite acceptance middleware returns without entering a controller.
+        headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+        headers.insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
+    } else if super::metrics_auth::is_observability_auth_path(&path)
         || matches!(path.as_str(), "/health" | "/health/live")
     {
         headers.insert(
@@ -230,6 +236,18 @@ fn is_richtext_frame_surface(path: &str) -> bool {
     hash.len() == 16
         && hash.as_bytes().iter().all(u8::is_ascii_hexdigit)
         && matches!(extension, "js" | "css")
+}
+
+/// Auth and OAuth routes can return credentials or private identity data.
+/// The shared GraphQL POST endpoint can execute the same credential
+/// mutations; playground and schema GET responses are not credential bodies.
+fn is_credential_response_path(path: &str, method: &axum::http::Method) -> bool {
+    ["/api/auth", "/api/oauth"].iter().any(|&root| {
+        path == root
+            || path
+                .strip_prefix(root)
+                .is_some_and(|suffix| suffix.starts_with('/'))
+    }) || (path == "/api/graphql" && *method == axum::http::Method::POST)
 }
 
 fn richtext_cache_control(path: &str) -> Option<&'static str> {
@@ -466,6 +484,58 @@ mod tests {
             REPORTING_ENDPOINTS,
             "rustok-csp=\"/api/security/csp-report\""
         );
+    }
+
+    #[tokio::test]
+    async fn credential_surfaces_are_no_store_even_on_early_failures() {
+        use axum::http::{Method, header};
+
+        // This fixture intentionally has no controller-level cache middleware.
+        // The outer edge must override even an explicit cacheable response.
+        let app = Router::new()
+            .fallback(|| async {
+                (
+                    StatusCode::TOO_MANY_REQUESTS,
+                    [(header::CACHE_CONTROL, "public, max-age=60")],
+                )
+            })
+            .layer(middleware::from_fn(security_headers));
+
+        for (method, path, private) in [
+            (Method::POST, "/api/auth/invite/accept", true),
+            (Method::POST, "/api/auth/session/refresh", true),
+            (Method::GET, "/api/auth/me", true),
+            (Method::GET, "/api/oauth/authorize", true),
+            (Method::POST, "/api/oauth/token", true),
+            (Method::POST, "/api/graphql", true),
+            (Method::GET, "/api/graphql", false),
+            (Method::GET, "/api/graphql/schema.graphql", false),
+            (Method::GET, "/api/authors", false),
+            (Method::GET, "/api/oauth-other", false),
+        ] {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(method)
+                        .uri(path)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .expect("edge response");
+            assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS, "{path}");
+            assert_eq!(
+                response.headers().get(header::CACHE_CONTROL).and_then(|v| v.to_str().ok()),
+                Some(if private { "no-store" } else { "public, max-age=60" }),
+                "{path}",
+            );
+            assert_eq!(
+                response.headers().get(header::PRAGMA).and_then(|v| v.to_str().ok()),
+                private.then_some("no-cache"),
+                "{path}",
+            );
+        }
     }
 
     #[tokio::test]

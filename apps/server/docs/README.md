@@ -780,8 +780,14 @@ path. OAuth protocol `server_error` and `temporarily_unavailable`
 are emitted as HTTP 500/503, rather than misleading client-side 400 responses.
 OAuth client database lookup failures also become sanitized HTTP 500 errors, not
 misleading `invalid_client` / HTTP 401 responses.
-All `/api/oauth/*` responses, including consent HTML, authorization redirects,
-userinfo, and failures, carry `Cache-Control: no-store` and `Pragma: no-cache`.
+All `/api/oauth/*` and `/api/auth/*` responses, including consent HTML,
+authorization redirects, invite acceptance, userinfo, and early failures,
+carry `Cache-Control: no-store` and `Pragma: no-cache` at the outer HTTP
+edge. The same policy covers `POST /api/graphql` because that endpoint can
+return credentials and private identity data; playground and schema GETs
+retain their independent policy. Cookie-session refresh and logout require
+exactly one `x-rustok-session-request: 1` field; repeated or conflicting
+fields are rejected before session mutation.
 
 Direct refresh and bulk session revocation acquire the tenant-scoped user
 mutation fence before session locks. The initial refresh digest lookup is a

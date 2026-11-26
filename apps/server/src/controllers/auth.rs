@@ -328,10 +328,12 @@ fn parse_session_cookie(headers: &axum::http::HeaderMap) -> Result<Option<String
 }
 
 fn require_session_request_header(headers: &axum::http::HeaderMap) -> Result<()> {
-    match headers
-        .get(SESSION_REQUEST_HEADER)
-        .and_then(|value| value.to_str().ok())
-    {
+    let mut values = headers.get_all(SESSION_REQUEST_HEADER).iter();
+    let first = values.next();
+    if values.next().is_some() {
+        return Err(Error::BadRequest("Ambiguous session request header".into()));
+    }
+    match first.and_then(|value| value.to_str().ok()) {
         Some("1") => Ok(()),
         _ => Err(Error::BadRequest("Missing session request header".into())),
     }
@@ -1162,6 +1164,30 @@ mod tests {
         assert!(cookie.contains("Max-Age=864000"));
         assert!(cookie.contains("; Secure"));
         assert!(!cookie.contains("Max-Age=7776000"));
+    }
+
+    #[test]
+    fn session_request_header_requires_one_exact_marker() {
+        use axum::http::{HeaderMap, HeaderValue};
+
+        let mut headers = HeaderMap::new();
+        assert!(super::require_session_request_header(&headers).is_err());
+
+        for marker in ["0", "1, 1", ""] {
+            headers.insert(super::SESSION_REQUEST_HEADER, HeaderValue::from_static(marker));
+            assert!(super::require_session_request_header(&headers).is_err());
+        }
+
+        headers.insert(super::SESSION_REQUEST_HEADER, HeaderValue::from_static("1"));
+        assert!(super::require_session_request_header(&headers).is_ok());
+        headers.append(super::SESSION_REQUEST_HEADER, HeaderValue::from_static("1"));
+        assert!(super::require_session_request_header(&headers).is_err());
+
+        for (first, second) in [("1", "0"), ("0", "1")] {
+            headers.insert(super::SESSION_REQUEST_HEADER, HeaderValue::from_static(first));
+            headers.append(super::SESSION_REQUEST_HEADER, HeaderValue::from_static(second));
+            assert!(super::require_session_request_header(&headers).is_err());
+        }
     }
 
     #[test]
