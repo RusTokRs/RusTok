@@ -28,6 +28,8 @@ Framework-neutral visual editor state machine, user intents, capability ceilings
 - **Capability Ceiling**: Switching to preview or read-only modes masks capabilities temporarily; returning to full or inline mode restores the verified capability ceiling rather than granting unconditional full permissions.
 - **Atomic Contribution Assembly**: Duplicate renderer or property editor registrations fail atomically without leaving partial or corrupted contracts.
 
+- **Typed Style Admission**: `style_patch` rejects duplicate normalized property names, non-finite numbers and whitespace-separated length units. New declarations use the core renderer's property-name policy; syntactically valid imported declarations can still be removed.
+
 ## 3. Error Handling & Edge Cases
 - Fail-closed capability evaluation: missing, degraded, or unhealthy providers remove mutating permissions automatically.
 - Save conflict detection (`save_conflict_is_a_distinct_lost_update_state`): prevents silent lost updates.
