@@ -125,7 +125,7 @@ fn parse_user_role(value: &str) -> Result<UserRole, AuthAdminMutationError> {
         .map_err(|error| AuthAdminMutationError::Validation(error.to_string()))
 }
 
-fn email_change_requires_reauthentication(
+fn email_identity_changed(
     current_email: &str,
     requested_email: Option<&str>,
 ) -> bool {
@@ -665,7 +665,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
 
         let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
         let locked_user = lock_user_for_mutation(&tx, context.tenant_id, command.id).await?;
-        let email_changed = email_change_requires_reauthentication(
+        let email_changed = email_identity_changed(
             &locked_user.email,
             normalized_email.as_deref(),
         );
@@ -1236,7 +1236,7 @@ mod tests {
     use super::{
         ensure_custom_field_snapshot_is_current, invite_expiration_from_token,
         map_role_mutation_policy_error, parse_user_role, parse_user_status,
-        email_change_requires_reauthentication, status_change_requested, INVITE_TOKEN_TTL_SECS,
+        email_identity_changed, status_change_requested, INVITE_TOKEN_TTL_SECS,
     };
     use rustok_auth::AuthAdminMutationError;
     use rustok_core::{UserRole, UserStatus};
@@ -1276,16 +1276,16 @@ mod tests {
     }
 
     #[test]
-    fn email_identity_change_requires_reauthentication() {
-        assert!(email_change_requires_reauthentication(
+    fn email_identity_change_is_detected() {
+        assert!(email_identity_changed(
             "old@example.test",
             Some("new@example.test"),
         ));
-        assert!(!email_change_requires_reauthentication(
+        assert!(!email_identity_changed(
             "new@example.test",
             Some("new@example.test"),
         ));
-        assert!(!email_change_requires_reauthentication(
+        assert!(!email_identity_changed(
             "new@example.test",
             None,
         ));
