@@ -65,8 +65,8 @@ OAuth application presentation copy is owner-localized in `oauth_app_translation
 - `AuthAdminMutationContext`
 - `AuthAdminMutationError`
 - `AuthConfig`
-- `build_auth_config`
-- `build_auth_config_with_env`
+- `AuthSettingsOverrides`
+- `build_auth_config_from_document`
 - `validate_auth_config`
 - `Claims`
 - `encode_access_token`
