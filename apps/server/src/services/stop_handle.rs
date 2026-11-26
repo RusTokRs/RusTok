@@ -13,6 +13,24 @@ pub(crate) fn may_admit_next_worker_operation(
     stop_rx.has_changed().is_ok() && !*stop_rx.borrow()
 }
 
+/// Wait between durable attempts, prioritizing shutdown over a ready timer.
+/// Recheck the current signal after waking: a timer becoming ready does not
+/// grant admission if the shutdown sender has closed or requested stop.
+pub(crate) async fn wait_for_worker_retry_or_stop(
+    delay: std::time::Duration,
+    stop_rx: &mut tokio::sync::watch::Receiver<bool>,
+) -> bool {
+    if !may_admit_next_worker_operation(stop_rx) {
+        return true;
+    }
+    tokio::select! {
+        biased;
+        _ = stop_rx.changed() => {}
+        _ = tokio::time::sleep(delay) => {}
+    }
+    !may_admit_next_worker_operation(stop_rx)
+}
+
 /// Check shutdown before invoking the next durable operation, then await the
 /// admitted operation to completion. A graceful stop must not drop the owner
 /// future between a non-transactional side effect and its acknowledgement.
@@ -127,7 +145,7 @@ impl StopHandle {
 mod tests {
     use super::{
         StopHandle, await_worker_startup_or_stop, may_admit_next_worker_operation,
-        run_admitted_worker_operation, run_until_stopped,
+        run_admitted_worker_operation, run_until_stopped, wait_for_worker_retry_or_stop,
     };
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -276,6 +294,25 @@ mod tests {
         .await;
         assert_eq!(result, None);
         assert!(!invoked.get(), "the effectful operation must not be admitted");
+    }
+
+    #[tokio::test]
+    async fn retry_delay_does_not_admit_work_on_closed_or_stopped_watch() {
+        use std::time::Duration;
+
+        let (stop, mut receiver) = StopHandle::new();
+        assert!(!wait_for_worker_retry_or_stop(Duration::ZERO, &mut receiver).await);
+
+        stop.stop().await;
+        assert!(wait_for_worker_retry_or_stop(Duration::ZERO, &mut receiver).await);
+        // An already-observed stop is terminal too; changed() alone cannot
+        // detect it until a new value arrives or the sender disappears.
+        receiver.borrow_and_update();
+        assert!(wait_for_worker_retry_or_stop(Duration::ZERO, &mut receiver).await);
+
+        let (stop, mut receiver) = StopHandle::new();
+        drop(stop);
+        assert!(wait_for_worker_retry_or_stop(Duration::ZERO, &mut receiver).await);
     }
 
     #[tokio::test]

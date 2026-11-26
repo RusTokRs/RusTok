@@ -1017,6 +1017,12 @@ tests for long chains and context-sensitive cycles are present but unrun.
   the same time; the recheck prevents a new durable effect from being admitted.
   A delivery returned during shutdown is not acknowledged, so its persistent
   broker offset remains available for redelivery after restart.
+  All three consumers also use the common stop-aware retry/idle wait: a
+  ready timer, a previously observed stop, or a closed watch cannot admit
+  another attempt. The Comments audit handoff, auth retention, remote
+  executor reaper and SEO phase boundaries likewise reject closed watches
+  before starting new work. Already-admitted owner operations retain their
+  existing completion/acknowledgement semantics. Source regressions unrun.
 - Social Graph Index and Forum Search poison DLQ publishers treat an external
   send error as **ambiguous**: the broker may already have accepted it.
   The workers retain the durable `publishing` receipt and leave the source

@@ -22,7 +22,7 @@ use rustok_seo::{SeoApplicationServices, SeoWorkerAuthorization};
 // ── Graceful-shutdown handle ─────────────────────────────────────────────────
 
 pub use crate::services::stop_handle::StopHandle;
-use crate::services::stop_handle::await_worker_startup_or_stop;
+use crate::services::stop_handle::{await_worker_startup_or_stop, may_admit_next_worker_operation};
 
 static OUTBOX_RELAY_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 static OUTBOX_RETENTION_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
@@ -1893,7 +1893,7 @@ async fn auth_retention_loop(
     // Successful cleanup runs daily, but an unavailable database is retried
     // sooner so a short outage cannot suspend auth artifact retention for a day.
     loop {
-        if *stop_rx.borrow() {
+        if !may_admit_next_worker_operation(&stop_rx) {
             tracing::info!("Auth retention worker received shutdown signal, exiting");
             return;
         }
@@ -1996,6 +1996,9 @@ async fn run_remote_executor_reaper_pass<F>(
 where
     F: std::future::Future,
 {
+    if !may_admit_next_worker_operation(stop_rx) {
+        return None;
+    }
     tokio::select! {
         biased;
         _ = stop_rx.changed() => None,
@@ -2012,7 +2015,7 @@ async fn remote_executor_reaper_loop(
     let poll_interval = Duration::from_millis(scan_interval_ms.max(1));
 
     loop {
-        if *stop_rx.borrow() {
+        if !may_admit_next_worker_operation(&stop_rx) {
             tracing::info!("Remote executor reaper received shutdown signal, exiting");
             return;
         }
@@ -2080,7 +2083,7 @@ async fn seo_worker_loop(
     let poll_interval = Duration::from_millis(SEO_BULK_WORKER_POLL_INTERVAL_MS);
 
     loop {
-        if *stop_rx.borrow() {
+        if !may_admit_next_worker_operation(&stop_rx) {
             tracing::info!("SEO bulk worker received shutdown signal, exiting");
             return;
         }
@@ -2101,7 +2104,7 @@ async fn seo_worker_loop(
             }
         }
 
-        if *stop_rx.borrow() {
+        if !may_admit_next_worker_operation(&stop_rx) {
             tracing::info!("SEO bulk worker received shutdown signal, exiting");
             return;
         }
@@ -2125,7 +2128,7 @@ async fn seo_worker_loop(
             }
         }
 
-        if *stop_rx.borrow() {
+        if !may_admit_next_worker_operation(&stop_rx) {
             tracing::info!("SEO bulk worker received shutdown signal, exiting");
             return;
         }
