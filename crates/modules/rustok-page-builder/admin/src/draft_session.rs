@@ -2780,6 +2780,7 @@ impl DurableSsrDraftSessionStore {
             None
         };
         if let Some(persistent_record) = persistent_record.as_ref() {
+            persistent_record.validate()?;
             if persistent_record.controller.page_id() != controller.page_id() {
                 return Err(SsrDraftSessionError::PageMismatch {
                     expected: persistent_record.controller.page_id().to_string(),
@@ -2827,6 +2828,7 @@ impl DurableSsrDraftSessionStore {
                 .map(|record| record.operation_receipts.clone())
                 .unwrap_or_default(),
         };
+        record.validate()?;
         // Compare-and-set closes the TOCTOU window: another pod may have
         // committed the same generation between our load and this write
         // (audit §4.1). On a lost race, restore the authoritative record into
@@ -2851,6 +2853,9 @@ impl DurableSsrDraftSessionStore {
                     return Err(error);
                 }
             };
+            if let Some(record) = current.as_ref() {
+                record.validate()?;
+            }
             let current_generation = current
                 .as_ref()
                 .map(|record| record.generation)
@@ -2910,6 +2915,7 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
     ) -> Result<Option<Value>, SsrDraftSessionError> {
         let record = self.backend.load_record(token, owner)?
             .ok_or(SsrDraftSessionError::DraftUnavailable)?;
+        record.validate()?;
         if record.controller.page_id() != page_id {
             return Err(SsrDraftSessionError::PageMismatch {
                 expected: record.controller.page_id().to_string(),
@@ -2935,6 +2941,7 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
         let Some(record) = self.backend.load_record(token, owner)? else {
             return Ok(None);
         };
+        record.validate()?;
         if record.controller.page_id() != page_id {
             return Err(SsrDraftSessionError::PageMismatch {
                 expected: record.controller.page_id().to_string(),
@@ -2967,6 +2974,7 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
         let Some(expected_record) = self.backend.load_record(token, owner)? else {
             return Err(SsrDraftSessionError::DraftUnavailable);
         };
+        expected_record.validate()?;
         if expected_record.controller.page_id() != controller.page_id() {
             return Err(SsrDraftSessionError::PageMismatch {
                 expected: expected_record.controller.page_id().to_string(),
@@ -3020,6 +3028,7 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
         }
         new_record.expires_at_unix_secs =
             current_unix_secs().saturating_add(self.memory.ttl().as_secs());
+        new_record.validate()?;
         let snapshot = SsrDraftSessionSnapshot {
             token: new_record.token.clone(),
             generation,
@@ -3037,6 +3046,7 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
                     self.memory.evict(token)?;
                     return Err(SsrDraftSessionError::DraftUnavailable);
                 };
+                current.validate()?;
                 if current.controller.page_id() != controller_page_id {
                     return Err(SsrDraftSessionError::PageMismatch {
                         expected: current.controller.page_id().to_string(),
@@ -3081,6 +3091,7 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
             self.memory.evict(token)?;
             return Ok(None);
         };
+        record.validate()?;
         if record.controller.page_id() != page_id {
             self.memory.evict(token)?;
             return Err(SsrDraftSessionError::PageMismatch {
@@ -3135,6 +3146,7 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
         // The backend record is authoritative for ownership: the memory cache
         // may be empty after a restart while the record lives on.
         if let Some(record) = self.backend.load_record(token, owner)? {
+            record.validate()?;
             ensure_session_owner(record.owner.as_ref(), owner)?;
         }
         self.memory.remove(token, owner)?;
