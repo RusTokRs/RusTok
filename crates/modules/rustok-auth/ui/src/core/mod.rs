@@ -54,6 +54,23 @@ pub fn clear_refresh_cookie_header(secure: bool) -> String {
 /// still authenticate the token itself through the API — this is a
 /// parsing helper, not validation.
 pub fn session_id_from_access_token(token: &str) -> Option<String> {
+    #[derive(serde::Deserialize)]
+    struct SessionClaim { session_id: String }
+    let claims: SessionClaim = decode_access_claims(token)?;
+    (!claims.session_id.is_empty()).then_some(claims.session_id)
+}
+
+#[cfg(feature = "ssr")]
+pub(crate) fn direct_access_matches(token: &str, tenant_id: &str, user_id: &str) -> bool {
+    #[derive(serde::Deserialize)]
+    struct Claims { tenant_id: String, sub: String, session_id: String, grant_type: String }
+    decode_access_claims::<Claims>(token).is_some_and(|claims| {
+        claims.tenant_id == tenant_id && claims.sub == user_id
+            && claims.grant_type == "direct" && canonical_session_id(&claims.session_id)
+    })
+}
+
+fn decode_access_claims<T: serde::de::DeserializeOwned>(token: &str) -> Option<T> {
     let mut parts = token.split('.');
     let header = parts.next()?;
     let payload = parts.next()?;
@@ -62,10 +79,7 @@ pub fn session_id_from_access_token(token: &str) -> Option<String> {
         return None;
     }
     let decoded = base64url_decode(payload)?;
-    #[derive(serde::Deserialize)]
-    struct SessionClaim { session_id: String }
-    let claims: SessionClaim = serde_json::from_slice(&decoded).ok()?;
-    (!claims.session_id.is_empty()).then_some(claims.session_id)
+    serde_json::from_slice(&decoded).ok()
 }
 
 pub(crate) const EXPECTED_SESSION_ID_HEADER: &str = "x-rustok-expected-session-id";

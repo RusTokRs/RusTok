@@ -4,6 +4,8 @@ pub(crate) mod browser_lock;
 pub(crate) mod browser_epoch;
 mod graphql_adapter;
 mod native_server_adapter;
+#[cfg(feature = "ssr")]
+pub(crate) use native_server_adapter::cookie_request_is_secure;
 
 use rustok_ui_transport::UiTransportPath;
 use serde::{Deserialize, Serialize};
@@ -367,9 +369,10 @@ pub(crate) async fn refresh_session_unlocked(tenant: String, expected_session_id
 #[cfg(feature = "ssr")]
 pub async fn exchange_refresh_token_ssr(
     credential: crate::core::RefreshCredential,
+    expected_tenant_id: Option<&str>,
 ) -> Result<(AuthUser, AuthSession, crate::core::RefreshCredential), AuthError> {
     let (payload, rotated) =
-        native_server_adapter::exchange_refresh_token_ssr(credential).await?;
+        native_server_adapter::exchange_refresh_token_ssr(credential, expected_tenant_id).await?;
     Ok((payload.user, payload.session, rotated))
 }
 

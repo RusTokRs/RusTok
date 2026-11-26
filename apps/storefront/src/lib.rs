@@ -110,7 +110,7 @@ use axum::http::{
     header::{CACHE_CONTROL, ETAG, IF_NONE_MATCH, LOCATION},
 };
 #[cfg(feature = "ssr")]
-use axum::middleware::{Next, from_fn_with_state};
+use axum::middleware::{Next, from_fn, from_fn_with_state};
 #[cfg(feature = "ssr")]
 use axum::response::{Html, IntoResponse, Redirect, Response};
 #[cfg(feature = "ssr")]
@@ -125,6 +125,11 @@ use rustok_navigation_storefront::{
 };
 #[cfg(feature = "ssr")]
 use rustok_web::CspNonce;
+#[cfg(feature = "ssr")]
+use rustok_auth_ui::ui::leptos::{
+    AuthProvider, ServerAuthSnapshot, provide_server_auth_snapshot,
+    ssr::{SnapshotTenant, apply_snapshot_cookie, is_document_navigation, mark_private, verified_snapshot_from_headers},
+};
 
 #[cfg(feature = "ssr")]
 use crate::app::{StorefrontModulePage, StorefrontShell};
@@ -285,11 +290,13 @@ async fn render_shell_with_modules(
             }
             let locale = locale_owned.clone();
             let stream = view! {
-                <StorefrontShell
-                    locale=locale
-                    enabled_modules=enabled_modules.clone()
-                    query_params=query_params
-                />
+                <AuthProvider>
+                    <StorefrontShell
+                        locale=locale
+                        enabled_modules=enabled_modules.clone()
+                        query_params=query_params
+                    />
+                </AuthProvider>
             }
             .to_html_stream_in_order();
             leptos::reactive::computed::ScopedFuture::new(async move {
@@ -392,12 +399,14 @@ async fn render_module_page_with_modules(
             let locale = locale_owned.clone();
             let route_segment = route_segment_owned.clone();
             let stream = view! {
-                <StorefrontModulePage
-                    locale=locale
-                    enabled_modules=enabled_modules.clone()
-                    route_segment=route_segment
-                    query_params=query_params
-                />
+                <AuthProvider>
+                    <StorefrontModulePage
+                        locale=locale
+                        enabled_modules=enabled_modules.clone()
+                        route_segment=route_segment
+                        query_params=query_params
+                    />
+                </AuthProvider>
             }
             .to_html_stream_in_order();
             leptos::reactive::computed::ScopedFuture::new(async move {
@@ -821,9 +830,11 @@ async fn provide_leptos_request_context(
         .extensions
         .get::<rustok_api::TenantContextExtension>()
         .map(|tenant| tenant.0.clone());
+    let snapshot = parts.extensions.get::<ServerAuthSnapshot>().cloned().unwrap_or_default();
     let owner = Owner::new();
     let future = owner.with(|| {
         provide_context(runtime);
+        provide_server_auth_snapshot(snapshot);
         if let Some(tenant) = tenant {
             provide_context(tenant);
         }
@@ -832,6 +843,40 @@ async fn provide_leptos_request_context(
         leptos::reactive::computed::ScopedFuture::new(next.run(request))
     });
     future.await
+}
+
+/// Only document routes consume the refresh cookie. The outer tenant
+/// resolver remains authoritative; a missing tenant cannot use cookie scope.
+#[cfg(feature = "ssr")]
+async fn verify_storefront_snapshot(mut request: Request, next: Next) -> Response {
+    use axum::http::header;
+    let navigation = is_document_navigation(request.method(), request.headers());
+    let private = request.headers().contains_key(header::COOKIE)
+        || request.headers().contains_key(header::AUTHORIZATION) || !navigation;
+    let tenant = request.extensions().get::<rustok_api::TenantContextExtension>()
+        .map(|tenant| tenant.0.clone());
+    let (snapshot, cookie) = if navigation {
+        if let Some(tenant) = tenant {
+            let id = tenant.id.to_string();
+            verified_snapshot_from_headers(request.headers(), SnapshotTenant::RequestScoped {
+                slug: tenant.slug.as_str(), id: id.as_str(),
+            }).await
+        } else {
+            (ServerAuthSnapshot::default(), None)
+        }
+    } else {
+        (ServerAuthSnapshot::default(), None)
+    };
+    request.extensions_mut().insert(snapshot);
+    if private {
+        request.headers_mut().remove(IF_NONE_MATCH);
+        request.headers_mut().remove(header::IF_MODIFIED_SINCE);
+    }
+    let mut response = next.run(request).await;
+    response.headers_mut().append(header::VARY, HeaderValue::from_static("Cookie, Authorization"));
+    if private { mark_private(&mut response); }
+    apply_snapshot_cookie(&mut response, cookie);
+    response
 }
 
 #[cfg(feature = "ssr")]
@@ -891,7 +936,7 @@ pub fn router(runtime: rustok_api::HostRuntimeContext) -> Router {
     }
     let rss_runtime = runtime.clone();
     let localized_rss_runtime = runtime.clone();
-    let router = Router::new()
+    let public_resources = Router::new()
         .route("/assets/app.css", get(app_css_handler))
         .route(
             "/blog/feed.xml",
@@ -915,6 +960,8 @@ pub fn router(runtime: rustok_api::HostRuntimeContext) -> Router {
                 }
             }),
         )
+        .layer(from_fn_with_state(runtime.clone(), provide_leptos_request_context));
+    let documents = Router::new()
         .route(
             "/",
             get(
@@ -1097,7 +1144,9 @@ pub fn router(runtime: rustok_api::HostRuntimeContext) -> Router {
                 },
             ),
         )
-        .layer(from_fn_with_state(runtime, provide_leptos_request_context));
+        .layer(from_fn_with_state(runtime, provide_leptos_request_context))
+        .layer(from_fn(verify_storefront_snapshot));
+    let router = documents.merge(public_resources);
     #[cfg(feature = "product-buyer-assets")]
     let router = router.merge(product_buyer_assets::router());
     router
@@ -1288,6 +1337,40 @@ mod tests {
         ] {
             assert!(opening_tag(html, marker).contains(&expected), "{marker}");
         }
+    }
+
+    #[tokio::test]
+    async fn storefront_render_children_can_read_request_auth_context_without_serializing_credentials() {
+        use crate::modules::{StorefrontComponentRegistration, StorefrontSlot, register_component};
+        use leptos::prelude::*;
+        use rustok_auth_ui::{model::{AuthSession, AuthUser}, ui::leptos::{AuthContext, ServerAuthSnapshot, provide_server_auth_snapshot}};
+
+        fn render_identity() -> AnyView {
+            let auth = expect_context::<AuthContext>();
+            let user = auth.user().get_untracked().map(|user| user.id).unwrap_or_else(|| "guest".to_owned());
+            view! { <span data-test-auth=user>"Identity"</span> }.into_any()
+        }
+        register_component(StorefrontComponentRegistration {
+            id: "auth-snapshot-test",
+            module_slug: Some("auth-snapshot-test"),
+            slot: StorefrontSlot::HomeBeforeFooter,
+            order: 1,
+            render: render_identity,
+        });
+        let owner = Owner::new();
+        let html = owner.with(|| {
+            provide_server_auth_snapshot(ServerAuthSnapshot {
+                session: Some(AuthSession { token: "SSR-test-secret-access".into(), expires_at: i64::MAX, tenant: "shop".into() }),
+                user: Some(AuthUser { id: "verified-buyer".into(), email: "buyer@example.test".into(), name: None, role: "customer".into(), permissions: vec![] }),
+            });
+            leptos::reactive::computed::ScopedFuture::new(render_shell_with_modules(
+                "en", HashMap::new(), vec!["auth-snapshot-test".into()], None,
+            ))
+        }).await;
+        assert!(html.contains("data-test-auth=\"verified-buyer\""));
+        assert!(!html.contains("SSR-test-secret-access"));
+        let guest = render_shell_with_modules("en", HashMap::new(), vec!["auth-snapshot-test".into()], None).await;
+        assert!(guest.contains("data-test-auth=\"guest\""));
     }
 
     #[tokio::test]

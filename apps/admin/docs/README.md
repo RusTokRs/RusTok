@@ -332,8 +332,11 @@ Minimal local path for changing `apps/admin`:
 
 The shared Auth UI native BFF retains a generation-bound proof seed in one
 HttpOnly refresh envelope, with bounded same-operation retry. Admin SSR
-middleware excludes explicit Auth server functions, does not overwrite a
-handler's cookie update, and marks cookie-bearing responses private/no-store.
+middleware uses the shared Auth SSR adapter, excludes Auth server functions,
+health/assets/installer and non-navigation reads, does not overwrite a
+handler's cookie update, and marks credential-bearing HTML private/no-store.
+Explicit Page Builder preview/intents and cookie-consuming native POST calls
+retain snapshot admission; explicit bearer requests never exchange the cookie.
 Old bare-cookie sessions require coordinated revocation and reauthentication.
 Mounted SSR/hydration, response-loss and out-of-order cookie tests are pending.
 See [Auth UI](../../../crates/modules/rustok-auth/ui/README.md).

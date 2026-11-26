@@ -29,11 +29,13 @@ must propagate from every consuming package; they select one path rather than
 a runtime fallback. Native SSR needs the `ssr` feature and a validated
 request-scoped snapshot supplied by the host. The standalone storefront CSR entry
 wraps both its shell and module routes in this provider; its Product and Blog islands
-also use it. The pre-existing separate storefront SSR shell creates an owner without
-an Auth provider or validated snapshot, so an SSR surface that requires a hook such
-as `use_token` can fail rather than receive a session. It needs explicit, validated
-request composition and cache-safe rendering; an empty snapshot must not be treated
-as proof that no credential exists. These paths still need mounted verification.
+also use it. Both Storefront SSR render branches mount the Auth provider and
+inherit the request-scoped snapshot from the host Owner. The shared SSR adapter
+requires an already resolved tenant slug and UUID for Storefront, rejects foreign
+or ambiguous cookies before exchange, and checks the returned direct JWT projection
+against tenant UUID and subject. An empty snapshot is not proof of absent credentials.
+Standalone Storefront startup still needs owner runtime/tenant-policy composition.
+These paths still need mounted verification.
 Next/React has an independent UI implementation; this migration does not claim
 runtime parity with it.
 
@@ -114,8 +116,12 @@ Web Lock serializes cooperating login/register/refresh/logout calls until
 response parsing and bounded retry complete. The browser must support Web
 Locks and AbortSignal.timeout in a secure context. Fetch uses same-origin
 mode/credentials, redirect:error, no-store, and a 10-second timeout.
-Standalone Storefront SSR still needs validated host composition. Late
-noncooperating response ordering, mounted expected-lineage verification,
+Storefront document routes now use the shared tenant-scoped SSR exchange;
+assets and feeds are separate, HEAD and speculative/subresource requests do not
+rotate, and credential-bearing documents cannot revalidate through ETags.
+Admin excludes asset/health and non-document requests while retaining explicit
+cookie-consuming native/preview paths. Late noncooperating response ordering,
+standalone runtime composition, mounted expected-lineage verification,
 mounted browser verification and real backend/replica failure injection
 remain open.
 

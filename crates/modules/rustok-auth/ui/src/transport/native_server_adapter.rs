@@ -32,7 +32,7 @@ async fn request_headers() -> Result<axum::http::HeaderMap, ServerFnError> {
 }
 
 #[cfg(feature = "ssr")]
-fn cookie_request_is_secure(headers: &axum::http::HeaderMap) -> bool {
+pub(crate) fn cookie_request_is_secure(headers: &axum::http::HeaderMap) -> bool {
     let forwarded_https = headers
         .get("x-forwarded-proto")
         .and_then(|value| value.to_str().ok())
@@ -95,8 +95,9 @@ fn refresh_cookie_from(
 #[cfg(feature = "ssr")]
 pub(super) async fn exchange_refresh_token_ssr(
     credential: RefreshCredential,
+    expected_tenant_id: Option<&str>,
 ) -> Result<(NativeAuthPayload, RefreshCredential), AuthError> {
-    exchange_refresh_token_at(&get_api_url(), credential, None).await
+    exchange_refresh_token_at(&get_api_url(), credential, None, expected_tenant_id).await
 }
 
 #[cfg(feature = "ssr")]
@@ -104,8 +105,12 @@ async fn exchange_refresh_token_at(
     api_url: &str,
     credential: RefreshCredential,
     expected_session_id: Option<&str>,
+    expected_tenant_id: Option<&str>,
 ) -> Result<(NativeAuthPayload, RefreshCredential), AuthError> {
     use reqwest::header::HeaderValue;
+    if expected_tenant_id.is_some_and(|id| !crate::core::canonical_session_id(id)) {
+        return Err(AuthError::Http(409));
+    }
     let mut proof = HeaderValue::from_str(&credential.retry_key()?).map_err(|_| AuthError::Network)?;
     proof.set_sensitive(true);
     let client = reqwest::Client::builder()
@@ -114,7 +119,7 @@ async fn exchange_refresh_token_at(
         .build().map_err(|_| AuthError::Network)?;
     for attempt in 0..2 {
         let mut request = client.post(format!("{}/api/auth/refresh", api_url.trim_end_matches('/')))
-            .header("X-Tenant-ID", credential.tenant())
+            .header("X-Tenant-ID", expected_tenant_id.unwrap_or(credential.tenant()))
             .header("x-rustok-refresh-retry-key", proof.clone())
             .json(&json!({ "refresh_token": credential.token() }));
         if let Some(expected) = expected_session_id {
@@ -145,6 +150,11 @@ async fn exchange_refresh_token_at(
         };
         if expected_session_id.is_some_and(|expected| {
             crate::core::session_id_from_access_token(&payload.access_token).as_deref() != Some(expected)
+        }) {
+            return Err(AuthError::Http(409));
+        }
+        if expected_tenant_id.is_some_and(|id| {
+            !crate::core::direct_access_matches(&payload.access_token, id, &payload.user.id)
         }) {
             return Err(AuthError::Http(409));
         }
@@ -275,7 +285,7 @@ pub(super) async fn refresh_token_native(
             return Err(ServerFnError::new("Authentication tenant mismatch"));
         }
 
-        let (payload, rotated) = exchange_refresh_token_at(&get_api_url(), credential, expected_session_id.as_deref())
+        let (payload, rotated) = exchange_refresh_token_at(&get_api_url(), credential, expected_session_id.as_deref(), None)
             .await.map_err(|error| ServerFnError::new(error.to_string()))?;
         persist_refresh_cookie(&headers, &rotated)?;
         Ok(Some(payload))
@@ -639,7 +649,7 @@ mod tests {
             http_reply("503 Service Unavailable", "unknown", ""),
             http_reply("200 OK", &body, "content-type: application/json\r\n"),
         ]).await;
-        let (payload, rotated) = exchange_refresh_token_at(&url, credential, None).await.unwrap();
+        let (payload, rotated) = exchange_refresh_token_at(&url, credential, None, None).await.unwrap();
         assert_eq!(payload.session.token, "access");
         assert_eq!(rotated.token(), successor);
         assert_ne!(rotated.retry_key().unwrap(), proof);
@@ -656,7 +666,7 @@ mod tests {
     async fn native_refresh_preserves_conflict_without_retry() {
         let credential = RefreshCredential::parse(&format!("shop.{}.{}", "a1".repeat(32), "b2".repeat(32))).unwrap();
         let (url, requests) = mock_refresh_api(vec![http_reply("409 Conflict", "conflict", "")]).await;
-        assert_eq!(exchange_refresh_token_at(&url, credential, None).await.unwrap_err(), AuthError::Http(409));
+        assert_eq!(exchange_refresh_token_at(&url, credential, None, None).await.unwrap_err(), AuthError::Http(409));
         assert_eq!(requests.await.unwrap().len(), 1);
     }
 

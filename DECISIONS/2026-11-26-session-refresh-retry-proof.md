@@ -132,8 +132,8 @@ A stolen bearer token alone cannot recover the committed successor; theft of
 both bearer and proof is still credential compromise. This is not
 sender-constrained authentication. TLS, client storage discipline, avoiding
 header logging and normal credential revocation remain required. Client
-integration across standalone Storefront SSR host composition, Next
-Storefront and mobile/other native paths, mounted browser/BFF/cross-replica
+integration across standalone Storefront runtime/tenant-policy composition,
+Next Storefront and mobile/other native paths, mounted browser/BFF/cross-replica
 verification, generated API header
 documentation, and failure-injection verification remain pending. Without a proof-bearing
 client, a lost response is not recoverable.
@@ -211,3 +211,20 @@ response loss, simultaneous login/logout, expired Auth.js identity with a
 remaining Rustok cookie, and noncooperating delayed Set-Cookie responses
 remain mounted verification or recovery gates. Explicit sign-out does not
 prevent normal Auth.js expiry or guarantee cross-tab projection convergence.
+
+## Shared SSR snapshot admission
+
+Admin and Storefront use one Auth UI host-side exchange/response contract.
+Admin cookie scope remains intentional. Storefront requires an independently
+resolved tenant slug and UUID before exchanging a cookie, uses that UUID at
+the owner endpoint and compares the direct access projection to tenant and
+subject. Missing or foreign scope, malformed or duplicate cookies and
+explicit Authorization never fall back to ambient credentials. Both Storefront
+SSR render branches mount the provider under the request Owner; no cookie
+seed is serialized. Only document routes consume the cookie; static resources,
+feeds, HEAD and speculative fetches do not. Admin retains explicit cookie
+consumers for native functions and Page Builder. Credential-bearing Storefront
+documents reject conditional revalidation and are private/no-store; document
+responses vary by Cookie/Authorization. The shared helper gives explicit
+handler cookie transitions precedence. Standalone runtime composition and
+late response ordering remain open; no backend principal is fabricated.
