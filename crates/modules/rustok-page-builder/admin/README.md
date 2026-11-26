@@ -60,8 +60,11 @@ keeps the editor read-only and retains the exact submitted page, revision and pa
 The mounted retry is admitted only if the current draft still matches that request;
 edits made during the original save are preserved and require an authoritative reload
 instead of being submitted as a different retry. A generic retry failure or malformed
-response does not clear the unknown-outcome fence. The durable local recovery record
-also makes a full reload recoverable: if the
+response does not clear the unknown-outcome fence. Reload actions for both unknown
+outcomes and revision conflicts require confirmed browser recovery or an explicit
+copy confirmation for the current working hash and command sequence; a prior copy
+confirmation does not authorize discarding later edits. The durable local recovery
+record also makes a full reload recoverable: if the
 first request committed, the latest server document already contains the
 submitted draft; if it did not, the local draft can be merged against the
 unchanged server base. The server receipt remains the authority for whether a
