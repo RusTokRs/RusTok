@@ -468,10 +468,19 @@ impl RevisionState {
     /// `save_failed` is deliberately left untouched: after a rejected save the changes are
     /// still not on the server, and a further edit does not change that. Only the next save
     /// attempt ([`Self::begin_save`]) or a successful [`Self::acknowledge`] clears the signal.
-    pub(super) fn mark_changed(&mut self, document: &ProjectDocument) {
+    pub(super) fn mark_changed(&mut self, document: &ProjectDocument) -> FlyResult<()> {
+        let sequence = self.command_sequence.checked_add(1).ok_or_else(|| {
+            FlyError::Validation(vec![crate::ValidationDiagnostic {
+                severity: crate::ValidationSeverity::Error,
+                code: "command_sequence_exhausted".to_string(),
+                path: "revision.command_sequence".to_string(),
+                message: "document command sequence is exhausted".to_string(),
+            }])
+        })?;
         self.dirty = true;
-        self.command_sequence = self.command_sequence.saturating_add(1);
+        self.command_sequence = sequence;
         self.project_hash = document.hash();
+        Ok(())
     }
 
     pub fn begin_save(&mut self) -> FlyResult<()> {

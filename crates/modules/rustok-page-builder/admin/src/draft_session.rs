@@ -631,6 +631,8 @@ impl InMemorySsrDraftSessionStore {
                         actual: expected_generation.unwrap_or_default(),
                     });
                 }
+                let generation = entry.generation.checked_add(1)
+                    .ok_or(SsrDraftSessionError::GenerationExhausted)?;
                 entry.controller = controller;
                 if let Some(runtime_context) = runtime_context {
                     entry.runtime_context = runtime_context;
@@ -640,7 +642,7 @@ impl InMemorySsrDraftSessionStore {
                 if owner.is_some() {
                     entry.owner = owner.cloned();
                 }
-                entry.generation = entry.generation.saturating_add(1);
+                entry.generation = generation;
                 entry.expires_at = EntryDeadline::new(self.deadline_from(now));
                 return Ok(SsrDraftSessionSnapshot {
                     token: token.to_string(),
@@ -1636,7 +1638,8 @@ impl FileSsrDraftSessionStore {
                     actual: expected_generation.unwrap_or_default(),
                 });
             }
-            record.generation = record.generation.saturating_add(1);
+            record.generation = record.generation.checked_add(1)
+                .ok_or(SsrDraftSessionError::GenerationExhausted)?;
             record.controller = controller;
             if let Some(runtime_context) = runtime_context {
                 record.runtime_context = runtime_context;
@@ -4131,6 +4134,43 @@ mod tests {
             ),
             Err(SsrDraftSessionError::GenerationConflict { .. })
         ));
+    }
+
+    fn assert_exhausted_generation_is_immutable(store: &dyn SsrDraftSessionStore, token: &str) {
+        let before = store.load(token, "home", None).expect("load").expect("session");
+        assert_eq!(before.generation, u64::MAX);
+        let mut edited = before.controller.clone();
+        edited.dispatch(UiIntent::Select(Some("hero".to_string()))).expect("select");
+        for expected in [Some(u64::MAX), None] {
+            assert!(matches!(
+                store.commit_with_context(Some(token), expected, edited.clone(), json!({"changed": true}), None),
+                Err(SsrDraftSessionError::GenerationExhausted)
+            ));
+            let after = store.load(token, "home", None).expect("load").expect("session");
+            assert_eq!(after.generation, before.generation);
+            assert_eq!(after.runtime_context, before.runtime_context);
+            assert_eq!(after.controller.ui().state.selection, before.controller.ui().state.selection);
+        }
+    }
+
+    #[test]
+    fn ordinary_commits_fail_closed_at_exhausted_generation() {
+        let memory = InMemorySsrDraftSessionStore::default();
+        let first = memory.commit(None, None, controller("home"), None).expect("create");
+        memory.entries.write().expect("entries")
+            .get_mut(&first.token).expect("entry").generation = u64::MAX;
+        assert_exhausted_generation_is_immutable(&memory, &first.token);
+
+        let dir = temp_store_dir();
+        let file = file_store(&dir);
+        let first = file.commit(None, None, controller("home"), None).expect("create");
+        let mut record = file.load_record(&first.token, None).expect("load").expect("record");
+        record.generation = u64::MAX;
+        file.save_record(&record).expect("seed exhausted generation");
+        assert_exhausted_generation_is_immutable(&file, &first.token);
+        let durable = DurableSsrDraftSessionStore::new(InMemorySsrDraftSessionStore::default(), file);
+        assert_exhausted_generation_is_immutable(&durable, &first.token);
+        fs::remove_dir_all(dir).expect("cleanup");
     }
 
     #[test]

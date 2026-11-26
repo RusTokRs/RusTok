@@ -1551,6 +1551,35 @@ fn undo_and_redo_reject_disconnected_deserialized_history_without_mutation() {
 }
 
 #[test]
+fn exhausted_command_sequence_rejects_mutations_without_changing_history() {
+    let mut original = editor();
+    original.apply(EditorCommand::Patch {
+        component_id: "hero".to_string(),
+        patch: ComponentPatch::default().merge_style(json!({"color": "blue"})),
+    }).expect("edit");
+    let mut redo = original.clone();
+    redo.undo().expect("undo");
+    for (mut source, operation) in [(original.clone(), "apply"), (original, "undo"), (redo, "redo")] {
+        source.revision_mut().command_sequence = u64::MAX;
+        let before = source.clone();
+        let result = match operation {
+            "apply" => source.apply(EditorCommand::Patch {
+                component_id: "hero".to_string(),
+                patch: ComponentPatch::default().merge_style(json!({"color": "green"})),
+            }).map(|_| ()),
+            "undo" => source.undo().map(|_| ()),
+            _ => source.redo().map(|_| ()),
+        };
+        assert!(matches!(result, Err(FlyError::Validation(ref diagnostics))
+            if diagnostics.iter().any(|d| d.code == "command_sequence_exhausted")));
+        assert_eq!(source, before);
+        source.apply(EditorCommand::batch([])).expect("no-op remains valid");
+        assert_eq!(source.revision(), before.revision());
+        assert_eq!(source.history(), before.history());
+    }
+}
+
+#[test]
 fn history_transitions_respect_current_validation_limits() {
     let mut source = editor();
     source.apply(EditorCommand::Insert {

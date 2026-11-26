@@ -304,6 +304,8 @@ the entry is connected to the current document and the destination satisfies cur
 limits and provider policy. Rejection leaves both stacks, selection and revision unchanged. Style inverses
 restore the complete original style slot, including absence. Updating the entry limit
 preserves the configured byte budget and nearest contiguous undo/redo entries.
+Document mutations, undo and redo reject an exhausted command sequence before changing the
+working copy, history, selection or revision; validated no-ops remain allowed.
 Asset removal has a local inverse only for a unique tail entry. Theme renames and
 theme edits that normalize the original raw representation rely on snapshot history
 rather than an inexact local inverse.

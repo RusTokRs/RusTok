@@ -189,6 +189,8 @@ impl FlyEditor {
 
         // The command now carries any IDs reissued during insertion, so its inverse names the
         // inserted component rather than a pre-existing component with the same original id.
+        let mut revision = self.revision.clone();
+        revision.mark_changed(&after)?;
         let inverse = invert_command(&self.document, &command);
         self.id_generator = generator;
 
@@ -208,7 +210,7 @@ impl FlyEditor {
             after: history_after,
             inverse,
         });
-        self.revision.mark_changed(&self.document);
+        self.revision = revision;
         self.last_report = Some(report.clone());
         Ok(report)
     }
@@ -216,6 +218,8 @@ impl FlyEditor {
     pub fn undo(&mut self) -> FlyResult<&ProjectDocument> {
         let entry = self.history.peek_undo().ok_or(FlyError::UndoHistoryEmpty)?;
         let report = self.validate_history_transition(&entry.after, &entry.before, "undo")?;
+        let mut revision = self.revision.clone();
+        revision.mark_changed(&entry.before)?;
         let (entry, size) = self.history.pop_undo()?;
         self.document = Arc::clone(&entry.before);
         self.history.push_redo(entry, size);
@@ -223,7 +227,7 @@ impl FlyEditor {
             .selection
             .take()
             .filter(|id| self.document.contains_component(id));
-        self.revision.mark_changed(&self.document);
+        self.revision = revision;
         self.last_report = Some(report);
         Ok(&self.document)
     }
@@ -231,6 +235,8 @@ impl FlyEditor {
     pub fn redo(&mut self) -> FlyResult<&ProjectDocument> {
         let entry = self.history.peek_redo().ok_or(FlyError::RedoHistoryEmpty)?;
         let report = self.validate_history_transition(&entry.before, &entry.after, "redo")?;
+        let mut revision = self.revision.clone();
+        revision.mark_changed(&entry.after)?;
         let (entry, size) = self.history.pop_redo()?;
         self.document = Arc::clone(&entry.after);
         self.history.push_undo(entry, size);
@@ -238,7 +244,7 @@ impl FlyEditor {
             .selection
             .take()
             .filter(|id| self.document.contains_component(id));
-        self.revision.mark_changed(&self.document);
+        self.revision = revision;
         self.last_report = Some(report);
         Ok(&self.document)
     }

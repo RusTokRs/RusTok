@@ -412,7 +412,9 @@ readers before using the new protocol.
 
 Durable draft commits stage candidates outside the memory cache and publish
 only after persistent CAS. Loads return the owner-scoped backend snapshot,
-never a speculative or divergent cached generation. Replacing an existing
+never a speculative or divergent cached generation. Ordinary and receipt-bearing commits
+reject generation exhaustion instead of accepting two writes at the same generation.
+Replacing an existing
 cache entry does not evict an unrelated draft.
 
 Live prepared saves are protected from capacity eviction in memory, file and
