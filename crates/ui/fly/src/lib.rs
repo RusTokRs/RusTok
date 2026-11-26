@@ -80,7 +80,9 @@ pub use bundle::{
     bundle_hash, decode_project_bundle, decode_project_bundle_value, encode_project_bundle,
     export_project_bundle, inspect_project_bundle,
 };
-pub use codec::{GrapesJsCodec, MAXIMUM_DECODE_DEPTH};
+pub use codec::{
+    GrapesJsCodec, MAXIMUM_DECODE_DEPTH, drop_value_iteratively, ensure_depth_within_limit,
+};
 pub use command::{
     AssetCommand, ComponentPatch, DEFAULT_HISTORY_MEMORY_BUDGET_BYTES, EditorCommand, FlyEditor,
     History, HistoryEntry, ProjectHash, RevisionState, SymbolCommand, invert_command,

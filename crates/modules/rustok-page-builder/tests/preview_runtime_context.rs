@@ -184,3 +184,47 @@ async fn preview_rejects_oversized_runtime_before_renderer() {
     );
     assert_eq!(calls.load(Ordering::SeqCst), 0);
 }
+
+#[test]
+fn preview_runtime_byte_budget_counts_escaped_utf8_and_accepts_exact_limit() {
+    use rustok_page_builder::dto::MAX_PREVIEW_RUNTIME_CONTEXT_BYTES;
+
+    // {"payload":""} is 14 bytes; each escaped newline is two bytes.
+    let payload = "\n".repeat((MAX_PREVIEW_RUNTIME_CONTEXT_BYTES - 14) / 2);
+    let exact = PageBuilderPreviewRuntime::new(json!({ "payload": payload }), None);
+    assert_eq!(
+        serde_json::to_vec(&exact.context).expect("compact JSON").len(),
+        MAX_PREVIEW_RUNTIME_CONTEXT_BYTES
+    );
+    exact.validate().expect("exact byte budget");
+    let oversized = PageBuilderPreviewRuntime::new(
+        json!({ "payload": format!("{}é", exact.context["payload"].as_str().unwrap()) }),
+        None,
+    );
+    assert!(oversized.validate().expect_err("over budget").to_string().contains("exceeds 262144 bytes"));
+}
+
+#[tokio::test]
+async fn preview_rejects_deep_runtime_before_renderer_and_drops_it_safely() {
+    let renderer = RecordingRenderer::default();
+    let calls = Arc::clone(&renderer.calls);
+    let service = FlyAdapterBackedPageBuilderService::new(NoopStore, renderer);
+    // Build without json! to avoid recursively serializing the nested Value.
+    let mut nested = Value::Null;
+    for _ in 0..50_000 {
+        nested = Value::Array(vec![nested]);
+    }
+    let runtime = PageBuilderPreviewRuntime::new(
+        Value::Object(serde_json::Map::from_iter([("payload".to_string(), nested)])),
+        None,
+    );
+    let error = service
+        .preview(
+            &port_context(),
+            PreviewPageBuilderInput::new("home", project()).with_runtime(runtime),
+        )
+        .await
+        .expect_err("deep context must fail");
+    assert!(error.to_string().contains("maximum JSON depth"));
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+}

@@ -74,7 +74,7 @@ impl GrapesJsCodec {
  * nesting recursively. A value rejected by the depth guard (or root-shape check) must
  * therefore be dismantled iteratively before returning the error.
  */
-pub(crate) fn drop_value_iteratively(value: Value) {
+pub fn drop_value_iteratively(value: Value) {
     let mut pending = vec![value];
     while let Some(value) = pending.pop() {
         match value {
@@ -88,7 +88,9 @@ pub(crate) fn drop_value_iteratively(value: Value) {
 }
 
 /// Reject a JSON value nested deeper than `maximum`, without recursing.
-pub(crate) fn ensure_depth_within_limit(value: &Value, maximum: usize) -> FlyResult<()> {
+/// The root is depth 1; scalar leaves count towards the limit. Borrowed callers
+/// retain ownership and may use `drop_value_iteratively` on rejected input.
+pub fn ensure_depth_within_limit(value: &Value, maximum: usize) -> FlyResult<()> {
     let mut pending = vec![(value, 1usize)];
     while let Some((value, depth)) = pending.pop() {
         if depth > maximum {

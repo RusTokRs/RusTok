@@ -115,6 +115,27 @@ pub struct BuilderTreeNode {
 pub const MAX_PREVIEW_RUNTIME_CONTEXT_BYTES: usize = 256 * 1024;
 pub const MAX_PREVIEW_SCENARIO_ID_BYTES: usize = 128;
 
+// Count compact JSON bytes without allocating a second copy of the payload.
+struct PreviewContextByteBudget {
+    remaining: usize,
+    exceeded: bool,
+}
+
+impl std::io::Write for PreviewContextByteBudget {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if bytes.len() > self.remaining {
+            self.exceeded = true;
+            return Err(std::io::Error::other("preview context byte budget exceeded"));
+        }
+        self.remaining -= bytes.len();
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 fn empty_runtime_context() -> serde_json::Value {
     serde_json::Value::Object(serde_json::Map::new())
 }
@@ -171,15 +192,24 @@ impl PageBuilderPreviewRuntime {
                 "preview runtime context must be a JSON object",
             ));
         }
-        let context_bytes = serde_json::to_vec(&self.context).map_err(|error| {
-            PageBuilderPreviewRuntimeValidationError::new(format!(
-                "preview runtime context could not be serialized: {error}"
-            ))
-        })?;
-        if context_bytes.len() > MAX_PREVIEW_RUNTIME_CONTEXT_BYTES {
-            return Err(PageBuilderPreviewRuntimeValidationError::new(format!(
-                "preview runtime context exceeds {MAX_PREVIEW_RUNTIME_CONTEXT_BYTES} bytes"
-            )));
+        fly::ensure_depth_within_limit(&self.context, fly::MAXIMUM_DECODE_DEPTH)
+            .map_err(|_| {
+                PageBuilderPreviewRuntimeValidationError::new(format!(
+                    "preview runtime context exceeds maximum JSON depth {}",
+                    fly::MAXIMUM_DECODE_DEPTH
+                ))
+            })?;
+        let mut budget = PreviewContextByteBudget {
+            remaining: MAX_PREVIEW_RUNTIME_CONTEXT_BYTES,
+            exceeded: false,
+        };
+        if let Err(error) = serde_json::to_writer(&mut budget, &self.context) {
+            let message = if budget.exceeded {
+                format!("preview runtime context exceeds {MAX_PREVIEW_RUNTIME_CONTEXT_BYTES} bytes")
+            } else {
+                format!("preview runtime context could not be serialized: {error}")
+            };
+            return Err(PageBuilderPreviewRuntimeValidationError::new(message));
         }
         if let Some(scenario_id) = self.scenario_id.as_deref() {
             if scenario_id.is_empty() || scenario_id.trim() != scenario_id {

@@ -52,7 +52,7 @@ PreviewPageBuilderInput
   -> page identity validation
   -> FlyProjectInspection::decode_with
   -> inspection.require_valid
-  -> preview runtime DTO validation
+  -> preview runtime DTO validation (object, bounded JSON depth and compact byte size, scenario ID)
   -> PageBuilderPreviewRenderingPort::render_preview
   -> runtime materialization in Fly renderer
   -> PreviewPageBuilderResult { html, runtime_scenario_id }

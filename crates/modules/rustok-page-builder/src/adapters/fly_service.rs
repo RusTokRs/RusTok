@@ -115,16 +115,25 @@ where
         context: &PortContext,
         input: crate::dto::PreviewPageBuilderInput,
     ) -> PageBuilderServiceResult<crate::dto::PreviewPageBuilderResult> {
-        if input.page_id.trim().is_empty() {
-            return Err(PageBuilderServiceError::Validation(
-                "page_id must not be empty".to_string(),
-            ));
+        let validation = (|| {
+            if input.page_id.trim().is_empty() {
+                return Err(PageBuilderServiceError::Validation(
+                    "page_id must not be empty".to_string(),
+                ));
+            }
+            self.inspect(&input.project_data)?;
+            input
+                .runtime
+                .validate()
+                .map_err(|error| PageBuilderServiceError::Validation(error.to_string()))
+        })();
+        if let Err(error) = validation {
+            // In-process callers can supply arbitrarily deep Values. Rejecting
+            // one must not trigger a recursive destructor on either payload.
+            fly::drop_value_iteratively(input.project_data);
+            fly::drop_value_iteratively(input.runtime.context);
+            return Err(error);
         }
-        self.inspect(&input.project_data)?;
-        input
-            .runtime
-            .validate()
-            .map_err(|error| PageBuilderServiceError::Validation(error.to_string()))?;
         let evidence = PageBuilderRuntimeCallEvidence::render_preview(context, &input.page_id);
         self.telemetry.record_runtime_call(&evidence);
         let html = match self.renderer.render_preview(context, &input).await {
