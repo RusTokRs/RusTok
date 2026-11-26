@@ -103,13 +103,24 @@ fn metadata_for_issuer(issuer: &str) -> Result<OAuthAuthorizationServerMetadata,
     })
 }
 
-fn parse_metadata_issuer(issuer: &str) -> Result<Url, Error> {
-    if issuer.chars().any(char::is_whitespace) {
+pub(crate) fn parse_metadata_issuer(issuer: &str) -> Result<Url, Error> {
+    if issuer.chars().any(|ch| ch.is_whitespace() || ch.is_control() || ch == '\\') {
         return Err(Error::Message(
-            "OAuth metadata issuer URL must not contain whitespace".into(),
+            "OAuth metadata issuer URL must not contain whitespace, control characters or backslashes".into(),
         ));
     }
 
+    // Inspect the literal authority and root path before WHATWG parsing:
+    // special URLs can normalize dot segments or recover missing slashes.
+    let (_, authority) = issuer.split_once("://").ok_or_else(|| {
+        Error::Message("OAuth metadata requires an absolute issuer URL".into())
+    })?;
+    let authority = authority.strip_suffix('/').unwrap_or(authority);
+    if authority.is_empty() || authority.chars().any(|ch| matches!(ch, '/' | '?' | '#' | '@')) {
+        return Err(Error::Message(
+            "OAuth metadata issuer must have an authority and no userinfo, path, query or fragment".into(),
+        ));
+    }
     let url = Url::parse(issuer)
         .map_err(|_| Error::Message("OAuth metadata requires an absolute issuer URL".into()))?;
 
@@ -240,6 +251,12 @@ mod tests {
             "https://user:password@api.example.com",
             "https://@api.example.com",
             "https://api.example.com ",
+            "https:api.example.com",
+            "https:///api.example.com",
+            "https://api.example.com/issuer/..",
+            "https://api.example.com/%2e",
+            "https://api.example.com\\",
+            "https://api.example.com\u{0001}",
         ] {
             assert!(
                 metadata_for_issuer(issuer).is_err(),

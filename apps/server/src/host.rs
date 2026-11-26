@@ -362,32 +362,8 @@ fn validate_oauth_metadata_issuer(
         return Ok(());
     }
 
-    let issuer = url::Url::parse(&config.issuer).map_err(|_| {
-        Error::BadRequest(
-            "OAuth discovery requires an explicit absolute issuer URL that matches JWT issuer claims"
-                .to_string(),
-        )
-    })?;
-    let is_local_http = issuer.scheme() == "http"
-        && matches!(issuer.host_str(), Some("localhost") | Some("127.0.0.1"));
-    let supported_scheme = issuer.scheme() == "https" || is_local_http;
-    let root_path = issuer.path().is_empty() || issuer.path() == "/";
-
-    if !supported_scheme
-        || issuer.host_str().is_none()
-        || config.issuer.contains('@')
-        || !issuer.username().is_empty()
-        || issuer.password().is_some()
-        || !root_path
-        || issuer.query().is_some()
-        || issuer.fragment().is_some()
-        || config.issuer.chars().any(char::is_whitespace)
-    {
-        return Err(Error::BadRequest(
-            "OAuth discovery issuer must be an absolute HTTPS URL (or http://localhost/127.0.0.1 for development), with no userinfo, path, query, or fragment, so the discovery issuer exactly matches JWT issuer claims"
-                .to_string(),
-        ));
-    }
+    crate::controllers::oauth_metadata::parse_metadata_issuer(&config.issuer)
+        .map_err(|error| Error::BadRequest(error.to_string()))?;
 
     Ok(())
 }
@@ -1139,6 +1115,12 @@ mod tests {
             "https://user:password@api.example.com",
             "https://@api.example.com",
             "https://api.example.com ",
+            "https:api.example.com",
+            "https:///api.example.com",
+            "https://api.example.com/issuer/..",
+            "https://api.example.com/%2e",
+            "https://api.example.com\\",
+            "https://api.example.com\u{0001}",
         ] {
             let config = test_auth_config(
                 "development-secret-value-with-more-than-thirty-two-bytes".to_string(),

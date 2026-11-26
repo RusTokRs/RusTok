@@ -585,6 +585,16 @@ the production CORS layer emits no `Access-Control-Allow-Origin` header,
 including for `http://127.0.0.1:5150`. Explicit origins must be valid
 HTTP(S) origins without URL credentials, paths, queries or fragments;
 invalid configuration entries are ignored with a bounded error code.
+Explicit environment origins take precedence over settings origins, which
+take precedence over development bind-host hints. An explicitly empty or
+entirely invalid allow-list grants no cross-origin access even in development;
+default development origins apply only when no origin policy is supplied.
+
+OAuth discovery and startup share one issuer validator. It rejects malformed
+absolute URLs, non-root literal paths (including normalized dot segments),
+userinfo, query, fragment, controls and backslashes before URL normalization.
+The configured issuer string is preserved exactly in JWTs and discovery.
+JWT-only deployments retain their independent issuer policy.
 Unspecified bind addresses (IPv4 `0.0.0.0` and IPv6 `[::]`) are
 rejected even when supplied as explicit CORS entries: they are network
 listeners, not browser-authorized origins. Explicit environment and settings
