@@ -45,6 +45,13 @@ are removed by the Auth migration; a missing revision is never accepted.
 The migration also clears pending challenges on schema down rather than
 converting them into legacy credentials.
 
+A new request may reclaim a foreign reservation for its exact tenant/mailbox
+if it is expired or no longer matches its owner's recovery state. Reclamation
+locks the previous owner and re-reads the exact challenge, then commits before
+the requester is locked. Live reservations remain protected by the unique
+index; a replacement after reclamation may still require issuance retry.
+Broad expiry cleanup belongs to retention, not the request transaction.
+
 Reset, verification, email change and invite acceptance recheck their
 applicable credential deadlines immediately before requesting commit, after
 transactional writes and outbox publication. Expiry at that observation

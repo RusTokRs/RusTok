@@ -796,8 +796,12 @@ Stored email-change challenges now bind the same revision, including the
 pre-reauthentication snapshot comparison at issuance. Confirmation fails
 closed on a missing or changed revision. The Auth migration removes legacy
 pending requests instead of backfilling a revision they never proved.
-A stale challenge may retain its bounded reservation until confirmation,
-replacement or expiry cleanup. Reset, verification, email change and invite
+Issuance reclaims expired or account-invalid reservations for the requested
+mailbox under the previous owner's mutation fence, in a separate transaction
+before the requester is locked. It re-reads the exact challenge identity;
+live reservations are never removed. Concurrent replacement after preflight
+can still cause a unique-index conflict and require retry. Broad expiry
+cleanup remains with the retention worker. Reset, verification, email change and invite
 acceptance recheck deadlines after transactional side effects and before
 requesting commit; email-change confirmation also rechecks the proving
 session. Recovery now uses the shared corroborated application clock and

@@ -195,6 +195,9 @@ roll back late transitions; this does not establish durable clock safety.
 Verification records the corroborated post-lock timestamp. Email-change
 confirmation uses the unique mailbox index as the conflict authority and a
 savepoint to consume a conflicting challenge without changing the account.
+Issuance reclaims invalid or expired reservations for the exact requested
+mailbox under the old owner's mutation fence before locking the requester.
+Live reservations and other tenants remain untouched.
 See the [recovery revision ADR](../../../DECISIONS/2026-11-26-auth-recovery-revision.md)
 and the [Auth implementation plan](./docs/implementation-plan.md) for remaining evidence.
 

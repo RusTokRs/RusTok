@@ -156,6 +156,10 @@ impl AuthLifecycleService {
         new_email: &str,
         token_hash: &str,
     ) -> Result<(), AuthLifecycleError> {
+        // Reclaim only the requested mailbox, before locking the requester.
+        // Never hold two user mutation fences in one issuance transaction.
+        reclaim_stale_mailbox_reservation(db, tenant_id, user_id, new_email).await?;
+
         let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
         let locked_user = Self::lock_user_for_mutation(&tx, tenant_id, user_id)
             .await
@@ -202,16 +206,9 @@ impl AuthLifecycleService {
             return Err(AuthLifecycleError::EmailAlreadyExists);
         }
 
-        // Expired requests must not reserve an address indefinitely. The
-        // unique tenant/email index serializes competing pending claims.
-        let cleanup_now = rustok_auth::application_clock::verified_now(&tx).await?;
-        AuthEmailChangeRequests::delete_many()
-            .filter(auth_email_change_requests::Column::TenantId.eq(tenant_id))
-            .filter(auth_email_change_requests::Column::ExpiresAt.lte(cleanup_now))
-            .exec(&tx)
-            .await
-            .map_err(AuthLifecycleError::from)?;
-
+        // Replace only this user's previous challenge. The retention worker
+        // owns broad expiry cleanup; the unique tenant/email index still
+        // serializes concurrent issuance for the same address.
         AuthEmailChangeRequests::delete_many()
             .filter(auth_email_change_requests::Column::TenantId.eq(tenant_id))
             .filter(auth_email_change_requests::Column::UserId.eq(user_id))
@@ -321,11 +318,7 @@ impl AuthLifecycleService {
         .await?
         .ok_or(AuthLifecycleError::InvalidEmailChangeToken)?;
 
-        if !user.is_active()
-            || user.email != request.current_email
-            || user.password_changed_at != request.password_changed_at
-            || request.recovery_revision != Some(user.recovery_revision)
-        {
+        if !email_change_request_matches_user(&request, &user) {
             delete_email_change_request(&tx, request.id, token_hash).await?;
             tx.commit().await.map_err(AuthLifecycleError::from)?;
             return Err(AuthLifecycleError::InvalidEmailChangeToken);
@@ -440,6 +433,79 @@ impl AuthLifecycleService {
             new_email,
         })
     }
+}
+
+/// The same account-state predicate governs confirmation and reclamation.
+fn email_change_request_matches_user(
+    request: &auth_email_change_requests::Model,
+    user: &users::Model,
+) -> bool {
+    request.tenant_id == user.tenant_id
+        && request.user_id == user.id
+        && user.is_active()
+        && user.email == request.current_email
+        && user.password_changed_at == request.password_changed_at
+        && request.recovery_revision == Some(user.recovery_revision)
+}
+
+/// Release an expired or irreversibly invalid challenge for the exact target
+/// address. Lock the observed owner first, then re-read the exact challenge;
+/// a replacement issued during the preflight must never be deleted.
+/// This commits independently of the subsequent request, which still checks
+/// the requester's password snapshot, session and mailbox uniqueness.
+async fn reclaim_stale_mailbox_reservation(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    requester_id: Uuid,
+    new_email: &str,
+) -> Result<(), AuthLifecycleError> {
+    let observed = AuthEmailChangeRequests::find()
+        .filter(auth_email_change_requests::Column::TenantId.eq(tenant_id))
+        .filter(auth_email_change_requests::Column::NewEmail.eq(new_email))
+        .one(db)
+        .await
+        .map_err(AuthLifecycleError::from)?;
+    let Some(observed) = observed.filter(|request| request.user_id != requester_id) else {
+        return Ok(());
+    };
+
+    let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
+    let owner = AuthLifecycleService::lock_user_for_mutation(
+        &tx, tenant_id, observed.user_id,
+    )
+    .await
+    .map_err(AuthLifecycleError::from)?;
+
+    // All issuers and confirmers hold the owner fence before changing a
+    // challenge. Retention can only delete it, not modify or replace it.
+    let exact_request = AuthEmailChangeRequests::find_by_id(observed.id)
+        .filter(auth_email_change_requests::Column::TenantId.eq(tenant_id))
+        .filter(auth_email_change_requests::Column::UserId.eq(observed.user_id))
+        .filter(auth_email_change_requests::Column::NewEmail.eq(new_email))
+        .filter(auth_email_change_requests::Column::TokenHash.eq(&observed.token_hash))
+        .one(&tx)
+        .await
+        .map_err(AuthLifecycleError::from)?;
+    if let Some(request) = exact_request {
+        let now = rustok_auth::application_clock::verified_now(&tx).await?;
+        if request.expires_at.with_timezone(&Utc) <= now
+            || !owner.as_ref().is_some_and(|user| email_change_request_matches_user(&request, user))
+        {
+            // Retention may already have removed the same row. Zero affected
+            // rows is harmless here, unlike one-shot credential consumption.
+            AuthEmailChangeRequests::delete_many()
+                .filter(auth_email_change_requests::Column::Id.eq(request.id))
+                .filter(auth_email_change_requests::Column::TenantId.eq(tenant_id))
+                .filter(auth_email_change_requests::Column::UserId.eq(request.user_id))
+                .filter(auth_email_change_requests::Column::NewEmail.eq(new_email))
+                .filter(auth_email_change_requests::Column::TokenHash.eq(&request.token_hash))
+                .exec(&tx)
+                .await
+                .map_err(AuthLifecycleError::from)?;
+        }
+    }
+    tx.commit().await.map_err(AuthLifecycleError::from)?;
+    Ok(())
 }
 
 fn is_canonical_email_change_token(token: &str) -> bool {
@@ -582,6 +648,83 @@ mod tests {
         .insert(db)
         .await
         .expect("insert pending email change");
+    }
+
+    #[tokio::test]
+    async fn stale_foreign_reservation_is_reclaimed_but_live_and_other_tenant_are_preserved() {
+        let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
+        ensure_email_change_table(&db).await;
+        let tenant = tenants::ActiveModel::new("Tenant", "mailbox-reclaim")
+            .insert(&db).await.expect("tenant");
+        let other_tenant = tenants::ActiveModel::new("Other", "mailbox-reclaim-other")
+            .insert(&db).await.expect("other tenant");
+        let owner = users::ActiveModel::new(tenant.id, "owner@example.com", "hash")
+            .insert(&db).await.expect("owner");
+        let requester = users::ActiveModel::new(tenant.id, "requester@example.com", "hash")
+            .insert(&db).await.expect("requester");
+        let other = users::ActiveModel::new(other_tenant.id, "other@example.com", "hash")
+            .insert(&db).await.expect("other tenant owner");
+        let session = sessions::ActiveModel::new(
+            tenant.id, requester.id, "reclaim-session".to_string(),
+            Utc::now() + Duration::hours(1), None, None,
+        ).insert(&db).await.expect("session");
+        let target = "target@example.com";
+        let stale_hash = "a".repeat(64);
+        let new_hash = "b".repeat(64);
+        let other_hash = "c".repeat(64);
+        let previous_hash = "d".repeat(64);
+        insert_pending_request(&db, tenant.id, &owner, target, &stale_hash).await;
+        insert_pending_request(&db, other_tenant.id, &other, target, &other_hash).await;
+        insert_pending_request(
+            &db, tenant.id, &requester, "previous@example.com", &previous_hash,
+        ).await;
+
+        // A live foreign reservation must win. Failed issuance also rolls
+        // back deletion of the requester's existing challenge.
+        assert!(matches!(
+            AuthLifecycleService::create_email_change_request_db(
+                &db, tenant.id, requester.id, session.id, &requester, target, &new_hash,
+            ).await,
+            Err(AuthLifecycleError::EmailAlreadyExists)
+        ));
+        for hash in [&stale_hash, &other_hash, &previous_hash] {
+            assert!(AuthEmailChangeRequests::find()
+                .filter(auth_email_change_requests::Column::TokenHash.eq(hash.as_str()))
+                .one(&db).await.unwrap().is_some());
+        }
+
+        // ABA restores the email but not the recovery revision. Reclaim the
+        // still-unexpired challenge before issuing the replacement.
+        for email in ["temporary@example.com", "owner@example.com"] {
+            users::ActiveModel {
+                id: Set(owner.id),
+                email: Set(email.to_string()),
+                ..Default::default()
+            }.update(&db).await.expect("change owner mailbox");
+        }
+        AuthLifecycleService::create_email_change_request_db(
+            &db, tenant.id, requester.id, session.id, &requester, target, &new_hash,
+        ).await.expect("reclaim invalid reservation");
+        for hash in [&stale_hash, &previous_hash] {
+            assert!(AuthEmailChangeRequests::find()
+                .filter(auth_email_change_requests::Column::TokenHash.eq(hash.as_str()))
+                .one(&db).await.unwrap().is_none());
+        }
+        let replacement = AuthEmailChangeRequests::find()
+            .filter(auth_email_change_requests::Column::TokenHash.eq(&new_hash))
+            .one(&db).await.unwrap().expect("replacement");
+        assert_eq!(replacement.user_id, requester.id);
+        assert_eq!(replacement.new_email, target);
+        assert!(AuthEmailChangeRequests::find()
+            .filter(auth_email_change_requests::Column::TokenHash.eq(&other_hash))
+            .one(&db).await.unwrap().is_some());
+        assert!(matches!(
+            AuthLifecycleService::confirm_email_change_db(
+                &ServerRuntimeContext::new(db.clone(), Default::default()),
+                tenant.id, &stale_hash, None, None,
+            ).await,
+            Err(AuthLifecycleError::InvalidEmailChangeToken)
+        ));
     }
 
     #[tokio::test]
