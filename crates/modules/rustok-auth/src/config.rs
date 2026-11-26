@@ -103,6 +103,7 @@ struct VersionedJwtKeys {
     clock: Arc<ClockGuard>,
     authority_clock: Option<Arc<ClockGuard>>,
     emergency_fenced: bool,
+    shutdown_fenced: bool,
     local_history: Option<LocalJwtHistory>,
 }
 
@@ -118,7 +119,7 @@ impl VersionedJwtKeys {
     }
 
     fn permits_crypto_at(&self, now: ClockSample) -> bool {
-        !self.emergency_fenced && (!self.lease_required || (
+        !self.shutdown_fenced && !self.emergency_fenced && (!self.lease_required || (
             self.clock_healthy_at(now)
                 && self.lease_until.as_ref().is_some_and(|lease| lease.remaining(now) > Duration::ZERO)
         ))
@@ -409,6 +410,7 @@ impl AuthConfig {
             clock: Arc::new(ClockGuard::new()),
             authority_clock: None,
             emergency_fenced: false,
+            shutdown_fenced: false,
             local_history,
         })));
         let publisher = JwtKeyringPublisher { config: self.clone(), incarnation: uuid::Uuid::new_v4() };
@@ -506,7 +508,7 @@ impl JwtKeyringPublisher {
             guard.clock.trip();
             return Ok(false);
         }
-        if !guard.lease_required || guard.emergency_fenced || guard.generation != generation
+        if !guard.lease_required || guard.shutdown_fenced || guard.emergency_fenced || guard.generation != generation
             || deadline.remaining(now) == Duration::ZERO
         {
             return Ok(false);
@@ -534,11 +536,13 @@ impl JwtKeyringPublisher {
         Ok(())
     }
 
-    /// Clear local authority on host shutdown or supervisor cancellation.
+    /// Permanently close this publisher on host shutdown or supervisor cancellation.
+    /// A delayed grant or publication must never reopen the stopped runtime.
     pub fn revoke_lease(&self) {
         if let JwtKeySource::Live(current) = &self.config.key_state {
             if let Ok(mut guard) = current.write() {
                 guard.lease_until = None;
+                guard.shutdown_fenced = true;
             }
         }
     }
@@ -582,7 +586,7 @@ impl JwtKeyringPublisher {
             return Err(invalid_rotation());
         };
         let guard = current.read().map_err(|_| keyring_runtime_error())?;
-        Ok(guard.lease_required && generation > guard.generation)
+        Ok(guard.lease_required && !guard.shutdown_fenced && generation > guard.generation)
     }
 
     fn publish_inner(
@@ -598,7 +602,7 @@ impl JwtKeyringPublisher {
             return Err(invalid_rotation());
         };
         let mut guard = current.write().map_err(|_| keyring_runtime_error())?;
-        if generation <= guard.generation || i64::try_from(generation).is_err() {
+        if guard.shutdown_fenced || generation <= guard.generation || i64::try_from(generation).is_err() {
             return Err(invalid_rotation());
         }
         // A cluster runtime cannot use this candidate until the database
@@ -636,7 +640,7 @@ impl JwtKeyringPublisher {
             .or_else(|| guard.authority_clock.clone());
         *guard = VersionedJwtKeys {
             generation, keys, lease_required, lease_until: deadline,
-            clock, authority_clock, emergency_fenced: false, local_history,
+            clock, authority_clock, emergency_fenced: false, shutdown_fenced: false, local_history,
         };
         Ok(true)
     }
@@ -850,6 +854,29 @@ mod tests {
         publisher.revoke_lease();
         assert!(!readiness.is_ready());
         assert!(config.with_jwt_operation(|_| Ok(())).is_err());
+    }
+
+    #[test]
+    fn shutdown_fence_refuses_delayed_grants_and_publication() {
+        let fixture = JwtKeyringFixture::generate().unwrap();
+        let candidate = rsa_config(secret(), &fixture);
+        let (config, publisher) = candidate.clone().into_cluster_jwt(1).unwrap();
+        let authority = Arc::new(ClockGuard::new());
+        let lease = LeaseDeadline::new(
+            ClockSample::now(), Duration::from_secs(60), authority,
+        ).unwrap();
+        assert!(publisher.install_lease(1, lease.clone()).unwrap());
+        let readiness = publisher.lease_readiness().unwrap();
+        assert!(readiness.is_ready());
+
+        publisher.revoke_lease();
+        assert!(!readiness.is_ready());
+        assert!(!publisher.install_lease(1, lease.clone()).unwrap());
+        assert!(!publisher.accepts_grant_candidate(2, &candidate).unwrap());
+        assert!(publisher.publish_granted(2, candidate, lease).is_err());
+        assert_eq!(publisher.generation().unwrap(), 1);
+        assert!(config.with_jwt_operation(|_| Ok(())).is_err());
+        assert!(!readiness.is_ready());
     }
 
     #[test]

@@ -63,7 +63,9 @@ are unchanged. A stale host with an unchanged or absent file loses crypto
 authority automatically. It can converge when the committed document
 arrives; same-generation canonical admission is idempotent. On database
 failure the host exits; a drop guard clears local authority even on
-cancellation. At startup the host does not bind a listener before admission
+cancellation. This shutdown fence is terminal for the publisher incarnation:
+delayed grants and candidate publications cannot reopen its local gate.
+At startup the host does not bind a listener before admission
 and initial lease succeed. A static host exits when renewal is denied.
 A file-backed host continues polling but cannot perform JWT crypto without
 a current lease. The HTTP host registers a read-only readiness handle;

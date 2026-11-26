@@ -395,7 +395,9 @@ A database error terminates the host. A missing or denied lease fences JWT
 operations; the mandatory file-backed host keeps polling for an admitted
 successor while its previous lease is fenced after expiry. The host's critical `jwt_cluster_lease` readiness check samples the
 same local gate after awaited dependency probes, returning 503 when the lease
-is unavailable. In-flight business transactions already authorized are not cancelled.
+is unavailable. Supervisor shutdown permanently closes the publisher's local
+crypto gate; delayed renewals and candidate publication cannot reopen it.
+In-flight business transactions already authorized are not cancelled.
 Root rotation and rollback of the independent authority itself remain separate work. Keys removed before first enrollment are
 not known to the ledger.
 
