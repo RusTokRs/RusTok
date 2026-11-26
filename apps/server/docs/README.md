@@ -640,8 +640,13 @@ the same lock that guards dispatcher start, publication and take.
 Concurrently started dispatchers and child workers remain protected by
 typed startup reservations. The product-media starter now also uses a
 drop-safe reservation, releasing a rejected attempt instead of leaving
-a permanent no-handle marker. No worker restarts or event-delivery
-contracts are changed.
+a permanent no-handle marker. All four recovery starters now resolve
+liveness, reservation and handle publication under that same registration
+lock. Repeated bootstrap returns an error for a terminated handle or an
+interrupted shutdown admission, rather than claiming a successful start.
+The existing handle stays owned by shutdown; process restart is required.
+Missing optional dependencies still release their reservation for retry.
+No worker restarts or event-delivery contracts are changed.
 
 The in-process `EventBus` forwarder and `TransactionalEventBus`
 now obtain their `Arc<dyn EventTransport>` from one atomic,

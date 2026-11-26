@@ -601,6 +601,13 @@ the driver mapping.
   before the explicit no-op, returning an error even after the handle was
   drained. The corrected ordering preserves the retained-handle error and
   the absent-handle stop check; regression coverage is source-only.
+  Dispatcher-owned paid-order, marketplace financial, payment-provider and
+  Product Media recovery workers had the same retained-handle false success.
+  Their synchronous constructors share one registration gate with shutdown,
+  so the canonical liveness check, reservation and publication can all occur
+  inside that gate. Return the child startup error through dispatcher bootstrap,
+  preserve the handle for shutdown, and release a claim when an optional
+  dependency is absent. Focused regression authored, unrun.
 
   ```rust
   if published_worker_running::<WorkerHandle>(
