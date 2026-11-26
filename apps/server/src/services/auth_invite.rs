@@ -240,7 +240,7 @@ impl AuthLifecycleService {
         let _issuer = AuthLifecycleService::lock_user_for_mutation(&tx, tenant_id, issuer_id)
             .await
             .map_err(|error| InviteAcceptanceError::Internal(error.into()))?
-            .filter(|issuer| issuer.status == rustok_core::UserStatus::Active)
+            .filter(|issuer| invite_issuer_matches_account(&issued, issuer))
             .ok_or(InviteAcceptanceError::InvalidToken)?;
         let mut issuer_permissions =
             RbacService::get_user_permissions_authoritative(&tx, &tenant_id, &issuer_id)
@@ -436,6 +436,19 @@ impl AuthLifecycleService {
     }
 }
 
+/// Issuance binds the durable account epoch, not merely the current active
+/// status. Restoring an earlier email/password/status cannot revive an invite.
+fn invite_issuer_matches_account(
+    issued: &auth_invites::Model,
+    issuer: &users::Model,
+) -> bool {
+    issued.tenant_id == issuer.tenant_id
+        && issued.issued_by == Some(issuer.id)
+        && issuer.is_active()
+        && issuer.recovery_revision >= 0
+        && issued.issuer_recovery_revision == Some(issuer.recovery_revision)
+}
+
 pub(crate) fn issuer_may_issue_invite(
     permissions: &[rustok_api::Permission],
     role: &rustok_core::UserRole,
@@ -583,6 +596,7 @@ mod tests {
                 email VARCHAR(320) NOT NULL, \
                 role VARCHAR(64) NOT NULL, \
                 issued_by TEXT NULL, \
+                issuer_recovery_revision BIGINT NULL, \
                 expires_at TEXT NOT NULL, \
                 revoked_at TEXT NULL, \
                 created_at TEXT NOT NULL\
@@ -601,6 +615,7 @@ mod tests {
             email: Set("invite@example.test".to_string()),
             role: Set("customer".to_string()),
             issued_by: Set(None),
+            issuer_recovery_revision: Set(None),
             expires_at: Set((now + chrono::Duration::days(7)).into()),
             revoked_at: Set(None),
             created_at: Set(now.into()),
@@ -674,10 +689,57 @@ mod tests {
             email: email.to_string(),
             role: "customer".to_string(),
             issued_by: None,
+            issuer_recovery_revision: None,
             expires_at: expires_at.into(),
             revoked_at: None,
             created_at: now.into(),
         }
+    }
+
+    #[tokio::test]
+    async fn invite_account_revision_rejects_status_aba_and_legacy_binding() {
+        use crate::models::{tenants, users};
+        use rustok_migrations::SqliteTestMigrator;
+        use rustok_test_utils::db::setup_test_db_with_migrations;
+
+        let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
+        let tenant = tenants::ActiveModel::new("Tenant", "invite-account-epoch")
+            .insert(&db).await.expect("tenant");
+        let issuer = users::ActiveModel::new(tenant.id, "issuer@example.test", "hash")
+            .insert(&db).await.expect("issuer");
+        let mut invite = invite_ledger("invitee@example.test", Utc::now() + Duration::hours(1));
+        invite.tenant_id = tenant.id;
+        invite.issued_by = Some(issuer.id);
+        assert!(!invite_issuer_matches_account(&invite, &issuer));
+        invite.issuer_recovery_revision = Some(issuer.recovery_revision);
+        assert!(invite_issuer_matches_account(&invite, &issuer));
+
+        // Unrelated updates must not invalidate the account epoch.
+        users::ActiveModel {
+            id: Set(issuer.id),
+            name: Set(Some("Updated name".to_string())),
+            ..Default::default()
+        }.update(&db).await.expect("profile update");
+        let current = users::Entity::find_by_id(issuer.id).one(&db).await.unwrap().unwrap();
+        assert!(invite_issuer_matches_account(&invite, &current));
+
+        for status in [rustok_core::UserStatus::Inactive, rustok_core::UserStatus::Active] {
+            users::ActiveModel {
+                id: Set(issuer.id),
+                status: Set(status),
+                ..Default::default()
+            }.update(&db).await.expect("status change");
+            let current = users::Entity::find_by_id(issuer.id).one(&db).await.unwrap().unwrap();
+            assert!(!invite_issuer_matches_account(&invite, &current));
+        }
+        let current = users::Entity::find_by_id(issuer.id).one(&db).await.unwrap().unwrap();
+        assert!(current.is_active());
+        assert!(current.recovery_revision > issuer.recovery_revision);
+        // Only a freshly issued invite can bind the new account state.
+        invite.issuer_recovery_revision = Some(current.recovery_revision);
+        assert!(invite_issuer_matches_account(&invite, &current));
+        invite.tenant_id = uuid::Uuid::new_v4();
+        assert!(!invite_issuer_matches_account(&invite, &current));
     }
 
     #[test]

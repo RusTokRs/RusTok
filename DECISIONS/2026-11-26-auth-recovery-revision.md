@@ -61,9 +61,20 @@ pre-commit boundaries. Invite acceptance checks both signed and persisted
 ledger expiry. This is an application observation, not a database commit-time
 deadline guarantee or protection against wall-clock rollback.
 
+Invitation issuance also stores the locked issuer's account recovery revision
+in its issuance ledger. Acceptance requires the same active tenant/user and
+revision under the issuer mutation fence. Deactivation/reactivation, mailbox
+changes, password replacement or rehash and removal of mailbox verification
+therefore invalidate outstanding invites from that account. The Auth migration
+marks all unconsumed, unrevoked legacy invitations revoked rather than guessing
+their original epoch; accepted consumption records and existing revocation
+timestamps remain intact. Schema down revokes unconsumed invitations before
+dropping the binding. No new wire claim or public DTO field is required.
+
 The revision does not govern direct session or OAuth lifetime, or the
-invitation issuer's delegation authority. Existing credential revocation and
-email-change request cleanup remain authoritative. No API DTO change.
+invitation issuer's RBAC delegation history. Membership, role-grant and
+module-policy ABA need owner-defined authority epochs separately. Existing
+credential revocation and email-change request cleanup remain authoritative.
 
 ## Rollout and verification
 

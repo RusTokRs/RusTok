@@ -11,6 +11,7 @@ pub struct Model {
     pub email: String,
     pub role: String,
     pub issued_by: Option<Uuid>,
+    pub issuer_recovery_revision: Option<i64>,
     pub expires_at: DateTimeWithTimeZone,
     pub revoked_at: Option<DateTimeWithTimeZone>,
     pub created_at: DateTimeWithTimeZone,

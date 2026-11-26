@@ -1053,12 +1053,11 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             &tx, context.tenant_id, context.actor_id,
         )
         .await
-        .map_err(super::internal_admin_error)?;
-        if !issuer.is_some_and(|user| user.is_active()) {
-            return Err(AuthAdminMutationError::Forbidden(
-                "active invitation issuer is required".to_string(),
-            ));
-        }
+        .map_err(super::internal_admin_error)?
+        .filter(|user| user.is_active() && user.recovery_revision >= 0)
+        .ok_or_else(|| AuthAdminMutationError::Forbidden(
+            "active invitation issuer is required".to_string(),
+        ))?;
         let persisted_permissions = RbacService::get_user_permissions_authoritative(
             &tx, &context.tenant_id, &context.actor_id,
         )
@@ -1112,6 +1111,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             email: Set(email),
             role: Set(ledger_role),
             issued_by: Set(Some(context.actor_id)),
+            issuer_recovery_revision: Set(Some(issuer.recovery_revision)),
             expires_at: Set(expires_at.into()),
             revoked_at: Set(None),
             created_at: Set(now.into()),
@@ -1352,6 +1352,7 @@ mod tests {
             email: Set("invitee@example.test".to_string()),
             role: Set("customer".to_string()),
             issued_by: Set(None),
+            issuer_recovery_revision: Set(None),
             expires_at: Set((now + chrono::Duration::hours(1)).into()),
             revoked_at: Set(None),
             created_at: Set(now.into()),

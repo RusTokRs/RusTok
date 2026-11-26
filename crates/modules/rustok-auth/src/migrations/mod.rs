@@ -22,6 +22,7 @@ mod m20261126_000001_create_auth_email_change_requests;
 mod m20261126_000060_enforce_oauth_family_identity;
 mod m20261126_000061_bind_email_change_recovery_revision;
 mod m20261126_000062_create_auth_application_clock;
+mod m20261126_000063_bind_invite_issuer_recovery_revision;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -50,6 +51,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
     migrations.push(Box::new(m20261126_000060_enforce_oauth_family_identity::Migration));
     migrations.push(Box::new(m20261126_000061_bind_email_change_recovery_revision::Migration));
     migrations.push(Box::new(m20261126_000062_create_auth_application_clock::Migration));
+    migrations.push(Box::new(m20261126_000063_bind_invite_issuer_recovery_revision::Migration));
     migrations
 }
 
@@ -64,6 +66,10 @@ pub(crate) fn jwt_fence_migrations() -> Vec<Box<dyn MigrationTrait>> {
 
 pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
     vec![
+        MigrationDependencyDescriptor::new(
+            "m20261126_000063_bind_invite_issuer_recovery_revision",
+            vec!["m20261025_000004_create_auth_invites", "m20260713_000001_create_auth_invite_consumptions", "m20261126_000050_add_user_recovery_revision"],
+        ),
         MigrationDependencyDescriptor::new(
             "m20261126_000061_bind_email_change_recovery_revision",
             vec!["m20261126_000001_create_auth_email_change_requests", "m20261126_000050_add_user_recovery_revision"],

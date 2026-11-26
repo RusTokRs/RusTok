@@ -73,8 +73,13 @@ single-use replay fence.
 Issuance locks and reloads the active issuer, reads persisted grants and
 hierarchy, and requires both the authenticated request ceiling and current
 persisted authority to allow the same target role before signing. Acceptance
-shares the delegation validator. This does not establish a durable history of
-issuer or role-policy changes, nor a transaction-spanning module-policy fence.
+shares the delegation validator. The issuance ledger binds the issuer's
+account recovery revision; acceptance rejects missing or changed revisions
+even after status, mailbox or password ABA. Stop old binaries before applying
+the Auth migration: it revokes unconsumed legacy invitations without backfill,
+preserves accepted receipts and prior revocations, and requires new invitations.
+This is not a durable history of RBAC membership, role grants or module policy,
+nor a transaction-spanning module-policy fence.
 
 The host additionally composition-gates the OAuth protocol surface and discovery metadata with
 `settings.rustok.features.oauth_enabled`; when the gate is closed the routes are not mounted and
