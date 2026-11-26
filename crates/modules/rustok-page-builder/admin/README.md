@@ -223,8 +223,6 @@ SSR draft session storage (`src/draft_session.rs`):
   cannot be created names the configured directory, and the host returns that text to the editor
   that hit it.
 - **A lookup that misses scans every tenant partition** of the file store before answering.
-- **The per-owner cap groups sessions by `tenant_id:user_id`.** Two owners whose identifiers
-  concatenate to the same string share one cap.
 
 For the formal Rust API contract and guarantees, see [`CRATE_API.md`](CRATE_API.md).
 
