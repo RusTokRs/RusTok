@@ -162,6 +162,17 @@ pub fn pages_browser_default_durable_store() -> &'static DurableSsrDraftSessionS
     DEFAULT_STORE.get_or_init(DurableSsrDraftSessionStore::editor_default)
 }
 
+fn validate_editable_operation_identity(
+    intent: &str,
+    capabilities: CapabilityState,
+    operation_id: Option<&str>,
+) -> Result<(), PagesBrowserIntentError> {
+    if capabilities.edit && intent != "resolve_operation" && operation_id.is_none() {
+        return Err(SsrDraftSessionError::OperationReceiptRequiresSession.into());
+    }
+    Ok(())
+}
+
 fn validate_browser_page_binding(
     actual_page_id: Option<&str>,
     expected_page_id: &str,
@@ -177,7 +188,28 @@ fn validate_browser_page_binding(
 
 #[cfg(test)]
 mod page_binding_tests {
-    use super::{PagesBrowserIntentError, validate_browser_page_binding};
+    use super::{
+        PagesBrowserIntentError, validate_browser_page_binding,
+        validate_editable_operation_identity,
+    };
+    use fly_ui::CapabilityState;
+
+    #[test]
+    fn editable_pages_intents_require_a_receipt_operation_id() {
+        let editable = CapabilityState::full();
+        assert!(matches!(
+            validate_editable_operation_identity("select", editable, None),
+            Err(PagesBrowserIntentError::Draft(
+                SsrDraftSessionError::OperationReceiptRequiresSession
+            ))
+        ));
+        assert!(validate_editable_operation_identity("select", editable, Some("op-1")).is_ok());
+        assert!(validate_editable_operation_identity("resolve_operation", editable, None).is_ok());
+
+        let mut read_only = CapabilityState::full();
+        read_only.edit = false;
+        assert!(validate_editable_operation_identity("select", read_only, None).is_ok());
+    }
 
     #[test]
     fn browser_intent_requires_the_exact_endpoint_page_id() {
@@ -219,6 +251,11 @@ pub async fn dispatch_pages_browser_intent_with_store(
         .normalized()
         .map_err(BrowserIntentDispatchError::from)?;
     validate_browser_page_binding(envelope.page_id.as_deref(), &snapshot.page_id)?;
+    validate_editable_operation_identity(
+        &envelope.intent,
+        capabilities,
+        envelope.operation_id.as_deref(),
+    )?;
 
     // Receipt resolution is read-only. It never resubmits the original command:
     // a missing receipt remains an unknown outcome until the user explicitly retries.
