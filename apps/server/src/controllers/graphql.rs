@@ -1,4 +1,5 @@
 use std::{
+    net::IpAddr,
     sync::{Arc, OnceLock},
     time::Duration,
 };
@@ -242,7 +243,7 @@ async fn graphql_ws_handler(
     State(auth_runtime): State<ServerAuthRuntime>,
     Extension(registry): Extension<ModuleRegistry>,
     Extension(schema): Extension<Arc<AppSchema>>,
-    OptionalChannel(channel): OptionalChannel,
+    request: axum::http::Request<axum::body::Body>,
 ) -> impl IntoResponse {
     let ws = ws
         .protocols(async_graphql::http::ALL_WEBSOCKET_PROTOCOLS)
@@ -264,6 +265,10 @@ async fn graphql_ws_handler(
             .into_response();
     };
 
+    let headers = request.headers().clone();
+    let query = request.uri().query().map(str::to_owned);
+    let peer_ip = crate::common::peer_ip_from_extensions(request.extensions());
+
     ws.on_upgrade(move |socket| {
         handle_graphql_ws(
             socket,
@@ -272,7 +277,9 @@ async fn graphql_ws_handler(
             auth_runtime,
             registry,
             protocol,
-            channel,
+            headers,
+            query,
+            peer_ip,
         )
     })
 }
@@ -284,7 +291,9 @@ async fn handle_graphql_ws(
     auth_runtime: ServerAuthRuntime,
     registry: ModuleRegistry,
     protocol: WebSocketProtocols,
-    channel: Option<ChannelContext>,
+    headers: HeaderMap,
+    query: Option<String>,
+    peer_ip: Option<IpAddr>,
 ) {
     let (mut sink, mut source) = socket.split();
     let (incoming_tx, incoming_rx) =
@@ -299,7 +308,8 @@ async fn handle_graphql_ws(
     let runtime_ctx_for_init = runtime_ctx.clone();
     let auth_runtime_for_init = auth_runtime.clone();
     let registry_for_init = registry.clone();
-    let channel_for_init = channel.clone();
+    let headers_for_init = headers;
+    let query_for_init = query;
     let auth_lease_for_init = Arc::clone(&auth_lease);
     let connection_init_received_for_init = Arc::clone(&connection_init_received);
     let mut graphql_stream = async_graphql::http::WebSocket::new(
@@ -316,7 +326,9 @@ async fn handle_graphql_ws(
                 runtime_ctx_for_init.clone(),
                 auth_runtime_for_init.clone(),
                 registry_for_init.clone(),
-                channel_for_init.clone(),
+                headers_for_init.clone(),
+                query_for_init.clone(),
+                peer_ip,
                 Arc::clone(&auth_lease_for_init),
                 payload,
             ),
@@ -690,7 +702,7 @@ fn ws_should_forward_text(
     text: &str,
     operations: &mut WsOperationTracker,
 ) -> bool {
-    let Some(id) = ws_server_complete_id(text) else {
+    let Some(id) = ws_server_terminal_id(text) else {
         return true;
     };
     let cancelled_by_client = operations.release(&id);
@@ -700,9 +712,12 @@ fn ws_should_forward_text(
     !(cancelled_by_client && protocol == WebSocketProtocols::GraphQLWS)
 }
 
-fn ws_server_complete_id(text: &str) -> Option<String> {
+fn ws_server_terminal_id(text: &str) -> Option<String> {
     let value = serde_json::from_str::<serde_json::Value>(text).ok()?;
-    if value.get("type").and_then(serde_json::Value::as_str) != Some("complete") {
+    if !matches!(
+        value.get("type").and_then(serde_json::Value::as_str),
+        Some("complete" | "error")
+    ) {
         return None;
     }
     value
@@ -715,7 +730,9 @@ async fn build_ws_connection_data(
     runtime_ctx: ServerRuntimeContext,
     auth_runtime: ServerAuthRuntime,
     registry: ModuleRegistry,
-    channel: Option<ChannelContext>,
+    headers: HeaderMap,
+    query: Option<String>,
+    peer_ip: Option<IpAddr>,
     auth_lease: Arc<OnceLock<WebSocketAuthLease>>,
     payload: serde_json::Value,
 ) -> async_graphql::Result<Data> {
@@ -739,7 +756,6 @@ async fn build_ws_connection_data(
             );
             async_graphql::Error::new(error.client_message())
         })?;
-    ensure_ws_channel_tenant(channel.as_ref(), tenant_ctx.id)?;
     let access_token = strip_ws_bearer_scheme(token.trim()).to_string();
     let current_user =
         resolve_current_user_from_access_token(&auth_runtime, tenant_ctx.id, &access_token)
@@ -754,6 +770,29 @@ async fn build_ws_connection_data(
     );
 
     let locale = resolve_ws_locale(&runtime_ctx, &tenant_ctx, payload.locale.as_deref()).await?;
+    let channel_facts = crate::middleware::channel::build_request_facts_for_context(
+        tenant_ctx.id,
+        &headers,
+        query.as_deref(),
+        peer_ip,
+        runtime_ctx.settings(),
+        current_user.client_id,
+        Some(locale.to_string()),
+    )
+    .map_err(|status| {
+        if status == StatusCode::BAD_REQUEST {
+            async_graphql::Error::new("Invalid channel selector")
+        } else {
+            async_graphql::Error::new("Channel resolution failed")
+        }
+    })?;
+    let channel = crate::middleware::channel::resolve_channel_context_for_facts(
+        &runtime_ctx,
+        channel_facts,
+    )
+    .await
+    .map_err(|_| async_graphql::Error::new("Channel resolution failed"))?;
+    ensure_ws_channel_tenant(channel.as_ref(), tenant_ctx.id)?;
 
     auth_lease
         .set(WebSocketAuthLease::new(access_token, &current_user))
@@ -1042,21 +1081,80 @@ mod tests {
     fn graphql_ws_server_complete_releases_operation_slot() {
         let complete = serde_json::json!({ "type": "complete", "id": "op-1" }).to_string();
         assert_eq!(
-            super::ws_server_complete_id(&complete),
+            super::ws_server_terminal_id(&complete),
             Some("op-1".to_string())
         );
         let next = serde_json::json!({ "type": "next", "id": "op-1" }).to_string();
-        assert_eq!(super::ws_server_complete_id(&next), None);
+        assert_eq!(super::ws_server_terminal_id(&next), None);
 
         let mut tracker = super::WsOperationTracker::default();
         let start = serde_json::json!({ "type": "subscribe", "id": "op-1" }).to_string();
         tracker.observe_client_message(&start).expect("start");
-        if let Some(id) = super::ws_server_complete_id(&complete) {
+        if let Some(id) = super::ws_server_terminal_id(&complete) {
             tracker.release(&id);
         }
         tracker
             .observe_client_message(&start)
             .expect("id is reusable after complete");
+    }
+
+    #[test]
+    fn graphql_ws_server_error_releases_operation_slot() {
+        let error = serde_json::json!({
+            "type": "error",
+            "id": "op-1",
+            "payload": [{ "message": "resolver failed" }],
+        })
+        .to_string();
+        assert_eq!(
+            super::ws_server_terminal_id(&error),
+            Some("op-1".to_string())
+        );
+
+        let mut tracker = super::WsOperationTracker::default();
+        let start = serde_json::json!({ "type": "subscribe", "id": "op-1" }).to_string();
+        tracker.observe_client_message(&start).expect("start");
+        assert!(super::ws_should_forward_text(
+            WebSocketProtocols::GraphQLWS,
+            &error,
+            &mut tracker,
+        ));
+        assert!(!tracker.active.contains("op-1"));
+        tracker
+            .observe_client_message(&start)
+            .expect("id is reusable after terminal error");
+    }
+
+    #[test]
+    fn graphql_ws_client_cancellation_error_is_protocol_specific() {
+        for (protocol, start_type, stop_type, should_forward) in [
+            (WebSocketProtocols::GraphQLWS, "subscribe", "complete", false),
+            (
+                WebSocketProtocols::SubscriptionsTransportWS,
+                "start",
+                "stop",
+                true,
+            ),
+        ] {
+            let mut tracker = super::WsOperationTracker::default();
+            let start = serde_json::json!({ "type": start_type, "id": "op" }).to_string();
+            let stop = serde_json::json!({ "type": stop_type, "id": "op" }).to_string();
+            let error = serde_json::json!({
+                "type": "error",
+                "id": "op",
+                "payload": [{ "message": "resolver failed" }],
+            })
+            .to_string();
+
+            tracker.observe_client_message(&start).expect("start");
+            tracker.observe_client_message(&stop).expect("stop");
+            assert_eq!(
+                super::ws_should_forward_text(protocol, &error, &mut tracker),
+                should_forward
+            );
+            assert!(!tracker.active.contains("op"));
+            assert!(tracker.cancelling.is_empty());
+        }
     }
 
     #[test]
@@ -1166,7 +1264,7 @@ mod tests {
                 let Some(async_graphql::http::WsMessage::Text(text)) = message else {
                     panic!("expected completion")
                 };
-                let id = super::ws_server_complete_id(&text).expect("complete message");
+                let id = super::ws_server_terminal_id(&text).expect("complete message");
                 assert_eq!(id, format!("op-{index}"));
                 assert_eq!(
                     super::ws_should_forward_text(protocol, &text, &mut operations.lock().unwrap()),
@@ -1191,7 +1289,7 @@ mod tests {
             let Some(async_graphql::http::WsMessage::Text(text)) = completion else {
                 panic!("expected natural completion")
             };
-            let id = super::ws_server_complete_id(&text).unwrap();
+            let id = super::ws_server_terminal_id(&text).unwrap();
             assert_eq!(id, "natural");
             assert!(super::ws_should_forward_text(
                 protocol,
@@ -1215,7 +1313,7 @@ mod tests {
             let Some(async_graphql::http::WsMessage::Text(text)) = completion else {
                 panic!("expected reused natural completion")
             };
-            let id = super::ws_server_complete_id(&text).unwrap();
+            let id = super::ws_server_terminal_id(&text).unwrap();
             assert_eq!(id, "natural");
             assert!(super::ws_should_forward_text(
                 protocol,
@@ -1246,7 +1344,7 @@ mod tests {
             let Some(async_graphql::http::WsMessage::Text(text)) = completion else {
                 panic!("expected cancelled completion")
             };
-            let id = super::ws_server_complete_id(&text).unwrap();
+            let id = super::ws_server_terminal_id(&text).unwrap();
             assert_eq!(id, "race");
             assert_eq!(
                 super::ws_should_forward_text(protocol, &text, &mut operations.lock().unwrap()),
@@ -1264,7 +1362,7 @@ mod tests {
             let Some(async_graphql::http::WsMessage::Text(text)) = completion else {
                 panic!("expected reused race completion")
             };
-            let id = super::ws_server_complete_id(&text).unwrap();
+            let id = super::ws_server_terminal_id(&text).unwrap();
             assert_eq!(id, "race");
             assert!(super::ws_should_forward_text(
                 protocol,
@@ -1283,7 +1381,7 @@ mod tests {
             let Some(async_graphql::http::WsMessage::Text(text)) = old else {
                 panic!("expected old completion")
             };
-            let id = super::ws_server_complete_id(&text).unwrap();
+            let id = super::ws_server_terminal_id(&text).unwrap();
             assert_eq!(id, "reused");
             assert_eq!(
                 super::ws_should_forward_text(protocol, &text, &mut operations.lock().unwrap()),

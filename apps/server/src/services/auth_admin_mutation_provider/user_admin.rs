@@ -18,13 +18,13 @@ use rustok_rbac::{
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set, TransactionTrait, sea_query::Expr,
+    QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::auth::{AuthConfig, hash_password_async};
-use crate::models::{auth_email_change_requests, auth_invite_consumptions, auth_invites, sessions, users};
+use crate::models::{auth_email_change_requests, auth_invite_consumptions, auth_invites, users};
 use crate::services::auth_invite::{InviteLookup, invite_token_hash, lock_invite_for_mutation};
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::flex_attached_values::FlexAttachedValuesService;
@@ -358,14 +358,11 @@ where
     C: ConnectionTrait,
 {
     let now = Utc::now();
-    sessions::Entity::update_many()
-        .col_expr(sessions::Column::RevokedAt, Expr::value(now))
-        .filter(sessions::Column::TenantId.eq(tenant_id))
-        .filter(sessions::Column::UserId.eq(user_id))
-        .filter(sessions::Column::RevokedAt.is_null())
-        .exec(db)
-        .await
-        .map_err(super::internal_admin_error)?;
+    AuthLifecycleService::revoke_user_sessions_db_with_connection(
+        db, tenant_id, user_id, None,
+    )
+    .await
+    .map_err(map_lifecycle_error)?;
     let _revoked_oauth_tokens =
         crate::services::oauth_token_service::revoke_user_delegated_tokens_in_tx(
             db, tenant_id, user_id, now,
@@ -781,8 +778,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             active.status = Set(status.clone());
         }
         if let Some(password_hash) = new_password_hash {
-            active.password_hash = Set(password_hash);
-            active.password_changed_at = Set(Some(Utc::now().into()));
+            active.set_replacement_password(password_hash, Utc::now());
         }
         if let Some(metadata) = prepared.metadata {
             active.metadata = Set(metadata);

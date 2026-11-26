@@ -37,6 +37,38 @@ consent-presence check alone could not distinguish an old epoch from a new grant
    `refresh` lineage rows. Refresh-only queries (rotation, reuse detection,
    family-root resolution, admin active-token counts) filter on `refresh`.
 
+6. A change to the client's registered redirect URIs, scopes, grant types or
+   granted permissions invalidates all of its existing tokens, pending codes
+   and active consents in the same app-locked transaction. Equivalent policy
+   sets and presentation-only edits preserve credentials. Both manual and
+   first-party manifest policy writers enforce this rule.
+7. Consent re-grant durably revokes the previous subject's tokens and pending
+   codes before publishing the replacement grant, even when the clock repeats
+   the previous consent timestamp. Revocation history remains intact.
+
+8. Replay-triggered family revocation is an authenticated client mutation.
+   Authorization-code and refresh replay handlers revalidate the current
+   active client identity, authentication type, secret hash and admitted
+   grant under the same app mutation fence as issuance. A stale client
+   snapshot cannot authorize revocation.
+
+9. The refresh lineage's absolute 90-day deadline bounds both newly issued
+   access registrations and refresh tokens. Issuance rejects expired prepared
+   credentials and rechecks their deadlines under the mutation fence; delegated
+   token responses report only remaining whole access-lifetime seconds.
+10. The duplicate-rotation grace applies only to a consumed refresh row whose
+    last-use and revocation timestamps match, with a valid creation/expiry
+    interval and nonnegative elapsed time strictly below 30 seconds. An
+    ordinary revocation is not rotation evidence. This does not recover a
+    lost successful refresh response.
+
+11. Refresh descendants must resolve a root of the same tenant, client,
+    subject, authorization-code lineage and consent epoch. The root must
+    contain committed rotation evidence and the descendant's scopes must
+    be a subset of the root's grant. Under the mutation fence, a family
+    with multiple live refresh branches refuses rotation rather than
+    arbitrarily selecting a branch.
+
 ## Sources of truth and ownership
 
 - Canonical owner: `rustok-auth` owns JWT claims and auth migrations;

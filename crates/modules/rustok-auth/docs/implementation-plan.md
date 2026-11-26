@@ -295,7 +295,9 @@ secret even with RSA signing; keep server clocks synchronized.
 
 RFC 7009 revocation revalidates the active client identity, type and secret hash
 under the app lock before token lookup. Stale authentication returns invalid_client;
-unknown tokens still succeed for authenticated clients. Source regression authored,
+unknown tokens still succeed for authenticated clients. Authorization-code
+and refresh-token replay paths revalidate that same active client snapshot and
+the requested grant under the mutation lock before family revocation. Source regressions authored,
 compilation and runtime verification pending.
 
 ## OAuth authorization session fence (source only)
@@ -307,11 +309,29 @@ cannot leave a new grant behind. Source regressions authored, unrun.
 
 ## OAuth consent and grant fences (source only)
 
-Consent re-grant invalidates pending codes in its transaction; code exchange
+Consent re-grant durably revokes subject-bound access and refresh rows and
+invalidates pending codes in its transaction, independently of epoch timestamp
+resolution. Manual and first-party manifest security-policy updates atomically
+revoke app credentials, pending codes and consents. Equivalent policy sets
+and presentation-only edits preserve credentials. Code exchange
 rejects a newer consent epoch and checks the refresh grant under the app lock
 before persisting prepared credentials. OAuth replay grace no longer accepts
 future timestamps or truncates elapsed time to whole seconds. Focused source
 regressions authored; compilation and runtime verification remain pending.
+
+## OAuth family lifetime and replay evidence (source only)
+
+New access registrations and refresh rows cannot exceed the original family
+deadline; prepared credentials are checked under the app/subject fence before
+consumption and delegated responses report the remaining access lifetime.
+Grace requires matching rotation timestamps and valid temporal evidence, not
+merely a recent revocation. Focused boundary and transactional regressions
+are unrun. Existing pre-change access registrations retain their stored expiry;
+proof-bound recovery and canonical family identity migration remain open.
+Root resolution now rejects unconsumed roots, mismatched consent epochs,
+widened descendant scopes and future timestamps. The app/subject-locked
+rotation refuses a family with multiple live refresh branches. Focused
+regressions are authored but unrun.
 
 ## Direct session mutation ordering (source only)
 

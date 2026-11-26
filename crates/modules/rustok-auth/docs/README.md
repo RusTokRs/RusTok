@@ -37,7 +37,7 @@ controller modules re-export or import those owner DTOs only for OpenAPI/route c
 - `AuthUserBackfillDbReader` implements a tenant-scoped identity projection with a strict `1..=500` batch bound, checked SQL-limit conversion, deterministic `created_at,id` ordering, and redacted storage/row-read errors for owner-owned profile backfill.
 - `AuthUserBootstrapDbWriter` owns tenant-scoped idempotent identity provisioning for installer workflows; email lookup is case-normalized, supported backends are `Postgres`/`Sqlite`, unsupported backends fail closed without panics, and storage/row-decoding failures are exposed only as stable owner errors. Caller-owned transactions remain supported for atomic identity+RBAC installation.
 - owner-owned OAuth GraphQL query/mutation/types behind `graphql` feature; `apps/server` only implements the runtime port over the DB and connects roots into the common schema;
-- self-service email change is exposed through `AuthLifecyclePort` and Auth GraphQL; request reauthenticates the direct user with the current password, and confirmation consumes a short-lived SHA-256-digested opaque token before atomically updating the verified address and revoking other sessions/delegated grants;
+- self-service email change is exposed through `AuthLifecyclePort` and Auth GraphQL; request reauthenticates the direct user with the current password, and challenge lifetime starts after the locked issuance checks and cleanup, and issuance rejects an expired proving session or challenge before commit; confirmation consumes a short-lived SHA-256-digested opaque token before atomically updating the verified address and revoking other sessions/delegated grants;
 - browser OAuth authorization is a host transport flow: cookie-authenticated GET requests are side-effect-free and always render a short-lived HMAC-CSRF confirmation form, even when prior consent exists or the app type does not require consent. Authorization codes are issued only after the CSRF-validated POST; explicit non-ambient Authorization-header requests may retain the pre-authorized fast path.
 
 OAuth persistence is tenant-composite rather than a set of independent foreign
@@ -184,7 +184,11 @@ cutoff is checked both during selection and after signature verification.
 The mandatory generation-bearing file is the only executable host source and
 supports atomic process-local hot reload. Auth request paths reuse prepared
 encoding/decoding keys and indexed verification history; the JWT library still
-constructs its internal crypto providers per operation.
+constructs its internal crypto providers per operation. Unmanaged process-local
+publishers share the durable ledger's terminal key-identity and non-increasing
+retirement rules for their entire process lifetime. They do not preserve
+history across restart or coordinate replicas; executable hosts still require
+durable admission.
 
 Focused regressions cover staging, promotion, retirement and exact key
 selection with two independent RS256 key pairs, plus OAuth access and missing-ID
@@ -391,7 +395,9 @@ A database error terminates the host. A missing or denied lease fences JWT
 operations; the mandatory file-backed host keeps polling for an admitted
 successor while its previous lease is fenced after expiry. The host's critical `jwt_cluster_lease` readiness check samples the
 same local gate after awaited dependency probes, returning 503 when the lease
-is unavailable. In-flight business transactions already authorized are not cancelled.
+is unavailable. Supervisor shutdown permanently closes the publisher's local
+crypto gate; delayed renewals and candidate publication cannot reopen it.
+In-flight business transactions already authorized are not cancelled.
 Root rotation and rollback of the independent authority itself remain separate work. Keys removed before first enrollment are
 not known to the ledger.
 
@@ -530,7 +536,9 @@ The witness stores an HMAC-authenticated exact metadata checkpoint including
 a monotonically increasing revision and every grant/horizon. All reads and
 all five mutation paths verify it. Mutations lock authority then witness,
 commit witness first and return success only after both durable commits.
-Mismatch or uncertain write commit fences local JWT; recovery is offline.
+Mismatch or uncertain write commit fences local JWT, including cancellation
+of the asynchronous writer after entering the commit phase. The shared fault
+latch remains closed until restart after offline recovery.
 
 For an existing independent authority, stop all older hosts and writers,
 wait for all leases and drains to expire, provision an empty separate witness
@@ -631,7 +639,10 @@ expiries beyond its ten-minute window. Source regressions unrun.
 RFC 7009 revocation rechecks the authenticated client snapshot under the app
 mutation lock before inspecting the token. Concurrent secret or client policy
 changes invalidate the preflight authentication; unknown tokens still succeed
-for an authenticated client. Source regression unrun.
+for an authenticated client. Authorization-code and refresh-token replay
+revocation revalidate the active client snapshot and grant under the same
+app mutation lock, rejecting stale authentication before changing a family.
+Source regressions unrun.
 
 ## OAuth issuance fences
 
@@ -640,11 +651,23 @@ locks app, user and direct session in order, rechecks ownership, session livenes
 email policy and access credential expiry, then grants missing consent only for
 explicit approval. Code insertion failure rolls back the consent change.
 
-Re-granting consent invalidates pending authorization codes for the same app,
-subject and tenant. Exchange rejects codes older than current consent and
+Re-granting consent durably revokes existing access and refresh credentials
+and invalidates pending authorization codes for the same app, subject and
+tenant. Manual and first-party manifest policy changes invalidate the app's
+tokens, pending codes and consents atomically; presentation edits and
+equivalent policy sets do not. Restoring a prior policy cannot revive those
+credentials. Source regressions remain unrun. Exchange rejects codes older than current consent and
 rechecks the refresh grant under the app lock before persisting prepared refresh
-credentials. OAuth refresh replay grace requires a nonnegative elapsed duration
-less than 30 seconds. Source regression definitions are unrun.
+credentials. The original 90-day refresh-family cap now bounds newly issued
+access and refresh registrations; prepared deadlines are checked under lock,
+and delegated token responses report remaining whole access-lifetime seconds.
+OAuth refresh replay grace requires matching committed rotation timestamps,
+valid creation/expiry ordering and nonnegative elapsed duration less than 30
+seconds. Ordinary revocation is not rotation evidence. Source regression
+definitions are unrun. Refresh descendants also require committed root
+rotation evidence, matching consent/code identities and root-bounded scopes.
+A forked family with multiple live refresh branches fails closed under the
+mutation lock. Proof-bound OAuth response recovery remains pending.
 
 ## Direct session concurrency
 
@@ -652,7 +675,27 @@ The host uses user-before-session locking for direct refresh (including history-
 recovery and replay) and bulk self-service revocation, matching credential changes.
 Refresh revalidates the digest and subject under the locks. Bulk self-service
 revocation requires a still-active current session. SQLite acquires its writer
-at the user fence before transactional reads.
+at the user fence before transactional reads. Administrative and self-service
+password replacements clear the old password's failed-login counter and
+temporary lockout without changing account status. Password reset retains
+the same lockout-clearing behavior. Administrative credential mutations and
+password reset reuse the lifecycle's tenant/user-scoped bulk session
+revocation; the shared writer updates both revocation and modification
+timestamps and does not rewrite previously revoked rows.
+
+## Account recovery revision
+
+Password-reset and email-verification JWT subjects bind the exact account ID,
+mailbox and database-owned monotonic `recovery_revision`. Password reset also
+retains the existing password-hash MAC binding. A user-table trigger advances
+the revision on changed email, password hash, status, tenant or removal of
+mailbox verification; unchanged/profile updates and initial verification do
+not advance it. Both issuance and confirmation use the persisted revision;
+confirmation rechecks it under the user mutation lock and in its conditional
+write. Old subjects without the revision fail closed. Stop older Auth writers,
+apply the platform migration and request fresh links at cutover. See
+[the recovery revision ADR](../../../../DECISIONS/2026-11-26-auth-recovery-revision.md).
+Source regressions and PostgreSQL/SQLite migration execution remain pending.
 
 ## Direct session refresh history and recovery
 
@@ -672,7 +715,12 @@ one opaque successor per tenant, session and operation key. The host checks
 the derived digest against current state and immutable rotation evidence.
 Only the immediately previous credential with the matching proof may recover
 the current successor during grace; a retry with the already-updated cookie
-and the same proof also returns it. Recovery never changes rotation history
+and the same proof also returns it. Both paths recheck the immutable rotation
+time after history lookup, before commit preparation and after commit. An
+admitted retry that outlasts grace conflicts without revocation; a new
+historical presentation outside grace still revokes the lineage. Refresh cookie
+lifetime is recomputed after commit; an already committed rotation may return
+an expiry error if commit consumed its remaining lifetime. Recovery never changes rotation history
 or extends the refresh deadline; it issues a fresh RS256 access token with
 current authority. Missing or incorrect proofs do not allow historical
 refresh. Proof reuse cannot resurrect a historical digest. Unrecoverable

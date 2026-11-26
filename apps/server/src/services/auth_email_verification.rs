@@ -14,7 +14,8 @@ impl AuthLifecycleService {
     /// Confirm an email-verification token and mark the address verified.
     ///
     /// The token is purpose-bound (separate JWT claim set) and bound to
-    /// the user and email it was issued for. Confirmation is idempotent:
+    /// the user, email and durable recovery revision it was issued for.
+    /// Confirmation is idempotent within that revision:
     /// replaying a token for an already-verified address succeeds
     /// without rewriting the timestamp or re-emitting the audit event.
     /// The first successful confirmation performs a compare-and-swap
@@ -39,7 +40,8 @@ impl AuthLifecycleService {
             .one(ctx.db())
             .await
             .map_err(AuthLifecycleError::from)?
-            .filter(|record| record.email.eq_ignore_ascii_case(&claims.sub))
+            .filter(|record| record.is_active() && record.email == claims.sub
+                && record.recovery_revision == claims.recovery_revision)
             .ok_or(AuthLifecycleError::InvalidVerificationToken)?;
 
         // Do not short-circuit an already-verified preflight read. An email
@@ -53,10 +55,12 @@ impl AuthLifecycleService {
         .await
         .map_err(AuthLifecycleError::from)?
         .ok_or(AuthLifecycleError::InvalidVerificationToken)?;
-        if current.email != user.email {
+        if !current.is_active() || current.email != user.email
+            || current.recovery_revision != claims.recovery_revision
+        {
             return Err(AuthLifecycleError::InvalidVerificationToken);
         }
-        let updated = verify_unchanged_email(&tx, tenant_id, user.id, &user.email).await?;
+        let updated = verify_unchanged_email(&tx, tenant_id, user.id, &user.email, claims.recovery_revision).await?;
 
         if updated {
             Self::publish_user_event_in_tx(
@@ -76,7 +80,9 @@ impl AuthLifecycleService {
                 .await
                 .map_err(AuthLifecycleError::from)?;
             if !current.is_some_and(|record| {
-                record.email == user.email && record.email_verified_at.is_some()
+                record.is_active() && record.email == user.email
+                    && record.recovery_revision == claims.recovery_revision
+                    && record.email_verified_at.is_some()
             }) {
                 return Err(AuthLifecycleError::InvalidVerificationToken);
             }
@@ -94,12 +100,15 @@ async fn verify_unchanged_email<C: ConnectionTrait>(
     tenant_id: uuid::Uuid,
     user_id: uuid::Uuid,
     email: &str,
+    recovery_revision: i64,
 ) -> Result<bool, AuthLifecycleError> {
     let updated = users::Entity::update_many()
         .col_expr(users::Column::EmailVerifiedAt, Expr::value(Utc::now()))
         .filter(users::Column::Id.eq(user_id))
         .filter(users::Column::TenantId.eq(tenant_id))
         .filter(users::Column::Email.eq(email))
+        .filter(users::Column::Status.eq(rustok_core::UserStatus::Active))
+        .filter(users::Column::RecoveryRevision.eq(recovery_revision))
         .filter(users::Column::EmailVerifiedAt.is_null())
         .exec(db)
         .await
@@ -188,7 +197,7 @@ mod tests {
         .expect("change address");
 
         assert!(
-            !verify_unchanged_email(&db, tenant.id, user.id, &user.email)
+            !verify_unchanged_email(&db, tenant.id, user.id, &user.email, user.recovery_revision)
                 .await
                 .expect("compare and swap")
         );
@@ -200,12 +209,14 @@ mod tests {
         assert_eq!(current.email, "new@example.com");
         assert!(current.email_verified_at.is_none());
         assert!(
-            verify_unchanged_email(&db, tenant.id, user.id, &current.email)
+            verify_unchanged_email(&db, tenant.id, user.id, &current.email, current.recovery_revision)
                 .await
                 .expect("verify current address")
         );
+        let verified = Users::find_by_id(user.id).one(&db).await.unwrap().unwrap();
+        assert_eq!(verified.recovery_revision, current.recovery_revision);
         assert!(
-            !verify_unchanged_email(&db, tenant.id, user.id, &current.email)
+            !verify_unchanged_email(&db, tenant.id, user.id, &current.email, current.recovery_revision)
                 .await
                 .expect("already verified")
         );

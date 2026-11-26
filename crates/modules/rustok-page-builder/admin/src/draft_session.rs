@@ -2251,13 +2251,13 @@ impl SsrDraftSessionStore for FileSsrDraftSessionStore {
         }
 
         let mut per_owner: HashMap<
-            String,
+            (String, String),
             Vec<(PathBuf, String, u64, RecordAge, Option<DraftSessionOwner>, bool)>,
         > = HashMap::new();
         for (path, token, generation, age, owner, prepared) in &surviving {
             if let Some(owner) = owner {
                 per_owner
-                    .entry(format!("{}:{}", owner.tenant_id, owner.user_id))
+                    .entry((owner.tenant_id.clone(), owner.user_id.clone()))
                     .or_default()
                     .push((
                         path.clone(),
@@ -2533,7 +2533,8 @@ impl PersistentDraftSessionBackend for ExternalKvDraftSessionBackend {
     ) -> Result<usize, SsrDraftSessionError> {
         let keys = self.driver.scan_keys(&self.prefix)?;
         let mut surviving = Vec::new();
-        let mut per_owner: HashMap<String, Vec<(String, u64, bool)>> = HashMap::new();
+        let mut per_owner: HashMap<(String, String), Vec<(String, u64, bool)>> =
+            HashMap::new();
         let mut deletions: BTreeSet<String> = BTreeSet::new();
         // Generation each key held when it was scanned. A key is deleted
         // only while it still holds that generation, so a session committed
@@ -2555,7 +2556,7 @@ impl PersistentDraftSessionBackend for ExternalKvDraftSessionBackend {
                     let prepared = has_prepared_save(&record.operation_receipts);
                     if let Some(owner) = record.owner.as_ref() {
                         per_owner
-                            .entry(format!("{}:{}", owner.tenant_id, owner.user_id))
+                            .entry((owner.tenant_id.clone(), owner.user_id.clone()))
                             .or_default()
                             .push((key.clone(), record.expires_at_unix_secs, prepared));
                     }
@@ -4851,6 +4852,68 @@ mod tests {
             assert!(store.load(token, "home", Some(&alice)).unwrap().is_some());
         }
         let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn prune_keeps_colon_delimited_owner_pairs_separate_in_file_and_kv_stores() {
+        let left = owner("tenant:one", "user");
+        let right = owner("tenant", "one:user");
+
+        let dir =
+            std::env::temp_dir().join(format!("rustok_draft_owner_key_{}", Uuid::new_v4().simple()));
+        let file_store =
+            FileSsrDraftSessionStore::new(&dir, Duration::from_secs(3600), 100)
+                .expect("file store");
+        let mut file_tokens = Vec::new();
+        for _ in 0..5 {
+            let created = file_store
+                .commit(None, None, controller("home"), Some(&left))
+                .expect("left file session");
+            file_tokens.push((created.token, left.clone()));
+            let created = file_store
+                .commit(None, None, controller("home"), Some(&right))
+                .expect("right file session");
+            file_tokens.push((created.token, right.clone()));
+        }
+        assert_eq!(file_store.prune().expect("file prune"), 0);
+        for (token, owner) in file_tokens {
+            assert!(
+                file_store
+                    .load(&token, "home", Some(&owner))
+                    .expect("file load")
+                    .is_some()
+            );
+        }
+        let _ = fs::remove_dir_all(&dir);
+
+        let driver = Arc::new(MemoryKvDriver::new());
+        let kv_store = DurableSsrDraftSessionStore::distributed(
+            InMemorySsrDraftSessionStore::new(Duration::from_secs(3600), 100),
+            driver,
+            Duration::from_secs(3600),
+            100,
+        );
+        let mut kv_tokens = Vec::new();
+        for _ in 0..5 {
+            let created = kv_store
+                .commit(None, None, controller("home"), Some(&left))
+                .expect("left kv session");
+            kv_tokens.push((created.token, left.clone()));
+            let created = kv_store
+                .commit(None, None, controller("home"), Some(&right))
+                .expect("right kv session");
+            kv_tokens.push((created.token, right.clone()));
+        }
+        assert_eq!(kv_store.prune().expect("kv prune"), 0);
+        for (token, owner) in kv_tokens {
+            assert!(
+                kv_store
+                    .backend()
+                    .load_record(&token, Some(&owner))
+                    .expect("kv backend load")
+                    .is_some()
+            );
+        }
     }
 
     #[test]

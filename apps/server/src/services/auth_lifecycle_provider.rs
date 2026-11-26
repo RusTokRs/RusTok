@@ -266,9 +266,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
             spawn_email_verification(
                 &self.runtime_ctx,
                 &self.auth_config,
-                context.tenant_id,
-                user.id,
-                &user.email,
+                &user,
                 context.locale.as_str(),
             );
         }

@@ -30,8 +30,13 @@ The host polls the complete document every five seconds for its HTTP lifetime.
 Preparation and production validation happen before publication. A shared
 read/write fence serializes generation and key replacement with synchronous
 JWT operations. Each operation observes one complete snapshot. Stale or equal
-generations, unmanaged active algorithm changes, adjacent ID/material remapping, cross-purpose
-reuse and reactivation of expired retained history fail closed. Malformed or
+generations, unmanaged active algorithm changes, ID/material remapping,
+cross-purpose reuse and reactivation of expired retained history fail closed.
+Unmanaged publication now shares the durable ledger transition rules in memory:
+retired identities are terminal for the process lifetime, demoted signers cannot
+sign again, and retained verification cutoffs cannot increase. Initial history
+is conservatively considered previously active. This does not persist the ledger
+or provide any cluster authority. Malformed or
 unavailable candidates retain the last-known-good snapshot. No stale raw
 initial signer is retained by the live configuration after replacement.
 No request, secret or key material is written to logs. No lock spans async

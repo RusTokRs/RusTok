@@ -27,6 +27,32 @@ pub(super) struct Witness {
     pub(super) fault: Arc<AtomicBool>,
 }
 
+/// Armed only when a commit may become durable. Dropping the async writer
+/// while a commit is pending is indistinguishable from a lost commit reply.
+/// Keep the shared fault latch sticky even when the future is cancelled.
+struct CommitOutcomeGuard<'a> {
+    witness: &'a Witness,
+    confirmed: bool,
+}
+
+impl<'a> CommitOutcomeGuard<'a> {
+    fn new(witness: &'a Witness) -> Self {
+        Self { witness, confirmed: false }
+    }
+
+    fn confirm(mut self) {
+        self.confirmed = true;
+    }
+}
+
+impl Drop for CommitOutcomeGuard<'_> {
+    fn drop(&mut self) {
+        if !self.confirmed {
+            self.witness.trip();
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Checkpoint {
@@ -270,14 +296,10 @@ impl Witness {
         self.healthy()?;
         // Witness ahead is a recoverable fenced state. Authority ahead must
         // never be produced by this protocol. No local grant before both commits.
-        if witness.commit().await.is_err() {
-            self.trip();
-            return Err(unavailable());
-        }
-        if authority.commit().await.is_err() {
-            self.trip();
-            return Err(unavailable());
-        }
+        let outcome = CommitOutcomeGuard::new(self);
+        witness.commit().await.map_err(|_| unavailable())?;
+        authority.commit().await.map_err(|_| unavailable())?;
+        outcome.confirm();
         self.healthy()?;
         Ok((affected, row))
     }
@@ -325,8 +347,10 @@ impl Witness {
         witness.execute_raw(Statement::from_sql_and_values(backend, sql,
             vec![binding.id.clone().into(), binding.proof.clone().into(), checkpoint.revision.into(), payload.into(), tag.into()]))
             .await.map_err(|_| unavailable())?;
+        let outcome = CommitOutcomeGuard::new(self);
         witness.commit().await.map_err(|_| unavailable())?;
         authority.commit().await.map_err(|_| unavailable())?;
+        outcome.confirm();
         Ok(())
     }
 
@@ -369,8 +393,10 @@ impl Witness {
         }
         self.compare(&fence.read_on(&authority, true, false).await?, &checkpoint)?;
         // Keep the witness locked until the exact copy is committed.
+        let outcome = CommitOutcomeGuard::new(self);
         authority.commit().await.map_err(|_| unavailable())?;
         witness.commit().await.map_err(|_| unavailable())?;
+        outcome.confirm();
         Ok(())
     }
 }
@@ -392,6 +418,42 @@ mod tests {
         fence.witness = Some(Witness::new(witness_db.clone()));
         fence.witness.as_ref().unwrap().initialize(&fence, ROOT).await.unwrap();
         (authority, witness_db, id, fence)
+    }
+
+    #[tokio::test]
+    async fn cancelled_commit_outcome_fences_an_installed_lease() {
+        let keys = FenceKeys::generate();
+        let (_, _, _, fence) = deployment().await;
+        let first = keys.config(ROOT, "old", keys.old(), None);
+        assert_eq!(fence.admit(1, &first).await.unwrap(), JwtAdmission::Admitted);
+        let (config, publisher) = first.into_cluster_jwt(1).unwrap();
+        assert!(fence.renew(&publisher).await.unwrap());
+        let readiness = publisher.lease_readiness().unwrap();
+        let witness = fence.witness.as_ref().unwrap();
+        assert!(readiness.is_ready());
+
+        // A fully confirmed outcome must not fence a healthy authority.
+        CommitOutcomeGuard::new(witness).confirm();
+        assert!(!witness.faulted());
+        assert!(readiness.is_ready());
+
+        // Exercise cancellation of a polled future while its commit outcome
+        // is uncertain, without relying on database timing or sleeps.
+        let cloned = witness.clone();
+        let (armed_tx, armed_rx) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(async move {
+            let outcome = CommitOutcomeGuard::new(&cloned);
+            armed_tx.send(()).unwrap();
+            std::future::pending::<()>().await;
+            outcome.confirm();
+        });
+        armed_rx.await.unwrap();
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        assert!(witness.faulted());
+        assert!(!readiness.is_ready());
+        assert!(config.with_jwt_operation(|_| Ok(())).is_err());
+        assert!(fence.renew(&publisher).await.is_err());
     }
 
     #[tokio::test]

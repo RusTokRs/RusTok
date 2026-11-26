@@ -707,16 +707,12 @@ pub fn spawn_email_change_notification_send(
 pub fn spawn_email_verification(
     ctx: &ServerRuntimeContext,
     config: &crate::auth::AuthConfig,
-    tenant_id: uuid::Uuid,
-    user_id: uuid::Uuid,
-    email: &str,
+    user: &crate::models::users::Model,
     locale: &str,
 ) {
     let token = match crate::auth::encode_email_verification_token(
         config,
-        tenant_id,
-        user_id,
-        email,
+        user,
         EMAIL_VERIFICATION_TOKEN_TTL_SECS,
     ) {
         Ok(token) => token,
@@ -738,7 +734,7 @@ pub fn spawn_email_verification(
             return;
         }
     };
-    let recipient = email.to_string();
+    let recipient = user.email.clone();
     let _task = spawn_email_verification_send(ctx, email_service, recipient, token);
 }
 

@@ -323,45 +323,6 @@ impl ValidatedJwtKeyrings {
         Ok(result)
     }
 
-    /// Preserve identity across adjacent unmanaged generations.
-    pub(crate) fn validate_successor(&self, next: &Self) -> Result<()> {
-        let now = chrono::Utc::now().timestamp();
-        for purpose in JwtPurpose::ALL {
-            let old = self.for_purpose(purpose);
-            let old_keys = std::iter::once((
-                old.active_kid.as_str(), old.active_identity, old.active_verification_identity, None,
-            )).chain(old.history.iter().map(|(kid, key)| {
-                (kid.as_str(), key.identity, key.verification_identity, Some(key.verify_until))
-            }));
-            for (kid, identity, verification, cutoff) in old_keys {
-                for target in JwtPurpose::ALL {
-                    let ring = next.for_purpose(target);
-                    let new_keys = std::iter::once((
-                        ring.active_kid.as_str(), ring.active_identity, ring.active_verification_identity, None,
-                    )).chain(ring.history.iter().map(|(kid, key)| {
-                        (kid.as_str(), key.identity, key.verification_identity, Some(key.verify_until))
-                    }));
-                    for (new_kid, new_identity, new_verification, new_cutoff) in new_keys {
-                        if target == purpose && kid == new_kid {
-                            if identity != new_identity || verification != new_verification {
-                                return Err(invalid_config());
-                            }
-                            if cutoff.is_some_and(|until| until <= now)
-                                && new_cutoff.is_none_or(|until| until > now)
-                            {
-                                return Err(invalid_config());
-                            }
-                        }
-                        if identity == new_identity && (target != purpose || kid != new_kid) {
-                            return Err(invalid_config());
-                        }
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
-
     pub(crate) fn for_purpose(&self, purpose: JwtPurpose) -> &ValidatedJwtKeyring {
         match purpose {
             JwtPurpose::Access => &self.access,

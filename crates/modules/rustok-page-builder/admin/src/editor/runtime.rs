@@ -642,8 +642,15 @@ impl AdminEditorRuntime {
                 // SaveStarted is emitted before the host callback is selected. If neither a
                 // facade nor a callback exists, retire that exact attempt instead of leaving the
                 // editor permanently stuck in save_in_progress.
-                self.finish_failed_request(capability, save_attempt.as_ref());
-                self.fail(self.facade_missing.clone());
+                if let Some(attempt) = save_attempt.as_ref() {
+                    // Retire only the exact attempt that was started for this host request.
+                    let completion = self.finish_failed_request(capability, Some(attempt));
+                    self.report_completion_failure(self.facade_missing.clone(), completion);
+                } else {
+                    // No host was available when the request was created, so no save attempt
+                    // was started and there is no controller state to retire.
+                    self.fail(self.facade_missing.clone());
+                }
             }
         }
     }
@@ -753,9 +760,9 @@ impl AdminEditorRuntime {
                         }
                     }
                     Some(Err(error)) => {
-                        if self.finish_failed_request(capability, save_attempt.as_ref()) {
-                            self.fail(error);
-                        }
+                        let completion =
+                            self.finish_failed_request(capability, save_attempt.as_ref());
+                        self.report_completion_failure(error, completion);
                     }
                     None => self.fail(
                         "Page Builder controller was disposed before save acknowledgement",
@@ -763,15 +770,16 @@ impl AdminEditorRuntime {
                 }
             }
             Ok(response) => {
-                if self.finish_failed_request(capability, save_attempt.as_ref()) {
-                    self.fail(format!(
-                        "Page Builder facade returned `{}` for a `{capability}` request",
-                        response.capability()
-                    ));
-                }
+                let message = format!(
+                    "Page Builder facade returned `{}` for a `{capability}` request",
+                    response.capability()
+                );
+                let completion =
+                    self.finish_failed_request(capability, save_attempt.as_ref());
+                self.report_completion_failure(message, completion);
             }
             Err(error) => {
-                let completed = if capability == BuilderCapabilityKind::Publish
+                let completion = if capability == BuilderCapabilityKind::Publish
                     && error.stable_code.as_deref() == Some("REVISION_CONFLICT")
                 {
                     self.finish_conflicted_request(
@@ -782,10 +790,24 @@ impl AdminEditorRuntime {
                 } else {
                     self.finish_failed_request(capability, save_attempt.as_ref())
                 };
-                if completed {
-                    self.fail(error.to_string());
-                }
+                self.report_completion_failure(error.to_string(), completion);
             }
+        }
+    }
+
+    fn report_completion_failure(
+        &self,
+        message: impl Into<String>,
+        completion: Result<bool, String>,
+    ) {
+        let message = message.into();
+        match completion {
+            Ok(true) => self.fail(message),
+            // A stale completion must not replace the newer request's UI state or message.
+            Ok(false) => {}
+            Err(transition_error) => self.fail(format!(
+                "{message}; failed to update editor state: {transition_error}"
+            )),
         }
     }
 
@@ -794,47 +816,57 @@ impl AdminEditorRuntime {
         capability: BuilderCapabilityKind,
         attempt: Option<&SaveAttempt>,
         message: &str,
-    ) -> bool {
+    ) -> Result<bool, String> {
         if capability != BuilderCapabilityKind::Publish {
-            return false;
+            return Ok(false);
         }
-        let Some(attempt) = attempt else {
-            return false;
-        };
+        let attempt = attempt.ok_or_else(|| {
+            "Page Builder publish conflict has no tracked save attempt".to_string()
+        })?;
         let expected = self.controller.with_untracked(|controller| {
             controller.revision_id().to_string()
         });
         let actual = conflict_actual_revision(message)
             .unwrap_or_else(|| "newer server revision".to_string());
-        self.controller
-            .try_update(|controller| {
-                controller.mark_save_conflict_for_attempt(attempt, expected, actual)
-            })
-            .is_some_and(|result| result.unwrap_or(false))
+        match self.controller.try_update(|controller| {
+            controller
+                .mark_save_conflict_for_attempt(attempt, expected, actual)
+                .map_err(|error| error.to_string())
+        }) {
+            Some(Ok(completed)) => Ok(completed),
+            Some(Err(error)) => Err(format!("could not record save conflict: {error}")),
+            None => Ok(false),
+        }
     }
 
-    /// False means the completion belongs to an obsolete attempt. In that
-    /// case it must neither fail the newer save nor replace its UI message.
+    /// Ok(false) means the completion belongs to an obsolete attempt. Transition
+    /// errors are returned so they cannot be mistaken for an obsolete completion.
     fn finish_failed_request(
         &self,
         capability: BuilderCapabilityKind,
         attempt: Option<&SaveAttempt>,
-    ) -> bool {
+    ) -> Result<bool, String> {
         match capability {
             BuilderCapabilityKind::Publish => {
-                let Some(attempt) = attempt else {
-                    return false;
-                };
-                self.controller
-                    .try_update(|controller| controller.mark_save_failed_for_attempt(attempt))
-                    .is_some_and(|result| result.unwrap_or(false))
+                let attempt = attempt.ok_or_else(|| {
+                    "Page Builder publish failure has no tracked save attempt".to_string()
+                })?;
+                match self.controller.try_update(|controller| {
+                    controller
+                        .mark_save_failed_for_attempt(attempt)
+                        .map_err(|error| error.to_string())
+                }) {
+                    Some(Ok(completed)) => Ok(completed),
+                    Some(Err(error)) => Err(format!("could not record save failure: {error}")),
+                    None => Ok(false),
+                }
             }
             BuilderCapabilityKind::Preview => {
                 self.preview_in_progress.set(false);
                 self.preview_request.set(None);
-                true
+                Ok(true)
             }
-            BuilderCapabilityKind::Tree | BuilderCapabilityKind::Properties => true,
+            BuilderCapabilityKind::Tree | BuilderCapabilityKind::Properties => Ok(true),
         }
     }
 
@@ -874,5 +906,60 @@ impl AdminEditorRuntime {
         self.runtime_publish_gate_evaluation
             .set(state.runtime_publish_gate_evaluation.clone());
         self.preview_request.set(state.preview_request.clone());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn runtime() -> AdminEditorRuntime {
+        let controller = AdminCanvasController::new(
+            "home",
+            "rev-1",
+            serde_json::json!({
+                "pages": [{
+                    "id": "home",
+                    "component": { "id": "root", "type": "wrapper", "components": [] }
+                }]
+            }),
+        )
+        .expect("controller");
+        AdminEditorRuntime::new(controller, None, None, None, "facade missing", "Saved")
+    }
+
+    #[test]
+    fn publish_failure_without_attempt_is_reported_as_an_invariant_error() {
+        let runtime = runtime();
+        let error = runtime
+            .finish_failed_request(BuilderCapabilityKind::Publish, None)
+            .expect_err("a publish failure must be correlated to its save attempt");
+        assert!(error.contains("tracked save attempt"));
+    }
+
+    #[test]
+    fn publish_conflict_without_attempt_is_reported_as_an_invariant_error() {
+        let runtime = runtime();
+        let error = runtime
+            .finish_conflicted_request(
+                BuilderCapabilityKind::Publish,
+                None,
+                "revision conflict",
+            )
+            .expect_err("a publish conflict must be correlated to its save attempt");
+        assert!(error.contains("tracked save attempt"));
+    }
+
+    #[test]
+    fn completion_transition_errors_are_reported_with_the_original_failure() {
+        let runtime = runtime();
+        runtime.report_completion_failure(
+            "publish failed",
+            Err("could not record save failure".to_string()),
+        );
+        assert_eq!(
+            runtime.last_error.get_untracked().as_deref(),
+            Some("publish failed; failed to update editor state: could not record save failure")
+        );
     }
 }

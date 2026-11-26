@@ -913,6 +913,14 @@ async fn websocket_lease_revalidates_live_authority_and_fails_closed() {
     )
     .await
     .expect("assign manager role");
+    // Persist an absolute deadline earlier than the signed JWT expiry.
+    let mut session = sessions::ActiveModel {
+        id: Set(session_id),
+        absolute_expires_at: Set(Some((Utc::now() + Duration::minutes(5)).into())),
+        ..Default::default()
+    };
+    let persisted = session.clone().update(&db).await.expect("shorten session");
+    let deadline = persisted.absolute_deadline();
     let token = encode_access_token(
         runtime.require_auth_config().unwrap(),
         user.id,
@@ -924,7 +932,19 @@ async fn websocket_lease_revalidates_live_authority_and_fails_closed() {
     let current = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
         .await
         .expect("resolve initial authority");
+    assert_eq!(current.access_token_expires_at, deadline);
     let lease = WebSocketAuthLease::new(token, &current);
+    assert_eq!(lease.expires_at, deadline);
+    assert!(lease.revalidate(&runtime).await.is_ok());
+
+    session.absolute_expires_at = Set(Some((deadline - Duration::minutes(1)).into()));
+    session.clone().update(&db).await.expect("further shorten session");
+    assert_eq!(
+        lease.revalidate(&runtime).await,
+        Err(WebSocketAuthLeaseError::AuthorityChanged)
+    );
+    session.absolute_expires_at = Set(Some(deadline.into()));
+    session.update(&db).await.expect("restore original deadline");
     assert!(lease.revalidate(&runtime).await.is_ok());
 
     let mut expired = lease.clone();

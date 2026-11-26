@@ -45,7 +45,8 @@ but cannot authorize a grant on a mismatched pair. A stale revision returns
 CAS contention. Existing time checks and bounded local lease remain in force.
 
 A detected mismatch, missing/invalid checkpoint or uncertain write commit
-latches a local witness fault; an installed lease checks the same latch
+(including cancellation of an in-flight commit future before both outcomes
+are confirmed) latches a local witness fault; an installed lease checks the same latch
 before and after JWT crypto. The supervisor exits on authority errors.
 Other disconnected holders retain at most the existing bounded lease.
 Connection failures before a checkpoint comparison may close the host
