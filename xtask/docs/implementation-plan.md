@@ -141,13 +141,13 @@ remain separate verification gates.
 | --- | --- | --- |
 | Input | Native profile; normalized slug; unknown, repeated and conflicting flags rejected; metadata escaped; typed composition identity and Cargo key collisions rejected | Extend systematic boundary/size and identity collision cases to the remaining registration surfaces |
 | Backend | Minimal `RusToKModule`/`MigrationSource`, contract tests and owner docs; no invented domain operations | Generated source and selected composition must compile in isolated verification |
-| Persistence | `--with-db` rejected before writes; `--no-db` emits no schema | An actual module owner must first specify its data model, migration safety, transaction and event contracts |
+| Persistence | `--with-db --entity <name>` selects a tenant-owned record and localized titles; `--no-db` emits no schema | Extend the executable example to lifecycle, authorization and durable projection effects |
 | UI | Optional unmounted Leptos core/model/transport/render packages; public owner transport facade; both adapters explicitly unavailable with executable failure tests | Effective host locale, owner operations and live Leptos/Next.js parity are not implemented |
 | Planning | Parse TOML keys, Markdown sections and Rust registry syntax before inserting only new bytes. Verify required entries and show unified diffs with apply preconditions in dry-run | Extend negative coverage for remaining input boundaries |
 | Apply | Workspace-wide lock, versioned journal, original backups before apply, and no-clobber source writes. Recovery verified on Windows and Linux. | External writers can still race |
 | Recovery | New process resumes rollback or finishes committed cleanup; changed targets and foreign files are preserved; a retained CLI runs without Cargo | Ambiguous claims and conflicting edits require manual reconciliation |
 | Governance | Crate rustdoc includes owner API; plans declare FFA/FBA and release/data readiness; central plan and readiness indexes updated | Indexes must remain tested as projections; a new identity has no verified release/rollback execution |
-| Verification | Unit/negative tests, renderer and four file-tree goldens; four isolated generated modes and eight default-profile crate test suites pass; generated facade tests | Matrix is Bash/disposable-checkout dependent; no selected distribution feature execution; see exact profile evidence below |
+| Verification | Unit and negative tests, four file-tree goldens, and shared source lint on each rendered mode in a temporary workspace | The full matrix compiles the generated packages in a disposable checkout. See the profile evidence below for runtime and distribution coverage. |
 
 The initial Windows baseline was 175 passing and three failing `xtask` tests.
 All failures were LF renderer output compared with CRLF golden files.
@@ -247,6 +247,241 @@ Neither skip flag may turn an incomplete plan into successful registration.
 Owner: platform tooling. Prerequisites: gates 1 and 2 for production sign-off;
 read-only and disposable-fixture verification can proceed earlier.
 
+The [executable scaffold decision](../../DECISIONS/2026-11-26-executable-native-module-scaffolding.md)
+extends the identity generator with explicit working capabilities. The first
+persisted mode is `--with-db --entity <name>`. It emits private tenant-scoped
+tables, a registered migration, locale provenance and a revision-checked write
+service. A write failure rolls back the base revision and localized copy together.
+
+On 2026-11-26 an isolated Windows checkout generated
+`scaffold_localized_proof` with `--with-db --entity reference_item --no-ui`.
+The live scaffold passed canonical layout and publish metadata checks.
+`cargo test -p rustok-scaffold-localized-proof --locked --offline --lib --test record`
+passed the two owner package checks and both SQLite service scenarios.
+The opt-in owner contract test passed on a disposable PostgreSQL 16.13 cluster.
+The PostgreSQL case was rendered from the same scenario template into the
+generated package after adding that platform-independent test entrypoint.
+`cargo test -p xtask --locked --offline scaffold::` passed 77 tests and ignored
+the subprocess harness entrypoint.
+
+The persisted mode now generates draft creation, tenant-wide owner
+authorization, publication and withdrawal, a localized Search source and an
+optional host cache adapter. The owner writes its Search refresh request
+through the platform Outbox in the transaction for the published change.
+
+The isolated `scaffold_ready_proof` generation passed module lint and manifest
+validation. Its two library checks and three SQLite scenarios passed. The
+generated `postgres_localized_publication_reaches_search` scenario passed on
+PostgreSQL 16.13. It replays persisted envelopes through the actual Search
+listener and queries through the storefront audience executor. It covers denied
+undeclared scope, tenant isolation, a locale longer than 16 characters, edited
+and removed Search results, and live-revision cache invalidation. The cache runs
+against the canonical in-memory backend in this fixture.
+The isolated `scaffold_product_kind_proof` run repeated the PostgreSQL scenario
+with `--entity product` to prove owner-local entity names stay separate from
+Commerce facet, channel and link ownership.
+
+The GitHub workflow invokes the same matrix with a PostgreSQL service. Live host
+module and channel admission, relational Index, and executable external command
+and UI adapters remain to be integrated. Independent FBA deployment follows the
+embedded capabilities.
+
+The Windows `cargo xtask module verify-scaffold --offline` run passed with a
+private PostgreSQL 16.13 cluster. It exercised the four scaffold modes, CLI
+attachment, the localized publication contract, CSR/hydrate/SSR UI package
+tests, and selected distribution registration with defaults disabled. The
+entity-name collision and scoped source rebuild were also verified separately
+against the newly generated PostgreSQL owner.
+
+#### Executable admin reference
+
+Generate a knowledge-base owner in a disposable workspace and mount its
+admin package in both Leptos and Next Admin. Use Blog for module composition,
+navigation and editor boundaries. The reference is complete when an operator
+can manage localized records and module settings in the running admin hosts.
+
+| Surface | Generated behavior | Required verification |
+| --- | --- | --- |
+| Sidebar and routes | Declare the root and work-page subentries through the [module manifest](../../docs/modules/manifest.md#what-cargo-xtask-module-validate-checks). Mount the package through each host's registry. Provide entries for records and settings in the module menu. Show settings to an authorized operator through the host's settings navigation. | Enable the module, open each entry, follow deep links and switch language. Verify tenant-disabled and unauthorized navigation and direct-route admission in both hosts. |
+| Work page | Use `rustok-grid` in Leptos and `DataTableShell` in Next. The owner list query filters, sorts and counts the full tenant-scoped result before paging. The page provides text and publication filters, stable sort, pagination, row actions and loading, empty, failure and forbidden states. | Seed several pages. Verify filter and sort changes, totals, URL restoration, tenant isolation and result refresh after mutation. |
+| Record editor | Use platform form controls and owner validation for creation, explicit-locale edit, publication and withdrawal. Show the requested and effective content locales when fallback applies. | Create a record, add a translation, reload, publish and withdraw through native and GraphQL entrypoints. Verify stale revisions and denied or failed writes surface consistently in both clients. |
+| Settings page and submenu | Give the module a settings route with named sections backed by the [native settings contract](../../docs/architecture/settings.md#staticnative-module-settings). Generate a typed list default and a public discovery policy backed by their real consumers. Use the shared settings owner for revision-checked saves and scope access per tenant and actor. | Save a list default and observe a changed default page size. Change discovery policy and observe the public read path. Reload to verify persisted values, then exercise validation, conflicting revisions and insufficient permissions. |
+| Localization | Use the host's effective UI locale and module-owned Fluent catalogs for menu and submenu labels, breadcrumbs, table headings, state messages, form help and settings. Keep localized record titles on the owner translation path. A selected localized setting value uses the platform setting-value translation contract. | Switch between English and Russian, follow the same route, and independently select and save a record translation. For localized setting values, verify their read and write locale independently of UI language. |
+
+Build the owner list query and mounted admin flow before certifying the
+reference. Its verification must launch both hosts and exercise the generated
+routes as an operator. The current render-only Leptos profiles establish package
+shape and compilation. Relational Index and the operational CLI are also part of
+the complete rich reference. Independent FBA deployment follows the embedded
+reference. The compact profile keeps its existing identity and selected
+capabilities.
+
+The owner list query is implemented in the persisted profile. It authorizes
+`List`, applies literal title search across stored translations and publication
+filters before pagination, and returns the count and localized rows from one
+database snapshot. The manifest declares `admin_page_size`; the owner reads
+its tenant value through the platform settings-reader port when the request
+omits a page size.
+
+The generated `scaffold_table_proof` owner passed manifest and source-layout
+validation, the SQLite record suite, and its PostgreSQL 16.13 contract. The
+list scenario tests multiple pages, literal `%`, Cyrillic title matching,
+fallback display, tenant and permission scope, and default page size changes
+through a test implementation of the settings port. The settings write flow
+and both mounted admin hosts remain to be exercised.
+
+The persisted profile can now publish the authenticated admin GraphQL
+contribution with `--admin-resource <Variant>`. The generator checks the
+resource against the platform permission catalog, forwards the GraphQL
+feature from the selected server module, and emits namespaced operation documents
+with a shared record fragment for the admin clients. The contribution exposes list, detail, draft
+creation, localized edit, publication and withdrawal. It derives authority
+from the authenticated tenant and actor and keeps edit revisions as decimal
+strings across the client boundary.
+
+The generated `scaffold_admin_api_proof` passed layout and manifest validation,
+two library checks, five SQLite scenarios, and the PostgreSQL 16.13 scenario.
+The GraphQL test executed the generated operation document with the actual
+database-backed static module settings reader. It verified default page size,
+locale fallback, publication filters, stale revision, missing permissions,
+disabled modules and isolation between two enabled tenants. The server build
+script independently emitted both GraphQL roots and the runtime factory from
+the generated manifest.
+
+The initial persisted admin profile generated a Leptos workspace with
+tenant-scoped `rustok-grid` rows, server pagination, and English and Russian
+catalogs. The server's configured default page size applies until the
+operator explicitly selects a size. The UI facade uses the native server
+functions for SSR and hydrate and GraphQL for CSR. Both use the same owner
+service, tenant authority and revision parser. The matrix includes the
+generated record admin package alongside the four open-ended UI scaffold
+profiles.
+
+The generated `scaffold_record_workspace_proof` passed five admin SSR tests.
+The native HTTP scenario used the Leptos Axum handler, owner migrations and
+database-backed module settings. It exercised default page size, locale
+fallback, draft creation, translation, publication, withdrawal, revision
+conflict and access denial across tenants. The owner test executed the
+corresponding GraphQL documents on SQLite. This fixture also passed layout
+and publish metadata checks with a persisted admin and draft storefront,
+an owner build without default features, and CSR and hydrate compilation
+on `wasm32-unknown-unknown`.
+
+The generated Leptos editor uses platform form controls, tracks unsaved
+titles and constructs commands in the framework-neutral core. It opens a
+record and its selected translation, creates a draft, saves the title and
+toggles publication. It shows requested, effective and available locales.
+Creating a missing translation starts with an empty title field and displays
+fallback copy as a read-only reference. Known owner refusals use the same
+localized messages through both transports. Revision conflicts and
+unconfirmed writes require a fresh read before another write.
+
+The generated `scaffold_admin_forms_proof` passed ten SSR-profile tests.
+They cover canonical form rendering in Russian, selection of a missing
+translation, revisioned command construction, response scope and recovery
+after a refused or unconfirmed write. The native HTTP scenario also passed
+with the new transport facade present. The generated crate checked with
+both WASM profiles, and the scaffold suite passed 79 tests with one ignored.
+Interactive host navigation and browser verification remain open.
+
+The static settings owner now exposes an exact module settings projection.
+Its settings and revision share the same database snapshot, which also
+applies to the existing collection used by operator screens. The generated
+contract loads the declared schema from the generated manifest and verifies
+that a revisioned settings save reaches the record list through the
+database-backed settings reader. The dedicated page and the public
+discovery and localized settings sections are pending.
+
+The generated `scaffold_settings_roundtrip` passed the owner and GraphQL
+tests on SQLite and the combined PostgreSQL 16.13 scenario. Normalization
+used the generated manifest schema. The scenario checked replay, rejected
+a stale revision, confirmed tenant-specific page sizes, and overlapped
+settings writes with exact and collection reads on PostgreSQL.
+
+The generated Leptos root supports the `settings/records` subpath with a
+localized page-size form. Native and GraphQL reads use the same host
+settings operator reader and require `modules:manage`. The form submits the
+existing `updateModuleSettings` contract for both Leptos profiles. It retains unrelated
+settings fields and sends the revision associated with the loaded document.
+It disables repeat submission on a stale revision or an unconfirmed write.
+
+The generated `scaffold_admin_settings_ui_proof` passed layout validation,
+12 SSR-profile tests and WASM compilation for CSR and hydrate. The
+native test called the Leptos HTTP handler with an owner-backed settings
+reader and checked missing authentication, missing permission, and the
+selected tenant's exact value and revision. The host library checked
+with default features disabled.
+
+The persisted admin profile now generates the independent Next Admin
+package. It renders a server-paginated table with title and publication
+filters, ordering, and URL-backed edit selection. The localized editor and
+page-size settings form call GraphQL through the host executor. The
+generator projects the same operation documents and UI messages into both
+clients.
+
+The generated `scaffold_next_workspace_proof` passed the scoped TypeScript
+check. Its operation documents matched the owner documents byte for byte.
+The Node checks parsed the record operations and both Fluent projections
+and exercised URL filters and localized editor initialization. The
+scaffold rollback test verified restoration of the original catalog and
+removal of both generated package trees.
+
+The persisted `--ui admin` profile now declares `admin_only` and installs both
+host bindings in the same transaction. The sidebar exposes Records, Settings,
+and Record settings from the owner Fluent messages in English and Russian.
+The settings index links to the page-size form after the shared settings read
+succeeds. Both hosts use the existing tenant availability policy. The draft
+storefront in `--ui dual` keeps that profile in `future_ui`.
+
+`scaffold_mounted_labels_proof` passed native layout and publish metadata
+validation. The scoped TypeScript check covered its package, dashboard routes
+and the Next module registry. A Node check executed the generated navigation
+registration and resolved all three labels against both host Fluent catalogs.
+Actual host build scripts generated the Leptos Admin binding and excluded the
+draft packages and the admin-only module from Storefront. The scaffold rollback
+test covers the generated route and TypeScript alias file in addition to both
+packages and the catalog.
+
+Both generated settings forms now edit `public_discovery_enabled` together
+with the page-size default, using the shared revision-checked settings route.
+The owner resolves the discovery flag and explicit module activation from one
+tenant settings snapshot before it reads a published record or consults the
+cache. The persisted contract exercises permission to read, cache reuse, tenant
+isolation and revocation.
+
+The `scaffold_discovery_proof` fixture passed six SQLite tests and the scoped
+PostgreSQL scenario. Its lifecycle writer used the production transactional
+event writer and the active manifest schema. The fixture changed the tenant's
+policy while a published record had a warm cache entry and verified the next
+public read was denied.
+
+The generated module now contributes a gated Search publication policy via
+`rustok-api::search_publication`. The server folds the owner contribution into
+its existing audience registry. Search verifies request identity and supplies
+bounded batches of matching record IDs. The owner uses the same static policy
+as direct reads and checks current publication in one query. The PostgreSQL
+scenario checks enablement and revocation with already-indexed rows, including
+authenticated storefront requests and withdrawal before the relay runs. Browser
+flows, breadcrumb parity and localized setting values remain open.
+
+`scaffold_search_audience_proof` passed layout validation, publish metadata,
+six SQLite tests and the PostgreSQL owner/Search scenario. The PostgreSQL
+run read already-indexed records across setting changes and verified empty
+results and totals for anonymous and authenticated storefront requests after
+revocation. Withdrawal also removed the record from current results before
+the publication event was replayed. The Search library and server host both
+passed scoped checks with default features disabled. The generated Leptos
+admin package passed all 12 SSR-profile tests and `xtask` passed 81 scaffold tests.
+
+The persisted owner now contributes a localized relational Index source.
+`src/integrations/index.rs` owns tenant-scoped keyset scans and exact-locale
+point reads. Distribution registers a schema and source factory through the
+generic Index catalogs. Replay preserves record revisions and returns deletion
+mutations for unpublished copies. The scaffold matrix exercises registration
+and PostgreSQL mutation persistence, including missing locales, tenant
+isolation, and replay of an older update after withdrawal. Incremental Index
+delivery and public query admission remain open.
+
 - [ ] Close Blog reference-verifier drift and retain actual reference execution
   evidence before certifying it for propagation. Do not preserve obsolete source
   markers or copy confirmed FFA/localization defects into generated modules.
@@ -274,15 +509,15 @@ read-only and disposable-fixture verification can proceed earlier.
   Fly, assess the [Region](../../crates/modules/rustok-region/README.md) tenant
   region create/read slice next. Verify its ownership, shipped migrations,
   locale behavior, and applicable runtime bindings before enrolling it.
-  The current Region lint reports backend placement issues, UI layout issues,
-  and missing Next.js manifest bindings.
+  Region's backend and Leptos layout now meet the structural checks. Full
+  enrollment still requires real Next.js packages and manifest bindings.
   The [Region owner plan](../../crates/modules/rustok-region/docs/implementation-plan.md#scaffold-reference-candidate)
   records the command/query slice and the native Cart tax projection. The
   Region mappings are private, and Cart and Commerce fixtures use owner APIs.
   The 2026-11-05 continuation passed 19 scoped Region tests and the shared
   tax-policy scenario on PostgreSQL 16.13. The owner plan records the remaining
-  backend layout, UI core/test layout, transport decision, and Next.js binding
-  gates. These storage results do not enroll the complete Region module.
+  transport, client parity, and Next.js binding gates. The storage results
+  establish the persisted owner slice of the candidate.
   Cart passed 94 existing scoped tests and the added no-Region-schema test.
   Five Commerce context tests passed against the shared Region fixture after
   aligning the missing/foreign Region assertion with its owner port contract.
@@ -296,7 +531,7 @@ read-only and disposable-fixture verification can proceed earlier.
 - [ ] After the reference examples pass, define explicit input for the actual
   owner operation, schema and builder contribution before enabling capability
   generation. Reuse the existing native plan, preview and recovery path.
-- [ ] Add [module-local CLI generation](#module-local-cli-generation) for a real
+- [x] Add [module-local CLI generation](#module-local-cli-generation) for a real
   owner operation and prove discovery and execution through `rustok-cli`.
 - [ ] Use the same file placement and applicable evidence when normalizing an
   existing module. Extend `module lint` with precise diagnostics for provable
@@ -371,7 +606,7 @@ applies it to saving a document before its exact-locale metadata exists. The
 Pages test also checks that the rejected write creates no body revision.
 
 ```powershell
-cargo test -p rustok-blog --locked --offline --test integration test_post_read_paths_normalize_requested_and_fallback_locale -- --exact
+cargo test -p rustok-blog --locked --offline --test integration posts::test_post_read_paths_normalize_requested_and_fallback_locale -- --exact
 cargo test -p rustok-pages --locked --offline --test page_language_agnostic_contract document_locale_requires_matching_translation -- --exact
 ```
 
@@ -389,8 +624,9 @@ Module-specific operational commands use the existing
 CLI is optional and independent of UI, storage and Page Builder. Start with an
 explicit owner operation, its typed input and result, and the runtime and
 authority it requires. The identity scaffold leaves out `cli/` until a command
-can call that operation. The first generated adapter should bind an existing
-operation and preserve the owner's runtime sources and public API.
+can call that operation. `cargo xtask module scaffold-cli` accepts the adapter
+and its contract tests for an existing registered native owner. Usage and
+execution checks are in the [CLI scaffold guide](../README.md#attach-a-module-local-cli).
 
 - Generate `cli/` as the separate `rustok-<module>-cli` package with a thin
   `src/lib.rs` exporting `command_provider`, a `src/provider.rs` for descriptors
@@ -401,16 +637,28 @@ operation and preserve the owner's runtime sources and public API.
   same check covers the existing Blog adapter and generic layout fixtures.
   The built platform CLI listed `blog cleanup-tokens` and `blog publish-scheduled`
   through `list --namespace blog --json` before the Blog read-port migration.
-- Plan Cargo registration, the module's `[provides.cli]` metadata and generated
-  registry changes together when the command is selected. Reuse the existing
-  CLI registry generator, native preview and recoverable apply. Keep provider
-  dependencies on the CLI side of the platform composition boundary.
+- CLI scaffold plans Cargo registration, the module's `[provides.cli]`
+  metadata and generated registry changes together. It uses the existing
+  registry generator and recoverable apply. The scaffold tests exercise
+  unchanged preview bytes, successful registration, refusal to replace an
+  existing CLI, placeholder rejection, rollback after validation fails and
+  recovery in a fresh process after an interrupted apply.
 - Use the [Blog CLI source layout](../../crates/modules/rustok-blog/cli/README.md#source-layout)
   as the existing reference and prove generation in a disposable checkout.
   Verify command discovery, a real owner call, typed failure and structured
   output through `rustok-cli`. For a command declaring dry-run support, verify
   that its preview leaves owner state and events unchanged. Check the workspace
   without the CLI capability for the absence of its package and provider wiring.
+
+On 2026-11-26, a disposable Windows checkout exercised the scaffold against
+Blog's existing `canonical_post_route` owner API. Preview left the owner tree
+untouched. Apply passed module source lint, publish metadata and registry
+validation. The generated adapter's Rust contract test passed. The platform
+CLI built with the generated registry and listed `blog canonical-post-route`.
+The command returned `{"route":"/modules/blog?slug=release-notes"}` as structured
+output. Invalid input and unsupported command `--dry-run` returned nonzero
+results with the expected typed errors. The scaffold matrix also generates
+and compiles an identity command for its headless fixture.
 
 ### 4. Owner implementation and optional publication — P2, per module
 

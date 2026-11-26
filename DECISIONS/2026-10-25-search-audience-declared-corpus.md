@@ -104,6 +104,12 @@ untrue even when registration was correct:
 
 - Every source module that writes `search_documents` is declared exactly once, as public
   or as gated.
+- A native owner with a tenant-wide publication policy may submit a typed host binding
+  through `rustok-api::search_publication`. The host admits that binding as gated in
+  `SearchAudienceRegistry`. The owner checks its current public policy and publication
+  state. Search validates tenant and actor context and admits only candidates of the
+  registered source and entity kind. Existing actor- or channel-specific owners use the
+  full audience SPI.
 - A gated module answers both SPI phases; a public module is admitted by PostgreSQL
   visibility predicates only.
 - Multiple gated modules can participate in one request; authorization runs per module
@@ -151,6 +157,9 @@ error instead of returning partially authorized results.
 No new events. Audience declarations are composition-time values in
 `ModuleRuntimeExtensions`; they are rebuilt on process start and never mutated at
 runtime.
+The publication binding is explicit and independent of projection registration.
+An owner can continue projecting localized published copies while public discovery
+is off. Current owner policy controls the response before relay delivery or reindexing.
 
 ## Failure semantics
 

@@ -64,7 +64,13 @@ export function verifyOwnerFbaRuntimeOrder({ root = defaultRoot, modules = owner
     const smokePath = `crates/modules/rustok-${module}/contracts/evidence/${module}-provider-runtime-order-smoke.json`;
     const registry = json(registryPath);
     const smoke = json(smokePath);
-    const source = read(`crates/modules/rustok-${module}/src/ports.rs`);
+    const sourcePath = registry.in_process_provider_impl?.source;
+    const sourceRoot = path.resolve(root, `crates/modules/rustok-${module}/src`);
+    if (typeof sourcePath !== 'string' || path.isAbsolute(sourcePath) ||
+        !path.resolve(root, sourcePath).startsWith(sourceRoot + path.sep)) {
+      fail(`${module} must declare its module-owned in-process provider source`);
+    }
+    const source = read(sourcePath);
     const implementationSource = providerImplementationSource(source, registry, module);
     const fallback = registryFallback(registry);
 

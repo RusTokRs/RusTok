@@ -1,3 +1,5 @@
+use super::*;
+
 // Admin text filters (`title`, `slug`) on the authenticated post list.
 //
 // These tests pin the contract the admin tables rely on: a case-insensitive

@@ -2,12 +2,15 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, IsolationLevel, Statement,
     TransactionTrait,
 };
 use uuid::Uuid;
 
-use rustok_core::search_projection::SearchProjectionRefreshScope;
+use rustok_api::locale::MAX_LOCALE_TAG_LEN;
+use rustok_core::search_projection::{
+    MAX_SEARCH_PROJECTION_DOCUMENTS_PER_ENTITY, SearchProjectionRefreshScope,
+};
 use rustok_core::{Error, Result};
 use rustok_telemetry::metrics;
 
@@ -18,7 +21,6 @@ use crate::{MAX_SEARCH_PROJECTION_PAGE_SIZE, SearchProjectionDocument, SearchPro
 /// `ON COMMIT DROP` keeps it session-local, so two owners rebuilding at the same
 /// time cannot collide even though the name is fixed.
 const STAGE_TABLE: &str = "search_projection_stage";
-const MAX_TARGET_ENTITY_DOCUMENTS: usize = 32;
 
 /// Search-owned storage driver for one module's projection source.
 ///
@@ -43,6 +45,10 @@ impl SearchProjectionDriver {
         self.source.source_module()
     }
 
+    pub(crate) fn reindex_entity_type(&self) -> Option<&'static str> {
+        self.source.reindex_entity_type()
+    }
+
     pub(crate) async fn rebuild_tenant(&self, tenant_id: Uuid) -> Result<()> {
         self.ensure_postgres()?;
         if tenant_id.is_nil() {
@@ -51,14 +57,15 @@ impl SearchProjectionDriver {
             ));
         }
         let started_at = Instant::now();
-        let tx = self.db.begin().await.map_err(Error::Database)?;
+        let tx = self.begin_scope_transaction(tenant_id).await?;
         let result = async {
             self.create_stage(&tx).await?;
             let mut cursor = None;
             loop {
                 let page = self
                     .source
-                    .list_public_documents(
+                    .list_public_documents_in_transaction(
+                        &tx,
                         tenant_id,
                         cursor.clone(),
                         MAX_SEARCH_PROJECTION_PAGE_SIZE,
@@ -141,19 +148,23 @@ impl SearchProjectionDriver {
             return self.rebuild_tenant(tenant_id).await;
         }
         let started_at = Instant::now();
-        let documents = self
-            .source
-            .load_public_entity(tenant_id, entity_type, entity_id)
-            .await?;
-        if documents.len() > MAX_TARGET_ENTITY_DOCUMENTS {
-            return Err(Error::Validation(format!(
-                "{} Search projection entity exceeded {MAX_TARGET_ENTITY_DOCUMENTS} locale documents",
-                self.source_module()
-            )));
-        }
-
-        let tx = self.db.begin().await.map_err(Error::Database)?;
         let result = async {
+            let legacy_documents = if self.source.reindex_entity_type().is_none() {
+                Some(self.source.load_public_entity(tenant_id, entity_type, entity_id).await?)
+            } else {
+                None
+            };
+            let tx = self.begin_scope_transaction(tenant_id).await?;
+            let documents = match legacy_documents {
+                Some(documents) => documents,
+                None => self.source.load_public_entity_in_transaction(&tx, tenant_id, entity_type, entity_id).await?,
+            };
+            if documents.len() > MAX_SEARCH_PROJECTION_DOCUMENTS_PER_ENTITY {
+                return Err(Error::Validation(format!(
+                    "{} Search projection entity exceeded {MAX_SEARCH_PROJECTION_DOCUMENTS_PER_ENTITY} locale documents",
+                    self.source_module()
+                )));
+            }
             self.delete_entity_in(&tx, tenant_id, entity_type, entity_id)
                 .await?;
             for document in documents {
@@ -221,7 +232,12 @@ impl SearchProjectionDriver {
             ));
         }
         let started_at = Instant::now();
-        let result = self.delete_scope(&self.db, tenant_id).await;
+        let result = async {
+            let tx = self.begin_scope_transaction(tenant_id).await?;
+            self.delete_scope(&tx, tenant_id).await?;
+            tx.commit().await.map_err(Error::Database)
+        }
+        .await;
         record_operation(
             "delete_projection_scope",
             self.source_module(),
@@ -230,6 +246,34 @@ impl SearchProjectionDriver {
             started_at.elapsed(),
         );
         result
+    }
+
+    async fn begin_scope_transaction(&self, tenant_id: Uuid) -> Result<DatabaseTransaction> {
+        if self.source.reindex_entity_type().is_none() {
+            return self.db.begin().await.map_err(Error::Database);
+        }
+        // Read the owner after taking the same lock for an entity refresh and a
+        // scope replacement. A delayed retry must not write an older snapshot.
+        let tx = self
+            .db
+            .begin_with_config(Some(IsolationLevel::ReadCommitted), None)
+            .await
+            .map_err(Error::Database)?;
+        tx.query_one_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+            vec![
+                format!(
+                    "rustok-search:projection:{}:{tenant_id}",
+                    self.source_module()
+                )
+                .into(),
+            ],
+        ))
+        .await
+        .map_err(Error::Database)?
+        .ok_or_else(|| Error::Internal("Search projection scope lock was not acquired".into()))?;
+        Ok(tx)
     }
 
     async fn create_stage(&self, tx: &DatabaseTransaction) -> Result<()> {
@@ -287,7 +331,7 @@ impl SearchProjectionDriver {
         if document.document_key.is_empty()
             || document.document_key.len() > 200
             || document.locale.trim().is_empty()
-            || document.locale.len() > 16
+            || document.locale.len() > MAX_LOCALE_TAG_LEN
             || document.status.trim().is_empty()
             || document.status.len() > 32
         {

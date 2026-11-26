@@ -239,24 +239,8 @@ impl PostService {
         let Some(channel_slug) = normalize_public_channel_slug(channel_slug) else {
             return Ok(true);
         };
-        use rustok_api::{PortActor, PortContext};
-        use rustok_channel_ports::{CHANNEL_PUBLIC_MODULE_READ_CLAIM, ReadChannelPublicModule};
-
-        // Channel availability is locale independent. The outer post operation
-        // continues to own locale resolution and the post's allowlist.
-        let context = PortContext::new(
-            tenant_id.to_string(),
-            PortActor::service("blog"),
-            PLATFORM_FALLBACK_LOCALE,
-            Uuid::new_v4().to_string(),
-        )
-        .with_claim(CHANNEL_PUBLIC_MODULE_READ_CLAIM)
-        .with_deadline(std::time::Duration::from_secs(2));
-        self.channel_public_module_port
-            .is_public_module_available(context, ReadChannelPublicModule {
-                channel_slug,
-                module_slug: "blog".to_string(),
-            })
+        self.channel_availability
+            .by_slug(tenant_id, channel_slug)
             .await
             .map_err(BlogError::from)
     }
@@ -592,7 +576,7 @@ impl PostService {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> BlogResult<HashMap<Uuid, String>> {
-        crate::services::category_name_projection::load_category_names_map(
+        crate::services::category::name_projection::load_category_names_map(
             &*self.taxonomy_port,
             &self.db,
             tenant_id,

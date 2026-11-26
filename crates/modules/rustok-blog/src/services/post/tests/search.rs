@@ -1,3 +1,5 @@
+use super::*;
+
 /// Search must not treat a stale indexed `blog_post` row as authority: the
 /// Blog owner supplies current published/channel eligibility independently of
 /// whatever was previously projected into Search storage.
@@ -36,15 +38,18 @@ async fn search_audience_rechecks_live_publication_and_channel_binding() {
 
     let requested = vec![global_id, mobile_id, draft_id, Uuid::new_v4()];
     let owner = crate::search_projection::filter_public_search_post_ids;
+    let availability = crate::BlogChannelAvailability::from_port(
+        rustok_channel::in_process_public_module_read_port(db.clone()),
+    );
     assert_eq!(
-        owner(&db, tenant, Some(" WEB "), &requested)
+        owner(&db, &availability, tenant, Some(" WEB "), &requested)
             .await
             .expect("web audience"),
         vec![global_id],
         "a search row for another channel or a draft is not discoverable"
     );
     assert_eq!(
-        owner(&db, tenant, Some("mobile"), &requested)
+        owner(&db, &availability, tenant, Some("mobile"), &requested)
             .await
             .expect("mobile audience"),
         vec![global_id, mobile_id],
@@ -67,7 +72,7 @@ async fn search_audience_rechecks_live_publication_and_channel_binding() {
         .await
         .expect("disable Blog on mobile");
     assert!(
-        owner(&db, tenant, Some("mobile"), &requested)
+        owner(&db, &availability, tenant, Some("mobile"), &requested)
             .await
             .expect("disabled channel must be hidden")
             .is_empty(),
@@ -85,28 +90,40 @@ async fn search_audience_rechecks_live_publication_and_channel_binding() {
         .await
         .expect("re-enable Blog on mobile");
     assert_eq!(
-        owner(&db, tenant, Some("mobile"), &requested)
+        owner(&db, &availability, tenant, Some("mobile"), &requested)
             .await
             .expect("reenabled mobile"),
         vec![global_id, mobile_id],
     );
     assert_eq!(
-        owner(&db, tenant, None, &requested)
+        owner(&db, &availability, tenant, None, &requested)
             .await
             .expect("unscoped audience"),
         vec![global_id],
         "unscoped search must not publish channel-specific posts"
     );
     assert!(
-        owner(&db, tenant, Some("missing-channel"), &requested)
-            .await
-            .expect("missing channel is closed")
-            .is_empty()
+        owner(
+            &db,
+            &availability,
+            tenant,
+            Some("missing-channel"),
+            &requested
+        )
+        .await
+        .expect("missing channel is closed")
+        .is_empty()
     );
     assert!(
-        owner(&db, Uuid::new_v4(), Some("mobile"), &requested)
-            .await
-            .expect("other tenant is isolated")
-            .is_empty()
+        owner(
+            &db,
+            &availability,
+            Uuid::new_v4(),
+            Some("mobile"),
+            &requested
+        )
+        .await
+        .expect("other tenant is isolated")
+        .is_empty()
     );
 }

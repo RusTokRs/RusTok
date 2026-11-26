@@ -30,6 +30,23 @@ pub struct StaticTenantModuleView {
     pub revision: i64,
 }
 
+/// Host-composed operator read of an exact static module settings snapshot.
+/// The host admits the authenticated actor before accessing the settings owner.
+#[cfg(feature = "server")]
+#[async_trait]
+pub trait StaticModuleSettingsAdminReader: Send + Sync {
+    async fn read(
+        &self,
+        tenant: &crate::TenantContext,
+        auth: &crate::AuthContext,
+        module_slug: &str,
+    ) -> Result<StaticTenantModuleView, PortError>;
+}
+
+#[cfg(feature = "server")]
+#[derive(Clone)]
+pub struct SharedStaticModuleSettingsAdminReader(pub Arc<dyn StaticModuleSettingsAdminReader>);
+
 /// Normalized static settings state for one exact tenant/module scope.
 ///
 /// Settings remain readable while the module is disabled; `enabled` is lifecycle

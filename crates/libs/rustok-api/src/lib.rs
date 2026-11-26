@@ -41,6 +41,8 @@ pub mod field_schema;
 #[cfg(feature = "server")]
 pub mod graphql;
 pub mod locale;
+#[cfg(feature = "runtime")]
+pub mod localized_index;
 pub mod manifest_hash;
 pub mod module_composition;
 pub mod module_lifecycle;
@@ -58,6 +60,8 @@ pub mod request;
 pub mod richtext;
 #[cfg(feature = "runtime")]
 pub mod runtime;
+#[cfg(feature = "runtime")]
+pub mod search_publication;
 pub mod tenant_rbac;
 pub mod write_path_feedback;
 
@@ -101,6 +105,8 @@ pub use module_lifecycle::{
     ModuleOperationRecoveryPlanView, SharedStaticModuleSettingsReader, StaticModuleSettingsReader,
     StaticModuleSettingsSnapshot, StaticTenantModuleView,
 };
+#[cfg(feature = "server")]
+pub use module_lifecycle::{SharedStaticModuleSettingsAdminReader, StaticModuleSettingsAdminReader};
 pub use module_marketplace::{
     MarketplaceModule, MarketplaceModuleVersion, MarketplaceRegistryFreshness,
     MarketplaceRegistryStatus, ModuleSettingField, RegistryAutomatedCheckLifecycle,

@@ -842,8 +842,8 @@
       ],
       "ai_export": "allowed",
       "evidence_paths": [
-        "crates/modules/rustok-region/src/translation_target.rs",
-        "crates/modules/rustok-region/src/translation_changes.rs",
+        "crates/modules/rustok-region/src/integrations/translation_target.rs",
+        "crates/modules/rustok-region/src/services/translation/changes.rs",
         "crates/modules/rustok-region/src/migrations/m20260912_000113_add_region_translation_change_journal.rs",
         "apps/server/src/services/module_event_dispatcher.rs",
         "apps/server/tests/region_translation_target_postgres.rs",

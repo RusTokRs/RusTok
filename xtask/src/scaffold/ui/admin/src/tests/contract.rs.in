@@ -1,0 +1,11 @@
+use rustok_ui_transport::UiTransportPath;
+
+#[test]
+fn build_profile_selects_one_transport() {
+    let expected = if cfg!(any(feature = "ssr", feature = "hydrate")) {
+        UiTransportPath::NativeServer
+    } else {
+        UiTransportPath::Graphql
+    };
+    assert_eq!(crate::transport::selected_path(), expected);
+}

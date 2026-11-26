@@ -1,0 +1,8 @@
+query __MODULE_STEM__AdminRecords($input: __MODULE_STEM__AdminRecordListInput, $locale: String) {
+  __MODULE_FIELD__AdminRecords(input: $input, locale: $locale) {
+    items { ...__MODULE_STEM__AdminRecordFields }
+    total
+    page
+    perPage
+  }
+}

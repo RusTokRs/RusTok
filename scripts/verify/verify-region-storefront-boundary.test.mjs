@@ -17,8 +17,8 @@ function fixture({ missingSelectedTransport = false, rawUi = false, leptosCore =
   const root = mkdtempSync(path.join(tmpdir(), "region-storefront-"));
   put(root, "crates/modules/rustok-region/storefront/src/lib.rs", `${legacyApi ? "mod api;" : ""} mod core; mod transport; mod ui; pub use ui::RegionView;`);
   if (legacyApi) put(root, "crates/modules/rustok-region/storefront/src/api.rs", "legacy api module");
-  put(root, "crates/modules/rustok-region/storefront/src/core.rs", `${leptosCore ? "leptos::" : ""} RegionErrorEvidence RegionErrorViewModel RegionErrorDomEvidence selected_region_query_update`);
-  put(root, "crates/modules/rustok-region/storefront/src/ui/leptos.rs", `transport::fetch_regions data-region-error-status data-region-error-locale-key ${rawUi ? "graphql_adapter::" : ""}`);
+  put(root, "crates/modules/rustok-region/storefront/src/core/mod.rs", `${leptosCore ? "leptos::" : ""} RegionErrorEvidence RegionErrorViewModel RegionErrorDomEvidence selected_region_query_update`);
+  put(root, "crates/modules/rustok-region/storefront/src/ui/leptos/mod.rs", `transport::fetch_regions data-region-error-status data-region-error-locale-key ${rawUi ? "graphql_adapter::" : ""}`);
   const native = "native_server_adapter::fetch_regions";
   const graphql = "graphql_adapter::fetch_regions";
   put(root, "crates/modules/rustok-region/storefront/src/transport/mod.rs", `mod graphql_adapter; mod native_server_adapter; UiTransportPath::NativeServer UiTransportPath::Graphql ${native} ${graphql} ${missingSelectedTransport ? "" : "execute_selected_transport"}`);

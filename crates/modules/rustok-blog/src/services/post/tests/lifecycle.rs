@@ -1,3 +1,5 @@
+use super::*;
+
 fn post_edit_input(version: i32) -> UpdatePostInput {
     UpdatePostInput {
         locale: None,

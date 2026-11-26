@@ -28,7 +28,7 @@
 - storefront transport for region discovery is still published through `rustok-commerce`;
 - the storefront route `/modules/regions` is now published by the module itself via `[provides.storefront_ui]`, keeping GraphQL transport as a parallel fallback contract;
 - admin UI is connected by the host application `apps/admin` via manifest-driven `[provides.admin_ui]`;
-- Leptos admin/storefront packages use native `#[server]` functions as the default internal data layer and read the effective locale from `UiRouteContext.locale`; admin native transport consumes `rustok_api::HostRuntimeContext` for DB access and does not depend on a host-wide `AppContext`; storefront route/tax/country summary formatting, selected-region resolution and error status/view-model mapping are moved to framework-agnostic `storefront/src/core.rs`, and native/GraphQL transport paths are separated through `storefront/src/transport/` with a typed fallback error envelope; Leptos render code lives in explicit adapter files `admin/src/ui/leptos.rs` and `storefront/src/ui/leptos.rs`.
+- Leptos admin/storefront packages use native `#[server]` functions as the default internal data layer and read the effective locale from `UiRouteContext.locale`; admin native transport consumes `rustok_api::HostRuntimeContext` for DB access and does not depend on a host-wide `AppContext`; storefront route/tax/country summary formatting, selected-region resolution and error status/view-model mapping are moved to framework-agnostic `storefront/src/core/mod.rs`, and native/GraphQL transport paths are separated through `storefront/src/transport/` with a typed fallback error envelope; Leptos render code lives in explicit adapter files `admin/src/ui/leptos/mod.rs` and `storefront/src/ui/leptos/mod.rs`.
 
 ## Region command and query file map
 
@@ -40,6 +40,9 @@
 | `src/services/region/commands.rs` | Validate writes, own the transaction, and assemble the response before commit |
 | `src/services/region/queries.rs` | Serve tenant-scoped reads and country lookup |
 | `src/services/region/repository.rs` | Load and map owner rows, apply read-side locale fallback, and write related rows through the supplied transaction |
+| `src/ports/read.rs`, `src/services/region/read_port.rs` | Transport-neutral read contract and its in-process owner adapter |
+| `src/services/translation/` | Exact-locale operations, translation change journal, and progress queries |
+| `src/integrations/translation_target.rs` | Region adapter for the platform Translation Target provider contract |
 | `src/entities/{region,region_translation,region_country_tax_policy}.rs` | Private owner table mappings |
 | `src/dto/tax_policy.rs` | Typed tax configuration returned to Cart |
 | `src/migrations/mod.rs` | Provide the owner migration chain used in runtime and database tests |

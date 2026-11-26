@@ -831,7 +831,8 @@ fn pinned_item_matches_query(
             Ok(value) => value,
             Err(_) => return false,
         };
-        if !storefront_payload_visible_for_channel(&payload, &entity_type, channel) {
+        if !storefront_payload_visible_for_channel(&payload, &source_module, &entity_type, channel)
+        {
             return false;
         }
     }

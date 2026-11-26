@@ -1,0 +1,64 @@
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use rustok_api::search_publication::{TenantSearchPublication, TenantSearchPublicationSource};
+use rustok_api::{PortError, SharedStaticModuleSettingsReader};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QuerySelect};
+use uuid::Uuid;
+
+use crate::{entities::record, services::resolve_public_discovery};
+
+pub(super) fn source() -> TenantSearchPublicationSource {
+    TenantSearchPublicationSource {
+        module_slug: "__SLUG__",
+        entity_type: "__ENTITY_SLUG__",
+        build: |db, settings| Arc::new(PublicationVisibility { db, settings }),
+    }
+}
+
+struct PublicationVisibility {
+    db: DatabaseConnection,
+    settings: SharedStaticModuleSettingsReader,
+}
+
+#[async_trait]
+impl TenantSearchPublication for PublicationVisibility {
+    async fn public_discovery_allowed(&self, tenant_id: Uuid) -> Result<bool, PortError> {
+        resolve_public_discovery(Some(&self.settings), tenant_id)
+            .await
+            .map_err(|error| {
+                tracing::error!(%tenant_id, %error, "Search publication policy unavailable");
+                PortError::unavailable(
+                    "__SLUG__.search.publication_policy_unavailable",
+                    "Search publication policy is temporarily unavailable",
+                )
+            })
+    }
+
+    async fn filter_published_ids(
+        &self,
+        tenant_id: Uuid,
+        ids: Vec<Uuid>,
+    ) -> Result<Vec<Uuid>, PortError> {
+        if ids.is_empty() || !self.public_discovery_allowed(tenant_id).await? {
+            return Ok(Vec::new());
+        }
+
+        record::Entity::find()
+            .select_only()
+            .column(record::Column::Id)
+            .filter(record::Column::TenantId.eq(tenant_id))
+            .filter(record::Column::Id.is_in(ids))
+            .filter(record::Column::PublishedAt.is_not_null())
+            .into_tuple::<Uuid>()
+            .all(&self.db)
+            .await
+            .map_err(|error| {
+                tracing::error!(%tenant_id, %error, "Search publication state unavailable");
+                PortError::unavailable(
+                    "__SLUG__.search.publication_state_unavailable",
+                    "Search publication state is temporarily unavailable",
+                )
+            })
+    }
+}

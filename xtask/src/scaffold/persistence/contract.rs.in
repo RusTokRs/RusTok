@@ -1,0 +1,457 @@
+use __OWNER__::{__ENTITY__Service, __MODULE__, RecordError, Save__ENTITY__Title};
+use rustok_api::{Action, Permission, PortError, Resource, SharedStaticModuleSettingsReader, StaticModuleSettingsReader, StaticModuleSettingsSnapshot, TenantLocale};
+use rustok_cache::CacheService;
+use rustok_core::search_projection::{
+    SOURCE_REINDEX_TARGET_PREFIX, search_projection_source_registry_from_extensions,
+};
+use rustok_core::{
+    MigrationSource, ModuleRuntimeExtensions, RusToKModule, SecurityContext, UserRole,
+};
+use rustok_events::{DomainEvent, EventEnvelope};
+use rustok_outbox_storage::{SysEvents, SysEventsMigration};
+use rustok_search::SearchAudienceRegistry;
+use rustok_test_utils::db::{
+    assert_postgres_url, connect_postgres, create_postgres_database,
+    drop_postgres_database_if_exists, postgres_database_url, setup_test_db,
+    unique_postgres_database_name,
+};
+use sea_orm::{
+    ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, PaginatorTrait,
+    sea_query::{Alias, Expr, Query},
+};
+use sea_orm_migration::{MigrationTrait, SchemaManager};
+use uuid::Uuid;
+
+// __GRAPHQL_TEST_MODULE__
+mod discovery;
+mod list;
+mod search;
+mod settings;
+
+use search::SearchFixture;
+
+struct OpenRecordSettings(Uuid);
+
+#[async_trait::async_trait]
+impl StaticModuleSettingsReader for OpenRecordSettings {
+    async fn settings(&self, tenant: Uuid, slug: &str) -> Result<Option<StaticModuleSettingsSnapshot>, PortError> {
+        assert_eq!(slug, "__SLUG__");
+        Ok((tenant == self.0).then(|| StaticModuleSettingsSnapshot {
+            enabled: Some(true),
+            settings: serde_json::json!({ "__PUBLIC_DISCOVERY_KEY__": true }),
+        }))
+    }
+}
+
+async fn seed(db: &DatabaseConnection) -> (Uuid, Uuid) {
+    let manager = SchemaManager::new(db);
+    SysEventsMigration.up(&manager).await.unwrap();
+    for migration in rustok_migrations::identity::migrations()
+        .into_iter()
+        .chain(__MODULE__.migrations())
+    {
+        migration.up(&manager).await.unwrap();
+    }
+    seed_tenants(db).await
+}
+
+async fn seed_tenants(db: &DatabaseConnection) -> (Uuid, Uuid) {
+    let tenant = Uuid::new_v4();
+    let foreign_tenant = Uuid::new_v4();
+    for id in [tenant, foreign_tenant] {
+        let statement = Query::insert()
+            .into_table(Alias::new("tenants"))
+            .columns([Alias::new("id"), Alias::new("name"), Alias::new("slug")])
+            .values_panic([
+                Expr::value(id),
+                Expr::value("Fixture"),
+                Expr::value(id.to_string()),
+            ])
+            .to_owned();
+        db.execute_raw(db.get_database_backend().build(&statement))
+            .await
+            .unwrap();
+    }
+    (tenant, foreign_tenant)
+}
+
+fn title(locale: &str, title: &str) -> Save__ENTITY__Title {
+    Save__ENTITY__Title {
+        locale: locale.to_owned(),
+        title: title.to_owned(),
+    }
+}
+
+#[tokio::test]
+async fn localized_write_read_and_revision_share_the_owner_contract() {
+    assert_owner_contract(setup_test_db().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires RUSTOK_SCAFFOLD_TEST_POSTGRES_URL with permission to create a disposable database"]
+async fn postgres_localized_publication_reaches_search() {
+    let admin_url = std::env::var("RUSTOK_SCAFFOLD_TEST_POSTGRES_URL")
+        .expect("set the dedicated test PostgreSQL URL");
+    assert_postgres_url(&admin_url);
+    let admin = connect_postgres(&admin_url)
+        .await
+        .expect("connect to PostgreSQL");
+    let name = unique_postgres_database_name("scaffold_localized_record");
+    create_postgres_database(&admin, &name)
+        .await
+        .expect("create the test database");
+    let url = postgres_database_url(&admin_url, &name);
+    let result = tokio::spawn(async move {
+        let db = connect_postgres(&url)
+            .await
+            .expect("connect to the test database");
+        assert_owner_contract(db.clone()).await;
+        let (tenant, foreign_tenant) = seed_tenants(&db).await;
+        list::assert_list_contract(db.clone(), tenant, foreign_tenant).await;
+        // __GRAPHQL_POSTGRES_CASE__
+        let (tenant, foreign) = seed_tenants(&db).await;
+        settings::assert_settings_contract(&db, tenant, foreign).await;
+    })
+    .await;
+    drop_postgres_database_if_exists(&admin, &name)
+        .await
+        .expect("drop the test database");
+    result.expect("PostgreSQL owner contract");
+}
+
+async fn assert_owner_contract(db: DatabaseConnection) {
+    let (tenant, foreign_tenant) = seed(&db).await;
+    let cache = CacheService::from_url(None);
+    let backend = cache.memory_backend(std::time::Duration::from_secs(60), 128);
+    let settings_reader = SharedStaticModuleSettingsReader(std::sync::Arc::new(OpenRecordSettings(tenant)));
+    let owner = __ENTITY__Service::new(db.clone(), Resource::Posts)
+        .with_settings_reader(settings_reader.clone())
+        .with_public_cache(cache, backend.clone(), "scaffold-test")
+        .unwrap();
+    let security = SecurityContext::system();
+    let first = owner
+        .create(tenant, &security, title("en", "English"))
+        .await
+        .unwrap();
+    assert_eq!(first.revision, 1);
+    let fallback = owner
+        .get(tenant, &security, first.id, "fr", Some("en"))
+        .await
+        .unwrap();
+    assert_eq!(fallback.requested_locale, "fr");
+    assert_eq!(fallback.effective_locale, "en");
+    assert_eq!(fallback.available_locales, ["en"]);
+    assert!(matches!(
+        owner
+            .get(foreign_tenant, &security, first.id, "en", None)
+            .await,
+        Err(RecordError::NotFound)
+    ));
+    assert!(matches!(
+        owner
+            .save_title(
+                foreign_tenant,
+                &security,
+                first.id,
+                1,
+                title("en", "Foreign")
+            )
+            .await,
+        Err(RecordError::NotFound)
+    ));
+
+    let second = owner
+        .save_title(tenant, &security, first.id, 1, title("fr", "Français"))
+        .await
+        .unwrap();
+    assert_eq!(second.revision, 2);
+    assert_eq!(second.available_locales, ["en", "fr"]);
+    assert_eq!(second.effective_locale, "fr");
+    assert_eq!(second.title, "Français");
+    assert!(matches!(
+        owner
+            .save_title(tenant, &security, first.id, 1, title("en", "Stale"))
+            .await,
+        Err(RecordError::Conflict)
+    ));
+    let original = owner
+        .get(tenant, &security, first.id, "en", None)
+        .await
+        .unwrap();
+    assert_eq!(original.title, "English");
+    assert_eq!(original.revision, 2);
+    let long_locale = TenantLocale::new("zh-Hans-CN-variant1").unwrap();
+    assert!(long_locale.as_str().len() > 16);
+    let third = owner
+        .save_title(
+            tenant,
+            &security,
+            first.id,
+            2,
+            title(long_locale.as_str(), "Magnolia"),
+        )
+        .await
+        .unwrap();
+    assert_eq!(third.effective_locale, long_locale.as_str());
+    assert_eq!(SysEvents::find().count(&db).await.unwrap(), 0);
+
+    let read_only = SecurityContext::from_permissions(
+        UserRole::Admin,
+        Some(Uuid::new_v4()),
+        [Permission::new(Resource::Posts, Action::Read)],
+    );
+    assert!(matches!(
+        owner
+            .set_publication(tenant, &read_only, first.id, 3, true, "en")
+            .await,
+        Err(RecordError::Forbidden)
+    ));
+    assert!(matches!(
+        owner.get_published(tenant, first.id, "en", None).await,
+        Err(RecordError::NotFound)
+    ));
+
+    let mut extensions = ModuleRuntimeExtensions::default();
+    __MODULE__
+        .register_runtime_extensions(&mut extensions)
+        .unwrap();
+    let mut audience = SearchAudienceRegistry::new();
+    assert!(audience.register_publication_sources(&db, &extensions).is_err());
+    assert!(audience.audience_class("__SLUG__").is_none());
+    extensions.insert(settings_reader);
+    audience.declare_public("__SLUG__").unwrap();
+    assert!(audience.register_publication_sources(&db, &extensions).is_err());
+    let search = if db.get_database_backend() == DbBackend::Postgres {
+        Some(SearchFixture::new(&db, &extensions).await)
+    } else {
+        None
+    };
+    let source = search_projection_source_registry_from_extensions(&extensions)
+        .unwrap()
+        .build("__SLUG__", db.clone())
+        .unwrap();
+    assert!(
+        source
+            .load_public_entity(tenant, "__ENTITY_SLUG__", first.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    let published = owner
+        .set_publication(tenant, &security, first.id, 3, true, "en")
+        .await
+        .unwrap();
+    assert!(published.published);
+    assert_eq!(published.revision, 4);
+    assert_eq!(
+        owner
+            .set_publication(tenant, &security, first.id, 4, true, "en")
+            .await
+            .unwrap(),
+        published
+    );
+    assert_eq!(SysEvents::find().count(&db).await.unwrap(), 1);
+    let public = owner
+        .get_published(tenant, first.id, "fr", None)
+        .await
+        .unwrap();
+    assert_eq!(public.title, "Français");
+    let hits_before = backend.stats().hits;
+    assert_eq!(
+        owner
+            .get_published(tenant, first.id, "fr", None)
+            .await
+            .unwrap(),
+        public
+    );
+    assert!(backend.stats().hits > hits_before);
+    for (fallback, expected) in [("en", "English"), ("fr", "Français")] {
+        let view = owner
+            .get_published(tenant, first.id, "de", Some(fallback))
+            .await
+            .unwrap();
+        assert_eq!(view.effective_locale, fallback);
+        assert_eq!(view.title, expected);
+    }
+    assert!(matches!(
+        owner
+            .get_published(foreign_tenant, first.id, "fr", None)
+            .await,
+        Err(RecordError::NotFound)
+    ));
+    if let Some(search) = &search {
+        let hits = search
+            .refresh_and_find(tenant, long_locale.as_str(), "Magnolia")
+            .await;
+        assert_eq!(hits.items[0].id, first.id);
+        assert_eq!(hits.items[0].locale.as_deref(), Some(long_locale.as_str()));
+        assert_eq!(
+            rustok_search::canonical_search_result_url(&hits.items[0]),
+            None
+        );
+        let rebuilt = search
+            .rebuild_and_find(tenant, long_locale.as_str(), "Magnolia")
+            .await;
+        assert_eq!(rebuilt.items, hits.items);
+        let mut undeclared = SearchAudienceRegistry::new();
+        undeclared.declare_public("blog").unwrap();
+        assert!(
+            search
+                .find(tenant, long_locale.as_str(), "Magnolia", &undeclared, None)
+                .await
+                .items
+                .is_empty()
+        );
+        assert!(
+            search
+                .refresh_and_find(foreign_tenant, long_locale.as_str(), "Magnolia")
+                .await
+                .items
+                .is_empty()
+        );
+    }
+
+    let first_page = source.list_public_documents(tenant, None, 1).await.unwrap();
+    assert_eq!(first_page.documents[0].locale, "en");
+    let second_page = source
+        .list_public_documents(tenant, first_page.next_cursor, 1)
+        .await
+        .unwrap();
+    assert_eq!(second_page.documents[0].locale, "fr");
+    let third_page = source
+        .list_public_documents(tenant, second_page.next_cursor, 1)
+        .await
+        .unwrap();
+    assert_eq!(third_page.documents[0].locale, long_locale.as_str());
+    assert!(third_page.next_cursor.is_none());
+    assert!(
+        source
+            .load_public_entity(foreign_tenant, "__ENTITY_SLUG__", first.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    owner
+        .save_title(tenant, &security, first.id, 4, title("fr", "Modifié"))
+        .await
+        .unwrap();
+    let documents = source
+        .load_public_entity(tenant, "__ENTITY_SLUG__", first.id)
+        .await
+        .unwrap();
+    assert_eq!(documents.len(), 3);
+    assert_eq!(documents[1].title, "Modifié");
+    let edited = owner
+        .get_published(tenant, first.id, "fr", None)
+        .await
+        .unwrap();
+    assert_eq!(edited.revision, 5);
+    assert_eq!(edited.title, "Modifié");
+    if let Some(search) = &search {
+        assert_eq!(
+            search.refresh_and_find(tenant, "fr", "Modifié").await.items[0].id,
+            first.id
+        );
+        assert!(
+            search
+                .refresh_and_find(tenant, "fr", "Français")
+                .await
+                .items
+                .is_empty()
+        );
+    }
+    owner
+        .set_publication(tenant, &security, first.id, 5, false, "en")
+        .await
+        .unwrap();
+    assert!(
+        source
+            .load_public_entity(tenant, "__ENTITY_SLUG__", first.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(matches!(
+        owner.get_published(tenant, first.id, "en", None).await,
+        Err(RecordError::NotFound)
+    ));
+    let rows = SysEvents::find().all(&db).await.unwrap();
+    assert_eq!(rows.len(), 3);
+    for row in rows {
+        let envelope: EventEnvelope = serde_json::from_value(row.payload).unwrap();
+        assert_eq!(envelope.tenant_id, tenant);
+        assert!(
+            matches!(envelope.event, DomainEvent::ReindexRequested { target_type, target_id }
+            if target_type == format!("{SOURCE_REINDEX_TARGET_PREFIX}__SLUG__") && target_id == Some(first.id))
+        );
+    }
+    if let Some(search) = &search {
+        assert!(search.find_visible(tenant, "fr", "Modifié").await.items.is_empty());
+        assert!(
+            search
+                .refresh_and_find(tenant, "fr", "Modifié")
+                .await
+                .items
+                .is_empty()
+        );
+    }
+}
+
+#[tokio::test]
+async fn translation_failure_rolls_back_the_base_revision() {
+    let db = setup_test_db().await;
+    let (tenant, _) = seed(&db).await;
+    let owner = __ENTITY__Service::new(db.clone(), Resource::Posts);
+    let security = SecurityContext::system();
+    let created = owner
+        .create(tenant, &security, title("en", "Original"))
+        .await
+        .unwrap();
+    db.execute_unprepared(
+        "CREATE TRIGGER reject_copy BEFORE INSERT ON __TRANSLATIONS__ BEGIN SELECT RAISE(ABORT, 'test copy failure'); END",
+    ).await.unwrap();
+    assert!(matches!(
+        owner
+            .save_title(tenant, &security, created.id, 1, title("fr", "Rejected"))
+            .await,
+        Err(RecordError::Database(_))
+    ));
+    assert_eq!(
+        owner
+            .get(tenant, &security, created.id, "en", None)
+            .await
+            .unwrap(),
+        created
+    );
+}
+
+#[tokio::test]
+async fn outbox_failure_rolls_back_publication() {
+    let db = setup_test_db().await;
+    let (tenant, _) = seed(&db).await;
+    let owner = __ENTITY__Service::new(db.clone(), Resource::Posts);
+    let security = SecurityContext::system();
+    let created = owner
+        .create(tenant, &security, title("en", "Draft"))
+        .await
+        .unwrap();
+    db.execute_unprepared(
+        "CREATE TRIGGER reject_outbox BEFORE INSERT ON sys_events BEGIN SELECT RAISE(ABORT, 'test outbox failure'); END",
+    ).await.unwrap();
+    assert!(matches!(
+        owner
+            .set_publication(tenant, &security, created.id, 1, true, "en")
+            .await,
+        Err(RecordError::Outbox(_))
+    ));
+    assert_eq!(
+        owner
+            .get(tenant, &security, created.id, "en", None)
+            .await
+            .unwrap(),
+        created
+    );
+    assert_eq!(SysEvents::find().count(&db).await.unwrap(), 0);
+}

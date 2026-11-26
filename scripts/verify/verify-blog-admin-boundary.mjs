@@ -43,11 +43,11 @@ function assertNotContains(text, pattern, description) {
 }
 
 const libPath = "crates/modules/rustok-blog/admin/src/lib.rs";
-const corePath = "crates/modules/rustok-blog/admin/src/core.rs";
+const corePath = "crates/modules/rustok-blog/admin/src/core/mod.rs";
 const coreCommandsPath = "crates/modules/rustok-blog/admin/src/core/commands.rs";
 const corePresentationPath = "crates/modules/rustok-blog/admin/src/core/presentation.rs";
 const modelPath = "crates/modules/rustok-blog/admin/src/model.rs";
-const uiPath = "crates/modules/rustok-blog/admin/src/ui/leptos.rs";
+const uiPath = "crates/modules/rustok-blog/admin/src/ui/leptos/mod.rs";
 const uiModPath = "crates/modules/rustok-blog/admin/src/ui/mod.rs";
 const uiComponentsPath = "crates/modules/rustok-blog/admin/src/ui/components.rs";
 const uiPagePath = "crates/modules/rustok-blog/admin/src/ui/leptos/page.rs";

@@ -1,0 +1,60 @@
+use uuid::Uuid;
+
+#[derive(Debug, Clone)]
+pub struct Save__ENTITY__Title {
+    pub locale: String,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct __ENTITY__View {
+    pub id: Uuid,
+    pub revision: i64,
+    pub published: bool,
+    pub title: String,
+    pub requested_locale: String,
+    pub effective_locale: String,
+    pub available_locales: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RecordOrder {
+    #[default]
+    NewestFirst,
+    OldestFirst,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecordPublication {
+    Draft,
+    Published,
+}
+
+#[derive(Debug, Clone)]
+pub struct List__ENTITY__Records {
+    pub page: u32,
+    pub per_page: Option<u16>,
+    pub search: Option<String>,
+    pub publication: Option<RecordPublication>,
+    pub order: RecordOrder,
+}
+
+impl Default for List__ENTITY__Records {
+    fn default() -> Self {
+        Self {
+            page: 1,
+            per_page: None,
+            search: None,
+            publication: None,
+            order: RecordOrder::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct __ENTITY__Page {
+    pub items: Vec<__ENTITY__View>,
+    pub total: u64,
+    pub page: u32,
+    pub per_page: u16,
+}

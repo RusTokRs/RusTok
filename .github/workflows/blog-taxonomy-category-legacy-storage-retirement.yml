@@ -15,6 +15,8 @@ on:
       - "crates/modules/rustok-blog/tests/category_taxonomy_read_cutover.rs"
       - "crates/modules/rustok-blog/tests/category_taxonomy_mutation_response_cutover.rs"
       - "crates/modules/rustok-blog/tests/post_category_name_projection.rs"
+      - "crates/modules/rustok-blog/src/services/category/**"
+      - "crates/modules/rustok-content-orchestration/src/blog_taxonomy.rs"
       - "scripts/verify/verify-blog-taxonomy-category-dual-write.mjs"
       - ".github/workflows/blog-taxonomy-category-legacy-storage-retirement.yml"
   push:
@@ -33,6 +35,8 @@ on:
       - "crates/modules/rustok-blog/tests/category_taxonomy_read_cutover.rs"
       - "crates/modules/rustok-blog/tests/category_taxonomy_mutation_response_cutover.rs"
       - "crates/modules/rustok-blog/tests/post_category_name_projection.rs"
+      - "crates/modules/rustok-blog/src/services/category/**"
+      - "crates/modules/rustok-content-orchestration/src/blog_taxonomy.rs"
       - "scripts/verify/verify-blog-taxonomy-category-dual-write.mjs"
       - ".github/workflows/blog-taxonomy-category-legacy-storage-retirement.yml"
   workflow_dispatch:

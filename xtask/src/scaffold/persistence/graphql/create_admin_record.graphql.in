@@ -1,0 +1,3 @@
+mutation __MODULE_STEM__CreateAdminRecord($input: __MODULE_STEM__AdminRecordTitleInput!) {
+  __MODULE_FIELD__CreateAdminRecord(input: $input) { ...__MODULE_STEM__AdminRecordFields }
+}

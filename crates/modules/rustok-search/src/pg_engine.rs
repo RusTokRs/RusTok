@@ -252,6 +252,7 @@ fn build_filter_clause(
 
     if let Some(channel) = storefront_channel {
         clauses.push(storefront_channel_visibility_sql(
+            "source_module",
             "entity_type",
             "payload",
             channel,
@@ -289,7 +290,7 @@ fn build_filter_clause(
         clauses.push(format!(
             "(
                 (
-                    entity_type = 'product'
+                    source_module = 'commerce' AND entity_type = 'product'
                     AND EXISTS (
                         SELECT 1
                         FROM index_product_categories ipc
@@ -361,7 +362,7 @@ fn build_filter_clause(
         }
 
         clauses.push(format!(
-            "entity_type = 'product' AND EXISTS (
+            "source_module = 'commerce' AND entity_type = 'product' AND EXISTS (
                 SELECT 1
                 FROM index_product_attribute_values iav
                 WHERE {}
@@ -481,18 +482,28 @@ async fn finalize_ranked_search(
     let total_statement = Statement::from_sql_and_values(
         DbBackend::Postgres,
         format!(
-            "{cte} SELECT COUNT(*) AS total FROM ranked WHERE {}",
+            "{cte}
+             SELECT COUNT(*) AS total,
+                    COALESCE(BOOL_OR(source_module = 'commerce' AND entity_type = 'product'), FALSE)
+                        AS has_catalog_matches
+             FROM ranked
+             WHERE {}",
             filters.clause
         ),
         base_values.clone(),
     );
-    let total = db
+    let totals = db
         .query_one_raw(total_statement)
         .await
         .map_err(Error::Database)?
-        .and_then(|row| row.try_get::<i64>("", "total").ok())
-        .unwrap_or(0)
+        .ok_or_else(|| Error::Internal("Search count did not return an aggregate row".into()))?;
+    let total = totals
+        .try_get::<i64>("", "total")
+        .map_err(Error::Database)?
         .max(0) as u64;
+    let has_catalog_matches: bool = totals
+        .try_get("", "has_catalog_matches")
+        .map_err(Error::Database)?;
 
     let offset_param = 4 + filters.values.len();
     let limit_param = offset_param + 1;
@@ -561,6 +572,29 @@ async fn finalize_ranked_search(
             .map_err(Error::Database)?,
     )?;
 
+    // Entity names are owner-local. Only actual Commerce matches can
+    // contribute catalog facets.
+    if has_catalog_matches {
+        facets.extend(query_product_attribute_facets(db, cte, base_values, filters, query).await?);
+    }
+
+    Ok(SearchResult {
+        items,
+        total,
+        took_ms: 0,
+        engine: SearchEngineKind::Postgres,
+        ranking_profile,
+        facets,
+    })
+}
+
+async fn query_product_attribute_facets(
+    db: &DatabaseConnection,
+    cte: &str,
+    base_values: Vec<Value>,
+    filters: &FilterClause,
+    query: &SearchQuery,
+) -> Result<Vec<SearchFacetGroup>> {
     let mut attribute_facet_values = base_values;
     let mut next_param = 4 + filters.values.len();
     let attribute_facet_scope =
@@ -585,6 +619,7 @@ async fn finalize_ranked_search(
                AND iav.facet_bucket_key IS NOT NULL
                AND iav.facet_bucket_key <> ''
              WHERE {}
+               AND ranked.source_module = 'commerce'
                AND ranked.entity_type = 'product'
              GROUP BY iav.attribute_code, COALESCE(iav.facet_bucket_key, iav.value_key), NULLIF(iav.value_label, '')
              ORDER BY facet_name, facet_count DESC, facet_value ASC",
@@ -592,20 +627,11 @@ async fn finalize_ranked_search(
         ),
         attribute_facet_values,
     );
-    facets.extend(build_dynamic_facets(
+    build_dynamic_facets(
         db.query_all_raw(attribute_facets_statement)
             .await
             .map_err(Error::Database)?,
-    )?);
-
-    Ok(SearchResult {
-        items,
-        total,
-        took_ms: 0,
-        engine: SearchEngineKind::Postgres,
-        ranking_profile,
-        facets,
-    })
+    )
 }
 
 fn build_fts_cte(profile: SearchRankingProfile) -> String {
@@ -773,6 +799,8 @@ fn build_order_by_clause(
             SELECT iav.sort_value
             FROM index_product_attribute_values iav
             WHERE iav.tenant_id = $1
+              AND ranked.source_module = 'commerce'
+              AND ranked.entity_type = 'product'
               AND iav.product_id = ranked.id
               AND ($2 = '' OR iav.locale = $2)
               AND iav.attribute_code = ${sort_attribute_param}

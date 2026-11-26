@@ -146,10 +146,12 @@ impl AdminPageRegistration {
 
         self.child_pages
             .iter()
-            .find(|child| {
-                normalized == child.subpath
-                    || normalized.starts_with(&format!("{}/", child.subpath))
+            .filter(|child| {
+                normalized
+                    .strip_prefix(child.subpath)
+                    .is_some_and(|suffix| suffix.is_empty() || suffix.starts_with('/'))
             })
+            .max_by_key(|child| child.subpath.len())
             .cloned()
     }
 }
@@ -173,6 +175,11 @@ mod tests {
                     nav_label: "Templates",
                 },
                 AdminChildPageRegistration {
+                    subpath: "history",
+                    title: "History",
+                    nav_label: "History",
+                },
+                AdminChildPageRegistration {
                     subpath: "history/runs",
                     title: "Execution Runs",
                     nav_label: "Runs",
@@ -192,6 +199,10 @@ mod tests {
                 .child_page_for_subpath("history/runs/2026")
                 .map(|page| page.nav_label),
             Some("Runs")
+        );
+        assert_eq!(
+            registration.child_page_for_subpath("history/runs-old").map(|page| page.nav_label),
+            Some("History")
         );
     }
 

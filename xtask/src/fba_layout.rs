@@ -9,7 +9,7 @@ const SERVICE_BIN: &str = "src/bin/service.rs";
 const GRPC_FEATURES: [&str; 2] = ["grpc-client", "grpc-server"];
 
 /// Checks declared dependencies and source placement. Runtime profiles need separate evidence.
-pub(crate) fn lint(workspace: &Path, slug: &str, required: bool) -> Result<()> {
+pub(crate) fn lint(workspace: &Path, slug: &str) -> Result<()> {
     let manifest = load_manifest_from(&workspace.join("modules.toml"))?;
     let owner = manifest
         .modules
@@ -34,16 +34,10 @@ pub(crate) fn lint(workspace: &Path, slug: &str, required: bool) -> Result<()> {
             ports_root.display()
         ),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            ensure!(
-                !required,
+            anyhow::bail!(
                 "Module '{slug}' is missing its canonical FBA package at {}",
                 ports_path.display()
             );
-            if owner_root.join(SERVICE_BIN).exists() {
-                let owner_manifest = read_manifest(&owner_root.join("Cargo.toml"))?;
-                check_service(&owner_manifest, &owner_root, None)?;
-            }
-            return Ok(());
         }
         Err(error) => {
             return Err(error).with_context(|| format!("Cannot inspect {}", ports_root.display()));

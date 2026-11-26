@@ -293,7 +293,7 @@ impl BlogMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
         super::query::ensure_authenticated_blog_channel_enabled(
-            db,
+            runtime.channel_availability(),
             tenant_id,
             ctx.data_opt::<RequestContext>(),
         )

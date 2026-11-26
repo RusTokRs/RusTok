@@ -37,6 +37,13 @@ snapshot. An independent caller can request the same snapshot through Channel's
 read port. A generation read and a later list read cannot be paired as evidence
 of membership.
 
+Native localized-record owners may register the bounded `rustok-api::localized_index`
+replay port. Distribution maps explicitly registered records into the existing
+PostgreSQL Index source and schema catalogs. The owner returns exact locale keys,
+owner revisions and tombstones for unpublished copies. Distribution and Index
+read through the port. Storefront admission and incremental event delivery remain
+independent contracts.
+
 ## Sources of truth and ownership
 
 Product and Channel own their tables and the semantics of the published SQL.

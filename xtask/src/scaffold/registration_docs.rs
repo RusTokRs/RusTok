@@ -187,7 +187,17 @@ fn projections(opts: &ScaffoldOptions) -> Vec<(&'static str, Vec<Entry>)> {
     let base = format!("../../crates/modules/{name}");
     let plan = format!("{base}/docs/implementation-plan.md");
     let desc = escape_text(&opts.description);
-    let (surfaces, shape) = draft_readiness(opts.ui);
+    let (surfaces, shape) = ui_layout(opts);
+    let ffa_status = if opts.has_record_admin() {
+        "in_progress"
+    } else {
+        "not_started"
+    };
+    let release = if opts.entity.is_some() {
+        format!("| `{slug}` | `StatefulSchema` | `{slug}_records`, `{slug}_record_translations` | none | `DeniedMaintenanceOnly` | Owner schema generated. Release execution remains unverified. [Owner plan]({plan}) |")
+    } else {
+        format!("| `{slug}` | `Stateless` | `data boundary: none` | none | `DeniedMaintenanceOnly` | Draft identity; release and rollback execution unverified; [owner plan]({plan}) |")
+    };
     let registry = vec![
         Entry::table(
             READINESS,
@@ -201,7 +211,7 @@ fn projections(opts: &ScaffoldOptions) -> Vec<(&'static str, Vec<Entry>)> {
             ],
             slug,
             format!(
-                "| `{slug}` | {surfaces} | `not_started` | `not_started` | {shape} | [Implementation plan]({plan}); {desc} |"
+                "| `{slug}` | {surfaces} | `{ffa_status}` | `not_started` | {shape} | [Implementation plan]({plan}); {desc} |"
             ),
         ),
         Entry {
@@ -224,9 +234,7 @@ fn projections(opts: &ScaffoldOptions) -> Vec<(&'static str, Vec<Entry>)> {
                 "Recovery Invariants & Guards",
             ],
             slug,
-            format!(
-                "| `{slug}` | `Stateless` | `data boundary: none` | none | `DeniedMaintenanceOnly` | Draft identity; release and rollback execution unverified; [owner plan]({plan}) |"
-            ),
+            release,
         ),
     ];
     let mut index = vec![Entry::table(
@@ -235,13 +243,27 @@ fn projections(opts: &ScaffoldOptions) -> Vec<(&'static str, Vec<Entry>)> {
         &name,
         format!("| `{name}` | [docs]({base}/docs/README.md) | [plan]({plan}) |"),
     )];
+    let (status, priority) = if opts.has_record_admin() {
+        (
+            "in_progress",
+            "Mount the record workspace, add tenant settings and verify admin host parity.",
+        )
+    } else if opts.entity.is_some() {
+        (
+            "in_progress",
+            "Verify the owner storage and integration contracts.",
+        )
+    } else {
+        (
+            "not_started",
+            "Specify owner operations and invariants before persistence, transports or live UI.",
+        )
+    };
     let plans = vec![Entry::table(
         LIVE_PLANS,
         &["Module/Crate", "Local plan", "Status", "Nearest priority"],
         slug,
-        format!(
-            "| `{slug}` | [plan]({plan}) | `not_started` | Specify owner operations and invariants before persistence, transports or live UI. |"
-        ),
+        format!("| `{slug}` | [plan]({plan}) | `{status}` | {priority} |"),
     )];
     let mut ui = Vec::new();
     for (requested, surface, section) in [
@@ -258,11 +280,18 @@ fn projections(opts: &ScaffoldOptions) -> Vec<(&'static str, Vec<Entry>)> {
     ] {
         if requested {
             let link = format!("{base}/{surface}/README.md");
+            let progress = if surface == "admin" && opts.mounts_record_admin() {
+                "registered in Leptos and Next Admin"
+            } else if surface == "admin" && opts.has_record_admin() {
+                "record workspace, unmounted"
+            } else {
+                "draft, unmounted"
+            };
             let item = |label: &str| Entry {
                 section,
                 target: Target::List(link.clone()),
                 identity: name.clone(),
-                line: format!("- `{name}`{label} (draft, unmounted): [README]({link})"),
+                line: format!("- `{name}`{label} ({progress}): [README]({link})"),
             };
             index.push(item(""));
             ui.push(item(&format!(" {surface} UI")));
@@ -289,14 +318,19 @@ fn escape_text(text: &str) -> String {
     escaped
 }
 
-fn draft_readiness(ui: ScaffoldUi) -> (&'static str, &'static str) {
-    match ui {
-        ScaffoldUi::Dual => (
+fn ui_layout(opts: &ScaffoldOptions) -> (&'static str, &'static str) {
+    match (opts.ui, opts.has_record_admin()) {
+        (ScaffoldUi::Dual, true) => (
+            "admin workspace + storefront draft (unmounted)",
+            "`core_transport_ui`",
+        ),
+        (ScaffoldUi::Admin, true) => ("admin workspace (Leptos and Next)", "`core_transport_ui`"),
+        (ScaffoldUi::Dual, false) => (
             "admin + storefront (draft, unmounted)",
             "`core_transport_ui`",
         ),
-        ScaffoldUi::Admin => ("admin (draft, unmounted)", "`core_transport_ui`"),
-        ScaffoldUi::Storefront => ("storefront (draft, unmounted)", "`core_transport_ui`"),
-        ScaffoldUi::None => ("none", "`no_ui_boundary`"),
+        (ScaffoldUi::Admin, false) => ("admin (draft, unmounted)", "`core_transport_ui`"),
+        (ScaffoldUi::Storefront, _) => ("storefront (draft, unmounted)", "`core_transport_ui`"),
+        (ScaffoldUi::None, _) => ("none", "`no_ui_boundary`"),
     }
 }

@@ -1,3 +1,5 @@
+use super::*;
+
 #[test]
 fn post_list_query_defaults() {
     let query = PostListQuery::default();

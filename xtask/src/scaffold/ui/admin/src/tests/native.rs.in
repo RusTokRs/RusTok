@@ -1,0 +1,380 @@
+use std::sync::Arc;
+
+use axum::{
+    body::{Body, to_bytes},
+    http::{Request, StatusCode},
+    response::IntoResponse,
+};
+use leptos::prelude::provide_context;
+use rustok_api::{
+    Action, AuthContext, HostRuntimeContext, Permission, ResolvedRequestLocale, Resource,
+    TenantContext,
+    context::{AuthContextExtension, TenantContextExtension},
+};
+use rustok_core::{MigrationSource, ModuleRegistry};
+use rustok_modules::{DatabaseStaticModuleSettingsReader, ModuleLifecycleDbWriter, ModulesModule};
+use rustok_outbox_storage::SysEventsMigration;
+use sea_orm::{
+    ConnectionTrait, DatabaseConnection,
+    sea_query::{Alias, Expr, Query},
+};
+use sea_orm_migration::{MigrationTrait, SchemaManager};
+use serde_json::{Value, json};
+use uuid::Uuid;
+
+use __OWNER__::__MODULE_STEM__Module;
+
+struct SettingsReader(DatabaseConnection);
+
+#[async_trait::async_trait]
+impl rustok_api::StaticModuleSettingsAdminReader for SettingsReader {
+    async fn read(
+        &self,
+        tenant: &TenantContext,
+        auth: &AuthContext,
+        slug: &str,
+    ) -> Result<rustok_api::StaticTenantModuleView, rustok_api::PortError> {
+        assert_eq!(slug, "__SLUG__");
+        if auth.tenant_id != tenant.id || !auth.permissions.contains(&Permission::MODULES_MANAGE) {
+            return Err(rustok_api::PortError::forbidden(
+                "PERMISSION_DENIED",
+                "Module settings require modules:manage",
+            ));
+        }
+        let registry = ModuleRegistry::new().register(__MODULE_STEM__Module);
+        Ok(
+            ModuleLifecycleDbWriter::new(self.0.clone(), &registry, Vec::new())
+                .static_tenant_module_view(tenant.id, slug)
+                .await
+                .unwrap(),
+        )
+    }
+}
+
+#[tokio::test]
+async fn native_settings_route_returns_one_owner_snapshot_and_checks_actor() {
+    let mut fixture = Fixture::new().await;
+    fixture.host =
+        fixture
+            .host
+            .with_shared_value(rustok_api::SharedStaticModuleSettingsAdminReader(Arc::new(
+                SettingsReader(fixture.db.clone()),
+            )));
+    assert_error(
+        fixture
+            .execute("settings", &fixture.tenant, None, json!({}))
+            .await,
+        "UNAUTHENTICATED",
+    );
+    assert_error(
+        fixture
+            .execute(
+                "settings",
+                &fixture.tenant,
+                Some(auth(&fixture.tenant, Action::Manage)),
+                json!({}),
+            )
+            .await,
+        "PERMISSION_DENIED",
+    );
+    let mut manager = auth(&fixture.tenant, Action::Manage);
+    manager.permissions = vec![Permission::MODULES_MANAGE];
+    let result = fixture
+        .execute("settings", &fixture.tenant, Some(manager), json!({}))
+        .await;
+    assert_eq!(result.0, StatusCode::OK, "{}", result.1);
+    let view: rustok_api::StaticTenantModuleView = serde_json::from_str(&result.1).unwrap();
+    assert_eq!(view.module_slug, "__SLUG__");
+    assert_eq!(view.revision, 0);
+    assert_eq!(
+        serde_json::from_str::<Value>(&view.settings).unwrap()["admin_page_size"],
+        1
+    );
+}
+
+struct Fixture {
+    db: DatabaseConnection,
+    host: HostRuntimeContext,
+    tenant: TenantContext,
+    foreign: TenantContext,
+}
+
+impl Fixture {
+    async fn new() -> Self {
+        let db = rustok_test_utils::db::setup_test_db().await;
+        let schema = SchemaManager::new(&db);
+        SysEventsMigration.up(&schema).await.unwrap();
+        for migration in rustok_migrations::identity::migrations()
+            .into_iter()
+            .chain(__MODULE_STEM__Module.migrations())
+        {
+            migration.up(&schema).await.unwrap();
+        }
+        let migration = ModulesModule
+            .migrations()
+            .into_iter()
+            .find(|migration| migration.name() == "m20250101_000060_create_tenant_modules")
+            .expect("canonical tenant module migration");
+        migration.up(&schema).await.unwrap();
+        db.execute_unprepared("CREATE VIEW tenant_identity_keys AS SELECT id FROM tenants")
+            .await
+            .unwrap();
+        let tenant = create_tenant(&db).await;
+        let foreign = create_tenant(&db).await;
+        enable(&db, tenant.id).await;
+        let host = HostRuntimeContext::new(db.clone())
+            .with_shared_value(DatabaseStaticModuleSettingsReader::shared(db.clone()));
+        Self {
+            db,
+            host,
+            tenant,
+            foreign,
+        }
+    }
+
+    async fn execute(
+        &self,
+        operation: &str,
+        tenant: &TenantContext,
+        auth: Option<AuthContext>,
+        input: Value,
+    ) -> (StatusCode, String) {
+        let mut request = Request::post(format!("/api/fn/__SLUG__/admin/{operation}"))
+            .header("content-type", "application/json")
+            .body(Body::from(input.to_string()))
+            .unwrap();
+        request
+            .extensions_mut()
+            .insert(TenantContextExtension(tenant.clone()));
+        request.extensions_mut().insert(ResolvedRequestLocale {
+            requested_locale: Some("fr".into()),
+            effective_locale: "fr".into(),
+        });
+        if let Some(auth) = auth {
+            request.extensions_mut().insert(AuthContextExtension(auth));
+        }
+        let host = self.host.clone();
+        let response = leptos_axum::handle_server_fns_with_context(
+            move || provide_context(host.clone()),
+            request,
+        )
+        .await
+        .into_response();
+        let status = response.status();
+        let body = to_bytes(response.into_body(), 64 * 1024).await.unwrap();
+        (status, String::from_utf8(body.to_vec()).unwrap())
+    }
+
+    async fn manage(&self, operation: &str, input: Value) -> Value {
+        let result = self
+            .execute(
+                operation,
+                &self.tenant,
+                Some(auth(&self.tenant, Action::Manage)),
+                input,
+            )
+            .await;
+        assert_eq!(result.0, StatusCode::OK, "{}", result.1);
+        serde_json::from_str(&result.1).unwrap()
+    }
+}
+
+async fn create_tenant(db: &DatabaseConnection) -> TenantContext {
+    let id = Uuid::new_v4();
+    let insert = Query::insert()
+        .into_table(Alias::new("tenants"))
+        .columns(["id", "name", "slug"].map(Alias::new))
+        .values_panic([
+            Expr::value(id),
+            Expr::value("Fixture"),
+            Expr::value(id.to_string()),
+        ])
+        .to_owned();
+    db.execute_raw(db.get_database_backend().build(&insert))
+        .await
+        .unwrap();
+    TenantContext {
+        id,
+        name: "Fixture".into(),
+        slug: id.to_string(),
+        domain: None,
+        settings: json!({}),
+        default_locale: "en".into(),
+        is_active: true,
+    }
+}
+
+async fn enable(db: &DatabaseConnection, tenant: Uuid) {
+    let insert = Query::insert()
+        .into_table(Alias::new("tenant_modules"))
+        .columns(["id", "tenant_id", "module_slug", "enabled", "settings"].map(Alias::new))
+        .values_panic([
+            Expr::value(Uuid::new_v4()),
+            Expr::value(tenant),
+            Expr::value("__SLUG__"),
+            Expr::value(true),
+            Expr::value(json!({"admin_page_size": 1})),
+        ])
+        .to_owned();
+    db.execute_raw(db.get_database_backend().build(&insert))
+        .await
+        .unwrap();
+}
+
+fn auth(tenant: &TenantContext, action: Action) -> AuthContext {
+    AuthContext {
+        user_id: Uuid::new_v4(),
+        session_id: Uuid::new_v4(),
+        tenant_id: tenant.id,
+        permissions: vec![Permission::new(Resource::__RESOURCE__, action)],
+        client_id: None,
+        scopes: Vec::new(),
+        grant_type: "password".into(),
+    }
+}
+
+fn assert_error(result: (StatusCode, String), code: &str) {
+    assert!(
+        !result.0.is_success() && result.1.contains(code),
+        "{result:?}"
+    );
+}
+
+#[tokio::test]
+async fn native_http_uses_trusted_tenant_and_exercises_every_operation() {
+    let fixture = Fixture::new().await;
+    let filter = || json!({ "input": { "page": 1, "order": "NEWEST_FIRST" } });
+    assert_error(
+        fixture
+            .execute("records", &fixture.tenant, None, filter())
+            .await,
+        "UNAUTHENTICATED",
+    );
+    assert_error(
+        fixture
+            .execute(
+                "records",
+                &fixture.tenant,
+                Some(auth(&fixture.foreign, Action::Manage)),
+                filter(),
+            )
+            .await,
+        "PERMISSION_DENIED",
+    );
+    assert_error(
+        fixture
+            .execute(
+                "records",
+                &fixture.tenant,
+                Some(auth(&fixture.tenant, Action::Read)),
+                filter(),
+            )
+            .await,
+        "PERMISSION_DENIED",
+    );
+    assert_error(
+        fixture
+            .execute(
+                "records",
+                &fixture.foreign,
+                Some(auth(&fixture.foreign, Action::Manage)),
+                filter(),
+            )
+            .await,
+        "MODULE_NOT_ENABLED",
+    );
+    let mut inactive = fixture.tenant.clone();
+    inactive.is_active = false;
+    assert_error(
+        fixture
+            .execute(
+                "records",
+                &inactive,
+                Some(auth(&inactive, Action::Manage)),
+                filter(),
+            )
+            .await,
+        "PERMISSION_DENIED",
+    );
+
+    let draft = fixture
+        .manage(
+            "create-record",
+            json!({ "input": { "locale": "en", "title": "Reference" } }),
+        )
+        .await;
+    let id = draft["id"].as_str().unwrap();
+    assert_eq!(draft["revision"], "1");
+    assert_eq!(draft["published"], false);
+    let table = fixture.manage("records", filter()).await;
+    assert_eq!(table["perPage"], 1);
+    assert_eq!(table["total"], 1);
+    assert_eq!(table["items"][0]["requestedLocale"], "fr");
+    assert_eq!(table["items"][0]["effectiveLocale"], "en");
+
+    enable(&fixture.db, fixture.foreign.id).await;
+    assert_error(
+        fixture
+            .execute(
+                "record",
+                &fixture.foreign,
+                Some(auth(&fixture.foreign, Action::Manage)),
+                json!({"id": id}),
+            )
+            .await,
+        "NOT_FOUND",
+    );
+    let edit = |revision: &str| {
+        json!({
+            "id": id,
+            "expected_revision": revision,
+            "input": { "locale": "ru", "title": "Образец" }
+        })
+    };
+    assert_error(
+        fixture
+            .execute(
+                "save-record-title",
+                &fixture.tenant,
+                Some(auth(&fixture.tenant, Action::Manage)),
+                edit("01"),
+            )
+            .await,
+        "BAD_USER_INPUT",
+    );
+    let edited = fixture.manage("save-record-title", edit("1")).await;
+    assert_eq!(edited["revision"], "2");
+    assert_eq!(edited["effectiveLocale"], "ru");
+    assert_error(
+        fixture
+            .execute(
+                "save-record-title",
+                &fixture.tenant,
+                Some(auth(&fixture.tenant, Action::Manage)),
+                edit("1"),
+            )
+            .await,
+        "CONFLICT",
+    );
+    let loaded = fixture
+        .manage("record", json!({"id": id, "locale": "ru"}))
+        .await;
+    assert_eq!(loaded["title"], "Образец");
+    let publication = |revision, published| {
+        json!({
+            "id": id, "locale": "ru", "expected_revision": revision, "published": published
+        })
+    };
+    assert_eq!(
+        fixture
+            .manage("set-record-publication", publication("2", true))
+            .await["published"],
+        true
+    );
+    assert_eq!(
+        fixture
+            .manage("set-record-publication", publication("3", false))
+            .await["published"],
+        false
+    );
+}

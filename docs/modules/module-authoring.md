@@ -259,16 +259,17 @@ Unused slots are omitted. When a responsibility grows, split it below its
 canonical owner directory rather than inventing a new top-level convention.
 Use the same [file placement rules](../backend/module-backend-implementation.md#file-placement-for-reference-capabilities)
 for new capabilities and incremental moves in existing modules.
-Run `cargo xtask module lint <slug>` to check the generic source/FFA contract
-and live Next.js package/route wiring. Embedded native providers use
+Run `cargo xtask module lint <slug>` to check the shared source, FFA and CLI
+contracts and live Next.js package and route wiring. Embedded native providers use
 `cargo xtask module lint <slug> --embedded`.
-`npm run verify:module-source-layout` remains a separate reference-profile
-gate for enrolled modules such as Blog.
+`npm run verify:module-source-layout` runs the reference checks on Blog and Tax
+alongside the shared validator fixtures.
 
 #### Reference modules
 
-Use [Blog](../../crates/modules/rustok-blog/README.md) for the enrolled native
-source layout and owner-command examples. Use the
+Use [Blog](../../crates/modules/rustok-blog/README.md) for the full native
+source layout, UI and CLI. Use [Tax](../../crates/modules/rustok-tax/README.md)
+for a compact embedded provider. Use the
 [Product admin catalog](../../crates/modules/rustok-product/admin/README.md)
 for mounted FFA pagination, route state and its transport boundary. Both use
 the same native and FFA rules. The

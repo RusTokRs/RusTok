@@ -1,0 +1,8 @@
+query TenantModuleSettings($moduleSlug: String!) {
+  tenantModuleSettings(moduleSlug: $moduleSlug) {
+    moduleSlug
+    enabled
+    settings
+    revision
+  }
+}

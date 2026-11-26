@@ -9,8 +9,8 @@
 //! the boundary where the configuration mistake was made.
 
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, DbErr, IsolationLevel,
-    QueryResult, Statement, TransactionTrait, Value,
+    AccessMode, ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, DbErr,
+    IsolationLevel, QueryResult, Statement, TransactionTrait, Value,
 };
 use thiserror::Error;
 use uuid::Uuid;
@@ -35,6 +35,23 @@ pub(crate) async fn begin_fenced_transaction(
         SupportedBackend::Postgres => db
             .begin_with_config(Some(IsolationLevel::ReadCommitted), None)
             .await,
+        SupportedBackend::Sqlite => db.begin().await,
+    }
+}
+
+/// PostgreSQL normally takes a new snapshot for every statement. Use a
+/// transaction snapshot when one projection combines several owner reads.
+pub(crate) async fn begin_snapshot_transaction(
+    db: &DatabaseConnection,
+) -> Result<DatabaseTransaction, DbErr> {
+    match SupportedBackend::new(db.get_database_backend()).map_err(DbErr::from)? {
+        SupportedBackend::Postgres => {
+            db.begin_with_config(
+                Some(IsolationLevel::RepeatableRead),
+                Some(AccessMode::ReadOnly),
+            )
+            .await
+        }
         SupportedBackend::Sqlite => db.begin().await,
     }
 }

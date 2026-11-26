@@ -7,7 +7,7 @@
   "production_contract": {
     "permission_resource": "blog_categories",
     "category_service_constructor": "CategoryService::new(DatabaseConnection, TransactionalEventBus)",
-    "owner_service": "crates/modules/rustok-blog/src/services/category.rs",
+    "owner_service": "crates/modules/rustok-blog/src/services/category/commands/copy.rs",
     "owner_rbac": "crates/modules/rustok-blog/src/services/rbac.rs",
     "platform_permissions": "crates/libs/rustok-api/src/permissions.rs",
     "platform_rbac": "crates/libs/rustok-core/src/rbac.rs",

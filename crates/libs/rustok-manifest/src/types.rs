@@ -295,6 +295,8 @@ pub struct ModulePackageAdminUiChildPage {
     pub title: String,
     #[serde(default)]
     pub nav_label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nav_label_key: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Default)]

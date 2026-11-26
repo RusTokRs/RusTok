@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use async_graphql::Context;
 use rustok_api::{SharedStaticModuleSettingsReader, graphql::GraphqlRuntimeInputs};
+use rustok_channel_ports::ChannelPublicModuleReadPort;
 use rustok_comments::CommentsThreadPort;
 use rustok_profiles::ProfileSummaryReader;
 use sea_orm::DatabaseConnection;
@@ -10,8 +11,8 @@ use crate::ports::taxonomy::{
     BlogCategoryDeleteCleanupPort, BlogTaxonomyPort, NoopBlogTaxonomyPort,
 };
 use crate::{
-    BlogWidgetService, CategoryService, CommentService, PostService, PreviewTokenService,
-    PublicCommentsSnapshotStore, TagService,
+    BlogChannelAvailability, BlogWidgetService, CategoryService, CommentService, PostService,
+    PreviewTokenService, PublicCommentsSnapshotStore, TagService,
 };
 
 /// Manifest-attached Blog GraphQL runtime capabilities.
@@ -29,6 +30,7 @@ pub struct BlogGraphqlRuntimeData {
     profile_summary_reader: Option<Arc<dyn ProfileSummaryReader>>,
     category_delete_cleanup: Option<Arc<dyn BlogCategoryDeleteCleanupPort>>,
     taxonomy_port: Option<Arc<dyn BlogTaxonomyPort>>,
+    channel_availability: BlogChannelAvailability,
 }
 
 /// Error returned when initializing Blog GraphQL runtime data fails.
@@ -64,10 +66,17 @@ pub fn attach_schema_data(
         profile_summary_reader: inputs.shared_get::<Arc<dyn ProfileSummaryReader>>(),
         category_delete_cleanup: inputs.shared_get::<Arc<dyn BlogCategoryDeleteCleanupPort>>(),
         taxonomy_port: inputs.shared_get::<Arc<dyn BlogTaxonomyPort>>(),
+        channel_availability: BlogChannelAvailability::new(
+            inputs.shared_get::<Arc<dyn ChannelPublicModuleReadPort>>(),
+        ),
     })
 }
 
 impl BlogGraphqlRuntimeData {
+    pub(super) fn channel_availability(&self) -> &BlogChannelAvailability {
+        &self.channel_availability
+    }
+
     /// Blog runtime capabilities the host attached to this schema.
     ///
     /// Post, tag and category resolvers build their services through this value, so the
@@ -84,6 +93,7 @@ impl BlogGraphqlRuntimeData {
             self.comments_thread_port.clone(),
             self.settings_reader.clone(),
         )
+        .with_channel_availability(self.channel_availability.clone())
     }
 
     pub(crate) fn category_service(
@@ -106,7 +116,8 @@ impl BlogGraphqlRuntimeData {
         db: DatabaseConnection,
         event_bus: rustok_outbox::TransactionalEventBus,
     ) -> PostService {
-        let mut service = PostService::new(db, event_bus);
+        let mut service = PostService::new(db, event_bus)
+            .with_channel_availability(self.channel_availability.clone());
         if let Some(taxonomy) = self.taxonomy_port.clone() {
             service = service.with_taxonomy_port(taxonomy);
         }

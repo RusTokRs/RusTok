@@ -2,7 +2,7 @@
   "schema_version": 1,
   "status": "region_owner_port_error_safety_source_unvalidated",
   "scope": {
-    "owner_source": "crates/modules/rustok-region/src/ports.rs",
+    "owner_source": "crates/modules/rustok-region/src/services/region/read_port.rs",
     "owner_error": "crates/modules/rustok-region/src/error.rs",
     "focused_verifier": "scripts/verify/verify-region-owner-port-error-safety.mjs",
     "documentation": "crates/modules/rustok-region/docs/region-owner-port-error-safety.md",

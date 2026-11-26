@@ -88,9 +88,9 @@ const tagServiceSource =
   read("crates/modules/rustok-blog/src/services/tag.rs") +
   "\n" +
   readTree("crates/modules/rustok-blog/src/services/tag");
-const categoryServicePath = "crates/modules/rustok-blog/src/services/category.rs";
-const categoryMovePath = "crates/modules/rustok-blog/src/services/category_command.rs";
-const categoryDeletePath = "crates/modules/rustok-blog/src/services/category_delete.rs";
+const categoryServicePath = "crates/modules/rustok-blog/src/services/category/commands/copy.rs";
+const categoryMovePath = "crates/modules/rustok-blog/src/services/category/commands/placement.rs";
+const categoryDeletePath = "crates/modules/rustok-blog/src/services/category/commands/delete.rs";
 const categoryHierarchyLock = ".lock_category_hierarchy_writer_in_tx(&txn, tenant_id)";
 const categoryUpdateSource = (read(categoryServicePath).split("pub async fn update(")[1] ?? "")
   .split("pub(crate) async fn ensure_exists_in_tx(")[0];
@@ -220,7 +220,7 @@ forbid("crates/modules/rustok-blog/src/services/rbac.rs", [
   "Permission::POSTS_READ",
 ]);
 
-requireAll("crates/modules/rustok-blog/src/services/category_owner.rs", [
+requireAll("crates/modules/rustok-blog/src/services/category/owner.rs", [
   ".load_scoped_categories(",
   "enforce_scope(&security, Resource::BlogCategories, Action::Delete)?;",
   ".delete_module_category_with_cleanup(",
@@ -243,7 +243,7 @@ requireAll("crates/modules/rustok-blog/src/migrations/mod.rs", [
   '"m20261029_000001_create_blog_schema"',
 ]);
 
-requireAll("crates/modules/rustok-blog/src/services/category_name_projection.rs", [
+requireAll("crates/modules/rustok-blog/src/services/category/name_projection.rs", [
   /port\s*\.load_scoped_categories\([\s\S]*?\)\s*\.await\?/,
   "BlogError::invariant(",
   // The read projection degrades a damaged Category reference instead of failing the
@@ -312,9 +312,9 @@ for (const path of [
   categoryServicePath,
   categoryMovePath,
   categoryDeletePath,
-  "crates/modules/rustok-blog/src/services/category_owner.rs",
-  "crates/modules/rustok-blog/src/services/category_name_projection.rs",
-  "crates/modules/rustok-blog/src/services/category_taxonomy_sync.rs",
+  "crates/modules/rustok-blog/src/services/category/owner.rs",
+  "crates/modules/rustok-blog/src/services/category/name_projection.rs",
+  "crates/modules/rustok-blog/src/services/category/taxonomy_sync.rs",
   "crates/modules/rustok-blog/src/error/mod.rs",
 ]) {
   if (/\brustok_taxonomy\b|\btaxonomy_(?:term|category_hierarchy)\s*::/.test(maskRustNonCode(read(path)))) {
@@ -440,15 +440,15 @@ requireAll("crates/modules/rustok-blog/rustok-module.toml", [
   'provider_contracts = ["comments.thread.v1"]',
 ]);
 
-forbid("crates/modules/rustok-blog/src/services/category.rs", [
+forbid("crates/modules/rustok-blog/src/services/category/commands/copy.rs", [
   "blog-category-tree:",
 ]);
-requireAll("crates/modules/rustok-blog/src/services/category_taxonomy_sync.rs", [
+requireAll("crates/modules/rustok-blog/src/services/category/taxonomy_sync.rs", [
   "port: &dyn BlogTaxonomyPort",
   "port.load_category_locale_copy_in_tx(txn, tenant_id, category_id, locale)",
   /port\.sync_category_copy_in_tx\(\s*txn,\s*tenant_id,\s*BlogTaxonomySyncCategoryInput/,
 ]);
-forbid("crates/modules/rustok-blog/src/services/category_taxonomy_sync.rs", [
+forbid("crates/modules/rustok-blog/src/services/category/taxonomy_sync.rs", [
   "map_taxonomy_error",
   "BlogError::Validation(format!(",
 ]);
@@ -859,10 +859,10 @@ for (const [moduleName, name] of blogServiceReexports) {
   }
 }
 
-forbid("crates/modules/rustok-blog/src/services/category_command.rs", [
+forbid("crates/modules/rustok-blog/src/services/category/commands/placement.rs", [
   "blog-category-tree:",
 ]);
-forbid("crates/modules/rustok-blog/src/services/category_delete.rs", [
+forbid("crates/modules/rustok-blog/src/services/category/commands/delete.rs", [
   "blog-category-tree:",
 ]);
 
@@ -898,10 +898,10 @@ requireAll("crates/modules/rustok-channel/src/services/channel_service.rs", [
   "pub async fn is_module_enabled_for_tenant(",
 ]);
 requireAll("crates/modules/rustok-blog/src/graphql/query.rs", [
-  "is_module_enabled_for_tenant(tenant_id, channel_id, MODULE_SLUG)",
+  ".for_request(tenant_id, request_context)",
 ]);
 requireAll("crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs", [
-  "is_module_enabled_for_tenant(tenant_id, channel_id, MODULE_SLUG)",
+  ".for_request(tenant_id, request_context)",
   "request_context",
   ".is_some_and(|context| context.tenant_id != tenant_id)",
 ]);
@@ -1059,7 +1059,7 @@ const allowedBlogPostMutationSources = new Set([
   "crates/modules/rustok-blog/src/services/post/pin.rs",
   "crates/modules/rustok-blog/src/services/tag.rs",
   "crates/modules/rustok-blog/src/services/tag/relations.rs",
-  "crates/modules/rustok-blog/src/services/category_delete.rs",
+  "crates/modules/rustok-blog/src/services/category/commands/delete.rs",
   "crates/modules/rustok-blog/src/services/comment_projection.rs",
   "crates/modules/rustok-blog/src/services/orchestration.rs",
 ]);

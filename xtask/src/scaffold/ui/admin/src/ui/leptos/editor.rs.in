@@ -1,0 +1,280 @@
+use leptos::prelude::*;
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
+use rustok_forms_leptos::{
+    Form, FormError, FormField, FormInput, FormLabel, FormMessage, SubmitButton,
+};
+use rustok_ui_forms::{DirtyTracker, FieldError, FormState};
+use rustok_ui_leptos::{Alert, Button};
+use uuid::Uuid;
+
+use crate::core::editor::{
+    Editor, LOCALE, LocaleSummary, Operation, TITLE, editor_title, failure_copy,
+};
+use crate::i18n::t;
+use crate::model::{Rejection, RequestFailure};
+use crate::transport::AdminClient;
+
+#[component]
+pub(super) fn RecordEditor(
+    id: Option<Uuid>,
+    ui_locale: Option<String>,
+    on_close: Callback<()>,
+    on_changed: Callback<()>,
+) -> impl IntoView {
+    let ui_locale = StoredValue::new(ui_locale);
+    let copy = move |key: &str, fallback: &str| {
+        ui_locale.with_value(|locale| t(locale.as_deref(), key, fallback))
+    };
+    let token = use_token();
+    let tenant = use_tenant();
+    let editor = RwSignal::new(Editor::new(id));
+    let form = RwSignal::new(FormState::idle());
+    let dirty = RwSignal::new(DirtyTracker::new());
+    let language = RwSignal::new(
+        ui_locale
+            .get_value()
+            .unwrap_or_else(|| rustok_api::PLATFORM_FALLBACK_LOCALE.to_owned()),
+    );
+    let title = RwSignal::new(String::new());
+    let is_new = Signal::derive(move || editor.with(Editor::is_draft));
+    let busy = Signal::derive(move || form.with(|state| state.is_submitting));
+    let title_dirty = Signal::derive(move || dirty.with(|dirty| dirty.is_dirty(TITLE)));
+    let disabled = Signal::derive(move || busy.get() || !editor.with(Editor::can_write));
+    let title_disabled = Signal::derive(move || {
+        busy.get() || editor.with(|value| !value.is_draft() && value.record.is_none())
+    });
+
+    let action = Action::new(move |operation: &Operation| {
+        let operation = operation.clone();
+        let client = AdminClient::new(token.get_untracked(), tenant.get_untracked());
+        async move {
+            let result = client.execute(operation.clone()).await;
+            (operation, result)
+        }
+    });
+    let dispatch = Callback::new(move |operation: Operation| {
+        if !busy.get_untracked() {
+            form.set(FormState::submitting());
+            action.dispatch(operation);
+        }
+    });
+
+    let reload = Callback::new(move |()| {
+        let locale = ui_locale.get_value();
+        if let Some(operation) = editor.with_untracked(|value| value.reload(locale.as_deref())) {
+            dispatch.run(operation);
+        }
+    });
+    Effect::new(move |_| reload.run(()));
+
+    Effect::new(move |_| {
+        let Some((operation, result)) = action.value().get() else {
+            return;
+        };
+        let write = operation.is_write();
+        match result {
+            Ok(record) => {
+                let applied = editor.try_update(|value| value.apply(&operation, record.clone()));
+                if applied != Some(true) {
+                    if write {
+                        editor.update(Editor::require_reload);
+                        on_changed.run(());
+                    }
+                    form.set(FormState::with_form_error(copy(
+                        "record-unexpected-response",
+                        "The response did not match this record or language.",
+                    )));
+                    return;
+                }
+                title.set(editor_title(&record).to_owned());
+                language.set(record.requested_locale);
+                dirty.update(DirtyTracker::reset);
+                form.set(if write {
+                    FormState::success()
+                } else {
+                    FormState::idle()
+                });
+                if write {
+                    on_changed.run(());
+                }
+            }
+            Err(failure) => {
+                if write
+                    && matches!(
+                        &failure,
+                        RequestFailure::Transport(_)
+                            | RequestFailure::Rejected(Rejection::Conflict)
+                    )
+                {
+                    editor.update(Editor::require_reload);
+                    on_changed.run(());
+                }
+                let locale = ui_locale.get_value();
+                form.set(FormState::with_form_error(failure_copy(
+                    &failure,
+                    write,
+                    locale.as_deref(),
+                )));
+            }
+        }
+    });
+
+    let submit = Callback::new(move |()| {
+        let locale = ui_locale.get_value();
+        let operation = editor.with_untracked(|value| {
+            value.save(
+                &language.get_untracked(),
+                &title.get_untracked(),
+                locale.as_deref(),
+            )
+        });
+        submit_operation(operation, form, dispatch);
+    });
+    let open_translation = move || {
+        if title_dirty.get_untracked() {
+            return;
+        }
+        let locale = ui_locale.get_value();
+        let operation = editor.with_untracked(|value| {
+            value.load_translation(&language.get_untracked(), locale.as_deref())
+        });
+        submit_operation(operation, form, dispatch);
+    };
+    let publish = move || {
+        if let Some(operation) =
+            editor.with_untracked(|value| value.publication(title_dirty.get_untracked()))
+        {
+            dispatch.run(operation);
+        }
+    };
+
+    view! {
+        <section class="space-y-4 rounded-lg border p-4">
+            <div class="flex items-center justify-between gap-3">
+                <h2 class="text-lg font-semibold">{move || {
+                    if is_new.get() {
+                        copy("record-create-heading", "New record")
+                    } else {
+                        copy("record-edit-heading", "Edit record")
+                    }
+                }}</h2>
+                <Button disabled=busy on_click=Box::new(move || on_close.run(()))>
+                    {move || {
+                        if dirty.with(DirtyTracker::is_any_dirty) {
+                            copy("record-discard-close", "Discard changes and close")
+                        } else {
+                            copy("record-close", "Close")
+                        }
+                    }}
+                </Button>
+            </div>
+            {move || editor.with(|value| value.record.clone()).map(LocaleSummary::from).map(|details| {
+                view! {
+                    <dl class="grid gap-2 text-sm">
+                        <div><dt class="font-medium">{copy("record-requested-locale", "Editing language")}</dt><dd>{details.requested}</dd></div>
+                        <div><dt class="font-medium">{copy("record-effective-locale", "Displayed source language")}</dt><dd>{details.effective.clone()}</dd></div>
+                        <div><dt class="font-medium">{copy("record-available-locales", "Available translations")}</dt><dd>{details.available}</dd></div>
+                    </dl>
+                    {details.source.map(|title| view! {
+                        <Alert>
+                            <p>{copy("record-fallback", "This language has no title yet. Use the source below as a reference for a new translation.")}</p>
+                            <p lang=details.effective>{title}</p>
+                        </Alert>
+                    })}
+                }
+            })}
+            <Form state=form dirty_tracker=Some(dirty) auto_submitting=false on_submit=submit class="space-y-4">
+                <FormError />
+                <FormField name=LOCALE>
+                    <FormLabel>{move || {
+                        if is_new.get() { copy("record-draft-locale", "Language of draft") }
+                        else { copy("record-open-locale-label", "Language to open") }
+                    }}</FormLabel>
+                    <FormInput value=language on_input=move |value| language.set(value) disabled=busy />
+                    <FormMessage />
+                </FormField>
+                <Show when=move || !is_new.get()>
+                    <div class="flex flex-wrap gap-2">
+                        <Button
+                            disabled=Signal::derive(move || busy.get() || title_dirty.get())
+                            on_click=Box::new(open_translation)
+                        >{copy("record-open-locale", "Open language")}</Button>
+                        <Button disabled=busy on_click=Box::new(move || reload.run(()))>
+                            {move || {
+                                if title_dirty.get() {
+                                    copy("record-discard-reload", "Discard title changes and reload")
+                                } else {
+                                    copy("record-reload", "Reload saved version")
+                                }
+                            }}
+                        </Button>
+                    </div>
+                </Show>
+                <FormField name=TITLE>
+                    <FormLabel>{copy("records-title", "Title")}</FormLabel>
+                    <FormInput value=title on_input=move |value| title.set(value) disabled=title_disabled />
+                    <FormMessage />
+                </FormField>
+                <div class="flex flex-wrap gap-2">
+                    <SubmitButton disabled=disabled>
+                        {move || {
+                            if is_new.get() { copy("record-create", "Create draft") }
+                            else { copy("record-save", "Save title") }
+                        }}
+                    </SubmitButton>
+                    <Show when=move || editor.with(|value| value.record.is_some())>
+                        <Button
+                            disabled=Signal::derive(move || disabled.get() || title_dirty.get())
+                            on_click=Box::new(publish)
+                        >{move || {
+                            if editor.with(|value| value.record.as_ref().is_some_and(|record| record.published)) {
+                                copy("record-withdraw", "Withdraw publication")
+                            } else {
+                                copy("record-publish", "Publish")
+                            }
+                        }}</Button>
+                    </Show>
+                </div>
+                <Show when=move || form.with(|state| state.is_success)>
+                    <p role="status">{copy("record-saved", "Record saved.")}</p>
+                </Show>
+            </Form>
+        </section>
+    }
+}
+
+fn submit_operation(
+    operation: Result<Option<Operation>, FieldError>,
+    form: RwSignal<FormState>,
+    dispatch: Callback<Operation>,
+) {
+    match operation {
+        Ok(Some(operation)) => dispatch.run(operation),
+        Err(error) => form.set(FormState::with_field_errors(vec![error])),
+        Ok(None) => {}
+    }
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn draft_form_renders_localized_labels_and_accessible_fields() {
+        Owner::new().with(|| {
+            provide_context(rustok_auth_ui::ui::leptos::AuthContext::new());
+            let html = view! {
+                <RecordEditor id=None ui_locale=Some("ru".into())
+                    on_close=Callback::new(|()| ()) on_changed=Callback::new(|()| ()) />
+            }
+            .to_html();
+            assert!(html.contains("<form"));
+            assert!(html.contains("Язык черновика"));
+            assert!(html.contains("Название"));
+            assert!(html.contains("Создать черновик"));
+            assert!(html.contains("name=\"locale\""));
+            assert!(html.contains("name=\"title\""));
+            assert!(!html.contains("Снять с публикации"));
+        });
+    }
+}

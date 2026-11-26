@@ -634,7 +634,7 @@ edit('crates/modules/rustok-tenant/admin/src/transport/native_server_adapter.rs'
 
 # ------------------------------------------------------- snapshot constructions
 files = [
-    'crates/modules/rustok-blog/tests/integration.rs',
+    'crates/modules/rustok-blog/tests/integration/comments.rs',
     'crates/modules/rustok-content-orchestration/src/tests/helpers.rs',
     'crates/modules/rustok-forum/src/reaction_subject.rs',
     'crates/modules/rustok-forum/src/seo_audience_targets.rs',

@@ -1,0 +1,6 @@
+import type { ReactNode } from 'react';
+import { ModuleGuard } from '@/app/providers/module-guard';
+
+export default function Layout({ children }: { children: ReactNode }) {
+  return <ModuleGuard slug='__SLUG__'>{children}</ModuleGuard>;
+}

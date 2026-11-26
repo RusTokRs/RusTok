@@ -15,7 +15,7 @@ const paths = {
   query: 'crates/modules/rustok-commerce/src/graphql/query.rs',
   safeSource: 'crates/modules/rustok-commerce/src/graphql/safe_query/source.rs',
   boundary: 'crates/modules/rustok-commerce/src/graphql/safe_query/query_error_boundary.rs',
-  regionPorts: 'crates/modules/rustok-region/src/ports.rs',
+  regionPorts: 'crates/modules/rustok-region/src/services/region/read_port.rs',
   evidence:
     'crates/modules/rustok-commerce/contracts/evidence/graphql-query-region-error-safety-source-review.json',
   document: 'crates/modules/rustok-commerce/docs/graphql-query-region-error-safety.md',
@@ -76,8 +76,8 @@ if (exactRegionFormatCount !== 1) {
 
 for (const [value, label] of [
   ['macro_rules! format {', 'safe format interception'],
-  ['("{}: {}", error.code, error.message) => {', 'exact region format arm'],
-  ['super::query_error_boundary::RegionGraphqlMessage::new(error)', 'typed region forwarding'],
+  ['("{}: {}", $error:ident.code, $error_msg:ident.message) => {', 'exact region format arm'],
+  ['super::query_error_boundary::RegionGraphqlMessage::new($error)', 'typed region forwarding'],
   ['::std::format!($($tokens)*)', 'generic format fallback'],
   ['include!("../query.rs");', 'unchanged query inclusion'],
 ]) requireText(safeSource, value, label);

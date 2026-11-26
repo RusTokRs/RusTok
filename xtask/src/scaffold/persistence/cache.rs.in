@@ -1,0 +1,131 @@
+use std::{future::Future, sync::Arc};
+
+use rustok_api::TenantLocale;
+use rustok_cache::{CacheEnvelope, CacheKeyBuilder, CacheKeyError, CacheLoadPolicy, CacheService};
+use rustok_core::{CacheBackend, Error};
+use uuid::Uuid;
+
+use crate::{__ENTITY__View, RecordError};
+
+const VERSION: u32 = 1;
+
+pub(crate) struct PublicRecordCache {
+    service: CacheService,
+    backend: Arc<dyn CacheBackend>,
+    environment: String,
+}
+
+impl PublicRecordCache {
+    pub(crate) fn new(
+        service: CacheService,
+        backend: Arc<dyn CacheBackend>,
+        environment: &str,
+    ) -> Result<Self, CacheKeyError> {
+        // Validate the host namespace at composition time.
+        key_prefix(environment, Uuid::nil())?;
+        Ok(Self {
+            service,
+            backend,
+            environment: environment.to_owned(),
+        })
+    }
+
+    pub(crate) async fn load<F>(
+        &self,
+        tenant_id: Uuid,
+        id: Uuid,
+        revision: i64,
+        locale: &TenantLocale,
+        fallback: Option<&str>,
+        fetch: impl FnOnce() -> F,
+    ) -> Option<__ENTITY__View>
+    where
+        F: Future<Output = Result<__ENTITY__View, RecordError>>,
+    {
+        match self
+            .load_at_revision(tenant_id, id, revision, locale, fallback, fetch)
+            .await
+        {
+            Ok(view)
+                if view.published
+                    && view.id == id
+                    && view.revision == revision
+                    && view.requested_locale == locale.as_str() =>
+            {
+                Some(view)
+            }
+            Ok(_) => {
+                tracing::warn!(%tenant_id, %id, revision, "Cached public record metadata mismatch");
+                None
+            }
+            Err(error) => {
+                tracing::debug!(%tenant_id, %id, %error, "Reading public record from its source");
+                None
+            }
+        }
+    }
+
+    async fn load_at_revision<F>(
+        &self,
+        tenant_id: Uuid,
+        id: Uuid,
+        revision: i64,
+        locale: &TenantLocale,
+        fallback: Option<&str>,
+        fetch: impl FnOnce() -> F,
+    ) -> rustok_core::Result<__ENTITY__View>
+    where
+        F: Future<Output = Result<__ENTITY__View, RecordError>>,
+    {
+        let key = key_prefix(&self.environment, tenant_id)
+            .and_then(|key| key.named_identity("id", id.as_bytes()))
+            .and_then(|key| key.named_identity("revision", revision.to_string()))
+            .and_then(|key| key.named_identity("locale", locale.as_str()))
+            .and_then(|key| match fallback {
+                Some(locale) => key.named_identity("fallback", locale),
+                None => Ok(key),
+            })
+            .map_err(|error| Error::Cache(error.to_string()))?
+            .build();
+
+        let value = self
+            .service
+            .load_enveloped_or_fill(
+                self.backend.clone(),
+                key,
+                VERSION,
+                CacheLoadPolicy::default(),
+                || async {
+                    let view = fetch()
+                        .await
+                        .map_err(|error| Error::Cache(error.to_string()))?;
+                    // Do not populate an old key when a mutation wins between the
+                    // initial revision probe and the authoritative full read.
+                    if view.revision != revision {
+                        return Err(Error::Cache(
+                            "public record revision changed before cache fill".into(),
+                        ));
+                    }
+                    let generated_at = chrono::Utc::now().timestamp_millis();
+                    let generated_at = u64::try_from(generated_at)
+                        .map_err(|_| Error::Cache("clock is before the Unix epoch".into()))?;
+                    CacheEnvelope::new(VERSION, generated_at, view)
+                        .and_then(|envelope| envelope.with_source_revision(revision.to_string()))
+                        .map_err(|error| Error::Cache(error.to_string()))
+                },
+            )
+            .await?;
+        Ok(value.value)
+    }
+}
+
+fn key_prefix(environment: &str, tenant_id: Uuid) -> Result<CacheKeyBuilder, CacheKeyError> {
+    CacheKeyBuilder::new(
+        "rustok",
+        environment,
+        tenant_id.to_string(),
+        "__SLUG__",
+        VERSION.to_string(),
+        "public-record",
+    )
+}

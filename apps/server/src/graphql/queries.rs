@@ -465,6 +465,36 @@ impl RootQuery {
         Ok(modules)
     }
 
+    /// Read one static module's operator settings and CAS revision from the
+    /// same owner snapshot, including inherited state before the first save.
+    async fn tenant_module_settings(
+        &self,
+        ctx: &Context<'_>,
+        module_slug: String,
+    ) -> Result<TenantModule> {
+        use rustok_api::{PortErrorKind, StaticModuleSettingsAdminReader};
+
+        let auth = ctx
+            .data_opt::<AuthContext>()
+            .ok_or_else(FieldError::unauthenticated)?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let registry = ctx.data::<ModuleRegistry>()?;
+        crate::services::static_module_settings_admin::ServerStaticModuleSettingsAdminReader::new(
+            db.clone(),
+            registry.clone(),
+        )
+        .read(tenant, auth, &module_slug)
+        .await
+        .map(Into::into)
+        .map_err(|error| match error.kind {
+            PortErrorKind::Forbidden => FieldError::permission_denied(&error.message),
+            PortErrorKind::NotFound => FieldError::not_found(&error.message),
+            PortErrorKind::Validation => FieldError::bad_user_input(&error.message),
+            _ => graphql_internal_error("Module settings are unavailable", error),
+        })
+    }
+
     /// Returns only the owner-issued tenant intent facts required to submit a
     /// revision-CAS artifact enablement command. The artifact descriptor,
     /// admission evidence, and owner tables remain private.

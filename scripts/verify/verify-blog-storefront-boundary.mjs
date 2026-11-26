@@ -5,11 +5,11 @@ import path from "node:path";
 const files = {
   storefrontSrc: "crates/modules/rustok-blog/storefront/src",
   lib: "crates/modules/rustok-blog/storefront/src/lib.rs",
-  core: "crates/modules/rustok-blog/storefront/src/core.rs",
+  core: "crates/modules/rustok-blog/storefront/src/core/mod.rs",
   pagination: "crates/modules/rustok-blog/storefront/src/core/comments_pagination.rs",
   search: "crates/modules/rustok-blog/storefront/src/core/search.rs",
   model: "crates/modules/rustok-blog/storefront/src/model.rs",
-  ui: "crates/modules/rustok-blog/storefront/src/ui/leptos.rs",
+  ui: "crates/modules/rustok-blog/storefront/src/ui/leptos/mod.rs",
   commentsListUi: "crates/modules/rustok-blog/storefront/src/ui/comments_list.rs",
   discussionUi: "crates/modules/rustok-blog/storefront/src/ui/comment.rs",
   selectedPostUi: "crates/modules/rustok-blog/storefront/src/ui/leptos/selected_post_card.rs",
@@ -223,8 +223,8 @@ assertContains(transport, "execute_selected_transport(", `${files.transport}: co
 assertNotContains(transport, "crate::api", `${files.transport}: transport facade must not delegate to legacy api module`);
 
 for (const marker of [
-  "ChannelService::new",
-  ".is_module_enabled_for_tenant(tenant_id, channel_id, MODULE_SLUG)",
+  "BlogChannelAvailability::from_runtime",
+  ".for_request(tenant_id, request_context)",
   "normalize_channel_slug",
   "read_published_post",
   "ctx.channel_slug",
@@ -240,6 +240,8 @@ for (const marker of [
 ]) {
   assertContains(native, marker, `${files.native}: missing channel/comments/richtext native marker ${marker}`);
 }
+assertNotContains(native, "ChannelService::new", `${files.native}: Channel availability must use the host port`);
+assertNotContains(cargo, "rustok-channel =", `${files.cargo}: storefront must not link the Channel runtime`);
 assertNotContains(native, "body: Some(post.body)", `${files.native}: native adapter must not map legacy body`);
 assertNotContains(native, "body_format: post.body_format", `${files.native}: native adapter must not map legacy body format`);
 assertContains(native, "#[server(prefix = \"/api/fn\", endpoint = \"blog/storefront-data\")]", `${files.native}: native adapter must own server function endpoint`);

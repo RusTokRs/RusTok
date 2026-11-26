@@ -50,6 +50,19 @@ pub(crate) fn validate_module_ui_metadata_contract(
             admin_ui.nav_label.as_deref(),
         )?;
         validate_ui_i18n_contract(slug, "provides.admin_ui.i18n", admin_ui.i18n.as_ref())?;
+        for page in &admin_ui.child_pages {
+            if let Some(key) = &page.nav_label_key {
+                validate_ui_surface_metadata_field(
+                    slug,
+                    "provides.admin_ui.child_pages[].nav_label_key",
+                    Some(key),
+                )?;
+                anyhow::ensure!(
+                    admin_ui.leptos_crate.is_some(),
+                    "Module '{slug}' must declare admin_ui.leptos_crate when using nav_label_key"
+                );
+            }
+        }
     }
 
     if let Some(storefront_ui) = manifest.provides.storefront_ui.as_ref() {

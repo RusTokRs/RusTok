@@ -22,6 +22,7 @@ pub fn Sidebar(#[prop(into)] sidebar_open: Signal<bool>) -> impl IntoView {
         build_module_nav_groups(
             module_navigation_entries(),
             &enabled,
+            i18n.current().as_str(),
             i18n.translate("app.nav.overview").as_ref(),
             i18n.translate("app.nav.settings").as_ref(),
         )

@@ -1,0 +1,71 @@
+use rustok_api::{SharedStaticModuleSettingsReader, StaticModuleSettingsSnapshot};
+use uuid::Uuid;
+
+use crate::RecordError;
+
+use super::__ENTITY__Service;
+
+const DEFAULT_PAGE_SIZE: u16 = __DEFAULT_PAGE_SIZE__;
+pub(super) const MAX_PAGE_SIZE: u16 = __MAX_PAGE_SIZE__;
+
+async fn settings_snapshot(
+    reader: Option<&SharedStaticModuleSettingsReader>,
+    tenant_id: Uuid,
+) -> Result<Option<StaticModuleSettingsSnapshot>, RecordError> {
+    match reader {
+        Some(reader) => reader
+            .settings(tenant_id, "__SLUG__")
+            .await
+            .map_err(RecordError::SettingsUnavailable),
+        None => Ok(None),
+    }
+}
+
+impl __ENTITY__Service {
+    pub(super) async fn default_page_size(&self, tenant_id: Uuid) -> Result<u16, RecordError> {
+        let Some(snapshot) = settings_snapshot(self.settings.as_ref(), tenant_id).await? else {
+            return Ok(DEFAULT_PAGE_SIZE);
+        };
+        let values = snapshot
+            .settings
+            .as_object()
+            .ok_or(RecordError::InvalidAdminPageSize)?;
+        match values.get("__PAGE_SIZE_KEY__") {
+            None => Ok(DEFAULT_PAGE_SIZE),
+            Some(value) => value
+                .as_u64()
+                .and_then(|value| u16::try_from(value).ok())
+                .filter(|size| (1..=MAX_PAGE_SIZE).contains(size))
+                .ok_or(RecordError::InvalidAdminPageSize),
+        }
+    }
+
+    /// Checks the tenant's current public policy in the control-plane snapshot.
+    /// This module is optional. Only explicit tenant enablement admits public reads.
+    pub async fn public_discovery_allowed(&self, tenant_id: Uuid) -> Result<bool, RecordError> {
+        resolve_public_discovery(self.settings.as_ref(), tenant_id).await
+    }
+}
+
+pub(crate) async fn resolve_public_discovery(
+    reader: Option<&SharedStaticModuleSettingsReader>,
+    tenant_id: Uuid,
+) -> Result<bool, RecordError> {
+    if tenant_id.is_nil() {
+        return Err(RecordError::InvalidTenant);
+    }
+    let Some(snapshot) = settings_snapshot(reader, tenant_id).await? else {
+        return Ok(false);
+    };
+    if snapshot.enabled != Some(true) {
+        return Ok(false);
+    }
+    let values = snapshot
+        .settings
+        .as_object()
+        .ok_or(RecordError::InvalidPublicDiscovery)?;
+    match values.get("__PUBLIC_DISCOVERY_KEY__") {
+        None => Ok(false),
+        Some(value) => value.as_bool().ok_or(RecordError::InvalidPublicDiscovery),
+    }
+}

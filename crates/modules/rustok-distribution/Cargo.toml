@@ -84,7 +84,7 @@ hex = { workspace = true, optional = true }
 rust_decimal = { workspace = true, optional = true }
 sea-orm.workspace = true
 rustok-core.workspace = true
-rustok-api.workspace = true
+rustok-api = { workspace = true, features = ["runtime"] }
 rustok-runtime.workspace = true
 rustok-modules.workspace = true
 rustok-auth.workspace = true
@@ -156,6 +156,7 @@ uuid.workspace = true
 
 [dev-dependencies]
 rustok-core = { workspace = true, features = ["server"] }
+rustok-migrations.workspace = true
 rustok-product-ports = { workspace = true, features = ["grpc-client"] }
 rustok-test-utils.workspace = true
 sea-orm-migration.workspace = true

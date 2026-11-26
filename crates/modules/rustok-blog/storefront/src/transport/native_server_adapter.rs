@@ -373,7 +373,10 @@ async fn storefront_blog_native(
             .and_then(|ctx| normalize_channel_slug(ctx.channel_slug.as_deref()));
 
         let service = PostService::new(runtime_ctx.db_clone(), event_bus.clone())
-            .with_taxonomy_port(rustok_blog::blog_taxonomy_from_runtime(&runtime_ctx));
+            .with_taxonomy_port(rustok_blog::blog_taxonomy_from_runtime(&runtime_ctx))
+            .with_channel_availability(rustok_blog::BlogChannelAvailability::from_runtime(
+                &runtime_ctx,
+            ));
 
         let public_read_error = |error: rustok_api::PortError| {
             ServerFnError::new(format!("{}: {}", error.code, error.message))
@@ -588,6 +591,9 @@ fn comment_service(runtime_ctx: &rustok_api::HostRuntimeContext) -> rustok_blog:
         runtime_ctx.shared_get::<Arc<dyn rustok_blog::CommentsThreadPort>>(),
         runtime_ctx.shared_get::<rustok_api::SharedStaticModuleSettingsReader>(),
     )
+    .with_channel_availability(rustok_blog::BlogChannelAvailability::from_runtime(
+        runtime_ctx,
+    ))
 }
 
 #[cfg(feature = "ssr")]
@@ -596,25 +602,28 @@ async fn require_blog_comment_channel_enabled(
     tenant_id: uuid::Uuid,
     request_context: Option<&rustok_api::RequestContext>,
 ) -> Result<(), ServerFnError> {
-    let Some(request_context) = request_context else {
-        return Err(public_internal_error());
-    };
-    let Some(channel_id) = request_context.channel_id else {
-        return Err(public_internal_error());
-    };
-
-    let enabled = rustok_channel::ChannelService::new(runtime_ctx.db_clone())
-        .is_module_enabled_for_tenant(tenant_id, channel_id, MODULE_SLUG)
-        .await
-        .map_err(|_| ServerFnError::new("Blog channel state is temporarily unavailable"))?;
-
-    if enabled {
-        Ok(())
-    } else {
-        Err(ServerFnError::new(
-            "Blog is not available for the current channel",
-        ))
+    match read_blog_channel_binding(runtime_ctx, tenant_id, request_context).await? {
+        Some(true) => Ok(()),
+        Some(false) => Err(blog_channel_disabled()),
+        None => Err(public_internal_error()),
     }
+}
+
+#[cfg(feature = "ssr")]
+async fn read_blog_channel_binding(
+    runtime_ctx: &rustok_api::HostRuntimeContext,
+    tenant_id: uuid::Uuid,
+    request_context: Option<&rustok_api::RequestContext>,
+) -> Result<Option<bool>, ServerFnError> {
+    rustok_blog::BlogChannelAvailability::from_runtime(runtime_ctx)
+        .for_request(tenant_id, request_context)
+        .await
+        .map_err(|_| ServerFnError::new("Blog channel state is temporarily unavailable"))
+}
+
+#[cfg(feature = "ssr")]
+fn blog_channel_disabled() -> ServerFnError {
+    ServerFnError::new("Blog is not available for the current channel")
 }
 
 #[cfg(feature = "ssr")]
@@ -635,29 +644,12 @@ async fn require_blog_channel_enabled(
     request_context: Option<&rustok_api::RequestContext>,
     is_authenticated: bool,
 ) -> Result<(), ServerFnError> {
-    use rustok_channel::ChannelService;
-
-    if is_authenticated {
-        return Ok(());
+    if !is_authenticated
+        && read_blog_channel_binding(runtime_ctx, tenant_id, request_context).await? == Some(false)
+    {
+        return Err(blog_channel_disabled());
     }
-
-    let Some(request_context) = request_context else {
-        return Ok(());
-    };
-    let Some(channel_id) = request_context.channel_id else {
-        return Ok(());
-    };
-    let enabled = ChannelService::new(runtime_ctx.db_clone())
-        .is_module_enabled_for_tenant(tenant_id, channel_id, MODULE_SLUG)
-        .await
-        .map_err(|_| ServerFnError::new("Blog channel state is temporarily unavailable"))?;
-    if enabled {
-        Ok(())
-    } else {
-        Err(ServerFnError::new(
-            "Blog is not available for the current channel",
-        ))
-    }
+    Ok(())
 }
 
 #[cfg(feature = "ssr")]

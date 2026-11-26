@@ -1,0 +1,128 @@
+mod list;
+
+use rustok_api::locale::{available_locales_from, resolve_by_locale_with_fallback};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QuerySelect, Set, UpdateMany,
+    sea_query::{Expr, OnConflict},
+};
+use uuid::Uuid;
+
+use crate::entities::{record, translation};
+use crate::{__ENTITY__View, RecordError};
+
+pub(super) use list::ListPageQuery;
+
+pub(super) fn validate_scope(tenant_id: Uuid, record_id: Uuid) -> Result<(), RecordError> {
+    if tenant_id.is_nil() {
+        return Err(RecordError::InvalidTenant);
+    }
+    if record_id.is_nil() {
+        return Err(RecordError::InvalidRecord);
+    }
+    Ok(())
+}
+
+pub(super) async fn save_copy(
+    db: &impl ConnectionTrait,
+    tenant_id: Uuid,
+    record_id: Uuid,
+    locale: &str,
+    title: &str,
+) -> Result<(), RecordError> {
+    translation::Entity::insert(translation::ActiveModel {
+        tenant_id: Set(tenant_id),
+        record_id: Set(record_id),
+        locale: Set(locale.to_owned()),
+        title: Set(title.to_owned()),
+    })
+    .on_conflict(
+        OnConflict::columns([
+            translation::Column::TenantId,
+            translation::Column::RecordId,
+            translation::Column::Locale,
+        ])
+        .update_column(translation::Column::Title)
+        .to_owned(),
+    )
+    .exec_without_returning(db)
+    .await?;
+    Ok(())
+}
+
+pub(super) async fn published_revision(
+    db: &impl ConnectionTrait,
+    tenant_id: Uuid,
+    record_id: Uuid,
+) -> Result<i64, RecordError> {
+    record::Entity::find_by_id((tenant_id, record_id))
+        .filter(record::Column::PublishedAt.is_not_null())
+        .select_only()
+        .column(record::Column::Revision)
+        .into_tuple::<i64>()
+        .one(db)
+        .await?
+        .ok_or(RecordError::NotFound)
+}
+
+pub(super) async fn load(
+    db: &impl ConnectionTrait,
+    tenant_id: Uuid,
+    record_id: Uuid,
+    requested_locale: &str,
+    tenant_default_locale: Option<&str>,
+    published_only: bool,
+) -> Result<__ENTITY__View, RecordError> {
+    // One statement keeps the revision and its localized content in the same
+    // read snapshot on both supported database profiles.
+    let mut query = record::Entity::find()
+        .filter(record::Column::TenantId.eq(tenant_id))
+        .filter(record::Column::Id.eq(record_id));
+    if published_only {
+        query = query.filter(record::Column::PublishedAt.is_not_null());
+    }
+    let (record, copies) = query
+        .find_with_related(translation::Entity)
+        .all(db)
+        .await?
+        .into_iter()
+        .next()
+        .ok_or(RecordError::NotFound)?;
+    localized_view(record, copies, requested_locale, tenant_default_locale)
+}
+
+pub(super) fn localized_view(
+    record: record::Model,
+    copies: Vec<translation::Model>,
+    requested_locale: &str,
+    tenant_default_locale: Option<&str>,
+) -> Result<__ENTITY__View, RecordError> {
+    let resolved =
+        resolve_by_locale_with_fallback(&copies, requested_locale, tenant_default_locale, |copy| {
+            copy.locale.as_str()
+        });
+    let chosen = resolved.item.ok_or(RecordError::MissingCopy)?;
+    Ok(__ENTITY__View {
+        id: record.id,
+        revision: record.revision,
+        published: record.published_at.is_some(),
+        title: chosen.title.clone(),
+        requested_locale: requested_locale.to_owned(),
+        effective_locale: chosen.locale.clone(),
+        available_locales: available_locales_from(&copies, |copy| copy.locale.as_str()),
+    })
+}
+
+pub(super) fn revision_update(
+    tenant_id: Uuid,
+    id: Uuid,
+    current: i64,
+    next: i64,
+    now: chrono::DateTime<chrono::FixedOffset>,
+) -> UpdateMany<record::Entity> {
+    record::Entity::update_many()
+        .col_expr(record::Column::Revision, Expr::value(next))
+        .col_expr(record::Column::UpdatedAt, Expr::value(now))
+        .filter(record::Column::TenantId.eq(tenant_id))
+        .filter(record::Column::Id.eq(id))
+        .filter(record::Column::Revision.eq(current))
+}

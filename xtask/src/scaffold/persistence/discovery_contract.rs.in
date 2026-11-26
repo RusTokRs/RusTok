@@ -1,0 +1,176 @@
+use __OWNER__::{__ENTITY__Service, __MODULE__, RecordError};
+use rustok_api::{AuthContext, Resource};
+use rustok_cache::CacheService;
+use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions, RusToKModule, SecurityContext};
+use rustok_modules::{
+    ControlPlaneInfrastructure, DatabaseStaticModuleSettingsReader, ModuleCommandContext, ModuleLifecycleDbWriter,
+    ModuleLifecycleSettingsCommand, ModuleLifecycleToggleCommand, ModuleSettingSpec,
+    normalize_module_settings,
+};
+use sea_orm::{DatabaseConnection, DbBackend};
+use serde_json::json;
+use std::collections::HashMap;
+use uuid::Uuid;
+
+use super::{search::SearchFixture, title};
+
+const SLUG: &str = "__SLUG__";
+
+pub(super) async fn assert_public_discovery_policy(
+    db: &DatabaseConnection,
+    tenant: Uuid,
+    foreign: Uuid,
+    registry: &ModuleRegistry,
+    schema: &HashMap<String, ModuleSettingSpec>,
+) {
+    let writer = ModuleLifecycleDbWriter::with_infrastructure(
+        db.clone(), registry, Vec::new(), ControlPlaneInfrastructure::for_database(db.clone()),
+    )
+        .with_static_settings_schema(SLUG.into(), schema.clone());
+    let actor_id = Uuid::new_v4();
+    let context = || ModuleCommandContext {
+        actor_id,
+        tenant_id: Some(tenant),
+        trace_id: "scaffold:discovery".into(),
+        correlation_id: Uuid::new_v4(),
+        idempotency_key: Uuid::new_v4(),
+    };
+    let save = |expected_revision, enabled| ModuleLifecycleSettingsCommand {
+        tenant_id: tenant,
+        module_slug: SLUG.into(),
+        settings: normalize_module_settings(
+            SLUG,
+            schema,
+            json!({ "__PUBLIC_DISCOVERY_KEY__": enabled }),
+        )
+        .unwrap(),
+        context: context(),
+        expected_revision,
+        expected_enabled: None,
+        expected_settings: None,
+    };
+    let toggle = |expected_revision, enabled| ModuleLifecycleToggleCommand {
+        tenant_id: tenant,
+        module_slug: SLUG.into(),
+        enabled,
+        context: context(),
+        expected_revision,
+    };
+
+    let cache = CacheService::from_url(None);
+    let backend = cache.memory_backend(std::time::Duration::from_secs(60), 128);
+    let settings = DatabaseStaticModuleSettingsReader::shared(db.clone());
+    let owner = __ENTITY__Service::new(db.clone(), Resource::Posts)
+        .with_settings_reader(settings.clone())
+        .with_public_cache(cache, backend.clone(), "scaffold-policy-test")
+        .unwrap();
+    let security = SecurityContext::system();
+    let record = owner
+        .create(tenant, &security, title("en", "Published"))
+        .await
+        .unwrap();
+    let search = if db.get_database_backend() == DbBackend::Postgres {
+        let mut extensions = ModuleRuntimeExtensions::default();
+        __MODULE__
+            .register_runtime_extensions(&mut extensions)
+            .unwrap();
+        extensions.insert(settings);
+        Some(SearchFixture::after_migrations(db, &extensions))
+    } else {
+        None
+    };
+    owner
+        .set_publication(tenant, &security, record.id, record.revision, true, "en")
+        .await
+        .unwrap();
+
+    let revision = writer
+        .static_tenant_module_view(tenant, SLUG)
+        .await
+        .unwrap()
+        .revision;
+    let intent = writer
+        .update_static_normalized_settings(save(revision.try_into().unwrap(), true))
+        .await
+        .unwrap();
+    assert!(!owner.public_discovery_allowed(tenant).await.unwrap());
+    assert!(!owner.public_discovery_allowed(foreign).await.unwrap());
+    if let Some(search) = &search {
+        let result = search.refresh_and_find(tenant, "en", "Published").await;
+        assert!(result.items.is_empty());
+    }
+
+    let enabled = writer.toggle(toggle(intent.revision, true)).await.unwrap();
+    assert!(owner.public_discovery_allowed(tenant).await.unwrap());
+    if let Some(search) = &search {
+        let result = search.find_visible(tenant, "en", "Published").await;
+        assert_eq!(
+            result.items.iter().map(|item| item.id).collect::<Vec<_>>(),
+            vec![record.id]
+        );
+    }
+    assert_eq!(
+        owner
+            .get_published(tenant, record.id, "en", None)
+            .await
+            .unwrap()
+            .title,
+        "Published"
+    );
+    let before = backend.stats().hits;
+    owner
+        .get_published(tenant, record.id, "en", None)
+        .await
+        .unwrap();
+    assert!(backend.stats().hits > before);
+
+    let closed = writer
+        .update_static_normalized_settings(save(enabled.revision, false))
+        .await
+        .unwrap();
+    let warm_hits = backend.stats().hits;
+    assert!(matches!(
+        owner.get_published(tenant, record.id, "en", None).await,
+        Err(RecordError::NotFound)
+    ));
+    assert_eq!(backend.stats().hits, warm_hits);
+    if let Some(search) = &search {
+        let hidden = search.find_visible(tenant, "en", "Published").await;
+        assert!(hidden.items.is_empty());
+        assert_eq!(hidden.total, 0);
+        let auth = AuthContext {
+            user_id: actor_id,
+            session_id: Uuid::new_v4(),
+            tenant_id: tenant,
+            permissions: Vec::new(),
+            client_id: None,
+            scopes: Vec::new(),
+            grant_type: "password".into(),
+        };
+        let hidden_for_actor = search.find_as(auth, "en", "Published").await;
+        assert!(hidden_for_actor.items.is_empty());
+        assert_eq!(hidden_for_actor.total, 0);
+    }
+    assert!(
+        owner
+            .get(tenant, &security, record.id, "en", None)
+            .await
+            .unwrap()
+            .published
+    );
+
+    let reopened = writer
+        .update_static_normalized_settings(save(closed.revision, true))
+        .await
+        .unwrap();
+    assert!(owner.public_discovery_allowed(tenant).await.unwrap());
+    writer
+        .toggle(toggle(reopened.revision, false))
+        .await
+        .unwrap();
+    assert!(!owner.public_discovery_allowed(tenant).await.unwrap());
+    assert!(matches!(
+        owner.get_published(tenant, record.id, "en", None).await,
+        Err(RecordError::NotFound)
+    ));
+}

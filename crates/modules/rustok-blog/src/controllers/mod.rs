@@ -52,6 +52,7 @@ pub struct BlogHttpRuntime {
     settings_reader: Option<SharedStaticModuleSettingsReader>,
     category_delete_cleanup: Arc<dyn BlogCategoryDeleteCleanupPort>,
     taxonomy_port: Arc<dyn BlogTaxonomyPort>,
+    channel_availability: crate::BlogChannelAvailability,
 }
 
 impl BlogHttpRuntime {
@@ -80,6 +81,7 @@ impl BlogHttpRuntime {
             self.comments_thread_port.clone(),
             self.settings_reader.clone(),
         )
+        .with_channel_availability(self.channel_availability.clone())
     }
 
     pub(crate) fn tag_service(&self) -> TagService {
@@ -89,6 +91,7 @@ impl BlogHttpRuntime {
     pub(crate) fn post_service(&self) -> PostService {
         PostService::new(self.db_clone(), self.event_bus())
             .with_taxonomy_port(self.taxonomy_port.clone())
+            .with_channel_availability(self.channel_availability.clone())
     }
 
     fn widget_service(&self) -> BlogWidgetService {
@@ -125,6 +128,7 @@ impl BlogHttpRuntime {
             settings_reader: runtime.shared_get::<SharedStaticModuleSettingsReader>(),
             category_delete_cleanup,
             taxonomy_port,
+            channel_availability: crate::BlogChannelAvailability::from_runtime(runtime),
         })
     }
 }

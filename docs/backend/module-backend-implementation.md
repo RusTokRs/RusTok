@@ -126,8 +126,9 @@ unescaped table separators. A headless module's implementation plan must describ
 UI as absent, not as an unmounted draft.
 
 `--no-db` must produce no entities, migrations or durable storage claims. A
-DB request authorizes persistence only once an actual owner schema and
-migration contract exist. `--no-ui` must produce no UI packages or advertised
+DB request authorizes persistence through a named owner entity and defined
+migration contract. `--with-db --entity <name>` selects a tenant-owned record
+with localized titles. `--no-ui` must produce no UI packages or advertised
 routes. `--ui admin|storefront|dual` requests UI, not an entitlement to publish
 a Leptos/Next.js route without a working backend and transport contract.
 
@@ -178,17 +179,23 @@ source files exclusively. Process interruption can be recovered using
 reconciliation. The [scaffold recovery ADR](../../DECISIONS/2026-11-03-native-scaffold-recovery.md)
 defines cooperating writers, supported filesystem operations and recovery limits.
 
-The existing `cargo xtask scaffold` renderer emits a minimal native runtime
-and internal contract tests without invented services, schema, migrations or
-business operations. `--with-db` remains unsupported until an owner schema
-exists. `--ui admin|storefront|dual` now creates unmounted Leptos FFA
-development packages within the Cargo workspace, with independent core/model,
+The default `cargo xtask scaffold` renderer emits a minimal native runtime
+and internal contract tests. With `--with-db --entity <name>` it also emits a
+localized record owner with migrations, RBAC, revision-checked draft and
+publication operations, transactional Outbox, a Search source and a host-bindable
+Cache adapter. Its integration test applies those migrations and exercises the
+same Search audience executor the storefront uses, with a fixture-owned corpus.
+`--ui admin|storefront|dual` for a draft creates Leptos FFA development
+packages within the Cargo workspace, with independent core/model,
 a shared transport-selection facade, two explicitly unavailable owner adapters,
-`ui/leptos.rs`, i18n and contract tests.
-The module manifest is `future_ui` with **no** live `[provides.*_ui]`.
-The central readiness board remains `not_started` even though source shape
-is `core_transport_ui`. No Leptos host route is mounted.
-Classic Next.js packages belong to their own hosts and are not FFA.
+`ui/leptos/mod.rs`, i18n and contract tests.
+Drafts use `future_ui` and stay unmounted. With `--with-db --entity <name>
+--admin-resource <Resource> --ui admin`, the generator declares `admin_only`
+and mounts the record workspace in both admins. Leptos uses the manifest-driven
+registry. The classic Next package owns its record and settings views and is
+composed by the Next host. Both use the platform settings owner and the same
+owner GraphQL documents. Verified FFA readiness still requires executable
+evidence for the generated surface.
 Successful publish metadata validation does not imply runtime or UI readiness.
 The generator now previews complete manifest edits and restores planned files
 when post-generation lint or metadata validation fails and recovery finds no
@@ -230,7 +237,7 @@ crates/modules/rustok-<module>/
                                    enrolled reference profile, which keeps the root at
                                    lib.rs/module.rs
     tests/                         crate-private contract tests needing private access
-  tests/                           public-API integration tests
+  tests/                           Cargo integration targets exercising the public API
   admin/                           optional module-owned Leptos admin UI adapter package
   storefront/                      optional module-owned Leptos storefront UI adapter package
   cli/                             optional external CLI adapter package
@@ -252,9 +259,10 @@ The responsibility meaning is normative:
 A responsibility may become a directory of feature submodules when it grows. Split
 by stable behavior (for example commands, queries, repository/projection, policy)
 rather than arbitrary numbered files. For modules enrolled as canonical references,
-the layout verifier also keeps individual Rust source files bounded; the initial
-reference profile uses 32 KiB and requires a documented verifier exception for a
-larger file.
+the layout verifier also keeps individual Rust source files bounded in both
+`src/` and `tests/`. Backend, published ports, and CLI package files have a
+32 KiB limit. FFA UI package files have a 40 KiB limit. A larger file requires
+a documented verifier exception.
 
 Do not add generic root dumping grounds such as `common.rs`, `misc.rs` or
 `utils.rs` for unrelated behavior. A helper belongs with the responsibility whose
@@ -333,7 +341,8 @@ their API. Materialize each file only when the corresponding behavior exists.
 | Local provider adapter and event construction | `src/integrations/<provider>.rs`, `src/events/<event>.rs` respectively |
 | GraphQL roots and input/output mappings | `src/graphql/query.rs`, `src/graphql/mutation.rs`, `src/graphql/types.rs`; extract cohesive groups to `query/<capability>.rs`, `mutation/<capability>.rs` or `types/<capability>.rs` |
 | HTTP handlers and schema | `src/controllers/<capability>.rs`, `src/controllers/authorization.rs` for shared HTTP request guards, and `src/controllers/openapi.rs`; an existing `src/rest/` slot follows the same internal roles |
-| Crate-private contracts and public integration scenarios | `src/tests/contract.rs`, `src/tests/<capability>.rs`, `tests/<capability>.rs` |
+| Crate-private contracts and public integration scenarios | `src/tests/contract.rs`, `src/tests/<capability>.rs`, `tests/<capability>.rs` or `tests/<target>/main.rs` with capability test modules beside it |
+| Fixtures shared across integration targets | `tests/support/mod.rs` with responsibility files as needed |
 
 Prefer the narrowest visibility that admits the real caller. Place transaction
 orchestration in commands and let persistence operations receive that transaction
@@ -342,6 +351,8 @@ same placements when moving a responsibility in an existing module, updating
 its Rust wiring, transport schema references and verifier inputs together.
 Preserve persisted migration identities and public contracts for a layout-only
 move. Published migration sources follow the migration immutability contract.
+Shared fixture modules use `tests/support/mod.rs` so Cargo reserves top-level
+`tests/*.rs` and `tests/*/main.rs` entrypoints for executable suites.
 
 ### Storage and Page Builder reference variants
 
@@ -416,7 +427,7 @@ For legacy root `contract_tests.rs` and `openapi.rs`, lint reports the target
 file to move or merge into. The existing `rest/` slot is respected. Owners apply
 the move with its module declarations and callers in the same change.
 
-The generic lint checks source layout, Cargo/module identity, entry type,
+The generic lint checks source layout and nested module wiring, Cargo/module identity, entry type,
 registration placement, private persistence entities, test location, dependency
 direction, bounded Rust file sizes, FFA package structure, and consistency
 between `module.ui_classification`, UI package presence and
@@ -628,8 +639,16 @@ runtime binding. Keep adapter tests under `cli/src/tests/` and wire
 `tests/contract.rs` through `tests/mod.rs`.
 
 `cargo xtask module lint <slug> --cli` checks the native layout and requires
-this local CLI package. The Blog reference runs the same check by default.
+this local CLI package. Ordinary lint checks the CLI layout whenever the
+module declares a provider or contains a CLI subpackage.
 Verify discovery and behavior through the platform runner for published commands.
+
+Use [`cargo xtask module scaffold-cli`](../../xtask/README.md#attach-a-module-local-cli)
+to attach the first adapter to a registered native module. Supply the implemented
+operation adapter and its contract tests. The generator applies the package and
+registry changes in one recoverable source transaction. Source and publish
+metadata validation run before commit. Compile the package and run the command
+through the selected distribution for execution evidence.
 
 ## Data and Migrations
 

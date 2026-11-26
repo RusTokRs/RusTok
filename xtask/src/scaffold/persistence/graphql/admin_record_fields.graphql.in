@@ -1,0 +1,9 @@
+fragment __MODULE_STEM__AdminRecordFields on __MODULE_STEM__AdminRecord {
+  id
+  revision
+  published
+  title
+  requestedLocale
+  effectiveLocale
+  availableLocales
+}

@@ -1,0 +1,230 @@
+//! The UI selects a build profile once. Failed writes never switch protocols.
+
+mod graphql_adapter;
+mod native_server_adapter;
+mod settings;
+
+use leptos::prelude::ServerFnError;
+use rustok_graphql::{GraphqlHttpError, GraphqlOperationError};
+use rustok_ui_transport::{UiTransportPath, execute_selected_transport};
+use serde::de::DeserializeOwned;
+use serde_json::{Value, json};
+use uuid::Uuid;
+
+use crate::core::editor::Operation;
+use crate::model::{Record, RecordFilter, RecordPage, RecordTitle, Rejection, RequestFailure};
+
+pub const fn selected_path() -> UiTransportPath {
+    if cfg!(any(feature = "ssr", feature = "hydrate")) {
+        UiTransportPath::NativeServer
+    } else {
+        UiTransportPath::Graphql
+    }
+}
+
+/// Auth state projected by the host. The native server derives authority from
+/// trusted request context. The GraphQL path sends the host's bearer and tenant.
+#[derive(Clone)]
+pub struct AdminClient {
+    token: Option<String>,
+    tenant: Option<String>,
+}
+
+macro_rules! document {
+    ($name:literal) => {
+        concat!(
+            include_str!(concat!("../../../contracts/graphql/", $name, ".graphql")),
+            "\n",
+            include_str!("../../../contracts/graphql/admin_record_fields.graphql"),
+        )
+    };
+}
+
+impl AdminClient {
+    pub fn new(token: Option<String>, tenant: Option<String>) -> Self {
+        Self { token, tenant }
+    }
+
+    pub async fn list(
+        &self,
+        input: RecordFilter,
+        locale: Option<String>,
+    ) -> Result<RecordPage, RequestFailure> {
+        let variables = json!({ "input": &input, "locale": &locale });
+        self.run(
+            "__SLUG__/admin/records",
+            document!("admin_records"),
+            "__MODULE_FIELD__AdminRecords",
+            variables,
+            native_server_adapter::list(input, locale),
+        )
+        .await
+    }
+
+    pub async fn get(&self, id: Uuid, locale: Option<String>) -> Result<Record, RequestFailure> {
+        let variables = json!({ "id": id, "locale": &locale });
+        self.run(
+            "__SLUG__/admin/record",
+            document!("admin_record"),
+            "__MODULE_FIELD__AdminRecord",
+            variables,
+            native_server_adapter::get(id, locale),
+        )
+        .await
+    }
+
+    pub async fn create(&self, input: RecordTitle) -> Result<Record, RequestFailure> {
+        let variables = json!({ "input": &input });
+        self.run(
+            "__SLUG__/admin/create-record",
+            document!("create_admin_record"),
+            "__MODULE_FIELD__CreateAdminRecord",
+            variables,
+            native_server_adapter::create(input),
+        )
+        .await
+    }
+
+    pub async fn save_title(
+        &self,
+        id: Uuid,
+        expected_revision: String,
+        input: RecordTitle,
+    ) -> Result<Record, RequestFailure> {
+        let variables =
+            json!({ "id": id, "expectedRevision": &expected_revision, "input": &input });
+        self.run(
+            "__SLUG__/admin/save-record-title",
+            document!("save_admin_record_title"),
+            "__MODULE_FIELD__SaveAdminRecordTitle",
+            variables,
+            native_server_adapter::save_title(id, expected_revision, input),
+        )
+        .await
+    }
+
+    pub async fn set_publication(
+        &self,
+        id: Uuid,
+        expected_revision: String,
+        published: bool,
+        locale: String,
+    ) -> Result<Record, RequestFailure> {
+        let variables = json!({
+            "id": id,
+            "expectedRevision": &expected_revision,
+            "published": published,
+            "locale": &locale,
+        });
+        self.run(
+            "__SLUG__/admin/set-record-publication",
+            document!("set_admin_record_publication"),
+            "__MODULE_FIELD__SetAdminRecordPublication",
+            variables,
+            native_server_adapter::set_publication(id, expected_revision, published, locale),
+        )
+        .await
+    }
+
+    pub(crate) async fn execute(&self, operation: Operation) -> Result<Record, RequestFailure> {
+        match operation {
+            Operation::Load { id, locale } => self.get(id, locale).await,
+            Operation::Create(copy) => self.create(copy).await,
+            Operation::Save { id, revision, copy } => self.save_title(id, revision, copy).await,
+            Operation::Publication {
+                id,
+                revision,
+                published,
+                locale,
+            } => self.set_publication(id, revision, published, locale).await,
+        }
+    }
+
+    async fn run<T: DeserializeOwned>(
+        &self,
+        surface: &str,
+        document: &str,
+        field: &'static str,
+        variables: Value,
+        native: impl Future<Output = Result<T, ServerFnError>>,
+    ) -> Result<T, RequestFailure> {
+        execute_selected_transport(
+            surface,
+            selected_path(),
+            || async { owner_reply(native.await, native_rejection) },
+            || async {
+                let result = graphql_adapter::request(
+                    document,
+                    field,
+                    variables,
+                    self.token.clone(),
+                    self.tenant.clone(),
+                )
+                .await
+                .and_then(|result| {
+                    serde_json::from_value(result).map_err(|_| {
+                        GraphqlHttpError::Graphql(format!("Invalid response field {field}")).into()
+                    })
+                });
+                owner_reply(result, graphql_rejection)
+            },
+        )
+        .await
+        .map_err(RequestFailure::Transport)?
+        .map_err(RequestFailure::Rejected)
+    }
+}
+
+// Owner refusals are known responses. Network, decoding and unknown failures
+// keep the shared transport evidence and may have an uncertain write outcome.
+fn owner_reply<T, E>(
+    result: Result<T, E>,
+    rejection: impl FnOnce(&E) -> Option<Rejection>,
+) -> Result<Result<T, Rejection>, E> {
+    match result {
+        Ok(value) => Ok(Ok(value)),
+        Err(error) => match rejection(&error) {
+            Some(reason) => Ok(Err(reason)),
+            None => Err(error),
+        },
+    }
+}
+
+fn native_rejection(error: &ServerFnError) -> Option<Rejection> {
+    let ServerFnError::ServerError(message) = error else {
+        return None;
+    };
+    let (code, _) = message.split_once(": ")?;
+    Rejection::from_code(code)
+}
+
+fn graphql_rejection(error: &GraphqlOperationError) -> Option<Rejection> {
+    if error.error == GraphqlHttpError::Unauthorized {
+        return Some(Rejection::Access);
+    }
+    Rejection::from_code(error.extensions.as_ref()?.code.as_deref()?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classify_owner_refusals_by_code_and_ignore_transport_message_text() {
+        let conflict = ServerFnError::new("CONFLICT: Record revision conflict");
+        assert_eq!(native_rejection(&conflict), Some(Rejection::Conflict));
+        let network = ServerFnError::Request("CONFLICT: proxy error".into());
+        assert_eq!(native_rejection(&network), None);
+
+        let body = GraphqlHttpError::Graphql("CONFLICT: unstructured message".into());
+        assert_eq!(graphql_rejection(&body.clone().into()), None);
+        let typed = GraphqlOperationError {
+            error: body,
+            extensions: Some(rustok_graphql::GraphqlErrorExtensions {
+                code: Some("CONFLICT".into()),
+                ..Default::default()
+            }),
+        };
+        assert_eq!(graphql_rejection(&typed), Some(Rejection::Conflict));
+    }
+}

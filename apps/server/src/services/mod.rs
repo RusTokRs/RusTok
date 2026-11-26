@@ -181,6 +181,17 @@ pub mod module_event_dispatcher {
             )
         })?;
 
+        #[cfg(feature = "mod-blog")]
+        let blog_channels = if let Some(provider) = extensions.get().cloned().or_else(|| {
+            (registry.contains("blog") && registry.contains("channel"))
+                .then(|| rustok_channel::in_process_public_module_read_port(db.clone()))
+        }) {
+            extensions.insert(provider.clone());
+            rustok_blog::BlogChannelAvailability::from_port(provider)
+        } else {
+            rustok_blog::BlogChannelAvailability::default()
+        };
+
         #[cfg(feature = "mod-taxonomy")]
         {
             let cleanup: Arc<dyn rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort> =
@@ -241,6 +252,7 @@ pub mod module_event_dispatcher {
             .register(
                 super::blog_search_result_eligibility::ServerBlogSearchResultEligibilityPort::new(
                     db.clone(),
+                    blog_channels,
                 ),
             )
             .map_err(|error| {
@@ -291,6 +303,13 @@ pub mod module_event_dispatcher {
             extensions.insert(owner_revision);
         }
 
+        audience_registry
+            .register_publication_sources(&db, &extensions)
+            .map_err(|error| {
+                Error::BadRequest(format!(
+                    "Search audience registry rejected a native publication source: {error}"
+                ))
+            })?;
         extensions.insert(audience_registry);
 
         #[cfg(all(feature = "mod-forum", feature = "mod-moderation"))]
@@ -726,6 +745,7 @@ pub mod social_graph_index_position_observer;
 #[cfg(feature = "mod-social_graph")]
 pub mod social_graph_index_worker;
 pub mod static_module_registry;
+pub(crate) mod static_module_settings_admin;
 pub mod stop_handle;
 #[cfg(feature = "mod-media")]
 pub mod storage_health_probe;

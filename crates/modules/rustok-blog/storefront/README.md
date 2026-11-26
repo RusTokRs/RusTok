@@ -25,7 +25,7 @@ Leptos storefront UI package for the `rustok-blog` module.
 - Composes the reusable Comments-owned public composer with a Blog-owned post-bound command; the browser cannot choose a generic Comments target.
 - Owns public comment pagination through the `commentsPage` route query. Page parsing, upper bounds, total-page calculation, and canonical first-page clearing live in the framework-free `comments_pagination` policy.
 - Keeps storefront shell copy, selected-post route/query state, fetch request state, and presentation view-model helpers in framework-agnostic modules so Leptos remains a thin render/host-context adapter.
-- Keeps Leptos render/bind code in `storefront/src/ui/leptos.rs`; `storefront/src/lib.rs` only wires modules and re-exports `BlogView`.
+- Keeps Leptos render/bind code in `storefront/src/ui/leptos/mod.rs`; `storefront/src/lib.rs` only wires modules and re-exports `BlogView`.
 - Native Leptos `#[server]` calls are isolated in `transport/native_server_adapter.rs`, with GraphQL kept as the required parallel selected path in `transport/graphql_adapter.rs` behind the build-profile-selected facade.
 - Both write transports require authenticated `comments:create`, exact tenant scope, an enabled Blog channel, and a published post visible in the current channel before calling the Comments port.
 - Native SSR transport receives DB and `TransactionalEventBus` through `HostRuntimeContext`; this package does not depend on host-framework runtime context.

@@ -202,6 +202,8 @@ export function collectDbMultilingualContractFailures(root = repoRoot) {
       requiredMarkers: [
         "mod m20260721_000008_expand_search_query_locale_storage;",
         "Box::new(m20260721_000008_expand_search_query_locale_storage::Migration)",
+        "mod m20261126_000014_expand_search_document_locale_storage;",
+        "Box::new(m20261126_000014_expand_search_document_locale_storage::Migration)",
       ],
     },
     {
@@ -278,6 +280,7 @@ export function collectDbMultilingualContractFailures(root = repoRoot) {
       ["m20260721_000010_move_profile_display_name_to_translations", { owner: "rustok-profiles", mode: "fixture" }],
       ["m20260721_000007_align_language_agnostic_locale_contract", { owner: "rustok-commerce", mode: "none" }],
       ["m20260721_000008_expand_search_query_locale_storage", { owner: "rustok-search", mode: "none" }],
+      ["m20261126_000014_expand_search_document_locale_storage", { owner: "rustok-search", mode: "none" }],
       ["m20260405_000002_split_flex_schema_localized_fields", { owner: "flex", mode: "fixture" }],
       ["m20260407_000001_split_flex_entry_localized_values", { owner: "flex", mode: "fixture" }],
       ["m20260721_000005_drop_seller_legacy_prose_columns", { owner: "rustok-marketplace-seller", mode: "none" }],

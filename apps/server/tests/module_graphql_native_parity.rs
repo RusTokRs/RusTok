@@ -165,7 +165,57 @@ async fn tenant_modules_graphql_contract_is_the_owner_static_lifecycle_projectio
 
     assert_eq!(fields, ["moduleSlug", "enabled", "settings", "revision"]);
     assert!(contract.contains("tenantModules(limit: Int): [TenantModule!]!"));
+    assert!(contract.contains("tenantModuleSettings(moduleSlug: String!): TenantModule!"));
     assert!(!tenant_module_block.contains("activeIdempotencyKey"));
+}
+
+#[tokio::test]
+async fn exact_settings_read_rejects_an_actor_from_another_tenant() {
+    use rustok_server::context::{AuthContext, TenantContext};
+
+    let tenant_id = Uuid::new_v4();
+    let db = Database::connect("sqlite::memory:").await.unwrap();
+    let query = "{ tenantModuleSettings(moduleSlug: \"blog\") { revision } }";
+    let schema = Schema::build(RootQuery, RootMutation, EmptySubscription)
+        .data(db)
+        .data(ModuleRegistry::new())
+        .data(TenantContext {
+            id: tenant_id,
+            name: "Settings request".into(),
+            slug: "settings-request".into(),
+            domain: None,
+            settings: serde_json::json!({}),
+            default_locale: "en".into(),
+            is_active: true,
+        })
+        .finish();
+    for (request, code) in [
+        (async_graphql::Request::new(query), "UNAUTHENTICATED"),
+        (
+            async_graphql::Request::new(query).data(AuthContext {
+                user_id: Uuid::new_v4(),
+                session_id: Uuid::new_v4(),
+                tenant_id: Uuid::new_v4(),
+                permissions: vec![rustok_api::Permission::MODULES_MANAGE],
+                client_id: None,
+                scopes: vec![],
+                grant_type: "direct".into(),
+            }),
+            "PERMISSION_DENIED",
+        ),
+    ] {
+        let result = schema.execute(request).await;
+        let [error] = result.errors.as_slice() else {
+            panic!("expected one authorization error: {result:?}");
+        };
+        assert_eq!(
+            error
+                .extensions
+                .as_ref()
+                .and_then(|extensions| extensions.get("code")),
+            Some(&async_graphql::Value::String(code.to_owned())),
+        );
+    }
 }
 
 #[tokio::test]

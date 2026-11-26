@@ -1,0 +1,25 @@
+use std::collections::BTreeMap;
+
+use rustok_graphql::{
+    GraphqlHttpError, GraphqlOperationError, GraphqlRequest, execute_with_metadata, graphql_url,
+};
+use serde_json::Value;
+
+pub(super) async fn request(
+    query: &str,
+    field: &str,
+    variables: Value,
+    token: Option<String>,
+    tenant: Option<String>,
+) -> Result<Value, GraphqlOperationError> {
+    let mut data: BTreeMap<String, Value> = execute_with_metadata(
+        &graphql_url(),
+        GraphqlRequest::new(query, Some(variables)),
+        token,
+        tenant,
+        None,
+    )
+    .await?;
+    data.remove(field)
+        .ok_or_else(|| GraphqlHttpError::Graphql(format!("Missing response field {field}")).into())
+}

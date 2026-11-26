@@ -1,0 +1,14 @@
+//! Leptos administration for the __SLUG__ record owner.
+#![doc = include_str!("../CRATE_API.md")]
+
+mod core;
+mod i18n;
+pub mod model;
+pub mod transport;
+mod ui;
+
+pub use ui::__MODULE_STEM__Admin;
+pub use i18n::t as translate_ui;
+
+#[cfg(test)]
+mod tests;

@@ -15,17 +15,48 @@ pub(crate) fn render_backend(opts: &ScaffoldOptions, pascal: &str) -> Vec<(PathB
     let title_rust = format!("{title:?}");
     let description_rust = format!("{description:?}");
     let module_type = format!("{pascal}Module");
+    let entity = opts.entity.as_deref();
+    let storage_dependencies = if entity.is_some() {
+        "chrono.workspace = true\nrustok-api = { workspace = true, features = [\"runtime\"] }\nrustok-cache.workspace = true\nrustok-events.workspace = true\nrustok-outbox-storage.workspace = true\nsea-orm.workspace = true\nserde.workspace = true\nserde_json.workspace = true\nthiserror.workspace = true\ntracing.workspace = true\nuuid.workspace = true\n\n[dev-dependencies]\nrustok-migrations.workspace = true\nrustok-modules.workspace = true\nrustok-search.workspace = true\nrustok-test-utils.workspace = true\ntokio.workspace = true\ntoml.workspace = true\n"
+    } else {
+        ""
+    };
+    let (graphql_dependency, graphql_feature) = if opts.admin_resource.is_some() {
+        (
+            "async-graphql = { workspace = true, optional = true }\n",
+            "admin = [\"rustok-api/server\"]\ngraphql = [\"dep:async-graphql\", \"admin\"]\n",
+        )
+    } else {
+        ("", "")
+    };
     let ui_requested = opts.ui != super::options::ScaffoldUi::None;
-    let ui_classification = if ui_requested { "future_ui" } else { "no_ui" };
-    let ui_summary = match opts.ui {
-        super::options::ScaffoldUi::None => "No UI packages requested.",
-        super::options::ScaffoldUi::Admin => {
+    let ui_classification = if opts.mounts_record_admin() {
+        "admin_only"
+    } else if ui_requested {
+        "future_ui"
+    } else {
+        "no_ui"
+    };
+    let recommended_admin_surfaces = if opts.mounts_record_admin() {
+        r#"["leptos-admin", "next-admin"]"#
+    } else {
+        "[]"
+    };
+    let ui_summary = match (opts.ui, opts.has_record_admin()) {
+        (super::options::ScaffoldUi::None, _) => "No UI packages requested.",
+        (super::options::ScaffoldUi::Admin, true) => {
+            "Leptos and Next Admin register a record table, localized editor and settings. Runtime parity requires operator verification."
+        }
+        (super::options::ScaffoldUi::Dual, true) => {
+            "Leptos admin package with a record table, localized editor and native/GraphQL adapters, plus a draft storefront package. Both remain unmounted."
+        }
+        (super::options::ScaffoldUi::Admin, false) => {
             "Draft Leptos admin crate created but NOT mounted in the host."
         }
-        super::options::ScaffoldUi::Storefront => {
+        (super::options::ScaffoldUi::Storefront, _) => {
             "Draft Leptos storefront crate created but NOT mounted in the host."
         }
-        super::options::ScaffoldUi::Dual => {
+        (super::options::ScaffoldUi::Dual, false) => {
             "Draft Leptos admin and storefront crates created but NOT mounted in hosts."
         }
     };
@@ -58,12 +89,57 @@ rustdoc-args = ["--cfg", "docsrs"]
 async-trait.workspace = true
 rustok-core.workspace = true
 sea-orm-migration.workspace = true
-
+{graphql_dependency}{storage_dependencies}
 [features]
 default = []
-"#
+{graphql_feature}"#
     );
 
+    let record_settings = entity.map_or_else(String::new, |_| {
+        super::persistence::record_settings_manifest()
+    });
+    let admin_manifest = if opts.mounts_record_admin() {
+        let route = opts.kebab_name();
+        format!(r#"
+[provides.admin_ui]
+leptos_crate = "{crate_name}-admin"
+next_package = "@rustok/{route}-admin"
+route_segment = "{route}"
+nav_label = {title_toml}
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"
+
+[[provides.admin_ui.child_pages]]
+subpath = "records"
+title = "Records"
+nav_label = "Records"
+nav_label_key = "records-heading"
+
+[[provides.admin_ui.child_pages]]
+subpath = "settings"
+title = "Settings"
+nav_label = "Settings"
+nav_label_key = "settings-heading"
+
+[[provides.admin_ui.child_pages]]
+subpath = "settings/records"
+title = "Record settings"
+nav_label = "Record settings"
+nav_label_key = "settings-records-nav"
+"#)
+    } else {
+        String::new()
+    };
+    let graphql_manifest = if opts.admin_resource.is_some() {
+        format!(
+            "\n[provides.graphql]\nquery = \"graphql::{pascal}AdminQuery\"\nmutation = \"graphql::{pascal}AdminMutation\"\nruntime_data_factory = \"graphql::attach_schema_data\"\n"
+        )
+    } else {
+        String::new()
+    };
     let manifest = format!(
         r#"[module]
 slug = "{slug}"
@@ -73,7 +149,7 @@ description = {description_toml}
 ownership = "first_party"
 trust_level = "private"
 ui_classification = "{ui_classification}"
-recommended_admin_surfaces = []
+recommended_admin_surfaces = {recommended_admin_surfaces}
 
 [marketplace]
 category = {category_toml}
@@ -81,7 +157,7 @@ tags = ["{slug}"]
 
 [crate]
 entry_type = "{module_type}"
-"#
+{record_settings}{graphql_manifest}{admin_manifest}"#
     );
 
     let readme = format!(
@@ -298,28 +374,85 @@ Native runtime owner identity for {title}. No business API is published yet.
 "#
     );
 
+    let (lib_summary, modules, service_exports, migration_body, migration_assertion) = match entity {
+        Some(entity) => {
+            let name = crate::manifest_validation::to_pascal_case(entity);
+            (
+                "//! The owner service exposes a tenant-scoped localized record.",
+                "mod domain;\nmod dto;\nmod entities;\nmod error;\nmod integrations;\nmod migrations;\nmod services;\n",
+                format!("pub use dto::{{List{name}Records, {name}Page, {name}View, RecordOrder, RecordPublication, Save{name}Title}};\npub use error::RecordError;\npub use services::{name}Service;\n"),
+                "vec![Box::new(crate::migrations::Migration)]\n    }\n\n    fn migration_dependencies(&self) -> Vec<rustok_core::MigrationDependencyDescriptor> {\n        vec![rustok_core::MigrationDependencyDescriptor::new(\n            crate::migrations::ID,\n            vec![\"m20250101_000001_create_tenants\", \"m20260211_000002_create_sys_events\"],\n        )]\n",
+                "assert_eq!(module.migrations().len(), 1);",
+            )
+        }
+        None => (
+            "//! Business API and persistence are intentionally absent until specified.",
+            "",
+            String::new(),
+            "// Export real owner migrations from src/migrations/mod.rs once the\n        // schema and its ordering and safety contracts have been defined.\n        Vec::new()\n",
+            "assert!(module.migrations().is_empty());",
+        ),
+    };
+    let graphql_module = if opts.admin_resource.is_some() {
+        "#[cfg(feature = \"admin\")]\npub use services::{admin_record_revision, admin_record_security};\n\n#[cfg(feature = \"graphql\")]\npub mod graphql;\n\n"
+    } else {
+        ""
+    };
     let lib = format!(
         r#"//! Native runtime module for {title}.
 //!
-//! Business API and persistence are intentionally absent until specified.
+{lib_summary}
 
 #![doc = include_str!("../CRATE_API.md")]
 
-mod module;
+{modules}mod module;
 
-pub use module::{module_type};
+{service_exports}{graphql_module}pub use module::{module_type};
 
 #[cfg(test)]
 mod tests;
 "#
     );
 
+    let register_search = if entity.is_some() {
+        r#"
+    fn register_runtime_extensions(
+        &self,
+        extensions: &mut rustok_core::ModuleRuntimeExtensions,
+    ) -> rustok_core::Result<()> {
+        crate::integrations::search::register(extensions)?;
+        crate::integrations::index::register(extensions);
+        Ok(())
+    }
+"#
+    } else {
+        ""
+    };
+    let permissions = opts
+        .admin_resource
+        .as_ref()
+        .map_or_else(String::new, |resource| {
+            format!(
+                r#"
+    fn permissions(&self) -> Vec<rustok_api::Permission> {{
+        use rustok_api::{{Action, Permission, Resource}};
+        vec![
+            Permission::new(Resource::{resource}, Action::List),
+            Permission::new(Resource::{resource}, Action::Read),
+            Permission::new(Resource::{resource}, Action::Create),
+            Permission::new(Resource::{resource}, Action::Update),
+            Permission::new(Resource::{resource}, Action::Publish),
+        ]
+    }}
+"#
+            )
+        });
     let module = format!(
         r#"use async_trait::async_trait;
 use rustok_core::module::{{MigrationSource, ModuleKind, RusToKModule}};
 use sea_orm_migration::MigrationTrait;
 
-/// Runtime identity only; does not claim implemented domain operations.
+/// Native runtime registration for this owner.
 pub struct {module_type};
 
 #[async_trait]
@@ -349,14 +482,11 @@ impl RusToKModule for {module_type} {{
         // them. See docs/README.md for provider wiring and verification.
         &[]
     }}
-}}
+{permissions}{register_search}}}
 
 impl MigrationSource for {module_type} {{
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {{
-        // Export real owner migrations from src/migrations/mod.rs once the
-        // schema and its ordering and safety contracts have been defined.
-        Vec::new()
-    }}
+        {migration_body}    }}
 }}
 "#
     );
@@ -373,7 +503,7 @@ fn native_contract_matches_the_declared_module() {{
     assert_eq!(module.description(), {description_rust});
     assert_eq!(module.kind(), ModuleKind::Optional);
     assert!(module.dependencies().is_empty());
-    assert!(module.migrations().is_empty());
+    {migration_assertion}
 }}
 
 #[test]
@@ -390,11 +520,19 @@ fn public_contract_does_not_claim_unimplemented_capabilities() {{
     ] {{
         assert!(api.contains(section), "Missing CRATE_API section: {{section}}");
     }}
-    assert!(api.contains("No create/update/delete commands are advertised"));
+    assert!(api.contains({contract_marker:?}));
 }}
-"####
+"####,
+        contract_marker = if entity.is_some() {
+            "## Embedded owner service"
+        } else {
+            "No create/update/delete commands are advertised"
+        }
     );
 
+    let (readme, docs, plan, api) = entity.map_or((readme, docs, plan, api), |entity| {
+        super::persistence::documentation(opts, entity, &module_type, ui_summary)
+    });
     [
         ("Cargo.toml", cargo),
         ("rustok-module.toml", manifest),
@@ -409,6 +547,11 @@ fn public_contract_does_not_claim_unimplemented_capabilities() {{
     ]
     .into_iter()
     .map(|(file, content)| (PathBuf::from(file), content))
+    .chain(
+        entity
+            .into_iter()
+            .flat_map(|entity| super::persistence::render(opts, entity, &module_type)),
+    )
     .collect()
 }
 
@@ -416,6 +559,84 @@ fn public_contract_does_not_claim_unimplemented_capabilities() {{
 mod tests {
     use super::render_backend;
     use crate::scaffold::options::{ScaffoldOptions, ScaffoldProfile, ScaffoldUi};
+
+    #[test]
+    fn localized_record_renders_owner_files_and_registered_migration() {
+        let mut options = options();
+        options.with_db = true;
+        options.entity = Some("knowledge_entry".to_owned());
+        let files = render_backend(&options, "Example");
+        let file = |expected: &str| {
+            &files
+                .iter()
+                .find(|(path, _)| path == std::path::Path::new(expected))
+                .unwrap()
+                .1
+        };
+
+        assert!(file("src/lib.rs").contains("KnowledgeEntryService"));
+        assert!(file("src/module.rs").contains("crate::migrations::Migration"));
+        assert!(
+            file("src/migrations/m20261126_000001_create_example_records.rs")
+                .contains("example_record_translations")
+        );
+        assert!(file("tests/record/main.rs").contains("rustok_example"));
+        assert!(file("tests/record/list.rs").contains("assert_list_contract"));
+        assert!(file("tests/record/search.rs").contains("execute_audience_eligible_search"));
+        let manifest: toml::Table = toml::from_str(file("rustok-module.toml")).unwrap();
+        let page_size = &manifest["settings"]["admin_page_size"];
+        assert_eq!(page_size["type"].as_str(), Some("integer"));
+        assert_eq!(page_size["default"].as_integer(), Some(25));
+        assert_eq!(page_size["min"].as_integer(), Some(1));
+        assert_eq!(page_size["max"].as_integer(), Some(100));
+        for (path, source) in files {
+            if path.extension().is_some_and(|extension| extension == "rs") {
+                syn::parse_file(&source)
+                    .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+            }
+        }
+    }
+
+    #[test]
+    fn published_admin_graphql_uses_owner_specific_symbols_and_an_explicit_resource() {
+        let mut options = options();
+        options.with_db = true;
+        options.entity = Some("article".to_owned());
+        options.admin_resource = Some("Posts".to_owned());
+        let files = render_backend(&options, "Example");
+        let file = |expected: &str| {
+            &files
+                .iter()
+                .find(|(path, _)| path == std::path::Path::new(expected))
+                .unwrap()
+                .1
+        };
+        assert!(file("src/graphql/query.rs").contains("exampleAdminRecords"));
+        assert!(file("src/graphql/types.rs").contains("ExampleAdminRecordTitleInput"));
+        assert!(file("src/services/record/admin.rs").contains("Resource::Posts"));
+        assert!(file("src/lib.rs").contains("#[cfg(feature = \"graphql\")]"));
+        assert!(file("src/module.rs").contains("Permission::new(Resource::Posts, Action::List)"));
+        let manifest: toml::Table = toml::from_str(file("rustok-module.toml")).unwrap();
+        let graphql = &manifest["provides"]["graphql"];
+        assert_eq!(
+            graphql["query"].as_str(),
+            Some("graphql::ExampleAdminQuery")
+        );
+        assert_eq!(
+            graphql["mutation"].as_str(),
+            Some("graphql::ExampleAdminMutation")
+        );
+        assert_eq!(
+            graphql["runtime_data_factory"].as_str(),
+            Some("graphql::attach_schema_data")
+        );
+        for (path, source) in files {
+            if path.extension().is_some_and(|extension| extension == "rs") {
+                syn::parse_file(&source)
+                    .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+            }
+        }
+    }
 
     fn options() -> ScaffoldOptions {
         ScaffoldOptions {
@@ -425,6 +646,8 @@ mod tests {
             description: "A native example module without business logic".into(),
             category: "collaboration".into(),
             with_db: false,
+            entity: None,
+            admin_resource: None,
             ui: ScaffoldUi::None,
             dry_run: true,
             skip_server_wire: false,

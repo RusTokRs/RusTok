@@ -1,9 +1,7 @@
 //! The Blog comment projection ledger retention worker.
 //!
-//! Extracted from the scheduler entry file to keep each worker's discovery,
-//! compaction and registration close to its own safety argument; the public
-//! registration path stays `crate::services::scheduler::...` via the parent's
-//! re-export.
+//! Discovers expired deliveries, compacts the tenant ledger and registers the
+//! retention worker.
 
 use std::sync::Arc;
 
@@ -27,6 +25,15 @@ const COMMENT_PROJECTION_DELIVERY_RETENTION_DAYS: i64 = 30;
 /// Upper bound of ledger rows one retention iteration removes for one tenant.
 const COMMENT_PROJECTION_RETENTION_BATCH: u64 = 200;
 
+/// Tenant-rotating cleanup of the Comments projection delivery ledger.
+///
+/// The projection reads the latest delivery for each comment and the maximum
+/// `projection_revision` for each post. The latest delivery carries the ULID
+/// replay frontier, counted state, and revision. Retention removes older rows
+/// after the configured retention window. The frontier still rejects replay of
+/// each purged delivery through the `latest.event_id >= envelope.id` guard.
+/// Concurrent cleanup protects new deliveries because their ULIDs are greater
+/// than the frontier used by an earlier cleanup snapshot.
 pub struct BlogCommentProjectionRetentionWorkAdapter {
     database: DatabaseConnection,
     // Fairness hint only, like the scheduled-publish cursor: the stale-delivery

@@ -1,0 +1,18 @@
+import { auth } from '@/auth';
+import { SettingsPage } from '@rustok/__ROUTE__-admin';
+
+export default async function Page() {
+  const session = await auth();
+  const user = session?.user;
+  return (
+    <SettingsPage
+      showRecords={__SHOW_RECORD_SETTINGS__}
+      auth={{
+        actor: user?.id ?? null,
+        token: user?.rustokToken ?? null,
+        tenantSlug: user?.tenantSlug ?? null,
+        tenantId: user?.tenantId ?? null
+      }}
+    />
+  );
+}

@@ -1,6 +1,6 @@
 #![allow(clippy::items_after_test_module)]
 
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 use async_trait::async_trait;
 use sea_orm::DatabaseConnection;
@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use rustok_core::Error;
 use rustok_core::events::{EventHandler, HandlerResult};
+use rustok_core::search_projection::SOURCE_REINDEX_TARGET_PREFIX;
 use rustok_events::{
     ContractEventEnvelope, ContractEventPayload, DomainEvent, EventEnvelope,
     InventoryReservationEvent,
@@ -31,6 +32,7 @@ pub struct SearchIngestionHandler {
     forum_inbox: Option<ForumProjectionInbox>,
     pages_driver: Option<SearchProjectionDriver>,
     docs_driver: Option<SearchProjectionDriver>,
+    additional_drivers: BTreeMap<&'static str, SearchProjectionDriver>,
 }
 
 impl SearchIngestionHandler {
@@ -71,7 +73,24 @@ impl SearchIngestionHandler {
             forum_inbox,
             pages_driver: build_projection_driver(&db, pages_source),
             docs_driver: build_projection_driver(&db, docs_source),
+            additional_drivers: BTreeMap::new(),
         }
+    }
+
+    pub(crate) fn with_additional_projection_sources(
+        mut self,
+        db: &DatabaseConnection,
+        sources: impl IntoIterator<Item = Arc<dyn SearchProjectionSource>>,
+    ) -> Self {
+        self.additional_drivers
+            .extend(sources.into_iter().filter_map(|source| {
+                source.reindex_entity_type()?;
+                Some((
+                    source.source_module(),
+                    SearchProjectionDriver::new(db.clone(), source),
+                ))
+            }));
+        self
     }
 
     async fn rebuild_tenant(&self, tenant_id: Uuid) -> HandlerResult {
@@ -81,7 +100,12 @@ impl SearchIngestionHandler {
             ));
         }
         self.projector.rebuild_tenant(tenant_id).await?;
-        for driver in self.owner_drivers().into_iter().flatten() {
+        for driver in self
+            .owner_drivers()
+            .into_iter()
+            .flatten()
+            .chain(self.additional_drivers.values())
+        {
             driver.rebuild_tenant(tenant_id).await?;
         }
         Ok(())
@@ -108,6 +132,20 @@ impl SearchIngestionHandler {
         target_type: &str,
         target_id: Option<Uuid>,
     ) -> HandlerResult {
+        if let Some(driver) = target_type
+            .strip_prefix(SOURCE_REINDEX_TARGET_PREFIX)
+            .and_then(|source| self.additional_drivers.get(source))
+        {
+            return match (target_id, driver.reindex_entity_type()) {
+                (Some(id), Some(entity_type)) => {
+                    driver.refresh_entity(tenant_id, entity_type, id).await
+                }
+                (None, _) => driver.rebuild_tenant(tenant_id).await,
+                (Some(_), None) => Err(Error::Internal(
+                    "Search owner has no entity reindex contract".into(),
+                )),
+            };
+        }
         match (target_type, target_id) {
             ("search", _) => self.rebuild_tenant(tenant_id).await,
             ("content", Some(node_id)) => self.projector.upsert_node(tenant_id, node_id).await,
@@ -373,9 +411,13 @@ impl EventHandler for SearchIngestionHandler {
                     || (module_slug == "forum" && self.forum_driver.is_some())
                     || (module_slug == "pages" && self.pages_driver.is_some())
                     || (module_slug == "docs" && self.docs_driver.is_some())
+                    || self.additional_drivers.contains_key(module_slug.as_str())
             }
             DomainEvent::ReindexRequested { target_type, .. } => {
-                target_type == "search"
+                target_type
+                    .strip_prefix(SOURCE_REINDEX_TARGET_PREFIX)
+                    .is_some_and(|source| self.additional_drivers.contains_key(source))
+                    || target_type == "search"
                     || target_type == "content"
                     || target_type == "product"
                     || target_type == "blog"
@@ -579,6 +621,18 @@ impl EventHandler for SearchIngestionHandler {
                 } if module_slug == "docs" => {
                     toggle_owner_scope(self.docs_driver.as_ref(), envelope.tenant_id, *enabled)
                         .await
+                }
+                DomainEvent::TenantModuleToggled {
+                    module_slug,
+                    enabled,
+                    ..
+                } if self.additional_drivers.contains_key(module_slug.as_str()) => {
+                    toggle_owner_scope(
+                        self.additional_drivers.get(module_slug.as_str()),
+                        envelope.tenant_id,
+                        *enabled,
+                    )
+                    .await
                 }
                 DomainEvent::LocaleEnabled { .. }
                 | DomainEvent::LocaleDisabled { .. }

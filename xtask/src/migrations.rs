@@ -343,6 +343,23 @@ fn working_snapshot(root: &Path, destination: Option<&Path>) -> Result<SourceSna
     snapshot(files)
 }
 
+/// Materialize the same tracked and non-ignored source used for build evidence.
+pub(crate) fn copy_working_source(root: &Path, destination: &Path) -> Result<String> {
+    let captured = working_snapshot(root, Some(destination))?;
+    ensure!(
+        working_snapshot(root, None)? == captured,
+        "Workspace source changed while copying the verification input"
+    );
+    Ok(captured.sha256)
+}
+
+pub(crate) fn copied_source_digest(root: &Path) -> Result<String> {
+    let mut files = Vec::new();
+    collect_snapshot_files(root, root, &mut files)?;
+    files.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(snapshot(files)?.sha256)
+}
+
 fn file_mode(path: &Path, indexed: Option<&str>) -> Result<String> {
     #[cfg(unix)]
     {

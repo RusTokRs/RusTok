@@ -585,20 +585,6 @@ impl ModuleWorkHandler for BlogRouteReconciliationWorkAdapter {
     }
 }
 
-/// Tenant-rotating cleanup of the Comments projection delivery ledger.
-///
-/// The projection reads exactly one row per comment — the newest delivery, which
-/// carries the ULID idempotency frontier and the current counted state — and one
-/// aggregate per post: the maximum `projection_revision`, which is always carried
-/// by the newest delivery of its comment (revisions are allocated in processing
-/// order). Everything older is pure storage growth, so retention compacts each
-/// comment's history to that frontier once it is past
-/// [`COMMENT_PROJECTION_DELIVERY_RETENTION_DAYS`], after which every possible
-/// replay of a purged delivery is still rejected by the frontier's
-/// `latest.event_id >= envelope.id` guard. Deleting strictly-below-frontier rows
-/// is idempotent and safe under duplicate execution: newly processed events have
-/// a greater ULID, so a delete computed against an older snapshot of the ledger
-/// can never touch them.
 /// A route of a `blog_post` target whose post is absent in the same tenant.
 ///
 /// The correlated subquery mirrors what the owner checks on read, so discovery and
@@ -630,16 +616,13 @@ fn dangling_route_condition() -> Condition {
         )
 }
 
-#[path = "scheduler/retention.rs"]
 mod retention;
 pub use retention::BlogCommentProjectionRetentionWorkRegistration;
 
 /// The reconciliation worker is `runtime`-gated with the rest of this module, so these
 /// tests run under `cargo test -p rustok-blog --features runtime`.
 #[cfg(test)]
-#[path = "scheduler/reconciliation_tests.rs"]
 mod reconciliation_tests;
 
 #[cfg(test)]
-#[path = "scheduler/scheduled_publish_worker_tests.rs"]
 mod scheduled_publish_worker_tests;

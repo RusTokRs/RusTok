@@ -11,10 +11,10 @@ const rejectMarker = (source, marker, label = marker) => {
   if (source.includes(marker)) failures.push(`must not contain ${label}`);
 };
 
-const commandPath = 'crates/modules/rustok-blog/src/services/category.rs';
-const ownerPath = 'crates/modules/rustok-blog/src/services/category_owner.rs';
-const syncPath = 'crates/modules/rustok-blog/src/services/category_taxonomy_sync.rs';
-const servicesPath = 'crates/modules/rustok-blog/src/services/mod.rs';
+const commandPath = 'crates/modules/rustok-blog/src/services/category/commands/copy.rs';
+const ownerPath = 'crates/modules/rustok-blog/src/services/category/owner.rs';
+const syncPath = 'crates/modules/rustok-blog/src/services/category/taxonomy_sync.rs';
+const categoryPath = 'crates/modules/rustok-blog/src/services/category/mod.rs';
 const libPath = 'crates/modules/rustok-blog/src/lib.rs';
 const entitiesPath = 'crates/modules/rustok-blog/src/entities/mod.rs';
 const bridgePath = 'crates/modules/rustok-blog/src/translation_evidence.rs';
@@ -22,7 +22,7 @@ const journalEntityPath = 'crates/modules/rustok-blog/src/entities/translation_c
 const runtimePath = 'crates/modules/rustok-blog/tests/category_taxonomy_dual_write.rs';
 const adapterPath = 'crates/modules/rustok-content-orchestration/src/blog_taxonomy.rs';
 
-for (const path of [commandPath, ownerPath, syncPath, servicesPath, libPath, entitiesPath, runtimePath, adapterPath]) {
+for (const path of [commandPath, ownerPath, syncPath, categoryPath, libPath, entitiesPath, runtimePath, adapterPath]) {
   if (!fs.existsSync(path)) failures.push(`${path}: file is required`);
 }
 if (fs.existsSync(bridgePath)) failures.push(`${bridgePath}: retired bridge source must be absent`);
@@ -34,7 +34,7 @@ if (failures.length === 0) {
   const command = read(commandPath);
   const owner = read(ownerPath);
   const sync = read(syncPath);
-  const services = read(servicesPath);
+  const category = read(categoryPath);
   const lib = read(libPath);
   const entities = read(entitiesPath);
   const runtime = read(runtimePath);
@@ -89,8 +89,8 @@ if (failures.length === 0) {
     requireMarker(source, '.with_taxonomy_port(', `service provider attachment for ${path}`);
   }
 
-  requireMarker(services, 'pub(crate) mod category_taxonomy_sync;', 'owner sync seam registration');
-  rejectMarker(services, '#[allow(dead_code)]', 'retired Category dead-code allowance');
+  requireMarker(category, 'mod taxonomy_sync;', 'owner sync seam registration');
+  rejectMarker(category, '#[allow(dead_code)]', 'retired Category dead-code allowance');
 
   requireMarker(runtime, 'category_commands_use_taxonomy_after_legacy_storage_retirement', 'post-retirement command runtime proof');
   requireMarker(runtime, 'with_taxonomy_port(in_process_blog_taxonomy_port(', 'production port attached to test fixture');

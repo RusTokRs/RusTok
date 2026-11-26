@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use sea_orm::DatabaseConnection;
+use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
@@ -11,12 +11,16 @@ use uuid::Uuid;
 use crate::{Error, ModuleRuntimeExtensions, Result};
 
 pub const MAX_SEARCH_PROJECTION_PAGE_SIZE: usize = 100;
+pub const MAX_SEARCH_PROJECTION_DOCUMENTS_PER_ENTITY: usize = 32;
 
-/// One already-authorized source document ready for Search-owned persistence.
+pub const SOURCE_REINDEX_TARGET_PREFIX: &str = "source:";
+
+/// One document admitted by its source owner for Search-owned persistence.
 ///
 /// Source modules own discovery and visibility. Search owns storage, indexing,
-/// ranking and retrieval, so a source must never return a document that the
-/// public storefront is not currently allowed to discover.
+/// ranking and retrieval. A source publishes only content its owner permits
+/// for discovery. The host still admits the source and applies request audience
+/// policy when serving results.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SearchProjectionDocument {
     pub document_key: String,
@@ -69,6 +73,12 @@ pub enum SearchProjectionRefreshScope {
 pub trait SearchProjectionSource: Send + Sync {
     fn source_module(&self) -> &'static str;
 
+    /// Entity kind for namespaced owner reindex requests. Owners with specific
+    /// legacy ingress keep using their existing handlers.
+    fn reindex_entity_type(&self) -> Option<&'static str> {
+        None
+    }
+
     /// Scope Search must replace when one entity of this source changes.
     ///
     /// The default replaces the changed entity; a source whose entities aggregate
@@ -90,6 +100,29 @@ pub trait SearchProjectionSource: Send + Sync {
         entity_type: &str,
         entity_id: Uuid,
     ) -> Result<Vec<SearchProjectionDocument>>;
+
+    /// Use the locked Search transaction for embedded sources that support
+    /// namespaced reindex requests, avoiding a second pooled connection.
+    async fn list_public_documents_in_transaction(
+        &self,
+        _transaction: &DatabaseTransaction,
+        tenant_id: Uuid,
+        after: Option<String>,
+        limit: usize,
+    ) -> Result<SearchProjectionPage> {
+        self.list_public_documents(tenant_id, after, limit).await
+    }
+
+    async fn load_public_entity_in_transaction(
+        &self,
+        _transaction: &DatabaseTransaction,
+        tenant_id: Uuid,
+        entity_type: &str,
+        entity_id: Uuid,
+    ) -> Result<Vec<SearchProjectionDocument>> {
+        self.load_public_entity(tenant_id, entity_type, entity_id)
+            .await
+    }
 }
 
 /// Module-published factory. Registration needs no database handle; Search

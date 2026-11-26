@@ -39,8 +39,9 @@ function assertNotContains(text, pattern, description) {
 }
 
 const libPath = "crates/modules/rustok-region/admin/src/lib.rs";
-const corePath = "crates/modules/rustok-region/admin/src/core.rs";
-const uiPath = "crates/modules/rustok-region/admin/src/ui/leptos.rs";
+const corePath = "crates/modules/rustok-region/admin/src/core";
+const corePaths = ["mod", "editor", "presentation", "route"].map((name) => `${corePath}/${name}.rs`);
+const uiPath = "crates/modules/rustok-region/admin/src/ui/leptos/mod.rs";
 const transportPath = "crates/modules/rustok-region/admin/src/transport/mod.rs";
 const legacyApiPath = "crates/modules/rustok-region/admin/src/api.rs";
 const nativeServerAdapterPath = "crates/modules/rustok-region/admin/src/transport/native_server_adapter.rs";
@@ -52,7 +53,7 @@ const verifierTestPath = "scripts/verify/verify-region-admin-boundary.test.mjs";
 
 for (const filePath of [
   libPath,
-  corePath,
+  ...corePaths,
   uiPath,
   transportPath,
   nativeServerAdapterPath,
@@ -69,7 +70,7 @@ if (existsSync(repoPath(legacyApiPath))) {
 }
 
 const lib = readRepo(libPath);
-const core = readRepo(corePath);
+const core = corePaths.map(readRepo).join("\n");
 const ui = readRepo(uiPath);
 const transport = readRepo(transportPath);
 const nativeServerAdapter = readRepo(nativeServerAdapterPath);

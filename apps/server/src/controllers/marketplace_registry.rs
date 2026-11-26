@@ -255,7 +255,7 @@ async fn publish(
             })?;
         let authority = authority_from_auth(&headers, auth, "Registry publish operations")?;
         if !request.module.ownership.eq_ignore_ascii_case("first_party")
-            && !authority.can_manage_modules
+            && !authority.can_manage_modules()
         {
             return Err(http_error(HttpError::forbidden(
                 "forbidden",
@@ -266,7 +266,7 @@ async fn publish(
             request.module.artifact_origin,
             crate::services::marketplace_catalog::RegistryPublishArtifactOrigin::ExternalPrebuilt
                 | crate::services::marketplace_catalog::RegistryPublishArtifactOrigin::AlloyAuthored
-        ) && !authority.can_manage_modules
+        ) && !authority.can_manage_modules()
         {
             return Err(http_error(HttpError::forbidden(
                 "forbidden",
@@ -549,7 +549,7 @@ async fn stage_external_prebuilt(
     let source_evidence = external_prebuilt_source_evidence(&request)?;
     let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
     let authority = authority_from_auth(&headers, auth, "External prebuilt staging")?;
-    if !authority.can_manage_modules {
+    if !authority.can_manage_modules() {
         return Err(http_error(HttpError::forbidden(
             "forbidden",
             "External prebuilt staging requires modules.manage authority",
@@ -666,7 +666,7 @@ async fn stage_platform_build(
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
     let authority = authority_from_auth(&headers, auth, "Platform build staging")?;
-    if !authority.can_manage_modules {
+    if !authority.can_manage_modules() {
         return Err(http_error(HttpError::forbidden(
             "forbidden",
             "Platform build staging requires modules.manage authority",

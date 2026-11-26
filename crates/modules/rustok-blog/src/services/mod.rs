@@ -1,11 +1,6 @@
 //! Services for the Blog module
 
 mod category;
-mod category_command;
-mod category_delete;
-pub(crate) mod category_name_projection;
-mod category_owner;
-pub(crate) mod category_taxonomy_sync;
 mod comment;
 mod comment_projection;
 pub mod orchestration;
@@ -21,8 +16,7 @@ mod widget;
 
 pub use widget::BlogWidgetService;
 
-pub use category_command::CategoryCommandService;
-pub use category_owner::CategoryService;
+pub use category::{CategoryCommandService, CategoryService};
 pub use comment::CommentService;
 pub use comment_projection::BlogCommentProjectionHandler;
 pub use orchestration::*;

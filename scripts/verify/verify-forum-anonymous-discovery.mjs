@@ -116,7 +116,7 @@ includes('crates/modules/rustok-search/src/suggestions.rs',
   'authorize_suggestion_documents(');
 includes('crates/modules/rustok-search/src/dictionaries.rs',
   'if !allow_extra_pins || has_catalog_filters(query)',
-  'storefront_payload_visible_for_channel(&payload, &entity_type, channel)');
+  'storefront_payload_visible_for_channel(&payload, &source_module, &entity_type, channel)');
 includes('apps/server/src/services/forum_search_result_eligibility.rs',
   'async fn public_forum_discovery_allowed(', '.public_discovery_allowed(tenant_id)');
 includes(`${forum}/search_projection.rs`,

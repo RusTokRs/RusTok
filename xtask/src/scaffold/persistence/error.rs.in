@@ -1,0 +1,35 @@
+#[derive(Debug, thiserror::Error)]
+pub enum RecordError {
+    #[error("the record exceeds the supported number of localized copies")]
+    TooManyLocales,
+    #[error("tenant identity must be non-nil")]
+    InvalidTenant,
+    #[error("record identity must be non-nil")]
+    InvalidRecord,
+    #[error("invalid locale")]
+    InvalidLocale,
+    #[error("title is empty or exceeds its length bound")]
+    InvalidTitle,
+    #[error("page and page size must be within the supported range")]
+    InvalidPage,
+    #[error("search text exceeds the supported length or contains a null character")]
+    InvalidSearch,
+    #[error("the configured admin page size is invalid")]
+    InvalidAdminPageSize,
+    #[error("the configured public discovery policy is invalid")]
+    InvalidPublicDiscovery,
+    #[error("module settings are unavailable")]
+    SettingsUnavailable(#[source] rustok_api::PortError),
+    #[error("owner permission is required")]
+    Forbidden,
+    #[error("record was not found")]
+    NotFound,
+    #[error("record revision conflicts with the requested edit")]
+    Conflict,
+    #[error("record has no localized copy")]
+    MissingCopy,
+    #[error("record storage error")]
+    Database(#[from] sea_orm::DbErr),
+    #[error("cannot persist the record's durable effect")]
+    Outbox(#[source] rustok_core::Error),
+}

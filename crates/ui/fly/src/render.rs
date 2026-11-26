@@ -1644,6 +1644,7 @@ fn css_function_close(value: &str, open: usize) -> Option<usize> {
 /// where this renderer allows it. That is a coherent difference, because publishing applies the
 /// same stricter rule to attributes *and* references — see `FORBIDDEN_CSS_TOKENS` and
 /// the shared `strip_css_resource_references` used by the static publish policy.
+#[cfg(test)]
 fn safe_style(name: &str, value: &Value, policy: &RenderPolicy) -> Option<String> {
     safe_style_with_tokens(name, value, policy, &BTreeSet::new())
 }

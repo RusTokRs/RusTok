@@ -42,8 +42,9 @@ const migrationRegistry = 'crates/modules/rustok-blog/src/migrations/mod.rs';
 const backfillContracts = 'docs/migrations/backfill-contracts.json';
 const entities = 'crates/modules/rustok-blog/src/entities/mod.rs';
 const legacyCategory = 'crates/modules/rustok-blog/src/entities/blog_category.rs';
-const owner = 'crates/modules/rustok-blog/src/services/category_owner.rs';
-const sync = 'crates/modules/rustok-blog/src/services/category_taxonomy_sync.rs';
+const owner = 'crates/modules/rustok-blog/src/services/category/owner.rs';
+const sync = 'crates/modules/rustok-blog/src/services/category/taxonomy_sync.rs';
+const taxonomyAdapter = 'crates/modules/rustok-content-orchestration/src/blog_taxonomy.rs';
 const retirementTest = 'crates/modules/rustok-blog/tests/category_taxonomy_legacy_storage_retirement.rs';
 
 const requiredFiles = isConsolidated
@@ -53,6 +54,7 @@ const requiredFiles = isConsolidated
 for (const path of requiredFiles) {
   requireFile(path);
 }
+requireFile(taxonomyAdapter);
 requireAbsent(
   'crates/modules/rustok-blog/src/entities/blog_category_taxonomy_binding.rs',
   'typed Blog -> Taxonomy binding entity',
@@ -123,8 +125,9 @@ if (failures.length === 0) {
   }
   rejectMarker(entities, 'blog_category_taxonomy_binding', 'retired binding entity registration');
 
-  requireMarker(sync, 'sync_module_category_with_owned_aliases_in_tx', 'canonical Taxonomy sync delegate');
-  requireMarker(sync, 'canonical_key_for_blog_category', 'deterministic canonical Category key');
+  requireMarker(sync, 'port.sync_category_copy_in_tx(', 'Blog Taxonomy sync port');
+  requireMarker(taxonomyAdapter, 'rustok_taxonomy::sync_module_category_copy_in_tx(', 'canonical Taxonomy sync delegate');
+  requireMarker(taxonomyAdapter, 'format!("blog-category-{}", input.category_id)', 'deterministic canonical Category key');
   requireMarker(owner, 'TaxonomyOwnerCategoryReader', 'canonical Taxonomy owner read');
   requireMarker(owner, 'delete_module_category_with_cleanup(', 'Taxonomy-owned delete lifecycle');
 

@@ -1,0 +1,253 @@
+'use client';
+
+import type { MessageKey, MessageArgs } from '../messages';
+
+import { useLocale, useTranslations } from '@rustok/next-fluent/client';
+import { useSession } from 'next-auth/react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useRef, useState } from 'react';
+
+import { Alert, AlertDescription } from '@/shared/ui/shadcn/alert';
+import { Button, buttonVariants } from '@/shared/ui/shadcn/button';
+import { Input } from '@/shared/ui/shadcn/input';
+import { Label } from '@/shared/ui/shadcn/label';
+import { targetTitle, type RecordView } from '../model';
+import {
+  createDraft,
+  errorCode,
+  getRecord,
+  saveTitle,
+  setPublication
+} from '../transport';
+
+export function RecordEditor({
+  initial,
+  actor,
+  tenantId,
+  closeHref
+}: {
+  initial: RecordView | null;
+  actor: string | null;
+  tenantId: string | null;
+  closeHref: string;
+}) {
+  const t = useTranslations<MessageKey, MessageArgs>('__ROUTE__');
+  const locale = useLocale();
+  const router = useRouter();
+  const { data } = useSession();
+  const authorized = Boolean(
+    actor &&
+    tenantId &&
+    data?.user?.id === actor &&
+    data?.user?.tenantId === tenantId
+  );
+  const [record, setRecord] = useState(initial);
+  const [language, setLanguage] = useState(initial?.requestedLocale ?? locale);
+  const [title, setTitle] = useState(initial ? targetTitle(initial) : '');
+  const [issue, setIssue] = useState<MessageKey>();
+  const [reloadRequired, setReloadRequired] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const pending = useRef(false);
+  const dirty = title !== (record ? targetTitle(record) : '');
+
+  async function perform(kind: 'load' | 'reload' | 'save' | 'publication') {
+    if (!authorized || pending.current) return;
+    if (reloadRequired && (kind === 'save' || kind === 'publication')) return;
+    const write = kind === 'save' || kind === 'publication';
+    const opts = {
+      token: data?.user?.rustokToken,
+      tenantSlug: data?.user?.tenantSlug,
+      tenantId,
+      locale
+    };
+    const target = language.trim();
+    if (kind === 'save' && (!title.trim() || !target)) {
+      setIssue(
+        !title.trim() ? 'record-title-required' : 'record-locale-invalid'
+      );
+      return;
+    }
+    if (kind === 'save' && record && target !== record.requestedLocale) {
+      setIssue('record-open-before-save');
+      return;
+    }
+    if (kind === 'load' && (!target || dirty)) return;
+    if (kind === 'publication' && dirty) return;
+    pending.current = true;
+    setBusy(true);
+    setIssue(undefined);
+    setSaved(false);
+    try {
+      let next: RecordView;
+      switch (kind) {
+        case 'load':
+        case 'reload':
+          if (!record) return;
+          next = await getRecord(
+            record.id,
+            kind === 'load' ? target : record.requestedLocale,
+            opts
+          );
+          break;
+        case 'publication':
+          if (!record) return;
+          next = await setPublication(record, opts);
+          break;
+        case 'save': {
+          const copy = {
+            locale: record?.requestedLocale ?? target,
+            title: title.trim()
+          };
+          next = record
+            ? await saveTitle(record, copy, opts)
+            : await createDraft(copy, opts);
+          break;
+        }
+      }
+      if (record && next.id !== record.id) throw new Error('Unexpected record');
+      setRecord(next);
+      setLanguage(next.requestedLocale);
+      setTitle(targetTitle(next));
+      setReloadRequired(false);
+      if (write) {
+        setSaved(true);
+        router.refresh();
+      }
+    } catch (error) {
+      switch (errorCode(error)) {
+        case 'UNAUTHENTICATED':
+        case 'PERMISSION_DENIED':
+          setIssue('record-access');
+          break;
+        case 'BAD_USER_INPUT':
+          setIssue('record-invalid');
+          break;
+        case 'NOT_FOUND':
+          setIssue('record-not-found');
+          break;
+        case 'CONFLICT':
+          setIssue('record-conflict');
+          setReloadRequired(true);
+          break;
+        default:
+          setIssue(write ? 'record-uncertain' : 'record-load-failed');
+          if (write) setReloadRequired(true);
+      }
+    } finally {
+      pending.current = false;
+      setBusy(false);
+    }
+  }
+
+  if (!authorized) return null;
+  return (
+    <section className='space-y-4 rounded-lg border p-4'>
+      <div className='flex items-center justify-between'>
+        <h2 className='font-semibold'>
+          {t(record ? 'record-edit-heading' : 'record-create-heading')}
+        </h2>
+        {!busy && (
+          <Link
+            className={buttonVariants({ variant: 'outline' })}
+            href={closeHref}
+          >
+            {t(dirty ? 'record-discard-close' : 'record-close')}
+          </Link>
+        )}
+      </div>
+      {record && (
+        <div>
+          <dl className='grid gap-2 text-sm'>
+            <div>
+              <dt>{t('record-requested-locale')}</dt>
+              <dd>{record.requestedLocale}</dd>
+            </div>
+            <div>
+              <dt>{t('record-effective-locale')}</dt>
+              <dd>{record.effectiveLocale}</dd>
+            </div>
+            <div>
+              <dt>{t('record-available-locales')}</dt>
+              <dd>{record.availableLocales.join(', ')}</dd>
+            </div>
+          </dl>
+          {record.requestedLocale !== record.effectiveLocale && (
+            <Alert>
+              <AlertDescription>
+                {t('record-fallback')}{' '}
+                <span lang={record.effectiveLocale}>{record.title}</span>
+              </AlertDescription>
+            </Alert>
+          )}
+        </div>
+      )}
+      {issue && (
+        <Alert variant='destructive'>
+          <AlertDescription>{t(issue)}</AlertDescription>
+        </Alert>
+      )}
+      {saved && <p role='status'>{t('record-saved')}</p>}
+      <form
+        className='space-y-3'
+        onSubmit={(event) => {
+          event.preventDefault();
+          void perform('save');
+        }}
+      >
+        <Label htmlFor='record-language'>
+          {t(record ? 'record-open-locale-label' : 'record-draft-locale')}
+        </Label>
+        <Input
+          id='record-language'
+          value={language}
+          onChange={(event) => setLanguage(event.target.value)}
+          disabled={busy}
+        />
+        {record && (
+          <div className='flex flex-wrap gap-2'>
+            <Button
+              variant='outline'
+              type='button'
+              disabled={busy || dirty}
+              onClick={() => void perform('load')}
+            >
+              {t('record-open-locale')}
+            </Button>
+            <Button
+              variant='outline'
+              type='button'
+              disabled={busy}
+              onClick={() => void perform('reload')}
+            >
+              {t(dirty ? 'record-discard-reload' : 'record-reload')}
+            </Button>
+          </div>
+        )}
+        <Label htmlFor='record-title'>{t('records-title')}</Label>
+        <Input
+          id='record-title'
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          disabled={busy}
+        />
+        <div className='flex gap-2'>
+          <Button type='submit' disabled={busy || reloadRequired}>
+            {t(record ? 'record-save' : 'record-create')}
+          </Button>
+          {record && (
+            <Button
+              type='button'
+              variant='outline'
+              disabled={busy || dirty || reloadRequired}
+              onClick={() => void perform('publication')}
+            >
+              {t(record.published ? 'record-withdraw' : 'record-publish')}
+            </Button>
+          )}
+        </div>
+      </form>
+    </section>
+  );
+}

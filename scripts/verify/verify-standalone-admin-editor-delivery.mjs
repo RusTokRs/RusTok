@@ -376,7 +376,7 @@ const movedModuleSurfaces = [
     description: "the user details page resolves its user during the render",
   },
   {
-    file: "crates/modules/rustok-blog/admin/src/ui/leptos.rs",
+    file: "crates/modules/rustok-blog/admin/src/ui/leptos/mod.rs",
     marker: "let posts_resource = loaded_resource(",
     description: "the blog admin resolves its posts and categories during the render",
   },

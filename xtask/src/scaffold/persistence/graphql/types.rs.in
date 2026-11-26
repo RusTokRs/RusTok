@@ -1,0 +1,112 @@
+use async_graphql::{Enum, InputObject, SimpleObject};
+use uuid::Uuid;
+
+use crate::{
+    __ENTITY__Page, __ENTITY__View, List__ENTITY__Records, RecordOrder, RecordPublication,
+    Save__ENTITY__Title,
+};
+
+#[derive(Clone, Copy, PartialEq, Eq, Enum)]
+#[graphql(name = "__MODULE_STEM__AdminRecordPublication")]
+enum PublicationFilter {
+    Draft,
+    Published,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Enum)]
+#[graphql(name = "__MODULE_STEM__AdminRecordOrder")]
+enum ListOrder {
+    NewestFirst,
+    OldestFirst,
+}
+
+#[derive(InputObject)]
+#[graphql(name = "__MODULE_STEM__AdminRecordListInput")]
+pub(super) struct ListRecordsInput {
+    #[graphql(default = 1)]
+    page: u32,
+    per_page: Option<u16>,
+    search: Option<String>,
+    publication: Option<PublicationFilter>,
+    order: Option<ListOrder>,
+}
+
+impl From<ListRecordsInput> for List__ENTITY__Records {
+    fn from(input: ListRecordsInput) -> Self {
+        Self {
+            page: input.page,
+            per_page: input.per_page,
+            search: input.search,
+            publication: input.publication.map(|state| match state {
+                PublicationFilter::Draft => RecordPublication::Draft,
+                PublicationFilter::Published => RecordPublication::Published,
+            }),
+            order: match input.order {
+                Some(ListOrder::OldestFirst) => RecordOrder::OldestFirst,
+                Some(ListOrder::NewestFirst) | None => RecordOrder::NewestFirst,
+            },
+        }
+    }
+}
+
+#[derive(InputObject)]
+#[graphql(name = "__MODULE_STEM__AdminRecordTitleInput")]
+pub(super) struct RecordTitleInput {
+    locale: String,
+    title: String,
+}
+
+impl From<RecordTitleInput> for Save__ENTITY__Title {
+    fn from(input: RecordTitleInput) -> Self {
+        Self {
+            locale: input.locale,
+            title: input.title,
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+#[graphql(name = "__MODULE_STEM__AdminRecord")]
+pub(super) struct AdminRecord {
+    id: Uuid,
+    revision: String,
+    published: bool,
+    title: String,
+    requested_locale: String,
+    effective_locale: String,
+    available_locales: Vec<String>,
+}
+
+impl From<__ENTITY__View> for AdminRecord {
+    fn from(view: __ENTITY__View) -> Self {
+        Self {
+            id: view.id,
+            revision: view.revision.to_string(),
+            published: view.published,
+            title: view.title,
+            requested_locale: view.requested_locale,
+            effective_locale: view.effective_locale,
+            available_locales: view.available_locales,
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+#[graphql(name = "__MODULE_STEM__AdminRecordPage")]
+pub(super) struct AdminPage {
+    items: Vec<AdminRecord>,
+    total: u64,
+    page: u32,
+    per_page: u16,
+}
+
+impl From<__ENTITY__Page> for AdminPage {
+    fn from(page: __ENTITY__Page) -> Self {
+        Self {
+            items: page.items.into_iter().map(Into::into).collect(),
+            total: page.total,
+            page: page.page,
+            per_page: page.per_page,
+        }
+    }
+}

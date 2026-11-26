@@ -298,11 +298,11 @@ fn require_moderation_permission(auth: &rustok_api::AuthContext) -> Result<(), S
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-blog-boundary-"));
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/lib.rs", libSource(options));
-  writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/core.rs", coreSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/core/mod.rs", coreSource(options));
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/core/commands.rs", "");
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/core/presentation.rs", "");
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/model.rs", "pub struct BlogPostDraft; pub struct BlogPostDetail;");
-  writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/ui/leptos.rs", uiSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/ui/leptos/mod.rs", uiSource(options));
   if (options.rawLifecycleApiCall) {
     writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/ui/leptos/lifecycle.rs", "fn lifecycle() { api::fetch_posts(); }");
   }
@@ -336,8 +336,8 @@ function withFixture(options = {}) {
     status: "source_verified_no_compile",
     compile_policy: "not_run_by_request",
     sources: {
-      core: "crates/modules/rustok-blog/admin/src/core.rs",
-      ui: "crates/modules/rustok-blog/admin/src/ui/leptos.rs",
+      core: "crates/modules/rustok-blog/admin/src/core/mod.rs",
+      ui: "crates/modules/rustok-blog/admin/src/ui/leptos/mod.rs",
       adapter: "crates/modules/rustok-blog/admin/src/ui/richtext.rs",
       shared_adapter: "crates/ui/rustok-ui/leptos/src/richtext.rs",
       locales: {

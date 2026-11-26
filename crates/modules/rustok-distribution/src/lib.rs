@@ -8,6 +8,7 @@
 mod channel_index;
 mod generated_promotions;
 mod generation;
+mod localized_record_index;
 #[cfg(all(feature = "mod-groups", feature = "mod-taxonomy"))]
 mod groups_taxonomy_port;
 #[cfg(feature = "mod-inventory")]
@@ -60,6 +61,7 @@ fn register_selected_index_bridges(
     extensions: &mut ModuleRuntimeExtensions,
 ) -> rustok_core::Result<()> {
     channel_index::register(extensions)?;
+    localized_record_index::register(extensions)?;
     #[cfg(feature = "mod-inventory")]
     inventory_index::register(extensions)?;
     #[cfg(feature = "mod-product")]

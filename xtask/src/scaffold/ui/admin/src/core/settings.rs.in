@@ -1,0 +1,190 @@
+use rustok_api::StaticTenantModuleView;
+use rustok_ui_forms::FieldError;
+use serde_json::{Map, Value, json};
+use uuid::Uuid;
+
+use crate::{
+    i18n::t,
+    model::{Rejection, RequestFailure},
+};
+
+pub(crate) const PAGE_SIZE: &str = "__PAGE_SIZE_KEY__";
+pub(crate) const PUBLIC_DISCOVERY: &str = "__PUBLIC_DISCOVERY_KEY__";
+pub(crate) const MAX_SIZE: u16 = __MAX_PAGE_SIZE__;
+
+#[derive(Debug, Clone)]
+pub(crate) struct SettingsFields {
+    pub page_size: String,
+    pub public_discovery: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Settings {
+    values: Map<String, Value>,
+    revision: i64,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SaveSettings {
+    pub settings: String,
+    pub expected_revision: i64,
+    pub idempotency_key: Uuid,
+}
+
+impl Settings {
+    pub fn from_view(view: StaticTenantModuleView) -> Option<Self> {
+        if view.module_slug != "__SLUG__" || view.revision < 0 {
+            return None;
+        }
+        let values = serde_json::from_str::<Map<String, Value>>(&view.settings).ok()?;
+        if values
+            .get(PUBLIC_DISCOVERY)
+            .is_some_and(|value| !value.is_boolean())
+        {
+            return None;
+        }
+        Some(Self {
+            values,
+            revision: view.revision,
+        })
+    }
+
+    pub fn fields(&self) -> SettingsFields {
+        SettingsFields {
+            page_size: self
+                .values
+                .get(PAGE_SIZE)
+                .map_or_else(|| __DEFAULT_PAGE_SIZE__.to_string(), Value::to_string),
+            public_discovery: self.values.get(PUBLIC_DISCOVERY) == Some(&Value::Bool(true)),
+        }
+    }
+
+    pub fn save(
+        &self,
+        fields: &SettingsFields,
+        idempotency_key: Uuid,
+        locale: Option<&str>,
+    ) -> Result<SaveSettings, FieldError> {
+        let input = fields.page_size.trim();
+        let size = input
+            .parse::<u16>()
+            .ok()
+            .filter(|size| (1..=MAX_SIZE).contains(size) && size.to_string() == input)
+            .ok_or_else(|| {
+                FieldError::new(
+                    PAGE_SIZE,
+                    t(
+                        locale,
+                        "settings-page-size-invalid",
+                        "Enter a whole number within the allowed range.",
+                    ),
+                )
+            })?;
+        let mut values = self.values.clone();
+        values.insert(PAGE_SIZE.to_owned(), json!(size));
+        values.insert(PUBLIC_DISCOVERY.to_owned(), json!(fields.public_discovery));
+        Ok(SaveSettings {
+            settings: Value::Object(values).to_string(),
+            expected_revision: self.revision,
+            idempotency_key,
+        })
+    }
+
+    pub fn applied(&self, command: &SaveSettings, view: StaticTenantModuleView) -> Option<Self> {
+        let next = Self::from_view(view)?;
+        if command.expected_revision != self.revision
+            || self.revision.checked_add(1) != Some(next.revision)
+        {
+            return None;
+        }
+        let expected: Map<String, Value> = serde_json::from_str(&command.settings).ok()?;
+        [PAGE_SIZE, PUBLIC_DISCOVERY]
+            .iter()
+            .all(|key| expected.get(*key) == next.values.get(*key))
+            .then_some(next)
+    }
+}
+
+pub(crate) fn message(error: &RequestFailure, locale: Option<&str>, write: bool) -> String {
+    let (key, fallback) = match error {
+        RequestFailure::Rejected(Rejection::Access) => (
+            "settings-denied",
+            "You need permission to manage module settings.",
+        ),
+        RequestFailure::Rejected(Rejection::Conflict) => (
+            "settings-conflict",
+            "Settings changed. Reload the saved values before saving again.",
+        ),
+        RequestFailure::Rejected(Rejection::InvalidInput) => {
+            ("settings-invalid", "The module rejected these settings.")
+        }
+        RequestFailure::Transport(_) if write => (
+            "settings-uncertain",
+            "The save could not be confirmed. Reload the saved values before saving again.",
+        ),
+        _ => (
+            "settings-unavailable",
+            "Module settings could not be loaded.",
+        ),
+    };
+    t(locale, key, fallback)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn view(revision: i64, settings: &str) -> StaticTenantModuleView {
+        StaticTenantModuleView {
+            module_slug: "__SLUG__".into(),
+            enabled: false,
+            revision,
+            settings: settings.into(),
+        }
+    }
+
+    #[test]
+    fn page_size_save_keeps_the_exact_predecessor_and_other_fields() {
+        let current = Settings::from_view(view(4, r#"{"future_field":true}"#)).unwrap();
+        assert_eq!(current.fields().page_size, "__DEFAULT_PAGE_SIZE__");
+        assert!(!current.fields().public_discovery);
+        let fields = |size: &str| SettingsFields {
+            page_size: size.into(),
+            public_discovery: true,
+        };
+        assert!(current.save(&fields("0"), Uuid::new_v4(), None).is_err());
+        assert!(current.save(&fields("01"), Uuid::new_v4(), None).is_err());
+        assert!(current.save(&fields("1.5"), Uuid::new_v4(), None).is_err());
+        let key = Uuid::new_v4();
+        let pending = current.save(&fields("32"), key, None).unwrap();
+        assert_eq!(
+            (pending.expected_revision, pending.idempotency_key),
+            (4, key)
+        );
+        assert_eq!(
+            serde_json::from_str::<Value>(&pending.settings).unwrap(),
+            json!({
+                PAGE_SIZE: 32,
+                PUBLIC_DISCOVERY: true,
+                "future_field": true,
+            })
+        );
+        assert!(
+            current
+                .applied(&pending, view(4, &pending.settings))
+                .is_none()
+        );
+        let wrong = StaticTenantModuleView {
+            module_slug: "foreign".into(),
+            ..view(5, &pending.settings)
+        };
+        assert!(current.applied(&pending, wrong).is_none());
+        let saved = current
+            .applied(&pending, view(5, &pending.settings))
+            .unwrap();
+        assert_eq!(saved.fields().page_size, "32");
+        assert!(saved.fields().public_discovery);
+        let bad = json!({ PAGE_SIZE: 32, PUBLIC_DISCOVERY: false }).to_string();
+        assert!(current.applied(&pending, view(5, &bad)).is_none());
+    }
+}

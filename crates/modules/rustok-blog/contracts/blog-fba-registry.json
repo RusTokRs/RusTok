@@ -253,8 +253,8 @@
       "source": "crates/modules/rustok-blog/src/services/comment.rs",
       "constructor": "CommentService::from_runtime_capabilities",
       "signature": "fn(DatabaseConnection, Option<Arc<dyn CommentsThreadPort>>, Option<SharedStaticModuleSettingsReader>) -> CommentService",
-      "test": "test_blog_comment_surface_policy_preserves_comment_data",
-      "command": "cargo test -p rustok-blog --test integration test_blog_comment_surface_policy_preserves_comment_data -- --exact",
+      "test": "comments::test_blog_comment_surface_policy_preserves_comment_data",
+      "command": "cargo test -p rustok-blog --test integration comments::test_blog_comment_surface_policy_preserves_comment_data -- --exact",
       "remote_transport_implementation": "pending"
     },
     "cases": [

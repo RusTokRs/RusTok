@@ -31,6 +31,8 @@ struct ModulePackageManifest {
 struct ModuleMetadata {
     slug: String,
     name: String,
+    #[serde(default)]
+    ui_classification: String,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -84,6 +86,8 @@ struct AdminNestedPageContract {
     title: Option<String>,
     #[serde(default)]
     nav_label: Option<String>,
+    #[serde(default)]
+    nav_label_key: Option<String>,
 }
 
 #[derive(Debug)]
@@ -153,6 +157,7 @@ struct AdminChildPageEntry {
     subpath: String,
     title: String,
     nav_label: String,
+    nav_label_key: Option<String>,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -238,6 +243,7 @@ fn generate_admin_module_codegen() -> Result<(), Box<dyn Error>> {
                     Some(AdminChildPageEntry {
                         title: page.title.unwrap_or_else(|| fallback.clone()),
                         nav_label: page.nav_label.unwrap_or_else(|| fallback.clone()),
+                        nav_label_key: page.nav_label_key,
                         subpath,
                     })
                 })
@@ -304,7 +310,12 @@ fn validate_admin_ui_wiring(
         .map(str::trim)
         .filter(|value| !value.is_empty());
 
-    if ui_manifest_path.exists() && declared_crate.is_none() {
+    if ui_manifest_path.exists()
+        && declared_crate.is_none()
+        && !(package_manifest.module.ui_classification == "future_ui"
+            && package_manifest.provides.admin_ui.is_none()
+            && package_manifest.provides.admin_support.is_none())
+    {
         return Err(format!(
             "module '{}' contains {}, but rustok-module.toml is missing [provides.admin_ui].leptos_crate or [provides.admin_support].leptos_crate",
             package_manifest.module.slug,
@@ -353,7 +364,7 @@ fn render_admin_registry_codegen(
         ));
         for page in &entry.child_pages {
             out.push_str(&format!(
-                "    AdminChildPageRegistration {{ subpath: \"{subpath}\", title: \"{title}\", nav_label: \"{nav_label}\" }},\n",
+                "    AdminChildPageRegistration {{ subpath: {subpath:?}, title: {title:?}, nav_label: {nav_label:?} }},\n",
                 subpath = page.subpath,
                 title = page.title,
                 nav_label = page.nav_label,
@@ -366,7 +377,7 @@ fn render_admin_registry_codegen(
     out.push_str("    &[\n");
     for entry in entries {
         out.push_str(&format!(
-            "        super::GeneratedModuleNavigationEntry {{ module_slug: \"{slug}\", route_segment: \"{route_segment}\", nav_label: \"{nav_label}\", nav_group: \"{nav_group}\", nav_order: {nav_order}, has_settings: {has_settings}, child_pages: {child_pages} }},\n",
+            "        super::GeneratedModuleNavigationEntry {{ module_slug: {slug:?}, route_segment: {route_segment:?}, nav_label: {nav_label:?}, nav_group: {nav_group:?}, nav_order: {nav_order}, has_settings: {has_settings}, child_pages: {child_pages} }},\n",
             slug = entry.slug,
             route_segment = entry.route_segment,
             nav_label = entry.nav_label,
@@ -383,13 +394,32 @@ fn render_admin_registry_codegen(
     out.push_str("    ]\n");
     out.push_str("}\n\n");
 
+    let mut labels = String::new();
+    for entry in entries {
+        for page in &entry.child_pages {
+            if let Some(key) = &page.nav_label_key {
+                labels.push_str(&format!(
+                    "        ({:?}, {:?}) => {}::translate_ui(Some(locale), {key:?}, fallback),\n",
+                    entry.slug, page.subpath, entry.crate_ident,
+                ));
+            }
+        }
+    }
+    if labels.is_empty() {
+        out.push_str("pub fn module_navigation_label(_: &str, _: &str, _: &str, fallback: &str) -> String { fallback.to_owned() }\n\n");
+    } else {
+        out.push_str("pub fn module_navigation_label(slug: &str, subpath: &str, locale: &str, fallback: &str) -> String {\n    match (slug, subpath) {\n");
+        out.push_str(&labels);
+        out.push_str("        _ => fallback.to_owned(),\n    }\n}\n\n");
+    }
+
     out.push_str("pub fn register_generated_components() {\n");
     if entries.is_empty() {
         out.push_str("}\n\n");
     } else {
         for entry in entries {
             out.push_str(&format!(
-                "    register_page(AdminPageRegistration {{ module_slug: \"{slug}\", route_segment: \"{route_segment}\", title: \"{title}\", child_pages: {child_pages}, render: {page_fn} }});\n",
+                "    register_page(AdminPageRegistration {{ module_slug: {slug:?}, route_segment: {route_segment:?}, title: {title:?}, child_pages: {child_pages}, render: {page_fn} }});\n",
                 slug = entry.slug,
                 route_segment = entry.route_segment,
                 title = entry.nav_label,

@@ -1,0 +1,77 @@
+use rustok_api::Action;
+use rustok_core::SecurityContext;
+use uuid::Uuid;
+
+use crate::{__ENTITY__View, RecordError, domain};
+
+use super::{__ENTITY__Service, repository};
+
+impl __ENTITY__Service {
+    pub async fn get(
+        &self,
+        tenant_id: Uuid,
+        security: &SecurityContext,
+        id: Uuid,
+        requested_locale: &str,
+        tenant_default_locale: Option<&str>,
+    ) -> Result<__ENTITY__View, RecordError> {
+        self.authorize(security, Action::Read)?;
+        repository::validate_scope(tenant_id, id)?;
+        self.read(
+            tenant_id,
+            id,
+            requested_locale,
+            tenant_default_locale,
+            false,
+        )
+        .await
+    }
+
+    pub async fn get_published(
+        &self,
+        tenant_id: Uuid,
+        id: Uuid,
+        requested_locale: &str,
+        tenant_default_locale: Option<&str>,
+    ) -> Result<__ENTITY__View, RecordError> {
+        repository::validate_scope(tenant_id, id)?;
+        if !self.public_discovery_allowed(tenant_id).await? {
+            return Err(RecordError::NotFound);
+        }
+        self.read(tenant_id, id, requested_locale, tenant_default_locale, true)
+            .await
+    }
+
+    async fn read(
+        &self,
+        tenant_id: Uuid,
+        id: Uuid,
+        requested_locale: &str,
+        tenant_default_locale: Option<&str>,
+        published_only: bool,
+    ) -> Result<__ENTITY__View, RecordError> {
+        let requested = domain::locale(requested_locale)?;
+        let fallback = tenant_default_locale.map(domain::locale).transpose()?;
+        let fallback = fallback.as_ref().map(|locale| locale.as_str());
+        let load = || {
+            repository::load(
+                &self.db,
+                tenant_id,
+                id,
+                requested.as_str(),
+                fallback,
+                published_only,
+            )
+        };
+        if published_only && let Some(cache) = &self.public_cache {
+            let revision = repository::published_revision(&self.db, tenant_id, id).await?;
+            if let Some(view) = cache
+                .load(tenant_id, id, revision, &requested, fallback, load)
+                .await
+            {
+                return Ok(view);
+            }
+        }
+        load().await
+    }
+}

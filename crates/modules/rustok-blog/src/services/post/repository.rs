@@ -144,7 +144,7 @@ impl PostService {
         post_id: Uuid,
         channel_slugs: &[String],
     ) -> BlogResult<()> {
-        ChannelService::new(self.db.clone())
+        rustok_channel::ChannelService::new(self.db.clone())
             .ensure_channel_slugs_exist_for_tenant_in_tx(txn, tenant_id, channel_slugs)
             .await
             .map_err(BlogError::from)?;

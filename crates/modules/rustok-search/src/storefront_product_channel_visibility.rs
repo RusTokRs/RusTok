@@ -7,6 +7,7 @@ const PRODUCT_ALLOWED_CHANNEL_SLUGS_PATH: &str = "{channel_visibility,allowed_ch
 const BLOG_ALLOWED_CHANNEL_SLUGS_PATH: &str = "{channel_slugs}";
 
 pub(crate) fn storefront_channel_visibility_sql(
+    source_module_column: &str,
     entity_type_column: &str,
     payload_column: &str,
     channel: &TrustedStorefrontChannel,
@@ -33,21 +34,22 @@ pub(crate) fn storefront_channel_visibility_sql(
         .unwrap_or_else(|| "FALSE".to_string());
 
     format!(
-        "(CASE\n            WHEN {entity_type_column} = 'product' THEN\n                CASE\n                    WHEN jsonb_typeof({product_allowed_slugs}) IS DISTINCT FROM 'array' THEN FALSE\n                    WHEN jsonb_array_length({product_allowed_slugs}) = 0 THEN TRUE\n                    ELSE {product_channel_match}\n                END\n            WHEN {entity_type_column} = 'blog_post' THEN\n                CASE\n                    WHEN jsonb_typeof({blog_allowed_slugs}) IS DISTINCT FROM 'array' THEN FALSE\n                    WHEN jsonb_array_length({blog_allowed_slugs}) = 0 THEN TRUE\n                    ELSE {blog_channel_match}\n                END\n            ELSE TRUE\n        END)"
+        "(CASE\n            WHEN {source_module_column} = 'commerce' AND {entity_type_column} = 'product' THEN\n                CASE\n                    WHEN jsonb_typeof({product_allowed_slugs}) IS DISTINCT FROM 'array' THEN FALSE\n                    WHEN jsonb_array_length({product_allowed_slugs}) = 0 THEN TRUE\n                    ELSE {product_channel_match}\n                END\n            WHEN {source_module_column} = 'blog' AND {entity_type_column} = 'blog_post' THEN\n                CASE\n                    WHEN jsonb_typeof({blog_allowed_slugs}) IS DISTINCT FROM 'array' THEN FALSE\n                    WHEN jsonb_array_length({blog_allowed_slugs}) = 0 THEN TRUE\n                    ELSE {blog_channel_match}\n                END\n            ELSE TRUE\n        END)"
     )
 }
 
 pub(crate) fn storefront_payload_visible_for_channel(
     payload: &JsonValue,
+    source_module: &str,
     entity_type: &str,
     channel: &TrustedStorefrontChannel,
 ) -> bool {
-    let Some(allowed_slugs) = (match entity_type {
-        "product" => payload
+    let Some(allowed_slugs) = (match (source_module, entity_type) {
+        ("commerce", "product") => payload
             .get("channel_visibility")
             .and_then(|value| value.get("allowed_channel_slugs"))
             .and_then(JsonValue::as_array),
-        "blog_post" => payload.get("channel_slugs").and_then(JsonValue::as_array),
+        ("blog", "blog_post") => payload.get("channel_slugs").and_then(JsonValue::as_array),
         _ => return true,
     }) else {
         return false;
@@ -68,22 +70,6 @@ pub(crate) fn storefront_payload_visible_for_channel(
             .filter(|value| !value.is_empty())
             .is_some_and(|value| value.eq_ignore_ascii_case(&channel_slug))
     })
-}
-
-pub(crate) fn product_channel_visibility_sql(
-    entity_type_column: &str,
-    payload_column: &str,
-    channel: &TrustedStorefrontChannel,
-    bound_values: &mut Vec<Value>,
-    next_param: &mut usize,
-) -> String {
-    storefront_channel_visibility_sql(
-        entity_type_column,
-        payload_column,
-        channel,
-        bound_values,
-        next_param,
-    )
 }
 
 fn normalized_trusted_channel_slug(channel: &TrustedStorefrontChannel) -> Option<String> {
@@ -118,11 +104,13 @@ mod tests {
 
         assert!(storefront_payload_visible_for_channel(
             &payload,
+            "commerce",
             "product",
             &channel(Some("web"))
         ));
         assert!(storefront_payload_visible_for_channel(
             &payload,
+            "commerce",
             "product",
             &channel(None)
         ));
@@ -136,16 +124,19 @@ mod tests {
 
         assert!(storefront_payload_visible_for_channel(
             &payload,
+            "commerce",
             "product",
             &channel(Some(" Web "))
         ));
         assert!(!storefront_payload_visible_for_channel(
             &payload,
+            "commerce",
             "product",
             &channel(Some("mobile"))
         ));
         assert!(!storefront_payload_visible_for_channel(
             &payload,
+            "commerce",
             "product",
             &channel(None)
         ));
@@ -155,6 +146,7 @@ mod tests {
     fn missing_or_malformed_projection_fails_closed() {
         assert!(!storefront_payload_visible_for_channel(
             &serde_json::json!({}),
+            "commerce",
             "product",
             &channel(Some("web"))
         ));
@@ -162,6 +154,7 @@ mod tests {
             &serde_json::json!({
                 "channel_visibility": { "allowed_channel_slugs": "web" }
             }),
+            "commerce",
             "product",
             &channel(Some("web"))
         ));
@@ -172,6 +165,7 @@ mod tests {
         let mut values = Vec::<Value>::new();
         let mut next_param = 4;
         let sql = storefront_channel_visibility_sql(
+            "source_module",
             "entity_type",
             "payload",
             &channel(Some("Web")),
@@ -179,8 +173,8 @@ mod tests {
             &mut next_param,
         );
 
-        assert!(sql.contains("entity_type = 'product'"));
-        assert!(sql.contains("entity_type = 'blog_post'"));
+        assert!(sql.contains("source_module = 'commerce' AND entity_type = 'product'"));
+        assert!(sql.contains("source_module = 'blog' AND entity_type = 'blog_post'"));
         assert!(sql.contains("IS DISTINCT FROM 'array' THEN FALSE"));
         assert!(sql.contains("WHEN jsonb_array_length"));
         assert!(sql.contains("? $4"));
@@ -190,6 +184,7 @@ mod tests {
         let mut unscoped_values = Vec::<Value>::new();
         let mut unscoped_next_param = 4;
         let unscoped_sql = storefront_channel_visibility_sql(
+            "source_module",
             "entity_type",
             "payload",
             &channel(None),
@@ -207,21 +202,25 @@ mod tests {
         });
         assert!(storefront_payload_visible_for_channel(
             &visible,
+            "blog",
             "blog_post",
             &channel(Some("WEB"))
         ));
         assert!(!storefront_payload_visible_for_channel(
             &visible,
+            "blog",
             "blog_post",
             &channel(Some("mobile"))
         ));
         assert!(!storefront_payload_visible_for_channel(
             &serde_json::json!({}),
+            "blog",
             "blog_post",
             &channel(Some("web"))
         ));
         assert!(!storefront_payload_visible_for_channel(
             &serde_json::json!({"channel_slugs": "web"}),
+            "blog",
             "blog_post",
             &channel(Some("web"))
         ));
@@ -229,10 +228,17 @@ mod tests {
 
     #[test]
     fn unrelated_documents_remain_visible() {
-        assert!(storefront_payload_visible_for_channel(
-            &serde_json::json!({}),
-            "forum_topic",
-            &channel(Some("web"))
-        ));
+        for (owner, entity) in [
+            ("forum", "forum_topic"),
+            ("other", "product"),
+            ("other", "blog_post"),
+        ] {
+            assert!(storefront_payload_visible_for_channel(
+                &serde_json::json!({}),
+                owner,
+                entity,
+                &channel(Some("web"))
+            ));
+        }
     }
 }

@@ -36,6 +36,12 @@
     "graphql_compatibility",
     "cached_snapshot"
   ],
+  "in_process_provider_impl": {
+    "service": "RegionService",
+    "source": "crates/modules/rustok-region/src/services/region/read_port.rs",
+    "marker": "impl RegionReadPort for crate::RegionService",
+    "status": "implemented"
+  },
   "evidence": {
     "local_plan": "crates/modules/rustok-region/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",

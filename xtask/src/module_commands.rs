@@ -9,6 +9,8 @@ pub(crate) fn module_command(args: &[String]) -> Result<()> {
 
     match args[0].as_str() {
         "new" | "scaffold" => scaffold_command(&args[1..]),
+        "scaffold-cli" => crate::scaffold::cli::command(&args[1..]),
+        "verify-scaffold" => crate::scaffold::matrix::command(&args[1..]),
         "validate" => module_validate_command(&args[1..]),
         "lint" => module_lint_command(&args[1..]),
         "test" => module_test_command(&args[1..]),
@@ -31,9 +33,11 @@ pub(crate) fn module_command(args: &[String]) -> Result<()> {
 pub(crate) fn print_module_usage() {
     println!("Usage:");
     println!(
-        "  cargo xtask module new <slug> [--title <title>] [--description <desc>] [--category <cat>] [--with-db] [--ui <dual|admin|storefront|none>]"
+        "  cargo xtask module new <slug> [--title <title>] [--description <desc>] [--category <cat>] [--with-db --entity <name>] [--ui <dual|admin|storefront|none>]"
     );
     println!("  cargo xtask module lint <slug> [--embedded | --fba | --cli]");
+    println!("  {}", crate::scaffold::cli::USAGE);
+    println!("  {}", crate::scaffold::matrix::USAGE);
     println!("  cargo xtask module validate [slug]");
     println!("  cargo xtask module test <slug> [--dry-run]");
     println!(
@@ -70,7 +74,7 @@ pub(crate) fn print_module_usage() {
 pub(crate) fn module_lint_command(args: &[String]) -> Result<()> {
     if let [slug, mode] = args {
         if mode == "--fba" {
-            crate::fba_layout::lint(&crate::manifest_io::workspace_root(), slug, true)?;
+            crate::fba_layout::lint(&crate::manifest_io::workspace_root(), slug)?;
             println!("FBA owner ports layout passed for '{slug}'.");
             return Ok(());
         }
@@ -92,6 +96,10 @@ pub(crate) fn module_lint_command(args: &[String]) -> Result<()> {
     {
         anyhow::bail!("Module '{slug}' is registered; omit --embedded");
     }
+    lint_module_source(&root, slug, selector)
+}
+
+pub(crate) fn lint_module_source(root: &Path, slug: &str, selector: &str) -> Result<()> {
     let script = root
         .join("scripts")
         .join("verify")
@@ -100,14 +108,11 @@ pub(crate) fn module_lint_command(args: &[String]) -> Result<()> {
         .arg(&script)
         .arg(selector)
         .arg(slug)
-        .current_dir(&root)
+        .current_dir(root)
         .status()
         .with_context(|| format!("Cannot execute native source verifier {}", script.display()))?;
     if !status.success() {
         anyhow::bail!("Architecture lint failed for '{slug}' (status {status})");
-    }
-    if selector != "--embedded" {
-        crate::fba_layout::lint(&root, slug, false)?;
     }
     Ok(())
 }

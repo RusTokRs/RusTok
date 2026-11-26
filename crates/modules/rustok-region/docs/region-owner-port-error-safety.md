@@ -4,7 +4,7 @@ Status: **source-ready / unvalidated**
 
 ## Scope
 
-This contract closes the currently identified public-message and diagnostic-payload gaps in the owner `RegionReadPort` implementation in `crates/modules/rustok-region/src/ports.rs`.
+This contract closes the currently identified public-message and diagnostic-payload gaps in the owner `RegionReadPort` implementation in `crates/modules/rustok-region/src/services/region/read_port.rs`.
 
 The two owner operations remain unchanged:
 

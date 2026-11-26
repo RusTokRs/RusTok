@@ -37,10 +37,10 @@ adapters bind and render prepared state.
   `scripts/verify/verify-region-storefront-boundary.mjs`, and
   `npm run verify:region:fba` lock the owner UI boundaries and read-provider
   order.
-- The admin surface is an accepted single-adapter owner fragment: it is an
-  authenticated operator workflow with no public/headless region-admin
-  contract, so its native `#[server]` adapter is intentional and no
-  package-local GraphQL fallback is added.
+- Admin transport is a single-adapter state, native-only internal operator/bootstrap
+  surface, no GraphQL/REST contract yet, parity or exemption plan pending.
+  The current adapter serves the authenticated Leptos operator workflow.
+  Next.js admin parity requires the owner admin transport contract tracked below.
 
 ## Open results
 
@@ -88,25 +88,33 @@ Cart tax recalculation now reads `RegionTaxPolicy` through the native
 live inside this crate. Cart and Commerce fixtures apply the owner migrations
 and create Regions through the service. The
 [ownership decision](../../../../DECISIONS/2026-11-04-region-storage-and-cart-tax-policy.md)
-records the transaction and deployment profile. Complete the remaining layout
-checks and verify the declared admin and storefront clients before enrolling
-the complete module.
+records the transaction and deployment profile. Verify the declared admin and
+storefront clients before enrolling the complete module.
+
+### Physical layout adoption
+
+The read contract is in `src/ports/read.rs`, with its in-process implementation
+in `src/services/region/read_port.rs`. Translation operations, change-journal
+logic, and progress queries share `src/services/translation/`. The platform
+provider adapter is in `src/integrations/translation_target.rs`. Both Leptos
+packages use `core/`, `ui/leptos/`, and `src/tests/contract.rs`; the admin core
+separates editor, presentation, and route policy with corresponding test files.
+The shared architecture lint now reports only the missing Next.js bindings for
+the two live surfaces.
+
+On 2026-11-26 the backend library and integration targets passed 20 tests on
+the default profile. The opt-in create/read scenario passed separately on an
+isolated PostgreSQL 16.13 instance. The default Leptos library profiles passed
+27 admin and 21 storefront tests. With SSR enabled, 32 admin and 23 storefront
+tests passed. Both surface guards and their 13 fixtures
+passed, along with the owner-port, translation inventory, and dependency checks.
 
 ### Remaining reference gates
 
-The retained `xtask` CLI recheck on 2026-11-05 still rejects the complete
-Region module. Continue in this order without promoting the reference status:
-
-1. Move the existing ports and translation entrypoints from the backend source
-   root into their canonical responsibility slots. Migrate every caller and
-   source-verifier path together, preserving the owner API and transaction rules.
-2. Split the 56,186-byte admin core by its existing responsibilities and place
-   admin/storefront contract tests in the canonical `src/tests/` slots. Clarify
-   the documented single-adapter transport decision against the lint contract.
-3. Verify the functional Next.js admin and storefront packages and declare the
+1. Verify the functional Next.js admin and storefront packages and declare the
    corresponding manifest bindings. Retain route, locale, authorization, and
    interaction parity with Leptos before advertising those bindings.
-4. Run the complete module lint and the applicable backend, transport, and client
+2. Run the complete module lint and the applicable backend, transport, and client
    evidence gates. Mounted FFA/FBA evidence remains separate from storage tests.
 
 ## Verification

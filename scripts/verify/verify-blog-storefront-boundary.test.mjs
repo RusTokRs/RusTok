@@ -34,11 +34,11 @@ function evidenceSource({ evidenceFalseContractDrift = false } = {}) {
     boundary: "storefront-post-richtext-view",
     status: "locally_verified",
     scope: [
-      "crates/modules/rustok-blog/storefront/src/core.rs",
+      "crates/modules/rustok-blog/storefront/src/core/mod.rs",
       "crates/modules/rustok-blog/storefront/src/model.rs",
       "crates/modules/rustok-blog/storefront/src/transport/graphql_adapter.rs",
       "crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs",
-      "crates/modules/rustok-blog/storefront/src/ui/leptos.rs",
+      "crates/modules/rustok-blog/storefront/src/ui/leptos/mod.rs",
     ],
     contract: {
       graphql_owner_view: true,
@@ -99,7 +99,7 @@ pub use ui::BlogView;
   );
   writeFixtureFile(
     root,
-    "crates/modules/rustok-blog/storefront/src/core.rs",
+    "crates/modules/rustok-blog/storefront/src/core/mod.rs",
     `${pagination ? "mod comments_pagination;" : ""}
 ${options.leptosCore
       ? "use leptos::prelude::*;"
@@ -157,7 +157,7 @@ ${options.missingComments ? "" : pagination
   );
   writeFixtureFile(
     root,
-    "crates/modules/rustok-blog/storefront/src/ui/leptos.rs",
+    "crates/modules/rustok-blog/storefront/src/ui/leptos/mod.rs",
     `use rustok_ui_leptos::RichTextHtml;
 ${pagination ? `use_route_query_value(comments_pagination::COMMENTS_PAGE_QUERY_KEY);
 use_route_query_writer();
@@ -203,8 +203,8 @@ ${options.missingTenantBinding ? "" : `let auth_context = leptos_axum::extract::
 ensure_storefront_tenant_binding(auth_context.as_ref(), tenant_id)?
 fn ensure_storefront_tenant_binding(`}
 ${options.missingTenantFallbackBinding ? "" : `super::configured_fallback_tenant_slug(tenant_slug.as_deref())?`}
-ChannelService::new
-.is_module_enabled_for_tenant(tenant_id, channel_id, MODULE_SLUG)
+BlogChannelAvailability::from_runtime
+.for_request(tenant_id, request_context)
 normalize_channel_slug
 read_published_post
 ctx.channel_slug

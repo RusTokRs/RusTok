@@ -27,7 +27,7 @@ rustok-ui-transport.workspace = true
 Draft Leptos {surface} UI adapter for the example native module.
 
 ## Responsibility
-- Keep UI rendering and bindings in src/ui/leptos.rs.
+- Keep UI rendering and bindings in src/ui/leptos/mod.rs.
 - Keep pure, framework-independent presentation state in src/core/mod.rs.
 - Keep all future backend calls behind src/transport/mod.rs.
 - Do not claim that CRUD, GraphQL, or native server transport exists.
@@ -72,7 +72,7 @@ Draft {surface} Leptos adapter for example. Not published as a working FFA surfa
 ## Public surface
 - {Page} renders an explicit unavailability message.
 - `transport` exposes the owner facade with explicit typed unavailability; it publishes no backend endpoint.
-- Pure readiness model in src/core/mod.rs; render/bind in src/ui/leptos.rs.
+- Pure readiness model in src/core/mod.rs; render/bind in src/ui/leptos/mod.rs.
 
 ## Platform Capability Bindings
 - Transport selection uses rustok-ui-transport; both owner-specific adapters explicitly reject calls until implemented.
@@ -147,7 +147,7 @@ pub async fn fetch_owner_capability_for(
 pub async fn fetch_owner_capability() -> Result<(), ApiError> {
     fetch_owner_capability_for(selected_transport_path()).await
 }
-=== src/ui/leptos.rs ===
+=== src/ui/leptos/mod.rs ===
 use leptos::prelude::*;
 use crate::{core, i18n::t};
 

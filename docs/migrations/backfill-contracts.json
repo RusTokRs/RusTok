@@ -164,6 +164,13 @@
       "reason": "Widen search query log locale attribution to the platform locale width; existing observed locale values require no semantic backfill"
     },
     {
+      "id": "search-document-locale-width-32",
+      "migration": "m20261126_000014_expand_search_document_locale_storage",
+      "mode": "none",
+      "owner": "rustok-search",
+      "reason": "Widen projected locale identities to the platform locale width while retaining existing document keys and locale values"
+    },
+    {
       "id": "flex-schema-copy-provenance",
       "migration": "m20260405_000002_split_flex_schema_localized_fields",
       "mode": "fixture",

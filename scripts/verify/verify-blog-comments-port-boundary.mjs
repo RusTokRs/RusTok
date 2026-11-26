@@ -55,9 +55,9 @@ const graphqlOwnerPath = 'crates/modules/rustok-blog/src/graphql/types.rs';
 const storefrontModelPath = 'crates/modules/rustok-blog/storefront/src/model.rs';
 const storefrontGraphqlPath = 'crates/modules/rustok-blog/storefront/src/transport/graphql_adapter.rs';
 const storefrontNativePath = 'crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs';
-const storefrontUiPath = 'crates/modules/rustok-blog/storefront/src/ui/leptos.rs';
+const storefrontUiPath = 'crates/modules/rustok-blog/storefront/src/ui/leptos/mod.rs';
 const storefrontPolicyPath = 'crates/modules/rustok-blog/storefront/src/core/discussion.rs';
-const storefrontCorePath = 'crates/modules/rustok-blog/storefront/src/core.rs';
+const storefrontCorePath = 'crates/modules/rustok-blog/storefront/src/core/mod.rs';
 const storefrontCommentsListPath = 'crates/modules/rustok-blog/storefront/src/ui/comments_list.rs';
 const storefrontDiscussionPath = 'crates/modules/rustok-blog/storefront/src/ui/comment.rs';
 const storefrontCatalogPaths = ['en', 'ru'].map((locale) =>
@@ -69,7 +69,7 @@ const consumerRegistryPath = 'crates/modules/rustok-blog/contracts/blog-fba-regi
 const planPath = 'crates/modules/rustok-blog/docs/implementation-plan.md';
 const injectionConstructor = 'CommentService::from_runtime_capabilities';
 const injectionSignature = 'fn(DatabaseConnection, Option<Arc<dyn CommentsThreadPort>>, Option<SharedStaticModuleSettingsReader>) -> CommentService';
-const injectionTest = 'test_blog_comment_surface_policy_preserves_comment_data';
+const injectionTest = 'comments::test_blog_comment_surface_policy_preserves_comment_data';
 const injectionCommand =
   `cargo test -p rustok-blog --test integration ${injectionTest} -- --exact`;
 const expectedOperations = [
@@ -288,7 +288,7 @@ for (const marker of [
   'comments_read_port_context(',
   'comments_public_read_port_context(',
   'PortActor::service(PUBLIC_COMMENTS_PORT_ACTOR)',
-  '.with_deadline(std::time::Duration::from_secs(2))',
+  '.with_deadline(timeout)',
   '.with_idempotency_key(format!("{correlation_id}:command:{command_id}"))',
   'PortErrorKind::Unavailable => rustok_core::error::ErrorKind::ExternalService',
   'PortErrorKind::Timeout => rustok_core::error::ErrorKind::Timeout',

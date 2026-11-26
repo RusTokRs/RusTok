@@ -45,6 +45,7 @@ pub use dto::{
 };
 pub use error::{BlogError, BlogPublicError, BlogResult};
 pub use graphql::{BlogMutation, BlogQuery};
+pub use integrations::channel_availability::BlogChannelAvailability;
 pub use integrations::public_comments_snapshot;
 pub use integrations::public_comments_snapshot::{
     PublicCommentsAvailability, PublicCommentsRead, PublicCommentsSnapshotStore,

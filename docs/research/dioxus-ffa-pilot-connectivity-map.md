@@ -88,7 +88,7 @@ with mandatory evidence per checklist:
 - [x] `rustok-pages` — first decomposition slice completed: `core` layer extracted in `storefront`
   for selected-page presentation logic; Leptos UI delegates this logic to `core`.
 - [x] `rustok-search` — slices #1-#9 completed per storefront/admin core extraction plan.
-- [x] `rustok-blog` — storefront slice #1 completed: formatting/fallback helper logic extracted to `storefront/src/core.rs`, UI uses `core::*` without changing dual-path transport contract.
+- [x] `rustok-blog` — storefront slice #1 completed: formatting/fallback helper logic extracted to `storefront/src/core/mod.rs`, UI uses `core::*` without changing dual-path transport contract.
 
 ### What has already been done in `rustok-pages`
 
@@ -184,7 +184,7 @@ with mandatory evidence per checklist:
 
 - `rustok-pages/admin` — core helper extraction and UI call-site alignment.
 - `rustok-pages/storefront` — previously completed core slice confirmed by re-verification.
-- `rustok-blog/storefront` — new slice started: formatting/fallback helper logic extracted to `storefront/src/core.rs`.
+- `rustok-blog/storefront` — new slice started: formatting/fallback helper logic extracted to `storefront/src/core/mod.rs`.
 
 ### Pages pilot status (current checkpoint)
 
@@ -195,7 +195,7 @@ with mandatory evidence per checklist:
 
 ### Additional iteration evidence
 
-- blog slice #1 evidence: `crates/modules/rustok-blog/storefront/src/core.rs` used by `crates/modules/rustok-blog/storefront/src/lib.rs`; transport split (`native #[server]` + GraphQL selected path) not changed.
+- blog slice #1 evidence: `crates/modules/rustok-blog/storefront/src/core/mod.rs` used by `crates/modules/rustok-blog/storefront/src/lib.rs`; transport split (`native #[server]` + GraphQL selected path) not changed.
 - `rustok-search` slice #10 evidence: admin relevance editor JSON formatting/profile/preset extraction moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL selected path) not changed.
 - `rustok-search` slice #11 evidence: admin analytics/diagnostics metric formatting moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL selected path) not changed.
 - `rustok-search` slice #12 evidence: admin preview summary/preset rendering and diagnostics fallback text moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL selected path) not changed.

@@ -1,0 +1,344 @@
+use rustok_api::TenantLocale;
+use rustok_ui_forms::{FieldError, validation_rules};
+use uuid::Uuid;
+
+use crate::i18n::t;
+use crate::model::{Record, RecordTitle, Rejection, RequestFailure};
+
+pub const TITLE: &str = "title";
+pub const LOCALE: &str = "locale";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Operation {
+    Load {
+        id: Uuid,
+        locale: Option<String>,
+    },
+    Create(RecordTitle),
+    Save {
+        id: Uuid,
+        revision: String,
+        copy: RecordTitle,
+    },
+    Publication {
+        id: Uuid,
+        revision: String,
+        published: bool,
+        locale: String,
+    },
+}
+
+impl Operation {
+    pub fn is_write(&self) -> bool {
+        !matches!(self, Self::Load { .. })
+    }
+
+    fn accepts(&self, record: &Record) -> bool {
+        if record.id.is_nil() {
+            return false;
+        }
+        match self {
+            Self::Load { id, locale } => {
+                *id == record.id
+                    && locale
+                        .as_ref()
+                        .is_none_or(|locale| locale == &record.requested_locale)
+            }
+            Self::Create(copy) => copy.locale == record.requested_locale && !record.published,
+            Self::Save { id, copy, .. } => {
+                *id == record.id
+                    && copy.locale == record.requested_locale
+                    && copy.locale == record.effective_locale
+            }
+            Self::Publication {
+                id,
+                locale,
+                published,
+                ..
+            } => {
+                *id == record.id
+                    && *published == record.published
+                    && *locale == record.requested_locale
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Editor {
+    id: Option<Uuid>,
+    pub record: Option<Record>,
+    needs_reload: bool,
+}
+
+impl Editor {
+    pub fn new(id: Option<Uuid>) -> Self {
+        Self {
+            id,
+            record: None,
+            needs_reload: false,
+        }
+    }
+
+    pub fn is_draft(&self) -> bool {
+        self.id.is_none()
+    }
+
+    pub fn can_write(&self) -> bool {
+        !self.needs_reload && (self.is_draft() || self.record.is_some())
+    }
+
+    pub fn reload(&self, host_locale: Option<&str>) -> Option<Operation> {
+        let locale = self
+            .record
+            .as_ref()
+            .map(|record| record.requested_locale.clone())
+            .or_else(|| {
+                host_locale
+                    .and_then(|value| TenantLocale::new(value).ok().map(TenantLocale::into_inner))
+            });
+        self.id.map(|id| Operation::Load { id, locale })
+    }
+
+    pub fn load_translation(
+        &self,
+        value: &str,
+        ui_locale: Option<&str>,
+    ) -> Result<Option<Operation>, FieldError> {
+        let Some(id) = self.id else {
+            return Ok(None);
+        };
+        Ok(Some(Operation::Load {
+            id,
+            locale: Some(locale(value, ui_locale)?),
+        }))
+    }
+
+    pub fn save(
+        &self,
+        language: &str,
+        title: &str,
+        ui_locale: Option<&str>,
+    ) -> Result<Option<Operation>, FieldError> {
+        if !self.can_write() {
+            return Ok(None);
+        }
+        validation_rules::required(
+            TITLE,
+            title,
+            t(ui_locale, "record-title-required", "Enter a title."),
+        )?;
+        let title = title.trim().to_owned();
+        let language = locale(language, ui_locale)?;
+        let op = match &self.record {
+            Some(record) if record.requested_locale != language => {
+                return Err(FieldError::new(
+                    LOCALE,
+                    t(
+                        ui_locale,
+                        "record-open-before-save",
+                        "Open this language before saving its title.",
+                    ),
+                ));
+            }
+            Some(record) => Operation::Save {
+                id: record.id,
+                revision: record.revision.clone(),
+                copy: RecordTitle {
+                    locale: record.requested_locale.clone(),
+                    title,
+                },
+            },
+            None => Operation::Create(RecordTitle {
+                locale: language,
+                title,
+            }),
+        };
+        Ok(Some(op))
+    }
+
+    pub fn publication(&self, dirty_title: bool) -> Option<Operation> {
+        let record = self.record.as_ref()?;
+        if !self.can_write() || dirty_title {
+            return None;
+        }
+        Some(Operation::Publication {
+            id: record.id,
+            revision: record.revision.clone(),
+            published: !record.published,
+            locale: record.requested_locale.clone(),
+        })
+    }
+
+    pub fn apply(&mut self, operation: &Operation, record: Record) -> bool {
+        if !operation.accepts(&record) {
+            return false;
+        }
+        self.id = Some(record.id);
+        self.record = Some(record);
+        self.needs_reload = false;
+        true
+    }
+
+    pub fn require_reload(&mut self) {
+        self.needs_reload = true;
+    }
+}
+
+fn locale(value: &str, ui_locale: Option<&str>) -> Result<String, FieldError> {
+    TenantLocale::new(value)
+        .map(TenantLocale::into_inner)
+        .map_err(|_| {
+            FieldError::new(
+                LOCALE,
+                t(
+                    ui_locale,
+                    "record-locale-invalid",
+                    "Enter a valid language tag, for example en or ru.",
+                ),
+            )
+        })
+}
+
+pub(crate) fn editor_title(record: &Record) -> &str {
+    if record.requested_locale == record.effective_locale {
+        &record.title
+    } else {
+        ""
+    }
+}
+
+pub(crate) struct LocaleSummary {
+    pub requested: String,
+    pub effective: String,
+    pub available: String,
+    pub source: Option<String>,
+}
+
+impl From<Record> for LocaleSummary {
+    fn from(record: Record) -> Self {
+        Self {
+            source: (record.requested_locale != record.effective_locale).then_some(record.title),
+            requested: record.requested_locale,
+            effective: record.effective_locale,
+            available: record.available_locales.join(", "),
+        }
+    }
+}
+
+pub(crate) fn failure_copy(failure: &RequestFailure, write: bool, locale: Option<&str>) -> String {
+    let (key, english) = match failure {
+        RequestFailure::Rejected(Rejection::Access) => (
+            "record-access",
+            "You do not have access to this record operation.",
+        ),
+        RequestFailure::Rejected(Rejection::InvalidInput) => (
+            "record-invalid",
+            "The server rejected the record data. Check the language and title.",
+        ),
+        RequestFailure::Rejected(Rejection::NotFound) => {
+            ("record-not-found", "The record could not be found.")
+        }
+        RequestFailure::Rejected(Rejection::Conflict) => (
+            "record-conflict",
+            "Another change updated this record. Copy any unsaved text before reloading the saved version.",
+        ),
+        RequestFailure::Transport(_) if write => (
+            "record-uncertain",
+            "The write could not be confirmed. Check the saved record or the table before trying again.",
+        ),
+        RequestFailure::Transport(_) => ("record-load-failed", "Could not load the record."),
+    };
+    t(locale, key, english)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn record(id: Uuid, requested: &str, effective: &str, revision: &str) -> Record {
+        Record {
+            id,
+            revision: revision.into(),
+            published: false,
+            title: "English source".into(),
+            requested_locale: requested.into(),
+            effective_locale: effective.into(),
+            available_locales: vec!["en".into()],
+        }
+    }
+
+    #[test]
+    fn missing_translation_starts_empty_and_writes_the_requested_locale() {
+        let id = Uuid::new_v4();
+        let mut editor = Editor::new(Some(id));
+        let load = editor.load_translation("ru", None).unwrap().unwrap();
+        let fallback = record(id, "ru", "en", "7");
+        assert_eq!(editor_title(&fallback), "");
+        assert_eq!(
+            LocaleSummary::from(fallback.clone()).source.as_deref(),
+            Some("English source")
+        );
+        assert!(editor.apply(&load, fallback));
+        assert_eq!(
+            editor.save("en", "  Тест  ", None).unwrap_err().field,
+            LOCALE
+        );
+        assert_eq!(
+            editor.save("ru", "  Тест  ", None).unwrap(),
+            Some(Operation::Save {
+                id,
+                revision: "7".into(),
+                copy: RecordTitle {
+                    locale: "ru".into(),
+                    title: "Тест".into()
+                },
+            })
+        );
+        assert_eq!(editor.publication(true), None);
+        assert_eq!(
+            editor.publication(false),
+            Some(Operation::Publication {
+                id,
+                revision: "7".into(),
+                published: true,
+                locale: "ru".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn a_refused_or_unconfirmed_write_requires_authoritative_reload() {
+        let id = Uuid::new_v4();
+        let mut editor = Editor::new(Some(id));
+        let first = editor.reload(Some("en")).unwrap();
+        assert!(editor.apply(&first, record(id, "en", "en", "1")));
+        editor.require_reload();
+        assert_eq!(editor.save("en", "New", None).unwrap(), None);
+        assert_eq!(editor.publication(false), None);
+        assert!(!editor.apply(&first, record(Uuid::new_v4(), "en", "en", "2")));
+        assert!(!editor.apply(&first, record(id, "ru", "ru", "2")));
+        assert!(!editor.can_write());
+        assert!(editor.apply(&first, record(id, "en", "en", "3")));
+        assert!(
+            matches!(editor.save("en", "New", None).unwrap(), Some(Operation::Save { revision, .. }) if revision == "3")
+        );
+    }
+
+    #[test]
+    fn draft_requires_explicit_language_and_becomes_editable_after_creation() {
+        let mut editor = Editor::new(None);
+        assert_eq!(
+            editor.save("!invalid!", "Record", None).unwrap_err().field,
+            LOCALE
+        );
+        assert_eq!(editor.save("ru", " ", None).unwrap_err().field, TITLE);
+        let create = editor.save("zh-hant", "Record", None).unwrap().unwrap();
+        let id = Uuid::new_v4();
+        assert!(editor.apply(&create, record(id, "zh-Hant", "zh-Hant", "1")));
+        assert!(!editor.is_draft());
+        assert!(
+            matches!(editor.publication(false), Some(Operation::Publication { id: actual, .. }) if actual == id)
+        );
+    }
+}

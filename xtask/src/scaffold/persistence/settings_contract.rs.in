@@ -1,0 +1,244 @@
+use std::collections::HashMap;
+
+use __OWNER__::{__ENTITY__Service, __MODULE__};
+use rustok_api::Resource;
+use rustok_core::{MigrationSource, ModuleRegistry, SecurityContext};
+use rustok_modules::{
+    DatabaseStaticModuleSettingsReader, ModuleCommandContext, ModuleLifecycleDbWriter,
+    ModuleLifecycleDbWriterError, ModuleLifecycleExecutionError, ModuleLifecycleSettingsCommand,
+    ModuleSettingSpec, ModulesModule, normalize_module_settings,
+};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, TransactionTrait};
+use sea_orm_migration::SchemaManager;
+use serde::Deserialize;
+use serde_json::json;
+use uuid::Uuid;
+
+use super::{seed, title};
+
+const SLUG: &str = "__SLUG__";
+
+#[derive(Deserialize)]
+struct SettingsManifest {
+    settings: HashMap<String, ModuleSettingSpec>,
+}
+
+#[tokio::test]
+async fn persisted_settings_change_the_record_table_defaults() {
+    let db = rustok_test_utils::db::setup_test_db().await;
+    let (tenant, foreign) = seed(&db).await;
+    assert_settings_contract(&db, tenant, foreign).await;
+}
+
+pub(super) async fn assert_settings_contract(db: &DatabaseConnection, tenant: Uuid, foreign: Uuid) {
+    let transaction = db.begin().await.unwrap();
+    let manager = SchemaManager::new(&transaction);
+    let mut migrations = ModulesModule.migrations();
+    for name in [
+        "m20250101_000060_create_tenant_modules",
+        "m20260501_000076_create_module_operations",
+        "m20260711_000001_module_artifact_installations",
+        "m20260716_000008_module_artifact_deactivation_operations",
+        "m20260722_000037_policy_revision_cursors",
+        "m20260808_000075_create_module_operation_override_states",
+        "m20260902_000046_module_transition_and_retention_tables",
+        "m20261021_000054_static_lifecycle_claim_lease",
+        "m20261027_000079_module_operation_idempotency_indexes",
+        "m20261027_000080_policy_revision_cursor_sequences",
+        "m20261027_000084_module_operation_result_snapshot",
+        "m20261030_000089_lifecycle_hook_settings",
+        "m20261117_000093_settings_claim_fences",
+    ] {
+        if name == "m20250101_000060_create_tenant_modules"
+            && manager.has_table("tenant_modules").await.unwrap()
+        {
+            continue;
+        }
+        let index = migrations
+            .iter()
+            .position(|migration| migration.name() == name)
+            .expect("canonical static settings prerequisite migration");
+        migrations
+            .remove(index)
+            .up(&manager)
+            .await
+            .unwrap_or_else(|error| panic!("{name}: {error}"));
+    }
+    if db.get_database_backend() == DbBackend::Sqlite {
+        transaction
+            .execute_unprepared(
+                "CREATE VIEW IF NOT EXISTS tenant_identity_keys AS SELECT id FROM tenants",
+            )
+            .await
+            .unwrap();
+    }
+    transaction.commit().await.unwrap();
+
+    let manifest: SettingsManifest =
+        toml::from_str(include_str!("../../rustok-module.toml")).unwrap();
+    let schema = &manifest.settings;
+    let normalize = |value| normalize_module_settings(SLUG, schema, value);
+    assert_eq!(
+        normalize(json!({})).unwrap()["__PAGE_SIZE_KEY__"],
+        __DEFAULT_PAGE_SIZE__
+    );
+    assert!(normalize(json!({ "__PAGE_SIZE_KEY__": 0 })).is_err());
+    assert!(normalize(json!({ "__PAGE_SIZE_KEY__": __MAX_PAGE_SIZE__ + 1 })).is_err());
+    assert!(normalize(json!({ "misspelled_field": 9 })).is_err());
+    assert_eq!(normalize(json!({})).unwrap()["__PUBLIC_DISCOVERY_KEY__"], false);
+    assert!(normalize(json!({ "__PUBLIC_DISCOVERY_KEY__": "true" })).is_err());
+
+    let registry = ModuleRegistry::new().register(__MODULE__);
+    let writer = ModuleLifecycleDbWriter::new(db.clone(), &registry, vec![SLUG.to_owned()]);
+    let owner = __ENTITY__Service::new(db.clone(), Resource::Posts)
+        .with_settings_reader(DatabaseStaticModuleSettingsReader::shared(db.clone()));
+    let security = SecurityContext::system();
+    owner
+        .create(tenant, &security, title("en", "First"))
+        .await
+        .unwrap();
+    owner
+        .create(tenant, &security, title("en", "Second"))
+        .await
+        .unwrap();
+    let initial = writer
+        .static_tenant_module_view(tenant, SLUG)
+        .await
+        .unwrap();
+    assert_eq!(
+        (initial.enabled, initial.settings.as_str(), initial.revision),
+        (true, "{}", 0)
+    );
+    assert!(
+        writer
+            .static_tenant_module_views(tenant, 100)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(matches!(
+        writer
+            .static_tenant_module_view(tenant, "unknown_module")
+            .await,
+        Err(ModuleLifecycleDbWriterError::UnknownModule(_)),
+    ));
+
+    let actor_id = Uuid::new_v4();
+    let save =
+        |tenant_id, expected_revision, idempotency_key, size| ModuleLifecycleSettingsCommand {
+            tenant_id,
+            module_slug: SLUG.to_owned(),
+            settings: normalize(json!({ "__PAGE_SIZE_KEY__": size })).unwrap(),
+            context: ModuleCommandContext {
+                actor_id,
+                tenant_id: Some(tenant_id),
+                trace_id: "scaffold:settings".into(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key,
+            },
+            expected_revision,
+            expected_enabled: None,
+            expected_settings: None,
+        };
+
+    let command = save(tenant, 0, Uuid::new_v4(), 1);
+    let saved = writer
+        .update_static_normalized_settings(command.clone())
+        .await
+        .unwrap();
+    let replayed = writer
+        .update_static_normalized_settings(command)
+        .await
+        .unwrap();
+    assert_eq!(replayed, saved);
+    let exact = writer
+        .static_tenant_module_view(tenant, SLUG)
+        .await
+        .unwrap();
+    assert_eq!((exact.revision, exact.enabled), (1, true));
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&exact.settings).unwrap(),
+        saved.settings
+    );
+    assert_eq!(
+        writer.static_tenant_module_views(tenant, 1).await.unwrap(),
+        vec![exact]
+    );
+
+    let stale = writer
+        .update_static_normalized_settings(save(tenant, 0, Uuid::new_v4(), 99))
+        .await;
+    assert!(
+        matches!(
+            stale,
+            Err(ModuleLifecycleDbWriterError::Lifecycle(
+                ModuleLifecycleExecutionError::RevisionConflict { .. },
+            ))
+        ),
+        "{stale:?}"
+    );
+    writer
+        .update_static_normalized_settings(save(foreign, 0, Uuid::new_v4(), 2))
+        .await
+        .unwrap();
+    let page = owner
+        .list(tenant, &security, "en", Some("en"), Default::default())
+        .await
+        .unwrap();
+    assert_eq!((page.per_page, page.total, page.items.len()), (1, 2, 1));
+    let foreign_page = owner
+        .list(foreign, &security, "en", Some("en"), Default::default())
+        .await
+        .unwrap();
+    assert_eq!((foreign_page.per_page, foreign_page.total), (2, 0));
+
+    let updated = writer
+        .update_static_normalized_settings(save(tenant, 1, Uuid::new_v4(), 2))
+        .await
+        .unwrap();
+    assert_eq!(updated.revision, 2);
+    let page = owner
+        .list(tenant, &security, "en", Some("en"), Default::default())
+        .await
+        .unwrap();
+    assert_eq!((page.per_page, page.total, page.items.len()), (2, 2, 2));
+
+    if db.get_database_backend() == DbBackend::Postgres {
+        // The submitted size equals the next revision. Any mixed old-value
+        // and new-revision response becomes immediately observable.
+        let reads = async {
+            for _ in 0..16 {
+                let exact = writer
+                    .static_tenant_module_view(tenant, SLUG)
+                    .await
+                    .unwrap();
+                let listed = writer.static_tenant_module_views(tenant, 1).await.unwrap();
+                for view in [&exact, &listed[0]] {
+                    let values: serde_json::Value = serde_json::from_str(&view.settings).unwrap();
+                    assert_eq!(values["__PAGE_SIZE_KEY__"].as_i64(), Some(view.revision));
+                }
+            }
+        };
+        let writes = async {
+            for predecessor in 2..10 {
+                writer
+                    .update_static_normalized_settings(save(
+                        tenant,
+                        predecessor,
+                        Uuid::new_v4(),
+                        predecessor + 1,
+                    ))
+                    .await
+                    .unwrap();
+            }
+        };
+        tokio::join!(reads, writes);
+        let final_snapshot = writer
+            .static_tenant_module_view(tenant, SLUG)
+            .await
+            .unwrap();
+        assert_eq!(final_snapshot.revision, 10);
+    }
+
+    super::discovery::assert_public_discovery_policy(db, tenant, foreign, &registry, schema).await;
+}

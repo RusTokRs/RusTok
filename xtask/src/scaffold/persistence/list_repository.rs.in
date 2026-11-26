@@ -1,0 +1,127 @@
+use std::collections::BTreeMap;
+
+use sea_orm::{
+    AccessMode, ColumnTrait, DatabaseConnection, DbBackend, EntityTrait, IsolationLevel,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait, TransactionTrait,
+    sea_query::{Alias, Expr, ExprTrait, Func},
+};
+use uuid::Uuid;
+
+use crate::entities::{record, translation};
+use crate::{__ENTITY__Page, RecordError, RecordOrder, RecordPublication};
+
+use super::localized_view;
+
+pub(in crate::services::record) struct ListPageQuery<'a> {
+    pub tenant_id: Uuid,
+    pub requested_locale: &'a str,
+    pub fallback_locale: Option<&'a str>,
+    pub search: Option<&'a str>,
+    pub publication: Option<RecordPublication>,
+    pub order: RecordOrder,
+    pub page: u32,
+    pub per_page: u16,
+    pub offset: u64,
+}
+
+impl ListPageQuery<'_> {
+    pub(in crate::services::record) async fn load(
+        self,
+        db: &DatabaseConnection,
+    ) -> Result<__ENTITY__Page, RecordError> {
+        let Self {
+            tenant_id,
+            requested_locale,
+            fallback_locale,
+            search,
+            publication,
+            order,
+            page,
+            per_page,
+            offset,
+        } = self;
+        let backend = db.get_database_backend();
+        let mut query = record::Entity::find().filter(record::Column::TenantId.eq(tenant_id));
+        if let Some(state) = publication {
+            query = query.filter(match state {
+                RecordPublication::Draft => record::Column::PublishedAt.is_null(),
+                RecordPublication::Published => record::Column::PublishedAt.is_not_null(),
+            });
+        }
+        if let Some(term) = search {
+            let function = if backend == DbBackend::Postgres {
+                "strpos"
+            } else {
+                "instr"
+            };
+            let matching_records = translation::Entity::find()
+                .select_only()
+                .column(translation::Column::RecordId)
+                .filter(translation::Column::TenantId.eq(tenant_id))
+                .filter(
+                    Expr::expr(
+                        Func::cust(Alias::new(function))
+                            .arg(Expr::col((translation::Entity, translation::Column::Title)))
+                            .arg(Expr::value(term)),
+                    )
+                    .gt(0),
+                )
+                .into_query();
+            query = query.filter(record::Column::Id.in_subquery(matching_records));
+        }
+
+        // Read count, page membership and localized copies from the same snapshot.
+        let tx = if backend == DbBackend::Postgres {
+            db.begin_with_config(
+                Some(IsolationLevel::RepeatableRead),
+                Some(AccessMode::ReadOnly),
+            )
+            .await?
+        } else {
+            db.begin().await?
+        };
+        let total = query.clone().count(&tx).await?;
+        let order = match order {
+            RecordOrder::NewestFirst => sea_orm::Order::Desc,
+            RecordOrder::OldestFirst => sea_orm::Order::Asc,
+        };
+        let ids = query
+            .select_only()
+            .column(record::Column::Id)
+            .order_by(record::Column::UpdatedAt, order.clone())
+            .order_by(record::Column::Id, order)
+            .offset(offset)
+            .limit(u64::from(per_page))
+            .into_tuple::<Uuid>()
+            .all(&tx)
+            .await?;
+        let mut items = Vec::with_capacity(ids.len());
+        if !ids.is_empty() {
+            let mut rows = record::Entity::find()
+                .filter(record::Column::TenantId.eq(tenant_id))
+                .filter(record::Column::Id.is_in(ids.iter().copied()))
+                .find_with_related(translation::Entity)
+                .all(&tx)
+                .await?
+                .into_iter()
+                .map(|(record, copies)| (record.id, (record, copies)))
+                .collect::<BTreeMap<_, _>>();
+            for id in ids {
+                let (record, copies) = rows.remove(&id).ok_or(RecordError::NotFound)?;
+                items.push(localized_view(
+                    record,
+                    copies,
+                    requested_locale,
+                    fallback_locale,
+                )?);
+            }
+        }
+        tx.commit().await?;
+        Ok(__ENTITY__Page {
+            items,
+            total,
+            page,
+            per_page,
+        })
+    }
+}

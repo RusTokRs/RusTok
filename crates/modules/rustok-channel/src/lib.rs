@@ -63,5 +63,5 @@ pub use rustok_channel_ports::{
     CHANNEL_INDEX_IDENTITY_READ_CLAIM, ChannelIndexIdentityReadPort, ChannelIndexIdentitySelector,
     ChannelIndexIdentitySnapshot,
 };
-pub use services::ChannelService;
+pub use services::{ChannelService, in_process_public_module_read_port};
 pub use target_type::ChannelTargetType;

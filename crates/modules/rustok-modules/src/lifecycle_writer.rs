@@ -1115,6 +1115,16 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         tenant_id: Uuid,
         module_slugs: impl IntoIterator<Item = String>,
     ) -> Result<BTreeMap<String, StaticTenantLifecycleSnapshot>, ModuleLifecycleDbWriterError> {
+        self.static_lifecycle_snapshots_on(&self.db, tenant_id, module_slugs)
+            .await
+    }
+
+    async fn static_lifecycle_snapshots_on(
+        &self,
+        db: &impl ConnectionTrait,
+        tenant_id: Uuid,
+        module_slugs: impl IntoIterator<Item = String>,
+    ) -> Result<BTreeMap<String, StaticTenantLifecycleSnapshot>, ModuleLifecycleDbWriterError> {
         let catalog = self.definition_catalog()?;
         let module_slugs = module_slugs.into_iter().collect::<Vec<_>>();
         for module_slug in &module_slugs {
@@ -1132,7 +1142,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 });
             }
         }
-        StaticTenantLifecycleStore::snapshots(&self.db, tenant_id, module_slugs)
+        StaticTenantLifecycleStore::snapshots(db, tenant_id, module_slugs)
             .await
             .map_err(|error| ModuleLifecycleDbWriterError::Database(error.to_string()))
     }
@@ -1156,19 +1166,35 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         tenant_id: Uuid,
         limit: u32,
     ) -> Result<Vec<TenantModuleOverrideSnapshot>, ModuleLifecycleDbWriterError> {
+        self.tenant_override_snapshots_on(&self.db, tenant_id, limit, None)
+            .await
+    }
+
+    async fn tenant_override_snapshots_on(
+        &self,
+        db: &impl ConnectionTrait,
+        tenant_id: Uuid,
+        limit: u32,
+        module_slug: Option<&str>,
+    ) -> Result<Vec<TenantModuleOverrideSnapshot>, ModuleLifecycleDbWriterError> {
         if tenant_id.is_nil() || limit == 0 || limit > MAX_TENANT_MODULE_OVERRIDES {
             return Err(ModuleLifecycleDbWriterError::InvalidTenantOverrideQuery);
         }
-        let backend =
-            SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
         let tenant_keys = crate::backend::sqlite_uuid_keys("?3", "?1");
+        let slug_filter = match (backend, module_slug) {
+            (SupportedBackend::Postgres, Some(_)) => " AND module_slug = $3",
+            (SupportedBackend::Sqlite, Some(_)) => " AND t.module_slug = ?4",
+            (_, None) => "",
+        };
         let sql = match backend {
-            SupportedBackend::Postgres => {
+            SupportedBackend::Postgres => format!(
                 "SELECT module_slug, enabled, settings, COUNT(*) OVER (PARTITION BY module_slug) AS identity_rows FROM tenant_modules \
-                 WHERE tenant_id = $1 ORDER BY module_slug ASC LIMIT $2".to_string()
-            }
+                 WHERE tenant_id = $1{slug_filter} ORDER BY module_slug ASC LIMIT $2"
+            ),
             SupportedBackend::Sqlite => {
-                format!("WITH identity AS (SELECT COUNT(*) AS parent_count FROM tenant_identity_keys WHERE id COLLATE NOCASE IN ({tenant_keys})) \
+                format!(
+                    "WITH identity AS (SELECT COUNT(*) AS parent_count FROM tenant_identity_keys WHERE id COLLATE NOCASE IN ({tenant_keys})) \
                  SELECT t.module_slug AS matched_module, t.module_slug AS module_slug, t.enabled, t.settings, \
                  COUNT(t.module_slug) OVER (PARTITION BY t.module_slug) AS identity_rows, identity.parent_count, \
                  (t.tenant_id = (SELECT id FROM tenant_identity_keys WHERE id COLLATE NOCASE IN ({tenant_keys}) LIMIT 1)) AS matches_parent, \
@@ -1176,16 +1202,19 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                   EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id COLLATE NOCASE = ?3)) AS mixed_identity, \
                  EXISTS(SELECT 1 FROM tenant_modules orphan WHERE orphan.tenant_id COLLATE NOCASE IN ({tenant_keys}) AND \
                   NOT EXISTS(SELECT 1 FROM tenant_identity_keys parent WHERE parent.id = orphan.tenant_id)) AS orphaned_identity \
-                 FROM identity LEFT JOIN tenant_modules t ON t.tenant_id COLLATE NOCASE IN ({tenant_keys}) \
-                 ORDER BY t.module_slug ASC LIMIT ?2")
+                 FROM identity LEFT JOIN tenant_modules t ON t.tenant_id COLLATE NOCASE IN ({tenant_keys}){slug_filter} \
+                 ORDER BY t.module_slug ASC LIMIT ?2"
+                )
             }
         };
         let mut values = vec![tenant_id.into(), i64::from(limit).into()];
         if matches!(backend, SupportedBackend::Sqlite) {
             values.push(backend.uuid_value(tenant_id));
         }
-        let snapshots = self
-            .db
+        if let Some(module_slug) = module_slug {
+            values.push(module_slug.to_owned().into());
+        }
+        let snapshots = db
             .query_all_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 sql,
@@ -1220,20 +1249,64 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
     }
 
     /// Returns bounded browser-safe static lifecycle projections. The owner
-    /// joins the explicit override with its concurrency aggregate so transports
-    /// cannot invent a revision or reconstruct this state from persistence.
+    /// reads override values and concurrency revisions from one database snapshot.
     pub async fn static_tenant_module_views(
         &self,
         tenant_id: Uuid,
         limit: u32,
     ) -> Result<Vec<StaticTenantModuleView>, ModuleLifecycleDbWriterError> {
-        let overrides = self.tenant_override_snapshots(tenant_id, limit).await?;
+        self.static_tenant_module_projections(tenant_id, limit, None)
+            .await
+    }
+
+    /// Reads the exact static module in a tenant, including inherited state
+    /// when the tenant has never recorded an override. This does not materialize
+    /// an override or apply defaults to the settings document.
+    pub async fn static_tenant_module_view(
+        &self,
+        tenant_id: Uuid,
+        module_slug: &str,
+    ) -> Result<StaticTenantModuleView, ModuleLifecycleDbWriterError> {
+        self.static_tenant_module_projections(tenant_id, 1, Some(module_slug))
+            .await?
+            .into_iter()
+            .next()
+            .ok_or_else(|| {
+                ModuleLifecycleDbWriterError::Configuration(
+                    "missing scoped static module projection".to_owned(),
+                )
+            })
+    }
+
+    async fn static_tenant_module_projections(
+        &self,
+        tenant_id: Uuid,
+        limit: u32,
+        module_slug: Option<&str>,
+    ) -> Result<Vec<StaticTenantModuleView>, ModuleLifecycleDbWriterError> {
+        let tx = crate::backend::begin_snapshot_transaction(&self.db)
+            .await
+            .map_err(database_error)?;
+        let mut overrides = self
+            .tenant_override_snapshots_on(&tx, tenant_id, limit, module_slug)
+            .await?;
+        if let Some(module_slug) = module_slug {
+            if overrides.is_empty() {
+                overrides.push(TenantModuleOverrideSnapshot {
+                    module_slug: module_slug.to_owned(),
+                    enabled: None,
+                    settings: serde_json::json!({}),
+                });
+            }
+        }
         let lifecycle_revisions = self
-            .static_lifecycle_snapshots(
+            .static_lifecycle_snapshots_on(
+                &tx,
                 tenant_id,
                 overrides.iter().map(|module| module.module_slug.clone()),
             )
             .await?;
+        tx.commit().await.map_err(database_error)?;
         let catalog = self.definition_catalog()?;
         project_static_tenant_module_views(overrides, &lifecycle_revisions, &|module_slug| {
             catalog.get(module_slug).map(|definition| {

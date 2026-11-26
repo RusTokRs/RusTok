@@ -17,7 +17,6 @@ struct PostTranslationUpsertInput {
 }
 
 use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Patch, Resource};
-use rustok_channel::ChannelService;
 use rustok_channel_ports::ChannelPublicModuleReadPort;
 use rustok_content::{
     available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
@@ -38,7 +37,7 @@ use crate::entities::{
 };
 use crate::error::{BlogError, BlogResult};
 use crate::richtext::{canonical_article_body, normalize_article, project_stored_article};
-use crate::services::category::CategoryService;
+use crate::services::category::CategoryCommandCore;
 use crate::services::rbac::{
     can_read_non_public_posts, enforce_create_author, enforce_owned_scope, enforce_scope,
 };
@@ -63,7 +62,7 @@ pub struct PostService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
     pub(crate) taxonomy_port: Arc<dyn BlogTaxonomyPort>,
-    channel_public_module_port: Arc<dyn ChannelPublicModuleReadPort>,
+    channel_availability: crate::BlogChannelAvailability,
 }
 
 #[derive(Debug, Clone)]
@@ -99,7 +98,9 @@ mod tests;
 impl PostService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
-            channel_public_module_port: Arc::new(ChannelService::new(db.clone())),
+            channel_availability: crate::BlogChannelAvailability::new(Some(
+                rustok_channel::in_process_public_module_read_port(db.clone()),
+            )),
             db,
             event_bus,
             taxonomy_port: Arc::new(NoopBlogTaxonomyPort),
@@ -112,8 +113,19 @@ impl PostService {
     }
 
     /// Composes the selected Channel provider for public post reads.
-    pub fn with_channel_public_module_port(mut self, port: Arc<dyn ChannelPublicModuleReadPort>) -> Self {
-        self.channel_public_module_port = port;
+    pub fn with_channel_public_module_port(
+        mut self,
+        port: Arc<dyn ChannelPublicModuleReadPort>,
+    ) -> Self {
+        self.channel_availability = crate::BlogChannelAvailability::new(Some(port));
+        self
+    }
+
+    pub fn with_channel_availability(
+        mut self,
+        availability: crate::BlogChannelAvailability,
+    ) -> Self {
+        self.channel_availability = availability;
         self
     }
 }

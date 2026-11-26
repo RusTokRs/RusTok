@@ -1,0 +1,264 @@
+use __OWNER__::graphql::{
+    __MODULE_STEM__AdminMutation, __MODULE_STEM__AdminQuery, attach_schema_data,
+};
+use async_graphql::{EmptySubscription, Request, Response, Schema, Variables};
+use rustok_api::{
+    Action, AuthContext, HostRuntimeContext, Permission, Resource, TenantContext,
+    graphql::GraphqlRuntimeInputs,
+};
+use rustok_core::MigrationSource;
+use rustok_modules::{DatabaseStaticModuleSettingsReader, ModulesModule};
+use sea_orm::{
+    ConnectionTrait, DatabaseConnection,
+    sea_query::{Alias, Expr, Query},
+};
+use sea_orm_migration::SchemaManager;
+use serde_json::{Value, json};
+use uuid::Uuid;
+
+use super::seed;
+
+const RESOURCE: Resource = Resource::__RESOURCE__;
+macro_rules! document {
+    ($name:literal) => {
+        concat!(
+            include_str!(concat!("../../contracts/graphql/", $name, ".graphql")),
+            "\n",
+            include_str!("../../contracts/graphql/admin_record_fields.graphql"),
+        )
+    };
+}
+
+const LIST: &str = "__MODULE_STEM__AdminRecords";
+type AdminSchema =
+    Schema<__MODULE_STEM__AdminQuery, __MODULE_STEM__AdminMutation, EmptySubscription>;
+
+async fn setup(db: &DatabaseConnection, enabled_tenant: Uuid) -> AdminSchema {
+    let migration = ModulesModule
+        .migrations()
+        .into_iter()
+        .find(|migration| migration.name() == "m20250101_000060_create_tenant_modules")
+        .expect("canonical native module lifecycle migration");
+    migration.up(&SchemaManager::new(db)).await.unwrap();
+    if db.get_database_backend() == sea_orm::DbBackend::Sqlite {
+        db.execute_unprepared("CREATE VIEW tenant_identity_keys AS SELECT id FROM tenants")
+            .await
+            .unwrap();
+    }
+    enable_module(db, enabled_tenant).await;
+
+    let host = HostRuntimeContext::new(db.clone());
+    assert!(attach_schema_data(&GraphqlRuntimeInputs::new(host.clone())).is_err());
+    let host = host.with_shared_value(DatabaseStaticModuleSettingsReader::shared(db.clone()));
+    let runtime = attach_schema_data(&GraphqlRuntimeInputs::new(host)).unwrap();
+    Schema::build(
+        __MODULE_STEM__AdminQuery,
+        __MODULE_STEM__AdminMutation,
+        EmptySubscription,
+    )
+    .data(db.clone())
+    .data(runtime)
+    .finish()
+}
+
+async fn enable_module(db: &DatabaseConnection, tenant_id: Uuid) {
+    let row = Query::insert()
+        .into_table(Alias::new("tenant_modules"))
+        .columns(["id", "tenant_id", "module_slug", "enabled", "settings"].map(Alias::new))
+        .values_panic([
+            Expr::value(Uuid::new_v4()),
+            Expr::value(tenant_id),
+            Expr::value("__SLUG__"),
+            Expr::value(true),
+            Expr::value(json!({ "__PAGE_SIZE_KEY__": 1 })),
+        ])
+        .to_owned();
+    db.execute_raw(db.get_database_backend().build(&row))
+        .await
+        .unwrap();
+}
+
+fn request(operation: &str, tenant: Uuid, auth: Option<AuthContext>) -> Request {
+    let document = match operation {
+        LIST => document!("admin_records"),
+        "__MODULE_STEM__AdminRecord" => document!("admin_record"),
+        "__MODULE_STEM__CreateAdminRecord" => document!("create_admin_record"),
+        "__MODULE_STEM__SaveAdminRecordTitle" => document!("save_admin_record_title"),
+        "__MODULE_STEM__SetAdminRecordPublication" => document!("set_admin_record_publication"),
+        _ => panic!("unknown admin operation: {operation}"),
+    };
+    let request = Request::new(document).data(TenantContext {
+        id: tenant,
+        name: "Scaffold fixture".to_owned(),
+        slug: tenant.to_string(),
+        domain: None,
+        settings: json!({}),
+        default_locale: "en".to_owned(),
+        is_active: true,
+    });
+    match auth {
+        Some(auth) => request.data(auth),
+        None => request,
+    }
+}
+
+fn auth(tenant_id: Uuid, action: Action) -> AuthContext {
+    AuthContext {
+        user_id: Uuid::new_v4(),
+        session_id: Uuid::new_v4(),
+        tenant_id,
+        permissions: vec![Permission::new(RESOURCE, action)],
+        client_id: None,
+        scopes: Vec::new(),
+        grant_type: "password".to_owned(),
+    }
+}
+
+fn success(response: Response) -> Value {
+    assert!(response.errors.is_empty(), "{:?}", response.errors);
+    response.data.into_json().unwrap()
+}
+
+fn error_code(response: Response, expected: &str) {
+    let [error] = response.errors.as_slice() else {
+        panic!("expected one GraphQL error, got {:?}", response.errors);
+    };
+    assert_eq!(
+        error
+            .extensions
+            .as_ref()
+            .and_then(|extensions| extensions.get("code")),
+        Some(&async_graphql::Value::String(expected.to_owned()))
+    );
+}
+
+#[tokio::test]
+async fn admin_graphql_uses_the_tenant_settings_and_owner_commands() {
+    let db = rustok_test_utils::db::setup_test_db().await;
+    let (tenant, foreign) = seed(&db).await;
+    assert_graphql_contract(db, tenant, foreign).await;
+}
+
+pub(super) async fn assert_graphql_contract(db: DatabaseConnection, tenant: Uuid, foreign: Uuid) {
+    let schema = setup(&db, tenant).await;
+    let manager = auth(tenant, Action::Manage);
+    error_code(
+        schema.execute(request(LIST, tenant, None)).await,
+        "UNAUTHENTICATED",
+    );
+    error_code(
+        schema
+            .execute(request(LIST, tenant, Some(auth(foreign, Action::Manage))))
+            .await,
+        "PERMISSION_DENIED",
+    );
+    error_code(
+        schema
+            .execute(request(LIST, tenant, Some(auth(tenant, Action::Read))))
+            .await,
+        "PERMISSION_DENIED",
+    );
+    error_code(
+        schema
+            .execute(request(LIST, foreign, Some(auth(foreign, Action::Manage))))
+            .await,
+        "MODULE_NOT_ENABLED",
+    );
+
+    let admin = |operation, variables| {
+        request(operation, tenant, Some(manager.clone())).variables(Variables::from_json(variables))
+    };
+    let initial = success(schema.execute(admin(LIST, json!({}))).await);
+    assert_eq!(initial["__MODULE_FIELD__AdminRecords"]["perPage"], 1);
+    assert_eq!(initial["__MODULE_FIELD__AdminRecords"]["total"], 0);
+
+    let created = success(
+        schema
+            .execute(admin(
+                "__MODULE_STEM__CreateAdminRecord",
+                json!({ "input": { "locale": "en", "title": "Sample" } }),
+            ))
+            .await,
+    );
+    let created = &created["__MODULE_FIELD__CreateAdminRecord"];
+    let id = created["id"].as_str().unwrap();
+    assert_eq!(created["revision"], "1");
+    assert_eq!(created["published"], false);
+    enable_module(&db, foreign).await;
+    let foreign_read = request(
+        "__MODULE_STEM__AdminRecord",
+        foreign,
+        Some(auth(foreign, Action::Manage)),
+    )
+    .variables(Variables::from_json(json!({ "id": id })));
+    error_code(schema.execute(foreign_read).await, "NOT_FOUND");
+
+    let translation = || {
+        admin(
+            "__MODULE_STEM__SaveAdminRecordTitle",
+            json!({ "id": id, "expectedRevision": "1", "input": { "locale": "ru", "title": "Пример" } }),
+        )
+    };
+    let edited = success(schema.execute(translation()).await);
+    assert_eq!(
+        edited["__MODULE_FIELD__SaveAdminRecordTitle"]["revision"],
+        "2"
+    );
+    assert_eq!(
+        edited["__MODULE_FIELD__SaveAdminRecordTitle"]["effectiveLocale"],
+        "ru"
+    );
+    error_code(schema.execute(translation()).await, "CONFLICT");
+
+    let loaded = success(
+        schema
+            .execute(admin(
+                "__MODULE_STEM__AdminRecord",
+                json!({ "id": id, "locale": "fr" }),
+            ))
+            .await,
+    );
+    assert_eq!(
+        loaded["__MODULE_FIELD__AdminRecord"]["requestedLocale"],
+        "fr"
+    );
+    assert_eq!(
+        loaded["__MODULE_FIELD__AdminRecord"]["effectiveLocale"],
+        "en"
+    );
+    assert_eq!(loaded["__MODULE_FIELD__AdminRecord"]["title"], "Sample");
+
+    let publish = |revision: &str, published: bool| {
+        admin(
+            "__MODULE_STEM__SetAdminRecordPublication",
+            json!({ "id": id, "expectedRevision": revision, "published": published, "locale": "ru" }),
+        )
+    };
+    let published = success(schema.execute(publish("2", true)).await);
+    assert_eq!(
+        published["__MODULE_FIELD__SetAdminRecordPublication"]["published"],
+        true
+    );
+    let filtered = || {
+        admin(
+            LIST,
+            json!({
+                "locale": "ru", "input": { "publication": "PUBLISHED", "search": "мер", "order": "OLDEST_FIRST" }
+            }),
+        )
+    };
+    let result = success(schema.execute(filtered()).await);
+    assert_eq!(result["__MODULE_FIELD__AdminRecords"]["total"], 1);
+    assert_eq!(
+        result["__MODULE_FIELD__AdminRecords"]["items"][0]["title"],
+        "Пример"
+    );
+    error_code(schema.execute(publish("03", false)).await, "BAD_USER_INPUT");
+    let withdrawn = success(schema.execute(publish("3", false)).await);
+    assert_eq!(
+        withdrawn["__MODULE_FIELD__SetAdminRecordPublication"]["published"],
+        false
+    );
+    let result = success(schema.execute(filtered()).await);
+    assert_eq!(result["__MODULE_FIELD__AdminRecords"]["total"], 0);
+}

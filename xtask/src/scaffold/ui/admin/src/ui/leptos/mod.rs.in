@@ -1,0 +1,189 @@
+mod editor;
+mod settings;
+
+use leptos::prelude::*;
+use rustok_auth_ui::ui::leptos::hooks::{use_current_user, use_tenant, use_token};
+use rustok_grid::GridMessages;
+use rustok_grid_leptos::DataGrid;
+use rustok_ui_core::UiRouteContext;
+use rustok_ui_leptos::{Alert, Button, Spinner};
+use uuid::Uuid;
+
+use crate::core;
+use crate::i18n::t;
+use crate::model::{Record, RecordFilter, RecordPage};
+use crate::transport::AdminClient;
+use editor::RecordEditor;
+
+#[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct Principal {
+    actor: Option<String>,
+    tenant: Option<String>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+struct EditorSelection {
+    principal: Principal,
+    record_id: Option<Uuid>,
+}
+
+#[component]
+pub fn __MODULE_STEM__Admin() -> impl IntoView {
+    let route = use_context::<UiRouteContext>().unwrap_or_default();
+    match route.subpath.as_deref() {
+        Some("settings" | "settings/records") => {
+            let show_records = route.subpath.as_deref() == Some("settings/records");
+            view! { <settings::SettingsPage locale=route.locale show_records=show_records /> }.into_any()
+        }
+        None | Some("" | "records") => {
+            view! { <RecordWorkspace locale=route.locale /> }.into_any()
+        }
+        Some(_) => {
+            let message = t(route.locale.as_deref(), "route-not-found", "Page not found");
+            view! { <Alert>{message}</Alert> }.into_any()
+        }
+    }
+}
+
+#[component]
+fn RecordWorkspace(locale: Option<String>) -> impl IntoView {
+    let locale = StoredValue::new(locale);
+    let filter = RwSignal::new(RecordFilter::default());
+    let token = use_token();
+    let tenant = use_tenant();
+    let user = use_current_user();
+    let principal = Memo::new(move |_| Principal {
+        actor: user.get().map(|user| user.id),
+        tenant: tenant.get(),
+    });
+    let selection = RwSignal::new(None::<EditorSelection>);
+    let open = Callback::new(move |record_id: Option<Uuid>| {
+        if selection.with_untracked(Option::is_none) {
+            selection.set(Some(EditorSelection {
+                principal: principal.get_untracked(),
+                record_id,
+            }));
+        }
+    });
+    let clear = Callback::new(move |()| selection.set(None));
+    Effect::new(move |_| {
+        let current = principal.get();
+        if selection
+            .with_untracked(|open| open.as_ref().is_some_and(|open| open.principal != current))
+        {
+            clear.run(());
+        }
+    });
+    let editing = Signal::derive(move || selection.with(Option::is_some));
+    let page = Resource::new(
+        move || {
+            (
+                filter.get(),
+                token.get(),
+                principal.get(),
+                locale.get_value(),
+            )
+        },
+        |(filter, token, principal, locale)| async move {
+            let result = AdminClient::new(token, principal.tenant.clone())
+                .list(filter, locale)
+                .await;
+            (principal, result)
+        },
+    );
+
+    let title = t(locale.get_value().as_deref(), "records-heading", "Records");
+    let new_label = t(
+        locale.get_value().as_deref(),
+        "record-create-heading",
+        "New record",
+    );
+    let loading = t(
+        locale.get_value().as_deref(),
+        "records-loading",
+        "Loading records",
+    );
+    view! {
+        <section class="space-y-4">
+            <div class="flex items-center justify-between gap-3">
+                <h1 class="text-xl font-semibold">{title}</h1>
+                <Button disabled=editing on_click=Box::new(move || open.run(None))>{new_label}</Button>
+            </div>
+            {move || {
+                let current = principal.get();
+                selection.get().filter(|open| open.principal == current).map(|selected| {
+                    let on_changed = Callback::new(move |()| {
+                        if principal.get_untracked() == current {
+                            page.refetch();
+                        }
+                    });
+                    view! { <RecordEditor id=selected.record_id ui_locale=locale.get_value() on_close=clear on_changed=on_changed /> }
+                })
+            }}
+            <Suspense fallback=move || view! { <Spinner aria_label=loading.clone() /> }>
+                {move || {
+                    let locale = locale.get_value();
+                    let current = principal.get();
+                    page.get().filter(|(owner, _)| *owner == current).map(|(_, page)| match page {
+                        Ok(page) => view! {
+                            <RecordTable page=page filter=filter locale=locale open=open editing=editing />
+                        }.into_any(),
+                        Err(_) => view! {
+                            <Alert>
+                                {t(locale.as_deref(), "records-failed", "Couldn't load records")}
+                            </Alert>
+                        }.into_any(),
+                    })
+                }}
+            </Suspense>
+        </section>
+    }
+}
+
+#[component]
+fn RecordTable(
+    page: RecordPage,
+    filter: RwSignal<RecordFilter>,
+    locale: Option<String>,
+    open: Callback<Option<Uuid>>,
+    editing: Signal<bool>,
+) -> impl IntoView {
+    let columns = core::columns(locale.as_deref());
+    let pagination = RwSignal::new(core::pagination(&page));
+    let items = StoredValue::new(page.items);
+    let records = Signal::derive(move || items.get_value());
+    let messages = GridMessages::for_locale(locale.as_deref());
+    let empty = t(locale.as_deref(), "records-empty", "No records found");
+    let title = t(locale.as_deref(), "records-heading", "Records");
+    let edit_label = t(locale.as_deref(), "record-edit-action", "Edit");
+    let cell_renderer = Callback::new(move |(record, column): (Record, String)| {
+        if column == "edit" {
+            let id = record.id;
+            let label = edit_label.clone();
+            let name = format!("{label} {}", record.title);
+            view! { <Button aria_label=name disabled=editing on_click=Box::new(move || open.run(Some(id)))>{label}</Button> }.into_any()
+        } else {
+            core::cell(&record, &column, locale.as_deref()).into_any()
+        }
+    });
+    let on_page_change = Callback::new(move |page| {
+        filter.update(|input| core::select_page(input, page));
+    });
+    let on_page_size_change = Callback::new(move |size| {
+        filter.update(|input| core::select_page_size(input, size));
+    });
+    view! {
+        <DataGrid
+            columns=columns
+            data=records
+            key_fn=|record: &Record| record.id
+            cell_renderer=cell_renderer
+            pagination=pagination
+            on_page_change=on_page_change
+            on_page_size_change=on_page_size_change
+            aria_label=title
+            empty_message=empty
+            messages=messages
+        />
+    }
+}

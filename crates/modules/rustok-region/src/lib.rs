@@ -7,12 +7,13 @@ mod domain;
 pub mod dto;
 mod entities;
 pub mod error;
+mod integrations;
 pub mod migrations;
 pub mod module;
 pub mod ports;
 pub mod services;
-pub mod translation_changes;
-pub mod translation_target;
+pub use integrations::translation_target;
+pub use services::translation::changes as translation_changes;
 
 pub use dto::{
     CreateRegionInput, RegionCountryTaxPolicyInput, RegionCountryTaxPolicyResponse, RegionResponse,

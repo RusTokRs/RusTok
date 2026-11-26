@@ -23,7 +23,8 @@ const verifier = path.join(
 const files = [
   'crates/modules/rustok-blog/contracts/evidence/blog-post-category-name-projection-source.json',
   'crates/modules/rustok-blog/src/services/post/queries.rs',
-  'crates/modules/rustok-blog/src/services/category_name_projection.rs',
+  'crates/modules/rustok-blog/src/services/category/name_projection.rs',
+  'crates/modules/rustok-content-orchestration/src/blog_taxonomy.rs',
   'crates/modules/rustok-blog/src/dto/post.rs',
   'crates/modules/rustok-blog/tests/post_category_name_projection.rs',
 ];
@@ -96,7 +97,7 @@ test('rejects restoring legacy Blog category translation reads', () => {
 test('rejects dropping the bounded membership Category read', () => {
   const root = fixture();
   try {
-    mutate(root, 'crates/modules/rustok-blog/src/services/category_name_projection.rs', (source) =>
+    mutate(root, 'crates/modules/rustok-blog/src/services/category/name_projection.rs', (source) =>
       source.replace('Some(&category_ids)', 'None'),
     );
     expectFailure(root, 'bounded Tenant/membership Category read must fail');
@@ -108,8 +109,8 @@ test('rejects dropping the bounded membership Category read', () => {
 test('rejects dropping the strict Taxonomy coverage read', () => {
   const root = fixture();
   try {
-    mutate(root, 'crates/modules/rustok-blog/src/services/category_name_projection.rs', (source) =>
-      source.replace('load_scoped_categories_strict', 'load_scoped_categories'),
+    mutate(root, 'crates/modules/rustok-content-orchestration/src/blog_taxonomy.rs', (source) =>
+      source.replace('load_scoped_categories_in_strict', 'load_scoped_categories_in'),
     );
     expectFailure(root, 'strict Taxonomy Category coverage read must fail');
   } finally {
@@ -120,7 +121,7 @@ test('rejects dropping the strict Taxonomy coverage read', () => {
 test('rejects dropping caller fallback locale from Taxonomy projection', () => {
   const root = fixture();
   try {
-    mutate(root, 'crates/modules/rustok-blog/src/services/category_name_projection.rs', (source) =>
+    mutate(root, 'crates/modules/rustok-blog/src/services/category/name_projection.rs', (source) =>
       source.replace('            fallback_locale,', '            None,'),
     );
     expectFailure(root, 'fallback removal must fail');

@@ -21,7 +21,7 @@ use crate::entities::{
 };
 use crate::error::{BlogError, BlogResult};
 use crate::ports::taxonomy::{BlogTaxonomyPort, NoopBlogTaxonomyPort};
-use crate::services::category_name_projection::{
+use crate::services::category::name_projection::{
     BlogCategoryProjectionInfo, load_category_projections_map,
 };
 use crate::services::post::{is_post_visible_for_channel, normalize_public_channel_slug};
@@ -46,6 +46,7 @@ pub const BLOG_POST_ENTITY_TYPE: &str = "blog_post";
 /// with no explicit channel allowlist are eligible.
 pub async fn filter_public_search_post_ids(
     db: &DatabaseConnection,
+    channels: &crate::BlogChannelAvailability,
     tenant_id: Uuid,
     channel_slug: Option<&str>,
     candidate_ids: &[Uuid],
@@ -57,23 +58,10 @@ pub async fn filter_public_search_post_ids(
         return Ok(Vec::new());
     }
     let normalized_channel = normalize_public_channel_slug(channel_slug);
-    if let Some(slug) = normalized_channel.as_deref() {
-        let channels = rustok_channel::ChannelService::new(db.clone());
-        let Some(channel) = channels
-            .get_channel_by_slug(tenant_id, slug)
-            .await
-            .map_err(BlogError::from)?
-        else {
-            return Ok(Vec::new());
-        };
-        if !channel.is_active
-            || !channels
-                .is_module_enabled_for_tenant(tenant_id, channel.id, BLOG_SOURCE_MODULE)
-                .await
-                .map_err(BlogError::from)?
-        {
-            return Ok(Vec::new());
-        }
+    if let Some(slug) = &normalized_channel
+        && !channels.by_slug(tenant_id, slug.clone()).await?
+    {
+        return Ok(Vec::new());
     }
 
     let published = blog_post::Entity::find()

@@ -18,7 +18,7 @@ use crate::dto::{
     UpdateRegionInput,
 };
 use crate::error::{RegionError, RegionResult};
-use crate::translation_changes::record_current_region_translation_change_in_tx;
+use crate::services::translation::changes::record_current_region_translation_change_in_tx;
 
 use super::RegionService;
 use super::repository::{

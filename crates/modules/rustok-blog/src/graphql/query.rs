@@ -4,7 +4,6 @@ use rustok_api::{
     graphql::{GraphQLError, require_module_enabled, resolve_graphql_locale},
 };
 use rustok_blog_ports::{BlogPublishedPostReadPort, ReadBlogPublishedPost};
-use rustok_channel::ChannelService;
 use rustok_core::{PermissionScope, SecurityContext};
 use rustok_outbox::TransactionalEventBus;
 use rustok_profiles::{GqlProfileSummary, ProfileSummaryAudience};
@@ -767,10 +766,9 @@ where
 }
 
 async fn require_public_blog_channel_enabled(ctx: &Context<'_>) -> Result<()> {
-    let db = ctx.data::<DatabaseConnection>()?;
     let tenant = ctx.data::<TenantContext>()?;
     ensure_public_blog_channel_enabled(
-        db,
+        BlogGraphqlRuntimeData::attached(ctx).channel_availability(),
         tenant.id,
         ctx.data_opt::<RequestContext>(),
         ctx.data_opt::<AuthContext>().is_some(),
@@ -779,7 +777,7 @@ async fn require_public_blog_channel_enabled(ctx: &Context<'_>) -> Result<()> {
 }
 
 pub(super) async fn ensure_authenticated_blog_channel_enabled(
-    db: &DatabaseConnection,
+    channel: &crate::BlogChannelAvailability,
     tenant_id: Uuid,
     request_context: Option<&RequestContext>,
 ) -> Result<()> {
@@ -790,35 +788,19 @@ pub(super) async fn ensure_authenticated_blog_channel_enabled(
             ),
         );
     };
-    let Some(channel_id) = request_context.channel_id else {
+    if request_context.channel_id.is_none() {
         return Err(
             <async_graphql::FieldError as rustok_api::graphql::GraphQLError>::internal_error(
                 "Blog comment creation requires current channel",
             ),
         );
-    };
-
-    let enabled = ChannelService::new(db.clone())
-        .is_module_enabled_for_tenant(tenant_id, channel_id, MODULE_SLUG)
-        .await
-        .map_err(|_| {
-            <async_graphql::FieldError as rustok_api::graphql::GraphQLError>::internal_error(
-                "Unable to verify Blog channel availability",
-            )
-        })?;
-
-    if enabled {
-        Ok(())
-    } else {
-        Err(
-            async_graphql::Error::new("Blog is not available for the current channel")
-                .extend_with(|_, ext| ext.set("code", "MODULE_NOT_ENABLED")),
-        )
     }
+
+    require_channel_binding(channel, tenant_id, Some(request_context)).await
 }
 
 pub(super) async fn ensure_public_blog_channel_enabled(
-    db: &DatabaseConnection,
+    channel: &crate::BlogChannelAvailability,
     tenant_id: Uuid,
     request_context: Option<&RequestContext>,
     is_authenticated: bool,
@@ -827,25 +809,16 @@ pub(super) async fn ensure_public_blog_channel_enabled(
         return Ok(());
     }
 
-    // No `RequestContext` at all means the host did not scope this request to a
-    // channel (admin surface, non-channel deployment): there is no channel
-    // decision to enforce, and the tenant-level module gate still applies.
-    let Some(request_context) = request_context else {
-        return Ok(());
-    };
-    // A `RequestContext` without a channel is the same case one level down: the
-    // host's channel middleware attaches a channel only when resolution
-    // *succeeded*, so an absent `channel_id` means "this deployment/request has
-    // no channel in scope", not "the resolved channel was withheld". There is
-    // still no channel decision to enforce, and a failed lookup inside
-    // `ChannelService` below is a hard error, so the gate never silently passes
-    // a channel it could not verify.
-    let Some(channel_id) = request_context.channel_id else {
-        return Ok(());
-    };
+    require_channel_binding(channel, tenant_id, request_context).await
+}
 
-    let enabled = ChannelService::new(db.clone())
-        .is_module_enabled_for_tenant(tenant_id, channel_id, MODULE_SLUG)
+async fn require_channel_binding(
+    channel: &crate::BlogChannelAvailability,
+    tenant_id: Uuid,
+    request_context: Option<&RequestContext>,
+) -> Result<()> {
+    let enabled = channel
+        .for_request(tenant_id, request_context)
         .await
         .map_err(|_| {
             <async_graphql::FieldError as rustok_api::graphql::GraphQLError>::internal_error(
@@ -853,7 +826,7 @@ pub(super) async fn ensure_public_blog_channel_enabled(
             )
         })?;
 
-    if enabled {
+    if enabled != Some(false) {
         return Ok(());
     }
 

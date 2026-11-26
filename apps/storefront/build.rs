@@ -28,6 +28,8 @@ struct ModuleMetadata {
     slug: String,
     #[serde(default)]
     name: Option<String>,
+    #[serde(default)]
+    ui_classification: String,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -271,7 +273,12 @@ fn validate_storefront_ui_wiring(
         .map(str::trim)
         .filter(|value| !value.is_empty());
 
-    if ui_manifest_path.exists() && declared_crate.is_none() {
+    if ui_manifest_path.exists()
+        && declared_crate.is_none()
+        && !(package_manifest.module.ui_classification == "future_ui"
+            && package_manifest.provides.storefront_ui.is_none()
+            && package_manifest.provides.storefront_support.is_none())
+    {
         return Err(format!(
             "module '{}' contains {}, but rustok-module.toml is missing [provides.storefront_ui].leptos_crate or [provides.storefront_support].leptos_crate",
             package_manifest.module.slug,

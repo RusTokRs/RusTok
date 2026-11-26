@@ -40,6 +40,8 @@ without evidence of a failure is recorded separately below.
 | `P-CLOSED-STOP-WATCH-ADMISSION` | A shutdown receiver can retain `false` after its last sender disappears; checking only the borrowed value could admit new durable work even though the wait branch treats closure as shutdown. Use the shared admission helper to reject channel closure and explicit stop before new operations; do not cancel already-admitted work. Source regressions authored, unrun. | [Stop helper](../../apps/server/src/services/stop_handle.rs), [Marketplace recovery](../../apps/server/src/services/marketplace_financial_worker.rs) |
 | `P-DUAL-TRANSPORT-REPORTING-AUTHORITY-DRIFT` | Native dashboard server functions extracted a session but did not check field permissions, while GraphQL required analytics or user-directory authority. An authenticated caller could reach tenant reporting SQL through the weaker native path. Check the same effective permission and tenant binding before native reads; redact database errors and keep GraphQL and native ordering consistent. Detect with `rg -n 'dashboard_stats_native|recent_activity_native|require_dashboard_permission' apps/admin/src/features/dashboard`. Category: authorization boundary; dimensions: preconditions, transport parity and failure behavior. Regressions authored, unrun. | [Native dashboard adapter](../../apps/admin/src/features/dashboard/transport/native_server_adapter.rs) |
 | `P-GRAPHQL-DUPLICATE-PREFLIGHT-PERMISSION-DRIFT` | A second dashboard-only GraphQL extension required `analytics:read` for `recentActivity`, even though the canonical sensitive-field policy and resolver require `users:list`. Remove the duplicate extension and keep field-specific admission in `SensitiveGraphqlField::allows`; documents containing both fields require both permissions. Test isolated grants, implied manage permission, combined documents and fragments. Detect with `rg -n 'DashboardStats|RecentActivity|GraphqlDashboardSecurityPolicy' apps/server/src/graphql`. Category: authorization boundary; dimensions: policy parity and branch completeness. Regressions authored, unrun. | [GraphQL security policy](../../apps/server/src/graphql/security.rs) |
+| [`P-UI-DRAFT-COMPOSITION`](#p-ui-draft-composition--honor-draft-classification-in-host-code-generation) | Both Leptos host build scripts rejected generated `future_ui` packages. Respect the draft classification when there is no surface or support declaration. | [Admin build script](../../apps/admin/build.rs), [Storefront build script](../../apps/storefront/build.rs) |
+| `P-CARGO-FIXTURE-TARGET` | Cargo registered shared fixture files as individual, empty integration test targets in Region, Cart, Customer, Fulfillment, Order, Outbox, Payment, and Profiles. Put shared fixtures in the canonical support module and verify the target inventory. | [Region fixture](../../crates/modules/rustok-region/tests/support/mod.rs), [layout contract](../backend/module-backend-implementation.md#file-placement-for-reference-capabilities) |
 | `P-FLY-QUEUE-ADMISSION-TAIL-STRAND` | Browser queue replay assumed the dequeued request would reach transport finally. Admission rejection (for example a lowered pending limit) left the unsent tail unresolved. Discard and settle the tail when replay cannot acquire the authoritative guard; recheck disposal after synchronous response/network events before rebasing. Browser regressions must distinguish serialized writes from concurrent reads and suppress post-stop events. Detect with `rg -n queuedAuthoritativeIntents crates/ui/fly/browser/assets/fly-browser.js`. Category: browser lifecycle; dimensions: queue completeness and reentrancy. Regressions authored, unrun. | [Browser adapter](../../crates/ui/fly/browser/assets/fly-browser.js) |
 | `P-FLY-RECOVERY-LINEAGE-CYCLE-MASK` | Selecting only the latest record per writer before validating supersession links hid cycles in older records whenever another writer still had a usable record. Validate the complete persisted graph before projection, including disconnected components and superseded history; fail closed and preserve all records on any cycle. Detect with `rg -n recovery_lineage_has_cycle crates/modules/rustok-page-builder/admin/src/ui/dioxus_recovery.rs`. Category: draft recovery integrity; dimensions: graph cycle detection, corruption handling and data preservation. Regression authored, unrun. | [Dioxus recovery](../../crates/modules/rustok-page-builder/admin/src/ui/dioxus_recovery.rs) |
 | `P-FLY-SAVE-LIFECYCLE-PROJECTION-DRIFT` | Generic Page Builder dispatch accepted save lifecycle events that only mutated the UI projection, leaving the revision owner and request identity inconsistent. SaveStarted also bypassed the document diagnostic admission of RequestSave, and blank revision acknowledgements could clear dirty state. Route lifecycle transitions through correlated controller APIs, share UI admission, reject blank acknowledgements before mutation and retain dirty state when the working hash differs. Detect with `rg -n require_save_admission crates/ui/fly/ui/src/machine.rs` and inspect the controller dispatch. Category: save state integrity; dimensions: admission, state transitions and projection parity. Regressions authored, unrun. | [Controller](../../crates/modules/rustok-page-builder/admin/src/model.rs), [Fly UI](../../crates/ui/fly/ui/src/machine.rs) |
@@ -224,6 +226,23 @@ without evidence of a failure is recorded separately below.
 
 Find likely edges with `rg -n '\bmod\s+\w+\s*;|#\[path\s*=|\binclude(_str|_bytes)?!' crates/modules -g '*.rs'`.
 
+### P-CARGO-FIXTURE-TARGET — shared integration fixtures
+
+- **Category** — Test discovery. **Logic dimensions** — Preconditions and branch completeness.
+- **Failure mode** — Cargo auto-discovers `tests/support.rs` as a test target.
+  Compiling a helper target and running zero tests can appear successful in a
+  suite report even though the helper has no executable scenario.
+- **Implementation** — Put the shared module in `tests/support/mod.rs`. Leave
+  each integration target importing the same fixture module.
+
+```rust
+// tests/owner_scenario.rs
+mod support;
+```
+
+Find candidates with `rg --files -g 'support.rs' -g 'main.rs' crates/modules`
+and inspect the package's test targets with `cargo metadata --no-deps --format-version 1`.
+
 ### P-CARGO-EXTRACTION-DRIFT — packaged source integrity
 
 - **Category** — Dependency provenance. **Logic dimensions** — Preconditions and bounds, branch completeness.
@@ -400,6 +419,31 @@ the driver mapping.
 - **Fast detection:** `rg -n 'SaveSucceeded|save_started_sequence|settleSaveFailure|dirty ===' crates/ui/fly`.
 - **Verification:** Unit and browser regressions authored but not executed;
   mounted-host optimistic concurrency remains maintainer verification.
+
+### P-SETTINGS-MIXED-REVISION-SNAPSHOT — read the value with its revision
+
+Category: optimistic concurrency. Dimensions: snapshot integrity and order of operations.
+
+The static module lifecycle projection used separate autocommit reads for
+`tenant_modules.settings` and `module_static_tenant_lifecycle.revision`.
+If a save commits between those reads, an operator can receive an old
+document with the new revision. A subsequent CAS accepts the stale document
+and can erase the intervening change.
+
+Read the value and revision in one owner-issued snapshot. When reusing
+separate store queries, keep both on the same connection and transaction.
+Use repeatable-read isolation for PostgreSQL multi-statement snapshots.
+
+```rust
+let tx = begin_snapshot_transaction(db).await?;
+let values = load_overrides(&tx, tenant_id).await?;
+let revisions = load_revisions(&tx, tenant_id, &values).await?;
+tx.commit().await?;
+```
+
+Detect with `rg -n 'tenant_override_snapshots|static_lifecycle_snapshots' crates/modules/rustok-modules/src`
+and inspect every operator read that builds a single revisioned settings document.
+See the [static lifecycle projection](../../crates/modules/rustok-modules/src/lifecycle_writer.rs).
 
 ### P-GENERATION-ACK-BEFORE-CACHE-EFFECT — checkpoint only after invalidation
 
@@ -2925,6 +2969,21 @@ envelope, releases all queue permits, and exits before the shutdown deadline.
   option assignments, and parity of selectable values with the displayed buckets.
   The source tests added with this fix have not been executed.
 
+### P-SEARCH-UNCONDITIONAL-CATALOG-FACETS — Optional enrichments must follow result scope
+
+- **Category / logic dimensions:** query correctness; preconditions and dependency isolation.
+- **Observed failure:** Search loaded product attribute buckets for every query, including content-only and empty result sets. A PostgreSQL deployment with Search and a generated content owner failed because the retired product-attribute projection was absent.
+- **Canonical remediation:** check the source and entity together over the filtered candidate set, including matches outside the current page. Run the enrichment query only for that source and entity. Resolve each active enrichment through its owner contract.
+
+  ```rust
+  if has_catalog_matches {
+      facets.extend(query_product_attribute_facets(db, cte, base_values, filters, query).await?);
+  }
+  ```
+
+- **Fast detection:** `rg -n 'query_product_attribute_facets|index_product_attribute_values' crates/modules/rustok-search/src/pg_engine.rs`. Trace each call to the filtered candidate scope.
+- **Verification:** run the generated PostgreSQL publication fixture with platform and owner migrations and without retired Index v1 tables.
+
 ### P-PRODUCT-PAGED-FILTER-PUSHDOWN — Server-paginated grids must push filters into the owner query
 
 - **Category / logic dimension:** read-model correctness; query semantics and pagination order.
@@ -3037,3 +3096,25 @@ match connection {
   [clock ADR](../../DECISIONS/2026-11-25-jwt-clock-discontinuity.md).
   Source regressions authored; actual pool saturation, crash/failover,
   real-file SQLite and exact domain commit-time deadlines remain unverified.
+
+### P-UI-DRAFT-COMPOSITION — Honor draft classification in host code generation
+
+Category: Composition. Logic dimension: preconditions and branch completeness.
+
+Both Leptos host build scripts treated every local UI package as a declared
+surface or support package. A generated `future_ui` workspace member could
+therefore pass module validation and still stop an unrelated host build.
+
+Use the manifest's existing classification and relevant `provides` declarations
+when validating package presence. Only actual surface declarations contribute
+routes or slots.
+
+```rust
+let draft = classification == "future_ui" && surface.is_none() && support.is_none();
+if package_exists && declared_crate.is_none() && !draft {
+    return Err(missing_ui_declaration);
+}
+```
+
+Find other host composition checks with
+`rg -n 'ui_manifest_path\.exists\(\)|declared_crate\.is_none\(\)' apps -g build.rs`.

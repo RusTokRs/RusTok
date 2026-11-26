@@ -59,6 +59,11 @@ triage machine), wired identically: host dependency, module registration in
 
 - Tenant, principal role, and permissions are authenticated via canonical session tokens and propagated across GraphQL requests.
 - Localization is negotiated per-session.
+- Optional `admin_ui.child_pages[].nav_label_key` metadata binds static Leptos
+  navigation to the owner's source-controlled Fluent catalog through
+  `translate_ui`. The Next host resolves its registered navigation keys from
+  the matching catalog projection. A literal manifest label is the Leptos
+  fallback and supports existing manifests.
 
 ## Events and projections
 

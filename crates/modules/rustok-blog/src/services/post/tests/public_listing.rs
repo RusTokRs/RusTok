@@ -1,3 +1,5 @@
+use super::*;
+
 /// The customer-facing list is a public surface, so it applies the same corpus
 /// rule as the public keyset list, the SEO scan and the comment target gate.
 ///
@@ -628,7 +630,11 @@ async fn public_comment_target_uses_same_normalized_channel_as_post_listing() {
         .await
         .expect("channel restricted post should publish");
 
-    let comments = crate::CommentService::from_runtime_capabilities(db, None, None);
+    let availability = crate::BlogChannelAvailability::from_port(
+        rustok_channel::in_process_public_module_read_port(db.clone()),
+    );
+    let comments = crate::CommentService::from_runtime_capabilities(db, None, None)
+        .with_channel_availability(availability);
     comments
         .ensure_public_post_visible(tenant_id, post_id, Some(" WEB "))
         .await

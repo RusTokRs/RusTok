@@ -79,10 +79,10 @@ jobs:
             apps/server/tests/region_translation_target_postgres.rs \
             crates/modules/rustok-region/src/domain/mod.rs \
             crates/modules/rustok-region/src/services/region/mod.rs \
-            crates/modules/rustok-region/src/services/translation.rs \
-            crates/modules/rustok-region/src/services/translation_progress.rs \
-            crates/modules/rustok-region/src/translation_changes.rs \
-            crates/modules/rustok-region/src/translation_target.rs \
+            crates/modules/rustok-region/src/services/translation/mod.rs \
+            crates/modules/rustok-region/src/services/translation/progress.rs \
+            crates/modules/rustok-region/src/services/translation/changes.rs \
+            crates/modules/rustok-region/src/integrations/translation_target.rs \
             crates/modules/rustok-region/tests/region_service_test.rs
       - name: Run Region owner PostgreSQL create and read scenario
         env:

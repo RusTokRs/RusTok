@@ -53,12 +53,14 @@ The canonical slots are:
 - `src/runtime.rs`: optional narrow reusable runtime state when the module has one;
 - `src/tests/`: crate-internal contract tests that need crate-private access;
   integration tests that only use the public API remain in top-level `tests/`.
+  Shared integration fixtures live under `tests/support/mod.rs` to keep them
+  outside Cargo's integration test entrypoints.
 
 A responsibility slot may become a directory of feature submodules as it grows.
 Large files are split by stable responsibility rather than by arbitrary line
-ranges. The initial canonical reference profile treats 32 KiB as a hard source-file
-ceiling; an exception requires an explicit verifier exception and documented
-architectural rationale.
+ranges. Source-file limits apply equally to library source and Cargo integration
+tests, with 32 KiB for backend, ports, and CLI and 40 KiB for UI files. A larger
+file requires an explicit verifier exception and documented architectural rationale.
 
 The [file placement rules](../docs/backend/module-backend-implementation.md#file-placement-for-reference-capabilities)
 refine this vocabulary inside the existing slots. A name identifies an owner
@@ -180,7 +182,8 @@ decision explicitly changes them.
 For the initial reference implementation:
 
 - `cargo xtask module lint <slug>` for the generic native structural contract;
-- `npm run verify:module-source-layout` for the strict Blog reference profile;
+- `npm run verify:module-source-layout` for the strict Blog reference profile,
+  embedded Tax reference, and shared validator fixtures;
 - `cargo xtask module validate blog`;
 - `cargo check -p rustok-blog`;
 - `cargo test -p rustok-blog --lib`;

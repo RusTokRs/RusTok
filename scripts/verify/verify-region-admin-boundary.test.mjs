@@ -27,8 +27,10 @@ pub use ui::RegionAdmin;
 `;
 }
 
-function coreSource({ includeLeptos = false, omitRouteWriter = false } = {}) {
-  return `
+function coreSources({ includeLeptos = false, omitRouteWriter = false } = {}) {
+  return {
+    "mod.rs": "mod editor;\nmod presentation;\nmod route;\n",
+    "editor.rs": `
 ${includeLeptos ? "use leptos::prelude::*;" : ""}
 pub struct RegionAdminSubmitInput;
 pub struct RegionAdminSubmitCommand;
@@ -38,15 +40,18 @@ pub struct RegionAdminTransportErrorLabels;
 pub fn prepare_region_admin_submit() {}
 pub fn region_admin_submit_error_message() {}
 pub fn region_admin_save_region_error_message() {}
-pub enum RegionAdminRouteQueryUpdate { ClearSelected }
-${omitRouteWriter ? "" : "pub fn region_admin_open_query_update() {}\npub fn region_admin_saved_query_update() {}\npub fn region_admin_new_query_update() {}"}
-pub enum RegionAdminDetailPanelViewModel { Empty }
 pub struct RegionAdminOpenDetailViewModel;
 pub struct RegionAdminSaveSuccessViewModel;
 pub fn region_admin_save_success() {}
 pub fn region_admin_open_detail_success() {}
 pub fn region_admin_open_detail_error() {}
-`;
+`,
+    "presentation.rs": "pub enum RegionAdminDetailPanelViewModel { Empty }\n",
+    "route.rs": `
+pub enum RegionAdminRouteQueryUpdate { ClearSelected }
+${omitRouteWriter ? "" : "pub fn region_admin_open_query_update() {}\npub fn region_admin_saved_query_update() {}\npub fn region_admin_new_query_update() {}"}
+`,
+  };
 }
 
 function uiSource({ rawApi = false, rawService = false } = {}) {
@@ -134,8 +139,10 @@ test("region admin boundary verifier rejects stale central readiness board", () 
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-region-boundary-"));
   writeFixtureFile(root, "crates/modules/rustok-region/admin/src/lib.rs", libSource(options));
-  writeFixtureFile(root, "crates/modules/rustok-region/admin/src/core.rs", coreSource(options));
-  writeFixtureFile(root, "crates/modules/rustok-region/admin/src/ui/leptos.rs", uiSource(options));
+  for (const [file, body] of Object.entries(coreSources(options))) {
+    writeFixtureFile(root, `crates/modules/rustok-region/admin/src/core/${file}`, body);
+  }
+  writeFixtureFile(root, "crates/modules/rustok-region/admin/src/ui/leptos/mod.rs", uiSource(options));
   writeFixtureFile(root, "crates/modules/rustok-region/admin/src/transport/mod.rs", transportSource(options));
   writeFixtureFile(root, "crates/modules/rustok-region/admin/src/transport/native_server_adapter.rs", apiSource(options));
   writeFixtureFile(root, "crates/modules/rustok-region/admin/Cargo.toml", cargoSource(options));

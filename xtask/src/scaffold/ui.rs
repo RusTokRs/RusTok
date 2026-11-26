@@ -1,16 +1,19 @@
 use super::options::ScaffoldOptions;
 use std::path::PathBuf;
 
-/// Creates Leptos FFA *development skeletons* that compile independently
-/// without mounting routes or claiming native/GraphQL business operations.
-/// Domain-specific services, transport calls and UI flows are authored later
-/// by each module owner; missing operations remain explicit errors.
-/// Pure renderer used for both dry-run and writable Leptos skeleton creation.
-/// No host mount or live [provides.*_ui] metadata is produced.
+mod admin;
+
+/// Render Leptos packages for preview and apply. An authenticated persisted
+/// admin profile gets a record workspace. Other surfaces start as drafts.
+/// Host registration remains independent of package generation.
 pub(crate) fn render_ui_templates(opts: &ScaffoldOptions, pascal: &str) -> Vec<(PathBuf, String)> {
     let mut files = Vec::new();
     if opts.ui.has_admin() {
-        files.extend(render_ui_package(opts, pascal, "admin"));
+        if opts.has_record_admin() {
+            files.extend(admin::render(opts, pascal));
+        } else {
+            files.extend(render_ui_package(opts, pascal, "admin"));
+        }
     }
     if opts.ui.has_storefront() {
         files.extend(render_ui_package(opts, pascal, "storefront"));
@@ -74,7 +77,7 @@ rustok-ui-transport.workspace = true
 Draft Leptos {side} UI adapter for the {slug} native module.
 
 ## Responsibility
-- Keep UI rendering and bindings in src/ui/leptos.rs.
+- Keep UI rendering and bindings in src/ui/leptos/mod.rs.
 - Keep pure, framework-independent presentation state in src/core/mod.rs.
 - Keep all future backend calls behind src/transport/mod.rs.
 - Do not claim that CRUD, GraphQL, or native server transport exists.
@@ -122,7 +125,7 @@ Draft {side} Leptos adapter for {slug}. Not published as a working FFA surface.
 ## Public surface
 - {page} renders an explicit unavailability message.
 - `transport` exposes the owner facade with explicit typed unavailability; it publishes no backend endpoint.
-- Pure readiness model in src/core/mod.rs; render/bind in src/ui/leptos.rs.
+- Pure readiness model in src/core/mod.rs; render/bind in src/ui/leptos/mod.rs.
 
 ## Platform Capability Bindings
 - Transport selection uses rustok-ui-transport; both owner-specific adapters explicitly reject calls until implemented.
@@ -365,7 +368,7 @@ fn documented_ui_is_not_a_fake_business_api() {
             "src/ui/mod.rs",
             format!("mod leptos;\npub use leptos::{page};\n"),
         ),
-        ("src/ui/leptos.rs", leptos),
+        ("src/ui/leptos/mod.rs", leptos),
         ("src/tests/mod.rs", "mod contract;\n".to_string()),
         ("src/tests/contract.rs", tests),
     ]
@@ -388,6 +391,8 @@ mod tests {
             description: "New module UI without a live business owner yet".to_string(),
             category: "collaboration".to_string(),
             with_db: false,
+            entity: None,
+            admin_resource: None,
             ui,
             dry_run: true,
             skip_server_wire: false,
@@ -430,7 +435,7 @@ mod tests {
             "CRATE_API.md",
             "src/lib.rs",
             "src/transport/mod.rs",
-            "src/ui/leptos.rs",
+            "src/ui/leptos/mod.rs",
         ] {
             let source = content(files, &format!("{side}/{relative}"));
             let normalized = source
@@ -492,7 +497,7 @@ mod tests {
             assert!(!core.contains("leptos::"));
             assert!(!core.contains("dioxus::"));
             assert!(!core.contains("rustok_graphql::"));
-            let leptos = content(&files, &format!("{root}src/ui/leptos.rs"));
+            let leptos = content(&files, &format!("{root}src/ui/leptos/mod.rs"));
             assert!(leptos.contains("#[component]"));
             assert!(leptos.contains("Module \\\"Example\\\""));
             assert!(!leptos.contains("native_server_adapter::"));
@@ -579,7 +584,9 @@ mod tests {
                 "Dioxus is a future sibling adapter, not a replacement yet"
             );
         }
-        assert!(files.iter().any(|(p, _)| p.ends_with("src/ui/leptos.rs")));
+        assert!(files
+            .iter()
+            .any(|(p, _)| p.ends_with("src/ui/leptos/mod.rs")));
         assert!(files
             .iter()
             .any(|(p, _)| p.ends_with("src/transport/mod.rs")));

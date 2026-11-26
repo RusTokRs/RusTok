@@ -466,7 +466,7 @@ function fixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'rustok-public-port-errors-'));
   const repoRoot = path.resolve('.');
   put(root, 'crates/modules/rustok-channel/src/ports.rs', `tracing::error!();\n"channel storage is temporarily unavailable";\n${options.channelAppend ?? ''}`);
-  put(root, 'crates/modules/rustok-region/src/ports.rs', `tracing::error!();\n"region storage is temporarily unavailable";\n${options.regionAppend ?? ''}`);
+  put(root, 'crates/modules/rustok-region/src/services/region/read_port.rs', `tracing::error!();\n"region storage is temporarily unavailable";\n${options.regionAppend ?? ''}`);
   put(root, 'crates/modules/rustok-cart/src/checkout_snapshot.rs', readFileSync(path.join(repoRoot, 'crates/modules/rustok-cart/src/checkout_snapshot.rs'), 'utf8') + (options.cartAppend ?? ''));
 
   let cartPromotion = `${canonicalCartPromotion()}${options.cartPromotionAppend ?? ''}`;

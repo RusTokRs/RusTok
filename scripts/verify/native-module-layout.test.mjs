@@ -113,16 +113,84 @@ test("a minimal native module omits unused responsibility directories", () => {
   });
 });
 
+test("integration source uses canonical names and package source size limits", () => {
+  fixture((ctx) => {
+    ctx.write("tests/integration/main.rs", "mod posts;\n");
+    ctx.write("tests/integration/posts.rs", "#[test]\nfn publishes_post() {}\n");
+    assert.deepEqual(lint(ctx), []);
+
+    ctx.write("tests/integration/posts.rs", " ".repeat(32 * 1024 + 1));
+    ctx.write("tests/contract-fixtures/BadName.rs", "pub struct Fixture;\n");
+    const failures = lint(ctx).join("\n");
+    assert.match(failures, /posts\.rs: 32769 bytes exceeds canonical source limit of 32768/);
+    assert.match(failures, /BadName\.rs: Rust source paths must use snake_case/);
+  });
+});
+
+test("shared integration fixtures stay outside Cargo's test target entrypoints", () => {
+  fixture((ctx) => {
+    ctx.write("tests/owner.rs", "mod support;\n#[test]\nfn owner_contract() {}\n");
+    ctx.write("tests/support/mod.rs", "pub fn fixture() {}\n");
+    assert.deepEqual(lint(ctx), []);
+
+    ctx.write("tests/support.rs", "pub fn fixture() {}\n");
+    ctx.write("tests/support/main.rs", "pub fn fixture() {}\n");
+    const failures = lint(ctx).join("\n");
+    assert.match(failures, /tests[/\\]support\.rs: reserved integration test entrypoint/);
+    assert.match(failures, /tests[/\\]support[/\\]main\.rs: reserved integration test entrypoint/);
+  });
+});
+
+test("nested Rust source has one reachable entrypoint per module", () => {
+  fixture((ctx) => {
+    ctx.write("src/lib.rs",
+      "mod module;\npub use module::SampleModule;\nmod services;\n#[cfg(test)]\nmod tests;\n");
+    ctx.write("src/services/mod.rs", "mod post;\n");
+    ctx.write("src/services/post.rs", "mod commands;\n");
+    ctx.write("src/services/post/commands/mod.rs", "#[path = \"publish.rs\"]\nmod publication;\n");
+    ctx.write("src/services/post/commands/publish.rs", "fn publish() {}\n");
+    assert.deepEqual(lint(ctx), []);
+
+    ctx.write("src/services/post/commands/drafts.rs", "fn drafts() {}\n");
+    assert.match(lint(ctx).join("\n"), /drafts\.rs: Rust source is not reachable/);
+    ctx.write("src/services/post/commands/mod.rs",
+      "#[path = \"publish.rs\"]\nmod publication;\nmod drafts;\nmod missing;\n");
+    assert.match(lint(ctx).join("\n"), /mod missing has no source file/);
+
+    ctx.write("src/services/post/commands/missing.rs", "// No implementation.\n");
+    assert.match(lint(ctx).join("\n"), /missing\.rs: empty Rust module/);
+
+    ctx.write("src/services/post/mod.rs", "pub struct Duplicate;\n");
+    assert.match(lint(ctx).join("\n"), /mod post has two source entrypoints/);
+  });
+});
+
+test("a mounted facade keeps its literal Rust source reachable", () => {
+  fixture((ctx) => {
+    ctx.write("src/lib.rs",
+      "mod module;\npub use module::SampleModule;\nmod services;\n#[cfg(test)]\nmod tests;\n");
+    ctx.write("src/services/mod.rs", "mod mounted;\n");
+    ctx.write("src/services/mounted.rs", 'mod owner { include!("owner.rs"); }\n');
+    assert.match(lint(ctx).join("\n"), /included Rust source is missing: owner\.rs/);
+    ctx.write("src/services/owner.rs", "pub fn execute() {}\n");
+    assert.deepEqual(lint(ctx), []);
+  });
+});
+
 test("the module-local CLI layout is reusable without UI or a runtime binding", () => {
   fixture((ctx) => {
     assert.match(lintCli(ctx).join("\n"), /module-local CLI source directory is missing/);
     writeCliAdapter(ctx);
     assert.deepEqual(lintCli(ctx), []);
+    assert.deepEqual(lint(ctx), []);
 
     ctx.write("cli/src/commands/mod.rs", 'mod inspect;\nmod list;\n');
     ctx.write("cli/src/commands/list/mod.rs", 'mod page;\n');
     ctx.write("cli/src/commands/list/page.rs", 'pub(crate) fn execute() {}\n');
     assert.deepEqual(lintCli(ctx), []);
+
+    ctx.write("cli/src/commands/list/unwired.rs", 'pub(crate) fn execute() {}\n');
+    assert.match(lint(ctx).join("\n"), /unwired\.rs: Rust source is not reachable/);
   });
 });
 
@@ -368,7 +436,7 @@ test("declared support sub-crates are not mistaken for live FFA surfaces", () =>
       '[provides.storefront_support]\nleptos_crate = "rustok-sample-storefront-support"\n');
     ctx.write("storefront/Cargo.toml",
       '[package]\nname = "rustok-sample-storefront-support"\n');
-    ctx.write("storefront/src/lib.rs", "pub struct ReactionBar;\n");
+    ctx.write("storefront/src/lib.rs", "pub struct ReactionBar;\n#[cfg(test)]\nmod contract_tests;\n");
     ctx.write("storefront/src/contract_tests.rs", "#[test] fn support_contract() {}\n");
     assert.deepEqual(lint(ctx), []);
   });
@@ -705,6 +773,10 @@ test("live admin UI passes only with matching Next.js package, host registry and
     writeFfaSurface(ctx, "admin");
     writeNextSurface(ctx, "admin", "@rustok/sample-admin", "sample");
     assert.deepEqual(lint(ctx), []);
+    ctx.writeRoot("apps/next-admin/src/modules/index.ts", 'import "@rustok/sample-admin/register";\n');
+    assert.match(lint(ctx).join("\n"), /Next.js \/register source is missing/);
+    ctx.writeRoot("apps/next-admin/packages/sample-admin/src/register.ts", 'export {};\n');
+    assert.deepEqual(lint(ctx), []);
   });
 });
 
@@ -824,6 +896,7 @@ test("future_ui draft single-adapter state passes with its documented exception"
       '[module]\nslug = "sample"\nui_classification = "future_ui"\n' +
       '[crate]\nentry_type = "SampleModule"\n');
     writeFfaSurface(ctx, "admin");
+    rmSync(join(ctx.root, ctx.path("admin/src/transport/graphql_adapter.rs")));
     ctx.write("admin/src/transport/mod.rs",
       "mod native_server_adapter;\npub async fn fetch_owner_capability() -> Result<(), ()> { native_server_adapter::fetch_owner_capability().await }\n");
     ctx.write("docs/implementation-plan.md",

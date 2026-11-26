@@ -20,7 +20,7 @@
     "verify:hygiene:strict": "cargo run --quiet --locked -p rustok-doctor -- hygiene --all-modules --strict",
     "verify:hygiene:staged": "cargo run --quiet --locked -p rustok-doctor -- hygiene --staged --strict",
     "verify:hygiene:changed": "cargo run --quiet --locked -p rustok-doctor -- hygiene --changed",
-    "verify:module-source-layout": "node scripts/verify/verify-module-source-layout.mjs && node --test scripts/verify/native-module-layout.test.mjs",
+    "verify:module-source-layout": "node scripts/verify/verify-module-source-layout.mjs && node scripts/verify/verify-module-source-layout.mjs --embedded tax && node --test scripts/verify/native-module-layout.test.mjs",
     "verify:rust-constructor-arity": "node scripts/verify/verify-rust-constructor-arity.mjs",
     "test:verify:rust-constructor-arity": "node scripts/verify/verify-rust-constructor-arity.test.mjs",
     "verify:workflow-action-pins": "node scripts/verify/verify-workflow-action-pins.mjs",

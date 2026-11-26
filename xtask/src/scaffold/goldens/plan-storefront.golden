@@ -21,7 +21,7 @@ crates/modules/rustok-scaffold-golden-storefront/storefront/src/transport/mod.rs
 crates/modules/rustok-scaffold-golden-storefront/storefront/src/transport/native_server_adapter.rs
 crates/modules/rustok-scaffold-golden-storefront/storefront/src/transport/graphql_adapter.rs
 crates/modules/rustok-scaffold-golden-storefront/storefront/src/ui/mod.rs
-crates/modules/rustok-scaffold-golden-storefront/storefront/src/ui/leptos.rs
+crates/modules/rustok-scaffold-golden-storefront/storefront/src/ui/leptos/mod.rs
 crates/modules/rustok-scaffold-golden-storefront/storefront/src/tests/mod.rs
 crates/modules/rustok-scaffold-golden-storefront/storefront/src/tests/contract.rs
 Cargo.toml

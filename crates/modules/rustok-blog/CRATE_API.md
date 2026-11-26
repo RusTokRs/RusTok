@@ -454,3 +454,10 @@ The Comments projection contract is
 ### Errors / Failure Codes
 - Public `*Error`/`*Result` types of the module define the failure contract and must not lose semantics when mapped to HTTP/GraphQL/CLI.
 - For validation/auth/conflict/not-found scenarios, a stable error-class must be maintained, used by tests and adapters.
+
+## Channel availability
+
+`BlogChannelAvailability` binds the Channel owner's published availability port
+to a Blog service or a host-resolved request. The host supplies the same
+provider to GraphQL, HTTP, native storefront and Search. The availability
+decision is tenant-bound and provider failures remain errors.

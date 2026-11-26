@@ -60,6 +60,23 @@ fn plan(root: &Path) -> Vec<PlannedFile> {
     ]
 }
 
+const CLI_TEST_OWNER: &str = "crates/modules/rustok-example";
+
+fn cli_plan(owner: &Path) -> [PlannedFile; 2] {
+    [
+        PlannedFile {
+            path: owner.join("cli/src/lib.rs"),
+            content: "pub struct Provider;".into(),
+            original: None,
+        },
+        PlannedFile {
+            path: owner.join("rustok-module.toml"),
+            content: "with-cli".into(),
+            original: Some(b"owner".to_vec()),
+        },
+    ]
+}
+
 pub(super) fn checkpoint(name: &str) {
     if std::env::var("RUSTOK_SCAFFOLD_TEST_PAUSE").as_deref() == Ok(name) {
         println!("SCAFFOLD_CHECKPOINT {name}");
@@ -202,7 +219,12 @@ fn process_worker() {
     if mode == "recover" {
         return;
     }
-    let transaction = if mode == "partial" {
+    let transaction = if mode == "cli" {
+        let owner = root.join(CLI_TEST_OWNER);
+        workspace
+            .apply(&cli_plan(&owner), &owner.join("cli"))
+            .unwrap()
+    } else if mode == "partial" {
         workspace
             .apply_with_writer(
                 &plan(&root),
@@ -249,6 +271,38 @@ fn interrupted_apply_recovers_in_a_fresh_process_at_each_boundary() {
         PausedChild::start(&root.0, "run", point).kill();
         assert_recovered(&root);
         assert_recovered(&root);
+    }
+}
+
+#[test]
+fn interrupted_cli_attachment_recovers_without_removing_the_owner_tree() {
+    let root = TestRoot::new();
+    let owner = root.0.join(CLI_TEST_OWNER);
+    fs::create_dir_all(owner.join("src")).unwrap();
+    fs::write(owner.join("src/lib.rs"), "owner source").unwrap();
+    fs::write(owner.join("rustok-module.toml"), "owner").unwrap();
+
+    PausedChild::start(&root.0, "cli", "registration").kill();
+    assert_eq!(
+        fs::read(owner.join("rustok-module.toml")).unwrap(),
+        b"with-cli"
+    );
+    assert!(owner.join("cli/src/lib.rs").is_file());
+
+    for _ in 0..2 {
+        let output = run_worker(&root.0, "recover");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            fs::read(owner.join("rustok-module.toml")).unwrap(),
+            b"owner"
+        );
+        assert_eq!(fs::read(owner.join("src/lib.rs")).unwrap(), b"owner source");
+        assert!(!owner.join("cli").exists());
+        assert!(!root.0.join(".rustok/scaffold/active").exists());
     }
 }
 

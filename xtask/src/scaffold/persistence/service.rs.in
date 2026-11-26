@@ -1,0 +1,69 @@
+// __ADMIN_ADAPTER__
+mod commands;
+mod list;
+mod publication;
+mod queries;
+mod repository;
+mod settings;
+
+pub(crate) use settings::resolve_public_discovery;
+
+use std::sync::Arc;
+
+use rustok_api::{Action, Resource, SharedStaticModuleSettingsReader};
+use rustok_cache::{CacheKeyError, CacheService};
+use rustok_core::{CacheBackend, PermissionScope, SecurityContext};
+use sea_orm::DatabaseConnection;
+
+use crate::RecordError;
+use crate::integrations::cache::PublicRecordCache;
+
+/// Embedded owner API. A published adapter supplies authenticated tenant and
+/// actor context. The owner evaluates the selected permission resource.
+pub struct __ENTITY__Service {
+    db: DatabaseConnection,
+    resource: Resource,
+    public_cache: Option<PublicRecordCache>,
+    settings: Option<SharedStaticModuleSettingsReader>,
+}
+
+impl __ENTITY__Service {
+    pub fn new(db: DatabaseConnection, resource: Resource) -> Self {
+        Self {
+            db,
+            resource,
+            public_cache: None,
+            settings: None,
+        }
+    }
+
+    /// Attach the host's tenant module settings reader for list and public policy.
+    pub fn with_settings_reader(mut self, settings: SharedStaticModuleSettingsReader) -> Self {
+        self.settings = Some(settings);
+        self
+    }
+
+    /// Attach the platform cache selected by the embedding host.
+    pub fn with_public_cache(
+        mut self,
+        cache: CacheService,
+        backend: Arc<dyn CacheBackend>,
+        environment: &str,
+    ) -> Result<Self, CacheKeyError> {
+        self.public_cache = Some(PublicRecordCache::new(cache, backend, environment)?);
+        Ok(self)
+    }
+
+    fn authorize(&self, security: &SecurityContext, action: Action) -> Result<(), RecordError> {
+        // The baseline owner is tenant-wide and stores no per-actor ownership.
+        if security.is_public_read()
+            || !matches!(
+                security.get_scope(self.resource, action),
+                PermissionScope::All
+            )
+        {
+            return Err(RecordError::Forbidden);
+        }
+        Ok(())
+    }
+}

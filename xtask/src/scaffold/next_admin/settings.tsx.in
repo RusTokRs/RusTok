@@ -1,0 +1,65 @@
+import type { MessageKey, MessageArgs } from '../messages';
+
+import { getLocale, getTranslations } from '@rustok/next-fluent/server';
+import Link from 'next/link';
+import type { GqlOpts } from '@/shared/api/graphql';
+import { Alert, AlertDescription } from '@/shared/ui/shadcn/alert';
+import { parseSettingsObject } from '@/features/modules/components/module-settings-json';
+import { SettingsForm } from '../components/settings-form';
+import { readSettings, errorCode } from '../transport';
+import { recordSettingsFields } from '../model';
+
+export async function SettingsPage({
+  auth,
+  showRecords
+}: {
+  auth: GqlOpts & { actor: string | null };
+  showRecords: boolean;
+}) {
+  const locale = await getLocale();
+  const t = await getTranslations<MessageKey, MessageArgs>('__ROUTE__');
+  try {
+    const snapshot = await readSettings({ ...auth, locale });
+    if (
+      snapshot.moduleSlug !== '__SLUG__' ||
+      !Number.isSafeInteger(snapshot.revision) ||
+      snapshot.revision < 0
+    ) {
+      throw new Error('Invalid module settings snapshot');
+    }
+    recordSettingsFields(parseSettingsObject(snapshot.settings));
+    return (
+      <section className='space-y-4'>
+        <h1 className='text-xl font-semibold'>{t('settings-heading')}</h1>
+        {showRecords ? (
+          <SettingsForm
+            key={auth.actor + ':' + auth.tenantId + ':' + snapshot.revision}
+            initial={snapshot}
+            actor={auth.actor}
+            tenantId={auth.tenantId ?? null}
+          />
+        ) : (
+          <Link
+            className='text-primary underline'
+            href='/dashboard/__ROUTE__/settings/records'
+          >
+            {t('settings-records-nav')}
+          </Link>
+        )}
+      </section>
+    );
+  } catch (error) {
+    const code = errorCode(error);
+    return (
+      <Alert variant='destructive'>
+        <AlertDescription>
+          {t(
+            code === 'PERMISSION_DENIED' || code === 'UNAUTHENTICATED'
+              ? 'settings-denied'
+              : 'settings-unavailable'
+          )}
+        </AlertDescription>
+      </Alert>
+    );
+  }
+}

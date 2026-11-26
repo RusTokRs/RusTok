@@ -12,8 +12,8 @@ const failures = [];
 const files = {
   lib: "crates/modules/rustok-region/storefront/src/lib.rs",
   legacyApi: "crates/modules/rustok-region/storefront/src/api.rs",
-  core: "crates/modules/rustok-region/storefront/src/core.rs",
-  ui: "crates/modules/rustok-region/storefront/src/ui/leptos.rs",
+  core: "crates/modules/rustok-region/storefront/src/core/mod.rs",
+  ui: "crates/modules/rustok-region/storefront/src/ui/leptos/mod.rs",
   transport: "crates/modules/rustok-region/storefront/src/transport/mod.rs",
   native: "crates/modules/rustok-region/storefront/src/transport/native_server_adapter.rs",
   graphql: "crates/modules/rustok-region/storefront/src/transport/graphql_adapter.rs",

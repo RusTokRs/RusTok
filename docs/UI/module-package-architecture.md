@@ -249,7 +249,18 @@ it does not prove functional parity for data, authorization, locale, or
 transport behavior. The Leptos and Next.js packages remain separate
 implementations and are not generated from one another. An unmounted
 `future_ui` draft is not a live surface and does not require Next.js wiring.
-The current scaffold preview does not meet the live-surface contract.
+With a persisted record and an explicit platform admin resource, `--ui admin`
+installs both host bindings. The module manifest drives the Leptos registry,
+and the Next host imports the module's side-effect-only `/register` entry for
+navigation. Both bindings use the matching module slug for availability.
+`--ui dual` with a draft storefront remains in the `future_ui` profile.
+
+An admin child page may declare `nav_label_key` alongside its fallback
+`nav_label`. The Leptos host resolves the key through the package's public
+`translate_ui(Option<&str>, &str, &str) -> String` accessor using the effective
+locale. The package owns its Fluent catalogs. The generated Next package
+registers the corresponding `app.nav` keys, which reference projections of
+the same messages in the host catalog.
 
 ## What Counts as a Correctly Structured UI Package
 
@@ -294,32 +305,39 @@ The structural shape taxonomy used in
 The `cargo xtask scaffold` / `cargo xtask module new` generator is a long-lived
 workspace entrypoint, not a new competing scaffolding system. Its native backend
 now starts without invented domain state. A requested `--ui admin|storefront|dual`
-creates unmounted Cargo workspace Leptos packages for later module-owned work.
-Use `--dry-run` to inspect without writing. The manifest uses `future_ui`
-and does not declare any live `[provides.*_ui]` until the module owner
-implements real operations and host wiring.
-The generated draft contains only Leptos FFA files. Classic Next.js packages are
-independent React packages inside Next hosts, not FFA adapters and not part
-of the Rust scaffolding output. This separation does **not** make Next.js
-parity optional for a live UI surface: a live `provides.admin_ui` or
+without an applicable owner contract creates draft Leptos packages for later
+module-owned work. They are workspace members under `future_ui` and neither
+Leptos host registers them. Use `--dry-run` to inspect without writing.
+The identity-only draft contains Leptos FFA files. A persisted record admin
+profile also generates its own Next Admin package. The two packages share
+GraphQL operation documents and English and Russian catalog entries. They
+implement their UI independently. A live `provides.admin_ui` or
 `provides.storefront_ui` must declare `next_package`, and the generic native
 module lint verifies that the matching package exists, is imported by the
 Next host module registry, and is imported by its declared route page. This
 is structural package/route wiring evidence, not proof of functional parity
 for data, authorization, locale, or transport behavior.
 
-The generated Leptos draft keeps `core/mod.rs`, `model.rs`,
+The identity-only Leptos draft keeps `core/mod.rs`, `model.rs`,
 `transport/mod.rs`, `transport/native_server_adapter.rs`,
-`transport/graphql_adapter.rs`, `ui/mod.rs`, and `ui/leptos.rs`.
+`transport/graphql_adapter.rs`, `ui/mod.rs`, and `ui/leptos/mod.rs`.
 It uses the canonical `rustok-ui-transport` path selection, but both
 owner-specific adapters explicitly fail with `MissingOwnerContract` until
 real operations are implemented. This is **structural FFA scaffolding**, not
 a working business API or a verified runtime transport. The generated shell
 shows an unavailable state without simulated CRUD.
 Before activation, implement actual owner operations and context-aware
-native/GraphQL adapters. Future `ui/dioxus.rs` must share the same
-framework-independent core/model and transport facade, keeping Leptos intact.
-Any Next.js product features must be built in their Next host packages.
+native/GraphQL adapters.
+
+The persisted admin profile (`--with-db --entity <name> --admin-resource <Resource> --ui admin`)
+generates a server-paginated Leptos table, localized editor and authenticated
+record operations. The editor keeps requested and effective content languages
+visible and sends revisioned writes for the explicitly opened translation.
+The native adapter uses `HostRuntimeContext` and trusted request extractors.
+The GraphQL adapter uses the same operation documents as other headless clients.
+The Next Admin package uses the host GraphQL client, Fluent catalogs and
+`DataTableShell`. The scaffold installs both host bindings for `--ui admin`
+and declares `admin_only`. Profiles with a draft storefront use `future_ui`.
 
 Blog and Product use the same [native module standard](../modules/module-authoring.md#reference-modules).
 Blog illustrates the full source layout. Product's mounted catalog illustrates

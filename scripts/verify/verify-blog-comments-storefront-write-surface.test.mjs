@@ -20,7 +20,7 @@ const files = [
   'crates/modules/rustok-blog/contracts/blog-fba-registry.json',
   'crates/modules/rustok-comments/contracts/comments-fba-registry.json',
   'crates/modules/rustok-blog/storefront/README.md',
-  'crates/modules/rustok-blog/storefront/src/ui/leptos.rs',
+  'crates/modules/rustok-blog/storefront/src/ui/leptos/mod.rs',
   'crates/modules/rustok-blog/storefront/src/ui/comment.rs',
   'crates/modules/rustok-blog/storefront/src/ui/leptos/selected_post_card.rs',
   'crates/modules/rustok-blog/storefront/src/transport/graphql_adapter.rs',

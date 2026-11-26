@@ -65,13 +65,27 @@ impl RusToKModule for SearchModule {
         let docs_source = sources
             .as_ref()
             .and_then(|s| s.build_with_extensions("docs", ctx.db.clone(), ctx.extensions));
-        registry.register(SearchIngestionHandler::with_all_projection_sources(
-            ctx.db.clone(),
-            blog_source,
-            forum_source,
-            pages_source,
-            docs_source,
-        ));
+        let additional_sources = sources.as_ref().into_iter().flat_map(|r| {
+            r.source_modules().into_iter().filter_map(move |slug| {
+                if matches!(
+                    slug.as_str(),
+                    "blog" | "forum" | "pages" | "docs" | "product" | "content"
+                ) {
+                    return None;
+                }
+                r.build_with_extensions(&slug, ctx.db.clone(), ctx.extensions)
+            })
+        });
+        registry.register(
+            SearchIngestionHandler::with_all_projection_sources(
+                ctx.db.clone(),
+                blog_source,
+                forum_source,
+                pages_source,
+                docs_source,
+            )
+            .with_additional_projection_sources(&ctx.db, additional_sources),
+        );
     }
 
     async fn health(&self) -> HealthStatus {

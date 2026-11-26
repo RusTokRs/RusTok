@@ -117,12 +117,16 @@ function rustPathCrateName(rustPath) {
 }
 
 function validateRegistryDependencies(providers) {
-  const registryCargo = read(registryCargoRel);
+  const dependencies = section(read(registryCargoRel), 'dependencies');
+  const inherited = new Set(
+    [...dependencies.matchAll(/^\s*([A-Za-z0-9_-]+)(?:\.workspace\s*=\s*true|\s*=\s*\{\s*workspace\s*=\s*true\s*\})[^\S\r\n]*(?:#.*)?$/gm)]
+      .map((match) => match[1]),
+  );
   const missing = providers
     .map((provider) => provider.crateName)
     .filter((crateName) => crateName && crateName !== 'rustok-cli-core')
     .filter((crateName, index, all) => all.indexOf(crateName) === index)
-    .filter((crateName) => !registryCargo.includes(`${crateName}.workspace = true`));
+    .filter((crateName) => !inherited.has(crateName));
 
   if (missing.length > 0) {
     throw new Error(`${registryCargoRel}: missing selected provider dependencies: ${missing.join(', ')}`);
