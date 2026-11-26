@@ -53,7 +53,7 @@ Fly Visual Editor Engine: framework-neutral visual editor engine, AST models, de
 ## 3. Error Handling & Edge Cases
 - All errors are strongly typed via `FlyError` without panic or stringly-typed swallowing.
 - `switch_slide` actions require exactly one navigation selector (`target_slide`, `direction`, or `index`); malformed direction/index form values and ambiguous selectors are rejected.
-- `ThemeCommand::Replace` rejects duplicate token names rather than silently keeping one value.
+- `ThemeCommand::Replace` rejects duplicate token names rather than silently keeping one value. Direct `apply_theme_command` calls also validate the resulting token dependency graph before committing the candidate, so undeclared references and cycles leave the document unchanged. Usage inspection and rename traverse the same component style slots, including opaque component nodes and children, without inspecting unrelated provider payloads.
 - Computed format expressions validate every `{{path}}` placeholder; empty and unclosed placeholders are blocking validation errors even when earlier placeholders are valid.
 - Validation failures produce structured diagnostics (`ValidationDiagnostic`, `AuditDiagnostic`) with explicit severity levels (`ValidationSeverity`, `AuditSeverity`).
 - Invalid or colliding generated component IDs are reissued with bounded retries and a deterministic fallback. Ambiguous existing form/HTML/component identities are reported instead of silently choosing an owner.
