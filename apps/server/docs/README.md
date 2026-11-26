@@ -1907,3 +1907,16 @@ claim cancellation safety inside the connector's own constructor.
 Focused source regressions cover reuse without desired-policy reads, stopped
 initialization, and active-profile reporting. Compilation, formatting and tests
 were not run at the maintainer's request.
+
+## Access-token tenant admission and registration fixtures (2026-11-26)
+
+The common access-token resolver checks live tenant existence and activation
+before resolving direct, delegated or service authority, including global
+routes without tenant middleware and requests with an older cached tenant
+projection. Database failures remain internal errors. WebSocket lease
+revalidation uses the same check rather than a duplicate tenant lookup.
+This is an admission-time check, not a transaction-wide deactivation fence;
+an already admitted operation can still finish. Successful service-token
+extractor tests now issue signed credentials and persist matching access rows
+instead of bypassing the registration contract. Regression cases authored,
+unrun by request.
