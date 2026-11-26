@@ -301,6 +301,51 @@ async fn oauth_service_token_intersects_app_permissions_with_scopes() {
 }
 
 #[tokio::test]
+async fn oauth_service_token_rejects_corrupt_or_mismatched_registered_scopes() {
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    ensure_oauth_apps_table(&db).await;
+    let tenant = tenants::ActiveModel::new(
+        "OAuth scope registration tenant",
+        &format!("tenant-{}", Uuid::new_v4()),
+    )
+    .insert(&db)
+    .await
+    .expect("create tenant");
+    let app = insert_oauth_app(&db, tenant.id, "service", &["client_credentials"], true).await;
+    let runtime = test_auth_runtime(db.clone());
+    let token = registered_service_token(
+        &db,
+        runtime.require_auth_config().unwrap(),
+        &app,
+        &["forum:*".to_string()],
+    )
+    .await;
+    assert!(resolve_current_user_from_access_token(&runtime, tenant.id, &token).await.is_ok());
+
+    let mut row = oauth_tokens::Entity::find()
+        .filter(oauth_tokens::Column::TokenHash.eq(crate::auth::hash_refresh_token(&token)))
+        .one(&db)
+        .await
+        .expect("load access registration")
+        .expect("access row exists");
+    for (stored, message) in [
+        (serde_json::json!([]), "OAuth access token scopes mismatch"),
+        (serde_json::json!(["forum:*", 42]), "Stored OAuth access token scopes are invalid"),
+        (serde_json::json!(["forum:*", "modules:list"]), "OAuth access token scopes mismatch"),
+    ] {
+        let mut changed: oauth_tokens::ActiveModel = row.into();
+        changed.scopes = Set(stored);
+        row = changed.update(&db).await.expect("change registered scopes");
+        let error = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+            .await
+            .expect_err("inconsistent registration must fail closed");
+        assert_eq!(error, (axum::http::StatusCode::UNAUTHORIZED, message));
+    }
+}
+
+#[tokio::test]
 async fn oauth_service_token_authentication_does_not_depend_on_translation_storage() {
     let db = setup_test_db_with_migrations::<Migrator>().await;
     ensure_oauth_apps_table(&db).await;

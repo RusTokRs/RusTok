@@ -1312,7 +1312,13 @@ before the event forwarder. The Outbox relay supervisor owns and gracefully drai
   is absent. Focused source regressions are authored, unrun.
 - OAuth access JWTs are registered credentials: issuance writes a `token_kind = access`
   row whose id is the JWT `jti`, and the extractor requires that row to be active,
-  hash-bound, client/tenant/grant-scoped, and subject-bound. RFC 7009, app/consent
+  hash-bound, client/tenant/grant-scoped, subject-bound, and equal to the exact
+  issued scope array in the JWT. Both issuance paths persist the same ordered
+  array that is signed; malformed or mismatched registration scopes fail closed.
+  A malformed application scope policy is rejected even for an empty-scope
+  access JWT. Service permission resolution and token issuance distinguish
+  invalid persisted permission JSON from a valid empty policy. Regressions
+  authored, unrun. RFC 7009, app/consent
   revocation, credential change, code replay, and refresh reuse revoke the whole
   family, so an already-issued access JWT is fenced before its signed TTL. Delegated
   rows also capture the consent epoch (`consent_granted_at`); a consent revoke/re-grant
