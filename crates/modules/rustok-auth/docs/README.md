@@ -979,3 +979,16 @@ client requires explicit success and keeps an ambiguous revocation retryable.
 See the [recovery ADR](../../../../DECISIONS/2026-11-26-session-refresh-retry-proof.md).
 Mounted Auth.js route/cookie behavior and late or partial response recovery
 remain unverified; this is not distributed atomic cookie delivery.
+
+## Witnessed authority clock floor
+
+The existing authenticated rollback-witness checkpoint now includes a
+nonnegative authority DB millisecond floor. Checked authority reads
+commit its advance before returning; time-sensitive mutations recheck
+under both locks, while emergency key revocation preserves the floor
+without relying on clock health. The independent clock latch still
+fences installed leases. Stop old binaries and drain leases before
+first use of the extended checkpoint format. See the clock and witness
+ADRs for legacy enrollment, recovery and remaining limits. This does
+not persist every application or request-path observation. Source-only
+regression evidence; WAL and contention costs remain unmeasured.

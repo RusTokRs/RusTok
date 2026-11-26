@@ -420,7 +420,10 @@ impl JwtGenerationFence {
         if !self.clock.healthy_at(before) {
             return Err(unavailable());
         }
-        let stored = self.load_raw().await?;
+        let stored = match &self.witness {
+            Some(witness) => witness.read_checked(self, before).await?,
+            None => self.read_on(&self.db, false, false).await?,
+        };
         if !self.clock.validate_db(before, ClockSample::now(), stored.now_ms) {
             return Err(unavailable());
         }
@@ -469,14 +472,14 @@ impl JwtGenerationFence {
 
     async fn execute_checked(&self, statement: Statement, revision: i64) -> Result<u64> {
         match &self.witness {
-            Some(witness) => Ok(witness.apply(self, statement, revision, false).await?.0),
+            Some(witness) => Ok(witness.apply(self, statement, revision, false, true).await?.0),
             None => Ok(self.db.execute_raw(statement).await.map_err(|_| unavailable())?.rows_affected()),
         }
     }
 
     async fn query_checked(&self, statement: Statement, revision: i64) -> Result<Option<QueryResult>> {
         match &self.witness {
-            Some(witness) => Ok(witness.apply(self, statement, revision, true).await?.1),
+            Some(witness) => Ok(witness.apply(self, statement, revision, true, false).await?.1),
             None => self.db.query_one_raw(statement).await.map_err(|_| unavailable()),
         }
     }

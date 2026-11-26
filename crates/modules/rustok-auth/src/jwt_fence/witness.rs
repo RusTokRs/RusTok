@@ -64,6 +64,10 @@ struct Checkpoint {
     drain_until_ms: i64,
     untracked_until_ms: i64,
     replica_grants: String,
+    // Legacy authenticated checkpoints did not record time. Their one-time
+    // enrollment is allowed only at the documented offline cutover.
+    #[serde(default)]
+    clock_floor_ms: i64,
 }
 
 impl Checkpoint {
@@ -83,6 +87,7 @@ impl Checkpoint {
             drain_until_ms: stored.drain_until_ms,
             untracked_until_ms: stored.untracked_until_ms,
             replica_grants: stored.replica_grants.clone(),
+            clock_floor_ms: 0,
         })
     }
 
@@ -120,6 +125,7 @@ impl Checkpoint {
         Self::mac(binding, payload)?.verify_slice(&tag).map_err(|_| unavailable())?;
         let checkpoint: Self = serde_json::from_str(payload).map_err(|_| unavailable())?;
         if checkpoint.revision != revision || checkpoint.generation < 0
+            || checkpoint.clock_floor_ms < 0
             || checkpoint.payload.len() > MAX_LEDGER_BYTES || checkpoint.tag.len() > 64
             || checkpoint.replica_grants.len() > MAX_GRANT_BYTES
             || checkpoint.lease_until_ms < 0 || checkpoint.drain_until_ms < 0
@@ -209,7 +215,11 @@ impl Witness {
     }
 
     fn compare(&self, stored: &StoredFence, checkpoint: &Checkpoint) -> Result<()> {
-        if Checkpoint::capture(stored).is_ok_and(|actual| &actual == checkpoint) {
+        // Clock evidence is witness-owned, not a field of the authority row.
+        if Checkpoint::capture(stored).is_ok_and(|mut actual| {
+            actual.clock_floor_ms = checkpoint.clock_floor_ms;
+            &actual == checkpoint
+        }) {
             Ok(())
         } else {
             self.trip();
@@ -217,8 +227,79 @@ impl Witness {
         }
     }
 
-    /// All reads serialize with the two-store write protocol. PostgreSQL row
-    /// locks are held until the comparison has finished.
+    async fn sample_locked_clock(
+        &self, fence: &JwtGenerationFence, authority: &DatabaseTransaction,
+        checkpoint: &Checkpoint, before: ClockSample,
+    ) -> Result<StoredFence> {
+        // The first SELECT FOR UPDATE may have evaluated clock_timestamp
+        // before waiting for the lock. Obtain a fresh sample after BOTH locks.
+        let stored = fence.read_on(authority, true, false).await?;
+        self.compare(&stored, checkpoint)?;
+        if !fence.clock.validate_db(before, ClockSample::now(), stored.now_ms) {
+            return Err(unavailable());
+        }
+        if stored.now_ms < checkpoint.clock_floor_ms {
+            fence.clock.trip();
+            return Err(unavailable());
+        }
+        Ok(stored)
+    }
+
+    async fn write_checkpoint(
+        &self, tx: &DatabaseTransaction, binding: &AuthorityBinding,
+        previous_revision: i64, next: &Checkpoint,
+    ) -> Result<()> {
+        let (payload, tag) = next.encode(binding)?;
+        let backend = tx.get_database_backend();
+        let sql = match backend {
+            DbBackend::Postgres => "UPDATE auth_jwt_witness SET revision = $1, payload = $2, tag = $3 WHERE id = 1 AND revision = $4 AND authority_id = $5 AND proof = $6",
+            DbBackend::Sqlite => "UPDATE auth_jwt_witness SET revision = ?1, payload = ?2, tag = ?3 WHERE id = 1 AND revision = ?4 AND authority_id = ?5 AND proof = ?6",
+            _ => return Err(unavailable()),
+        };
+        let changed = tx.execute_raw(Statement::from_sql_and_values(backend, sql,
+            vec![next.revision.into(), payload.into(), tag.into(), previous_revision.into(),
+                binding.id.clone().into(), binding.proof.clone().into()]))
+            .await.map_err(|_| unavailable())?;
+        if changed.rows_affected() != 1 {
+            return Err(unavailable());
+        }
+        Ok(())
+    }
+
+    /// Time-sensitive reads durably checkpoint the checked authority time
+    /// before releasing either lock and returning it to an expiry decision.
+    pub(super) async fn read_checked(
+        &self, fence: &JwtGenerationFence, before: ClockSample,
+    ) -> Result<StoredFence> {
+        self.healthy()?;
+        let binding = Self::binding(fence)?;
+        let authority = fence.db.begin().await.map_err(|_| unavailable())?;
+        let initial = fence.read_on(&authority, true, true).await.map_err(|error| {
+            self.trip();
+            error
+        })?;
+        let witness = begin_write(&self.db).await?;
+        let mut checkpoint = self.checkpoint(&witness, binding).await?;
+        self.compare(&initial, &checkpoint)?;
+        let stored = self.sample_locked_clock(fence, &authority, &checkpoint, before).await?;
+        if stored.now_ms > checkpoint.clock_floor_ms {
+            checkpoint.clock_floor_ms = stored.now_ms;
+            self.write_checkpoint(&witness, binding, checkpoint.revision, &checkpoint).await?;
+            self.healthy()?;
+            let outcome = CommitOutcomeGuard::new(self);
+            witness.commit().await.map_err(|_| unavailable())?;
+            authority.commit().await.map_err(|_| unavailable())?;
+            outcome.confirm();
+        } else {
+            witness.commit().await.map_err(|_| unavailable())?;
+            authority.commit().await.map_err(|_| unavailable())?;
+        }
+        self.healthy()?;
+        Ok(stored)
+    }
+
+    /// Raw read for security-reducing revocation only. It compares the
+    /// authenticated ledger but cannot advance or lower the time floor.
     pub(super) async fn read(&self, fence: &JwtGenerationFence) -> Result<StoredFence> {
         self.healthy()?;
         let binding = Self::binding(fence)?;
@@ -239,7 +320,7 @@ impl Witness {
     /// Existing CAS predicates remain mandatory. Revision equality also
     /// prevents a stale read from crossing an ABA state transition.
     pub(super) async fn apply(&self, fence: &JwtGenerationFence, statement: Statement,
-        expected_revision: i64, returning: bool) -> Result<(u64, Option<QueryResult>)> {
+        expected_revision: i64, returning: bool, time_sensitive: bool) -> Result<(u64, Option<QueryResult>)> {
         self.healthy()?;
         let binding = Self::binding(fence)?;
         let authority = begin_write(&fence.db).await?;
@@ -253,6 +334,12 @@ impl Witness {
         if stored.revision != expected_revision {
             return Ok((0, None));
         }
+        let clock_floor_ms = if time_sensitive {
+            let before = ClockSample::now();
+            self.sample_locked_clock(fence, &authority, &checkpoint, before).await?.now_ms
+        } else {
+            checkpoint.clock_floor_ms
+        };
         let (affected, row) = if returning {
             let row = authority.query_one_raw(statement).await.map_err(|_| unavailable())?;
             (u64::from(row.is_some()), row)
@@ -278,21 +365,9 @@ impl Witness {
         if changed.rows_affected() != 1 {
             return Err(unavailable());
         }
-        let next = Checkpoint::capture(&fence.read_on(&authority, true, false).await?)?;
-        let (payload, tag) = next.encode(binding)?;
-        let backend = witness.get_database_backend();
-        let sql = match backend {
-            DbBackend::Postgres => "UPDATE auth_jwt_witness SET revision = $1, payload = $2, tag = $3 WHERE id = 1 AND revision = $4 AND authority_id = $5 AND proof = $6",
-            DbBackend::Sqlite => "UPDATE auth_jwt_witness SET revision = ?1, payload = ?2, tag = ?3 WHERE id = 1 AND revision = ?4 AND authority_id = ?5 AND proof = ?6",
-            _ => return Err(unavailable()),
-        };
-        let changed = witness.execute_raw(Statement::from_sql_and_values(backend, sql,
-            vec![next.revision.into(), payload.into(), tag.into(), stored.revision.into(),
-                binding.id.clone().into(), binding.proof.clone().into()]))
-            .await.map_err(|_| unavailable())?;
-        if changed.rows_affected() != 1 {
-            return Err(unavailable());
-        }
+        let mut next = Checkpoint::capture(&fence.read_on(&authority, true, false).await?)?;
+        next.clock_floor_ms = clock_floor_ms;
+        self.write_checkpoint(&witness, binding, stored.revision, &next).await?;
         self.healthy()?;
         // Witness ahead is a recoverable fenced state. Authority ahead must
         // never be produced by this protocol. No local grant before both commits.
@@ -325,7 +400,8 @@ impl Witness {
         {
             return Err(rejected());
         }
-        let checkpoint = Checkpoint::capture(&stored)?;
+        let mut checkpoint = Checkpoint::capture(&stored)?;
+        checkpoint.clock_floor_ms = stored.now_ms;
         let (payload, tag) = checkpoint.encode(binding)?;
         let witness = begin_write(&self.db).await?;
         witness.execute_unprepared(
@@ -418,6 +494,39 @@ mod tests {
         fence.witness = Some(Witness::new(witness_db.clone()));
         fence.witness.as_ref().unwrap().initialize(&fence, ROOT).await.unwrap();
         (authority, witness_db, id, fence)
+    }
+
+    #[tokio::test]
+    async fn durable_clock_floor_fences_restarted_authority_but_not_emergency_revocation() {
+        let keys = FenceKeys::generate();
+        let (authority, witness_db, id, fence) = deployment().await;
+        let config = keys.config(ROOT, "old", keys.old(), None);
+        assert_eq!(fence.admit(1, &config).await.unwrap(), JwtAdmission::Admitted);
+        let stored = fence.load().await.unwrap();
+        let witness = fence.witness.as_ref().unwrap();
+        let binding = Witness::binding(&fence).unwrap();
+        let tx = witness_db.begin().await.unwrap();
+        let mut checkpoint = witness.checkpoint(&tx, binding).await.unwrap();
+        assert_eq!(checkpoint.clock_floor_ms, stored.now_ms);
+        // Inject authenticated future evidence, representing a previous
+        // process that observed time before the primary clock rolled back.
+        checkpoint.clock_floor_ms = stored.now_ms + 60_000;
+        witness.write_checkpoint(&tx, binding, checkpoint.revision, &checkpoint).await.unwrap();
+        tx.commit().await.unwrap();
+
+        let mut restarted = bound(authority, id, ROOT).unwrap();
+        restarted.witness = Some(Witness::new(witness_db.clone()));
+        assert!(restarted.load().await.is_err());
+        assert!(restarted.clock.faulted());
+        assert!(!restarted.witness.as_ref().unwrap().faulted());
+        assert!(restarted.revoke_key(ROOT, "access", "old").await.unwrap().newly_revoked);
+
+        let tx = witness_db.begin().await.unwrap();
+        let after = restarted.witness.as_ref().unwrap()
+            .checkpoint(&tx, Witness::binding(&restarted).unwrap()).await.unwrap();
+        assert_eq!(after.clock_floor_ms, checkpoint.clock_floor_ms);
+        assert!(after.revision > checkpoint.revision);
+        tx.rollback().await.unwrap();
     }
 
     #[tokio::test]

@@ -203,3 +203,12 @@ transactions. Later checks read the floor without a nested writer transaction.
 Apply the Auth migration before deploying this version; never lower the floor.
 Full durable expiry observation coverage, independent JWT authority continuity,
 contention and restart/runtime evidence remain open. See the [clock ADR](../../../DECISIONS/2026-11-25-jwt-clock-discontinuity.md).
+
+## Independent authority clock continuity
+
+Witnessed authority reads and mutations now maintain an authenticated
+DB-time floor in the existing witness payload, with synchronous commit
+before exposing checked time. Emergency revocation preserves it. Stop
+old writers and drain leases before format cutover; never strip the floor.
+Application late observations and request-path clock durability remain
+open. See the [clock ADR](../../../DECISIONS/2026-11-25-jwt-clock-discontinuity.md).

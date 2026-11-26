@@ -129,8 +129,9 @@ a universal time service or proof of expiry non-resurrection: observations
 inside domain transactions and after the last independently committed
 sample are not yet independently durable, and a process crash in that
 window can lose their history. Millisecond precision, rollback of the
-application store, coherent false time at first initialization, and
-independent JWT authority clock continuity remain separate limits.
+application store and coherent false time at first initialization remain
+separate limits. The independent authority extension below covers witnessed
+DB observations, not all request-path host clock observations.
 No claim is made about commit-time deadlines, WebSocket revalidation,
 or complete coverage of all credential consumers. The singleton is a
 write-contention point; production capacity and multi-replica tests are
@@ -144,6 +145,44 @@ are reached; restart a locally latched process only after remediation.
 Schema down is only for disposable verification. Source tests for
 persisted samples, business rollback, guard recreation, and missing
 state are authored, not executed.
+
+## Durable independent authority clock (2026-11-26)
+
+Time-sensitive witnessed reads serialize with authority mutations, obtain a
+fresh authority DB timestamp after both singleton locks, validate it against
+the existing bounded host observation and compare it to the authenticated
+witness clock floor. A lower DB timestamp trips the shared authority clock
+latch. A higher verified timestamp is durably written to the existing
+witness checkpoint before returning the observation for an expiry decision,
+including read-only decisions and refusals. The checkpoint field belongs
+to the independent witness, not to the restored authority row. Clock-only
+writes retain the ledger revision; domain CAS mutations still advance it.
+Time-sensitive mutations recheck time after both locks and carry the
+nondecreasing floor into the next authenticated checkpoint. An unconfirmed
+witness clock write uses the existing cancellation/commit outcome guard.
+Raw emergency revocation neither checks expiry nor changes the floor;
+offline ledger recovery preserves it exactly.
+
+This is an additive authenticated checkpoint format extension, with no
+authority or application DDL. Stop every older authority/witness writer
+and wait out all prior leases/drains on a reliable external clock before
+deploying. A valid pre-extension checkpoint without the field has no
+historical clock evidence; its first checked read enrolls the verified
+current DB time. Confirm clock correctness before cutover. Old readers
+reject the added field and must not be restarted. Never strip the field,
+reset the witness, or restore an older witness to regain availability.
+A clock incident requires independently correcting the clocks and reaching
+the retained floor, then starting a fresh process. Existing witness
+recovery remains required for ledger mismatch or uncertain split commits.
+
+The DB floor has millisecond precision and does not prove the accuracy of
+the UTC source; local request-path JWT samples, application late observations,
+unwitnessed development fences, simultaneous witness rollback and exact
+commit-time expiry remain outside this extension. Checked reads now write
+the authenticated witness payload and force synchronous commit, adding
+WAL, latency and contention; measure these costs before production.
+Application admission writes also force PostgreSQL synchronous_commit=on;
+this does not by itself establish synchronous standby failover durability.
 
 ## Recovery and limits
 

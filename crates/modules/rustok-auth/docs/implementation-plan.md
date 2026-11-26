@@ -573,3 +573,10 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
 - Initial wiring covers direct registration/login/refresh/session creation, access extraction (including post-policy admission), OAuth token exchange/code issuance/strict consent, password reset, verification, email change, invite issuance/acceptance, and retention.
 - Existing in-transaction corroboration checks the durable floor without taking the global writer lock. Subsequent observations are not independently durable; full expiry non-resurrection, WebSocket and remaining consumers, and independent JWT authority continuity remain open.
 - Source regression authored for rollback/recreated guard/missing state; PostgreSQL independent-pool contention, synchronized replica skew, migration and runtime checks remain unrun. No readiness promotion.
+
+## Witnessed authority durable expiry fence (2026-11-26)
+
+- Time-sensitive independent authority reads durably advance the authenticated witness DB clock floor before returning; mutations recheck under both locks and preserve it. Clock-only updates keep the ledger revision and use the uncertain-commit guard. Emergency revocation and offline recovery preserve the floor without relying on expiry decisions.
+- PostgreSQL application admission forces synchronous commit. No new DDL for the witness format extension; offline old-writer/lease drain and trusted-clock legacy enrollment required.
+- Source regression covers restarted authority refusing a lower DB clock while emergency revocation retains the floor. Compilation, PostgreSQL multi-pool/failover/cancellation and WAL/latency evidence remain unrun.
+- Application late observations, request-path JWT host timestamps, unwitnessed development mode, witness/application-store rollback and cross-replica contention optimization remain open. No production readiness promotion.
