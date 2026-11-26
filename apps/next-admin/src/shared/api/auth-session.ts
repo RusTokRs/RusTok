@@ -1,16 +1,14 @@
-import { createHmac, randomBytes } from 'node:crypto';
-
 export const RUSTOK_SESSION_COOKIE_NAME = 'rustok-session';
 export const RUSTOK_ACCESS_COOKIE_NAME = 'rustok-access';
 export const RUSTOK_SESSION_COOKIE_PATH = '/api';
 export const RUSTOK_ACCESS_COOKIE_PATH = '/api/rustok';
 export const RUSTOK_SESSION_REQUEST_HEADER = 'x-rustok-session-request';
-export const RUSTOK_REFRESH_RETRY_HEADER = 'x-rustok-refresh-retry-key';
+export const RUSTOK_EXPECTED_SESSION_ID_HEADER = 'x-rustok-expected-session-id';
 export const RUSTOK_ACCESS_REFRESH_SKEW_MS = 60_000;
 
 const MAX_SESSION_COOKIE_AGE_SECONDS = 90 * 24 * 60 * 60;
 
-/** Only the BFF holds this envelope. The backend receives the bare token. */
+/** Auth-owned HttpOnly envelope. The BFF relays both components unchanged. */
 export interface RustokRefreshCredential {
   token: string;
   retrySeed: string;
@@ -18,12 +16,6 @@ export interface RustokRefreshCredential {
 
 function isSecret(value: string): boolean {
   return value.length === 64 && /^[0-9a-f]{64}$/.test(value) && value !== '0'.repeat(64);
-}
-
-export function newRustokRefreshSeed(): string {
-  const seed = randomBytes(32).toString('hex');
-  if (!isSecret(seed)) throw new Error('Could not generate refresh recovery seed');
-  return seed;
 }
 
 export function encodeRustokRefreshCredential(credential: RustokRefreshCredential): string {
@@ -39,27 +31,8 @@ export function parseRustokRefreshCredential(value: string): RustokRefreshCreden
   return { token: parts[0], retrySeed: parts[1] };
 }
 
-/** One pseudorandom operation key per presented token, scoped to its BFF tenant.
- * The seed is independently generated at login and never leaves the BFF cookie.
- * All replicas derive the same proof even after a response or process is lost.
- */
-export function rustokRefreshRetryKey(
-  credential: RustokRefreshCredential,
-  tenantSlug: string
-): string {
-  if (!tenantSlug || !isSecret(credential.token) || !isSecret(credential.retrySeed)) {
-    throw new Error('Invalid refresh credential');
-  }
-  const key = createHmac('sha256', Buffer.from(credential.retrySeed, 'hex'))
-    .update(JSON.stringify(['rustok/next-admin/refresh-retry', tenantSlug, credential.token]))
-    .digest('hex');
-  if (!isSecret(key)) throw new Error('Invalid refresh operation key');
-  return key;
-}
-
 export interface RustokHostCookies {
   accessToken: string | null;
-  refreshToken: string | null;
   refreshCredential: RustokRefreshCredential | null;
   invalid: boolean;
 }
@@ -83,7 +56,6 @@ export function parseRustokHostCookies(header: string | null): RustokHostCookies
     (access.length === 1 && (!credential || !access[0] || /[\s,]/.test(access[0])));
   return {
     accessToken: !invalid && access.length === 1 ? access[0] : null,
-    refreshToken: !invalid ? credential?.token ?? null : null,
     refreshCredential: !invalid ? credential : null,
     invalid
   };
@@ -103,7 +75,7 @@ export async function retryAmbiguousRefresh<T>(
 }
 
 export interface ParsedRustokSessionCookie {
-  value: string;
+  credential: RustokRefreshCredential;
   maxAge: number;
 }
 
@@ -122,7 +94,8 @@ export function parseRustokSessionCookie(
   }
 
   const value = pair.slice(separator + 1).trim();
-  if (!isSecret(value)) return null;
+  const credential = parseRustokRefreshCredential(value);
+  if (!credential) return null;
 
   const maxAgeAttributes = attributes.filter((part) =>
     /^\s*max-age=/i.test(part)
@@ -140,7 +113,39 @@ export function parseRustokSessionCookie(
     return null;
   }
 
-  return { value, maxAge };
+  return { credential, maxAge };
+}
+
+export function isCanonicalSessionId(value: unknown): value is string {
+  return typeof value === 'string' && value.length === 36
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value)
+    && value !== '00000000-0000-0000-0000-000000000000';
+}
+
+/** Compare trusted response projections, not authenticate a JWT. The backend
+ * remains the only authority for its signature, expiry and live session.
+ */
+export function rustokDirectSessionClaims(accessToken: string): {
+  sessionId: string; userId: string; tenantId: string;
+} | null {
+  try {
+    const parts = accessToken.split('.');
+    if (parts.length !== 3 || parts.some(part => !/^[A-Za-z0-9_-]+$/.test(part))) return null;
+    const claims = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+    if (claims?.grant_type !== 'direct' || !isCanonicalSessionId(claims.session_id)
+      || !isCanonicalSessionId(claims.sub) || !isCanonicalSessionId(claims.tenant_id)) return null;
+    return { sessionId: claims.session_id, userId: claims.sub, tenantId: claims.tenant_id };
+  } catch {
+    return null;
+  }
+}
+
+export function matchesRustokDirectSession(
+  token: string, sessionId: string, userId: string, tenantId: string | null | undefined
+): boolean {
+  const claims = rustokDirectSessionClaims(token);
+  return claims !== null && claims.sessionId === sessionId && claims.userId === userId
+    && claims.tenantId === tenantId;
 }
 
 /**

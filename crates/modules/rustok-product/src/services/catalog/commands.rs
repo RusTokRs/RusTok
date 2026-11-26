@@ -660,8 +660,7 @@ impl CatalogService {
             )
             .await?;
         if input.publish {
-            schema
-                .validate_product_publish_requirements_in(&txn, tenant_id, product_id)
+            ProductCatalogSchemaService::validate_product_publish_requirements_in(&txn, tenant_id, product_id)
                 .await?;
         }
 
@@ -1091,8 +1090,7 @@ impl CatalogService {
         // Validate the persisted candidate, including its new category and translations.
         // Failure rolls the entire write back before any lifecycle event is committed.
         if remains_active {
-            ProductCatalogSchemaService::new(self.db.clone(), self.event_bus.clone())
-                .validate_product_publish_requirements_in(&txn, tenant_id, product_id)
+            ProductCatalogSchemaService::validate_product_publish_requirements_in(&txn, tenant_id, product_id)
                 .await?;
         }
 
@@ -1196,8 +1194,7 @@ impl CatalogService {
             return Ok(result);
         }
 
-        ProductCatalogSchemaService::new(self.db.clone(), self.event_bus.clone())
-            .validate_product_publish_requirements_in(&txn, tenant_id, product_id)
+        ProductCatalogSchemaService::validate_product_publish_requirements_in(&txn, tenant_id, product_id)
             .await?;
 
         let next_revision = next_revision(product.revision)?;
@@ -1626,8 +1623,7 @@ impl CatalogService {
         if product.status == entities::product::ProductStatus::Active {
             // A newly-created SKU is part of the live Product immediately. Do not commit it
             // unless every required Variant EAV value/localization is present on every SKU.
-            ProductCatalogSchemaService::new(self.db.clone(), self.event_bus.clone())
-                .validate_product_publish_requirements_in(&txn, tenant_id, product_id)
+            ProductCatalogSchemaService::validate_product_publish_requirements_in(&txn, tenant_id, product_id)
                 .await?;
         }
 

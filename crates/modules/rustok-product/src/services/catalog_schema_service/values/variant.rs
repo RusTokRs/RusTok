@@ -240,7 +240,7 @@ impl ProductCatalogSchemaService {
             // Variant EAV writes must preserve the same publish invariants as Product EAV writes.
             // Validate the whole Product while its owner row remains locked, so clearing a required
             // value on any SKU cannot leave an Active Product in an invalid state.
-            self.validate_product_publish_requirements_in(&txn, tenant_id, owner.product_id)
+            Self::validate_product_publish_requirements_in(&txn, tenant_id, owner.product_id)
                 .await?;
         }
         if !patches.is_empty() {

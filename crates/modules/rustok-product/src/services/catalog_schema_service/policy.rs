@@ -15,6 +15,7 @@ use crate::dto::{
 
 const IMPACT_PAGE_SIZE: usize = 128;
 const MAX_POLICY_VIOLATIONS: usize = 8;
+const MAX_PUBLISH_REQUIREMENT_VIOLATIONS: usize = 8;
 
 type CategoryAxisPolicies = HashMap<Uuid, VariantAxisPolicy>;
 pub(super) type AxisPolicySnapshot = HashMap<Uuid, CategoryAxisPolicies>;
@@ -147,10 +148,186 @@ fn validate_axis_attribute(value_type: &str, scope: &str) -> CommerceResult<()> 
 }
 
 impl ProductCatalogSchemaService {
-    pub(super) async fn axis_policy_snapshot_in(
+    pub(super) async fn schema_policy_snapshot_in(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
-    ) -> CommerceResult<AxisPolicySnapshot> {
+    ) -> CommerceResult<SchemaPolicySnapshot> {
+        Ok(SchemaPolicySnapshot {
+            axis_policies: Self::axis_policy_snapshot_in(txn, tenant_id).await?,
+            publish_requirements: Self::publish_requirement_snapshot_in(txn, tenant_id).await?,
+        })
+    }
+
+    /// Revalidates active Products after effective schema policy changes. The caller holds the
+    /// exclusive schema fence and the same transaction that wrote the new binding.
+    pub(super) async fn validate_schema_policy_change_in(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        previous: SchemaPolicySnapshot,
+    ) -> CommerceResult<()> {
+        let next = Self::schema_policy_snapshot_in(txn, tenant_id).await?;
+        Self::validate_axis_policy_impacts_in(
+            txn,
+            tenant_id,
+            &previous.axis_policies,
+            &next.axis_policies,
+        )
+        .await?;
+        Self::validate_publish_requirement_impacts_in(
+            txn,
+            tenant_id,
+            &previous.publish_requirements,
+            &next.publish_requirements,
+        )
+        .await
+    }
+
+    async fn publish_requirement_snapshot_in(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+    ) -> CommerceResult<PublishRequirementSnapshot> {
+        let categories = Self::load_category_schema_map(txn, tenant_id).await?;
+        let schemas = Self::load_attribute_schema_map(txn, tenant_id).await?;
+        let mut category_ids = Vec::new();
+        let mut forms = Vec::new();
+        for category in categories
+            .values()
+            .filter(|category| category.kind == CatalogCategoryKind::Structural)
+        {
+            let form = resolve_effective_product_form(
+                category.category_id,
+                &categories,
+                &schemas,
+                &[],
+            )
+            .map_err(map_schema_resolution_error)?;
+            category_ids.push(category.category_id);
+            forms.push(form);
+        }
+        super::effective_forms::load_effective_attribute_validation_for_forms(
+            txn,
+            tenant_id,
+            &mut forms,
+        )
+        .await?;
+
+        let mut signatures = HashMap::new();
+        let mut effective_forms = HashMap::new();
+        for (category_id, form) in category_ids.into_iter().zip(forms) {
+            let requirements = publish_requirements_for_form(&form)?;
+            if !requirements.is_empty() {
+                signatures.insert(category_id, requirements);
+                effective_forms.insert(category_id, form);
+            }
+        }
+        Ok(PublishRequirementSnapshot {
+            signatures,
+            forms: effective_forms,
+        })
+    }
+
+    async fn validate_publish_requirement_impacts_in(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        previous: &PublishRequirementSnapshot,
+        next: &PublishRequirementSnapshot,
+    ) -> CommerceResult<()> {
+        let mut changed = previous
+            .signatures
+            .keys()
+            .chain(next.signatures.keys())
+            .copied()
+            .collect::<HashSet<_>>();
+        changed.retain(|category_id| {
+            publish_requirements_tightened(
+                previous.signatures.get(category_id),
+                next.signatures.get(category_id),
+            )
+        });
+        let mut changed = changed.into_iter().collect::<Vec<_>>();
+        changed.sort_unstable();
+        if changed.is_empty() {
+            return Ok(());
+        }
+
+        let mut violations = Vec::new();
+        let mut has_more = false;
+        'category_chunks: for category_ids in changed.chunks(IMPACT_PAGE_SIZE) {
+            let mut cursor: Option<Uuid> = None;
+            loop {
+                let (placeholders, mut values) = uuid_filter_values(tenant_id, category_ids);
+                let cursor_clause = match cursor {
+                    Some(id) => {
+                        values.push(id.into());
+                        format!(" AND id > ${}", values.len())
+                    }
+                    None => String::new(),
+                };
+                let products = PolicyProductRow::find_by_statement(Statement::from_sql_and_values(
+                    txn.get_database_backend(),
+                    format!("SELECT id, primary_category_id FROM products WHERE tenant_id = $1 AND status = 'active' AND primary_category_id IN ({placeholders}){cursor_clause} ORDER BY id LIMIT {IMPACT_PAGE_SIZE}"),
+                    values,
+                ))
+                .all(txn)
+                .await?;
+                if products.is_empty() {
+                    break;
+                }
+
+                for product in &products {
+                    let form = next.forms.get(&product.primary_category_id).ok_or_else(|| {
+                        CommerceError::Core(rustok_core::error::Error::Internal(format!(
+                            "Effective Product schema snapshot is missing category {}",
+                            product.primary_category_id
+                        )))
+                    })?;
+                    if form.category_id != product.primary_category_id {
+                        return Err(CommerceError::Core(rustok_core::error::Error::Internal(
+                            "Effective Product schema snapshot category mismatch".to_owned(),
+                        )));
+                    }
+                    match ProductCatalogSchemaService::validate_product_publish_requirements_for_form_in(
+                        txn,
+                        tenant_id,
+                        product.id,
+                        form,
+                    )
+                    .await
+                    {
+                        Ok(()) => {}
+                        Err(CommerceError::Validation(message)) => {
+                            if violations.len() < MAX_PUBLISH_REQUIREMENT_VIOLATIONS {
+                                violations.push(format!("Product {}: {}", product.id, message));
+                            } else {
+                                has_more = true;
+                                break 'category_chunks;
+                            }
+                        }
+                        Err(error) => return Err(error),
+                    }
+                }
+
+                cursor = products.last().map(|product| product.id);
+                if products.len() < IMPACT_PAGE_SIZE {
+                    break;
+                }
+            }
+        }
+
+        if violations.is_empty() {
+            return Ok(());
+        }
+        let mut message = format!(
+            "Schema change would invalidate active Products: {}",
+            violations.join("; ")
+        );
+        if has_more {
+            message.push_str("; additional affected Products omitted");
+        }
+        Err(CommerceError::Validation(message))
+    }
+
+    pub(super) async fn axis_policy_snapshot_in(
         let categories = Self::load_category_schema_map(txn, tenant_id).await?;
         let schemas = Self::load_attribute_schema_map(txn, tenant_id).await?;
         let mut policies = HashMap::new();
@@ -178,17 +355,6 @@ impl ProductCatalogSchemaService {
         Ok(policies)
     }
 
-    /// The exclusive schema fence protects the entire before/after/impact/commit sequence from
-    /// new Products, category moves and axis mutations. Inherited descendants are included;
-    /// local overrides and clone snapshots are resolved by the canonical form resolver.
-    pub(super) async fn validate_axis_policy_change_in(
-        txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        previous: AxisPolicySnapshot,
-    ) -> CommerceResult<()> {
-        let next = Self::axis_policy_snapshot_in(txn, tenant_id).await?;
-        Self::validate_axis_policy_impacts_in(txn, tenant_id, &previous, &next).await
-    }
 
     async fn validate_axis_policy_impacts_in(
         txn: &DatabaseTransaction,
@@ -297,6 +463,88 @@ impl ProductCatalogSchemaService {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PublishRequirementAttribute {
+    scope: String,
+    required_locales: Vec<String>,
+}
+
+type PublishRequirementAttributes = HashMap<Uuid, PublishRequirementAttribute>;
+
+#[derive(Clone, Debug)]
+struct PublishRequirementSnapshot {
+    signatures: HashMap<Uuid, PublishRequirementAttributes>,
+    forms: HashMap<Uuid, EffectiveProductForm>,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct SchemaPolicySnapshot {
+    axis_policies: AxisPolicySnapshot,
+    publish_requirements: PublishRequirementSnapshot,
+}
+
+fn scope_includes_publish_requirement(scope: &str, target: &str) -> bool {
+    match (scope, target) {
+        ("product" | "both", "product") | ("variant" | "both", "variant") => true,
+        _ => false,
+    }
+}
+
+fn publish_requirements_tightened(
+    previous: Option<&PublishRequirementAttributes>,
+    next: Option<&PublishRequirementAttributes>,
+) -> bool {
+    let Some(next) = next else {
+        return false;
+    };
+    for (attribute_id, next_requirement) in next {
+        let Some(previous_requirement) = previous.and_then(|values| values.get(attribute_id)) else {
+            return true;
+        };
+        for target in ["product", "variant"] {
+            if scope_includes_publish_requirement(next_requirement.scope.as_str(), target)
+                && !scope_includes_publish_requirement(previous_requirement.scope.as_str(), target)
+            {
+                return true;
+            }
+        }
+        if next_requirement
+            .required_locales
+            .iter()
+            .any(|locale| !previous_requirement.required_locales.contains(locale))
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn publish_requirements_for_form(
+    form: &EffectiveProductForm,
+) -> CommerceResult<PublishRequirementAttributes> {
+    let mut requirements = HashMap::new();
+    for binding in form.attributes.iter().filter(|binding| !binding.is_disabled) {
+        let rules =
+            super::attribute_validation::parse_product_attribute_validation(&binding.validation)?;
+        let is_required =
+            binding.is_required || rules.required || !rules.required_locales.is_empty();
+        if !is_required {
+            continue;
+        }
+        let mut required_locales = rules.required_locales;
+        required_locales.sort_unstable();
+        required_locales.dedup();
+        requirements.insert(
+            binding.attribute_id,
+            PublishRequirementAttribute {
+                scope: binding.scope.clone(),
+                required_locales,
+            },
+        );
+    }
+    Ok(requirements)
+}
+
 #[derive(FromQueryResult)]
 struct PolicyProductRow {
     id: Uuid,
@@ -361,6 +609,88 @@ mod tests {
         assert!(validate_policy_hint(VariantAxisPolicy::Forbidden, true).is_err());
         assert!(validate_policy_hint(VariantAxisPolicy::Allowed, true).is_ok());
         assert!("allwed".parse::<VariantAxisPolicy>().is_err());
+    }
+
+    #[test]
+    fn publish_requirement_signature_tracks_requiredness_scope_and_locales() {
+        let attribute_id = Uuid::from_u128(77);
+        let binding = |scope: &str, is_required: bool, is_disabled: bool, validation: serde_json::Value| {
+            AttributeBinding {
+                attribute_id,
+                group_code: None,
+                scope: scope.to_owned(),
+                is_required,
+                is_disabled,
+                position: 0,
+                visibility_overrides: Default::default(),
+                validation_overrides: serde_json::json!({}),
+                validation,
+                source: EffectiveAttributeSource::Schema,
+                variant_axis_policy: "forbidden".to_owned(),
+                default_variant_axis: false,
+            }
+        };
+        let form = |binding| EffectiveProductForm {
+            category_id: Uuid::nil(),
+            attributes: vec![binding],
+            detached_attribute_ids: Vec::new(),
+        };
+
+        assert!(publish_requirements_for_form(&form(binding(
+            "product", false, false, serde_json::json!({})
+        )))
+        .unwrap()
+        .is_empty());
+        assert!(publish_requirements_for_form(&form(binding(
+            "product", true, true, serde_json::json!({})
+        )))
+        .unwrap()
+        .is_empty());
+
+        let product = publish_requirements_for_form(&form(binding(
+            "product", true, false, serde_json::json!({})
+        )))
+        .unwrap();
+        let variant = publish_requirements_for_form(&form(binding(
+            "variant", true, false, serde_json::json!({})
+        )))
+        .unwrap();
+        assert_ne!(product, variant);
+
+        let localized = publish_requirements_for_form(&form(binding(
+            "product",
+            false,
+            false,
+            serde_json::json!({"requiredLocales": ["fr", "en"]}),
+        )))
+        .unwrap();
+        assert_eq!(
+            localized[&attribute_id].required_locales,
+            vec!["en".to_owned(), "fr".to_owned()]
+        );
+    }
+
+    #[test]
+    fn publish_requirement_impacts_only_scan_tightening_changes() {
+        let attribute_id = Uuid::from_u128(88);
+        let requirement = |scope: &str, required_locales: &[&str]| {
+            HashMap::from([(
+                attribute_id,
+                PublishRequirementAttribute {
+                    scope: scope.to_owned(),
+                    required_locales: required_locales.iter().map(|locale| (*locale).to_owned()).collect(),
+                },
+            )])
+        };
+        let product = requirement("product", &["en"]);
+        let both = requirement("both", &["en"]);
+        let product_and_more_locales = requirement("product", &["en", "fr"]);
+        assert!(publish_requirements_tightened(None, Some(&product)));
+        assert!(publish_requirements_tightened(Some(&product), Some(&both)));
+        assert!(publish_requirements_tightened(Some(&product), Some(&product_and_more_locales)));
+        assert!(!publish_requirements_tightened(Some(&both), Some(&product)));
+        assert!(!publish_requirements_tightened(Some(&product_and_more_locales), Some(&product)));
+        assert!(!publish_requirements_tightened(Some(&product), None));
     }
 
     #[test]

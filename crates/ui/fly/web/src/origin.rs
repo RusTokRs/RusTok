@@ -78,6 +78,14 @@ pub fn normalize_expected_origin(origin: &str) -> Option<String> {
     Some(parsed.origin().ascii_serialization())
 }
 
+/// Opaque origins are shared by unrelated sandboxed documents. Inbound
+/// subscriptions must bind an exact source window before admitting one.
+#[cfg(any(test, all(target_arch = "wasm32", feature = "wasm-client")))]
+pub(crate) fn normalize_subscription_origin(origin: &str, has_source: bool) -> Option<String> {
+    let normalized = normalize_expected_origin(origin)?;
+    (normalized != OPAQUE_ORIGIN || has_source).then_some(normalized)
+}
+
 /// The `targetOrigin` to hand to `postMessage` for a configured destination origin.
 ///
 /// An opaque destination ([`OPAQUE_ORIGIN`]) is addressed with `*`, because the platform rejects
@@ -122,6 +130,21 @@ mod tests {
             normalize_expected_origin(OPAQUE_ORIGIN).as_deref(),
             Some("null")
         );
+    }
+
+    #[test]
+    fn opaque_inbound_subscription_requires_a_bound_source_window() {
+        for origin in ["null", " null ", "\tnull\n"] {
+            assert!(normalize_subscription_origin(origin, false).is_none());
+            assert_eq!(normalize_subscription_origin(origin, true).as_deref(), Some("null"));
+        }
+        for has_source in [false, true] {
+            assert_eq!(
+                normalize_subscription_origin("HTTPS://ADMIN.example:443/", has_source).as_deref(),
+                Some("https://admin.example")
+            );
+            assert!(normalize_subscription_origin("*", has_source).is_none());
+        }
     }
 
     #[test]

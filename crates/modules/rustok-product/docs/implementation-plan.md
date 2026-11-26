@@ -214,9 +214,13 @@ No tests, Rust compilation/macro expansion, database or mounted-client checks we
    the Product category-path projection; direct Product operations alone do not prove all
    external hierarchy writers are coordinated. Measure full tenant effective-form snapshot
    cost and lock contention at realistic catalog sizes.
-   - Add active-Product impact validation for EAV requiredness/scope changes in effective
-     category schemas; current schema impact validation covers variant-axis policy but does not
-     revalidate existing active Product attribute completeness.
+   - Implemented source-side active-Product impact validation for effective category-schema
+     requirement/scope tightening. Schema-attribute bindings, category-attribute bindings and
+     category schema-mode changes snapshot effective requirements under the exclusive schema
+     fence and revalidate affected active Products in the same transaction before commit. The
+     scan is tenant-scoped and paged, reuses precomputed effective forms, and caps diagnostics;
+     regression tests cover requirement-signature/tightening decisions. Database integration,
+     compilation and execution remain maintainer verification gates.
 3. Execute the new existing-axis planner/recovery scenarios and ignored PostgreSQL
    reconfiguration contract (position/tuple swaps, read-only preview, stable IDs/links,
    replay/stale refusal and axis-removal collisions). Measure maximum-bound transaction/lock

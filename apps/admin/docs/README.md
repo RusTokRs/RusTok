@@ -327,3 +327,13 @@ Minimal local path for changing `apps/admin`:
 - [Rust UI component catalog](../../../docs/UI/rust-ui-component-catalog.md)
 - [ADR: SSR-first Leptos hosts with headless parity](../../../DECISIONS/2026-04-24-ssr-first-leptos-hosts-with-headless-parity.md)
 - [Documentation map](../../../docs/index.md)
+
+## SSR Auth cookie transition ownership
+
+The shared Auth UI native BFF retains a generation-bound proof seed in one
+HttpOnly refresh envelope, with bounded same-operation retry. Admin SSR
+middleware excludes explicit Auth server functions, does not overwrite a
+handler's cookie update, and marks cookie-bearing responses private/no-store.
+Old bare-cookie sessions require coordinated revocation and reauthentication.
+Mounted SSR/hydration, response-loss and out-of-order cookie tests are pending.
+See [Auth UI](../../../crates/modules/rustok-auth/ui/README.md).

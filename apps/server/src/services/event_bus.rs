@@ -15,6 +15,9 @@ use tokio::task::JoinHandle;
 use crate::common::settings::RustokSettings;
 use crate::services::app_lifecycle::StopHandle;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::stop_handle::{
+    may_admit_next_worker_operation, wait_for_worker_retry_or_stop,
+};
 
 const EVENT_FORWARDER_RESTART_DELAY: Duration = Duration::from_secs(1);
 const EVENT_FORWARDER_INITIAL_RETRY_DELAY: Duration = Duration::from_millis(100);
@@ -218,7 +221,7 @@ async fn supervise_event_forwarder(
         // run_event_forwarder owns the drain even when stop was requested
         // before this supervisor was first polled. Do not return before the
         // initial receiver has persisted its already-accepted queue.
-        if *stop_rx.borrow() {
+        if !may_admit_next_worker_operation(&stop_rx) {
             if outcome.is_err() {
                 tracing::error!(
                     "Event forwarder panicked during shutdown; draining the remaining queued events"
@@ -269,11 +272,7 @@ async fn wait_for_forwarder_restart(
     stop_rx: &mut watch::Receiver<bool>,
     delay: Duration,
 ) -> bool {
-    tokio::select! {
-        biased;
-        changed = stop_rx.changed() => changed.is_ok() && !*stop_rx.borrow(),
-        _ = tokio::time::sleep(delay) => true,
-    }
+    !wait_for_worker_retry_or_stop(delay, stop_rx).await
 }
 
 /// Who may release backpressure slots for envelopes this receiver drains.
@@ -432,7 +431,7 @@ async fn run_event_forwarder_with_receiver(
 ) {
     let consumer_runtime = EventConsumerRuntime::new("server_event_forwarder");
     consumer_runtime.restarted("worker_start");
-    let mut stopping = *stop_rx.borrow();
+    let mut stopping = !may_admit_next_worker_operation(&stop_rx);
 
     loop {
         if stopping {
@@ -965,6 +964,20 @@ mod tests {
             bus.backpressure().expect("hard capacity guard").current_depth(),
             0
         );
+    }
+
+    #[tokio::test]
+    async fn restart_wait_rejects_already_observed_shutdown() {
+        let (stop_tx, mut stop_rx) = watch::channel(false);
+        stop_tx.send_replace(true);
+        assert!(*stop_rx.borrow_and_update());
+        let restart = tokio::time::timeout(
+            Duration::from_secs(1),
+            super::wait_for_forwarder_restart(&mut stop_rx, Duration::from_secs(60)),
+        )
+        .await
+        .expect("already observed shutdown must not wait for the retry timer");
+        assert!(!restart);
     }
 
     #[tokio::test]

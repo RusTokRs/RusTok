@@ -841,8 +841,14 @@ a retry with the already-updated cookie and matching proof also recovers it.
 Recovery preserves the history and refresh deadline and signs a fresh RS256
 access JWT. Other duplicates conflict without revocation in grace; post-grace
 historical replay revokes the lineage. No raw token or proof is persisted.
-REST and GraphQL HTTP use the same `x-rustok-refresh-retry-key` header;
-built-in client proof handling and multi-replica evidence remain pending.
+Raw REST and GraphQL HTTP use the same `x-rustok-refresh-retry-key` header.
+Cookie REST instead issues one HttpOnly token/seed envelope and derives the
+generation-specific proof from the independent seed, resolved tenant UUID
+and presented bearer; caller-provided proof headers are rejected. Next Admin
+relays this envelope and direct Leptos CSR uses browser Web Locks. Cookie
+mutation responses are no-store; malformed/empty/bare cookies are rejected
+rather than treated as absence. Coordinate server and BFF deployment and
+revoke old sessions. Mounted browser and multi-replica evidence remain pending.
 See the [Auth owner contract](../../../crates/modules/rustok-auth/docs/README.md#direct-session-refresh-history-and-recovery).
 Multiple cookies with the
 `rustok-session` name are rejected, including across repeated Cookie headers,
@@ -1175,6 +1181,7 @@ tests for long chains and context-sensitive cycles are present but unrun.
   queue, retry lease, or crash recovery.
 - `host::run` owns YAML configuration loading, database connection and bounded worker shutdown for the pure Axum executable, including ordinary startup and bind failures; `services::server_bootstrap` owns startup validation, default-superadmin initialization, runtime/worker setup and router composition. If the host lifecycle future is cancelled or unwinds, its drop guard schedules worker shutdown on the active Tokio runtime; normal completion awaits the bounded drain. The optional Comments TCP listener and schedule-audit handoff worker use cancellation-safe startup reservations, reject a concurrent in-flight start rather than reporting false success, recheck shutdown before task admission, and do not treat an already-exited task as live. Rate-limit cleanup tasks, the optional Comments TCP listener and schedule-audit handoff worker, DLQ duplicate-alert tasks, Product channel/index workers, Social Graph Index worker/observers, Tenant cache/locale-generation listeners, Cache Redis and field-definition cache tasks, SEO redirect reconciliation, Channel/RBAC invalidation listeners, the RBAC generation watchdog, the Event forwarder, and both Forum Search workers are owned and joined/aborted by that drain. HTTP installer jobs are also held in a runtime-owned `JoinSet` and drained
 before the event forwarder. The Outbox relay supervisor owns and gracefully drains its inner processing task before the host's bounded forced-abort fallback. This cannot guarantee cleanup after process abort/runtime destruction, and lower-level bootstrap callers still own their shutdown lifecycle.
+- Payment provider-event recovery checks host shutdown before each individual event claim, including after listing a tenant's retryable rows. The current admitted recovery finishes its journal transition; unadmitted rows are left for a subsequent sweep. The Event forwarder treats a closed or already-observed drain signal as terminal without restarting, while still draining its accepted queue. Source regressions authored, unrun.
 - Database selection is explicit: `DATABASE_URL` overrides `database.uri`; otherwise the configured URI is used as-is. The host never switches a PostgreSQL URI to SQLite based on its hostname. Configure `sqlite://...` directly when SQLite is intended.
 - Default SuperAdmin provisioning runs only in `Full`, `Api`, and `AdminSsr` host modes that own administrative authentication surfaces. `StorefrontSsr`, `Worker`, and `RegistryOnly` replicas do not perform this privileged auth-state mutation.
 - Background-worker hosts require initialized durable storage before startup because module artifact maintenance is a required worker; missing storage fails bootstrap instead of leaving readiness green with required garbage collection disabled. The optional admission-reverification leg may be omitted only by leaving `RUSTOK_MODULE_MAINTENANCE_VERIFICATION_ENDPOINT` unset. Once the endpoint is configured, invalid endpoint, mTLS, actor, or policy-revision settings abort worker bootstrap with a typed startup error instead of silently disabling admission reverification. A temporarily unreachable verifier remains a retryable per-pass runtime failure.
@@ -1259,6 +1266,7 @@ before the event forwarder. The Outbox relay supervisor owns and gracefully drai
 - Channel and standalone Flex REST handlers receive `ServerRuntimeContext`; channel JSON response
   formatting goes through `rustok_web::json_response`, and Flex controller tests assemble the same
   neutral runtime fixture.
+- Auth lifecycle root-event writes for self-service operations and invite acceptance resolve the registered runtime transactional transport instead of constructing private OutboxTransport instances. Event append failures propagate through the owner transaction and prevent commit; a source regression covers profile rollback with a registered failing transport. Administrative mutation provider composition is separate. Source regression unrun.
 - Auth REST handlers extract a narrow `ServerAuthRuntime`; password reset and verification endpoints
   additionally receive `ServerEmailRuntime`. The controller receives explicit config, DB, and mailer
   dependencies, and JSON response formatting goes through `rustok_web::json_response`.
@@ -2080,3 +2088,15 @@ backoff. Generation zero remains a valid initial seed. The watermark lives
 in the server runtime, not across process restarts; intentional database
 restoration to an older generation requires an operator-controlled recovery.
 Regression cases authored, not executed.
+
+### Expected session lineage precondition
+
+Raw and cookie REST refresh/logout and GraphQL HTTP refresh accept the optional
+singleton `x-rustok-expected-session-id` canonical lowercase non-nil UUID.
+The server checks the resolved tenant credential against that ID before
+rotation or historical replay side effects. A mismatch returns 409 (GraphQL
+CONFLICT). Expected cookie logout verifies current/previous/history digest
+ownership under a tenant session lock and does not clear a missing or mismatched
+credential. The ID is not a bearer credential; absence remains credential-only
+startup or explicit raw-token operation. CORS admits the header. Mounted HTTP
+and database contention evidence is pending.

@@ -2,8 +2,6 @@ use crate::model::{AuthError, AuthSession, AuthUser};
 
 #[cfg(target_arch = "wasm32")]
 use crate::core::{ADMIN_SESSION_KEY, ADMIN_TENANT_KEY, ADMIN_TOKEN_KEY, ADMIN_USER_KEY};
-#[cfg(target_arch = "wasm32")]
-use gloo_storage::{LocalStorage, Storage};
 
 /// Request-scoped authentication state supplied by an SSR host.
 ///
@@ -38,61 +36,93 @@ pub fn provide_server_auth_snapshot(_snapshot: ServerAuthSnapshot) {}
 #[cfg(target_arch = "wasm32")]
 mod memory {
     use std::cell::RefCell;
-
     use crate::model::{AuthSession, AuthUser};
+    use crate::transport::browser_epoch;
 
+    // One verified pair and its exact origin epoch, never separate projections.
     thread_local! {
-        static SESSION: RefCell<Option<AuthSession>> = const { RefCell::new(None) };
-        static USER: RefCell<Option<AuthUser>> = const { RefCell::new(None) };
+        static IDENTITY: RefCell<Option<(browser_epoch::Epoch, AuthSession, AuthUser)>> = const { RefCell::new(None) };
     }
 
-    pub fn save_session(session: AuthSession) {
-        SESSION.with(|cell| *cell.borrow_mut() = Some(session));
+    pub fn publish(epoch: browser_epoch::Epoch, session: AuthSession, user: AuthUser) {
+        IDENTITY.with(|cell| *cell.borrow_mut() = Some((epoch, session, user)));
     }
 
-    pub fn load_session() -> Option<AuthSession> {
-        SESSION.with(|cell| cell.borrow().clone())
+    pub(super) fn current() -> Option<(AuthSession, AuthUser)> {
+        IDENTITY.with(|cell| {
+            let mut cell = cell.borrow_mut();
+            if cell.as_ref().is_some_and(|(epoch, session, _)| {
+                !browser_epoch::matches(epoch)
+                    || super::read_tenant().as_deref() != Some(session.tenant.as_str())
+            }) {
+                *cell = None;
+            }
+            cell.as_ref().map(|(_, session, user)| (session.clone(), user.clone()))
+        })
     }
 
-    pub fn save_user(user: AuthUser) {
-        USER.with(|cell| *cell.borrow_mut() = Some(user));
-    }
-
-    pub fn load_user() -> Option<AuthUser> {
-        USER.with(|cell| cell.borrow().clone())
-    }
-
-    pub fn clear() {
-        SESSION.with(|cell| *cell.borrow_mut() = None);
-        USER.with(|cell| *cell.borrow_mut() = None);
-    }
+    pub fn load_session() -> Option<AuthSession> { current().map(|(session, _)| session) }
+    pub fn load_user() -> Option<AuthUser> { current().map(|(_, user)| user) }
+    pub fn clear() { IDENTITY.with(|cell| *cell.borrow_mut() = None); }
 }
 
 /// Remove credential entries persisted by older builds that kept the
 /// session in LocalStorage.
 #[cfg(target_arch = "wasm32")]
 fn purge_legacy_persisted_credentials() {
-    LocalStorage::delete(ADMIN_SESSION_KEY);
-    LocalStorage::delete(ADMIN_TOKEN_KEY);
-    LocalStorage::delete(ADMIN_USER_KEY);
+    if let Ok(storage) = browser_storage() {
+        for key in [ADMIN_SESSION_KEY, ADMIN_TOKEN_KEY, ADMIN_USER_KEY] {
+            let _ = storage.remove_item(key);
+        }
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
-pub(crate) fn save_session(session: &AuthSession) -> Result<(), AuthError> {
+fn browser_storage() -> Result<web_sys::Storage, AuthError> {
+    web_sys::window().ok_or(AuthError::Network)?.local_storage()
+        .map_err(|_| AuthError::Network)?.ok_or(AuthError::Network)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn read_tenant() -> Option<String> {
+    let encoded = browser_storage().ok()?.get_item(ADMIN_TENANT_KEY).ok()??;
+    serde_json::from_str(&encoded).ok()
+}
+
+#[cfg(target_arch = "wasm32")]
+fn write_tenant(tenant: &str) -> Result<(), AuthError> {
+    let encoded = serde_json::to_string(tenant).map_err(|_| AuthError::Network)?;
+    browser_storage()?.set_item(ADMIN_TENANT_KEY, &encoded).map_err(|_| AuthError::Network)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn load_identity() -> (Option<AuthSession>, Option<AuthUser>) {
     purge_legacy_persisted_credentials();
-    // The tenant slug is not a credential; persisting it lets a page
-    // reload attempt a silent cookie refresh for the right tenant.
-    if let Err(error) = LocalStorage::set(ADMIN_TENANT_KEY, &session.tenant) {
-        tracing::debug!(?error, "failed to persist admin tenant key in LocalStorage");
+    memory::current().map_or((None, None), |(session, user)| (Some(session), Some(user)))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn load_identity() -> (Option<AuthSession>, Option<AuthUser>) {
+    leptos::prelude::use_context::<ServerAuthSnapshot>()
+        .map_or((None, None), |snapshot| (snapshot.session, snapshot.user))
+}
+
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn publish_identity(session: &AuthSession, user: &AuthUser, epoch: &crate::transport::browser_epoch::Epoch) -> Result<(), AuthError> {
+    purge_legacy_persisted_credentials();
+    if !crate::transport::browser_epoch::matches(epoch) {
+        return Err(AuthError::Http(409));
     }
-    memory::save_session(session.clone());
+    write_tenant(&session.tenant)?;
+    if !crate::transport::browser_epoch::matches(epoch) {
+        return Err(AuthError::Http(409));
+    }
+    memory::publish(epoch.clone(), session.clone(), user.clone());
     Ok(())
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub(crate) fn save_session(_session: &AuthSession) -> Result<(), AuthError> {
-    // Response-cookie persistence belongs to the SSR host because it owns cookie flags, domain,
-    // session rotation, and CSRF policy.
+pub(crate) fn publish_identity(_session: &AuthSession, _user: &AuthUser, _epoch: &crate::transport::browser_epoch::Epoch) -> Result<(), AuthError> {
     Ok(())
 }
 
@@ -107,17 +137,6 @@ pub fn load_session() -> Result<AuthSession, AuthError> {
     leptos::prelude::use_context::<ServerAuthSnapshot>()
         .and_then(|snapshot| snapshot.session)
         .ok_or(AuthError::Unauthorized)
-}
-
-#[cfg(target_arch = "wasm32")]
-pub(crate) fn save_user(user: &AuthUser) -> Result<(), AuthError> {
-    memory::save_user(user.clone());
-    Ok(())
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub(crate) fn save_user(_user: &AuthUser) -> Result<(), AuthError> {
-    Ok(())
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -158,7 +177,7 @@ pub fn get_token() -> Option<String> {
 pub fn matches_request_tenant(tenant: &str) -> bool {
     #[cfg(target_arch = "wasm32")]
     {
-        let stored = LocalStorage::get::<String>(ADMIN_TENANT_KEY).ok();
+        let stored = read_tenant();
         stored.as_deref() == Some(tenant)
             && memory::load_session().is_none_or(|session| session.tenant == tenant)
     }
@@ -181,7 +200,7 @@ pub fn bind_request_tenant(tenant: &str) -> Result<(), AuthError> {
         None => {
             #[cfg(target_arch = "wasm32")]
             {
-                LocalStorage::set(ADMIN_TENANT_KEY, tenant).map_err(|_| AuthError::Network)
+                write_tenant(tenant)
             }
             #[cfg(not(target_arch = "wasm32"))]
             {
@@ -195,7 +214,7 @@ pub fn bind_request_tenant(tenant: &str) -> Result<(), AuthError> {
 pub fn get_tenant() -> Option<String> {
     memory::load_session()
         .map(|session| session.tenant)
-        .or_else(|| LocalStorage::get(ADMIN_TENANT_KEY).ok())
+        .or_else(read_tenant)
 }
 
 #[cfg(not(target_arch = "wasm32"))]

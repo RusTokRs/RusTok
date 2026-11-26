@@ -158,7 +158,7 @@ impl AuthLifecycleService {
         .map_err(AuthLifecycleError::from)?;
 
         Self::publish_user_event_in_tx(
-            ctx.db_clone(),
+            ctx,
             &tx,
             tenant_id,
             user.id,

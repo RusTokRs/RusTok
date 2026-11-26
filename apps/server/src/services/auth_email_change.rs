@@ -114,7 +114,7 @@ impl AuthLifecycleService {
 
         let token_hash = hash_refresh_token(token);
         let confirmed = Self::confirm_email_change_db(
-            ctx.db(),
+            ctx,
             tenant_id,
             &token_hash,
             authenticated_user_id,
@@ -244,12 +244,13 @@ impl AuthLifecycleService {
     }
 
     async fn confirm_email_change_db(
-        db: &DatabaseConnection,
+        ctx: &ServerRuntimeContext,
         tenant_id: Uuid,
         token_hash: &str,
         authenticated_user_id: Option<Uuid>,
         current_session_id: Option<Uuid>,
     ) -> Result<ConfirmedEmailChange, AuthLifecycleError> {
+        let db = ctx.db();
         let observed_at = Utc::now();
 
         // Read only the owner ID before opening the transaction. Every
@@ -377,7 +378,7 @@ impl AuthLifecycleService {
 
         delete_email_change_request(&tx, request.id, token_hash).await?;
         Self::publish_user_event_in_tx(
-            db.clone(),
+            ctx,
             &tx,
             tenant_id,
             user.id,
@@ -578,7 +579,7 @@ mod tests {
         .await;
 
         let changed = AuthLifecycleService::confirm_email_change_db(
-            &db,
+            &ServerRuntimeContext::new(db.clone(), Default::default()),
             tenant.id,
             &token_hash,
             None,
@@ -615,7 +616,7 @@ mod tests {
 
         assert!(matches!(
             AuthLifecycleService::confirm_email_change_db(
-                &db,
+                &ServerRuntimeContext::new(db.clone(), Default::default()),
                 tenant.id,
                 &token_hash,
                 None,
@@ -655,7 +656,7 @@ mod tests {
         ] {
             assert!(matches!(
                 AuthLifecycleService::confirm_email_change_db(
-                    &db,
+                    &ServerRuntimeContext::new(db.clone(), Default::default()),
                     tenant.id,
                     &token_hash,
                     authenticated_user_id,
@@ -722,7 +723,7 @@ mod tests {
         .await;
 
         AuthLifecycleService::confirm_email_change_db(
-            &db,
+            &ServerRuntimeContext::new(db.clone(), Default::default()),
             tenant.id,
             &token_hash,
             Some(user.id),
@@ -778,7 +779,7 @@ mod tests {
 
         assert!(matches!(
             AuthLifecycleService::confirm_email_change_db(
-                &db,
+                &ServerRuntimeContext::new(db.clone(), Default::default()),
                 tenant.id,
                 &token_hash,
                 None,
@@ -824,7 +825,7 @@ mod tests {
 
         assert!(matches!(
             AuthLifecycleService::confirm_email_change_db(
-                &db,
+                &ServerRuntimeContext::new(db.clone(), Default::default()),
                 tenant.id,
                 &token_hash,
                 None,

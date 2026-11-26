@@ -101,11 +101,12 @@ it never provisions a service or adds grants. Human transport authentication is 
 ### Known Limitations / Pending Implementation
 
 Direct first-party refresh has source-level proof-bound recovery through the
-raw and cookie REST endpoints and GraphQL HTTP transport. Clients without
-an independently generated, retained retry key still cannot recover a lost
-rotation response. Next Admin BFF source-wires generation-bound proofs with
-an independent HttpOnly login seed and bounded retry. Leptos, Next Storefront,
-mobile/native proof handling, generated API header documentation, compilation
+raw and cookie REST endpoints and GraphQL HTTP transport. The cookie
+REST owner issues an HttpOnly token/seed envelope and derives its proof;
+Next Admin relays that envelope and direct Leptos CSR coordinates cooperating
+tabs with Web Locks. Shared Leptos native/SSR BFF uses the raw proof scheme.
+All use bounded ambiguous refresh retry. Standalone Storefront SSR composition,
+Next Storefront, mobile/native proof handling, generated API header documentation, compilation
 and multi-replica runtime evidence remain pending. See the
 [proof-bound refresh ADR](../../../DECISIONS/2026-11-26-session-refresh-retry-proof.md).
 
@@ -154,3 +155,9 @@ OAuth/module availability/secret rotation, denied/revoked grants, backend and de
 remain pending; absent bindings refuse instead of falling back to system/admin authority.
 The [existing downstream task record](../rustok-inventory/docs/implementation-plan.md) tracks
 recovery/cutover gates. No public transport/UI or new operator capability is exposed here.
+
+The shared Leptos CSR/hydrate provider now source-wires origin-wide transition
+admission, foreign epoch invalidation and atomic verified memory publication.
+See [Auth UI](ui/README.md); server-side expected-lineage admission is
+source-wired for raw/cookie REST and GraphQL HTTP refresh, with mounted browser
+and cross-replica verification pending.

@@ -88,6 +88,7 @@ async fn worker_loop(
         }
 
         tokio::select! {
+            biased;
             changed = stop_rx.changed() => {
                 if changed.is_err() || *stop_rx.borrow() {
                     tracing::info!(
@@ -152,10 +153,11 @@ async fn sweep_tenants(
                 tenant.id
             );
             match recovery
-                .run(
+                .run_with_admission(
                     tenant.id,
                     worker_id.as_str(),
                     Some(PAYMENT_PROVIDER_EVENT_SWEEP_BATCH),
+                    || may_admit_next_worker_operation(stop_rx),
                 )
                 .await
             {

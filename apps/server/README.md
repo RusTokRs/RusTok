@@ -169,6 +169,9 @@ CIDRs narrow, including only proxies under operator control.
 In production, refresh-session cookies are always marked `Secure`, even
 when forwarded-protocol headers are absent or not trusted. Outside production,
 the `Secure` flag is enabled only when trusted proxy context reports HTTPS.
+Cookie-session login/register issue a canonical HttpOnly token/seed envelope;
+refresh derives the generation-bound proof server-side. Deploy with the
+matching BFFs and revoke pre-cutover sessions; bare cookies are rejected.
 
 ## Docs
 

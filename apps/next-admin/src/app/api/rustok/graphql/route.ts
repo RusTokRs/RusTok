@@ -1,12 +1,11 @@
 import { auth } from '@/auth';
 import {
-  clearRustokSessionCookies,
   persistRustokSessionCookies,
   readRustokSessionCookies,
   refreshRustokSession,
   RustokSessionError
 } from '@/shared/api/auth-server';
-import { isRustokAccessTokenExpiring, isSameOriginRequest } from '@/shared/api/auth-session';
+import { isCanonicalSessionId, isRustokAccessTokenExpiring, isSameOriginRequest, matchesRustokDirectSession } from '@/shared/api/auth-session';
 
 const API_BASE_URL = (
   process.env.RUSTOK_API_URL ??
@@ -125,6 +124,10 @@ export async function POST(request: Request): Promise<Response> {
   if (session?.user) {
     const tenantSlug = session.user.tenantSlug;
     const tenantId = session.user.tenantId;
+    const expectedSessionId = session.user.rustokSessionId;
+    if (!isCanonicalSessionId(expectedSessionId) || !isCanonicalSessionId(tenantId)) {
+      return graphQLError('UNAUTHORIZED', 'Session identity is unavailable. Sign in again.', 401);
+    }
     const requestedTenantSlug = request.headers.get('x-tenant-slug');
     const requestedTenantId = request.headers.get('x-tenant-id');
 
@@ -152,7 +155,7 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
-    if (!stored.accessToken && !stored.refreshToken) {
+    if (!stored.accessToken && !stored.refreshCredential) {
       return graphQLError(
         'UNAUTHORIZED',
         'Rustok session is unavailable. Sign in again.',
@@ -161,6 +164,9 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     let accessToken = stored.accessToken;
+    if (accessToken && !matchesRustokDirectSession(accessToken, expectedSessionId, session.user.id, tenantId)) {
+      return graphQLError('SESSION_LINEAGE_MISMATCH', 'Session identity does not match. Sign in again.', 409);
+    }
     if (!accessToken || isRustokAccessTokenExpiring(accessToken)) {
       if (!stored.refreshCredential) {
         return graphQLError(
@@ -174,10 +180,12 @@ export async function POST(request: Request): Promise<Response> {
         const refreshed = await refreshRustokSession(
           stored.refreshCredential,
           tenantSlug,
+          expectedSessionId,
           tenantId,
           request.headers
         );
-        if (refreshed.user.id !== session.user.id) {
+        if (refreshed.user.id !== session.user.id ||
+          !matchesRustokDirectSession(refreshed.accessToken, expectedSessionId, session.user.id, tenantId)) {
           // Do not attach another subject's credential to this Auth.js identity.
           return graphQLError('FORBIDDEN', 'Session identity does not match', 403);
         }
@@ -185,24 +193,19 @@ export async function POST(request: Request): Promise<Response> {
         accessToken = refreshed.accessToken;
       } catch (error) {
         if (error instanceof RustokSessionError && error.status === 409) {
-          // Another replica already rotated this cookie. The backend did not
-          // revoke the live session; do not emit a clearing Set-Cookie that
-          // could race with the successful response carrying the new token.
-          // This GraphQL operation has not been forwarded upstream, so retry
-          // is safe even when its document contains mutations.
+          // Rotation conflict and expected-lineage conflict both require
+          // explicit re-observation; never blindly replay a stale domain intent.
           return graphQLError(
-            'SESSION_REFRESH_CONCURRENTLY_ROTATED',
-            'Another request already refreshed this session. Retry this operation.',
-            200,
-            'rejected',
-            true
+            'SESSION_REFRESH_CONFLICT',
+            'Session refresh conflicted. Recheck the signed-in session.',
+            409,
+            'rejected'
           );
         }
         if (
           error instanceof RustokSessionError &&
           error.status === 401
         ) {
-          await clearRustokSessionCookies();
           return graphQLError(
             'UNAUTHORIZED',
             'Rustok session could not be refreshed. Sign in again.',
@@ -233,8 +236,7 @@ export async function POST(request: Request): Promise<Response> {
     upstreamHeaders.set('x-tenant-slug', tenantSlug);
     if (tenantId) upstreamHeaders.set('x-tenant-id', tenantId);
   } else {
-    if (stored.accessToken || stored.refreshToken) {
-      await clearRustokSessionCookies();
+    if (stored.accessToken || stored.refreshCredential) {
       return graphQLError(
         'UNAUTHORIZED',
         'Application session is unavailable. Sign in again.',

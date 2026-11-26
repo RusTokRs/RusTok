@@ -6,13 +6,9 @@ use leptos_use::use_interval_fn;
 
 use super::storage;
 use crate::model::{AuthError, AuthSession, AuthUser, ClientAuthScope};
-use crate::transport;
+use crate::transport::{self, browser_epoch};
 
-/// Lifecycle-only notification. The detail contains a random provider identifier and whether
-/// the operation may change identity; it never carries a session, user, token or tenant.
-pub const AUTH_SCOPE_CHANGE_EVENT: &str = "rustok:auth:scope-change";
-/// A non-secret invalidation stamp, so another tab can refuse its stale in-memory session.
-pub const AUTH_SCOPE_CHANGE_STORAGE_KEY: &str = "rustok-auth-scope-change";
+pub use browser_epoch::{AUTH_SCOPE_CHANGE_EVENT, AUTH_SCOPE_CHANGE_STORAGE_KEY};
 
 fn provider_id() -> String {
     #[cfg(target_arch = "wasm32")]
@@ -25,50 +21,15 @@ fn provider_id() -> String {
     }
 }
 
-fn notify_scope_change(source: &str, identity_change: bool) -> bool {
-    #[cfg(target_arch = "wasm32")]
-    {
-        let Some(window) = web_sys::window() else {
-            return false;
-        };
-        let detail = format!(
-            "{source}:{}",
-            if identity_change {
-                "identity"
-            } else {
-                "refresh"
-            }
-        );
-        let init = web_sys::CustomEventInit::new();
-        init.set_detail(&leptos::wasm_bindgen::JsValue::from_str(&detail));
-        let Ok(event) =
-            web_sys::CustomEvent::new_with_event_init_dict(AUTH_SCOPE_CHANGE_EVENT, &init)
-        else {
-            return false;
-        };
-        if window.dispatch_event(&event).is_err() {
-            return false;
-        }
-        // Refresh can rotate a shared HttpOnly cookie too. Other tabs cannot prove which
-        // identity it now belongs to, so they must invalidate rather than reuse old projections.
-        let Ok(Some(storage)) = window.local_storage() else {
-            return false;
-        };
-        let stamp = format!("{source}:{}", js_sys::Math::random());
-        storage
-            .set_item(AUTH_SCOPE_CHANGE_STORAGE_KEY, &stamp)
-            .is_ok()
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let _ = (source, identity_change);
-        true
-    }
-}
-
 struct ScopeTransition {
     scope: RwSignal<ClientAuthScope>,
     started_scope: ClientAuthScope,
+    stamp: browser_epoch::Epoch,
+    previously_current: bool,
+    projection_epoch: RwSignal<browser_epoch::Epoch>,
+    user: RwSignal<Option<AuthUser>>,
+    session: RwSignal<Option<AuthSession>>,
+    loading: RwSignal<bool>,
     realm: Option<super::realm::RealmTransition>,
     source: String,
     identity_change: bool,
@@ -80,6 +41,7 @@ impl ScopeTransition {
     /// dispose this provider or replace the shared in-document lease.
     fn is_current(&self) -> bool {
         self.scope.try_get_untracked() == Some(self.started_scope)
+            && browser_epoch::matches(&self.stamp)
             && self.realm.as_ref().is_some_and(|realm| realm.is_current())
     }
 
@@ -87,19 +49,39 @@ impl ScopeTransition {
         if !self.is_current() {
             return false;
         }
-        let announced = notify_scope_change(&self.source, self.identity_change);
-        // Dispatch is synchronous: a listener can dispose the owner or invalidate the lease.
-        // Drop then poisons the old lease rather than verifying a different scope.
+        let Ok(stamp) = browser_epoch::publish(&self.source, self.identity_change) else {
+            return false;
+        };
+        self.stamp = stamp;
+        // Synchronous listeners can dispose the provider. Never publish after
+        // disposal, a changed epoch, or a lost document lease.
         if !self.is_current() {
             return false;
         }
         let released = self.realm.take().is_some_and(|realm| realm.release());
+        let saved = released && if verified {
+            match (self.session.try_get_untracked(), self.user.try_get_untracked()) {
+                (Some(Some(session)), Some(Some(user))) =>
+                    storage::publish_identity(&session, &user, &self.stamp).is_ok(),
+                (Some(None), Some(None)) => { storage::clear_session(); true }
+                _ => false,
+            }
+        } else {
+            storage::clear_session();
+            true
+        };
+        // A failed explicit login in a stale tab does not grant permission to
+        // subsequently refresh/logout whichever identity another tab installed.
+        let epoch_set = if verified && saved || self.previously_current {
+            self.projection_epoch.try_update(|epoch| *epoch = self.stamp.clone()).is_some()
+        } else {
+            self.projection_epoch.try_get_untracked().is_some()
+        };
+        let ready = verified && saved && epoch_set && browser_epoch::matches(&self.stamp);
         self.completed = true;
-        let updated = self
-            .scope
-            .try_update(|scope| scope.finish(verified && announced && released))
-            .is_some();
-        announced && released && updated
+        let updated = self.scope.try_update(|scope| scope.finish(ready)).is_some();
+        let _ = self.loading.try_update(|loading| *loading = false);
+        released && saved && epoch_set && updated && (!verified || ready)
     }
 }
 
@@ -108,13 +90,17 @@ impl Drop for ScopeTransition {
         if !self.completed {
             // Dropping a future does not cancel a request or its cookie side effects. Poison
             // the document lease as well as this provider before notifying other consumers.
+            let owns_epoch = browser_epoch::matches(&self.stamp)
+                && self.realm.as_ref().is_some_and(|realm| realm.is_current());
             if let Some(realm) = self.realm.as_mut() {
                 realm.poison();
             }
-            self.scope.update(ClientAuthScope::abandon);
-            let announced = notify_scope_change(&self.source, self.identity_change);
-            if !announced {
-                tracing::debug!("scope change notification was not delivered during drop");
+            let _ = self.scope.try_update(ClientAuthScope::abandon);
+            let _ = self.loading.try_update(|loading| *loading = false);
+            if owns_epoch {
+                // An abandoned transition must not overwrite a newer tab's epoch.
+                storage::clear_session();
+                let _ = browser_epoch::publish(&self.source, self.identity_change);
             }
         }
     }
@@ -147,13 +133,20 @@ pub struct AuthContext {
     loading_state: RwSignal<bool>,
     error_state: RwSignal<Option<String>>,
     scope: RwSignal<ClientAuthScope>,
+    projection_epoch: RwSignal<browser_epoch::Epoch>,
     source: String,
 }
 
 impl AuthContext {
     pub fn new() -> Self {
-        let user = RwSignal::new(storage::load_user().ok());
-        let session = RwSignal::new(storage::load_session().ok());
+        let observed_epoch = browser_epoch::read().unwrap_or_default();
+        let (mut session, mut user) = storage::load_identity();
+        if !browser_epoch::matches(&observed_epoch) {
+            session = None;
+            user = None;
+        }
+        let user = RwSignal::new(user);
+        let session = RwSignal::new(session);
         let is_loading = RwSignal::new(cfg!(target_arch = "wasm32"));
         let error = RwSignal::new(None);
 
@@ -167,8 +160,52 @@ impl AuthContext {
             loading_state: is_loading,
             error_state: error,
             scope: RwSignal::new(ClientAuthScope::new(!cfg!(target_arch = "wasm32"))),
+            projection_epoch: RwSignal::new(observed_epoch),
             source: provider_id(),
         }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn install_epoch_listeners(&self) -> bool {
+        use leptos::wasm_bindgen::{JsCast, closure::Closure};
+        let Some(window) = web_sys::window() else { return false; };
+        let auth = self.clone();
+        let listener = Closure::<dyn FnMut(web_sys::Event)>::new(move |_event| {
+            // Read the current storage value, not an asynchronously delivered
+            // event payload. Ignore this provider's own start/end notifications.
+            let current = browser_epoch::read();
+            let own = current.as_ref().ok().and_then(|epoch| epoch.as_deref())
+                .is_some_and(|stamp| stamp.split_once(':').is_some_and(|(source, _)| source == auth.source));
+            if own || auth.epoch_is_current() {
+                return;
+            }
+            let _ = auth.scope.try_update(|scope| scope.set_verified(false));
+            let _ = auth.user_state.try_update(|user| *user = None);
+            let _ = auth.session_state.try_update(|session| *session = None);
+            let _ = auth.loading_state.try_update(|loading| *loading = false);
+            let _ = auth.error_state.try_update(|error| *error = Some(AuthError::Http(409).to_string()));
+            // Do not adopt the foreign epoch: stale logout/refresh intents
+            // remain inadmissible until explicit sign-in or document reload.
+        });
+        let names = [AUTH_SCOPE_CHANGE_EVENT, "storage", "pageshow", "focus"];
+        let mut installed = Vec::new();
+        for name in names {
+            if window.add_event_listener_with_callback(name, listener.as_ref().unchecked_ref()).is_err() {
+                for name in installed {
+                    let _ = window.remove_event_listener_with_callback(name, listener.as_ref().unchecked_ref());
+                }
+                return false;
+            }
+            installed.push(name);
+        }
+        let registration = send_wrapper::SendWrapper::new((window, installed, listener));
+        on_cleanup(move || {
+            let (window, names, listener) = &*registration;
+            for name in names {
+                let _ = window.remove_event_listener_with_callback(name, listener.as_ref().unchecked_ref());
+            }
+        });
+        true
     }
 
     /// Read-only handles are created with the provider's owner and remain stable across clones.
@@ -190,23 +227,63 @@ impl AuthContext {
 
     /// Tracked, credential-free scope stamp. Consumers must still authorize server-side.
     pub fn client_scope(&self) -> ClientAuthScope {
-        self.scope
-            .try_get()
-            .unwrap_or_else(|| ClientAuthScope::new(false))
+        let mut scope = self.scope.try_get().unwrap_or_else(|| ClientAuthScope::new(false));
+        if !self.projection_epoch.try_get().is_some_and(|epoch| browser_epoch::matches(&epoch)) {
+            scope.set_verified(false);
+        }
+        scope
     }
 
     /// Untracked version for checking an asynchronous operation before publishing its result.
     pub fn client_scope_untracked(&self) -> ClientAuthScope {
-        self.scope
-            .try_get_untracked()
-            .unwrap_or_else(|| ClientAuthScope::new(false))
+        let mut scope = self.scope.try_get_untracked().unwrap_or_else(|| ClientAuthScope::new(false));
+        if !self.epoch_is_current() {
+            scope.set_verified(false);
+        }
+        scope
     }
 
     pub fn scope_source(&self) -> &str {
         &self.source
     }
 
+    fn epoch_is_current(&self) -> bool {
+        self.projection_epoch.try_get_untracked()
+            .is_some_and(|epoch| browser_epoch::matches(&epoch))
+    }
+
+    /// Hold the origin-wide lock across admission, network and publication.
+    /// Explicit sign-in/up can recover a stale document, but logout, renewal
+    /// and current-user revalidation must never adopt another tab's identity.
+    async fn with_provider_lock<T: 'static>(
+        &self,
+        require_current: bool,
+        operation: impl std::future::Future<Output = Result<T, AuthError>> + 'static,
+    ) -> Result<T, AuthError> {
+        #[cfg(target_arch = "wasm32")]
+        {
+            let auth = self.clone();
+            let scope = auth.scope.try_get_untracked().ok_or(AuthError::Network)?;
+            if scope.is_pending() || (require_current && !auth.epoch_is_current()) {
+                return Err(AuthError::Http(409));
+            }
+            transport::browser_lock::with_cookie_lock(async move {
+                if auth.scope.try_get_untracked() != Some(scope)
+                    || (require_current && !auth.epoch_is_current()) {
+                    return Err(AuthError::Http(409));
+                }
+                operation.await
+            }).await
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let _ = require_current;
+            operation.await
+        }
+    }
+
     fn begin_scope_transition(&self, identity_change: bool) -> Result<ScopeTransition, AuthError> {
+        let previously_current = self.epoch_is_current();
         let started = self
             .scope
             .try_update(ClientAuthScope::begin)
@@ -230,24 +307,33 @@ impl AuthContext {
                 return Err(error);
             }
         };
-        if !notify_scope_change(&self.source, identity_change) {
-            // No request has started. A listener may have disposed or changed the scope.
-            // Release only this lease and never finish a different transition.
-            if !realm.release() {
-                tracing::debug!("failed to release realm transition");
+        let stamp = match browser_epoch::publish(&self.source, identity_change) {
+            Ok(stamp) => stamp,
+            Err(error) => {
+                // No request has started. A listener may have disposed the owner.
+                let _ = realm.release();
+                let _ = self.scope.try_update(|scope| {
+                    if *scope == started_scope {
+                        scope.finish(false);
+                    } else {
+                        scope.abandon();
+                    }
+                });
+                return Err(error);
             }
-            self.scope.update(|scope| {
-                if *scope == started_scope {
-                    scope.finish(false);
-                } else {
-                    scope.abandon();
-                }
-            });
-            return Err(AuthError::Network);
-        }
+        };
+        // Start notification invalidates shared memory before any new I/O.
+        storage::clear_session();
+        let _ = self.loading_state.try_update(|loading| *loading = true);
         Ok(ScopeTransition {
             scope: self.scope,
             started_scope,
+            stamp,
+            previously_current,
+            projection_epoch: self.projection_epoch,
+            user: self.user_state,
+            session: self.session_state,
+            loading: self.loading_state,
             realm: Some(realm),
             source: self.source.clone(),
             identity_change,
@@ -261,30 +347,27 @@ impl AuthContext {
         password: String,
         tenant: String,
     ) -> Result<(), AuthError> {
+        let auth = self.clone();
+        self.with_provider_lock(false, async move {
+            auth.sign_in_locked(email, password, tenant).await
+        }).await
+    }
+
+    async fn sign_in_locked(&self, email: String, password: String, tenant: String) -> Result<(), AuthError> {
         let transition = self.begin_scope_transition(true)?;
-        self.loading_state.set(true);
         self.error_state.set(None);
         if !transition.is_current() {
-            self.loading_state.set(false);
             return Err(AuthError::Network);
         }
-        let result = transport::sign_in(email, password, tenant).await;
+        let result = transport::sign_in_unlocked(email, password, tenant).await;
         if !transition.is_current() {
-            self.loading_state.set(false);
             return Err(AuthError::Network);
         }
 
         match result {
             Ok((user, session)) => {
-                if let Err(err) = storage::save_user(&user) {
-                    tracing::warn!(?err, "failed to cache user in local storage");
-                }
-                if let Err(err) = storage::save_session(&session) {
-                    tracing::warn!(?err, "failed to cache session in local storage");
-                }
                 self.user_state.set(Some(user));
                 self.session_state.set(Some(session));
-                self.loading_state.set(false);
                 if transition.complete(true) {
                     Ok(())
                 } else {
@@ -292,7 +375,6 @@ impl AuthContext {
                 }
             }
             Err(e) => {
-                self.loading_state.set(false);
                 self.error_state.set(Some(format!("{}", e)));
                 transition.complete(false);
                 Err(e)
@@ -307,30 +389,27 @@ impl AuthContext {
         name: Option<String>,
         tenant: String,
     ) -> Result<(), AuthError> {
+        let auth = self.clone();
+        self.with_provider_lock(false, async move {
+            auth.sign_up_locked(email, password, name, tenant).await
+        }).await
+    }
+
+    async fn sign_up_locked(&self, email: String, password: String, name: Option<String>, tenant: String) -> Result<(), AuthError> {
         let transition = self.begin_scope_transition(true)?;
-        self.loading_state.set(true);
         self.error_state.set(None);
         if !transition.is_current() {
-            self.loading_state.set(false);
             return Err(AuthError::Network);
         }
-        let result = transport::sign_up(email, password, name, tenant).await;
+        let result = transport::sign_up_unlocked(email, password, name, tenant).await;
         if !transition.is_current() {
-            self.loading_state.set(false);
             return Err(AuthError::Network);
         }
 
         match result {
             Ok((user, session)) => {
-                if let Err(err) = storage::save_user(&user) {
-                    tracing::warn!(?err, "failed to cache user in local storage");
-                }
-                if let Err(err) = storage::save_session(&session) {
-                    tracing::warn!(?err, "failed to cache session in local storage");
-                }
                 self.user_state.set(Some(user));
                 self.session_state.set(Some(session));
-                self.loading_state.set(false);
                 if transition.complete(true) {
                     Ok(())
                 } else {
@@ -338,7 +417,6 @@ impl AuthContext {
                 }
             }
             Err(e) => {
-                self.loading_state.set(false);
                 self.error_state.set(Some(format!("{}", e)));
                 transition.complete(false);
                 Err(e)
@@ -347,7 +425,11 @@ impl AuthContext {
     }
 
     pub async fn sign_out(&self) -> Result<(), AuthError> {
-        self.sign_out_with(transport::sign_out).await
+        let auth = self.clone();
+        self.with_provider_lock(true, async move {
+            let expected = auth.expected_session_id()?;
+            auth.sign_out_with(move |tenant| transport::sign_out_unlocked(tenant, expected)).await
+        }).await
     }
 
     async fn sign_out_with<F, Fut>(&self, revoke: F) -> Result<(), AuthError>
@@ -390,8 +472,6 @@ impl AuthContext {
 
         match &result {
             Ok(()) => {
-                storage::clear_session();
-                // Browser storage calls can be synchronous integration boundaries.
                 if !transition.is_current() {
                     return Err(AuthError::Network);
                 }
@@ -410,7 +490,6 @@ impl AuthContext {
                 self.error_state.update(|slot| *slot = Some(error.to_string()));
             }
         }
-        self.loading_state.update(|loading| *loading = false);
         if transition.complete(result.is_ok()) {
             result
         } else {
@@ -457,6 +536,20 @@ impl AuthContext {
     }
 
     pub async fn refresh_session(&self) -> Result<(), AuthError> {
+        let auth = self.clone();
+        self.with_provider_lock(true, async move { auth.refresh_session_locked().await }).await
+    }
+
+    fn expected_session_id(&self) -> Result<Option<String>, AuthError> {
+        self.session.try_get_untracked().ok_or(AuthError::Network)?
+            .map(|session| crate::core::session_id_from_access_token(&session.token)
+                .filter(|id| crate::core::canonical_session_id(id))
+                .ok_or(AuthError::Http(409)))
+            .transpose()
+    }
+
+    async fn refresh_session_locked(&self) -> Result<(), AuthError> {
+        let expected = self.expected_session_id()?;
         let transition = self.begin_scope_transition(false)?;
         if !transition.is_current() {
             return Err(AuthError::Network);
@@ -470,7 +563,7 @@ impl AuthContext {
             transition.complete(false);
             return Err(AuthError::Unauthorized);
         };
-        let result = transport::refresh_session(tenant).await;
+        let result = transport::refresh_session_unlocked(tenant, expected).await;
         if !transition.is_current() {
             return Err(AuthError::Network);
         }
@@ -494,11 +587,14 @@ impl AuthContext {
                 };
             }
         };
-        if let Err(err) = storage::save_session(&new_session) {
-            tracing::warn!(?err, "failed to cache refreshed session in local storage");
-        }
-        if let Err(err) = storage::save_user(&new_user) {
-            tracing::warn!(?err, "failed to cache refreshed user in local storage");
+        let previous_user = self.user.try_get_untracked().flatten();
+        if !refresh_matches_identity(previous_session.as_ref(), previous_user.as_ref(), &new_session, &new_user) {
+            self.session_state.set(None);
+            self.user_state.set(None);
+            // Do not rebind a mismatched cookie on a second refresh attempt.
+            // Drop abandons this document's lease; reload or a new provider is required.
+            drop(transition);
+            return Err(AuthError::Http(409));
         }
         self.session_state.set(Some(new_session));
         self.user_state.set(Some(new_user));
@@ -521,6 +617,11 @@ impl AuthContext {
     }
 
     pub async fn fetch_current_user(&self) -> Result<(), AuthError> {
+        let auth = self.clone();
+        self.with_provider_lock(true, async move { auth.fetch_current_user_locked().await }).await
+    }
+
+    async fn fetch_current_user_locked(&self) -> Result<(), AuthError> {
         let transition = self.begin_scope_transition(false)?;
         if !transition.is_current() {
             return Err(AuthError::Network);
@@ -536,8 +637,11 @@ impl AuthContext {
         }
         match result {
             Ok(Some(user)) => {
-                if let Err(err) = storage::save_user(&user) {
-                    tracing::warn!(?err, "failed to cache current user in local storage");
+                if self.user.try_get_untracked().flatten().is_some_and(|previous| previous.id != user.id) {
+                    self.user_state.set(None);
+                    self.session_state.set(None);
+                    drop(transition);
+                    return Err(AuthError::Http(409));
                 }
                 self.user_state.set(Some(user));
                 if transition.complete(true) {
@@ -559,7 +663,8 @@ impl AuthContext {
     }
 
     pub fn is_authenticated(&self) -> bool {
-        self.user.try_get().flatten().is_some()
+        self.client_scope().is_ready()
+            && self.user.try_get().flatten().is_some()
             && self.session.try_get().flatten().is_some()
             && !self.is_token_expired()
     }
@@ -577,6 +682,26 @@ impl AuthContext {
             return None;
         }
         self.session.try_get().flatten().map(|s| s.tenant)
+    }
+}
+
+/// A refresh may update role/permissions, but never silently replace the
+/// tenant, subject or session lineage already projected by this provider.
+fn refresh_matches_identity(
+    previous_session: Option<&AuthSession>,
+    previous_user: Option<&AuthUser>,
+    next_session: &AuthSession,
+    next_user: &AuthUser,
+) -> bool {
+    match (previous_session, previous_user) {
+        (None, None) => true,
+        (Some(session), Some(user)) => {
+            session.tenant == next_session.tenant && user.id == next_user.id
+                && crate::core::session_id_from_access_token(&session.token)
+                    .zip(crate::core::session_id_from_access_token(&next_session.token))
+                    .is_some_and(|(old, new)| old == new)
+        }
+        _ => false,
     }
 }
 
@@ -605,7 +730,16 @@ pub fn AuthProvider(
     provide_context(auth_context.clone());
 
     #[cfg(target_arch = "wasm32")]
-    if binding.is_ok() {
+    let listeners_ready = auth_context.install_epoch_listeners();
+    #[cfg(target_arch = "wasm32")]
+    if !listeners_ready {
+        auth_context.scope.update(|scope| scope.set_verified(false));
+        auth_context.loading_state.set(false);
+        auth_context.error_state.set(Some(AuthError::Network.to_string()));
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    if binding.is_ok() && listeners_ready {
         // Credentials are never read from browser storage: restore the
         // session from the server-held HttpOnly cookie (silent
         // refresh), keeping the loading flag up so protected routes
@@ -639,11 +773,9 @@ pub fn AuthProvider(
                         return;
                     }
                     let secs = auth.secs_until_expiry_untracked();
-                    if secs <= 0 {
-                        if let Err(err) = auth.sign_out().await {
-                            tracing::warn!(?err, "session expiry background sign-out failed");
-                        }
-                    } else if secs < 300 {
+                    // Access expiry does not revoke the independently-lived refresh
+                    // session. A sleeping tab must attempt renewal, not log out.
+                    if secs < 300 {
                         if let Err(err) = auth.refresh_session().await {
                             tracing::warn!(?err, "proactive session refresh failed");
                         }
@@ -733,6 +865,7 @@ mod tests {
             assert_eq!(auth.user.get_untracked(), Some(user()));
             assert!(auth.error.get_untracked().is_some());
             assert!(!auth.client_scope_untracked().is_ready());
+            assert!(!auth.is_authenticated());
             assert_eq!(token.get(), None);
             assert_eq!(auth.get_tenant(), None);
             assert!(!auth.is_loading.get_untracked());
@@ -756,6 +889,7 @@ mod tests {
         owner.with(|| {
             let auth = AuthContext::new();
             auth.session_state.set(Some(session()));
+            auth.user_state.set(Some(user()));
             let auth_for_memo = auth.clone();
             let credentials =
                 Memo::new(move |_| (auth_for_memo.get_token(), auth_for_memo.get_tenant()));
@@ -778,6 +912,44 @@ mod tests {
                 credentials.get(),
                 (Some("other-access".into()), Some("other-shop".into()))
             );
+        });
+    }
+
+    #[test]
+    fn refresh_cannot_substitute_tenant_subject_or_session_lineage() {
+        let mut old = session();
+        old.token = "header.eyJzZXNzaW9uX2lkIjoib25lIn0.signature".into();
+        let mut next = old.clone();
+        next.token = "header.eyJzZXNzaW9uX2lkIjoib25lIn0.newsignature".into();
+        let previous_user = user();
+        let mut next_user = previous_user.clone();
+        next_user.permissions.push("pages:read".into());
+        assert!(refresh_matches_identity(Some(&old), Some(&previous_user), &next, &next_user));
+        next_user.id = "other".into();
+        assert!(!refresh_matches_identity(Some(&old), Some(&previous_user), &next, &next_user));
+        next_user.id = previous_user.id.clone();
+        next.tenant = "other".into();
+        assert!(!refresh_matches_identity(Some(&old), Some(&previous_user), &next, &next_user));
+        next.tenant = old.tenant.clone();
+        next.token = "header.eyJzZXNzaW9uX2lkIjoidHdvIn0.signature".into();
+        assert!(!refresh_matches_identity(Some(&old), Some(&previous_user), &next, &next_user));
+        assert!(!refresh_matches_identity(Some(&old), None, &next, &next_user));
+        assert!(refresh_matches_identity(None, None, &next, &next_user));
+    }
+
+    #[test]
+    fn pending_or_unverified_projection_is_not_authenticated() {
+        let owner = Owner::new();
+        owner.with(|| {
+            let auth = AuthContext::new();
+            auth.session_state.set(Some(session()));
+            auth.user_state.set(Some(user()));
+            assert!(auth.is_authenticated());
+            let transition = auth.begin_scope_transition(false).unwrap();
+            assert!(!auth.is_authenticated());
+            assert!(transition.complete(false));
+            assert!(!auth.is_authenticated());
+            assert_eq!(auth.get_token(), None);
         });
     }
 

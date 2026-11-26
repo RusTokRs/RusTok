@@ -11,10 +11,10 @@ Leptos authentication context, protected route wrappers, BFF cookie management, 
 - `AUTH_SCOPE_CHANGE_EVENT`, `AUTH_SCOPE_CHANGE_STORAGE_KEY`: non-secret lifecycle invalidations; neither is authorization or a cross-tab lock.
 
 ### Cookie and Session Helpers
-- `refresh_cookie_value(tenant: &str, refresh_token: &str) -> String`: Encodes refresh cookie value as `{tenant}.{refresh_token}`.
-- `parse_refresh_cookie_value(value: &str) -> Option<(&str, &str)>`: Parses cookie value into tenant and token components.
-- `inspect_refresh_cookie_headers(headers) -> Result<Option<(String, String)>, RefreshCookieError>`: Inspects all Cookie headers; `Ok(None)` means absent, while malformed and duplicate credentials are errors.
-- `refresh_cookie_header(tenant: &str, refresh_token: &str, secure: bool) -> String`: Constructs standard `Set-Cookie` header.
+- `RefreshCredential::parse(value) -> Result<RefreshCredential, RefreshCookieError>`: Strict, redacted BFF envelope `tenant.token.seed`; both secret components are canonical nonzero 256-bit hex. Bare cookies are rejected.
+- `inspect_refresh_cookie_headers(headers) -> Result<Option<RefreshCredential>, RefreshCookieError>`: Inspects all Cookie headers; `Ok(None)` means absent, while malformed and duplicate credentials are errors.
+- `refresh_cookie_header(&RefreshCredential, secure: bool) -> String`: Constructs the HttpOnly envelope Set-Cookie header.
+- SSR-only `transport::exchange_refresh_token_ssr(RefreshCredential)`: Returns user, access session and rotated BFF credential; proof and seed never enter the serialized user/session payload.
 - `clear_refresh_cookie_header(secure: bool) -> String`: Constructs expired `Set-Cookie` header to invalidate session.
 - `session_id_from_access_token(token: &str) -> Option<String>`: Unverified payload parser extracting a session identifier; it is not authentication or a CSRF secret.
 
@@ -69,16 +69,17 @@ Client operations return typed `AuthError`; a failed transition is not a verifie
 ## 2. Invariants & Business Rules
 - **BFF Cookie Isolation**: Refresh tokens are stored strictly in `HttpOnly; SameSite=Lax` cookies; browser client scripts cannot read refresh tokens directly.
 - **SSR ownership**: `ServerAuthSnapshot` is request-scoped input validated by the host, not a session inferred by this library. Browser restoration and SSR/hydration parity require mounted verification.
-- **Client scope**: `ClientAuthScope` and `AuthContext::client_scope` expose a non-secret, fail-closed transition generation for the operating provider. Cooperating providers share an in-document operation lease; it cannot coordinate other tabs or cancel an already-sent request. Auth providers do not yet subscribe to external invalidations, so their projections can remain stale across roots or tabs. Owner/server authentication and CSRF checks remain authoritative.
+- **Client scope**: `ClientAuthScope` and `AuthContext::client_scope` expose a non-secret, fail-closed transition generation. Both CSR and hydrate hold an origin-wide Web Lock through the full transition; queued intents compare the captured epoch at admission. Auth providers subscribe to foreign custom/storage/focus/pageshow notifications and refuse stale refresh/logout/current-user intents. Shared memory publishes one verified pair tagged with its completed epoch and checks it on every read. Explicit sign-in or reload can establish a new scope. These fences do not cancel an already-sent request or coordinate SSR navigation; owner/server authentication and CSRF checks remain authoritative.
 - **Read-only projections**: `AuthContext::{user,session,is_loading,error}()` return stable `ReadSignal` handles; fields remain private so a clone cannot rebind a projection while retaining the verified scope. Only transition methods and request-scoped SSR snapshot may set identity. Browser session mutation helpers are crate-private. Callers of the former public fields must migrate to accessor or transition methods. `get_token` and `get_tenant` return no value while the scope is pending or unverified, even when an old identity is retained for retry; this is a client consistency rule, not authorization.
 - **Tenant context**: Host tenant binding refuses to overwrite a different canonical browser tenant. Server-side validation remains responsible for tenant isolation, including other roots and tabs.
 
 ## 3. Error Handling & Edge Cases
+- Native SSR refresh derives a generation-specific HMAC proof from the independently generated HttpOnly seed and retries one ambiguous upstream outcome without changing inputs; preserves 409. Access expiry schedules refresh, not implicit logout. Direct CSR derives its proof at the cookie REST owner, and coordinates cookie mutations with an exclusive browser Web Lock. Old bare BFF sessions require coordinated revocation and new sign-in.
 - Native refresh returns an explicit absence only when no BFF refresh cookie exists. Malformed, duplicate, foreign-tenant, rejected and transport-failed credentials leave the client scope unverified; the direct-cookie 401 does not distinguish absence from rejection.
 - `transport::refresh_session` returns `Result<Option<(AuthSession, AuthUser)>, AuthError>`; `None` is the explicit native absence, not a failed credential.
-- Native sign-out uses the API's idempotent cookie-session logout contract over a redirect-disabled server-to-server request. It preserves the BFF cookie and local identity if revocation cannot be confirmed, and leaves the scope unverified for explicit retry. Concurrent refreshes in another tab remain outside this lease.
-- Direct-cookie sign-in, registration, refresh and sign-out require a same-origin endpoint and the same final URL. Sign-out additionally requires a 2xx response containing `status: ok`; an HTML response or unexpected payload is not confirmation. Browser fetch can follow redirects before the final URL is checked, so this does not prevent intermediate requests.
-- `user()` and `session()` can still expose the retained identity on failure for recovery; `is_authenticated` is a UI projection, not proof of a verified client scope or server authorization. Native browser-client paths that read shared storage directly are not gated by `get_token`.
+- Native sign-out uses the API's idempotent cookie-session logout contract over a redirect-disabled server-to-server request. It preserves the BFF cookie and local identity if revocation cannot be confirmed, and leaves the scope unverified for explicit retry. Cooperating hydrate/CSR providers share the origin-wide lease; noncooperating responses and SSR navigation remain outside it.
+- Direct-cookie sign-in, registration, refresh and sign-out require a same-origin endpoint and the same final URL. WASM Fetch rejects redirects and uses no-store and a 10-second AbortSignal. The exclusive origin-wide Web Lock is retained through parsing and one ambiguous refresh retry; admission is bounded at 25 seconds. Missing secure-context browser capabilities fail closed. Sign-out requires a 2xx response containing `status: ok`; an HTML response or unexpected payload is not confirmation. The provider additionally checks the queued epoch and its own scope, including after network completion; the network lock alone is not authority.
+- `user()` and `session()` can still expose a retained identity on local failure for explicit recovery. Foreign notifications clear those signals. `is_authenticated` requires a ready scope and unexpired session. Storage-backed native requests require the verified atomic pair and compare the epoch immediately before dispatch; missing credentials fail before I/O. Refresh rejects a changed tenant, subject or lineage. Low-level transport calls do not carry a provider intent; arbitrary queued application requests and noncooperating cookie changes remain separate gates.
 - Browser refresh failures and the mounted notification/lease and logout-recovery behavior need integration verification; a failed transition is not a verified guest.
 
 ## 4. Security & Isolation Invariants
@@ -91,3 +92,12 @@ Client operations return typed `AuthError`; a failed transition is not a verifie
 - `src/contract_tests.rs`: package metadata, cookie serialization/deserialization and session ID extraction.
 - `tests/shared_client_contract.rs`: public value identity and cookie wire contract; the new SSR case renders host-supplied test snapshots in separate owners and still needs a locked run.
 - The current browser-provider, cross-provider and network/cookie behavior still requires mounted verification.
+
+- Expected-lineage admission: retained-session provider refresh/logout sends
+  `x-rustok-expected-session-id` through CSR/native server functions. The
+  unverified ID parser is only for comparison; the backend checks the
+  credential against the tenant lineage before mutation. Native refresh
+  refuses a mismatched response before writing the BFF cookie. Missing
+  projected sessions use startup discovery; malformed projected IDs fail
+  closed. The native server function wire signatures change together with
+  hydration assets; deploy matching builds.

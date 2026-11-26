@@ -59,6 +59,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             issued.accessToken,
             tenantSlug
           );
+          if (tenant && tenant.id !== issued.tenantId) throw new Error('Tenant identity mismatch');
           await persistRustokSessionCookies(issued);
 
           return {
@@ -68,12 +69,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             role: issued.user.role,
             status: issued.user.status,
             tenantSlug,
-            tenantId: tenant?.id ?? null
+            tenantId: issued.tenantId,
+            rustokSessionId: issued.sessionId
           };
         } catch {
           if (issued) {
             try {
-              await revokeRustokSession(issued.refreshToken, tenantSlug);
+              await revokeRustokSession(issued.refreshCredential, tenantSlug, issued.sessionId, issued.tenantId);
             } catch {
               console.warn(
                 'Rustok session cleanup failed after credential establishment'
@@ -99,6 +101,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           typeof user.tenantSlug === 'string' ? user.tenantSlug : null;
         token.tenantId =
           typeof user.tenantId === 'string' ? user.tenantId : null;
+        token.rustokSessionId = typeof user.rustokSessionId === 'string' ? user.rustokSessionId : null;
       }
 
       if (
@@ -119,6 +122,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         typeof token.tenantSlug === 'string' ? token.tenantSlug : null;
       session.user.tenantId =
         typeof token.tenantId === 'string' ? token.tenantId : null;
+      session.user.rustokSessionId =
+        typeof token.rustokSessionId === 'string' ? token.rustokSessionId : null;
       if (typeof token.name === 'string') {
         session.user.name = token.name;
       }
@@ -133,23 +138,19 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       const tenantId =
         typeof token?.tenantId === 'string' ? token.tenantId : null;
 
+      const expectedSessionId = typeof token?.rustokSessionId === 'string' ? token.rustokSessionId : null;
       try {
         const stored = await readRustokSessionCookies();
-        if (stored.refreshToken && tenantSlug) {
-          await revokeRustokSession(
-            stored.refreshToken,
-            tenantSlug,
-            tenantId
-          );
+        if (stored.invalid || !stored.refreshCredential || !tenantSlug || !expectedSessionId) {
+          throw new Error('Expected Rustok logout credential is unavailable');
         }
+        await revokeRustokSession(stored.refreshCredential, tenantSlug, expectedSessionId, tenantId);
+        await clearRustokSessionCookies();
       } catch {
-        console.warn(
-          'Rustok server session revocation failed during sign-out'
-        );
-      } finally {
-        await clearRustokSessionCookies().catch(() => {
-          console.warn('Rustok session cookie cleanup failed during sign-out');
-        });
+        // Auth.js events do not gate its own cookie clearing. Preserve Rustok
+        // credentials on ambiguity or mismatch; an explicit logout flow must
+        // surface confirmation before Auth.js signOut (tracked in the Auth plan).
+        console.warn('Rustok server session revocation could not be confirmed during sign-out');
       }
     }
   },
