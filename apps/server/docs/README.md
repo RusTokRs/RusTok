@@ -552,7 +552,13 @@ remain separate unfinished control-plane work.
 The CSP report collector accepts legacy browser reports containing both
 `effective-directive` and `violated-directive`, preferring the nonblank
 effective value for bounded telemetry. The 512-byte location limit applies
-to both serialized origins and opaque URL schemes. See the
+to both serialized origins and opaque URL schemes. Both report formats require
+an object body and a nonblank directive; only the exact known script/style
+directive names and their elem/attr variants enter those telemetry buckets;
+legacy directive source lists are ignored for classification.
+Rate-limit Redis failures carry only fixed operation diagnostics or timeout
+information across REST, readiness and GraphQL; backend reply text is not
+propagated. See the
 [CSP collection contract](../../../docs/security/csp-report-only-inventory.md).
 Focused parser and middleware regressions are authored; execution remains
 with maintainer verification.
