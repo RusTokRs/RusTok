@@ -489,7 +489,10 @@
     duration = Math.min(10000, Math.max(50, duration));
     if (prefersReducedMotion(target) || typeof target.animate !== "function") {
       var endState = keyframes[keyframes.length - 1];
-      if (endState && endState.opacity) target.style.opacity = endState.opacity;
+      if (endState) {
+        if (typeof endState.opacity === "string") target.style.opacity = endState.opacity;
+        if (typeof endState.transform === "string") target.style.transform = endState.transform;
+      }
       return;
     }
     target.animate(keyframes, {

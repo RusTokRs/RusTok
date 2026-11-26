@@ -89,6 +89,29 @@ test('animation uses the target document motion preference', () => {
   assert.equal(normal.calls[0][0], 'animate');
 });
 
+for (const [animation, transform] of [
+  ['slide_up', 'translateY(0)'],
+  ['slide_down', 'translateY(0)'],
+  ['zoom_in', 'scale(1)'],
+  ['pulse', 'scale(1)'],
+]) {
+  test('reduced motion applies the final transform for ' + animation, () => {
+    const { actions, calls, target, trigger } = fixture(true);
+    actions.handleAction({ kind: 'animate', target_id: 'destination', animation }, trigger);
+    assert.equal(target.style.transform, transform);
+    assert.equal(calls.length, 0);
+  });
+}
+
+test('animation fallback applies final transform when Web Animations is unavailable', () => {
+  const { actions, calls, target, trigger } = fixture(false);
+  delete target.animate;
+  actions.handleAction({ kind: 'animate', target_id: 'destination', animation: 'slide_up' }, trigger);
+  assert.equal(target.style.opacity, '1');
+  assert.equal(target.style.transform, 'translateY(0)');
+  assert.equal(calls.length, 0);
+});
+
 
 test('the Next published-page asset stays identical to the Fly source asset', () => {
   assert.equal(nextRuntime, runtime);
