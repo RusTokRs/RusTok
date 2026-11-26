@@ -683,10 +683,12 @@ impl Model {
     pub fn can_rotate_secret(&self) -> bool {
         // First-party apps are public PKCE clients by default. Operators may
         // add a confidential credential later for server-side client_credentials.
-        matches!(
-            self.app_type.as_str(),
-            "first_party" | "third_party" | "mobile" | "service"
-        )
+        // Revocation is terminal for this credential-management operation.
+        self.revoked_at.is_none()
+            && matches!(
+                self.app_type.as_str(),
+                "first_party" | "third_party" | "mobile" | "service"
+            )
     }
 
     pub fn can_revoke(&self) -> bool {
@@ -753,6 +755,13 @@ mod tests {
         app.app_type = "embedded".to_string();
         app.client_secret_hash = None;
 
+        assert!(!app.can_rotate_secret());
+    }
+
+    #[test]
+    fn revoked_apps_cannot_rotate_client_secrets() {
+        let mut app = app(false, serde_json::json!(["authorization_code"]));
+        app.revoked_at = Some(chrono::Utc::now().into());
         assert!(!app.can_rotate_secret());
     }
 

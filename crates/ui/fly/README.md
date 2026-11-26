@@ -193,6 +193,12 @@ A missing translation may use an explicit fallback URL, never an arbitrary first
 The runtime pipeline retains the authored route catalog separately from rendered metadata.
 Coverage summary lookup also uses the resolver's chain;
 required translation coverage still requires an exact locale entry, never a fallback.
+A localized value map with two keys that normalize to the same locale is invalid,
+even if the values agree. Authoring rejects such translation entries, imported maps
+remain lossless but unresolved, and coverage does not count ambiguous maps. Ambiguous
+localized slugs are excluded from inbound routing and reject outbound navigation
+without using the interaction fallback URL. Metadata collisions are diagnosed even
+when no project locale policy is configured.
 Translation IDs are exact, nonempty ASCII alphanumeric, hyphen or underscore identities:
 surrounding whitespace is invalid on authoring and validation, and removal addresses the
 exact stored ID so an invalid imported entry can be removed without deleting a different
@@ -296,7 +302,11 @@ Batch transactions and content patches that remove scalar text children do not c
 local inverse; undo and redo restore the retained before/after snapshots only when
 the entry is connected to the current document and the destination satisfies current validation
 limits and provider policy. Rejection leaves both stacks, selection and revision unchanged. Style inverses
-restore the complete original style slot, including absence.
+restore the complete original style slot, including absence. Updating the entry limit
+preserves the configured byte budget and nearest contiguous undo/redo entries.
+Asset removal has a local inverse only for a unique tail entry. Theme renames and
+theme edits that normalize the original raw representation rely on snapshot history
+rather than an inexact local inverse.
 
 Snapshot capture verifies canonical payload round-trip, derives the fingerprint from that
 payload rather than a cached document hash, and commits its sequence only on success.

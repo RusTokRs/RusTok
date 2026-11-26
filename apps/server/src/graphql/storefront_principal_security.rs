@@ -81,7 +81,7 @@ impl Extension for StorefrontPrincipalPolicyExtension {
             .is_some_and(AuthContext::is_service_principal);
         if service_principal && ctx.data_opt::<StorefrontOperationRequested>().is_some() {
             tracing::warn!(
-                operation_name = ?operation_name,
+                operation_name_present = operation_name.is_some(),
                 "Rejected GraphQL storefront operation authenticated as a service principal"
             );
             return Response::from_errors(vec![

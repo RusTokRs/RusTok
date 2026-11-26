@@ -3,6 +3,7 @@ use crate::{
     LocaleResolver, ProjectLocalePolicy, TranslationCatalog, default_locale_resolver,
     normalize_locale_tag,
 };
+use crate::runtime_locale::has_unambiguous_locale;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -122,12 +123,12 @@ pub fn analyze_project_locale_coverage(document: &ProjectDocument) -> LocaleCove
         let translation_present = catalog
             .entries
             .iter()
-            .filter(|entry| has_locale(&entry.values, locale))
+            .filter(|entry| has_unambiguous_locale(&entry.values, locale))
             .count();
         for entry in catalog
             .entries
             .iter()
-            .filter(|entry| !has_locale(&entry.values, locale))
+            .filter(|entry| !has_unambiguous_locale(&entry.values, locale))
         {
             gaps.push(LocaleCoverageGap {
                 locale: locale.clone(),
@@ -140,11 +141,11 @@ pub fn analyze_project_locale_coverage(document: &ProjectDocument) -> LocaleCove
 
         let metadata_present = metadata
             .iter()
-            .filter(|field| has_locale(&field.values, locale))
+            .filter(|field| has_unambiguous_locale(&field.values, locale))
             .count();
         for field in metadata
             .iter()
-            .filter(|field| !has_locale(&field.values, locale))
+            .filter(|field| !has_unambiguous_locale(&field.values, locale))
         {
             gaps.push(LocaleCoverageGap {
                 locale: locale.clone(),
@@ -263,12 +264,6 @@ fn push_locale(locales: &mut Vec<String>, locale: Option<&str>) {
     }
 }
 
-fn has_locale(values: &Map<String, Value>, required: &str) -> bool {
-    values
-        .keys()
-        .any(|locale| normalize_locale_tag(locale).as_deref() == Some(required))
-}
-
 const LOCALIZED_METADATA_FIELDS: &[&str] = &[
     "title",
     "description",
@@ -340,6 +335,28 @@ mod tests {
         }));
         assert_eq!(report.summary_for("zh-Hant-HK").unwrap().locale, "zh-Hant");
         assert_eq!(report.summary_for("zh-Hant-TW").unwrap().missing, 1);
+        assert!(!report.strict_ready());
+    }
+
+    #[test]
+    fn ambiguous_locale_maps_do_not_satisfy_required_coverage() {
+        let report = report(json!({
+            "flyLocales": {
+                "supported_locales": ["ru-RU"],
+                "required_locales": ["ru-RU"],
+                "enforce_required_locales": true
+            },
+            "flyTranslations": [{
+                "id": "hero", "values": { "ru-RU": "First", "ru_RU": "Second" }
+            }],
+            "pages": [{
+                "flyPageMeta": {
+                    "title": { "$localized": { "ru-RU": "First", "ru_RU": "Second" } }
+                },
+                "component": { "id": "root", "type": "wrapper" }
+            }]
+        }));
+        assert_eq!(report.summary_for("ru-RU").unwrap().missing, 2);
         assert!(!report.strict_ready());
     }
 

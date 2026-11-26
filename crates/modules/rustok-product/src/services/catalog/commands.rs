@@ -1472,6 +1472,9 @@ impl CatalogService {
         lock_schema_for_product_write(&txn, tenant_id).await?;
 
         let product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
+        // Membership triggers advance the parent Product revision with the Index watermark.
+        // Refuse exhaustion before any variant or collaborator writes begin.
+        next_revision(product.revision)?;
         let configured_axes =
             load_variant_axis_configuration_in(&txn, tenant_id, product_id).await?;
         validate_variant_axis_values_against_configuration(
@@ -1923,7 +1926,7 @@ impl CatalogService {
             .await?
             .ok_or(CommerceError::VariantNotFound(variant_id))?;
         let product_id = observed_variant.product_id;
-        let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
+        let product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
         let variant = find_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
         ensure_expected_variant_revision(&variant, Some(&expected_revision))?;
 
@@ -1935,6 +1938,8 @@ impl CatalogService {
         if count <= 1 {
             return Err(CommerceError::CannotDeleteOnlyVariant);
         }
+        // The membership trigger advances this Product's business revision on DELETE.
+        next_revision(product.revision)?;
 
         self.inventory()
             .delete_records_for_variants_in_tx(&txn, tenant_id, actor_id, &[variant_id])

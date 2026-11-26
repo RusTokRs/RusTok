@@ -87,7 +87,11 @@ rectangles and ignores changes on axes not controlled by the active handle. The 
 preserves the checked finite dimensions without a second rounding step that could violate a
 fractional bound or alter a locked aspect ratio.
 
-SaveStarted also checks current edit permission and unresolved conflicts. If the host has
+RequestSave and SaveStarted share admission: edit permission, blocking document diagnostics,
+unresolved conflicts and an existing attempt. SaveSucceeded rejects blank revision labels
+without retiring the active request, and a changed working hash remains dirty even if the
+sequence has not changed. Page Builder's generic controller dispatch cannot accept lifecycle
+events; its correlated save APIs update both Fly revision and UI state. If the host has
 synchronized a hash, SaveSucceeded must match both the submitted hash and request ID rather than
 merely the latest server revision; a mismatched acknowledgement leaves the active save untouched.
 The request ID and active sequence are transient and are not restored from serialized UI state.

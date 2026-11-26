@@ -801,6 +801,19 @@ export function ProductEditorPage({
         variant_delete: onDeleteVariant ?? unavailable
       });
       if (result?.outcome.status === 'confirmed') {
+        // A recovered delete may already be reflected in the Product loaded on this page.
+        // If the Variant is still present, this recovery just committed the membership change.
+        if (
+          !variantRecoveryOnly &&
+          result.operation === 'variant_delete' &&
+          initialProduct?.variants?.some(
+            (variant) => variant.id === result.request.variantId
+          )
+        ) {
+          setDocumentRevision((current) =>
+            current === null ? null : current + 1
+          );
+        }
         if (variantRecoveryOnly) router.push('/dashboard/product');
         else router.refresh();
       } else if (result?.outcome.status === 'rejected') {
@@ -1055,6 +1068,12 @@ export function ProductEditorPage({
         setErrorMessage(message);
         throw new Error(message);
       }
+      // Variant membership advances the owning Product revision exactly once. Only a
+      // confirmed receipt advances this local predecessor; concurrent external writes
+      // still leave it stale and are rejected by the Product owner on the next save.
+      setDocumentRevision((current) =>
+        current === null ? null : current + 1
+      );
       router.refresh();
     } finally {
       syncVariantRecoveryState();

@@ -7,6 +7,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::BTreeSet;
+use crate::runtime_locale::duplicate_locale_key;
 
 pub const FLY_TRANSLATIONS_FIELD: &str = "flyTranslations";
 pub const RUNTIME_TRANSLATIONS_CONTEXT_FIELD: &str = "translations";
@@ -148,6 +149,10 @@ pub fn materialize_project_translations(
     let mut unresolved_translations = 0usize;
 
     for entry in &catalog.entries {
+        if duplicate_locale_key(&entry.values).is_some() {
+            // A caller-provided projection must not mask an ambiguous authored value.
+            translated.remove(&entry.id);
+        }
         let mut localized_wrapper = Map::new();
         localized_wrapper.insert(
             LOCALIZED_VALUES_FIELD.to_string(),
@@ -251,6 +256,14 @@ pub fn validate_translation_definitions(document: &ProjectDocument) -> Vec<Valid
                 ));
             }
         }
+        if let Some(locale) = duplicate_locale_key(&entry.values) {
+            diagnostics.push(translation_diagnostic(
+                ValidationSeverity::Error,
+                "translation_locale_ambiguous",
+                Some(id.to_string()),
+                format!("translation `{id}` contains multiple values for locale `{locale}`"),
+            ));
+        }
         if let Some(fallback_locale) = entry.fallback_locale.as_deref() {
             match normalize_locale_tag(fallback_locale) {
                 None => diagnostics.push(translation_diagnostic(
@@ -334,6 +347,11 @@ fn validate_translation_identity(entry: &TranslationEntry) -> FlyResult<()> {
                 "translation `{id}` locale `{locale}` is invalid"
             )));
         }
+    }
+    if let Some(locale) = duplicate_locale_key(&entry.values) {
+        return Err(FlyError::Decode(format!(
+            "translation `{id}` contains multiple values for locale `{locale}`"
+        )));
     }
     if let Some(fallback_locale) = entry.fallback_locale.as_deref()
         && normalize_locale_tag(fallback_locale).is_none()
@@ -602,6 +620,37 @@ mod tests {
         assert_eq!(materialized.context["customer"]["name"], "Ada");
         assert_eq!(materialized.resolved_translations, 1);
         assert_eq!(materialized.fallback_translations, 1);
+    }
+
+    #[test]
+    fn canonical_locale_collisions_block_authoring_and_runtime_projection() {
+        let mut document = document();
+        let raw = json!({
+            "id": "hero",
+            "values": { "ru-RU": "First", "ru_RU": "Second" }
+        });
+        let entry: TranslationEntry = serde_json::from_value(raw.clone()).unwrap();
+        let before = document.hash();
+        assert!(apply_translation_command(
+            &mut document,
+            &TranslationCommand::Upsert { entry: Box::new(entry) },
+        ).is_err());
+        assert_eq!(document.hash(), before);
+        document.project_mut().extensions.insert(
+            FLY_TRANSLATIONS_FIELD.to_string(),
+            json!([raw]),
+        );
+        assert!(validate_translation_definitions(&document).iter().any(|diagnostic| {
+            diagnostic.code == "translation_locale_ambiguous"
+        }));
+        let result = materialize_project_translations(
+            &document,
+            &json!({ "$locale": "ru-RU", "translations": { "hero": "Stale", "other": "Keep" } }),
+        );
+        assert_eq!(result.unresolved_translations, 1);
+        assert_eq!(result.resolved_translations, 0);
+        assert!(result.context["translations"].get("hero").is_none());
+        assert_eq!(result.context["translations"]["other"], "Keep");
     }
 
     #[test]

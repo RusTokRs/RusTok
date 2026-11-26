@@ -221,6 +221,12 @@ impl History {
         }
     }
 
+    /// Change the entry limit and retain the nearest contiguous history.
+    pub(super) fn set_limit(&mut self, limit: usize) {
+        self.limit = limit.max(1);
+        self.enforce_budget();
+    }
+
     /// Override the budget and evict old entries immediately if it was lowered.
     pub fn with_memory_budget(mut self, memory_budget_bytes: usize) -> Self {
         self.memory_budget_bytes = memory_budget_bytes.max(1);
@@ -547,7 +553,13 @@ impl RevisionState {
                 "save response does not match the active submitted attempt".to_string(),
             ));
         }
-        self.last_acknowledged_revision = Some(revision.into());
+        let revision = revision.into();
+        if revision.trim().is_empty() {
+            return Err(FlyError::InvalidSaveState(
+                "save response revision is empty".to_string(),
+            ));
+        }
+        self.last_acknowledged_revision = Some(revision);
         self.dirty = self.command_sequence != saving_sequence
             || self.project_hash != submitted_hash;
         self.saving_snapshot = None;

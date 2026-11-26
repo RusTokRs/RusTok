@@ -125,6 +125,13 @@ fn parse_user_role(value: &str) -> Result<UserRole, AuthAdminMutationError> {
         .map_err(|error| AuthAdminMutationError::Validation(error.to_string()))
 }
 
+fn email_identity_changed(
+    current_email: &str,
+    requested_email: Option<&str>,
+) -> bool {
+    requested_email.is_some_and(|requested_email| requested_email != current_email)
+}
+
 fn status_change_requested(
     current_status: &UserStatus,
     requested_status: Option<&UserStatus>,
@@ -658,6 +665,10 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
 
         let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
         let locked_user = lock_user_for_mutation(&tx, context.tenant_id, command.id).await?;
+        let email_changed = email_identity_changed(
+            &locked_user.email,
+            normalized_email.as_deref(),
+        );
         let current_role = self
             .user_role(&tx, context.tenant_id, locked_user.id)
             .await?;
@@ -759,12 +770,12 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         if user_row_update_requested {
             active.updated_at = Set(Utc::now().into());
         }
+        if email_changed {
+            // A different address has not proven mailbox control; never carry
+            // the previous address's verification or existing sessions over.
+            active.email_verified_at = Set(None);
+        }
         if let Some(email) = normalized_email {
-            if email != locked_user.email {
-                // A different address has not proven mailbox control; never
-                // carry the previous address's verification over.
-                active.email_verified_at = Set(None);
-            }
             active.email = Set(email);
         }
         if let Some(name) = normalized_name {
@@ -841,7 +852,10 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             && requested_status
                 .as_ref()
                 .is_some_and(|status| status != &UserStatus::Active);
-        if password_changed || status_disables_user {
+        // A stale refresh token must not become usable again after a new
+        // mailbox is verified. Revoke browser sessions and delegated OAuth
+        // credentials in the same transaction as the identity change.
+        if password_changed || status_disables_user || email_changed {
             revoke_active_sessions(&tx, context.tenant_id, user.id).await?;
         }
         if let (Some(locale), Some(values)) = (
@@ -1222,7 +1236,7 @@ mod tests {
     use super::{
         ensure_custom_field_snapshot_is_current, invite_expiration_from_token,
         map_role_mutation_policy_error, parse_user_role, parse_user_status,
-        status_change_requested, INVITE_TOKEN_TTL_SECS,
+        email_identity_changed, status_change_requested, INVITE_TOKEN_TTL_SECS,
     };
     use rustok_auth::AuthAdminMutationError;
     use rustok_core::{UserRole, UserStatus};
@@ -1259,6 +1273,22 @@ mod tests {
             Err(AuthAdminMutationError::Validation(_))
         ));
         assert!(super::validate_admin_password(&config, "ValidLongPassword123!").is_ok());
+    }
+
+    #[test]
+    fn email_identity_change_is_detected() {
+        assert!(email_identity_changed(
+            "old@example.test",
+            Some("new@example.test"),
+        ));
+        assert!(!email_identity_changed(
+            "new@example.test",
+            Some("new@example.test"),
+        ));
+        assert!(!email_identity_changed(
+            "new@example.test",
+            None,
+        ));
     }
 
     #[test]

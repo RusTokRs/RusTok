@@ -110,7 +110,7 @@ impl Extension for GraphqlDashboardSecurityPolicyExtension {
             if !allowed {
                 tracing::warn!(
                     fields = ?policy.0.iter().map(|field| field.name()).collect::<Vec<_>>(),
-                    operation_name = ?operation_name,
+                    operation_name_present = operation_name.is_some(),
                     "Rejected dashboard analytics GraphQL document before resolver execution"
                 );
                 return Response::from_errors(vec![

@@ -260,11 +260,16 @@ that retained handles are not acknowledged after stop. Tests are unexecuted.
 ## Server audit continuation — locked login credential-oracle closure (2026-11-25)
 
 Login now checks an active lockout before verifying the user's stored password
-hash. It performs the same dummy-hash verification used for unknown accounts
-and returns the generic `InvalidCredentials` result for every password while
-the account is locked. The transactional post-verification check applies the
-same generic result if another request activates the lockout after the initial
-lookup. This prevents the lockout window from becoming an unlimited online
+hash. Unknown-account and locked-account paths run a fixed-cost Argon2 verification
+with an internal candidate, so empty or oversized submitted passwords cannot
+skip the timing mask. When a known row has a malformed or weaker-than-current
+hash, or the submitted value would short-circuit verification, the stored verifier
+and dummy verifier run concurrently; sequential padding would make legacy rows
+measurably slower than unknown-account lookups. Current-format hashes use their
+normal verifier. The dummy hash is prewarmed during server initialization. The
+transactional post-verification check applies the same generic
+`InvalidCredentials` result if another request activates the lockout after the
+initial lookup. This prevents the lockout window from becoming an online
 password oracle while preserving atomic failed-attempt accounting. Regression
 coverage is authored but unexecuted.
 
@@ -678,7 +683,10 @@ HTTP edge settings are bounded before reaching Tokio and Tower:
 600; `RUSTOK_HTTP_UPLOAD_TIMEOUT_SECONDS` defaults to 300 seconds and is capped
 at 3,600; `RUSTOK_HTTP_CONCURRENCY_LIMIT` defaults to 512 and is capped at
 16,384. Zero or malformed values use the defaults, while oversized values are
-clamped with a warning. The concurrency quota uses a single semaphore shared
+clamped with a warning. Request and upload timeouts are captured together
+when the HTTP router is composed; constructing another router cannot modify
+an existing router's budgets. The standalone timeout middleware retains its
+separate compatibility defaults. The concurrency quota uses a single semaphore shared
 by all route services in one composed HTTP router, not a quota per endpoint.
 Only POST `multipart/form-data` requests to `/api/media` or `/api/media/`
 and PUT requests matching the exact registry artifact route grammar receive
@@ -812,6 +820,11 @@ Fragment-spread classification is cycle-safe because host preflight runs
 before GraphQL's normal document validation. The host security policies share
 an explicit worklist rather than recursive fragment expansion, preserving root
 field scope and Forum traversal context without stack growth on long chains.
+Tenant argument classification also uses a worklist for nested literal and
+variable values, scans each nested variable once per selected operation, and
+stores distinct tenant IDs. A direct tenantId use is still checked separately.
+Security-policy diagnostics record operation-name presence and requested tenant
+count rather than raw request-controlled names or tenant ID lists.
 GraphQL's own validation and execution limits remain separate. Source regression
 tests for long chains and context-sensitive cycles are present but unrun.
 

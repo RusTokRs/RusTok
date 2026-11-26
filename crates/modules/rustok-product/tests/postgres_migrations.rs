@@ -40,6 +40,7 @@ async fn run_target_schema_checks() -> Result<(), Box<dyn std::error::Error>> {
     with_product_postgres_database("rustok_product_schema", |db| async move {
         assert_target_schema(&db).await?;
         assert_target_values(&db).await?;
+        assert_variant_membership_revision_contract(&db).await?;
 
         let latest = ProductMigrator::migrations()
             .pop()
@@ -409,6 +410,7 @@ async fn assert_target_schema(db: &DatabaseConnection) -> Result<(), Box<dyn std
 
     assert_column_contract(db, "product_images", "media_id", "uuid", false).await?;
     assert_column_contract(db, "product_variants", "weight", "numeric", true).await?;
+    assert_column_contract(db, "products", "revision", "integer", false).await?;
     assert_column_contract(db, "product_variants", "revision", "bigint", false).await?;
     assert_table_missing(db, "product_catalog_category_taxonomy_bindings").await?;
     assert_table_missing(db, "catalog_category_closure").await?;
@@ -704,5 +706,132 @@ COMMIT;
         "does not have exactly one active allowed assignment",
     )
     .await?;
+    Ok(())
+}
+
+
+async fn product_revision_pair(
+    db: &DatabaseConnection,
+    product_id: &str,
+) -> Result<(i32, i64), Box<dyn std::error::Error>> {
+    let row = db
+        .query_one_raw(Statement::from_string(
+            DbBackend::Postgres,
+            format!(
+                "SELECT revision, index_revision FROM products WHERE id = '{product_id}'"
+            ),
+        ))
+        .await?
+        .ok_or("Product revision row must exist")?;
+    Ok((
+        row.try_get("", "revision")?,
+        row.try_get("", "index_revision")?,
+    ))
+}
+
+async fn assert_variant_membership_revision_contract(
+    db: &DatabaseConnection,
+) -> Result<(), Box<dyn std::error::Error>> {
+    const TENANT_ID: &str = "00000000-0000-0000-0000-000000000001";
+    const PRODUCT_A: &str = "00000000-0000-0000-0000-000000000202";
+    const PRODUCT_B: &str = "00000000-0000-0000-0000-000000000203";
+    const EXHAUSTED_PRODUCT: &str = "00000000-0000-0000-0000-000000000204";
+    const VARIANT_ID: &str = "00000000-0000-0000-0000-000000000223";
+    const EXHAUSTED_VARIANT_ID: &str = "00000000-0000-0000-0000-000000000224";
+
+    db.execute_unprepared(&format!(
+        "INSERT INTO products (id, tenant_id) VALUES
+         ('{PRODUCT_A}', '{TENANT_ID}'),
+         ('{PRODUCT_B}', '{TENANT_ID}')"
+    ))
+    .await?;
+    if product_revision_pair(db, PRODUCT_A).await? != (1, 1)
+        || product_revision_pair(db, PRODUCT_B).await? != (1, 1)
+    {
+        return Err("new Products must start with business and Index revisions at 1".into());
+    }
+
+    db.execute_unprepared(&format!(
+        "INSERT INTO product_variants (id, product_id, tenant_id, position)
+         VALUES ('{VARIANT_ID}', '{PRODUCT_A}', '{TENANT_ID}', 0)"
+    ))
+    .await?;
+    if product_revision_pair(db, PRODUCT_A).await? != (2, 2) {
+        return Err("variant insertion must advance the parent Product business and Index revisions once".into());
+    }
+
+    // Ordinary Variant field updates are not membership changes and must not advance Product CAS.
+    db.execute_unprepared(&format!(
+        "UPDATE product_variants
+         SET inventory_quantity = inventory_quantity + 1
+         WHERE id = '{VARIANT_ID}'"
+    ))
+    .await?;
+    if product_revision_pair(db, PRODUCT_A).await? != (2, 2) {
+        return Err("non-membership Variant updates must not advance the parent Product revision".into());
+    }
+
+    db.execute_unprepared(&format!(
+        "DELETE FROM product_variants WHERE id = '{VARIANT_ID}'"
+    ))
+    .await?;
+    if product_revision_pair(db, PRODUCT_A).await? != (3, 3) {
+        return Err("variant deletion must advance the parent Product business and Index revisions once".into());
+    }
+
+    // Reusing a tombstoned Variant identity is a new membership event too.
+    db.execute_unprepared(&format!(
+        "INSERT INTO product_variants (id, product_id, tenant_id, position)
+         VALUES ('{VARIANT_ID}', '{PRODUCT_A}', '{TENANT_ID}', 0)"
+    ))
+    .await?;
+    if product_revision_pair(db, PRODUCT_A).await? != (4, 4) {
+        return Err("recreated Variant membership must advance the parent Product revision".into());
+    }
+
+    db.execute_unprepared(&format!(
+        "UPDATE product_variants
+         SET product_id = '{PRODUCT_B}'
+         WHERE id = '{VARIANT_ID}'"
+    ))
+    .await?;
+    if product_revision_pair(db, PRODUCT_A).await? != (5, 5)
+        || product_revision_pair(db, PRODUCT_B).await? != (2, 2)
+    {
+        return Err("moving a Variant must advance both affected Product revisions once".into());
+    }
+
+    db.execute_unprepared(&format!(
+        "INSERT INTO products (id, tenant_id, revision)
+         VALUES ('{EXHAUSTED_PRODUCT}', '{TENANT_ID}', 2147483647)"
+    ))
+    .await?;
+    let error = db
+        .execute_unprepared(&format!(
+            "INSERT INTO product_variants (id, product_id, tenant_id, position)
+             VALUES ('{EXHAUSTED_VARIANT_ID}', '{EXHAUSTED_PRODUCT}', '{TENANT_ID}', 0)"
+        ))
+        .await
+        .expect_err("variant membership must refuse an exhausted Product revision");
+    if !error
+        .to_string()
+        .contains("product revision exhausted for variant membership change")
+    {
+        return Err(format!("unexpected exhausted Product revision error: {error}").into());
+    }
+    let exhausted_variant_count: i64 = db
+        .query_one_raw(Statement::from_string(
+            DbBackend::Postgres,
+            format!(
+                "SELECT COUNT(*) AS count FROM product_variants WHERE id = '{EXHAUSTED_VARIANT_ID}'"
+            ),
+        ))
+        .await?
+        .ok_or("exhausted Variant count query must return one row")?
+        .try_get("", "count")?;
+    if exhausted_variant_count != 0 {
+        return Err("an exhausted Product revision must not admit a new Variant".into());
+    }
+
     Ok(())
 }

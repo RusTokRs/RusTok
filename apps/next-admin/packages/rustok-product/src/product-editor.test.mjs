@@ -31,6 +31,14 @@ const statusAction = actions.slice(
   actions.indexOf('export async function changeProductStatusAction('),
   actions.indexOf('export async function deleteProductAction(')
 );
+const variantDeleteHandler = editor.slice(
+  editor.indexOf('  const handleDeleteVariant ='),
+  editor.indexOf('  // Main Save Handler')
+);
+const variantResumeHandler = editor.slice(
+  editor.indexOf('  const handleResumeVariant ='),
+  editor.indexOf('  // Resume the stored command, not the current form.')
+);
 
 function loadHandler(overrides = {}) {
   const writes = [];
@@ -321,4 +329,160 @@ test('product editor loads exact-locale EAV values and retains all dirty locale 
   assert.match(actions, /export async function fetchProductAttributeValuesAction/);
   assert.match(productRoute, /fetchAttributeValues=\{fetchProductAttributeValuesAction\}/);
   assert.match(productRoute, /initialAttributeValuesLoaded=\{attributeValuesLoaded\}/);
+});
+
+
+function loadVariantDeleteHandler({ revision = 7, onDeleteVariant } = {}) {
+  const state = { revision, saving: false, error: null, refreshed: false };
+  const writer = new ProductWriteAttempt(
+    memoryJournal('product', undefined, testScope, undefined, 'product_variant')
+  );
+  const context = {
+    Error,
+    PRODUCT_RECOVERY_UNAVAILABLE: 'Recovery unavailable',
+    initialProduct: {
+      id: 'product',
+      variants: [{ id: 'variant' }]
+    },
+    isNew: false,
+    writeScope: testScope,
+    onDeleteVariant,
+    assertEditorialWriteResolved: () => {},
+    prepareVariantWriteAttempt: () => writer,
+    setDocumentRevision: (update) => {
+      state.revision =
+        typeof update === 'function' ? update(state.revision) : update;
+    },
+    setIsSaving: (value) => {
+      state.saving = value;
+    },
+    setErrorMessage: (value) => {
+      state.error = value;
+    },
+    router: {
+      refresh: () => {
+        state.refreshed = true;
+      }
+    },
+    syncVariantRecoveryState: () => {}
+  };
+  const run = vm.runInNewContext(
+    stripTypeScriptTypes(variantDeleteHandler) + '\\nhandleDeleteVariant;',
+    context
+  );
+  return { run, state };
+}
+
+async function loadVariantResumeHandler({ revision = 7, variants, onDeleteVariant }) {
+  const state = { revision, saving: false, error: null, refreshed: false };
+  const storage = { text: null, locked: false };
+  const writer = new ProductWriteAttempt(
+    memoryJournal('product', storage, testScope, undefined, 'product_variant')
+  );
+  const request = {
+    id: 'product',
+    variantId: 'variant',
+    expectedRevision: '1',
+    scope: testScope
+  };
+  const context = {
+    Error,
+    PRODUCT_RECOVERY_UNAVAILABLE: 'Recovery unavailable',
+    variantWriteAttempt: { current: writer },
+    variantRecoveryReady: true,
+    variantRecoveryOnly: false,
+    isSaving: false,
+    initialProduct: { id: 'product', variants },
+    onDeleteVariant,
+    onUpdateVariant: undefined,
+    setDocumentRevision: (update) => {
+      state.revision =
+        typeof update === 'function' ? update(state.revision) : update;
+    },
+    setErrorMessage: (value) => {
+      state.error = value;
+    },
+    setIsSaving: (value) => {
+      state.saving = value;
+    },
+    setVariantRecoveryError: (value) => {
+      state.recoveryError = value;
+    },
+    router: {
+      refresh: () => {
+        state.refreshed = true;
+      },
+      push: () => {
+        state.pushed = true;
+      }
+    },
+    syncVariantRecoveryState: () => {}
+  };
+  await writer.execute('variant_delete', request, async () => ({
+    status: 'unknown',
+    message: 'Response lost'
+  }));
+  return {
+    run: vm.runInNewContext(
+      stripTypeScriptTypes(variantResumeHandler) + '\\nhandleResumeVariant;',
+      context
+    ),
+    state
+  };
+}
+
+test('confirmed Variant deletion advances the local Product predecessor exactly once', async () => {
+  const { run, state } = loadVariantDeleteHandler({
+    onDeleteVariant: async (request, key) => {
+      assert.equal(request.variantId, 'variant');
+      assert.equal(request.expectedRevision, '1');
+      assert.match(key, /^[a-f0-9-]{36}$/);
+      return {
+        status: 'confirmed',
+        value: { id: 'product', revision: null }
+      };
+    }
+  });
+  await run('variant', '1');
+  assert.equal(state.revision, 8);
+  assert.equal(state.refreshed, true);
+  assert.equal(state.saving, false);
+});
+
+test('unconfirmed Variant deletion never advances the Product predecessor', async () => {
+  const { run, state } = loadVariantDeleteHandler({
+    onDeleteVariant: async () => ({
+      status: 'unknown',
+      message: 'Response lost'
+    })
+  });
+  await assert.rejects(run('variant', '1'));
+  assert.equal(state.revision, 7);
+  assert.equal(state.refreshed, false);
+  assert.equal(state.saving, false);
+});
+
+test('recovered Variant deletion advances only when this page still has the pre-delete snapshot', async () => {
+  const { run, state } = await loadVariantResumeHandler({
+    variants: [{ id: 'variant' }],
+    onDeleteVariant: async () => ({
+      status: 'confirmed',
+      value: { id: 'product', revision: null }
+    })
+  });
+  await run();
+  assert.equal(state.revision, 8);
+  assert.equal(state.refreshed, true);
+
+  const alreadyReflected = await loadVariantResumeHandler({
+    revision: 8,
+    variants: [],
+    onDeleteVariant: async () => ({
+      status: 'confirmed',
+      value: { id: 'product', revision: null }
+    })
+  });
+  await alreadyReflected.run();
+  assert.equal(alreadyReflected.state.revision, 8);
+  assert.equal(alreadyReflected.state.refreshed, true);
 });

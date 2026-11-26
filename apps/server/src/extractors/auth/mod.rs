@@ -417,6 +417,7 @@ pub async fn resolve_current_user_from_access_token(
     }
 
     let principal_kind = classify_access_token_claims(&claims)?;
+    let mut delegated_credential_issued_at = None;
 
     // Tenant middleware is intentionally bypassed on global operator routes,
     // and a cached tenant context may predate deactivation. Resolve the live
@@ -469,6 +470,11 @@ pub async fn resolve_current_user_from_access_token(
             Some(claims.sub),
         )
         .await?;
+        // The durable registration row retains subsecond issuance time;
+        // JWT NumericDate is whole seconds and can misorder a same-second
+        // password change and token issuance.
+        delegated_credential_issued_at =
+            Some(access_row.created_at.with_timezone(&chrono::Utc));
         validate_active_user_consent(
             db,
             &app,
@@ -508,9 +514,10 @@ pub async fn resolve_current_user_from_access_token(
             }
 
             if principal_kind == AuthPrincipalKind::DelegatedUser {
-                let issued_at =
-                    chrono::DateTime::<chrono::Utc>::from_timestamp(claims.iat as i64, 0)
-                        .ok_or((StatusCode::UNAUTHORIZED, "Invalid token issued-at"))?;
+                let issued_at = delegated_credential_issued_at.ok_or((
+                    StatusCode::UNAUTHORIZED,
+                    "OAuth access token is not registered",
+                ))?;
                 if user.rejects_delegated_token_issued_at(issued_at) {
                     return Err((
                         StatusCode::UNAUTHORIZED,

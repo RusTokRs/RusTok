@@ -196,6 +196,19 @@ impl AdminCanvasController {
         &mut self,
         intent: UiIntent,
     ) -> Result<Vec<AdminCanvasEffect>, AdminCanvasError> {
+        // Lifecycle transitions have to update the revision owner and UI
+        // together. They are not general authoring intents.
+        if matches!(
+            &intent,
+            UiIntent::SaveStarted { .. }
+                | UiIntent::SaveSucceeded { .. }
+                | UiIntent::SaveFailed { .. }
+                | UiIntent::SaveConflict { .. }
+        ) {
+            return Err(AdminCanvasError::Authoring(
+                "save lifecycle events require the correlated controller API".to_string(),
+            ));
+        }
         self.validate_navigation_intent(&intent)?;
         // A late hover from a removed component or a different page is not
         // a valid interaction target in the current canvas.
@@ -204,7 +217,13 @@ impl AdminCanvasController {
             intent => intent,
         };
         let snapshot = self.clone();
-        let effects = self.ui.dispatch(intent)?;
+        let effects = match self.ui.dispatch(intent) {
+            Ok(effects) => effects,
+            Err(error) => {
+                *self = snapshot;
+                return Err(error.into());
+            }
+        };
         let mut outgoing = Vec::new();
 
         for effect in effects {
@@ -249,11 +268,6 @@ impl AdminCanvasController {
         {
             return Err(AdminCanvasError::Authoring(
                 "save request no longer matches the active document snapshot".to_string(),
-            ));
-        }
-        if self.ui.state.has_blocking_diagnostics() {
-            return Err(AdminCanvasError::Authoring(
-                "save blocked by validation diagnostics".to_string(),
             ));
         }
         self.mark_save_started_with_id()
@@ -890,6 +904,42 @@ mod tests {
             .expect("current effect");
         assert_eq!(controller.active_save_attempt().as_ref(), Some(&attempt));
         assert!(controller.mark_save_failed_for_attempt(&attempt).expect("retire"));
+    }
+
+    #[test]
+    fn generic_dispatch_cannot_mutate_save_lifecycle() {
+        let mut controller = controller();
+        let before = controller.clone();
+        assert!(controller.dispatch(UiIntent::SaveStarted {
+            request_id: "unbound".into(),
+        }).is_err());
+        assert_eq!(controller, before);
+
+        let attempt = controller.mark_save_started_with_id().expect("start");
+        let hash = controller.editor().revision().project_hash;
+        let before = controller.clone();
+        for intent in [
+            UiIntent::SaveSucceeded {
+                request_id: attempt.request_id.clone(),
+                revision: "rev-2".into(),
+                project_hash: hash,
+            },
+            UiIntent::SaveFailed { request_id: Some(attempt.request_id.clone()) },
+            UiIntent::SaveConflict {
+                request_id: Some(attempt.request_id.clone()),
+                expected: "rev-1".into(),
+                actual: "rev-2".into(),
+            },
+        ] {
+            assert!(controller.dispatch(intent).is_err());
+            assert_eq!(controller, before);
+        }
+        assert!(controller.acknowledge_save_for_attempt(hash, &attempt, "").is_err());
+        assert_eq!(controller, before);
+        controller.acknowledge_save_for_attempt(hash, &attempt, "rev-2")
+            .expect("correlated acknowledgement");
+        assert_eq!(controller.revision_id(), "rev-2");
+        assert!(!controller.ui().state.dirty.save_in_progress);
     }
 
     #[test]

@@ -13,7 +13,7 @@ use sea_orm::{
 use crate::auth::{
     AuthConfig, encode_access_token, generate_refresh_token, hash_password_async,
     hash_refresh_token, normalize_display_name, normalize_email, password_hash_needs_rehash,
-    validate_password_policy, verify_password_async,
+    validate_password_policy, verify_password_async, MAX_PASSWORD_LENGTH_BYTES,
 };
 use crate::models::{_entities::session_refresh_history, sessions, users};
 use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -575,9 +575,7 @@ impl AuthLifecycleService {
                 // Run a full Argon2 verification against a dummy hash so
                 // an unknown email takes as long as a wrong password:
                 // without this, login latency enumerates accounts.
-                let dummy_hash =
-                    crate::auth::dummy_password_hash_async().await.map_err(AuthLifecycleError::from)?;
-                verify_password_async(password.to_string(), dummy_hash)
+                crate::auth::mask_auth_lookup_timing()
                     .await
                     .map_err(AuthLifecycleError::from)?;
                 return Err(AuthLifecycleError::InvalidCredentials);
@@ -590,19 +588,30 @@ impl AuthLifecycleService {
         // oracle (InvalidCredentials vs AccountLocked). Match the unknown-user
         // path with the same dummy hash and generic failure.
         if Self::is_login_locked(&user) {
-            let dummy_hash = crate::auth::dummy_password_hash_async()
-                .await
-                .map_err(AuthLifecycleError::from)?;
-            verify_password_async(password.to_string(), dummy_hash)
+            crate::auth::mask_auth_lookup_timing()
                 .await
                 .map_err(AuthLifecycleError::from)?;
             return Err(AuthLifecycleError::InvalidCredentials);
         }
 
-        if !verify_password_async(password.to_string(), user.password_hash.clone())
-            .await
-            .map_err(AuthLifecycleError::from)?
-        {
+        let needs_timing_mask =
+            Self::requires_password_timing_mask(password, &user.password_hash);
+        let password_matches = if needs_timing_mask {
+            // Run the real verifier and a fixed-cost dummy verifier concurrently.
+            // Sequential padding would make weak legacy hashes slower than both
+            // current hashes and unknown-account lookups, preserving a timing signal.
+            let (password_matches, timing_mask) = tokio::join!(
+                verify_password_async(password.to_string(), user.password_hash.clone()),
+                crate::auth::mask_auth_lookup_timing(),
+            );
+            timing_mask.map_err(AuthLifecycleError::from)?;
+            password_matches.map_err(AuthLifecycleError::from)?
+        } else {
+            verify_password_async(password.to_string(), user.password_hash.clone())
+                .await
+                .map_err(AuthLifecycleError::from)?
+        };
+        if !password_matches {
             Self::register_failed_login_attempt(db, tenant_id, &user).await?;
             return Err(AuthLifecycleError::InvalidCredentials);
         }
@@ -683,8 +692,19 @@ impl AuthLifecycleService {
     }
 
     fn is_login_locked(user: &users::Model) -> bool {
+        Self::is_login_locked_at(user, Utc::now())
+    }
+
+    fn requires_password_timing_mask(password: &str, password_hash: &str) -> bool {
+        password.is_empty()
+            || password.len() > MAX_PASSWORD_LENGTH_BYTES
+            || password_hash_needs_rehash(password_hash)
+    }
+
+    fn is_login_locked_at(user: &users::Model, now: chrono::DateTime<Utc>) -> bool {
         user.locked_until
-            .is_some_and(|locked_until| locked_until.timestamp() > Utc::now().timestamp())
+            .as_ref()
+            .is_some_and(|locked_until| locked_until.with_timezone(&Utc) > now)
     }
 
     /// Serialize failed attempts with successful login and credential changes.
@@ -1600,12 +1620,15 @@ mod tests {
         AUTH_LOGIN_INACTIVE_USER_ATTEMPT_TOTAL, AUTH_PASSWORD_RESET_SESSIONS_REVOKED_TOTAL,
         AuthLifecycleError, AuthLifecycleMetricsSnapshot, AuthLifecycleService, Error,
     };
-    use crate::auth::{AuthConfig, decode_access_token, hash_password, hash_refresh_token};
+    use crate::auth::{
+        AuthConfig, MAX_PASSWORD_LENGTH_BYTES, decode_access_token, hash_password,
+        hash_refresh_token,
+    };
     use crate::models::_entities::{session_refresh_history, user_roles};
     use crate::models::{sessions, tenants, users};
     use crate::services::rbac_service::RbacService;
     use crate::services::server_runtime_context::ServerRuntimeContext;
-    use chrono::{Duration, Utc};
+    use chrono::{Duration, TimeZone, Utc};
     use rustok_core::UserStatus;
     use rustok_migrations::SqliteTestMigrator as Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
@@ -1746,6 +1769,37 @@ mod tests {
         .expect("refresh");
         assert!(rotated.refresh_expires_in > 0);
         assert!(rotated.refresh_expires_in <= 24 * 3600);
+    }
+
+    #[test]
+    fn failed_login_timing_mask_covers_short_circuits_and_legacy_hashes() {
+        let current_hash = hash_password("valid current password").expect("current hash");
+        assert!(AuthLifecycleService::requires_password_timing_mask("", &current_hash));
+        assert!(AuthLifecycleService::requires_password_timing_mask(
+            &"x".repeat(MAX_PASSWORD_LENGTH_BYTES + 1),
+            &current_hash,
+        ));
+        assert!(AuthLifecycleService::requires_password_timing_mask(
+            "candidate",
+            "malformed-hash",
+        ));
+        assert!(!AuthLifecycleService::requires_password_timing_mask(
+            "candidate",
+            &current_hash,
+        ));
+    }
+
+    #[test]
+    fn login_lockout_deadline_uses_subsecond_precision() {
+        let now = Utc
+            .timestamp_opt(1_800_000_000, 500_000_000)
+            .single()
+            .expect("fixed timestamp");
+        let mut user = users::Model::default_service_user(Uuid::new_v4(), Uuid::new_v4());
+        user.locked_until = Some((now.clone() + Duration::nanoseconds(1)).into());
+        assert!(AuthLifecycleService::is_login_locked_at(&user, now.clone()));
+        user.locked_until = Some(now.clone().into());
+        assert!(!AuthLifecycleService::is_login_locked_at(&user, now));
     }
 
     #[tokio::test]

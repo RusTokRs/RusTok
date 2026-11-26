@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 use async_graphql::extensions::{
@@ -17,7 +17,7 @@ const TENANT_ARGUMENT_NAMES: [&str; 2] = ["tenantId", "tenant_id"];
 
 #[derive(Clone, Debug, Default)]
 struct GraphqlTenantArgumentPolicy {
-    requested_tenant_ids: Vec<Uuid>,
+    requested_tenant_ids: BTreeSet<Uuid>,
     invalid_argument: Option<String>,
 }
 
@@ -36,13 +36,11 @@ fn classify_tenant_arguments(request: &mut Request) -> ServerResult<()> {
     // Clone variables before borrowing the parsed document from Request.
     let variables = request.variables.clone();
     let operation_name = request.operation_name.clone();
-    let mut policy = {
+    let policy = {
         let document = request.parsed_query()?;
         tenant_argument_policy(document, &variables, operation_name.as_deref())
     };
 
-    policy.requested_tenant_ids.sort_unstable();
-    policy.requested_tenant_ids.dedup();
     if policy.invalid_argument.is_some() || !policy.requested_tenant_ids.is_empty() {
         request.data.insert(policy);
     }
@@ -99,18 +97,16 @@ fn collect_selection_set_tenant_arguments(
         return;
     }
 
+    // Nested variable values are immutable within the selected operation. Scan
+    // each once, independently of direct tenantId uses of the same variable.
+    let mut visited_nested_variables = HashSet::new();
     let _completed = super::visit_selection_fields(document, selection_set, (), |field, ()| {
         for (argument_name, argument_value) in &field.arguments {
-            let source = format!(
-                "GraphQL field `{}` argument `{}`",
-                field.name.node, argument_name.node
-            );
             if is_tenant_argument_name(argument_name.node.as_str()) {
                 collect_direct_tenant_value(
                     &argument_value.node,
                     variables,
                     defaults,
-                    &source,
                     policy,
                 );
             } else {
@@ -118,7 +114,7 @@ fn collect_selection_set_tenant_arguments(
                     &argument_value.node,
                     variables,
                     defaults,
-                    &source,
+                    &mut visited_nested_variables,
                     policy,
                 );
             }
@@ -138,15 +134,14 @@ fn collect_direct_tenant_value(
     value: &Value,
     variables: &Variables,
     defaults: &HashMap<Name, ConstValue>,
-    source: &str,
     policy: &mut GraphqlTenantArgumentPolicy,
 ) {
     match value {
-        Value::String(raw) => add_tenant_id(raw, source, policy),
+        Value::String(raw) => add_tenant_id(raw, policy),
         Value::Null => {}
         Value::Variable(name) => {
             if let Some(value) = resolve_variable(name, variables, defaults) {
-                collect_direct_tenant_const_value(value, source, policy);
+                collect_direct_tenant_const_value(value, policy);
             }
         }
         _ => set_invalid_argument(
@@ -156,13 +151,9 @@ fn collect_direct_tenant_value(
     }
 }
 
-fn collect_direct_tenant_const_value(
-    value: &ConstValue,
-    source: &str,
-    policy: &mut GraphqlTenantArgumentPolicy,
-) {
+fn collect_direct_tenant_const_value(value: &ConstValue, policy: &mut GraphqlTenantArgumentPolicy) {
     match value {
-        ConstValue::String(raw) => add_tenant_id(raw, source, policy),
+        ConstValue::String(raw) => add_tenant_id(raw, policy),
         ConstValue::Null => {}
         _ => set_invalid_argument(
             policy,
@@ -175,82 +166,66 @@ fn collect_nested_tenant_value(
     value: &Value,
     variables: &Variables,
     defaults: &HashMap<Name, ConstValue>,
-    path: &str,
+    visited_nested_variables: &mut HashSet<Name>,
     policy: &mut GraphqlTenantArgumentPolicy,
 ) {
-    if policy.invalid_argument.is_some() {
-        return;
-    }
-
-    match value {
-        Value::Variable(name) => {
-            if let Some(value) = resolve_variable(name, variables, defaults) {
-                collect_nested_tenant_const_value(value, &format!("{path}.${name}"), policy);
-            }
+    let mut pending = vec![(value, false)];
+    while let Some((value, direct)) = pending.pop() {
+        if policy.invalid_argument.is_some() {
+            return;
         }
-        Value::Object(object) => {
-            for (key, child) in object {
-                let child_path = format!("{path}.{}", key.as_str());
-                if is_tenant_argument_name(key.as_str()) {
-                    collect_direct_tenant_value(child, variables, defaults, &child_path, policy);
-                } else {
-                    collect_nested_tenant_value(child, variables, defaults, &child_path, policy);
-                }
-                if policy.invalid_argument.is_some() {
-                    return;
+        if direct {
+            collect_direct_tenant_value(value, variables, defaults, policy);
+            continue;
+        }
+        match value {
+            Value::Variable(name) => {
+                if visited_nested_variables.insert(name.clone())
+                    && let Some(value) = resolve_variable(name, variables, defaults)
+                {
+                    collect_nested_tenant_const_value(value, policy);
                 }
             }
-        }
-        Value::List(items) => {
-            for (index, child) in items.iter().enumerate() {
-                collect_nested_tenant_value(
-                    child,
-                    variables,
-                    defaults,
-                    &format!("{path}[{index}]"),
-                    policy,
+            Value::Object(object) => {
+                pending.extend(
+                    object
+                        .iter()
+                        .rev()
+                        .map(|(key, child)| (child, is_tenant_argument_name(key.as_str()))),
                 );
-                if policy.invalid_argument.is_some() {
-                    return;
-                }
             }
+            Value::List(items) => {
+                pending.extend(items.iter().rev().map(|child| (child, false)));
+            }
+            _ => {}
         }
-        _ => {}
     }
 }
 
-fn collect_nested_tenant_const_value(
-    value: &ConstValue,
-    path: &str,
-    policy: &mut GraphqlTenantArgumentPolicy,
-) {
-    if policy.invalid_argument.is_some() {
-        return;
-    }
-
-    match value {
-        ConstValue::Object(object) => {
-            for (key, child) in object {
-                let child_path = format!("{path}.{}", key.as_str());
-                if is_tenant_argument_name(key.as_str()) {
-                    collect_direct_tenant_const_value(child, &child_path, policy);
-                } else {
-                    collect_nested_tenant_const_value(child, &child_path, policy);
-                }
-                if policy.invalid_argument.is_some() {
-                    return;
-                }
-            }
+fn collect_nested_tenant_const_value(value: &ConstValue, policy: &mut GraphqlTenantArgumentPolicy) {
+    let mut pending = vec![(value, false)];
+    while let Some((value, direct)) = pending.pop() {
+        if policy.invalid_argument.is_some() {
+            return;
         }
-        ConstValue::List(items) => {
-            for (index, child) in items.iter().enumerate() {
-                collect_nested_tenant_const_value(child, &format!("{path}[{index}]"), policy);
-                if policy.invalid_argument.is_some() {
-                    return;
-                }
-            }
+        if direct {
+            collect_direct_tenant_const_value(value, policy);
+            continue;
         }
-        _ => {}
+        match value {
+            ConstValue::Object(object) => {
+                pending.extend(
+                    object
+                        .iter()
+                        .rev()
+                        .map(|(key, child)| (child, is_tenant_argument_name(key.as_str()))),
+                );
+            }
+            ConstValue::List(items) => {
+                pending.extend(items.iter().rev().map(|child| (child, false)));
+            }
+            _ => {}
+        }
     }
 }
 
@@ -262,9 +237,11 @@ fn resolve_variable<'a>(
     variables.get(name).or_else(|| defaults.get(name))
 }
 
-fn add_tenant_id(raw: &str, _source: &str, policy: &mut GraphqlTenantArgumentPolicy) {
+fn add_tenant_id(raw: &str, policy: &mut GraphqlTenantArgumentPolicy) {
     match Uuid::parse_str(raw.trim()) {
-        Ok(tenant_id) => policy.requested_tenant_ids.push(tenant_id),
+        Ok(tenant_id) => {
+            policy.requested_tenant_ids.insert(tenant_id);
+        }
         Err(_) => set_invalid_argument(
             policy,
             "tenantId must be a valid UUID string or null".to_string(),
@@ -306,7 +283,7 @@ impl Extension for GraphqlTenantPolicyExtension {
         if let Some(policy) = ctx.data_opt::<GraphqlTenantArgumentPolicy>() {
             if let Some(message) = policy.invalid_argument.as_deref() {
                 tracing::warn!(
-                    operation_name = ?operation_name,
+                    operation_name_present = operation_name.is_some(),
                     message,
                     "Rejected invalid GraphQL tenant argument"
                 );
@@ -322,9 +299,9 @@ impl Extension for GraphqlTenantPolicyExtension {
                 .any(|requested| requested != &tenant.id)
             {
                 tracing::warn!(
-                    operation_name = ?operation_name,
+                    operation_name_present = operation_name.is_some(),
                     request_tenant_id = %tenant.id,
-                    requested_tenant_ids = ?policy.requested_tenant_ids,
+                    requested_tenant_count = policy.requested_tenant_ids.len(),
                     "Rejected cross-tenant GraphQL argument before resolver execution"
                 );
                 return tenant_policy_error(
@@ -551,6 +528,49 @@ mod tests {
             )
             .await;
         assert_eq!(cross_tenant.errors.len(), 1);
+    }
+
+    #[test]
+    fn repeated_nested_variables_preserve_distinct_ids_and_direct_checks() {
+        let tenant_id = Uuid::new_v4();
+        let variables = Variables::from_json(json!({
+            "input": { "items": [{ "tenantId": tenant_id }, { "tenant_id": tenant_id }] }
+        }));
+        let document = async_graphql::parser::parse_query(
+            "query Tenant($input: TenantInput!) { a: echoInput(input: $input) b: echoInput(input: $input) }",
+        )
+        .expect("query parses");
+        let policy = super::tenant_argument_policy(&document, &variables, Some("Tenant"));
+        assert!(policy.invalid_argument.is_none());
+        assert_eq!(policy.requested_tenant_ids.len(), 1);
+        assert!(policy.requested_tenant_ids.contains(&tenant_id));
+
+        // An object is invalid in a direct tenantId position even if its nested
+        // contents have already been classified. Exercise pre-validation directly.
+        let document = async_graphql::parser::parse_query(
+            "query Tenant($input: TenantInput!) { echoInput(input: $input) echoTenant(tenantId: $input) }",
+        )
+        .expect("query parses");
+        let policy = super::tenant_argument_policy(&document, &variables, Some("Tenant"));
+        assert!(policy.invalid_argument.is_some());
+    }
+
+    #[test]
+    fn deeply_nested_variable_values_preserve_tenant_checks() {
+        let tenant_id = Uuid::new_v4();
+        let mut value = json!({ "tenantId": tenant_id });
+        for _ in 0..64 {
+            value = json!([value]);
+        }
+        let variables = Variables::from_json(json!({ "input": value }));
+        let document = async_graphql::parser::parse_query(
+            "query Tenant($input: TenantInput!) { echoInput(input: $input) }",
+        )
+        .expect("query parses");
+        let policy = super::tenant_argument_policy(&document, &variables, Some("Tenant"));
+        assert!(policy.invalid_argument.is_none());
+        assert_eq!(policy.requested_tenant_ids.len(), 1);
+        assert!(policy.requested_tenant_ids.contains(&tenant_id));
     }
 
     #[tokio::test]

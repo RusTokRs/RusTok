@@ -178,7 +178,7 @@ impl Extension for ForumPrincipalPolicyExtension {
 
         if let Some(message) = denial {
             tracing::warn!(
-                operation_name = ?operation_name,
+                operation_name_present = operation_name.is_some(),
                 "Rejected GraphQL forum operation authenticated as an insufficient service principal"
             );
             return Response::from_errors(vec![

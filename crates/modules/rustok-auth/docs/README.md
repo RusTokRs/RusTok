@@ -185,10 +185,9 @@ supports atomic process-local hot reload. Auth request paths reuse prepared
 encoding/decoding keys and indexed verification history; the JWT library still
 constructs its internal crypto providers per operation.
 
- staging, promotion, retirement and exact
-key selection using two independent RS256 key pairs, including OAuth access and
-missing-ID rejection. Compile and multi-replica execution evidence remain
-pending.
+Focused regressions cover staging, promotion, retirement and exact key
+selection with two independent RS256 key pairs, plus OAuth access and missing-ID
+rejection. Compile and multi-replica execution evidence remain pending.
 See [purpose keyring ADR](../../../../DECISIONS/2026-11-25-jwt-purpose-keyrings.md).
 
 ### RS256-only cutover
@@ -249,21 +248,24 @@ permissions before Compose starts and does not generate keys or reset security
 state. Direct executable launches also require
 `RUSTOK_JWT_KEYRING_FILE`; there is no static fallback.
 
- with distinct key IDs,
-writes a complete file with mode 0600 outside the checkout, and refuses
-replacement even if concurrent provisioning targets the same path. File data
-and the published directory entry are synchronized before reporting success;
-an uncertain directory sync must not trigger key regeneration. The launcher
-rejects mounting HOME or a repository ancestor. It never
-generates or modifies the independent MAC root. Supply that root separately.
-The file uses the currently admitted document shape; no startup generation,
-production fallback, or authority/witness reset is introduced.
+The provisioning helper creates four independent RSA key pairs with distinct
+key IDs and writes a complete file with mode `0600` outside the checkout. It
+refuses replacement even if concurrent provisioning targets the same path.
+File data and the published directory entry are synchronized before reporting
+success; an uncertain directory sync must not trigger key regeneration. The
+launcher rejects mounting HOME or a repository ancestor. It never generates or
+modifies the independent MAC root. Supply that root separately. The file uses
+the currently admitted document shape; no startup generation, production
+fallback, or authority/witness reset is introduced.
 
 Do not use this command as a rotation, recovery or conversion procedure for
 an enrolled store. Use a different private output path for each isolated
-test store. The server executable has completed its file-only RSA bootstrap. Legacy
-library constructors, remaining installer/test consumers and removal of the
-transitional algorithm field remain pending.
+test store. The server executable uses the generation-bearing RS256-only
+keyring. No runtime algorithm selector or document-level algorithm field
+remains. The fixed `RS256` assertion in authenticated durable authority
+metadata is intentionally retained until an offline converter can preserve
+tombstones, revoked identities, generation and witness revision; it is not a
+runtime selector.
 
 ### Process-local hot reload
 
@@ -611,9 +613,8 @@ checks. Invite issuance and verification share the same custom-role predicate:
 custom roles require the Customer baseline and a nonblank slug of at most 64
 bytes. New invitation JWTs carry a random non-nil `jti` so independent issuances
 with identical claims and timestamps cannot collide in the unique token-digest
-ledger. Previously issued invitations without a `jti` remain admissible subject
-to the same persisted exact-digest and one-use checks. Source regressions are
-not yet executed.
+ledger. Legacy invitations without a `jti` are rejected and must be reissued
+through the canonical issuer. Source regressions are not yet executed.
 
 ## JWT and browser confirmation hardening
 
