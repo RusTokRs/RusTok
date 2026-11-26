@@ -21,11 +21,12 @@ function graphQLError(
   code: string,
   message: string,
   status = 200,
-  outcome: 'rejected' | 'unknown' = 'rejected'
+  outcome: 'rejected' | 'unknown' = 'rejected',
+  retryable = false
 ): Response {
   return Response.json(
     {
-      errors: [{ message, extensions: { code, retryable: false, outcome } }]
+      errors: [{ message, extensions: { code, retryable, outcome } }]
     },
     { status, headers: { 'cache-control': 'no-store' } }
   );
@@ -173,6 +174,20 @@ export async function POST(request: Request): Promise<Response> {
         await persistRustokSessionCookies(refreshed);
         accessToken = refreshed.accessToken;
       } catch (error) {
+        if (error instanceof RustokSessionError && error.status === 409) {
+          // Another replica already rotated this cookie. The backend did not
+          // revoke the live session; do not emit a clearing Set-Cookie that
+          // could race with the successful response carrying the new token.
+          // This GraphQL operation has not been forwarded upstream, so retry
+          // is safe even when its document contains mutations.
+          return graphQLError(
+            'SESSION_REFRESH_CONCURRENTLY_ROTATED',
+            'Another request already refreshed this session. Retry this operation.',
+            200,
+            'rejected',
+            true
+          );
+        }
         if (
           error instanceof RustokSessionError &&
           error.outcome === 'rejected'

@@ -49,6 +49,7 @@ pub enum AuthLifecycleError {
     AccountLocked,
     EmailNotVerified,
     InvalidRefreshToken,
+    RefreshAlreadyRotated,
     SessionExpired,
     UserNotFound,
     InvalidResetToken,
@@ -72,6 +73,9 @@ impl std::fmt::Display for AuthLifecycleError {
                 formatter.write_str("email address is not verified")
             }
             AuthLifecycleError::InvalidRefreshToken => formatter.write_str("invalid refresh token"),
+            AuthLifecycleError::RefreshAlreadyRotated => {
+                formatter.write_str("refresh token was already rotated by another request")
+            },
             AuthLifecycleError::SessionExpired => formatter.write_str("session expired"),
             AuthLifecycleError::UserNotFound => formatter.write_str("user not found"),
             AuthLifecycleError::InvalidResetToken => formatter.write_str("invalid reset token"),
@@ -130,6 +134,9 @@ impl From<AuthLifecycleError> for Error {
             AuthLifecycleError::InvalidRefreshToken => {
                 Error::Unauthorized("Invalid refresh token".into())
             }
+            AuthLifecycleError::RefreshAlreadyRotated => Error::Conflict(
+                "Refresh token was already rotated by another request".into(),
+            ),
             AuthLifecycleError::SessionExpired => Error::Unauthorized("Session expired".into()),
             AuthLifecycleError::UserNotFound => Error::Unauthorized("User not found".into()),
             AuthLifecycleError::InvalidResetToken => {
@@ -945,9 +952,14 @@ impl AuthLifecycleService {
         let txn = db.begin().await.map_err(AuthLifecycleError::from)?;
 
         let Some(observed) = observed else {
-            Self::detect_refresh_reuse_in_tx(&txn, tenant_id, &token_hash).await?;
+            let already_rotated =
+                Self::detect_refresh_reuse_in_tx(&txn, tenant_id, &token_hash).await?;
             txn.commit().await.map_err(AuthLifecycleError::from)?;
-            return Err(AuthLifecycleError::InvalidRefreshToken);
+            return Err(if already_rotated {
+                AuthLifecycleError::RefreshAlreadyRotated
+            } else {
+                AuthLifecycleError::InvalidRefreshToken
+            });
         };
         let user = Self::find_user_for_update_in_tx(&txn, tenant_id, observed.user_id)
             .await?
@@ -965,9 +977,14 @@ impl AuthLifecycleService {
             None => {
                 // Another refresh may have rotated the digest while we waited
                 // for the user lock. Check committed history, never the hint.
-                Self::detect_refresh_reuse_in_tx(&txn, tenant_id, &token_hash).await?;
+                let already_rotated =
+                    Self::detect_refresh_reuse_in_tx(&txn, tenant_id, &token_hash).await?;
                 txn.commit().await.map_err(AuthLifecycleError::from)?;
-                return Err(AuthLifecycleError::InvalidRefreshToken);
+                return Err(if already_rotated {
+                    AuthLifecycleError::RefreshAlreadyRotated
+                } else {
+                    AuthLifecycleError::InvalidRefreshToken
+                });
             }
         };
 
@@ -1061,7 +1078,7 @@ impl AuthLifecycleService {
         txn: &DatabaseTransaction,
         tenant_id: uuid::Uuid,
         token_hash: &str,
-    ) -> std::result::Result<(), AuthLifecycleError> {
+    ) -> std::result::Result<bool, AuthLifecycleError> {
         // History-only requests have not necessarily acquired a writer yet.
         // Reserve SQLite's writer before reading history, using a tenant-
         // scoped parent predicate; do not upgrade a stale read transaction.
@@ -1084,7 +1101,7 @@ impl AuthLifecycleService {
             .map_err(AuthLifecycleError::from)?;
 
         let Some(history) = history else {
-            return Ok(());
+            return Ok(false);
         };
         let Some(session) = Self::find_session_by_id_for_update_in_tx(
             txn,
@@ -1093,26 +1110,31 @@ impl AuthLifecycleService {
         )
         .await?
         else {
-            return Ok(());
+            return Ok(false);
         };
 
         let within_grace = history.rotated_at.is_some_and(|rotated_at| {
             let age = Utc::now().signed_duration_since(rotated_at.with_timezone(&Utc));
             age >= Duration::zero() && age < Duration::seconds(REFRESH_REUSE_GRACE_SECONDS)
         });
-        if session.is_active() && !within_grace {
-            tracing::warn!(
-                session_id = %session.id,
-                user_id = %session.user_id,
-                "refresh token reuse detected; revoking session lineage"
-            );
-            let mut active: sessions::ActiveModel = session.into();
-            active.revoked_at = Set(Some(Utc::now().into()));
-            active.previous_token_hash = Set(None);
-            active.update(txn).await.map_err(AuthLifecycleError::from)?;
+        if !session.is_active() {
+            return Ok(false);
+        }
+        if within_grace {
+            return Ok(true);
         }
 
-        Ok(())
+        tracing::warn!(
+            session_id = %session.id,
+            user_id = %session.user_id,
+            "refresh token reuse detected; revoking session lineage"
+        );
+        let mut active: sessions::ActiveModel = session.into();
+        active.revoked_at = Set(Some(Utc::now().into()));
+        active.previous_token_hash = Set(None);
+        active.update(txn).await.map_err(AuthLifecycleError::from)?;
+
+        Ok(false)
     }
 
     pub async fn change_password_runtime(
@@ -2694,6 +2716,14 @@ mod tests {
         assert!(matches!(result, Err(AuthLifecycleError::SessionExpired)));
     }
 
+    #[test]
+    fn concurrent_refresh_conflict_maps_to_http_conflict() {
+        assert!(matches!(
+            Error::from(AuthLifecycleError::RefreshAlreadyRotated),
+            Error::Conflict(_)
+        ));
+    }
+
     #[tokio::test]
     async fn refresh_reuse_inside_grace_is_rejected_without_revoking_live_session() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
@@ -2740,7 +2770,7 @@ mod tests {
 
         assert!(matches!(
             result,
-            Err(AuthLifecycleError::InvalidRefreshToken)
+            Err(AuthLifecycleError::RefreshAlreadyRotated)
         ));
         let stored = sessions::Entity::find_by_id(session.id)
             .one(&db)

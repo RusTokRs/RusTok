@@ -38,7 +38,9 @@ fn map_lifecycle_error(error: AuthLifecycleError) -> AuthLifecycleMutationError 
         AuthLifecycleError::UserInactive => AuthLifecycleMutationError::UserInactive,
         AuthLifecycleError::AccountLocked => AuthLifecycleMutationError::AccountLocked,
         AuthLifecycleError::EmailNotVerified => AuthLifecycleMutationError::EmailNotVerified,
-        AuthLifecycleError::InvalidRefreshToken => AuthLifecycleMutationError::InvalidRefreshToken,
+        AuthLifecycleError::InvalidRefreshToken | AuthLifecycleError::RefreshAlreadyRotated => {
+            AuthLifecycleMutationError::InvalidRefreshToken
+        },
         AuthLifecycleError::SessionExpired => AuthLifecycleMutationError::SessionExpired,
         AuthLifecycleError::UserNotFound => AuthLifecycleMutationError::UserNotFound,
         AuthLifecycleError::InvalidResetToken => AuthLifecycleMutationError::InvalidResetToken,

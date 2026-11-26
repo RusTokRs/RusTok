@@ -123,11 +123,15 @@ and surface read errors. Runtime and browser verification remain required.
   headers, binds tenant scope to the authenticated identity, refreshes expiring
   access credentials server-side, and forwards only the server-held access
   token. Cross-origin requests are rejected.
-- Logout revokes the backend refresh session and clears host cookies. Refresh
-  calls are coalesced within one Next.js process; a concurrent one-time refresh
-  across separate instances can still require a fresh login. Unknown refresh
-  outcomes are not retried automatically because a GraphQL mutation may not be
-  safe to replay.
+- Logout revokes the backend refresh session and clears host cookies.
+  Refresh calls are coalesced within one Next.js process. If another instance
+  wins rotation, the backend returns an explicit already-rotated conflict;
+  the BFF preserves cookies and returns a retryable GraphQL error because the
+  GraphQL operation has not been forwarded. This prevents the losing response
+  from clearing the winner's new cookie. If the winning refresh response is
+  lost entirely, the old token cannot recover the new secret and reauthentication
+  is required after the grace window. Unknown refresh outcomes are not retried
+  automatically.
 - Self-service email changes require the current password and a one-time token
   sent to the new mailbox. The old address remains active until confirmation;
   confirmation verifies the new address, revokes other sessions and delegated
