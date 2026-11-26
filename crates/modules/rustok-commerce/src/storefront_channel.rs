@@ -191,7 +191,7 @@ mod tests {
         )
         .await
         .unwrap();
-        db.execute_unprepared("CREATE TABLE channels (id TEXT PRIMARY KEY, tenant_id TEXT, slug TEXT, name TEXT, is_active BOOLEAN, is_default BOOLEAN, status TEXT, settings TEXT, created_at TEXT, updated_at TEXT)")
+        db.execute_unprepared("CREATE TABLE channels (id TEXT PRIMARY KEY, tenant_id TEXT, slug TEXT, name TEXT, is_active BOOLEAN, is_default BOOLEAN, settings TEXT, created_at TEXT, updated_at TEXT)")
             .await.unwrap();
         db.execute_unprepared("CREATE TABLE channel_module_bindings (id TEXT PRIMARY KEY, channel_id TEXT, module_slug TEXT, is_enabled BOOLEAN, settings TEXT, created_at TEXT, updated_at TEXT)")
             .await.unwrap();
@@ -208,7 +208,7 @@ mod tests {
         }
         db.execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
-            "INSERT INTO channels VALUES (?, ?, 'web', 'Web', 1, 0, 'active', '{}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            "INSERT INTO channels VALUES (?, ?, 'web', 'Web', 1, 0, '{}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
             vec![channel.into(), tenant.into()],
         )).await.unwrap();
         let mut request = RequestContext {

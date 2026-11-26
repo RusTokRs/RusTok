@@ -14,13 +14,17 @@ SSR-first Leptos 0.8 design system component adapter for the RusToK platform.
 - **Feedback & Status**: `Alert`, `Badge`, `Progress`, `Spinner`, `Skeleton`.
 - **Layout & Structure**: `Card`, `Label`, `Separator`, `Tabs`.
 - **Overlays**: `Dialog` (Modal).
-- **Data Display**: `Avatar`.
+- **Data Display**: `Avatar`, `Icon`.
 
 ## Behaviour notes
 
 - `Button` accepts `on_click`, `disabled`, `loading` (shows a `Spinner`), and a
   native `r#type` (default `button`). `disabled`/`loading` are rendered through
   the native attribute, not through extra classes.
+- `Icon` renders one of `IconName` (Lucide geometry inlined as `24×24` path data, `stroke="currentColor"`)
+  and decides accessibility once: decorative (`aria-hidden="true"`) unless `aria_label` is passed, in
+  which case it becomes `role="img"` with that name. A button that already has a visible label must
+  **not** pass `aria_label`; a bare icon button must.
 - `Select` is controlled through `value`/`set_value`; the component binds the
   `value` property and emits `on:change` with `event_target_value`.
 - `Dialog` is a compound primitive: `Dialog` owns controlled (`open` plus

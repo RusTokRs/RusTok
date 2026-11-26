@@ -3,6 +3,7 @@ use leptos::task::spawn_local;
 use leptos_router::components::A;
 
 use rustok_auth_ui::ui::leptos::hooks::{use_auth, use_current_user};
+use rustok_ui_leptos::{Icon, IconName};
 
 use crate::use_admin_locale;
 
@@ -80,19 +81,10 @@ pub fn UserMenu() -> impl IntoView {
                         }}
                     </p>
                 </div>
-                <svg
-                    class="h-4 w-4 text-muted-foreground"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    stroke-width="2"
-                >
-                    {move || if open.get() {
-                        view! { <path d="M18 15l-6-6-6 6" /> }.into_any()
-                    } else {
-                        view! { <path d="M6 9l6 6 6-6" /> }.into_any()
-                    }}
-                </svg>
+                {move || {
+                    let name = if open.get() { IconName::ChevronUp } else { IconName::ChevronDown };
+                    view! { <Icon name=name class="h-4 w-4 text-muted-foreground" /> }
+                }}
             </button>
 
             <Show when=move || open.get()>

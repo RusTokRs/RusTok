@@ -135,6 +135,16 @@ fn map_storefront_channel_error(
             "Store channel is temporarily unavailable",
             "database",
         ),
+        // The storefront path only reads the channel, so a `Conflict` means the
+        // owner observed a lost write race against its own invariants: the state is
+        // momentarily inconsistent, which is a retry, not a `500` and not a `409`
+        // on a `GET`.
+        ChannelError::Conflict(_) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_store_channel_conflict",
+            "Store channel is temporarily unavailable",
+            "conflict",
+        ),
         ChannelError::SlugAlreadyExists(_)
         | ChannelError::InvalidTargetType(_)
         | ChannelError::InvalidTargetValue(_)
@@ -161,7 +171,13 @@ fn map_storefront_channel_error(
         boundary = "commerce_storefront_shared_http",
         "storefront channel resolution failed with bounded diagnostics"
     );
-    HttpError::new(status, code, message)
+    let error = HttpError::new(status, code, message);
+    if matches!(error_kind, "conflict" | "database") {
+        // Retry advice comes from the owner's error kind, not from the status code.
+        error.with_retryable(true)
+    } else {
+        error
+    }
 }
 
 pub fn axum_router() -> axum::Router<super::CommerceHttpRuntime> {

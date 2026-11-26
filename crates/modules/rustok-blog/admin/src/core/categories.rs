@@ -14,10 +14,17 @@ pub enum BlogAdminSection {
 }
 
 pub fn blog_admin_section_for_subpath(subpath: Option<&str>) -> BlogAdminSection {
-    if subpath.is_some_and(|sub| sub == "categories" || sub.starts_with("categories/")) {
-        BlogAdminSection::Categories
-    } else {
-        BlogAdminSection::Posts
+    let Some(subpath) = subpath else {
+        return BlogAdminSection::Posts;
+    };
+    let segment = subpath.trim_matches('/').split('/').next().unwrap_or("");
+    match segment {
+        "categories" => BlogAdminSection::Categories,
+        // `posts` and `new` are declared child pages that render the posts
+        // workspace (creating a post happens inside it). Listing them keeps the
+        // manifest and the dispatch in one vocabulary.
+        "posts" | "new" => BlogAdminSection::Posts,
+        _ => BlogAdminSection::Posts,
     }
 }
 

@@ -52,7 +52,7 @@ fn fixture() -> (PortContext, SelectedChannelProvider, Uuid) {
                 name: "Web".to_string(),
                 is_active: true,
                 is_default: false,
-                status: "active".to_string(),
+                status: crate::ChannelStatus::Active,
                 settings: serde_json::json!({}),
                 created_at: now,
                 updated_at: now,
@@ -497,4 +497,31 @@ async fn channel_service_read_port_reads_channel_by_all_selectors() {
         .unwrap_err();
     assert_eq!(nil_tenant_err.kind, PortErrorKind::Validation);
     assert_eq!(nil_tenant_err.code, "channel.tenant_id_nil");
+}
+
+/// The declared budget must also *stop* a lookup, not merely be validated for
+/// presence: a hung owner read would otherwise outlive the caller's deadline.
+#[tokio::test(start_paused = true)]
+async fn a_lookup_that_exceeds_the_budget_fails_with_a_typed_timeout() {
+    let error = super::within_deadline::<(), _>(
+        std::time::Duration::from_millis(5),
+        std::future::pending(),
+    )
+    .await
+    .expect_err("a hung owner read must not outlive the caller's budget");
+
+    assert_eq!(error.kind, rustok_api::PortErrorKind::Timeout);
+    assert_eq!(error.code, "port.deadline_exceeded");
+    assert!(error.retryable, "a timed-out read is retryable by contract");
+}
+
+#[tokio::test]
+async fn a_lookup_inside_the_budget_keeps_the_owner_result() {
+    let value = super::within_deadline::<u8, _>(
+        std::time::Duration::from_secs(1),
+        async { Ok(7_u8) },
+    )
+    .await
+    .expect("an in-budget read must keep the owner result");
+    assert_eq!(value, 7);
 }

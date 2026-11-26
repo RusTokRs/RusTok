@@ -110,8 +110,8 @@ pub(crate) async fn seed_channel_binding(
 ) {
     db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
-        "INSERT INTO channels (id, tenant_id, slug, name, is_active, is_default, status, settings, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+        "INSERT INTO channels (id, tenant_id, slug, name, is_active, is_default, settings, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
         vec![
             channel_id.into(),
             tenant_id.into(),
@@ -119,7 +119,6 @@ pub(crate) async fn seed_channel_binding(
             format!("Channel {channel_slug}").into(),
             true.into(),
             false.into(),
-            "active".into(),
             serde_json::json!({}).to_string().into(),
         ],
     ))

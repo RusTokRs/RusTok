@@ -20,6 +20,7 @@ pub mod button;
 pub mod card;
 pub mod checkbox;
 pub mod dialog;
+pub mod icon;
 pub mod input;
 pub mod label;
 pub mod language_toggle;
@@ -50,6 +51,7 @@ pub use dialog::{
     Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader,
     DialogOverlay, DialogPortal, DialogTitle, DialogTrigger,
 };
+pub use icon::{Icon, IconName};
 pub use input::Input;
 pub use label::Label;
 pub use language_toggle::{LanguageToggle, LanguageToggleOption};

@@ -18,7 +18,6 @@ pub struct ResolvedChannelContext {
     pub slug: String,
     pub name: String,
     pub is_active: bool,
-    pub status: String,
     pub target_type: Option<String>,
     pub target_value: Option<String>,
     pub settings: Value,
@@ -94,7 +93,6 @@ pub struct ChannelRecord {
     pub name: String,
     pub is_active: bool,
     pub is_default: bool,
-    pub status: String,
     pub settings: Value,
     pub created_at: String,
     pub updated_at: String,
@@ -153,6 +151,16 @@ pub struct CreateChannelPayload {
     pub tenant_id: Option<String>,
     pub slug: String,
     pub name: String,
+    pub settings: Option<Value>,
+}
+
+/// Patch payload for renaming a channel or replacing its settings.
+///
+/// The slug is intentionally absent: it is the immutable channel identity used by
+/// consumers and persisted visibility relations.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize, Serialize)]
+pub struct UpdateChannelPayload {
+    pub name: Option<String>,
     pub settings: Option<Value>,
 }
 

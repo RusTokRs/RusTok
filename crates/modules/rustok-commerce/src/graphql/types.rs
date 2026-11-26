@@ -2545,7 +2545,7 @@ impl From<rustok_channel::ChannelResponse> for GqlPricingChannelOption {
             name: value.name,
             is_active: value.is_active,
             is_default: value.is_default,
-            status: value.status,
+            status: value.status.as_str().to_string(),
         }
     }
 }

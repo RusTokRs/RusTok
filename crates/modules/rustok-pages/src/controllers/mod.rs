@@ -692,7 +692,7 @@ async fn pages_module_enabled_for_channel(
         return Ok(true);
     };
     ChannelService::new(runtime.db_clone())
-        .is_module_enabled(channel_id, "pages")
+        .is_module_enabled_for_tenant(request_context.tenant_id, channel_id, "pages")
         .await
         .map_err(|error| {
             tracing::error!(

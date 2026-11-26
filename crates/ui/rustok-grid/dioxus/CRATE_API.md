@@ -14,7 +14,7 @@
 ### Primary Components
 - `DataGrid`: Root Dioxus DataGrid RSX view component managing signals, header, filter row, data rows, and pagination bar.
 - `GridCell`: Data context supplied to custom cell renderers (`column_id`, `item`, `row_id`).
-- `GridHeader`: Table header rendering column cells, sort triggers, resize handles, and pinned columns.
+- `GridHeader`: Table header rendering column cells, sort triggers and resize handles. Structural columns (`GridColumnDef::pinned`) render in place: the flag marks selection/actions columns so the column menu never hides them, it does not freeze them against horizontal scrolling.
 - `GridFilterCell`: Input component for column-level filter values.
 - `GridRow`: Table row component rendering cell items and selection checkboxes.
 - `GridPaginationBar`: Bottom pagination bar rendering page navigation and page-size selector.

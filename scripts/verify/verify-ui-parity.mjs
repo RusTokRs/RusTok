@@ -222,6 +222,48 @@ if (existsSync(leptosWorkbenchPage)) {
   fail(`Missing Leptos UI Workbench page at ${leptosWorkbenchPage}`);
 }
 
+// 7. Workbench coverage of the design-system surface
+//
+// The workbench is where a styling or layout defect is supposed to be visible
+// before it ships, but the audit found nine components that no host page ever
+// rendered: Select, Dialog, Tabs, Avatar, Skeleton, Spinner, Progress,
+// TableOfContents and DataGrid. A page that omits a component cannot show its
+// regressions, so the required surface is pinned here instead of remembered.
+const REQUIRED_WORKBENCH_COMPONENTS = [
+  'Alert',
+  'Avatar',
+  'Badge',
+  'Button',
+  'Card',
+  'Checkbox',
+  'DataGrid',
+  'Dialog',
+  'Input',
+  'Progress',
+  'Select',
+  'Separator',
+  'Skeleton',
+  'Spinner',
+  'Switch',
+  'TableOfContents',
+  'Tabs',
+  'Textarea',
+];
+
+if (existsSync(leptosWorkbenchPage)) {
+  const leptosCode = readFileSync(leptosWorkbenchPage, 'utf-8');
+  const missing = REQUIRED_WORKBENCH_COMPONENTS.filter(
+    (component) => !new RegExp(`<${component}[\\s/>]`).test(leptosCode),
+  );
+  if (missing.length === 0) {
+    pass(
+      `Leptos UI Workbench renders the whole required surface (${REQUIRED_WORKBENCH_COMPONENTS.length} components)`,
+    );
+  } else {
+    fail(`Leptos UI Workbench does not render: ${missing.join(', ')}`);
+  }
+}
+
 console.log('-------------------------------------');
 if (failures === 0) {
   console.log('[SUCCESS] All UI parity checks passed cleanly!');

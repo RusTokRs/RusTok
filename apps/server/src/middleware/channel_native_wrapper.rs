@@ -18,6 +18,9 @@ mod base;
 const NATIVE_CHANNEL_MUTATION_PATHS: &[&str] = &[
     "/api/fn/channel/create-channel",
     "/api/fn/channel/set-default",
+    "/api/fn/channel/update-channel",
+    "/api/fn/channel/set-active",
+    "/api/fn/channel/delete-channel",
     "/api/fn/channel/create-target",
     "/api/fn/channel/update-target",
     "/api/fn/channel/delete-target",

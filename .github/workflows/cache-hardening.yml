@@ -259,6 +259,16 @@ jobs:
           shared-key: cache-hardening
       - name: PostgreSQL channel generation recovery
         run: cargo test -p rustok-channel --test postgres_invalidation_generation -- --ignored --nocapture --test-threads=1
+      - name: SQLite channel lifecycle invariants
+        # `m20261126_000013` makes the lifecycle invariants structural. The suites that
+        # prove them existed but no job executed them: `--lib` covers the in-crate unit
+        # tests only, and the PostgreSQL one is `#[ignore]`d, so it needs an explicit
+        # run against a disposable admin database.
+        run: cargo test -p rustok-channel --test lifecycle_invariants_sqlite
+      - name: PostgreSQL channel lifecycle invariants
+        env:
+          RUSTOK_MIGRATION_SMOKE_ADMIN_URL: postgres://postgres:postgres@127.0.0.1:5432/rustok_channel
+        run: cargo test -p rustok-channel --test lifecycle_invariants_postgres -- --ignored --nocapture --test-threads=1
       - name: PostgreSQL Flex generation recovery
         run: cargo test -p flex --test postgres_cache_generation -- --ignored --nocapture --test-threads=1
 

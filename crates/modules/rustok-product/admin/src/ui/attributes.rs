@@ -7,6 +7,7 @@ use rustok_ui_core::UiRouteContext;
 
 use super::leptos::ProductSchemaAuthoringCard;
 use crate::catalog_transport;
+use crate::i18n::t;
 use crate::model::{
     ProductAttributeDraft, ProductAttributeOptionDraft, ProductAttributeSchemaDraft,
     ProductAttributeSchemaSummary, ProductAttributeSummary,
@@ -64,6 +65,7 @@ fn AttributeSchemasGrid(
 
     view! {
         <DataGrid
+            aria_label=t(locale.as_deref(), "product.attributes.schemasTable", "Attribute schemas")
             columns=columns
             data=Signal::derive(move || paged_rows.get())
             key_fn=|s: &ProductAttributeSchemaSummary| s.id.clone()
@@ -169,6 +171,7 @@ fn ProductAttributesGrid(
 
     view! {
         <DataGrid
+            aria_label=t(locale.as_deref(), "product.attributes.valuesTable", "Product attributes")
             columns=columns
             data=Signal::derive(move || paged_rows.get())
             key_fn=|attr: &ProductAttributeSummary| attr.id.clone()

@@ -36,6 +36,13 @@ jobs:
         run: npm run test:verify:rust-constructor-arity
       - name: Verify canonical module reference contract
         run: npm run verify:module-reference-contract
+      - name: Verify channel lifecycle invariants
+        # The gate pins the `m20261126_000013` invariants: the migration SQL on both
+        # backends, the owner's clear-then-set ordering and its typed conflict mapping.
+        # It lived in `package.json` only, so no pull request ever ran it.
+        run: |
+          npm run verify:channel:lifecycle-invariants
+          npm run test:verify:channel:lifecycle-invariants
       - name: Verify module manifest documentation parity
         run: node scripts/verify/verify-module-manifest-docs-drift.mjs
       - name: Verify security advisory exceptions

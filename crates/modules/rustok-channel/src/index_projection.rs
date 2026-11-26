@@ -11,7 +11,9 @@ sales_channel_index_union AS (
         c.name,
         c.is_active,
         c.is_default,
-        c.status
+        -- Publication state is derived from `is_active`: the retired free-form
+        -- `status` column could contradict it and always held `experimental`.
+        CASE WHEN c.is_active THEN 'active' ELSE 'inactive' END AS status
     FROM channels c
     WHERE c.tenant_id = $1
 

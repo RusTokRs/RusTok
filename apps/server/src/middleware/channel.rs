@@ -18,6 +18,7 @@ use crate::common::{RustokSettings, extract_effective_host, peer_ip_from_extensi
 use crate::context::{
     ChannelContext, ChannelContextExtension, ChannelResolutionSource, TenantContextExt,
 };
+use crate::services::channel_cache_invalidation::ChannelCacheInvalidationListenerHandle;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_api::{
     ChannelResolutionOutcome, ChannelResolutionStage, ChannelResolutionTraceStep,
@@ -166,7 +167,7 @@ impl CachedChannelResolution {
                     slug: detail.channel.slug,
                     name: detail.channel.name,
                     is_active: detail.channel.is_active,
-                    status: detail.channel.status,
+                    status: detail.channel.status.as_str().to_string(),
                     target_type: selected_target.map(|target| target.target_type.clone()),
                     target_value: selected_target.map(|target| target.value.clone()),
                     settings: detail.channel.settings,
@@ -334,28 +335,34 @@ pub async fn resolve(
         req.extensions(),
     )?;
     let cache = channel_cache(&ctx);
+    let cache_usable = channel_resolution_cache_usable(&ctx);
 
-    let cached = if let Some(version) = cache.tenant_version(facts.tenant_id) {
-        let cache_key = channel_cache_key_from_facts(&facts, version);
-        cache
-            .cache
-            .try_get_with(cache_key, async move {
-                resolver
-                    .resolve(&facts)
-                    .await
-                    .map(|decision| CachedChannelResolution::from_decision(decision, &facts))
-                    .map_err(|_error| {
-                        tracing::error!(
-                            error_code = "channel_resolution_cache_load_failed",
-                            "Channel resolution failed in cache loader"
-                        );
-                        axum::http::StatusCode::INTERNAL_SERVER_ERROR
-                    })
-            })
-            .await
-            .map_err(|error| *error)?
-    } else {
-        resolver
+    // Two independent reasons to resolve without the cache: no version fence for
+    // the tenant yet, or a broken durable invalidation runtime (see
+    // `channel_resolution_cache_usable`). The uncached path is correct in both
+    // cases; only the cost differs.
+    let cached = match (cache_usable, cache.tenant_version(facts.tenant_id)) {
+        (true, Some(version)) => {
+            let cache_key = channel_cache_key_from_facts(&facts, version);
+            cache
+                .cache
+                .try_get_with(cache_key, async move {
+                    resolver
+                        .resolve(&facts)
+                        .await
+                        .map(|decision| CachedChannelResolution::from_decision(decision, &facts))
+                        .map_err(|_error| {
+                            tracing::error!(
+                                error_code = "channel_resolution_cache_load_failed",
+                                "Channel resolution failed in cache loader"
+                            );
+                            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+                        })
+                })
+                .await
+                .map_err(|error| *error)?
+        }
+        _ => resolver
             .resolve(&facts)
             .await
             .map(|decision| CachedChannelResolution::from_decision(decision, &facts))
@@ -365,7 +372,7 @@ pub async fn resolve(
                     "Channel resolution failed"
                 );
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR
-            })?
+            })?,
     };
 
     if let CachedChannelResolution::Found(context) = cached {
@@ -408,6 +415,33 @@ fn build_request_facts(
             .get::<ResolvedRequestLocale>()
             .map(|resolved| resolved.effective_locale.clone()),
     })
+}
+
+/// Whether this process may serve channel resolution from its cache.
+///
+/// The cache is invalidated by an in-process version fence plus the durable
+/// generation listener. When the listener is registered but not ready, the durable
+/// half of that contract is broken: another replica's channel change would not
+/// reach this process, so a cached decision could stay stale indefinitely. In that
+/// state the middleware resolves against the owner on every request (correct, just
+/// slower) instead of taking the whole replica out of readiness.
+///
+/// A missing handle is not a failure: embedded hosts and tests have no durable
+/// runtime, and there the local fence is the complete invalidation path.
+fn channel_resolution_cache_usable(ctx: &ServerRuntimeContext) -> bool {
+    match ctx.shared_get::<ChannelCacheInvalidationListenerHandle>() {
+        Some(handle) => {
+            let ready = handle.is_ready();
+            if !ready {
+                tracing::debug!(
+                    error_code = "channel_resolution_cache_bypassed",
+                    "Channel resolution cache bypassed: durable invalidation runtime is not ready"
+                );
+            }
+            ready
+        }
+        None => true,
+    }
 }
 
 fn channel_cache_key_from_facts(facts: &RequestFacts, version: u64) -> ChannelCacheKey {

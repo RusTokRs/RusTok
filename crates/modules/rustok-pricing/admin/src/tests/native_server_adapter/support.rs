@@ -65,8 +65,8 @@ pub async fn seed_channel_context(
 ) {
     db.execute_raw(sea_orm::Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Sqlite,
-            "INSERT INTO channels (id, tenant_id, slug, name, is_active, is_default, status, settings, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            "INSERT INTO channels (id, tenant_id, slug, name, is_active, is_default, settings, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
             vec![
                 channel_id.into(),
                 tenant_id.into(),
@@ -74,7 +74,6 @@ pub async fn seed_channel_context(
                 format!("Channel {channel_slug}").into(),
                 true.into(),
                 false.into(),
-                "active".into(),
                 json!({}).to_string().into(),
             ],
         ))

@@ -143,33 +143,33 @@ impl ChannelReadPort for crate::ChannelService {
         request: ChannelReadRequest,
     ) -> Result<Option<ChannelReadProjection>, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        let budget = deadline_budget(&context);
         let tenant_id = parse_tenant_id(&context)?;
         validate_channel_read_request(&request)?;
 
         let detail = match request.selector {
             ChannelReadSelector::Id(channel_id) => {
-                match self.get_channel_detail(channel_id).await {
+                match within_deadline(budget, self.get_channel_detail(channel_id)).await {
                     Ok(detail) if detail.channel.tenant_id == tenant_id => {
                         ensure_tenant_scope(tenant_id, &detail)?;
                         Some(detail)
                     }
                     Ok(_) => None,
-                    Err(crate::ChannelError::NotFound(_)) => None,
-                    Err(error) => return Err(map_channel_error(error)),
+                    Err(error) if error.kind == PortErrorKind::NotFound => None,
+                    Err(error) => return Err(error),
                 }
             }
-            ChannelReadSelector::Slug(slug) => self
-                .get_channel_detail_by_slug(tenant_id, &slug)
-                .await
-                .map_err(map_channel_error)?,
-            ChannelReadSelector::HostTargetValue(target_value) => self
-                .get_channel_by_host_target_value(tenant_id, &target_value)
-                .await
-                .map_err(map_channel_error)?,
-            ChannelReadSelector::Default => self
-                .get_default_channel(tenant_id)
-                .await
-                .map_err(map_channel_error)?,
+            ChannelReadSelector::Slug(slug) => {
+                within_deadline(budget, self.get_channel_detail_by_slug(tenant_id, &slug)).await?
+            }
+            ChannelReadSelector::HostTargetValue(target_value) => within_deadline(
+                budget,
+                self.get_channel_by_host_target_value(tenant_id, &target_value),
+            )
+            .await?,
+            ChannelReadSelector::Default => {
+                within_deadline(budget, self.get_default_channel(tenant_id)).await?
+            }
         };
 
         let Some(detail) = detail else {
@@ -187,6 +187,7 @@ impl ChannelReadPort for crate::ChannelService {
         request: ChannelListRequest,
     ) -> Result<ChannelListProjectionPage, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        let budget = deadline_budget(&context);
         let tenant_id = parse_tenant_id(&context)?;
         if request.page == 0 || request.per_page == 0 {
             return Err(PortError::validation(
@@ -194,15 +195,16 @@ impl ChannelReadPort for crate::ChannelService {
                 "channel read port requires non-zero page and per_page",
             ));
         }
-        let (items, total) = self
-            .list_channel_details_page(
+        let (items, total) = within_deadline(
+            budget,
+            self.list_channel_details_page(
                 tenant_id,
                 request.page,
                 request.per_page,
                 request.include_inactive,
-            )
-            .await
-            .map_err(map_channel_error)?;
+            ),
+        )
+        .await?;
         Ok(ChannelListProjectionPage {
             items: items
                 .into_iter()
@@ -210,6 +212,32 @@ impl ChannelReadPort for crate::ChannelService {
                 .collect(),
             total,
         })
+    }
+}
+
+/// Returns the caller's deadline budget for a port read.
+///
+/// The port advertises `deadline_required` and `require_policy(PortCallPolicy::read())`
+/// already rejects a missing budget, so this only projects the validated value: the
+/// lookup itself must also *stop* when the budget runs out, not just be preceded by
+/// a presence check.
+fn deadline_budget(context: &PortContext) -> std::time::Duration {
+    std::time::Duration::from_millis(context.deadline_ms.unwrap_or_default())
+}
+
+async fn within_deadline<T, F>(
+    budget: std::time::Duration,
+    future: F,
+) -> Result<T, PortError>
+where
+    F: std::future::Future<Output = crate::ChannelResult<T>>,
+{
+    match tokio::time::timeout(budget, future).await {
+        Ok(result) => result.map_err(map_channel_error),
+        Err(_) => Err(PortError::timeout(
+            "port.deadline_exceeded",
+            "channel read port call exceeded the caller's deadline budget",
+        )),
     }
 }
 
@@ -297,8 +325,9 @@ fn map_channel_error(error: crate::ChannelError) -> PortError {
         ),
         crate::ChannelError::SlugAlreadyExists(message)
         | crate::ChannelError::TargetAlreadyExists(_, message)
-        | crate::ChannelError::PolicySetSlugAlreadyExists(message) => PortError::new(
-            PortErrorKind::Validation,
+        | crate::ChannelError::PolicySetSlugAlreadyExists(message)
+        | crate::ChannelError::Conflict(message) => PortError::new(
+            PortErrorKind::Conflict,
             "channel.conflict",
             message,
             false,

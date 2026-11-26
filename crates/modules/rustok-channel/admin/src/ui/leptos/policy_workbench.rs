@@ -1,4 +1,5 @@
 use super::*;
+use rustok_ui_leptos::{Button, Checkbox, Input};
 
 #[component]
 pub(super) fn PolicyWorkbench(
@@ -143,39 +144,32 @@ pub(super) fn PolicyWorkbench(
             </div>
 
             <form class="mt-6 grid gap-3 rounded-xl border border-border bg-background p-4 lg:grid-cols-[1fr_1fr_auto_auto]" on:submit=on_create>
-                <input
-                    type="text"
-                    class="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm"
+                <Input
+                    aria_label=t(ui_locale.as_deref(), "channel.policies.slugPlaceholder", "policy slug")
                     placeholder=t(ui_locale.as_deref(), "channel.policies.slugPlaceholder", "policy slug")
-                    prop:value=create_slug
-                    on:input=move |ev| create_slug.set(event_target_value(&ev))
+                    value=create_slug.read_only()
+                    set_value=create_slug.write_only()
                 />
-                <input
-                    type="text"
-                    class="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm"
+                <Input
+                    aria_label=t(ui_locale.as_deref(), "channel.policies.namePlaceholder", "policy set name")
                     placeholder=t(ui_locale.as_deref(), "channel.policies.namePlaceholder", "policy set name")
-                    prop:value=create_name
-                    on:input=move |ev| create_name.set(event_target_value(&ev))
+                    value=create_name.read_only()
+                    set_value=create_name.write_only()
                 />
                 <label class="flex items-center gap-2 text-sm text-muted-foreground">
-                    <input
-                        type="checkbox"
-                        prop:checked=create_is_active
-                        on:change=move |ev| create_is_active.set(event_target_checked(&ev))
+                    <Checkbox
+                        checked=create_is_active.read_only()
+                        set_checked=create_is_active.write_only()
                     />
                     {t(ui_locale.as_deref(), "channel.policies.active", "Activate now")}
                 </label>
-                <button
-                    type="submit"
-                    class="inline-flex h-10 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
-                    disabled=move || create_busy.get()
-                >
+                <Button r#type="submit" disabled=move || create_busy.get()>
                     {move || if create_busy.get() {
                         t(ui_locale.as_deref(), "channel.policies.creating", "Creating...")
                     } else {
                         t(ui_locale.as_deref(), "channel.policies.create", "Create Policy Set")
                     }}
-                </button>
+                </Button>
             </form>
         </section>
     }

@@ -179,6 +179,21 @@ pub fn Users() -> impl IntoView {
         navigate_click(&item.detail_href, Default::default());
     });
 
+    // Client-side ordering key. Without it the grid cannot compare two rows and
+    // (by design) stops advertising a sort it cannot perform, so the sort arrows
+    // the headers used to show did nothing at all.
+    let sort_cell = Callback::new(move |(item, col_id): (GraphqlUserViewModel, String)| {
+        match col_id.as_str() {
+            "email" => CellValue::text(item.email),
+            "name" => CellValue::text(item.name),
+            "role" => CellValue::text(item.role),
+            "status" => CellValue::text(item.status),
+            // ISO-8601 sorts lexicographically, which is chronological here.
+            "created_at" => CellValue::text(item.created_at),
+            _ => CellValue::Empty,
+        }
+    });
+
     let cell_renderer = Callback::new(move |(item, col_id): (GraphqlUserViewModel, String)| {
         match col_id.as_str() {
             "email" => {
@@ -413,6 +428,7 @@ pub fn Users() -> impl IntoView {
                                         pagination=pagination
                                         filters=filters
                                         on_filter_change=on_filters_change
+                                        sort_cell=sort_cell
                                         on_row_click=on_row_click
                                     />
                                 </div>

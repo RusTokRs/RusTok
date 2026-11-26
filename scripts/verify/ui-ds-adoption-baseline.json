@@ -1,0 +1,245 @@
+{
+  "note": "Ratchet baseline: `raw` and `svg` may only go down, `ds` may only go up. Regenerate with --update-baseline after a migration.",
+  "totals": {
+    "raw": 1322,
+    "svg": 21,
+    "ds": 43
+  },
+  "crates": {
+    "apps/admin": {
+      "raw": 117,
+      "svg": 7,
+      "ds": 6
+    },
+    "crates/modules/rustok-ai/admin": {
+      "raw": 61,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-auth/admin": {
+      "raw": 18,
+      "svg": 5,
+      "ds": 5
+    },
+    "crates/modules/rustok-billing/admin": {
+      "raw": 4,
+      "svg": 0,
+      "ds": 1
+    },
+    "crates/modules/rustok-blog/admin": {
+      "raw": 2,
+      "svg": 0,
+      "ds": 5
+    },
+    "crates/modules/rustok-brand/admin": {
+      "raw": 20,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-cache/admin": {
+      "raw": 3,
+      "svg": 0,
+      "ds": 1
+    },
+    "crates/modules/rustok-calendar/admin": {
+      "raw": 4,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-calls/admin": {
+      "raw": 4,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-channel/admin": {
+      "raw": 0,
+      "svg": 0,
+      "ds": 4
+    },
+    "crates/modules/rustok-comments/admin": {
+      "raw": 10,
+      "svg": 0,
+      "ds": 1
+    },
+    "crates/modules/rustok-commerce/admin": {
+      "raw": 28,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-customer/admin": {
+      "raw": 11,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-deal/admin": {
+      "raw": 4,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-events-module/admin": {
+      "raw": 3,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-finance/admin": {
+      "raw": 4,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-forms/admin": {
+      "raw": 1,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-forum/admin": {
+      "raw": 79,
+      "svg": 0,
+      "ds": 1
+    },
+    "crates/modules/rustok-fulfillment/admin": {
+      "raw": 12,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-groups/admin": {
+      "raw": 65,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-iggy-connector/admin": {
+      "raw": 8,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-index/admin": {
+      "raw": 19,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-inventory/admin": {
+      "raw": 12,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-marketplace-listing/admin": {
+      "raw": 24,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-marketplace-seller/admin": {
+      "raw": 25,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-mcp/admin": {
+      "raw": 33,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-media/admin": {
+      "raw": 12,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-messenger/admin": {
+      "raw": 4,
+      "svg": 0,
+      "ds": 1
+    },
+    "crates/modules/rustok-notifications/admin": {
+      "raw": 0,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-order/admin": {
+      "raw": 14,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-outbox/admin": {
+      "raw": 0,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-page-builder/admin": {
+      "raw": 237,
+      "svg": 8,
+      "ds": 0
+    },
+    "crates/modules/rustok-pages/admin": {
+      "raw": 59,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-party/admin": {
+      "raw": 4,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-pricing/admin": {
+      "raw": 28,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-product-bundles/admin": {
+      "raw": 29,
+      "svg": 1,
+      "ds": 0
+    },
+    "crates/modules/rustok-product-relations/admin": {
+      "raw": 13,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-product/admin": {
+      "raw": 205,
+      "svg": 0,
+      "ds": 17
+    },
+    "crates/modules/rustok-rbac/admin": {
+      "raw": 3,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-region/admin": {
+      "raw": 12,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-search/admin": {
+      "raw": 53,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-security/admin": {
+      "raw": 4,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-seo/admin": {
+      "raw": 59,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-tasks/admin": {
+      "raw": 4,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-tenant/admin": {
+      "raw": 0,
+      "svg": 0,
+      "ds": 0
+    },
+    "crates/modules/rustok-translation/admin": {
+      "raw": 7,
+      "svg": 0,
+      "ds": 1
+    },
+    "crates/modules/rustok-workflow/admin": {
+      "raw": 4,
+      "svg": 0,
+      "ds": 0
+    }
+  }
+}

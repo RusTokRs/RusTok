@@ -264,3 +264,7 @@ translation-workflow-proposal = Manual proposal
 translation-workflow-proposalDescription = Save one exact field value; deterministic and owner QA run before review.
 translation-workflow-review = Review and owner apply
 translation-workflow-reviewDescription = Each transition is explicit, idempotent, and never retries through another protocol.
+translation-targets-table = Цели перевода
+translation-reviewerQueue-table = Очередь ревью
+translation-reviewerWorkload-table = Загрузка ревьюеров
+translation-artifacts-table = Артефакты обмена
