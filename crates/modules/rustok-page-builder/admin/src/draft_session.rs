@@ -363,6 +363,16 @@ fn validate_operation_receipt_input(
     {
         return Err(SsrDraftSessionError::InvalidOperationHash);
     }
+    // The prepared_save field is a reserved internal sentinel, never an arbitrary
+    // response field. Malformed lookalikes must not be replayed as completed saves.
+    if response.get("prepared_save").is_some()
+        && (response.get("prepared_save").and_then(Value::as_bool) != Some(true)
+            || response.as_object().map_or(true, |object| object.len() != 1))
+    {
+        return Err(SsrDraftSessionError::Serialization(
+            "invalid prepared-save receipt marker".to_string(),
+        ));
+    }
     let bytes = serde_json::to_vec(response)
         .map_err(|error| SsrDraftSessionError::Serialization(error.to_string()))?
         .len();
@@ -5387,6 +5397,49 @@ mod tests {
         invalid_conflict["controller"]["editor"]["revision"]["save_conflict"] = json!(true);
         invalid_conflict["controller"]["ui"]["state"]["dirty"]["save_conflict"] = json!(true);
         assert!(matches!(decode(&invalid_conflict), Err(SsrDraftSessionError::Serialization(_))));
+    }
+
+    #[test]
+    fn prepared_save_receipt_marker_has_one_canonical_shape() {
+        let hash = "a".repeat(64);
+        assert!(validate_operation_receipt_input(
+            "prepared-op", &hash, &json!({ "prepared_save": true }),
+        ).is_ok());
+        for response in [
+            json!({ "prepared_save": false }),
+            json!({ "prepared_save": "true" }),
+            json!({ "prepared_save": true, "extra": 1 }),
+        ] {
+            assert!(matches!(
+                validate_operation_receipt_input("prepared-op", &hash, &response),
+                Err(SsrDraftSessionError::Serialization(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn format_one_final_receipts_remain_readable_and_upgrade_on_write() {
+        let mut legacy = record_json("tokFormatOne", 2, 4_000_000_000);
+        legacy["format"] = json!(1);
+        legacy["operation_receipts"] = json!([{
+            "operation_id": "legacy-final",
+            "request_hash": "b".repeat(64),
+            "generation": 2,
+            "response": { "result": "saved" }
+        }]);
+        let record = PersistentDraftSessionRecord::decode(
+            &serde_json::to_vec(&legacy).expect("json"),
+        ).expect("format 1 record");
+        assert_eq!(record.format, 1);
+
+        let dir = temp_store_dir();
+        let store = file_store(&dir);
+        store.save_record(&record).expect("upgrade legacy record");
+        let upgraded = store.load_record("tokFormatOne", None)
+            .expect("load").expect("record");
+        assert_eq!(upgraded.format, DRAFT_SESSION_RECORD_FORMAT);
+        assert_eq!(upgraded.operation_receipts, record.operation_receipts);
+        fs::remove_dir_all(dir).expect("cleanup");
     }
 
     #[test]
