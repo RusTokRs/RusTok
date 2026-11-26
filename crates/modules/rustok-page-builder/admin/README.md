@@ -54,8 +54,12 @@ they are merged on a reload/reconciliation boundary, while BroadcastChannel
 notices remain advisory and server revision checks are authoritative.
 
 When the Pages facade returns `PAGE_DOCUMENT_SAVE_OUTCOME_UNKNOWN`, Dioxus
-keeps the editor read-only and offers an exact same-request retry while mounted.
-The durable local recovery record also makes a full reload recoverable: if the
+keeps the editor read-only and retains the exact submitted page, revision and payload.
+The mounted retry is admitted only if the current draft still matches that request;
+edits made during the original save are preserved and require an authoritative reload
+instead of being submitted as a different retry. A generic retry failure or malformed
+response does not clear the unknown-outcome fence. The durable local recovery record
+also makes a full reload recoverable: if the
 first request committed, the latest server document already contains the
 submitted draft; if it did not, the local draft can be merged against the
 unchanged server base. The server receipt remains the authority for whether a
