@@ -321,6 +321,17 @@ impl<S> CapabilityGuardedService<S> {
             policies,
         }
     }
+
+    fn admit(
+        &self,
+        context: &PortContext,
+        capability: BuilderCapabilityKind,
+    ) -> PageBuilderServiceResult<()> {
+        ensure_capability(&self.flags, capability)?;
+        context
+            .require_policy(self.policies.required_for(capability))
+            .map_err(PageBuilderServiceError::from_port_error)
+    }
 }
 
 #[async_trait]
@@ -333,10 +344,11 @@ where
         context: &PortContext,
         input: PreviewPageBuilderInput,
     ) -> PageBuilderServiceResult<PreviewPageBuilderResult> {
-        ensure_capability(&self.flags, BuilderCapabilityKind::Preview)?;
-        context
-            .require_policy(self.policies.required_for(BuilderCapabilityKind::Preview))
-            .map_err(PageBuilderServiceError::from_port_error)?;
+        if let Err(error) = self.admit(context, BuilderCapabilityKind::Preview) {
+            fly::drop_value_iteratively(input.project_data);
+            fly::drop_value_iteratively(input.runtime.context);
+            return Err(error);
+        }
         self.inner.preview(context, input).await
     }
 
@@ -345,10 +357,7 @@ where
         context: &PortContext,
         input: BuilderTreeInput,
     ) -> PageBuilderServiceResult<BuilderTreeResult> {
-        ensure_capability(&self.flags, BuilderCapabilityKind::Tree)?;
-        context
-            .require_policy(self.policies.required_for(BuilderCapabilityKind::Tree))
-            .map_err(PageBuilderServiceError::from_port_error)?;
+        self.admit(context, BuilderCapabilityKind::Tree)?;
         self.inner.tree(context, input).await
     }
 
@@ -357,13 +366,10 @@ where
         context: &PortContext,
         input: BuilderNodePropertiesInput,
     ) -> PageBuilderServiceResult<BuilderNodePropertiesResult> {
-        ensure_capability(&self.flags, BuilderCapabilityKind::Properties)?;
-        context
-            .require_policy(
-                self.policies
-                    .required_for(BuilderCapabilityKind::Properties),
-            )
-            .map_err(PageBuilderServiceError::from_port_error)?;
+        if let Err(error) = self.admit(context, BuilderCapabilityKind::Properties) {
+            fly::drop_value_iteratively(input.properties);
+            return Err(error);
+        }
         self.inner.properties(context, input).await
     }
 
@@ -372,10 +378,10 @@ where
         context: &PortContext,
         input: PublishPageBuilderInput,
     ) -> PageBuilderServiceResult<PublishPageBuilderResult> {
-        ensure_capability(&self.flags, BuilderCapabilityKind::Publish)?;
-        context
-            .require_policy(self.policies.required_for(BuilderCapabilityKind::Publish))
-            .map_err(PageBuilderServiceError::from_port_error)?;
+        if let Err(error) = self.admit(context, BuilderCapabilityKind::Publish) {
+            fly::drop_value_iteratively(input.project_data);
+            return Err(error);
+        }
         self.inner.publish(context, input).await
     }
 }
@@ -411,8 +417,11 @@ where
         auth: &PageBuilderRequestAuth,
         input: PreviewPageBuilderInput,
     ) -> PageBuilderServiceResult<PreviewPageBuilderResult> {
-        self.authorizer
-            .authorize(auth, BuilderCapabilityKind::Preview)?;
+        if let Err(error) = self.authorizer.authorize(auth, BuilderCapabilityKind::Preview) {
+            fly::drop_value_iteratively(input.project_data);
+            fly::drop_value_iteratively(input.runtime.context);
+            return Err(error);
+        }
         self.service.preview(context, input).await
     }
 
@@ -433,24 +442,28 @@ where
         auth: &PageBuilderRequestAuth,
         input: BuilderNodePropertiesInput,
     ) -> PageBuilderServiceResult<BuilderNodePropertiesResult> {
-        self.authorizer
-            .authorize(auth, BuilderCapabilityKind::Properties)?;
+        if let Err(error) = self.authorizer.authorize(auth, BuilderCapabilityKind::Properties) {
+            fly::drop_value_iteratively(input.properties);
+            return Err(error);
+        }
         self.service.properties(context, input).await
     }
 
-    #[tracing::instrument(skip(self, context, auth))]
+    #[tracing::instrument(skip(self, context, auth, input))]
     pub async fn publish(
         &self,
         context: &PortContext,
         auth: &PageBuilderRequestAuth,
         input: PublishPageBuilderInput,
     ) -> PageBuilderServiceResult<PublishPageBuilderResult> {
-        self.authorizer
-            .authorize(auth, BuilderCapabilityKind::Publish)?;
+        if let Err(error) = self.authorizer.authorize(auth, BuilderCapabilityKind::Publish) {
+            fly::drop_value_iteratively(input.project_data);
+            return Err(error);
+        }
         self.service.publish(context, input).await
     }
 
-    #[tracing::instrument(skip(self, context, auth))]
+    #[tracing::instrument(skip(self, context, auth, request), fields(capability = %request.capability()))]
     pub async fn handle(
         &self,
         context: &PortContext,

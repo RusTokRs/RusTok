@@ -39,6 +39,7 @@ impl AdminCanvasController {
     ) -> Result<Self, AdminCanvasError> {
         let page_id = page_id.into();
         if page_id.trim().is_empty() {
+            fly::drop_value_iteratively(project_data);
             return Err(AdminCanvasError::InvalidPageId);
         }
         let document = GrapesJsCodec::decode_value(project_data)?;
@@ -171,6 +172,7 @@ impl AdminCanvasController {
         project_data: Value,
     ) -> Result<(), AdminCanvasError> {
         if self.editor.revision().save_conflict {
+            fly::drop_value_iteratively(project_data);
             return Err(AdminCanvasError::Authoring(
                 "reload the conflicting draft before applying a recovered merge".to_string(),
             ));
@@ -1063,6 +1065,14 @@ mod tests {
         let recovered = GrapesJsCodec::encode_value(controller.editor().document())
             .expect("recovery document");
         assert!(controller.apply_recovered_merge(recovered).is_err());
+        let mut nested = Value::Null;
+        for _ in 0..50_000 {
+            nested = Value::Array(vec![nested]);
+        }
+        assert!(matches!(
+            controller.apply_recovered_merge(nested),
+            Err(AdminCanvasError::Authoring(_))
+        ));
         assert_eq!(controller, before);
     }
 

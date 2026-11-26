@@ -17,6 +17,9 @@ runtime-scenario release policy.
 - exposes the deterministic Fly project hash.
 
 All capabilities reject empty or whitespace-only page identities before calling their ports.
+The guarded service and authorized handlers discard rejected owned JSON iteratively; provider
+validation also bounds properties JSON depth and safely discards malformed stored projects.
+Handler tracing excludes full project and runtime request bodies.
 Preview and publish call `require_valid()` before invoking persistence or rendering ports.
 Structural errors such as duplicate component IDs or resource-limit violations reject the
 operation.
