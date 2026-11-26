@@ -1185,11 +1185,14 @@ impl AuthLifecycleService {
             refresh_deadline: expires_at,
             effective_role,
             permissions: effective_permissions,
-        }
-        .finish(finished_at)?;
+        };
+        // Reject dead credentials before committing, but account for commit
+        // latency too. A recovered operation does not change the lineage.
+        Self::remaining_refresh_lifetime(expires_at, finished_at)?;
         txn.commit().await.map_err(AuthLifecycleError::from)?;
-
-        Ok((user, tokens))
+        let committed_at = Utc::now();
+        Self::ensure_refresh_recovery_within_grace(recovery_rotation, committed_at)?;
+        Ok((user, tokens.finish(committed_at)?))
     }
 
     fn ensure_refresh_recovery_within_grace(
@@ -1809,6 +1812,7 @@ mod tests {
         AUTH_CHANGE_PASSWORD_SESSIONS_REVOKED_TOTAL, AUTH_FLOW_INCONSISTENCY_TOTAL,
         AUTH_LOGIN_INACTIVE_USER_ATTEMPT_TOTAL, AUTH_PASSWORD_RESET_SESSIONS_REVOKED_TOTAL,
         AuthLifecycleError, AuthLifecycleMetricsSnapshot, AuthLifecycleService, Error,
+        REFRESH_REUSE_GRACE_SECONDS,
     };
     use crate::auth::{
         AuthConfig, MAX_PASSWORD_LENGTH_BYTES, decode_access_token, hash_password,
