@@ -318,8 +318,15 @@ impl AuthLifecycleService {
             .ok_or(AuthLifecycleError::SessionExpired)?;
         }
 
-        // Expiry is checked again at the final identity-transition
-        // boundary, after all row-lock waits and session validation.
+        let existing_user = Users::find()
+            .filter(users::Column::TenantId.eq(tenant_id))
+            .filter(users::Column::Email.eq(&request.new_email))
+            .one(&tx)
+            .await
+            .map_err(AuthLifecycleError::from)?;
+
+        // Expiry is checked again after all row-lock waits, session
+        // validation and the mailbox-availability lookup.
         let transition_at = Utc::now();
         if request.expires_at.with_timezone(&Utc) <= transition_at {
             delete_email_change_request(&tx, request.id, token_hash).await?;
@@ -327,12 +334,6 @@ impl AuthLifecycleService {
             return Err(AuthLifecycleError::InvalidEmailChangeToken);
         }
 
-        let existing_user = Users::find()
-            .filter(users::Column::TenantId.eq(tenant_id))
-            .filter(users::Column::Email.eq(&request.new_email))
-            .one(&tx)
-            .await
-            .map_err(AuthLifecycleError::from)?;
         if existing_user.is_some_and(|existing| existing.id != user.id) {
             delete_email_change_request(&tx, request.id, token_hash).await?;
             tx.commit().await.map_err(AuthLifecycleError::from)?;

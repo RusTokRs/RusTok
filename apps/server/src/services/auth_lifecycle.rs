@@ -254,6 +254,20 @@ impl AuthLifecycleService {
         }
     }
 
+    /// Acquire the existing user mutation fence, then check the signed
+    /// recovery deadline. The returned timestamp is the admission instant,
+    /// not a timestamp captured before hashing or waiting for a row lock.
+    pub(crate) async fn lock_user_for_recovery(
+        tx: &DatabaseTransaction,
+        tenant_id: uuid::Uuid,
+        user_id: uuid::Uuid,
+        expires_at: chrono::DateTime<Utc>,
+    ) -> Result<Option<(users::Model, chrono::DateTime<Utc>)>, sea_orm::DbErr> {
+        let user = Self::lock_user_for_mutation(tx, tenant_id, user_id).await?;
+        let now = Utc::now();
+        Ok(user.filter(|_| now < expires_at).map(|user| (user, now)))
+    }
+
     pub fn metrics_snapshot() -> AuthLifecycleMetricsSnapshot {
         AuthLifecycleMetricsSnapshot {
             password_reset_sessions_revoked_total: AUTH_PASSWORD_RESET_SESSIONS_REVOKED_TOTAL

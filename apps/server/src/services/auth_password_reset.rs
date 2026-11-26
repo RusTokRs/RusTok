@@ -103,12 +103,21 @@ impl AuthLifecycleService {
         let new_hash = hash_password_async(new_password.to_string())
             .await
             .map_err(AuthLifecycleError::from)?;
-        let now = Utc::now();
         let tx = ctx.db().begin().await.map_err(AuthLifecycleError::from)?;
+        let (current, now) = AuthLifecycleService::lock_user_for_recovery(
+            &tx, tenant_id, user.id, claims.expires_at,
+        )
+        .await
+        .map_err(AuthLifecycleError::from)?
+        .ok_or(AuthLifecycleError::InvalidResetToken)?;
 
         // Hashing runs outside the transaction. Recheck the account, mailbox,
-        // status and original credential together before changing any state.
-        if !update_password_if_active(&tx, &user, &new_hash, now).await? {
+        // status and original credential after the user lock and expiry check.
+        if !current.is_active()
+            || current.email != user.email
+            || current.password_hash != user.password_hash
+            || !update_password_if_active(&tx, &current, &new_hash, now).await?
+        {
             tx.rollback().await.map_err(AuthLifecycleError::from)?;
             return Err(AuthLifecycleError::InvalidResetToken);
         }
