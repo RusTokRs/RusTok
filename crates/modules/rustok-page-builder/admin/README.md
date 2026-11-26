@@ -122,7 +122,10 @@ they use stubbed endpoints and do not replace a running Pages-server integration
 
 The current canvas supports rendering, geometry, hover, selection, overlays and persistence. It
 also provides the block palette, drag-and-drop insertion, resize handles, keyboard editing,
-traits/styles editors and asset management. Storefront real-DOM editing remains outside this
+traits/styles editors and asset management. The iframe forwards only admitted editor shortcuts;
+ordinary text input, IME composition, AltGraph, repeated save/duplicate and native text editing
+are not dispatched as authoring intents. The nearest contenteditable boundary controls text admission.
+Storefront real-DOM editing remains outside this
 authoring package.
 
 The canvas is a preview surface, not a navigable document: the runtime cancels authored link

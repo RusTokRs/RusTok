@@ -60,7 +60,12 @@ impl EditorShortcut {
 }
 
 pub fn resolve_editor_shortcut(stroke: &KeyStroke) -> Option<EditorShortcut> {
-    let shortcut = shortcut_for_key(&normalize_key(&stroke.key), stroke)
+    let key = normalize_key(&stroke.key);
+    // Dead keys and IME processing are text input, not physical shortcuts.
+    if matches!(key.as_str(), "dead" | "process" | "unidentified") {
+        return None;
+    }
+    let shortcut = shortcut_for_key(&key, stroke)
         // Layout fallback. `event.key` is the *character* the active layout produces, so on a
         // non-Latin layout (Cyrillic, Greek, Hebrew, …) `Ctrl+Z` arrives as `key: "я"` and every
         // character-matched shortcut silently stops working — a Russian-language admin loses
@@ -313,6 +318,20 @@ mod tests {
             );
             assert_eq!(
                 resolve_editor_shortcut(&stroke_with_code("z", code, ModifierState::default())),
+                None
+            );
+        }
+    }
+
+    #[test]
+    fn composition_keys_do_not_trigger_physical_shortcuts() {
+        let control = ModifierState {
+            control: true,
+            ..ModifierState::default()
+        };
+        for key in ["Dead", "Process", "Unidentified"] {
+            assert_eq!(
+                resolve_editor_shortcut(&stroke_with_code(key, Some("KeyZ"), control)),
                 None
             );
         }

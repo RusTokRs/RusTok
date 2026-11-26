@@ -208,6 +208,37 @@ async function dispatchFlyIntent(
 }
 
 test.describe('Fly Editor Authoring Scenarios', () => {
+  test('canvas forwards only admitted editor shortcuts', async ({ page }) => {
+    await mountEditorWorkspace(
+      page,
+      '<div data-fly-component-id="root"><input id="text"><div contenteditable="true"><span id="locked" contenteditable="false">Locked</span></div></div>'
+    );
+    const prevented = await page.frameLocator('#canvas-main-frame').locator('body').evaluate((body) => {
+      const send = (target: Element, init: KeyboardEventInit) => {
+        const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init });
+        target.dispatchEvent(event);
+        return event.defaultPrevented;
+      };
+      const input = body.querySelector('#text')!;
+      const locked = body.querySelector('#locked')!;
+      return [
+        send(body, { key: 'a', code: 'KeyA' }),
+        send(body, { key: 'z', code: 'KeyZ', ctrlKey: true, isComposing: true }),
+        send(body, { key: 'Process', code: 'KeyZ', ctrlKey: true }),
+        send(body, { key: 's', code: 'KeyS', ctrlKey: true, repeat: true }),
+        send(input, { key: 'c', code: 'KeyC', ctrlKey: true }),
+        send(locked, { key: 'я', code: 'KeyZ', ctrlKey: true })
+      ];
+    });
+    expect(prevented).toEqual([false, false, false, false, false, true]);
+    await expect.poll(() => page.evaluate(() => {
+      const events = (globalThis as typeof globalThis & {
+        __flyRuntimeEvents?: RuntimeEvent[];
+      }).__flyRuntimeEvents ?? [];
+      return events.filter((event) => event.messageType === 'key_stroke').map((event) => event.message?.stroke);
+    })).toEqual([expect.objectContaining({ key: 'я', code: 'KeyZ', editing_text: false })]);
+  });
+
   test('scenario 1: component selection and style rule editing updates live overlay and dispatches upsert_style_rule', async ({
     page
   }) => {
