@@ -1920,3 +1920,15 @@ an already admitted operation can still finish. Successful service-token
 extractor tests now issue signed credentials and persist matching access rows
 instead of bypassing the registration contract. Regression cases authored,
 unrun by request.
+
+## Flex field-definition generation reconciliation
+
+The supervised cache reconciler retains its last applied durable generation
+across retry cycles and replacement of a retained finished task. A lower
+seed or poll value keeps readiness unhealthy until storage again reports at
+least that generation. On every unexpected inner exit, including panic,
+readiness is withdrawn and the local cache is invalidated before restart
+backoff. Generation zero remains a valid initial seed. The watermark lives
+in the server runtime, not across process restarts; intentional database
+restoration to an older generation requires an operator-controlled recovery.
+Regression cases authored, not executed.
