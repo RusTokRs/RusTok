@@ -1233,10 +1233,15 @@ before the event forwarder. The Outbox relay supervisor owns and gracefully drai
 - OAuth RFC 7009 revocation revalidates the authenticated client snapshot (identity, active state, app type, and secret hash) under the app mutation lock before looking up any token. Unknown tokens still succeed for authenticated clients. Source regression unrun.
 - OAuth authorization locks app, subject and direct session in that order, rechecks email policy and credential expiry, and commits browser approval and code issuance together. A stale session cannot grant consent or issue codes. Redirect registration and authorization admission reject callback query names reserved for OAuth responses (`code`, `state`, `error`, `error_description`, `error_uri`), including percent-encoded names. Legacy conflicting callbacks must be corrected before issuing new codes; unrelated query parameters are preserved. Source regressions unrun.
 - OAuth consent re-grant invalidates pending codes for that app, tenant and subject in the same transaction. Code exchange rejects a newer consent epoch and rechecks the refresh grant if a refresh credential was prepared. OAuth replay grace uses the exact elapsed duration and rejects future timestamps. Source regressions unrun.
-- The common credential extractor rechecks the signed access-token expiry after
-  asynchronous database and policy resolution for every principal kind. A token
-  expiring during authentication is rejected before the request is admitted;
-  this is not a deadline for already-admitted HTTP operations.
+- The common credential extractor rechecks both signed access-token expiry and
+  the observed durable credential deadline after asynchronous database and policy
+  resolution for every principal kind. For direct users the durable deadline is
+  the earlier of sliding session expiry and its absolute cap; for OAuth users
+  and services it is the registered access row expiry. Either expiring during
+  authentication rejects the request before admission; this is not a deadline
+  for already-admitted HTTP operations. The standalone request extractor also
+  rejects duplicate Authorization headers, even when the optional auth middleware
+  is absent. Focused source regressions are authored, unrun.
 - OAuth access JWTs are registered credentials: issuance writes a `token_kind = access`
   row whose id is the JWT `jti`, and the extractor requires that row to be active,
   hash-bound, client/tenant/grant-scoped, and subject-bound. RFC 7009, app/consent

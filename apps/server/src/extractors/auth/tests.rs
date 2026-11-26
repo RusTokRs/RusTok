@@ -1,6 +1,6 @@
 use super::{
     CurrentUser, classify_access_token_claims, ensure_access_token_not_expired,
-    resolve_current_user_from_access_token,
+    resolve_current_user, resolve_current_user_from_access_token,
     resolve_service_token_permissions,
 };
 use crate::auth::{
@@ -21,18 +21,50 @@ use std::str::FromStr;
 use uuid::Uuid;
 
 #[test]
-fn resolved_access_token_authority_expires_at_the_exact_signed_deadline() {
+fn resolved_access_token_authority_expires_at_the_earliest_credential_deadline() {
     let expires_at = Utc::now();
-    assert!(ensure_access_token_not_expired(
-        expires_at,
-        expires_at - Duration::nanoseconds(1),
-    ).is_ok());
-    for now in [expires_at, expires_at + Duration::nanoseconds(1)] {
-        assert_eq!(
-            ensure_access_token_not_expired(expires_at, now),
-            Err((axum::http::StatusCode::UNAUTHORIZED, "Access token expired"))
-        );
+    let later = expires_at + Duration::minutes(1);
+    // Either the signed or the persisted credential can expire first.
+    for (signed, durable) in [
+        (expires_at, later),
+        (later, expires_at),
+        (expires_at, expires_at),
+    ] {
+        assert!(ensure_access_token_not_expired(
+            signed,
+            durable,
+            expires_at - Duration::nanoseconds(1),
+        )
+        .is_ok());
+        for now in [expires_at, expires_at + Duration::nanoseconds(1)] {
+            assert_eq!(
+                ensure_access_token_not_expired(signed, durable, now),
+                Err((axum::http::StatusCode::UNAUTHORIZED, "Access token expired"))
+            );
+        }
     }
+}
+
+#[tokio::test]
+async fn standalone_auth_extractor_rejects_duplicate_authorization_headers() {
+    use axum::http::{Request, StatusCode, header::AUTHORIZATION};
+
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let runtime = ServerAuthRuntime::without_auth(ServerRuntimeContext::new(
+        db,
+        RustokSettings::default(),
+    ));
+    let (mut parts, _) = Request::builder()
+        .header(AUTHORIZATION, "Bearer first")
+        .header(AUTHORIZATION, "Bearer first")
+        .body(())
+        .unwrap()
+        .into_parts();
+
+    assert_eq!(
+        resolve_current_user(&mut parts, &runtime).await.unwrap_err(),
+        (StatusCode::BAD_REQUEST, "Multiple Authorization headers are not allowed")
+    );
 }
 
 async fn ensure_oauth_apps_table(db: &DatabaseConnection) {
