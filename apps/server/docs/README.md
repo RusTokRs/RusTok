@@ -556,6 +556,15 @@ remain separate unfinished control-plane work.
 
 ## REST transport correctness
 
+The shared host UUID idempotency header parser now accepts bare UUIDs and
+one matched pair of quotes, rejects malformed quoting and duplicate values,
+and preserves required versus optional admission for registry and artifact
+routes. Artifact JSON content-type matching accepts case-insensitive
+`application/json` and rejects duplicate headers when a JSON body is required.
+Database record-not-found errors (direct or wrapped by core) retain HTTP 404
+and `not_found`, but their internal text is replaced with the fixed public
+message. Focused regressions are authored, not run.
+
 The main-server CSP classifier matches reserved API and operator route families
 on path-segment boundaries. Registry mutations under `/v2/catalog`, protocol
 discovery under `/.well-known` and the build WebSocket use the strict API policy
