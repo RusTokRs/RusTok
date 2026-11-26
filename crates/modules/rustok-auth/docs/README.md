@@ -664,7 +664,10 @@ and delegated token responses report remaining whole access-lifetime seconds.
 OAuth refresh replay grace requires matching committed rotation timestamps,
 valid creation/expiry ordering and nonnegative elapsed duration less than 30
 seconds. Ordinary revocation is not rotation evidence. Source regression
-definitions are unrun; proof-bound OAuth response recovery remains pending.
+definitions are unrun. Refresh descendants also require committed root
+rotation evidence, matching consent/code identities and root-bounded scopes.
+A forked family with multiple live refresh branches fails closed under the
+mutation lock. Proof-bound OAuth response recovery remains pending.
 
 ## Direct session concurrency
 

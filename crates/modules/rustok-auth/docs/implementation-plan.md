@@ -328,6 +328,10 @@ Grace requires matching rotation timestamps and valid temporal evidence, not
 merely a recent revocation. Focused boundary and transactional regressions
 are unrun. Existing pre-change access registrations retain their stored expiry;
 proof-bound recovery and canonical family identity migration remain open.
+Root resolution now rejects unconsumed roots, mismatched consent epochs,
+widened descendant scopes and future timestamps. The app/subject-locked
+rotation refuses a family with multiple live refresh branches. Focused
+regressions are authored but unrun.
 
 ## Direct session mutation ordering (source only)
 

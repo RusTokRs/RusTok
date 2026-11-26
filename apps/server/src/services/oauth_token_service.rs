@@ -618,20 +618,27 @@ fn validate_prepared_deadlines(
 /// Only a committed rotation records matching consumption and revocation
 /// timestamps. An explicit revoke, future timestamp or corrupt history
 /// is not evidence of a benign concurrent rotation.
+fn committed_refresh_rotation_at(
+    token: &oauth_tokens::Model,
+) -> Option<chrono::DateTime<Utc>> {
+    let revoked_at = token.revoked_at.as_ref()?;
+    if token.last_used_at.as_ref() != Some(revoked_at)
+        || revoked_at < &token.created_at
+        || revoked_at >= &token.expires_at
+    {
+        return None;
+    }
+    Some(revoked_at.with_timezone(&Utc))
+}
+
 fn within_refresh_rotation_grace(
     stale: &oauth_tokens::Model,
     now: chrono::DateTime<Utc>,
 ) -> bool {
-    let Some(revoked_at) = stale.revoked_at else {
+    let Some(rotated_at) = committed_refresh_rotation_at(stale) else {
         return false;
     };
-    if stale.last_used_at.as_ref() != Some(&revoked_at)
-        || revoked_at < stale.created_at
-        || revoked_at >= stale.expires_at
-    {
-        return false;
-    }
-    let age = now.signed_duration_since(revoked_at.with_timezone(&Utc));
+    let age = now.signed_duration_since(rotated_at);
     age >= chrono::Duration::zero()
         && age < chrono::Duration::seconds(OAUTH_REFRESH_REUSE_GRACE_SECONDS)
 }
@@ -650,9 +657,12 @@ where
     C: ConnectionTrait,
 {
     let family_id = current.family_id.unwrap_or(current.id);
-    if family_id.is_nil() {
+    if family_id.is_nil() || current.id.is_nil()
+        || current.user_id.is_none_or(|id| id.is_nil())
+        || current.created_at.with_timezone(&Utc) > Utc::now()
+    {
         return Err(OAuthTokenProtocolError::invalid_grant(
-            "Refresh token family identity is invalid",
+            "Refresh token family identity or creation time is invalid",
         ));
     }
     let created_at = if family_id == current.id {
@@ -674,12 +684,20 @@ where
             })?;
         if root.family_id.unwrap_or(root.id) != root.id
             || root.authorization_code_id != current.authorization_code_id
+            || root.consent_granted_at != current.consent_granted_at
             || root.created_at > current.created_at
+            || committed_refresh_rotation_at(&root).is_none_or(|at| at > Utc::now())
         {
             return Err(OAuthTokenProtocolError::invalid_grant(
                 "Refresh token family root is inconsistent",
             ));
         }
+        let invalid_scopes = || OAuthTokenProtocolError::invalid_grant(
+            "Refresh token family scopes are inconsistent",
+        );
+        let root_scopes = root.decoded_scopes().map_err(|_| invalid_scopes())?;
+        let current_scopes = current.decoded_scopes().map_err(|_| invalid_scopes())?;
+        validate_scope_subset(&root_scopes, &current_scopes).map_err(|_| invalid_scopes())?;
         root.created_at.with_timezone(&Utc)
     };
 
@@ -687,6 +705,41 @@ where
         family_id,
         created_at,
     })
+}
+
+/// Rotation is serialized by the app/subject mutation fences. Reject a
+/// forked family before consuming anything; choosing one branch would hide
+/// inconsistent durable state and allow the other branch to survive.
+async fn ensure_single_live_refresh<C>(
+    db: &C,
+    current: &oauth_tokens::Model,
+    family: &RefreshTokenFamily,
+    now: chrono::DateTime<Utc>,
+) -> Result<(), OAuthTokenProtocolError>
+where
+    C: ConnectionTrait,
+{
+    let live = OAuthTokens::find()
+        .filter(oauth_tokens::Column::AppId.eq(current.app_id))
+        .filter(oauth_tokens::Column::TenantId.eq(current.tenant_id))
+        .filter(oauth_tokens::Column::UserId.eq(current.user_id))
+        .filter(oauth_tokens::Column::GrantType.eq(AUTHORIZATION_CODE_GRANT))
+        .filter(oauth_tokens::Column::TokenKind.eq(oauth_tokens::TOKEN_KIND_REFRESH))
+        .filter(oauth_tokens::Column::RevokedAt.is_null())
+        .filter(oauth_tokens::Column::ExpiresAt.gt(now))
+        .filter(Condition::any()
+            .add(oauth_tokens::Column::FamilyId.eq(family.family_id))
+            .add(oauth_tokens::Column::Id.eq(family.family_id)))
+        .limit(2)
+        .all(db)
+        .await
+        .map_err(|_| OAuthTokenProtocolError::server_error("Failed to validate OAuth refresh lineage"))?;
+    if live.len() > 1 {
+        return Err(OAuthTokenProtocolError::invalid_grant(
+            "Refresh token family has multiple live branches",
+        ));
+    }
+    Ok(())
 }
 
 /// Detect a replayed revoked OAuth refresh token and durably revoke the
@@ -1391,6 +1444,7 @@ async fn commit_refresh_rotation(
     let now = Utc::now();
     ensure_refresh_family_live(&family, now)?;
     validate_prepared_deadlines(prepared, now, Some(refresh_family_deadline(family.created_at)?))?;
+    ensure_single_live_refresh(&tx, current, &family, now).await?;
     let consumed = OAuthTokens::update_many()
         .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
         .col_expr(oauth_tokens::Column::LastUsedAt, Expr::value(now))
@@ -2537,6 +2591,25 @@ mod tests {
             .await
             .expect("reload successor")
             .expect("successor exists");
+        let fork_id = Uuid::new_v4();
+        let mut fork: oauth_tokens::ActiveModel = successor.clone().into();
+        fork.id = Set(fork_id);
+        fork.token_hash = Set("forked-refresh".to_string());
+        fork.insert(&db).await.expect("insert inconsistent live branch");
+        let error = commit_refresh_rotation(
+            &db, &client, &successor, &replacement("replacement-forked"), false,
+        )
+        .await
+        .expect_err("a forked lineage must not rotate either live branch");
+        assert_eq!(error.error, "invalid_grant");
+        assert!(error.description.contains("multiple live branches"));
+        for id in [successor.id, fork_id] {
+            assert!(oauth_tokens::Entity::find_by_id(id)
+                .one(&db).await.unwrap().unwrap().revoked_at.is_none());
+        }
+        oauth_tokens::Entity::delete_by_id(fork_id)
+            .exec(&db).await.expect("remove injected fork");
+
         let mut root: oauth_tokens::ActiveModel = oauth_tokens::Entity::find_by_id(current_id)
             .one(&db)
             .await
@@ -2919,6 +2992,37 @@ mod tests {
 
         let mut root: oauth_tokens::ActiveModel = root.into();
         root.authorization_code_id = Set(token.authorization_code_id);
+        root.family_id = Set(Some(root_id));
+        let root = root.update(&db).await.expect("restore root identity");
+        assert_eq!(
+            super::resolve_refresh_family(&db, &token).await.unwrap_err().error,
+            "invalid_grant",
+            "a live root cannot have a live descendant"
+        );
+
+        let mut root: oauth_tokens::ActiveModel = root.into();
+        let rotated_at = (now - chrono::Duration::seconds(1)).fixed_offset();
+        root.revoked_at = Set(Some(rotated_at));
+        root.last_used_at = Set(Some(rotated_at));
+        root.consent_granted_at = Set(Some(rotated_at));
+        let root = root.update(&db).await.expect("inject a foreign consent epoch");
+        assert_eq!(
+            super::resolve_refresh_family(&db, &token).await.unwrap_err().error,
+            "invalid_grant",
+            "a descendant cannot adopt another consent epoch"
+        );
+        let mut root: oauth_tokens::ActiveModel = root.into();
+        root.consent_granted_at = Set(token.consent_granted_at);
+        root.scopes = Set(serde_json::json!(["profile"]));
+        let root = root.update(&db).await.expect("inject widened descendant scopes");
+        assert_eq!(
+            super::resolve_refresh_family(&db, &token).await.unwrap_err().error,
+            "invalid_grant",
+            "a descendant cannot exceed the original family scopes"
+        );
+
+        let mut root: oauth_tokens::ActiveModel = root.into();
+        root.scopes = Set(token.scopes.clone());
         // Pre-migration roots used NULL rather than a self reference.
         root.family_id = Set(None);
         let root = root.update(&db).await.expect("restore valid legacy root");

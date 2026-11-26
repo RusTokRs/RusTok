@@ -62,6 +62,13 @@ consent-presence check alone could not distinguish an old epoch from a new grant
     ordinary revocation is not rotation evidence. This does not recover a
     lost successful refresh response.
 
+11. Refresh descendants must resolve a root of the same tenant, client,
+    subject, authorization-code lineage and consent epoch. The root must
+    contain committed rotation evidence and the descendant's scopes must
+    be a subset of the root's grant. Under the mutation fence, a family
+    with multiple live refresh branches refuses rotation rather than
+    arbitrarily selecting a branch.
+
 ## Sources of truth and ownership
 
 - Canonical owner: `rustok-auth` owns JWT claims and auth migrations;
