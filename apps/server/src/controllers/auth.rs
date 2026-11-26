@@ -107,7 +107,7 @@ async fn register(
         .auth_config()
         .cloned()
         .ok_or(Error::InternalServerError)?;
-    let (user, tokens) = AuthLifecycleService::register_runtime(
+    let (user, mut tokens) = AuthLifecycleService::register_runtime(
         runtime_ctx,
         &config,
         tenant.id,
@@ -127,6 +127,7 @@ async fn register(
         );
     }
 
+    tokens.revalidate_for_publication(&config).map_err(Error::from)?;
     let user_role = tokens.effective_role.clone();
     Ok(json_response(AuthResponse {
         access_token: tokens.access_token,
@@ -173,7 +174,7 @@ async fn login(
         .auth_config()
         .cloned()
         .ok_or(Error::InternalServerError)?;
-    let (user, tokens) = AuthLifecycleService::login_runtime(
+    let (user, mut tokens) = AuthLifecycleService::login_runtime(
         runtime_ctx,
         &config,
         tenant.id,
@@ -186,6 +187,7 @@ async fn login(
     .await
     .map_err(|e: AuthLifecycleError| Error::from(e))?;
 
+    tokens.revalidate_for_publication(&config).map_err(Error::from)?;
     let user_role = tokens.effective_role.clone();
     Ok(json_response(AuthResponse {
         access_token: tokens.access_token,
@@ -226,7 +228,7 @@ async fn refresh(
         .auth_config()
         .cloned()
         .ok_or(Error::InternalServerError)?;
-    let (user, tokens) = AuthLifecycleService::refresh_runtime(
+    let (user, mut tokens) = AuthLifecycleService::refresh_runtime(
         runtime_ctx,
         &config,
         tenant.id,
@@ -238,6 +240,7 @@ async fn refresh(
     .await
     .map_err(|e: AuthLifecycleError| Error::from(e))?;
 
+    tokens.revalidate_for_publication(&config).map_err(Error::from)?;
     let user_role = tokens.effective_role.clone();
     Ok(json_response(AuthResponse {
         access_token: tokens.access_token,
@@ -427,7 +430,7 @@ async fn session_login(
         .auth_config()
         .cloned()
         .ok_or(Error::InternalServerError)?;
-    let (user, tokens) = AuthLifecycleService::login_runtime(
+    let (user, mut tokens) = AuthLifecycleService::login_runtime(
         runtime_ctx,
         &config,
         tenant.id,
@@ -442,6 +445,7 @@ async fn session_login(
 
     let credential = rustok_auth::AuthRefreshCookie::new(&tokens.refresh_token, seed)
         .map_err(|_| Error::InternalServerError)?;
+    tokens.revalidate_for_publication(&config).map_err(Error::from)?;
     let cookie = build_session_cookie(
         &credential.cookie_value(),
         tokens.refresh_expires_in,
@@ -470,7 +474,7 @@ async fn session_register(
         .auth_config()
         .cloned()
         .ok_or(Error::InternalServerError)?;
-    let (user, tokens) = AuthLifecycleService::register_runtime(
+    let (user, mut tokens) = AuthLifecycleService::register_runtime(
         runtime_ctx,
         &config,
         tenant.id,
@@ -492,6 +496,7 @@ async fn session_register(
 
     let credential = rustok_auth::AuthRefreshCookie::new(&tokens.refresh_token, seed)
         .map_err(|_| Error::InternalServerError)?;
+    tokens.revalidate_for_publication(&config).map_err(Error::from)?;
     let cookie = build_session_cookie(
         &credential.cookie_value(),
         tokens.refresh_expires_in,
@@ -521,7 +526,7 @@ async fn session_refresh(
         .auth_config()
         .cloned()
         .ok_or(Error::InternalServerError)?;
-    let (user, tokens) = AuthLifecycleService::refresh_runtime(
+    let (user, mut tokens) = AuthLifecycleService::refresh_runtime(
         runtime_ctx,
         &config,
         tenant.id,
@@ -535,6 +540,7 @@ async fn session_refresh(
 
     let rotated = credential.rotated(&tokens.refresh_token)
         .map_err(|_| Error::InternalServerError)?;
+    tokens.revalidate_for_publication(&config).map_err(Error::from)?;
     let cookie = build_session_cookie(
         &rotated.cookie_value(),
         tokens.refresh_expires_in,

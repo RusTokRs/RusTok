@@ -455,6 +455,12 @@ async fn handle_graphql_ws(
             })),
         };
 
+        if let Some(lease) = auth_lease.get()
+            && lease.ensure_local_authority(&auth_runtime).is_err()
+        {
+            close_ws_for_auth_change_observed(&mut sink).await;
+            break;
+        }
         let remaining = auth_lease.get().map(WebSocketAuthLease::remaining);
         if !send_ws_message(&mut sink, message, remaining).await {
             break;
@@ -815,8 +821,11 @@ async fn build_ws_connection_data(
     .map_err(|_| async_graphql::Error::new("Channel resolution failed"))?;
     ensure_ws_channel_tenant(channel.as_ref(), tenant_ctx.id)?;
 
+    let lease = WebSocketAuthLease::new(access_token, &current_user);
+    lease.ensure_local_authority(&auth_runtime)
+        .map_err(|_| async_graphql::Error::new("WebSocket credential is no longer admissible"))?;
     auth_lease
-        .set(WebSocketAuthLease::new(access_token, &current_user))
+        .set(lease)
         .map_err(|_| async_graphql::Error::new("RBAC connection scope was already initialized"))?;
     let principal_context = AuthPrincipalContext::new(current_user.principal_kind);
     let auth_ctx = AuthContext {
@@ -1818,7 +1827,7 @@ mod tests {
         let lease_set = source
             .find(
                 "auth_lease
-        .set(WebSocketAuthLease::new",
+        .set(lease)",
             )
             .expect("auth lease publication should exist");
         assert!(

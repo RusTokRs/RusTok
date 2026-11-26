@@ -256,6 +256,7 @@ impl OAuthTokenService {
                 .await?;
                 if let Some(window) = recovery {
                     check_application_clock()?;
+                    prepared.ensure_publishable_signature(auth_config)?;
                     let now = clock()?;
                     window.ensure_live(now)?;
                     let response = prepared.into_response(&scopes, now)?;
@@ -279,6 +280,7 @@ impl OAuthTokenService {
         // Usage telemetry is asynchronous: calculate the lifetime only
         // after it finishes, not from the pre-telemetry response.
         check_application_clock()?;
+        prepared.ensure_publishable_signature(auth_config)?;
         prepared.into_response(&scopes, clock()?)
     }
 }
@@ -293,7 +295,14 @@ struct PreparedOAuthTokens {
 }
 
 impl PreparedOAuthTokens {
+    fn ensure_publishable_signature(&self, config: &AuthConfig) -> Result<(), OAuthTokenProtocolError> {
+        crate::auth::decode_access_token(config, &self.access_token)
+            .map(|_| ())
+            .map_err(|_| OAuthTokenProtocolError::server_error("Prepared OAuth access credential is no longer admissible"))
+    }
+
     fn into_response(self, scopes: &[String], now: chrono::DateTime<Utc>) -> Result<TokenResponse, OAuthTokenProtocolError> {
+        validate_prepared_deadlines(&self, now, None)?;
         let expires_in = prepared_access_lifetime(&self.access_model, now, self.expires_in)?;
         Ok(TokenResponse {
             access_token: self.access_token,

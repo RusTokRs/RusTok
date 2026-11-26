@@ -3130,3 +3130,7 @@ if package_exists && declared_crate.is_none() && !draft {
 
 Find other host composition checks with
 `rg -n 'ui_manifest_path\.exists\(\)|declared_crate\.is_none\(\)' apps -g build.rs`.
+
+### P-AUTH-FINAL-KEY-ELIGIBILITY — Revalidate the exact credential at publication
+
+A healthy replacement keyring does not establish that the previously verified or prepared JWT still has an eligible key. Revalidate the exact token after async policy/storage work and at host publication; retain original durable refresh and signed access deadlines plus proof-bound retry grace across adapters. WebSocket deadlines must also be monotonic and observed expiry sticky; check local authority before send without holding locks across socket IO. Source regression authored, unrun. See [access resolver](../../apps/server/src/extractors/auth/mod.rs), [session lifecycle](../../apps/server/src/services/auth_lifecycle.rs) and [OAuth exchange](../../apps/server/src/services/oauth_token_service.rs).

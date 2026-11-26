@@ -69,6 +69,8 @@ pub(crate) struct WebSocketAuthLease {
     access_token: String,
     initial_scope: crate::services::rbac_request_scope::RbacRequestScope,
     expires_at: chrono::DateTime<chrono::Utc>,
+    monotonic_deadline: std::time::Instant,
+    expired: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -81,6 +83,9 @@ pub(crate) enum WebSocketAuthLeaseError {
 
 impl WebSocketAuthLease {
     pub(crate) fn new(access_token: String, current_user: &CurrentUser) -> Self {
+        let started = std::time::Instant::now();
+        let remaining = (current_user.access_token_expires_at - chrono::Utc::now())
+            .to_std().unwrap_or_default();
         Self {
             tenant_id: current_user.user.tenant_id,
             access_token,
@@ -91,14 +96,40 @@ impl WebSocketAuthLease {
                 current_user.inferred_role.clone(),
             ),
             expires_at: current_user.access_token_expires_at,
+            monotonic_deadline: started.checked_add(remaining).unwrap_or(started),
+            expired: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 
     /// Time remaining until expiry; zero means no further data may be sent.
     pub(crate) fn remaining(&self) -> std::time::Duration {
-        (self.expires_at - chrono::Utc::now())
-            .to_std()
-            .unwrap_or(std::time::Duration::ZERO)
+        if rustok_auth::application_clock::check_local().is_err() {
+            self.expired.store(true, std::sync::atomic::Ordering::Release);
+            return std::time::Duration::ZERO;
+        }
+        self.remaining_at(chrono::Utc::now(), std::time::Instant::now())
+    }
+
+    fn remaining_at(&self, wall: chrono::DateTime<chrono::Utc>, mono: std::time::Instant) -> std::time::Duration {
+        use std::sync::atomic::Ordering;
+        let remaining = (self.expires_at - wall).to_std().unwrap_or_default()
+            .min(self.monotonic_deadline.saturating_duration_since(mono));
+        if remaining.is_zero() {
+            self.expired.store(true, Ordering::Release);
+        }
+        if self.expired.load(Ordering::Acquire) { std::time::Duration::ZERO } else { remaining }
+    }
+
+    pub(crate) fn ensure_local_authority(&self, auth_runtime: &ServerAuthRuntime) -> Result<(), WebSocketAuthLeaseError> {
+        if self.remaining().is_zero() {
+            return Err(WebSocketAuthLeaseError::Expired);
+        }
+        let config = auth_runtime.auth_config().ok_or(WebSocketAuthLeaseError::ResolutionFailed)?;
+        decode_access_token(config, &self.access_token).map_err(|_| WebSocketAuthLeaseError::ResolutionFailed)?;
+        if self.remaining().is_zero() {
+            return Err(WebSocketAuthLeaseError::Expired);
+        }
+        Ok(())
     }
 
     pub(crate) async fn revalidate(
@@ -126,9 +157,7 @@ impl WebSocketAuthLease {
         })?
         .map_err(|_| WebSocketAuthLeaseError::ResolutionFailed)?;
         // A slow authority lookup must not extend the original credential lifetime.
-        if chrono::Utc::now() >= self.expires_at {
-            return Err(WebSocketAuthLeaseError::Expired);
-        }
+        self.ensure_local_authority(auth_runtime)?;
         // A shortened durable deadline invalidates the original lease, even
         // if the effective permissions have not changed. A later deadline
         // never extends an already admitted connection.
@@ -690,6 +719,22 @@ pub async fn resolve_current_user_from_access_token(
             return Err((StatusCode::SERVICE_UNAVAILABLE, "Application database clock unavailable"));
         }
         ensure_access_token_not_expired(access_token_expires_at, durable_credential_expires_at, crossing)?;
+    }
+
+    // A healthy replacement keyring need not retain the original key.
+    decode_access_token(auth_config, access_token)
+        .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid token signature"))?;
+    rustok_auth::application_clock::check_local()
+        .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Application database clock unavailable"))?;
+    let final_now = auth_config.credential_now()
+        .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Credential authority unavailable"))?;
+    if final_now >= deadline {
+        let crossing = rustok_auth::application_clock::admit_now(db).await
+            .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Application database clock unavailable"))?;
+        if crossing < deadline {
+            return Err((StatusCode::SERVICE_UNAVAILABLE, "Application database clock unavailable"));
+        }
+        return Err((StatusCode::UNAUTHORIZED, "Access token expired"));
     }
 
     Ok(CurrentUser {

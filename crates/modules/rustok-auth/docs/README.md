@@ -1096,3 +1096,7 @@ SQLite and unmanaged embedders retain admission-only durability. See the
 sidecar provisioning, fail-closed behavior and limits. Exact commit-time
 expiry, full request-path JWT and WebSocket observation coverage, clock-store
 rollback, throughput and runtime evidence remain open.
+
+## Final credential publication fences (source only)
+
+Direct session responses retain original signed and persisted deadlines and refresh-recovery grace through REST, cookie and lifecycle provider adapters. Revalidate the exact access JWT against current key eligibility and recompute remaining TTL before publication; never extend a previously computed TTL. OAuth publication also checks prepared refresh lifetime. Common access admission revalidates the original JWT after asynchronous policy resolution. GraphQL WebSocket uses the earlier wall/monotonic deadline, latches observed expiration, and checks local key eligibility before publishing connection authority or sending data. These are observed checks, not atomic cancellation of in-flight socket writes or already committed mutations. Compilation and runtime evidence remain pending.

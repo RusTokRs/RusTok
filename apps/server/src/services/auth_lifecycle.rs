@@ -38,6 +38,23 @@ pub struct AuthTokens {
     /// backend will enforce for the session. Display-level only: request
     /// authorization re-resolves per-request.
     pub permissions: Vec<String>,
+    access_deadline: chrono::DateTime<Utc>,
+    refresh_deadline: chrono::DateTime<Utc>,
+    recovery_rotation: Option<chrono::DateTime<chrono::FixedOffset>>,
+}
+
+impl AuthTokens {
+    /// Recheck the exact access JWT and original deadlines at publication.
+    pub(crate) fn revalidate_for_publication(&mut self, config: &AuthConfig) -> Result<(), AuthLifecycleError> {
+        rustok_auth::application_clock::check_local()?;
+        crate::auth::decode_access_token(config, &self.access_token)
+            .map_err(|_| AuthLifecycleError::Internal(Error::InternalServerError))?;
+        let now = AuthLifecycleService::response_now(config)?;
+        AuthLifecycleService::ensure_refresh_recovery_within_grace(self.recovery_rotation, now)?;
+        self.expires_in = self.expires_in.min(AuthLifecycleService::remaining_refresh_lifetime(self.access_deadline, now)?);
+        self.refresh_expires_in = self.refresh_expires_in.min(AuthLifecycleService::remaining_refresh_lifetime(self.refresh_deadline, now)?);
+        Ok(())
+    }
 }
 
 // Keep the durable deadline until the last fallible step before commit;
@@ -58,6 +75,12 @@ impl PreparedSessionTokens {
         Ok(())
     }
 
+    fn finish_live(self, config: &AuthConfig) -> Result<AuthTokens, AuthLifecycleError> {
+        let mut tokens = self.finish(AuthLifecycleService::response_now(config)?)?;
+        tokens.revalidate_for_publication(config)?;
+        Ok(tokens)
+    }
+
     fn finish(self, now: chrono::DateTime<Utc>) -> Result<AuthTokens, AuthLifecycleError> {
         let refresh_expires_in =
             AuthLifecycleService::remaining_refresh_lifetime(self.refresh_deadline, now)?;
@@ -70,6 +93,9 @@ impl PreparedSessionTokens {
             refresh_expires_in,
             effective_role: self.effective_role,
             permissions: self.permissions,
+            access_deadline: self.access_deadline,
+            refresh_deadline: self.refresh_deadline,
+            recovery_rotation: None,
         })
     }
 }
@@ -645,7 +671,7 @@ impl AuthLifecycleService {
         prepared_tokens.ensure_live(Self::credential_now(&tx, config).await?)?;
         tx.commit().await.map_err(AuthLifecycleError::from)?;
 
-        Ok((user, prepared_tokens.finish(Self::response_now(config)?)?))
+        Ok((user, prepared_tokens.finish_live(config)?))
     }
 
     pub async fn login_runtime(
@@ -813,7 +839,7 @@ impl AuthLifecycleService {
         prepared_tokens.ensure_live(Self::credential_now(&txn, config).await?)?;
         txn.commit().await.map_err(AuthLifecycleError::from)?;
 
-        Ok((user, prepared_tokens.finish(Self::response_now(config)?)?))
+        Ok((user, prepared_tokens.finish_live(config)?))
     }
 
     #[cfg(test)]
@@ -1264,7 +1290,10 @@ impl AuthLifecycleService {
         txn.commit().await.map_err(AuthLifecycleError::from)?;
         let committed_at = Self::response_now(config)?;
         Self::ensure_refresh_recovery_within_grace(recovery_rotation, committed_at)?;
-        Ok((user, tokens.finish(committed_at)?))
+        let mut tokens = tokens.finish(committed_at)?;
+        tokens.recovery_rotation = recovery_rotation;
+        tokens.revalidate_for_publication(config)?;
+        Ok((user, tokens))
     }
 
     fn ensure_refresh_recovery_within_grace(
@@ -1736,7 +1765,7 @@ impl AuthLifecycleService {
         ).await?;
         prepared.ensure_live(Self::credential_now(&tx, config).await?)?;
         tx.commit().await.map_err(AuthLifecycleError::from)?;
-        prepared.finish(Self::response_now(config)?)
+        prepared.finish_live(config)
     }
 
     async fn create_session_and_tokens_in_tx<C>(

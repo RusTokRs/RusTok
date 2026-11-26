@@ -103,13 +103,14 @@ impl ServerAuthLifecycleProvider {
     async fn token_record(
         &self,
         user: users::Model,
-        tokens: AuthTokens,
+        mut tokens: AuthTokens,
     ) -> Result<AuthTokenRecord, AuthLifecycleMutationError> {
         // The permission snapshot travels with the issued tokens: the
         // lifecycle service resolves it on the same transaction that
         // created the session, so a resolution failure aborts the
         // authentication before anything is persisted and no
         // post-issuance compensation is needed here.
+        tokens.revalidate_for_publication(&self.auth_config).map_err(map_lifecycle_error)?;
         Ok(AuthTokenRecord {
             access_token: tokens.access_token,
             refresh_token: tokens.refresh_token,

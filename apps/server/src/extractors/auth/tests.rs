@@ -973,7 +973,13 @@ async fn websocket_lease_revalidates_live_authority_and_fails_closed() {
     session.update(&db).await.expect("restore original deadline");
     assert!(lease.revalidate(&runtime).await.is_ok());
 
+    let mut monotonic = lease.clone();
+    monotonic.expired = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    assert!(monotonic.remaining_at(deadline - Duration::seconds(1), monotonic.monotonic_deadline).is_zero());
+    assert!(monotonic.remaining_at(deadline - Duration::seconds(2), monotonic.monotonic_deadline - std::time::Duration::from_secs(1)).is_zero());
+
     let mut expired = lease.clone();
+    expired.expired = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     expired.expires_at = Utc::now() - Duration::seconds(1);
     assert_eq!(
         expired.revalidate(&runtime).await,
