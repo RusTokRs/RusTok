@@ -51,8 +51,8 @@ pub struct BundleDecodePolicy {
     /// Tolerate a well-formed but nonmatching collision-resistant digest.
     /// Only for forensic/recovery tooling; malformed digest encodings always fail decoding.
     pub allow_digest_mismatch: bool,
-    /// Reject bundles that carry no digest at all, for trust boundaries that must not accept
-    /// pre-digest or hand-written payloads.
+    /// Reject inputs that carry no declared digest, including raw projects even when
+    /// `allow_raw_project` is enabled. A locally computed digest is not verification.
     pub require_content_digest: bool,
 }
 
@@ -84,8 +84,9 @@ pub struct DecodedProjectBundle {
     pub bundle: ProjectBundle,
     pub document: ProjectDocument,
     pub hash_matches: bool,
-    /// `Some(true)` when a digest was present and verified, `Some(false)` when it was present and
-    /// wrong (only reachable with `allow_digest_mismatch`), `None` when the bundle carried none.
+    /// `Some(true)` when an input digest was present and verified, `Some(false)` when it was
+    /// present and wrong (only reachable with `allow_digest_mismatch`), `None` when the input
+    /// carried none, including raw projects wrapped locally.
     pub digest_matches: Option<bool>,
     pub imported_from_raw_project: bool,
 }
@@ -148,24 +149,35 @@ pub fn decode_project_bundle_value(
     let imported_from_raw_project = value
         .as_object()
         .is_some_and(|object| !object.contains_key("project_hash"));
-    let bundle = if imported_from_raw_project {
+    if imported_from_raw_project {
         if !policy.allow_raw_project {
             return Err(FlyError::InvalidProjectBundle(
                 "raw project import is disabled".to_string(),
             ));
         }
-        let document = GrapesJsCodec::decode_value(value.clone())?;
-        ProjectBundle {
+        if policy.require_content_digest {
+            return Err(FlyError::ProjectBundleDigestMissing);
+        }
+        let document = GrapesJsCodec::decode_ref(&value)?;
+        let bundle = ProjectBundle {
             project_hash: document.hash().hex(),
             content_digest: Some(ContentDigest::from_json(&value)?),
             project_data: value,
             metadata: BundleMetadata::default(),
             extensions: Map::new(),
-        }
-    } else {
-        serde_json::from_value::<ProjectBundle>(value)
-            .map_err(|error| FlyError::InvalidProjectBundle(error.to_string()))?
-    };
+        };
+        // The wrapper is useful for subsequent export, but its computed digest
+        // cannot verify the integrity of the original raw input.
+        return Ok(DecodedProjectBundle {
+            bundle,
+            document,
+            hash_matches: true,
+            digest_matches: None,
+            imported_from_raw_project: true,
+        });
+    }
+    let bundle = serde_json::from_value::<ProjectBundle>(value)
+        .map_err(|error| FlyError::InvalidProjectBundle(error.to_string()))?;
 
     // Integrity first: the collision-resistant digest is the only check a crafted payload cannot
     // walk around. The cheap fingerprint is verified afterwards, for drift reporting.
@@ -189,7 +201,7 @@ pub fn decode_project_bundle_value(
         }
     };
 
-    let document = GrapesJsCodec::decode_value(bundle.project_data.clone())?;
+    let document = GrapesJsCodec::decode_ref(&bundle.project_data)?;
     let actual_hash = document.hash().hex();
     let hash_matches = constant_time_eq(bundle.project_hash.as_bytes(), actual_hash.as_bytes());
     if !hash_matches && !policy.allow_hash_mismatch {
@@ -204,7 +216,7 @@ pub fn decode_project_bundle_value(
         document,
         hash_matches,
         digest_matches,
-        imported_from_raw_project,
+        imported_from_raw_project: false,
     })
 }
 
@@ -236,8 +248,7 @@ pub fn inspect_project_bundle(
 }
 
 pub fn bundle_hash(bundle: &ProjectBundle) -> FlyResult<ProjectHash> {
-    ensure_depth_within_limit(&bundle.project_data, MAXIMUM_DECODE_DEPTH)?;
-    let document = GrapesJsCodec::decode_value(bundle.project_data.clone())?;
+    let document = GrapesJsCodec::decode_ref(&bundle.project_data)?;
     Ok(document.hash())
 }
 
@@ -341,6 +352,30 @@ mod tests {
             decode_project_bundle_value(raw, &BundleDecodePolicy::default()).expect("raw import");
         assert!(decoded.imported_from_raw_project);
         assert!(decoded.hash_matches);
+        assert_eq!(decoded.digest_matches, None);
+        assert!(decoded.bundle.content_digest.is_some());
+        let wrapped = serde_json::to_value(decoded.bundle).expect("bundle");
+        let verified = decode_project_bundle_value(wrapped, &BundleDecodePolicy::verified())
+            .expect("verify wrapped project");
+        assert_eq!(verified.digest_matches, Some(true));
+        assert!(!verified.imported_from_raw_project);
+    }
+
+    #[test]
+    fn required_digest_cannot_be_synthesized_from_raw_input() {
+        let raw = GrapesJsCodec::encode_value(&document()).expect("raw project");
+        for allow_digest_mismatch in [false, true] {
+            let policy = BundleDecodePolicy {
+                allow_raw_project: true,
+                require_content_digest: true,
+                allow_digest_mismatch,
+                ..BundleDecodePolicy::default()
+            };
+            assert!(matches!(
+                decode_project_bundle_value(raw.clone(), &policy),
+                Err(FlyError::ProjectBundleDigestMissing)
+            ));
+        }
     }
 
     #[test]

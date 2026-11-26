@@ -47,7 +47,11 @@ prevent.
   malformed encodings are rejected even in bundle recovery mode. A well-formed but nonmatching
   digest may be tolerated only through the explicit forensic bundle policy.
   This is the integrity primitive. `ProjectSnapshot::restore` verifies it after the resource-depth preflight and before decoding;
-  `BundleDecodePolicy::verified()` additionally requires it to be present.
+  `BundleDecodePolicy::verified()` additionally requires it to be present. Any policy with
+  `require_content_digest=true` rejects raw imports even if `allow_raw_project=true`.
+  Permissive raw import computes a digest for subsequent export, but reports `digest_matches=None`
+  because the original input supplied no digest to compare. A digest is not a signature or proof
+  of the identity of the bundle author.
 
 `ProjectHash` is retained because its `u64` is embedded in signed inline-edit claims and in
 migration baselines, so its representation cannot change without a data migration.

@@ -65,7 +65,7 @@ Fly Visual Editor Engine: framework-neutral visual editor engine, AST models, de
 - Safe URL validation (`validate_component_public_urls`, `validate_embed_url`) forbids `javascript:`, executable data URIs, HTTP(S) userinfo credentials, embed non-default ports, and paths that escape registered provider surfaces.
 - Theme-token rename and inline-only rendering semantics are recorded in [the Fly theme-token reference ADR](../../../DECISIONS/2026-11-25-fly-theme-token-reference-and-inline-rendering.md).
 - HTML sanitization and safe SSR rendering prevent injection of executable script tags or malicious event handlers.
-- Multi-tenant bundle export/import validates cryptographic SHA-256 digests (`bundle_hash`, `sha256_hex`, `constant_time_eq`) under strict policy enforcement.
+- Multi-tenant bundle export/import checks SHA-256 content digests under strict policy enforcement. `require_content_digest` cannot be bypassed by enabling raw-project fallback; a permissively imported raw project reports no verified input digest (`digest_matches=None`). `bundle_hash` remains the cheap project fingerprint, not an integrity check.
 - Strict iframe sandboxing for embedded providers (`EMBED_IFRAME_SANDBOX`).
 
 ## 5. Contract Tests & Verification
