@@ -25,6 +25,8 @@ RUST_ADDITIONS = [
     (r"^\+.*#\[allow\(dead_code\)\]", "Added #[allow(dead_code)] is prohibited by AGENTS.md §14"),
     (r"^\+.*#\[allow\(unused\)\]", "Added #[allow(unused)] is prohibited by AGENTS.md §14"),
     (r"^\+.*#\[allow\(unused_variables\)\]", "Added #[allow(unused_variables)] is prohibited by AGENTS.md §14"),
+    (r"^\+\s*#!\s*\[\s*allow\s*\([^)]*\b(?:dead_code|unused|unused_imports|unused_variables|deprecated)\b", "Added file-level #![allow(...)] slop/deprecated suppression is prohibited by AGENTS.md §14"),
+    (r"^\+\s*#\s*\[\s*allow\s*\([^)]*\bdeprecated\b", "Added bare #[allow(deprecated)] is prohibited; migrate off the deprecated API or use #[expect(deprecated, reason = \"...\")]"),
     (r"^\+.*todo!\(", "Added todo!() is prohibited by AGENTS.md §14"),
     (r"^\+.*unimplemented!\(", "Added unimplemented!() is prohibited by AGENTS.md §14"),
     (r"^\+.*include!\(\"[^\"]+\.rs\"\)", "Added include!(\"*.rs\") file stitching is prohibited (use canonical Rust modules)"),

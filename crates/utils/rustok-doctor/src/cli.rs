@@ -3,7 +3,9 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::{Confidence, Finding, Severity, discovery, report, scan_source};
+use crate::{
+    Confidence, Finding, Severity, discovery, parse_dev_only_crates, report, scan_crate_source,
+};
 
 #[derive(Default)]
 struct Options {
@@ -223,12 +225,56 @@ fn targets(root: &Path, options: &Options) -> Result<(Vec<discovery::Target>, St
     ))
 }
 
+fn load_dev_only_crates_by_manifest(
+    root: &Path,
+    targets: &[discovery::Target],
+) -> BTreeMap<PathBuf, BTreeSet<String>> {
+    let mut manifests = BTreeMap::new();
+    for target in targets {
+        let mut dir = target.path.parent();
+        while let Some(current) = dir {
+            let candidate = current.join("Cargo.toml");
+            if !manifests.contains_key(&candidate) {
+                let full_path = root.join(&candidate);
+                if full_path.is_file() {
+                    let parsed = fs::read_to_string(&full_path)
+                        .map(|text| parse_dev_only_crates(&text))
+                        .unwrap_or_default();
+                    manifests.insert(candidate, parsed);
+                    break;
+                }
+            } else {
+                break;
+            }
+            dir = current.parent();
+        }
+    }
+    manifests
+}
+
+fn dev_only_crates_for_target<'a>(
+    target_path: &Path,
+    manifests: &'a BTreeMap<PathBuf, BTreeSet<String>>,
+) -> Option<&'a BTreeSet<String>> {
+    let mut dir = target_path.parent();
+    while let Some(current) = dir {
+        let candidate = current.join("Cargo.toml");
+        if let Some(crates) = manifests.get(&candidate) {
+            return Some(crates);
+        }
+        dir = current.parent();
+    }
+    None
+}
+
 fn scan(
     root: &Path,
     targets: &[discovery::Target],
     threads: usize,
     capture_sources: bool,
 ) -> Result<Vec<(Vec<Finding>, Option<String>)>, String> {
+    let manifests = load_dev_only_crates_by_manifest(root, targets);
+    let empty_crates = BTreeSet::new();
     let workers = if targets.len() > 20 {
         threads.min(targets.len()).max(1)
     } else {
@@ -236,6 +282,8 @@ fn scan(
     };
     let chunk_size = targets.len().div_ceil(workers).max(1);
     std::thread::scope(|scope| {
+        let manifests_ref = &manifests;
+        let empty_ref = &empty_crates;
         let handles: Vec<_> = targets
             .chunks(chunk_size)
             .map(|chunk| {
@@ -244,7 +292,9 @@ fn scan(
                         .iter()
                         .map(|target| {
                             let source = discovery::read(root, target)?;
-                            let findings = scan_source(&target.path, &source);
+                            let dev_only = dev_only_crates_for_target(&target.path, manifests_ref)
+                                .unwrap_or(empty_ref);
+                            let findings = scan_crate_source(&target.path, &source, dev_only);
                             let source =
                                 (capture_sources && !findings.is_empty()).then_some(source);
                             Ok((findings, source))

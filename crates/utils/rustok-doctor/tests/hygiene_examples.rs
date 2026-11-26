@@ -709,6 +709,46 @@ fn test_mut() {
 }
 
 #[test]
+fn identifies_crate_and_bare_allow_deprecated() {
+    let prod_source = concat!(
+        "\n",
+        "#",
+        "![allow(deprecated)]\n\n",
+        "#",
+        "[allow(deprecated)]\n",
+        "fn legacy_caller() {}\n\n",
+        "#",
+        "[expect(deprecated, reason = \"transitional compatibility bridge\")]\n",
+        "fn tracked_caller() {}\n",
+    );
+    let prod_findings: Vec<_> =
+        rustok_doctor::scan_source(Path::new("src/service.rs"), prod_source)
+            .into_iter()
+            .filter(|f| f.pattern_id == "P-STALE-ALLOW-LINT")
+            .collect();
+    assert_eq!(prod_findings.len(), 2);
+    assert_eq!(prod_findings[0].line, 2);
+    assert_eq!(prod_findings[1].line, 4);
+
+    let test_source = concat!(
+        "\n",
+        "#",
+        "![allow(deprecated)]\n\n",
+        "#",
+        "[allow(deprecated)]\n",
+        "#[test]\n",
+        "fn exercises_transitional_shim() {}\n",
+    );
+    let test_findings: Vec<_> =
+        rustok_doctor::scan_source(Path::new("tests/brand.rs"), test_source)
+            .into_iter()
+            .filter(|f| f.pattern_id == "P-STALE-ALLOW-LINT")
+            .collect();
+    assert_eq!(test_findings.len(), 1);
+    assert_eq!(test_findings[0].line, 2);
+}
+
+#[test]
 fn respects_invariant_comments_for_expect_calls() {
     let source = r#"
 fn run() {
@@ -990,4 +1030,167 @@ pub async fn execute_task() -> Result<(), DomainError> {
 
     assert_eq!(blocking_findings.len(), 1);
     assert_eq!(blocking_findings[0].line, 3);
+}
+
+#[test]
+fn parses_dev_only_crates_from_cargo_manifest() {
+    let manifest = r#"
+[package]
+name = "example-crate"
+
+[dependencies]
+tokio = { workspace = true }
+sqlx-core = { package = "sqlx-custom", version = "0.8" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+serde_json = "1"
+wiremock = "0.6"
+my-helper = { package = "rustok-test-kit", path = "../kit" }
+"#;
+    let dev_only = rustok_doctor::parse_dev_only_crates(manifest);
+    assert!(!dev_only.contains("tokio"));
+    assert!(!dev_only.contains("sqlx_custom"));
+    assert!(dev_only.contains("serde_json"));
+    assert!(dev_only.contains("wiremock"));
+    assert!(dev_only.contains("rustok_test_kit"));
+}
+
+#[test]
+fn identifies_dev_dependency_leak_and_allows_cfg_test_usage() {
+    let dev_only = rustok_doctor::parse_dev_only_crates(
+        r#"
+[dependencies]
+tokio = "1"
+
+[dev-dependencies]
+tokio = "1"
+wiremock = "0.6"
+"#,
+    );
+    let source = r#"
+use tokio::runtime::Runtime;
+use wiremock::MockServer;
+
+#[cfg(test)]
+use wiremock::Mock;
+
+#[cfg(test)]
+mod tests {
+    use wiremock::ResponseTemplate;
+}
+"#;
+    let findings = rustok_doctor::scan_crate_source(Path::new("src/service.rs"), source, &dev_only);
+    let leak_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-DEV-DEP-PROD-LEAK")
+        .collect();
+
+    assert_eq!(leak_findings.len(), 1);
+    assert_eq!(leak_findings[0].line, 3);
+}
+
+#[test]
+fn identifies_grpc_deadline_exceeded_without_cancelled() {
+    let bad = r#"
+pub fn map_status(code: tonic::Code) -> PortErrorKind {
+    match code {
+        tonic::Code::DeadlineExceeded => PortErrorKind::Timeout,
+        _ => PortErrorKind::Unavailable,
+    }
+}
+"#;
+    let good = r#"
+pub fn map_status(code: tonic::Code) -> PortErrorKind {
+    match code {
+        tonic::Code::Cancelled | tonic::Code::DeadlineExceeded => PortErrorKind::Timeout,
+        _ => PortErrorKind::Unavailable,
+    }
+}
+"#;
+    let bad_findings: Vec<_> = rustok_doctor::scan_source(Path::new("src/grpc/client.rs"), bad)
+        .into_iter()
+        .filter(|f| f.pattern_id == "P-GRPC-DEADLINE-STATUS")
+        .collect();
+    let good_findings: Vec<_> = rustok_doctor::scan_source(Path::new("src/grpc/client.rs"), good)
+        .into_iter()
+        .filter(|f| f.pattern_id == "P-GRPC-DEADLINE-STATUS")
+        .collect();
+
+    assert_eq!(bad_findings.len(), 1);
+    assert_eq!(bad_findings[0].line, 4);
+    assert!(good_findings.is_empty());
+}
+
+#[test]
+fn identifies_raw_owner_fields_alongside_bounded_facts() {
+    let bad = r#"
+pub fn log_boundary(token_present: bool, error: &str) {
+    tracing::warn!(
+        token_present,
+        ?error,
+        "boundary rejected request"
+    );
+}
+"#;
+    let good = r#"
+pub fn log_boundary(token_present: bool, error_kind: &str) {
+    tracing::warn!(token_present, %error_kind, "boundary rejected request");
+}
+"#;
+    let bad_findings: Vec<_> = rustok_doctor::scan_source(Path::new("src/adapter.rs"), bad)
+        .into_iter()
+        .filter(|f| f.pattern_id == "P-BOUNDED-OWNER-FACTS")
+        .collect();
+    let good_findings: Vec<_> = rustok_doctor::scan_source(Path::new("src/adapter.rs"), good)
+        .into_iter()
+        .filter(|f| f.pattern_id == "P-BOUNDED-OWNER-FACTS")
+        .collect();
+
+    assert_eq!(bad_findings.len(), 1);
+    assert_eq!(bad_findings[0].line, 3);
+    assert!(good_findings.is_empty());
+}
+
+#[test]
+fn identifies_debug_assertions_outside_canonical_settings_owner() {
+    let source = r#"
+pub fn strict_headers_enabled() -> bool {
+    !cfg!(debug_assertions)
+}
+"#;
+    let non_owner: Vec<_> = rustok_doctor::scan_source(Path::new("src/security.rs"), source)
+        .into_iter()
+        .filter(|f| f.pattern_id == "P-RELEASE-SECURITY-MODE-DRIFT")
+        .collect();
+    let owner: Vec<_> =
+        rustok_doctor::scan_source(Path::new("apps/server/src/common/settings.rs"), source)
+            .into_iter()
+            .filter(|f| f.pattern_id == "P-RELEASE-SECURITY-MODE-DRIFT")
+            .collect();
+
+    assert_eq!(non_owner.len(), 1);
+    assert_eq!(non_owner[0].line, 3);
+    assert!(owner.is_empty());
+}
+
+#[test]
+fn identifies_slop_comments_while_allowing_rationale_and_docs() {
+    let source = r#"
+/// Create a new account record.
+pub fn create_account() {
+    // Create a new buffer for downstream parsing.
+    let _buf = Vec::<u8>::new();
+    // INVARIANT: empty vector triggers fallback parser in legacy mode.
+    let _flag = true;
+}
+"#;
+    let slop_findings: Vec<_> = rustok_doctor::scan_source(Path::new("src/service.rs"), source)
+        .into_iter()
+        .filter(|f| f.pattern_id == "P-SLOP-COMMENT")
+        .collect();
+
+    assert_eq!(slop_findings.len(), 1);
+    assert_eq!(slop_findings[0].line, 4);
+    assert!(slop_findings[0].content.contains("Create a new buffer"));
 }

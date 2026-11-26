@@ -1,6 +1,6 @@
 mod sql;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use regex::Regex;
@@ -84,6 +84,7 @@ impl Scan<'_> {
                 || pattern_id == "P-SQLITE-UNLOCKED-RACE"
                 || pattern_id == "P-SILENT-EVENT-DISCARD"
                 || pattern_id == "P-THISERROR-SOURCE-FIELD-COLLISION"
+                || pattern_id == "P-DEV-DEP-PROD-LEAK"
             {
                 Confidence::High
             } else {
@@ -407,8 +408,99 @@ fn matched_with_literals<'a>(
     })
 }
 
+/// Parse a `Cargo.toml` manifest and return normalized crate identifiers declared
+/// exclusively in `[dev-dependencies]` (or `[target.*.dev-dependencies]`), not in `[dependencies]`.
+pub fn parse_dev_only_crates(manifest: &str) -> BTreeSet<String> {
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum Section {
+        Other,
+        Prod,
+        Dev,
+    }
+
+    fn normalize_crate_ident(raw: &str) -> String {
+        raw.trim().trim_matches('"').replace('-', "_")
+    }
+
+    let mut section = Section::Other;
+    let mut prod = BTreeSet::new();
+    let mut dev = BTreeSet::new();
+
+    for raw_line in manifest.lines() {
+        let line = raw_line.split('#').next().unwrap_or("").trim();
+        if line.is_empty() {
+            continue;
+        }
+        if line.starts_with('[') && line.ends_with(']') {
+            let header = line[1..line.len() - 1].trim();
+            if header == "dependencies"
+                || (header.starts_with("target.") && header.ends_with(".dependencies"))
+            {
+                section = Section::Prod;
+            } else if header == "dev-dependencies"
+                || (header.starts_with("target.") && header.ends_with(".dev-dependencies"))
+            {
+                section = Section::Dev;
+            } else if let Some(sub) = header.strip_prefix("dependencies.") {
+                let ident = normalize_crate_ident(sub.split('.').next().unwrap_or(""));
+                if !ident.is_empty() {
+                    prod.insert(ident);
+                }
+                section = Section::Other;
+            } else if let Some(sub) = header.strip_prefix("dev-dependencies.") {
+                let ident = normalize_crate_ident(sub.split('.').next().unwrap_or(""));
+                if !ident.is_empty() {
+                    dev.insert(ident);
+                }
+                section = Section::Other;
+            } else {
+                section = Section::Other;
+            }
+            continue;
+        }
+
+        if section == Section::Other {
+            continue;
+        }
+        let Some((lhs, rhs)) = line.split_once('=') else {
+            continue;
+        };
+        let key = lhs.trim().split('.').next().unwrap_or("").trim();
+        if key.is_empty() || key.starts_with('{') {
+            continue;
+        }
+        let crate_name = re!(r#"package\s*=\s*"([^"]+)""#)
+            .captures(rhs)
+            .map(|cap| normalize_crate_ident(&cap[1]))
+            .unwrap_or_else(|| normalize_crate_ident(key));
+        if crate_name.is_empty() {
+            continue;
+        }
+        match section {
+            Section::Prod => {
+                prod.insert(crate_name);
+            }
+            Section::Dev => {
+                dev.insert(crate_name);
+            }
+            Section::Other => {}
+        }
+    }
+
+    dev.difference(&prod).cloned().collect()
+}
+
 /// Scan one Rust source with a caller-supplied path, which controls context exemptions.
 pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
+    scan_crate_source(path, content, &BTreeSet::new())
+}
+
+/// Scan one Rust source with crate-level `[dev-dependencies]` awareness.
+pub fn scan_crate_source(
+    path: &Path,
+    content: &str,
+    dev_only_crates: &BTreeSet<String>,
+) -> Vec<Finding> {
     let file = path.to_string_lossy().replace('\\', "/");
     let name = path
         .file_name()
@@ -472,6 +564,9 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
     let reactive = reactive_boundaries(&syntax);
     let publications = transactional_publications(&syntax);
     let has_unprepared_sql = syntax.contains("execute_unprepared");
+    let has_bounded_facts = re!(r"\b\w+_(?:present|length|len|non_nil|kind)\s*=").is_match(&syntax)
+        || re!(r"(?s)\btracing\s*::\s*(?:trace|debug|info|warn|error)!\s*\([^;]*\b\w+_(?:present|length|len|non_nil|kind)\b")
+            .is_match(&syntax);
     let trigger_candidates = if scan.migration {
         let code = scan
             .lines
@@ -540,6 +635,15 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
                         "Either add tests/callers, delete unused code, or migrate to '#[expect(dead_code, reason = \"...\")]' if temporarily required.",
                     );
                 }
+            } else if re!(r"^#\s*\[\s*allow\s*\([^)]*\bdeprecated\b").is_match(code_part) {
+                scan.add(
+                    line_number,
+                    "P-STALE-ALLOW-LINT",
+                    "Suppressed Deprecated Lint Without Expectation",
+                    Severity::Medium,
+                    "Code suppressed using bare '#[allow(deprecated)]'. Bare deprecation suppression hides unfinished cutovers and transitional legacy bridges.",
+                    "Migrate off the deprecated API, or use '#[expect(deprecated, reason = \"...\")]' strictly on the transitional call site.",
+                );
             } else if re!(r"^#\s*\[\s*allow\s*\(\s*(?:unused_imports|unused_mut)\s*\)\s*\]")
                 .is_match(code_part)
                 || re!(r"\(\s*#\s*\[\s*allow\s*\(\s*dead_code\s*\)\s*\]").is_match(code_part)
@@ -609,6 +713,22 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
                         marker.as_str()
                     ),
                     "Implement required behavior and track agreed follow-up in the owner plan.",
+                );
+                // INVARIANT: finding was just added via scan.add above.
+                scan.findings.last_mut().expect("finding exists").content =
+                    scan.lines[index].original.trim().to_owned();
+            }
+            if !scan.migration
+                && re!(r"(?i)^//\s*(?:create a new|initialize the|return the result|helper function to|function to get|construct a new)\b")
+                    .is_match(comment.trim())
+            {
+                scan.add(
+                    line_number,
+                    "P-SLOP-COMMENT",
+                    "Captain-Obvious Redundant Comment",
+                    Severity::Medium,
+                    "Comment mechanically restates the adjacent code without explaining domain invariants or rationale.",
+                    "Remove the redundant comment or explain the non-obvious invariant.",
                 );
                 // INVARIANT: finding was just added via scan.add above.
                 scan.findings.last_mut().expect("finding exists").content =
@@ -865,6 +985,8 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
                 reactive: &reactive,
                 publications: &publications,
                 has_unprepared_sql,
+                has_bounded_facts,
+                dev_only_crates,
             },
             &mut sql_bindings,
         );
@@ -905,6 +1027,8 @@ struct RuleContext<'a> {
     reactive: &'a [usize],
     publications: &'a [usize],
     has_unprepared_sql: bool,
+    has_bounded_facts: bool,
+    dev_only_crates: &'a BTreeSet<String>,
 }
 
 fn check_rules(
@@ -925,6 +1049,8 @@ fn check_rules(
         reactive,
         publications,
         has_unprepared_sql,
+        has_bounded_facts,
+        dev_only_crates,
     } = context;
     let number = index + 1;
     let code = scan.lines[index].code.clone();
@@ -1482,6 +1608,19 @@ fn check_rules(
             "Verify reachability and remove dormant implementations.",
         );
     }
+    if !scan.vendored
+        && !scan.build_file
+        && re!(r"^#!\s*\[\s*allow\s*\([^)]*\bdeprecated\b").is_match(text)
+    {
+        scan.add(
+            number,
+            "P-STALE-ALLOW-LINT",
+            "File-Level Deprecated Lint Suppression",
+            Severity::Medium,
+            "Crate- or module-wide '#![allow(deprecated)]' masks transitional legacy bridges and unrelated future deprecations.",
+            "Complete the cutover off deprecated APIs, or scope suppression to the specific item with '#[expect(deprecated, reason = \"...\")]'.",
+        );
+    }
     if has_unprepared_sql
         && !test_context
         && !scan.migration
@@ -1557,6 +1696,103 @@ fn check_rules(
                 "Comparing UUID directly with Uuid::nil() via == or !=. Use .is_nil() or !.is_nil().",
                 "id.is_nil() / !id.is_nil()",
             );
+        }
+        if !test_context && !scan.test_file && !scan.migration && !scan.vendored {
+            if re!(r"\bCode::DeadlineExceeded\b[^;]*=>").is_match(text) {
+                let has_cancelled_in_arm = text.contains("Cancelled")
+                    || scan.lines[..index].iter().rev().take(2).any(|prev| {
+                        prev.syntax.contains("Cancelled") && !prev.syntax.contains("=>")
+                    });
+                if !has_cancelled_in_arm {
+                    scan.add(
+                        number,
+                        "P-GRPC-DEADLINE-STATUS",
+                        "gRPC Deadline Status Missing Cancelled",
+                        Severity::High,
+                        "Match arm classifies Code::DeadlineExceeded without Code::Cancelled. Tonic converts expired caller deadlines to Cancelled.",
+                        "Classify both Code::Cancelled | Code::DeadlineExceeded => PortErrorKind::Timeout.",
+                    );
+                }
+            }
+            if has_bounded_facts
+                && re!(r"\btracing\s*::\s*(?:trace|debug|info|warn|error)!\s*\(").is_match(text)
+            {
+                let window = scan.lines[index..(index + 8).min(scan.lines.len())]
+                    .iter()
+                    .map(|l| l.syntax.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let raw_owner_field = re!(
+                    r"(?:\?error\b|%error\.message\b|%context\.tenant_id\b|(?:\?|%)request\.(?:scope|checkout_operation_id|cart_id|order_id|token|secret|password|payload|email)\b|\b(?:token|secret|password|cookie|authorization|private_key)\s*=\s*(?:%|\?))"
+                );
+                if raw_owner_field.is_match(&window) {
+                    scan.add(
+                        number,
+                        "P-BOUNDED-OWNER-FACTS",
+                        "Raw Owner Value Logged Alongside Bounded Facts",
+                        Severity::High,
+                        "Boundary tracing log emits raw owner field alongside bounded sibling facts (*_present, *_length, *_non_nil, *_kind).",
+                        "Log bounded facts (*_present, *_length, *_non_nil, *_kind) instead of raw values.",
+                    );
+                }
+            }
+        }
+        if !test_context
+            && !scan.test_file
+            && !scan.build_file
+            && !scan.cli_file
+            && !scan.vendored
+            && !scan.migration
+            && !scan.file.ends_with("common/settings.rs")
+            && re!(r"\bcfg!\s*\(\s*debug_assertions\s*\)").is_match(text)
+        {
+            scan.add(
+                number,
+                "P-RELEASE-SECURITY-MODE-DRIFT",
+                "Build-Mode Gate Outside Canonical Security Owner",
+                Severity::Critical,
+                "Security or runtime gate branches on cfg!(debug_assertions) outside common/settings.rs.",
+                "Use the host's canonical production security mode resolver rather than ad-hoc debug_assertions checks.",
+            );
+        }
+        if !test_context
+            && !scan.test_file
+            && !scan.build_file
+            && !scan.vendored
+            && !dev_only_crates.is_empty()
+        {
+            let cfg_test_gated = scan.lines[..index]
+                .iter()
+                .rev()
+                .map(|prev| prev.syntax.trim())
+                .filter(|line| !line.is_empty())
+                .take(3)
+                .any(|line| re!(r"#\s*\[\s*cfg\s*\([^)]*\btest\b").is_match(line));
+            if !cfg_test_gated {
+                for dev_crate in dev_only_crates {
+                    let is_used = re!(r"\b(?:use|extern\s+crate)\s+([A-Za-z_]\w*)")
+                        .captures_iter(text)
+                        .any(|cap| &cap[1] == dev_crate)
+                        || re!(r"\b([A-Za-z_]\w*)\s*::")
+                            .captures_iter(text)
+                            .any(|cap| &cap[1] == dev_crate);
+                    if is_used {
+                        scan.add(
+                            number,
+                            "P-DEV-DEP-PROD-LEAK",
+                            "Production Code Uses Dev-Only Dependency",
+                            Severity::High,
+                            format!(
+                                "Non-test file references '{dev_crate}', which is declared only under [dev-dependencies] in Cargo.toml."
+                            ),
+                            format!(
+                                "Move '{dev_crate}' to [dependencies] (with optional feature gating if needed) or gate the usage behind #[cfg(test)]."
+                            ),
+                        );
+                        break;
+                    }
+                }
+            }
         }
         if publications
             .iter()

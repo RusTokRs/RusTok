@@ -1074,7 +1074,7 @@ rotation method and its callers.
   * Using `is_production_environment()` alone for a security decision when host startup uses the release-aware security mode.
   * Reimplementing `|| !cfg!(debug_assertions)` in multiple components.
 * **Verification:** Test the mode matrix: debug + non-production label is non-production; release + non-production label is production-security mode; any build with a production label is production-security mode. Audit every environment predicate in `apps/server/src` and verify that security-sensitive consumers use the shared helper.
-* **Detection:** `rg -n 'is_production_environment\(\)|cfg!\(debug_assertions\)|is_production_security_mode\(\)' apps/server/src`; manually classify each environment-only use as a non-security setting or a missed security boundary.
+* **Detection:** Doctor rule `P-RELEASE-SECURITY-MODE-DRIFT` flags `cfg!(debug_assertions)` outside `common/settings.rs` in non-test, non-CLI code. Also verify `rg -n 'is_production_environment\(\)|cfg!\(debug_assertions\)|is_production_security_mode\(\)' apps/server/src` and classify each environment-only use as a non-security setting or a missed security boundary.
 
 ---
 
@@ -1596,7 +1596,7 @@ let category = self.taxonomy()?
   2. Derive the bounded facts once per call (`let request_facts = cart_promotion_request_facts(&request);`) and reuse the same facts structure in validation, logging, and mapping so the shapes cannot diverge.
   3. Owner-internal service files may log their own values; the boundary is the mounted/sanitizing adapter. When a facade mounts an owner file that still carries raw logging (contracted `P-COPY-DRIFT-MOUNT` cutovers), the raw lines live in the owner file where the owner's diagnostic contract governs them, not in the wrapper.
   4. Keep the public error path and the diagnostic path separate: the public envelope carries a stable code and static message; the correlated log carries the bounded facts. Never satisfy a bounded-diagnostics requirement by logging the raw value through a different macro level.
-* **Detection:** Manual today. Candidate heuristic: inside `tracing` macros, field values of the forms `?error`, `%error.message`, `%context.tenant_id`, or `%request.<uuid field>` in files that also define sanitizing adapters or `mod legacy` facades, when sibling logs in the same file already use the bounded shape.
+* **Detection:** Doctor rule `P-BOUNDED-OWNER-FACTS` flags `tracing` macro calls emitting raw owner fields (`?error`, `%error.message`, `%context.tenant_id`, `%request.<field>`, or raw `token`/`secret`/`password`/`cookie`/`authorization`/`private_key`) in files that already establish bounded sibling shapes (`*_present`, `*_length`, `*_len`, `*_non_nil`, `*_kind`).
 
 ---
 
@@ -1761,7 +1761,7 @@ The evidence column describes how to verify the invariant at its owner. “Manua
 | `P-DB-CHECK` | State integrity | Database rejects invalid state transitions or combinations | Manual |
 | `P-LOCK-ORDER` | Concurrency | Competing writers cannot invalidate a checked precondition | Manual |
 | `P-FAIL-CLOSED` | Authorization | Missing scope is denied even for an otherwise public resource | Heuristic: explicit success for absent scope |
-| `P-RELEASE-SECURITY-MODE-DRIFT` | Deployment security | Release binaries retain production security gates regardless of environment label | Manual: audit every environment predicate |
+| `P-RELEASE-SECURITY-MODE-DRIFT` | Deployment security | Release binaries retain production security gates regardless of environment label | High: `cfg!(debug_assertions)` outside `common/settings.rs` |
 | `P-TENANT-AUTHORITY-TO-HOST-WRITE` | Authorization scope | Tenant grants cannot authorize host-global filesystem mutations | Manual: inspect host-wide side effects |
 | `P-ID-ENTROPY` | Calculation | Effective entropy, uniqueness scope, and collision handling | Heuristic: named widths, UUID compaction, short-ID schema |
 | `P-ANTI-SWALLOW` | Failure paths | Required failures propagate or are handled and observable | Heuristic: discarded call or `black_box` |
@@ -1802,12 +1802,12 @@ The evidence column describes how to verify the invariant at its owner. “Manua
 | `P-CANONICAL-DIGEST` | Cryptographic integrity | Variable-length elements prefixed with length in signatures/hashes | Manual |
 | `P-PTR-ARG` | API design | Borrowed slices used instead of &String, &Vec, &PathBuf | High: &String, &Vec, or &PathBuf in function parameters |
 | `P-BLOCKING-IO-IN-ASYNC` | Concurrency | Asynchronous tasks use non-blocking I/O or spawn_blocking | High: synchronous std::fs or std::process::Command in async fn |
-| `P-STALE-ALLOW-LINT` | Code completeness | Unused code tested, deleted, or marked with #[expect(..., reason = "...")] | Medium: bare #[allow(dead_code)], #[allow(unused_imports)], or #[allow(unused_mut)] |
+| `P-STALE-ALLOW-LINT` | Code completeness | Unused or deprecated code tested, deleted, or marked with #[expect(..., reason = "...")] | Medium: bare #[allow(dead_code)], #[allow(unused_imports)], #[allow(unused_mut)], #[allow(deprecated)], or crate-wide #![allow(deprecated)] |
 | `P-LOG-RAW-PRINT` | Observability | Production code uses tracing macros instead of raw stdout/stderr prints | High: direct println!, eprintln!, or dbg! in non-CLI/non-test code |
 | `P-TYPED-DOMAIN-ERROR` | Error handling | Library and domain modules propagate strongly-typed domain errors with thiserror | High: Result with bare String, &str, or anyhow in domain/library signatures |
 | `P-CHECK-THEN-UNWRAP` | Reliability | Atomic pattern matching (if let / match) used instead of check-then-unwrap | High: if .is_some()/.is_ok() followed by .unwrap()/.expect() |
 | `P-COPY-DRIFT-MOUNT` | Module structure | The mounted path compiles the single owner file, not a hand-inlined copy | Manual: normalized duplicate-content match |
-| `P-BOUNDED-OWNER-FACTS` | Observability | Boundary adapters log bounded facts (presence, length, kind), not raw owner values | Manual: raw owner field in tracing macro beside bounded sibling shapes |
+| `P-BOUNDED-OWNER-FACTS` | Observability | Boundary adapters log bounded facts (presence, length, kind), not raw owner values | High: raw owner field in tracing macro alongside bounded sibling facts |
 | `P-TRY-FROM-LEN-PANIC` | Reliability | Infallible length conversions avoid panicking try_from | High: try_from on .len() followed by expect/unwrap |
 | `P-MIGRATION-PANIC` | Database integrity | Migrations return DbErr::Custom instead of crashing | High: unreachable! or panic! in migration files |
 | `P-DISTRIBUTED-LEASE-OWNER` | Distributed coordination | Lease tokens are unique across replicas | High: local worker counters without instance UUID in lease_owner |
@@ -1822,6 +1822,11 @@ The evidence column describes how to verify the invariant at its owner. “Manua
 | `P-SPLIT-INHERENT-IMPL-HACK` | Architecture | Inherent impl blocks not mechanically split across include! files | High: series of include! stitching struct impls |
 | `P-DEV-DEP-PROD-LEAK` | Build invariants | Production code only uses dependencies declared in [dependencies] | High: dev-only dependency referenced in non-test source |
 | `P-MAP-ERR-STRING-CONVERSION-MISMATCH` | Type safety | Error variant function pointers match parameter types | Heuristic: .map_err(Constructor) with string-variant on typed error |
+| `P-THISERROR-SOURCE-FIELD-COLLISION` | Error derivation | `#[from]` and `#[source]` are attached to valid error variants and fields without thiserror collisions | Heuristic: invalid `#[from]` on tuple/struct variant or mismatched error source attribute |
+| `P-LOSSY-JSON-NUMBER` | Numeric precision | Integer values and JSON numbers preserve exact precision without lossy `as f64` / `.as_f64()` casts | Heuristic: float coercion of integer types or `Value::as_f64()` comparisons |
+| `P-NIL-UUID-COMPARE` | Identity invariants | Nil UUID checks use `.is_nil()` rather than direct `==` / `!= Uuid::nil()` equality | High: `== Uuid::nil()` or `!= Uuid::nil()` |
+| `P-GRPC-DEADLINE-STATUS` | Transport timeouts | gRPC error mapping treats `Code::Cancelled` alongside `Code::DeadlineExceeded` as timeout | High: match arm with `Code::DeadlineExceeded` missing `Code::Cancelled` |
+| `P-SLOP-COMMENT` | Code clarity | Comments explain non-obvious domain invariants rather than restating adjacent code | Medium: mechanical captain-obvious comment prefixes (`// create a new ...`, `// helper function to ...`, etc.) |
 
 ---
 
@@ -2162,9 +2167,8 @@ its deadline.
 Code::Cancelled | Code::DeadlineExceeded => PortErrorKind::Timeout,
 ```
 
-Detection: `rg -n 'Code::(Cancelled|DeadlineExceeded)' crates/modules` locates
-status mappings. Check both forms in Tonic clients and exercise the mounted
-consumer with its downstream owner unavailable.
+Detection: Doctor rule `P-GRPC-DEADLINE-STATUS` flags match arms containing `Code::DeadlineExceeded =>` without `Code::Cancelled` in non-test code. `rg -n 'Code::(Cancelled|DeadlineExceeded)' crates/modules` locates
+all status mappings; exercise mounted consumers with their downstream owner unavailable.
 [Product client](../../crates/modules/rustok-product/ports/src/grpc/client.rs),
 [Taxonomy client](../../crates/modules/rustok-taxonomy/ports/src/grpc/client.rs),
 [mounted Commerce regression](../../apps/server/tests/product_remote_storefront_http.rs).
@@ -2700,25 +2704,29 @@ async fn load_template(path: &Path) -> Result<String, Error> {
 Detection: `cargo xtask doctor hygiene --crate <crate>`.
 Doctor flags direct calls to `std::fs::` inside functions declared with `async fn`.
 
-## P-STALE-ALLOW-LINT — Prohibit bare dead-code lint suppression on functions
+## P-STALE-ALLOW-LINT — Prohibit bare dead-code, unused, and deprecation lint suppressions
 
-- **Category:** Production readiness and incomplete code detection.
+- **Category:** Production readiness, refactoring hygiene, and incomplete code detection.
 - **Logic dimensions:** Branch completeness, state transitions.
-- **Observed behavior:** Attaching `#[allow(dead_code)]` to uncalled functions or methods masks abandoned stubs, incomplete features, and unverified logic chains from the compiler. Unlike `#[expect(dead_code, reason = "...")]` (stabilized in Rust 1.81), `#[allow]` permanently silences the warning even after callers are added or if the stub is abandoned indefinitely. Observed in SEO bulk processing ([bulk.rs](../../crates/modules/rustok-seo/src/services/bulk.rs)) where multiple batch executor variants were left commented out or dormant.
-- **Remediation:** Either provide active unit tests and callers for the function, remove dead and abandoned code, or migrate to `#[expect(dead_code, reason = "...")]` with an explicit justification if the API is part of an agreed pending milestone.
+- **Observed behavior:** Attaching `#[allow(dead_code)]`, `#[allow(unused_imports)]`, `#[allow(unused_mut)]`, or `#[allow(deprecated)]` masks abandoned stubs, incomplete features, unfinished architectural cutovers, and unverified logic chains from the compiler. Placing `#![allow(deprecated)]` at crate or file level (including in integration tests) silences deprecation diagnostics across the entire compilation unit, hiding both transitional bridges that still require Phase-4 removal and unrelated future deprecations. Unlike `#[expect(..., reason = "...")]` (stabilized in Rust 1.81), `#[allow]` permanently silences the warning even after the transitional bridge is removed or callers are migrated. Observed in SEO bulk processing ([bulk.rs](../../crates/modules/rustok-seo/src/services/bulk.rs)) and in `rustok-brand` integration tests prior to the Phase-4 `brand_products` contract cutover.
+- **Remediation:** Complete the migration off the deprecated or unused API and remove the suppression; add active tests and callers, delete dead code, or—when a transitional bridge is intentionally retained during an active cutover—scope `#[expect(deprecated, reason = "...")]` (or `#[expect(dead_code, reason = "...")]`) strictly to the affected item with an explicit reason instead of file-wide `#![allow(...)]`.
 
 ```rust
-// Masked dead code: compiler never reminds author to wire or test
+// Masked dead/deprecated code: compiler never reminds author to finish refactoring
+#![allow(deprecated)]
 #[allow(dead_code)]
 fn parse_bulk_csv(...) -> SeoResult<Vec<BulkImportRow>> { ... }
 
-// Self-cleaning expectation: compiler warns if function becomes used
+// Self-cleaning expectation: compiler warns once the bridge or stub is no longer needed
 #[expect(dead_code, reason = "planned bulk ingestion API for milestone 4")]
 fn parse_bulk_csv(...) -> SeoResult<Vec<BulkImportRow>> { ... }
+
+#[expect(deprecated, reason = "transitional brand_products fallback until phase 4 drop")]
+async fn read_legacy_link(...) { ... }
 ```
 
 Detection: `cargo xtask doctor hygiene --crate <crate>`.
-Doctor detects bare `#[allow(dead_code)]` on function definitions in non-test, non-migration crates.
+Doctor detects bare `#[allow(dead_code)]` on function definitions, `#[allow(unused_imports | unused_mut)]`, and `#[allow(deprecated)]` in non-test, non-migration crates, as well as crate/file-level `#![allow(deprecated)]` in both production and test crates.
 
 ## P-LOG-RAW-PRINT — Prohibit direct stdout/stderr prints in production runtime code
 

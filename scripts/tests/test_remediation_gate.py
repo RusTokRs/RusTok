@@ -33,6 +33,17 @@ def test_forbidden_allow():
     assert "AGENTS.md §14" in violations[0]
 
 
+def test_forbidden_allow_deprecated():
+    diff = file_diff(
+        "tests/brand.rs",
+        '+ #![allow(deprecated)]\n+ #[allow(deprecated)]\n+ #[expect(deprecated, reason = "transitional bridge")]\n+ fn check_legacy() {}',
+    )
+    violations = gate.check_diff_invariants(diff)
+    assert len(violations) == 2, f"Expected 2 violations, got {violations}"
+    assert "#![allow(...)]" in violations[0]
+    assert "#[allow(deprecated)]" in violations[1]
+
+
 def test_forbidden_ts_ignore():
     diff = file_diff("src/service.ts", "+ // @ts-ignore: bypass type error\n+ const val = obj.unknownField;")
     violations = gate.check_diff_invariants(diff)
@@ -77,6 +88,7 @@ def test_examples_are_not_source_changes_in_a_mixed_diff():
 if __name__ == "__main__":
     test_clean_diff()
     test_forbidden_allow()
+    test_forbidden_allow_deprecated()
     test_forbidden_ts_ignore()
     test_forbidden_todo()
     test_forbidden_test_deletion()
