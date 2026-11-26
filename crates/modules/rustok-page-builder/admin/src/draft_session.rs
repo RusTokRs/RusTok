@@ -116,6 +116,7 @@ impl PersistentDraftSessionRecord {
     ///   real cause (a build ahead of this binary writing the same store) and the editor would
     ///   keep retrying a session that cannot be served.
     pub fn decode(bytes: &[u8]) -> Result<Self, SsrDraftSessionError> {
+        ensure_record_size(bytes.len())?;
         let value: Value = serde_json::from_slice(bytes)
             .map_err(|error| SsrDraftSessionError::Serialization(error.to_string()))?;
         let format = value.get("format").and_then(Value::as_u64).unwrap_or(0);
@@ -125,8 +126,41 @@ impl PersistentDraftSessionRecord {
                 supported: DRAFT_SESSION_RECORD_FORMAT,
             });
         }
-        serde_json::from_value(value)
-            .map_err(|error| SsrDraftSessionError::Serialization(error.to_string()))
+        let record: Self = serde_json::from_value(value)
+            .map_err(|error| SsrDraftSessionError::Serialization(error.to_string()))?;
+        record.validate_receipt_ledger()?;
+        Ok(record)
+    }
+
+    fn validate_receipt_ledger(&self) -> Result<(), SsrDraftSessionError> {
+        let invalid = |message: &str| SsrDraftSessionError::Serialization(message.to_string());
+        if self.generation == 0 {
+            return Err(invalid("draft record has zero generation"));
+        }
+        if self.operation_receipts.len() > MAX_DRAFT_OPERATION_RECEIPTS_PER_SESSION {
+            return Err(invalid("draft receipt ledger exceeds capacity"));
+        }
+        let mut operation_ids = BTreeSet::new();
+        let mut previous_generation = 1;
+        for receipt in &self.operation_receipts {
+            validate_operation_receipt_input(
+                &receipt.operation_id, &receipt.request_hash, &receipt.response,
+            ).map_err(|error| invalid(&error.to_string()))?;
+            if !operation_ids.insert(receipt.operation_id.as_str()) {
+                return Err(invalid("duplicate draft operation identity"));
+            }
+            if receipt.generation <= previous_generation || receipt.generation > self.generation {
+                return Err(invalid("invalid draft operation generation"));
+            }
+            if receipt_is_prepared(&receipt.response)
+                && (self.format < 2 || receipt.generation != self.generation
+                    || self.generation == u64::MAX)
+            {
+                return Err(invalid("invalid prepared save generation or format"));
+            }
+            previous_generation = receipt.generation;
+        }
+        Ok(())
     }
 
     /// Reads a record from text; see [`Self::decode`].
@@ -1332,6 +1366,11 @@ impl FileSsrDraftSessionStore {
                 }
             };
 
+            if record.token != token {
+                return Err(SsrDraftSessionError::Serialization(
+                    "draft record token does not match its storage key".to_string(),
+                ));
+            }
             if record.expires_at_unix_secs <= current_unix_secs() {
                 if self.collect_dead_record(&file_path, token, lock) == DeadRecord::Replaced {
                     continue;
@@ -2333,6 +2372,11 @@ impl PersistentDraftSessionBackend for ExternalKvDraftSessionBackend {
             // A record that cannot be parsed is reported, not deleted: the
             // driver removes it when the TTL it was stored with runs out.
             let record = PersistentDraftSessionRecord::decode(&bytes)?;
+            if record.token != token {
+                return Err(SsrDraftSessionError::Serialization(
+                    "draft record token does not match its storage key".to_string(),
+                ));
+            }
             if record.expires_at_unix_secs > current_unix_secs() {
                 return Ok(Some(record));
             }
@@ -5185,6 +5229,64 @@ mod tests {
             PersistentDraftSessionRecord::decode(&serde_json::to_vec(&current).expect("json"))
                 .expect("current record");
         assert_eq!(decoded, current);
+    }
+
+    #[test]
+    fn persisted_receipt_ledgers_reject_corrupt_operation_identities_and_generations() {
+        let mut record = record_json("tokLedger01", 5, 4_000_000_000);
+        let first = json!({
+            "operation_id": "first", "request_hash": "a".repeat(64),
+            "generation": 2, "response": {}
+        });
+        let prepared = json!({
+            "operation_id": "second", "request_hash": "b".repeat(64),
+            "generation": 5, "response": {"prepared_save": true}
+        });
+        record["operation_receipts"] = json!([first, prepared]);
+        let decode = |value: &Value| {
+            PersistentDraftSessionRecord::decode(&serde_json::to_vec(value).expect("json"))
+        };
+        assert!(decode(&record).is_ok());
+        for (path, value) in [
+            ("duplicate_id", json!("first")),
+            ("future_generation", json!(6)),
+            ("older_generation", json!(2)),
+            ("invalid_hash", json!("not-a-hash")),
+            ("oversized_response", json!("x".repeat(MAX_DRAFT_OPERATION_RECEIPT_BYTES))),
+            ("old_format", json!(1)),
+            ("zero_generation", json!(0)),
+        ] {
+            let mut corrupted = record.clone();
+            match path {
+                "duplicate_id" => corrupted["operation_receipts"][1]["operation_id"] = value,
+                "future_generation" | "older_generation" => {
+                    corrupted["operation_receipts"][1]["generation"] = value;
+                }
+                "invalid_hash" => corrupted["operation_receipts"][1]["request_hash"] = value,
+                "oversized_response" => corrupted["operation_receipts"][1]["response"] = value,
+                "old_format" => corrupted["format"] = value,
+                _ => corrupted["generation"] = value,
+            }
+            assert!(matches!(decode(&corrupted), Err(SsrDraftSessionError::Serialization(_))), "{path}");
+        }
+    }
+
+    #[test]
+    fn file_store_refuses_record_with_a_different_embedded_token() {
+        let dir = temp_store_dir();
+        let store = file_store(&dir);
+        let partition = dir.join(UNATTRIBUTED_PARTITION);
+        fs::create_dir_all(&partition).expect("partition");
+        let path = partition.join("tokExpected01.json");
+        let bytes = serde_json::to_vec(&record_json("tokDifferent01", 1, 4_000_000_000))
+            .expect("json");
+        fs::write(&path, &bytes).expect("record");
+        assert!(matches!(
+            store.load("tokExpected01", "home", None),
+            Err(SsrDraftSessionError::Serialization(_))
+        ));
+        assert_eq!(fs::read(path).expect("record preserved"), bytes);
+        fs::remove_dir_all(dir).expect("cleanup");
     }
 
     /// A future format parses cleanly, so it must not be reported — or treated — as damage. The

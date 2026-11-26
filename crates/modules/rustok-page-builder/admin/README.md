@@ -408,7 +408,11 @@ Strict Pages saves prepare the edited draft and reserve its generation in the
 existing operation ledger before external I/O. Only the same operation can
 complete the reservation; other writes are fenced. Receipt lookup stays read-only.
 Record format 2 protects prepared operations from older readers; deploy upgraded
-readers before using the new protocol.
+readers before using the new protocol. Persistent readers reject oversized records,
+duplicate operation identities, malformed receipt hashes, out-of-order or future
+receipt generations, and prepared reservations inconsistent with the current
+generation or record format. File and KV reads also verify the embedded token
+against the requested storage key before serving the record.
 
 Durable draft commits stage candidates outside the memory cache and publish
 only after persistent CAS. Loads return the owner-scoped backend snapshot,
