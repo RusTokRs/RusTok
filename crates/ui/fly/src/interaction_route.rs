@@ -1,4 +1,9 @@
-use crate::{LocalizedPageRouteEntry, ProjectDocument, localized_page_route_index};
+use crate::{
+    FLY_PAGE_METADATA_FIELD, FlyError, FlyResult, LOCALIZED_VALUES_FIELD, LocalizedPageRouteEntry,
+    ProjectDocument, RuntimeLocaleSelection, localized_page_route_index, normalize_slug,
+    localized_route::match_route_entry, runtime_locale::select_translation,
+};
+use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Shared route catalog used by every authoring interaction that targets a page.
@@ -8,6 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 /// validation, and storefront runtime from producing different navigation URLs.
 pub(crate) struct InteractionRouteCatalog {
     entries: Vec<LocalizedPageRouteEntry>,
+    slugs: Vec<Option<Value>>,
     page_ids: BTreeMap<String, Option<usize>>,
     routed_pages: BTreeSet<usize>,
 }
@@ -33,8 +39,20 @@ impl InteractionRouteCatalog {
                     .or_insert(Some(index));
             }
         }
+        let slugs = document
+            .project()
+            .pages
+            .iter()
+            .map(|page| {
+                page.extensions
+                    .get(FLY_PAGE_METADATA_FIELD)
+                    .and_then(|metadata| metadata.get("slug"))
+                    .cloned()
+            })
+            .collect();
         Self {
             entries,
+            slugs,
             page_ids,
             routed_pages,
         }
@@ -52,23 +70,36 @@ impl InteractionRouteCatalog {
         self.routed_pages.contains(&page_index)
     }
 
-    pub(crate) fn slug_for(&self, page_index: usize, locale_candidates: &[String]) -> Option<&str> {
-        for locale in locale_candidates {
-            if let Some(route) = self.entries.iter().find(|route| {
-                route.page_index == page_index && route.locale.as_deref() == Some(locale.as_str())
-            }) {
-                return Some(route.slug.as_str());
-            }
+    pub(crate) fn slug_for(
+        &self,
+        page_index: usize,
+        selection: &RuntimeLocaleSelection,
+    ) -> FlyResult<Option<String>> {
+        let Some(raw) = self.slugs.get(page_index).and_then(Option::as_ref) else {
+            return Ok(None);
+        };
+        let selected = match raw {
+            Value::String(value) => Some(value.as_str()),
+            Value::Object(wrapper) => wrapper
+                .get(LOCALIZED_VALUES_FIELD)
+                .and_then(Value::as_object)
+                .and_then(|values| select_translation(wrapper, values, selection))
+                .and_then(|(value, _, _)| value.as_str()),
+            _ => None,
+        };
+        let Some(slug) = selected.map(|value| normalize_slug(value.to_string()))
+            .filter(|slug| !slug.is_empty())
+        else {
+            return Ok(None);
+        };
+        // A slug belonging to the target page is not necessarily reachable under
+        // the active locale: another page may shadow it at a higher precedence.
+        match match_route_entry(&self.entries, &slug, &selection.candidates())? {
+            Some(entry) if entry.page_index == page_index => Ok(Some(slug)),
+            _ => Err(FlyError::Decode(format!(
+                "localized slug `{slug}` does not resolve to target page index {page_index}"
+            ))),
         }
-        self.entries
-            .iter()
-            .find(|route| route.page_index == page_index && route.locale.is_none())
-            .or_else(|| {
-                self.entries
-                    .iter()
-                    .find(|route| route.page_index == page_index)
-            })
-            .map(|route| route.slug.as_str())
     }
 }
 
@@ -101,7 +132,7 @@ pub(crate) fn build_interaction_href(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{GrapesJsCodec, RuntimeLocaleSelection};
+    use crate::GrapesJsCodec;
     use serde_json::json;
 
     #[test]
@@ -222,6 +253,82 @@ mod tests {
     }
 
     #[test]
+    fn outgoing_navigation_respects_inbound_precedence_and_explicit_slug_fallback() {
+        let mut document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "link", "type": "link",
+                        "flyPageLink": { "page_id": "target", "fallback_href": "/fallback" }
+                    }, {
+                        "id": "action", "type": "button",
+                        "flyAction": { "kind": "navigate_page", "page_id": "target", "fallback_href": "/fallback" }
+                    }]
+                }
+            }, {
+                "id": "target",
+                "flyPageMeta": { "slug": {
+                    "$localized": { "en": "shared", "fr": "unique" }, "$fallback": "en"
+                } },
+                "component": { "id": "target-root", "type": "wrapper" }
+            }, {
+                "id": "other",
+                "flyPageMeta": { "slug": { "$localized": { "de": "shared" } } },
+                "component": { "id": "other-root", "type": "wrapper" }
+            }]
+        })).expect("document");
+        let context = json!({ "$locale": "de" });
+        let incoming = crate::resolve_localized_page_route(&document, "shared", &context).unwrap();
+        assert_eq!(incoming.page_id.as_deref(), Some("other"));
+
+        let links = crate::materialize_internal_page_links(&document, &context);
+        let actions = crate::materialize_component_actions(&document, &context);
+        let full = crate::materialize_project_with_runtime_context(&document, &context);
+        assert_eq!(links.unresolved_links, 1);
+        assert_eq!(actions.unresolved_actions, 1);
+        assert_eq!(full.unresolved_internal_links, 1);
+        assert_eq!(full.unresolved_actions, 1);
+        assert_eq!(full.fallback_internal_links, 0);
+        assert_eq!(full.fallback_actions, 0);
+        for (result, id) in [
+            (&links.document, "link"),
+            (&actions.document, "action"),
+            (&full.document, "link"),
+            (&full.document, "action"),
+        ] {
+            assert!(!result.component(id).unwrap().attributes.contains_key("href"));
+        }
+
+        document.project_mut().pages[1].extensions
+            .get_mut(FLY_PAGE_METADATA_FIELD).unwrap()["slug"]["$fallback"] = json!("fr");
+        let full = crate::materialize_project_with_runtime_context(&document, &context);
+        let links = crate::materialize_internal_page_links(&document, &context);
+        let actions = crate::materialize_component_actions(&document, &context);
+        for (result, id) in [
+            (&links.document, "link"),
+            (&actions.document, "action"),
+            (&full.document, "link"),
+            (&full.document, "action"),
+        ] {
+            assert_eq!(result.component(id).unwrap().attributes["href"], "/unique");
+        }
+        let incoming = crate::resolve_localized_page_route(&document, "unique", &context).unwrap();
+        assert_eq!(incoming.page_id.as_deref(), Some("target"));
+
+        // A multi-language slug with no matching locale or configured fallback
+        // must not silently select the first translation.
+        document.project_mut().pages[1].extensions
+            .get_mut(FLY_PAGE_METADATA_FIELD).unwrap()["slug"]
+            .as_object_mut().unwrap().remove("$fallback");
+        let full = crate::materialize_project_with_runtime_context(&document, &context);
+        assert_eq!(full.fallback_internal_links, 1);
+        assert_eq!(full.fallback_actions, 1);
+    }
+
+    #[test]
     fn catalog_resolves_identical_locale_fallback_for_all_interactions() {
         let document = GrapesJsCodec::decode_value(json!({
             "pages": [{
@@ -235,13 +342,15 @@ mod tests {
         .expect("document");
         let catalog = InteractionRouteCatalog::from_document(&document);
         let page_index = catalog.page_index("about").expect("page");
-        let candidates = RuntimeLocaleSelection {
+        let selection = RuntimeLocaleSelection {
             locale: Some("ru-RU".to_string()),
             fallback_locales: vec!["en".to_string()],
-        }
-        .candidates();
+        };
         assert!(catalog.has_route(page_index));
-        assert_eq!(catalog.slug_for(page_index, &candidates), Some("o-nas"));
+        assert_eq!(
+            catalog.slug_for(page_index, &selection).unwrap().as_deref(),
+            Some("o-nas")
+        );
         assert_eq!(
             build_interaction_href(Some("/site/"), "o-nas", Some("from=hero"), Some("team")),
             "/site/o-nas?from=hero#team"

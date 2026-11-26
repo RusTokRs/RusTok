@@ -24,10 +24,17 @@ struct ActionValidation<'a> {
 
 pub fn validate_component_actions(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
     let routes = InteractionRouteCatalog::from_document(document);
+    validate_component_actions_with_routes(document, &routes)
+}
+
+pub(crate) fn validate_component_actions_with_routes(
+    document: &ProjectDocument,
+    routes: &InteractionRouteCatalog,
+) -> Vec<ValidationDiagnostic> {
     let form_ids = collect_form_ids(document);
     let host_submitted_form_ids = collect_host_submitted_form_ids(document);
     let validation = ActionValidation {
-        routes: &routes,
+        routes,
         form_ids: &form_ids,
         host_submitted_form_ids: &host_submitted_form_ids,
     };

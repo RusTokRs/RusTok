@@ -72,7 +72,7 @@ struct InternalLinkCounters {
 
 struct InternalLinkResolution<'a> {
     routes: &'a InteractionRouteCatalog,
-    locale_candidates: &'a [String],
+    locale: &'a RuntimeLocaleSelection,
 }
 
 pub fn materialize_internal_page_links(
@@ -80,10 +80,19 @@ pub fn materialize_internal_page_links(
     context: &Value,
 ) -> InternalLinkMaterialization {
     let routes = InteractionRouteCatalog::from_document(document);
-    let locale_candidates = RuntimeLocaleSelection::from_context(context).candidates();
+    let policy_context = crate::materialize_project_locale_context(document, context).context;
+    materialize_internal_page_links_with_routes(document, &policy_context, &routes)
+}
+
+pub(crate) fn materialize_internal_page_links_with_routes(
+    document: &ProjectDocument,
+    context: &Value,
+    routes: &InteractionRouteCatalog,
+) -> InternalLinkMaterialization {
+    let locale = RuntimeLocaleSelection::from_context(context);
     let resolution = InternalLinkResolution {
-        routes: &routes,
-        locale_candidates: &locale_candidates,
+        routes,
+        locale: &locale,
     };
     let mut materialized = document.clone();
     let mut diagnostics = Vec::new();
@@ -110,10 +119,17 @@ pub fn materialize_internal_page_links(
 
 pub fn validate_internal_page_links(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
     let routes = InteractionRouteCatalog::from_document(document);
+    validate_internal_page_links_with_routes(document, &routes)
+}
+
+pub(crate) fn validate_internal_page_links_with_routes(
+    document: &ProjectDocument,
+    routes: &InteractionRouteCatalog,
+) -> Vec<ValidationDiagnostic> {
     let mut diagnostics = Vec::new();
 
-    visit_project_components(&document.project(), |component, visit| {
-        validate_component(component, visit.path(), &routes, &mut diagnostics);
+    visit_project_components(document.project(), |component, visit| {
+        validate_component(component, visit.path(), routes, &mut diagnostics);
     });
     diagnostics
 }
@@ -173,21 +189,32 @@ fn materialize_component(
         }
     };
 
-    if let Some(slug) = resolution
-        .routes
-        .slug_for(target_page_index, resolution.locale_candidates)
-    {
-        apply_href(
-            component,
-            build_interaction_href(
-                link.base_path.as_deref(),
-                slug,
-                link.query.as_deref(),
-                link.fragment.as_deref(),
-            ),
-        );
-        counters.resolved = counters.resolved.saturating_add(1);
-        return;
+    match resolution.routes.slug_for(target_page_index, resolution.locale) {
+        Ok(Some(slug)) => {
+            apply_href(
+                component,
+                build_interaction_href(
+                    link.base_path.as_deref(),
+                    &slug,
+                    link.query.as_deref(),
+                    link.fragment.as_deref(),
+                ),
+            );
+            counters.resolved = counters.resolved.saturating_add(1);
+            return;
+        }
+        Ok(None) => {}
+        Err(error) => {
+            record_unresolved(
+                diagnostics,
+                counters,
+                path,
+                component_id,
+                "internal_page_link_route_conflict",
+                error.to_string(),
+            );
+            return;
+        }
     }
 
     if let Some(fallback_href) = link.fallback_href {

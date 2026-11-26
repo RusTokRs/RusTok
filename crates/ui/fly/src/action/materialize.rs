@@ -25,7 +25,7 @@ struct ActionCounters {
 
 struct ActionResolution<'a> {
     routes: &'a InteractionRouteCatalog,
-    locale_candidates: &'a [String],
+    locale: &'a RuntimeLocaleSelection,
     form_ids: &'a FormIndex,
     providers: Option<&'a dyn FormProviderEndpointResolver>,
 }
@@ -47,11 +47,21 @@ pub fn materialize_component_actions_with_providers(
     providers: Option<&dyn FormProviderEndpointResolver>,
 ) -> ActionMaterialization {
     let routes = InteractionRouteCatalog::from_document(document);
-    let locale_candidates = RuntimeLocaleSelection::from_context(context).candidates();
+    let policy_context = crate::materialize_project_locale_context(document, context).context;
+    materialize_component_actions_with_routes(document, &policy_context, providers, &routes)
+}
+
+pub(crate) fn materialize_component_actions_with_routes(
+    document: &ProjectDocument,
+    context: &Value,
+    providers: Option<&dyn FormProviderEndpointResolver>,
+    routes: &InteractionRouteCatalog,
+) -> ActionMaterialization {
+    let locale = RuntimeLocaleSelection::from_context(context);
     let form_ids = collect_form_ids(document);
     let resolution = ActionResolution {
-        routes: &routes,
-        locale_candidates: &locale_candidates,
+        routes,
+        locale: &locale,
         form_ids: &form_ids,
         providers,
     };
@@ -327,15 +337,16 @@ fn apply_action(
             };
             let href = match resolution
                 .routes
-                .slug_for(page_index, resolution.locale_candidates)
+                .slug_for(page_index, resolution.locale)
             {
-                Some(slug) => build_interaction_href(
+                Ok(Some(slug)) => build_interaction_href(
                     base_path.as_deref(),
-                    slug,
+                    &slug,
                     query.as_deref(),
                     fragment.as_deref(),
                 ),
-                None => match fallback_href.as_deref() {
+                Err(error) => return AppliedAction::Unresolved(error.to_string()),
+                Ok(None) => match fallback_href.as_deref() {
                     Some(href) => {
                         mark_action_kind(component, action);
                         component.tag_name = Some("a".to_string());

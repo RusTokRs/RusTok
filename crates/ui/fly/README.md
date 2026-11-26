@@ -181,7 +181,13 @@ crates/ui/fly/
 ## Runtime locale selection
 
 Runtime values, localized page routes, internal page links and navigation actions share the
-same ordered locale fallback chain. Coverage summary lookup also uses the resolver's chain;
+same ordered locale fallback chain. Outgoing navigation selects the authored slug with the
+runtime value resolver (including explicit field fallback or a single translation), then
+checks that the inbound route resolves to the intended page under the same locale. A
+shadowed or ambiguous slug is unresolved, not an invitation to use a fallback URL.
+A missing translation may use an explicit fallback URL, never an arbitrary first locale.
+The runtime pipeline retains the authored route catalog separately from rendered metadata.
+Coverage summary lookup also uses the resolver's chain;
 required translation coverage still requires an exact locale entry, never a fallback.
 A page-targeting interaction requires a unique page ID. Duplicate imported page IDs are
 reported as ambiguous by both link and action validation/materialization, and cannot
