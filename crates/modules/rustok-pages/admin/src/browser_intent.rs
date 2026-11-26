@@ -189,7 +189,7 @@ fn validate_browser_page_binding(
 #[cfg(test)]
 mod page_binding_tests {
     use super::{
-        PagesBrowserIntentError, validate_browser_page_binding,
+        PagesBrowserIntentError, SsrDraftSessionError, validate_browser_page_binding,
         validate_editable_operation_identity,
     };
     use fly_ui::CapabilityState;
