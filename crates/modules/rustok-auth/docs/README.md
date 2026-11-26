@@ -658,8 +658,13 @@ tokens, pending codes and consents atomically; presentation edits and
 equivalent policy sets do not. Restoring a prior policy cannot revive those
 credentials. Source regressions remain unrun. Exchange rejects codes older than current consent and
 rechecks the refresh grant under the app lock before persisting prepared refresh
-credentials. OAuth refresh replay grace requires a nonnegative elapsed duration
-less than 30 seconds. Source regression definitions are unrun.
+credentials. The original 90-day refresh-family cap now bounds newly issued
+access and refresh registrations; prepared deadlines are checked under lock,
+and delegated token responses report remaining whole access-lifetime seconds.
+OAuth refresh replay grace requires matching committed rotation timestamps,
+valid creation/expiry ordering and nonnegative elapsed duration less than 30
+seconds. Ordinary revocation is not rotation evidence. Source regression
+definitions are unrun; proof-bound OAuth response recovery remains pending.
 
 ## Direct session concurrency
 

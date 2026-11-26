@@ -52,6 +52,16 @@ consent-presence check alone could not distinguish an old epoch from a new grant
    grant under the same app mutation fence as issuance. A stale client
    snapshot cannot authorize revocation.
 
+9. The refresh lineage's absolute 90-day deadline bounds both newly issued
+   access registrations and refresh tokens. Issuance rejects expired prepared
+   credentials and rechecks their deadlines under the mutation fence; delegated
+   token responses report only remaining whole access-lifetime seconds.
+10. The duplicate-rotation grace applies only to a consumed refresh row whose
+    last-use and revocation timestamps match, with a valid creation/expiry
+    interval and nonnegative elapsed time strictly below 30 seconds. An
+    ordinary revocation is not rotation evidence. This does not recover a
+    lost successful refresh response.
+
 ## Sources of truth and ownership
 
 - Canonical owner: `rustok-auth` owns JWT claims and auth migrations;

@@ -319,6 +319,16 @@ before persisting prepared credentials. OAuth replay grace no longer accepts
 future timestamps or truncates elapsed time to whole seconds. Focused source
 regressions authored; compilation and runtime verification remain pending.
 
+## OAuth family lifetime and replay evidence (source only)
+
+New access registrations and refresh rows cannot exceed the original family
+deadline; prepared credentials are checked under the app/subject fence before
+consumption and delegated responses report the remaining access lifetime.
+Grace requires matching rotation timestamps and valid temporal evidence, not
+merely a recent revocation. Focused boundary and transactional regressions
+are unrun. Existing pre-change access registrations retain their stored expiry;
+proof-bound recovery and canonical family identity migration remain open.
+
 ## Direct session mutation ordering (source only)
 
 Refresh and bulk session revocation use the shared tenant-scoped user mutation

@@ -183,7 +183,7 @@ impl OAuthTokenService {
                     require_email_verification,
                 )
                 .await?;
-                prepared.into_response(&scopes)
+                prepared.into_response(&scopes)?
             }
             REFRESH_TOKEN_GRANT => {
                 require_grant(&app, REFRESH_TOKEN_GRANT)?;
@@ -223,7 +223,7 @@ impl OAuthTokenService {
                     require_email_verification,
                 )
                 .await?;
-                prepared.into_response(&scopes)
+                prepared.into_response(&scopes)?
             }
             other => {
                 return Err(OAuthTokenProtocolError::unsupported_grant(format!(
@@ -251,14 +251,16 @@ struct PreparedUserTokens {
 }
 
 impl PreparedUserTokens {
-    fn into_response(self, scopes: &[String]) -> TokenResponse {
-        TokenResponse {
+    fn into_response(self, scopes: &[String]) -> Result<TokenResponse, OAuthTokenProtocolError> {
+        let expires_at = prepared_token_expiry(&self.access_model)?;
+        let expires_in = remaining_access_lifetime(expires_at, Utc::now(), self.expires_in)?;
+        Ok(TokenResponse {
             access_token: self.access_token,
             token_type: "Bearer".to_string(),
-            expires_in: self.expires_in,
+            expires_in,
             refresh_token: self.refresh_token,
             scope: scopes.join(" "),
-        }
+        })
     }
 }
 
@@ -570,6 +572,70 @@ fn ensure_refresh_family_live(
     Ok(())
 }
 
+/// Floor the response lifetime to complete seconds, rejecting credentials
+/// whose remaining lifetime is too short to advertise a positive TTL.
+fn remaining_access_lifetime(
+    expires_at: chrono::DateTime<Utc>,
+    now: chrono::DateTime<Utc>,
+    maximum: u64,
+) -> Result<u64, OAuthTokenProtocolError> {
+    let seconds = expires_at.signed_duration_since(now).num_seconds();
+    if seconds <= 0 {
+        return Err(OAuthTokenProtocolError::invalid_grant(
+            "OAuth access credential has no remaining lifetime",
+        ));
+    }
+    Ok((seconds as u64).min(maximum))
+}
+
+fn prepared_token_expiry(
+    model: &oauth_tokens::ActiveModel,
+) -> Result<chrono::DateTime<Utc>, OAuthTokenProtocolError> {
+    match &model.expires_at {
+        sea_orm::ActiveValue::Set(value) => Ok(value.with_timezone(&Utc)),
+        _ => Err(OAuthTokenProtocolError::server_error("Missing prepared OAuth token expiry")),
+    }
+}
+
+fn validate_prepared_deadlines(
+    prepared: &PreparedUserTokens,
+    now: chrono::DateTime<Utc>,
+    family_deadline: Option<chrono::DateTime<Utc>>,
+) -> Result<(), OAuthTokenProtocolError> {
+    let access_expiry = prepared_token_expiry(&prepared.access_model)?;
+    remaining_access_lifetime(access_expiry, now, prepared.expires_in)?;
+    for model in std::iter::once(&prepared.access_model).chain(prepared.refresh_model.iter()) {
+        let expiry = prepared_token_expiry(model)?;
+        if expiry <= now || family_deadline.is_some_and(|deadline| expiry > deadline) {
+            return Err(OAuthTokenProtocolError::invalid_grant(
+                "Prepared OAuth credential exceeds its current lifetime boundary",
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Only a committed rotation records matching consumption and revocation
+/// timestamps. An explicit revoke, future timestamp or corrupt history
+/// is not evidence of a benign concurrent rotation.
+fn within_refresh_rotation_grace(
+    stale: &oauth_tokens::Model,
+    now: chrono::DateTime<Utc>,
+) -> bool {
+    let Some(revoked_at) = stale.revoked_at else {
+        return false;
+    };
+    if stale.last_used_at.as_ref() != Some(&revoked_at)
+        || revoked_at < stale.created_at
+        || revoked_at >= stale.expires_at
+    {
+        return false;
+    }
+    let age = now.signed_duration_since(revoked_at.with_timezone(&Utc));
+    age >= chrono::Duration::zero()
+        && age < chrono::Duration::seconds(OAUTH_REFRESH_REUSE_GRACE_SECONDS)
+}
+
 /// Resolve the lineage of the presented refresh token. Pre-migration
 /// rows have no family id and start their own family rooted at
 /// themselves. A referenced root that is missing or belongs to another
@@ -685,16 +751,7 @@ async fn detect_oauth_refresh_reuse(
         })?;
         return Ok(());
     };
-    let Some(revoked_at) = stale.revoked_at else {
-        tx.rollback().await.map_err(|_| {
-            OAuthTokenProtocolError::server_error("Failed to finish refresh-token reuse check")
-        })?;
-        return Ok(());
-    };
-    let age = Utc::now().signed_duration_since(revoked_at.with_timezone(&Utc));
-    if age >= chrono::Duration::zero()
-        && age < chrono::Duration::seconds(OAUTH_REFRESH_REUSE_GRACE_SECONDS)
-    {
+    if within_refresh_rotation_grace(&stale, Utc::now()) {
         // Do not keep the SQLite writer reserved until a detached Drop rollback
         // completes; release it before the caller returns invalid_grant.
         tx.rollback().await.map_err(|_| {
@@ -1103,6 +1160,18 @@ async fn prepare_user_tokens(
         })?;
     let role = infer_user_role_from_permissions(&permissions);
     let now = Utc::now();
+    let token_id = Uuid::new_v4();
+    let (family_id, family_created_at) = match family {
+        Some(family) => {
+            ensure_refresh_family_live(family, now)?;
+            (family.family_id, family.created_at)
+        }
+        None => (token_id, now),
+    };
+    let family_deadline = refresh_family_deadline(family_created_at)?;
+    let access_deadline = (now + chrono::Duration::seconds(USER_ACCESS_TOKEN_TTL_SECS as i64))
+        .min(family_deadline);
+    let access_ttl = remaining_access_lifetime(access_deadline, now, USER_ACCESS_TOKEN_TTL_SECS)?;
     let access_token_id = Uuid::new_v4();
     let access_token = auth::encode_oauth_access_token(
         config,
@@ -1112,7 +1181,7 @@ async fn prepare_user_tokens(
         app.client_id,
         scopes,
         AUTHORIZATION_CODE_GRANT,
-        USER_ACCESS_TOKEN_TTL_SECS,
+        access_ttl,
         access_token_id,
     )
     .map_err(|_| OAuthTokenProtocolError::server_error("Failed to encode access token"))?;
@@ -1127,14 +1196,6 @@ async fn prepare_user_tokens(
         None
     };
     let refresh_hash = refresh_token.as_deref().map(auth::hash_refresh_token);
-    let token_id = Uuid::new_v4();
-    // A fresh authorization-code exchange starts a new family rooted
-    // at this token; a rotation inherits the family. Either way the
-    // sliding expiry is clamped to the family's absolute deadline.
-    let (family_id, family_created_at) = match family {
-        Some(family) => (family.family_id, family.created_at),
-        None => (token_id, now),
-    };
     // Without a refresh grant the access row roots its own revocation
     // family; with one, it joins the refresh lineage so RFC 7009 and
     // reuse/replay revocation fence every issued credential together.
@@ -1155,16 +1216,13 @@ async fn prepare_user_tokens(
         token_kind: Set(oauth_tokens::TOKEN_KIND_ACCESS.to_string()),
         consent_granted_at: Set(consent_granted_at),
         scopes: Set(scopes_json.clone()),
-        expires_at: Set(
-            (now + chrono::Duration::seconds(USER_ACCESS_TOKEN_TTL_SECS as i64)).into(),
-        ),
+        expires_at: Set(access_deadline.into()),
         revoked_at: Set(None),
         last_used_at: Set(None),
         created_at: Set(now.into()),
         updated_at: Set(now.into()),
     };
 
-    let family_deadline = refresh_family_deadline(family_created_at)?;
     let sliding_deadline = now
         .checked_add_signed(chrono::Duration::days(USER_REFRESH_TOKEN_TTL_DAYS))
         .ok_or_else(|| {
@@ -1198,7 +1256,7 @@ async fn prepare_user_tokens(
         refresh_token,
         refresh_model,
         consent_granted_at,
-        expires_in: USER_ACCESS_TOKEN_TTL_SECS,
+        expires_in: access_ttl,
     })
 }
 
@@ -1251,6 +1309,7 @@ async fn commit_authorization_code_exchange(
     )
     .await?;
 
+    validate_prepared_deadlines(prepared, Utc::now(), None)?;
     if !consume_authorization_code(&tx, code).await? {
         // A concurrent exchange won the CAS. If the code is now marked used,
         // revoke its issued lineage and commit that security effect before
@@ -1331,6 +1390,7 @@ async fn commit_refresh_rotation(
     let family = resolve_refresh_family(&tx, current).await?;
     let now = Utc::now();
     ensure_refresh_family_live(&family, now)?;
+    validate_prepared_deadlines(prepared, now, Some(refresh_family_deadline(family.created_at)?))?;
     let consumed = OAuthTokens::update_many()
         .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
         .col_expr(oauth_tokens::Column::LastUsedAt, Expr::value(now))
@@ -2268,6 +2328,21 @@ mod tests {
     }
 
     #[test]
+    fn remaining_access_lifetime_is_bounded_and_never_advertises_zero() {
+        let now = Utc::now();
+        assert_eq!(super::remaining_access_lifetime(
+            now + chrono::Duration::milliseconds(1999), now, 900,
+        ).unwrap(), 1);
+        assert_eq!(super::remaining_access_lifetime(
+            now + chrono::Duration::seconds(1000), now, 900,
+        ).unwrap(), 900);
+        assert!(super::remaining_access_lifetime(
+            now + chrono::Duration::milliseconds(999), now, 900,
+        ).is_err());
+        assert!(super::remaining_access_lifetime(now, now, 900).is_err());
+    }
+
+    #[test]
     fn refresh_scope_is_never_widened_and_supports_narrowing() {
         let original = vec!["profile:read".to_string(), "email:read".to_string()];
 
@@ -2492,8 +2567,34 @@ mod tests {
         assert_eq!(oauth_tokens::Entity::find().count(&db).await.unwrap(), 3);
 
         let mut root: oauth_tokens::ActiveModel = expired_root.into();
+        root.created_at = Set(
+            (now - chrono::Duration::days(USER_REFRESH_FAMILY_ABSOLUTE_LIFETIME_DAYS)
+                + chrono::Duration::seconds(5)).into(),
+        );
+        let nearly_expired_root = root.update(&db).await.expect("shorten family lifetime");
+        let error = commit_refresh_rotation(
+            &db, &client, &successor, &replacement("replacement-over-deadline"), false,
+        )
+        .await
+        .expect_err("prepared credentials must not exceed the current absolute cap");
+        assert_eq!(error.error, "invalid_grant");
+        assert!(oauth_tokens::Entity::find_by_id(successor.id)
+            .one(&db).await.unwrap().unwrap().revoked_at.is_none());
+
+        let mut root: oauth_tokens::ActiveModel = nearly_expired_root.into();
         root.created_at = Set(current.created_at.clone());
-        root.update(&db).await.expect("restore family root for replay test");
+        let root = root.update(&db).await.expect("restore family root for replay test");
+        let rotated_at = root.revoked_at.unwrap().with_timezone(&Utc);
+        assert!(super::within_refresh_rotation_grace(&root, rotated_at));
+        assert!(!super::within_refresh_rotation_grace(
+            &root, rotated_at + chrono::Duration::seconds(30),
+        ));
+        assert!(!super::within_refresh_rotation_grace(
+            &root, rotated_at - chrono::Duration::nanoseconds(1),
+        ));
+        let mut explicitly_revoked = root;
+        explicitly_revoked.last_used_at = None;
+        assert!(!super::within_refresh_rotation_grace(&explicitly_revoked, rotated_at));
 
         let replay = commit_refresh_rotation(&db, &client, &current, &replacement("replacement-2"), false)
             .await
