@@ -815,6 +815,11 @@ Fragment-spread classification is cycle-safe because host preflight runs
 before GraphQL's normal document validation. The host security policies share
 an explicit worklist rather than recursive fragment expansion, preserving root
 field scope and Forum traversal context without stack growth on long chains.
+Tenant argument classification also uses a worklist for nested literal and
+variable values, scans each nested variable once per selected operation, and
+stores distinct tenant IDs. A direct tenantId use is still checked separately.
+Security-policy diagnostics record operation-name presence and requested tenant
+count rather than raw request-controlled names or tenant ID lists.
 GraphQL's own validation and execution limits remain separate. Source regression
 tests for long chains and context-sensitive cycles are present but unrun.
 

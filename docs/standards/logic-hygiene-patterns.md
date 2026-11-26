@@ -1179,6 +1179,14 @@ let category = self.taxonomy()?
 - **Verification:** Cover self-cycles, multi-fragment cycles and long acyclic chains, with a sensitive field in the reachable fragment; classification must terminate and still detect the field. Verify context-sensitive revisits and root-only traversal. Host source regressions authored, unrun.
 - **Detection:** Review `Selection::FragmentSpread` handlers in GraphQL request-preparation policies for recursive expansion and missing context-aware cycle guards.
 
+### P-GQL-NESTED-VARIABLE-AMPLIFICATION — classify immutable input once
+
+- **Observed defect:** Host tenant preflight repeatedly traversed the same nested variable for each reference before GraphQL validation, allocated unused diagnostic path strings at every level, and accumulated duplicate tenant IDs. Deep nested values also grew the traversal call stack.
+- **Category / logic dimension:** Input validation and resource bounds; algorithmic correctness and preconditions.
+- **Remediation:** Use an explicit worklist, deduplicate nested variable names within each selected operation, and collect distinct tenant identities. Keep direct tenant argument classification independent: an object already scanned as nested input is not a valid direct UUID.
+- **Detection:** `rg -n 'collect_nested_tenant|visited_nested_variables|requested_tenant_ids' apps/server/src/graphql/tenant_security.rs`. Review pre-validation input visitors for repeated variable expansion and recursive path construction.
+- **Verification:** Repeated variable, mixed direct/nested use and nested list regressions are authored; execution remains unverified.
+
 ### Pattern 10C: Token-Effective Authority on REST (`P-TOKEN-CEILING`)
 
 - **Category:** Authentication, OAuth, and RBAC authorization.

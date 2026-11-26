@@ -31,7 +31,7 @@ impl Extension for GraphqlPrincipalTenantPolicyExtension {
         ) && auth.tenant_id != tenant.id
         {
             tracing::warn!(
-                operation_name = ?operation_name,
+                operation_name_present = operation_name.is_some(),
                 principal_tenant_id = %auth.tenant_id,
                 request_tenant_id = %tenant.id,
                 user_id = %auth.user_id,

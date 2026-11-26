@@ -226,7 +226,7 @@ impl Extension for GraphqlSecurityPolicyExtension {
                         .iter()
                         .map(|field| field.field_name())
                         .collect::<Vec<_>>(),
-                    operation_name = ?operation_name,
+                    operation_name_present = operation_name.is_some(),
                     "Rejected sensitive GraphQL document before resolver execution"
                 );
                 return forbidden_sensitive_response(&denied_fields);
