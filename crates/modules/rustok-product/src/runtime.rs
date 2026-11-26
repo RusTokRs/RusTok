@@ -357,8 +357,17 @@ impl ProductCatalogCommandRuntime {
     /// actually holds. External command/schema owners must register their own targets.
     pub fn register_translation_target_providers(
         &self,
+        read_runtime: &ProductCatalogReadRuntime,
         extensions: &mut ModuleRuntimeExtensions,
     ) -> Result<(), TranslationTargetRegistryError> {
+        // Translation reads and writes must use the same selected Product owner. In particular,
+        // do not let an embedded command runtime become a hidden read fallback for an external owner.
+        if self.profile != ProductCatalogCommandProfile::EmbeddedNative
+            || read_runtime.profile() != ProductCatalogReadProfile::EmbeddedNative
+        {
+            return Ok(());
+        }
+
         if let Some(catalog) = self.embedded_catalog.as_ref() {
             let catalog = Arc::new(catalog.clone());
             register_translation_target_provider(
@@ -515,14 +524,14 @@ mod tests {
         let database = Database::connect("sqlite::memory:")
             .await
             .expect("database should connect");
-        let runtime = ProductCatalogCommandRuntime::in_process(
-            database,
-            mock_transactional_event_bus(),
-        );
+        let event_bus = mock_transactional_event_bus();
+        let read_runtime =
+            ProductCatalogReadRuntime::in_process(database.clone(), event_bus.clone());
+        let runtime = ProductCatalogCommandRuntime::in_process(database, event_bus);
         let mut extensions = ModuleRuntimeExtensions::default();
 
         runtime
-            .register_translation_target_providers(&mut extensions)
+            .register_translation_target_providers(&read_runtime, &mut extensions)
             .expect("embedded Product translation targets should register");
 
         let registry = rustok_translation_targets::translation_target_registry(&extensions)

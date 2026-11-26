@@ -438,11 +438,12 @@ pub mod module_event_dispatcher {
         })?;
 
         #[cfg(all(feature = "mod-product", feature = "mod-translation"))]
-        if let Some(runtime) =
-            runtime_ctx.shared_get::<rustok_product::ProductCatalogCommandRuntime>()
-        {
-            runtime
-                .register_translation_target_providers(&mut extensions)
+        if let (Some(read_runtime), Some(command_runtime)) = (
+            runtime_ctx.shared_get::<rustok_product::ProductCatalogReadRuntime>(),
+            runtime_ctx.shared_get::<rustok_product::ProductCatalogCommandRuntime>(),
+        ) {
+            command_runtime
+                .register_translation_target_providers(&read_runtime, &mut extensions)
                 .map_err(|error| {
                     Error::Message(format!(
                         "Product Translation target provider registration failed: {error}"
