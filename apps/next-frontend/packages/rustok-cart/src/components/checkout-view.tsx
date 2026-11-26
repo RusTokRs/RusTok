@@ -69,36 +69,16 @@ export function CheckoutView({
   const [completedOrder, setCompletedOrder] =
     useState<CompleteCheckoutResult | null>(null);
 
-  // Available shipping options from cart delivery groups
+  const isValidUuid = (value: string | null | undefined): value is string =>
+    typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      value.trim(),
+    );
+
+  // Available shipping options from cart delivery groups (never invent fake non-UUID options)
   const availableShippingOptions: CartShippingOptionSummary[] = useMemo(() => {
     if (!cart?.deliveryGroups || cart.deliveryGroups.length === 0) {
-      // Default fallback options if none configured in backend
-      return [
-        {
-          id: "standard-courier",
-          name: isRu ? "Курьерская доставка" : "Standard Courier Delivery",
-          currencyCode: cart?.currencyCode || "RUB",
-          amount: "350.00",
-          providerId: "standard-carrier",
-          active: true,
-        },
-        {
-          id: "express-courier",
-          name: isRu ? "Экспресс доставка (1-2 дня)" : "Express Delivery (1-2 days)",
-          currencyCode: cart?.currencyCode || "RUB",
-          amount: "650.00",
-          providerId: "express-carrier",
-          active: true,
-        },
-        {
-          id: "pickup-point",
-          name: isRu ? "Пункт выдачи заказов (ПВЗ)" : "Pickup Point",
-          currencyCode: cart?.currencyCode || "RUB",
-          amount: "190.00",
-          providerId: "pickup-carrier",
-          active: true,
-        },
-      ];
+      return [];
     }
 
     const options: CartShippingOptionSummary[] = [];
@@ -109,36 +89,33 @@ export function CheckoutView({
         }
       }
     }
-    return options.length > 0 ? options : [
-      {
-        id: "standard",
-        name: isRu ? "Стандартная доставка" : "Standard Delivery",
-        currencyCode: cart.currencyCode,
-        amount: cart.shippingTotal || "0.00",
-        providerId: "default",
-        active: true,
-      },
-    ];
-  }, [cart?.deliveryGroups, cart?.currencyCode, cart?.shippingTotal, isRu]);
+    return options;
+  }, [cart?.deliveryGroups]);
 
   // Set default shipping option if not selected
   const activeShippingId =
     selectedShippingOptionId ||
+    cart?.selectedShippingOptionId ||
     availableShippingOptions[0]?.id ||
-    "standard";
+    "";
 
   const selectedShippingOption =
     availableShippingOptions.find((o) => o.id === activeShippingId) ||
-    availableShippingOptions[0];
+    availableShippingOptions[0] ||
+    null;
 
   const currencyCode = cart?.currencyCode || (isRu ? "RUB" : "USD");
 
   const subtotal = parseFloat(cart?.subtotalAmount || "0");
   const discount = parseFloat(cart?.adjustmentTotal || "0");
+  const taxAmount = parseFloat(cart?.taxTotal || "0");
   const shippingAmount = selectedShippingOption
     ? parseFloat(selectedShippingOption.amount || "0")
     : parseFloat(cart?.shippingTotal || "0");
-  const grandTotal = Math.max(0, subtotal - discount + shippingAmount);
+  const grandTotal =
+    selectedShippingOption && selectedShippingOption.id !== (cart?.selectedShippingOptionId || "")
+      ? Math.max(0, subtotal - discount + shippingAmount + taxAmount)
+      : parseFloat(cart?.totalAmount || "0");
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
@@ -149,7 +126,7 @@ export function CheckoutView({
 
   const handleShippingOptionChange = async (optionId: string) => {
     setSelectedShippingOptionId(optionId);
-    if (cart?.id) {
+    if (cart?.id && isValidUuid(optionId)) {
       await selectShippingOption(optionId);
     }
   };
@@ -228,18 +205,37 @@ export function CheckoutView({
         notes: formData.notes?.trim() || null,
       });
 
-      // Prepare shipping selections for backend
-      const shippingSelections = cart.deliveryGroups?.map((group) => ({
-        shippingProfileSlug: group.shippingProfileSlug,
-        sellerId: group.sellerId ?? null,
-        selectedShippingOptionId: activeShippingId,
-      })) ?? [];
+      // Prepare shipping selections for backend using valid option UUIDs only
+      const resolvedOptionUuid = isValidUuid(activeShippingId)
+        ? activeShippingId
+        : null;
+      const shippingSelections = (cart.deliveryGroups ?? [])
+        .map((group) => {
+          const groupOptionId = isValidUuid(group.selectedShippingOptionId)
+            ? group.selectedShippingOptionId
+            : resolvedOptionUuid;
+          if (!groupOptionId) return null;
+          return {
+            shippingProfileSlug: group.shippingProfileSlug,
+            sellerId: group.sellerId ?? null,
+            selectedShippingOptionId: groupOptionId,
+          };
+        })
+        .filter(
+          (
+            selection,
+          ): selection is {
+            shippingProfileSlug: string;
+            sellerId: string | null;
+            selectedShippingOptionId: string;
+          } => selection !== null,
+        );
 
       const result = await completeStorefrontCheckout(
         storefrontGraphql,
         {
           cartId: cart.id,
-          shippingOptionId: activeShippingId.includes("-") ? activeShippingId : null,
+          shippingOptionId: resolvedOptionUuid,
           shippingSelections:
             shippingSelections.length > 0 ? shippingSelections : undefined,
           countryCode: formData.countryCode,
@@ -670,50 +666,58 @@ export function CheckoutView({
             </div>
 
             <div className="mt-6 space-y-3">
-              {availableShippingOptions.map((option) => {
-                const isSelected = option.id === activeShippingId;
-                const optionPrice = parseFloat(option.amount || "0");
-                return (
-                  <label
-                    key={option.id}
-                    onClick={() => handleShippingOptionChange(option.id)}
-                    className={`flex items-center justify-between p-4 rounded-2xl border transition cursor-pointer ${
-                      isSelected
-                        ? "border-primary bg-primary/5 ring-1 ring-primary"
-                        : "border-border bg-background/60 hover:bg-muted/40"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="radio"
-                        name="shippingOption"
-                        checked={isSelected}
-                        onChange={() => handleShippingOptionChange(option.id)}
-                        className="h-4 w-4 text-primary focus:ring-primary"
-                      />
-                      <div>
-                        <span className="text-sm font-semibold text-foreground block">
-                          {option.name}
-                        </span>
-                        <span className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                          <Truck className="h-3 w-3" />
-                          {option.providerId}
+              {availableShippingOptions.length === 0 ? (
+                <p className="rounded-2xl border border-dashed border-border bg-background/60 p-4 text-xs text-muted-foreground">
+                  {isRu
+                    ? "Доступные способы доставки рассчитываются по адресу и региону корзины."
+                    : "Available shipping methods are calculated from the cart region and delivery groups."}
+                </p>
+              ) : (
+                availableShippingOptions.map((option) => {
+                  const isSelected = option.id === activeShippingId;
+                  const optionPrice = parseFloat(option.amount || "0");
+                  return (
+                    <label
+                      key={option.id}
+                      onClick={() => handleShippingOptionChange(option.id)}
+                      className={`flex items-center justify-between p-4 rounded-2xl border transition cursor-pointer ${
+                        isSelected
+                          ? "border-primary bg-primary/5 ring-1 ring-primary"
+                          : "border-border bg-background/60 hover:bg-muted/40"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="radio"
+                          name="shippingOption"
+                          checked={isSelected}
+                          onChange={() => handleShippingOptionChange(option.id)}
+                          className="h-4 w-4 text-primary focus:ring-primary"
+                        />
+                        <div>
+                          <span className="text-sm font-semibold text-foreground block">
+                            {option.name}
+                          </span>
+                          <span className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                            <Truck className="h-3 w-3" />
+                            {option.providerId}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <span className="text-sm font-bold text-foreground">
+                          {optionPrice === 0
+                            ? isRu
+                              ? "Бесплатно"
+                              : "Free"
+                            : `${optionPrice.toFixed(2)} ${option.currencyCode || currencyCode}`}
                         </span>
                       </div>
-                    </div>
-
-                    <div className="text-right">
-                      <span className="text-sm font-bold text-foreground">
-                        {optionPrice === 0
-                          ? isRu
-                            ? "Бесплатно"
-                            : "Free"
-                          : `${optionPrice.toFixed(2)} ${option.currencyCode || currencyCode}`}
-                      </span>
-                    </div>
-                  </label>
-                );
-              })}
+                    </label>
+                  );
+                })
+              )}
             </div>
           </div>
 
@@ -857,6 +861,15 @@ export function CheckoutView({
                     : `${shippingAmount.toFixed(2)} ${currencyCode}`}
                 </span>
               </div>
+
+              {taxAmount > 0 && (
+                <div className="flex justify-between text-muted-foreground">
+                  <span>{isRu ? "Налоги" : "Taxes"}</span>
+                  <span className="font-medium text-foreground">
+                    {taxAmount.toFixed(2)} {currencyCode}
+                  </span>
+                </div>
+              )}
 
               <div className="flex justify-between border-t border-border pt-3 text-sm font-extrabold text-foreground">
                 <span>{isRu ? "Итого к оплате" : "Total Amount"}</span>

@@ -47,7 +47,8 @@ impl Model {
     /// Calculates available stock quantity using saturating subtraction (stocked - reserved).
     #[inline]
     pub fn available_quantity(&self) -> i32 {
-        self.stocked_quantity.saturating_sub(self.reserved_quantity)
+        self.stocked_quantity
+            .saturating_sub(self.reserved_quantity.max(0))
     }
 
     /// Returns true if available quantity is at or below the low stock threshold.
@@ -94,5 +95,19 @@ mod tests {
         assert!(!level.can_reserve(8)); // exceeds available
         assert!(!level.can_reserve(0)); // non-positive requested
         assert!(!level.can_reserve(-2));
+
+        let corrupted_negative_reserved = Model {
+            reserved_quantity: -5,
+            ..level.clone()
+        };
+        assert_eq!(corrupted_negative_reserved.available_quantity(), 10);
+
+        let deficit = Model {
+            stocked_quantity: 2,
+            reserved_quantity: 5,
+            ..level
+        };
+        assert_eq!(deficit.available_quantity(), -3);
+        assert!(!deficit.can_reserve(1));
     }
 }
