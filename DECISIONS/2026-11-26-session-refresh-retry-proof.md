@@ -109,8 +109,14 @@ remains installed, a retry within grace recovers the same successor; if
 the new cookie was applied already, a fresh proof is derived for that
 generation. This does not serialize unrelated scripts, other clients,
 SSR navigation or arbitrary delayed delivery after a document is destroyed.
-Cross-tab provider projection invalidation and stale intent admission
-remain separate from the network fence.
+The shared Leptos provider now holds that same origin lock across its full
+transition in both CSR and hydrate. A non-secret start/end epoch fences
+queued intents and verified memory projections. Foreign epoch notifications
+clear the provider; stale refresh/logout/current-user intents are refused
+instead of adopting the new identity. Low-level transport calls share the
+network fence but do not carry a provider's intent. See the [client
+boundary ADR](./2026-11-13-auth-owned-client-ffa-boundary.md). Server-side
+expected-lineage admission and late noncooperating delivery remain open.
 
 The Leptos native/SSR BFF uses the same strategy with its own purpose
 `rustok/leptos-bff/refresh-retry` followed by NUL, the tenant bytes, NUL,

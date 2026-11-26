@@ -339,8 +339,8 @@ concurrency checks remain unrun.
 ## Proof-bound direct session refresh recovery (source only)
 
 The host accepts the owner-defined secret retry header for raw REST and
-GraphQL HTTP refresh, and derives the cookie REST proof from its envelope; derives the opaque successor under the
-independent MAC root, verifies the current digest and history under the
+GraphQL HTTP refresh, derives the cookie REST proof from its envelope, and
+derives the opaque successor under the independent MAC root, verifies the current digest and history under the
 user/session fences, and preserves the original refresh deadline and history
 on recovery. The GraphQL provider preserves rotation conflicts as CONFLICT.
 See [the recovery ADR](../../../../DECISIONS/2026-11-26-session-refresh-retry-proof.md).
@@ -372,8 +372,16 @@ parsing and one ambiguous refresh retry. The secure-context browser
 transport refuses redirects, uses no-store and same-origin Fetch, and
 requires Web Locks/AbortSignal.timeout. Cookie admission, proof derivation,
 retry and storage regressions are source-authored; mounted browser and
-failure-injection verification remain unrun. Out-of-order noncooperating
-responses, stale intents and cross-tab provider projections remain open.
+failure-injection verification remain unrun. The shared Leptos provider now
+extends the lock through publication for CSR and hydrate, rechecks the
+captured epoch at admission, clears foreign projections on existing
+notifications, and tags its atomic verified memory pair with the completed
+epoch. Native authenticated calls refuse stale/absent credentials and recheck
+before dispatch. Refresh rejects tenant/subject/lineage replacement. Source
+regressions cover changed, missing or unavailable epochs and identity
+substitution. Routine refresh conservatively invalidates foreign projections.
+Out-of-order noncooperating responses, SSR navigation, server-side expected
+lineage admission and mounted verification remain open.
 
 Remaining implementation: standalone Storefront SSR validated composition,
 Next Storefront (currently observation-only, without its own refresh flow),

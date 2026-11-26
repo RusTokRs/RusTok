@@ -155,3 +155,8 @@ OAuth/module availability/secret rotation, denied/revoked grants, backend and de
 remain pending; absent bindings refuse instead of falling back to system/admin authority.
 The [existing downstream task record](../rustok-inventory/docs/implementation-plan.md) tracks
 recovery/cutover gates. No public transport/UI or new operator capability is exposed here.
+
+The shared Leptos CSR/hydrate provider now source-wires origin-wide transition
+admission, foreign epoch invalidation and atomic verified memory publication.
+See [Auth UI](ui/README.md); browser execution and server-side expected-lineage
+admission remain pending.

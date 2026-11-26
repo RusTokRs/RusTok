@@ -791,3 +791,13 @@ On auth degradation:
 - [README crate](../README.md)
 - [Implementation Plan](./implementation-plan.md)
 - [Manifest Layer Contract](../../../../docs/modules/manifest.md)
+
+### Leptos client transition ownership (source only)
+
+The shared Auth UI provider holds one browser lock through the full CSR/hydrate
+transition and publishes one epoch-tagged user/session pair. Foreign browser
+epoch changes invalidate projections, refuse stale cookie intents and suppress
+native credential fallback. This is a client consistency fence, not backend
+authorization or an expected-lineage server precondition. See [Auth UI](../ui/README.md)
+and the [implementation plan](./implementation-plan.md). Mounted browser
+verification, noncooperating response ordering and seamless peer refresh remain open.

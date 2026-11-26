@@ -14223,6 +14223,7 @@ dependencies = [
  "rustok-graphql",
  "rustok-ui-auth",
  "rustok-ui-transport",
+ "send_wrapper",
  "serde",
  "serde_json",
  "sha2 0.11.1",

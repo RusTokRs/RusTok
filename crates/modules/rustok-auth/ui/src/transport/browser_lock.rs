@@ -24,9 +24,12 @@ pub(super) fn timeout_signal(milliseconds: u32) -> Result<web_sys::AbortSignal, 
         .dyn_into::<web_sys::AbortSignal>().map_err(|_| AuthError::Network)
 }
 
-pub(super) async fn with_cookie_lock<T: 'static>(
+pub(crate) async fn with_cookie_lock<T: 'static>(
     operation: impl Future<Output = Result<T, AuthError>> + 'static,
 ) -> Result<T, AuthError> {
+    // Capture before queuing; a new begin/end epoch means an older intent
+    // cannot run against the cookie installed by the winning transition.
+    let expected_epoch = super::browser_epoch::read()?;
     let window = web_sys::window().ok_or(AuthError::Network)?;
     let navigator = js_sys::Reflect::get(window.as_ref(), &JsValue::from_str("navigator"))
         .map_err(|_| AuthError::Network)?;
@@ -57,7 +60,8 @@ pub(super) async fn with_cookie_lock<T: 'static>(
     // subsequently dispatch the operation. No credentials enter the JS result.
     let callback = Closure::once_assert_unwind_safe(move |lock: JsValue| -> js_sys::Promise {
         future_to_promise(async move {
-            let outcome = if lock.is_null() || lock.is_undefined() {
+            let outcome = if lock.is_null() || lock.is_undefined()
+                || !super::browser_epoch::matches(&expected_epoch) {
                 Err(AuthError::Http(409))
             } else {
                 operation.await

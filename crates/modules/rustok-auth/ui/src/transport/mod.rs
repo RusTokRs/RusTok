@@ -1,6 +1,7 @@
 mod cookie_adapter;
 #[cfg(target_arch = "wasm32")]
-mod browser_lock;
+pub(crate) mod browser_lock;
+pub(crate) mod browser_epoch;
 mod graphql_adapter;
 mod native_server_adapter;
 
@@ -247,14 +248,24 @@ fn map_server_auth_error(error: impl std::fmt::Display, is_login: bool) -> AuthE
     }
 }
 
-/// The direct browser cookie is shared across tabs and tenants on an origin.
-/// Serialize all cooperating direct transports, not just refresh.
+/// Low-level cookie mutations also participate in the shared browser fence.
+/// Provider calls hold the same lock across their full transition and invoke
+/// only the crate-private unlocked adapter. Low-level callers receive no
+/// published AuthContext identity; they must not act on stale UI intent.
 async fn cookie_operation<T: 'static>(
     operation: impl std::future::Future<Output = Result<T, AuthError>> + 'static,
 ) -> Result<T, AuthError> {
     #[cfg(target_arch = "wasm32")]
     {
-        browser_lock::with_cookie_lock(operation).await
+        browser_lock::with_cookie_lock(async move {
+            let stamp = browser_epoch::publish("transport", true)?;
+            let outcome = operation.await;
+            if !browser_epoch::matches(&stamp) {
+                return Err(AuthError::Http(409));
+            }
+            browser_epoch::publish("transport", true)?;
+            outcome
+        }).await
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -263,6 +274,14 @@ async fn cookie_operation<T: 'static>(
 }
 
 pub async fn sign_in(
+    email: String,
+    password: String,
+    tenant: String,
+) -> Result<(AuthUser, AuthSession), AuthError> {
+    cookie_operation(sign_in_unlocked(email, password, tenant)).await
+}
+
+pub(crate) async fn sign_in_unlocked(
     email: String,
     password: String,
     tenant: String,
@@ -276,11 +295,20 @@ pub async fn sign_in(
         }
         // Browser-direct mode talks to the HttpOnly cookie session
         // endpoints; the refresh token never reaches JavaScript.
-        UiTransportPath::Graphql => cookie_operation(cookie_adapter::sign_in_cookie(email, password, tenant)).await,
+        UiTransportPath::Graphql => cookie_adapter::sign_in_cookie(email, password, tenant).await,
     }
 }
 
 pub async fn sign_up(
+    email: String,
+    password: String,
+    name: Option<String>,
+    tenant: String,
+) -> Result<(AuthUser, AuthSession), AuthError> {
+    cookie_operation(sign_up_unlocked(email, password, name, tenant)).await
+}
+
+pub(crate) async fn sign_up_unlocked(
     email: String,
     password: String,
     name: Option<String>,
@@ -294,17 +322,21 @@ pub async fn sign_up(
             Ok((payload.user, payload.session))
         }
         UiTransportPath::Graphql => {
-            cookie_operation(cookie_adapter::sign_up_cookie(email, password, name, tenant)).await
+            cookie_adapter::sign_up_cookie(email, password, name, tenant).await
         }
     }
 }
 
 pub async fn sign_out(tenant: String) -> Result<(), AuthError> {
+    cookie_operation(sign_out_unlocked(tenant)).await
+}
+
+pub(crate) async fn sign_out_unlocked(tenant: String) -> Result<(), AuthError> {
     match selected_transport_path() {
         UiTransportPath::NativeServer => native_server_adapter::sign_out_native(tenant)
             .await
             .map_err(|error| map_server_auth_error(error, false)),
-        UiTransportPath::Graphql => cookie_operation(cookie_adapter::sign_out_cookie(tenant)).await,
+        UiTransportPath::Graphql => cookie_adapter::sign_out_cookie(tenant).await,
     }
 }
 
@@ -312,6 +344,10 @@ pub async fn sign_out(tenant: String) -> Result<(), AuthError> {
 /// `None` is an explicit native-host observation that the refresh cookie was absent;
 /// an invalid/expired credential or an ambiguous direct-cookie 401 remains an error.
 pub async fn refresh_session(tenant: String) -> Result<Option<(AuthSession, AuthUser)>, AuthError> {
+    cookie_operation(refresh_session_unlocked(tenant)).await
+}
+
+pub(crate) async fn refresh_session_unlocked(tenant: String) -> Result<Option<(AuthSession, AuthUser)>, AuthError> {
     match selected_transport_path() {
         UiTransportPath::NativeServer => {
             let payload = native_server_adapter::refresh_token_native(tenant)
@@ -319,7 +355,7 @@ pub async fn refresh_session(tenant: String) -> Result<Option<(AuthSession, Auth
                 .map_err(|error| map_server_auth_error(error, false))?;
             Ok(payload.map(|payload| (payload.session, payload.user)))
         }
-        UiTransportPath::Graphql => cookie_operation(cookie_adapter::refresh_session_cookie(tenant))
+        UiTransportPath::Graphql => cookie_adapter::refresh_session_cookie(tenant)
             .await
             .map(Some),
     }

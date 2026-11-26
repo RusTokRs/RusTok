@@ -44,7 +44,7 @@ runtime parity with it.
 `ADMIN_TENANT_KEY`, but a foreign existing tenant/session is never overwritten. Failed binding
 refuses restoration rather than silently borrowing a default tenant. It issues no credentials,
 creates no auth storage key/protocol and does not invent an SSR session. Browser native headers
-still read canonical auth storage; header application failures now refuse before IO. SSR hosts
+read the epoch-verified canonical auth pair; absent or invalid metadata refuses before IO. SSR hosts
 must validate and supply their own auth snapshot where required; native Product reads use the
 validated Axum request context. Browser header mutation uses the fallible
 `web_sys::Headers` obtained from the Leptos request wrapper. The gloo convenience
@@ -52,18 +52,24 @@ setter returns unit and throws; it cannot implement this error contract.
 
 ## Client auth scope and outstanding verification
 
-The provider exposes a non-secret generation and marks it unavailable during transitions. In
-source, cooperating providers in the same browser document use a shared lease and refuse overlap;
-a dropped future poisons that document's lease because it does not cancel a request or its cookie
-side effects. Notifications contain no credentials. If notification storage is unavailable, a
-transition fails before network I/O. Other tabs receive an asynchronous invalidation stamp, not an
-atomic lock, and old requests may still affect cookies after a reload. The Auth provider itself
-does not subscribe to these notifications; Cart's bridge invalidates its own state, but other
-provider projections can remain stale across roots or tabs. Route authentication and some
-storage-backed transports also do not use the ready-scope getters. Server authentication and tenant
-checks remain authoritative. On the cutover commit, [CI run 43575756113](https://github.com/RusTokRs/RusTok/actions/runs/43575756113)
-passed locked Auth native default/SSR tests, the public contract and Auth admin SSR check; Auth
-and Auth admin CSR WASM checks and the Product buyer island (including Auth hydrate) also passed.
+The provider exposes a non-secret generation and marks it unavailable during
+transitions. Both CSR and hydrate use the same exclusive origin-wide Web Lock
+through admission, I/O and publication. The existing localStorage epoch
+changes at start and finish, and queued intents recheck it at lock admission.
+Auth providers subscribe to the existing custom event, storage, focus and
+pageshow notifications; foreign epochs invalidate projections without adopting
+the new identity. Explicit sign-in or reload establishes a new scope. Shared
+memory contains one verified user/session pair tagged with the completed epoch;
+all readers refuse stale epochs synchronously. Authenticated native functions
+refuse absent credentials rather than falling back to ambient cookies, and
+recheck epoch before dispatch. Refresh must preserve tenant, subject and session
+lineage. Failed logout retains provider signals only for explicit retry, not
+verified memory. The document lease still poisons an abandoned transition.
+No token, identity or proof enters localStorage. A routine refresh invalidates
+other projections conservatively; seamless cross-tab restoration, late
+noncooperating cookie delivery and server-side expected-lineage admission
+remain open. Backend authentication and authorization remain authoritative.
+
 Full host checks and mounted-provider verification remain open. Standalone state-machine tests do
 not prove the browser protocol. The Blog reference plan records earlier bounded package/WASM
 compilation, not validation of this change.
@@ -110,6 +116,6 @@ response parsing and bounded retry complete. The browser must support Web
 Locks and AbortSignal.timeout in a secure context. Fetch uses same-origin
 mode/credentials, redirect:error, no-store, and a 10-second timeout.
 Standalone Storefront SSR still needs validated host composition. Late
-noncooperating response ordering, stale intent/projection invalidation,
+noncooperating response ordering, server-side expected-lineage admission,
 mounted browser verification and real backend/replica failure injection
 remain open.

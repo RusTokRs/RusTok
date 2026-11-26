@@ -63,14 +63,17 @@ page, change the Next.js implementation, or redefine server authorization.
 
 ## Data, transaction, and concurrency boundary
 
-No new database or persisted identity format is introduced. The existing
-same-document lease coordinates cooperating providers only; it cannot cancel
-already-sent requests, serialize other tabs, or constrain unrelated scripts.
-The Auth provider does not yet subscribe to external invalidation notifications:
-Cart's bridge invalidates its own state, but other provider projections may stay
-stale across roots or tabs. Route guards and some storage-backed transports also
-bypass ready-scope getters. These are open implementation gaps, not guarantees of
-this decision. The Auth backend retains session rotation and revocation transaction ownership.
+No new database or persisted credential format is introduced. Cooperating
+Leptos CSR and hydrate providers hold one origin-wide exclusive Web Lock
+across admission, network I/O, response processing and projection publication.
+The existing non-secret storage epoch changes at transition start and finish
+under that lock; a queued intent must observe the same epoch at admission.
+The document lease still fences dropped or disposed providers. Neither lock
+cancels already-sent requests nor constrains unrelated scripts or SSR navigation.
+A provider refuses refresh/logout/revalidation when its observed epoch differs;
+explicit sign-in or a document reload can establish a new identity. Failed
+sign-in in a stale document does not adopt the current epoch. The Auth backend
+retains session rotation and revocation transaction ownership.
 
 ## Context dimensions
 
@@ -81,17 +84,28 @@ by this client lifecycle boundary.
 
 ## Events and projections
 
-Non-secret browser notifications let cooperating consumers invalidate projections;
-Cart's bridge consumes them, but Auth providers do not yet do so. They are neither
-durable outbox events nor cross-tab locks. In-memory user/session projections and
-scope stamps cannot prove server state or revoke a request already sent.
+Non-secret browser notifications let cooperating consumers invalidate projections.
+Auth providers subscribe to the existing custom event, storage, focus and pageshow
+notifications and compare the actual storage epoch, not the event's stale payload.
+Foreign transitions clear provider projections without automatically adopting
+another identity. Shared browser storage publishes an atomic verified user/session
+pair tagged by the exact completed epoch; readers reject mismatched or unavailable
+epochs even before a notification arrives. The authenticated native client
+requires that pair and rechecks the epoch before dispatch. These notifications
+are neither durable outbox events nor authorization. Scope stamps cannot prove
+server state or revoke a request already sent. A refresh response cannot change
+the projected tenant, user or session lineage.
 
 ## Failure semantics
 
 Malformed, foreign, duplicate, rejected or uncertain credentials fail closed;
 logout/refresh uncertainty remains retryable and is not silently confirmed.
-The direct-cookie endpoint's absence/rejection ambiguity and redirected browser
-fetch limitations remain explicit verification and product gates.
+The direct-cookie endpoint's absence/rejection ambiguity remains explicit.
+Direct browser Fetch refuses redirects; hydrate server-function redirect behavior,
+late noncooperating cookie delivery, server-side expected-lineage admission,
+mounted multi-root/tab and native request verification remain open. Ordinary
+refresh invalidates foreign projections conservatively; seamless same-identity
+cross-tab restoration is not claimed.
 
 ## Migration and cutover
 
