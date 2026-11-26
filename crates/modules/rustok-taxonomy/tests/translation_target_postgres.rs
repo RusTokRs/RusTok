@@ -44,9 +44,12 @@ struct PostgresTaxonomyTranslationDb {
 impl PostgresTaxonomyTranslationDb {
     async fn setup() -> TestResult<Option<Self>> {
         let Some(database_url) = postgres_database_url() else {
-            eprintln!(
-                "{DATABASE_ENV} is not set to a PostgreSQL URL; skipping Taxonomy translation-target evidence"
-            );
+            #[allow(clippy::print_stderr)]
+            {
+                eprintln!(
+                    "{DATABASE_ENV} is not set to a PostgreSQL URL; skipping Taxonomy translation-target evidence"
+                );
+            }
             return Ok(None);
         };
 
@@ -346,7 +349,10 @@ async fn change_cursor_resumes_after_provider_reconstruction_and_delete() -> Tes
 #[tokio::test]
 async fn change_cursor_keeps_a_write_that_commits_after_a_later_insert() -> TestResult<()> {
     let Some(url) = postgres_database_url() else {
-        eprintln!("{DATABASE_ENV} is required for PostgreSQL commit-order evidence");
+        #[allow(clippy::print_stderr)]
+        {
+            eprintln!("{DATABASE_ENV} is required for PostgreSQL commit-order evidence");
+        }
         return Ok(());
     };
     let control = connect(&url).await?;

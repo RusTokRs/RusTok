@@ -18,9 +18,12 @@ type TestResult<T> = Result<T, Box<dyn StdError + Send + Sync>>;
 #[tokio::test]
 async fn concurrent_opposite_parent_moves_commit_once() -> TestResult<()> {
     let Some(database_url) = postgres_database_url() else {
-        eprintln!(
-            "{DATABASE_ENV} is not set to a PostgreSQL URL; skipping Taxonomy Category hierarchy contention evidence"
-        );
+        #[allow(clippy::print_stderr)]
+        {
+            eprintln!(
+                "{DATABASE_ENV} is not set to a PostgreSQL URL; skipping Taxonomy Category hierarchy contention evidence"
+            );
+        }
         return Ok(());
     };
 

@@ -17,9 +17,12 @@ type TestResult<T> = Result<T, Box<dyn StdError + Send + Sync>>;
 #[tokio::test]
 async fn postgres_category_presentation_guard_and_cas_fail_closed() -> TestResult<()> {
     let Some(database_url) = postgres_database_url() else {
-        eprintln!(
-            "{DATABASE_ENV} is not set to a PostgreSQL URL; skipping Taxonomy Category presentation PostgreSQL evidence"
-        );
+        #[allow(clippy::print_stderr)]
+        {
+            eprintln!(
+                "{DATABASE_ENV} is not set to a PostgreSQL URL; skipping Taxonomy Category presentation PostgreSQL evidence"
+            );
+        }
         return Ok(());
     };
 

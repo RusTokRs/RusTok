@@ -30,9 +30,12 @@ struct PostgresTaxonomyRouteContentionDb {
 impl PostgresTaxonomyRouteContentionDb {
     async fn setup() -> TestResult<Option<Self>> {
         let Some(database_url) = postgres_database_url() else {
-            eprintln!(
-                "{TAXONOMY_TEST_DATABASE_ENV} is not set to a PostgreSQL URL; skipping Taxonomy route-registry contention test"
-            );
+            #[allow(clippy::print_stderr)]
+            {
+                eprintln!(
+                    "{TAXONOMY_TEST_DATABASE_ENV} is not set to a PostgreSQL URL; skipping Taxonomy route-registry contention test"
+                );
+            }
             return Ok(None);
         };
 
@@ -55,9 +58,12 @@ impl PostgresTaxonomyRouteContentionDb {
         .await;
 
         if let Err(error) = setup_result {
-            let _ = control
+            if let Err(drop_error) = control
                 .execute_unprepared(&format!(r#"DROP SCHEMA IF EXISTS "{schema_name}" CASCADE"#))
-                .await;
+                .await
+            {
+                tracing::warn!(%drop_error, schema = %schema_name, "failed to drop temporary taxonomy test schema");
+            }
             return Err(error.into());
         }
 

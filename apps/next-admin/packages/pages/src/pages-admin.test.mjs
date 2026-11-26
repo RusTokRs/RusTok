@@ -45,6 +45,7 @@ const createApiModule = (mockGraphqlRequest) => {
       DELETE_STARTER_MUTATION,
       CREATE_PAGE_MUTATION,
       UNPUBLISH_PAGE_MUTATION,
+      ARCHIVE_PAGE_MUTATION,
       DELETE_PAGE_MUTATION,
       listPages,
       listPageStarters,
@@ -55,6 +56,7 @@ const createApiModule = (mockGraphqlRequest) => {
       deleteStarter,
       createPage,
       unpublishPage,
+      archivePage,
       deletePage
     });`,
     ['graphqlRequest', 'exports']
