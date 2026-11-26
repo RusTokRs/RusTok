@@ -29,7 +29,7 @@ controller modules re-export or import those owner DTOs only for OpenAPI/route c
 - auth configuration, complete RS256 keyring-document validation, and host policy assembly/validation;
 - encode/decode helpers for access/reset/invite/email-verification token flows; self-service email changes use 256-bit random one-time tokens stored only as SHA-256 digests; JWT encoders reject TTL values that cannot be represented safely as a checked `chrono` duration;
 - password hashing, password verification and refresh-token helpers; refresh-token generation uses the OS RNG and propagates RNG failures as a typed `AuthError::RefreshTokenGenerationFailed` instead of panicking;
-- auth-owned migrations, including tenant-scoped one-time email-change challenges with unique pending mailbox reservations;
+- auth-owned migrations, including tenant-scoped one-time email-change challenges with unique pending mailbox reservations and database-enforced `(tenant_id, user_id)` integrity (composite FK on PostgreSQL; insert/update and parent-move triggers on SQLite);
 - auth-owned auth/OAuth/users REST DTO/OpenAPI schema surface in `rest.rs`, with host controllers
   limited to transport extraction, persistence adapters and response mapping;
 - publication of permission surface `users:*` via `AUTH_USER_PERMISSIONS` and `RusToKModule::permissions()`.

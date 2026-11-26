@@ -264,9 +264,11 @@ impl AuthLifecycleService {
             .map_err(AuthLifecycleError::from)?
             .ok_or(AuthLifecycleError::InvalidEmailChangeToken)?;
 
-        if authenticated_user_id.is_some_and(|user_id| user_id != observed_request.user_id)
-            || authenticated_user_id.is_none() && current_session_id.is_some()
-        {
+        if authenticated_user_id.is_some() != current_session_id.is_some() {
+            return Err(AuthLifecycleError::InvalidEmailChangeToken);
+        }
+
+        if authenticated_user_id.is_some_and(|user_id| user_id != observed_request.user_id) {
             return Err(AuthLifecycleError::InvalidEmailChangeToken);
         }
 
@@ -451,7 +453,7 @@ async fn delete_email_change_request(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{tenants, users};
+    use crate::models::{sessions, tenants, users};
     use rustok_migrations::SqliteTestMigrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{ActiveModelTrait, EntityTrait, Set};
@@ -530,6 +532,28 @@ mod tests {
             .await
             .expect("user");
         let token_hash = "a".repeat(64);
+        let first_session = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            "first-session-hash".to_string(),
+            Utc::now() + Duration::hours(1),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("first session");
+        let _second_session = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            "second-session-hash".to_string(),
+            Utc::now() + Duration::hours(1),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("second session");
         insert_pending_request(
             &db,
             tenant.id,
@@ -559,6 +583,15 @@ mod tests {
         assert_eq!(updated.email, "new@example.com");
         assert!(updated.email_verified_at.is_some());
 
+        let remaining_sessions = sessions::Entity::find()
+            .filter(sessions::Column::TenantId.eq(tenant.id))
+            .filter(sessions::Column::UserId.eq(user.id))
+            .all(&db)
+            .await
+            .expect("query revoked sessions");
+        assert_eq!(remaining_sessions.len(), 2);
+        assert!(remaining_sessions.iter().all(|session| session.revoked_at.is_some()));
+
         let remaining = AuthEmailChangeRequests::find()
             .filter(auth_email_change_requests::Column::TokenHash.eq(&token_hash))
             .one(&db)
@@ -577,6 +610,125 @@ mod tests {
             .await,
             Err(AuthLifecycleError::InvalidEmailChangeToken)
         ));
+    }
+
+    #[tokio::test]
+    async fn confirmation_requires_authenticated_identity_and_session_together() {
+        let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
+        ensure_email_change_table(&db).await;
+        let tenant = tenants::ActiveModel::new("Tenant", "email-change-context")
+            .insert(&db)
+            .await
+            .expect("tenant");
+        let user = users::ActiveModel::new(tenant.id, "old@example.com", "password-hash")
+            .insert(&db)
+            .await
+            .expect("user");
+        let token_hash = "d".repeat(64);
+        insert_pending_request(
+            &db,
+            tenant.id,
+            &user,
+            "new@example.com",
+            &token_hash,
+        )
+        .await;
+
+        for (authenticated_user_id, current_session_id) in [
+            (Some(user.id), None),
+            (None, Some(Uuid::new_v4())),
+            (Some(Uuid::new_v4()), Some(Uuid::new_v4())),
+        ] {
+            assert!(matches!(
+                AuthLifecycleService::confirm_email_change_db(
+                    &db,
+                    tenant.id,
+                    &token_hash,
+                    authenticated_user_id,
+                    current_session_id,
+                )
+                .await,
+                Err(AuthLifecycleError::InvalidEmailChangeToken)
+            ));
+        }
+
+        assert!(
+            AuthEmailChangeRequests::find()
+                .filter(auth_email_change_requests::Column::TokenHash.eq(&token_hash))
+                .one(&db)
+                .await
+                .expect("query pending request")
+                .is_some(),
+            "invalid caller context must not consume the email-change challenge"
+        );
+    }
+
+    #[tokio::test]
+    async fn authenticated_confirmation_preserves_only_the_proving_session() {
+        let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
+        ensure_email_change_table(&db).await;
+        let tenant = tenants::ActiveModel::new("Tenant", "email-change-session")
+            .insert(&db)
+            .await
+            .expect("tenant");
+        let user = users::ActiveModel::new(tenant.id, "old@example.com", "password-hash")
+            .insert(&db)
+            .await
+            .expect("user");
+        let current = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            "current-session-hash".to_string(),
+            Utc::now() + Duration::hours(1),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("current session");
+        let other = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            "other-session-hash".to_string(),
+            Utc::now() + Duration::hours(1),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("other session");
+        let token_hash = "e".repeat(64);
+        insert_pending_request(
+            &db,
+            tenant.id,
+            &user,
+            "new@example.com",
+            &token_hash,
+        )
+        .await;
+
+        AuthLifecycleService::confirm_email_change_db(
+            &db,
+            tenant.id,
+            &token_hash,
+            Some(user.id),
+            Some(current.id),
+        )
+        .await
+        .expect("confirm email change");
+
+        let current = sessions::Entity::find_by_id(current.id)
+            .one(&db)
+            .await
+            .expect("query current session")
+            .expect("current session exists");
+        let other = sessions::Entity::find_by_id(other.id)
+            .one(&db)
+            .await
+            .expect("query other session")
+            .expect("other session exists");
+        assert!(current.revoked_at.is_none());
+        assert!(other.revoked_at.is_some());
     }
 
     #[tokio::test]
