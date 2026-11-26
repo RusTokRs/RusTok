@@ -185,7 +185,7 @@ async fn notification_fanout_worker_loop(
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
 ) {
     loop {
-        if *stop_rx.borrow() {
+        if !may_admit_next_worker_operation(&stop_rx) {
             tracing::info!(
                 worker_id = worker.worker_id(),
                 "Notification fanout worker stopped"
@@ -206,7 +206,7 @@ async fn notification_fanout_worker_loop(
             }
         };
         for work in source_work {
-            if *stop_rx.borrow() {
+            if !may_admit_next_worker_operation(&stop_rx) {
                 tracing::info!(
                     worker_id = worker.worker_id(),
                     "Notification fanout worker stopped before next source claim"
@@ -275,7 +275,7 @@ async fn notification_fanout_worker_loop(
             }
         };
         for work in job_work {
-            if *stop_rx.borrow() {
+            if !may_admit_next_worker_operation(&stop_rx) {
                 tracing::info!(
                     worker_id = worker.worker_id(),
                     "Notification fanout worker stopped before next job claim"

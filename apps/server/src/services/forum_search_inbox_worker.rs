@@ -22,7 +22,7 @@ use crate::error::{Error, Result};
 use crate::services::app_lifecycle::DirectWorkerRegistrationLock;
 use crate::services::server_runtime_context::published_worker_running;
 use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
-use crate::services::stop_handle::StopHandle;
+use crate::services::stop_handle::{StopHandle, may_admit_next_worker_operation};
 
 const FORUM_SEARCH_INBOX_POLL_INTERVAL: Duration = Duration::from_secs(5);
 static FORUM_SEARCH_INBOX_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
@@ -175,7 +175,7 @@ async fn forum_search_inbox_worker_loop(
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
 ) {
     loop {
-        if *stop_rx.borrow() {
+        if !may_admit_next_worker_operation(&stop_rx) {
             tracing::info!("Forum Search inbox worker stopped");
             return;
         }

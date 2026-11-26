@@ -270,7 +270,7 @@ async fn social_graph_index_worker_loop(
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
 ) {
     loop {
-        if *stop_rx.borrow() {
+        if !may_admit_next_worker_operation(&stop_rx) {
             record_worker_termination("shutdown");
             tracing::info!(worker = METRICS_CONSUMER, "Worker received shutdown signal");
             return;

@@ -21,7 +21,7 @@ use uuid::Uuid;
 use crate::error::{Error, Result};
 use crate::services::app_lifecycle::DirectWorkerRegistrationLock;
 use crate::services::server_runtime_context::published_worker_running;
-use crate::services::stop_handle::StopHandle;
+use crate::services::stop_handle::{StopHandle, may_admit_next_worker_operation};
 use crate::services::server_runtime_context::{ServerRuntimeContext, ServerRuntimeStartReservation};
 
 pub const NOTIFICATION_OUTBOX_INTAKE_ENABLED_ENV: &str =
@@ -336,7 +336,7 @@ async fn notification_outbox_intake_loop(
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
 ) {
     loop {
-        if *stop_rx.borrow() {
+        if !may_admit_next_worker_operation(&stop_rx) {
             tracing::info!("Notification outbox intake stopped");
             return;
         }
@@ -354,7 +354,7 @@ async fn notification_outbox_intake_loop(
         };
 
         for outbox_event_id in event_ids {
-            if *stop_rx.borrow() {
+            if !may_admit_next_worker_operation(&stop_rx) {
                 tracing::info!("Notification outbox intake stopped before next envelope");
                 return;
             }

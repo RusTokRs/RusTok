@@ -45,6 +45,13 @@ fallback handle. Producer/dispatcher/forwarder shutdown order is unchanged.
 Abort remains cooperative at Tokio cancellation points, so cleanup of a
 non-yielding task is not guaranteed.
 
+The durable worker admission helper also treats a closed shutdown watch as a
+terminal signal even if its last value is `false`. The payment provider,
+marketplace financial recovery, outbox retention, forum search inbox,
+notification intake/candidate/fanout and Social Graph consumer loops use this
+check before new work. Already-admitted durable operations are not cancelled
+by channel closure. Source regressions were added but not executed.
+
 ## Forwarded authority parsing (2026-11-25)
 
 The shared request-trust boundary preserves quoted RFC Forwarded delimiters,

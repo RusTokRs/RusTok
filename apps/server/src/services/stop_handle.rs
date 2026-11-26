@@ -6,11 +6,11 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 ///
 /// Finish operations already claimed. Recheck immediately after awaited
 /// preparation (broker receive, tenant policy, retry transition) and before
-/// the next effectful owner call.
+/// the next effectful owner call. A closed watch channel also fences new work.
 pub(crate) fn may_admit_next_worker_operation(
     stop_rx: &tokio::sync::watch::Receiver<bool>,
 ) -> bool {
-    !*stop_rx.borrow()
+    stop_rx.has_changed().is_ok() && !*stop_rx.borrow()
 }
 
 /// Check shutdown before invoking the next durable operation, then await the
@@ -73,7 +73,7 @@ pub(crate) async fn run_until_stopped<F>(
 ) where
     F: std::future::Future<Output = ()>,
 {
-    if *stop_rx.borrow() {
+    if !may_admit_next_worker_operation(&stop_rx) {
         return;
     }
     tokio::select! {
@@ -276,6 +276,33 @@ mod tests {
         .await;
         assert_eq!(result, None);
         assert!(!invoked.get(), "the effectful operation must not be admitted");
+    }
+
+    #[tokio::test]
+    async fn closed_stop_channel_never_admits_next_durable_operation() {
+        let (stop, receiver) = StopHandle::new();
+        assert!(may_admit_next_worker_operation(&receiver));
+        drop(stop);
+        assert!(!may_admit_next_worker_operation(&receiver));
+        let invoked = std::cell::Cell::new(false);
+        let result = run_admitted_worker_operation(&receiver, || {
+            invoked.set(true);
+            async { 42_u32 }
+        }).await;
+        assert_eq!(result, None);
+        assert!(!invoked.get());
+    }
+
+    #[tokio::test]
+    async fn closing_stop_channel_does_not_cancel_admitted_work() {
+        let (stop, receiver) = StopHandle::new();
+        let result = run_admitted_worker_operation(&receiver, || async move {
+            drop(stop);
+            tokio::task::yield_now().await;
+            42_u32
+        }).await;
+        assert_eq!(result, Some(42));
+        assert!(!may_admit_next_worker_operation(&receiver));
     }
 
     #[tokio::test]
