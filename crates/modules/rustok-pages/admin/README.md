@@ -50,7 +50,10 @@ verified against a running server.
   problem texts of the endpoint.
 - Offers "Restore" in the revision history only to a principal whose permission
   snapshot grants `pages:update` (`access::pages_can_restore_body_revision`).
-  The history itself is readable with `pages:publish` as well. The server
+  The history itself is readable with `pages:publish` as well. The Page Builder
+  editor's Publish action saves the working copy through `save_document` and
+  therefore requires `pages:update`; `pages:publish` alone does not grant that
+  editor action. Actual publication remains a separate Pages workflow. The server
   remains the authority and also applies the ownership scope of the grant.
 - Uses the shared `rustok-seo` GraphQL contract through `rustok-seo-panel` for explicit page SEO authoring.
 - Follows the generic host route contract `/modules/:module_slug`.
