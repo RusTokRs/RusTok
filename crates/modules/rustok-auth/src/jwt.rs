@@ -140,11 +140,7 @@ pub fn issue_direct_access_token(
         jti: None,
     };
 
-    let token = encode_for_purpose(config, JwtPurpose::Access, &claims)?;
-    let after = config.credential_now()?;
-    if after < now || after >= expires_at {
-        return Err(AuthError::TokenEncodingFailed);
-    }
+    let token = encode_live_token(config, JwtPurpose::Access, &claims, now, expires_at)?;
     Ok(IssuedAccessToken { token, issued_at: now, expires_at })
 }
 
@@ -214,11 +210,7 @@ pub fn issue_oauth_access_token(
     if !valid_access_subject(&claims) {
         return Err(AuthError::TokenEncodingFailed);
     }
-    let token = encode_for_purpose(config, JwtPurpose::Access, &claims)?;
-    let after = config.credential_now()?;
-    if after < now || after >= expires_at {
-        return Err(AuthError::TokenEncodingFailed);
-    }
+    let token = encode_live_token(config, JwtPurpose::Access, &claims, now, expires_at)?;
     Ok(IssuedAccessToken { token, issued_at: now, expires_at })
 }
 
@@ -284,7 +276,7 @@ pub fn encode_password_reset_token(
         return Err(AuthError::TokenEncodingFailed);
     }
     tracing::debug!(tenant_id = %tenant_id, "Encoding password reset token");
-    let now = Utc::now();
+    let now = config.credential_now()?;
     let exp = token_expiration(now, ttl_seconds)?;
 
     let claims = PasswordResetClaims {
@@ -297,7 +289,7 @@ pub fn encode_password_reset_token(
         iat: now.timestamp() as usize,
     };
 
-    encode_for_purpose(config, JwtPurpose::PasswordReset, &claims)
+    encode_live_token(config, JwtPurpose::PasswordReset, &claims, now, exp)
 }
 
 pub fn decode_password_reset_token(
@@ -334,7 +326,7 @@ pub fn encode_email_verification_token(
         return Err(AuthError::TokenEncodingFailed);
     }
     tracing::debug!(tenant_id = %tenant_id, "Encoding email verification token");
-    let now = Utc::now();
+    let now = config.credential_now()?;
     let exp = token_expiration(now, ttl_seconds)?;
 
     let claims = EmailVerificationClaims {
@@ -347,7 +339,7 @@ pub fn encode_email_verification_token(
         iat: now.timestamp() as usize,
     };
 
-    encode_for_purpose(config, JwtPurpose::EmailVerification, &claims)
+    encode_live_token(config, JwtPurpose::EmailVerification, &claims, now, exp)
 }
 
 pub fn decode_email_verification_token(
@@ -389,7 +381,7 @@ pub fn encode_invite_token(
         return Err(AuthError::TokenEncodingFailed);
     }
     tracing::debug!(tenant_id = %tenant_id, role = ?role, "Encoding invite token");
-    let now = Utc::now();
+    let now = config.credential_now()?;
     let exp = token_expiration(now, ttl_seconds)?;
 
     let claims = InviteClaims {
@@ -405,7 +397,7 @@ pub fn encode_invite_token(
         iat: now.timestamp() as usize,
     };
 
-    encode_for_purpose(config, JwtPurpose::Invite, &claims)
+    encode_live_token(config, JwtPurpose::Invite, &claims, now, exp)
 }
 
 pub fn decode_invite_token(config: &AuthConfig, token: &str) -> Result<InviteClaims> {
@@ -440,7 +432,7 @@ fn valid_invite_role(role: &UserRole, custom_role_slug: Option<&str>) -> bool {
 }
 
 fn token_expiration(now: chrono::DateTime<Utc>, ttl_seconds: u64) -> Result<chrono::DateTime<Utc>> {
-    if ttl_seconds == 0 {
+    if ttl_seconds == 0 || now.timestamp() <= 0 {
         return Err(AuthError::TokenEncodingFailed);
     }
     let ttl_seconds = i64::try_from(ttl_seconds)
@@ -454,6 +446,31 @@ fn token_expiration(now: chrono::DateTime<Utc>, ttl_seconds: u64) -> Result<chro
     usize::try_from(now.timestamp()).map_err(|_| AuthError::TokenEncodingFailed)?;
     usize::try_from(exp.timestamp()).map_err(|_| AuthError::TokenEncodingFailed)?;
     Ok(exp)
+}
+
+/// All issuing paths use the live credential gate and the exclusive signed
+/// NumericDate deadline, including when signing crosses a second boundary.
+fn encode_live_token<T: Serialize>(
+    config: &AuthConfig,
+    purpose: JwtPurpose,
+    claims: &T,
+    issued_at: chrono::DateTime<Utc>,
+    expiration: chrono::DateTime<Utc>,
+) -> Result<String> {
+    let token = encode_for_purpose(config, purpose, claims)?;
+    let after = config.credential_now()?;
+    if !issuance_is_live(issued_at, expiration, after) {
+        return Err(AuthError::TokenEncodingFailed);
+    }
+    Ok(token)
+}
+
+fn issuance_is_live(
+    issued_at: chrono::DateTime<Utc>,
+    expiration: chrono::DateTime<Utc>,
+    observed_at: chrono::DateTime<Utc>,
+) -> bool {
+    observed_at >= issued_at && observed_at.timestamp() < expiration.timestamp()
 }
 
 // ─── Key helpers ─────────────────────────────────────────────────────
@@ -1113,6 +1130,27 @@ mod tests {
                 assert!(!valid_token_times(overflow, overflow));
             }
         }
+    }
+
+    #[test]
+    fn issuance_rejects_backward_time_and_exact_signed_expiry() {
+        let issued = chrono::DateTime::<Utc>::from_timestamp_millis(1_700_000_000_900).unwrap();
+        let expiration = token_expiration(issued, 1).unwrap();
+        let signed_deadline =
+            chrono::DateTime::<Utc>::from_timestamp(expiration.timestamp(), 0).unwrap();
+        assert!(issuance_is_live(issued, expiration, issued));
+        assert!(issuance_is_live(
+            issued, expiration, signed_deadline - Duration::milliseconds(1),
+        ));
+        assert!(!issuance_is_live(issued, expiration, signed_deadline));
+        assert!(!issuance_is_live(
+            issued, expiration, signed_deadline + Duration::milliseconds(1),
+        ));
+        assert!(!issuance_is_live(
+            issued, expiration, issued - Duration::milliseconds(1),
+        ));
+        let epoch = chrono::DateTime::<Utc>::from_timestamp(0, 0).unwrap();
+        assert!(token_expiration(epoch, 900).is_err());
     }
 
     #[test]

@@ -187,6 +187,12 @@ and cross-replica verification pending.
 
 ## Recovery credential lifecycle (2026-11-26)
 
+All JWT issuers, including reset, verification and invite, sample the live
+credential clock before preparing claims and recheck it after RSA signing.
+Reject backward time or an elapsed exclusive signed whole-second expiry;
+this does not extend the deadline or replace application-clock admission.
+Source regression authored, unrun.
+
 Email-change challenges bind the database-owned account recovery revision,
 like reset and verification JWTs. Legacy pending email changes are removed
 at migration; no revision backfill or compatibility reader is provided.

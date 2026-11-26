@@ -562,6 +562,7 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
 
 ## Recovery lifecycle continuation (2026-11-26)
 
+- Reset, verification and invite JWT issuance now share the access-token post-signing live-clock and signed NumericDate deadline check. A deterministic regression covers fractional-second expiry, equality, backwards observation and epoch-zero issuance. Source regression unrun; application-domain publication and commit-time guarantees remain separate.
 - Email-change issuance and confirmation bind the existing user recovery revision; the Auth migration invalidates pre-cutover pending challenges. Mailbox ABA and stale issuance source regressions are authored.
 - Reset, verification, email change and invite acceptance recheck credential deadlines after transactional writes, immediately before requesting commit; authenticated email change also rechecks the locked proving session. Invite acceptance checks signed and ledger expiry.
 - PostgreSQL/SQLite fresh and incremental migration, rollback, contention and transport execution evidence remain pending. Source regressions are unrun. No transport or readiness status promotion.

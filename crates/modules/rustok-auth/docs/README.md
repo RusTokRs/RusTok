@@ -804,6 +804,12 @@ timestamps and does not rewrite previously revoked rows.
 
 ## Account recovery revision
 
+All JWT issuers, including reset, verification and invite, sample the live
+credential clock before preparing claims and recheck it after RSA signing.
+Reject backward time or an elapsed exclusive signed whole-second expiry;
+this does not extend the deadline or replace application-clock admission.
+No claim or key format changes; regression authored, unrun.
+
 Password-reset and email-verification JWT subjects bind the exact account ID,
 mailbox and database-owned monotonic `recovery_revision`. Password reset also
 retains the existing password-hash MAC binding. A user-table trigger advances
