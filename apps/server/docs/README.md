@@ -2173,3 +2173,8 @@ parsing, trusted-host policy, cache generation fence, and cross-tenant check as
 HTTP requests. Host, `X-Channel-ID`, `X-Channel-Slug`, and `channel` query
 selectors now work for WebSocket connections as well. Source regressions were
 added; tests and formatting were not run at the user's request.
+
+
+## Direct-session mutation and recovery timestamp fences (2026-11-26)
+
+The proving session for password changes and revoke-other-sessions is checked with the database-correlated application clock after row-lock waits and again before commit. The shared session fence includes creation time, sliding expiry, explicit absolute expiry, and the legacy 90-day cap. Session listing uses the same clock and excludes future-created rows. Refresh-token logout remains a security-reducing revocation after a session deadline when the presented digest is still bound to that session; already-revoked or mismatched credentials retain their existing rejection behavior. Email verification records both `email_verified_at` and `updated_at` from the corroborated post-lock timestamp. Regression cases were added; formatting and tests were not run at the user's request.

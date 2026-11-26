@@ -1337,27 +1337,40 @@ impl AuthLifecycleService {
         user_id: uuid::Uuid,
         session_id: uuid::Uuid,
     ) -> std::result::Result<Option<sessions::Model>, AuthLifecycleError> {
-        let now = rustok_auth::application_clock::verified_now(txn).await?;
+        // Use corroborated time to avoid locking an obviously expired
+        // candidate, then revalidate after the database row-lock wait.
+        let candidate_now = rustok_auth::application_clock::verified_now(txn).await?;
         let query = sessions::Entity::find()
             .filter(sessions::Column::TenantId.eq(tenant_id))
             .filter(sessions::Column::UserId.eq(user_id))
             .filter(sessions::Column::Id.eq(session_id))
             .filter(sessions::Column::RevokedAt.is_null())
-            .filter(sessions::Column::ExpiresAt.gt(now.clone()));
+            .filter(sessions::Column::CreatedAt.lte(candidate_now.clone()))
+            .filter(sessions::Column::ExpiresAt.gt(candidate_now.clone()))
+            .filter(
+                Condition::any()
+                    .add(sessions::Column::AbsoluteExpiresAt.gt(candidate_now.clone()))
+                    .add(sessions::Column::AbsoluteExpiresAt.is_null()),
+            );
 
-        match txn.get_database_backend() {
+        let session = match txn.get_database_backend() {
             DatabaseBackend::Postgres | DatabaseBackend::MySql => query
                 .lock_exclusive()
                 .one(txn)
                 .await
-                .map_err(AuthLifecycleError::from),
+                .map_err(AuthLifecycleError::from)?,
             DatabaseBackend::Sqlite => {
-                // Reserve the write lock using the complete active-session
-                // predicate before loading the row that will be mutated.
+                // Acquire SQLite's writer lock only for a potentially live
+                // row. The model check also enforces the legacy 90-day cap.
                 let statement = Statement::from_sql_and_values(
                     DatabaseBackend::Sqlite,
-                    "UPDATE sessions SET last_used_at = last_used_at WHERE tenant_id = ?1 AND user_id = ?2 AND id = ?3 AND revoked_at IS NULL AND expires_at > ?4",
-                    [tenant_id.into(), user_id.into(), session_id.into(), now.into()],
+                    "UPDATE sessions SET last_used_at = last_used_at WHERE tenant_id = ?1 AND user_id = ?2 AND id = ?3 AND revoked_at IS NULL AND created_at <= ?4 AND expires_at > ?4 AND (absolute_expires_at IS NULL OR absolute_expires_at > ?4)",
+                    [
+                        tenant_id.into(),
+                        user_id.into(),
+                        session_id.into(),
+                        candidate_now.clone().into(),
+                    ],
                 );
                 let result = txn
                     .execute_raw(statement)
@@ -1366,10 +1379,13 @@ impl AuthLifecycleService {
                 if result.rows_affected() != 1 {
                     return Ok(None);
                 }
-                query.one(txn).await.map_err(AuthLifecycleError::from)
+                query.one(txn).await.map_err(AuthLifecycleError::from)?
             }
-            _ => Err(AuthLifecycleError::Internal(Error::InternalServerError)),
-        }
+            _ => return Err(AuthLifecycleError::Internal(Error::InternalServerError)),
+        };
+
+        let validated_now = rustok_auth::application_clock::verified_now(txn).await?;
+        Ok(session.filter(|session| session.is_active_at(validated_now)))
     }
 
     async fn change_password_db(
@@ -1505,7 +1521,9 @@ impl AuthLifecycleService {
             if !known {
                 return Err(AuthLifecycleError::SessionLineageMismatch);
             }
-            if !session.is_active() {
+            // Logout is security-reducing: a known credential must remain
+            // able to revoke its session after the access/refresh deadline.
+            if session.revoked_at.is_some() {
                 return Err(AuthLifecycleError::SessionExpired);
             }
             session
@@ -1517,7 +1535,7 @@ impl AuthLifecycleService {
             .ok_or(AuthLifecycleError::InvalidRefreshToken)?
         };
 
-        if !session.is_active() {
+        if session.revoked_at.is_some() {
             return Err(AuthLifecycleError::InvalidRefreshToken);
         }
 
@@ -1602,17 +1620,20 @@ impl AuthLifecycleService {
         limit: u64,
     ) -> std::result::Result<Vec<sessions::Model>, AuthLifecycleError> {
         let limit = Self::clamp_session_list_limit(limit);
-        let now = Utc::now();
-        let original_cutoff = now - Duration::days(sessions::SESSION_ABSOLUTE_LIFETIME_DAYS);
+        let now = rustok_auth::application_clock::verified_now(db).await?;
+        let original_cutoff = now
+            .checked_sub_signed(Duration::days(sessions::SESSION_ABSOLUTE_LIFETIME_DAYS))
+            .ok_or(AuthLifecycleError::Internal(Error::InternalServerError))?;
         let rows = sessions::Entity::find()
             .filter(sessions::Column::TenantId.eq(tenant_id))
             .filter(sessions::Column::UserId.eq(user_id))
             .filter(sessions::Column::RevokedAt.is_null())
-            .filter(sessions::Column::ExpiresAt.gt(now))
             .filter(sessions::Column::CreatedAt.gt(original_cutoff))
+            .filter(sessions::Column::CreatedAt.lte(now.clone()))
+            .filter(sessions::Column::ExpiresAt.gt(now.clone()))
             .filter(
                 Condition::any()
-                    .add(sessions::Column::AbsoluteExpiresAt.gt(now))
+                    .add(sessions::Column::AbsoluteExpiresAt.gt(now.clone()))
                     .add(sessions::Column::AbsoluteExpiresAt.is_null()),
             )
             .order_by_desc(sessions::Column::CreatedAt)
@@ -1831,39 +1852,37 @@ impl AuthLifecycleService {
         let user = Self::find_user_for_update_in_tx(&tx, tenant_id, user_id)
             .await?
             .ok_or(AuthLifecycleError::UserNotFound)?;
-        if let Some(session_id) = except_session_id {
+        let current_session = if let Some(session_id) = except_session_id {
             if !user.is_active() {
                 return Err(AuthLifecycleError::UserInactive);
             }
             // A request authenticated before its session was revoked must
             // not subsequently revoke the user's remaining sessions.
-            Self::find_current_session_for_password_change_in_tx(
-                &tx, tenant_id, user_id, session_id,
+            Some(
+                Self::find_current_session_for_password_change_in_tx(
+                    &tx, tenant_id, user_id, session_id,
+                )
+                .await?
+                .ok_or(AuthLifecycleError::SessionExpired)?,
             )
-            .await?
-            .filter(|session| session.is_active())
-            .ok_or(AuthLifecycleError::SessionExpired)?;
-        }
+        } else {
+            None
+        };
 
         let count = Self::revoke_user_sessions_db_with_connection(
             &tx, tenant_id, user_id, except_session_id,
         )
         .await?;
+        if let Some(current_session) = current_session {
+            let final_now = rustok_auth::application_clock::verified_now(&tx).await?;
+            if !current_session.is_active_at(final_now) {
+                tx.rollback().await.map_err(AuthLifecycleError::from)?;
+                return Err(AuthLifecycleError::SessionExpired);
+            }
+        }
         tx.commit().await.map_err(AuthLifecycleError::from)?;
         Ok(count)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        AUTH_CHANGE_PASSWORD_SESSIONS_REVOKED_TOTAL, AUTH_FLOW_INCONSISTENCY_TOTAL,
-        AUTH_LOGIN_INACTIVE_USER_ATTEMPT_TOTAL, AUTH_PASSWORD_RESET_SESSIONS_REVOKED_TOTAL,
-        AuthLifecycleError, AuthLifecycleMetricsSnapshot, AuthLifecycleService, Error,
-        PreparedSessionTokens, REFRESH_REUSE_GRACE_SECONDS,
-    };
-    use crate::auth::{
-        AuthConfig, MAX_PASSWORD_LENGTH_BYTES, decode_access_token, hash_password,
+    }MAX_PASSWORD_LENGTH_BYTES, decode_access_token, hash_password,
         hash_refresh_token,
     };
     use crate::models::_entities::{session_refresh_history, user_roles};
@@ -2843,6 +2862,43 @@ mod tests {
             .await
             .expect("failed to inspect login sessions");
         assert_eq!(session_count, 0);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn current_session_fence_rejects_expired_absolute_deadline_with_live_sliding_expiry() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Tenant", "absolute-session-fence")
+            .insert(&db)
+            .await
+            .expect("tenant");
+        let user = users::ActiveModel::new(tenant.id, "absolute-fence@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("user");
+        let now = Utc::now();
+        let mut active_sliding = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            "absolute-expired-refresh-hash".to_string(),
+            now + Duration::hours(1),
+            None,
+            None,
+        );
+        active_sliding.absolute_expires_at = Set(Some((now - Duration::minutes(1)).into()));
+        let session = active_sliding.insert(&db).await.expect("session");
+
+        let tx = db.begin().await.expect("transaction");
+        let found = AuthLifecycleService::find_current_session_for_password_change_in_tx(
+            &tx, tenant.id, user.id, session.id,
+        )
+        .await
+        .expect("session fence");
+        assert!(
+            found.is_none(),
+            "an expired absolute deadline must override a live sliding expiry"
+        );
+        tx.rollback().await.expect("rollback");
     }
 
     #[tokio::test]
@@ -4181,6 +4237,74 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    async fn logout_by_refresh_token_revokes_expired_unrevoked_sessions() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Expired Logout Tenant", "expired-logout-tenant")
+            .insert(&db)
+            .await
+            .expect("tenant");
+        let user = users::ActiveModel::new(tenant.id, "expired-logout@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("user");
+        let now = Utc::now();
+
+        let sliding_token = "expired-sliding-refresh-token";
+        let sliding = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            hash_refresh_token(sliding_token),
+            now - Duration::minutes(1),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("expired sliding session");
+
+        let absolute_token = "expired-absolute-refresh-token";
+        let mut absolute_model = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            hash_refresh_token(absolute_token),
+            now + Duration::hours(1),
+            None,
+            None,
+        );
+        absolute_model.absolute_expires_at = Set(Some((now - Duration::minutes(1)).into()));
+        let absolute = absolute_model
+            .insert(&db)
+            .await
+            .expect("absolute-expired session");
+
+        let runtime = ServerRuntimeContext::new(
+            db.clone(),
+            crate::common::RustokSettings::default(),
+        );
+        AuthLifecycleService::logout_by_refresh_token_runtime(
+            &runtime, tenant.id, sliding_token, None,
+        )
+        .await
+        .expect("expired sliding session remains revocable");
+
+        AuthLifecycleService::logout_by_refresh_token_runtime(
+            &runtime, tenant.id, absolute_token, Some(absolute.id),
+        )
+        .await
+        .expect("expired absolute session remains revocable");
+
+        for session_id in [sliding.id, absolute.id] {
+            let stored = sessions::Entity::find_by_id(session_id)
+                .one(&db)
+                .await
+                .expect("read session")
+                .expect("session");
+            assert!(stored.revoked_at.is_some(), "expired session must be revoked");
+        }
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn logout_by_refresh_token_is_tenant_scoped_and_single_transaction() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let tenant_a = tenants::ActiveModel::new("Logout Token Tenant A", "logout-token-a")
@@ -4338,6 +4462,24 @@ mod tests {
             .insert(&db)
             .await
             .expect("create absolute-expired session");
+
+        // Future-created rows are not active, even when their sliding and
+        // persisted absolute deadlines are both in the future.
+        let future_created_at = now + Duration::minutes(1);
+        let mut future_created = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            "tok-future-created".to_string(),
+            now + Duration::hours(2),
+            None,
+            None,
+        );
+        future_created.created_at = Set(future_created_at.clone().into());
+        future_created.updated_at = Set(future_created_at.into());
+        future_created
+            .insert(&db)
+            .await
+            .expect("create future-dated session");
 
         // Pre-migration rows had no absolute deadline column; they still
         // expire 90 days after their original creation.
@@ -4576,24 +4718,15 @@ mod tests {
         .await
         .expect("create other session 2");
 
-        // Revoke all except current (mirrors revoke_user_sessions with except_session_id)
-        let result = sessions::Entity::update_many()
-            .col_expr(
-                sessions::Column::RevokedAt,
-                sea_orm::sea_query::Expr::value(now),
-            )
-            .filter(sessions::Column::TenantId.eq(tenant.id))
-            .filter(sessions::Column::UserId.eq(user.id))
-            .filter(sessions::Column::Id.ne(current.id))
-            .filter(sessions::Column::RevokedAt.is_null())
-            .exec(&db)
-            .await
-            .expect("revoke all other sessions");
-
-        assert_eq!(
-            result.rows_affected, 2,
-            "both other sessions should be revoked"
-        );
+        let revoked = AuthLifecycleService::revoke_user_sessions_db(
+            &db,
+            tenant.id,
+            user.id,
+            Some(current.id),
+        )
+        .await
+        .expect("revoke all other sessions through service");
+        assert_eq!(revoked, 2, "both other sessions should be revoked");
 
         // Current session must still be active
         let still_active = sessions::Entity::find()
@@ -4663,18 +4796,20 @@ mod tests {
         .await
         .expect("create session B");
 
-        // Revoke all sessions for tenant_a / user_a (no except_session_id)
-        sessions::Entity::update_many()
-            .col_expr(
-                sessions::Column::RevokedAt,
-                sea_orm::sea_query::Expr::value(now),
-            )
-            .filter(sessions::Column::TenantId.eq(tenant_a.id))
-            .filter(sessions::Column::UserId.eq(user_a.id))
-            .filter(sessions::Column::RevokedAt.is_null())
-            .exec(&db)
+        // Exercise the tenant-scoped service rather than duplicating its SQL.
+        let revoked = AuthLifecycleService::revoke_user_sessions_db(
+            &db, tenant_a.id, user_a.id, None,
+        )
+        .await
+        .expect("revoke tenant A sessions through service");
+        assert_eq!(revoked, 1);
+
+        let a_revoked = sessions::Entity::find_by_id(session_a.id)
+            .one(&db)
             .await
-            .expect("revoke tenant A sessions");
+            .expect("query session A")
+            .expect("session A");
+        assert!(a_revoked.revoked_at.is_some());
 
         // session_b must still be active
         let b_still_active = sessions::Entity::find()

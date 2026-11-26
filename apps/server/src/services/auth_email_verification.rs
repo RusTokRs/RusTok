@@ -117,7 +117,8 @@ async fn verify_unchanged_email<C: ConnectionTrait>(
     verified_at: chrono::DateTime<Utc>,
 ) -> Result<bool, AuthLifecycleError> {
     let updated = users::Entity::update_many()
-        .col_expr(users::Column::EmailVerifiedAt, Expr::value(verified_at))
+        .col_expr(users::Column::EmailVerifiedAt, Expr::value(verified_at.clone()))
+        .col_expr(users::Column::UpdatedAt, Expr::value(verified_at))
         .filter(users::Column::Id.eq(user_id))
         .filter(users::Column::TenantId.eq(tenant_id))
         .filter(users::Column::Email.eq(email))
@@ -213,7 +214,7 @@ mod tests {
         let verified_at = chrono::DateTime::<Utc>::from_timestamp(1_800_000_000, 0)
             .expect("fixed verification timestamp");
         assert!(
-            !verify_unchanged_email(&db, tenant.id, user.id, &user.email, user.recovery_revision, verified_at)
+            !verify_unchanged_email(&db, tenant.id, user.id, &user.email, user.recovery_revision, verified_at.clone())
                 .await
                 .expect("compare and swap")
         );
@@ -225,13 +226,18 @@ mod tests {
         assert_eq!(current.email, "new@example.com");
         assert!(current.email_verified_at.is_none());
         assert!(
-            verify_unchanged_email(&db, tenant.id, user.id, &current.email, current.recovery_revision, verified_at)
+            verify_unchanged_email(&db, tenant.id, user.id, &current.email, current.recovery_revision, verified_at.clone())
                 .await
                 .expect("verify current address")
         );
         let verified = Users::find_by_id(user.id).one(&db).await.unwrap().unwrap();
         assert_eq!(verified.recovery_revision, current.recovery_revision);
-        assert_eq!(verified.email_verified_at, Some(verified_at.into()));
+        assert_eq!(verified.email_verified_at, Some(verified_at.clone().into()));
+        assert_eq!(
+            verified.email_verified_at,
+            Some(verified.updated_at.clone()),
+            "email verification and user update timestamps must be identical"
+        );
         assert!(
             !verify_unchanged_email(&db, tenant.id, user.id, &current.email, current.recovery_revision, verified_at + chrono::Duration::seconds(1))
                 .await
@@ -239,5 +245,6 @@ mod tests {
         );
         let replayed = Users::find_by_id(user.id).one(&db).await.unwrap().unwrap();
         assert_eq!(replayed.email_verified_at, verified.email_verified_at);
+        assert_eq!(replayed.updated_at, verified.updated_at);
     }
 }

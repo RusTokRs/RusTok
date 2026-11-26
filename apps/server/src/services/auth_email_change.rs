@@ -223,7 +223,12 @@ impl AuthLifecycleService {
         if !session.is_active_at(now) {
             return Err(AuthLifecycleError::SessionExpired);
         }
-        let expires_at = now + Duration::seconds(EMAIL_CHANGE_TOKEN_TTL_SECS as i64);
+        let ttl_seconds = i64::try_from(EMAIL_CHANGE_TOKEN_TTL_SECS)
+            .map_err(|_| AuthLifecycleError::Internal(crate::error::Error::InternalServerError))?;
+        let expires_at = now
+            .clone()
+            .checked_add_signed(Duration::seconds(ttl_seconds))
+            .ok_or(AuthLifecycleError::Internal(crate::error::Error::InternalServerError))?;
         let request = auth_email_change_requests::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant_id),
@@ -233,7 +238,7 @@ impl AuthLifecycleService {
             password_changed_at: Set(locked_user.password_changed_at),
             recovery_revision: Set(Some(locked_user.recovery_revision)),
             token_hash: Set(token_hash.to_string()),
-            expires_at: Set(expires_at.into()),
+            expires_at: Set(expires_at.clone().into()),
             created_at: Set(now.into()),
         };
 
