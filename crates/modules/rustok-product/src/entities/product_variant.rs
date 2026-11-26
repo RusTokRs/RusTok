@@ -23,7 +23,10 @@ pub struct Model {
     pub position: i32,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
-    /// Monotonic row revision used by optimistic Product variant writes.
+    /// Business revision used by optimistic Product variant writes.
+    #[sea_orm(default_value = 1)]
+    pub revision: i64,
+    /// Index source watermark used by ProductVariant replay; never an editor CAS token.
     pub index_revision: i64,
 }
 

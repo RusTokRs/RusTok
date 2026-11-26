@@ -73,7 +73,7 @@ pub struct UpdateVariantInput {
     pub inventory_quantity: Option<i32>,
     /// Quantity snapshot observed by the caller when inventory_quantity was read.
     pub expected_inventory_quantity: Option<i32>,
-    /// Opaque product-variant row revision observed by the caller.
+    /// ProductVariant business revision observed by the caller; distinct from the Index watermark.
     pub expected_revision: Option<String>,
     #[validate(length(
         min = 1,
@@ -109,6 +109,7 @@ impl UpdateVariantInput {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct VariantResponse {
     pub id: Uuid,
+    /// ProductVariant business revision used by optimistic update/delete commands.
     pub revision: String,
     pub product_id: Uuid,
     pub sku: Option<String>,

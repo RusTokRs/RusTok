@@ -483,6 +483,7 @@ impl CatalogService {
                 position: Set(variant_position),
                 created_at: Set(now.into()),
                 updated_at: Set(now.into()),
+                revision: sea_orm::ActiveValue::NotSet,
                 index_revision: sea_orm::ActiveValue::NotSet,
             };
             variant.insert(&txn).await.map_err(|error| {
@@ -1537,6 +1538,7 @@ impl CatalogService {
             position: Set(next_position),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
+            revision: sea_orm::ActiveValue::NotSet,
             index_revision: sea_orm::ActiveValue::NotSet,
         };
 

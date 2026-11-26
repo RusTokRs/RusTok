@@ -68,6 +68,9 @@ canonical large-module reference:
      omit it. A supplied revision is still checked, including before same-status no-ops.
    - Typed EAV writes remain a distinct receipt-bound surface without an editorial predecessor
      input; the Next and Leptos document+value save workflows are still multi-command and non-atomic.
+   - ProductVariant now owns a dedicated business `revision`; Variant update/delete compare it
+     under the Variant lock. Direct Pricing base-price writes advance it through the Product owner
+     row touch in the same transaction as the exact Index refresh record.
    - Product/Variant `index_revision` remains an Index watermark, never an editor CAS token.
    This is bounded source hardening, not complete aggregate concurrency certification.
 
