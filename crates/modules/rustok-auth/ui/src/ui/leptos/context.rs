@@ -639,11 +639,9 @@ pub fn AuthProvider(
                         return;
                     }
                     let secs = auth.secs_until_expiry_untracked();
-                    if secs <= 0 {
-                        if let Err(err) = auth.sign_out().await {
-                            tracing::warn!(?err, "session expiry background sign-out failed");
-                        }
-                    } else if secs < 300 {
+                    // Access expiry does not revoke the independently-lived refresh
+                    // session. A sleeping tab must attempt renewal, not log out.
+                    if secs < 300 {
                         if let Err(err) = auth.refresh_session().await {
                             tracing::warn!(?err, "proactive session refresh failed");
                         }

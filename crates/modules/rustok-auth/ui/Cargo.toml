@@ -20,6 +20,10 @@ ssr = [
   "leptos/ssr",
   "dep:leptos_axum",
   "dep:axum",
+  "dep:rand_core",
+  "dep:hex",
+  "dep:hmac",
+  "dep:sha2",
 ]
 
 [dependencies]
@@ -36,6 +40,10 @@ leptos_axum = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
 thiserror.workspace = true
 tracing.workspace = true
+rand_core = { version = "0.6", features = ["getrandom"], optional = true }
+hex = { workspace = true, optional = true }
+hmac = { version = "0.13", optional = true }
+sha2 = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio.workspace = true

@@ -6,7 +6,7 @@ use serde_json::json;
 use super::RESET_REQUEST_MESSAGE;
 use super::{NativeAuthPayload, NativeCurrentUserPayload};
 #[cfg(feature = "ssr")]
-use crate::model::AuthUser;
+use crate::{core::RefreshCredential, model::{AuthError, AuthUser}};
 
 #[cfg(feature = "ssr")]
 use super::{
@@ -48,20 +48,21 @@ fn cookie_request_is_secure(headers: &axum::http::HeaderMap) -> bool {
 fn set_response_cookie(cookie: String) -> Result<(), ServerFnError> {
     let options = use_context::<leptos_axum::ResponseOptions>()
         .ok_or_else(|| ServerFnError::new("response options are unavailable"))?;
-    let value = axum::http::HeaderValue::from_str(&cookie).map_err(ServerFnError::new)?;
+    let mut value = axum::http::HeaderValue::from_str(&cookie)
+        .map_err(|_| ServerFnError::new("Invalid authentication cookie"))?;
+    value.set_sensitive(true);
     options.insert_header(axum::http::header::SET_COOKIE, value);
+    options.insert_header(axum::http::header::CACHE_CONTROL, axum::http::HeaderValue::from_static("no-store"));
     Ok(())
 }
 
 #[cfg(feature = "ssr")]
 fn persist_refresh_cookie(
     headers: &axum::http::HeaderMap,
-    tenant: &str,
-    refresh_token: &str,
+    credential: &RefreshCredential,
 ) -> Result<(), ServerFnError> {
     set_response_cookie(crate::core::refresh_cookie_header(
-        tenant,
-        refresh_token,
+        credential,
         cookie_request_is_secure(headers),
     ))
 }
@@ -76,7 +77,7 @@ fn clear_refresh_cookie(headers: &axum::http::HeaderMap) -> Result<(), ServerFnE
 #[cfg(feature = "ssr")]
 fn refresh_cookie_from(
     headers: &axum::http::HeaderMap,
-) -> Result<Option<(String, String)>, ServerFnError> {
+) -> Result<Option<RefreshCredential>, ServerFnError> {
     let mut values = Vec::new();
     for value in headers.get_all(axum::http::header::COOKIE).iter() {
         values.push(
@@ -89,28 +90,59 @@ fn refresh_cookie_from(
         .map_err(|_| ServerFnError::new("Invalid authentication cookie"))
 }
 
-/// Exchange a refresh token directly against the API from trusted
-/// server-side code (SSR snapshot middleware). Returns the browser
-/// payload plus the rotated refresh token so the host can re-issue
-/// its BFF cookie; the token itself is never rendered or sent to the
-/// browser in the payload.
+/// Refresh through one owner endpoint. Only an ambiguous transport or 5xx
+/// response may retry; never replay after a definitive rejection.
 #[cfg(feature = "ssr")]
-pub async fn exchange_refresh_token_ssr(
-    refresh_token: String,
-    tenant: String,
-) -> Result<(NativeAuthPayload, String), ServerFnError> {
-    let response: RestAuthResponse = auth_rest_post(
-        "/api/auth/refresh",
-        &json!({
-            "refresh_token": refresh_token,
-        }),
-        None,
-        Some(tenant.clone()),
-    )
-    .await?;
+pub(super) async fn exchange_refresh_token_ssr(
+    credential: RefreshCredential,
+) -> Result<(NativeAuthPayload, RefreshCredential), AuthError> {
+    exchange_refresh_token_at(&get_api_url(), credential).await
+}
 
-    let rotated = response.refresh_token.clone();
-    Ok((rest_payload_to_native(response, tenant), rotated))
+#[cfg(feature = "ssr")]
+async fn exchange_refresh_token_at(
+    api_url: &str,
+    credential: RefreshCredential,
+) -> Result<(NativeAuthPayload, RefreshCredential), AuthError> {
+    use reqwest::header::HeaderValue;
+    let mut proof = HeaderValue::from_str(&credential.retry_key()?).map_err(|_| AuthError::Network)?;
+    proof.set_sensitive(true);
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(std::time::Duration::from_secs(10))
+        .build().map_err(|_| AuthError::Network)?;
+    for attempt in 0..2 {
+        let result = client.post(format!("{}/api/auth/refresh", api_url.trim_end_matches('/')))
+            .header("X-Tenant-ID", credential.tenant())
+            .header("x-rustok-refresh-retry-key", proof.clone())
+            .json(&json!({ "refresh_token": credential.token() }))
+            .send().await;
+        let response = match result {
+            Ok(response) => response,
+            Err(_) if attempt == 0 => continue,
+            Err(_) => return Err(AuthError::Network),
+        };
+        let status = response.status();
+        if status.is_server_error() && attempt == 0 {
+            continue;
+        }
+        if !status.is_success() {
+            return Err(AuthError::from_status(status.as_u16(), false));
+        }
+        let payload = match response.json::<RestAuthResponse>().await {
+            Ok(payload) => payload,
+            Err(_) if attempt == 0 => continue,
+            Err(_) => return Err(AuthError::Network),
+        };
+        let rotated = match credential.rotated(&payload.refresh_token) {
+            Ok(rotated) if !payload.access_token.is_empty() && payload.expires_in > 0 => rotated,
+            _ if attempt == 0 => continue,
+            _ => return Err(AuthError::Network),
+        };
+        let tenant = credential.tenant().to_owned();
+        return Ok((rest_payload_to_native(payload, tenant), rotated));
+    }
+    Err(AuthError::Network)
 }
 
 #[server(prefix = "/api/fn", endpoint = "auth/sign-in")]
@@ -122,6 +154,7 @@ pub(super) async fn sign_in_native(
     #[cfg(feature = "ssr")]
     {
         let headers = request_headers().await?;
+        let seed = RefreshCredential::generate_seed().map_err(|error| ServerFnError::new(error.to_string()))?;
         let response: RestAuthResponse = auth_rest_post(
             "/api/auth/login",
             &json!({
@@ -133,7 +166,9 @@ pub(super) async fn sign_in_native(
         )
         .await?;
 
-        persist_refresh_cookie(&headers, &tenant, &response.refresh_token)?;
+        let credential = RefreshCredential::new(&tenant, &response.refresh_token, seed)
+            .map_err(|_| ServerFnError::new("Invalid authentication response"))?;
+        persist_refresh_cookie(&headers, &credential)?;
         Ok(rest_payload_to_native(response, tenant))
     }
     #[cfg(not(feature = "ssr"))]
@@ -155,6 +190,7 @@ pub(super) async fn sign_up_native(
     #[cfg(feature = "ssr")]
     {
         let headers = request_headers().await?;
+        let seed = RefreshCredential::generate_seed().map_err(|error| ServerFnError::new(error.to_string()))?;
         let response: RestAuthResponse = auth_rest_post(
             "/api/auth/register",
             &json!({
@@ -167,7 +203,9 @@ pub(super) async fn sign_up_native(
         )
         .await?;
 
-        persist_refresh_cookie(&headers, &tenant, &response.refresh_token)?;
+        let credential = RefreshCredential::new(&tenant, &response.refresh_token, seed)
+            .map_err(|_| ServerFnError::new("Invalid authentication response"))?;
+        persist_refresh_cookie(&headers, &credential)?;
         Ok(rest_payload_to_native(response, tenant))
     }
     #[cfg(not(feature = "ssr"))]
@@ -186,14 +224,14 @@ pub(super) async fn sign_out_native(tenant: String) -> Result<(), ServerFnError>
         let headers = request_headers().await?;
         // Do not report logout or clear a different tenant's cookie. If revocation fails,
         // preserve the cookie for recovery and leave the caller's scope unverified.
-        if let Some((cookie_tenant, refresh_token)) = refresh_cookie_from(&headers)? {
-            if cookie_tenant != tenant {
+        if let Some(credential) = refresh_cookie_from(&headers)? {
+            if credential.tenant() != tenant {
                 return Err(ServerFnError::new("Authentication tenant mismatch"));
             }
             // Use the API's idempotent cookie-session logout contract: an already expired
             // or revoked refresh token is a completed logout, while persistence failures
             // remain errors. This Cookie header is server-to-server only, never rendered.
-            auth_rest_cookie_logout(&tenant, &refresh_token).await?;
+            auth_rest_cookie_logout(&tenant, credential.token()).await?;
         }
         clear_refresh_cookie(&headers)?;
         Ok(())
@@ -214,17 +252,18 @@ pub(super) async fn refresh_token_native(
     #[cfg(feature = "ssr")]
     {
         let headers = request_headers().await?;
-        let Some((cookie_tenant, refresh_token)) = refresh_cookie_from(&headers)? else {
+        let Some(credential) = refresh_cookie_from(&headers)? else {
             // Only an explicitly absent cookie is evidence of a guest. Invalid, duplicate,
             // foreign, expired or revoked cookies all follow an error path instead.
             return Ok(None);
         };
-        if cookie_tenant != tenant {
+        if credential.tenant() != tenant {
             return Err(ServerFnError::new("Authentication tenant mismatch"));
         }
 
-        let (payload, rotated) = exchange_refresh_token_ssr(refresh_token, tenant.clone()).await?;
-        persist_refresh_cookie(&headers, &tenant, &rotated)?;
+        let (payload, rotated) = exchange_refresh_token_ssr(credential)
+            .await.map_err(|error| ServerFnError::new(error.to_string()))?;
+        persist_refresh_cookie(&headers, &rotated)?;
         Ok(Some(payload))
     }
     #[cfg(not(feature = "ssr"))]
@@ -377,8 +416,9 @@ async fn auth_rest_cookie_logout_at(
     // A redirect must never forward a bearer-like cookie to a different endpoint.
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
+        .timeout(std::time::Duration::from_secs(10))
         .build()
-        .map_err(ServerFnError::new)?;
+        .map_err(|_| ServerFnError::new("Logout request failed"))?;
     let response = client
         .post(format!(
             "{}/api/auth/session/logout",
@@ -405,8 +445,16 @@ async fn auth_rest_cookie_logout_at(
 }
 
 #[cfg(feature = "ssr")]
-static HTTP_CLIENT: std::sync::LazyLock<reqwest::Client> =
-    std::sync::LazyLock::new(reqwest::Client::new);
+static HTTP_CLIENT: std::sync::LazyLock<Result<reqwest::Client, reqwest::Error>> =
+    std::sync::LazyLock::new(|| reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(std::time::Duration::from_secs(10))
+        .build());
+
+#[cfg(feature = "ssr")]
+fn http_client() -> Result<&'static reqwest::Client, ServerFnError> {
+    HTTP_CLIENT.as_ref().map_err(|_| ServerFnError::new("Network error"))
+}
 
 #[cfg(feature = "ssr")]
 async fn auth_rest_post<T>(
@@ -420,7 +468,7 @@ where
 {
     use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
 
-    let mut request = HTTP_CLIENT
+    let mut request = http_client()?
         .post(format!("{}{}", get_api_url(), path))
         .header(CONTENT_TYPE, "application/json")
         .json(body);
@@ -451,7 +499,7 @@ where
 {
     use reqwest::header::AUTHORIZATION;
 
-    let mut request = HTTP_CLIENT.get(format!("{}{}", get_api_url(), path));
+    let mut request = http_client()?.get(format!("{}{}", get_api_url(), path));
 
     if let Some(token) = token {
         request = request.header(AUTHORIZATION, format!("Bearer {token}"));
@@ -496,7 +544,7 @@ async fn rest_error_message(response: reqwest::Response) -> String {
 mod tests {
     use super::{
         RestStatusResponse, api_session_cookie, auth_rest_cookie_logout_at, confirm_cookie_logout,
-        refresh_cookie_from,
+        refresh_cookie_from, exchange_refresh_token_at, RefreshCredential, AuthError,
     };
     use axum::http::{HeaderMap, HeaderValue, header::COOKIE};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -524,6 +572,81 @@ mod tests {
             "HTTP/1.1 {status}\r\ncontent-length: {}\r\nconnection: close\r\n{extra_headers}\r\n{body}",
             body.len()
         )
+    }
+
+    // Read the full request, including JSON, before responding; retry must send
+    // exactly the original bearer and proof even when the response is lost.
+    async fn mock_refresh_api(replies: Vec<String>) -> (String, tokio::task::JoinHandle<Vec<String>>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let received = tokio::spawn(async move {
+            let mut requests = Vec::new();
+            for reply in replies {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = Vec::new();
+                let mut buffer = [0u8; 1024];
+                let (body_start, body_len) = loop {
+                    let read = socket.read(&mut buffer).await.unwrap();
+                    assert!(read > 0 && request.len() + read < 16_384);
+                    request.extend_from_slice(&buffer[..read]);
+                    if let Some(index) = request.windows(4).position(|w| w == b"\r\n\r\n") {
+                        let headers = std::str::from_utf8(&request[..index]).unwrap();
+                        let len = headers.lines().find_map(|line| {
+                            let (name, value) = line.split_once(':')?;
+                            name.eq_ignore_ascii_case("content-length")
+                                .then(|| value.trim().parse::<usize>().unwrap())
+                        }).unwrap();
+                        break (index + 4, len);
+                    }
+                };
+                while request.len() < body_start + body_len {
+                    let read = socket.read(&mut buffer).await.unwrap();
+                    assert!(read > 0 && request.len() + read < 16_384);
+                    request.extend_from_slice(&buffer[..read]);
+                }
+                requests.push(String::from_utf8(request).unwrap());
+                socket.write_all(reply.as_bytes()).await.unwrap();
+            }
+            requests
+        });
+        (format!("http://{address}"), received)
+    }
+
+    #[tokio::test]
+    async fn native_refresh_repeats_identical_proof_after_ambiguous_result() {
+        let bearer = "a1".repeat(32);
+        let seed = "b2".repeat(32);
+        let successor = "c3".repeat(32);
+        let credential = RefreshCredential::parse(&format!("shop.{bearer}.{seed}")).unwrap();
+        let proof = credential.retry_key().unwrap();
+        let body = serde_json::json!({
+            "access_token": "access", "refresh_token": successor,
+            "token_type": "Bearer", "expires_in": 900,
+            "user": {"id":"user", "email":"user@example.test", "name":null, "role":"member", "status":"active"}
+        }).to_string();
+        let (url, requests) = mock_refresh_api(vec![
+            http_reply("503 Service Unavailable", "unknown", ""),
+            http_reply("200 OK", &body, "content-type: application/json\r\n"),
+        ]).await;
+        let (payload, rotated) = exchange_refresh_token_at(&url, credential).await.unwrap();
+        assert_eq!(payload.session.token, "access");
+        assert_eq!(rotated.token(), successor);
+        assert_ne!(rotated.retry_key().unwrap(), proof);
+        let requests = requests.await.unwrap();
+        assert_eq!(requests.len(), 2);
+        for request in requests {
+            assert!(request.to_ascii_lowercase().contains(&format!("\r\nx-rustok-refresh-retry-key: {proof}\r\n")));
+            assert!(request.contains(&bearer));
+            assert!(!request.contains(&seed));
+        }
+    }
+
+    #[tokio::test]
+    async fn native_refresh_preserves_conflict_without_retry() {
+        let credential = RefreshCredential::parse(&format!("shop.{}.{}", "a1".repeat(32), "b2".repeat(32))).unwrap();
+        let (url, requests) = mock_refresh_api(vec![http_reply("409 Conflict", "conflict", "")]).await;
+        assert_eq!(exchange_refresh_token_at(&url, credential).await.unwrap_err(), AuthError::Http(409));
+        assert_eq!(requests.await.unwrap().len(), 1);
     }
 
     #[tokio::test]
@@ -606,18 +729,10 @@ mod tests {
         assert_eq!(refresh_cookie_from(&headers).unwrap(), None);
         headers.append(COOKIE, HeaderValue::from_static("other=value"));
         assert_eq!(refresh_cookie_from(&headers).unwrap(), None);
-        headers.append(
-            COOKIE,
-            HeaderValue::from_static("rustok-admin-refresh-v1=shop.token"),
-        );
-        assert_eq!(
-            refresh_cookie_from(&headers).unwrap(),
-            Some(("shop".into(), "token".into()))
-        );
-        headers.append(
-            COOKIE,
-            HeaderValue::from_static("rustok-admin-refresh-v1=shop.token"),
-        );
+        let wire = format!("rustok-admin-refresh-v1=shop.{}.{}", "a1".repeat(32), "b2".repeat(32));
+        headers.append(COOKIE, HeaderValue::from_str(&wire).unwrap());
+        assert_eq!(refresh_cookie_from(&headers).unwrap().unwrap().tenant(), "shop");
+        headers.append(COOKIE, HeaderValue::from_str(&wire).unwrap());
         assert!(refresh_cookie_from(&headers).is_err());
 
         let mut malformed = HeaderMap::new();

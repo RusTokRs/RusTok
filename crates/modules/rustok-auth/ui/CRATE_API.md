@@ -11,10 +11,10 @@ Leptos authentication context, protected route wrappers, BFF cookie management, 
 - `AUTH_SCOPE_CHANGE_EVENT`, `AUTH_SCOPE_CHANGE_STORAGE_KEY`: non-secret lifecycle invalidations; neither is authorization or a cross-tab lock.
 
 ### Cookie and Session Helpers
-- `refresh_cookie_value(tenant: &str, refresh_token: &str) -> String`: Encodes refresh cookie value as `{tenant}.{refresh_token}`.
-- `parse_refresh_cookie_value(value: &str) -> Option<(&str, &str)>`: Parses cookie value into tenant and token components.
-- `inspect_refresh_cookie_headers(headers) -> Result<Option<(String, String)>, RefreshCookieError>`: Inspects all Cookie headers; `Ok(None)` means absent, while malformed and duplicate credentials are errors.
-- `refresh_cookie_header(tenant: &str, refresh_token: &str, secure: bool) -> String`: Constructs standard `Set-Cookie` header.
+- `RefreshCredential::parse(value) -> Result<RefreshCredential, RefreshCookieError>`: Strict, redacted BFF envelope `tenant.token.seed`; both secret components are canonical nonzero 256-bit hex. Bare cookies are rejected.
+- `inspect_refresh_cookie_headers(headers) -> Result<Option<RefreshCredential>, RefreshCookieError>`: Inspects all Cookie headers; `Ok(None)` means absent, while malformed and duplicate credentials are errors.
+- `refresh_cookie_header(&RefreshCredential, secure: bool) -> String`: Constructs the HttpOnly envelope Set-Cookie header.
+- SSR-only `transport::exchange_refresh_token_ssr(RefreshCredential)`: Returns user, access session and rotated BFF credential; proof and seed never enter the serialized user/session payload.
 - `clear_refresh_cookie_header(secure: bool) -> String`: Constructs expired `Set-Cookie` header to invalidate session.
 - `session_id_from_access_token(token: &str) -> Option<String>`: Unverified payload parser extracting a session identifier; it is not authentication or a CSRF secret.
 
@@ -74,6 +74,7 @@ Client operations return typed `AuthError`; a failed transition is not a verifie
 - **Tenant context**: Host tenant binding refuses to overwrite a different canonical browser tenant. Server-side validation remains responsible for tenant isolation, including other roots and tabs.
 
 ## 3. Error Handling & Edge Cases
+- Native SSR refresh derives a generation-specific HMAC proof from the independently generated HttpOnly seed and retries one ambiguous upstream outcome without changing inputs; preserves 409. Access expiry schedules refresh, not implicit logout. The direct CSR path is not yet proof-bearing. Old bare BFF sessions require coordinated revocation and new sign-in.
 - Native refresh returns an explicit absence only when no BFF refresh cookie exists. Malformed, duplicate, foreign-tenant, rejected and transport-failed credentials leave the client scope unverified; the direct-cookie 401 does not distinguish absence from rejection.
 - `transport::refresh_session` returns `Result<Option<(AuthSession, AuthUser)>, AuthError>`; `None` is the explicit native absence, not a failed credential.
 - Native sign-out uses the API's idempotent cookie-session logout contract over a redirect-disabled server-to-server request. It preserves the BFF cookie and local identity if revocation cannot be confirmed, and leaves the scope unverified for explicit retry. Concurrent refreshes in another tab remain outside this lease.

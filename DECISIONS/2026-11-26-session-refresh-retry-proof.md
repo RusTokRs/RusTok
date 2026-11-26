@@ -94,13 +94,22 @@ can be retried with the unchanged envelope within grace. A browser that
 already received the new envelope starts a new operation if refresh is
 needed. A coordinated BFF cutover must revoke old bare-cookie sessions
 and establish fresh ones; do not parse them as recovery-capable envelopes.
+The Leptos native/SSR BFF uses the same strategy with its own purpose
+`rustok/leptos-bff/refresh-retry` followed by NUL, the tenant bytes, NUL,
+and the fixed-width hex bearer. Its typed, non-serializable envelope is
+`tenant.token.seed`; a new login generates the seed before I/O. The BFF
+marks the proof sensitive and forbids redirects. Admin SSR and native auth
+functions share the same exchange; middleware does not exchange before
+an Auth server function or override its cookie mutation. Access expiry
+must not initiate refresh-session revocation.
 The seed must never leave the BFF cookie except in protected process memory.
 A stolen bearer token alone cannot recover the committed successor; theft of
 both bearer and proof is still credential compromise. This is not
 sender-constrained authentication. TLS, client storage discipline, avoiding
 header logging and normal credential revocation remain required. Client
-integration across the Leptos, Next Storefront and mobile/other native
-paths, Next Admin mounted/cross-replica verification, generated API header
+integration across direct Leptos CSR, standalone Storefront SSR host
+composition, Next Storefront and mobile/other native paths, BFF
+mounted/cross-replica verification, generated API header
 documentation, and failure-injection verification remain pending. Without a proof-bearing
 client, a lost response is not recoverable.
 

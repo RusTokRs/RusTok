@@ -355,7 +355,18 @@ rejects duplicate/malformed cookies and redirects, checks the refreshed
 subject and does not clear cookies on transient refresh failures. Existing
 bare-cookie sessions require coordinated revocation and new sign-in.
 
-Remaining implementation: shared Leptos direct/native and SSR paths,
+Leptos shared native SSR/hydrate and Admin SSR middleware now source-wire
+a canonical HttpOnly envelope, independently generated OS CSPRNG seed,
+generation-bound proof, redirect refusal and one bounded ambiguous retry.
+Explicit auth functions own their cookie transitions; middleware does not
+perform a competing rotation or overwrite an explicit handler Set-Cookie.
+The shared provider attempts refresh instead of revocation on access expiry.
+Old native bare cookies require coordinated session revocation and new sign-in.
+Scoped proof, cookie admission, status and mock HTTP retry regressions are
+authored and unrun. Only native/SSR cryptographic dependencies are enabled.
+
+Remaining implementation: direct Leptos CSR proof retention and coordination,
+standalone Storefront SSR validated composition,
 Next Storefront (currently observation-only, without its own refresh flow),
 mobile/native consumers, generated API header reference updates, and
 header secrecy in proxies/telemetry. Next Admin browser/runtime and

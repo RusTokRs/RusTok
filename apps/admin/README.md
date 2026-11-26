@@ -30,3 +30,8 @@
 
 - [App docs](./docs/README.md)
 - [Platform docs index](../../docs/index.md)
+
+The SSR Auth refresh envelope and transition ownership are documented in
+[the host session contract](./docs/README.md#ssr-auth-cookie-transition-ownership).
+Native cookie cutover requires old session revocation and fresh sign-in;
+mounted browser and replica tests remain pending.

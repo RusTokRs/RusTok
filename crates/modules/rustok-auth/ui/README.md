@@ -91,3 +91,20 @@ transition methods instead of mutating signals or the crate-private browser sess
 hosts supply verified state via `provide_server_auth_snapshot`. Reading or writing the former
 public fields requires a source migration. This does not make client state an authorization
 boundary or constrain unrelated scripts and tabs.
+
+## Proof-bound native refresh (source implementation)
+
+Native SSR/hydrate sign-in and registration generate an independent 256-bit OS
+CSPRNG seed before the API call. The BFF retains it with the bare refresh token
+and tenant in one canonical HttpOnly envelope. The server-only exchange derives
+a distinct HMAC-SHA256 operation proof for each presented generation, forwards
+only the bare token and proof, and retries an ambiguous upstream refresh once.
+The same envelope works across replicas; it is not a browser-readable credential.
+The shared client now attempts refresh rather than logout when access expiry
+passes while a tab sleeps. Admin SSR excludes Auth server functions from its
+own exchange and refuses to overwrite explicit handler cookie mutations;
+cookie-bearing responses are private/no-store. Old bare BFF cookies are rejected:
+stop old writers, revoke prior sessions and require a fresh sign-in before cutover.
+Direct CSR still needs proof retention and cross-tab coordination; standalone
+Storefront SSR still needs validated host composition. Late response ordering,
+mounted browser verification and real backend/replica failure injection remain open.

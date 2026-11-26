@@ -55,8 +55,8 @@ pub fn bearer_tenant_slug_from_headers(headers: &HeaderMap) -> Option<String> {
 /// rendered into HTML: this host validates it server-to-server and
 /// exposes only the resulting short-lived access token and user
 /// profile to SSR rendering. The returned `Set-Cookie` value carries
-/// the rotated refresh token and must be attached to the response — dropping it
-/// would make the browser replay the previous token and trip reuse detection.
+/// the rotated refresh envelope and must be attached to the response. A lost
+/// response can recover using the unchanged envelope inside backend grace.
 pub async fn verified_snapshot_from_headers(
     headers: &HeaderMap,
 ) -> (ServerAuthSnapshot, Option<String>) {
@@ -68,7 +68,7 @@ pub async fn verified_snapshot_from_headers(
     let Ok(cookie_headers) = cookie_headers else {
         return (ServerAuthSnapshot::default(), None);
     };
-    let Ok(Some((tenant, refresh_token))) =
+    let Ok(Some(credential)) =
         rustok_auth_ui::core::inspect_refresh_cookie_headers(cookie_headers)
     else {
         // Invalid or duplicate credentials do not produce a verified SSR identity.
@@ -76,7 +76,7 @@ pub async fn verified_snapshot_from_headers(
     };
 
     let secure = cookie_request_is_secure(headers);
-    match rustok_auth_ui::transport::exchange_refresh_token_ssr(refresh_token, tenant.clone()).await
+    match rustok_auth_ui::transport::exchange_refresh_token_ssr(credential).await
     {
         Ok((user, session, rotated)) => (
             ServerAuthSnapshot {
@@ -84,13 +84,22 @@ pub async fn verified_snapshot_from_headers(
                 user: Some(user),
             },
             Some(rustok_auth_ui::core::refresh_cookie_header(
-                &tenant, &rotated, secure,
+                &rotated, secure,
             )),
         ),
         // An outage and a rejected credential are not distinguishable here. Preserve the
         // cookie rather than silently destroying a potentially live session on failure.
         Err(_) => (ServerAuthSnapshot::default(), None),
     }
+}
+
+/// Auth-owned server functions consume and update the browser cookie themselves.
+fn auth_function_owns_cookie(path: &str) -> bool {
+    matches!(path,
+        "/api/fn/auth/sign-in" | "/api/fn/auth/sign-up" |
+        "/api/fn/auth/sign-out" | "/api/fn/auth/refresh-token" |
+        "/api/fn/auth/accept-invite" | "/api/fn/auth/forgot-password" |
+        "/api/fn/auth/current-user")
 }
 
 /// Authenticate the request before SSR and update the BFF cookie.
@@ -109,6 +118,14 @@ pub async fn verify_auth_snapshot(mut request: Request<Body>, next: Next) -> Res
     {
         return next.run(request).await;
     }
+    // Auth functions must not race a second middleware exchange or append an
+    // obsolete cookie after the function issued or cleared its own credential.
+    if auth_function_owns_cookie(request.uri().path()) {
+        request.extensions_mut().insert(ServerAuthSnapshot::default());
+        let mut response = next.run(request).await;
+        response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+        return response;
+    }
     // An explicit Authorization header is the sole authority for API requests. Do not
     // refresh or attach an ambient browser session as a second credential, and insert an
     // anonymous snapshot because some API handlers still require the Extension extractor.
@@ -119,14 +136,27 @@ pub async fn verify_auth_snapshot(mut request: Request<Body>, next: Next) -> Res
         return next.run(request).await;
     }
 
+    let had_cookie = request.headers().contains_key(header::COOKIE);
     let (snapshot, set_cookie) = verified_snapshot_from_headers(request.headers()).await;
     request.extensions_mut().insert(snapshot);
 
     let mut response = next.run(request).await;
+    if had_cookie {
+        response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("private, no-store"));
+    }
     if let Some(cookie) = set_cookie
-        && let Ok(value) = HeaderValue::from_str(&cookie)
+        && let Ok(mut value) = HeaderValue::from_str(&cookie)
     {
-        response.headers_mut().append(header::SET_COOKIE, value);
+        value.set_sensitive(true);
+        // A handler's explicit session mutation wins over this snapshot.
+        let owns_cookie = response.headers().get_all(header::SET_COOKIE).iter().any(|header| {
+            header.to_str().ok().is_some_and(|value| {
+                value.split_once('=').is_some_and(|(name, _)| name.trim() == rustok_auth_ui::core::ADMIN_REFRESH_COOKIE)
+            })
+        });
+        if !owns_cookie {
+            response.headers_mut().append(header::SET_COOKIE, value);
+        }
     }
     response
 }
@@ -220,6 +250,15 @@ mod tests {
         assert_eq!(bearer_tenant_slug_from_headers(&headers), None);
     }
 
+    #[test]
+    fn auth_functions_own_their_cookie_transition() {
+        for path in ["/api/fn/auth/sign-in", "/api/fn/auth/sign-up", "/api/fn/auth/sign-out", "/api/fn/auth/refresh-token"] {
+            assert!(auth_function_owns_cookie(path));
+        }
+        assert!(!auth_function_owns_cookie("/api/admin/pages/1/builder/intents"));
+        assert!(!auth_function_owns_cookie("/dashboard"));
+    }
+
     #[tokio::test]
     async fn missing_refresh_cookie_yields_anonymous_snapshot() {
         let headers = HeaderMap::new();
@@ -231,14 +270,9 @@ mod tests {
     #[tokio::test]
     async fn ambiguous_refresh_cookies_never_select_or_clear_a_credential() {
         let mut headers = HeaderMap::new();
-        headers.append(
-            header::COOKIE,
-            HeaderValue::from_static("rustok-admin-refresh-v1=shop.one"),
-        );
-        headers.append(
-            header::COOKIE,
-            HeaderValue::from_static("rustok-admin-refresh-v1=shop.two"),
-        );
+        let wire = format!("rustok-admin-refresh-v1=shop.{}.{}", "a1".repeat(32), "b2".repeat(32));
+        headers.append(header::COOKIE, HeaderValue::from_str(&wire).unwrap());
+        headers.append(header::COOKIE, HeaderValue::from_str(&wire).unwrap());
         let (snapshot, set_cookie) = verified_snapshot_from_headers(&headers).await;
         assert_eq!(snapshot, ServerAuthSnapshot::default());
         assert!(set_cookie.is_none());

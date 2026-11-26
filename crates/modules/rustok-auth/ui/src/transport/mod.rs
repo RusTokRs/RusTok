@@ -309,17 +309,14 @@ pub async fn refresh_session(tenant: String) -> Result<Option<(AuthSession, Auth
 }
 
 /// Server-side (SSR host) refresh-token exchange for building the
-/// request auth snapshot. Returns the rotated refresh token so the
-/// host can re-issue its BFF cookie.
+/// request auth snapshot. Returns the rotated server-only credential so
+/// the host can re-issue its BFF envelope without exposing its seed.
 #[cfg(feature = "ssr")]
 pub async fn exchange_refresh_token_ssr(
-    refresh_token: String,
-    tenant: String,
-) -> Result<(AuthUser, AuthSession, String), AuthError> {
+    credential: crate::core::RefreshCredential,
+) -> Result<(AuthUser, AuthSession, crate::core::RefreshCredential), AuthError> {
     let (payload, rotated) =
-        native_server_adapter::exchange_refresh_token_ssr(refresh_token, tenant)
-            .await
-            .map_err(|error| map_server_auth_error(error, false))?;
+        native_server_adapter::exchange_refresh_token_ssr(credential).await?;
     Ok((payload.user, payload.session, rotated))
 }
 
