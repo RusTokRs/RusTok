@@ -1897,7 +1897,10 @@ fn load_route_draft(
     owner: Option<&DraftSessionOwner>,
 ) -> Result<Option<SsrDraftSessionSnapshot>, SsrDraftSessionError> {
     match draft_token {
-        Some(token) => store.load(token, page_id, owner),
+        Some(token) => {
+            let owner = owner.ok_or(SsrDraftSessionError::OwnerMismatch)?;
+            store.load(token, page_id, Some(owner))
+        }
         None => Ok(None),
     }
 }
@@ -2091,11 +2094,15 @@ mod tests {
     #[test]
     fn route_without_a_live_draft_is_not_an_error() {
         let store = InMemorySsrDraftSessionStore::editor_default();
+        let reader = owner("reader");
 
         let without_token = load_route_draft(&store, None, "home", None).expect("no token");
         assert!(without_token.is_none());
-        let unknown = load_route_draft(&store, Some("non-existent-token"), "home", None)
+        let unknown = load_route_draft(&store, Some("non-existent-token"), "home", Some(&reader))
             .expect("a token the store does not hold");
         assert!(unknown.is_none());
+        let missing_owner = load_route_draft(&store, Some("non-existent-token"), "home", None)
+            .expect_err("a draft token must never be read without a verified owner");
+        assert!(matches!(missing_owner, SsrDraftSessionError::OwnerMismatch));
     }
 }
