@@ -65,7 +65,7 @@ pub async fn bootstrap_app_runtime(
     runtime_ctx: ServerRuntimeContext,
     auth_config: AuthConfig,
 ) -> Result<AppRuntimeBootstrap> {
-    use crate::services::app_lifecycle::{await_worker_startup_or_stop, StopHandle};
+    use crate::services::stop_handle::{StopHandle, await_worker_startup_or_stop};
 
     let stop = StopHandle::ensure(&runtime_ctx);
     if stop.is_stopping() {
@@ -261,9 +261,8 @@ async fn initialize_module_work_runtime(
     registry: &ModuleRegistry,
     extensions: &ModuleRuntimeExtensions,
 ) -> Result<()> {
-    use crate::services::app_lifecycle::{
-        await_worker_startup_or_stop, ModuleWorkSchedulerInitializationLock, StopHandle,
-    };
+    use crate::services::app_lifecycle::ModuleWorkSchedulerInitializationLock;
+    use crate::services::stop_handle::{StopHandle, await_worker_startup_or_stop};
 
     // Registration can await, so a check-then-spawn permits competing bootstraps
     // to leave an untracked scheduler running. Cancellation releases this guard.

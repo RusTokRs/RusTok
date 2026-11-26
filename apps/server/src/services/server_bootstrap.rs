@@ -6,8 +6,7 @@ use crate::auth::AuthConfig;
 use crate::common::settings::RustokSettings;
 use crate::error::Result;
 use crate::services::app_lifecycle::{
-    await_worker_startup_or_stop, connect_runtime_workers_with_runtime,
-    ServerBootstrapInitializationLock, StopHandle,
+    ServerBootstrapInitializationLock, connect_runtime_workers_with_runtime,
 };
 use crate::services::app_router::compose_application_router;
 use crate::services::app_runtime::bootstrap_app_runtime;
@@ -20,6 +19,7 @@ use crate::services::profile_media_public_image_deployment::configure_profile_me
 use crate::services::rbac_cache_invalidation::start_rbac_cache_invalidation_listener;
 use crate::services::rbac_invalidation_generation::start_rbac_invalidation_generation_watchdog;
 use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext};
+use crate::services::stop_handle::{StopHandle, await_worker_startup_or_stop};
 
 /// Runs host-independent startup validation and one-time initialization.
 pub async fn initialize_server_context(
@@ -27,13 +27,15 @@ pub async fn initialize_server_context(
     mac_root: &str,
     database_uri: &str,
 ) -> Result<()> {
+    let stop = StopHandle::ensure(runtime_ctx);
     let initialization = ServerBootstrapInitializationLock::ensure(runtime_ctx);
-    let _initialization_guard = initialization.lock().await;
-    if StopHandle::ensure(runtime_ctx).is_stopping() {
+    let Some(_initialization_guard) =
+        await_worker_startup_or_stop(&stop, initialization.lock()).await
+    else {
         return Err(crate::error::Error::Message(
             "server shutdown started before runtime initialization".to_string(),
         ));
-    }
+    };
     check_production_environment(
         mac_root,
         database_uri,
@@ -203,14 +205,15 @@ pub async fn bootstrap_application_router(
     settings_snapshot: serde_json::Value,
     rustok_settings: RustokSettings,
 ) -> Result<AxumRouter> {
-    let initialization = ServerBootstrapInitializationLock::ensure(&runtime_ctx);
-    let _initialization_guard = initialization.lock().await;
     let stop = StopHandle::ensure(&runtime_ctx);
-    if stop.is_stopping() {
+    let initialization = ServerBootstrapInitializationLock::ensure(&runtime_ctx);
+    let Some(_initialization_guard) =
+        await_worker_startup_or_stop(&stop, initialization.lock()).await
+    else {
         return Err(crate::error::Error::Message(
             "server shutdown started before application router bootstrap".to_string(),
         ));
-    }
+    };
     tracing::info!("RusTok application bootstrap started");
 
     let Some(product_catalog_result) = await_worker_startup_or_stop(
@@ -387,6 +390,29 @@ mod tests {
         "SEED_ADMIN_PASSWORD",
         "RUSTOK_DEV_SEED_PASSWORD",
     ];
+
+    #[tokio::test]
+    async fn waiting_context_initialization_exits_on_stop_without_acquiring_lock() {
+        let ctx = super::ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            super::RustokSettings::default(),
+        );
+        let initialization = super::ServerBootstrapInitializationLock::ensure(&ctx);
+        let _held = initialization.lock().await;
+        let mut startup = Box::pin(super::initialize_server_context(&ctx, "", ""));
+        assert!(futures_util::poll!(&mut startup).is_pending());
+
+        super::StopHandle::ensure(&ctx).stop().await;
+        let error = tokio::time::timeout(std::time::Duration::from_secs(1), startup)
+            .await
+            .expect("shutdown interrupts queued context initialization")
+            .expect_err("stopped host must reject context initialization");
+        assert!(
+            error
+                .to_string()
+                .contains("shutdown started before runtime initialization")
+        );
+    }
 
     #[test]
     fn provisioning_is_limited_to_user_serving_host_modes() {

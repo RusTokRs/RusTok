@@ -319,7 +319,11 @@ includes their startup-mutex wait, initial cache/Redis recovery, and
 joins of previously aborted workers. A shared stop-watch helper checks
 the subscribed state to avoid losing a stop between check and wait;
 published task shutdown still uses each listener's own registry gate
-and bounded join/abort contract.
+and bounded join/abort contract. The server context and application router
+bootstrap entrypoints, as well as the direct worker startup entrypoint,
+also use this helper when acquiring their initialization mutexes. A queued
+startup exits on stop without waiting for the active initializer; admitted
+operations and published handles retain their existing shutdown contracts.
 
 
 Direct worker starters for Product Search channel repair, Notifications
