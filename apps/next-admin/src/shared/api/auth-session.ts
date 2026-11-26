@@ -5,7 +5,7 @@ export const RUSTOK_ACCESS_COOKIE_PATH = '/api/rustok';
 export const RUSTOK_SESSION_REQUEST_HEADER = 'x-rustok-session-request';
 export const RUSTOK_ACCESS_REFRESH_SKEW_MS = 60_000;
 
-const MAX_SESSION_COOKIE_AGE_SECONDS = 90 * 24 * 60 * 60;
+const MAX_SESSION_COOKIE_AGE_SECONDS = 365 * 24 * 60 * 60;
 
 export function parseRustokSessionCookie(setCookie: string | null): {value: string; maxAge: number} | null {
   if (!setCookie) return null;

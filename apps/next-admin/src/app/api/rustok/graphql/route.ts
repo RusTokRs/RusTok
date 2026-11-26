@@ -7,13 +7,32 @@ const MAX_BODY=1024*1024;
 function error(code:string,message:string,status=200):Response {
  return Response.json({errors:[{message,extensions:{code,retryable:false,outcome:'rejected'}}]},{status,headers:{'cache-control':'no-store'}});
 }
+async function readBoundedBody(request: Request): Promise<string | null> {
+ const reader=request.body?.getReader();
+ if(!reader) return '';
+ const chunks:Uint8Array[]=[];
+ let size=0;
+ try {
+  while(true) {
+   const {done,value}=await reader.read();
+   if(done) break;
+   size+=value.byteLength;
+   if(size>MAX_BODY) { await reader.cancel(); return null; }
+   chunks.push(value);
+  }
+ } finally { reader.releaseLock(); }
+ const bytes=new Uint8Array(size);
+ let offset=0;
+ for(const chunk of chunks) { bytes.set(chunk,offset); offset+=chunk.byteLength; }
+ return new TextDecoder().decode(bytes);
+}
 export async function POST(request:Request) {
  if(!isSameOriginRequest(request.url,request.headers.get('origin'),request.headers.get('referer'))) return error('FORBIDDEN','Cross-origin GraphQL requests are not allowed',403);
- if(!(request.headers.get('content-type')??'').toLowerCase().includes('application/json')) return error('BAD_USER_INPUT','GraphQL requests must use application/json',415);
+ if((request.headers.get('content-type')??'').split(';',1)[0].trim().toLowerCase()!=='application/json') return error('BAD_USER_INPUT','GraphQL requests must use application/json',415);
  const declared=Number(request.headers.get('content-length')??0);
  if(Number.isFinite(declared)&&declared>MAX_BODY) return error('PAYLOAD_TOO_LARGE','GraphQL request body is too large',413);
- const body=await request.text();
- if(Buffer.byteLength(body,'utf8')>MAX_BODY) return error('PAYLOAD_TOO_LARGE','GraphQL request body is too large',413);
+ const body=await readBoundedBody(request);
+ if(body===null) return error('PAYLOAD_TOO_LARGE','GraphQL request body is too large',413);
  const session=await auth();
  const stored=await readRustokSessionCookies();
  const headers=new Headers({'content-type':'application/json'});
