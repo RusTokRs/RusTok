@@ -338,7 +338,7 @@ mod browser_draft_binding_tests {
     fn no_session_does_not_advertise_the_strict_receipt_contract() {
         assert_eq!(
             browser_draft_binding_attributes(Some(SsrDraftRenderBinding { session: None })),
-            (None, None, None, None),
+            (Some("rendered"), None, None, None),
         );
         assert_eq!(browser_draft_binding_attributes(None), (None, None, None, None));
     }

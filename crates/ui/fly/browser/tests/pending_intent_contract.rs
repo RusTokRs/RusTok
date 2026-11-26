@@ -58,8 +58,8 @@ fn strict_mount_uses_server_rendered_draft_identity_not_stale_storage() {
     let source = include_str!("../assets/fly-browser.js");
     assert!(source.contains(
         "this.requiresOperationReceipts = root.dataset.flyDraftContract ==="
-    assert!(source.contains("authoritative: root.dataset.flyDraftBinding ==="));
     ));
+    assert!(source.contains("authoritative: root.dataset.flyDraftBinding ==="));
     assert!(source.contains("readDraftSession(this.pageId, {"));
     assert!(source.contains("token: root.dataset.flyRenderedDraftToken"));
     assert!(source.contains("generation: root.dataset.flyRenderedDraftGeneration"));
