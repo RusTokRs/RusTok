@@ -1,5 +1,12 @@
 # Documentation: `apps/server`
 
+## GraphQL resolver telemetry
+
+Resolver debug events use the validated schema field name (`ResolveInfo::name`),
+not the response path or client-defined alias. This keeps field identity stable
+across aliased and indexed results without changing GraphQL response keys.
+The focused source regression covers both path forms; it has not been executed.
+
 ## Registry direct-session admission (2026-11-25)
 
 Registry V2 controller and publication/artifact/owner-transfer middleware now
