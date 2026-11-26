@@ -32,6 +32,7 @@ use std::sync::Arc;
 
 fn browser_draft_binding_attributes(
     binding: Option<SsrDraftRenderBinding>,
+    strict_receipts_enabled: bool,
 ) -> (
     Option<&'static str>,
     Option<&'static str>,
@@ -42,7 +43,7 @@ fn browser_draft_binding_attributes(
         Some(binding) => match binding.session {
             Some((token, generation)) => (
                 Some("rendered"),
-                Some("rendered"),
+                strict_receipts_enabled.then_some("rendered"),
                 Some(token),
                 Some(generation.to_string()),
             ),
@@ -176,8 +177,14 @@ pub fn AdminCanvas(
     // The host policy admits an inline script only with the nonce of this response.
     let browser_script_nonce = use_context::<UiCspNonce>().map(|nonce| nonce.as_str().to_string());
     let root_csrf_token = browser_csrf_token.clone();
+    let strict_draft_receipts = runtime
+        .controller
+        .with(|controller| controller.ui().state.capabilities.edit);
     let (draft_binding, draft_contract, rendered_draft_token, rendered_draft_generation) =
-        browser_draft_binding_attributes(use_context::<SsrDraftRenderBinding>());
+        browser_draft_binding_attributes(
+            use_context::<SsrDraftRenderBinding>(),
+            strict_draft_receipts,
+        );
     let draft_recovery_message = t(
         locale.as_deref(),
         "page_builder.draftRecovery.message",
@@ -337,18 +344,42 @@ mod browser_draft_binding_tests {
     #[test]
     fn no_session_does_not_advertise_the_strict_receipt_contract() {
         assert_eq!(
-            browser_draft_binding_attributes(Some(SsrDraftRenderBinding { session: None })),
+            browser_draft_binding_attributes(
+                Some(SsrDraftRenderBinding { session: None }),
+                true,
+            ),
             (Some("rendered"), None, None, None),
         );
-        assert_eq!(browser_draft_binding_attributes(None), (None, None, None, None));
+        assert_eq!(browser_draft_binding_attributes(None, true), (None, None, None, None));
+    }
+
+    #[test]
+    fn read_only_rendered_session_keeps_its_binding_without_strict_receipts() {
+        assert_eq!(
+            browser_draft_binding_attributes(
+                Some(SsrDraftRenderBinding {
+                    session: Some(("draft-token".to_string(), 42)),
+                }),
+                false,
+            ),
+            (
+                Some("rendered"),
+                None,
+                Some("draft-token".to_string()),
+                Some("42".to_string()),
+            ),
+        );
     }
 
     #[test]
     fn rendered_session_emits_its_exact_token_and_generation() {
         assert_eq!(
-            browser_draft_binding_attributes(Some(SsrDraftRenderBinding {
-                session: Some(("draft-token".to_string(), 42)),
-            })),
+            browser_draft_binding_attributes(
+                Some(SsrDraftRenderBinding {
+                    session: Some(("draft-token".to_string(), 42)),
+                }),
+                true,
+            ),
             (
                 Some("rendered"),
                 Some("rendered"),
