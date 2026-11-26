@@ -100,6 +100,11 @@ it never provisions a service or adds grants. Human transport authentication is 
 
 ### Known Limitations / Pending Implementation
 
+OAuth policy changes and consent re-grants now durably revoke previous
+credentials at the source level. Compilation, focused regressions and
+PostgreSQL contention/rollback evidence remain pending. OAuth refresh-family
+recovery and full OAuth lifecycle verification remain open.
+
 Direct first-party refresh has source-level proof-bound recovery through the
 raw and cookie REST endpoints and GraphQL HTTP transport. The cookie
 REST owner issues an HttpOnly token/seed envelope and derives its proof;

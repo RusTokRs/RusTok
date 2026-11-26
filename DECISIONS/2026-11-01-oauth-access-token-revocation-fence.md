@@ -37,6 +37,15 @@ consent-presence check alone could not distinguish an old epoch from a new grant
    `refresh` lineage rows. Refresh-only queries (rotation, reuse detection,
    family-root resolution, admin active-token counts) filter on `refresh`.
 
+6. A change to the client's registered redirect URIs, scopes, grant types or
+   granted permissions invalidates all of its existing tokens, pending codes
+   and active consents in the same app-locked transaction. Equivalent policy
+   sets and presentation-only edits preserve credentials. Both manual and
+   first-party manifest policy writers enforce this rule.
+7. Consent re-grant durably revokes the previous subject's tokens and pending
+   codes before publishing the replacement grant, even when the clock repeats
+   the previous consent timestamp. Revocation history remains intact.
+
 ## Sources of truth and ownership
 
 - Canonical owner: `rustok-auth` owns JWT claims and auth migrations;

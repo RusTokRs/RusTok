@@ -307,7 +307,11 @@ cannot leave a new grant behind. Source regressions authored, unrun.
 
 ## OAuth consent and grant fences (source only)
 
-Consent re-grant invalidates pending codes in its transaction; code exchange
+Consent re-grant durably revokes subject-bound access and refresh rows and
+invalidates pending codes in its transaction, independently of epoch timestamp
+resolution. Manual and first-party manifest security-policy updates atomically
+revoke app credentials, pending codes and consents. Equivalent policy sets
+and presentation-only edits preserve credentials. Code exchange
 rejects a newer consent epoch and checks the refresh grant under the app lock
 before persisting prepared credentials. OAuth replay grace no longer accepts
 future timestamps or truncates elapsed time to whole seconds. Focused source

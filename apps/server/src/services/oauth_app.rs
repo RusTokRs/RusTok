@@ -122,6 +122,30 @@ fn manual_app_update_base(app: oauth_apps::Model) -> OAuthAppActiveModel {
     active
 }
 
+/// Compare security policy sets without treating order or duplicate entries as
+/// authority changes. Malformed stored policy never compares equal.
+fn oauth_policy_matches(stored: &serde_json::Value, requested: &[String]) -> bool {
+    let Ok(existing) = serde_json::from_value::<Vec<String>>(stored.clone()) else {
+        return false;
+    };
+    let existing: std::collections::BTreeSet<_> = existing.iter().collect();
+    let requested: std::collections::BTreeSet<_> = requested.iter().collect();
+    existing == requested
+}
+
+fn oauth_app_policy_changed(
+    app: &oauth_apps::Model,
+    redirect_uris: &[String],
+    scopes: &[String],
+    grant_types: &[String],
+    granted_permissions: &[String],
+) -> bool {
+    !oauth_policy_matches(&app.redirect_uris, redirect_uris)
+        || !oauth_policy_matches(&app.scopes, scopes)
+        || !oauth_policy_matches(&app.grant_types, grant_types)
+        || !oauth_policy_matches(&app.granted_permissions, granted_permissions)
+}
+
 /// Lock an OAuth app in the same order used by token issuance. Consent
 /// grants/revocations use this fence so they cannot race a token exchange that
 /// has already validated the app.
@@ -336,6 +360,15 @@ impl OAuthAppService {
         // path syncs them into oauth_app_translations. The base model marks
         // immutable, lifecycle and runtime-owned columns NotSet so this
         // pre-read cannot undo a concurrent revoke, secret rotation or use.
+        if oauth_app_policy_changed(
+            &app,
+            &input.redirect_uris,
+            &input.scopes,
+            &input.grant_types,
+            &granted_permissions,
+        ) {
+            revoke_oauth_app_credentials(&tx, app_id, tenant_id, Utc::now()).await?;
+        }
         let mut active = manual_app_update_base(app);
         active.name = Set(input.name);
         active.description = Set(input.description);
@@ -962,7 +995,19 @@ impl OAuthAppService {
             Some(consent) => {
                 let now = Utc::now();
                 // Re-grant creates a new consent epoch even when the scopes
-                // are unchanged. Pending codes belong to the previous epoch.
+                // are unchanged. Durably revoke all credentials of the previous
+                // grant, even if the database clock repeats an epoch timestamp.
+                OAuthTokens::update_many()
+                    .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
+                    .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now))
+                    .filter(oauth_tokens::Column::AppId.eq(app_id))
+                    .filter(oauth_tokens::Column::UserId.eq(user_id))
+                    .filter(oauth_tokens::Column::TenantId.eq(tenant_id))
+                    .filter(oauth_tokens::Column::RevokedAt.is_null())
+                    .exec(db)
+                    .await
+                    .map_err(GrantConsentAttempt::classify)?;
+                // Pending codes belong to the previous epoch.
                 // Invalidate them under the same app/subject transaction as
                 // the grant, before any exchange can observe the new epoch.
                 oauth_authorization_codes::Entity::update_many()
@@ -1661,6 +1706,9 @@ where
     C: ConnectionTrait,
 {
     ensure_manifest_app_ownership(app, slug, "first_party")?;
+    if oauth_app_policy_changed(app, redirect_uris, scopes, grant_types, granted_permissions) {
+        revoke_oauth_app_credentials(db, app.id, tenant_id, Utc::now()).await?;
+    }
     let scopes_json = serde_json::to_value(scopes).map_err(|_| Error::InternalServerError)?;
     let grant_types_json =
         serde_json::to_value(grant_types).map_err(|_| Error::InternalServerError)?;
@@ -3248,9 +3296,46 @@ mod tests {
         let old_id = insert_pending_authorization_code(&db, app.id, user.id, tenant.id).await;
         let unrelated_id =
             insert_pending_authorization_code(&db, app.id, other.id, tenant.id).await;
+        let mut delegated = Vec::new();
+        for subject in [user.id, other.id] {
+            for kind in [oauth_tokens::TOKEN_KIND_ACCESS, oauth_tokens::TOKEN_KIND_REFRESH] {
+                let now = Utc::now();
+                let id = Uuid::new_v4();
+                let token = oauth_tokens::ActiveModel {
+                    id: Set(id),
+                    app_id: Set(app.id),
+                    user_id: Set(Some(subject)),
+                    tenant_id: Set(tenant.id),
+                    token_hash: Set(format!("regrant-{id}")),
+                    family_id: Set(Some(id)),
+                    authorization_code_id: Set(None),
+                    grant_type: Set("authorization_code".to_string()),
+                    token_kind: Set(kind.to_string()),
+                    consent_granted_at: Set(Some(now.into())),
+                    scopes: Set(serde_json::json!(["openid"])),
+                    expires_at: Set((now + chrono::Duration::minutes(15)).into()),
+                    revoked_at: Set(None),
+                    last_used_at: Set(None),
+                    created_at: Set(now.into()),
+                    updated_at: Set(now.into()),
+                }
+                .insert(&db)
+                .await
+                .expect("insert delegated token");
+                delegated.push((token.id, subject));
+            }
+        }
         OAuthAppService::grant_consent_strict(&db, app.id, user.id, tenant.id, scopes.clone())
             .await
             .expect("regrant consent");
+        for (id, subject) in delegated {
+            let stored = OAuthTokens::find_by_id(id)
+                .one(&db)
+                .await
+                .expect("read delegated token")
+                .expect("token history retained");
+            assert_eq!(stored.revoked_at.is_some(), subject == user.id);
+        }
         let old = oauth_authorization_codes::Entity::find_by_id(old_id)
             .one(&db)
             .await
@@ -3422,6 +3507,68 @@ mod tests {
         OAuthAppService::revoke_token_by_hash(&db, "missing-token-hash", app.id, tenant.id)
             .await
             .expect("RFC 7009 unknown token revocation must succeed");
+    }
+
+    #[test]
+    fn oauth_policy_comparison_ignores_order_but_rejects_corrupt_storage() {
+        let requested = vec!["openid".to_string(), "profile".to_string()];
+        assert!(oauth_policy_matches(
+            &serde_json::json!(["profile", "openid", "openid"]),
+            &requested,
+        ));
+        assert!(!oauth_policy_matches(&serde_json::json!(["openid"]), &requested));
+        assert!(!oauth_policy_matches(&serde_json::json!({"openid": true}), &requested));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn manual_policy_change_revokes_credentials_but_copy_edit_does_not() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let app = insert_revocation_app(&db, tenant.id, "policy-change").await;
+        let user = users::ActiveModel::new(tenant.id, "policy@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("user");
+        OAuthAppService::grant_consent_strict(
+            &db, app.id, user.id, tenant.id, vec!["openid".to_string()],
+        )
+        .await
+        .expect("grant consent");
+        let code = insert_pending_authorization_code(&db, app.id, user.id, tenant.id).await;
+        let token = insert_revocation_token(&db, &app, "policy-token", None).await;
+        let edit = |scope: &str| UpdateOAuthAppInput {
+            name: "Updated display name".to_string(),
+            description: None,
+            icon_url: None,
+            redirect_uris: vec!["https://partner.example.com/callback".to_string()],
+            scopes: vec![scope.to_string()],
+            grant_types: vec!["authorization_code".to_string(), "refresh_token".to_string()],
+            granted_permissions: vec![],
+        };
+        for (scope, revoked) in [("openid", false), ("profile", true), ("openid", true)] {
+            oauth_apps::scope_runtime_copy_locale(
+                "en".to_string(),
+                OAuthAppService::update_app(&db, tenant.id, app.id, edit(scope)),
+            )
+            .await
+            .expect("update app");
+            let stored = OAuthTokens::find_by_id(token.id)
+                .one(&db)
+                .await
+                .expect("read token")
+                .expect("retained token");
+            assert_eq!(stored.revoked_at.is_some(), revoked);
+            let stored = oauth_authorization_codes::Entity::find_by_id(code)
+                .one(&db)
+                .await
+                .expect("read code")
+                .expect("retained code");
+            assert_eq!(stored.used_at.is_some(), revoked);
+            let consent = OAuthConsents::find_active_consent(&db, app.id, user.id, tenant.id)
+                .await
+                .expect("read consent");
+            assert_eq!(consent.is_none(), revoked);
+        }
     }
 
     #[tokio::test]

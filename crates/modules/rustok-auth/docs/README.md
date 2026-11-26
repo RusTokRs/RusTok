@@ -648,8 +648,12 @@ locks app, user and direct session in order, rechecks ownership, session livenes
 email policy and access credential expiry, then grants missing consent only for
 explicit approval. Code insertion failure rolls back the consent change.
 
-Re-granting consent invalidates pending authorization codes for the same app,
-subject and tenant. Exchange rejects codes older than current consent and
+Re-granting consent durably revokes existing access and refresh credentials
+and invalidates pending authorization codes for the same app, subject and
+tenant. Manual and first-party manifest policy changes invalidate the app's
+tokens, pending codes and consents atomically; presentation edits and
+equivalent policy sets do not. Restoring a prior policy cannot revive those
+credentials. Source regressions remain unrun. Exchange rejects codes older than current consent and
 rechecks the refresh grant under the app lock before persisting prepared refresh
 credentials. OAuth refresh replay grace requires a nonnegative elapsed duration
 less than 30 seconds. Source regression definitions are unrun.
