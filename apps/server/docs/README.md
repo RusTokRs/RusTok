@@ -251,7 +251,9 @@ A retained task still passes the shared liveness/stop guard; after shutdown
 it cannot be reported healthy and its handle remains available to the drain.
 When no handle remains, the stopped-host path returns without registering or
 starting work. Module-work still records the composition requirement used
-by readiness. The existing stop-before-start and restart-after-drain
+by readiness. A queued module-work initializer also observes the stop signal
+without waiting for the registration mutex; it cannot overwrite an existing
+requirement during cancellation. The existing stop-before-start and restart-after-drain
 regressions cover this no-op; the terminated-task regressions also check
 that retained handles are not acknowledged after stop. Tests are unexecuted.
 
@@ -328,6 +330,10 @@ Workflow cron also cancels pending startup-mutex acquisition and its read-only
 schema validation. Context bootstrap checks stop before durable SuperAdmin
 provisioning and before returning success; router bootstrap checks stop
 again after the worker starters, which may return a stopped-host no-op.
+Readiness and Prometheus use the same runtime snapshot for Outbox relay,
+Outbox retention, and remote-executor reaper, including host-mode admission.
+The cache reconciliation workers retain their independent serving-profile
+requirements; they are not limited to general background-worker hosts.
 
 
 Direct worker starters for Product Search channel repair, Notifications

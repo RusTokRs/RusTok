@@ -261,13 +261,35 @@ async fn initialize_module_work_runtime(
     registry: &ModuleRegistry,
     extensions: &ModuleRuntimeExtensions,
 ) -> Result<()> {
-    use crate::services::app_lifecycle::ModuleWorkSchedulerInitializationLock;
+    use crate::services::app_lifecycle::{
+        ModuleWorkSchedulerHandle, ModuleWorkSchedulerInitializationLock,
+        ModuleWorkSchedulerRequirement,
+    };
     use crate::services::stop_handle::{StopHandle, await_worker_startup_or_stop};
+
+    let stop = StopHandle::ensure(ctx);
+    let registrations = extensions.get::<rustok_runtime::ModuleWorkRegistrations>();
+    let requirement = ModuleWorkSchedulerRequirement(
+        registrations.is_some_and(|registrations| !registrations.is_empty()),
+    );
 
     // Registration can await, so a check-then-spawn permits competing bootstraps
     // to leave an untracked scheduler running. Cancellation releases this guard.
     let initialization = ModuleWorkSchedulerInitializationLock::ensure(ctx);
-    let _guard = initialization.0.lock().await;
+    let Some(_guard) = await_worker_startup_or_stop(&stop, initialization.0.lock()).await
+    else {
+        if ctx.shared_contains::<ModuleWorkSchedulerHandle>() {
+            published_worker_running::<ModuleWorkSchedulerHandle>(
+                ctx,
+                "Module work scheduler",
+                ModuleWorkSchedulerHandle::is_finished,
+            )?;
+        }
+        // Preserve an already published composition decision. A stopped caller
+        // must not replace the active initializer's readiness requirement.
+        ctx.shared_insert_if_absent(requirement);
+        return Ok(());
+    };
     // A retained handle must pass the liveness/stop guard. With no handle,
     // continue to the requirement snapshot and the explicit stopped-host
     // no-op below rather than treating terminal shutdown as a startup failure.
@@ -281,21 +303,15 @@ async fn initialize_module_work_runtime(
         return Ok(());
     }
 
-    let registrations = extensions.get::<rustok_runtime::ModuleWorkRegistrations>();
     // Record the same registration decision used to start the scheduler so
     // readiness distinguishes an empty composition from a missing task.
-    ctx.shared_insert(
-        crate::services::app_lifecycle::ModuleWorkSchedulerRequirement(
-            registrations.is_some_and(|registrations| !registrations.is_empty()),
-        ),
-    );
+    ctx.shared_insert(requirement);
     let Some(registrations) = registrations else {
         return Ok(());
     };
     if registrations.is_empty() || !ctx.settings().runtime.runs_background_workers() {
         return Ok(());
     }
-    let stop = StopHandle::ensure(ctx);
     if stop.is_stopping() {
         tracing::info!("Shutdown requested; skipping module work scheduler startup");
         return Ok(());
@@ -1092,6 +1108,33 @@ mod tests {
         registration.release.add_permits(1);
         first.await.unwrap().unwrap();
         assert!(!ctx.shared_contains::<ModuleWorkSchedulerHandle>());
+    }
+
+    #[tokio::test]
+    async fn queued_module_work_startup_exits_on_stop_without_replacing_requirement() {
+        use crate::services::app_lifecycle::{
+            ModuleWorkSchedulerHandle, ModuleWorkSchedulerInitializationLock,
+            ModuleWorkSchedulerRequirement, StopHandle,
+        };
+        use std::sync::atomic::Ordering;
+
+        let (ctx, registry, extensions, registration) = blocking_module_work_fixture().await;
+        ctx.shared_insert(ModuleWorkSchedulerRequirement(false));
+        let initialization = ModuleWorkSchedulerInitializationLock::ensure(&ctx);
+        let _held = initialization.0.lock().await;
+        let mut startup = Box::pin(super::initialize_module_work_runtime(
+            &ctx, &registry, &extensions,
+        ));
+        assert!(futures_util::poll!(&mut startup).is_pending());
+
+        StopHandle::ensure(&ctx).stop().await;
+        tokio::time::timeout(std::time::Duration::from_secs(1), startup)
+            .await
+            .expect("stop interrupts queued module work initialization")
+            .expect("stopped startup without a task is a no-op");
+        assert_eq!(registration.calls.load(Ordering::SeqCst), 0);
+        assert!(!ctx.shared_contains::<ModuleWorkSchedulerHandle>());
+        assert!(!ctx.shared_get::<ModuleWorkSchedulerRequirement>().unwrap().0);
     }
 
     #[tokio::test]

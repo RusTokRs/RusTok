@@ -427,6 +427,35 @@ pub(crate) fn additional_cache_reconciliation_worker_snapshots(
     ]
 }
 
+/// Shared inventory for readiness and Prometheus, including the workers
+/// whose requirement is determined by the selected event runtime.
+pub(crate) fn runtime_worker_snapshots(ctx: &ServerRuntimeContext) -> Vec<RuntimeWorkerSnapshot> {
+    let settings = ctx.settings();
+    let local = settings.runtime.runs_background_workers();
+    let event_runtime = ctx.shared_get::<std::sync::Arc<EventRuntime>>();
+    let mut snapshots = vec![
+        RuntimeWorkerSnapshot {
+            name: "outbox_relay",
+            required: local
+                && event_runtime.as_ref().is_some_and(|runtime| runtime.relay_config.is_some()),
+            finished: ctx.shared_map::<OutboxRelayWorkerHandle, _>(OutboxRelayWorkerHandle::is_finished),
+        },
+        RuntimeWorkerSnapshot {
+            name: "outbox_retention",
+            required: local
+                && event_runtime.as_ref().is_some_and(|runtime| runtime.outbox_retention.is_some()),
+            finished: ctx.shared_map::<OutboxRetentionWorkerHandle, _>(OutboxRetentionWorkerHandle::is_finished),
+        },
+        RuntimeWorkerSnapshot {
+            name: "remote_executor_reaper",
+            required: local && settings.registry.remote_executor.enabled,
+            finished: ctx.shared_map::<RemoteExecutorReaperHandle, _>(RemoteExecutorReaperHandle::is_finished),
+        },
+    ];
+    snapshots.extend(additional_runtime_worker_snapshots(ctx));
+    snapshots
+}
+
 pub(crate) fn additional_runtime_worker_snapshots(
     ctx: &ServerRuntimeContext,
 ) -> Vec<RuntimeWorkerSnapshot> {
@@ -2459,12 +2488,14 @@ mod tests {
                         | "comments_schedule_audit_handoff"
                         | "event_forwarder"
                 );
-                assert_eq!(
-                    worker.required,
-                    expected && !opt_in_consumer,
-                    "{}",
-                    worker.name
-                );
+                let required = match worker.name {
+                    "field_definition_cache_generation" => true,
+                    "seo_redirect_cache_reconciliation" => !matches!(
+                        mode, RuntimeHostMode::RegistryOnly | RuntimeHostMode::Worker
+                    ),
+                    _ => expected && !opt_in_consumer,
+                };
+                assert_eq!(worker.required, required, "{}", worker.name);
                 assert_eq!(worker.finished, None, "{}", worker.name);
             }
         }
@@ -2787,7 +2818,7 @@ mod tests {
             "the retention worker must not be started twice"
         );
 
-        let snapshots = super::additional_runtime_worker_snapshots(&runtime_ctx);
+        let snapshots = super::runtime_worker_snapshots(&runtime_ctx);
         for name in ["outbox_relay", "outbox_retention"] {
             let snapshot = snapshots
                 .iter()
