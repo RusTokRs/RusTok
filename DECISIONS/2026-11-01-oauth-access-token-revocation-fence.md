@@ -46,6 +46,12 @@ consent-presence check alone could not distinguish an old epoch from a new grant
    codes before publishing the replacement grant, even when the clock repeats
    the previous consent timestamp. Revocation history remains intact.
 
+8. Replay-triggered family revocation is an authenticated client mutation.
+   Authorization-code and refresh replay handlers revalidate the current
+   active client identity, authentication type, secret hash and admitted
+   grant under the same app mutation fence as issuance. A stale client
+   snapshot cannot authorize revocation.
+
 ## Sources of truth and ownership
 
 - Canonical owner: `rustok-auth` owns JWT claims and auth migrations;

@@ -639,7 +639,10 @@ expiries beyond its ten-minute window. Source regressions unrun.
 RFC 7009 revocation rechecks the authenticated client snapshot under the app
 mutation lock before inspecting the token. Concurrent secret or client policy
 changes invalidate the preflight authentication; unknown tokens still succeed
-for an authenticated client. Source regression unrun.
+for an authenticated client. Authorization-code and refresh-token replay
+revocation revalidate the active client snapshot and grant under the same
+app mutation lock, rejecting stale authentication before changing a family.
+Source regressions unrun.
 
 ## OAuth issuance fences
 

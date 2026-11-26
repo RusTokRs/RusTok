@@ -295,7 +295,9 @@ secret even with RSA signing; keep server clocks synchronized.
 
 RFC 7009 revocation revalidates the active client identity, type and secret hash
 under the app lock before token lookup. Stale authentication returns invalid_client;
-unknown tokens still succeed for authenticated clients. Source regression authored,
+unknown tokens still succeed for authenticated clients. Authorization-code
+and refresh-token replay paths revalidate that same active client snapshot and
+the requested grant under the mutation lock before family revocation. Source regressions authored,
 compilation and runtime verification pending.
 
 ## OAuth authorization session fence (source only)

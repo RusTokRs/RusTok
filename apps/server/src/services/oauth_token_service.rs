@@ -442,7 +442,7 @@ async fn validate_authorization_code(
         ));
     }
     if code.used_at.is_some() {
-        revoke_authorization_code_family(db, &code).await?;
+        revoke_authorization_code_family(db, app, &code).await?;
         return Err(OAuthTokenProtocolError::invalid_grant(
             "Authorization code is invalid, expired, or already used",
         ));
@@ -507,7 +507,7 @@ async fn validate_refresh_token(
             // token replayed after the grace window, that is theft
             // evidence: revoke the whole family before failing closed
             // (RFC 9700 refresh-token reuse guidance).
-            detect_oauth_refresh_reuse(db, app.id, tenant_id, &token_hash).await?;
+            detect_oauth_refresh_reuse(db, app, tenant_id, &token_hash).await?;
             return Err(OAuthTokenProtocolError::invalid_grant(
                 "Refresh token is invalid, expired, or already used",
             ));
@@ -628,10 +628,11 @@ where
 /// Invalid/unknown tokens without a revoked record remain invalid_grant.
 async fn detect_oauth_refresh_reuse(
     db: &DatabaseConnection,
-    app_id: Uuid,
+    authenticated_app: &oauth_apps::Model,
     tenant_id: Uuid,
     token_hash: &str,
 ) -> Result<(), OAuthTokenProtocolError> {
+    let app_id = authenticated_app.id;
     // Reject unknown tokens without taking an app mutation lock. A recognized
     // revoked token needs a second authoritative read after that lock; the
     // preflight record itself must never drive a security-sensitive update.
@@ -655,17 +656,16 @@ async fn detect_oauth_refresh_reuse(
     // Token issuance and refresh rotation both acquire the app row first.
     // Hold that same fence across the decisive replay read and family revoke,
     // so a concurrent exchange cannot mint a live successor after this update.
-    // Locking inactive apps is deliberate: revoked tokens can still need cleanup.
+    // Replay revocation is itself an authenticated client mutation. An app
+    // that rotated its secret or lost authority during preflight cannot
+    // authorize this security effect with the stale client snapshot.
     let tx = db.begin().await.map_err(|error| {
         tracing::error!(%error, %app_id, %tenant_id, "Failed to start OAuth refresh reuse transaction");
         OAuthTokenProtocolError::server_error("Failed to begin refresh-token reuse revocation")
     })?;
-    let _locked_app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
-        .await
-        .map_err(|error| {
-            tracing::error!(%error, %app_id, %tenant_id, "Failed to lock OAuth app for refresh reuse");
-            OAuthTokenProtocolError::server_error("Failed to lock OAuth client for refresh-token reuse")
-        })?;
+    let locked_app = lock_active_oauth_app(&tx, app_id, tenant_id).await?;
+    ensure_authenticated_client_unchanged(authenticated_app, &locked_app)?;
+    require_grant(&locked_app, REFRESH_TOKEN_GRANT)?;
     let stale = OAuthTokens::find_by_id(candidate.id)
         .filter(oauth_tokens::Column::TokenHash.eq(token_hash))
         .filter(oauth_tokens::Column::AppId.eq(app_id))
@@ -757,6 +757,7 @@ async fn detect_oauth_refresh_reuse(
 /// rows and refresh rows, so already-issued access JWTs are fenced too.
 async fn revoke_authorization_code_family(
     db: &DatabaseConnection,
+    authenticated_app: &oauth_apps::Model,
     code: &oauth_codes::Model,
 ) -> Result<(), OAuthTokenProtocolError> {
     // A replayed authorization code can be observed outside the exchange
@@ -766,12 +767,9 @@ async fn revoke_authorization_code_family(
     let tx = db.begin().await.map_err(|_| {
         OAuthTokenProtocolError::server_error("Failed to begin authorization-code replay revocation")
     })?;
-    let _locked_app =
-        lock_oauth_app_for_mutation(&tx, code.app_id, code.tenant_id)
-            .await
-            .map_err(|_| {
-                OAuthTokenProtocolError::server_error("Failed to lock OAuth client for code replay")
-            })?;
+    let locked_app = lock_active_oauth_app(&tx, code.app_id, code.tenant_id).await?;
+    ensure_authenticated_client_unchanged(authenticated_app, &locked_app)?;
+    require_grant(&locked_app, AUTHORIZATION_CODE_GRANT)?;
     if let Err(error) = revoke_authorization_code_family_in_tx(&tx, code).await {
         tx.rollback().await.map_err(|_| {
             OAuthTokenProtocolError::server_error("Failed to roll back authorization-code replay revocation")
@@ -933,46 +931,9 @@ async fn lock_active_oauth_app<C>(
 where
     C: ConnectionTrait,
 {
-    let query = || {
-        oauth_apps::Entity::find_by_id(app_id).filter(oauth_apps::Column::TenantId.eq(tenant_id))
-    };
-    let app = match db.get_database_backend() {
-        DbBackend::Postgres | DbBackend::MySql => query()
-            .lock_exclusive()
-            .one(db)
-            .await
-            .map_err(|_| OAuthTokenProtocolError::server_error("Failed to lock OAuth client"))?,
-        DbBackend::Sqlite => {
-            // Reserve SQLite's writer by the known tenant/client key before
-            // reading. A deferred read-to-write upgrade can race a concurrent
-            // client revocation or manifest reconciliation.
-            let locked = oauth_apps::Entity::update_many()
-                .col_expr(
-                    oauth_apps::Column::UpdatedAt,
-                    Expr::col(oauth_apps::Column::UpdatedAt),
-                )
-                .filter(oauth_apps::Column::Id.eq(app_id))
-                .filter(oauth_apps::Column::TenantId.eq(tenant_id))
-                .exec(db)
-                .await
-                .map_err(|_| {
-                    OAuthTokenProtocolError::server_error("Failed to lock OAuth client")
-                })?;
-            if locked.rows_affected != 1 {
-                return Err(OAuthTokenProtocolError::invalid_client(
-                    "OAuth client is unavailable",
-                ));
-            }
-            query().one(db).await.map_err(|_| {
-                OAuthTokenProtocolError::server_error("Failed to reload OAuth client")
-            })?
-        }
-        _ => {
-            return Err(OAuthTokenProtocolError::server_error(
-                "Unsupported database backend for OAuth token issuance",
-            ));
-        }
-    };
+    let app = lock_oauth_app_for_mutation(db, app_id, tenant_id)
+        .await
+        .map_err(|_| OAuthTokenProtocolError::server_error("Failed to lock OAuth client"))?;
     let app =
         app.ok_or_else(|| OAuthTokenProtocolError::invalid_client("OAuth client is unavailable"))?;
     if !app.is_active() {
@@ -1388,8 +1349,13 @@ async fn commit_refresh_rotation(
         tx.rollback().await.map_err(|_| {
             OAuthTokenProtocolError::server_error("Failed to roll back refresh-token rotation")
         })?;
-        detect_oauth_refresh_reuse(db, current.app_id, current.tenant_id, &current.token_hash)
-            .await?;
+        detect_oauth_refresh_reuse(
+            db,
+            authenticated_app,
+            current.tenant_id,
+            &current.token_hash,
+        )
+        .await?;
         return Err(OAuthTokenProtocolError::invalid_grant(
             "Refresh token is invalid, expired, or already used",
         ));
@@ -1983,6 +1949,20 @@ mod tests {
             .insert(&db)
             .await
             .expect("insert unrelated subject");
+
+        let mut stale_client = client.clone();
+        stale_client.client_secret_hash = Some("superseded-hash".to_string());
+        let error = super::validate_refresh_token(&db, &stale_client, tenant_id, raw_stale_token)
+            .await
+            .expect_err("stale client cannot authorize refresh replay revocation");
+        assert_eq!(error.error, "invalid_client");
+        assert!(oauth_tokens::Entity::find_by_id(live_id)
+            .one(&db)
+            .await
+            .expect("lookup")
+            .expect("descendant")
+            .revoked_at
+            .is_none());
 
         db.execute_unprepared(
             "CREATE TRIGGER fail_refresh_reuse_revocation BEFORE UPDATE ON oauth_tokens
@@ -2632,11 +2612,7 @@ mod tests {
         );
         client.id = app_id;
         client.tenant_id = tenant_id;
-        // Replay cleanup must also work for an already deactivated app; the
-        // app lock is a mutation fence, not a requirement that it is active.
-        client.is_active = false;
-        client.revoked_at = Some(Utc::now().into());
-        let active_app: crate::models::_entities::oauth_apps::ActiveModel = client.into();
+        let active_app: crate::models::_entities::oauth_apps::ActiveModel = client.clone().into();
         active_app.insert(&db).await.expect("insert OAuth app");
         let now = Utc::now();
         let mut ids = Vec::new();
@@ -2690,6 +2666,24 @@ mod tests {
             created_at: now.into(),
         };
 
+        // A client authenticated with a superseded secret must not revoke
+        // the lineage, even when it knows the original authorization code.
+        let mut stale_client = client.clone();
+        stale_client.client_secret_hash = Some("superseded-hash".to_string());
+        let error = super::revoke_authorization_code_family(&db, &stale_client, &code)
+            .await
+            .expect_err("stale client cannot authorize replay revocation");
+        assert_eq!(error.error, "invalid_client");
+        for id in &ids[0..2] {
+            assert!(oauth_tokens::Entity::find_by_id(*id)
+                .one(&db)
+                .await
+                .expect("lookup")
+                .expect("token")
+                .revoked_at
+                .is_none());
+        }
+
         // A persistence error must be observable: replay revocation must not
         // silently report a security effect that the database did not commit.
         db.execute_unprepared(
@@ -2698,7 +2692,7 @@ mod tests {
         )
         .await
         .expect("create revocation fault injection");
-        let error = super::revoke_authorization_code_family(&db, &code)
+        let error = super::revoke_authorization_code_family(&db, &client, &code)
             .await
             .expect_err("a failed code replay revocation must propagate");
         assert_eq!(error.error, "server_error");
@@ -2717,7 +2711,7 @@ mod tests {
         db.execute_unprepared("DROP TRIGGER fail_code_replay_revocation")
             .await
             .expect("remove revocation fault injection");
-        super::revoke_authorization_code_family(&db, &code)
+        super::revoke_authorization_code_family(&db, &client, &code)
             .await
             .expect("replay revocation succeeds after retry");
 
@@ -2729,7 +2723,7 @@ mod tests {
                 .expect("token exists");
             assert_eq!(stored.revoked_at.is_some(), index < 2);
         }
-        super::revoke_authorization_code_family(&db, &code)
+        super::revoke_authorization_code_family(&db, &client, &code)
             .await
             .expect("replay revocation is idempotent");
     }
