@@ -691,8 +691,12 @@ require this clock check.
 The application clock latch is shared with retention within one process,
 assuming a single trusted application primary; it is independent of the
 JWT authority latch. Slow/inconclusive DB observations deny the operation
-without asserting a discontinuity; observed faults remain sticky. This is
-not durable rollback protection across restarts or independent replicas.
+without asserting a discontinuity; observed faults remain sticky. Committed application admission now persists host and database high-water
+marks in the trusted application primary before selected operations. The
+independent transaction survives domain rollback; in-domain observations
+check but do not advance the durable floor. This is partial cross-restart
+protection, not a proof against rollback of the primary or of time observed
+only after the last committed admission. See the clock discontinuity ADR.
 Direct registration/login/session creation and refresh/recovery now use the
 same application DB observer and live credential clock at the mutation and
 pre-commit boundaries. Login lockout admission uses checked time; failed
@@ -796,8 +800,9 @@ A stale challenge may retain its bounded reservation until confirmation,
 replacement or expiry cleanup. Reset, verification, email change and invite
 acceptance recheck deadlines after transactional side effects and before
 requesting commit; email-change confirmation also rechecks the proving
-session. These are application-clock observations, not a durable clock or
-database commit-time guarantee.
+session. Recovery now uses the shared corroborated application clock and
+commits an independent admission sample; later checks are not independently
+durable and do not guarantee database commit-time deadlines.
 Source regressions and PostgreSQL/SQLite migration execution remain pending.
 
 ## Direct session refresh history and recovery

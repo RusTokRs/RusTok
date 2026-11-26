@@ -130,6 +130,9 @@ impl OAuthTokenService {
         });
         clock()?;
         let db = runtime.runtime_ctx().db();
+        rustok_auth::application_clock::admit_now(db).await.map_err(|_| {
+            OAuthTokenProtocolError::server_error("Application database clock unavailable")
+        })?;
         let require_email_verification = runtime.runtime_ctx().settings().features.email_verification;
         let app = resolve_client(db, tenant_id, request).await?;
 

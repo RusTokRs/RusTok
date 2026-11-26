@@ -448,6 +448,8 @@ pub async fn resolve_current_user_from_access_token(
     ))?;
     let db = ctx.runtime_ctx().db();
 
+    rustok_auth::application_clock::admit_now(db).await
+        .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Application database clock unavailable"))?;
     auth_config.credential_now()
         .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Credential authority unavailable"))?;
     let claims = decode_access_token(auth_config, access_token)
@@ -663,7 +665,7 @@ pub async fn resolve_current_user_from_access_token(
     // Storage and policy resolution may outlast either credential fence.
     // The signed JWT cannot extend the observed session (including its
     // absolute cap) or durable OAuth registration deadline.
-    rustok_auth::application_clock::verified_now(db).await
+    rustok_auth::application_clock::admit_now(db).await
         .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "Application database clock unavailable"))?;
     ensure_access_token_not_expired(
         access_token_expires_at,

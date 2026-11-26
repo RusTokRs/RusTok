@@ -21,6 +21,7 @@ mod m20261125_000004_add_auth_jwt_replica_grants;
 mod m20261126_000001_create_auth_email_change_requests;
 mod m20261126_000060_enforce_oauth_family_identity;
 mod m20261126_000061_bind_email_change_recovery_revision;
+mod m20261126_000062_create_auth_application_clock;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -48,6 +49,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
     migrations.push(Box::new(m20261126_000001_create_auth_email_change_requests::Migration));
     migrations.push(Box::new(m20261126_000060_enforce_oauth_family_identity::Migration));
     migrations.push(Box::new(m20261126_000061_bind_email_change_recovery_revision::Migration));
+    migrations.push(Box::new(m20261126_000062_create_auth_application_clock::Migration));
     migrations
 }
 

@@ -39,6 +39,7 @@ impl AuthLifecycleService {
         requested_email: &str,
         locale: &str,
     ) -> Result<(), AuthLifecycleError> {
+        rustok_auth::application_clock::admit_now(ctx.db()).await?;
         let new_email = normalize_email(requested_email)
             .map_err(AuthLifecycleError::from)?;
 
@@ -220,7 +221,7 @@ impl AuthLifecycleService {
         if !session.is_active() {
             return Err(AuthLifecycleError::SessionExpired);
         }
-        let now = Utc::now();
+        let now = rustok_auth::application_clock::verified_now(&tx).await?;
         let expires_at = now + Duration::seconds(EMAIL_CHANGE_TOKEN_TTL_SECS as i64);
         let request = auth_email_change_requests::ActiveModel {
             id: Set(Uuid::new_v4()),
@@ -253,7 +254,7 @@ impl AuthLifecycleService {
         if !session.is_active() {
             return Err(AuthLifecycleError::SessionExpired);
         }
-        if Utc::now() >= expires_at {
+        if rustok_auth::application_clock::verified_now(&tx).await? >= expires_at {
             return Err(AuthLifecycleError::InvalidEmailChangeToken);
         }
         tx.commit().await.map_err(AuthLifecycleError::from)?;
@@ -268,7 +269,7 @@ impl AuthLifecycleService {
         current_session_id: Option<Uuid>,
     ) -> Result<ConfirmedEmailChange, AuthLifecycleError> {
         let db = ctx.db();
-        let observed_at = Utc::now();
+        let observed_at = rustok_auth::application_clock::admit_now(db).await?;
 
         // Read only the owner ID before opening the transaction. Every
         // mutation then locks user first and challenge second, matching the
@@ -303,7 +304,7 @@ impl AuthLifecycleService {
         // Re-evaluate expiry after acquiring the user mutation fence. A
         // request that waited behind another mutation must not be accepted
         // using the timestamp captured before that lock wait.
-        let confirmation_now = Utc::now();
+        let confirmation_now = rustok_auth::application_clock::verified_now(&tx).await?;
         let request = lock_email_change_request(
             &tx,
             tenant_id,
@@ -348,7 +349,7 @@ impl AuthLifecycleService {
 
         // Expiry is checked again after all row-lock waits, session
         // validation and the mailbox-availability lookup.
-        let transition_at = Utc::now();
+        let transition_at = rustok_auth::application_clock::verified_now(&tx).await?;
         if proving_session.as_ref().is_some_and(|session| !session.is_active_at(transition_at)) {
             return Err(AuthLifecycleError::SessionExpired);
         }
@@ -411,7 +412,7 @@ impl AuthLifecycleService {
 
         // The mailbox uniqueness check, revocations and outbox writes may
         // block. Roll back every side effect if admission expired meanwhile.
-        let final_now = Utc::now();
+        let final_now = rustok_auth::application_clock::verified_now(&tx).await?;
         if request.expires_at.with_timezone(&Utc) <= final_now {
             tx.rollback().await.map_err(AuthLifecycleError::from)?;
             return Err(AuthLifecycleError::InvalidEmailChangeToken);

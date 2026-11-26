@@ -660,6 +660,7 @@ impl OAuthAppService {
         clock: &(dyn Fn() -> Result<chrono::DateTime<Utc>> + Send + Sync),
     ) -> Result<String> {
         clock()?;
+        rustok_auth::application_clock::admit_now(db).await?;
         let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
         let app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
             .await

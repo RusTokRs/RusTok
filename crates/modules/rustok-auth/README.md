@@ -194,3 +194,12 @@ Recovery mutations recheck credential expiry before requesting commit and
 roll back late transitions; this does not establish durable clock safety.
 See the [recovery revision ADR](../../../DECISIONS/2026-11-26-auth-recovery-revision.md)
 and the [Auth implementation plan](./docs/implementation-plan.md) for remaining evidence.
+
+## Durable application clock admission
+
+Selected Auth credential and retention entrypoints persist corroborated host
+and primary-DB high-water marks in `auth_application_clock` before domain
+transactions. Later checks read the floor without a nested writer transaction.
+Apply the Auth migration before deploying this version; never lower the floor.
+Full durable expiry observation coverage, independent JWT authority continuity,
+contention and restart/runtime evidence remain open. See the [clock ADR](../../../DECISIONS/2026-11-25-jwt-clock-discontinuity.md).

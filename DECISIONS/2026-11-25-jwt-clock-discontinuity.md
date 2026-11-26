@@ -101,6 +101,50 @@ worker; the OAuth family and code windows remain unchanged. This needs no JWT
 signing material. A process restart with coherently incorrect host and DB time
 remains outside the guarantee; do not run manual cleanup during a clock incident.
 
+## Durable application admission extension (2026-11-26)
+
+The Auth-owned application primary contains a singleton
+`auth_application_clock` row with independent host and database UTC
+millisecond high-water marks. Before selected credential admission or
+retention operations, a short independent transaction serializes on this
+row (PostgreSQL row lock, SQLite writer reservation), then samples and
+corroborates both clocks using the existing ClockGuard. A conditional
+monotonic update is committed before the domain transaction begins. A
+rejected credential or rolled-back domain operation cannot erase that
+committed sample. Missing or invalid state denies admission; no runtime
+re-enrollment. A database reading below its persisted floor trips the
+local sticky guard. A host below the persisted host floor is refused
+without permanently latching a merely slower replica. Strict ordering
+may reduce availability with skewed replicas; never lower either floor
+to recover availability.
+
+In-domain checks read the floor before corroboration without taking the
+global writer lock. They must not open a nested pooled transaction or
+hold the clock writer lock while acquiring business locks. Access
+extraction persists a second admission observation after policy IO.
+Recovery confirmations use the checked clock after mutation locks and
+before commit. Explicit revocation paths remain independent of admission.
+This is deliberately the first durable application-clock boundary, not
+a universal time service or proof of expiry non-resurrection: observations
+inside domain transactions and after the last independently committed
+sample are not yet independently durable, and a process crash in that
+window can lose their history. Millisecond precision, rollback of the
+application store, coherent false time at first initialization, and
+independent JWT authority clock continuity remain separate limits.
+No claim is made about commit-time deadlines, WebSocket revalidation,
+or complete coverage of all credential consumers. The singleton is a
+write-contention point; production capacity and multi-replica tests are
+required before readiness promotion.
+
+Stop older binaries, apply the Auth application migration (not the
+independent JWT authority schema), confirm synchronized host and primary
+time, then deploy current readers/writers. Never reset or restore the
+floor for incident recovery. Correct clocks and wait until both floors
+are reached; restart a locally latched process only after remediation.
+Schema down is only for disposable verification. Source tests for
+persisted samples, business rollback, guard recreation, and missing
+state are authored, not executed.
+
 ## Recovery and limits
 
 The existing host supervisor terminates on authority read errors; local
@@ -108,7 +152,7 @@ crypto and readiness fail closed independently before supervisor shutdown.
 Metrics expose separate local and authority clock-fenced gauges; a
 content-free warning is emitted on first fault per latch. A missing target
 still needs external scrape monitoring. Stop older binaries before use;
-no schema migration is required.
+the original lease protection needs no schema migration; the durable application admission extension requires its Auth migration.
 
 This is detection with bounded assumptions, not a trusted distributed time
 service. All participating hosts must be independently synchronized to UTC

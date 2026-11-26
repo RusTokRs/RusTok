@@ -326,3 +326,12 @@ writers; existing pending email-change links must be requested again.
 Reset, verification, email change and invitation acceptance recheck expiry
 before requesting transaction commit. Durable clock rollback protection and
 runtime contention/migration evidence remain open.
+
+## Durable Auth application admission clock (2026-11-26)
+
+Apply the Auth application-clock migration before deploying current host
+readers. Selected credential admission and retention paths independently
+persist corroborated host/primary time floors; in-domain checks only read
+them. A lower DB observation latches the local guard; a lower host sample
+refuses admission. Never reset the floors in a clock incident. This is not
+complete cross-restart expiry protection or an independent JWT clock fence.

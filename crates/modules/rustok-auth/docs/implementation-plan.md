@@ -566,3 +566,10 @@ the consent epoch so revoke/re-grant cannot resurrect older credentials.
 - Reset, verification, email change and invite acceptance recheck credential deadlines after transactional writes, immediately before requesting commit; authenticated email change also rechecks the locked proving session. Invite acceptance checks signed and ledger expiry.
 - PostgreSQL/SQLite fresh and incremental migration, rollback, contention and transport execution evidence remain pending. Source regressions are unrun. No transport or readiness status promotion.
 - Durable high-water time, commit-time deadline semantics, issuer authority history, and immediate reclamation of stale cross-account mailbox reservations remain separate unresolved boundaries.
+
+## Durable application clock admission (2026-11-26)
+
+- Auth migration adds singleton host/DB millisecond floors; admission commits independently of domain rollback, serializing before observation. Missing state fails closed.
+- Initial wiring covers direct registration/login/refresh/session creation, access extraction (including post-policy admission), OAuth token exchange/code issuance/strict consent, password reset, verification, email change, invite issuance/acceptance, and retention.
+- Existing in-transaction corroboration checks the durable floor without taking the global writer lock. Subsequent observations are not independently durable; full expiry non-resurrection, WebSocket and remaining consumers, and independent JWT authority continuity remain open.
+- Source regression authored for rollback/recreated guard/missing state; PostgreSQL independent-pool contention, synchronized replica skew, migration and runtime checks remain unrun. No readiness promotion.

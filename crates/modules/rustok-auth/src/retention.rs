@@ -12,7 +12,7 @@
 use chrono::{DateTime, Duration, Utc};
 use sea_orm::{ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, DbErr, Statement, TransactionTrait};
 
-use crate::application_clock::{application_clock, clock_unavailable, observe};
+use crate::application_clock::{admit_with_clock, application_clock, clock_unavailable, observe_with_floor};
 use crate::jwt_clock::ClockGuard;
 
 pub const AUTH_ARTIFACT_RETENTION_DAYS: i64 = 30;
@@ -42,7 +42,7 @@ fn parameter(backend: DbBackend) -> Result<&'static str, DbErr> {
 }
 
 async fn verified_now(tx: &DatabaseTransaction, clock: &ClockGuard) -> Result<DateTime<Utc>, DbErr> {
-    let sample = observe(tx, clock).await?;
+    let sample = observe_with_floor(tx, clock).await?;
     conservative_now(sample.host_before, sample.database_now)
 }
 
@@ -130,6 +130,7 @@ async fn finish_purge(
 }
 
 async fn purge(db: &DatabaseConnection, clock: &ClockGuard, sessions_only: bool) -> Result<AuthRetentionPurge, DbErr> {
+    admit_with_clock(db, clock).await?;
     let tx = db.begin().await?;
     let result = async {
         let now = verified_now(&tx, clock).await?;
@@ -174,6 +175,8 @@ mod tests {
     async fn session_cleanup_preserves_recent_expiry_and_rolls_back_fault() {
         let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
         db.execute_unprepared("CREATE TABLE sessions (id INTEGER PRIMARY KEY, expires_at TEXT NOT NULL)").await.unwrap();
+        db.execute_unprepared("CREATE TABLE auth_application_clock (id INTEGER PRIMARY KEY, host_ms BIGINT NOT NULL, database_ms BIGINT NOT NULL)").await.unwrap();
+        db.execute_unprepared("INSERT INTO auth_application_clock VALUES (1, 0, 0)").await.unwrap();
         let now = Utc::now();
         for (id, expiry) in [
             (1_i32, now - Duration::days(AUTH_ARTIFACT_RETENTION_DAYS + 1)),

@@ -29,6 +29,7 @@ impl OAuthAppService {
         // Token issuance takes these same locks in app-then-user order before
         // checking consent. Sharing that order makes grant/revoke linearizable
         // with token exchange and with concurrent app/user deactivation.
+        rustok_auth::application_clock::admit_now(db).await?;
         let tx = db.begin().await?;
         let app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
             .await?

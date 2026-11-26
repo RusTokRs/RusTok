@@ -311,7 +311,7 @@ impl AuthLifecycleService {
         expires_at: chrono::DateTime<Utc>,
     ) -> Result<Option<(users::Model, chrono::DateTime<Utc>)>, sea_orm::DbErr> {
         let user = Self::lock_user_for_mutation(tx, tenant_id, user_id).await?;
-        let now = Utc::now();
+        let now = rustok_auth::application_clock::verified_now(tx).await?;
         Ok(user.filter(|_| now < expires_at).map(|user| (user, now)))
     }
 
@@ -581,6 +581,7 @@ impl AuthLifecycleService {
     ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
         let prepared =
             Self::prepare_new_user(email, password, name, config.min_password_length).await?;
+        rustok_auth::application_clock::admit_now(ctx.db()).await?;
         let tx = ctx.db().begin().await.map_err(AuthLifecycleError::from)?;
         let user = Self::create_user_in_tx(
             &tx,
@@ -644,6 +645,7 @@ impl AuthLifecycleService {
     ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
         let db = ctx.db();
         // Gate before lookup so a clock outage cannot distinguish known emails.
+        rustok_auth::application_clock::admit_now(db).await?;
         let admitted_at = Self::credential_now(db, config).await?;
         // Lookup-only canonicalization: login must not reject malformed
         // input with a distinct validation error (that would be an account
@@ -1031,6 +1033,7 @@ impl AuthLifecycleService {
         retry_key: Option<&AuthRefreshRetryKey>,
         expected_session_id: Option<uuid::Uuid>,
     ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
+        rustok_auth::application_clock::admit_now(db).await?;
         Self::credential_now(db, config).await?;
         let token_hash = hash_refresh_token(refresh_token);
         // Current and historical digests are only routing hints until the
@@ -1661,6 +1664,7 @@ impl AuthLifecycleService {
         ip_address: Option<String>,
         user_agent: Option<String>,
     ) -> std::result::Result<AuthTokens, AuthLifecycleError> {
+        rustok_auth::application_clock::admit_now(db).await?;
         let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
         let prepared = Self::create_session_and_tokens_in_tx(
             &tx, config, tenant_id, user, ip_address, user_agent,

@@ -148,6 +148,8 @@ impl AuthLifecycleService {
         // The JWT decoder accepts surrounding whitespace. Hash the same
         // canonical token representation so copy/pasted tokens remain
         // consistent with the issuance ledger lookup.
+        let admitted_at = rustok_auth::application_clock::admit_now(ctx.db()).await
+            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
         let token = token.trim();
         let claims =
             decode_invite_token(config, token).map_err(|_| InviteAcceptanceError::InvalidToken)?;
@@ -158,7 +160,7 @@ impl AuthLifecycleService {
 
         let expires_at = DateTime::<Utc>::from_timestamp(claims.exp as i64, 0)
             .ok_or(InviteAcceptanceError::InvalidToken)?;
-        if expires_at <= Utc::now() {
+        if expires_at <= admitted_at {
             return Err(InviteAcceptanceError::InvalidToken);
         }
 
@@ -216,7 +218,8 @@ impl AuthLifecycleService {
         // Argon2 preparation and lock acquisition may take time. Recheck
         // expiration after the invite row is locked; it is checked once more
         // immediately before the unique consumption reservation below.
-        let now = Utc::now();
+        let now = rustok_auth::application_clock::verified_now(&tx).await
+            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
         if expires_at <= now
             || issued.role != ledger_role
             || !invite_ledger_matches_claims(&issued, &email, expires_at.clone(), now)
@@ -306,7 +309,8 @@ impl AuthLifecycleService {
         // Recheck at the actual consumption boundary after issuer/RBAC reads.
         // The signed JWT and issuance ledger must both still be live when the
         // single-use reservation is written.
-        let consumed_at = Utc::now();
+        let consumed_at = rustok_auth::application_clock::verified_now(&tx).await
+            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
         if expires_at <= consumed_at
             || !invite_ledger_matches_claims(
                 &issued,
@@ -435,7 +439,8 @@ impl AuthLifecycleService {
 
         // User creation, role assignment and outbox inserts can wait on
         // other transactions. A late invite must not leave a user or receipt.
-        let final_now = Utc::now();
+        let final_now = rustok_auth::application_clock::verified_now(&tx).await
+            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
         if expires_at <= final_now
             || !invite_ledger_matches_claims(&issued, &email, expires_at, final_now)
         {
